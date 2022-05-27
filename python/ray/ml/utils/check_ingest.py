@@ -9,7 +9,7 @@ import ray
 from ray import train
 from ray.ml.preprocessors import Chain, BatchMapper
 from ray.ml.train.data_parallel_trainer import DataParallelTrainer
-from ray.ml.ingest import PipelinedIngest, BulkIngest
+from ray.ml.ingest import IngestStrategy, PipelinedIngest, BulkIngest
 
 
 class DummyTrainer(DataParallelTrainer):
@@ -28,7 +28,7 @@ class DummyTrainer(DataParallelTrainer):
         runtime_seconds: int = 30,
         prefetch_blocks: int = 1,
         batch_size: Optional[int] = None,
-        ingest=None,
+        ingest: Optional[IngestStrategy] = None,
         **kwargs
     ):
         if not scaling_config:

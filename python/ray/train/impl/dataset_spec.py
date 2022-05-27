@@ -27,6 +27,7 @@ class _RayDatasetSpec:
         with the length of the list equal to the length of the list of actor handles.
         If None is provided, the provided Ray Dataset(s) will be simply be split using
         the actor handles as locality hints.
+    ingest: The ingest strategy, if defined.
 
     """
 
@@ -73,7 +74,6 @@ class _RayDatasetSpec:
         Returns:
             A list of RayDataset shards or list of dictionaries of RayDataset shards,
                 one for each training worker.
-
         """
         if not self.dataset_or_dict:
             return [None] * len(training_worker_handles)
@@ -95,4 +95,12 @@ class _RayDatasetSpec:
     def get_dataset_readers(
         self, training_worker_handles: List[ActorHandle]
     ) -> List[Optional[Dict[str, DatasetPipeline]]]:
+        """Returns DatasetPipeline splits created by the ingest strategy.
+
+        Args:
+            training_worker_handles: A list of the training worker actor handles.
+
+        Returns:
+            A list of dictionaries of DatasetPipelines, one for each training worker.
+        """
         return self.ingest.create_readers(self.dataset_or_dict, training_worker_handles)

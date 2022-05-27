@@ -135,10 +135,8 @@ class Trainer(abc.ABC):
             by the ``preprocessor`` if one is provided.
         preprocessor: A preprocessor to preprocess the provided datasets.
         ingest: The ingest strategy to use for data loading and preprocessing. By
-            default, an ingest strategy will be picked automatically based on the
-            Dataset size and available object store memory. If the Dataset is small
-            enough to be loaded comfortably in memory, a simple bulk loading strategy
-            will be used. Otherwise, a streaming ingest strategy will be chosen.
+            default, the bulk ingest strategy will be used, which loads all data into
+            object store memory.
         resume_from_checkpoint: A checkpoint to resume training from.
     """
 

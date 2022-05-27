@@ -376,8 +376,6 @@ class BackendExecutor:
             self.dataset_shards = dataset_spec.get_dataset_shards(actors)
             self.dataset_readers = dataset_spec.get_dataset_readers(actors)
 
-        assert self.dataset_readers is not None
-
         local_rank_map = self._create_local_rank_map()
 
         futures = []
