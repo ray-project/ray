@@ -1,6 +1,8 @@
 import os
 import grpc
+import pytest
 import requests
+import sys
 import time
 
 import ray
@@ -18,6 +20,7 @@ import psutil  # We must import psutil after ray because we bundle it with ray.
 _WIN32 = os.name == "nt"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Very flaky on Windows.")
 def test_worker_stats(shutdown_only):
     ray.init(num_cpus=1, include_dashboard=True)
     raylet = ray.nodes()[0]
@@ -90,10 +93,7 @@ def test_worker_stats(shutdown_only):
             assert stats.webui_display[""] == ""  # Empty proto
     assert target_worker_present
 
-    if _WIN32:
-        timeout_seconds = 40
-    else:
-        timeout_seconds = 20
+    timeout_seconds = 20
     start_time = time.time()
     while True:
         if time.time() - start_time > timeout_seconds:
