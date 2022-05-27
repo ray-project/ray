@@ -135,8 +135,9 @@ class LogsManager:
                 log_files = await self.list_logs(
                     node_id, timeout=options.timeout, glob_filter=f"*{pid}*"
                 )
+                logger.info(log_files)
                 for file in log_files["worker_out"]:
-                    worker_pid = JOB_LOG_PATTERN.match(file).group(2)
+                    worker_pid = int(JOB_LOG_PATTERN.match(file).group(2))
                     if worker_pid == pid:
                         log_file_name = file
                         break

@@ -216,7 +216,7 @@ class StateHead(dashboard_utils.DashboardHeadModule):
             timeout=req.query.get("timeout", DEFAULT_RPC_TIMEOUT),
             node_id=req.query.get("node_id"),
             node_ip=req.query.get("node_ip"),
-            media_type=req.query.get("media_type", "file"),
+            media_type=req.match_info.get("media_type", "file"),
             filename=req.query.get("filename"),
             actor_id=req.query.get("actor_id"),
             task_id=req.query.get("task_id"),

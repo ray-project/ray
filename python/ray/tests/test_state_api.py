@@ -686,7 +686,7 @@ async def test_state_data_source_client(ray_start_cluster):
     with pytest.raises(ValueError):
         result = await client.list_logs("1234", "*")
     with pytest.raises(ValueError):
-        result = await client.stream_log("1234", "raylet.out", True, 100, 1)
+        result = await client.stream_log("1234", "raylet.out", True, 100, 1, 5)
 
     wait_for_condition(lambda: len(ray.nodes()) == 2)
     # The node information should've been registered in the previous section.
@@ -695,7 +695,7 @@ async def test_state_data_source_client(ray_start_cluster):
         result = await client.list_logs(node_id, timeout=30, glob_filter="*")
         assert isinstance(result, ListLogsReply)
 
-        stream = await client.stream_log(node_id, "raylet.out", False, 10, 1)
+        stream = await client.stream_log(node_id, "raylet.out", False, 10, 1, 5)
         async for logs in stream:
             log_lines = len(logs.data.decode().split("\n"))
             assert isinstance(logs, StreamLogReply)

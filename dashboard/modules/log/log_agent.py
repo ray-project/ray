@@ -75,12 +75,8 @@ class LogAgentV1Grpc(
 
         NOTE: These RPCs are used by state_head.py, not log_head.py
         """
-        logger.info(f"initiated StreamLog:\n{request}")
-
-        def on_exit(self):
-            logger.info(f"terminated StreamLog:\n{request}")
-
-        context.add_done_callback(on_exit)
+        # NOTE: If the client side connection is closed, this handler will
+        # be automatically terminated.
         lines = request.lines if request.lines else 1000
 
         filepath = f"{self._dashboard_agent.log_dir}/{request.log_file_name}"

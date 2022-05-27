@@ -138,7 +138,7 @@ async def test_logs_manager_stream_log(logs_manager):
 
     # Test file_name, media_type="file", node_id
     options = GetLogOptions(
-        timeout=30, media_type="file", lines=10, node_id="1", log_file_name="raylet.out"
+        timeout=30, media_type="file", lines=10, node_id="1", filename="raylet.out"
     )
 
     i = 0
@@ -148,7 +148,7 @@ async def test_logs_manager_stream_log(logs_manager):
     assert i == NUM_LOG_CHUNKS
     logs_client.stream_log.assert_awaited_with(
         node_id="1",
-        log_file_name="raylet.out",
+        filename="raylet.out",
         keep_alive=False,
         lines=10,
         interval=None,
@@ -175,7 +175,7 @@ async def test_logs_manager_stream_log(logs_manager):
     assert i == NUM_LOG_CHUNKS
     logs_client.stream_log.assert_awaited_with(
         node_id="1",
-        log_file_name="worker-0-0-10.out",
+        filename="worker-0-0-10.out",
         keep_alive=True,
         lines=10,
         interval=0.5,
@@ -273,19 +273,12 @@ def test_logs_list(ray_start_with_dashboard):
 
 
 def test_logs_stream_and_tail(ray_start_with_dashboard):
-    @ray.remote
-    class Actor:
-        def write_log(self, strings):
-            for s in strings:
-                print(s)
-
-    # test_log_text = "test_log_text_日志_{}"
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
     webui_url = ray_start_with_dashboard["webui_url"]
     webui_url = format_web_url(webui_url)
     node_id = list(list_nodes().keys())[0]
 
-    def sanity():
+    def verify_basic():
         stream_response = requests.get(
             webui_url
             + f"/api/v0/logs/file?node_id={node_id}&filename=gcs_server.out&lines=5",
@@ -298,106 +291,71 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
             lines.append(line.decode("utf-8"))
         return len(lines) == 5 or len(lines) == 6
 
-    wait_for_condition(sanity)
+    wait_for_condition(verify_basic)
 
-    # actor = Actor.remote()
-    # ray.get(actor.write_log.remote([test_log_text.format("XXXXXX")]))
+    @ray.remote
+    class Actor:
+        def write_log(self, strings):
+            for s in strings:
+                print(s)
 
-    # # Test stream and fetching by actor id
-    # stream_response = requests.get(
-    #     webui_url
-    #     + f"/api/v0/logs/stream?node_id={node_id}&lines=2"
-    #     + "&actor_id="
-    #     + actor._ray_actor_id.hex(),
-    #     stream=True,
-    # )
-    # if stream_response.status_code != 200:
-    #     raise ValueError(stream_response.content.decode("utf-8"))
-    # stream_iterator = stream_response.iter_content(chunk_size=None)
-    # assert (
-    #     next(stream_iterator).decode("utf-8")
-    #     == ":actor_name:Actor\n" + test_log_text.format("XXXXXX") + "\n"
-    # )
+        def getpid(self):
+            return os.getpid()
 
-    # streamed_string = ""
-    # for i in range(5):
-    #     strings = []
-    #     for j in range(100):
-    #         strings.append(test_log_text.format(f"{100*i + j:06d}"))
+    test_log_text = "test_log_text_日志_{}"
+    actor = Actor.remote()
+    ray.get(actor.write_log.remote([test_log_text.format("XXXXXX")]))
 
-    #     ray.get(actor.write_log.remote(strings))
+    # def verify_actor_stream_log():
+    # Test stream and fetching by actor id
+    stream_response = requests.get(
+        webui_url
+        + f"/api/v0/logs/stream?node_id={node_id}&lines=2"
+        + f"&actor_id={actor._ray_actor_id.hex()}",
+        stream=True,
+    )
+    if stream_response.status_code != 200:
+        raise ValueError(stream_response.content.decode("utf-8"))
+    stream_iterator = stream_response.iter_content(chunk_size=None)
+    assert (
+        next(stream_iterator).decode("utf-8")
+        == ":actor_name:Actor\n" + test_log_text.format("XXXXXX") + "\n"
+    )
 
-    #     string = ""
-    #     for s in strings:
-    #         string += s + "\n"
-    #     streamed_string += string
-    #     assert next(stream_iterator).decode("utf-8") == string
-    # del stream_response
+    streamed_string = ""
+    for i in range(5):
+        strings = []
+        for j in range(100):
+            strings.append(test_log_text.format(f"{100*i + j:06d}"))
 
-    # # Test tailing log by actor id
-    # LINES = 150
-    # file_response = requests.get(
-    #     webui_url
-    #     + f"/api/v0/logs/file?node_id={node_id}&lines={LINES}"
-    #     + "&actor_id="
-    #     + actor._ray_actor_id.hex(),
-    # ).content.decode("utf-8")
-    # assert file_response == "\n".join(streamed_string.split("\n")[-(LINES + 1) :])
+        ray.get(actor.write_log.remote(strings))
 
+        string = ""
+        for s in strings:
+            string += s + "\n"
+        streamed_string += string
+        assert next(stream_iterator).decode("utf-8") == string
+    del stream_response
 
-# def test_logs_grpc_client_termination(ray_start_with_dashboard):
-#     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
-#     webui_url = ray_start_with_dashboard["webui_url"]
-#     webui_url = format_web_url(webui_url)
-#     node_id = ray_start_with_dashboard["node_id"]
+    # Test tailing log by actor id
+    LINES = 150
+    file_response = requests.get(
+        webui_url
+        + f"/api/v0/logs/file?node_id={node_id}&lines={LINES}"
+        + "&actor_id="
+        + actor._ray_actor_id.hex(),
+    ).content.decode("utf-8")
+    assert file_response == "\n".join(streamed_string.split("\n")[-(LINES + 1) :])
 
-#     time.sleep(1)
-#     # Get raylet log
-#     RAYLET_FILE_NAME = "raylet.out"
-#     DASHBOARD_AGENT_FILE_NAME = "dashboard_agent.log"
-#     stream_response = requests.get(
-#         webui_url
-#         + f"/api/v0/logs/stream?node_id={node_id}"
-#         + f"&lines=0&log_file_name={RAYLET_FILE_NAME}",
-#         stream=True,
-#     )
-#     if stream_response.status_code != 200:
-#         raise ValueError(stream_response.text)
-#     # give enough time for the initiation message to be written to the log
-#     time.sleep(1)
-
-#     file_response = requests.get(
-#         webui_url
-#         + f"/api/v0/logs/file?node_id={node_id}"
-#         + f"&lines=10&log_file_name={DASHBOARD_AGENT_FILE_NAME}",
-#     )
-
-#     # Check that gRPC stream initiated as a result of starting the stream
-#     assert (
-#         f'initiated StreamLog:\nlog_file_name: "{RAYLET_FILE_NAME}"'
-#         "\nkeep_alive: true"
-#     ) in file_response.text
-#     # Check that gRPC stream has not terminated (is kept alive)
-#     assert (
-#         f'terminated StreamLog:\nlog_file_name: "{RAYLET_FILE_NAME}"'
-#         "\nkeep_alive: true"
-#     ) not in file_response.text
-
-#     del stream_response
-#     # give enough time for the termination message to be written to the log
-#     time.sleep(1)
-
-#     file_response = requests.get(
-#         webui_url
-#         + f"/api/v0/logs/file?node_id={node_id}"
-#         + f"&lines=10&log_file_name={DASHBOARD_AGENT_FILE_NAME}",
-#     )
-
-#     # Check that gRPC terminated as a result of closing the stream
-#     assert (
-#         f'terminated StreamLog:\nlog_file_name: "{RAYLET_FILE_NAME}"'
-#         "\nkeep_alive: true"
-#     ) in file_response.text
+    # Test query by pid & node_ip instead of actor id.
+    node_ip = list(ray.nodes())[0]["NodeManagerAddress"]
+    pid = ray.get(actor.getpid.remote())
+    file_response = requests.get(
+        webui_url
+        + f"/api/v0/logs/file?node_ip={node_ip}&lines={LINES}"
+        + f"&pid={pid}",
+    ).content.decode("utf-8")
+    assert file_response == "\n".join(streamed_string.split("\n")[-(LINES + 1) :])
 
 
 if __name__ == "__main__":
