@@ -311,7 +311,7 @@ def test_hotfix_callback_nested_recusive_calling():
     )
     from typing import Dict, List
 
-    # test callback used to simulate the nested recursive calling for preprocess() method
+    # test callback used to simulate the nested recursive calling for preprocess()
     class TestCallback(TrainingCallback):
         def __init__(self):
             self.max_process_time = 0
@@ -337,7 +337,8 @@ def test_hotfix_callback_nested_recusive_calling():
         for idx in range(num_iterates):
             train.report(iterate=idx + 1)
 
-    num_iterates = 1000 # python default limitation for iterate depth
+    # python default limitation for iterate depth
+    num_iterates = 1000
     trainer = Trainer(TestConfig(), num_workers=1)
     trainer.start()
     test_callback = TestCallback()
