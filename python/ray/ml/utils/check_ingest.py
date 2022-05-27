@@ -3,7 +3,6 @@
 import time
 import numpy as np
 from typing import Optional
-import sys
 
 import ray
 from ray import train
@@ -63,8 +62,6 @@ class DummyTrainer(DataParallelTrainer):
         """Make a debug train loop that runs for the given amount of runtime."""
 
         def train_loop_per_worker():
-            import pandas as pd
-
             rank = train.world_rank()
             data_reader = train.get_dataset_reader("train")
             start = time.perf_counter()

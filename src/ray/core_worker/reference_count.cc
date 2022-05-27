@@ -1252,7 +1252,7 @@ bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
 }
 
 absl::optional<LocalityData> ReferenceCounter::GetLocalityData(
-    const ObjectID &object_id) {
+    const ObjectID &object_id) const {
   absl::MutexLock lock(&mutex_);
   // Uses the reference table to return locality data for an object.
   auto it = object_id_refs_.find(object_id);

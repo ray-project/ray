@@ -26,6 +26,7 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import (
+    PublicAPI,
     DeveloperAPI,
     ExperimentalAPI,
     OverrideToImplementCustomLogic,
@@ -69,22 +70,24 @@ logger = logging.getLogger(__name__)
 #       "pol1": PolicySpec(None, Box, Discrete(2), {"lr": 0.0001}),
 #       "pol2": PolicySpec(config={"lr": 0.001}),
 #     }
-PolicySpec = namedtuple(
-    "PolicySpec",
-    [
-        # If None, use the Trainer's default policy class stored under
-        # `Trainer._policy_class`.
-        "policy_class",
-        # If None, use the env's observation space. If None and there is no Env
-        # (e.g. offline RL), an error is thrown.
-        "observation_space",
-        # If None, use the env's action space. If None and there is no Env
-        # (e.g. offline RL), an error is thrown.
-        "action_space",
-        # Overrides defined keys in the main Trainer config.
-        # If None, use {}.
-        "config",
-    ],
+PolicySpec = PublicAPI(
+    namedtuple(
+        "PolicySpec",
+        [
+            # If None, use the Trainer's default policy class stored under
+            # `Trainer._policy_class`.
+            "policy_class",
+            # If None, use the env's observation space. If None and there is no Env
+            # (e.g. offline RL), an error is thrown.
+            "observation_space",
+            # If None, use the env's action space. If None and there is no Env
+            # (e.g. offline RL), an error is thrown.
+            "action_space",
+            # Overrides defined keys in the main Trainer config.
+            # If None, use {}.
+            "config",
+        ],
+    )
 )  # defaults=(None, None, None, None)
 # TODO: From 3.7 on, we could pass `defaults` into the above constructor.
 #  We still support py3.6.
@@ -818,7 +821,7 @@ class Policy(metaclass=ABCMeta):
 
         This method only exists b/c some Trainers do not use TfPolicy nor
         TorchPolicy, but inherit directly from Policy. Others inherit from
-        TfPolicy w/o using DynamicTfPolicy.
+        TfPolicy w/o using DynamicTFPolicy.
         TODO(sven): unify these cases.
 
         Returns:

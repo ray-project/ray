@@ -678,6 +678,7 @@ def evenly_distribute_cpus_gpus_distributed(
     )
 
 
+@PublicAPI(stability="beta")
 class ResourceChangingScheduler(TrialScheduler):
     """A utility scheduler to dynamically change resources of live trials.
 

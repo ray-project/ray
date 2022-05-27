@@ -520,11 +520,11 @@ class Trainable:
         `REMOTE_CHECKPOINT_BUCKET/exp/MyTrainable_abc`
 
         Args:
-            checkpoint_path (str): Path to restore checkpoint from. If this
+            checkpoint_path: Path to restore checkpoint from. If this
                 path does not exist on the local node, it will be fetched
                 from external (cloud) storage if available, or restored
                 from a remote node.
-            checkpoint_node_ip (Optional[str]): If given, try to restore
+            checkpoint_node_ip: If given, try to restore
                 checkpoint from this node if it doesn't exist locally or
                 on cloud storage.
 

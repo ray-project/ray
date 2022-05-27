@@ -1116,7 +1116,7 @@ py_test(
         "--env", "CartPole-v0",
         "--run", "DQN",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"input\": \"tests/data/cartpole\", \"replay_buffer_config\": {\"learning_starts\": 0}, \"input_evaluation\": [\"wis\", \"is\"], \"exploration_config\": {\"type\": \"SoftQ\"}}'"
+        "--config", "'{\"framework\": \"tf\", \"input\": \"tests/data/cartpole\", \"replay_buffer_config\": {\"learning_starts\": 0}, \"off_policy_estimation_methods\": [\"wis\", \"is\"], \"exploration_config\": {\"type\": \"SoftQ\"}}'"
         ]
 )
 
@@ -1406,6 +1406,19 @@ py_test(
     tags = ["team:ml", "evaluation"],
     size = "small",
     srcs = ["evaluation/tests/test_episode.py"]
+)
+# --------------------------------------------------------------------
+# Execution Utils
+# rllib/execution/
+#
+# Tag: execution
+# --------------------------------------------------------------------
+
+py_test(
+    name = "test_async_requests_manager",
+    tags = ["team:ml", "execution"],
+    size = "small",
+    srcs = ["execution/tests/test_async_requests_manager.py"]
 )
 
 # --------------------------------------------------------------------
@@ -2617,6 +2630,24 @@ py_test(
     size = "small",
     srcs = ["examples/multi_agent_custom_policy.py"],
     args = ["--as-test", "--framework=torch", "--stop-reward=80"]
+)
+
+py_test(
+    name = "examples/multi_agent_different_spaces_for_agents_tf2",
+    main = "examples/multi_agent_different_spaces_for_agents.py",
+    tags = ["team:ml", "examples", "examples_M"],
+    size = "medium",
+    srcs = ["examples/multi_agent_different_spaces_for_agents.py"],
+    args = ["--stop-iters=4", "--framework=tf2", "--eager-tracing"]
+)
+
+py_test(
+    name = "examples/multi_agent_different_spaces_for_agents_torch",
+    main = "examples/multi_agent_different_spaces_for_agents.py",
+    tags = ["team:ml", "examples", "examples_M"],
+    size = "medium",
+    srcs = ["examples/multi_agent_different_spaces_for_agents.py"],
+    args = ["--stop-iters=4", "--framework=torch"]
 )
 
 py_test(

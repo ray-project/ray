@@ -140,6 +140,8 @@ class WorkflowStaticRef:
 @PublicAPI(stability="beta")
 @unique
 class WorkflowStatus(str, Enum):
+    # No status is set for this workflow.
+    NONE = "NONE"
     # There is at least a remote task running in ray cluster
     RUNNING = "RUNNING"
     # It got canceled and can't be resumed later.

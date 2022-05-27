@@ -52,17 +52,17 @@ class ExperimentAnalysis:
     To use this class, the experiment must be executed with the JsonLogger.
 
     Parameters:
-        experiment_checkpoint_path (str): Path to a json file or directory
+        experiment_checkpoint_path: Path to a json file or directory
             representing an experiment state, or a directory containing
             multiple experiment states (a run's ``local_dir``).
             Corresponds to Experiment.local_dir/Experiment.name/
             experiment_state.json
-        trials (list|None): List of trials that can be accessed via
+        trials: List of trials that can be accessed via
             `analysis.trials`.
-        default_metric (str): Default metric for comparing results. Can be
+        default_metric: Default metric for comparing results. Can be
             overwritten with the ``metric`` parameter in the respective
             functions.
-        default_mode (str): Default mode for comparing results. Has to be one
+        default_mode: Default mode for comparing results. Has to be one
             of [min, max]. Can be overwritten with the ``mode`` parameter
             in the respective functions.
 
@@ -732,7 +732,7 @@ class ExperimentAnalysis:
         """Overrides the existing file type.
 
         Args:
-            file_type (str): Read results from json or csv files. Has to be one
+            file_type: Read results from json or csv files. Has to be one
                 of [None, json, csv]. Defaults to csv.
         """
         self._file_type = self._validate_filetype(file_type)
