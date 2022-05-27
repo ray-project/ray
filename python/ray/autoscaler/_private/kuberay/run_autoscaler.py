@@ -23,7 +23,7 @@ def run_kuberay_autoscaler(cluster_name: str, cluster_namespace: str):
     while True:
         try:
             subprocess.check_call(["ray", "health-check", "--address", ray_address])
-            logger.info("Ray head is ready. Starting autoscaler.")
+            logger.info("The Ray head is ready. Starting the autoscaler.")
             break
         except subprocess.CalledProcessError:
             logger.warning("Ray head is not yet ready.")
