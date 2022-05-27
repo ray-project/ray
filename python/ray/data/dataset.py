@@ -3414,6 +3414,9 @@ class Dataset(Generic[T]):
     def __str__(self) -> str:
         return repr(self)
 
+    def __bool__(self) -> bool:
+        return False
+
     def __len__(self) -> int:
         raise AttributeError(
             "Use `ds.count()` to compute the length of a distributed Dataset. "
