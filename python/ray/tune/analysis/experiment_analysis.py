@@ -5,7 +5,7 @@ import warnings
 import traceback
 from numbers import Number
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from ray.ml.checkpoint import Checkpoint
 from ray.tune.cloud import TrialCheckpoint
@@ -34,7 +34,7 @@ from ray.tune.result import (
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import (
     find_newest_experiment_checkpoint,
-    load_trials_from_experiment_checkpoint,
+    load_trial_from_checkpoint,
 )
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.utils.util import unflattened_lookup
@@ -88,19 +88,19 @@ class ExperimentAnalysis:
         latest_checkpoint = self._get_latest_checkpoint(experiment_checkpoint_path)
 
         self._experiment_states = []
+        self._checkpoints_and_paths: List[Tuple[dict, os.PathLike]] = []
         for path in latest_checkpoint:
             with open(path) as f:
-                _experiment_states = json.load(f, cls=TuneFunctionDecoder)
-                self._experiment_states.append(_experiment_states)
+                experiment_state = json.load(f, cls=TuneFunctionDecoder)
+                self._experiment_states.append(experiment_state)
 
-        self._checkpoints = []
-        for experiment_state in self._experiment_states:
             if "checkpoints" not in experiment_state:
                 raise TuneError("Experiment state invalid; no checkpoints found.")
-            self._checkpoints += [
-                json.loads(cp, cls=TuneFunctionDecoder) if isinstance(cp, str) else cp
+            self._checkpoints_and_paths += [
+                (_decode_checkpoint_from_experiment_state(cp), Path(path).parent)
                 for cp in experiment_state["checkpoints"]
             ]
+
         self.trials = trials
 
         self._configs = {}
@@ -116,8 +116,8 @@ class ExperimentAnalysis:
             # If only a mode was passed, use anonymous metric
             self.default_metric = DEFAULT_METRIC
 
-        self._local_base_dir = Path(latest_checkpoint[0]).parents[1] 
-        
+        self._local_base_dir = Path(latest_checkpoint[0]).parents[1]
+
         if not pd:
             logger.warning(
                 "pandas not installed. Run `pip install pandas` for "
@@ -663,12 +663,7 @@ class ExperimentAnalysis:
                 based on `mode`, and compare trials based on `mode=[min,max]`.
         """
         best_trial = self.get_best_trial(metric, mode, scope)
-        if best_trial and getattr(best_trial, "relative_logdir", None):
-            return str(self._local_base_dir.joinpath(best_trial.relative_logdir))
-        elif best_trial and getattr(best_trial, "logdir", None):
-            return best_trial.logdir
-        else:
-            return None
+        return best_trial.logdir if best_trial else None
 
     def get_last_checkpoint(self, trial=None, metric="training_iteration", mode="max"):
         """Gets the last persistent checkpoint path of the provided trial,
@@ -764,31 +759,21 @@ class ExperimentAnalysis:
 
     def _get_trial_paths(self) -> List[str]:
         if self.trials:
-            # Get the relative paths from the trials to allow
-            # for changes in the self._local_base_dir.
-            _trial_paths = [
-                str(self._local_base_dir.joinpath(t.relative_logdir))
-                if getattr(t, "relative_logdir", None)
-                else str(t.logdir)
-                for t in self.trials
-            ]
+            # We do not need to set the relative path here
+            # Maybe assert that t.logdir is in local_base_path?
+            _trial_paths = [str(t.logdir) for t in self.trials]
         else:
             logger.info(
                 "No `self.trials`. Drawing logdirs from checkpoint "
                 "file. This may result in some information that is "
                 "out of sync, as checkpointing is periodic."
-            )            
-            _trial_paths = [
-                str(self._local_base_dir.joinpath(checkpoint["relative_logdir"]))
-                if checkpoint.get("relative_logdir")
-                else str(checkpoint["logdir"])
-                for checkpoint in self._checkpoints
-            ]
+            )
             self.trials = []
-            for experiment_state in self._experiment_states:
+            _trial_paths = []
+            for checkpoint, path in self._checkpoints_and_paths:
                 try:
-                    self.trials += load_trials_from_experiment_checkpoint(
-                        experiment_state, stub=True
+                    trial = load_trial_from_checkpoint(
+                        checkpoint, stub=True, local_dir=str(path)
                     )
                 except Exception:
                     logger.warning(
@@ -798,6 +783,9 @@ class ExperimentAnalysis:
                         f"to all analysis methods. "
                         f"Observed error:\n{traceback.format_exc()}"
                     )
+                    continue
+                self.trials.append(trial)
+                _trial_paths.append(str(trial.logdir))
 
         if not _trial_paths:
             raise TuneError("No trials found.")
@@ -875,3 +863,7 @@ class Analysis(ExperimentAnalysis):
             "The `Analysis` class is being "
             "deprecated. Please use `ExperimentAnalysis` instead."
         )
+
+
+def _decode_checkpoint_from_experiment_state(cp: Union[str, dict]) -> dict:
+    return json.loads(cp, cls=TuneFunctionDecoder) if isinstance(cp, str) else cp
