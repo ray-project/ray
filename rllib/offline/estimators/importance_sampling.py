@@ -18,7 +18,6 @@ class ImportanceSampling(OffPolicyEstimator):
     def estimate(self, batch: SampleBatchType) -> List[OffPolicyEstimate]:
         self.check_can_estimate_for(batch)
         estimates = []
-        # TODO (rohan) : Optimize this to use matmul instead of for loop
         for sub_batch in batch.split_by_episode():
             rewards, old_prob = sub_batch["rewards"], sub_batch["action_prob"]
             new_prob = np.exp(self.action_log_likelihood(sub_batch))

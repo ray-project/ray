@@ -24,10 +24,14 @@ class FQETorchModel:
             "model": {"fcnet_hiddens": [32, 32], "fcnet_activation": "relu"},
             # Maximum number of training iterations to run on the batch
             "n_iters": 80,
-            Learning rate for Q-function optimizer
+            # Learning rate for Q-function optimizer
             "lr": 1e-3,
-            Early stopping if the mean loss < delta
+            # Early stopping if the mean loss < delta
             "delta": 1e-4,
+            # Clip gradients to this maximum value
+            "clip_grad_norm": 100,
+            # Minibatch size for training Q-function
+            "batch_size": 32,
         }
     """
 

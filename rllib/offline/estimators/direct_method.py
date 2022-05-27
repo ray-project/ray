@@ -13,7 +13,7 @@ from ray.rllib.offline.estimators.qreg_torch_model import QRegTorchModel
 from gym.spaces import Discrete
 import numpy as np
 
-
+# TODO (rohan): replace with AIR/parallel workers
 def k_fold_cv(batch: SampleBatchType, k: int):
     """Utility function that returns a k-fold cross validation generator
     over episodes from the given batch.
@@ -28,7 +28,7 @@ def k_fold_cv(batch: SampleBatchType, k: int):
     episodes = batch.split_by_episode()
     n_episodes = len(episodes)
     if n_episodes < k:
-        # TODO(rohan): print warning: "len(batch) < k, running OPE without training"
+        # TODO (rohan): print warning: "len(batch) < k, running OPE without training"
         yield [], episodes
         return
     n_fold = n_episodes // k
