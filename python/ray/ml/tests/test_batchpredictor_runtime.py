@@ -15,8 +15,8 @@ NUM_REPEATS = 3
 
 
 @pytest.fixture
-def ray_start_8_cpus():
-    address_info = ray.init(num_cpus=8)
+def ray_start_4_cpus():
+    address_info = ray.init(num_cpus=4)
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -91,9 +91,9 @@ def create_data():
     shutil.rmtree(str(path), ignore_errors=True)
 
 
-@pytest.mark.parametrize("num_scoring_workers", [1, 4, 8])
+@pytest.mark.parametrize("num_scoring_workers", [1, 4])
 def test_batchpredictor_runtime(
-    num_scoring_workers, ray_start_8_cpus, create_data, tmpdir
+    num_scoring_workers, ray_start_4_cpus, create_data, tmpdir
 ):
     """Test BatchPredictor runtimes with different number of workers.
 
