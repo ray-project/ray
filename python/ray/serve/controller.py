@@ -313,8 +313,8 @@ class ServeController:
     async def shutdown(self):
         """Shuts down the serve instance completely."""
         async with self.write_lock:
-            self.deployment_state_manager.shutdown()
-            self.endpoint_state.shutdown()
+            await self.deployment_state_manager.shutdown()
+            await self.endpoint_state.shutdown()
             self.http_state.shutdown()
 
     async def deploy(
