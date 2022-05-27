@@ -27,7 +27,7 @@ import ray
 from ray.rllib.agents.ppo.ppo import PPOConfig
 from ray import tune
 from ray.tune.registry import register_env
-from ray.rllib.utils.exploration.noveld import NovelDMetricsCallbacks
+from ray.rllib.utils.exploration.callbacks import NovelDMetricsCallbacks
 
 
 def env_creator(config=None):

@@ -1,15 +1,15 @@
 from gym.spaces import Discrete, MultiDiscrete, Space
 import logging
 import numpy as np
-from typing import Dict, Optional, Union, TYPE_CHECKING
+from typing import Optional, Union
 
-from ray.rllib.agents.callbacks import DefaultCallbacks
+
 from ray.rllib.env.base_env import BaseEnv
-from ray.rllib.evaluation.episode import Episode
+
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.policy import Policy
+#from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import NullContextManager
 from ray.rllib.utils.annotations import override
@@ -18,10 +18,6 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.tf_utils import get_placeholder
 from ray.rllib.utils.typing import FromConfigSpec, ModelConfigDict, TensorType
-
-
-if TYPE_CHECKING:
-    from ray.rllib.evaluation import RolloutWorker
 
 logger = logging.getLogger(__name__)
 
@@ -518,133 +514,3 @@ class NovelD(Exploration):
         """
         states_hashes = [self._hash_state(single_obs) for single_obs in obs]
         return np.array([self._state_counts[hash] for hash in states_hashes])
-
-
-class NovelDMetricsCallbacks(DefaultCallbacks):
-    """Collects metrics for NovelD exploration.
-
-    The metrics should help users monitor the exploration of
-    the environment. The metrics tracked are:
-
-    intrinsic_reward: The intrinsic reward given by NovelD for
-        exploring new states. These are averaged over the
-        timesteps in the episode. A high metric indicates that
-        a lot of new states are explored over the course of an
-        episode.
-    novelty: The novelty in NovelD is the distillation error.
-        This error decreases over the run of an experiment for
-        already explored states. A low metric indicates that
-        the agent visits states where it has already been or
-        states that are very similar to states he visited before.
-        If the state is truly novel this metric increases.
-    novelty_next: This is the equivalent metric for the next
-        state visited (see `novelty`). Together with `novelty`
-        this metric helps the user to understand the values for
-        the `intrinsic_reward`.
-    state_counts_total: The number of states explored over the
-        course of the experiment. If this metric stagnates it is
-        a sign of little exploration.
-    state_counts_avg: The average number of state visits. This
-        metric averages the visits to single states. If this metric
-        rises it is a sign of either little exploration or of
-        states that have to be crossed by the agent to go further.
-        Together with `state_counts_total` this metric helps user
-        to get a glimpse at state exploration. A low
-        `state_counts_total` with high `state_counts_avg` is a
-        strong sign of little exploration, whereas a high
-        `state_counts_total` together with a low `state_counts_avg`
-        is a good indicator of much exploration.
-    """
-
-    def __init__(self):
-        super().__init__()
-
-    def on_episode_start(
-        self,
-        *,
-        worker: "RolloutWorker",
-        base_env: BaseEnv,
-        policies: Dict[str, Policy],
-        episode: Episode,
-        env_index: int,
-        **kwargs,
-    ):
-        assert episode.length == 0, (
-            "ERROR: `on_episode_start()` callback should be called right "
-            "after `env.reset()`."
-        )
-
-        episode.user_data["intrinsic_reward"] = []
-        episode.user_data["novelty"] = []
-        episode.user_data["novelty_next"] = []
-        episode.user_data["state_counts_total"] = []
-        episode.user_data["state_counts_avg"] = []
-
-    def on_episode_step(
-        self,
-        *,
-        worker: "RolloutWorker",
-        base_env: BaseEnv,
-        policies: Dict[str, Policy],
-        episode: Episode,
-        env_index: int,
-        **kwargs,
-    ):
-        assert episode.length > 0, (
-            "ERROR: `on_episode_step()` callback should not be called right "
-            "after `env.reset()`."
-        )
-
-        # Get the actual state values of the NovelD exploration.
-        (
-            intrinsic_reward,
-            novelty,
-            novelty_next,
-            state_counts_total,
-            state_counts_avg,
-        ) = policies["default_policy"].get_exploration_state()
-
-        # Average over batch.
-        episode.user_data["intrinsic_reward"].append(np.mean(intrinsic_reward))
-        episode.user_data["novelty"].append(np.mean(novelty))
-        episode.user_data["novelty_next"].append(np.mean(novelty_next))
-        episode.user_data["state_counts_total"].append(np.mean(state_counts_total))
-        episode.user_data["state_counts_avg"].append(np.mean(state_counts_avg))
-
-    def on_episode_end(
-        self,
-        *,
-        worker: "RolloutWorker",
-        base_env: BaseEnv,
-        policies: Dict[str, Policy],
-        episode: Episode,
-        env_index: int,
-        **kwargs,
-    ):
-        # Average over episode.
-        episode.custom_metrics["noveld/intrinsic_reward"] = np.mean(
-            episode.user_data["intrinsic_reward"]
-        )
-        episode.custom_metrics["noveld/novelty"] = np.mean(episode.user_data["novelty"])
-        episode.custom_metrics["noveld/novelty_next"] = np.mean(
-            episode.user_data["novelty_next"]
-        )
-        episode.custom_metrics["noveld/state_counts_total"] = np.mean(
-            episode.user_data["state_counts_total"]
-        )
-        episode.custom_metrics["noveld/state_counts_avg"] = np.mean(
-            episode.user_data["state_counts_avg"]
-        )
-
-        # Show also histograms of episodic intrinsic rewards.
-        episode.hist_data["noveld/intrinsic_reward"] = episode.user_data[
-            "intrinsic_reward"
-        ]
-        episode.hist_data["noveld/novelty"] = episode.user_data["novelty"]
-        episode.hist_data["noveld/novelty_next"] = episode.user_data["novelty_next"]
-        episode.hist_data["noveld/state_counts_total"] = episode.user_data[
-            "state_counts_total"
-        ]
-        episode.hist_data["noveld/state_counts_avg"] = episode.user_data[
-            "state_counts_avg"
-        ]
