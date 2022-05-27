@@ -82,59 +82,60 @@ class QRegTorchModel:
         """
         # TODO (rohan): Consider case when self.batch_size is not divisible by episode.count
         losses = []
-        for idx in range(0, batch.count, self.batch_size):
-            minibatch = batch[idx : idx + self.batch_size]
-            obs = torch.tensor(minibatch[SampleBatch.OBS], device=self.device)
-            actions = torch.tensor(minibatch[SampleBatch.ACTIONS], device=self.device)
-            ps = torch.zeros([minibatch.count], device=self.device)
-            returns = torch.zeros([minibatch.count], device=self.device)
-            discounts = torch.zeros([minibatch.count], device=self.device)
-
-            # Neccessary if policy uses recurrent/attention model
-            num_state_inputs = 0
-            for k in minibatch.keys():
-                if k.startswith("state_in_"):
-                    num_state_inputs += 1
-            state_keys = ["state_in_{}".format(i) for i in range(num_state_inputs)]
-
-            eps_begin = 0
-            for episode in minibatch.split_by_episode():
-                eps_end = eps_begin + episode.count
-
-                # get rewards, old_prob, new_prob
-                rewards = episode[SampleBatch.REWARDS]
-                old_prob = episode[SampleBatch.ACTION_PROB]
-                new_prob = self.policy.compute_log_likelihoods(
-                    actions=episode[SampleBatch.ACTIONS],
-                    obs_batch=episode[SampleBatch.OBS],
-                    state_batches=[episode[k] for k in state_keys],
-                    prev_action_batch=episode.get(SampleBatch.PREV_ACTIONS),
-                    prev_reward_batch=episode.get(SampleBatch.PREV_REWARDS),
-                    actions_normalized=False,
-                )
-                new_prob = torch.exp(new_prob).detach()
-
-                # calculate importance ratios and returns
-                for t in range(episode.count):
-                    discounts[eps_begin + t] = self.gamma ** t
-                    if t == 0:
-                        pt_prev = 1.0
-                        pt_next = 1.0
-                        returns[eps_end - 1] = rewards[-1]
-                    else:
-                        pt_prev = ps[eps_begin + t - 1]
-                        pt_next = pt_next * new_prob[-t] / old_prob[-t]
-                        returns[eps_end - t - 1] = (
-                            rewards[-t - 1]
-                            + self.gamma * pt_next * returns[eps_end - t]
-                        )
-                    ps[eps_begin + t] = pt_prev * new_prob[t] / old_prob[t]
-
-                # Update before next episode
-                eps_begin = eps_end
-
+        for _ in range(self.n_iters):
             minibatch_losses = []
-            for _ in range(self.n_iters):
+            for idx in range(0, batch.count, self.batch_size):
+                minibatch = batch[idx : idx + self.batch_size]
+                obs = torch.tensor(minibatch[SampleBatch.OBS], device=self.device)
+                actions = torch.tensor(minibatch[SampleBatch.ACTIONS], device=self.device)
+                ps = torch.zeros([minibatch.count], device=self.device)
+                returns = torch.zeros([minibatch.count], device=self.device)
+                discounts = torch.zeros([minibatch.count], device=self.device)
+
+                # Neccessary if policy uses recurrent/attention model
+                num_state_inputs = 0
+                for k in minibatch.keys():
+                    if k.startswith("state_in_"):
+                        num_state_inputs += 1
+                state_keys = ["state_in_{}".format(i) for i in range(num_state_inputs)]
+
+                eps_begin = 0
+                for episode in minibatch.split_by_episode():
+                    eps_end = eps_begin + episode.count
+
+                    # get rewards, old_prob, new_prob
+                    rewards = episode[SampleBatch.REWARDS]
+                    old_prob = episode[SampleBatch.ACTION_PROB]
+                    new_prob = self.policy.compute_log_likelihoods(
+                        actions=episode[SampleBatch.ACTIONS],
+                        obs_batch=episode[SampleBatch.OBS],
+                        state_batches=[episode[k] for k in state_keys],
+                        prev_action_batch=episode.get(SampleBatch.PREV_ACTIONS),
+                        prev_reward_batch=episode.get(SampleBatch.PREV_REWARDS),
+                        actions_normalized=False,
+                    )
+                    new_prob = torch.exp(new_prob).detach()
+
+                    # calculate importance ratios and returns
+                    for t in range(episode.count):
+                        discounts[eps_begin + t] = self.gamma ** t
+                        if t == 0:
+                            pt_prev = 1.0
+                            pt_next = 1.0
+                            returns[eps_end - 1] = rewards[-1]
+                        else:
+                            pt_prev = ps[eps_begin + t - 1]
+                            pt_next = pt_next * new_prob[-t] / old_prob[-t]
+                            returns[eps_end - t - 1] = (
+                                rewards[-t - 1]
+                                + self.gamma * pt_next * returns[eps_end - t]
+                            )
+                        ps[eps_begin + t] = pt_prev * new_prob[t] / old_prob[t]
+
+                    # Update before next episode
+                    eps_begin = eps_end
+
+                minibatch_losses = []
                 q_values, _ = self.q_model({"obs": obs}, [], None)
                 q_acts = torch.gather(q_values, -1, actions.unsqueeze(-1)).squeeze()
                 loss = discounts * ps * (returns - q_acts) ** 2
@@ -146,9 +147,9 @@ class QRegTorchModel:
                 )
                 self.optimizer.step()
                 minibatch_losses.append(loss.item())
-            minibatch_loss = sum(minibatch_losses) / len(minibatch_losses)
-            losses.append(minibatch_loss)
-            if minibatch_loss < self.delta:
+            iter_loss = sum(minibatch_losses) / len(minibatch_losses)
+            losses.append(iter_loss)
+            if iter_loss < self.delta:
                 break
         return losses
 
