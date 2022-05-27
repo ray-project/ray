@@ -321,7 +321,8 @@ class RayServeReplica:
             start_metrics_pusher(
                 interval_s=config.metrics_interval_s,
                 collection_callback=self._collect_autoscaling_metrics,
-                metrics_process_func=controller_handle.record_autoscaling_metrics.remote
+                metrics_process_func= \
+                    controller_handle.record_autoscaling_metrics.remote
             )
 
         # NOTE(edoakes): we used to recommend that users use the "ray" logger
