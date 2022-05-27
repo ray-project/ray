@@ -101,7 +101,10 @@ async def test_external_kv_aws_s3():
             region_name=region_name,
             endpoint_url=endpoint_url,
         )
-        s3.create_bucket(Bucket="serve-test")
+        s3.create_bucket(
+            Bucket="serve-test",
+            CreateBucketConfiguration={"LocationConstraint": "us-west-2"},
+        )
 
         kv_store = RayS3KVStore(
             "namespace",
