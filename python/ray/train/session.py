@@ -247,7 +247,7 @@ def _warn_session_misuse(fn_name: str):
     """Logs warning message on provided fn being used outside of session.
 
     Args:
-        fn_name (str): The name of the function to warn about.
+        fn_name: The name of the function to warn about.
     """
 
     if log_once(f"{SESSION_MISUSE_LOG_ONCE_KEY}-{fn_name}"):
@@ -282,6 +282,42 @@ def shutdown_session():
 
 @PublicAPI(stability="beta")
 def get_dataset_reader(dataset_name: Optional[str] = None) -> Optional[DatasetPipeline]:
+    """Returns the specified data reader for this worker.
+
+    The DatasetPipeline returned will loop over its data shard indefinitely.
+
+    You should call ``to_torch()`` or ``to_tf()`` on the pipeline object to convert
+    it to the appropriate framework-specific Dataset.
+
+    .. code-block:: python
+
+        import ray
+        from ray import train
+
+        def train_func():
+            model = Net()
+            for epoch in train.get_dataset_reader().iter_epochs(100):
+                data_shard = epoch.to_torch()
+                model.train(data_shard)
+            return model
+
+        dataset = ray.data.read_csv("train.csv")
+        dataset.filter(...).repeat().random_shuffle()
+
+        trainer = Trainer(backend="torch")
+        trainer.start()
+        # Trainer will automatically handle sharding.
+        train_model = trainer.run(train_func, dataset=dataset)
+        trainer.shutdown()
+
+    Args:
+        dataset_name: If a Dictionary of Datasets was passed to
+            ``Trainer``, then specifies which dataset shard to return.
+
+    Returns:
+        The ``DatasetPipeline`` reader to use for this worker. If no dataset is passed
+        into Trainer, then returns None.
+    """
     session = get_session()
     if session is None:
         _warn_session_misuse(get_dataset_reader.__name__)
@@ -307,39 +343,20 @@ def get_dataset_reader(dataset_name: Optional[str] = None) -> Optional[DatasetPi
 
 @PublicAPI(stability="beta")
 def get_dataset_shard(dataset_name: Optional[str] = None) -> Optional[RayDataset]:
-    """Returns the Ray Dataset or DatasetPipeline shard for this worker.
+    """Returns the Ray Dataset shard for this worker.
 
-    You should call ``to_torch()`` or ``to_tf()`` on this shard to convert
-    it to the appropriate framework-specific Dataset.
-
-    .. code-block:: python
-
-        import ray
-        from ray import train
-
-        def train_func():
-            model = Net()
-            for iter in range(100):
-                data_shard = train.get_dataset_shard().to_torch()
-                model.train(data_shard)
-            return model
-
-        dataset = ray.data.read_csv("train.csv")
-        dataset.filter(...).repeat().random_shuffle()
-
-        trainer = Trainer(backend="torch")
-        trainer.start()
-        # Trainer will automatically handle sharding.
-        train_model = trainer.run(train_func, dataset=dataset)
-        trainer.shutdown()
+    This is only allowed to be called for the `train` dataset when using bulk ingest
+    mode. Prefer to use ``get_dataset_reader()`` instead when possible, which works
+    for both bulk and pipelined ingest modes. However, in some cases it may be useful
+    to have raw access to the underlying Dataset instead of a DatasetPipeline.
 
     Args:
-        dataset_name (Optional[str]): If a Dictionary of Datasets was passed to
-            ``Trainer``, then specifies which dataset shard to return.
+        dataset_name: If a Dictionary of Datasets was passed to ``Trainer``, then
+            specifies which dataset shard to return.
 
     Returns:
-        The ``Dataset`` or ``DatasetPipeline`` shard to use for this worker.
-        If no dataset is passed into Trainer, then return None.
+        The ``Dataset`` shard to use for this worker. If no dataset is passed into
+        Trainer, then returns None.
     """
     session = get_session()
     if session is None:
@@ -567,7 +584,7 @@ def set_accelerator(accelerator: Accelerator) -> None:
     """Sets the accelerator for this training session.
 
     Args:
-        accelerator (Accelerator): The accelerator to use for training.
+        accelerator: The accelerator to use for training.
 
     Raises:
         SessionMisuseError: if the session is unitialized.
