@@ -67,7 +67,7 @@ class ReplayBuffer(ParallelIteratorWorker):
 
         # Store any batch as a whole
         >>> buffer = ReplayBuffer(capacity=10, storage_unit=StorageUnit.FRAGMENTS)
-        >>> buffer.add(SampleBatch({"a": [1], "b": [2]}))
+        >>> buffer.add(SampleBatch({"a": [1], "b": [2, 3, 4]}))
         >>> print(b.sample(1))
         SampleBatch(1: ['a', 'b'])
 
@@ -85,8 +85,8 @@ class ReplayBuffer(ParallelIteratorWorker):
         >>> buffer = ReplayBuffer(capacity=1, storage_unit=StorageUnit.TIMESTEPS)
         >>> buffer.add(SampleBatch({"a": [1, 2], SampleBatch.T: [0, 1]}))
         >>> t_n = buffer.sample(1)
-        >>> print(t_n[SampleBatch["a"]])
-        [1 1]
+        >>> print(t_n["a"])
+        [1 2]
 
         >>> buffer = ReplayBuffer(capacity=10, storage_unit=StorageUnit.EPISODES)
         >>> buffer.add(SampleBatch({"a": [1, 2], "b": [3, 4], SampleBatch.EPS_ID: [0, 1]})) # noqa: E501
