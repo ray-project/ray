@@ -2,7 +2,7 @@
 
 set -e
 
-ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
+ROOT_DIR=$(python -c "import os; print(os.path.dirname(os.path.realpath('${BASH_SOURCE}')));")
 
 function usage()
 {
@@ -80,7 +80,7 @@ done
 for directory in "${INCLUDES_CPP_DIRS[@]}"; do
     cmd_args="find $directory -type f"
     for excluded in "${EXCLUDES_DIRS[@]}"; do
-        cmd_args="${cmd_args} ! -path " 
+        cmd_args="${cmd_args} ! -path "
         cmd_args="${cmd_args} '${excluded}"
         if [[ "${excluded: -1}" != "/" ]];then
             cmd_args="${cmd_args}/"

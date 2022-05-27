@@ -3,7 +3,7 @@
 # Cause the script to exit if a single command fails.
 set -ex
 
-ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
+ROOT_DIR=$(python -c "import os; print(os.path.dirname(os.path.realpath('${BASH_SOURCE}')));")
 RAY_DIR=$(cd "${ROOT_DIR}/../../"; pwd)
 
 cd "${RAY_DIR}"

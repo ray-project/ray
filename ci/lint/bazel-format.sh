@@ -4,7 +4,7 @@
 # and buildifier is also installed. The example is showed in .travis.yml.
 set -e
 
-ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
+ROOT_DIR=$(python -c "import os; print(os.path.dirname(os.path.realpath('${BASH_SOURCE}')));")
 
 function usage()
 {
