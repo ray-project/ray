@@ -60,6 +60,12 @@ class ReplayBuffer(ParallelIteratorWorker):
     """The lowest-level replay buffer interface used by RLlib.
 
     This class implements a basic ring-type of buffer with random sampling.
+    ReplayBuffer is the base class for advanced types that add functionality while
+    retaining compatibility through inheritance.
+
+    The following examples show how buffers behave with different storage_units
+    and capacities. This behaviour is generally similar for other buffers, although
+    they might not implement all storage_units.
 
     Examples:
         >>> from ray.rllib.utils.replay_buffers import ReplayBuffer, StorageUnit
@@ -68,7 +74,7 @@ class ReplayBuffer(ParallelIteratorWorker):
         # Store any batch as a whole
         >>> buffer = ReplayBuffer(capacity=10, storage_unit=StorageUnit.FRAGMENTS)
         >>> buffer.add(SampleBatch({"a": [1], "b": [2, 3, 4]}))
-        >>> print(b.sample(1))
+        >>> print(buffer.sample(1))
         SampleBatch(1: ['a', 'b'])
 
         # Store only complete episodes
@@ -82,22 +88,24 @@ class ReplayBuffer(ParallelIteratorWorker):
         [1 1]
 
         # Store single timesteps
-        >>> buffer = ReplayBuffer(capacity=1, storage_unit=StorageUnit.TIMESTEPS)
+        >>> buffer = ReplayBuffer(capacity=2, storage_unit=StorageUnit.TIMESTEPS)
         >>> buffer.add(SampleBatch({"a": [1, 2], SampleBatch.T: [0, 1]}))
         >>> t_n = buffer.sample(1)
         >>> print(t_n["a"])
-        [1 2]
+        [2]
+        >>> buffer.add(SampleBatch({"a": [3], SampleBatch.T: [2]}))
+        >>> print(buffer._eviction_started)
+        True
+        >>> t_n = buffer.sample(1)
+        >>> print(t_n["a"])
+        [3]
 
-        >>> buffer = ReplayBuffer(capacity=10, storage_unit=StorageUnit.EPISODES)
-        >>> buffer.add(SampleBatch({"a": [1, 2], "b": [3, 4], SampleBatch.EPS_ID: [0, 1]})) # noqa: E501
-        >>> buffer.add(SampleBatch({"c": [1, 2, 3, 4],
-        ...                        SampleBatch.T: [0, 1, 0, 1],
-        ...                        SampleBatch.DONES: [False, True, False, True],
-        ...                        SampleBatch.EPS_ID: [0, 0, 1, 1]}))
-        >>> eps_n = b.sample(1)
-        >>> print(eps_n[SampleBatch.EPS_ID])
-        [1 1]
-
+        >>> buffer = ReplayBuffer(capacity=10, storage_unit=StorageUnit.SEQUENCES)
+        >>> buffer.add(SampleBatch({"c": [1, 2, 3],
+        ...                        SampleBatch.SEQ_LENS: [1, 2]}))
+        >>> seq_n = buffer.sample(1)
+        >>> print(seq_n["c"])
+        [1]
     """
 
     def __init__(
@@ -112,7 +120,7 @@ class ReplayBuffer(ParallelIteratorWorker):
             capacity: Max number of timesteps to store in this FIFO
                 buffer. After reaching this number, older samples will be
                 dropped to make space for new ones.
-            storage_unit: Either 'timesteps', 'sequences' or
+            storage_unit: If not a StorageUnit, either 'timesteps', 'sequences' or
                 'episodes'. Specifies how experiences are stored.
             ``**kwargs``: Forward compatibility kwargs.
         """
@@ -173,9 +181,9 @@ class ReplayBuffer(ParallelIteratorWorker):
     def add(self, batch: SampleBatchType, **kwargs) -> None:
         """Adds a batch of experiences to this buffer.
 
-        Splits experiences into chunks of timesteps, sequences
-        or episodes, depending on `self._storage_unit`. Calls
-        `self._add_single_batch`.
+        Splits batch into chunks of timesteps, sequences or episodes, depending on
+        `self._storage_unit`. Calls `self._add_single_batch` to add resulting slices
+        to the buffer storage.
 
         Args:
             batch: Batch to add.
@@ -260,17 +268,21 @@ class ReplayBuffer(ParallelIteratorWorker):
     def sample(self, num_items: int, **kwargs) -> Optional[SampleBatchType]:
         """Samples 'num_items' items from this buffer.
 
+        The items depend on the buffer's storage_unit.
         Samples in the results may be repeated.
 
-        Examples for storage of SamplesBatches:
-        - If storage unit 'timesteps' has been chosen and batches of
+        Examples for sampling results:
+
+        1) If storage unit 'timesteps' has been chosen and batches of
         size 5 have been added, sample(5) will yield a concatenated batch of
         15 timesteps.
-        - If storage unit 'sequences' has been chosen and sequences of
+
+        2) If storage unit 'sequences' has been chosen and sequences of
         different lengths have been added, sample(5) will yield a concatenated
         batch with a number of timesteps equal to the sum of timesteps in
         the 5 sampled sequences.
-        - If storage unit 'episodes' has been chosen and episodes of
+
+        3) If storage unit 'episodes' has been chosen and episodes of
         different lengths have been added, sample(5) will yield a concatenated
         batch with a number of timesteps equal to the sum of timesteps in
         the 5 sampled episodes.
@@ -343,7 +355,7 @@ class ReplayBuffer(ParallelIteratorWorker):
 
     @DeveloperAPI
     def _encode_sample(self, idxes: List[int]) -> SampleBatchType:
-        """Fetches concatenated samples at given indeces from the storage."""
+        """Fetches concatenated samples at given indices from the storage."""
         samples = []
         for i in idxes:
             self._hit_count[i] += 1
