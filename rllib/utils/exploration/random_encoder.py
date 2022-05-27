@@ -288,6 +288,6 @@ class RE3(Exploration):
         else:
             obs_embeds = tf.stop_gradient(
                 self._encoder_net({SampleBatch.OBS: sample_batch[SampleBatch.OBS]})[0]
-            )
+            ).numpy()
         sample_batch[SampleBatch.OBS_EMBEDS] = obs_embeds
         return sample_batch
