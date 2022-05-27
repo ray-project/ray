@@ -397,7 +397,7 @@ class ServeController:
         """
 
         return await asyncio.gather(
-            self.deploy(**args) for args in deployment_args_list
+            *[self.deploy(**args) for args in deployment_args_list]
         )
 
     async def delete_deployment(self, name: str):
