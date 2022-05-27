@@ -760,6 +760,7 @@ class ExperimentAnalysis:
     def _get_trial_paths(self) -> List[str]:
         if self.trials:
             # We do not need to set the relative path here
+            # Maybe assert that t.logdir is in local_base_path?
             _trial_paths = [str(t.logdir) for t in self.trials]
         else:
             logger.info(
