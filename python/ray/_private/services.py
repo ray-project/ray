@@ -360,11 +360,11 @@ def get_ray_address_from_environment():
 
 
 def wait_for_node(
-    redis_address,
-    gcs_address,
-    node_plasma_store_socket_name,
-    redis_password=None,
-    timeout=_timeout,
+    redis_address: str,
+    gcs_address: str,
+    node_plasma_store_socket_name: str,
+    redis_password: Optional[str] = None,
+    timeout: int = _timeout,
 ):
     """Wait until this node has appeared in the client table.
 
@@ -506,7 +506,7 @@ def resolve_ip_for_localhost(address: str):
         return address
 
 
-def node_ip_address_from_perspective(address):
+def node_ip_address_from_perspective(address: str):
     """IP address by which the local node can be reached *from* the `address`.
 
     Args:
@@ -592,19 +592,19 @@ def create_redis_client(redis_address, password=None):
 
 
 def start_ray_process(
-    command,
-    process_type,
-    fate_share,
-    env_updates=None,
-    cwd=None,
-    use_valgrind=False,
-    use_gdb=False,
-    use_valgrind_profiler=False,
-    use_perftools_profiler=False,
-    use_tmux=False,
-    stdout_file=None,
-    stderr_file=None,
-    pipe_stdin=False,
+    command: List[str],
+    process_type: str,
+    fate_share: bool,
+    env_updates: dict = None,
+    cwd: Optional[str] = None,
+    use_valgrind: bool = False,
+    use_gdb: bool = False,
+    use_valgrind_profiler: bool = False,
+    use_perftools_profiler: bool = False,
+    use_tmux: bool = False,
+    stdout_file: Optional[str] = None,
+    stderr_file: Optional[str] = None,
+    pipe_stdin: bool = False,
 ):
     """Start one of the Ray processes.
 
@@ -614,7 +614,7 @@ def start_ray_process(
     simultaneously running the process in valgrind and the profiler.
 
     Args:
-        command (List[str]): The command to use to start the Ray process.
+        command: The command to use to start the Ray process.
         process_type: The type of the process that is being started
             (e.g., "raylet").
         fate_share: If true, the child will be killed if its parent (us) dies.
@@ -819,7 +819,7 @@ def start_ray_process(
     )
 
 
-def wait_for_redis_to_start(redis_ip_address, redis_port, password=None):
+def wait_for_redis_to_start(redis_ip_address: str, redis_port: bool, password=None):
     """Wait for a Redis server to be available.
 
     This is accomplished by creating a Redis client and sending a random
@@ -1246,12 +1246,12 @@ def _start_redis_instance(
 
 
 def start_log_monitor(
-    logs_dir,
-    gcs_address,
-    fate_share=None,
-    max_bytes=0,
-    backup_count=0,
-    redirect_logging=True,
+    logs_dir: str,
+    gcs_address: str,
+    fate_share: Optional[bool] = None,
+    max_bytes: int = 0,
+    backup_count: int = 0,
+    redirect_logging: bool = True,
 ):
     """Start a log monitor process.
 
@@ -1308,17 +1308,17 @@ def start_log_monitor(
 
 
 def start_dashboard(
-    require_dashboard,
-    host,
-    gcs_address,
-    temp_dir,
-    logdir,
-    session_dir,
-    port=None,
-    fate_share=None,
-    max_bytes=0,
-    backup_count=0,
-    redirect_logging=True,
+    require_dashboard: bool,
+    host: str,
+    gcs_address: str,
+    temp_dir: str,
+    logdir: str,
+    session_dir: str,
+    port: Optional[int] = None,
+    fate_share: Optional[bool] = None,
+    max_bytes: int = 0,
+    backup_count: int = 0,
+    redirect_logging: bool = True,
 ):
     """Start a dashboard process.
 
@@ -1497,18 +1497,19 @@ def start_dashboard(
 
 
 def start_gcs_server(
-    redis_address,
-    log_dir,
-    stdout_file=None,
-    stderr_file=None,
-    redis_password=None,
-    config=None,
-    fate_share=None,
-    gcs_server_port=None,
-    metrics_agent_port=None,
-    node_ip_address=None,
+    redis_address: str,
+    log_dir: str,
+    stdout_file: Optional[str] = None,
+    stderr_file: Optional[str] = None,
+    redis_password: Optional[str] = None,
+    config: Optional[dict] = None,
+    fate_share: Optional[bool] = None,
+    gcs_server_port: Optional[int] = None,
+    metrics_agent_port: Optional[int] = None,
+    node_ip_address: Optional[str] = None,
 ):
     """Start a gcs server.
+
     Args:
         redis_address: The address that the Redis server is listening on.
         log_dir: The path of the dir where log files are created.
@@ -1517,11 +1518,12 @@ def start_gcs_server(
         stderr_file: A file handle opened for writing to redirect stderr to. If
             no redirection should happen, then this should be None.
         redis_password: The password of the redis server.
-        config (dict|None): Optional configuration that will
+        config: Optional configuration that will
             override defaults in RayConfig.
         gcs_server_port: Port number of the gcs server.
         metrics_agent_port(int): The port where metrics agent is bound to.
-        node_ip_address(str): IP Address of a node where gcs server starts.
+        node_ip_address: IP Address of a node where gcs server starts.
+
     Returns:
         ProcessInfo for the process that was started.
     """
@@ -1554,44 +1556,44 @@ def start_gcs_server(
 
 
 def start_raylet(
-    redis_address,
-    gcs_address,
-    node_ip_address,
-    node_manager_port,
-    raylet_name,
-    plasma_store_name,
-    worker_path,
-    setup_worker_path,
-    storage,
-    temp_dir,
-    session_dir,
-    resource_dir,
-    log_dir,
+    redis_address: str,
+    gcs_address: str,
+    node_ip_address: str,
+    node_manager_port: int,
+    raylet_name: str,
+    plasma_store_name: str,
+    worker_path: str,
+    setup_worker_path: str,
+    storage: str,
+    temp_dir: str,
+    session_dir: str,
+    resource_dir: str,
+    log_dir: str,
     resource_spec,
-    plasma_directory,
-    object_store_memory,
-    min_worker_port=None,
-    max_worker_port=None,
-    worker_port_list=None,
-    object_manager_port=None,
-    redis_password=None,
-    metrics_agent_port=None,
-    metrics_export_port=None,
-    dashboard_agent_listen_port=None,
-    use_valgrind=False,
-    use_profiler=False,
-    stdout_file=None,
-    stderr_file=None,
-    config=None,
-    huge_pages=False,
-    fate_share=None,
-    socket_to_use=None,
-    start_initial_python_workers_for_first_job=False,
-    max_bytes=0,
-    backup_count=0,
-    ray_debugger_external=False,
-    env_updates=None,
-    node_name=None,
+    plasma_directory: str,
+    object_store_memory: int,
+    min_worker_port: Optional[int] = None,
+    max_worker_port: Optional[int] = None,
+    worker_port_list: Optional[List[int]] = None,
+    object_manager_port: Optional[int] = None,
+    redis_password: Optional[str] = None,
+    metrics_agent_port: Optional[int] = None,
+    metrics_export_port: Optional[int] = None,
+    dashboard_agent_listen_port: Optional[int] = None,
+    use_valgrind: bool = False,
+    use_profiler: bool = False,
+    stdout_file: Optional[str] = None,
+    stderr_file: Optional[str] = None,
+    config: Optional[dict] = None,
+    huge_pages: bool = False,
+    fate_share: Optional[bool] = None,
+    socket_to_use: Optional[int] = None,
+    start_initial_python_workers_for_first_job: bool = False,
+    max_bytes: int = 0,
+    backup_count: int = 0,
+    ray_debugger_external: bool = False,
+    env_updates: Optional[dict] = None,
+    node_name: Optional[str] = None,
 ):
     """Start a raylet, which is a combined local scheduler and object manager.
 
@@ -1621,8 +1623,8 @@ def start_raylet(
         max_worker_port: The highest port number that workers will bind
             on. If set, min_worker_port must also be set.
         redis_password: The password to use when connecting to Redis.
-        metrics_agent_port(int): The port where metrics agent is bound to.
-        metrics_export_port(int): The port at which metrics are exposed to.
+        metrics_agent_port: The port where metrics agent is bound to.
+        metrics_export_port: The port at which metrics are exposed to.
         use_valgrind: True if the raylet should be started inside
             of valgrind. If this is True, use_profiler must be False.
         use_profiler: True if the raylet should be started inside
@@ -1632,7 +1634,7 @@ def start_raylet(
         stderr_file: A file handle opened for writing to redirect stderr to. If
             no redirection should happen, then this should be None.
         tracing_startup_hook: Tracing startup hook.
-        config (dict|None): Optional Raylet configuration that will
+        config: Optional Raylet configuration that will
             override defaults in RayConfig.
         max_bytes: Log rotation parameter. Corresponding to
             RotatingFileHandler's maxBytes.
@@ -1851,13 +1853,13 @@ def get_ray_jars_dir():
 
 
 def build_java_worker_command(
-    bootstrap_address,
-    plasma_store_name,
-    raylet_name,
-    redis_password,
-    session_dir,
-    node_ip_address,
-    setup_worker_path,
+    bootstrap_address: str,
+    plasma_store_name: str,
+    raylet_name: str,
+    redis_password: str,
+    session_dir: str,
+    node_ip_address: str,
+    setup_worker_path: str,
 ):
     """This method assembles the command used to start a Java worker.
 
@@ -1907,13 +1909,13 @@ def build_java_worker_command(
 
 
 def build_cpp_worker_command(
-    bootstrap_address,
-    plasma_store_name,
-    raylet_name,
-    redis_password,
-    session_dir,
-    log_dir,
-    node_ip_address,
+    bootstrap_address: str,
+    plasma_store_name: str,
+    raylet_name: str,
+    redis_password: str,
+    session_dir: str,
+    log_dir: str,
+    node_ip_address: str,
 ):
     """This method assembles the command used to start a CPP worker.
 
@@ -1947,7 +1949,9 @@ def build_cpp_worker_command(
 
 
 def determine_plasma_store_config(
-    object_store_memory, plasma_directory=None, huge_pages=False
+    object_store_memory: int,
+    plasma_directory: Optional[str] = None,
+    huge_pages: bool = False,
 ):
     """Figure out how to configure the plasma object store.
 
@@ -2077,17 +2081,17 @@ def determine_plasma_store_config(
 
 
 def start_monitor(
-    redis_address,
-    gcs_address,
-    logs_dir,
-    stdout_file=None,
-    stderr_file=None,
-    autoscaling_config=None,
-    redis_password=None,
-    fate_share=None,
-    max_bytes=0,
-    backup_count=0,
-    monitor_ip=None,
+    redis_address: str,
+    gcs_address: str,
+    logs_dir: str,
+    stdout_file: Optional[str] = None,
+    stderr_file: Optional[str] = None,
+    autoscaling_config: Optional[str] = None,
+    redis_password: Optional[str] = None,
+    fate_share: Optional[bool] = None,
+    max_bytes: int = 0,
+    backup_count: int = 0,
+    monitor_ip: Optional[str] = None,
 ):
     """Run a process to monitor the other processes.
 
@@ -2150,14 +2154,14 @@ def start_monitor(
 
 
 def start_ray_client_server(
-    address,
-    ray_client_server_ip,
-    ray_client_server_port,
-    stdout_file=None,
-    stderr_file=None,
-    redis_password=None,
-    fate_share=None,
-    metrics_agent_port=None,
+    address: str,
+    ray_client_server_ip: str,
+    ray_client_server_port: int,
+    stdout_file: Optional[int] = None,
+    stderr_file: Optional[int] = None,
+    redis_password: Optional[int] = None,
+    fate_share: Optional[bool] = None,
+    metrics_agent_port: Optional[int] = None,
     server_type: str = "proxy",
     serialized_runtime_env_context: Optional[str] = None,
 ):

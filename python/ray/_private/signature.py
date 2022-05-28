@@ -78,7 +78,7 @@ def extract_signature(func, ignore_first=False):
     return signature_parameters
 
 
-def flatten_args(signature_parameters, args, kwargs):
+def flatten_args(signature_parameters: list, args, kwargs):
     """Validates the arguments against the signature and flattens them.
 
     The flat list representation is a serializable format for arguments.
