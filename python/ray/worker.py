@@ -46,8 +46,8 @@ from ray.util.annotations import PublicAPI, DeveloperAPI, Deprecated
 from ray.util.debug import log_once
 from ray._private import ray_option_utils
 import ray
-import colorama
-import setproctitle
+import colorama  # type: ignore
+import setproctitle  # type: ignore
 import ray.state
 
 from ray import (
@@ -145,6 +145,12 @@ class Worker:
         # Create the lock here because the serializer will use it before
         # initializing Ray.
         self.lock = threading.RLock()
+        # Attribute for referencing the underlying C++ core worker object.
+        # Will be assigned when connect() is called.
+        self.core_worker: Optional[ray._raylet.CoreWorker] = None
+        # Attribute for referencing the GCS client.
+        # Will be assigned when connect() is called.
+        self.gcs_client: Optional[ray._private.gcs_utils.GcsClient] = None
 
     @property
     def connected(self):
@@ -677,7 +683,7 @@ We use a global Worker object to ensure that there is a single worker object
 per worker process.
 """
 
-_global_node = None
+_global_node: Optional[ray.node.Node] = None
 """ray.node.Node: The global node object that is created by ray.init()."""
 
 
@@ -701,7 +707,7 @@ def init(
     logging_format: str = ray_constants.LOGGER_FORMAT,
     log_to_driver: bool = True,
     namespace: Optional[str] = None,
-    runtime_env: Optional[Union[Dict[str, Any], "RuntimeEnv"]] = None,  # noqa: F821
+    runtime_env: Optional[Union[Dict[str, Any], ray.runtime_env.RuntimeEnv]] = None,  # noqa: F821
     storage: Optional[str] = None,
     # The following are unstable parameters and their use is discouraged.
     _enable_object_reconstruction: bool = False,
@@ -920,7 +926,8 @@ def init(
         logger.debug("Could not import resource module (on Windows)")
         pass
 
-    if RAY_JOB_CONFIG_JSON_ENV_VAR in os.environ:
+    raw_job_config = os.environ.get(RAY_JOB_CONFIG_JSON_ENV_VAR)
+    if raw_job_config:
         if runtime_env:
             logger.warning(
                 "Both RAY_JOB_CONFIG_JSON_ENV_VAR and ray.init(runtime_env) "
@@ -930,7 +937,7 @@ def init(
             )
         # Set runtime_env in job_config if passed as env variable, such as
         # ray job submission with driver script executed in subprocess
-        job_config_json = json.loads(os.environ.get(RAY_JOB_CONFIG_JSON_ENV_VAR))
+        job_config_json = json.loads(raw_job_config)
         job_config = ray.job_config.JobConfig.from_json(job_config_json)
 
         if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ:
@@ -976,7 +983,7 @@ def init(
 
     global _global_node
 
-    if global_worker.connected:
+    if global_worker.core_worker and _global_node:
         if ignore_reinit_error:
             logger.info("Calling ray.init() again after it has already been called.")
             node_id = global_worker.core_worker.get_current_node_id()
@@ -1133,12 +1140,12 @@ def init(
     for hook in _post_init_hooks:
         hook()
 
-    node_id = global_worker.core_worker.get_current_node_id()
+    node_id = global_worker.core_worker.get_current_node_id()  # type: ignore
     return RayContext(dict(_global_node.address_info, node_id=node_id.hex()))
 
 
 # Functions to run as callback after a successful ray init.
-_post_init_hooks = []
+_post_init_hooks: List[Callable[[], None]] = []
 
 
 @PublicAPI
@@ -1168,14 +1175,14 @@ def shutdown(_exiting_interpreter: bool = False):
     disconnect(_exiting_interpreter)
 
     # disconnect internal kv
-    if hasattr(global_worker, "gcs_client"):
+    if global_worker.gcs_client:
         del global_worker.gcs_client
     _internal_kv_reset()
 
     # We need to destruct the core worker here because after this function,
     # we will tear down any processes spawned by ray.init() and the background
     # IO thread in the core worker doesn't currently handle that gracefully.
-    if hasattr(global_worker, "core_worker"):
+    if global_worker.core_worker:
         global_worker.core_worker.shutdown()
         del global_worker.core_worker
     # We need to reset function actor manager to clear the context
@@ -1297,7 +1304,7 @@ def time_string() -> str:
 _worker_logs_enabled = True
 
 
-def print_worker_logs(data: Dict[str, str], print_file: Any):
+def print_worker_logs(data: Dict[str, Any], print_file: Any):
     if not _worker_logs_enabled:
         return
 
@@ -1338,7 +1345,7 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
         pid = "scheduler +{}".format(time_string())
         lines = filter_autoscaler_events(data.get("lines", []))
     else:
-        pid = data.get("pid")
+        pid = data.get("pid")  # type: ignore
         lines = data.get("lines", [])
 
     if data.get("ip") == data.get("localhost"):
@@ -1531,7 +1538,7 @@ def connect(
     log_stderr_file_path = ""
     interactive_mode = False
     if mode == SCRIPT_MODE:
-        import __main__ as main
+        import __main__ as main  # type: ignore
 
         if hasattr(main, "__file__"):
             driver_name = main.__file__
@@ -1756,6 +1763,7 @@ def show_in_dashboard(message: str, key: str = "", dtype: str = "text"):
     """
     worker = global_worker
     worker.check_connected()
+    assert worker.core_worker
 
     acceptable_dtypes = {"text", "html"}
     assert dtype in acceptable_dtypes, f"dtype accepts only: {acceptable_dtypes}"
@@ -1810,8 +1818,9 @@ def get(
     """
     worker = global_worker
     worker.check_connected()
+    assert worker.core_worker
 
-    if hasattr(worker, "core_worker") and worker.core_worker.current_actor_is_asyncio():
+    if worker.core_worker and worker.core_worker.current_actor_is_asyncio():
         global blocking_get_inside_async_warned
         if not blocking_get_inside_async_warned:
             logger.warning(
@@ -1965,6 +1974,7 @@ def wait(
     """
     worker = global_worker
     worker.check_connected()
+    assert worker.core_worker
 
     if (
         hasattr(worker, "core_worker")
@@ -2062,6 +2072,7 @@ def get_actor(name: str, namespace: Optional[str] = None) -> "ray.actor.ActorHan
 
     worker = global_worker
     worker.check_connected()
+    assert worker.core_worker
     return worker.core_worker.get_named_actor_handle(name, namespace or "")
 
 
@@ -2088,6 +2099,7 @@ def kill(actor: "ray.actor.ActorHandle", *, no_restart: bool = True):
     """
     worker = global_worker
     worker.check_connected()
+    assert worker.core_worker
     if not isinstance(actor, ray.actor.ActorHandle):
         raise ValueError(
             "ray.kill() only supported for actors. Got: {}.".format(type(actor))

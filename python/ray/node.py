@@ -585,7 +585,7 @@ class Node:
             self.redis_address, self._ray_params.redis_password
         )
 
-    def get_gcs_client(self):
+    def get_gcs_client(self) -> GcsClient:
         if self._gcs_client is None:
             for _ in range(NUM_REDIS_GET_RETRIES):
                 gcs_address = None
