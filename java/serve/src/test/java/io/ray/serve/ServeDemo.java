@@ -6,17 +6,17 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.Assert;
 
 import io.ray.api.Ray;
-import io.ray.serve.api.Deployment;
 import io.ray.serve.api.Serve;
 import io.ray.serve.api.ServeControllerClient;
-import io.ray.serve.model.DeploymentInfo;
+import io.ray.serve.deployment.Deployment;
+import io.ray.serve.deployment.DeploymentInfo;
 
 public class ServeDemo {
 
   public static class Counter {
 
     private AtomicInteger count;
-≠
+
     public Counter(Integer value) {
       this.count = new AtomicInteger(value);
     }
@@ -37,15 +37,13 @@ public class ServeDemo {
     String deploymentName = "counter";
 
     Deployment deployment =
-    		
-        Serve.deployment() // TODO return Creator
+        Serve.deployment()
             .setName(deploymentName)
             .setDeploymentDef(Counter.class.getName())
-            .setNumReplicas(2)//.spring(SpringOptions)
-            .setInitArgs(new Object[] {10}); // TODO.create();
-    
-    //SpringOptions;
-    
+            .setNumReplicas(2)
+            .setInitArgs(new Object[] {10})
+            .create();
+
     deployment.deploy(true);
 
     Deployment result = Serve.getDeployment(deploymentName);

@@ -1,21 +1,22 @@
 package io.ray.serve.handle;
 
+import org.apache.commons.lang3.RandomStringUtils;
+
 import com.google.common.collect.ImmutableMap;
+
 import io.ray.api.BaseActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.runtime.metric.Count;
 import io.ray.runtime.metric.Metrics;
+import io.ray.serve.common.Constants;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.metrics.RayServeMetrics;
-import io.ray.serve.model.Constants;
-import io.ray.serve.model.HandleOptions;
 import io.ray.serve.router.Router;
 
-import org.apache.commons.lang3.RandomStringUtils;
-
+/** A handle to a service deployment. */
 public class RayServeHandle {
 
-  private String endpointName;
+  private String deploymentName;
 
   private HandleOptions handleOptions;
 
@@ -24,16 +25,16 @@ public class RayServeHandle {
   private Count requestCounter;
 
   private Router router;
-
+  
   public RayServeHandle(
       BaseActorHandle controllerHandle,
-      String endpointName,
+      String deploymentName,
       HandleOptions handleOptions,
       Router router) {
-    this.endpointName = endpointName;
+    this.deploymentName = deploymentName;
     this.handleOptions = handleOptions != null ? handleOptions : new HandleOptions();
-    this.handleTag = endpointName + "#" + RandomStringUtils.randomAlphabetic(6);
-    this.router = router != null ? router : new Router(controllerHandle, endpointName);
+    this.handleTag = deploymentName + "#" + RandomStringUtils.randomAlphabetic(6);
+    this.router = router != null ? router : new Router(controllerHandle, deploymentName);
     RayServeMetrics.execute(
         () ->
             this.requestCounter =
@@ -46,33 +47,42 @@ public class RayServeHandle {
                             RayServeMetrics.TAG_HANDLE,
                             handleTag,
                             RayServeMetrics.TAG_ENDPOINT,
-                            endpointName))
+                            deploymentName))
                     .register());
   }
 
   /**
-   * Returns a Ray ObjectRef whose results can be waited for or retrieved using ray.wait or ray.get
+   * Returns a Ray ObjectRef whose results can be waited for or retrieved using ray.wait or Ray.get
    * (or ``await object_ref``), respectively.
    *
    * @param parameters The input parameters of the specified method to be invoked in the deployment.
-   * @return ray.ObjectRef
+   * @return ObjectRef
    */
   public ObjectRef<Object> remote(Object... parameters) {
     RayServeMetrics.execute(() -> requestCounter.inc(1.0));
     RequestMetadata.Builder requestMetadata = RequestMetadata.newBuilder();
     requestMetadata.setRequestId(RandomStringUtils.randomAlphabetic(10));
-    requestMetadata.setEndpoint(endpointName);
+    requestMetadata.setEndpoint(deploymentName);
     requestMetadata.setCallMethod(
         handleOptions != null ? handleOptions.getMethodName() : Constants.CALL_METHOD);
     return router.assignRequest(requestMetadata.build(), parameters);
   }
 
-  public RayServeHandle setMethodName(String methodName) {
+  public RayServeHandle method(String methodName) {
     handleOptions.setMethodName(methodName);
     return this;
   }
 
   public Router getRouter() {
     return router;
+  }
+
+  /**
+   * Whether this handle is actively polling for replica updates.
+   *
+   * @return
+   */
+  public boolean isPolling() {
+    return router.getLongPollClient().isRunning();
   }
 }

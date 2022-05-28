@@ -1,5 +1,6 @@
 package io.ray.serve.api;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -10,8 +11,6 @@ import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.common.base.Preconditions;
-
 import io.ray.api.ActorHandle;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.PyActorHandle;
@@ -21,13 +20,13 @@ import io.ray.api.function.PyActorMethod;
 import io.ray.api.options.ActorLifetime;
 import io.ray.runtime.exception.RayActorException;
 import io.ray.runtime.exception.RayTimeoutException;
+import io.ray.serve.common.Constants;
 import io.ray.serve.context.ReplicaContext;
+import io.ray.serve.deployment.Deployment;
+import io.ray.serve.deployment.DeploymentCreator;
+import io.ray.serve.deployment.DeploymentRoute;
 import io.ray.serve.exception.RayServeException;
 import io.ray.serve.generated.ActorNameList;
-import io.ray.serve.model.AutoscalingConfig;
-import io.ray.serve.model.Constants;
-import io.ray.serve.model.DeploymentConfig;
-import io.ray.serve.model.DeploymentInfo;
 import io.ray.serve.proxy.ProxyActor;
 import io.ray.serve.util.CollectionUtil;
 import io.ray.serve.util.CommonUtil;
@@ -199,102 +198,10 @@ public class Serve {
   /**
    * Define a Serve deployment.
    *
-   * @param deploymentDef
-   * @param name Globally-unique name identifying this deployment. If not provided, the name of the
-   *     class or function will be used.
-   * @param version Version of the deployment. This is used to indicate a code change for the
-   *     deployment; when it is re-deployed with a version change, a rolling update of the replicas
-   *     will be performed. If not provided, every deployment will be treated as a new version.
-   * @param prevVersion Version of the existing deployment which is used as a precondition for the
-   *     next deployment. If prev_version does not match with the existing deployment's version, the
-   *     deployment will fail. If not provided, deployment procedure will not check the existing
-   *     deployment's version.
-   * @param numReplicas The number of processes to start up that will handle requests to this
-   *     deployment. Defaults to 1.
-   * @param initArgs Positional args to be passed to the class constructor when starting up
-   *     deployment replicas. These can also be passed when you call `.deploy()` on the returned
-   *     Deployment.
-   * @param routePrefix Requests to paths under this HTTP path prefix will be routed to this
-   *     deployment. Defaults to '/{name}'. When set to 'None', no HTTP endpoint will be created.
-   *     Routing is done based on longest-prefix match, so if you have deployment A with a prefix of
-   *     '/a' and deployment B with a prefix of '/a/b', requests to '/a', '/a/', and '/a/c' go to A
-   *     and requests to '/a/b', '/a/b/', and '/a/b/c' go to B. Routes must not end with a '/'
-   *     unless they're the root (just '/'), which acts as a catch-all.
-   * @param rayActorOptions Options to be passed to the Ray actor constructor such as resource
-   *     requirements.
-   * @param userConfig [experimental] Config to pass to the reconfigure method of the deployment.
-   *     This can be updated dynamically without changing the version of the deployment and
-   *     restarting its replicas. The user_config needs to be hashable to keep track of updates, so
-   *     it must only contain hashable types, or hashable types nested in lists and dictionaries.
-   * @param maxConcurrentQueries The maximum number of queries that will be sent to a replica of
-   *     this deployment without receiving a response. Defaults to 100.
-   * @param autoscalingConfig
-   * @param gracefulShutdownWaitLoopS
-   * @param gracefulShutdownTimeoutS
-   * @param healthCheckPeriodS
-   * @param healthCheckTimeoutS
-   * @return Deployment
+   * @return DeploymentCreator
    */
-  public static Deployment deployment(
-      String deploymentDef,
-      String name,
-      String version,
-      String prevVersion,
-      Integer numReplicas,
-      Object[] initArgs,
-      String routePrefix,
-      Map<String, Object> rayActorOptions,
-      Object userConfig,
-      Integer maxConcurrentQueries,
-      AutoscalingConfig autoscalingConfig,
-      Double gracefulShutdownWaitLoopS,
-      Double gracefulShutdownTimeoutS,
-      Double healthCheckPeriodS,
-      Double healthCheckTimeoutS) {
-
-    Preconditions.checkArgument(
-        numReplicas != null && autoscalingConfig != null,
-        "Manually setting num_replicas is not allowed when autoscalingConfig is provided.");
-
-    DeploymentConfig deploymentConfig = new DeploymentConfig();
-    if (numReplicas != null) {
-      deploymentConfig.setNumReplicas(numReplicas);
-    }
-    if (userConfig != null) {
-      deploymentConfig.setUserConfig(userConfig);
-    }
-    if (maxConcurrentQueries != null) {
-      deploymentConfig.setMaxConcurrentQueries(maxConcurrentQueries);
-    }
-    if (autoscalingConfig != null) {
-      deploymentConfig.setAutoscalingConfig(autoscalingConfig);
-    }
-    if (gracefulShutdownWaitLoopS != null) {
-      deploymentConfig.setGracefulShutdownWaitLoopS(gracefulShutdownWaitLoopS);
-    }
-    if (gracefulShutdownTimeoutS != null) {
-      deploymentConfig.setGracefulShutdownTimeoutS(gracefulShutdownTimeoutS);
-    }
-    if (healthCheckPeriodS != null) {
-      deploymentConfig.setHealthCheckPeriodS(healthCheckPeriodS);
-    }
-    if (healthCheckTimeoutS != null) {
-      deploymentConfig.setHealthCheckTimeoutS(healthCheckTimeoutS);
-    }
-
-    return new Deployment(
-        deploymentDef,
-        name,
-        deploymentConfig,
-        version,
-        prevVersion,
-        initArgs,
-        routePrefix,
-        rayActorOptions);
-  }
-
-  public static Deployment deployment() {
-    return new Deployment();
+  public static DeploymentCreator deployment() {
+    return new DeploymentCreator();
   }
 
   /**
@@ -437,22 +344,22 @@ public class Serve {
    * @return Deployment
    */
   public static Deployment getDeployment(String name) {
-    DeploymentInfo deploymentInfo = getGlobalClient().getDeploymentInfo(name);
-    if (deploymentInfo == null) {
+    DeploymentRoute deploymentRoute = getGlobalClient().getDeploymentInfo(name);
+    if (deploymentRoute == null) {
       throw new RayServeException(
-          LogUtil.format(
-              "Deployment {} was not found. Did you call Deployment.deploy(...)?", name));
+          LogUtil.format("Deployment {} was not found. Did you call Deployment.deploy?", name));
     }
 
+    // TODO use DeploymentCreator
     return new Deployment(
-        deploymentInfo.getDeploymentDef(),
+        deploymentRoute.getDeploymentInfo().getDeploymentDef(),
         name,
-        deploymentInfo.getDeploymentConfig(),
-        deploymentInfo.getDeploymentVersion().getCodeVersion(), // TODO version
+        deploymentRoute.getDeploymentInfo().getDeploymentConfig(),
+        deploymentRoute.getDeploymentInfo().getVersion(),
         null,
-        deploymentInfo.getReplicaConfig().getInitArgs(),
-        null, // TODO route
-        deploymentInfo.getReplicaConfig().getRayActorOptions());
+        deploymentRoute.getDeploymentInfo().getReplicaConfig().getInitArgs(),
+        deploymentRoute.getRoute(),
+        deploymentRoute.getDeploymentInfo().getReplicaConfig().getRayActorOptions());
   }
 
   /**
@@ -463,23 +370,23 @@ public class Serve {
    * @return
    */
   public static Map<String, Deployment> listDeployments() {
-    Map<String, DeploymentInfo> infos = getGlobalClient().listDeployments();
-    Map<String, Deployment> deployments = new HashMap<>();
+    Map<String, DeploymentRoute> infos = getGlobalClient().listDeployments();
     if (infos == null || infos.size() == 0) {
-      return deployments;
+      return Collections.emptyMap();
     }
-    for (Map.Entry<String, DeploymentInfo> entry : infos.entrySet()) {
+    Map<String, Deployment> deployments = new HashMap<>(infos.size());
+    for (Map.Entry<String, DeploymentRoute> entry : infos.entrySet()) {
       deployments.put(
           entry.getKey(),
           new Deployment(
-              entry.getValue().getDeploymentDef(),
+              entry.getValue().getDeploymentInfo().getDeploymentDef(),
               entry.getKey(),
-              entry.getValue().getDeploymentConfig(),
-              entry.getValue().getDeploymentVersion().getCodeVersion(), // TODO version
+              entry.getValue().getDeploymentInfo().getDeploymentConfig(),
+              entry.getValue().getDeploymentInfo().getVersion(),
               null,
-              entry.getValue().getReplicaConfig().getInitArgs(),
-              null, // TODO route
-              entry.getValue().getReplicaConfig().getRayActorOptions()));
+              entry.getValue().getDeploymentInfo().getReplicaConfig().getInitArgs(),
+              entry.getValue().getRoute(),
+              entry.getValue().getDeploymentInfo().getReplicaConfig().getRayActorOptions()));
     }
     return deployments;
   }

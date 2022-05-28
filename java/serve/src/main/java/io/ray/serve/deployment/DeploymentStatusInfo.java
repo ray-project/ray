@@ -1,4 +1,4 @@
-package io.ray.serve.model;
+package io.ray.serve.deployment;
 
 import io.ray.serve.generated.DeploymentStatus;
 

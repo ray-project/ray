@@ -1,21 +1,20 @@
 package io.ray.serve.router;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import com.google.common.collect.ImmutableMap;
+
 import io.ray.api.BaseActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.runtime.metric.Count;
 import io.ray.runtime.metric.Metrics;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.metrics.RayServeMetrics;
-import io.ray.serve.model.Query;
 import io.ray.serve.poll.KeyListener;
 import io.ray.serve.poll.KeyType;
 import io.ray.serve.poll.LongPollClient;
 import io.ray.serve.poll.LongPollNamespace;
-import io.ray.serve.replica.ReplicaSet;
-
-import java.util.HashMap;
-import java.util.Map;
 
 /** Router process incoming queries: assign a replica. */
 public class Router {
@@ -24,7 +23,6 @@ public class Router {
 
   private Count numRouterRequests;
 
-  @SuppressWarnings("unused")
   private LongPollClient longPollClient;
 
   public Router(BaseActorHandle controllerHandle, String deploymentName) {
@@ -61,5 +59,9 @@ public class Router {
 
   public ReplicaSet getReplicaSet() {
     return replicaSet;
+  }
+
+  public LongPollClient getLongPollClient() {
+    return longPollClient;
   }
 }

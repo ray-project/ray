@@ -16,8 +16,8 @@ import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.junit.Assert;
 
 import io.ray.runtime.serializer.MessagePackSerializer;
-import io.ray.serve.api.Deployment;
 import io.ray.serve.api.Serve;
+import io.ray.serve.deployment.Deployment;
 
 public class ServeDemo2 {
 

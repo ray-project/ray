@@ -10,10 +10,10 @@ import org.testng.annotations.Test;
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
 import io.ray.serve.DummyServeController;
+import io.ray.serve.common.Constants;
+import io.ray.serve.config.RayServeConfig;
 import io.ray.serve.generated.EndpointInfo;
 import io.ray.serve.handle.RayServeHandle;
-import io.ray.serve.model.Constants;
-import io.ray.serve.model.RayServeConfig;
 import io.ray.serve.util.CommonUtil;
 
 public class ClientTest {

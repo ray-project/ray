@@ -1,4 +1,4 @@
-package io.ray.serve.model;
+package io.ray.serve.config;
 
 import java.io.Serializable;
 
@@ -84,5 +84,18 @@ public class AutoscalingConfig implements Serializable {
 
   public void setUpscaleDelayS(double upscaleDelayS) {
     this.upscaleDelayS = upscaleDelayS;
+  }
+
+  public io.ray.serve.generated.AutoscalingConfig toProto() {
+    return io.ray.serve.generated.AutoscalingConfig.newBuilder()
+        .setMinReplicas(minReplicas)
+        .setMaxReplicas(maxReplicas)
+        .setTargetNumOngoingRequestsPerReplica(targetNumOngoingRequestsPerReplica)
+        .setMetricsIntervalS(metricsIntervalS)
+        .setLookBackPeriodS(lookBackPeriodS)
+        .setSmoothingFactor(smoothingFactor)
+        .setDownscaleDelayS(downscaleDelayS)
+        .setUpscaleDelayS(upscaleDelayS)
+        .build();
   }
 }

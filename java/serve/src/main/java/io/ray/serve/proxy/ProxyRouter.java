@@ -1,4 +1,4 @@
-package io.ray.serve.router;
+package io.ray.serve.proxy;
 
 import io.ray.serve.api.Serve;
 import io.ray.serve.generated.EndpointInfo;

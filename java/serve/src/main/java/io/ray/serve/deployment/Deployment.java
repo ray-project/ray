@@ -1,40 +1,40 @@
-package io.ray.serve.api;
+package io.ray.serve.deployment;
 
 import java.util.Map;
 
 import com.google.common.base.Preconditions;
 
+import io.ray.serve.api.Serve;
+import io.ray.serve.config.DeploymentConfig;
 import io.ray.serve.handle.RayServeHandle;
-import io.ray.serve.model.DeploymentConfig;
 
 /**
  * Construct a Deployment. CONSTRUCTOR SHOULDN'T BE USED DIRECTLY.
- * <p>Deployments should be created, retrieved, and updated using `@serve.deployment`,
- * `serve.get_deployment`, and `Deployment.options`, respectively.
+ *
+ * <p>Deployments should be created, retrieved, and updated using `Serve.deployment.create`,
+ * `Serve.getDeployment`, and `Deployment.options.create`, respectively.
  */
 public class Deployment {
 
-  private String deploymentDef;
+  private final String deploymentDef;
 
-  private String name;
+  private final String name;
 
-  private DeploymentConfig config;
+  private final DeploymentConfig config;
 
-  private String version;
+  private final String version;
 
-  private String prevVersion;
+  private final String prevVersion;
 
-  private Object[] initArgs;
+  private final Object[] initArgs;
 
-  private String routePrefix;
+  private final String routePrefix;
 
-  private Map<String, Object> rayActorOptions;
+  private final Map<String, Object> rayActorOptions;
 
-  private String url;
+  private final String url;
 
-  protected Deployment() {}
-
-  protected Deployment(
+  public Deployment(
       String deploymentDef,
       String name,
       DeploymentConfig config,
@@ -56,7 +56,7 @@ public class Deployment {
 
     Preconditions.checkArgument(
         version != null || config.getAutoscalingConfig() == null,
-        "Currently autoscaling is only supported for versioned deployments. Try @serve.deployment(version=...).");
+        "Currently autoscaling is only supported for versioned deployments. Try Serve.deployment.setVersion.");
 
     this.deploymentDef = deploymentDef;
     this.name = name;
@@ -64,7 +64,7 @@ public class Deployment {
     this.prevVersion = prevVersion;
     this.config = config;
     this.initArgs = initArgs != null ? initArgs : new Object[0];
-    this.routePrefix = routePrefix != null ? routePrefix : "/" + name;
+    this.routePrefix = routePrefix;
     this.rayActorOptions = rayActorOptions;
     this.url = routePrefix != null ? Serve.getGlobalClient().getRootUrl() + routePrefix : null;
   }
@@ -91,7 +91,7 @@ public class Deployment {
 
   /** Delete this deployment. */
   public void delete() {
-    Serve.getGlobalClient().deleteDeployment(name);
+    Serve.getGlobalClient().deleteDeployment(name, true);
   }
 
   /**
@@ -103,76 +103,67 @@ public class Deployment {
     return Serve.getGlobalClient().getHandle(name, true);
   }
 
-  public String getDeploymentDef() {
-    return deploymentDef;
+  /**
+   * Return a copy of this deployment with updated options.
+   *
+   * <p>Only those options passed in will be updated, all others will remain unchanged from the
+   * existing deployment.
+   *
+   * @return
+   */
+  public DeploymentCreator options() {
+
+    return new DeploymentCreator()
+        .setDeploymentDef(this.deploymentDef)
+        .setName(this.name)
+        .setVersion(this.version)
+        .setPrevVersion(this.prevVersion)
+        .setNumReplicas(this.config.getNumReplicas())
+        .setInitArgs(this.initArgs)
+        .setRoutePrefix(this.routePrefix)
+        .setRayActorOptions(this.rayActorOptions)
+        .setUserConfig(this.config.getUserConfig())
+        .setMaxConcurrentQueries(this.config.getMaxConcurrentQueries())
+        .setAutoscalingConfig(this.config.getAutoscalingConfig())
+        .setGracefulShutdownWaitLoopS(this.config.getGracefulShutdownWaitLoopS())
+        .setGracefulShutdownTimeoutS(this.config.getGracefulShutdownTimeoutS())
+        .setHealthCheckPeriodS(this.config.getHealthCheckPeriodS())
+        .setHealthCheckTimeoutS(this.config.getHealthCheckTimeoutS());
   }
 
-  public Deployment setDeploymentDef(String deploymentDef) {
-    this.deploymentDef = deploymentDef;
-    return this;
+  public String getDeploymentDef() {
+    return deploymentDef;
   }
 
   public String getName() {
     return name;
   }
 
-  public Deployment setName(String name) {
-    this.name = name;
-    return this;
-  }
-
   public DeploymentConfig getConfig() {
     return config;
-  }
-
-  public void setConfig(DeploymentConfig config) {
-    this.config = config;
   }
 
   public String getVersion() {
     return version;
   }
 
-  public void setVersion(String version) {
-    this.version = version;
-  }
-
   public String getPrevVersion() {
     return prevVersion;
-  }
-
-  public void setPrevVersion(String prevVersion) {
-    this.prevVersion = prevVersion;
   }
 
   public Object[] getInitArgs() {
     return initArgs;
   }
 
-  public Deployment setInitArgs(Object[] initArgs) {
-    this.initArgs = initArgs;
-    return this;
-  }
-
   public String getRoutePrefix() {
     return routePrefix;
-  }
-
-  public Deployment setRoutePrefix(String routePrefix) {
-    this.routePrefix = routePrefix;
-    return this;
   }
 
   public Map<String, Object> getRayActorOptions() {
     return rayActorOptions;
   }
 
-  public void setRayActorOptions(Map<String, Object> rayActorOptions) {
-    this.rayActorOptions = rayActorOptions;
-  }
-
-  public Deployment setNumReplicas(int numReplicas) {
-    this.initArgs = initArgs;
-    return this;
+  public String getUrl() {
+    return url;
   }
 }

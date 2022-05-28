@@ -1,5 +1,6 @@
 package io.ray.serve.api;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -17,16 +18,17 @@ import io.ray.api.BaseActorHandle;
 import io.ray.api.PyActorHandle;
 import io.ray.api.Ray;
 import io.ray.api.function.PyActorMethod;
-import io.ray.serve.ServeController;
+import io.ray.serve.config.DeploymentConfig;
+import io.ray.serve.config.ReplicaConfig;
+import io.ray.serve.controller.ServeController;
+import io.ray.serve.deployment.DeploymentRoute;
+import io.ray.serve.deployment.DeploymentStatusInfo;
 import io.ray.serve.exception.RayServeException;
+import io.ray.serve.generated.DeploymentRouteList;
 import io.ray.serve.generated.DeploymentStatus;
 import io.ray.serve.generated.DeploymentStatusInfoList;
 import io.ray.serve.generated.EndpointInfo;
 import io.ray.serve.handle.RayServeHandle;
-import io.ray.serve.model.DeploymentConfig;
-import io.ray.serve.model.DeploymentInfo;
-import io.ray.serve.model.DeploymentStatusInfo;
-import io.ray.serve.model.ReplicaConfig;
 import io.ray.serve.util.LogUtil;
 import io.ray.serve.util.ServeProtoUtil;
 
@@ -62,25 +64,26 @@ public class ServeControllerClient {
     this.detached = detached;
     this.overrideControllerNamespace = overrideControllerNamespace;
     this.rootUrl =
+        (String) ((PyActorHandle) controller).task(PyActorMethod.of("get_root_url")).remote().get();
+    this.checkpointPath =
         (String)
             ((PyActorHandle) controller)
-                .task(PyActorMethod.of("get_root_url"))
+                .task(PyActorMethod.of("get_checkpoint_path"))
                 .remote()
-                .get(); // TODO use PyActorHandle directly.
-    // TODO self._checkpoint_path = ray.get(controller.get_checkpoint_path.remote())
+                .get();
   }
 
   /**
-   * Retrieve RayServeHandle for service endpoint to invoke it from Python.
+   * Retrieve RayServeHandle for service deployment to invoke it from Java.
    *
-   * @param endpointName A registered service endpoint.
-   * @param missingOk If true, then Serve won't check the endpoint is registered. False by default.
+   * @param endpointName A registered service deployment.
+   * @param missingOk If true, then Serve won't check the endpoint is registered.
    * @return
    */
   @SuppressWarnings("unchecked")
   public RayServeHandle getHandle(String endpointName, boolean missingOk) {
 
-    String cacheKey = endpointName + "_" + missingOk;
+    String cacheKey = endpointName + "#" + missingOk;
     if (handleCache.containsKey(cacheKey)) {
       return handleCache.get(cacheKey);
     }
@@ -93,7 +96,7 @@ public class ServeControllerClient {
                   ((PyActorHandle) controller)
                       .task(PyActorMethod.of("get_all_endpoints"))
                       .remote()
-                      .get());
+                      .get()); // TODO-0528 endpoint list
     } else {
       LOGGER.warn("Client only support Python controller now.");
       endpoints =
@@ -133,6 +136,9 @@ public class ServeControllerClient {
     }
     // TODO set runtime_env to rayActorOptions is not supported now.
     ReplicaConfig replicaConfig = new ReplicaConfig(deploymentDef, initArgs, rayActorOptions);
+
+    deploymentConfig.setVersion(version);
+    deploymentConfig.setPrevVersion(prevVersion);
 
     if (deploymentConfig.getAutoscalingConfig() != null
         && deploymentConfig.getMaxConcurrentQueries()
@@ -268,7 +274,7 @@ public class ServeControllerClient {
               ((PyActorHandle) controller)
                   .task(PyActorMethod.of("get_deployment_statuses"))
                   .remote()
-                  .get(); // TODO define PB of Dict[str, DeploymentStatusInfo]
+                  .get(); // TODO-0528 update latest code.
 
       if (statuses == null || statuses.size() == 0) {
         return;
@@ -283,7 +289,7 @@ public class ServeControllerClient {
             statuses));
   }
 
-  public String getRootUrl() { // TODO
+  public String getRootUrl() {
     return rootUrl;
   }
 
@@ -291,26 +297,46 @@ public class ServeControllerClient {
     return checkpointPath;
   }
 
-  public DeploymentInfo getDeploymentInfo(String name) {
-    return (DeploymentInfo)
-        ((PyActorHandle) controller)
-            .task(PyActorMethod.of("get_deployment_info"), name)
-            .remote()
-            .get(); // TODO define protobuf of DeploymentInfo
+  public DeploymentRoute getDeploymentInfo(String name) {
+    return DeploymentRoute.fromProtoBytes(
+        (byte[])
+            ((PyActorHandle) controller)
+                .task(PyActorMethod.of("get_deployment_info"), name)
+                .remote()
+                .get());
   }
 
-  @SuppressWarnings("unchecked")
-  public Map<String, DeploymentInfo> listDeployments() {
-    return (Map<String, DeploymentInfo>)
-        ((PyActorHandle) controller)
-            .task(PyActorMethod.of("list_deployments"))
-            .remote()
-            .get(); // TODO define protobuf of DeploymentInfo
+  public Map<String, DeploymentRoute> listDeployments() {
+
+    DeploymentRouteList deploymentRouteList =
+        ServeProtoUtil.bytesToProto(
+            (byte[])
+                ((PyActorHandle) controller)
+                    .task(PyActorMethod.of("list_deployments"))
+                    .remote()
+                    .get(),
+            bytes -> DeploymentRouteList.parseFrom(bytes));
+
+    if (deploymentRouteList == null || deploymentRouteList.getDeploymentRoutesList() == null) {
+      return Collections.emptyMap();
+    }
+
+    Map<String, DeploymentRoute> deploymentRoutes =
+        new HashMap<>(deploymentRouteList.getDeploymentRoutesList().size());
+    for (io.ray.serve.generated.DeploymentRoute deploymentRoute :
+        deploymentRouteList.getDeploymentRoutesList()) {
+      deploymentRoutes.put(
+          deploymentRoute.getDeploymentInfo().getName(),
+          DeploymentRoute.fromProto(deploymentRoute));
+    }
+    return deploymentRoutes;
   }
 
-  public void deleteDeployment(String name) {
+  public void deleteDeployment(String name, boolean blocking) { // TODO update to deleteDeployments
     ((PyActorHandle) controller).task(PyActorMethod.of("delete_deployment")).remote();
-    waitForDeploymentDeleted(name, 60);
+    if (blocking) {
+      waitForDeploymentDeleted(name, 60);
+    }
   }
 
   /**
@@ -351,7 +377,7 @@ public class ServeControllerClient {
             ((PyActorHandle) controller)
                 .task(PyActorMethod.of("get_deployment_statuses"))
                 .remote()
-                .get();
+                .get(); // TODO-0528 update latest code.
     DeploymentStatusInfoList deploymentStatusInfoList =
         ServeProtoUtil.bytesToProto(
             deploymentStatusInfoListProtoBytes, bytes -> DeploymentStatusInfoList.parseFrom(bytes));

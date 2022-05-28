@@ -1,5 +1,6 @@
 package io.ray.serve;
 
+import io.ray.serve.controller.ServeController;
 import io.ray.serve.generated.EndpointInfo;
 import io.ray.serve.generated.EndpointSet;
 import io.ray.serve.poll.LongPollRequest;

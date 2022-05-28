@@ -1,4 +1,4 @@
-package io.ray.serve.model;
+package io.ray.serve.config;
 
 import java.io.Serializable;
 import java.util.HashMap;

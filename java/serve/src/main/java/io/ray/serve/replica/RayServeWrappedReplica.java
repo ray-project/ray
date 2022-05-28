@@ -1,33 +1,36 @@
 package io.ray.serve.replica;
 
+import java.io.IOException;
+import java.util.Map;
+import java.util.Optional;
+
+import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.google.common.base.Preconditions;
+
 import io.ray.api.BaseActorHandle;
 import io.ray.api.Ray;
 import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.api.Serve;
+import io.ray.serve.config.DeploymentConfig;
+import io.ray.serve.config.RayServeConfig;
+import io.ray.serve.deployment.DeploymentVersion;
+import io.ray.serve.deployment.DeploymentWrapper;
 import io.ray.serve.exception.RayServeException;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.metrics.RayServeMetrics;
-import io.ray.serve.model.DeploymentConfig;
-import io.ray.serve.model.DeploymentInfo;
-import io.ray.serve.model.DeploymentVersion;
-import io.ray.serve.model.RayServeConfig;
 import io.ray.serve.util.LogUtil;
 import io.ray.serve.util.ReflectUtil;
 import io.ray.serve.util.ServeProtoUtil;
-import java.io.IOException;
-import java.util.Map;
-import java.util.Optional;
-import org.apache.commons.lang3.StringUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /** Replica class wrapping the provided class. Note that Java function is not supported now. */
 public class RayServeWrappedReplica implements RayServeReplica {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(RayServeReplicaImpl.class);
 
-  private DeploymentInfo deploymentInfo;
+  private DeploymentWrapper deploymentInfo;
 
   private RayServeReplicaImpl replica;
 
@@ -41,7 +44,7 @@ public class RayServeWrappedReplica implements RayServeReplica {
       String controllerName) {
 
     // Parse DeploymentConfig.
-    DeploymentConfig deploymentConfig = ServeProtoUtil.parseDeploymentConfig(deploymentConfigBytes);
+    DeploymentConfig deploymentConfig = DeploymentConfig.fromProtoBytes(deploymentVersionBytes);
 
     // Parse init args.
     Object[] initArgs = null;
@@ -57,30 +60,30 @@ public class RayServeWrappedReplica implements RayServeReplica {
       throw new RayServeException(errMsg, e);
     }
 
+    DeploymentVersion version = DeploymentVersion.fromProtoBytes(deploymentVersionBytes);
+
+    DeploymentWrapper deploymentWrapper = new DeploymentWrapper();
+    deploymentWrapper.setName(deploymentName);
+    deploymentWrapper.setDeploymentDef(deploymentDef);
+    deploymentWrapper.setDeploymentConfig(deploymentConfig);
+    deploymentWrapper.setInitArgs(initArgs);
+    deploymentWrapper.setDeploymentVersion(version);
+
     // Init replica.
-    init(
-        new DeploymentInfo()
-            .setName(deploymentName)
-            .setDeploymentConfig(deploymentConfig)
-            .setDeploymentVersion(ServeProtoUtil.parseDeploymentVersion(deploymentVersionBytes))
-            .setDeploymentDef(deploymentDef)
-            .setInitArgs(initArgs),
-        replicaTag,
-        controllerName,
-        null);
+    init(deploymentWrapper, replicaTag, controllerName, null);
   }
 
   public RayServeWrappedReplica(
-      DeploymentInfo deploymentInfo,
+      DeploymentWrapper deploymentWrapper,
       String replicaTag,
       String controllerName,
       RayServeConfig rayServeConfig) {
-    init(deploymentInfo, replicaTag, controllerName, rayServeConfig);
+    init(deploymentWrapper, replicaTag, controllerName, rayServeConfig);
   }
 
   @SuppressWarnings("rawtypes")
   private void init(
-      DeploymentInfo deploymentInfo,
+      DeploymentWrapper deploymentWrapper,
       String replicaTag,
       String controllerName,
       RayServeConfig rayServeConfig) {
@@ -88,14 +91,18 @@ public class RayServeWrappedReplica implements RayServeReplica {
       // Set the controller name so that Serve.connect() in the user's code will connect to the
       // instance that this deployment is running in.
       Serve.setInternalReplicaContext(
-          deploymentInfo.getName(), replicaTag, controllerName, null, null); // TODO set namespace
+          deploymentWrapper.getName(),
+          replicaTag,
+          controllerName,
+          null,
+          null); // TODO set namespace
       Serve.getReplicaContext().setRayServeConfig(rayServeConfig);
 
       // Instantiate the object defined by deploymentDef.
-      Class deploymentClass = Class.forName(deploymentInfo.getDeploymentDef());
+      Class deploymentClass = Class.forName(deploymentWrapper.getDeploymentDef());
       Object callable =
-          ReflectUtil.getConstructor(deploymentClass, deploymentInfo.getInitArgs())
-              .newInstance(deploymentInfo.getInitArgs());
+          ReflectUtil.getConstructor(deploymentClass, deploymentWrapper.getInitArgs())
+              .newInstance(deploymentWrapper.getInitArgs());
       Serve.getReplicaContext().setServableObject(callable);
 
       // Get the controller by controllerName.
@@ -105,22 +112,22 @@ public class RayServeWrappedReplica implements RayServeReplica {
       Preconditions.checkState(optional.isPresent(), "Controller does not exist");
 
       // Enable metrics.
-      enableMetrics(deploymentInfo.getConfig());
+      enableMetrics(deploymentWrapper.getConfig());
 
       // Construct worker replica.
       this.replica =
           new RayServeReplicaImpl(
               callable,
-              deploymentInfo.getDeploymentConfig(),
-              deploymentInfo.getDeploymentVersion(),
+              deploymentWrapper.getDeploymentConfig(),
+              deploymentWrapper.getDeploymentVersion(),
               optional.get());
-      this.deploymentInfo = deploymentInfo;
+      this.deploymentInfo = deploymentWrapper;
     } catch (Throwable e) {
       String errMsg =
           LogUtil.format(
               "Failed to initialize replica {} of deployment {}",
               replicaTag,
-              deploymentInfo.getName());
+              deploymentWrapper.getName());
       LOGGER.error(errMsg, e);
       throw new RayServeException(errMsg, e);
     }
@@ -212,7 +219,7 @@ public class RayServeWrappedReplica implements RayServeReplica {
                 ? MessagePackSerializer.decode((byte[]) userConfig, Object.class)
                 : userConfig);
     return deploymentInfo.getDeploymentConfig().isCrossLanguage()
-        ? ServeProtoUtil.toProtobuf(deploymentVersion).toByteArray()
+        ? deploymentVersion.toProtoBytes()
         : deploymentVersion;
   }
 
@@ -225,7 +232,7 @@ public class RayServeWrappedReplica implements RayServeReplica {
   public Object getVersion() {
     DeploymentVersion deploymentVersion = replica.getVersion();
     return deploymentInfo.getDeploymentConfig().isCrossLanguage()
-        ? ServeProtoUtil.toProtobuf(deploymentVersion).toByteArray()
+        ? deploymentVersion.toProtoBytes()
         : deploymentVersion;
   }
 

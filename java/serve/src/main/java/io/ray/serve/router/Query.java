@@ -1,4 +1,4 @@
-package io.ray.serve.model;
+package io.ray.serve.router;
 
 import io.ray.serve.generated.RequestMetadata;
 

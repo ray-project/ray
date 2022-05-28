@@ -1,7 +1,8 @@
-package io.ray.serve.model;
+package io.ray.serve.common;
+
+import java.util.List;
 
 import com.google.common.collect.Lists;
-import java.util.List;
 
 /** Ray Serve common constants. */
 public class Constants {
@@ -34,7 +35,11 @@ public class Constants {
   /** Max time to wait for proxy in `serve.start()`. Unit: second */
   public static final int PROXY_TIMEOUT = 60;
 
-  public static final double DEFAULT_HEALTH_CHECK_PERIOD_S = 10;
+  public static final Double DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S = 20.0;
 
-  public static final double DEFAULT_HEALTH_CHECK_TIMEOUT_S = 30;
+  public static final Double DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S = 2.0;
+
+  public static final Double DEFAULT_HEALTH_CHECK_PERIOD_S = 10.0;
+
+  public static final Double DEFAULT_HEALTH_CHECK_TIMEOUT_S = 30.0;
 }

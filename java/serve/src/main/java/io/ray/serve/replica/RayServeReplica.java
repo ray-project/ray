@@ -1,6 +1,6 @@
 package io.ray.serve.replica;
 
-import io.ray.serve.model.DeploymentVersion;
+import io.ray.serve.deployment.DeploymentVersion;
 
 public interface RayServeReplica {
 

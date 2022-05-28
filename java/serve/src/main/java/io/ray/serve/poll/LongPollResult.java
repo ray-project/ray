@@ -3,7 +3,6 @@ package io.ray.serve.poll;
 import com.google.protobuf.InvalidProtocolBufferException;
 
 import io.ray.serve.exception.RayServeException;
-import io.ray.serve.model.UpdatedObject;
 
 import java.io.Serializable;
 import java.util.HashMap;

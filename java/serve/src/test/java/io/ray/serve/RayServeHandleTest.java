@@ -8,14 +8,14 @@ import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.serve.api.Serve;
+import io.ray.serve.common.Constants;
+import io.ray.serve.config.DeploymentConfig;
+import io.ray.serve.config.RayServeConfig;
+import io.ray.serve.deployment.DeploymentInfo;
+import io.ray.serve.deployment.DeploymentVersion;
 import io.ray.serve.generated.ActorSet;
 import io.ray.serve.generated.DeploymentLanguage;
 import io.ray.serve.handle.RayServeHandle;
-import io.ray.serve.model.Constants;
-import io.ray.serve.model.DeploymentConfig;
-import io.ray.serve.model.DeploymentInfo;
-import io.ray.serve.model.DeploymentVersion;
-import io.ray.serve.model.RayServeConfig;
 import io.ray.serve.replica.RayServeWrappedReplica;
 import io.ray.serve.util.CommonUtil;
 
@@ -73,7 +73,8 @@ public class RayServeHandleTest {
       // RayServeHandle
       RayServeHandle rayServeHandle =
           new RayServeHandle(controllerHandle, deploymentName, null, null)
-              .setMethodName("getDeploymentName");
+              .method("getDeploymentName");
+      ;
       ActorSet.Builder builder = ActorSet.newBuilder();
       builder.addNames(actorName);
       rayServeHandle.getRouter().getReplicaSet().updateWorkerReplicas(builder.build());
