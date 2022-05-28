@@ -82,7 +82,7 @@ Here is an example of how to implement your own toy example of a ReplayBuffer cl
     :start-after: __sphinx_doc_replay_buffer_own_buffer__begin__
     :end-before: __sphinx_doc_replay_buffer_own_buffer__end__
 
-If you want to also make a subclassed replay buffer stateful, simply add more state to the get_state() and set_state() methods.
+For a full implementation, you should consider other methods like get_state() and set_state() methods.
 A more extensive example is our implementation of `reservoir sampling <https://www.cs.umd.edu/~samir/498/vitter.pdf>`__:
 
 .. dropdown:: **Changing a replay buffer configuration**
@@ -100,7 +100,7 @@ Advanced Usage
 In RLlib, all replay buffers implement the :py:class:`~ray.rllib.utils.replay_buffers.replay_buffer.ReplayBuffer` interface.
 Therefore, they support, whenever possible, different :py:class:`~ray.rllib.utils.replay_buffers.replay_buffer.StorageUnit`\s.
 The storage_unit constructor argument of a replay buffer defines how experiences are stored, and therefore the unit in which they are sampled.
-When later calling the sample() method, num_units will relate to said storage_unit.
+When later calling the sample() method, num_items will relate to said storage_unit.
 
 Here is a full example of how to modify the storage_unit and interact with a custom buffer:
 
@@ -123,7 +123,7 @@ Here is an example of how to specify an underlying replay buffer:
 
 
 Replay Buffers API Reference
------------------------------
+============================
 
 .. toctree::
     :maxdepth: 1

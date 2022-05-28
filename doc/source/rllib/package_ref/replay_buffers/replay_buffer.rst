@@ -34,8 +34,8 @@ ray.rllib.utils.replay_buffers.reservoir_replay_buffer
     :show-inheritance:
 
 
-MultiAgentReplayBuffer classes (ray.rllib.utils.replay_buffers.replay_buffer)
-=============================================================================
+MultiAgentReplayBuffer classes
+==============================
 
 These classes use the above, "single-agent", buffers as underlying buffers to facilitate splitting up experiences between policies.
 
@@ -55,8 +55,8 @@ ray.rllib.utils.replay_buffers.multi_agent_prioritized_replay_buffer
     :members:
     :show-inheritance:
 
-Utility Methods (ray.rllib.utils.replay_buffers.utils)
-======================================================
+Utility Methods
+===============
 
 .. automethod:: ray.rllib.utils.replay_buffers.utils.update_priorities_in_replay_buffer
 

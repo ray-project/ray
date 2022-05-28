@@ -97,7 +97,7 @@ while not done:
 less_sampled_buffer.add(batch)
 for i in range(10):
     assert len(less_sampled_buffer._storage) == 1
-    less_sampled_buffer.sample(1, evict_sampled_more_then=9)
+    less_sampled_buffer.sample(num_items=1, evict_sampled_more_then=9)
 
 assert len(less_sampled_buffer._storage) == 0
 
