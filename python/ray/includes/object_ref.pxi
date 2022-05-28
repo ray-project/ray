@@ -52,7 +52,7 @@ cdef class ObjectRef(BaseID):
         # TODO(edoakes): We should be able to remove the in_core_worker flag.
         # But there are still some dummy object refs being created outside the
         # context of a core worker.
-        if hasattr(worker, "core_worker"):
+        if worker.core_worker:
             if not skip_adding_local_ref:
                 worker.core_worker.add_object_ref_reference(self)
             self.in_core_worker = True

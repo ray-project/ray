@@ -120,7 +120,9 @@ MYPY_FILES=(
     # TODO(dmitri) Fails with meaningless error, maybe due to a bug in the mypy version
     # in the CI. Type check once we get serious about type checking:
     #'ray_operator/operator.py'
-    'ray_operator/operator_utils.py'
+    'ray_operator/operator_utils.py',
+    # Ray Core files:
+    'python/ray/worker.py'
 )
 
 BLACK_EXCLUDES=(

@@ -1016,7 +1016,7 @@ class ActorHandle:
         # handles are out of scope, the actor will exit.
         if ray.worker:
             worker = ray.worker.global_worker
-            if worker.connected and hasattr(worker, "core_worker"):
+            if worker.connected and worker.core_worker:
                 worker.core_worker.remove_actor_handle_reference(self._ray_actor_id)
 
     def _actor_method_call(
@@ -1149,7 +1149,7 @@ class ActorHandle:
         worker = ray.worker.global_worker
         worker.check_connected()
 
-        if hasattr(worker, "core_worker"):
+        if worker.core_worker:
             # Non-local mode
             state = worker.core_worker.serialize_actor_handle(self._ray_actor_id)
         else:
@@ -1183,7 +1183,7 @@ class ActorHandle:
         worker = ray.worker.global_worker
         worker.check_connected()
 
-        if hasattr(worker, "core_worker"):
+        if worker.core_worker:
             # Non-local mode
             return worker.core_worker.deserialize_and_register_actor_handle(
                 state, outer_object_ref

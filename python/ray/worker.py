@@ -169,13 +169,13 @@ class Worker:
 
     @property
     def current_job_id(self):
-        if hasattr(self, "core_worker"):
+        if self.core_worker:
             return self.core_worker.get_current_job_id()
         return JobID.nil()
 
     @property
     def actor_id(self):
-        if hasattr(self, "core_worker"):
+        if self.core_worker:
             return self.core_worker.get_actor_id()
         return ActorID.nil()
 
@@ -1176,7 +1176,7 @@ def shutdown(_exiting_interpreter: bool = False):
 
     # disconnect internal kv
     if global_worker.gcs_client:
-        del global_worker.gcs_client
+        global_worker.gcs_client = None
     _internal_kv_reset()
 
     # We need to destruct the core worker here because after this function,
@@ -1184,7 +1184,7 @@ def shutdown(_exiting_interpreter: bool = False):
     # IO thread in the core worker doesn't currently handle that gracefully.
     if global_worker.core_worker:
         global_worker.core_worker.shutdown()
-        del global_worker.core_worker
+        global_worker.core_worker = None
     # We need to reset function actor manager to clear the context
     global_worker.function_actor_manager = FunctionActorManager(global_worker)
     # Disconnect global state from GCS.
@@ -1977,7 +1977,7 @@ def wait(
     assert worker.core_worker
 
     if (
-        hasattr(worker, "core_worker")
+        worker.core_worker
         and worker.core_worker.current_actor_is_asyncio()
         and timeout != 0
     ):
