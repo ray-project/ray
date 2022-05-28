@@ -26,10 +26,13 @@ Here is an example of configuring the R2D2 algorithm, which runs without `PER <h
 Specifying a buffer type works the same way as specifying an exploration type.
 Here are three ways of specifying a type:
 
-.. literalinclude:: ../../../../rllib/examples/documentation/replay_buffer_demo.py
-    :language: python
-    :start-after: __sphinx_doc_replay_buffer_type_specification__begin__
-    :end-before: __sphinx_doc_replay_buffer_type_specification__end__
+.. dropdown:: **Changing a replay buffer configuration**
+    :animate: fade-in-slide-down
+
+    .. literalinclude:: ../../../../rllib/examples/documentation/replay_buffer_demo.py
+        :language: python
+        :start-after: __sphinx_doc_replay_buffer_type_specification__begin__
+        :end-before: __sphinx_doc_replay_buffer_type_specification__end__
 
 Apart from specifying a type, other parameters in that config are:
 
@@ -40,7 +43,7 @@ Apart from specifying a type, other parameters in that config are:
    * e.g. "capacity" to limit the buffer's size
 
 * Call arguments for underlying replay buffer methods
-   * e.g. "prioritized_replay_beta" is used by the :py:class:`~ray.rllib.utils.replay_buffers.multi_agent_prioritized_replay_buffer.PrioritizedMultiAgentReplayBuffer` to call the sample method of every underlying :py:class:`~ray.rllib.utils.replay_buffers.prioritized_replay_buffer.PrioritizedReplayBuffer`
+   * e.g. "prioritized_replay_beta" is used by the :py:class:`~ray.rllib.utils.replay_buffers.multi_agent_prioritized_replay_buffer.MultiAgentPrioritizedReplayBuffer` to call the sample method of every underlying :py:class:`~ray.rllib.utils.replay_buffers.prioritized_replay_buffer.PrioritizedReplayBuffer`
 
 
 Most of the time, only 1. and 2. are of interest.
@@ -51,9 +54,9 @@ ReplayBuffer Base Class
 -----------------------
 
 The base :py:class:`~ray.rllib.utils.replay_buffers.replay_buffer.ReplayBuffer` class only supports storing and replaying
-experiences in different storage units :py:class:`~ray.rllib.utils.replay_buffers.replay_buffer.StorageUnit`.
-Advanced types add functionality while retaining compatibility through inheritance.
-The following excerpt only shows how to construct, sample from and add to a replay buffer.
+experiences in different :py:class:`~ray.rllib.utils.replay_buffers.replay_buffer.StorageUnit`\s.
+Advanced buffer types add functionality while trying retaining compatibility through inheritance.
+The following excerpt from the class documentation only shows how to construct, sample from and add to a replay buffer.
 If you plan on implementing your own buffer, these are also the main places to look at.
 
 .. dropdown:: **Constructor, add and sample methods.**

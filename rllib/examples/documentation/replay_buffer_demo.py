@@ -22,23 +22,23 @@ config = {
 
 another_config = {
     "env": "CartPole-v1",
-    "replay_buffer_config": {"type": "ReplayBuffer"}  # Specify buffer type name as
+    "replay_buffer_config": {"type": "ReplayBuffer"}  # Specify buffer type name like
     # it can be found in RLlib's buffer module
 }
 
 yet_another_config = {
     "env": "CartPole-v1",
-    "replay_buffer_config": {"type": "ray.rllib.utils.ReplayBuffer"}  # Specify
+    "replay_buffer_config": {"type": "ray.rllib.utils.replay_buffers.ReplayBuffer"}  #
+    # Specify
     # buffer by path
 }
 
-# These three configurations all yield the same effective config
-print(
-    validate_buffer_config(config)
-    == validate_buffer_config(another_config)
-    == validate_buffer_config(yet_another_config)
-)
+validate_buffer_config(config)
+validate_buffer_config(another_config)
+validate_buffer_config(yet_another_config)
 
+# After validation, three configurations all yield the same effective config
+assert config == another_config == yet_another_config
 
 # __sphinx_doc_replay_buffer_type_specification__end__
 
@@ -49,28 +49,30 @@ class LessSampledReplayBuffer(ReplayBuffer):
     @PublicAPI
     @override(ReplayBuffer)
     def sample(
-        self, num_items: int, evict_sampled_more_then: int = 100, **kwargs
+        self, num_items: int, evict_sampled_more_then: int = 30, **kwargs
     ) -> Optional[SampleBatchType]:
         """Evicts experiences that have been sampled > evict_sampled_more_then times."""
         idxes = [random.randint(0, len(self) - 1) for _ in range(num_items)]
         often_sampled_idxes = list(
-            filter(lambda x: self._hit_count[x] >= evict_sampled_more_then)
+            filter(lambda x: self._hit_count[x] >= evict_sampled_more_then, set(idxes))
         )
-
-        for idx in often_sampled_idxes:
-            del self._storage[idx]
-            self._hit_count[idx] = np.append(
-                self._hit_count[:idx], self._hit_count[idx + 1 :]
-            )
 
         sample = self._encode_sample(idxes)
         self._num_timesteps_sampled += sample.count
+
+        for idx in often_sampled_idxes:
+            del self._storage[idx]
+            self._hit_count = np.append(
+                self._hit_count[:idx], self._hit_count[idx + 1 :]
+            )
+
         return sample
 
 
 config["replay_buffer_config"]["type"] = LessSampledReplayBuffer
 
-tune.run("SimpleQ", config={"env": "CartPole=v1"}, stop={"training_iteration": 1})
+tune.run("SimpleQ", config=config, stop={
+    "episode_reward_mean": 70, "training_iteration": 15})
 
 # __sphinx_doc_replay_buffer_own_buffer__end__
 
@@ -84,14 +86,20 @@ less_sampled_buffer = LessSampledReplayBuffer(**config["replay_buffer_config"])
 env = RandomEnv()
 done = False
 batch = SampleBatch({})
+t = 0
 while not done:
     obs, reward, done, info = env.step([0, 0])
-    one_step_batch = SampleBatch({"obs": obs, "reward": reward, "done": done})
-    batch = SampleBatch.concat_samples(batch, one_step_batch)
+    one_step_batch = SampleBatch({"obs": [obs], "t": [t], "reward": [reward], "dones":
+        [done]})
+    batch = SampleBatch.concat_samples([batch, one_step_batch])
+    t += 1
 
 less_sampled_buffer.add(batch)
-for i in range(3):
-    less_sampled_buffer.sample(1, evict_sampled_more_then=2)
+for i in range(10):
+    assert len(less_sampled_buffer._storage) == 1
+    less_sampled_buffer.sample(1, evict_sampled_more_then=9)
+
+assert len(less_sampled_buffer._storage) == 0
 
 # __sphinx_doc_replay_buffer_advanced_usage_storage_unit__end__
 

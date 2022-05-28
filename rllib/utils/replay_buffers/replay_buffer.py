@@ -70,14 +70,12 @@ class ReplayBuffer(ParallelIteratorWorker):
     Examples:
         >>> from ray.rllib.utils.replay_buffers import ReplayBuffer, StorageUnit
         >>> from ray.rllib.policy.sample_batch import SampleBatch
-
-        # Store any batch as a whole
+        >>> # Store any batch as a whole
         >>> buffer = ReplayBuffer(capacity=10, storage_unit=StorageUnit.FRAGMENTS)
         >>> buffer.add(SampleBatch({"a": [1], "b": [2, 3, 4]}))
         >>> print(buffer.sample(1))
-        SampleBatch(1: ['a', 'b'])
-
-        # Store only complete episodes
+        >>> # SampleBatch(1: ['a', 'b'])
+        >>> # Store only complete episodes
         >>> buffer = ReplayBuffer(capacity=10, storage_unit=StorageUnit.EPISODES)
         >>> buffer.add(SampleBatch({"c": [1, 2, 3, 4],
         ...                        SampleBatch.T: [0, 1, 0, 1],
@@ -85,27 +83,25 @@ class ReplayBuffer(ParallelIteratorWorker):
         ...                        SampleBatch.EPS_ID: [0, 0, 1, 1]}))
         >>> eps_n = buffer.sample(1)
         >>> print(eps_n[SampleBatch.EPS_ID])
-        [1 1]
-
-        # Store single timesteps
+        >>> # [1 1]
+        >>> # Store single timesteps
         >>> buffer = ReplayBuffer(capacity=2, storage_unit=StorageUnit.TIMESTEPS)
         >>> buffer.add(SampleBatch({"a": [1, 2], SampleBatch.T: [0, 1]}))
         >>> t_n = buffer.sample(1)
         >>> print(t_n["a"])
-        [2]
+        >>> # [2]
         >>> buffer.add(SampleBatch({"a": [3], SampleBatch.T: [2]}))
         >>> print(buffer._eviction_started)
-        True
+        >>> # True
         >>> t_n = buffer.sample(1)
         >>> print(t_n["a"])
-        [3]
-
+        >>> [3]
         >>> buffer = ReplayBuffer(capacity=10, storage_unit=StorageUnit.SEQUENCES)
         >>> buffer.add(SampleBatch({"c": [1, 2, 3],
         ...                        SampleBatch.SEQ_LENS: [1, 2]}))
         >>> seq_n = buffer.sample(1)
         >>> print(seq_n["c"])
-        [1]
+        >>> # [1]
     """
 
     def __init__(

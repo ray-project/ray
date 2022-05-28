@@ -133,7 +133,19 @@ def sample_min_n_steps_from_buffer(
 
 
 @DeveloperAPI
-def validate_buffer_config(config: dict):
+def validate_buffer_config(config: dict) -> None:
+    """Checks and fixes values in the replay buffer config.
+
+    Checks the replay buffer config for common misconfigurations, warns or raises
+    error in case validation fails. The type "key" is changed into the inferred
+    replay buffer class.
+
+    Args:
+        config: The replay buffer config to be validated.
+
+    Raises:
+        ValueError: When detecting severe misconfiguration.
+    """
     if config.get("replay_buffer_config", None) is None:
         config["replay_buffer_config"] = {}
 
@@ -217,7 +229,7 @@ def validate_buffer_config(config: dict):
             if config.get("replay_buffer_config") is not None:
                 config["replay_buffer_config"][k] = config[k]
 
-    replay_mode = config["multiagent"].get("replay_mode", DEPRECATED_VALUE)
+    replay_mode = config.get("multiagent", {}).get("replay_mode", DEPRECATED_VALUE)
     if replay_mode != DEPRECATED_VALUE:
         deprecation_warning(
             old="config['multiagent']['replay_mode']",
