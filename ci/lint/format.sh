@@ -122,7 +122,7 @@ MYPY_FILES=(
     #'ray_operator/operator.py'
     'ray_operator/operator_utils.py'
     # Ray Core files:
-    'python/ray/worker.py'
+    'worker.py'
 )
 
 BLACK_EXCLUDES=(
