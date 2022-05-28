@@ -128,21 +128,17 @@ class ExternalStorage(metaclass=abc.ABCMeta):
         ):
             address_len = len(owner_address)
             metadata_len = len(metadata)
-            if buf is None:
-                error = f"object ref {ref.hex()} does not exist."
-                # empty data and 1 byte metadata, this object is
-                # marked as failed.
-                if metadata_len == 1:
-                    error += " This is probably since its owner has failed."
+            if buf is None and len(metadata) == 0:
+                error = f"Object {ref.hex()} does not exist."
                 raise ValueError(error)
-            buf_len = len(buf)
+            buf_len = 0 if buf is None else len(buf)
             payload = (
                 address_len.to_bytes(8, byteorder="little")
                 + metadata_len.to_bytes(8, byteorder="little")
                 + buf_len.to_bytes(8, byteorder="little")
                 + owner_address
                 + metadata
-                + memoryview(buf)
+                + (memoryview(buf) if buf_len else b"")
             )
             # 24 bytes to store owner address, metadata, and buffer lengths.
             payload_len = len(payload)
