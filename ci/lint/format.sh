@@ -228,7 +228,6 @@ format_all_scripts() {
       black "${BLACK_EXCLUDES[@]}"
     echo "$(date)" "MYPY...."
     mypy_on_each "${MYPY_FILES[@]}"
-    mypy --follow-imports=skip ray/worker.py
     if [ $HAS_FLAKE8 ]; then
       echo "$(date)" "Flake8...."
       git ls-files -- '*.py' "${GIT_LS_EXCLUDES[@]}" | xargs -P 5 \
