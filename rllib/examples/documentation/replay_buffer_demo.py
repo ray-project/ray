@@ -37,7 +37,7 @@ validate_buffer_config(config)
 validate_buffer_config(another_config)
 validate_buffer_config(yet_another_config)
 
-# After validation, three configurations all yield the same effective config
+# After validation, all three configs yield the same effective config
 assert config == another_config == yet_another_config
 
 # __sphinx_doc_replay_buffer_type_specification__end__
