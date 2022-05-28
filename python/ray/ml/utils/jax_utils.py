@@ -1,16 +1,14 @@
-from typing import Optional, Union, List, Dict
+from typing import Optional, Union, List, Dict, Any
 
 import pandas as pd
-import jax
-import jax.numpy as jnp
 
 
 def convert_pandas_to_jax_tensor(
     data_batch: pd.DataFrame,
     columns: Optional[Union[List[str], List[List[str]]]] = None,
-    column_dtypes: Optional[Union[jax.dtype, List[jax.dtype]]] = None,
+    column_dtypes: Optional[Union[Any, List[Any]]] = None,
     unsqueeze: bool = True,
-) -> Union[jax.Tensor, List[jax.Tensor]]:
+) -> Union[Any, List[Any]]:
     """Converts a Pandas dataframe to a jax Tensor or list of jax Tensors.
 
     The format of the return type will match the format of ``columns``. If a
@@ -41,14 +39,18 @@ def convert_pandas_to_jax_tensor(
 
     """
 
+    import jax 
+    import jax.numpy as np
+
     multi_input = columns and (isinstance(columns[0], (list, tuple)))
 
-    if not multi_input and column_dtypes and type(column_dtypes) != jax.dtype:
-        raise TypeError(
-            "If `columns` is a list of strings, "
-            "`column_dtypes` must be None or a single `jax.dtype`."
-            f"Got {type(column_dtypes)} instead."
-        )
+    # ignore the type for now!
+    # if not multi_input and column_dtypes and type(column_dtypes) != jax.dtype:
+    #     raise TypeError(
+    #         "If `columns` is a list of strings, "
+    #         "`column_dtypes` must be None or a single `jax.dtype`."
+    #         f"Got {type(column_dtypes)} instead."
+    #     )
 
     columns = columns if columns else []
 
