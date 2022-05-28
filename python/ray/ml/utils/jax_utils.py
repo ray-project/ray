@@ -64,7 +64,7 @@ def convert_pandas_to_jax_tensor(
             # See https://github.com/jax/jax/issues/51156.
             vals = vals.to_numpy()
         try:
-            return jax.asarray(vals, dtype=dtype)
+            return jax.numpy.asarray(vals, dtype=dtype)
         except TypeError:
             # This exception will be raised if vals is of object dtype
             # or otherwise cannot be made into a tensor directly.
