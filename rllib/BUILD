@@ -2913,6 +2913,13 @@ py_test(
 # )
 
 py_test(
+    name = "examples/replay_buffer_api",
+    tags = ["team:ml", "gpu"],
+    size = "large",
+    srcs = ["examples/replay_buffer_api.py"]
+)
+
+py_test(
     name = "examples/restore_1_of_n_agents_from_checkpoint",
     tags = ["team:ml", "examples", "examples_R"],
     size = "medium",
