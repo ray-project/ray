@@ -18,7 +18,7 @@ from ray.data.context import DatasetContext
 from ray.data.impl.arrow_block import ArrowRow
 from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.impl.util import _check_pyarrow_version
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 WriteResult = Any
 
@@ -159,6 +159,7 @@ class ReadTask(Callable[[], BlockPartition]):
             return builder.build()
 
 
+@PublicAPI
 class RangeDatasource(Datasource[Union[ArrowRow, int]]):
     """An example datasource that generates ranges of numbers from [0..n).
 
@@ -242,6 +243,7 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
         return read_tasks
 
 
+@DeveloperAPI
 class DummyOutputDatasource(Datasource[Union[ArrowRow, int]]):
     """An example implementation of a writable datasource for testing.
 
@@ -303,6 +305,7 @@ class DummyOutputDatasource(Datasource[Union[ArrowRow, int]]):
         self.num_failed += 1
 
 
+@DeveloperAPI
 class RandomIntRowDatasource(Datasource[ArrowRow]):
     """An example datasource that generates rows with random int64 columns.
 

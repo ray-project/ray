@@ -139,7 +139,6 @@ class SlateQConfig(TrainerConfig):
         rmsprop_epsilon: Optional[float] = None,
         grad_clip: Optional[float] = None,
         n_step: Optional[int] = None,
-        worker_side_prioritization: Optional[bool] = None,
         **kwargs,
     ) -> "SlateQConfig":
         """Sets the training related configuration.
@@ -172,8 +171,6 @@ class SlateQConfig(TrainerConfig):
             rmsprop_epsilon: RMSProp epsilon hyperparameter.
             grad_clip: If not None, clip gradients during optimization at this value.
             n_step: N-step parameter for Q-learning.
-            worker_side_prioritization: Whether to compute priorities for the replay
-                buffer on the workers.
 
         Returns:
             This updated TrainerConfig object.
@@ -205,8 +202,6 @@ class SlateQConfig(TrainerConfig):
             self.grad_clip = grad_clip
         if n_step is not None:
             self.n_step = n_step
-        if worker_side_prioritization is not None:
-            self.worker_side_prioritization = worker_side_prioritization
 
         return self
 

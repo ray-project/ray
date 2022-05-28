@@ -190,8 +190,6 @@ class Deployment:
         """
 
         copied_self = copy(self)
-        copied_self._init_args = []
-        copied_self._init_kwargs = {}
         copied_self._func_or_class = "dummpy.module"
         schema_shell = deployment_to_schema(copied_self)
 
@@ -446,8 +444,6 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
     init_args and init_kwargs must also be JSON-serializable or this call will
     fail.
     """
-    from ray.serve.pipeline.json_serde import convert_to_json_safe_obj
-
     if d.ray_actor_options is not None:
         ray_actor_options_schema = RayActorOptionsSchema.parse_obj(d.ray_actor_options)
     else:
@@ -458,8 +454,8 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
         import_path=get_deployment_import_path(
             d, enforce_importable=True, replace_main=True
         ),
-        init_args=convert_to_json_safe_obj(d.init_args, err_key="init_args"),
-        init_kwargs=convert_to_json_safe_obj(d.init_kwargs, err_key="init_kwargs"),
+        init_args=(),
+        init_kwargs={},
         num_replicas=d.num_replicas,
         route_prefix=d.route_prefix,
         max_concurrent_queries=d.max_concurrent_queries,
@@ -474,8 +470,6 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
 
 
 def schema_to_deployment(s: DeploymentSchema) -> Deployment:
-    from ray.serve.pipeline.json_serde import convert_from_json_safe_obj
-
     if s.ray_actor_options is None:
         ray_actor_options = None
     else:
@@ -497,8 +491,8 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         func_or_class=s.import_path,
         name=s.name,
         config=config,
-        init_args=convert_from_json_safe_obj(s.init_args, err_key="init_args"),
-        init_kwargs=convert_from_json_safe_obj(s.init_kwargs, err_key="init_kwargs"),
+        init_args=(),
+        init_kwargs={},
         route_prefix=s.route_prefix,
         ray_actor_options=ray_actor_options,
         _internal=True,

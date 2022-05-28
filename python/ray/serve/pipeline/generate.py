@@ -1,3 +1,4 @@
+import json
 from typing import List
 from collections import OrderedDict
 
@@ -11,9 +12,14 @@ from ray.experimental.dag.function_node import FunctionNode
 from ray.experimental.dag.input_node import InputNode
 from ray.experimental.dag.utils import DAGNodeNameGenerator
 from ray.serve.deployment import Deployment
+from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.pipeline.deployment_node import DeploymentNode
 from ray.serve.pipeline.deployment_function_node import DeploymentFunctionNode
+from ray.serve.deployment_executor_node import DeploymentExecutorNode
+from ray.serve.deployment_method_executor_node import DeploymentMethodExecutorNode
+from ray.serve.deployment_function_executor_node import DeploymentFunctionExecutorNode
+from ray.serve.pipeline.json_serde import DAGNodeEncoder
 
 
 def transform_ray_dag_to_serve_dag(
@@ -93,6 +99,90 @@ def extract_deployments_from_serve_dag(
     serve_dag_root.apply_recursive(extractor)
 
     return list(deployments.values())
+
+
+def transform_serve_dag_to_serve_executor_dag(serve_dag_root_node: DAGNode):
+    """Given a runnable serve dag with deployment init args and options
+    processed, transform into an equivalent, but minimal dag optimized for
+    execution.
+    """
+    if isinstance(serve_dag_root_node, DeploymentNode):
+        return DeploymentExecutorNode(
+            serve_dag_root_node._deployment_handle,
+            serve_dag_root_node.get_args(),
+            serve_dag_root_node.get_kwargs(),
+        )
+    elif isinstance(serve_dag_root_node, DeploymentMethodNode):
+        return DeploymentMethodExecutorNode(
+            # Deployment method handle
+            serve_dag_root_node._deployment_method_name,
+            serve_dag_root_node.get_args(),
+            serve_dag_root_node.get_kwargs(),
+            other_args_to_resolve=serve_dag_root_node.get_other_args_to_resolve(),
+        )
+    elif isinstance(serve_dag_root_node, DeploymentFunctionNode):
+        return DeploymentFunctionExecutorNode(
+            serve_dag_root_node._deployment_handle,
+            serve_dag_root_node.get_args(),
+            serve_dag_root_node.get_kwargs(),
+        )
+    else:
+        return serve_dag_root_node
+
+
+def generate_executor_dag_driver_deployment(
+    serve_executor_dag_root_node: DAGNode, original_driver_deployment: Deployment
+):
+    """Given a transformed minimal execution serve dag, and original DAGDriver
+    deployment, generate new DAGDriver deployment that uses new serve executor
+    dag as init_args.
+
+    Args:
+        serve_executor_dag_root_node (DeploymentExecutorNode): Transformed
+            executor serve dag with only barebone deployment handles.
+        original_driver_deployment (Deployment): User's original DAGDriver
+            deployment that wrapped Ray DAG as init args.
+    Returns:
+        executor_dag_driver_deployment (Deployment): New DAGDriver deployment
+            with executor serve dag as init args.
+    """
+
+    def replace_with_handle(node):
+        if isinstance(node, DeploymentExecutorNode):
+            return node._deployment_handle
+        elif isinstance(
+            node,
+            (
+                DeploymentMethodExecutorNode,
+                DeploymentFunctionExecutorNode,
+            ),
+        ):
+            serve_dag_root_json = json.dumps(node, cls=DAGNodeEncoder)
+            return RayServeDAGHandle(serve_dag_root_json)
+
+    (
+        replaced_deployment_init_args,
+        replaced_deployment_init_kwargs,
+    ) = serve_executor_dag_root_node.apply_functional(
+        [
+            serve_executor_dag_root_node.get_args(),
+            serve_executor_dag_root_node.get_kwargs(),
+        ],
+        predictate_fn=lambda node: isinstance(
+            node,
+            (
+                DeploymentExecutorNode,
+                DeploymentFunctionExecutorNode,
+                DeploymentMethodExecutorNode,
+            ),
+        ),
+        apply_fn=replace_with_handle,
+    )
+
+    return original_driver_deployment.options(
+        init_args=replaced_deployment_init_args,
+        init_kwargs=replaced_deployment_init_kwargs,
+    )
 
 
 def get_pipeline_input_node(serve_dag_root_node: DAGNode):

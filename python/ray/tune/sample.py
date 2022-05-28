@@ -7,6 +7,8 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 import numpy as np
 
 # Backwards compatibility
+from ray.util.annotations import DeveloperAPI, PublicAPI
+
 try:
     # Added in numpy>=1.17 but we require numpy>=1.16
     np_random_generator = np.random.Generator
@@ -67,6 +69,7 @@ RandomState = Union[
 ]
 
 
+@DeveloperAPI
 class Domain:
     """Base class to specify a type and valid range to sample parameters from.
 
@@ -129,6 +132,7 @@ class Domain:
         return "(unknown)"
 
 
+@DeveloperAPI
 class Sampler:
     def sample(
         self,
@@ -140,16 +144,19 @@ class Sampler:
         raise NotImplementedError
 
 
+@DeveloperAPI
 class BaseSampler(Sampler):
     def __str__(self):
         return "Base"
 
 
+@DeveloperAPI
 class Uniform(Sampler):
     def __str__(self):
         return "Uniform"
 
 
+@DeveloperAPI
 class LogUniform(Sampler):
     def __init__(self, base: float = 10):
         self.base = base
@@ -159,6 +166,7 @@ class LogUniform(Sampler):
         return "LogUniform"
 
 
+@DeveloperAPI
 class Normal(Sampler):
     def __init__(self, mean: float = 0.0, sd: float = 0.0):
         self.mean = mean
@@ -170,6 +178,7 @@ class Normal(Sampler):
         return "Normal"
 
 
+@DeveloperAPI
 class Grid(Sampler):
     """Dummy sampler used for grid search"""
 
@@ -183,6 +192,7 @@ class Grid(Sampler):
         return RuntimeError("Do not call `sample()` on grid.")
 
 
+@DeveloperAPI
 class Float(Domain):
     class _Uniform(Uniform):
         def sample(
@@ -315,6 +325,7 @@ class Float(Domain):
         return f"({self.lower}, {self.upper})"
 
 
+@DeveloperAPI
 class Integer(Domain):
     class _Uniform(Uniform):
         def sample(
@@ -396,6 +407,7 @@ class Integer(Domain):
         return f"({self.lower}, {self.upper})"
 
 
+@DeveloperAPI
 class Categorical(Domain):
     class _Uniform(Uniform):
         def sample(
@@ -444,6 +456,7 @@ class Categorical(Domain):
         return f"{self.categories}"
 
 
+@DeveloperAPI
 class Function(Domain):
     class _CallSampler(BaseSampler):
         def sample(
@@ -499,6 +512,7 @@ class Function(Domain):
         return f"{self.func}()"
 
 
+@DeveloperAPI
 class Quantized(Sampler):
     def __init__(self, sampler: Sampler, q: Union[float, int]):
         self.sampler = sampler
@@ -532,6 +546,7 @@ def function(func):
     )
 
 
+@PublicAPI
 def sample_from(func: Callable[[Dict], Any]):
     """Specify that tune should sample configuration values from this function.
 
@@ -541,6 +556,7 @@ def sample_from(func: Callable[[Dict], Any]):
     return Function(func)
 
 
+@PublicAPI
 def uniform(lower: float, upper: float):
     """Sample a float value uniformly between ``lower`` and ``upper``.
 
@@ -551,6 +567,7 @@ def uniform(lower: float, upper: float):
     return Float(lower, upper).uniform()
 
 
+@PublicAPI
 def quniform(lower: float, upper: float, q: float):
     """Sample a quantized float value uniformly between ``lower`` and ``upper``.
 
@@ -564,6 +581,7 @@ def quniform(lower: float, upper: float, q: float):
     return Float(lower, upper).uniform().quantized(q)
 
 
+@PublicAPI
 def loguniform(lower: float, upper: float, base: float = 10):
     """Sugar for sampling in different orders of magnitude.
 
@@ -576,6 +594,7 @@ def loguniform(lower: float, upper: float, base: float = 10):
     return Float(lower, upper).loguniform(base)
 
 
+@PublicAPI
 def qloguniform(lower: float, upper: float, q: float, base: float = 10):
     """Sugar for sampling in different orders of magnitude.
 
@@ -594,6 +613,7 @@ def qloguniform(lower: float, upper: float, q: float, base: float = 10):
     return Float(lower, upper).loguniform(base).quantized(q)
 
 
+@PublicAPI
 def choice(categories: Sequence):
     """Sample a categorical value.
 
@@ -604,6 +624,7 @@ def choice(categories: Sequence):
     return Categorical(categories).uniform()
 
 
+@PublicAPI
 def randint(lower: int, upper: int):
     """Sample an integer value uniformly between ``lower`` and ``upper``.
 
@@ -621,6 +642,7 @@ def randint(lower: int, upper: int):
     return Integer(lower, upper).uniform()
 
 
+@PublicAPI
 def lograndint(lower: int, upper: int, base: float = 10):
     """Sample an integer value log-uniformly between ``lower`` and ``upper``,
     with ``base`` being the base of logarithm.
@@ -636,6 +658,7 @@ def lograndint(lower: int, upper: int, base: float = 10):
     return Integer(lower, upper).loguniform(base)
 
 
+@PublicAPI
 def qrandint(lower: int, upper: int, q: int = 1):
     """Sample an integer value uniformly between ``lower`` and ``upper``.
 
@@ -653,6 +676,7 @@ def qrandint(lower: int, upper: int, q: int = 1):
     return Integer(lower, upper).uniform().quantized(q)
 
 
+@PublicAPI
 def qlograndint(lower: int, upper: int, q: int, base: float = 10):
     """Sample an integer value log-uniformly between ``lower`` and ``upper``,
     with ``base`` being the base of logarithm.
@@ -671,6 +695,7 @@ def qlograndint(lower: int, upper: int, q: int, base: float = 10):
     return Integer(lower, upper).loguniform(base).quantized(q)
 
 
+@PublicAPI
 def randn(mean: float = 0.0, sd: float = 1.0):
     """Sample a float value normally with ``mean`` and ``sd``.
 
@@ -682,6 +707,7 @@ def randn(mean: float = 0.0, sd: float = 1.0):
     return Float(None, None).normal(mean, sd)
 
 
+@PublicAPI
 def qrandn(mean: float, sd: float, q: float):
     """Sample a float value normally with ``mean`` and ``sd``.
 

@@ -2,6 +2,7 @@ import io
 import os
 import shutil
 import tarfile
+from filelock import FileLock
 
 from typing import Optional, Tuple, Dict, Generator, Union
 
@@ -351,8 +352,9 @@ def _iter_remote(actor: ray.ActorID) -> Generator[bytes, None, None]:
 def _unpack_dir(stream: io.BytesIO, target_dir: str) -> None:
     """Unpack tarfile stream into target directory."""
     stream.seek(0)
-    with tarfile.open(fileobj=stream) as tar:
-        tar.extractall(target_dir)
+    with FileLock(f"{target_dir}.lock"):
+        with tarfile.open(fileobj=stream) as tar:
+            tar.extractall(target_dir)
 
 
 @ray.remote
@@ -367,12 +369,19 @@ def _unpack_from_actor(pack_actor: ray.ActorID, target_dir: str) -> None:
 @ray.remote
 def _copy_dir(source_dir: str, target_dir: str) -> None:
     """Copy dir with shutil on the actor."""
-    _delete_path(target_dir)
-    shutil.copytree(source_dir, target_dir)
+    with FileLock(f"{target_dir}.lock"):
+        _delete_path_unsafe(target_dir)
+        shutil.copytree(source_dir, target_dir)
 
 
 def _delete_path(target_path: str) -> bool:
     """Delete path (files and directories)"""
+    with FileLock(f"{target_path}.lock"):
+        return _delete_path_unsafe(target_path)
+
+
+def _delete_path_unsafe(target_path: str):
+    """Delete path (files and directories). No filelock."""
     if os.path.exists(target_path):
         if os.path.isdir(target_path):
             shutil.rmtree(target_path)

@@ -157,10 +157,11 @@ raylet::RayletClient::RayletClient(
 }
 
 Status raylet::RayletClient::Disconnect(
-    rpc::WorkerExitType exit_type,
+    const rpc::WorkerExitType &exit_type,
+    const std::string &exit_detail,
     const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
   RAY_LOG(INFO) << "RayletClient::Disconnect, exit_type="
-                << rpc::WorkerExitType_Name(exit_type)
+                << rpc::WorkerExitType_Name(exit_type) << ", exit_detail=" << exit_detail
                 << ", has creation_task_exception_pb_bytes="
                 << (creation_task_exception_pb_bytes != nullptr);
   flatbuffers::FlatBufferBuilder fbb;
@@ -171,12 +172,14 @@ Status raylet::RayletClient::Disconnect(
         fbb.CreateVector(creation_task_exception_pb_bytes->Data(),
                          creation_task_exception_pb_bytes->Size());
   }
+  const auto &fb_exit_detail = fbb.CreateString(exit_detail);
   protocol::DisconnectClientBuilder builder(fbb);
   // Add to table builder here to avoid nested construction of flatbuffers
   if (creation_task_exception_pb_bytes != nullptr) {
     builder.add_creation_task_exception_pb(creation_task_exception_pb_bytes_fb_vector);
   }
   builder.add_disconnect_type(static_cast<int>(exit_type));
+  builder.add_disconnect_detail(fb_exit_detail);
   fbb.Finish(builder.Finish());
   auto status = conn_->WriteMessage(MessageType::DisconnectClient, &fbb);
   // Don't be too strict for disconnection errors.
@@ -537,12 +540,6 @@ void raylet::RayletClient::GetSystemConfig(
     const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) {
   rpc::GetSystemConfigRequest request;
   grpc_client_->GetSystemConfig(request, callback);
-}
-
-void raylet::RayletClient::GetGcsServerAddress(
-    const rpc::ClientCallback<rpc::GetGcsServerAddressReply> &callback) {
-  rpc::GetGcsServerAddressRequest request;
-  grpc_client_->GetGcsServerAddress(request, callback);
 }
 
 }  // namespace ray

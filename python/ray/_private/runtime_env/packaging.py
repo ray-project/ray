@@ -13,8 +13,13 @@ from ray.experimental.internal_kv import (
     _internal_kv_put,
     _internal_kv_get,
     _internal_kv_exists,
+    _pin_runtime_env_uri,
 )
 from ray._private.thirdparty.pathspec import PathSpec
+from ray.ray_constants import (
+    RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT,
+    RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR,
+)
 
 default_logger = logging.getLogger(__name__)
 
@@ -50,12 +55,13 @@ class Protocol(Enum):
     HTTPS = "https", "Remote https path, assumes everything packed in one zip file."
     S3 = "s3", "Remote s3 path, assumes everything packed in one zip file."
     GS = "gs", "Remote google storage path, assumes everything packed in one zip file."
+    FILE = "file", "File storage path, assumes everything packed in one zip file."
 
     @classmethod
     def remote_protocols(cls):
-        # Returns a lit of protocols that support remote storage
+        # Returns a list of protocols that support remote storage
         # These protocols should only be used with paths that end in ".zip"
-        return [cls.HTTPS, cls.S3, cls.GS]
+        return [cls.HTTPS, cls.S3, cls.GS, cls.FILE]
 
 
 def _xor_bytes(left: bytes, right: bytes) -> bytes:
@@ -169,6 +175,15 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
             )
             -> ("gs",
             "gs_public-runtime-env-test_test_module.zip")
+    For FILE URIs, the path will have '/' replaced with '_'. The package name
+    will be the adjusted path with 'file_' prepended.
+        urlparse("file:///path/to/test_module.zip")
+            -> ParseResult(
+                scheme='file',
+                netloc='path',
+                path='/path/to/test_module.zip'
+            )
+            -> ("file", "file__path_to_test_module.zip")
     """
     uri = urlparse(pkg_uri)
     protocol = Protocol(uri.scheme)
@@ -178,6 +193,11 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
         return (
             protocol,
             f"https_{uri.netloc.replace('.', '_')}{uri.path.replace('/', '_')}",
+        )
+    elif protocol == Protocol.FILE:
+        return (
+            protocol,
+            f"file_{uri.path.replace('/', '_')}",
         )
     else:
         return (protocol, uri.netloc)
@@ -235,6 +255,40 @@ def _get_gitignore(path: Path) -> Optional[Callable]:
         return match
     else:
         return None
+
+
+def pin_runtime_env_uri(uri: str, *, expiration_s: Optional[int] = None) -> None:
+    """Pin a reference to a runtime_env URI in the GCS on a timeout.
+
+    This is used to avoid premature eviction in edge conditions for job
+    reference counting. See https://github.com/ray-project/ray/pull/24719.
+
+    Packages are uploaded to GCS in order to be downloaded by a runtime env plugin
+    (e.g. working_dir, py_modules) after the job starts.
+
+    This function adds a temporary reference to the package in the GCS to prevent
+    it from being deleted before the job starts. (See #23423 for the bug where
+    this happened.)
+
+    If this reference didn't have an expiration, then if the script exited
+    (e.g. via Ctrl-C) before the job started, the reference would never be
+    removed, so the package would never be deleted.
+    """
+
+    if expiration_s is None:
+        expiration_s = int(
+            os.environ.get(
+                RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR,
+                RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT,
+            )
+        )
+    elif not isinstance(expiration_s, int):
+        raise ValueError(f"expiration_s must be an int, got {type(expiration_s)}.")
+
+    if expiration_s < 0:
+        raise ValueError(f"expiration_s must be >= 0, got {expiration_s}.")
+    elif expiration_s > 0:
+        _pin_runtime_env_uri(uri, expiration_s=expiration_s)
 
 
 def _store_package_in_gcs(
@@ -461,6 +515,8 @@ def upload_package_if_needed(
     if logger is None:
         logger = default_logger
 
+    pin_runtime_env_uri(pkg_uri)
+
     if package_exists(pkg_uri):
         return False
 
@@ -534,7 +590,7 @@ def download_and_unpack_package(
 
                 if protocol == Protocol.S3:
                     try:
-                        from smart_open import open
+                        from smart_open import open as open_file
                         import boto3
                     except ImportError:
                         raise ImportError(
@@ -545,7 +601,7 @@ def download_and_unpack_package(
                     tp = {"client": boto3.client("s3")}
                 elif protocol == Protocol.GS:
                     try:
-                        from smart_open import open
+                        from smart_open import open as open_file
                         from google.cloud import storage  # noqa: F401
                     except ImportError:
                         raise ImportError(
@@ -553,17 +609,23 @@ def download_and_unpack_package(
                             "`pip install google-cloud-storage` "
                             "to fetch URIs in Google Cloud Storage bucket."
                         )
+                elif protocol == Protocol.FILE:
+                    pkg_uri = pkg_uri[len("file://") :]
+
+                    def open_file(uri, mode, *, transport_params=None):
+                        return open(uri, mode)
+
                 else:
                     try:
-                        from smart_open import open
+                        from smart_open import open as open_file
                     except ImportError:
                         raise ImportError(
                             "You must `pip install smart_open` "
                             f"to fetch {protocol.value.upper()} URIs."
                         )
 
-                with open(pkg_uri, "rb", transport_params=tp) as package_zip:
-                    with open(pkg_file, "wb") as fin:
+                with open_file(pkg_uri, "rb", transport_params=tp) as package_zip:
+                    with open_file(pkg_file, "wb") as fin:
                         fin.write(package_zip.read())
 
                 unzip_package(

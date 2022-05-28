@@ -11,10 +11,9 @@ python:
   conda_packages: []
 
 post_build_cmds:
-  - pip uninstall -y ray || true
-  - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
-  - pip install -U xgboost xgboost_ray petastorm  # Install latest releases
+  - pip3 uninstall -y ray || true && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
   - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
+  - pip install -U --force-reinstall xgboost xgboost_ray petastorm  # Install latest releases
   - sudo mkdir -p /data || true
   - sudo chown ray:1000 /data || true
   - rm -rf /data/classification.parquet || true

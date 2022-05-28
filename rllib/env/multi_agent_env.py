@@ -1,6 +1,6 @@
 import gym
 import logging
-from typing import Callable, Dict, List, Tuple, Type, Optional, Union, Set
+from typing import Callable, Dict, List, Tuple, Optional, Union, Set, Type
 
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.utils.annotations import (
@@ -362,6 +362,7 @@ class MultiAgentEnv(gym.Env):
         return obs_space_check and action_space_check
 
 
+@PublicAPI
 def make_multi_agent(
     env_name_or_creator: Union[str, EnvCreator],
 ) -> Type["MultiAgentEnv"]:
@@ -472,6 +473,7 @@ def make_multi_agent(
     return MultiEnv
 
 
+@PublicAPI
 class MultiAgentEnvWrapper(BaseEnv):
     """Internal adapter of MultiAgentEnv to BaseEnv.
 
@@ -558,7 +560,7 @@ class MultiAgentEnvWrapper(BaseEnv):
     @override(BaseEnv)
     def get_sub_environments(self, as_dict: bool = False) -> List[EnvType]:
         if as_dict:
-            return {_id: env_state for _id, env_state in enumerate(self.env_states)}
+            return {_id: env_state.env for _id, env_state in enumerate(self.env_states)}
         return [state.env for state in self.env_states]
 
     @override(BaseEnv)
