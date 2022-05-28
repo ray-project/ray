@@ -2,7 +2,7 @@ import ray
 import ray.cloudpickle as pickle
 
 
-def register_serializer(cls, *, serializer, deserializer):
+def register_serializer(cls: type, *, serializer: callable, deserializer: callable):
     """Use the given serializer to serialize instances of type ``cls``,
     and use the deserializer to deserialize the serialized object.
 
@@ -19,7 +19,7 @@ def register_serializer(cls, *, serializer, deserializer):
     context._register_cloudpickle_serializer(cls, serializer, deserializer)
 
 
-def deregister_serializer(cls):
+def deregister_serializer(cls: type):
     """Deregister the serializer associated with the type ``cls``.
     There is no effect if the serializer is unavailable.
 

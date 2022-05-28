@@ -115,7 +115,7 @@ class Worker:
         """Initialize a Worker object."""
         self.node = None
         self.mode = None
-        self.cached_functions_to_run = []
+        self.cached_functions_to_run: list = []
         self.actors = {}
         # When the worker is constructed. Record the original value of the
         # CUDA_VISIBLE_DEVICES environment variable.
@@ -335,7 +335,7 @@ class Worker:
             context = self.get_serialization_context()
             return context.deserialize_objects(data_metadata_pairs, object_refs)
 
-    def get_objects(self, object_refs, timeout=None):
+    def get_objects(self, object_refs: list, timeout: Optional[float] = None):
         """Get the values in the object store associated with the IDs.
 
         Return the values from the local object store for object_refs. This
@@ -343,9 +343,9 @@ class Worker:
         the local object store.
 
         Args:
-            object_refs (List[object_ref.ObjectRef]): A list of the object refs
+            object_refs: A list of the object refs
                 whose values should be retrieved.
-            timeout: timeout (float): The maximum amount of time in
+            timeout: The maximum amount of time in
                 seconds to wait before returning.
         Returns:
             list: List of deserialized objects
@@ -379,7 +379,7 @@ class Worker:
             debugger_breakpoint,
         )
 
-    def run_function_on_all_workers(self, function):
+    def run_function_on_all_workers(self, function: callable):
         """Run arbitrary code on all of the workers.
 
         This function will first be run on the driver, and then it will be
@@ -1432,15 +1432,15 @@ def is_initialized() -> bool:
 def connect(
     node,
     mode=WORKER_MODE,
-    log_to_driver=False,
+    log_to_driver: bool = False,
     worker=global_worker,
-    driver_object_store_memory=None,
+    driver_object_store_memory: Optional[int] = None,
     job_id=None,
-    namespace=None,
+    namespace: Optional[str] = None,
     job_config=None,
-    runtime_env_hash=0,
-    startup_token=0,
-    ray_debugger_external=False,
+    runtime_env_hash: int = 0,
+    startup_token: int = 0,
+    ray_debugger_external: bool = False,
 ):
     """Connect this worker to the raylet, to Plasma, and to GCS.
 
@@ -1948,7 +1948,7 @@ def wait(
     ``await asyncio.wait(object_refs)``.
 
     Args:
-        object_refs (List[ObjectRef]): List of object refs for objects that may
+        object_refs: List of object refs for objects that may
             or may not be ready. Note that these IDs must be unique.
         num_returns: The number of object refs that should be returned.
         timeout: The maximum amount of time in seconds to wait before

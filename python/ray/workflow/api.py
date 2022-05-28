@@ -547,7 +547,7 @@ def wait(
     This method will issue a warning if it's running inside an async context.
 
     Args:
-        workflows (List[Workflow]): List of workflows that may
+        workflows: List of workflows that may
             or may not be ready. Note that these workflows must be unique.
         num_returns: The number of workflows that should be returned.
         timeout: The maximum amount of time in seconds to wait before
