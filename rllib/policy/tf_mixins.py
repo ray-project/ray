@@ -389,7 +389,12 @@ def compute_gradients(
         # If the global_norm is inf -> All grads will be NaN. Stabilize this
         # here by setting them to 0.0. This will simply ignore destructive loss
         # calculations.
-        policy.grads = [tf.where(tf.math.is_nan(g), tf.zeros_like(g), g) for g in grads]
+        policy.grads = []
+        for g in grads:
+            if g is not None:
+                policy.grads.append(tf.where(tf.math.is_nan(g), tf.zeros_like(g), g))
+            else:
+                policy.grads.append(None)
         clipped_grads_and_vars = list(zip(policy.grads, variables))
         return clipped_grads_and_vars
     else:
