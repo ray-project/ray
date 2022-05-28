@@ -971,14 +971,14 @@ class Policy(metaclass=ABCMeta):
         # We should simply do self.loss(...) here.
         if self._loss is not None:
             self._loss(self, self.model, self.dist_class, train_batch)
-        elif is_overridden(self.loss):
+        elif is_overridden(self.loss) and not self.config["in_evaluation"]:
             self.loss(self.model, self.dist_class, train_batch)
         # Call the stats fn, if given.
         # TODO(jungong) : clean up after all agents get migrated.
         # We should simply do self.stats_fn(train_batch) here.
         if stats_fn is not None:
             stats_fn(self, train_batch)
-        if hasattr(self, "stats_fn"):
+        if hasattr(self, "stats_fn") and not self.config["in_evaluation"]:
             self.stats_fn(train_batch)
 
         # Re-enable tracing.
