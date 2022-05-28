@@ -209,7 +209,7 @@ class R2D2Trainer(DQNTrainer):
         # Call super's validation method.
         super().validate_config(config)
 
-        if config["replay_buffer_config"]["replay_sequence_length"] != -1:
+        if config["replay_buffer_config"].get("replay_sequence_length", -1) != -1:
             raise ValueError(
                 "`replay_sequence_length` is calculated automatically to be "
                 "model->max_seq_len + burn_in!"

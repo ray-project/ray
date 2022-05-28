@@ -6,7 +6,7 @@ import numpy as np
 
 from ray import tune
 from ray.rllib.utils.replay_buffers import ReplayBuffer, StorageUnit
-from ray.rllib.utils.annotations import override, PublicAPI
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import SampleBatchType
 from ray.rllib.utils.replay_buffers.utils import validate_buffer_config
 from ray.rllib.examples.env.random_env import RandomEnv
@@ -46,7 +46,6 @@ assert config == another_config == yet_another_config
 
 
 class LessSampledReplayBuffer(ReplayBuffer):
-    @PublicAPI
     @override(ReplayBuffer)
     def sample(
         self, num_items: int, evict_sampled_more_then: int = 30, **kwargs

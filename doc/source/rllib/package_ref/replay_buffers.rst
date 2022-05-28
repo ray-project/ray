@@ -13,7 +13,7 @@ Basic Usage
 ===========
 
 You rarely have to instantiate your own replay buffer when running an experiment, but rather configure it as follows.
-Here is an example of configuring the R2D2 algorithm, which runs without `PER <https://arxiv.org/abs/1511.05952>`__ by default, with PER:
+The following is from RLlib's examples section and runs the R2D2 algorithm, which runs without `PER <https://arxiv.org/abs/1511.05952>`__ by default, with PER:
 
 .. dropdown:: **Changing a replay buffer configuration**
     :animate: fade-in-slide-down

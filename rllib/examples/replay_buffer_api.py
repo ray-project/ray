@@ -56,10 +56,11 @@ if __name__ == "__main__":
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "replay_buffer_config": {
-            "type": "PrioritizedMultiAgentReplayBuffer",
+            "type": "MultiAgentPrioritizedReplayBuffer",
             # Although not necessary, we can modify the default constructor args of
             # the replay buffer here
             "prioritized_replay_alpha": 0.5,
+            "replay_burn_in": 20,
         },
         "framework": args.framework,
     }
