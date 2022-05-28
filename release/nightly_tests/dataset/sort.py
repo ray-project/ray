@@ -10,6 +10,7 @@ from typing import List
 from ray.data.impl.arrow_block import ArrowRow
 from ray.data.impl.util import _check_pyarrow_version
 from ray.data.block import Block, BlockMetadata
+from ray.data.context import DatasetContext
 
 from ray.data.datasource import Datasource, ReadTask
 from ray.internal.internal_api import memory_summary
@@ -85,8 +86,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--shuffle", help="shuffle instead of sort", action="store_true"
     )
+    parser.add_argument("--use-polars", action="store_true")
 
     args = parser.parse_args()
+
+    if args.use_polars and not args.shuffle:
+        print("Using polars for sort")
+        ctx = DatasetContext.get_current()
+        ctx.use_polars = True
 
     num_partitions = int(args.num_partitions)
     partition_size = int(float(args.partition_size))
