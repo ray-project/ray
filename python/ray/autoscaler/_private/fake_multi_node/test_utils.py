@@ -85,9 +85,9 @@ class DockerCluster:
         ``127.0.0.1``).
 
         Args:
-            client (bool): If True, uses Ray client to connect to the
+            client: If True, uses Ray client to connect to the
                 cluster. If False, uses GCS to connect to the cluster.
-            timeout (int): Connection timeout in seconds.
+            timeout: Connection timeout in seconds.
             **init_kwargs: kwargs to pass to ``ray.init()``.
 
         """
@@ -123,7 +123,7 @@ class DockerCluster:
         Args:
             resources (Dict[str, float]): Minimum resources needed before
                 this function returns.
-            timeout (int): Timeout in seconds.
+            timeout: Timeout in seconds.
 
         """
         timeout = time.monotonic() + timeout
@@ -223,7 +223,7 @@ class DockerCluster:
         """Tear down docker compose cluster environment.
 
         Args:
-            keep_dir (bool): If True, cluster directory
+            keep_dir: If True, cluster directory
                 will not be removed after termination.
         """
         if not keep_dir:

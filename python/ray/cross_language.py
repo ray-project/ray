@@ -73,8 +73,8 @@ def java_function(class_name, function_name):
     """Define a Java function.
 
     Args:
-        class_name (str): Java class name.
-        function_name (str): Java function name.
+        class_name: Java class name.
+        function_name: Java function name.
     """
     from ray.remote_function import RemoteFunction
 
@@ -91,7 +91,7 @@ def cpp_function(function_name):
     """Define a Cpp function.
 
     Args:
-        function_name (str): Cpp function name.
+        function_name: Cpp function name.
     """
     from ray.remote_function import RemoteFunction
 
@@ -108,7 +108,7 @@ def java_actor_class(class_name):
     """Define a Java actor class.
 
     Args:
-        class_name (str): Java class name.
+        class_name: Java class name.
     """
     from ray.actor import ActorClass
 
@@ -124,8 +124,8 @@ def cpp_actor_class(create_function_name, class_name):
     """Define a Cpp actor class.
 
     Args:
-        create_function_name (str): Create cpp class function name.
-        class_name (str): Cpp class name.
+        create_function_name: Create cpp class function name.
+        class_name: Cpp class name.
     """
     from ray.actor import ActorClass
 

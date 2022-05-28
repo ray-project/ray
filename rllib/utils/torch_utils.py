@@ -101,7 +101,7 @@ def convert_to_non_torch_type(stats: TensorStructType) -> TensorStructType:
     """Converts values in `stats` to non-Tensor numpy or python types.
 
     Args:
-        stats (any): Any (possibly nested) struct, the values in which will be
+        stats: Any (possibly nested) struct, the values in which will be
             converted and returned as a new struct with all torch tensors
             being converted to numpy types.
 
@@ -128,7 +128,7 @@ def convert_to_non_torch_type(stats: TensorStructType) -> TensorStructType:
 def convert_to_torch_tensor(x: TensorStructType, device: Optional[str] = None):
     """Converts any struct to torch.Tensors.
 
-    x (any): Any (possibly nested) struct, the values in which will be
+    x: Any (possibly nested) struct, the values in which will be
         converted and returned as a new struct with all leaves converted
         to torch tensors.
 

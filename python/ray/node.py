@@ -45,7 +45,7 @@ class Node:
     and it also controls the temp file policy.
 
     Attributes:
-        all_processes (dict): A mapping from process type (str) to a list of
+        all_processes: A mapping from process type (str) to a list of
             ProcessInfo objects. All lists have length one except for the Redis
             server list, which has multiple.
     """
@@ -63,14 +63,14 @@ class Node:
         Args:
             ray_params (ray.params.RayParams): The parameters to use to
                 configure the node.
-            head (bool): True if this is the head node, which means it will
+            head: True if this is the head node, which means it will
                 start additional processes like the Redis servers, monitor
                 processes, and web UI.
-            shutdown_at_exit (bool): If true, spawned processes will be cleaned
+            shutdown_at_exit: If true, spawned processes will be cleaned
                 up if this process exits normally.
-            spawn_reaper (bool): If true, spawns a process that will clean up
+            spawn_reaper: If true, spawns a process that will clean up
                 other spawned processes if this process dies unexpectedly.
-            connect_only (bool): If true, connect to the node without starting
+            connect_only: If true, connect to the node without starting
                 new processes.
         """
         if shutdown_at_exit:
@@ -628,8 +628,8 @@ class Node:
         """Return an incremental temporary file name. The file is not created.
 
         Args:
-            suffix (str): The suffix of the temp file.
-            prefix (str): The prefix of the temp file.
+            suffix: The suffix of the temp file.
+            prefix: The prefix of the temp file.
             directory_name (str) : The base directory of the temp file.
 
         Returns:
@@ -676,8 +676,8 @@ class Node:
         be opened and `(None, None)` will be returned.
 
         Args:
-            name (str): descriptive string for this log file.
-            unique (bool): if true, a counter will be attached to `name` to
+            name: descriptive string for this log file.
+            unique: if true, a counter will be attached to `name` to
                 ensure the returned filename is not already used.
 
         Returns:
@@ -694,8 +694,8 @@ class Node:
         """Generate partially randomized filenames for log files.
 
         Args:
-            name (str): descriptive string for this log file.
-            unique (bool): if true, a counter will be attached to `name` to
+            name: descriptive string for this log file.
+            unique: if true, a counter will be attached to `name` to
                 ensure the returned filename is not already used.
 
         Returns:
@@ -753,7 +753,7 @@ class Node:
            first worker on the node).
 
         Args:
-            socket_path (string): the socket file to prepare.
+            socket_path: the socket file to prepare.
         """
         result = socket_path
         is_mac = sys.platform.startswith("darwin")
@@ -787,12 +787,12 @@ class Node:
         port isn't already cached, an unused port is generated and cached.
 
         Args:
-            port_name (str): the name of the port, e.g. metrics_export_port
+            port_name: the name of the port, e.g. metrics_export_port
             default_port (Optional[int]): The port to return and cache if no
             port has already been cached for the given port_name.  If None, an
             unused port is generated and cached.
         Returns:
-            port (int): the port number.
+            port: the port number.
         """
         file_path = os.path.join(self.get_session_dir_path(), "ports_by_node.json")
 
@@ -892,7 +892,7 @@ class Node:
         """Start the dashboard.
 
         Args:
-            require_dashboard (bool): If true, this will raise an exception
+            require_dashboard: If true, this will raise an exception
                 if we fail to start the dashboard. Otherwise it will print
                 a warning if we fail to start the dashboard.
         """
@@ -963,9 +963,9 @@ class Node:
         """Start the raylet.
 
         Args:
-            use_valgrind (bool): True if we should start the process in
+            use_valgrind: True if we should start the process in
                 valgrind.
-            use_profiler (bool): True if we should start the process in the
+            use_profiler: True if we should start the process in the
                 valgrind profiler.
         """
         stdout_file, stderr_file = self.get_log_file_handles("raylet", unique=True)
@@ -1158,12 +1158,12 @@ class Node:
 
         Args:
             process_type: The type of the process to kill.
-            allow_graceful (bool): Send a SIGTERM first and give the process
+            allow_graceful: Send a SIGTERM first and give the process
                 time to exit gracefully. If that doesn't work, then use
                 SIGKILL. We usually want to do this outside of tests.
-            check_alive (bool): If true, then we expect the process to be alive
+            check_alive: If true, then we expect the process to be alive
                 and will raise an exception if the process is already dead.
-            wait (bool): If true, then this method will not return until the
+            wait: If true, then this method will not return until the
                 process in question has exited.
 
         Raises:
@@ -1249,7 +1249,7 @@ class Node:
         """Kill the Redis servers.
 
         Args:
-            check_alive (bool): Raise an exception if any of the processes
+            check_alive: Raise an exception if any of the processes
                 were already dead.
         """
         self._kill_process_type(
@@ -1260,7 +1260,7 @@ class Node:
         """Kill the raylet.
 
         Args:
-            check_alive (bool): Raise an exception if the process was already
+            check_alive: Raise an exception if the process was already
                 dead.
         """
         self._kill_process_type(
@@ -1271,7 +1271,7 @@ class Node:
         """Kill the log monitor.
 
         Args:
-            check_alive (bool): Raise an exception if the process was already
+            check_alive: Raise an exception if the process was already
                 dead.
         """
         self._kill_process_type(
@@ -1282,7 +1282,7 @@ class Node:
         """Kill the reporter.
 
         Args:
-            check_alive (bool): Raise an exception if the process was already
+            check_alive: Raise an exception if the process was already
                 dead.
         """
         self._kill_process_type(
@@ -1293,7 +1293,7 @@ class Node:
         """Kill the dashboard.
 
         Args:
-            check_alive (bool): Raise an exception if the process was already
+            check_alive: Raise an exception if the process was already
                 dead.
         """
         self._kill_process_type(
@@ -1304,7 +1304,7 @@ class Node:
         """Kill the monitor.
 
         Args:
-            check_alive (bool): Raise an exception if the process was already
+            check_alive: Raise an exception if the process was already
                 dead.
         """
         self._kill_process_type(
@@ -1314,7 +1314,7 @@ class Node:
     def kill_gcs_server(self, check_alive=True):
         """Kill the gcs server.
         Args:
-            check_alive (bool): Raise an exception if the process was already
+            check_alive: Raise an exception if the process was already
                 dead.
         """
         self._kill_process_type(
@@ -1328,7 +1328,7 @@ class Node:
         """Kill the reaper process.
 
         Args:
-            check_alive (bool): Raise an exception if the process was already
+            check_alive: Raise an exception if the process was already
                 dead.
         """
         self._kill_process_type(
@@ -1342,9 +1342,9 @@ class Node:
         kill, wait, ... instead of kill, kill, ..., wait, wait, ...
 
         Args:
-            check_alive (bool): Raise an exception if any of the processes were
+            check_alive: Raise an exception if any of the processes were
                 already dead.
-            wait (bool): If true, then this method will not return until the
+            wait: If true, then this method will not return until the
                 process in question has exited.
         """
         # Kill the raylet first. This is important for suppressing errors at

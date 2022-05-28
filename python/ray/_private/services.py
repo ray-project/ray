@@ -118,11 +118,11 @@ def propagate_jemalloc_env_var(
     run Jemalloc as a shared library.
 
     Params:
-        jemalloc_path (str): The path to the jemalloc shared library.
-        jemalloc_conf (str): `,` separated string of jemalloc config.
+        jemalloc_path: The path to the jemalloc shared library.
+        jemalloc_conf: `,` separated string of jemalloc config.
         jemalloc_comps List(str): The list of Ray components
             that we will profile.
-        process_type (str): The process type that needs jemalloc
+        process_type: The process type that needs jemalloc
             env var for memory profiling. If it doesn't match one of
             jemalloc_comps, the function will return an empty dict.
 
@@ -369,11 +369,11 @@ def wait_for_node(
     """Wait until this node has appeared in the client table.
 
     Args:
-        redis_address (str): The redis address.
-        gcs_address (str): The gcs address
-        node_plasma_store_socket_name (str): The
+        redis_address: The redis address.
+        gcs_address: The gcs address
+        node_plasma_store_socket_name: The
             plasma_store_socket_name for the given node which we wait for.
-        redis_password (str): the redis password.
+        redis_password: the redis password.
         timeout: The amount of time in seconds to wait before raising an
             exception.
 
@@ -510,7 +510,7 @@ def node_ip_address_from_perspective(address):
     """IP address by which the local node can be reached *from* the `address`.
 
     Args:
-        address (str): The IP address and port of any known live service on the
+        address: The IP address and port of any known live service on the
             network you care about.
 
     Returns:
@@ -615,21 +615,21 @@ def start_ray_process(
 
     Args:
         command (List[str]): The command to use to start the Ray process.
-        process_type (str): The type of the process that is being started
+        process_type: The type of the process that is being started
             (e.g., "raylet").
         fate_share: If true, the child will be killed if its parent (us) dies.
             True must only be passed after detection of this functionality.
-        env_updates (dict): A dictionary of additional environment variables to
+        env_updates: A dictionary of additional environment variables to
             run the command with (in addition to the caller's environment
             variables).
-        cwd (str): The directory to run the process in.
-        use_valgrind (bool): True if we should start the process in valgrind.
-        use_gdb (bool): True if we should start the process in gdb.
-        use_valgrind_profiler (bool): True if we should start the process in
+        cwd: The directory to run the process in.
+        use_valgrind: True if we should start the process in valgrind.
+        use_gdb: True if we should start the process in gdb.
+        use_valgrind_profiler: True if we should start the process in
             the valgrind profiler.
-        use_perftools_profiler (bool): True if we should profile the process
+        use_perftools_profiler: True if we should profile the process
             using perftools.
-        use_tmux (bool): True if we should start the process in tmux.
+        use_tmux: True if we should start the process in tmux.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
@@ -826,9 +826,9 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, password=None):
     command to the server until the command gets through.
 
     Args:
-        redis_ip_address (str): The IP address of the redis server.
-        redis_port (int): The port of the redis server.
-        password (str): The password of the redis server.
+        redis_ip_address: The IP address of the redis server.
+        redis_port: The port of the redis server.
+        password: The password of the redis server.
 
     Raises:
         Exception: An exception is raised if we could not connect with Redis.
@@ -953,17 +953,17 @@ def start_redis(
         node_ip_address: The IP address of the current node. This is only used
             for recording the log filenames in Redis.
         redirect_files: The list of (stdout, stderr) file pairs.
-        resource_spec (ResourceSpec): Resources for the node.
-        session_dir_path (str): Path to the session directory of this Ray cluster.
-        port (int): If provided, the primary Redis shard will be started on this port.
+        resource_spec: Resources for the node.
+        session_dir_path: Path to the session directory of this Ray cluster.
+        port: If provided, the primary Redis shard will be started on this port.
         redis_shard_ports: A list of the ports to use for the non-primary Redis shards.
-        num_redis_shards (int): If provided, the number of Redis shards to start,
+        num_redis_shards: If provided, the number of Redis shards to start,
             in addition to the primary one. The default value is one shard.
         redis_max_clients: If this is provided, Ray will attempt to configure
             Redis with this max_clients number.
-        password (str): Prevents external clients without the password
+        password: Prevents external clients without the password
             from connecting to Redis if provided.
-        port_denylist (set): A set of denylist ports that shouldn't
+        port_denylist: A set of denylist ports that shouldn't
             be used when allocating a new port.
 
     Returns:
@@ -1108,26 +1108,26 @@ def _start_redis_instance(
         instance at successive random ports.
 
     Args:
-        executable (str): Full path of the redis-server executable.
-        session_dir_path (str): Path to the session directory of
+        executable: Full path of the redis-server executable.
+        session_dir_path: Path to the session directory of
             this Ray cluster.
-        port (int): Try to start a Redis server at this port.
+        port: Try to start a Redis server at this port.
         redis_max_clients: If this is provided, Ray will attempt to configure
             Redis with this maxclients number.
-        num_retries (int): The number of times to attempt to start Redis at
+        num_retries: The number of times to attempt to start Redis at
             successive ports.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
             no redirection should happen, then this should be None.
-        password (str): Prevents external clients without the password
+        password: Prevents external clients without the password
             from connecting to Redis if provided.
         redis_max_memory: The max amount of memory (in bytes) to allow redis
             to use, or None for no limit. Once the limit is exceeded, redis
             will start LRU eviction of entries.
-        port_denylist (set): A set of denylist ports that shouldn't
+        port_denylist: A set of denylist ports that shouldn't
             be used when allocating a new port.
-        listen_to_localhost_only (bool): Redis server only listens to
+        listen_to_localhost_only: Redis server only listens to
             localhost (127.0.0.1) if it's true,
             otherwise it listens to all network interfaces.
 
@@ -1256,15 +1256,15 @@ def start_log_monitor(
     """Start a log monitor process.
 
     Args:
-        logs_dir (str): The directory of logging files.
-        gcs_address (str): GCS address for pubsub.
-        fate_share (bool): Whether to share fate between log_monitor
+        logs_dir: The directory of logging files.
+        gcs_address: GCS address for pubsub.
+        fate_share: Whether to share fate between log_monitor
             and this process.
-        max_bytes (int): Log rotation parameter. Corresponding to
+        max_bytes: Log rotation parameter. Corresponding to
             RotatingFileHandler's maxBytes.
-        backup_count (int): Log rotation parameter. Corresponding to
+        backup_count: Log rotation parameter. Corresponding to
             RotatingFileHandler's backupCount.
-        redirect_logging (bool): Whether we should redirect logging to
+        redirect_logging: Whether we should redirect logging to
             the provided log directory.
 
     Returns:
@@ -1323,23 +1323,23 @@ def start_dashboard(
     """Start a dashboard process.
 
     Args:
-        require_dashboard (bool): If true, this will raise an exception if we
+        require_dashboard: If true, this will raise an exception if we
             fail to start the dashboard. Otherwise it will print a warning if
             we fail to start the dashboard.
-        host (str): The host to bind the dashboard web server to.
-        gcs_address (str): The gcs address the dashboard should connect to
-        temp_dir (str): The temporary directory used for log files and
+        host: The host to bind the dashboard web server to.
+        gcs_address: The gcs address the dashboard should connect to
+        temp_dir: The temporary directory used for log files and
             information for this Ray session.
-        session_dir (str): The session directory under temp_dir.
+        session_dir: The session directory under temp_dir.
             It is used as a identifier of individual cluster.
-        logdir (str): The log directory used to generate dashboard log.
-        port (str): The port to bind the dashboard web server to.
+        logdir: The log directory used to generate dashboard log.
+        port: The port to bind the dashboard web server to.
             Defaults to 8265.
-        max_bytes (int): Log rotation parameter. Corresponding to
+        max_bytes: Log rotation parameter. Corresponding to
             RotatingFileHandler's maxBytes.
-        backup_count (int): Log rotation parameter. Corresponding to
+        backup_count: Log rotation parameter. Corresponding to
             RotatingFileHandler's backupCount.
-        redirect_logging (bool): Whether we should redirect logging to
+        redirect_logging: Whether we should redirect logging to
             the provided log directory.
 
     Returns:
@@ -1510,16 +1510,16 @@ def start_gcs_server(
 ):
     """Start a gcs server.
     Args:
-        redis_address (str): The address that the Redis server is listening on.
-        log_dir (str): The path of the dir where log files are created.
+        redis_address: The address that the Redis server is listening on.
+        log_dir: The path of the dir where log files are created.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
             no redirection should happen, then this should be None.
-        redis_password (str): The password of the redis server.
+        redis_password: The password of the redis server.
         config (dict|None): Optional configuration that will
             override defaults in RayConfig.
-        gcs_server_port (int): Port number of the gcs server.
+        gcs_server_port: Port number of the gcs server.
         metrics_agent_port(int): The port where metrics agent is bound to.
         node_ip_address(str): IP Address of a node where gcs server starts.
     Returns:
@@ -1596,36 +1596,36 @@ def start_raylet(
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
-        redis_address (str): The address of the primary Redis server.
-        gcs_address (str): The address of GCS server.
-        node_ip_address (str): The IP address of this node.
+        redis_address: The address of the primary Redis server.
+        gcs_address: The address of GCS server.
+        node_ip_address: The IP address of this node.
         node_manager_port(int): The port to use for the node manager. If it's
             0, a random port will be used.
-        raylet_name (str): The name of the raylet socket to create.
-        plasma_store_name (str): The name of the plasma store socket to connect
+        raylet_name: The name of the raylet socket to create.
+        plasma_store_name: The name of the plasma store socket to connect
              to.
-        worker_path (str): The path of the Python file that new worker
+        worker_path: The path of the Python file that new worker
             processes will execute.
-        setup_worker_path (str): The path of the Python file that will set up
+        setup_worker_path: The path of the Python file that will set up
             the environment for the worker process.
-        storage (str): The persistent storage URI.
-        temp_dir (str): The path of the temporary directory Ray will use.
-        session_dir (str): The path of this session.
+        storage: The persistent storage URI.
+        temp_dir: The path of the temporary directory Ray will use.
+        session_dir: The path of this session.
         resource_dir(str): The path of resource of this session .
-        log_dir (str): The path of the dir where log files are created.
-        resource_spec (ResourceSpec): Resources for this raylet.
+        log_dir: The path of the dir where log files are created.
+        resource_spec: Resources for this raylet.
         object_manager_port: The port to use for the object manager. If this is
             None, then the object manager will choose its own port.
-        min_worker_port (int): The lowest port number that workers will bind
+        min_worker_port: The lowest port number that workers will bind
             on. If not set, random ports will be chosen.
-        max_worker_port (int): The highest port number that workers will bind
+        max_worker_port: The highest port number that workers will bind
             on. If set, min_worker_port must also be set.
         redis_password: The password to use when connecting to Redis.
         metrics_agent_port(int): The port where metrics agent is bound to.
         metrics_export_port(int): The port at which metrics are exposed to.
-        use_valgrind (bool): True if the raylet should be started inside
+        use_valgrind: True if the raylet should be started inside
             of valgrind. If this is True, use_profiler must be False.
-        use_profiler (bool): True if the raylet should be started inside
+        use_profiler: True if the raylet should be started inside
             a profiler. If this is True, use_valgrind must be False.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
@@ -1634,13 +1634,13 @@ def start_raylet(
         tracing_startup_hook: Tracing startup hook.
         config (dict|None): Optional Raylet configuration that will
             override defaults in RayConfig.
-        max_bytes (int): Log rotation parameter. Corresponding to
+        max_bytes: Log rotation parameter. Corresponding to
             RotatingFileHandler's maxBytes.
-        backup_count (int): Log rotation parameter. Corresponding to
+        backup_count: Log rotation parameter. Corresponding to
             RotatingFileHandler's backupCount.
-        ray_debugger_external (bool): True if the Ray debugger should be made
+        ray_debugger_external: True if the Ray debugger should be made
             available externally to this node.
-        env_updates (dict): Environment variable overrides.
+        env_updates: Environment variable overrides.
 
     Returns:
         ProcessInfo for the process that was started.
@@ -1862,14 +1862,14 @@ def build_java_worker_command(
     """This method assembles the command used to start a Java worker.
 
     Args:
-        bootstrap_address (str): Bootstrap address of ray cluster.
-        plasma_store_name (str): The name of the plasma store socket to connect
+        bootstrap_address: Bootstrap address of ray cluster.
+        plasma_store_name: The name of the plasma store socket to connect
            to.
-        raylet_name (str): The name of the raylet socket to create.
-        redis_password (str): The password of connect to redis.
-        session_dir (str): The path of this session.
-        node_ip_address (str): The ip address for this node.
-        setup_worker_path (str): The path of the Python file that will set up
+        raylet_name: The name of the raylet socket to create.
+        redis_password: The password of connect to redis.
+        session_dir: The path of this session.
+        node_ip_address: The ip address for this node.
+        setup_worker_path: The path of the Python file that will set up
             the environment for the worker process.
     Returns:
         The command string for starting Java worker.
@@ -1918,14 +1918,14 @@ def build_cpp_worker_command(
     """This method assembles the command used to start a CPP worker.
 
     Args:
-        bootstrap_address (str): The bootstrap address of the cluster.
-        plasma_store_name (str): The name of the plasma store socket to connect
+        bootstrap_address: The bootstrap address of the cluster.
+        plasma_store_name: The name of the plasma store socket to connect
            to.
-        raylet_name (str): The name of the raylet socket to create.
-        redis_password (str): The password of connect to redis.
-        session_dir (str): The path of this session.
-        log_dir (str): The path of logs.
-        node_ip_address (str): The ip address for this node.
+        raylet_name: The name of the raylet socket to create.
+        redis_password: The password of connect to redis.
+        session_dir: The path of this session.
+        log_dir: The path of logs.
+        node_ip_address: The ip address for this node.
     Returns:
         The command string for starting CPP worker.
     """
@@ -1958,9 +1958,9 @@ def determine_plasma_store_config(
     values will be preserved.
 
     Args:
-        object_store_memory (int): The object store memory to use.
-        plasma_directory (str): The user-specified plasma directory parameter.
-        huge_pages (bool): The user-specified huge pages parameter.
+        object_store_memory: The object store memory to use.
+        plasma_directory: The user-specified plasma directory parameter.
+        huge_pages: The user-specified huge pages parameter.
 
     Returns:
         The plasma directory to use. If it is specified by the user, then that
@@ -2092,20 +2092,20 @@ def start_monitor(
     """Run a process to monitor the other processes.
 
     Args:
-        redis_address (str): The address that the Redis server is listening on.
-        gcs_address (str): The address of GCS server.
+        redis_address: The address that the Redis server is listening on.
+        gcs_address: The address of GCS server.
         logs_dir(str): The path to the log directory.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
             no redirection should happen, then this should be None.
         autoscaling_config: path to autoscaling config file.
-        redis_password (str): The password of the redis server.
-        max_bytes (int): Log rotation parameter. Corresponding to
+        redis_password: The password of the redis server.
+        max_bytes: Log rotation parameter. Corresponding to
             RotatingFileHandler's maxBytes.
-        backup_count (int): Log rotation parameter. Corresponding to
+        backup_count: Log rotation parameter. Corresponding to
             RotatingFileHandler's backupCount.
-        monitor_ip (str): IP address of the machine that the monitor will be
+        monitor_ip: IP address of the machine that the monitor will be
             run on. Can be excluded, but required for autoscaler metrics.
     Returns:
         ProcessInfo for the process that was started.
@@ -2166,13 +2166,13 @@ def start_ray_client_server(
     Args:
         address: The address of the cluster.
         ray_client_server_ip: Host IP the Ray client server listens on.
-        ray_client_server_port (int): Port the Ray client server listens on.
+        ray_client_server_port: Port the Ray client server listens on.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
             no redirection should happen, then this should be None.
-        redis_password (str): The password of the redis server.
-        server_type (str): Whether to start the proxy version of Ray Client.
+        redis_password: The password of the redis server.
+        server_type: Whether to start the proxy version of Ray Client.
         serialized_runtime_env_context (str|None): If specified, the serialized
             runtime_env_context to start the client server in.
 

@@ -19,7 +19,7 @@ def list_changed_files(commit_range):
     occurs while running git, the script will abort.
 
     Args:
-        commit_range (string): The commit range to diff, consisting of the two
+        commit_range: The commit range to diff, consisting of the two
             commit IDs separated by \"..\"
 
     Returns:

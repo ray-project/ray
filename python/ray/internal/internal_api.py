@@ -189,7 +189,7 @@ def free(object_refs, local_only=False):
 
     Args:
         object_refs (List[ObjectRef]): List of object refs to delete.
-        local_only (bool): Whether only deleting the list of objects in local
+        local_only: Whether only deleting the list of objects in local
             object store or all object stores.
     """
     worker = ray.worker.global_worker

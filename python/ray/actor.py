@@ -633,7 +633,7 @@ class ActorClass:
             runtime_env (Dict[str, Any]): Specifies the runtime environment for
                 this actor or task and its children (see
                 :ref:`runtime-environments` for details).
-            max_pending_calls (int): Set the max number of pending calls
+            max_pending_calls: Set the max number of pending calls
                 allowed on the actor handle. When this value is exceeded,
                 PendingCallsLimitExceeded will be raised for further tasks.
                 Note that this limit is counted per handle. -1 means that the
@@ -1039,8 +1039,8 @@ class ActorHandle:
             method_name: The name of the actor method to execute.
             args: A list of arguments for the actor method.
             kwargs: A dictionary of keyword arguments for the actor method.
-            name (str): The name to give the actor method call task.
-            num_returns (int): The number of return values for the method.
+            name: The name to give the actor method call task.
+            num_returns: The number of return values for the method.
 
         Returns:
             object_refs: A list of object refs returned by the remote actor

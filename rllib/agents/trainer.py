@@ -121,7 +121,7 @@ def with_common_config(extra_config: PartialTrainerConfigDict) -> TrainerConfigD
     """Returns the given config dict merged with common agent confs.
 
     Args:
-        extra_config (PartialTrainerConfigDict): A user defined partial config
+        extra_config: A user defined partial config
             which will get merged with a default TrainerConfig() object and returned
             as plain python dict.
 
@@ -2124,7 +2124,7 @@ class Trainer(Trainable):
         Note: Currently, only h5 files are supported.
 
         Args:
-            import_file (str): The file to import the model from.
+            import_file: The file to import the model from.
 
         Returns:
             A dict that maps ExportFormats to successfully exported models.

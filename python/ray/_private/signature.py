@@ -89,7 +89,7 @@ def flatten_args(signature_parameters, args, kwargs):
     See `recover_args` for logic restoring the flat list back to args/kwargs.
 
     Args:
-        signature_parameters (list): The list of Parameter objects
+        signature_parameters: The list of Parameter objects
             representing the function signature, obtained from
             `extract_signature`.
         args: The non-keyword arguments passed into the function.

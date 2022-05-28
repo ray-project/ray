@@ -86,14 +86,14 @@ class LogMonitor:
        lines in the file. If so, we will publish them to Ray pubsub.
 
     Attributes:
-        host (str): The hostname of this machine, for grouping log messages.
-        logs_dir (str): The directory that the log files are in.
-        log_filenames (set): This is the set of filenames of all files in
+        host: The hostname of this machine, for grouping log messages.
+        logs_dir: The directory that the log files are in.
+        log_filenames: This is the set of filenames of all files in
             open_file_infos and closed_file_infos.
         open_file_infos (list[LogFileInfo]): Info for all of the open files.
         closed_file_infos (list[LogFileInfo]): Info for all of the closed
             files.
-        can_open_more_files (bool): True if we can still open more files and
+        can_open_more_files: True if we can still open more files and
             false otherwise.
     """
 

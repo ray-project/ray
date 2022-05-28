@@ -102,7 +102,7 @@ class RuntimeEnvConfig(dict):
     configs are considered the same for caching purposes.
 
     Args:
-        setup_timeout_seconds (int): The timeout of runtime environment
+        setup_timeout_seconds: The timeout of runtime environment
             creation, timeout is in seconds. The value `-1` means disable
             timeout logic, except `-1`, `setup_timeout_seconds` cannot be
             less than or equal to 0. The default value of `setup_timeout_seconds`
@@ -261,7 +261,7 @@ class RuntimeEnv(dict):
         py_modules (List[URI]): List of URIs (either in the GCS or external
             storage), each of which is a zip file that will be unpacked and
             inserted into the PYTHONPATH of the workers.
-        working_dir (URI): URI (either in the GCS or external storage) of a zip
+        working_dir: URI (either in the GCS or external storage) of a zip
             file that will be unpacked in the directory of each task/actor.
         pip (dict | List[str] | str): Either a list of pip packages, a string
             containing the path to a pip requirements.txt file, or a python
@@ -283,12 +283,12 @@ class RuntimeEnv(dict):
             To use pip with conda, please specify your pip dependencies within
             the conda YAML config:
             https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#create-env-file-manually
-        container (dict): Require a given (Docker) container image,
+        container: Require a given (Docker) container image,
             The Ray worker process will run in a container with this image.
             The `worker_path` is the default_worker.py path.
             The `run_options` list spec is here:
             https://docs.docker.com/engine/reference/run/
-        env_vars (dict): Environment variables to set.
+        env_vars: Environment variables to set.
         config (dict | RuntimeEnvConfig): config for runtime environment. Either
             a dict or a RuntimeEnvConfig. Field: (1) setup_timeout_seconds, the
             timeout of runtime environment creation,  timeout is in seconds.

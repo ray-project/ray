@@ -103,14 +103,14 @@ class Cluster:
         """Initializes all services of a Ray cluster.
 
         Args:
-            initialize_head (bool): Automatically start a Ray cluster
+            initialize_head: Automatically start a Ray cluster
                 by initializing the head node. Defaults to False.
-            connect (bool): If `initialize_head=True` and `connect=True`,
+            connect: If `initialize_head=True` and `connect=True`,
                 ray.init will be called with the address of this cluster
                 passed in.
-            head_node_args (dict): Arguments to be passed into
+            head_node_args: Arguments to be passed into
                 `start_ray_head` via `self.add_node`.
-            shutdown_at_exit (bool): If True, registers an exit hook
+            shutdown_at_exit: If True, registers an exit hook
                 for shutting down all started processes.
         """
         if cluster_not_supported:
@@ -167,7 +167,7 @@ class Cluster:
             object_store_memory=150 * 1024 * 1024  # 150 MiB
 
         Args:
-            wait (bool): Whether to wait until the node is alive.
+            wait: Whether to wait until the node is alive.
             node_args: Keyword arguments used in `start_ray_head` and
                 `start_ray_node`. Overrides defaults.
 
@@ -231,7 +231,7 @@ class Cluster:
         """Kills all processes associated with worker node.
 
         Args:
-            node (Node): Worker node of which all associated processes
+            node: Worker node of which all associated processes
                 will be removed.
         """
         global_node = ray.worker._global_node
@@ -295,7 +295,7 @@ class Cluster:
         raise an exception.
 
         Args:
-            timeout (float): The number of seconds to wait for nodes to join
+            timeout: The number of seconds to wait for nodes to join
                 before failing.
 
         Raises:

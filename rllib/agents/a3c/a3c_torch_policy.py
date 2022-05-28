@@ -126,13 +126,13 @@ def vf_preds_fetches(
     """Defines extra fetches per action computation.
 
     Args:
-        policy (Policy): The Policy to perform the extra action fetch on.
+        policy: The Policy to perform the extra action fetch on.
         input_dict (Dict[str, TensorType]): The input dict used for the action
             computing forward pass.
         state_batches (List[TensorType]): List of state tensors (empty for
             non-RNNs).
         model (ModelV2): The Model object of the Policy.
-        action_dist (TorchDistributionWrapper): The instantiated distribution
+        action_dist: The instantiated distribution
             object, resulting from the model's outputs and the given
             distribution class.
 
@@ -161,10 +161,10 @@ def setup_mixins(
     """Call all mixin classes' constructors before PPOPolicy initialization.
 
     Args:
-        policy (Policy): The Policy object.
+        policy: The Policy object.
         obs_space (gym.spaces.Space): The Policy's observation space.
         action_space (gym.spaces.Space): The Policy's action space.
-        config (TrainerConfigDict): The Policy's config.
+        config: The Policy's config.
     """
     EntropyCoeffSchedule.__init__(
         policy, config["entropy_coeff"], config["entropy_coeff_schedule"]

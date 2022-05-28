@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 def validate_config(config: TrainerConfigDict) -> None:
     """Executed before Policy is "initialized" (at beginning of constructor).
     Args:
-        config (TrainerConfigDict): The Policy's config.
+        config: The Policy's config.
     """
     # If vf_share_layers is True, inform about the need to tune vf_loss_coeff.
     if config.get("model", {}).get("vf_share_layers") is True:

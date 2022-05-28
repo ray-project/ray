@@ -570,7 +570,7 @@ class _MultiAgentEnvToBaseEnv(BaseEnv):
                 existing envs is less than num_envs.
             existing_envs (List[MultiAgentEnv]): List of already existing
                 multi-agent envs.
-            num_envs (int): Desired num multiagent envs to have at the end in
+            num_envs: Desired num multiagent envs to have at the end in
                 total. This will include the given (already created)
                 `existing_envs`.
         """

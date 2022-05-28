@@ -9,13 +9,13 @@ class JobConfig:
 
     Attributes:
         jvm_options (str[]): The jvm options for java workers of the job.
-        code_search_path (list): A list of directories or jar files that
+        code_search_path: A list of directories or jar files that
             specify the search path for user code. This will be used as
             `CLASSPATH` in Java and `PYTHONPATH` in Python.
-        runtime_env (dict): A runtime environment dictionary (see
+        runtime_env: A runtime environment dictionary (see
             ``runtime_env.py`` for detailed documentation).
-        client_job (bool): A boolean represent the source of the job.
-        default_actor_lifetime (str): The default value of actor lifetime.
+        client_job: A boolean represent the source of the job.
+        default_actor_lifetime: The default value of actor lifetime.
     """
 
     def __init__(

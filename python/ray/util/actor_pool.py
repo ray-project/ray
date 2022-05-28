@@ -7,7 +7,7 @@ class ActorPool:
     """Utility class to operate on a fixed pool of actors.
 
     Arguments:
-        actors (list): List of Ray actor handles to use in this pool.
+        actors: List of Ray actor handles to use in this pool.
 
     Examples:
         >>> import ray
@@ -49,10 +49,10 @@ class ActorPool:
         the computation to finish.
 
         Arguments:
-            fn (func): Function that takes (actor, value) as argument and
+            fn: Function that takes (actor, value) as argument and
                 returns an ObjectRef computing the result over the value. The
                 actor will be considered busy until the ObjectRef completes.
-            values (list): List of values that fn(actor, value) should be
+            values: List of values that fn(actor, value) should be
                 applied to.
 
         Returns:
@@ -86,10 +86,10 @@ class ActorPool:
         take longer to compute than others.
 
         Arguments:
-            fn (func): Function that takes (actor, value) as argument and
+            fn: Function that takes (actor, value) as argument and
                 returns an ObjectRef computing the result over the value. The
                 actor will be considered busy until the ObjectRef completes.
-            values (list): List of values that fn(actor, value) should be
+            values: List of values that fn(actor, value) should be
                 applied to.
 
         Returns:
@@ -123,10 +123,10 @@ class ActorPool:
         get_next() / get_next_unordered().
 
         Arguments:
-            fn (func): Function that takes (actor, value) as argument and
+            fn: Function that takes (actor, value) as argument and
                 returns an ObjectRef computing the result over the value. The
                 actor will be considered busy until the ObjectRef completes.
-            value (object): Value to compute a result for.
+            value: Value to compute a result for.
 
         Examples:
             >>> from ray.util.actor_pool import ActorPool

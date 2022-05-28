@@ -12,19 +12,19 @@ class RayParams:
     """A class used to store the parameters used by Ray.
 
     Attributes:
-        redis_address (str): The address of the Redis server to connect to. If
+        redis_address: The address of the Redis server to connect to. If
             this address is not provided, then this command will start Redis, a
             raylet, a plasma store, a plasma manager, and some workers.
             It will also kill these processes when Python exits.
-        redis_port (int): The port that the primary Redis shard should listen
+        redis_port: The port that the primary Redis shard should listen
             to. If None, then it will fall back to
             ray.ray_constants.DEFAULT_PORT, or a random port if the default is
             not available.
         redis_shard_ports: A list of the ports to use for the non-primary Redis
             shards. If None, then it will fall back to the ports right after
             redis_port, or random ports if those are not available.
-        num_cpus (int): Number of CPUs to configure the raylet with.
-        num_gpus (int): Number of GPUs to configure the raylet with.
+        num_cpus: Number of CPUs to configure the raylet with.
+        num_gpus: Number of GPUs to configure the raylet with.
         resources: A dictionary mapping the name of a resource to the quantity
             of that resource available.
         memory: Total available memory for workers requesting memory.
@@ -37,26 +37,26 @@ class RayParams:
         object_manager_port int: The port to use for the object manager.
         node_manager_port: The port to use for the node manager.
         gcs_server_port: The port to use for the GCS server.
-        node_ip_address (str): The IP address of the node that we are on.
-        raylet_ip_address (str): The IP address of the raylet that this node
+        node_ip_address: The IP address of the node that we are on.
+        raylet_ip_address: The IP address of the raylet that this node
             connects to.
-        min_worker_port (int): The lowest port number that workers will bind
+        min_worker_port: The lowest port number that workers will bind
             on. If not set or set to 0, random ports will be chosen.
-        max_worker_port (int): The highest port number that workers will bind
+        max_worker_port: The highest port number that workers will bind
             on. If set, min_worker_port must also be set.
-        worker_port_list (str): An explicit list of ports to be used for
+        worker_port_list: An explicit list of ports to be used for
             workers (comma-separated). Overrides min_worker_port and
             max_worker_port.
-        ray_client_server_port (int): The port number the ray client server
+        ray_client_server_port: The port number the ray client server
             will bind on. If not set, the ray client server will not
             be started.
-        object_ref_seed (int): Used to seed the deterministic generation of
+        object_ref_seed: Used to seed the deterministic generation of
             object refs. The same value can be used across multiple runs of the
             same job in order to generate the object refs in a consistent
             manner. However, the same ID should not be used for different jobs.
-        redirect_output (bool): True if stdout and stderr for non-worker
+        redirect_output: True if stdout and stderr for non-worker
             processes should be redirected to files and false otherwise.
-        external_addresses (str): The address of external Redis server to
+        external_addresses: The address of external Redis server to
             connect to, in format of "ip1:port1,ip2:port2,...".  If this
             address is provided, then ray won't start Redis instances in the
             head node but use external Redis server(s) instead.
@@ -64,13 +64,13 @@ class RayParams:
             the primary Redis shard.
         redis_max_clients: If provided, attempt to configure Redis with this
             maxclients number.
-        redis_password (str): Prevents external clients without the password
+        redis_password: Prevents external clients without the password
             from connecting to Redis if provided.
         plasma_directory: A directory where the Plasma memory mapped files will
             be created.
-        worker_path (str): The path of the source code that will be run by the
+        worker_path: The path of the source code that will be run by the
             worker.
-        setup_worker_path (str): The path of the Python file that will set up
+        setup_worker_path: The path of the Python file that will set up
             the environment for the worker process.
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
@@ -86,18 +86,18 @@ class RayParams:
             Defaults to 8265.
         dashboard_agent_listen_port: The port for dashboard agents to listen on
             for HTTP requests.
-        plasma_store_socket_name (str): If provided, it will specify the socket
+        plasma_store_socket_name: If provided, it will specify the socket
             name used by the plasma store.
-        raylet_socket_name (str): If provided, it will specify the socket path
+        raylet_socket_name: If provided, it will specify the socket path
             used by the raylet process.
-        temp_dir (str): If provided, it will specify the root temporary
+        temp_dir: If provided, it will specify the root temporary
             directory for the Ray process.
         storage: Specify a URI for persistent cluster-wide storage. This storage path
             must be accessible by all nodes of the cluster, otherwise an error will be
             raised.
-        runtime_env_dir_name (str): If provided, specifies the directory that
+        runtime_env_dir_name: If provided, specifies the directory that
             will be created in the session dir to hold runtime_env files.
-        include_log_monitor (bool): If True, then start a log monitor to
+        include_log_monitor: If True, then start a log monitor to
             monitor the log files for all processes on this node and push their
             contents to Redis.
         autoscaling_config: path to autoscaling config file.
@@ -106,17 +106,17 @@ class RayParams:
             through a Prometheus endpoint.
         no_monitor(bool): If True, the ray autoscaler monitor for this cluster
             will not be started.
-        _system_config (dict): Configuration for overriding RayConfig
+        _system_config: Configuration for overriding RayConfig
             defaults. Used to set system configuration and for experimental Ray
             core feature flags.
-        enable_object_reconstruction (bool): Enable plasma reconstruction on
+        enable_object_reconstruction: Enable plasma reconstruction on
             failure.
-        start_initial_python_workers_for_first_job (bool): If true, start
+        start_initial_python_workers_for_first_job: If true, start
             initial Python workers for the first job on the node.
-        ray_debugger_external (bool): If true, make the Ray debugger for a
+        ray_debugger_external: If true, make the Ray debugger for a
             worker available externally to the node it is running on. This will
             bind on 0.0.0.0 instead of localhost.
-        env_vars (dict): Override environment variables for the raylet.
+        env_vars: Override environment variables for the raylet.
     """
 
     def __init__(

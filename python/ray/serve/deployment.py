@@ -221,9 +221,9 @@ class Deployment:
         """Deploy or update this deployment.
 
         Args:
-            init_args (optional): args to pass to the class __init__
+            init_args: args to pass to the class __init__
                 method. Not valid if this deployment wraps a function.
-            init_kwargs (optional): kwargs to pass to the class __init__
+            init_kwargs: kwargs to pass to the class __init__
                 method. Not valid if this deployment wraps a function.
         """
         if len(init_args) == 0 and self._init_args is not None:
@@ -258,7 +258,7 @@ class Deployment:
         """Get a ServeHandle to this deployment to invoke it from Python.
 
         Args:
-            sync (bool): If true, then Serve will return a ServeHandle that
+            sync: If true, then Serve will return a ServeHandle that
                 works everywhere. Otherwise, Serve will return an
                 asyncio-optimized ServeHandle that's only usable in an asyncio
                 loop.

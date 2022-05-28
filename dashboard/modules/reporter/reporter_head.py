@@ -119,8 +119,8 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         """Returns status information about the cluster.
 
         Currently contains two fields:
-            autoscaling_status (str): a status message from the autoscaler.
-            autoscaling_error (str): an error message from the autoscaler if
+            autoscaling_status: a status message from the autoscaler.
+            autoscaling_error: an error message from the autoscaler if
                 anything has gone wrong during autoscaling.
 
         These fields are both read from the GCS, it's expected that the

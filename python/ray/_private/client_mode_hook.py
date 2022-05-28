@@ -82,9 +82,9 @@ def client_mode_hook(func=None, *, auto_init: bool):
     or the Ray Client version of that function.
 
     Args:
-    func (callable): This function. This is set when this function is used
+    func: This function. This is set when this function is used
         as a decorator.
-    auto_init (bool): Whether `ray.init()` should be transparently called when
+    auto_init: Whether `ray.init()` should be transparently called when
         the wrapped function is called. This should be `True` for functions
         that are *NOT* part of the initialization path (e.g. `init` or
         `is_initialized`) or for functions that do not require Ray to be
