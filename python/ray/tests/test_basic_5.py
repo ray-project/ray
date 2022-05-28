@@ -182,9 +182,11 @@ def test_generator_oom(ray_start_regular):
             )
 
     num_returns = 100
-    with pytest.raises(ray.exceptions.WorkerCrashedError):
-        # Worker will OOM using normal returns.
+    try:
+        # Worker may OOM using normal returns.
         ray.get(large_values.options(num_returns=num_returns).remote(num_returns)[0])
+    except ray.exceptions.WorkerCrashedError:
+        pass
 
     # Using a generator will allow the worker to finish.
     ray.get(
