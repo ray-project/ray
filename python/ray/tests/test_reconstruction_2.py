@@ -476,7 +476,8 @@ def test_override_max_retries(ray_start_cluster, override_max_retries):
             ray.get(nested.remote(counter))
         assert ray.get(counter.pop.remote()) == max_retries + 1
     finally:
-        del os.environ["RAY_TASK_MAX_RETRIES"]
+        if override_max_retries:
+            del os.environ["RAY_TASK_MAX_RETRIES"]
 
 
 if __name__ == "__main__":
