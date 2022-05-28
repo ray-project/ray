@@ -1,4 +1,4 @@
-# from torch.utils.data import IterableDataset
+from torch.utils.data import IterableDataset
 
 # TODO: find the similar thing in the jax for the iterable dataset
 class JaxIterableDataset(IterableDataset):

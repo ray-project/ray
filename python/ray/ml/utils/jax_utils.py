@@ -40,7 +40,7 @@ def convert_pandas_to_jax_tensor(
     """
 
     import jax 
-    import jax.numpy as np
+    import jax.numpy as jnp
 
     multi_input = columns and (isinstance(columns[0], (list, tuple)))
 
