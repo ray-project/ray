@@ -1,3 +1,4 @@
+from cmath import exp
 import json
 import logging
 import os
@@ -83,23 +84,12 @@ class ExperimentAnalysis:
         default_mode: Optional[str] = None,
         sync_config: Optional[SyncConfig] = None,
     ):
-        experiment_checkpoint_path = os.path.expanduser(experiment_checkpoint_path)
-
-        latest_checkpoint = self._get_latest_checkpoint(experiment_checkpoint_path)
-
+        # Load the experiment checkpoints and their parent paths.
+        # This is important for when experiment folders have been
+        # relocated (e.g. from a ray cluster to local disk or GCS/S3)-
         self._experiment_states = []
         self._checkpoints_and_paths: List[Tuple[dict, os.PathLike]] = []
-        for path in latest_checkpoint:
-            with open(path) as f:
-                experiment_state = json.load(f, cls=TuneFunctionDecoder)
-                self._experiment_states.append(experiment_state)
-
-            if "checkpoints" not in experiment_state:
-                raise TuneError("Experiment state invalid; no checkpoints found.")
-            self._checkpoints_and_paths += [
-                (_decode_checkpoint_from_experiment_state(cp), Path(path).parent)
-                for cp in experiment_state["checkpoints"]
-            ]
+        self._load_checkpoints(experiment_checkpoint_path)
 
         self.trials = trials
 
@@ -116,7 +106,7 @@ class ExperimentAnalysis:
             # If only a mode was passed, use anonymous metric
             self.default_metric = DEFAULT_METRIC
 
-        self._local_base_dir = Path(latest_checkpoint[0]).parents[1]
+        self._local_base_dir = self._checkpoints_and_paths[0][1].parent
 
         if not pd:
             logger.warning(
@@ -141,33 +131,67 @@ class ExperimentAnalysis:
             str(self._local_base_dir), self._sync_config.upload_dir
         )
 
-    def _get_latest_checkpoint(self, experiment_checkpoint_path: str) -> List[str]:
-        if os.path.isdir(experiment_checkpoint_path):
-            # Case 1: Dir specified, find latest checkpoint.
+    def _load_checkpoints(self, experiment_checkpoint_path: str) -> List[str]:
+        experiment_checkpoint_path = Path(experiment_checkpoint_path).expanduser()
+        # Get the latest checkpoints from the checkpoint_path.
+        latest_checkpoint = self._get_latest_checkpoint(experiment_checkpoint_path)
+        # Collect all checkpoints and their directory paths.
+        # These are used to infer the `local_dir` from the checkpoints
+        # in case the experiment folder had been moved from its original
+        # location (e.g. from a ray cluster to a GCS/S3 bucket or to local disk).
+        self._load_checkpoints_from_latest(latest_checkpoint)
+
+    def _load_checkpoints_from_latest(self, latest_checkpoint: List[str]) -> None:
+        # Collect all checkpoints and their directory paths.
+        for path in latest_checkpoint:
+            with open(path) as f:
+                experiment_state = json.load(f, cls=TuneFunctionDecoder)
+                self._experiment_states.append(experiment_state)
+
+            if "checkpoints" not in experiment_state:
+                raise TuneError("Experiment state invalid; no checkpoints found.")
+            self._checkpoints_and_paths += [
+                (_decode_checkpoint_from_experiment_state(cp), Path(path).parent)
+                for cp in experiment_state["checkpoints"]
+            ]
+
+    def _get_latest_checkpoint(self, experiment_checkpoint_path: Path) -> List[str]:
+        # Case 1: Dir specified, find latest checkpoint.
+        if experiment_checkpoint_path.is_dir():
             latest_checkpoint = find_newest_experiment_checkpoint(
-                experiment_checkpoint_path
+                str(experiment_checkpoint_path)
             )
+            # If no checkpoint in this folder the sub-directory is searched.
+            # In this case also multiple experiment folders could exist in
+            # the same root. In this case the length of `latest_checkpoint`
+            # will be greater than 1.
             if not latest_checkpoint:
                 latest_checkpoint = []
-                for fname in os.listdir(experiment_checkpoint_path):
-                    fname = os.path.join(experiment_checkpoint_path, fname)
-                    latest_checkpoint_subdir = find_newest_experiment_checkpoint(fname)
+                for fname in experiment_checkpoint_path.iterdir():
+                    fname = experiment_checkpoint_path.joinpath(fname)
+                    latest_checkpoint_subdir = find_newest_experiment_checkpoint(
+                        str(fname)
+                    )
                     if latest_checkpoint_subdir:
                         latest_checkpoint.append(latest_checkpoint_subdir)
             if not latest_checkpoint:
+                # This avoid nested experiment directories of the form
+                # `experiment_name1/experiment_name2/experiment_state.json`.
+                experiment_checkpoint_path = str(experiment_checkpoint_path)
                 raise ValueError(
-                    f"The directory `{experiment_checkpoint_path}` does not "
-                    f"contain a Ray Tune experiment checkpoint."
+                    "The directory `{experiment_checkpoint_path}` does not "
+                    "contain a Ray Tune experiment checkpoint."
                 )
-        elif not os.path.isfile(experiment_checkpoint_path):
+        elif not experiment_checkpoint_path.is_file():
             # Case 2: File specified, but does not exist.
+            experiment_checkpoint_path = str(experiment_checkpoint_path)
             raise ValueError(
                 f"The file `{experiment_checkpoint_path}` does not "
                 f"exist and cannot be loaded for experiment analysis."
             )
         else:
             # Case 3: File specified, use as latest checkpoint.
-            latest_checkpoint = experiment_checkpoint_path
+            latest_checkpoint = str(experiment_checkpoint_path)
         if not isinstance(latest_checkpoint, list):
             latest_checkpoint = [latest_checkpoint]
         return latest_checkpoint
