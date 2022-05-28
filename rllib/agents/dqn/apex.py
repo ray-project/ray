@@ -278,10 +278,28 @@ class ApexConfig(DQNConfig):
                 prioritized_replay_eps: Epsilon parameter sets the baseline probability
                 for sampling so that when the temporal-difference error of a sample is
                 zero, there is still a chance of drawing the sample.
-            max_requests_in_flight_per_sampler_worker: Level of queuing for sampling
-                operations.
-            max_requests_in_flight_per_replay_worker: Level of queuing for replay
-                aggregator operations (if using aggregator workers).
+            max_requests_in_flight_per_sampler_worker: Max number of inflight requests
+                to each sampling worker. See the AsyncRequestsManager class for more
+                details. Tuning these values is important when running experimens with
+                large sample batches, where there is the risk that the object store may
+                fill up, causing spilling of objects to disk. This can cause any
+                asynchronous requests to become very slow, making your experiment run
+                slow as well. You can inspect the object store during your experiment
+                via a call to ray memory on your headnode, and by using the ray
+                dashboard. If you're seeing that the object store is filling up,
+                turn down the number of remote requests in flight, or enable compression
+                in your experiment of timesteps.
+            max_requests_in_flight_per_replay_worker: Max number of inflight requests
+                to each replay (shard) worker. See the AsyncRequestsManager class for
+                more details. Tuning these values is important when running experimens
+                with large sample batches, where there is the risk that the object store
+                may fill up, causing spilling of objects to disk. This can cause any
+                asynchronous requests to become very slow, making your experiment run
+                slow as well. You can inspect the object store during your experiment
+                via a call to ray memory on your headnode, and by using the ray
+                dashboard. If you're seeing that the object store is filling up,
+                turn down the number of remote requests in flight, or enable compression
+                in your experiment of timesteps.
             timeout_s_sampler_manager: The timeout for waiting for sampling results
                 for workers -- typically if this is too low, the manager won't be able
                 to retrieve ready sampling results.
