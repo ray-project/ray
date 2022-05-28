@@ -707,7 +707,9 @@ def init(
     logging_format: str = ray_constants.LOGGER_FORMAT,
     log_to_driver: bool = True,
     namespace: Optional[str] = None,
-    runtime_env: Optional[Union[Dict[str, Any], ray.runtime_env.RuntimeEnv]] = None,  # noqa: F821
+    runtime_env: Optional[
+        Union[Dict[str, Any], ray.runtime_env.RuntimeEnv]
+    ] = None,  # noqa: F821
     storage: Optional[str] = None,
     # The following are unstable parameters and their use is discouraged.
     _enable_object_reconstruction: bool = False,
