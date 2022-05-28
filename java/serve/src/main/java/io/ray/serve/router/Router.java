@@ -1,10 +1,6 @@
 package io.ray.serve.router;
 
-import java.util.HashMap;
-import java.util.Map;
-
 import com.google.common.collect.ImmutableMap;
-
 import io.ray.api.BaseActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.runtime.metric.Count;
@@ -15,6 +11,8 @@ import io.ray.serve.poll.KeyListener;
 import io.ray.serve.poll.KeyType;
 import io.ray.serve.poll.LongPollClient;
 import io.ray.serve.poll.LongPollNamespace;
+import java.util.HashMap;
+import java.util.Map;
 
 /** Router process incoming queries: assign a replica. */
 public class Router {

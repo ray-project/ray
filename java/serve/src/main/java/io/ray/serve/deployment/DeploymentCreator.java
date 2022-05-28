@@ -1,11 +1,9 @@
 package io.ray.serve.deployment;
 
-import java.util.Map;
-
 import com.google.common.base.Preconditions;
-
 import io.ray.serve.config.AutoscalingConfig;
 import io.ray.serve.config.DeploymentConfig;
+import java.util.Map;
 
 public class DeploymentCreator {
 

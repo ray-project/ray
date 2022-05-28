@@ -1,9 +1,5 @@
 package io.ray.serve;
 
-import org.apache.commons.lang3.RandomStringUtils;
-import org.testng.Assert;
-import org.testng.annotations.Test;
-
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
@@ -11,14 +7,17 @@ import io.ray.serve.api.Serve;
 import io.ray.serve.common.Constants;
 import io.ray.serve.config.DeploymentConfig;
 import io.ray.serve.config.RayServeConfig;
-import io.ray.serve.deployment.DeploymentInfo;
 import io.ray.serve.deployment.DeploymentVersion;
+import io.ray.serve.deployment.DeploymentWrapper;
 import io.ray.serve.generated.ActorSet;
 import io.ray.serve.generated.DeploymentLanguage;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.replica.RayServeWrappedReplica;
 import io.ray.serve.router.Router;
 import io.ray.serve.util.CommonUtil;
+import org.apache.commons.lang3.RandomStringUtils;
+import org.testng.Assert;
+import org.testng.annotations.Test;
 
 public class RouterTest {
 
@@ -42,12 +41,12 @@ public class RouterTest {
 
       // Replica
       DeploymentConfig deploymentConfig =
-          new DeploymentConfig().setDeploymentLanguage(DeploymentLanguage.JAVA.getNumber());
+          new DeploymentConfig().setDeploymentLanguage(DeploymentLanguage.JAVA);
 
       Object[] initArgs = new Object[] {deploymentName, replicaTag, controllerName, new Object()};
 
-      DeploymentInfo deploymentInfo =
-          new DeploymentInfo()
+      DeploymentWrapper deploymentWrapper =
+          new DeploymentWrapper()
               .setName(deploymentName)
               .setDeploymentConfig(deploymentConfig)
               .setDeploymentVersion(new DeploymentVersion(version))
@@ -57,7 +56,7 @@ public class RouterTest {
       ActorHandle<RayServeWrappedReplica> replicaHandle =
           Ray.actor(
                   RayServeWrappedReplica::new,
-                  deploymentInfo,
+                  deploymentWrapper,
                   replicaTag,
                   controllerName,
                   new RayServeConfig().setConfig(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false"))

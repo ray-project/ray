@@ -21,15 +21,15 @@ import time
 from typing import Callable, Optional, Union
 
 import ray
-from ray.rllib.agents.ppo.ppo import DEFAULT_CONFIG as PPO_DEFAULT_CONFIG, PPOTrainer
-from ray.rllib.agents.trainer import Trainer
+from ray.rllib.agents.ppo.ppo import PPOConfig, PPOTrainer
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.execution.common import (
     STEPS_TRAINED_THIS_ITER_COUNTER,
 )
-from ray.rllib.execution.parallel_requests import asynchronous_parallel_requests
+from ray.rllib.execution.parallel_requests import AsyncRequestsManager
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics import (
     LEARN_ON_BATCH_TIMER,
     NUM_AGENT_STEPS_SAMPLED,
@@ -50,54 +50,111 @@ from ray.tune.logger import Logger
 
 logger = logging.getLogger(__name__)
 
-# fmt: off
-# __sphinx_doc_begin__
 
-# Adds the following updates to the `PPOTrainer` config in
-# rllib/agents/ppo/ppo.py.
-DEFAULT_CONFIG = Trainer.merge_trainer_configs(
-    PPO_DEFAULT_CONFIG,
-    {
+class DDPPOConfig(PPOConfig):
+    """Defines a PPOTrainer configuration class from which a PPOTrainer can be built.
+
+    Example:
+        >>> from ray.rllib.agents.ppo import DDPPOConfig
+        >>> config = DDPPOConfig().training(lr=0.003, keep_local_weights_in_sync=True)\
+        ...             .resources(num_gpus=1)\
+        ...             .rollouts(num_workers=10)
+        >>> print(config.to_dict())
+        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> trainer = config.build(env="CartPole-v1")
+        >>> trainer.train()
+
+    Example:
+        >>> from ray.rllib.agents.ppo import DDPPOConfig
+        >>> from ray import tune
+        >>> config = DDPPOConfig()
+        >>> # Print out some default values.
+        >>> print(config.kl_coeff)
+        >>> # Update the config object.
+        >>> config.training(lr=tune.grid_search([0.001, 0.0001]), num_sgd_iter=15)
+        >>> # Set the config object's env.
+        >>> config.environment(env="CartPole-v1")
+        >>> # Use to_dict() to get the old-style python config dict
+        >>> # when running with tune.
+        >>> tune.run(
+        ...     "DDPPO",
+        ...     stop={"episode_reward_mean": 200},
+        ...     config=config.to_dict(),
+        ... )
+    """
+
+    def __init__(self, trainer_class=None):
+        """Initializes a DDPPOConfig instance."""
+        super().__init__(trainer_class=trainer_class or DDPPOTrainer)
+
+        # fmt: off
+        # __sphinx_doc_begin__
+        # DD-PPO specific settings:
+        self.keep_local_weights_in_sync = True
+        self.torch_distributed_backend = "gloo"
+
+        # Override some of PPO/Trainer's default values with DDPPO-specific values.
         # During the sampling phase, each rollout worker will collect a batch
         # `rollout_fragment_length * num_envs_per_worker` steps in size.
-        "rollout_fragment_length": 100,
+        self.rollout_fragment_length = 100
         # Vectorize the env (should enable by default since each worker has
         # a GPU).
-        "num_envs_per_worker": 5,
+        self.num_envs_per_worker = 5
         # During the SGD phase, workers iterate over minibatches of this size.
         # The effective minibatch size will be:
         # `sgd_minibatch_size * num_workers`.
-        "sgd_minibatch_size": 50,
+        self.sgd_minibatch_size = 50
         # Number of SGD epochs per optimization round.
-        "num_sgd_iter": 10,
-        # Download weights between each training step. This adds a bit of
-        # overhead but allows the user to access the weights from the trainer.
-        "keep_local_weights_in_sync": True,
+        self.num_sgd_iter = 10
 
         # *** WARNING: configs below are DDPPO overrides over PPO; you
         #     shouldn't need to adjust them. ***
         # DDPPO requires PyTorch distributed.
-        "framework": "torch",
-        # The communication backend for PyTorch distributed.
-        "torch_distributed_backend": "gloo",
+        self.framework_str = "torch"
         # Learning is no longer done on the driver process, so
         # giving GPUs to the driver does not make sense!
-        "num_gpus": 0,
+        self.num_gpus = 0
         # Each rollout worker gets a GPU.
-        "num_gpus_per_worker": 1,
+        self.num_gpus_per_worker = 1
         # This is auto set based on sample batch size.
-        "train_batch_size": -1,
+        self.train_batch_size = -1
         # Kl divergence penalty should be fixed to 0 in DDPPO because in order
         # for it to be used as a penalty, we would have to un-decentralize
         # DDPPO
-        "kl_coeff": 0.0,
-        "kl_target": 0.0,
-    },
-    _allow_unknown_configs=True,
-)
+        self.kl_coeff = 0.0
+        self.kl_target = 0.0
+        # __sphinx_doc_end__
+        # fmt: on
 
-# __sphinx_doc_end__
-# fmt: on
+    @override(PPOConfig)
+    def training(
+        self,
+        *,
+        keep_local_weights_in_sync: Optional[bool] = None,
+        torch_distributed_backend: Optional[str] = None,
+        **kwargs,
+    ) -> "DDPPOConfig":
+        """Sets the training related configuration.
+
+        Args:
+            keep_local_weights_in_sync: Download weights between each training step.
+                This adds a bit of overhead but allows the user to access the weights
+                from the trainer.
+            torch_distributed_backend: The communication backend for PyTorch
+                distributed.
+
+        Returns:
+            This updated TrainerConfig object.
+        """
+        # Pass kwargs onto super's `training()` method.
+        super().training(**kwargs)
+
+        if keep_local_weights_in_sync is not None:
+            self.keep_local_weights_in_sync = keep_local_weights_in_sync
+        if torch_distributed_backend is not None:
+            self.torch_distributed_backend = torch_distributed_backend
+
+        return self
 
 
 class DDPPOTrainer(PPOTrainer):
@@ -140,7 +197,7 @@ class DDPPOTrainer(PPOTrainer):
     @classmethod
     @override(PPOTrainer)
     def get_default_config(cls) -> TrainerConfigDict:
-        return DEFAULT_CONFIG
+        return DDPPOConfig().to_dict()
 
     @override(PPOTrainer)
     def validate_config(self, config):
@@ -218,20 +275,21 @@ class DDPPOTrainer(PPOTrainer):
                 ]
             )
             logger.info("Torch process group init completed")
+            self._ddppo_worker_manager = AsyncRequestsManager(
+                self.workers.remote_workers(),
+                max_remote_requests_in_flight_per_worker=1,
+                ray_wait_timeout_s=0.03,
+            )
 
     @override(PPOTrainer)
     def training_iteration(self) -> ResultDict:
         # Shortcut.
         first_worker = self.workers.remote_workers()[0]
 
-        # Run sampling and update steps on each worker in asynchronous fashion.
-        sample_and_update_results = asynchronous_parallel_requests(
-            remote_requests_in_flight=self.remote_requests_in_flight,
-            actors=self.workers.remote_workers(),
-            ray_wait_timeout_s=0.0,
-            max_remote_requests_in_flight_per_actor=1,  # 2
-            remote_fn=self._sample_and_train_torch_distributed,
+        self._ddppo_worker_manager.call_on_all_available(
+            self._sample_and_train_torch_distributed
         )
+        sample_and_update_results = self._ddppo_worker_manager.get_ready()
 
         # For all results collected:
         # - Update our counters and timers.
@@ -312,3 +370,20 @@ class DDPPOTrainer(PPOTrainer):
             "sample_time": sample_time,
             "learn_on_batch_time": learn_on_batch_time,
         }
+
+
+# Deprecated: Use ray.rllib.agents.ppo.DDPPOConfig instead!
+class _deprecated_default_config(dict):
+    def __init__(self):
+        super().__init__(DDPPOConfig().to_dict())
+
+    @Deprecated(
+        old="ray.rllib.agents.ppo.ddppo.DEFAULT_CONFIG",
+        new="ray.rllib.agents.ppo.ddppo.DDPPOConfig(...)",
+        error=False,
+    )
+    def __getitem__(self, item):
+        return super().__getitem__(item)
+
+
+DEFAULT_CONFIG = _deprecated_default_config()

@@ -1,17 +1,14 @@
 package io.ray.serve.util;
 
-import java.util.Map;
-
-import org.apache.commons.lang3.StringUtils;
-
 import com.google.protobuf.InvalidProtocolBufferException;
-
 import io.ray.serve.common.Constants;
 import io.ray.serve.exception.RayServeException;
 import io.ray.serve.generated.EndpointInfo;
 import io.ray.serve.generated.EndpointSet;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.generated.RequestWrapper;
+import java.util.Map;
+import org.apache.commons.lang3.StringUtils;
 
 public class ServeProtoUtil {
 

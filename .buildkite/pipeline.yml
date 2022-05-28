@@ -136,6 +136,14 @@
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
     - python ./ci/build/build-docker-images.py --py-versions py39 --device-types cu110 cu111 cu112 --build-type BUILDKITE --build-base
 
+- label: ":docker: Build Images: py310"
+  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
+  commands:
+    - LINUX_WHEELS=1 ./ci/ci.sh build
+    - pip install -q docker aws_requests_auth boto3
+    - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
+    - python ./ci/build/build-docker-images.py --py-versions py310 --device-types cpu --build-type BUILDKITE --build-base
+
 - label: ":book: Lint"
   commands:
     - export LINT=1
@@ -247,41 +255,29 @@
       $(cat test_shard.txt)
 
 
-- label: ":python: Minimal install"
+- label: ":python: Minimal install 3.6"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - ./ci/env/install-minimal.sh
-    - ./ci/env/env_info.sh
-    - python ./ci/env/check_minimal_install.py
-    - bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 $(./ci/run/bazel_export_options)
-      python/ray/tests/test_basic
-    - bazel test --test_output=streamed --config=ci $(./ci/run/bazel_export_options)
-      python/ray/tests/test_basic_2
-    - bazel test --test_output=streamed --config=ci $(./ci/run/bazel_export_options)
-      python/ray/tests/test_basic_3
-    - bazel test --test_output=streamed --config=ci $(./ci/run/bazel_export_options)
-      python/ray/tests/test_basic_4
-    - bazel test --test_output=streamed --config=ci $(./ci/run/bazel_export_options)
-      python/ray/tests/test_basic_5
-    - bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 $(./ci/run/bazel_export_options)
-      python/ray/tests/test_output
-    - bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 $(./ci/run/bazel_export_options)
-      python/ray/tests/test_runtime_env_ray_minimal
-    - bazel test --test_output=streamed --config=ci $(./ci/run/bazel_export_options)
-      python/ray/tests/test_runtime_env
-    - bazel test --test_output=streamed --config=ci $(./ci/run/bazel_export_options)
-      python/ray/tests/test_runtime_env_2
-    - bazel test --test_output=streamed --config=ci $(./ci/run/bazel_export_options)
-      python/ray/tests/test_runtime_env_complicated
-    - bazel test --test_output=streamed --config=ci $(./ci/run/bazel_export_options)
-      python/ray/tests/test_runtime_env_validation
-    - bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 $(./ci/run/bazel_export_options)
-      python/ray/tests/test_serve_ray_minimal
-    - bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 $(./ci/run/bazel_export_options)
-      python/ray/dashboard/test_dashboard
-    - bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 $(./ci/run/bazel_export_options)
-      python/ray/tests/test_usage_stats
+    - ./ci/ci.sh test_minimal 3.6
+
+- label: ":python: Minimal install 3.7"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/ci.sh test_minimal 3.7
+
+- label: ":python: Minimal install 3.8"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/ci.sh test_minimal 3.8
+
+- label: ":python: Minimal install 3.9"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/ci.sh test_minimal 3.9
 
 - label: ":python: Default install"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
@@ -328,6 +324,36 @@
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z
       python/ray/tests/...
+- label: ":redis: (External Redis) (Small & Client)"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_tag_filters=client_tests,small_size_python_tests
+      --test_env=TEST_EXTERNAL_REDIS=1
+      -- python/ray/tests/...
+- label: ":redis: (External Redis) (Large)"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  parallelism: 3
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - TEST_EXTERNAL_REDIS=1 . ./ci/ci.sh test_large
+- label: ":redis: (External Redis) (Medium A-J)"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j
+      --test_env=TEST_EXTERNAL_REDIS=1
+      -- //python/ray/tests/...
+- label: ":redis: (External Redis) (Medium K-Z)"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z
+      --test_env=TEST_EXTERNAL_REDIS=1
+      -- //python/ray/tests/...
 - label: ":python: Debug Test"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
@@ -342,7 +368,7 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
-    - pip install "grpcio >= 1.28.1, != 1.44.0"
+    - pip install "grpcio >= 1.28.1, <= 1.43.0"
     - bazel test --config=ci --config=asan $(./ci/run/bazel_export_options)
       --config=asan-buildkite
       --test_tag_filters=-kubernetes,asan_tests

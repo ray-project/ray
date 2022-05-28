@@ -1,18 +1,15 @@
 package io.ray.serve.config;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Set;
-
-import org.apache.commons.lang3.StringUtils;
-
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Sets;
 import com.google.gson.Gson;
 import com.google.protobuf.ByteString;
-
 import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.util.LogUtil;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
+import org.apache.commons.lang3.StringUtils;
 
 /** Configuration options for a replica. */
 public class ReplicaConfig {

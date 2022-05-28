@@ -1,10 +1,12 @@
 package io.ray.serve;
 
+import io.ray.runtime.serializer.MessagePackSerializer;
+import io.ray.serve.api.Serve;
+import io.ray.serve.deployment.Deployment;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
-
 import org.apache.hc.client5.http.classic.methods.HttpPut;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
@@ -14,10 +16,6 @@ import org.apache.hc.core5.http.HttpEntity;
 import org.apache.hc.core5.http.io.entity.ByteArrayEntity;
 import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.junit.Assert;
-
-import io.ray.runtime.serializer.MessagePackSerializer;
-import io.ray.serve.api.Serve;
-import io.ray.serve.deployment.Deployment;
 
 public class ServeDemo2 {
 
@@ -45,7 +43,8 @@ public class ServeDemo2 {
             .setName("counter")
             .setDeploymentDef(Counter.class.getName())
             .setNumReplicas(2)
-            .setInitArgs(new Object[] {10});
+            .setInitArgs(new Object[] {10})
+            .create();
     deployment.deploy(true);
 
     // Make HTTP request to deployment.

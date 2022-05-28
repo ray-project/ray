@@ -1,18 +1,6 @@
 package io.ray.serve.api;
 
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
-
-import org.apache.commons.lang3.StringUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import com.google.common.base.Preconditions;
-
 import io.ray.api.ActorHandle;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.PyActorHandle;
@@ -22,15 +10,25 @@ import io.ray.serve.config.DeploymentConfig;
 import io.ray.serve.config.ReplicaConfig;
 import io.ray.serve.controller.ServeController;
 import io.ray.serve.deployment.DeploymentRoute;
-import io.ray.serve.deployment.DeploymentStatusInfo;
 import io.ray.serve.exception.RayServeException;
 import io.ray.serve.generated.DeploymentRouteList;
 import io.ray.serve.generated.DeploymentStatus;
-import io.ray.serve.generated.DeploymentStatusInfoList;
+import io.ray.serve.generated.DeploymentStatusInfo;
 import io.ray.serve.generated.EndpointInfo;
+import io.ray.serve.generated.StatusOverview;
 import io.ray.serve.handle.RayServeHandle;
 import io.ray.serve.util.LogUtil;
 import io.ray.serve.util.ServeProtoUtil;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class ServeControllerClient {
 
@@ -195,25 +193,24 @@ public class ServeControllerClient {
   private void waitForDeploymentHealthy(String name, long timeoutS) {
     long start = System.currentTimeMillis();
     while (System.currentTimeMillis() - start < timeoutS * 1000 || timeoutS < 0) {
-      Map<String, DeploymentStatusInfo> statuses = getDeploymentStatuses();
-      DeploymentStatusInfo status = statuses.get(name);
+
+      DeploymentStatusInfo status = getDeploymentStatus(name);
       if (status == null) {
         throw new RayServeException(
             LogUtil.format(
                 "Waiting for deployment {} to be HEALTHY, but deployment doesn't exist.", name));
       }
 
-      if (status.getDeploymentStatus() == DeploymentStatus.HEALTHY) {
+      if (status.getStatus() == DeploymentStatus.HEALTHY) {
         break;
-      } else if (status.getDeploymentStatus() == DeploymentStatus.UNHEALTHY) {
+      } else if (status.getStatus() == DeploymentStatus.UNHEALTHY) {
         throw new RayServeException(
             LogUtil.format("Deployment {} is UNHEALTHY: {}", name, status.getMessage()));
       } else {
-        Preconditions.checkState(status.getDeploymentStatus() == DeploymentStatus.UPDATING);
+        Preconditions.checkState(status.getStatus() == DeploymentStatus.UPDATING);
       }
 
-      LOGGER.debug(
-          "Waiting for {} to be healthy, current status: {}.", name, status.getDeploymentStatus());
+      LOGGER.debug("Waiting for {} to be healthy, current status: {}.", name, status.getStatus());
       try {
         Thread.sleep(CLIENT_POLLING_INTERVAL_S * 1000);
       } catch (InterruptedException e) {
@@ -264,29 +261,36 @@ public class ServeControllerClient {
    *
    * @param timeoutS
    */
-  @SuppressWarnings("unchecked")
   private void waitForDeploymentsShutdown(long timeoutS) {
     long start = System.currentTimeMillis();
-    List<String> statuses = null;
+    List<DeploymentStatusInfo> deploymentStatuses = null;
     while (System.currentTimeMillis() - start < timeoutS * 1000) {
-      statuses =
-          (List<String>)
-              ((PyActorHandle) controller)
-                  .task(PyActorMethod.of("get_deployment_statuses"))
-                  .remote()
-                  .get(); // TODO-0528 update latest code.
-
-      if (statuses == null || statuses.size() == 0) {
+      StatusOverview statusOverview = getServeStatus();
+      if (statusOverview == null
+          || statusOverview.getDeploymentStatuses() == null
+          || statusOverview.getDeploymentStatuses().getDeploymentStatusInfosList() == null
+          || statusOverview.getDeploymentStatuses().getDeploymentStatusInfosList().isEmpty()) {
         return;
-      } else {
-        LOGGER.debug("Waiting for shutdown, {} deployments still alive.", statuses.size());
+      }
+      deploymentStatuses = statusOverview.getDeploymentStatuses().getDeploymentStatusInfosList();
+      LOGGER.debug("Waiting for shutdown, {} deployments still alive.", deploymentStatuses.size());
+      try {
+        Thread.sleep(CLIENT_POLLING_INTERVAL_S * 1000);
+      } catch (InterruptedException e) {
       }
     }
+    List<String> liveNames = new ArrayList<>();
+    if (deploymentStatuses != null) {
+      for (DeploymentStatusInfo status : deploymentStatuses) {
+        liveNames.add(status.getName());
+      }
+    }
+
     throw new RayServeException(
         LogUtil.format(
             "Shutdown didn't complete after {}s. Deployments still alive: {}.",
             timeoutS,
-            statuses));
+            liveNames));
   }
 
   public String getRootUrl() {
@@ -347,21 +351,14 @@ public class ServeControllerClient {
    * @param name
    * @param timeoutS
    */
-  @SuppressWarnings("unchecked")
   private void waitForDeploymentDeleted(String name, long timeoutS) {
     long start = System.currentTimeMillis();
     while (System.currentTimeMillis() - start < timeoutS * 1000) {
-      List<String> statuses =
-          (List<String>)
-              ((PyActorHandle) controller)
-                  .task(PyActorMethod.of("get_deployment_statuses"))
-                  .remote()
-                  .get(); // TODO define PB of Dict[str, DeploymentStatusInfo]
-
-      if (!statuses.contains(name)) {
+      DeploymentStatusInfo status = getDeploymentStatus(name);
+      if (status == null) {
         break;
       }
-      LOGGER.debug("Waiting for {} to be deleted, current status: {}.", name, statuses);
+      LOGGER.debug("Waiting for {} to be deleted, current status: {}.", name, status);
       try {
         Thread.sleep(CLIENT_POLLING_INTERVAL_S * 1000);
       } catch (InterruptedException e) {
@@ -371,24 +368,26 @@ public class ServeControllerClient {
         LogUtil.format("Deployment {} wasn't deleted after {}s.", name, timeoutS));
   }
 
-  private Map<String, DeploymentStatusInfo> getDeploymentStatuses() {
-    byte[] deploymentStatusInfoListProtoBytes =
+  private StatusOverview getServeStatus() {
+    return ServeProtoUtil.bytesToProto(
         (byte[])
-            ((PyActorHandle) controller)
-                .task(PyActorMethod.of("get_deployment_statuses"))
-                .remote()
-                .get(); // TODO-0528 update latest code.
-    DeploymentStatusInfoList deploymentStatusInfoList =
-        ServeProtoUtil.bytesToProto(
-            deploymentStatusInfoListProtoBytes, bytes -> DeploymentStatusInfoList.parseFrom(bytes));
+            ((PyActorHandle) controller).task(PyActorMethod.of("get_serve_status")).remote().get(),
+        bytes -> StatusOverview.parseFrom(bytes));
+  }
 
-    Map<String, DeploymentStatusInfo> deploymentStatuses = new HashMap<>();
-    for (io.ray.serve.generated.DeploymentStatusInfo deploymentStatusInfoProto :
-        deploymentStatusInfoList.getDeploymentStatusInfosList()) {
-      deploymentStatuses.put(
-          deploymentStatusInfoProto.getName(),
-          DeploymentStatusInfo.fromProto(deploymentStatusInfoProto));
+  private DeploymentStatusInfo getDeploymentStatus(String name) {
+    StatusOverview statusOverview = getServeStatus();
+    if (statusOverview == null
+        || statusOverview.getDeploymentStatuses() == null
+        || statusOverview.getDeploymentStatuses().getDeploymentStatusInfosList() == null) {
+      return null;
     }
-    return deploymentStatuses;
+    for (DeploymentStatusInfo deploymentStatusInfo :
+        statusOverview.getDeploymentStatuses().getDeploymentStatusInfosList()) {
+      if (StringUtils.equals(name, deploymentStatusInfo.getName())) {
+        return deploymentStatusInfo;
+      }
+    }
+    return null;
   }
 }

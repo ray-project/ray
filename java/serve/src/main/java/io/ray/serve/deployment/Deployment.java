@@ -1,12 +1,10 @@
 package io.ray.serve.deployment;
 
-import java.util.Map;
-
 import com.google.common.base.Preconditions;
-
 import io.ray.serve.api.Serve;
 import io.ray.serve.config.DeploymentConfig;
 import io.ray.serve.handle.RayServeHandle;
+import java.util.Map;
 
 /**
  * Construct a Deployment. CONSTRUCTOR SHOULDN'T BE USED DIRECTLY.

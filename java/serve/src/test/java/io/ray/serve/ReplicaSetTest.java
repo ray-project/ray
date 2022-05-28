@@ -6,15 +6,14 @@ import io.ray.api.Ray;
 import io.ray.serve.api.Serve;
 import io.ray.serve.config.DeploymentConfig;
 import io.ray.serve.config.RayServeConfig;
-import io.ray.serve.deployment.DeploymentInfo;
 import io.ray.serve.deployment.DeploymentVersion;
+import io.ray.serve.deployment.DeploymentWrapper;
 import io.ray.serve.generated.ActorSet;
 import io.ray.serve.generated.DeploymentLanguage;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.replica.RayServeWrappedReplica;
 import io.ray.serve.router.Query;
 import io.ray.serve.router.ReplicaSet;
-
 import java.util.Map;
 import java.util.Set;
 import org.apache.commons.lang3.RandomStringUtils;
@@ -54,12 +53,12 @@ public class ReplicaSetTest {
 
       // Replica
       DeploymentConfig deploymentConfig =
-          new DeploymentConfig().setDeploymentLanguage(DeploymentLanguage.JAVA.getNumber());
+          new DeploymentConfig().setDeploymentLanguage(DeploymentLanguage.JAVA);
 
       Object[] initArgs = new Object[] {deploymentName, replicaTag, controllerName, new Object()};
 
-      DeploymentInfo deploymentInfo =
-          new DeploymentInfo()
+      DeploymentWrapper deploymentWrapper =
+          new DeploymentWrapper()
               .setName(deploymentName)
               .setDeploymentConfig(deploymentConfig)
               .setDeploymentVersion(new DeploymentVersion(version))
@@ -69,7 +68,7 @@ public class ReplicaSetTest {
       ActorHandle<RayServeWrappedReplica> replicaHandle =
           Ray.actor(
                   RayServeWrappedReplica::new,
-                  deploymentInfo,
+                  deploymentWrapper,
                   replicaTag,
                   controllerName,
                   new RayServeConfig().setConfig(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false"))

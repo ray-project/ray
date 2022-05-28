@@ -1,10 +1,8 @@
 package io.ray.serve.poll;
 
-import java.util.Map;
-
 import com.google.common.base.Preconditions;
-
 import io.ray.api.BaseActorHandle;
+import java.util.Map;
 
 /** The asynchronous long polling client. */
 public class LongPollClient {

@@ -1,15 +1,12 @@
 package io.ray.serve.deployment;
 
-import java.io.Serializable;
-
-import org.apache.commons.lang3.RandomStringUtils;
-import org.apache.commons.lang3.StringUtils;
-
 import com.google.protobuf.ByteString;
 import com.google.protobuf.InvalidProtocolBufferException;
-
 import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.exception.RayServeException;
+import java.io.Serializable;
+import org.apache.commons.lang3.RandomStringUtils;
+import org.apache.commons.lang3.StringUtils;
 
 public class DeploymentVersion implements Serializable {
 

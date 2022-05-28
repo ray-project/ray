@@ -8,8 +8,8 @@ import io.ray.serve.api.Serve;
 import io.ray.serve.common.Constants;
 import io.ray.serve.config.DeploymentConfig;
 import io.ray.serve.config.RayServeConfig;
-import io.ray.serve.deployment.DeploymentInfo;
 import io.ray.serve.deployment.DeploymentVersion;
+import io.ray.serve.deployment.DeploymentWrapper;
 import io.ray.serve.generated.ActorSet;
 import io.ray.serve.generated.DeploymentLanguage;
 import io.ray.serve.generated.EndpointInfo;
@@ -59,18 +59,18 @@ public class ProxyActorTest {
       controller.task(DummyServeController::setEndpoints, endpointInfos).remote();
 
       // Replica
-      DeploymentInfo deploymentInfo =
-          new DeploymentInfo()
+      DeploymentWrapper deploymentWrapper =
+          new DeploymentWrapper()
               .setName(deploymentName)
               .setDeploymentConfig(
-                  new DeploymentConfig().setDeploymentLanguage(DeploymentLanguage.JAVA.getNumber()))
+                  new DeploymentConfig().setDeploymentLanguage(DeploymentLanguage.JAVA))
               .setDeploymentVersion(new DeploymentVersion(version))
               .setDeploymentDef(DummyReplica.class.getName());
 
       ActorHandle<RayServeWrappedReplica> replica =
           Ray.actor(
                   RayServeWrappedReplica::new,
-                  deploymentInfo,
+                  deploymentWrapper,
                   replicaTag,
                   controllerName,
                   new RayServeConfig().setConfig(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false"))

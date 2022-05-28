@@ -1,8 +1,7 @@
 package io.ray.serve.common;
 
-import java.util.List;
-
 import com.google.common.collect.Lists;
+import java.util.List;
 
 /** Ray Serve common constants. */
 public class Constants {

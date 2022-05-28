@@ -1,25 +1,14 @@
 package io.ray.serve.api;
 
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Optional;
-import java.util.regex.Pattern;
-
-import org.apache.commons.lang3.RandomStringUtils;
-import org.apache.commons.lang3.StringUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import io.ray.api.ActorHandle;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.PyActorHandle;
 import io.ray.api.Ray;
+import io.ray.api.exception.RayActorException;
+import io.ray.api.exception.RayTimeoutException;
 import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyActorMethod;
 import io.ray.api.options.ActorLifetime;
-import io.ray.runtime.exception.RayActorException;
-import io.ray.runtime.exception.RayTimeoutException;
 import io.ray.serve.common.Constants;
 import io.ray.serve.context.ReplicaContext;
 import io.ray.serve.deployment.Deployment;
@@ -32,6 +21,15 @@ import io.ray.serve.util.CollectionUtil;
 import io.ray.serve.util.CommonUtil;
 import io.ray.serve.util.LogUtil;
 import io.ray.serve.util.ServeProtoUtil;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
+import java.util.regex.Pattern;
+import org.apache.commons.lang3.RandomStringUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** Ray Serve global API. TODO: will be riched in the Java SDK/API PR. */
 public class Serve {

@@ -15,7 +15,7 @@ from ray.tune.registry import (
     registry_get_input,
     registry_contains_input,
 )
-from ray.rllib.agents.pg import PGTrainer
+from ray.rllib.algorithms.pg import PGTrainer
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.offline import (
     IOContext,
@@ -98,7 +98,7 @@ class AgentIOTest(unittest.TestCase):
                 env="CartPole-v0",
                 config={
                     "input": self.test_dir + fw,
-                    "input_evaluation": [],
+                    "off_policy_estimation_methods": [],
                     "framework": fw,
                 },
             )
@@ -141,7 +141,7 @@ class AgentIOTest(unittest.TestCase):
                 env="CartPole-v0",
                 config={
                     "input": self.test_dir + fw,
-                    "input_evaluation": [],
+                    "off_policy_estimation_methods": [],
                     "postprocess_inputs": True,  # adds back 'advantages'
                     "framework": fw,
                 },
@@ -158,7 +158,7 @@ class AgentIOTest(unittest.TestCase):
                 env="CartPole-v0",
                 config={
                     "input": self.test_dir + fw,
-                    "input_evaluation": ["simulation"],
+                    "off_policy_estimation_methods": ["simulation"],
                     "framework": fw,
                 },
             )
@@ -176,7 +176,7 @@ class AgentIOTest(unittest.TestCase):
                 env="CartPole-v0",
                 config={
                     "input": glob.glob(self.test_dir + fw + "/*.json"),
-                    "input_evaluation": [],
+                    "off_policy_estimation_methods": [],
                     "rollout_fragment_length": 99,
                     "framework": fw,
                 },
@@ -196,7 +196,7 @@ class AgentIOTest(unittest.TestCase):
                         "sampler": 0.9,
                     },
                     "train_batch_size": 2000,
-                    "input_evaluation": [],
+                    "off_policy_estimation_methods": [],
                     "framework": fw,
                 },
             )
@@ -234,7 +234,7 @@ class AgentIOTest(unittest.TestCase):
                 config={
                     "num_workers": 0,
                     "input": self.test_dir,
-                    "input_evaluation": ["simulation"],
+                    "off_policy_estimation_methods": ["simulation"],
                     "train_batch_size": 2000,
                     "multiagent": {
                         "policies": {"policy_1", "policy_2"},
@@ -276,7 +276,7 @@ class AgentIOTest(unittest.TestCase):
                     config={
                         "input": input_procedure,
                         "input_config": {"input_files": self.test_dir + fw},
-                        "input_evaluation": [],
+                        "off_policy_estimation_methods": [],
                         "framework": fw,
                     },
                 )

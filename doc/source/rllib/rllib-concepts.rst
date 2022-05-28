@@ -9,8 +9,8 @@ This page describes the internal concepts used to implement algorithms in RLlib.
 You might find this useful if modifying or adding new algorithms to RLlib.
 
 Policy classes encapsulate the core numerical components of RL algorithms.
-This typically includes the policy model that determines actions to take, a trajectory postprocessor for experiences, and a loss function to improve the policy given postprocessed experiences.
-For a simple example, see the policy gradients `policy definition <https://github.com/ray-project/ray/blob/master/rllib/agents/pg/pg_tf_policy.py>`__.
+This typically includes the policy model that determines actions to take, a trajectory postprocessor for experiences, and a loss function to improve the policy given post-processed experiences.
+For a simple example, see the policy gradients `policy definition <https://github.com/ray-project/ray/blob/master/rllib/algorithms/pg/pg_tf_policy.py>`__.
 
 Most interaction with deep learning frameworks is isolated to the `Policy interface <https://github.com/ray-project/ray/blob/master/rllib/policy/policy.py>`__, allowing RLlib to support multiple frameworks.
 To simplify the definition of policies, RLlib includes `Tensorflow <#building-policies-in-tensorflow>`__ and `PyTorch-specific <#building-policies-in-pytorch>`__ templates.
@@ -375,7 +375,7 @@ In PPO we run ``setup_mixins`` before the loss function is called (i.e., ``befor
 
 **Example 2: Deep Q Networks**
 
-Let's look at how to implement a different family of policies, by looking at the `SimpleQ policy definition <https://github.com/ray-project/ray/blob/master/rllib/agents/dqn/simple_q_tf_policy.py>`__:
+Let's look at how to implement a different family of policies, by looking at the `SimpleQ policy definition <https://github.com/ray-project/ray/blob/master/rllib/algorithms/dqn/simple_q_tf_policy.py>`__:
 
 .. code-block:: python
 

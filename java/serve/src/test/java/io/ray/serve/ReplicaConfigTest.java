@@ -1,11 +1,10 @@
 package io.ray.serve;
 
+import io.ray.serve.config.ReplicaConfig;
 import java.util.HashMap;
 import java.util.Map;
 import org.testng.Assert;
 import org.testng.annotations.Test;
-
-import io.ray.serve.config.ReplicaConfig;
 
 public class ReplicaConfigTest {
 
@@ -35,17 +34,17 @@ public class ReplicaConfigTest {
         () -> new ReplicaConfig(deploymentDef, null, getRayActorOptions("num_cpus", -1.0)));
     ReplicaConfig replicaConfig =
         new ReplicaConfig(deploymentDef, null, getRayActorOptions("num_cpus", 2.0));
-    Assert.assertEquals(replicaConfig.getResource().get("CPU").doubleValue(), 2.0);
+    Assert.assertEquals(((Double) replicaConfig.getResources().get("CPU")).doubleValue(), 2.0);
 
     expectIllegalArgumentException(
         () -> new ReplicaConfig(deploymentDef, null, getRayActorOptions("num_gpus", -1.0)));
     replicaConfig = new ReplicaConfig(deploymentDef, null, getRayActorOptions("num_gpus", 2.0));
-    Assert.assertEquals(replicaConfig.getResource().get("GPU").doubleValue(), 2.0);
+    Assert.assertEquals(((Double) replicaConfig.getResources().get("GPU")).doubleValue(), 2.0);
 
     expectIllegalArgumentException(
         () -> new ReplicaConfig(deploymentDef, null, getRayActorOptions("memory", -1.0)));
     replicaConfig = new ReplicaConfig(deploymentDef, null, getRayActorOptions("memory", 2.0));
-    Assert.assertEquals(replicaConfig.getResource().get("memory").doubleValue(), 2.0);
+    Assert.assertEquals(((Double) replicaConfig.getResources().get("memory")).doubleValue(), 2.0);
 
     expectIllegalArgumentException(
         () ->
@@ -53,7 +52,8 @@ public class ReplicaConfigTest {
                 deploymentDef, null, getRayActorOptions("object_store_memory", -1.0)));
     replicaConfig =
         new ReplicaConfig(deploymentDef, null, getRayActorOptions("object_store_memory", 2.0));
-    Assert.assertEquals(replicaConfig.getResource().get("object_store_memory").doubleValue(), 2.0);
+    Assert.assertEquals(
+        ((Double) replicaConfig.getResources().get("object_store_memory")).doubleValue(), 2.0);
   }
 
   private void expectIllegalArgumentException(Validator validator) {

@@ -124,7 +124,10 @@ class WorkerSet:
 
             # Create a number of @ray.remote workers.
             self._remote_workers = []
-            self.add_workers(num_workers)
+            self.add_workers(
+                num_workers,
+                validate=trainer_config.get("validate_workers_after_construction"),
+            )
 
             # Create a local worker, if needed.
             # If num_workers > 0 and we don't have an env on the local worker,
@@ -228,7 +231,7 @@ class WorkerSet:
         elif self.local_worker() is not None and global_vars is not None:
             self.local_worker().set_global_vars(global_vars)
 
-    def add_workers(self, num_workers: int) -> None:
+    def add_workers(self, num_workers: int, validate: bool = False) -> None:
         """Creates and adds a number of remote workers to this worker set.
 
         Can be called several times on the same WorkerSet to add more
@@ -237,6 +240,12 @@ class WorkerSet:
         Args:
             num_workers: The number of remote Workers to add to this
                 WorkerSet.
+            validate: Whether to validate remote workers after their construction
+                process.
+
+        Raises:
+            RayError: If any of the constructed remote workers is not up and running
+            properly.
         """
         old_num_workers = len(self._remote_workers)
         self._remote_workers.extend(
@@ -253,6 +262,14 @@ class WorkerSet:
                 for i in range(num_workers)
             ]
         )
+        # Validate here, whether all remote workers have been constructed properly
+        # and are "up and running". If not, the following will throw a RayError
+        # which needs to be handled by this WorkerSet's owner (usually
+        # a RLlib Trainer instance).
+        if validate:
+            self.foreach_worker_with_index(
+                lambda w, i: w.policy_map and w.input_reader and w.output_writer
+            )
 
     def reset(self, new_remote_workers: List[ActorHandle]) -> None:
         """Hard overrides the remote workers in this set with the given one.
@@ -265,13 +282,14 @@ class WorkerSet:
 
     def remove_failed_workers(self):
         faulty_indices = self._worker_health_check()
-
+        removed_workers = []
         # Terminate faulty workers.
         for worker_index in faulty_indices:
             worker = self.remote_workers()[worker_index - 1]
             logger.info(f"Trying to terminate faulty worker {worker_index}.")
             try:
                 worker.__ray_terminate__.remote()
+                removed_workers.append(worker)
             except Exception:
                 logger.exception("Error terminating faulty worker.")
 
@@ -286,12 +304,15 @@ class WorkerSet:
                 f"No healthy workers remaining (worker indices {faulty_indices} have "
                 f"died)! Can't continue training."
             )
+        return removed_workers
 
-    def recreate_failed_workers(self):
+    def recreate_failed_workers(self) -> Tuple[List[ActorHandle], List[ActorHandle]]:
         faulty_indices = self._worker_health_check()
-
+        removed_workers = []
+        new_workers = []
         for worker_index in faulty_indices:
             worker = self.remote_workers()[worker_index - 1]
+            removed_workers.append(worker)
             logger.info(f"Trying to recreate faulty worker {worker_index}")
             try:
                 worker.__ray_terminate__.remote()
@@ -315,6 +336,8 @@ class WorkerSet:
             )
             # Add new worker to list of remote workers.
             self._remote_workers[worker_index - 1] = new_worker
+            new_workers.append(new_worker)
+        return removed_workers, new_workers
 
     def stop(self) -> None:
         """Calls `stop` on all rollout workers (including the local one)."""
@@ -603,9 +626,9 @@ class WorkerSet:
             )
 
         if config["input"] == "sampler":
-            input_evaluation = []
+            off_policy_estimation_methods = []
         else:
-            input_evaluation = config["input_evaluation"]
+            off_policy_estimation_methods = config["off_policy_estimation_methods"]
 
         # Assert everything is correct in "multiagent" config dict (if given).
         ma_policies = config["multiagent"]["policies"]
@@ -654,12 +677,11 @@ class WorkerSet:
             worker_index=worker_index,
             num_workers=num_workers,
             recreated_worker=recreated_worker,
-            record_env=config["record_env"],
             log_dir=self._logdir,
             log_level=config["log_level"],
             callbacks=config["callbacks"],
             input_creator=input_creator,
-            input_evaluation=input_evaluation,
+            off_policy_estimation_methods=off_policy_estimation_methods,
             output_creator=output_creator,
             remote_worker_envs=config["remote_worker_envs"],
             remote_env_batch_wait_ms=config["remote_env_batch_wait_ms"],

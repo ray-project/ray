@@ -108,8 +108,9 @@ class HuggingFaceTrainer(TorchTrainer):
     All the other datasets will not be split.
 
     Please note that if you use a custom ``transformers.Trainer`` subclass,
-    the ``get_train_dataloader`` method will be overriden to disable distributed
-    sampling, as the dataset will already be sharded.
+    the ``get_train_dataloader`` method will be wrapped around to disable
+    sharding by ``transformers.IterableDatasetShard``, as the dataset will
+    already be sharded on the Ray AIR side.
 
     HuggingFace loggers will be automatically disabled, and the ``local_rank``
     argument in ``TrainingArguments`` will be automatically set. Please note
@@ -117,6 +118,8 @@ class HuggingFaceTrainer(TorchTrainer):
     argument in ``TrainingArguments`` manually - otherwise, an exception
     (segfault) may be thrown. Furthermore, 'steps' value for ``save_strategy``,
     ``logging_strategy`` and ``evaluation_strategy`` is not yet supported.
+
+    This Trainer requires ``transformers>=4.19.0`` package.
 
     Example:
         .. code-block:: python
@@ -250,11 +253,11 @@ class HuggingFaceTrainer(TorchTrainer):
 
         # Functionality required for HuggingFaceTrainer only added in this
         # version
-        if LooseVersion(transformers.__version__) < LooseVersion("4.18.0"):
+        if LooseVersion(transformers.__version__) < LooseVersion("4.19.0"):
             raise RuntimeError(
-                "HuggingFaceTrainer requires transformers>=4.18.0, but you "
+                "HuggingFaceTrainer requires transformers>=4.19.0, but you "
                 f"have {transformers.__version__} which is incompatible. "
-                "Update on all nodes with `pip install -U 'transformers>=4.18.0'`."
+                "Update on all nodes with `pip install -U 'transformers>=4.19.0'`."
             )
 
         self._validate_trainer_init_per_worker(

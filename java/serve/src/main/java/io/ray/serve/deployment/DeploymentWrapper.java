@@ -1,9 +1,8 @@
 package io.ray.serve.deployment;
 
+import io.ray.serve.config.DeploymentConfig;
 import java.io.Serializable;
 import java.util.Map;
-
-import io.ray.serve.config.DeploymentConfig;
 
 public class DeploymentWrapper implements Serializable {
 
@@ -25,47 +24,53 @@ public class DeploymentWrapper implements Serializable {
     return name;
   }
 
-  public void setName(String name) {
+  public DeploymentWrapper setName(String name) {
     this.name = name;
+    return this;
   }
 
   public String getDeploymentDef() {
     return deploymentDef;
   }
 
-  public void setDeploymentDef(String deploymentDef) {
+  public DeploymentWrapper setDeploymentDef(String deploymentDef) {
     this.deploymentDef = deploymentDef;
+    return this;
   }
 
   public DeploymentConfig getDeploymentConfig() {
     return deploymentConfig;
   }
 
-  public void setDeploymentConfig(DeploymentConfig deploymentConfig) {
+  public DeploymentWrapper setDeploymentConfig(DeploymentConfig deploymentConfig) {
     this.deploymentConfig = deploymentConfig;
+    return this;
   }
 
   public Object[] getInitArgs() {
     return initArgs;
   }
 
-  public void setInitArgs(Object[] initArgs) {
+  public DeploymentWrapper setInitArgs(Object[] initArgs) {
     this.initArgs = initArgs;
+    return this;
   }
 
   public DeploymentVersion getDeploymentVersion() {
     return deploymentVersion;
   }
 
-  public void setDeploymentVersion(DeploymentVersion deploymentVersion) {
+  public DeploymentWrapper setDeploymentVersion(DeploymentVersion deploymentVersion) {
     this.deploymentVersion = deploymentVersion;
+    return this;
   }
 
   public Map<String, String> getConfig() {
     return config;
   }
 
-  public void setConfig(Map<String, String> config) {
+  public DeploymentWrapper setConfig(Map<String, String> config) {
     this.config = config;
+    return this;
   }
 }

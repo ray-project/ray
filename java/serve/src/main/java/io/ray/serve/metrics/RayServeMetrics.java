@@ -44,7 +44,7 @@ public enum RayServeMetrics {
   public static final String TAG_REPLICA = "replica";
 
   private static final boolean canBeUsed =
-      Ray.isInitialized() && !Ray.getRuntimeContext().isSingleProcess();
+      Ray.isInitialized() && !Ray.getRuntimeContext().isLocalMode();
 
   private static volatile boolean enabled = true;
 

@@ -1,9 +1,6 @@
 package io.ray.serve.handle;
 
-import org.apache.commons.lang3.RandomStringUtils;
-
 import com.google.common.collect.ImmutableMap;
-
 import io.ray.api.BaseActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.runtime.metric.Count;
@@ -12,6 +9,7 @@ import io.ray.serve.common.Constants;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.metrics.RayServeMetrics;
 import io.ray.serve.router.Router;
+import org.apache.commons.lang3.RandomStringUtils;
 
 /** A handle to a service deployment. */
 public class RayServeHandle {

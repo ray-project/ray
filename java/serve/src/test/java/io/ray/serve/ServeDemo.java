@@ -1,15 +1,13 @@
 package io.ray.serve;
 
-import java.io.IOException;
-import java.util.concurrent.atomic.AtomicInteger;
-
-import org.junit.Assert;
-
 import io.ray.api.Ray;
 import io.ray.serve.api.Serve;
 import io.ray.serve.api.ServeControllerClient;
 import io.ray.serve.deployment.Deployment;
-import io.ray.serve.deployment.DeploymentInfo;
+import io.ray.serve.deployment.DeploymentRoute;
+import java.io.IOException;
+import java.util.concurrent.atomic.AtomicInteger;
+import org.junit.Assert;
 
 public class ServeDemo {
 
@@ -47,7 +45,7 @@ public class ServeDemo {
     deployment.deploy(true);
 
     Deployment result = Serve.getDeployment(deploymentName);
-    DeploymentInfo deploymentInfo = client.getDeploymentInfo(deploymentName);
+    DeploymentRoute deploymentInfo = client.getDeploymentInfo(deploymentName);
 
     // Call deployment by handle.
     Assert.assertEquals(16, Ray.get(deployment.getHandle()

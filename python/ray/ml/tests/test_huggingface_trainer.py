@@ -133,3 +133,9 @@ def test_reporting():
     assert "log1" in reports[1]
     assert "log2" in reports[1]
     assert reports[1]["epoch"] == 2
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", "-x", __file__]))

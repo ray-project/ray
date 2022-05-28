@@ -8,14 +8,13 @@ import io.ray.serve.api.Serve;
 import io.ray.serve.common.Constants;
 import io.ray.serve.config.DeploymentConfig;
 import io.ray.serve.config.RayServeConfig;
-import io.ray.serve.deployment.DeploymentInfo;
 import io.ray.serve.deployment.DeploymentVersion;
+import io.ray.serve.deployment.DeploymentWrapper;
 import io.ray.serve.generated.DeploymentLanguage;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.generated.RequestWrapper;
 import io.ray.serve.replica.DummyReplica;
 import io.ray.serve.replica.RayServeWrappedReplica;
-
 import java.io.IOException;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.testng.Assert;
@@ -39,9 +38,9 @@ public class RayServeReplicaTest {
           Ray.actor(DummyServeController::new).setName(controllerName).remote();
 
       DeploymentConfig deploymentConfig =
-          new DeploymentConfig().setDeploymentLanguage(DeploymentLanguage.JAVA.getNumber());
-      DeploymentInfo deploymentInfo =
-          new DeploymentInfo()
+          new DeploymentConfig().setDeploymentLanguage(DeploymentLanguage.JAVA);
+      DeploymentWrapper deploymentWrapper =
+          new DeploymentWrapper()
               .setName(deploymentName)
               .setDeploymentConfig(deploymentConfig)
               .setDeploymentVersion(new DeploymentVersion(version))
@@ -50,7 +49,7 @@ public class RayServeReplicaTest {
       ActorHandle<RayServeWrappedReplica> replicHandle =
           Ray.actor(
                   RayServeWrappedReplica::new,
-                  deploymentInfo,
+                  deploymentWrapper,
                   replicaTag,
                   controllerName,
                   new RayServeConfig().setConfig(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false"))

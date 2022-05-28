@@ -4,7 +4,6 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.InvalidProtocolBufferException;
-
 import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.common.Constants;
 import io.ray.serve.exception.RayServeException;
