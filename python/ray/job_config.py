@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional, Union, List
 import uuid
 
 import ray._private.gcs_utils as gcs_utils
@@ -8,7 +8,7 @@ class JobConfig:
     """A class used to store the configurations of a job.
 
     Attributes:
-        jvm_options (str[]): The jvm options for java workers of the job.
+        jvm_options: The jvm options for java workers of the job.
         code_search_path: A list of directories or jar files that
             specify the search path for user code. This will be used as
             `CLASSPATH` in Java and `PYTHONPATH` in Python.
@@ -20,13 +20,13 @@ class JobConfig:
 
     def __init__(
         self,
-        jvm_options=None,
-        code_search_path=None,
-        runtime_env=None,
-        client_job=False,
-        metadata=None,
-        ray_namespace=None,
-        default_actor_lifetime="non_detached",
+        jvm_options: List[str] = None,
+        code_search_path: List[str] = None,
+        runtime_env: dict = None,
+        client_job: bool = False,
+        metadata: Optional[dict] = None,
+        ray_namespace: Optional[str] = None,
+        default_actor_lifetime: str = "non_detached",
     ):
         self.jvm_options = jvm_options or []
         self.code_search_path = code_search_path or []

@@ -53,16 +53,15 @@ class Node:
     def __init__(
         self,
         ray_params,
-        head=False,
-        shutdown_at_exit=True,
-        spawn_reaper=True,
-        connect_only=False,
+        head: bool = False,
+        shutdown_at_exit: bool = True,
+        spawn_reaper: bool = True,
+        connect_only: bool = False,
     ):
         """Start a node.
 
         Args:
-            ray_params (ray.params.RayParams): The parameters to use to
-                configure the node.
+            ray_params: The RayParams to use to configure the node.
             head: True if this is the head node, which means it will
                 start additional processes like the Redis servers, monitor
                 processes, and web UI.
@@ -84,7 +83,7 @@ class Node:
         self.kernel_fate_share = bool(
             spawn_reaper and ray._private.utils.detect_fate_sharing_support()
         )
-        self.all_processes = {}
+        self.all_processes: dict = {}
         self.removal_lock = threading.Lock()
 
         # Set up external Redis when `RAY_REDIS_ADDRESS` is specified.
@@ -624,7 +623,9 @@ class Node:
         """Get the path of the sockets directory."""
         return self._sockets_dir
 
-    def _make_inc_temp(self, suffix="", prefix="", directory_name=None):
+    def _make_inc_temp(
+        self, suffix: str = "", prefix: str = "", directory_name: Optional[str] = None
+    ):
         """Return an incremental temporary file name. The file is not created.
 
         Args:
@@ -670,7 +671,7 @@ class Node:
             )
         return redirect_output
 
-    def get_log_file_handles(self, name, unique=False):
+    def get_log_file_handles(self, name: str, unique: bool = False):
         """Open log files with partially randomized filenames, returning the
         file handles. If output redirection has been disabled, no files will
         be opened and `(None, None)` will be returned.
@@ -690,7 +691,7 @@ class Node:
         log_stdout, log_stderr = self._get_log_file_names(name, unique=unique)
         return open_log(log_stdout), open_log(log_stderr)
 
-    def _get_log_file_names(self, name, unique=False):
+    def _get_log_file_names(self, name: str, unique: bool = False):
         """Generate partially randomized filenames for log files.
 
         Args:
@@ -744,7 +745,7 @@ class Node:
         s.close()
         return port
 
-    def _prepare_socket_file(self, socket_path, default_prefix):
+    def _prepare_socket_file(self, socket_path: str, default_prefix: str):
         """Prepare the socket file for raylet and plasma.
 
         This method helps to prepare a socket file.
@@ -888,7 +889,7 @@ class Node:
             process_info,
         ]
 
-    def start_dashboard(self, require_dashboard):
+    def start_dashboard(self, require_dashboard: bool):
         """Start the dashboard.
 
         Args:
@@ -955,10 +956,10 @@ class Node:
 
     def start_raylet(
         self,
-        plasma_directory,
-        object_store_memory,
-        use_valgrind=False,
-        use_profiler=False,
+        plasma_directory: str,
+        object_store_memory: int,
+        use_valgrind: bool = False,
+        use_profiler: bool = False,
     ):
         """Start the raylet.
 
@@ -1146,7 +1147,11 @@ class Node:
             self.start_log_monitor()
 
     def _kill_process_type(
-        self, process_type, allow_graceful=False, check_alive=True, wait=False
+        self,
+        process_type,
+        allow_graceful: bool = False,
+        check_alive: bool = True,
+        wait: bool = False,
     ):
         """Kill a process of a given type.
 

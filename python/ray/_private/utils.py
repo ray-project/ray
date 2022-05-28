@@ -77,7 +77,7 @@ def _random_string():
     return id_bytes
 
 
-def format_error_message(exception_message, task_exception=False):
+def format_error_message(exception_message: str, task_exception=False):
     """Improve the formatting of an exception thrown by a remote function.
 
     This method takes a traceback from an exception and makes it nicer by
@@ -99,7 +99,7 @@ def format_error_message(exception_message, task_exception=False):
     return "\n".join(lines)
 
 
-def push_error_to_driver(worker, error_type, message, job_id=None):
+def push_error_to_driver(worker, error_type: str, message: str, job_id=None):
     """Push an error message to the driver to be printed in the background.
 
     Args:
@@ -138,8 +138,8 @@ def construct_error_message(job_id, error_type, message, timestamp):
 
 
 def publish_error_to_driver(
-    error_type,
-    message,
+    error_type: str,
+    message: str,
     gcs_publisher,
     job_id=None,
 ):
@@ -960,7 +960,7 @@ def get_conda_env_dir(env_name):
     return env_dir
 
 
-def get_call_location(back=1):
+def get_call_location(back: int = 1):
     """
     Get the location (filename and line number) of a function caller, `back`
     frames up the stack.
@@ -985,7 +985,10 @@ _PRINTED_WARNING = set()
 # The following is inspired by
 # https://github.com/tensorflow/tensorflow/blob/dec8e0b11f4f87693b67e125e67dfbc68d26c205/tensorflow/python/util/deprecation.py#L274-L329
 def deprecated(
-    instructions=None, removal_release=None, removal_date=None, warn_once=True
+    instructions: Optional[str] = None,
+    removal_release: Optional[str] = None,
+    removal_date: Optional[str] = None,
+    warn_once: bool = True,
 ):
     """
     Creates a decorator for marking functions as deprecated. The decorator

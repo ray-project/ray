@@ -361,7 +361,7 @@ def set_usage_stats_enabled_via_env_var(enabled) -> None:
     os.environ[usage_constant.USAGE_STATS_ENABLED_ENV_VAR] = "1" if enabled else "0"
 
 
-def put_cluster_metadata(gcs_client, num_retries) -> None:
+def put_cluster_metadata(gcs_client, num_retries: int) -> None:
     """Generate the cluster metadata and store it to GCS.
 
     It is a blocking API.
@@ -384,7 +384,7 @@ def put_cluster_metadata(gcs_client, num_retries) -> None:
     return metadata
 
 
-def get_library_usages_to_report(gcs_client, num_retries) -> List[str]:
+def get_library_usages_to_report(gcs_client, num_retries: int) -> List[str]:
     try:
         result = []
         library_usages = ray._private.utils.internal_kv_list_with_retry(
@@ -402,7 +402,7 @@ def get_library_usages_to_report(gcs_client, num_retries) -> List[str]:
         return []
 
 
-def get_cluster_status_to_report(gcs_client, num_retries) -> ClusterStatusToReport:
+def get_cluster_status_to_report(gcs_client, num_retries: int) -> ClusterStatusToReport:
     """Get the current status of this cluster.
 
     It is a blocking API.
@@ -451,7 +451,9 @@ def get_cluster_status_to_report(gcs_client, num_retries) -> ClusterStatusToRepo
         return ClusterStatusToReport()
 
 
-def get_cluster_config_to_report(cluster_config_file_path) -> ClusterConfigToReport:
+def get_cluster_config_to_report(
+    cluster_config_file_path: str,
+) -> ClusterConfigToReport:
     """Get the static cluster (autoscaler) config used to launch this cluster.
 
     Params:
@@ -527,7 +529,7 @@ def get_cluster_config_to_report(cluster_config_file_path) -> ClusterConfigToRep
         return ClusterConfigToReport()
 
 
-def get_cluster_metadata(gcs_client, num_retries) -> dict:
+def get_cluster_metadata(gcs_client, num_retries: int) -> dict:
     """Get the cluster metadata from GCS.
 
     It is a blocking API.

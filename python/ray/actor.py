@@ -1,6 +1,7 @@
 import inspect
 import logging
 import weakref
+from typing import Optional, List, Dict, Any
 
 import ray.ray_constants as ray_constants
 import ray._raylet
@@ -1021,12 +1022,12 @@ class ActorHandle:
 
     def _actor_method_call(
         self,
-        method_name,
-        args=None,
-        kwargs=None,
-        name="",
-        num_returns=None,
-        concurrency_group_name=None,
+        method_name: str,
+        args: List[Any] = None,
+        kwargs: Dict[str, Any] = None,
+        name: str = "",
+        num_returns: Optional[int] = None,
+        concurrency_group_name: Optional[str] = None,
     ):
         """Method execution stub for an actor handle.
 

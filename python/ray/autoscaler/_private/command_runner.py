@@ -66,7 +66,7 @@ def is_using_login_shells():
     return _config["use_login_shells"]
 
 
-def set_using_login_shells(val):
+def set_using_login_shells(val: bool):
     """Choose between login and non-interactive shells.
 
     Non-interactive shells have the benefit of receiving less output from
