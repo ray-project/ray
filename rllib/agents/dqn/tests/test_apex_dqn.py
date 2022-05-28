@@ -145,7 +145,7 @@ class TestApexDQN(unittest.TestCase):
         for _ in framework_iterator(config):
             trainer = config.build(env="CartPole-v0")
 
-            lr = _step_n_times(trainer, 5)  # 50 timesteps
+            lr = _step_n_times(trainer, 3)  # 50 timesteps
             # Close to 0.2
             self.assertGreaterEqual(lr, 0.1)
 

@@ -44,7 +44,8 @@ class Counter:
         return self.val
 
 
-@pytest.mark.parametrize("use_build", [False, True])
+# TODO(Shreyas): Enable use_build once serve.build() PR is out.
+@pytest.mark.parametrize("use_build", [False])
 def test_two_dags_shared_instance(serve_instance, use_build):
     """Test classmethod chain behavior is consistent across core and serve dag.
 

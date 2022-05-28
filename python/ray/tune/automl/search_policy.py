@@ -42,7 +42,7 @@ class AutoMLSearcher(SearchAlgorithm):
         """Initialize AutoMLSearcher.
 
         Arguments:
-            search_space (SearchSpace): The space to search.
+            search_space: The space to search.
             reward_attr: The attribute name of the reward in the result.
         """
         # Pass experiment later to allow construction without this parameter
@@ -218,7 +218,7 @@ class AutoMLSearcher(SearchAlgorithm):
         parameter permutations
 
         Arguments:
-            trials (list): A list of Trial object, where user can fetch the
+            trials: A list of Trial object, where user can fetch the
                 result attribute, etc.
 
         Returns:
