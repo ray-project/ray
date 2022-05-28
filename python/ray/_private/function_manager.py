@@ -371,7 +371,7 @@ class FunctionActorManager:
         else:
             return False
 
-    def _wait_for_function(self, function_descriptor, job_id, timeout=10):
+    def _wait_for_function(self, function_descriptor, job_id: str, timeout=10):
         """Wait until the function to be executed is present on this worker.
         This method will simply loop until the import thread has imported the
         relevant function. If we spend too long in this loop, that may indicate
@@ -646,7 +646,9 @@ class FunctionActorManager:
         actor_class.__module__ = module_name
         return actor_class
 
-    def _make_actor_method_executor(self, method_name, method, actor_imported):
+    def _make_actor_method_executor(
+        self, method_name: str, method, actor_imported: bool
+    ):
         """Make an executor that wraps a user-defined actor method.
         The wrapped method updates the worker's internal state and performs any
         necessary checkpointing operations.

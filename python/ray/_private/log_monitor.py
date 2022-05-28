@@ -9,6 +9,7 @@ import re
 import shutil
 import time
 import traceback
+from typing import Set, List
 
 import ray.ray_constants as ray_constants
 import ray._private.gcs_pubsub as gcs_pubsub
@@ -86,7 +87,7 @@ class LogMonitor:
        lines in the file. If so, we will publish them to Ray pubsub.
 
     Attributes:
-        host: The hostname of this machine, for grouping log messages.
+        ip: The hostname of this machine, for grouping log messages.
         logs_dir: The directory that the log files are in.
         log_filenames: This is the set of filenames of all files in
             open_file_infos and closed_file_infos.
@@ -99,13 +100,13 @@ class LogMonitor:
 
     def __init__(self, logs_dir, gcs_address):
         """Initialize the log monitor object."""
-        self.ip = services.get_node_ip_address()
-        self.logs_dir = logs_dir
+        self.ip: str = services.get_node_ip_address()
+        self.logs_dir: str = logs_dir
         self.publisher = gcs_pubsub.GcsPublisher(address=gcs_address)
-        self.log_filenames = set()
-        self.open_file_infos = []
-        self.closed_file_infos = []
-        self.can_open_more_files = True
+        self.log_filenames: Set[str] = set()
+        self.open_file_infos: List[LogFileInfo] = []
+        self.closed_file_infos: List[LogFileInfo] = []
+        self.can_open_more_files: bool = True
 
     def close_all_files(self):
         """Close all open files (so that we can open more)."""
