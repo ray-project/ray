@@ -6,7 +6,7 @@ import logging
 import os
 from pathlib import Path
 import shutil
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple, Union
 from urllib.parse import urlparse
 from zipfile import ZipFile
 from ray.experimental.internal_kv import (
@@ -74,7 +74,7 @@ def _dir_travel(
     path: Path,
     excludes: List[Callable],
     handler: Callable,
-    logger: Optional[logging.Logger] = default_logger,
+    logger: logging.Logger = default_logger,
 ):
     """Travels the path recursively, calling the handler on each subpath.
 
@@ -104,7 +104,7 @@ def _hash_directory(
     root: Path,
     relative_path: Path,
     excludes: Optional[Callable],
-    logger: Optional[logging.Logger] = default_logger,
+    logger: logging.Logger = default_logger,
 ) -> bytes:
     """Helper function to create hash of a directory.
 
@@ -126,8 +126,8 @@ def _hash_directory(
         nonlocal hash_val
         hash_val = _xor_bytes(hash_val, md5.digest())
 
-    excludes = [] if excludes is None else [excludes]
-    _dir_travel(root, excludes, handler, logger=logger)
+    excludes_list = [] if excludes is None else [excludes]
+    _dir_travel(root, excludes_list, handler, logger=logger)
     return hash_val
 
 
@@ -294,7 +294,7 @@ def pin_runtime_env_uri(uri: str, *, expiration_s: Optional[int] = None) -> None
 def _store_package_in_gcs(
     pkg_uri: str,
     data: bytes,
-    logger: Optional[logging.Logger] = default_logger,
+    logger: logging.Logger = default_logger,
 ) -> int:
     """Stores package data in the Global Control Store (GCS).
 
@@ -327,7 +327,7 @@ def _store_package_in_gcs(
         raise RuntimeError(
             "Failed to store package in the GCS.\n"
             f"  - GCS URI: {pkg_uri}\n"
-            f"  - Package data ({size_str}): {data[:15]}...\n"
+            f"  - Package data ({size_str}): {data[:15]!r}...\n"
         ) from e
     logger.info(f"Successfully pushed file package '{pkg_uri}'.")
     return len(data)
@@ -339,11 +339,11 @@ def _get_local_path(base_directory: str, pkg_uri: str) -> str:
 
 
 def _zip_directory(
-    directory: str,
+    directory: Union[str, Path],
     excludes: List[str],
-    output_path: str,
+    output_path: Union[str, Path],
     include_parent_dir: bool = False,
-    logger: Optional[logging.Logger] = default_logger,
+    logger: logging.Logger = default_logger,
 ) -> None:
     """Zip the target directory and write it to the output_path.
 
@@ -375,8 +375,8 @@ def _zip_directory(
                     to_path = dir_path.name / to_path
                 zip_handler.write(path, to_path)
 
-        excludes = [_get_excludes(dir_path, excludes)]
-        _dir_travel(dir_path, excludes, handler, logger=logger)
+        excludes_list = [_get_excludes(dir_path, excludes)]
+        _dir_travel(dir_path, excludes_list, handler, logger=logger)
 
 
 def package_exists(pkg_uri: str) -> bool:
@@ -439,11 +439,11 @@ def get_uri_for_directory(directory: str, excludes: Optional[List[str]] = None) 
     if excludes is None:
         excludes = []
 
-    directory = Path(directory).absolute()
-    if not directory.exists() or not directory.is_dir():
-        raise ValueError(f"directory {directory} must be an existing directory")
+    dir = Path(directory).absolute()
+    if not dir.exists() or not dir.is_dir():
+        raise ValueError(f"directory {dir} must be an existing directory")
 
-    hash_val = _hash_directory(directory, directory, _get_excludes(directory, excludes))
+    hash_val = _hash_directory(dir, dir, _get_excludes(dir, excludes))
 
     return "{protocol}://{pkg_name}.zip".format(
         protocol=Protocol.GCS.value, pkg_name=RAY_PKG_PREFIX + hash_val.hex()
@@ -467,7 +467,7 @@ def create_package(
     target_path: Path,
     include_parent_dir: bool = False,
     excludes: Optional[List[str]] = None,
-    logger: Optional[logging.Logger] = default_logger,
+    logger: logging.Logger = default_logger,
 ):
     if excludes is None:
         excludes = []
@@ -492,7 +492,7 @@ def upload_package_if_needed(
     directory: str,
     include_parent_dir: bool = False,
     excludes: Optional[List[str]] = None,
-    logger: Optional[logging.Logger] = default_logger,
+    logger: logging.Logger = default_logger,
 ) -> bool:
     """Upload the contents of the directory under the given URI.
 
@@ -546,7 +546,7 @@ def get_local_dir_from_uri(uri: str, base_directory: str) -> Path:
 def download_and_unpack_package(
     pkg_uri: str,
     base_directory: str,
-    logger: Optional[logging.Logger] = default_logger,
+    logger: logging.Logger = default_logger,
 ) -> str:
     """Download the package corresponding to this URI and unpack it if zipped.
 
@@ -641,7 +641,7 @@ def download_and_unpack_package(
         return str(local_dir)
 
 
-def get_top_level_dir_from_compressed_package(package_path: str):
+def get_top_level_dir_from_compressed_package(package_path: Union[Path, str]):
     """
     If compressed package at package_path contains a single top-level
     directory, returns the name of the top-level directory. Otherwise,
@@ -668,7 +668,7 @@ def get_top_level_dir_from_compressed_package(package_path: str):
     return top_level_directory
 
 
-def remove_dir_from_filepaths(base_dir: str, rdir: str):
+def remove_dir_from_filepaths(base_dir: Union[str, Path], rdir: str):
     """
     base_dir: String path of the directory containing rdir
     rdir: String path of directory relative to base_dir whose contents should
@@ -697,11 +697,11 @@ def remove_dir_from_filepaths(base_dir: str, rdir: str):
 
 
 def unzip_package(
-    package_path: str,
-    target_dir: str,
+    package_path: Union[str, Path],
+    target_dir: Union[str, Path],
     remove_top_level_directory: bool,
     unlink_zip: bool,
-    logger: Optional[logging.Logger] = default_logger,
+    logger: logging.Logger = default_logger,
 ):
     """
     Unzip the compressed package contained at package_path and store the
@@ -735,7 +735,7 @@ def unzip_package(
         Path(package_path).unlink()
 
 
-def delete_package(pkg_uri: str, base_directory: str) -> Tuple[bool, int]:
+def delete_package(pkg_uri: str, base_directory: str) -> bool:
     """Deletes a specific URI from the local filesystem.
 
     Args:

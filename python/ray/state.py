@@ -12,7 +12,7 @@ from ray._private.client_mode_hook import client_mode_hook
 from ray._private.utils import decode, binary_to_hex, hex_to_binary
 from ray._private.resource_spec import NODE_ID_PREFIX
 
-from ray._raylet import GlobalStateAccessor
+from ray._raylet import GlobalStateAccessor  # type: ignore
 
 logger = logging.getLogger(__name__)
 

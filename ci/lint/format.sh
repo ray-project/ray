@@ -124,6 +124,8 @@ MYPY_FILES=(
     'actor.py'
     'remote_function.py'
     'runtime_env.py'
+    'state.py'
+    '_private/runtime_env/packaging.py'
 )
 
 BLACK_EXCLUDES=(
