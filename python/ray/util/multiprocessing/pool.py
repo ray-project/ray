@@ -197,11 +197,11 @@ class ResultThread(threading.Thread):
 
     def __init__(
         self,
-        object_refs,
-        single_result=False,
-        callback=None,
-        error_callback=None,
-        total_object_refs=None,
+        object_refs: list,
+        single_result: bool = False,
+        callback: callable = None,
+        error_callback: callable = None,
+        total_object_refs: Optional[int] = None,
     ):
         threading.Thread.__init__(self, daemon=True)
         self._got_error = False

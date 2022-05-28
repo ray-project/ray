@@ -1,3 +1,5 @@
+from typing import List, Callable, Any
+
 import ray
 from ray.util.annotations import PublicAPI
 
@@ -22,7 +24,7 @@ class ActorPool:
         [2, 4, 6, 8]
     """
 
-    def __init__(self, actors):
+    def __init__(self, actors: list):
         # actors to be used
         self._idle_actors = list(actors)
 
@@ -41,7 +43,7 @@ class ActorPool:
         # next work depending when actors free
         self._pending_submits = []
 
-    def map(self, fn, values):
+    def map(self, fn: Callable[[Any], Any], values: List[Any]):
         """Apply the given function in parallel over the actors and values.
 
         This returns an ordered iterator that will return results of the map
@@ -78,7 +80,7 @@ class ActorPool:
         while self.has_next():
             yield self.get_next()
 
-    def map_unordered(self, fn, values):
+    def map_unordered(self, fn: Callable[[Any], Any], values: List[Any]):
         """Similar to map(), but returning an unordered iterator.
 
         This returns an unordered iterator that will return results of the map
