@@ -67,7 +67,7 @@ class AlphaZeroConfig(TrainerConfig):
     """Defines a configuration class from which an AlphaZeroTrainer can be built.
 
     Example:
-        >>> from ray.rllib.agents.alpha_zero import AlphaZeroConfig
+        >>> from ray.rllib.algorithms.alpha_zero import AlphaZeroConfig
         >>> config = AlphaZeroConfig().training(sgd_minibatch_size=256)\
         ...             .resources(num_gpus=0)\
         ...             .rollouts(num_workers=4)
@@ -77,7 +77,7 @@ class AlphaZeroConfig(TrainerConfig):
         >>> trainer.train()
 
     Example:
-        >>> from ray.rllib.agents.alpha_zero import AlphaZeroConfig
+        >>> from ray.rllib.algorithms.alpha_zero import AlphaZeroConfig
         >>> from ray import tune
         >>> config = AlphaZeroConfig()
         >>> # Print out some default values.
@@ -107,7 +107,6 @@ class AlphaZeroConfig(TrainerConfig):
         self.num_sgd_iter = 30
         self.learning_starts = 1000
         self.replay_buffer_config = {
-            "_enable_replay_buffer_api": True,
             "type": "SimpleReplayBuffer",
             # Size of the replay buffer in batches (not timesteps!).
             "capacity": 1000,
@@ -138,7 +137,7 @@ class AlphaZeroConfig(TrainerConfig):
         # Override some of TrainerConfig's default values with AlphaZero-specific
         # values.
         self.framework_str = "torch"
-        self.callbacks = AlphaZeroDefaultCallbacks
+        self.callbacks_class = AlphaZeroDefaultCallbacks
         self.lr = 5e-5
         self.rollout_fragment_length = 200
         self.train_batch_size = 4000
