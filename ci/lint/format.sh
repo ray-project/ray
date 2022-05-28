@@ -122,6 +122,8 @@ MYPY_FILES=(
     #'ray_operator/operator.py'
     'ray_operator/operator_utils.py'
     'actor.py'
+    'remote_function.py'
+    'runtime_env.py'
 )
 
 BLACK_EXCLUDES=(

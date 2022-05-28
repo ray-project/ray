@@ -593,17 +593,17 @@ class RuntimeEnv(dict):
     def env_vars(self) -> Dict:
         return self.get("env_vars", {})
 
-    def has_conda(self) -> str:
+    def has_conda(self) -> bool:
         if self.get("conda"):
             return True
         return False
 
-    def conda_env_name(self) -> str:
+    def conda_env_name(self) -> Optional[str]:
         if not self.has_conda() or not isinstance(self["conda"], str):
             return None
         return self["conda"]
 
-    def conda_config(self) -> str:
+    def conda_config(self) -> Optional[str]:
         if not self.has_conda() or not isinstance(self["conda"], dict):
             return None
         return json.dumps(self["conda"], sort_keys=True)
@@ -648,7 +648,7 @@ class RuntimeEnv(dict):
             return None
         return self["container"].get("worker_path", "")
 
-    def py_container_run_options(self) -> List:
+    def py_container_run_options(self) -> Optional[List]:
         if not self.has_py_container():
             return None
         return self["container"].get("run_options", [])

@@ -5,7 +5,7 @@ import uuid
 
 from ray import cloudpickle as pickle
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-from ray._raylet import PythonFunctionDescriptor
+from ray._raylet import PythonFunctionDescriptor  # type: ignore
 from ray import cross_language, Language
 from ray._private.client_mode_hook import client_mode_convert_function
 from ray._private.client_mode_hook import client_mode_should_convert
