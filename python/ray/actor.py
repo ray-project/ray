@@ -1,5 +1,6 @@
 import inspect
 import logging
+from typing import Any, Dict
 import weakref
 
 import ray.ray_constants as ray_constants
@@ -15,7 +16,7 @@ from ray.util.scheduling_strategies import (
 )
 
 from ray import ActorClassID, Language
-from ray._raylet import PythonFunctionDescriptor
+from ray._raylet import PythonFunctionDescriptor  # type: ignore
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.client_mode_hook import client_mode_should_convert
 from ray._private.client_mode_hook import client_mode_convert_actor
@@ -209,7 +210,7 @@ class ActorClassMethodMetadata(object):
             each actor method.
     """
 
-    _cache = {}  # This cache will be cleared in ray.worker.disconnect()
+    _cache: Dict[Any, Any] = {}  # This cache will be cleared in ray.worker.disconnect()
 
     def __init__(self):
         class_name = type(self).__name__
