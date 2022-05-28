@@ -2,7 +2,7 @@ import asyncio
 import logging
 
 from itertools import islice
-from typing import List
+from typing import List, Tuple
 
 from ray.core.generated.common_pb2 import TaskStatus
 import ray.dashboard.utils as dashboard_utils
@@ -10,6 +10,8 @@ import ray.dashboard.memory_utils as memory_utils
 
 from ray.experimental.state.common import (
     filter_fields,
+    StateSchema,
+    SupportedFilterType,
     ActorState,
     PlacementGroupState,
     NodeState,
@@ -62,6 +64,44 @@ class StateAPIManager:
     def data_source_client(self):
         return self._client
 
+    def _filter(
+        self,
+        data: List[dict],
+        filters: List[Tuple[str, SupportedFilterType]],
+        state_dataclass: StateSchema,
+    ) -> List[dict]:
+        """Return the filtered data given filters.
+
+        Args:
+            data: A list of state data.
+            filters: A list of KV tuple to filter data (key, val). The data is filtered
+                if data[key] != val.
+            state_dataclass: The state schema.
+
+        Returns:
+            A list of filtered state data in dictionary. Each state data's
+            unncessary columns are filtered by the given state_dataclass schema.
+        """
+        result = []
+        for datum in data:
+            match = True
+            logger.info(filters)
+            for filter_column, filter_value in filters:
+                filterable_columns = state_dataclass.filterable_columns()
+                if filter_column not in filterable_columns:
+                    raise ValueError(
+                        f"The given filter column {filter_column} is not supported. "
+                        f"Supported filter columns: {filterable_columns}"
+                    )
+
+                if datum[filter_column] != filter_value:
+                    match = False
+                    break
+
+            if match:
+                result.append(filter_fields(datum, state_dataclass))
+        return result
+
     async def list_actors(self, *, option: ListApiOptions) -> ListApiResponse:
         """List all actor information from the cluster.
 
@@ -78,9 +118,9 @@ class StateAPIManager:
         result = []
         for message in reply.actor_table_data:
             data = self._message_to_dict(message=message, fields_to_decode=["actor_id"])
-            data = filter_fields(data, ActorState)
             result.append(data)
 
+        result = self._filter(result, option.filters, ActorState)
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["actor_id"])
         return ListApiResponse(
@@ -108,9 +148,9 @@ class StateAPIManager:
                 message=message,
                 fields_to_decode=["placement_group_id"],
             )
-            data = filter_fields(data, PlacementGroupState)
             result.append(data)
 
+        result = self._filter(result, option.filters, PlacementGroupState)
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["placement_group_id"])
         return ListApiResponse(
@@ -132,9 +172,9 @@ class StateAPIManager:
         result = []
         for message in reply.node_info_list:
             data = self._message_to_dict(message=message, fields_to_decode=["node_id"])
-            data = filter_fields(data, NodeState)
             result.append(data)
 
+        result = self._filter(result, option.filters, NodeState)
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["node_id"])
         return ListApiResponse(
@@ -159,9 +199,9 @@ class StateAPIManager:
                 message=message, fields_to_decode=["worker_id"]
             )
             data["worker_id"] = data["worker_address"]["worker_id"]
-            data = filter_fields(data, WorkerState)
             result.append(data)
 
+        result = self._filter(result, option.filters, WorkerState)
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["worker_id"])
         return ListApiResponse(
@@ -233,9 +273,9 @@ class StateAPIManager:
                     data["scheduling_state"] = TaskStatus.DESCRIPTOR.values_by_number[
                         TaskStatus.RUNNING
                     ].name
-                data = filter_fields(data, TaskState)
                 result.append(data)
 
+        result = self._filter(result, option.filters, TaskState)
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["task_id"])
         return ListApiResponse(
@@ -304,9 +344,9 @@ class StateAPIManager:
             # TODO(sang): Refactor `construct_memory_table`.
             data["object_id"] = data["object_ref"]
             del data["object_ref"]
-            data = filter_fields(data, ObjectState)
             result.append(data)
 
+        result = self._filter(result, option.filters, ObjectState)
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["object_id"])
         return ListApiResponse(
@@ -350,7 +390,6 @@ class StateAPIManager:
                     data["runtime_env"]
                 ).to_dict()
                 data["node_id"] = node_id
-                data = filter_fields(data, RuntimeEnvState)
                 result.append(data)
 
         partial_failure_warning = None
@@ -366,6 +405,8 @@ class StateAPIManager:
             partial_failure_warning = (
                 f"The returned data may contain incomplete result. {warning_msg}"
             )
+
+        result = self._filter(result, option.filters, RuntimeEnvState)
 
         # Sort to make the output deterministic.
         def sort_func(entry):

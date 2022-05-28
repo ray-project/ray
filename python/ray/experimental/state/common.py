@@ -1,7 +1,8 @@
 import logging
 
+from abc import ABC
 from dataclasses import dataclass, fields
-from typing import List, Dict, Union
+from typing import List, Dict, Union, Tuple, Set
 
 from ray.dashboard.modules.job.common import JobInfo
 
@@ -20,10 +21,14 @@ def filter_fields(data: dict, state_dataclass) -> dict:
     return filtered_data
 
 
+SupportedFilterType = Union[str, bool, int, float]
+
+
 @dataclass(init=True)
 class ListApiOptions:
     limit: int
     timeout: int
+    filters: List[Tuple[str, SupportedFilterType]]
     # When the request is processed on the server side,
     # we should apply multiplier so that server side can finish
     # processing a request within timeout. Otherwise,
@@ -38,33 +43,62 @@ class ListApiOptions:
         # we need to have a timeout that's smaller than the users' timeout.
         # 80% is configured arbitrarily.
         self.timeout = int(self.timeout * self._server_timeout_multiplier)
+        if self.filters is None:
+            self.filters = []
+
+
+class StateSchema(ABC):
+    @classmethod
+    def filterable_columns(cls) -> Set[str]:
+        """Return a set of columns that support filtering.
+
+        NOTE: Currently, only bool, str, int, and float
+            types are supported for filtering.
+        TODO(sang): Filter on the source side instead for optimization.
+        """
+        raise NotImplementedError
 
 
 # TODO(sang): Replace it with Pydantic or gRPC schema (once interface is finalized).
 @dataclass(init=True)
-class ActorState:
+class ActorState(StateSchema):
     actor_id: str
     state: str
     class_name: str
 
+    @classmethod
+    def filterable_columns(cls) -> Set[str]:
+        return {"actor_id", "state", "class_name"}
+
 
 @dataclass(init=True)
-class PlacementGroupState:
+class PlacementGroupState(StateSchema):
     placement_group_id: str
     state: str
 
+    @classmethod
+    def filterable_columns(cls) -> Set[str]:
+        return {"placement_group_id", "state"}
+
 
 @dataclass(init=True)
-class NodeState:
+class NodeState(StateSchema):
     node_id: str
     state: str
 
+    @classmethod
+    def filterable_columns(cls) -> Set[str]:
+        return {"node_id", "state"}
 
-JobState = JobInfo
+
+class JobState(JobInfo, StateSchema):
+    @classmethod
+    def filterable_columns(cls) -> Set[str]:
+        return {"status", "entrypoint", "error_type"}
 
 
 @dataclass(init=True)
-class WorkerState:
+class WorkerState(StateSchema):
     worker_id: str
     is_alive: str
     worker_type: str
@@ -72,16 +106,28 @@ class WorkerState:
     exit_detail: str
     pid: str
 
+    @classmethod
+    def filterable_columns(cls) -> Set[str]:
+        return {"worker_id", "is_alive", "worker_type", "exit_type", "pid"}
+
 
 @dataclass(init=True)
-class TaskState:
+class TaskState(StateSchema):
     task_id: str
     name: str
     scheduling_state: str
 
+    @classmethod
+    def filterable_columns(cls) -> Set[str]:
+        return {
+            "task_id",
+            "name",
+            "scheduling_state",
+        }
+
 
 @dataclass(init=True)
-class ObjectState:
+class ObjectState(StateSchema):
     object_id: str
     pid: int
     node_ip_address: str
@@ -95,15 +141,34 @@ class ObjectState:
     contained_in_owned: int
     type: str
 
+    @classmethod
+    def filterable_columns(cls) -> Set[str]:
+        return {
+            "object_id",
+            "node_ip_address",
+            "reference_type",
+            "task_status",
+            "type",
+            "pid",
+        }
+
 
 @dataclass(init=True)
-class RuntimeEnvState:
+class RuntimeEnvState(StateSchema):
     runtime_env: str
     ref_cnt: int
     success: bool
     error: str
     creation_time_ms: float
     node_id: str
+
+    @classmethod
+    def filterable_columns(cls) -> Set[str]:
+        return {
+            "node_id",
+            "runtime_env",
+            "success",
+        }
 
 
 @dataclass(init=True)

@@ -38,7 +38,8 @@ class StateHead(dashboard_utils.DashboardHeadModule):
         # Only apply 80% of the timeout so that
         # the API will reply before client times out if query to the source fails.
         timeout = int(req.query.get("timeout"))
-        return ListApiOptions(limit=limit, timeout=timeout)
+        filters = eval(req.query.get("filters", "[]"))
+        return ListApiOptions(limit=limit, timeout=timeout, filters=filters)
 
     def _reply(self, success: bool, error_message: str, result: dict, **kwargs):
         """Reply to the client."""
