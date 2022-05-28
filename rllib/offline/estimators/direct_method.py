@@ -18,7 +18,7 @@ import numpy as np
 # (And find a better name than `should_train`)
 def k_fold_cv(
     batch: SampleBatchType, k: int, should_train: bool = True
-) -> Generator[Tuple[List[SampleBatch]]]:
+) -> Generator[Tuple[List[SampleBatch]], None, None]:
     """Utility function that returns a k-fold cross validation generator
     over episodes from the given batch. If the number of episodes in the
     batch is less than `k` or `should_train` is set to False, yields an empty
