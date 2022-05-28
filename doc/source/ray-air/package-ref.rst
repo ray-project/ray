@@ -46,6 +46,10 @@ Trainer
     :members:
     :show-inheritance:
 
+.. automodule:: ray.ml.train.integrations.horovod
+    :members:
+    :show-inheritance:
+
 .. automodule:: ray.ml.train.integrations.huggingface
     :members:
     :show-inheritance:
