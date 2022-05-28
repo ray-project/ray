@@ -290,7 +290,7 @@ py_test(
 
 py_test(
     name = "test_trial_relative_logdir",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_trial_relative_logdir.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "tests_dir_T"],
