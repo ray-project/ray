@@ -136,7 +136,7 @@ Readers pulling batches from the pipeline will see the same data blocks repeated
 Pre-repeat vs post-repeat transforms
 ====================================
 
-Transformations made prior to the Dataset prior to the call to ``.repeat()`` may be re-used. Transformations made to the DatasetPipeline after the repeat will always be executed once for each repetition of the Dataset.
+Transformations made prior to the call to ``.repeat()`` may be re-used. Transformations made to the DatasetPipeline after the repeat will always be executed once for each repetition of the Dataset.
 
 For example, in the following pipeline, the ``map(func)`` transformation only occurs once. However, the random shuffle is applied to each repetition in the pipeline.
 
