@@ -71,8 +71,9 @@ class LessSampledReplayBuffer(ReplayBuffer):
 
 config["replay_buffer_config"]["type"] = LessSampledReplayBuffer
 
-tune.run("SimpleQ", config=config, stop={
-    "episode_reward_mean": 70, "training_iteration": 15})
+tune.run(
+    "SimpleQ", config=config, stop={"episode_reward_mean": 70, "training_iteration": 15}
+)
 
 # __sphinx_doc_replay_buffer_own_buffer__end__
 
@@ -89,8 +90,9 @@ batch = SampleBatch({})
 t = 0
 while not done:
     obs, reward, done, info = env.step([0, 0])
-    one_step_batch = SampleBatch({"obs": [obs], "t": [t], "reward": [reward], "dones":
-        [done]})
+    one_step_batch = SampleBatch(
+        {"obs": [obs], "t": [t], "reward": [reward], "dones": [done]}
+    )
     batch = SampleBatch.concat_samples([batch, one_step_batch])
     t += 1
 
@@ -105,6 +107,22 @@ assert len(less_sampled_buffer._storage) == 0
 
 
 # __sphinx_doc_replay_buffer_advanced_usage_underlying_buffers__begin__
+
+config = {
+    "env": "CartPole-v1",
+    "replay_buffer_config": {
+        "type": "MultiAgentReplayBuffer",
+        "underlying_replay_buffer_config": {
+            "type": LessSampledReplayBuffer,
+            "evict_sampled_more_then": 20  # We can specify the default call argument
+            # for the sample method of the underlying buffer method here
+        },
+    },
+}
+
+tune.run(
+    "DQN", config=config, stop={"episode_reward_mean": 70, "training_iteration": 15}
+)
 
 
 # __sphinx_doc_replay_buffer_advanced_usage_underlying_buffers__end__

@@ -7,7 +7,7 @@ RLlib comes with a set of extendable replay buffers which are used mostly in Q-L
 We provide a base :py:class:`~ray.rllib.utils.replay_buffers.replay_buffer.ReplayBuffer` class from which you can build your own buffer.
 Some use cases may require :py:class:`~ray.rllib.utils.replay_buffers.multi_agent_replay_buffer.MultiAgentReplayBuffer`\s.
 You can find buffer types and arguments to modify their behaviour as part of RLlib's default parameters. They are part of
-the ``replay buffer`` config.
+the ``replay_buffer_config``.
 
 Basic Usage
 ===========
@@ -111,10 +111,10 @@ Here is a full example of how to modify the storage_unit and interact with a cus
 
 As noted above, Rllib's :py:class:`~ray.rllib.utils.replay_buffers.multi_agent_replay_buffer.MultiAgentReplayBuffer`\s
 support modification of underlying replay buffers. Under the hood, the :py:class:`~ray.rllib.utils.replay_buffers.multi_agent_replay_buffer.MultiAgentReplayBuffer`
-stores experiences per policy in separate underlying replay buffers. You can modify their behaviour by specifying an underlying replay buffer config that works
-the same as the parent's config.
+stores experiences per policy in separate underlying replay buffers. You can modify their behaviour by specifying an underlying ``replay_buffer_config`` that works
+the same way as the parent's config.
 
-Here is an example of how to specify an underlying replay buffer:
+Here is an example of how to specify an underlying replay buffer along with a default call argument:
 
 .. literalinclude:: ../../../../rllib/examples/documentation/replay_buffer_demo.py
     :language: python
