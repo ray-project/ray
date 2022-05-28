@@ -66,6 +66,8 @@ class TrialRelativeLogdirTest(unittest.TestCase):
         local_dir_path = Path("/tmp/test_rel")
         if local_dir_path.exists():
             local_dir = tempfile.mkdtemp(prefix=str(local_dir_path) + "_")
+        else:
+            local_dir = str(local_dir_path)
 
         tune.run("PPO", config=config, stop={"episodes_total": 5}, local_dir=local_dir)
 
@@ -125,6 +127,8 @@ class TrialRelativeLogdirTest(unittest.TestCase):
         local_dir_path = Path("/tmp/test_rel")
         if local_dir_path.exists():
             local_dir = tempfile.mkdtemp(prefix=str(local_dir_path) + "_")
+        else:
+            local_dir = str(local_dir_path)
 
         tune.run(
             "PPO",
@@ -196,6 +200,8 @@ class TrialRelativeLogdirTest(unittest.TestCase):
         local_dir_path = Path("/tmp/test_rel")
         if local_dir_path.exists():
             local_dir = tempfile.mkdtemp(prefix=str(local_dir_path) + "_")
+        else:
+            local_dir = str(local_dir_path)
 
         tune.run("PPO", config=config, stop={"episodes_total": 5}, local_dir=local_dir)
 
