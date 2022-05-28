@@ -108,9 +108,9 @@ def wandb_mixin(func: Callable):
     are used to configure the ``WandbTrainableMixin`` itself:
 
     Args:
-        api_key_file (str): Path to file containing the Wandb API KEY. This
+        api_key_file: Path to file containing the Wandb API KEY. This
             file must be on all nodes if using the `wandb_mixin`.
-        api_key (str): Wandb API Key. Alternative to setting `api_key_file`.
+        api_key: Wandb API Key. Alternative to setting `api_key_file`.
 
     Wandb's ``group``, ``run_id`` and ``run_name`` are automatically selected
     by Tune, but can be overwritten by filling out the respective configuration
@@ -470,13 +470,13 @@ class WandbLogger(Logger):
     are used to configure the WandbLogger itself:
 
     Args:
-        api_key_file (str): Path to file containing the Wandb API KEY. This
+        api_key_file: Path to file containing the Wandb API KEY. This
             file only needs to be present on the node running the Tune script
             if using the WandbLogger.
-        api_key (str): Wandb API Key. Alternative to setting ``api_key_file``.
-        excludes (list): List of metrics that should be excluded from
+        api_key: Wandb API Key. Alternative to setting ``api_key_file``.
+        excludes: List of metrics that should be excluded from
             the log.
-        log_config (bool): Boolean indicating if the ``config`` parameter of
+        log_config: Boolean indicating if the ``config`` parameter of
             the ``results`` dict should be logged. This makes sense if
             parameters will change during training, e.g. with
             PopulationBasedTraining. Defaults to False.
