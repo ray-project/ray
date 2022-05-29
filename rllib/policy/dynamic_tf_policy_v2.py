@@ -27,9 +27,11 @@ from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.spaces.space_utils import get_dummy_batch_for_space
 from ray.rllib.utils.tf_utils import get_placeholder
+from ray.rllib.utils.tf_run_builder import _TFRunBuilder
 from ray.rllib.utils.typing import (
     LocalOptimizer,
     ModelGradients,
+    TensorStructType,
     TensorType,
     TrainerConfigDict,
 )
@@ -87,7 +89,6 @@ class DynamicTFPolicyV2(TFPolicy):
         (
             sampled_action,
             sampled_action_logp,
-            dist_inputs,
             self._policy_extra_action_fetches,
         ) = self._init_action_fetches(timestep, explore)
 
@@ -118,7 +119,7 @@ class DynamicTFPolicyV2(TFPolicy):
             action_input=self._input_dict[SampleBatch.ACTIONS],
             sampled_action=sampled_action,
             sampled_action_logp=sampled_action_logp,
-            dist_inputs=dist_inputs,
+            dist_inputs=None,
             dist_class=self.dist_class,
             loss=None,  # dynamically initialized on run
             loss_inputs=[],
@@ -328,19 +329,19 @@ class DynamicTFPolicyV2(TFPolicy):
         # By default, any sized batch is ok, so simply return 1.
         return 1
 
-    @override(TFPolicy)
-    @DeveloperAPI
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def extra_action_out_fn(self) -> Dict[str, TensorType]:
-        """Extra values to fetch and return from compute_actions().
+    #@override(TFPolicy)
+    #@DeveloperAPI
+    #@OverrideToImplementCustomLogic_CallToSuperRecommended
+    #def extra_action_out_fn(self) -> Dict[str, TensorType]:
+    #    """Extra values to fetch and return from compute_actions().
 
-        Returns:
-             Dict[str, TensorType]: An extra fetch-dict to be passed to and
-                returned from the compute_actions() call.
-        """
-        extra_action_fetches = super().extra_action_out_fn()
-        extra_action_fetches.update(self._policy_extra_action_fetches)
-        return extra_action_fetches
+    #    Returns:
+    #         Dict[str, TensorType]: An extra fetch-dict to be passed to and
+    #            returned from the compute_actions() call.
+    #    """
+    #    extra_action_fetches = super().extra_action_out_fn()
+    #    extra_action_fetches.update(self._policy_extra_action_fetches)
+    #    return extra_action_fetches
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic_CallToSuperRecommended
@@ -395,18 +396,9 @@ class DynamicTFPolicyV2(TFPolicy):
         return super().optimizer()
 
     def _init_dist_class(self):
-        if is_overridden(self.action_sampler_fn) or is_overridden(
-            self.action_distribution_fn
-        ):
-            if not is_overridden(self.make_model):
-                raise ValueError(
-                    "`make_model` is required if `action_sampler_fn` OR "
-                    "`action_distribution_fn` is given"
-                )
-        else:
-            dist_class, _ = ModelCatalog.get_action_dist(
-                self.action_space, self.config["model"]
-            )
+        dist_class, _ = ModelCatalog.get_action_dist(
+            self.action_space, self.config["model"]
+        )
         return dist_class
 
     def _init_view_requirements(self):
@@ -560,7 +552,7 @@ class DynamicTFPolicyV2(TFPolicy):
 
     def _init_action_fetches(
         self, timestep: Union[int, TensorType], explore: Union[bool, TensorType]
-    ) -> Tuple[TensorType, TensorType, TensorType, type, Dict[str, TensorType]]:
+    ) -> Tuple[TensorStructType, TensorType, Dict[str, TensorStructType]]:
         """Create action related fields for base Policy and loss initialization."""
         # Multi-GPU towers do not need any action computing/exploration
         # graphs.
@@ -573,64 +565,82 @@ class DynamicTFPolicyV2(TFPolicy):
             # Create the Exploration object to use for this Policy.
             self.exploration = self._create_exploration()
 
-            # Fully customized action generation (e.g., custom policy).
-            if is_overridden(self.action_sampler_fn):
-                (
-                    sampled_action,
-                    sampled_action_logp,
-                    dist_inputs,
-                    self._state_out,
-                ) = self.action_sampler_fn(
-                    self.model,
-                    obs_batch=self._input_dict[SampleBatch.CUR_OBS],
-                    state_batches=self._state_inputs,
-                    seq_lens=self._seq_lens,
-                    prev_action_batch=self._input_dict.get(SampleBatch.PREV_ACTIONS),
-                    prev_reward_batch=self._input_dict.get(SampleBatch.PREV_REWARDS),
+            ## Distribution generation is customized, e.g., DQN, DDPG.
+            #if is_overridden(self.compute_actions):
+            in_dict = self._input_dict
+            (
+                sampled_action,
+                self._state_out,
+                extra_action_fetches,
+            ) = self.compute_actions(
+                input_dict=in_dict,
+                explore=explore,
+                timestep=timestep,
+                is_training=in_dict.is_training,
+            )
+
+            def new_compute_actions(
+                self,
+                *,
+                input_dict: Optional[
+                    Union[SampleBatch, Dict[str, TensorStructType]]] = None,
+                explore: Optional[bool] = None,
+                timestep: Optional[int] = None,
+                episodes: Optional[List["Episode"]] = None,
+                is_training: bool = False,
+                # Kwargs for forward compatibility.
+                **kwargs,
+            ):
+                explore = explore if explore is not None else self.config["explore"]
+                timestep = timestep if timestep is not None else self.global_timestep
+
+                builder = _TFRunBuilder(self.get_session(), "compute_actions")
+
+                to_fetch = self._build_compute_actions(
+                    builder=builder,
+                    input_dict=input_dict,
                     explore=explore,
-                    is_training=self._input_dict.is_training,
-                )
-            # Distribution generation is customized, e.g., DQN, DDPG.
-            else:
-                if is_overridden(self.action_distribution_fn):
-                    # Try new action_distribution_fn signature, supporting
-                    # state_batches and seq_lens.
-                    in_dict = self._input_dict
-                    (
-                        dist_inputs,
-                        self.dist_class,
-                        self._state_out,
-                    ) = self.action_distribution_fn(
-                        self.model,
-                        input_dict=in_dict,
-                        state_batches=self._state_inputs,
-                        seq_lens=self._seq_lens,
-                        explore=explore,
-                        timestep=timestep,
-                        is_training=in_dict.is_training,
-                    )
-                # Default distribution generation behavior:
-                # Pass through model. E.g., PG, PPO.
-                else:
-                    if isinstance(self.model, tf.keras.Model):
-                        dist_inputs, self._state_out, extra_action_fetches = self.model(
-                            self._input_dict
-                        )
-                    else:
-                        dist_inputs, self._state_out = self.model(self._input_dict)
-
-                action_dist = self.dist_class(dist_inputs, self.model)
-
-                # Using exploration to get final action (e.g. via sampling).
-                (
-                    sampled_action,
-                    sampled_action_logp,
-                ) = self.exploration.get_exploration_action(
-                    action_distribution=action_dist, timestep=timestep, explore=explore
+                    timestep=timestep,
+                    extra_action_fetches=extra_action_fetches,
                 )
 
-        if dist_inputs is not None:
-            extra_action_fetches[SampleBatch.ACTION_DIST_INPUTS] = dist_inputs
+                # Execute session run to get action (and other fetches).
+                fetched = builder.get(to_fetch)
+
+                ## Update our global timestep by the batch size.
+                #self.global_timestep += (
+                #    len(obs_batch)
+                #    if isinstance(obs_batch, list)
+                #    else tree.flatten(obs_batch)[0].shape[0]
+                #)
+
+                return fetched
+
+            # Override compute_actions with new session-using one.
+            setattr(self, "compute_actions", new_compute_actions.__get__(self, DynamicTFPolicyV2))
+
+            ## Default distribution generation behavior:
+            ## Pass through model. E.g., PG, PPO.
+            #else:
+            #    if isinstance(self.model, tf.keras.Model):
+            #        dist_inputs, self._state_out, extra_action_fetches = self.model(
+            #            self._input_dict
+            #        )
+            #    else:
+            #        dist_inputs, self._state_out = self.model(self._input_dict)
+
+            #action_dist = self.dist_class(dist_inputs, self.model)
+
+            ## Using exploration to get final action (e.g. via sampling).
+            #(
+            #    sampled_action,
+            #    sampled_action_logp,
+            #) = self.exploration.get_exploration_action(
+            #    action_distribution=action_dist, timestep=timestep, explore=explore
+            #)
+
+        #if dist_inputs is not None:
+        #    extra_action_fetches[SampleBatch.ACTION_DIST_INPUTS] = dist_inputs
 
         if sampled_action_logp is not None:
             extra_action_fetches[SampleBatch.ACTION_LOGP] = sampled_action_logp
@@ -641,7 +651,6 @@ class DynamicTFPolicyV2(TFPolicy):
         return (
             sampled_action,
             sampled_action_logp,
-            dist_inputs,
             extra_action_fetches,
         )
 
@@ -701,22 +710,22 @@ class DynamicTFPolicyV2(TFPolicy):
                 and key not in self._input_dict.accessed_keys
             ):
                 view_req.used_for_compute_actions = False
-        for key, value in self.extra_action_out_fn().items():
-            self._dummy_batch[key] = get_dummy_batch_for_space(
-                gym.spaces.Box(
-                    -1.0, 1.0, shape=value.shape.as_list()[1:], dtype=value.dtype.name
-                ),
-                batch_size=len(self._dummy_batch),
-            )
-            self._input_dict[key] = get_placeholder(value=value, name=key)
-            if key not in self.view_requirements:
-                logger.info("Adding extra-action-fetch `{}` to view-reqs.".format(key))
-                self.view_requirements[key] = ViewRequirement(
-                    space=gym.spaces.Box(
-                        -1.0, 1.0, shape=value.shape[1:], dtype=value.dtype.name
-                    ),
-                    used_for_compute_actions=False,
-                )
+        #for key, value in self.extra_action_out_fn().items():
+        #    self._dummy_batch[key] = get_dummy_batch_for_space(
+        #        gym.spaces.Box(
+        #            -1.0, 1.0, shape=value.shape.as_list()[1:], dtype=value.dtype.name
+        #        ),
+        #        batch_size=len(self._dummy_batch),
+        #    )
+        #    self._input_dict[key] = get_placeholder(value=value, name=key)
+        #    if key not in self.view_requirements:
+        #        logger.info("Adding extra-action-fetch `{}` to view-reqs.".format(key))
+        #        self.view_requirements[key] = ViewRequirement(
+        #            space=gym.spaces.Box(
+        #                -1.0, 1.0, shape=value.shape[1:], dtype=value.dtype.name
+        #            ),
+        #            used_for_compute_actions=False,
+        #        )
         dummy_batch = self._dummy_batch
 
         logger.info("Testing `postprocess_trajectory` w/ dummy batch.")

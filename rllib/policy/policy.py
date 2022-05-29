@@ -37,6 +37,7 @@ from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import (
     get_base_struct_from_space,
     get_dummy_batch_for_space,
@@ -187,211 +188,52 @@ class Policy(metaclass=ABCMeta):
                 if k not in self.view_requirements:
                     self.view_requirements[k] = v
 
-    @DeveloperAPI
-    def compute_single_action(
-        self,
-        obs: Optional[TensorStructType] = None,
-        state: Optional[List[TensorType]] = None,
-        *,
-        prev_action: Optional[TensorStructType] = None,
-        prev_reward: Optional[TensorStructType] = None,
-        info: dict = None,
-        input_dict: Optional[SampleBatch] = None,
-        episode: Optional["Episode"] = None,
-        explore: Optional[bool] = None,
-        timestep: Optional[int] = None,
-        # Kwars placeholder for future compatibility.
-        **kwargs,
-    ) -> Tuple[TensorStructType, List[TensorType], Dict[str, TensorType]]:
-        """Computes and returns a single (B=1) action value.
-
-        Takes an input dict (usually a SampleBatch) as its main data input.
-        This allows for using this method in case a more complex input pattern
-        (view requirements) is needed, for example when the Model requires the
-        last n observations, the last m actions/rewards, or a combination
-        of any of these.
-        Alternatively, in case no complex inputs are required, takes a single
-        `obs` values (and possibly single state values, prev-action/reward
-        values, etc..).
-
-        Args:
-            obs: Single observation.
-            state: List of RNN state inputs, if any.
-            prev_action: Previous action value, if any.
-            prev_reward: Previous reward, if any.
-            info: Info object, if any.
-            input_dict: A SampleBatch or input dict containing the
-                single (unbatched) Tensors to compute actions. If given, it'll
-                be used instead of `obs`, `state`, `prev_action|reward`, and
-                `info`.
-            episode: This provides access to all of the internal episode state,
-                which may be useful for model-based or multi-agent algorithms.
-            explore: Whether to pick an exploitation or
-                exploration action
-                (default: None -> use self.config["explore"]).
-            timestep: The current (sampling) time step.
-
-        Keyword Args:
-            kwargs: Forward compatibility placeholder.
-
-        Returns:
-            Tuple consisting of the action, the list of RNN state outputs (if
-            any), and a dictionary of extra features (if any).
-        """
-        # Build the input-dict used for the call to
-        # `self.compute_actions_from_input_dict()`.
-        if input_dict is None:
-            input_dict = {SampleBatch.OBS: obs}
-            if state is not None:
-                for i, s in enumerate(state):
-                    input_dict[f"state_in_{i}"] = s
-            if prev_action is not None:
-                input_dict[SampleBatch.PREV_ACTIONS] = prev_action
-            if prev_reward is not None:
-                input_dict[SampleBatch.PREV_REWARDS] = prev_reward
-            if info is not None:
-                input_dict[SampleBatch.INFOS] = info
-
-        # Batch all data in input dict.
-        input_dict = tree.map_structure_with_path(
-            lambda p, s: (
-                s
-                if p == "seq_lens"
-                else s.unsqueeze(0)
-                if torch and isinstance(s, torch.Tensor)
-                else np.expand_dims(s, 0)
-            ),
-            input_dict,
-        )
-
-        episodes = None
-        if episode is not None:
-            episodes = [episode]
-
-        out = self.compute_actions_from_input_dict(
-            input_dict=SampleBatch(input_dict),
-            episodes=episodes,
-            explore=explore,
-            timestep=timestep,
-        )
-
-        # Some policies don't return a tuple, but always just a single action.
-        # E.g. ES and ARS.
-        if not isinstance(out, tuple):
-            single_action = out
-            state_out = []
-            info = {}
-        # Normal case: Policy should return (action, state, info) tuple.
-        else:
-            batched_action, state_out, info = out
-            single_action = unbatch(batched_action)
-        assert len(single_action) == 1
-        single_action = single_action[0]
-
-        # Return action, internal state(s), infos.
-        return (
-            single_action,
-            [s[0] for s in state_out],
-            {k: v[0] for k, v in info.items()},
-        )
-
-    @DeveloperAPI
-    def compute_actions_from_input_dict(
-        self,
-        input_dict: Union[SampleBatch, Dict[str, TensorStructType]],
-        explore: bool = None,
-        timestep: Optional[int] = None,
-        episodes: Optional[List["Episode"]] = None,
-        **kwargs,
-    ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
-        """Computes actions from collected samples (across multiple-agents).
-
-        Takes an input dict (usually a SampleBatch) as its main data input.
-        This allows for using this method in case a more complex input pattern
-        (view requirements) is needed, for example when the Model requires the
-        last n observations, the last m actions/rewards, or a combination
-        of any of these.
-
-        Args:
-            input_dict: A SampleBatch or input dict containing the Tensors
-                to compute actions. `input_dict` already abides to the
-                Policy's as well as the Model's view requirements and can
-                thus be passed to the Model as-is.
-            explore: Whether to pick an exploitation or exploration
-                action (default: None -> use self.config["explore"]).
-            timestep: The current (sampling) time step.
-            episodes: This provides access to all of the internal episodes'
-                state, which may be useful for model-based or multi-agent
-                algorithms.
-
-        Keyword Args:
-            kwargs: Forward compatibility placeholder.
-
-        Returns:
-            actions: Batch of output actions, with shape like
-                [BATCH_SIZE, ACTION_SHAPE].
-            state_outs: List of RNN state output
-                batches, if any, each with shape [BATCH_SIZE, STATE_SIZE].
-            info: Dictionary of extra feature batches, if any, with shape like
-                {"f1": [BATCH_SIZE, ...], "f2": [BATCH_SIZE, ...]}.
-        """
-        # Default implementation just passes obs, prev-a/r, and states on to
-        # `self.compute_actions()`.
-        state_batches = [s for k, s in input_dict.items() if k[:9] == "state_in_"]
-        return self.compute_actions(
-            input_dict[SampleBatch.OBS],
-            state_batches,
-            prev_action_batch=input_dict.get(SampleBatch.PREV_ACTIONS),
-            prev_reward_batch=input_dict.get(SampleBatch.PREV_REWARDS),
-            info_batch=input_dict.get(SampleBatch.INFOS),
-            explore=explore,
-            timestep=timestep,
-            episodes=episodes,
-            **kwargs,
-        )
-
     @abstractmethod
     @DeveloperAPI
     def compute_actions(
         self,
-        obs_batch: Union[List[TensorStructType], TensorStructType],
-        state_batches: Optional[List[TensorType]] = None,
-        prev_action_batch: Union[List[TensorStructType], TensorStructType] = None,
-        prev_reward_batch: Union[List[TensorStructType], TensorStructType] = None,
-        info_batch: Optional[Dict[str, list]] = None,
-        episodes: Optional[List["Episode"]] = None,
+        *,
+        input_dict: Optional[Union[SampleBatch, Dict[str, TensorStructType]]] = None,
         explore: Optional[bool] = None,
         timestep: Optional[int] = None,
+        episodes: Optional[List["Episode"]] = None,
+        is_training: bool = False,
+        # Deprecated args.
+        obs_batch=None,
+        state_batches=None,
+        prev_action_batch=None,
+        prev_reward_batch=None,
+        info_batch=None,
+        # Kwargs for forward compatibility.
         **kwargs,
     ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         """Computes actions for the current policy.
 
         Args:
-            obs_batch: Batch of observations.
-            state_batches: List of RNN state input batches, if any.
-            prev_action_batch: Batch of previous action values.
-            prev_reward_batch: Batch of previous rewards.
-            info_batch: Batch of info objects.
+            input_dict: The SampleBatch input dict, including observations,
+                and (if applicable) states, seq_lens, prev. actions, etc..
+                len(input_dict)=BATCH_SIZE.
+            explore: Whether to pick an exploitation or exploration action.
+                Set to None (default) for using the value of
+                `self.config["explore"]`.
+            timestep: The current (sampling) time step. If None, try to infer it
+                from global vars' timesteps.
             episodes: List of Episode objects, one for each obs in
                 obs_batch. This provides access to all of the internal
                 episode state, which may be useful for model-based or
                 multi-agent algorithms.
-            explore: Whether to pick an exploitation or exploration action.
-                Set to None (default) for using the value of
-                `self.config["explore"]`.
-            timestep: The current (sampling) time step.
+            is_training: Whether actions are computed for env-stepping (inference)
+                or for training purposes (i.e. inside a loss function).
 
         Keyword Args:
             kwargs: Forward compatibility placeholder
 
         Returns:
-            actions (TensorType): Batch of output actions, with shape like
-                [BATCH_SIZE, ACTION_SHAPE].
-            state_outs (List[TensorType]): List of RNN state output
-                batches, if any, each with shape [BATCH_SIZE, STATE_SIZE].
-            info (List[dict]): Dictionary of extra feature batches, if any,
-                with shape like
-                {"f1": [BATCH_SIZE, ...], "f2": [BATCH_SIZE, ...]}.
+            A tuple consisting of 1) Batch of output actions, with shape like
+            [BATCH_SIZE, ACTION_SHAPE]. 2) List of RNN state output
+            batches, if any, each with shape [BATCH_SIZE, STATE_SIZE]. 3) A dictionary
+            of extra outputs, if any. E.g.
+            {"extra_out1": [BATCH_SIZE, ...], "extra_out2": [BATCH_SIZE, ...]}.
         """
         raise NotImplementedError
 
@@ -905,6 +747,11 @@ class Policy(metaclass=ABCMeta):
                 TensorType]]]): An optional stats function to be called after
                 the loss.
         """
+        # Avoids cyclic imports.
+        from ray.rllib.policy.dynamic_tf_policy_v2 import DynamicTFPolicyV2
+        from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
+        from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
+
         # Signal Policy that currently we do not like to eager/jit trace
         # any function calls. This is to be able to track, which columns
         # in the dummy batch are accessed by the different function (e.g.
@@ -916,9 +763,14 @@ class Policy(metaclass=ABCMeta):
             sample_batch_size
         )
         self._lazy_tensor_dict(self._dummy_batch)
-        actions, state_outs, extra_outs = self.compute_actions_from_input_dict(
-            self._dummy_batch, explore=False
-        )
+        if isinstance(self, (DynamicTFPolicyV2, EagerTFPolicyV2, TorchPolicyV2)):
+            actions, state_outs, extra_outs = convert_to_numpy(self.compute_actions(
+                input_dict=self._dummy_batch, explore=False, is_training=False
+            ))
+        else:
+            actions, state_outs, extra_outs = self.compute_actions_from_input_dict(
+                self._dummy_batch, explore=False
+            )
         for key, view_req in self.view_requirements.items():
             if key not in self._dummy_batch.accessed_keys:
                 view_req.used_for_compute_actions = False
@@ -1193,3 +1045,109 @@ class Policy(metaclass=ABCMeta):
     @Deprecated(new="get_exploration_state", error=False)
     def get_exploration_info(self) -> Dict[str, TensorType]:
         return self.get_exploration_state()
+
+    @Deprecated(
+        new="Policy.compute_actions([input_dict], [explore], [timestep], [episodes])",
+        error=False,
+    )
+    def compute_single_action(
+        self,
+        obs=None,
+        state=None,
+        *,
+        prev_action=None,
+        prev_reward=None,
+        info=None,
+        input_dict=None,
+        episode=None,
+        explore=None,
+        timestep=None,
+        **kwargs,
+    ):
+        # Build the input-dict used for the call to
+        # `self.compute_actions_from_input_dict()`.
+        if input_dict is None:
+            input_dict = {SampleBatch.OBS: obs}
+            if state is not None:
+                for i, s in enumerate(state):
+                    input_dict[f"state_in_{i}"] = s
+            if prev_action is not None:
+                input_dict[SampleBatch.PREV_ACTIONS] = prev_action
+            if prev_reward is not None:
+                input_dict[SampleBatch.PREV_REWARDS] = prev_reward
+            if info is not None:
+                input_dict[SampleBatch.INFOS] = info
+
+        # Batch all data in input dict.
+        input_dict = tree.map_structure_with_path(
+            lambda p, s: (
+                s
+                if p == "seq_lens"
+                else s.unsqueeze(0)
+                if torch and isinstance(s, torch.Tensor)
+                else np.expand_dims(s, 0)
+            ),
+            input_dict,
+        )
+
+        episodes = None
+        if episode is not None:
+            episodes = [episode]
+
+        out = self.compute_actions_from_input_dict(
+            input_dict=SampleBatch(input_dict),
+            episodes=episodes,
+            explore=explore,
+            timestep=timestep,
+        )
+
+        # Some policies don't return a tuple, but always just a single action.
+        # E.g. ES and ARS.
+        if not isinstance(out, tuple):
+            single_action = out
+            state_out = []
+            info = {}
+        # Normal case: Policy should return (action, state, info) tuple.
+        else:
+            batched_action, state_out, info = out
+            single_action = unbatch(batched_action)
+        assert len(single_action) == 1
+        single_action = single_action[0]
+
+        # Return action, internal state(s), infos.
+        return (
+            single_action,
+            [s[0] for s in state_out],
+            {k: v[0] for k, v in info.items()},
+        )
+
+    @Deprecated(
+        new="Policy.compute_actions([input_dict], [explore], [timestep], [episodes])",
+        error=False,
+    )
+    def compute_actions_from_input_dict(
+        self,
+        input_dict,
+        explore=None,
+        timestep=None,
+        episodes=None,
+        **kwargs,
+    ):
+        # Default implementation just passes obs, prev-a/r, and states on to
+        # `self.compute_actions()`.
+        state_batches = [s for k, s in input_dict.items() if k[:9] == "state_in_"]
+
+        return self.compute_actions(
+            # Deprecated args.
+            obs_batch=input_dict[SampleBatch.OBS],
+            state_batches=state_batches,
+            prev_action_batch=input_dict.get(SampleBatch.PREV_ACTIONS),
+            prev_reward_batch=input_dict.get(SampleBatch.PREV_REWARDS),
+            info_batch=input_dict.get(SampleBatch.INFOS),
+            # Future-supported args.
+            explore=explore,
+            timestep=timestep,
+            episodes=episodes,
+            input_dict=input_dict,
+            **kwargs,
+        )

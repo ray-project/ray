@@ -153,9 +153,8 @@ class SamplerInput(InputReader, metaclass=ABCMeta):
         MultiAgentBatches that the user has provided thus-far. Users can
         add these "extra batches" to an episode by calling the episode's
         `add_extra_batch([SampleBatchType])` method. This can be done from
-        inside an overridden `Policy.compute_actions_from_input_dict(...,
-        episodes)` or from a custom callback's `on_episode_[start|step|end]()`
-        methods.
+        inside an overridden `Policy.compute_actions(..., episodes)` or from a
+        custom callback's `on_episode_[start|step|end]()` methods.
 
         Returns:
             List of SamplesBatches or MultiAgentBatches provided thus-far by
@@ -1149,6 +1148,10 @@ def _do_policy_eval(
     Returns:
         Dict mapping PolicyIDs to compute_actions_from_input_dict() outputs.
     """
+    # Avoids cyclic imports.
+    from ray.rllib.policy.dynamic_tf_policy_v2 import DynamicTFPolicyV2
+    from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
+    from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 
     eval_results: Dict[PolicyID, TensorStructType] = {}
 
@@ -1172,11 +1175,23 @@ def _do_policy_eval(
             policy: Policy = _get_or_raise(policies, policy_id)
 
         input_dict = sample_collector.get_inference_input_dict(policy_id)
-        eval_results[policy_id] = policy.compute_actions_from_input_dict(
-            input_dict,
-            timestep=policy.global_timestep,
-            episodes=[active_episodes[t.env_id] for t in eval_data],
-        )
+        # New Policy API: Only method to ever use (and override) to get and compute
+        # actions is `compute_actions()`.
+        if isinstance(policy, (DynamicTFPolicyV2, EagerTFPolicyV2, TorchPolicyV2)):
+            eval_results[policy_id] = policy.compute_actions(
+                input_dict=input_dict,
+                timestep=policy.global_timestep,
+                explore=False,
+                episodes=[active_episodes[t.env_id] for t in eval_data],
+                is_training=False,
+            )
+        # Old Policy API. Use `compute_actions_from_input_dict()`.
+        else:
+            eval_results[policy_id] = policy.compute_actions_from_input_dict(
+                input_dict,
+                timestep=policy.global_timestep,
+                episodes=[active_episodes[t.env_id] for t in eval_data],
+            )
 
     if log_once("compute_actions_result"):
         logger.info(

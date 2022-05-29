@@ -10,7 +10,10 @@ from ray.rllib.algorithms.dqn.simple_q import (
     SimpleQTrainer,
     DEFAULT_CONFIG as SIMPLE_Q_DEFAULT_CONFIG,
 )
-from ray.rllib.algorithms.dqn.simple_q_tf_policy import SimpleQTFPolicy
+from ray.rllib.algorithms.dqn.simple_q_tf_policy import (
+    SimpleQDynamicTFPolicy,
+    SimpleQEagerTFPolicy,
+)
 from ray.rllib.algorithms.dqn.simple_q_torch_policy import SimpleQTorchPolicy
 
 __all__ = [
@@ -26,7 +29,8 @@ __all__ = [
     "R2D2_DEFAULT_CONFIG",
     "SIMPLE_Q_DEFAULT_CONFIG",
     "SimpleQConfig",
-    "SimpleQTFPolicy",
+    "SimpleQDynamicTFPolicy",
+    "SimpleQEagerTFPolicy",
     "SimpleQTorchPolicy",
     "SimpleQTrainer",
 ]

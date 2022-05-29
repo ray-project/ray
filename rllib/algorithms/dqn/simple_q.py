@@ -12,7 +12,10 @@ See `simple_q_[tf|torch]_policy.py` for the definition of the policy loss.
 import logging
 from typing import List, Optional, Type, Union
 
-from ray.rllib.algorithms.dqn.simple_q_tf_policy import SimpleQTFPolicy
+from ray.rllib.algorithms.dqn.simple_q_tf_policy import (
+    SimpleQDynamicTFPolicy,
+    SimpleQEagerTFPolicy,
+)
 from ray.rllib.algorithms.dqn.simple_q_torch_policy import SimpleQTorchPolicy
 from ray.rllib.agents.trainer import Trainer
 from ray.rllib.agents.trainer_config import TrainerConfig
@@ -307,8 +310,10 @@ class SimpleQTrainer(Trainer):
     ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             return SimpleQTorchPolicy
+        elif config["framework"] == "tf":
+            return SimpleQDynamicTFPolicy
         else:
-            return SimpleQTFPolicy
+            return SimpleQEagerTFPolicy
 
     @ExperimentalAPI
     @override(Trainer)

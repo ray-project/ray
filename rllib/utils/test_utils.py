@@ -13,6 +13,7 @@ import yaml
 import ray
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED, NUM_ENV_STEPS_TRAINED
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import PartialTrainerConfigDict
 from ray.tune import CLIReporter, run_experiments
 
@@ -460,6 +461,90 @@ def check_compute_single_action(
                                 unsquash,
                                 clip,
                             )
+
+
+def check_compute_actions_v2(
+    trainer, include_state=False, include_prev_action_reward=False
+):
+    """Tests different combinations of args for trainer.get_policy().compute_actions.
+
+    Args:
+        trainer: The Trainer object to test.
+        include_state: Whether to include the initial state of the Policy's
+            Model in the `compute_actions` call.
+        include_prev_action_reward: Whether to include the prev-action and
+            -reward in the `compute_actions` call.
+
+    Raises:
+        ValueError: If anything unexpected happens.
+    """
+    # Have to import this here to avoid circular dependency.
+    from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+
+    # Multi-agent: Pick any learnable policy (or DEFAULT_POLICY if it's the only
+    # one).
+    pid = next(iter(trainer.workers.local_worker().get_policies_to_train()))
+    pol = trainer.get_policy(pid)
+    # Get the policy's model.
+    model = pol.model
+
+    action_space = pol.action_space
+
+    def _test(obs_space, explore, timestep):
+        obs = obs_space.sample()
+        if isinstance(obs_space, Box):
+            obs = np.clip(obs, -1.0, 1.0)
+        state_in = None
+        if include_state:
+            state_in = model.get_initial_state()
+            if not state_in:
+                state_in = []
+                i = 0
+                while f"state_in_{i}" in model.view_requirements:
+                    state_in.append(
+                        model.view_requirements[f"state_in_{i}"].space.sample()
+                    )
+                    i += 1
+        action_in = action_space.sample() if include_prev_action_reward else None
+        reward_in = 1.0 if include_prev_action_reward else None
+
+        input_dict = {SampleBatch.OBS: obs}
+        if include_prev_action_reward:
+            input_dict[SampleBatch.PREV_ACTIONS] = action_in
+            input_dict[SampleBatch.PREV_REWARDS] = reward_in
+        if state_in:
+            for i, s in enumerate(state_in):
+                input_dict[f"state_in_{i}"] = s
+        input_dict_batched = SampleBatch(
+            tree.map_structure(lambda s: np.expand_dims(s, 0), input_dict)
+        )
+        actions, state_outs, extra_outs = convert_to_numpy(pol.compute_actions(
+            input_dict=input_dict_batched,
+            explore=explore,
+            timestep=timestep,
+            is_training=False,
+            episodes=None,
+        ))
+
+        # Unbatch everything to be able to compare against single
+        # action below.
+        action = tree.map_structure(lambda s: s[0], actions)
+
+        if state_outs:
+            for si, so in zip(state_in, state_outs):
+                check(list(si.shape), so.shape)
+
+    # Loop through: Policy vs Trainer; Different API methods to calculate
+    # actions; unsquash option; clip option; full fetch or not.
+    obs_space = pol.observation_space
+
+    for explore in [True, False]:
+        timestep = random.randint(0, 100000)
+        _test(
+            obs_space,
+            explore,
+            timestep,
+        )
 
 
 def check_learning_achieved(tune_results, min_reward, evaluation=False):

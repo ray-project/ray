@@ -27,6 +27,7 @@ from ray.rllib.utils.tf_run_builder import _TFRunBuilder
 from ray.rllib.utils.typing import (
     LocalOptimizer,
     ModelGradients,
+    TensorStructType,
     TensorType,
     TrainerConfigDict,
 )
@@ -340,14 +341,19 @@ class TFPolicy(Policy):
     @override(Policy)
     def compute_actions(
         self,
+        *,
+        input_dict: Optional[Union[SampleBatch, Dict[str, TensorStructType]]] = None,
+        explore: Optional[bool] = None,
+        timestep: Optional[int] = None,
+        episodes: Optional[List["Episode"]] = None,
+        is_training: bool = False,
+        # Deprecated args.
         obs_batch: Union[List[TensorType], TensorType],
         state_batches: Optional[List[TensorType]] = None,
         prev_action_batch: Union[List[TensorType], TensorType] = None,
         prev_reward_batch: Union[List[TensorType], TensorType] = None,
         info_batch: Optional[Dict[str, list]] = None,
-        episodes: Optional[List["Episode"]] = None,
-        explore: Optional[bool] = None,
-        timestep: Optional[int] = None,
+        # Kwargs for forward compatibility.
         **kwargs,
     ):
 
@@ -1023,14 +1029,12 @@ class TFPolicy(Policy):
         self,
         builder,
         *,
-        input_dict=None,
-        obs_batch=None,
-        state_batches=None,
-        prev_action_batch=None,
-        prev_reward_batch=None,
+        input_dict,
         episodes=None,
         explore=None,
         timestep=None,
+        is_training=False,
+        extra_action_fetches=None,
     ):
         explore = explore if explore is not None else self.config["explore"]
         timestep = timestep if timestep is not None else self.global_timestep
@@ -1043,70 +1047,39 @@ class TFPolicy(Policy):
         builder.add_feed_dict(self.extra_compute_action_feed_dict())
 
         # `input_dict` given: Simply build what's in that dict.
-        if input_dict is not None:
-            if hasattr(self, "_input_dict"):
-                for key, value in input_dict.items():
-                    if key in self._input_dict:
-                        # Handle complex/nested spaces as well.
-                        tree.map_structure(
-                            lambda k, v: builder.add_feed_dict({k: v}),
-                            self._input_dict[key],
-                            value,
-                        )
-            # For policies that inherit directly from TFPolicy.
-            else:
-                builder.add_feed_dict({self._obs_input: input_dict[SampleBatch.OBS]})
-                if SampleBatch.PREV_ACTIONS in input_dict:
-                    builder.add_feed_dict(
-                        {self._prev_action_input: input_dict[SampleBatch.PREV_ACTIONS]}
+        if hasattr(self, "_input_dict"):
+            for key, value in input_dict.items():
+                if key in self._input_dict:
+                    # Handle complex/nested spaces as well.
+                    tree.map_structure(
+                        lambda k, v: builder.add_feed_dict({k: v}),
+                        self._input_dict[key],
+                        value,
                     )
-                if SampleBatch.PREV_REWARDS in input_dict:
-                    builder.add_feed_dict(
-                        {self._prev_reward_input: input_dict[SampleBatch.PREV_REWARDS]}
-                    )
-                state_batches = []
-                i = 0
-                while "state_in_{}".format(i) in input_dict:
-                    state_batches.append(input_dict["state_in_{}".format(i)])
-                    i += 1
-                builder.add_feed_dict(dict(zip(self._state_inputs, state_batches)))
-
-            if "state_in_0" in input_dict and SampleBatch.SEQ_LENS not in input_dict:
-                builder.add_feed_dict(
-                    {self._seq_lens: np.ones(len(input_dict["state_in_0"]))}
-                )
-
-        # Hardcoded old way: Build fixed fields, if provided.
-        # TODO: (sven) This can be deprecated after trajectory view API flag is
-        #  removed and always True.
+        # For policies that inherit directly from TFPolicy.
         else:
-            if log_once("_build_compute_actions_input_dict"):
-                deprecation_warning(
-                    old="_build_compute_actions(.., obs_batch=.., ..)",
-                    new="_build_compute_actions(.., input_dict=..)",
-                    error=False,
+            builder.add_feed_dict({self._obs_input: input_dict[SampleBatch.OBS]})
+            if SampleBatch.PREV_ACTIONS in input_dict:
+                builder.add_feed_dict(
+                    {self._prev_action_input: input_dict[SampleBatch.PREV_ACTIONS]}
                 )
-            state_batches = state_batches or []
-            if len(self._state_inputs) != len(state_batches):
-                raise ValueError(
-                    "Must pass in RNN state batches for placeholders {}, "
-                    "got {}".format(self._state_inputs, state_batches)
+            if SampleBatch.PREV_REWARDS in input_dict:
+                builder.add_feed_dict(
+                    {self._prev_reward_input: input_dict[SampleBatch.PREV_REWARDS]}
                 )
-
-            tree.map_structure(
-                lambda k, v: builder.add_feed_dict({k: v}),
-                self._obs_input,
-                obs_batch,
-            )
-            if state_batches:
-                builder.add_feed_dict({self._seq_lens: np.ones(len(obs_batch))})
-            if self._prev_action_input is not None and prev_action_batch is not None:
-                builder.add_feed_dict({self._prev_action_input: prev_action_batch})
-            if self._prev_reward_input is not None and prev_reward_batch is not None:
-                builder.add_feed_dict({self._prev_reward_input: prev_reward_batch})
+            state_batches = []
+            i = 0
+            while "state_in_{}".format(i) in input_dict:
+                state_batches.append(input_dict["state_in_{}".format(i)])
+                i += 1
             builder.add_feed_dict(dict(zip(self._state_inputs, state_batches)))
 
-        builder.add_feed_dict({self._is_training: False})
+        if "state_in_0" in input_dict and SampleBatch.SEQ_LENS not in input_dict:
+            builder.add_feed_dict(
+                {self._seq_lens: np.ones(len(input_dict["state_in_0"]))}
+            )
+
+        builder.add_feed_dict({self._is_training: is_training})
         builder.add_feed_dict({self._is_exploring: explore})
         if timestep is not None:
             builder.add_feed_dict({self._timestep: timestep})
@@ -1115,10 +1088,10 @@ class TFPolicy(Policy):
         to_fetch = (
             [self._sampled_action]
             + self._state_outputs
-            + [self.extra_compute_action_fetches()]
+            + [extra_action_fetches or self.extra_compute_action_fetches()]
         )
 
-        # Perform the session call.
+        # Add the ops to fetch for the upcoming session call.
         fetches = builder.add_fetches(to_fetch)
         return fetches[0], fetches[1:-1], fetches[-1]
 

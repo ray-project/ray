@@ -3,14 +3,14 @@ import unittest
 
 import ray
 from ray.rllib.algorithms import dqn
-from ray.rllib.algorithms.dqn.simple_q_tf_policy import build_q_losses as loss_tf
-from ray.rllib.algorithms.dqn.simple_q_torch_policy import build_q_losses as loss_torch
+#from ray.rllib.algorithms.dqn.simple_q_tf_policy import build_q_losses as loss_tf
+#from ray.rllib.algorithms.dqn.simple_q_torch_policy import build_q_losses as loss_torch
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.numpy import fc, one_hot, huber_loss
 from ray.rllib.utils.test_utils import (
     check,
-    check_compute_single_action,
+    check_compute_actions_v2,
     check_train_results,
     framework_iterator,
 )
@@ -36,7 +36,7 @@ class TestSimpleQ(unittest.TestCase):
 
         num_iterations = 2
 
-        for _ in framework_iterator(config, with_eager_tracing=True):
+        for _ in framework_iterator(config, frameworks="torch"):#TODO with_eager_tracing=True):
             trainer = config.build(env="CartPole-v0")
             rw = trainer.workers.local_worker()
             for i in range(num_iterations):
@@ -46,7 +46,7 @@ class TestSimpleQ(unittest.TestCase):
                 check_train_results(results)
                 print(results)
 
-            check_compute_single_action(trainer)
+            check_compute_actions_v2(trainer)
 
     def test_simple_q_loss_function(self):
         """Tests the Simple-Q loss function results on all frameworks."""
