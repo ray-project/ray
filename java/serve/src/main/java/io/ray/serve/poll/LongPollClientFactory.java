@@ -12,10 +12,10 @@ import io.ray.api.function.PyActorMethod;
 import io.ray.serve.api.Serve;
 import io.ray.serve.common.Constants;
 import io.ray.serve.config.RayServeConfig;
-import io.ray.serve.context.ReplicaContext;
 import io.ray.serve.controller.ServeController;
 import io.ray.serve.exception.RayServeException;
 import io.ray.serve.generated.ActorSet;
+import io.ray.serve.replica.ReplicaContext;
 import io.ray.serve.util.CollectionUtil;
 import io.ray.serve.util.LogUtil;
 import io.ray.serve.util.ServeProtoUtil;
@@ -88,8 +88,7 @@ public class LongPollClientFactory {
 
     ReplicaContext replicaContext = Serve.getReplicaContext();
     boolean enabled =
-        Optional.ofNullable(replicaContext.getRayServeConfig())
-            .map(rayServeConfig -> rayServeConfig.getConfig())
+        Optional.ofNullable(replicaContext.getConfig())
             .map(config -> config.get(RayServeConfig.LONG_POOL_CLIENT_ENABLED))
             .map(longPollClientEnabled -> Boolean.valueOf(longPollClientEnabled))
             .orElse(true);
@@ -113,8 +112,7 @@ public class LongPollClientFactory {
               }
             });
     long intervalS =
-        Optional.ofNullable(replicaContext.getRayServeConfig())
-            .map(rayServeConfig -> rayServeConfig.getConfig())
+        Optional.ofNullable(replicaContext.getConfig())
             .map(config -> config.get(RayServeConfig.LONG_POOL_CLIENT_INTERVAL))
             .map(longPollClientInterval -> Long.valueOf(longPollClientInterval))
             .orElse(10L);

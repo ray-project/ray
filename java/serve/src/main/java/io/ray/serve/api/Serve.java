@@ -10,13 +10,13 @@ import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyActorMethod;
 import io.ray.api.options.ActorLifetime;
 import io.ray.serve.common.Constants;
-import io.ray.serve.context.ReplicaContext;
 import io.ray.serve.deployment.Deployment;
 import io.ray.serve.deployment.DeploymentCreator;
 import io.ray.serve.deployment.DeploymentRoute;
 import io.ray.serve.exception.RayServeException;
 import io.ray.serve.generated.ActorNameList;
 import io.ray.serve.proxy.ProxyActor;
+import io.ray.serve.replica.ReplicaContext;
 import io.ray.serve.util.CollectionUtil;
 import io.ray.serve.util.CommonUtil;
 import io.ray.serve.util.LogUtil;
@@ -210,16 +210,23 @@ public class Serve {
    * @param controllerName the controller actor's name
    * @param controllerNamespace
    * @param servableObject the servable object of the specified replica.
+   * @param config
    */
   public static void setInternalReplicaContext(
       String deploymentName,
       String replicaTag,
       String controllerName,
       String controllerNamespace,
-      Object servableObject) {
+      Object servableObject,
+      Map<String, String> config) {
     INTERNAL_REPLICA_CONTEXT =
         new ReplicaContext(
-            deploymentName, replicaTag, controllerName, controllerNamespace, servableObject);
+            deploymentName,
+            replicaTag,
+            controllerName,
+            controllerNamespace,
+            servableObject,
+            config);
   }
 
   public static void setInternalReplicaContext(ReplicaContext replicaContext) {
@@ -256,7 +263,9 @@ public class Serve {
     try {
       if (GLOBAL_CLIENT != null) {
         if (healthCheckController) {
-          // TODO _controller.check_alive
+          ((PyActorHandle) GLOBAL_CLIENT.getController())
+              .task(PyActorMethod.of("check_alive"))
+              .remote();
         }
         return GLOBAL_CLIENT;
       }

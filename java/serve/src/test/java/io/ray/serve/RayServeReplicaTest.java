@@ -8,6 +8,7 @@ import io.ray.serve.api.Serve;
 import io.ray.serve.common.Constants;
 import io.ray.serve.config.DeploymentConfig;
 import io.ray.serve.config.RayServeConfig;
+import io.ray.serve.controller.ControllerInfo;
 import io.ray.serve.deployment.DeploymentVersion;
 import io.ray.serve.deployment.DeploymentWrapper;
 import io.ray.serve.generated.DeploymentLanguage;
@@ -16,6 +17,8 @@ import io.ray.serve.generated.RequestWrapper;
 import io.ray.serve.replica.DummyReplica;
 import io.ray.serve.replica.RayServeWrappedReplica;
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -33,6 +36,8 @@ public class RayServeReplicaTest {
       String deploymentName = "b_tag";
       String replicaTag = "r_tag";
       String version = "v1";
+      Map<String, String> config = new HashMap<>();
+      config.put(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false");
 
       ActorHandle<DummyServeController> controllerHandle =
           Ray.actor(DummyServeController::new).setName(controllerName).remote();
@@ -51,8 +56,7 @@ public class RayServeReplicaTest {
                   RayServeWrappedReplica::new,
                   deploymentWrapper,
                   replicaTag,
-                  controllerName,
-                  new RayServeConfig().setConfig(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false"))
+                  new ControllerInfo(controllerName, null))
               .remote();
 
       // ready

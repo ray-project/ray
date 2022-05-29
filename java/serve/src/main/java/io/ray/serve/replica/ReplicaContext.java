@@ -1,6 +1,6 @@
-package io.ray.serve.context;
+package io.ray.serve.replica;
 
-import io.ray.serve.config.RayServeConfig;
+import java.util.Map;
 
 /** Stores data for Serve API calls from within deployments. */
 public class ReplicaContext {
@@ -15,19 +15,21 @@ public class ReplicaContext {
 
   private Object servableObject;
 
-  private RayServeConfig rayServeConfig;
+  private Map<String, String> config;
 
   public ReplicaContext(
       String deploymentName,
       String replicaTag,
       String controllerName,
       String controllerNamespace,
-      Object servableObject) {
+      Object servableObject,
+      Map<String, String> config) {
     this.deploymentName = deploymentName;
     this.replicaTag = replicaTag;
     this.internalControllerName = controllerName;
     this.internalControllerNamespace = controllerNamespace;
     this.servableObject = servableObject;
+    this.config = config;
   }
 
   public String getDeploymentName() {
@@ -70,11 +72,11 @@ public class ReplicaContext {
     this.servableObject = servableObject;
   }
 
-  public RayServeConfig getRayServeConfig() {
-    return rayServeConfig;
+  public Map<String, String> getConfig() {
+    return config;
   }
 
-  public void setRayServeConfig(RayServeConfig rayServeConfig) {
-    this.rayServeConfig = rayServeConfig;
+  public void setConfig(Map<String, String> config) {
+    this.config = config;
   }
 }

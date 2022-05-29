@@ -1,6 +1,5 @@
 package io.ray.serve;
 
-import com.google.common.collect.ImmutableMap;
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
 import io.ray.runtime.serializer.MessagePackSerializer;
@@ -8,6 +7,7 @@ import io.ray.serve.api.Serve;
 import io.ray.serve.common.Constants;
 import io.ray.serve.config.DeploymentConfig;
 import io.ray.serve.config.RayServeConfig;
+import io.ray.serve.controller.ControllerInfo;
 import io.ray.serve.deployment.DeploymentVersion;
 import io.ray.serve.deployment.DeploymentWrapper;
 import io.ray.serve.generated.ActorSet;
@@ -48,6 +48,8 @@ public class ProxyActorTest {
       String endpointName = prefix;
       String route = "/route";
       String version = "v1";
+      Map<String, String> config = new HashMap<>();
+      config.put(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false");
 
       // Controller
       ActorHandle<DummyServeController> controller =
@@ -65,23 +67,19 @@ public class ProxyActorTest {
               .setDeploymentConfig(
                   new DeploymentConfig().setDeploymentLanguage(DeploymentLanguage.JAVA))
               .setDeploymentVersion(new DeploymentVersion(version))
-              .setDeploymentDef(DummyReplica.class.getName());
+              .setDeploymentDef(DummyReplica.class.getName())
+              .setConfig(config);
+
+      ControllerInfo controllerInfo = new ControllerInfo(controllerName, null);
 
       ActorHandle<RayServeWrappedReplica> replica =
-          Ray.actor(
-                  RayServeWrappedReplica::new,
-                  deploymentWrapper,
-                  replicaTag,
-                  controllerName,
-                  new RayServeConfig().setConfig(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false"))
+          Ray.actor(RayServeWrappedReplica::new, deploymentWrapper, replicaTag, controllerInfo)
               .setName(replicaTag)
               .remote();
       Assert.assertTrue(replica.task(RayServeWrappedReplica::checkHealth).remote().get());
 
       // ProxyActor
-      ProxyActor proxyActor =
-          new ProxyActor(
-              controllerName, ImmutableMap.of(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false"));
+      ProxyActor proxyActor = new ProxyActor(controllerInfo, config);
       Assert.assertTrue(proxyActor.ready());
 
       proxyActor.getProxyRouter().updateRoutes(endpointInfos);

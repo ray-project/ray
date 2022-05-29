@@ -346,7 +346,8 @@ public class ServeControllerClient {
   /**
    * Waits for the named deployment to be shut down and deleted.
    *
-   * <p>Raises TimeoutError if this doesn't happen before timeoutS. // TODO
+   * <p>Throw RayServeException if this doesn't happen before timeoutS. // TODO change to
+   * TimeoutException
    *
    * @param name
    * @param timeoutS
@@ -389,5 +390,9 @@ public class ServeControllerClient {
       }
     }
     return null;
+  }
+
+  public BaseActorHandle getController() {
+    return controller;
   }
 }

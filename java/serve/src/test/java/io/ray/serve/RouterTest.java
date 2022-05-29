@@ -7,6 +7,7 @@ import io.ray.serve.api.Serve;
 import io.ray.serve.common.Constants;
 import io.ray.serve.config.DeploymentConfig;
 import io.ray.serve.config.RayServeConfig;
+import io.ray.serve.controller.ControllerInfo;
 import io.ray.serve.deployment.DeploymentVersion;
 import io.ray.serve.deployment.DeploymentWrapper;
 import io.ray.serve.generated.ActorSet;
@@ -15,6 +16,8 @@ import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.replica.RayServeWrappedReplica;
 import io.ray.serve.router.Router;
 import io.ray.serve.util.CommonUtil;
+import java.util.HashMap;
+import java.util.Map;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -34,6 +37,8 @@ public class RouterTest {
       String replicaTag = deploymentName + "_replica";
       String actorName = replicaTag;
       String version = "v1";
+      Map<String, String> config = new HashMap<>();
+      config.put(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false");
 
       // Controller
       ActorHandle<DummyServeController> controllerHandle =
@@ -58,17 +63,13 @@ public class RouterTest {
                   RayServeWrappedReplica::new,
                   deploymentWrapper,
                   replicaTag,
-                  controllerName,
-                  new RayServeConfig().setConfig(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false"))
+                  new ControllerInfo(controllerName, null))
               .setName(actorName)
               .remote();
       Assert.assertTrue(replicaHandle.task(RayServeWrappedReplica::checkHealth).remote().get());
 
       // Set ReplicaContext
-      Serve.setInternalReplicaContext(null, null, controllerName, null, null);
-      Serve.getReplicaContext()
-          .setRayServeConfig(
-              new RayServeConfig().setConfig(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false"));
+      Serve.setInternalReplicaContext(null, null, controllerName, null, null, config);
 
       // Router
       Router router = new Router(controllerHandle, deploymentName);

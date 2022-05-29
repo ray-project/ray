@@ -1,18 +1,5 @@
 package io.ray.serve;
 
-import java.io.IOException;
-import java.net.HttpURLConnection;
-import java.util.HashMap;
-import java.util.Map;
-
-import org.apache.commons.lang3.RandomStringUtils;
-import org.apache.hc.client5.http.classic.HttpClient;
-import org.apache.hc.client5.http.classic.methods.HttpPost;
-import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
-import org.apache.hc.client5.http.impl.classic.HttpClientBuilder;
-import org.testng.Assert;
-import org.testng.annotations.Test;
-
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
 import io.ray.serve.api.Serve;
@@ -22,6 +9,17 @@ import io.ray.serve.generated.EndpointInfo;
 import io.ray.serve.proxy.HttpProxy;
 import io.ray.serve.proxy.ProxyRouter;
 import io.ray.serve.util.CommonUtil;
+import java.io.IOException;
+import java.net.HttpURLConnection;
+import java.util.HashMap;
+import java.util.Map;
+import org.apache.commons.lang3.RandomStringUtils;
+import org.apache.hc.client5.http.classic.HttpClient;
+import org.apache.hc.client5.http.classic.methods.HttpPost;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
+import org.apache.hc.client5.http.impl.classic.HttpClientBuilder;
+import org.testng.Assert;
+import org.testng.annotations.Test;
 
 public class HttpProxyTest {
 
@@ -36,6 +34,8 @@ public class HttpProxyTest {
               Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
       String endpointName = "HTTPProxyTest";
       String route = "/route";
+      Map<String, String> config = new HashMap<>();
+      config.put(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false");
 
       // Controller
       ActorHandle<DummyServeController> controllerHandle =
@@ -47,10 +47,7 @@ public class HttpProxyTest {
           EndpointInfo.newBuilder().setEndpointName(endpointName).setRoute(route).build());
       controllerHandle.task(DummyServeController::setEndpoints, endpointInfos).remote();
 
-      Serve.setInternalReplicaContext(null, null, controllerName, null, null);
-      Serve.getReplicaContext()
-          .setRayServeConfig(
-              new RayServeConfig().setConfig(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false"));
+      Serve.setInternalReplicaContext(null, null, controllerName, null, null, config);
 
       // ProxyRouter updates routes.
       ProxyRouter proxyRouter = new ProxyRouter();

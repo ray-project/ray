@@ -48,12 +48,9 @@ public class ServeDemo {
     DeploymentRoute deploymentInfo = client.getDeploymentInfo(deploymentName);
 
     // Call deployment by handle.
-    Assert.assertEquals(16, Ray.get(deployment.getHandle()
-    		//.method("f") // TODO
-    		.remote(6)));
-    Assert.assertEquals(16, Ray.get(deployment.getHandle()
-    		//.method("f", "signature") // TODO
-    		.remote(6)));
+    Assert.assertEquals(16, Ray.get(deployment.getHandle().method("f").remote(6)));
+    // TODO Assert.assertEquals(16, Ray.get(deployment.getHandle().method("f",
+    // "signature").remote(6)));
     Assert.assertEquals(26, Ray.get(client.getHandle(deploymentName, false).remote(10)));
 
     Serve.shutdown();
