@@ -291,7 +291,7 @@ class TargetNetworkMixin:
         config: TrainerConfigDict,
     ):
         q_func_vars = self.model.trainable_variables()
-        target_q_func_vars = self.target_model.target_trainable_variables()
+        target_q_func_vars = self.target_model.trainable_variables()
 
         @make_tf_callable(self.get_session())
         def do_update():
