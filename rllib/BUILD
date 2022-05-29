@@ -1622,6 +1622,13 @@ py_test(
     srcs = ["utils/replay_buffers/tests/test_segment_tree_replay_buffer_api.py"]
 )
 
+py_test(
+    name = "test_storage",
+    tags = ["team:ml", "utils"],
+    size = "small",
+    srcs = ["utils/replay_buffers/tests/test_storage.py"]
+)
+
 # --------------------------------------------------------------------
 # rllib/tests/ directory
 #
