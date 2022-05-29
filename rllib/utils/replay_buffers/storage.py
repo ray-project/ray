@@ -363,7 +363,7 @@ class LocalStorage(Sized, Iterable):
     def _del(self, idx: int) -> SampleBatchType:
         """Remove and return the item at the specified index / key.
 
-        This method must be implementend by subclasses
+        This method may be overridden by subclasses
         using an actual data structure for storing the data.
         This data structure must be capable of dealing with
         indices between 0 <= idx < `self._max_items`.
@@ -378,7 +378,7 @@ class LocalStorage(Sized, Iterable):
         Returns:
             Item at index that has been removed.
         """
-        raise NotImplementedError()
+        return self._get(idx)
 
 
 @ExperimentalAPI
