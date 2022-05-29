@@ -11,6 +11,7 @@ import shutil
 
 from abc import abstractmethod
 from collections.abc import Sized, Iterable
+from enum import Enum, unique
 from typing import Optional, Dict, Any, Iterator
 from tempfile import NamedTemporaryFile
 
@@ -23,30 +24,59 @@ logger = logging.getLogger(__name__)
 
 
 @ExperimentalAPI
+@unique
+class AllocationPlan(str, Enum):
+    ONE_TIME = "one-time"
+    DYNAMIC = "dynamic"
+
+
+@ExperimentalAPI
 class LocalStorage(Sized, Iterable):
     @ExperimentalAPI
-    def __init__(self, capacity: int = 10000) -> None:
+    def __init__(
+        self,
+        capacity: int = 10000,
+        allocation_plan: str = "one-time",
+    ) -> None:
         """Initializes an empty LocalStorage instance for storing timesteps in a ring buffer.
 
         The storage is indexed for fast random access of stored items and takes care
         of properly adding and removing items with respect to its capacity.
 
         Args:
-            capacity: Max number of timesteps to store in this FIFO
+            capacity: Maximum number of timesteps to store in this FIFO
                 buffer. After reaching this number, older samples will be
                 dropped to make space for new ones.
+            allocation_plan: Either `one-time` or `dynamic`. Specifies how
+                space for the ring buffer is allocated by the storage.
         """
         if capacity < 1:
             raise ValueError("Storage capacity must be strictly positive")
+        # Capacity of the storage in terms of timesteps
+        # Each item stored in the storage may consist of multiple timesteps
         self._capacity = capacity
+
+        if allocation_plan == AllocationPlan.ONE_TIME:
+            initial_size = capacity
+        elif allocation_plan == AllocationPlan.DYNAMIC:
+            initial_size = 0
+        else:
+            raise ValueError(
+                "allocation_plan must be one of {}.".format(
+                    ", ".join(f"'{s}'" for s in AllocationPlan)
+                )
+            )
 
         # Whether we have already hit our capacity (and have therefore
         # started to evict older samples).
         self._eviction_started = False
-        # Index of first, i.e. oldest, item in storage (offset_idx <= capacity)
-        self._offset_idx = 0
-        # Number of items currently in storage (num_items <= capacity)
+        # Maximum number of items that can be stored in ring buffer (max_items <= capactity)
+        # max_items is increasing while capacity is not reached but it never decreases
+        self._max_items = initial_size
+        # Number of items currently in storage (num_items <= max_items)
         self._num_items = 0
+        # Index of first, i.e. oldest, item in storage (offset_idx < max_items)
+        self._offset_idx = 0
 
         # Number of (single) timesteps that have been added to the buffer
         # over its lifetime. Note that each added item (batch) may contain
@@ -119,8 +149,9 @@ class LocalStorage(Sized, Iterable):
         """
         state = {
             "_capacity": self._capacity,
-            "_offset_idx": self._offset_idx,
+            "_max_items": self._max_items,
             "_num_items": self._num_items,
+            "_offset_idx": self._offset_idx,
             "_eviction_started": self._eviction_started,
             "_num_timesteps_added": self._num_timesteps_added,
             "_num_timesteps": self._num_timesteps,
@@ -137,8 +168,9 @@ class LocalStorage(Sized, Iterable):
                 obtained by calling `self.get_state()`.
         """
         self._capacity = state["_capacity"]
-        self._offset_idx = state["_offset_idx"]
+        self._max_items = state["_max_items"]
         self._num_items = state["_num_items"]
+        self._offset_idx = state["_offset_idx"]
         self._eviction_started = state["_eviction_started"]
         self._num_timesteps_added = state["_num_timesteps_added"]
         self._num_timesteps = state["_num_timesteps"]
@@ -198,8 +230,8 @@ class LocalStorage(Sized, Iterable):
     @ExperimentalAPI
     def add(self, item: SampleBatchType) -> None:
         """Add a new item to the storage. The index of the new item
-        will be automatically assigned. Moreover, old items may be
-        automatically dropped with respect to the storage's capacity.
+        will be assigned automatically. Moreover, old items may be
+        dropped with respect to the storage's capacity.
 
         Args:
             item: Item (batch) to add to the storage.
@@ -235,9 +267,29 @@ class LocalStorage(Sized, Iterable):
         # Insert new item.
         # Compute index to set new item at in circular storage.
         # Wrap around once we hit capacity.
+        assert self._num_items <= self._max_items
+        if self._num_items == self._max_items:
+            # Storage with dynamic space allocation
+            assert self._max_items < self.capacity
+            self._max_items += 1
+            if self._offset_idx != 0:
+                # When items have been evicted previously, we need to
+                # increment the indices the oldest items are stored at
+                # to free the index for the new item (since items live
+                # in a ring buffer).
+                # This is an expensive operation but should rarely happen
+                # in practice, e.g. when items contain full episodes and
+                # episode length decreases during training.
+                for i in reversed(range(self._offset_idx + 1, self._max_items)):
+                    it = self._get(i - 1)
+                    self._set(i, it)
+                    self._hit_count[i] = self._hit_count[i - 1]
+                self._hit_count[self._offset_idx] = 0
+                self._offset_idx = self._get_internal_index(1)  # Increase offset
         new_idx = self._get_internal_index(self._num_items)
         self._set(new_idx, item)
         self._num_items += 1
+        assert self._num_items <= self.capacity
 
     def _get_internal_index(self, idx: int):
         """Translate the given external storage index into
@@ -247,18 +299,18 @@ class LocalStorage(Sized, Iterable):
             idx: External storage index (0 <= idx < len(storage)).
 
         Returns:
-            Internal index from interval [0, capacity)
+            Internal index from interval [0, max_items)
         """
         if idx < 0:
             raise IndexError("Buffer index out of range")
-        return (self._offset_idx + idx) % self.capacity
+        return (self._offset_idx + idx) % self._max_items
 
     def _get_external_index(self, idx: int):
         """Translate the given internal circular buffer index into
         the external index space of the storage.
 
         Args:
-            idx: Internal circular Buffer index (0 <= idx < capacity).
+            idx: Internal circular Buffer index (0 <= idx < max_items).
 
         Returns:
             External index from interval [0, len(storage))
@@ -268,7 +320,7 @@ class LocalStorage(Sized, Iterable):
         if idx >= self._offset_idx:
             return idx - self._offset_idx
         else:
-            return idx + self.capacity - self._offset_idx
+            return idx + self._max_items - self._offset_idx
 
     @abstractmethod
     def _get(self, idx: int) -> SampleBatchType:
@@ -277,7 +329,7 @@ class LocalStorage(Sized, Iterable):
         This method must be implementend by subclasses
         using an actual data structure for storing the data.
         This data structure must be capable of dealing with
-        indices between 0 <= idx < capacity.
+        indices between 0 <= idx < `self._max_items`.
 
         Args:
             idx: Index of the item of interest.
@@ -294,7 +346,12 @@ class LocalStorage(Sized, Iterable):
         This method must be implementend by subclasses
         using an actual data structure for storing the data.
         This data structure must be capable of dealing with
-        indices between 0 <= idx < capacity.
+        indices between 0 <= idx < `self._max_items`.
+
+        In case of dynamic space allocation, `self._max_items`
+        increases when new items are added to the storage.
+        The subclass is responsible for inceasing the index
+        range of its data structure as required.
 
         Args:
             idx: Index to store the item at.
@@ -309,7 +366,7 @@ class LocalStorage(Sized, Iterable):
         This method must be implementend by subclasses
         using an actual data structure for storing the data.
         This data structure must be capable of dealing with
-        indices between 0 <= idx < capacity.
+        indices between 0 <= idx < `self._max_items`.
 
         Note: Removing the item from the actual data structure is
         not required for a properly working storage but is highly
@@ -328,18 +385,24 @@ class LocalStorage(Sized, Iterable):
 class InMemoryStorage(LocalStorage):
     @ExperimentalAPI
     @override(LocalStorage)
-    def __init__(self, capacity: int = 10000) -> None:
+    def __init__(
+        self,
+        capacity: int = 10000,
+        allocation_plan: str = "one-time",
+    ) -> None:
         """Initializes an InMemoryStorage instance for storing timesteps in memory.
 
-        The storage uses a numpy array as datastructure.
+        The storage uses Python's list as datastructure.
 
         Args:
-            capacity: Max number of timesteps to store in this FIFO
+            capacity: Maximum number of timesteps to store in this FIFO
                 buffer. After reaching this number, older samples will be
                 dropped to make space for new ones.
+            allocation_plan: Either `one-time` or `dynamic`. Specifies how
+                space for the ring buffer is allocated by the storage.
         """
-        super().__init__(capacity)
-        self._samples = np.empty((self._capacity,), dtype=object)
+        super().__init__(capacity, allocation_plan)
+        self._samples = [None] * self._max_items
 
     @ExperimentalAPI
     @override(LocalStorage)
@@ -361,7 +424,10 @@ class InMemoryStorage(LocalStorage):
     @override(LocalStorage)
     def _set(self, idx: int, item: SampleBatchType) -> None:
         self._warn_replay_capacity(item, self.capacity / item.count)
-        self._samples[idx] = item
+        if idx == len(self._samples):
+            self._samples.append(item)
+        else:
+            self._samples[idx] = item
 
     @override(LocalStorage)
     def _del(self, i: int) -> SampleBatchType:
@@ -406,13 +472,13 @@ class OnDiskStorage(LocalStorage):
         The storage uses Python's shelve as data structure.
 
         Args:
-            capacity: Max number of timesteps to store in this FIFO
+            capacity: Maximum number of timesteps to store in this FIFO
                 buffer. After reaching this number, older samples will be
                 dropped to make space for new ones.
             buffer_file: Optional buffer file to wite the data to. The file must not
                 exist and the file name must end with an `.dat` extension.
         """
-        super().__init__(capacity)
+        super().__init__(capacity, AllocationPlan.DYNAMIC.value)
         self._buffer_file = buffer_file
         self._rm_file_on_del = False
         if not self._buffer_file:

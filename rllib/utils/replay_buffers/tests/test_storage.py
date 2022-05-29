@@ -121,7 +121,7 @@ class TestStorage(unittest.TestCase):
         self._add_data_to_storage(other_storage, 1)
         other_storage.set_state(state)
 
-        assert (other_storage._samples == storage._samples).all()
+        assert other_storage._samples == storage._samples
         assert other_storage._offset_idx == storage._offset_idx
         assert other_storage._num_timesteps_added == storage._num_timesteps_added
         assert other_storage._num_timesteps == storage._num_timesteps
@@ -218,6 +218,47 @@ class TestStorage(unittest.TestCase):
             for k in m_batch:
                 assert np.array_equal(m_batch[k], d_batch[k])
 
+    def test_allocation_plans(self):
+        """Apply same operations to `InMemoryStorage` with `one-time`
+        and `dynamic` allocation plan and check if both storages behave
+        the same.
+        """
+        m_storage = InMemoryStorage(100, "one-time")
+        d_storage = InMemoryStorage(100, "dynamic")
+
+        self._add_data_to_storage(m_storage, batch_size=10, num_batches=3)
+        for b in m_storage:
+            d_storage.add(b)
+
+        assert len(m_storage) == len(d_storage)
+        for i in range(len(m_storage)):
+            m_batch = m_storage[i]
+            d_batch = d_storage[i]
+            assert set(m_batch.keys()) == set(d_batch.keys())
+            for k in m_batch:
+                assert np.array_equal(m_batch[k], d_batch[k])
+
+        self._add_data_to_storage(m_storage, batch_size=15, num_batches=4)
+        assert m_storage.eviction_started is False
+        for i in range(3, len(m_storage)):
+            d_storage.add(m_storage[i])
+
+        self._add_data_to_storage(m_storage, batch_size=15, num_batches=1)
+        assert m_storage.eviction_started is True
+        d_storage.add(m_storage[len(m_storage) - 1])
+
+        assert len(m_storage) == len(d_storage)
+        assert m_storage._offset_idx == d_storage._offset_idx
+        assert m_storage._num_timesteps_added == d_storage._num_timesteps_added
+        assert m_storage._num_timesteps == d_storage._num_timesteps
+        assert m_storage.eviction_started == d_storage.eviction_started
+        assert m_storage.size_bytes == d_storage.size_bytes
+        for i in range(len(m_storage)):
+            m_batch = m_storage[i]
+            d_batch = d_storage[i]
+            assert set(m_batch.keys()) == set(d_batch.keys())
+            for k in m_batch:
+                assert np.array_equal(m_batch[k], d_batch[k])
 
 if __name__ == "__main__":
     import pytest
