@@ -574,7 +574,7 @@ The following is a list of the common algorithm hyper-parameters:
     #  - Any subclass of OffPolicyEstimator, e.g.
     #    ray.rllib.offline.estimators.is::ImportanceSampling or your own custom
     #    subclass.
-    "input_evaluation": [
+    "off_policy_estimation_methods": [
         ImportanceSampling,
         WeightedImportanceSampling,
     ],

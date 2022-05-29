@@ -32,12 +32,29 @@ from ray.data.block import (
 from ray.data.row import TableRow
 from ray.data.impl.table_block import TableBlockAccessor, TableBlockBuilder
 from ray.data.aggregate import AggregateFn
+from ray.data.context import DatasetContext
+from ray.data.impl.arrow_ops import transform_polars, transform_pyarrow
 
 if TYPE_CHECKING:
     import pandas
     from ray.data.impl.sort import SortKeyT
 
 T = TypeVar("T")
+
+
+# We offload some transformations to polars for performance.
+def get_sort_transform(context: DatasetContext) -> Callable:
+    if context.use_polars:
+        return transform_polars.sort
+    else:
+        return transform_pyarrow.sort
+
+
+def get_concat_and_sort_transform(context: DatasetContext) -> Callable:
+    if context.use_polars:
+        return transform_polars.concat_and_sort
+    else:
+        return transform_pyarrow.concat_and_sort
 
 
 class ArrowRow(TableRow):
@@ -265,45 +282,35 @@ class ArrowBlockAccessor(TableBlockAccessor):
             # so calling sort_indices() will raise an error.
             return [self._empty_table() for _ in range(len(boundaries) + 1)]
 
-        import pyarrow.compute as pac
-
-        indices = pac.sort_indices(self._table, sort_keys=key)
-        table = self._table.take(indices)
+        context = DatasetContext.get_current()
+        sort = get_sort_transform(context)
+        col, _ = key[0]
+        table = sort(self._table, key, descending)
         if len(boundaries) == 0:
             return [table]
 
+        partitions = []
         # For each boundary value, count the number of items that are less
         # than it. Since the block is sorted, these counts partition the items
         # such that boundaries[i] <= x < boundaries[i + 1] for each x in
         # partition[i]. If `descending` is true, `boundaries` would also be
         # in descending order and we only need to count the number of items
         # *greater than* the boundary value instead.
-        col, _ = key[0]
-        comp_fn = pac.greater if descending else pac.less
-
-        # TODO(ekl) this is O(n^2) but in practice it's much faster than the
-        # O(n) algorithm, could be optimized.
-        boundary_indices = [pac.sum(comp_fn(table[col], b)).as_py() for b in boundaries]
-        ### Compute the boundary indices in O(n) time via scan.  # noqa
-        # boundary_indices = []
-        # remaining = boundaries.copy()
-        # values = table[col]
-        # for i, x in enumerate(values):
-        #     while remaining and not comp_fn(x, remaining[0]).as_py():
-        #         remaining.pop(0)
-        #         boundary_indices.append(i)
-        # for _ in remaining:
-        #     boundary_indices.append(len(values))
-
-        ret = []
-        prev_i = 0
-        for i in boundary_indices:
+        if descending:
+            num_rows = len(table[col])
+            bounds = num_rows - np.searchsorted(
+                table[col], boundaries, sorter=np.arange(num_rows - 1, -1, -1)
+            )
+        else:
+            bounds = np.searchsorted(table[col], boundaries)
+        last_idx = 0
+        for idx in bounds:
             # Slices need to be copied to avoid including the base table
             # during serialization.
-            ret.append(_copy_table(table.slice(prev_i, i - prev_i)))
-            prev_i = i
-        ret.append(_copy_table(table.slice(prev_i)))
-        return ret
+            partitions.append(_copy_table(table.slice(last_idx, idx - last_idx)))
+            last_idx = idx
+        partitions.append(_copy_table(table.slice(last_idx)))
+        return partitions
 
     def combine(self, key: KeyFn, aggs: Tuple[AggregateFn]) -> Block[ArrowRow]:
         """Combine rows with the same key into an accumulator.
@@ -391,9 +398,10 @@ class ArrowBlockAccessor(TableBlockAccessor):
         if len(blocks) == 0:
             ret = ArrowBlockAccessor._empty_table()
         else:
-            ret = pyarrow.concat_tables(blocks, promote=True)
-            indices = pyarrow.compute.sort_indices(ret, sort_keys=key)
-            ret = ret.take(indices)
+            concat_and_sort = get_concat_and_sort_transform(
+                DatasetContext.get_current()
+            )
+            ret = concat_and_sort(blocks, key, _descending)
         return ret, ArrowBlockAccessor(ret).get_metadata(None, exec_stats=stats.build())
 
     @staticmethod

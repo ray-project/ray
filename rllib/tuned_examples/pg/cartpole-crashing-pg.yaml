@@ -1,0 +1,26 @@
+cartpole-crashing-pg:
+    env: ray.rllib.examples.env.cartpole_crashing.CartPoleCrashing
+    run: PG
+    stop:
+        episode_reward_mean: 150.0
+        timesteps_total: 120000
+    config:
+        # Works for both torch and tf.
+        framework: tf
+
+        env_config:
+            config:
+                # Crash roughly every 300 ts. This should be ok to measure 150.0
+                # reward (episodes are 200 ts long).
+                p_crash: 0.0025
+                # Time for the env to initialize when newly created.
+                # Every time a remote sub-environment crashes, a new env is created
+                # instead that will take this long (sleep) to "initialize".
+                init_time_s: 1.0
+        num_workers: 2
+        num_envs_per_worker: 5
+        # Switch on resiliency for failed sub environments (within a vectorized stack).
+        restart_failed_sub_environments: true
+        # Also ignore worker failures, however, this should not matter as we don't
+        # expect any due to catching individual sub-env failures.
+        ignore_worker_failures: true
