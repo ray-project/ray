@@ -6,6 +6,7 @@ import gym
 import numpy as np
 import ray
 from ray.rllib.algorithms.dqn.distributional_q_tf_model import DistributionalQTFModel
+from ray.rllib.algorithms.dqn.utils import Q_SCOPE, Q_TARGET_SCOPE
 from ray.rllib.evaluation.postprocessing import adjust_nstep
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -30,9 +31,6 @@ from ray.rllib.utils.tf_utils import (
 from ray.rllib.utils.typing import ModelGradients, TensorType, TrainerConfigDict
 
 tf1, tf, tfv = try_import_tf()
-
-Q_SCOPE = "q_func"
-Q_TARGET_SCOPE = "target_q_func"
 
 # Importance sampling weights for prioritized replay
 PRIO_WEIGHTS = "weights"

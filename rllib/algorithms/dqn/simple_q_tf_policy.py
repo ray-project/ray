@@ -3,18 +3,15 @@
 import logging
 from typing import Dict, List, Tuple, Type, Union
 
-import gym
 import ray
-from ray.rllib.models import ModelCatalog
+from ray.rllib.algorithms.dqn.utils import make_q_models
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import Categorical, TFActionDistribution
-from ray.rllib.policy import Policy
 from ray.rllib.policy.dynamic_tf_policy_v2 import DynamicTFPolicyV2
 from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_mixins import compute_gradients, TargetNetworkMixin
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import huber_loss
 from ray.rllib.utils.typing import (
@@ -26,9 +23,6 @@ from ray.rllib.utils.typing import (
 
 tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
-
-Q_SCOPE = "q_func"
-Q_TARGET_SCOPE = "target_q_func"
 
 
 # We need this builder function because we want to share the same
@@ -81,38 +75,8 @@ def get_simple_q_tf_policy(
 
         @override(base)
         def make_model(self) -> ModelV2:
-            """Build q_model and target_model for Simple Q learning
-
-            Note that this function works for both Tensorflow and PyTorch.
-
-            Returns:
-                ModelV2: The Model for the Policy to use.
-                Note: The target q model will not be returned, just assigned to
-                `policy.target_model`.
-            """
-            if not isinstance(self.action_space, gym.spaces.Discrete):
-                raise UnsupportedSpaceException(
-                    f"Action space {self.action_space} is not supported for DQN."
-                )
-
-            model = ModelCatalog.get_model_v2(
-                obs_space=self.observation_space,
-                action_space=self.action_space,
-                num_outputs=self.action_space.n,
-                model_config=self.config["model"],
-                framework=self.config["framework"],
-                name=Q_SCOPE,
-            )
-
-            self.target_model = ModelCatalog.get_model_v2(
-                obs_space=self.observation_space,
-                action_space=self.action_space,
-                num_outputs=self.action_space.n,
-                model_config=self.config["model"],
-                framework=self.config["framework"],
-                name=Q_TARGET_SCOPE,
-            )
-
+            """Builds Q-model and target Q-model for Simple Q learning."""
+            model, self.target_model = make_q_models(self)
             return model
 
         @override(base)

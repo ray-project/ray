@@ -4,8 +4,8 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
 import ray
+from ray.rllib.algorithms.dqn.utils import make_q_models
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.torch_action_dist import (
     TorchCategorical,
     TorchDistributionWrapper,
@@ -15,6 +15,7 @@ from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.policy.torch_mixins import TargetNetworkMixin
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import concat_multi_gpu_td_errors, huber_loss
 from ray.rllib.utils.typing import TensorStructType, TensorType
@@ -33,8 +34,8 @@ class SimpleQTorchPolicy(
     """PyTorch policy class used with SimpleQTrainer."""
 
     def __init__(self, observation_space, action_space, config):
-        config = dict(ray.rllib.agents.dqn.simple_q.SimpleQConfig().to_dict(), **config)
-        validate_config(config)
+        config = dict(ray.rllib.algorithms.dqn.simple_q.SimpleQConfig().to_dict(), **config)
+        #validate_config(config)
 
         TorchPolicyV2.__init__(
             self,
@@ -50,45 +51,44 @@ class SimpleQTorchPolicy(
         TargetNetworkMixin.__init__(self)
 
     @override(TorchPolicyV2)
-    def make_model(
-        self,
-    ) -> Tuple[Optional[ModelV2], Optional[Type[TorchDistributionWrapper]]]:
-        return build_q_models(
-            self, self.observation_space, self.action_space, self.config
-        )
+    def make_model(self) -> ModelV2:
+        """Builds q_model and target_model for Simple Q learning."""
+        model, self.target_model = make_q_models(self)
+        return model
 
     @override(TorchPolicyV2)
     def compute_actions(
         self,
         *,
-        input_dict: Optional[Union[SampleBatch, Dict[str, TensorStructType]]] = None,
-        episodes: Optional[List["Episode"]] = None,
-        explore: Optional[bool] = None,
-        timestep: Optional[int] = None,
-        is_training: Optional[bool] = False,
-        **kwargs,
-    ) -> Tuple[TensorStructType, List[TensorType], Dict[str, TensorType]]:
+        input_dict,
+        explore=True,
+        timestep=None,
+        episodes=None,
+        is_training=False,
+        **kwargs
+    ) -> Tuple[TensorStructType, List[TensorType], Dict[str, TensorStructType]]:
+        if timestep is None:
+            timestep = self.global_timestep
+        # Compute the Q-values for each possible action, using our Q-value network.
         q_vals = self._compute_q_values(
-            self.model, input_dict[SampleBatch.OBS], is_training=False
+            self.model, input_dict[SampleBatch.OBS], is_training=is_training
         )
-        q_vals = q_vals[0] if isinstance(q_vals, tuple) else q_vals
-
+        # Use a Categorical distribution for the exploration component.
+        # This way, it may either sample storchastically (e.g. when using SoftQ)
+        # or deterministically/greedily (e.g. when using EpsilonGreedy).
         distribution = TorchCategorical(q_vals, self.model)
-        actions = self.exploration.get_exploration_action(
+        # Call the exploration component's `get_exploration_action` method to
+        # explore, if necessary.
+        actions, logp = self.exploration.get_exploration_action(
             action_distribution=distribution, timestep=timestep, explore=explore
         )
-        return actions, [], {"q_values": q_vals}
-
-    #@override(TorchPolicyV2)
-    #def extra_action_out(
-    #    self,
-    #    input_dict: Dict[str, TensorType],
-    #    state_batches: List[TensorType],
-    #    model: TorchModelV2,
-    #    action_dist: TorchDistributionWrapper,
-    #) -> Dict[str, TensorType]:
-    #    """Adds q-values to the action out dict."""
-    #    return {"q_values": policy.q_values}
+        # Return (exploration) actions, state_outs (empty list), and extra outs.
+        return actions, [], {
+            "q_values": q_vals,
+            SampleBatch.ACTION_LOGP: logp,
+            SampleBatch.ACTION_PROB: torch.exp(logp),
+            SampleBatch.ACTION_DIST_INPUTS: q_vals,
+        }
 
     @override(TorchPolicyV2)
     def loss(
@@ -107,39 +107,37 @@ class SimpleQTorchPolicy(
         Returns:
             The SimpleQ loss tensor given the input batch.
         """
-        target_model = policy.target_models[model]
+        target_model = self.target_models[model]
 
         # q network evaluation
-        q_t = compute_q_values(
-            policy, model, train_batch[SampleBatch.CUR_OBS], explore=False, is_training=True
+        q_t = self._compute_q_values(
+            model, train_batch[SampleBatch.CUR_OBS], is_training=True
         )
 
         # target q network evalution
-        q_tp1 = compute_q_values(
-            policy,
+        q_tp1 = self._compute_q_values(
             target_model,
             train_batch[SampleBatch.NEXT_OBS],
-            explore=False,
             is_training=True,
         )
 
         # q scores for actions which we know were selected in the given state.
         one_hot_selection = F.one_hot(
-            train_batch[SampleBatch.ACTIONS].long(), policy.action_space.n
+            train_batch[SampleBatch.ACTIONS].long(), self.action_space.n
         )
         q_t_selected = torch.sum(q_t * one_hot_selection, 1)
 
         # compute estimate of best possible value starting from state at t + 1
         dones = train_batch[SampleBatch.DONES].float()
         q_tp1_best_one_hot_selection = F.one_hot(
-            torch.argmax(q_tp1, 1), policy.action_space.n
+            torch.argmax(q_tp1, 1), self.action_space.n
         )
         q_tp1_best = torch.sum(q_tp1 * q_tp1_best_one_hot_selection, 1)
         q_tp1_best_masked = (1.0 - dones) * q_tp1_best
 
         # compute RHS of bellman equation
         q_t_selected_target = (
-            train_batch[SampleBatch.REWARDS] + policy.config["gamma"] * q_tp1_best_masked
+            train_batch[SampleBatch.REWARDS] + self.config["gamma"] * q_tp1_best_masked
         )
 
         # Compute the error (Square/Huber).
@@ -163,4 +161,17 @@ class SimpleQTorchPolicy(
 
     @override(TorchPolicyV2)
     def stats_fn(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
-        return {"loss": torch.mean(torch.stack(policy.get_tower_stats("loss")))}
+        return convert_to_numpy(
+            {"loss": torch.mean(torch.stack(self.get_tower_stats("loss")))}
+        )
+
+    def _compute_q_values(
+        self, model: ModelV2, obs_batch: TensorType, is_training=None
+    ) -> TensorType:
+        _is_training = is_training if is_training is not None else False
+        input_dict = self._lazy_tensor_dict(
+            SampleBatch(obs=obs_batch, _is_training=_is_training)
+        )
+        # Make sure, everything is PyTorch tensors.
+        model_out, _ = model(input_dict, [], None)
+        return model_out

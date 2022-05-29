@@ -449,21 +449,11 @@ class TorchPolicyV2(Policy):
         return optimizers
 
     def _init_model_and_dist_class(self):
-        if is_overridden(self.make_model) and is_overridden(
-            self.make_model_and_action_dist
-        ):
-            raise ValueError(
-                "Only one of make_model or make_model_and_action_dist "
-                "can be overridden."
-            )
-
         if is_overridden(self.make_model):
             model = self.make_model()
             dist_class, _ = ModelCatalog.get_action_dist(
                 self.action_space, self.config["model"], framework=self.framework
             )
-        elif is_overridden(self.make_model_and_action_dist):
-            model, dist_class = self.make_model_and_action_dist()
         else:
             dist_class, logit_dim = ModelCatalog.get_action_dist(
                 self.action_space, self.config["model"], framework=self.framework
