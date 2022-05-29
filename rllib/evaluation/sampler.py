@@ -60,8 +60,8 @@ if TYPE_CHECKING:
 tf1, tf, _ = try_import_tf()
 logger = logging.getLogger(__name__)
 
-PolicyEvalData = namedtuple(
-    "PolicyEvalData",
+_PolicyEvalData = namedtuple(
+    "_PolicyEvalData",
     ["env_id", "agent_id", "obs", "info", "rnn_state", "prev_action", "prev_reward"],
 )
 
@@ -69,7 +69,7 @@ PolicyEvalData = namedtuple(
 StateBatch = List[List[Any]]
 
 
-class NewEpisodeDefaultDict(defaultdict):
+class _NewEpisodeDefaultDict(defaultdict):
     def __missing__(self, env_id):
         if self.default_factory is None:
             raise KeyError(env_id)
@@ -650,7 +650,7 @@ def _env_runner(
         )
         return episode
 
-    active_episodes: Dict[EnvID, Episode] = NewEpisodeDefaultDict(new_episode)
+    active_episodes: Dict[EnvID, Episode] = _NewEpisodeDefaultDict(new_episode)
 
     while True:
         perf_stats.iters += 1
@@ -666,7 +666,7 @@ def _env_runner(
 
         # Process observations and prepare for policy evaluation.
         t1 = time.time()
-        # types: Set[EnvID], Dict[PolicyID, List[PolicyEvalData]],
+        # types: Set[EnvID], Dict[PolicyID, List[_PolicyEvalData]],
         #       List[Union[RolloutMetrics, SampleBatchType]]
         active_envs, to_eval, outputs = _process_observations(
             worker=worker,
@@ -771,7 +771,7 @@ def _process_observations(
     sample_collector: SampleCollector,
 ) -> Tuple[
     Set[EnvID],
-    Dict[PolicyID, List[PolicyEvalData]],
+    Dict[PolicyID, List[_PolicyEvalData]],
     List[Union[RolloutMetrics, SampleBatchType]],
 ]:
     """Record new data from the environment and prepare for policy evaluation.
@@ -806,13 +806,13 @@ def _process_observations(
 
     Returns:
         Tuple consisting of 1) active_envs: Set of non-terminated env ids.
-        2) to_eval: Map of policy_id to list of agent PolicyEvalData.
+        2) to_eval: Map of policy_id to list of agent _PolicyEvalData.
         3) outputs: List of metrics and samples to return from the sampler.
     """
 
     # Output objects.
     active_envs: Set[EnvID] = set()
-    to_eval: Dict[PolicyID, List[PolicyEvalData]] = defaultdict(list)
+    to_eval: Dict[PolicyID, List[_PolicyEvalData]] = defaultdict(list)
     outputs: List[Union[RolloutMetrics, SampleBatchType]] = []
 
     # For each (vectorized) sub-environment.
@@ -820,6 +820,20 @@ def _process_observations(
     for env_id, all_agents_obs in unfiltered_obs.items():
         is_new_episode: bool = env_id not in active_episodes
         episode: Episode = active_episodes[env_id]
+
+        # Check for env_id having returned an error instead of a multi-agent obs dict.
+        # This is how our BaseEnv can tell the caller to `poll()` that one of its
+        # sub-environments is faulty and should be restarted (and the ongoing episode
+        # should not be used for training).
+        episode_faulty = False
+        if isinstance(all_agents_obs, Exception):
+            episode_faulty = True
+            assert dones[env_id]["__all__"] is True, (
+                f"ERROR: When a sub-environment (env-id {env_id}) returns an error "
+                "as observation, the dones[__all__] flag must also be set to True!"
+            )
+            # This will be filled with dummy observations below.
+            all_agents_obs = {}
 
         if not is_new_episode:
             sample_collector.episode_step(episode)
@@ -830,21 +844,24 @@ def _process_observations(
             hit_horizon = episode.length >= horizon and not dones[env_id]["__all__"]
             all_agents_done = True
             atari_metrics: List[RolloutMetrics] = _fetch_atari_metrics(base_env)
-            if atari_metrics is not None:
-                for m in atari_metrics:
-                    outputs.append(m._replace(custom_metrics=episode.custom_metrics))
-            else:
-                outputs.append(
-                    RolloutMetrics(
-                        episode.length,
-                        episode.total_reward,
-                        dict(episode.agent_rewards),
-                        episode.custom_metrics,
-                        {},
-                        episode.hist_data,
-                        episode.media,
+            if not episode_faulty:
+                if atari_metrics is not None:
+                    for m in atari_metrics:
+                        outputs.append(
+                            m._replace(custom_metrics=episode.custom_metrics)
+                        )
+                else:
+                    outputs.append(
+                        RolloutMetrics(
+                            episode.length,
+                            episode.total_reward,
+                            dict(episode.agent_rewards),
+                            episode.custom_metrics,
+                            {},
+                            episode.hist_data,
+                            episode.media,
+                        )
                     )
-                )
             # Check whether we have to create a fake-last observation
             # for some agents (the environment is not required to do so if
             # dones[__all__]=True).
@@ -959,7 +976,7 @@ def _process_observations(
                 )
 
             if not agent_done:
-                item = PolicyEvalData(
+                item = _PolicyEvalData(
                     env_id,
                     agent_id,
                     filtered_obs,
@@ -979,7 +996,7 @@ def _process_observations(
         # Exception: The very first env.poll() call causes the env to get reset
         # (no step taken yet, just a single starting observation logged).
         # We need to skip this callback in this case.
-        if episode.length > 0:
+        if not episode_faulty and episode.length > 0:
             callbacks.on_episode_step(
                 worker=worker,
                 base_env=base_env,
@@ -999,40 +1016,44 @@ def _process_observations(
             # MultiAgentBatch from a single episode and add it to "outputs".
             # Otherwise, just postprocess and continue collecting across
             # episodes.
+            # If an episode was marked faulty, perform regular postprocessing
+            # (to e.g. properly flush and clean up the SampleCollector's buffers),
+            # but then discard the entire batch and don't return it.
             ma_sample_batch = sample_collector.postprocess_episode(
                 episode,
                 is_done=is_done or (hit_horizon and not soft_horizon),
                 check_dones=check_dones,
-                build=not multiple_episodes_in_batch,
+                build=episode_faulty or not multiple_episodes_in_batch,
             )
-            if ma_sample_batch:
-                outputs.append(ma_sample_batch)
+            if not episode_faulty:
+                if ma_sample_batch:
+                    outputs.append(ma_sample_batch)
 
-            # Call each (in-memory) policy's Exploration.on_episode_end
-            # method.
-            # Note: This may break the exploration (e.g. ParameterNoise) of
-            # policies in the `policy_map` that have not been recently used
-            # (and are therefore stashed to disk). However, we certainly do not
-            # want to loop through all (even stashed) policies here as that
-            # would counter the purpose of the LRU policy caching.
-            for p in worker.policy_map.cache.values():
-                if getattr(p, "exploration", None) is not None:
-                    p.exploration.on_episode_end(
-                        policy=p,
-                        environment=base_env,
-                        episode=episode,
-                        tf_sess=p.get_session(),
-                    )
-            # Call custom on_episode_end callback.
-            callbacks.on_episode_end(
-                worker=worker,
-                base_env=base_env,
-                policies=worker.policy_map,
-                episode=episode,
-                env_index=env_id,
-            )
+                # Call each (in-memory) policy's Exploration.on_episode_end
+                # method.
+                # Note: This may break the exploration (e.g. ParameterNoise) of
+                # policies in the `policy_map` that have not been recently used
+                # (and are therefore stashed to disk). However, we certainly do not
+                # want to loop through all (even stashed) policies here as that
+                # would counter the purpose of the LRU policy caching.
+                for p in worker.policy_map.cache.values():
+                    if getattr(p, "exploration", None) is not None:
+                        p.exploration.on_episode_end(
+                            policy=p,
+                            environment=base_env,
+                            episode=episode,
+                            tf_sess=p.get_session(),
+                        )
+                # Call custom on_episode_end callback.
+                callbacks.on_episode_end(
+                    worker=worker,
+                    base_env=base_env,
+                    policies=worker.policy_map,
+                    episode=episode,
+                    env_index=env_id,
+                )
             # Horizon hit and we have a soft horizon (no hard env reset).
-            if hit_horizon and soft_horizon:
+            if not episode_faulty and hit_horizon and soft_horizon:
                 episode.soft_reset()
                 resetted_obs: Dict[EnvID, Dict[AgentID, EnvObsType]] = {
                     env_id: all_agents_obs
@@ -1086,7 +1107,7 @@ def _process_observations(
                         filtered_obs,
                     )
 
-                    item = PolicyEvalData(
+                    item = _PolicyEvalData(
                         env_id,
                         agent_id,
                         filtered_obs,
@@ -1110,7 +1131,7 @@ def _process_observations(
 
 def _do_policy_eval(
     *,
-    to_eval: Dict[PolicyID, List[PolicyEvalData]],
+    to_eval: Dict[PolicyID, List[_PolicyEvalData]],
     policies: PolicyMap,
     sample_collector: SampleCollector,
     active_episodes: Dict[EnvID, Episode],
@@ -1118,7 +1139,7 @@ def _do_policy_eval(
     """Call compute_actions on collected episode/model data to get next action.
 
     Args:
-        to_eval: Mapping of policy IDs to lists of PolicyEvalData objects
+        to_eval: Mapping of policy IDs to lists of _PolicyEvalData objects
             (items in these lists will be the batch's items for the model
             forward pass).
         policies: Mapping from policy ID to Policy obj.
@@ -1167,7 +1188,7 @@ def _do_policy_eval(
 
 def _process_policy_eval_results(
     *,
-    to_eval: Dict[PolicyID, List[PolicyEvalData]],
+    to_eval: Dict[PolicyID, List[_PolicyEvalData]],
     eval_results: Dict[PolicyID, Tuple[TensorStructType, StateBatch, dict]],
     active_episodes: Dict[EnvID, Episode],
     active_envs: Set[int],
@@ -1182,7 +1203,7 @@ def _process_policy_eval_results(
     returns replies to send back to agents in the env.
 
     Args:
-        to_eval: Mapping of policy IDs to lists of PolicyEvalData objects.
+        to_eval: Mapping of policy IDs to lists of _PolicyEvalData objects.
         eval_results: Mapping of policy IDs to list of
             actions, rnn-out states, extra-action-fetches dicts.
         active_episodes: Mapping from episode ID to currently ongoing
@@ -1206,7 +1227,7 @@ def _process_policy_eval_results(
     for env_id in active_envs:
         actions_to_send[env_id] = {}  # at minimum send empty dict
 
-    # types: PolicyID, List[PolicyEvalData]
+    # types: PolicyID, List[_PolicyEvalData]
     for policy_id, eval_data in to_eval.items():
         actions: TensorStructType = eval_results[policy_id][0]
         actions = convert_to_numpy(actions)

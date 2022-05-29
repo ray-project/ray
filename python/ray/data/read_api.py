@@ -20,17 +20,18 @@ if TYPE_CHECKING:
     import mars
     import modin
     import pyspark
+    import datasets
 
 import ray
 from ray.types import ObjectRef
-from ray.util.annotations import PublicAPI, DeveloperAPI
+from ray.util.annotations import PublicAPI, DeveloperAPI, Deprecated
 from ray.data.block import (
     Block,
     BlockAccessor,
     BlockMetadata,
     BlockExecStats,
 )
-from ray.data.context import DatasetContext
+from ray.data.context import DatasetContext, DEFAULT_SCHEDULING_STRATEGY
 from ray.data.dataset import Dataset
 from ray.data.datasource import (
     Datasource,
@@ -134,12 +135,12 @@ def range(n: int, *, parallelism: int = 200) -> Dataset[int]:
 
 
 @PublicAPI
-def range_arrow(n: int, *, parallelism: int = 200) -> Dataset[ArrowRow]:
-    """Create an Arrow dataset from a range of integers [0..n).
+def range_table(n: int, *, parallelism: int = 200) -> Dataset[ArrowRow]:
+    """Create a tabular dataset from a range of integers [0..n).
 
     Examples:
         >>> import ray
-        >>> ds = ray.data.range_arrow(1000) # doctest: +SKIP
+        >>> ds = ray.data.range_table(1000) # doctest: +SKIP
         >>> ds.map(lambda r: {"v2": r["value"] * 2}).show() # doctest: +SKIP
 
     This is similar to range(), but uses Arrow tables to hold the integers
@@ -158,6 +159,11 @@ def range_arrow(n: int, *, parallelism: int = 200) -> Dataset[ArrowRow]:
     )
 
 
+@Deprecated
+def range_arrow(*args, **kwargs):
+    raise DeprecationWarning("range_arrow() is deprecated, use range_table() instead.")
+
+
 @PublicAPI
 def range_tensor(
     n: int, *, shape: Tuple = (1,), parallelism: int = 200
@@ -170,7 +176,7 @@ def range_tensor(
         >>> ds.map_batches( # doctest: +SKIP
         ...     lambda arr: arr * 2, batch_format="pandas").show()
 
-    This is similar to range_arrow(), but uses the ArrowTensorArray extension
+    This is similar to range_table(), but uses the ArrowTensorArray extension
     type. The dataset elements take the form {"value": array(N, shape=shape)}.
 
     Args:
@@ -211,6 +217,7 @@ def read_datasource(
     Returns:
         Dataset holding the data read from the datasource.
     """
+    ctx = DatasetContext.get_current()
     # TODO(ekl) remove this feature flag.
     force_local = "RAY_DATASET_FORCE_LOCAL_METADATA" in os.environ
     pa_ds = _lazy_import_pyarrow_dataset()
@@ -228,7 +235,6 @@ def read_datasource(
     else:
         # Prepare read in a remote task so that in Ray client mode, we aren't
         # attempting metadata resolution from the client machine.
-        ctx = DatasetContext.get_current()
         prepare_read = cached_remote_fn(
             _prepare_read, retry_exceptions=False, num_cpus=0
         )
@@ -253,7 +259,10 @@ def read_datasource(
 
     if ray_remote_args is None:
         ray_remote_args = {}
-    if "scheduling_strategy" not in ray_remote_args:
+    if (
+        "scheduling_strategy" not in ray_remote_args
+        and ctx.scheduling_strategy == DEFAULT_SCHEDULING_STRATEGY
+    ):
         ray_remote_args["scheduling_strategy"] = "SPREAD"
 
     block_list = LazyBlockList(read_tasks, ray_remote_args=ray_remote_args)
@@ -960,6 +969,40 @@ def from_spark(
     import raydp
 
     return raydp.spark.spark_dataframe_to_ray_dataset(df, parallelism)
+
+
+@PublicAPI
+def from_huggingface(
+    dataset: Union["datasets.Dataset", "datasets.DatasetDict"],
+) -> Union[Dataset[ArrowRow], Dict[str, Dataset[ArrowRow]]]:
+    """Create a dataset from a Hugging Face Datasets Dataset.
+
+    This function is not parallelized, and is intended to be used
+    with Hugging Face Datasets that are loaded into memory (as opposed
+    to memory-mapped).
+
+    Args:
+        dataset: A Hugging Face ``Dataset``, or ``DatasetDict``.
+            ``IterableDataset`` is not supported.
+
+    Returns:
+        Dataset holding Arrow records from the Hugging Face Dataset, or a
+        dict of datasets in case ``dataset`` is a ``DatasetDict``.
+    """
+    import datasets
+
+    def convert(ds: "datasets.Dataset") -> Dataset[ArrowRow]:
+        return from_arrow(ds.data.table)
+
+    if isinstance(dataset, datasets.DatasetDict):
+        return {k: convert(ds) for k, ds in dataset.items()}
+    elif isinstance(dataset, datasets.Dataset):
+        return convert(dataset)
+    else:
+        raise TypeError(
+            "`dataset` must be a `datasets.Dataset` or `datasets.DatasetDict`, "
+            f"got {type(dataset)}"
+        )
 
 
 def _df_to_block(df: "pandas.DataFrame") -> Block[ArrowRow]:

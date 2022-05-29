@@ -1,6 +1,6 @@
 from typing import Optional
 
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.schedules.schedule import Schedule
 from ray.rllib.utils.typing import TensorType
@@ -8,6 +8,7 @@ from ray.rllib.utils.typing import TensorType
 torch, _ = try_import_torch()
 
 
+@PublicAPI
 class ExponentialSchedule(Schedule):
     """Exponential decay schedule from `initial_p` to `final_p`.
 

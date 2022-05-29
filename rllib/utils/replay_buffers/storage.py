@@ -12,7 +12,7 @@ import shutil
 from abc import abstractmethod
 from collections.abc import Sized, Iterable
 from enum import Enum, unique
-from typing import Optional, Dict, Any, Iterator
+from typing import Optional, Dict, Any, Iterator, Union
 from tempfile import NamedTemporaryFile
 
 from ray.rllib.utils.annotations import ExperimentalAPI, override
@@ -36,7 +36,7 @@ class LocalStorage(Sized, Iterable):
     def __init__(
         self,
         capacity: int = 10000,
-        allocation_plan: str = "one-time",
+        allocation_plan: Union[str, AllocationPlan] = "one-time",
     ) -> None:
         """Initializes an empty LocalStorage instance for storing timesteps in a ring buffer.
 
@@ -70,7 +70,8 @@ class LocalStorage(Sized, Iterable):
         # Whether we have already hit our capacity (and have therefore
         # started to evict older samples).
         self._eviction_started = False
-        # Maximum number of items that can be stored in ring buffer (max_items <= capactity)
+        # Maximum number of items that can be stored in ring buffer
+        # (max_items <= capacity)
         # max_items is increasing while capacity is not reached but it never decreases
         self._max_items = initial_size
         # Number of items currently in storage (num_items <= max_items)
@@ -392,7 +393,7 @@ class InMemoryStorage(LocalStorage):
     ) -> None:
         """Initializes an InMemoryStorage instance for storing timesteps in memory.
 
-        The storage uses Python's list as datastructure.
+        The storage uses Python's list as data structure.
 
         Args:
             capacity: Maximum number of timesteps to store in this FIFO

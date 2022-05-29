@@ -14,14 +14,15 @@ from typing import List
 
 logger = logging.getLogger(__name__)
 
-OffPolicyEstimate = namedtuple("OffPolicyEstimate", ["estimator_name", "metrics"])
+OffPolicyEstimate = DeveloperAPI(
+    namedtuple("OffPolicyEstimate", ["estimator_name", "metrics"])
+)
 
 
 @DeveloperAPI
 class OffPolicyEstimator:
     """Interface for an off policy reward estimator."""
 
-    @DeveloperAPI
     def __init__(self, policy: Policy, gamma: float):
         """Initializes an OffPolicyEstimator instance.
 
@@ -34,6 +35,7 @@ class OffPolicyEstimator:
         self.new_estimates = []
 
     @classmethod
+    @DeveloperAPI
     def create_from_io_context(cls, ioctx: IOContext) -> "OffPolicyEstimator":
         """Creates an off-policy estimator from an IOContext object.
 
@@ -53,7 +55,7 @@ class OffPolicyEstimator:
         if len(keys) > 1:
             raise NotImplementedError(
                 "Off-policy estimation is not implemented for multi-agent. "
-                "You can set `input_evaluation: []` to resolve this."
+                "You can set `off_policy_estimation_methods: []` to resolve this."
             )
         policy = ioctx.worker.get_policy(keys[0])
         return cls(policy, gamma)
@@ -132,8 +134,8 @@ class OffPolicyEstimator:
 
         if isinstance(batch, MultiAgentBatch):
             raise ValueError(
-                "IS-estimation is not implemented for multi-agent batches. "
-                "You can set `input_evaluation: []` to resolve this."
+                "off-policy estimation is not implemented for multi-agent batches. "
+                "You can set `off_policy_estimation_methods: []` to resolve this."
             )
 
         if "action_prob" not in batch:
@@ -142,7 +144,7 @@ class OffPolicyEstimator:
                 "include action probabilities (i.e., the policy is stochastic "
                 "and emits the 'action_prob' key). For DQN this means using "
                 "`exploration_config: {type: 'SoftQ'}`. You can also set "
-                "`input_evaluation: []` to disable estimation."
+                "`off_policy_estimation_methods: []` to disable estimation."
             )
 
     @DeveloperAPI

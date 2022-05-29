@@ -26,9 +26,12 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import (
+    PublicAPI,
     DeveloperAPI,
     ExperimentalAPI,
     OverrideToImplementCustomLogic,
+    OverrideToImplementCustomLogic_CallToSuperRecommended,
+    is_overridden,
 )
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.exploration.exploration import Exploration
@@ -67,22 +70,24 @@ logger = logging.getLogger(__name__)
 #       "pol1": PolicySpec(None, Box, Discrete(2), {"lr": 0.0001}),
 #       "pol2": PolicySpec(config={"lr": 0.001}),
 #     }
-PolicySpec = namedtuple(
-    "PolicySpec",
-    [
-        # If None, use the Trainer's default policy class stored under
-        # `Trainer._policy_class`.
-        "policy_class",
-        # If None, use the env's observation space. If None and there is no Env
-        # (e.g. offline RL), an error is thrown.
-        "observation_space",
-        # If None, use the env's action space. If None and there is no Env
-        # (e.g. offline RL), an error is thrown.
-        "action_space",
-        # Overrides defined keys in the main Trainer config.
-        # If None, use {}.
-        "config",
-    ],
+PolicySpec = PublicAPI(
+    namedtuple(
+        "PolicySpec",
+        [
+            # If None, use the Trainer's default policy class stored under
+            # `Trainer._policy_class`.
+            "policy_class",
+            # If None, use the env's observation space. If None and there is no Env
+            # (e.g. offline RL), an error is thrown.
+            "observation_space",
+            # If None, use the env's action space. If None and there is no Env
+            # (e.g. offline RL), an error is thrown.
+            "action_space",
+            # Overrides defined keys in the main Trainer config.
+            # If None, use {}.
+            "config",
+        ],
+    )
 )  # defaults=(None, None, None, None)
 # TODO: From 3.7 on, we could pass `defaults` into the above constructor.
 #  We still support py3.6.
@@ -155,6 +160,20 @@ class Policy(metaclass=ABCMeta):
         # Child classes may set this.
         self.dist_class: Optional[Type] = None
 
+        # Initialize view requirements.
+        self.init_view_requirements()
+
+        # Whether the Model's initial state (method) has been added
+        # automatically based on the given view requirements of the model.
+        self._model_init_state_automatically_added = False
+
+    @DeveloperAPI
+    def init_view_requirements(self):
+        """Maximal view requirements dict for `learn_on_batch()` and
+        `compute_actions` calls.
+        Specific policies can override this function to provide custom
+        list of view requirements.
+        """
         # Maximal view requirements dict for `learn_on_batch()` and
         # `compute_actions` calls.
         # View requirements will be automatically filtered out later based
@@ -167,9 +186,6 @@ class Policy(metaclass=ABCMeta):
             for k, v in view_reqs.items():
                 if k not in self.view_requirements:
                     self.view_requirements[k] = v
-        # Whether the Model's initial state (method) has been added
-        # automatically based on the given view requirements of the model.
-        self._model_init_state_automatically_added = False
 
     @DeveloperAPI
     def compute_single_action(
@@ -413,6 +429,7 @@ class Policy(metaclass=ABCMeta):
         raise NotImplementedError
 
     @DeveloperAPI
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
     def postprocess_trajectory(
         self,
         sample_batch: SampleBatch,
@@ -739,9 +756,7 @@ class Policy(metaclass=ABCMeta):
         # steps).
         # Make sure, we keep global_timestep as a Tensor for tf-eager
         # (leads to memory leaks if not doing so).
-        from ray.rllib.policy.eager_tf_policy import EagerTFPolicy
-
-        if self.framework in ["tf2", "tfe"] and isinstance(self, EagerTFPolicy):
+        if self.framework in ["tfe", "tf2"]:
             self.global_timestep.assign(global_vars["timestep"])
         else:
             self.global_timestep = global_vars["timestep"]
@@ -806,7 +821,7 @@ class Policy(metaclass=ABCMeta):
 
         This method only exists b/c some Trainers do not use TfPolicy nor
         TorchPolicy, but inherit directly from Policy. Others inherit from
-        TfPolicy w/o using DynamicTfPolicy.
+        TfPolicy w/o using DynamicTFPolicy.
         TODO(sven): unify these cases.
 
         Returns:
@@ -952,11 +967,19 @@ class Policy(metaclass=ABCMeta):
             train_batch[SampleBatch.SEQ_LENS] = seq_lens
         train_batch.count = self._dummy_batch.count
         # Call the loss function, if it exists.
+        # TODO(jungong) : clean up after all agents get migrated.
+        # We should simply do self.loss(...) here.
         if self._loss is not None:
             self._loss(self, self.model, self.dist_class, train_batch)
+        elif is_overridden(self.loss) and not self.config["in_evaluation"]:
+            self.loss(self.model, self.dist_class, train_batch)
         # Call the stats fn, if given.
+        # TODO(jungong) : clean up after all agents get migrated.
+        # We should simply do self.stats_fn(train_batch) here.
         if stats_fn is not None:
             stats_fn(self, train_batch)
+        if hasattr(self, "stats_fn") and not self.config["in_evaluation"]:
+            self.stats_fn(train_batch)
 
         # Re-enable tracing.
         self._no_tracing = False
@@ -974,7 +997,7 @@ class Policy(metaclass=ABCMeta):
                     self.view_requirements[key] = ViewRequirement(
                         used_for_compute_actions=False
                     )
-            if self._loss:
+            if self._loss or is_overridden(self.loss):
                 # Tag those only needed for post-processing (with some
                 # exceptions).
                 for key in self._dummy_batch.accessed_keys:

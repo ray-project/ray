@@ -162,7 +162,10 @@ def publish_error_to_driver(
         job_id = ray.JobID.nil()
     assert isinstance(job_id, ray.JobID)
     error_data = construct_error_message(job_id, error_type, message, time.time())
-    gcs_publisher.publish_error(job_id.hex().encode(), error_data)
+    try:
+        gcs_publisher.publish_error(job_id.hex().encode(), error_data)
+    except Exception:
+        logger.exception(f"Failed to publish error {error_data}")
 
 
 def random_string():
@@ -293,7 +296,7 @@ def set_cuda_visible_devices(gpu_ids):
         gpu_ids (List[str]): List of strings representing GPU IDs.
     """
 
-    if os.environ.get("RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"):
+    if os.environ.get(ray_constants.NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR):
         return
 
     global last_set_gpu_ids
@@ -1081,13 +1084,13 @@ def get_wheel_filename(
         sys_platform (str): The platform as returned by sys.platform. Examples:
             "darwin", "linux", "win32"
         ray_version (str): The Ray version as returned by ray.__version__ or
-            `ray --version`.  Examples: "2.0.0.dev0"
+            `ray --version`.  Examples: "3.0.0.dev0"
         py_version (str):
             The major and minor Python versions concatenated.  Examples: "36",
             "37", "38", "39"
     Returns:
         The wheel file name.  Examples:
-            ray-2.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
+            ray-3.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
     """
     assert py_version in ["36", "37", "38", "39"], py_version
 

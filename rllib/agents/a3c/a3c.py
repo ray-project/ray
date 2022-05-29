@@ -2,15 +2,12 @@ import logging
 from typing import Any, Dict, List, Optional, Type, Union
 
 from ray.actor import ActorHandle
-from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
 from ray.rllib.agents.trainer import Trainer
 from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
-from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.execution.metric_ops import StandardMetricsReporting
-from ray.rllib.execution.parallel_requests import asynchronous_parallel_requests
-from ray.rllib.execution.rollout_ops import AsyncGradients
-from ray.rllib.execution.train_ops import ApplyGradients
+from ray.rllib.execution.parallel_requests import (
+    AsyncRequestsManager,
+)
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
@@ -24,8 +21,11 @@ from ray.rllib.utils.metrics import (
     SYNCH_WORKER_WEIGHTS_TIMER,
 )
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
-from ray.rllib.utils.typing import ResultDict, TrainerConfigDict
-from ray.util.iter import LocalIterator
+from ray.rllib.utils.typing import (
+    ResultDict,
+    TrainerConfigDict,
+    PartialTrainerConfigDict,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +86,6 @@ class A3CConfig(TrainerConfig):
         # but to wait until n seconds have passed and then to summarize the
         # thus far collected results.
         self.min_time_s_per_reporting = 5
-        self._disable_execution_plan_api = True
         # __sphinx_doc_end__
         # fmt: on
 
@@ -160,6 +159,13 @@ class A3CTrainer(Trainer):
         return A3CConfig().to_dict()
 
     @override(Trainer)
+    def setup(self, config: PartialTrainerConfigDict):
+        super().setup(config)
+        self._worker_manager = AsyncRequestsManager(
+            self.workers.remote_workers(), max_remote_requests_in_flight_per_worker=1
+        )
+
+    @override(Trainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
         # Call super's validation method.
         super().validate_config(config)
@@ -175,8 +181,14 @@ class A3CTrainer(Trainer):
             from ray.rllib.agents.a3c.a3c_torch_policy import A3CTorchPolicy
 
             return A3CTorchPolicy
+        elif config["framework"] == "tf":
+            from ray.rllib.agents.a3c.a3c_tf_policy import A3CStaticGraphTFPolicy
+
+            return A3CStaticGraphTFPolicy
         else:
-            return A3CTFPolicy
+            from ray.rllib.agents.a3c.a3c_tf_policy import A3CEagerTFPolicy
+
+            return A3CEagerTFPolicy
 
     def training_iteration(self) -> ResultDict:
         # Shortcut.
@@ -200,13 +212,8 @@ class A3CTrainer(Trainer):
         with self._timers[GRAD_WAIT_TIMER]:
             # Results are a mapping from ActorHandle (RolloutWorker) to their
             # returned gradient calculation results.
-            async_results: Dict[ActorHandle, Dict] = asynchronous_parallel_requests(
-                remote_requests_in_flight=self.remote_requests_in_flight,
-                actors=self.workers.remote_workers(),
-                ray_wait_timeout_s=0.0,
-                max_remote_requests_in_flight_per_actor=1,
-                remote_fn=sample_and_compute_grads,
-            )
+            self._worker_manager.call_on_all_available(sample_and_compute_grads)
+            async_results = self._worker_manager.get_ready()
 
         # Loop through all fetched worker-computed gradients (if any)
         # and apply them - one by one - to the local worker's model.
@@ -249,24 +256,18 @@ class A3CTrainer(Trainer):
 
         return learner_info_builder.finalize()
 
-    @staticmethod
     @override(Trainer)
-    def execution_plan(
-        workers: WorkerSet, config: TrainerConfigDict, **kwargs
-    ) -> LocalIterator[dict]:
-        assert (
-            len(kwargs) == 0
-        ), "A3C execution_plan does NOT take any additional parameters"
+    def on_worker_failures(
+        self, removed_workers: List[ActorHandle], new_workers: List[ActorHandle]
+    ):
+        """Handle failures on remote A3C workers.
 
-        # For A3C, compute policy gradients remotely on the rollout workers.
-        grads = AsyncGradients(workers)
-
-        # Apply the gradients as they arrive. We set update_all to False so
-        # that only the worker sending the gradient is updated with new
-        # weights.
-        train_op = grads.for_each(ApplyGradients(workers, update_all=False))
-
-        return StandardMetricsReporting(train_op, workers, config)
+        Args:
+            removed_workers: removed worker ids.
+            new_workers: ids of newly created workers.
+        """
+        self._worker_manager.remove_workers(removed_workers)
+        self._worker_manager.add_workers(new_workers)
 
 
 # Deprecated: Use ray.rllib.agents.a3c.A3CConfig instead!

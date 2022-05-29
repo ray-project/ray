@@ -16,7 +16,14 @@ from starlette.requests import Request
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
-from ray.serve.common import DeploymentStatusInfo
+import ray
+from ray import cloudpickle
+from ray._private.usage import usage_lib
+from ray.experimental.dag import DAGNode
+from ray.util.annotations import PublicAPI
+
+from ray.serve.application import Application
+from ray.serve.client import ServeControllerClient, get_controller_namespace
 from ray.serve.config import (
     AutoscalingConfig,
     DeploymentConfig,
@@ -30,13 +37,23 @@ from ray.serve.constants import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
 )
+from ray.serve.context import (
+    set_global_client,
+    get_global_client,
+    get_internal_replica_context,
+    ReplicaContext,
+)
 from ray.serve.controller import ServeController
 from ray.serve.deployment import Deployment
+from ray.serve.deployment_graph import ClassNode, FunctionNode
 from ray.serve.exceptions import RayServeException
-from ray.experimental.dag import DAGNode
 from ray.serve.handle import RayServeHandle
 from ray.serve.http_util import ASGIHTTPSender, make_fastapi_class_based_view
 from ray.serve.logging_utils import LoggingContext
+from ray.serve.pipeline.api import (
+    build as pipeline_build,
+    get_and_validate_ingress_deployment,
+)
 from ray.serve.utils import (
     ensure_serialization_context,
     format_actor_name,
@@ -44,20 +61,9 @@ from ray.serve.utils import (
     get_random_letters,
     in_interactive_shell,
     DEFAULT,
+    install_serve_encoders_to_fastapi,
 )
-from ray.util.annotations import PublicAPI
-import ray
-from ray import cloudpickle
-from ray.serve.deployment_graph import ClassNode, FunctionNode
-from ray.serve.application import Application
-from ray.serve.client import ServeControllerClient, get_controller_namespace
-from ray.serve.context import (
-    set_global_client,
-    get_global_client,
-    get_internal_replica_context,
-    ReplicaContext,
-)
-from ray._private.usage import usage_lib
+
 
 logger = logging.getLogger(__file__)
 
@@ -289,6 +295,8 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
         class ASGIAppWrapper(cls):
             async def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
+
+                install_serve_encoders_to_fastapi()
 
                 self._serve_app = frozen_app
 
@@ -542,27 +550,6 @@ def list_deployments() -> Dict[str, Deployment]:
     return deployments
 
 
-def get_deployment_statuses() -> Dict[str, DeploymentStatusInfo]:
-    """Returns a dictionary of deployment statuses.
-
-    A deployment's status is one of {UPDATING, UNHEALTHY, and HEALTHY}.
-
-    Example:
-    >>> from ray.serve.api import get_deployment_statuses
-    >>> statuses = get_deployment_statuses() # doctest: +SKIP
-    >>> status_info = statuses["deployment_name"] # doctest: +SKIP
-    >>> status = status_info.status # doctest: +SKIP
-    >>> message = status_info.message # doctest: +SKIP
-
-    Returns:
-            Dict[str, DeploymentStatus]: This dictionary maps the running
-                deployment's name to a DeploymentStatus object containing its
-                status and a message explaining the status.
-    """
-
-    return get_global_client().get_deployment_statuses()
-
-
 @PublicAPI(stability="alpha")
 def run(
     target: Union[ClassNode, FunctionNode],
@@ -589,9 +576,6 @@ def run(
         RayServeHandle: A regular ray serve handle that can be called by user
             to execute the serve DAG.
     """
-    # TODO (jiaodong): Resolve circular reference in pipeline codebase and serve
-    from ray.serve.pipeline.api import build as pipeline_build
-    from ray.serve.pipeline.api import get_and_validate_ingress_deployment
 
     client = start(detached=True, http_options={"host": host, "port": port})
 
@@ -665,8 +649,6 @@ def build(target: Union[ClassNode, FunctionNode]) -> Application:
     The returned Application object can be exported to a dictionary or YAML
     config.
     """
-    # TODO (jiaodong): Resolve circular reference in pipeline codebase and serve
-    from ray.serve.pipeline.api import build as pipeline_build
 
     if in_interactive_shell():
         raise RuntimeError(

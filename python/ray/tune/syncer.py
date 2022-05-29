@@ -37,7 +37,7 @@ from ray.tune.sync_client import (
     SyncClient,
     RemoteTaskClient,
 )
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import PublicAPI, DeveloperAPI
 
 if TYPE_CHECKING:
     from ray.tune.trial import Trial
@@ -208,6 +208,7 @@ class SyncConfig:
         validate_sync_config(self)
 
 
+@DeveloperAPI
 class Syncer:
     def __init__(self, local_dir: str, remote_dir: str, sync_client: SyncClient = NOOP):
         """Syncs between two directories with the sync_function.
@@ -321,6 +322,7 @@ class Syncer:
         return self._remote_dir
 
 
+@DeveloperAPI
 class CloudSyncer(Syncer):
     """Syncer for syncing files to/from the cloud."""
 
@@ -336,6 +338,7 @@ class CloudSyncer(Syncer):
         )
 
 
+@DeveloperAPI
 class NodeSyncer(Syncer):
     """Syncer for syncing files to/from a remote dir to a local dir."""
 
@@ -407,6 +410,7 @@ class NodeSyncer(Syncer):
         return "{}@{}:{}/".format(ssh_user, self.worker_ip, self._remote_dir)
 
 
+@DeveloperAPI
 def get_cloud_syncer(
     local_dir: str,
     remote_dir: Optional[str] = None,
@@ -460,6 +464,7 @@ def get_cloud_syncer(
     return _syncers[key]
 
 
+@DeveloperAPI
 def get_node_syncer(
     local_dir: str,
     remote_dir: Optional[str] = None,
@@ -507,6 +512,7 @@ def get_node_syncer(
     return _syncers[key]
 
 
+@DeveloperAPI
 class SyncerCallback(Callback):
     def __init__(self, sync_function: Optional[Union[bool, Callable]]):
         self._sync_function = sync_function
@@ -521,6 +527,9 @@ class SyncerCallback(Callback):
         return get_node_syncer(
             trial.logdir, remote_dir=trial.logdir, sync_function=self._sync_function
         )
+
+    def _remove_trial_syncer(self, trial: "Trial"):
+        self._syncers.pop(trial, None)
 
     def _sync_trial_checkpoint(self, trial: "Trial", checkpoint: _TuneCheckpoint):
         if checkpoint.storage == _TuneCheckpoint.MEMORY:
@@ -602,8 +611,10 @@ class SyncerCallback(Callback):
         else:
             trainable_ip = ray.get(trial.runner.get_current_ip.remote())
         trial_syncer.set_worker_ip(trainable_ip)
-        trial_syncer.sync_down_if_needed()
+        # Always sync down when trial completed
+        trial_syncer.sync_down()
         trial_syncer.close()
+        self._remove_trial_syncer(trial)
 
     def on_checkpoint(
         self,

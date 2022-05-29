@@ -38,8 +38,7 @@ def evaluate_test(algo, env="CartPole-v0", test_episode_rollout=False):
             + ', "min_sample_timesteps_per_reporting": 5,'
             '"min_time_s_per_reporting": 0.1, '
             '"model": {"fcnet_hiddens": [10]}'
-            "}' --stop='{\"training_iteration\": 1}'"
-            + " --env={} --no-ray-ui".format(env)
+            "}' --stop='{\"training_iteration\": 1}'" + " --env={}".format(env)
         )
 
         checkpoint_path = os.popen(
@@ -52,7 +51,7 @@ def evaluate_test(algo, env="CartPole-v0", test_episode_rollout=False):
         # Test rolling out n steps.
         os.popen(
             'python {}/evaluate.py --run={} "{}" --steps=10 '
-            '--out="{}/rollouts_10steps.pkl" --no-render'.format(
+            '--out="{}/rollouts_10steps.pkl"'.format(
                 rllib_dir, algo, checkpoint_path, tmp_dir
             )
         ).read()
@@ -64,7 +63,7 @@ def evaluate_test(algo, env="CartPole-v0", test_episode_rollout=False):
         if test_episode_rollout:
             os.popen(
                 'python {}/evaluate.py --run={} "{}" --episodes=1 '
-                '--out="{}/rollouts_1episode.pkl" --no-render'.format(
+                '--out="{}/rollouts_1episode.pkl"'.format(
                     rllib_dir, algo, checkpoint_path, tmp_dir
                 )
             ).read()
@@ -124,7 +123,7 @@ def learn_test_plus_evaluate(algo, env="CartPole-v0"):
         result = os.popen(
             "python {}/evaluate.py --run={} "
             "--steps=400 "
-            '--out="{}/rollouts_n_steps.pkl" --no-render "{}"'.format(
+            '--out="{}/rollouts_n_steps.pkl" "{}"'.format(
                 rllib_dir, algo, tmp_dir, last_checkpoint
             )
         ).read()[:-1]
@@ -210,7 +209,7 @@ def learn_test_multi_agent_plus_evaluate(algo):
         result = os.popen(
             "python {}/evaluate.py --run={} "
             "--steps=400 "
-            '--out="{}/rollouts_n_steps.pkl" --no-render "{}"'.format(
+            '--out="{}/rollouts_n_steps.pkl" "{}"'.format(
                 rllib_dir, algo, tmp_dir, last_checkpoint
             )
         ).read()[:-1]
