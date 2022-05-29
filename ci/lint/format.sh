@@ -38,7 +38,7 @@ check_docstyle() {
     if [[ -n "$violations" ]]; then
         echo
         echo "=== Found Ray docstyle violations ==="
-        echo $violations
+        echo "$violations"
         echo
         echo "Per the Google pydoc style, omit types from pydoc args as they are redundant: https://docs.ray.io/en/latest/ray-contribute/getting-involved.html#code-style "
         exit 1
