@@ -20,14 +20,16 @@ class TestApexDDPG(unittest.TestCase):
 
     def test_apex_ddpg_compilation_and_per_worker_epsilon_values(self):
         """Test whether an APEX-DDPGTrainer can be built on all frameworks."""
-        config = apex_ddpg.ApexDDPGConfig()\
-            .rollouts(num_rollout_workers=2)\
-            .reporting(min_sample_timesteps_per_reporting=100)\
+        config = (
+            apex_ddpg.ApexDDPGConfig()
+            .rollouts(num_rollout_workers=2)
+            .reporting(min_sample_timesteps_per_reporting=100)
             .training(
                 replay_buffer_config={"learning_starts": 0},
-                optimizer={"num_replay_buffer_shards": 1}
-            )\
+                optimizer={"num_replay_buffer_shards": 1},
+            )
             .environment(env="Pendulum-v1")
+        )
 
         num_iterations = 1
 
