@@ -227,12 +227,12 @@ If you use `Anaconda`_ (`installation instructions`_) and want to use Ray in a d
 
 .. code-block:: bash
 
-  conda create --name ray
+  conda config --env --add channels conda-forge
+  conda env create -n ray  # works with mamba too
   conda activate ray
-  conda install --name ray pip
-  pip install ray
+  conda install ray-core
 
-Use ``pip list`` to confirm that ``ray`` is installed.
+For a complete list of available ``ray`` libraries, have a look at: https://github.com/conda-forge/ray-packages-feedstock
 
 .. _`Anaconda`: https://www.anaconda.com/
 .. _`installation instructions`: https://docs.anaconda.com/anaconda/install/index.html
