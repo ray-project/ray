@@ -60,7 +60,7 @@ class DeploymentFunctionNode(DAGNode):
                 func_or_class=func_body,
                 name=self._deployment_name,
                 init_args=(),
-                init_kwargs=dict(),
+                init_kwargs={},
                 route_prefix=route_prefix,
             )
         else:
@@ -124,7 +124,6 @@ class DeploymentFunctionNode(DAGNode):
             # .options() should not contain any DAGNode type
             "options": self.get_options(),
             "other_args_to_resolve": self.get_other_args_to_resolve(),
-            "uuid": self.get_stable_uuid(),
         }
 
     @classmethod
