@@ -156,10 +156,8 @@ Here is an example of how to specify an underlying replay buffer along with a de
     :end-before: __sphinx_doc_replay_buffer_advanced_usage_underlying_buffers__end__
 
 
-Replay Buffers API Reference
-============================
-
 .. toctree::
+    :hidden:
     :maxdepth: 2
 
     replay_buffers/replay_buffer.rst
