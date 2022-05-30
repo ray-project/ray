@@ -135,7 +135,7 @@ public class Serve {
         controllerNamespace);
     return client;
   }
-  
+
   private static void checkCheckpointPath(ServeControllerClient client, String checkpointPath) {
     if (StringUtils.isNotBlank(checkpointPath)
         && !StringUtils.equals(checkpointPath, client.getCheckpointPath())) {
@@ -159,7 +159,7 @@ public class Serve {
     if (StringUtils.isNotBlank(overrideControllerNamespace)) {
       return overrideControllerNamespace;
     }
-    
+
     String controllerNamespace = Ray.getRuntimeContext().getNamespace();
 
     if (!detached) {
@@ -279,7 +279,7 @@ public class Serve {
       }
       return connect(
           overrideControllerNamespace); // TODO throw RayServeException if there is no Serve
-                                        // controller actor in the expected namespace.
+      // controller actor in the expected namespace.
     }
   }
 
@@ -332,11 +332,13 @@ public class Serve {
           LogUtil.format(
               "There is no instance running on this Ray cluster. "
                   + "Please call `Serve.start(...) to start one.")); // TODO change
-                                                                     // RayServeException to checked
-                                                                     // exception?
+      // RayServeException to checked
+      // exception?
     }
 
-    ServeControllerClient client = new ServeControllerClient(controller.get(), controllerName, true, overrideControllerNamespace);
+    ServeControllerClient client =
+        new ServeControllerClient(
+            controller.get(), controllerName, true, overrideControllerNamespace);
     setGlobalClient(client);
     return client;
   }

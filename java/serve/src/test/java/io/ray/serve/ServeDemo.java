@@ -25,12 +25,12 @@ public class ServeDemo {
   }
 
   public static void main(String[] args) throws IOException {
-  	
-  	Ray.init();
-  	
-  	// Start serve.
+
+    Ray.init();
+
+    // Start serve.
     ServeControllerClient client = Serve.start(true, false, null, null, null);
-    
+
     // Deploy deployment.
     String deploymentName = "counter";
 
