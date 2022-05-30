@@ -1179,13 +1179,15 @@ def _do_policy_eval(
         # actions is `compute_actions()`.
         if isinstance(policy, (DynamicTFPolicyV2, EagerTFPolicyV2, TorchPolicyV2)):
             # Call the policy's `compute_actions` method.
-            eval_results[policy_id] = convert_to_numpy(policy.compute_actions(
-                input_dict=input_dict,
-                timestep=policy.global_timestep,
-                explore=None,
-                episodes=[active_episodes[t.env_id] for t in eval_data],
-                is_training=False,
-            ))
+            eval_results[policy_id] = convert_to_numpy(
+                policy.compute_actions(
+                    input_dict=input_dict,
+                    timestep=policy.global_timestep,
+                    explore=None,
+                    episodes=[active_episodes[t.env_id] for t in eval_data],
+                    is_training=False,
+                )
+            )
         # Old Policy API. Use `compute_actions_from_input_dict()`.
         else:
             eval_results[policy_id] = policy.compute_actions_from_input_dict(

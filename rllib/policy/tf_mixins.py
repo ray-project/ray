@@ -59,10 +59,19 @@ class LearningRateSchedule:
                 # both TFPolicy and any TFPolicy_eager.
                 self._optimizer.learning_rate.assign(self.cur_lr)
 
-    @override(TFPolicy)
+    # TODO: Remove once everything is on PolicyV2's.
     def optimizer(self):
+        return self.make_optimizer()
+
+    @override(TFPolicy)
+    def make_optimizer(self):
+        # Link the self.cur_lr variable to the constructed local optimizer.
+        # This way, if the variable ever changes, the optimizer gets this change
+        # right away.
+        # TF1.x (or tf.compat.v1).
         if self.framework == "tf":
             return tf1.train.AdamOptimizer(learning_rate=self.cur_lr)
+        # TF2.x.
         else:
             return tf.keras.optimizers.Adam(self.cur_lr)
 
@@ -283,6 +292,7 @@ class ValueNetworkMixin:
         self._should_cache_extra_action = config["framework"] == "tf"
         self._cached_extra_action_fetches = None
 
+    @with_lock
     def compute_actions(
         self,
         *,
@@ -296,7 +306,9 @@ class ValueNetworkMixin:
         # Return value function outputs. VF estimates will hence be added to
         # the SampleBatches produced by the sampler(s) to generate the train
         # batches going into the loss function.
-        actions, state_outs, extra_outs = super(ValueNetworkMixin, self).compute_actions(
+        actions, state_outs, extra_outs = super(
+            ValueNetworkMixin, self
+        ).compute_actions(
             input_dict=input_dict,
             explore=explore,
             timestep=timestep,
@@ -305,45 +317,6 @@ class ValueNetworkMixin:
         )
         extra_outs.update({SampleBatch.VF_PREDS: self.model.value_function()})
         return actions, state_outs, extra_outs
-
-    #def _extra_action_out_impl(self) -> Dict[str, TensorType]:
-    #    extra_action_out = super().extra_action_out_fn()
-    #    # Keras models return values for each call in third return argument
-    #    # (dict).
-    #    if isinstance(self.model, tf.keras.Model):
-    #        return extra_action_out
-    #    # Return value function outputs. VF estimates will hence be added to the
-    #    # SampleBatches produced by the sampler(s) to generate the train batches
-    #    # going into the loss function.
-    #    extra_action_out.update(
-    #        {
-    #            SampleBatch.VF_PREDS: self.model.value_function(),
-    #        }
-    #    )
-    #    return extra_action_out
-
-    #def extra_action_out_fn(self) -> Dict[str, TensorType]:
-    #    if not self._should_cache_extra_action:
-    #        return self._extra_action_out_impl()
-
-    #    # Note: there are 2 reasons we are caching the extra_action_fetches for
-    #    # TF1 static graph here.
-    #    # 1. for better performance, so we don't query base class and model for
-    #    #    extra fetches every single time.
-    #    # 2. for correctness. TF1 is special because the static graph may contain
-    #    #    two logical graphs. One created by DynamicTFPolicy for action
-    #    #    computation, and one created by MultiGPUTower for GPU training.
-    #    #    Depending on which logical graph ran last time,
-    #    #    self.model.value_function() will point to the output tensor
-    #    #    of the specific logical graph, causing problem if we try to
-    #    #    fetch action (run inference) using the training output tensor.
-    #    #    For that reason, we cache the action output tensor from the
-    #    #    vanilla DynamicTFPolicy once and call it a day.
-    #    if self._cached_extra_action_fetches is not None:
-    #        return self._cached_extra_action_fetches
-
-    #    self._cached_extra_action_fetches = self._extra_action_out_impl()
-    #    return self._cached_extra_action_fetches
 
 
 class TargetNetworkMixin:

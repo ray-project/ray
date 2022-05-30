@@ -22,7 +22,7 @@ torch, _ = try_import_torch()
 
 @Deprecated(
     new="sub-class directly from `ray.rllib.policy.torch_policy_v2::TorchPolicyV2` "
-        "and override needed methods",
+    "and override needed methods",
     error=False,
 )
 def build_policy_class(

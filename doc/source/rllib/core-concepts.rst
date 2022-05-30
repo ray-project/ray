@@ -77,26 +77,72 @@ each controlling one or more agents:
 
 .. image:: images/multi-flat.svg
 
-Policies can be implemented using `any framework <https://github.com/ray-project/ray/blob/master/rllib/policy/policy.py>`__.
-However, for TensorFlow and PyTorch, RLlib has
-`build_tf_policy <rllib-concepts.html#building-policies-in-tensorflow>`__ and
-`build_torch_policy <rllib-concepts.html#building-policies-in-pytorch>`__ helper functions that let you
-define a trainable policy with a functional-style API, for example:
+Custom policies can be implemented using RLlib's :py:class:`~ray.rllib.policy.policy.Policy` class.
+
+.. warning::
+    As of Ray >= 1.13, the ``build_policy_class()`` or ``build_tf_policy()`` utility
+    functions are no longer supported. Instead, follow the simple guidelines and
+    migration tips here for directly sub-classing from either one of the built-in types:
+    :py:class:`~ray.rllib.policy.dynamic_tf_policy_v2.DynamicTFPolicyV2`,
+    :py:class:`~ray.rllib.policy.eager_tf_policy_v2.EagerTFPolicyV2`
+    or
+    :py:class:`~ray.rllib.policy.torch_policy_v2.TorchPolicyV2`
+
+For example, to write a simple vanilla policy gradient (VPG) Policy sub-class for PyTorch, you can
+do the following:
 
 .. TODO: test this code snippet
 
 .. code-block:: python
 
-  def policy_gradient_loss(policy, model, dist_class, train_batch):
-      logits, _ = model.from_batch(train_batch)
-      action_dist = dist_class(logits, model)
-      return -tf.reduce_mean(
-          action_dist.logp(train_batch["actions"]) * train_batch["rewards"])
+    from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
+    from ray.rllib.utils.annotations import override
+    from ray.rllib.utils.framework import try_import_torch
 
-  # <class 'ray.rllib.policy.tf_policy_template.MyTFPolicy'>
-  MyTFPolicy = build_tf_policy(
-      name="MyTFPolicy",
-      loss_fn=policy_gradient_loss)
+    torch, nn = try_import_torch()
+
+    class MyVPGTorchPolicy(TorchPolicyV2):
+        @override(TorchPolicyV2)
+        def loss(self, model, dist_class, train_batch):
+            # Get the model outputs (action logits).
+            logits, state_outs = model(train_batch)
+            # Create an action distribution instance.
+            action_dist = dist_class(logits, model)
+            # Compute the VPG loss: L = E[-log(pi(a)) * R]
+            return -torch.mean(
+                action_dist.logp(train_batch["actions"]) * train_batch["rewards"])
+
+
+Equivalently, for a TF (static-graph and/or tf2.x) version of our VPG policy, you can do:
+
+.. code-block:: python
+
+    from ray.rllib.policy.dynamic_tf_policy_v2 import DynamicTFPolicyV2
+    from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
+    from ray.rllib.utils.annotations import override
+    from ray.rllib.utils.framework import try_import_tf
+
+    tf1, tf, tf_version = try_import_tf()
+
+    def get_vpg_tf_policy_class(base):
+
+        class _MyVPGPolicy(base):
+            @override(base)
+            def loss(self, model, dist_class, train_batch):
+                # Get the model outputs (action logits).
+                logits, state_outs = model(train_batch)
+                # Create an action distribution instance.
+                action_dist = dist_class(logits, model)
+                # Compute the VPG loss: L = E[-log(pi(a)) * R]
+                return -tf.reduce_mean(
+                    action_dist.logp(train_batch["actions"]) * train_batch["rewards"])
+
+        return _MyTFVPGPolicy
+
+    # Produce two new classes, depending on whether you would like to have a
+    # static-graph one or a tf2.x policy.
+    MyVPGTFStaticGraphPolicy = get_vpg_tf_policy_class(DynamicTFPolicyV2)
+    MyVPGTFEagerPolicy = get_vpg_tf_policy_class(EagerTFPolicyV2)
 
 
 Policy Evaluation

@@ -17,9 +17,9 @@ tf1, tf, tfv = try_import_tf()
 
 @Deprecated(
     new="create sub-classes from ray.rllib.policy.dynamic_tf_policy_v2::"
-        "DynamicTFPolicyV2 and ray.rllib.policy.eager_tf_policy_v2::EagerTFPolicyV2 "
-        "(see ray.rllib.agents.ppo.ppo_tf_policy.py for an example) and override "
-        "needed methods",
+    "DynamicTFPolicyV2 and ray.rllib.policy.eager_tf_policy_v2::EagerTFPolicyV2 "
+    "(see ray.rllib.agents.ppo.ppo_tf_policy.py for an example) and override "
+    "needed methods",
     error=False,
 )
 def build_tf_policy(

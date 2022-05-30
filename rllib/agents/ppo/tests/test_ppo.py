@@ -150,7 +150,7 @@ class TestPPO(unittest.TestCase):
 
                     #check_compute_single_action(
                     #    trainer, include_prev_action_reward=True, include_state=lstm
-                    #)
+                    # )
                     trainer.stop()
 
     def test_ppo_exploration_setup(self):

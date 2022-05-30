@@ -45,6 +45,7 @@ from ray.rllib.utils.spaces.space_utils import (
 )
 from ray.rllib.utils.typing import (
     AgentID,
+    LocalOptimizer,
     ModelGradients,
     ModelWeights,
     PolicyID,
@@ -188,6 +189,27 @@ class Policy(metaclass=ABCMeta):
                 if k not in self.view_requirements:
                     self.view_requirements[k] = v
 
+    @DeveloperAPI
+    @OverrideToImplementCustomLogic
+    def make_model(self) -> Optional[ModelV2]:
+        """Creates this policy's neural network model(s).
+
+        Returns:
+            A ModelV2 model (optional). Return None if this policy does not
+            require any neural network model(s) to function.
+        """
+        _, logit_dim = ModelCatalog.get_action_dist(
+            self.action_space, self.config["model"], framework=self.framework
+        )
+        model = ModelCatalog.get_model_v2(
+            obs_space=self.observation_space,
+            action_space=self.action_space,
+            num_outputs=logit_dim,
+            model_config=self.config["model"],
+            framework=self.framework,
+        )
+        return model
+
     @abstractmethod
     @DeveloperAPI
     def compute_actions(
@@ -280,17 +302,26 @@ class Policy(metaclass=ABCMeta):
         ] = None,
         episode: Optional["Episode"] = None,
     ) -> SampleBatch:
-        """Implements algorithm-specific trajectory postprocessing.
+        """Postprocesses a trajectory (SampleBatch) and returns processed trajectory.
 
         This will be called on each trajectory fragment computed during policy
-        evaluation. Each fragment is guaranteed to be only from one episode.
-        The given fragment may or may not contain the end of this episode,
-        depending on the `batch_mode=truncate_episodes|complete_episodes`,
-        `rollout_fragment_length`, and other settings.
+        evaluation. Each fragment is guaranteed to be only from one episode and
+        from one agent.
+
+        The given fragment may or may not contain the end of this
+        episode, depending on the `batch_mode=truncate_episodes|complete_episodes`,
+        `rollout_fragment_length`, and other settings:
+        - If  `config.batch_mode=truncate_episodes` (default), sample_batch may
+        contain a truncated (at-the-end) episode, in case the
+        `config.rollout_fragment_length` was reached by the sampler.
+        - If `config.batch_mode=complete_episodes`, sample_batch will contain
+        exactly one episode (no matter how long).
+
+        New columns can be added to sample_batch and existing ones may be altered.
 
         Args:
-            sample_batch: batch of experiences for the policy,
-                which will contain at most one episode trajectory.
+            sample_batch: The SampleBatch to postprocess, which will contain at most
+                one episode trajectory.
             other_agent_batches: In a multi-agent env, this contains a
                 mapping of agent ids to (policy, agent_batch) tuples
                 containing the policy and experiences of the other agents.
@@ -299,7 +330,7 @@ class Policy(metaclass=ABCMeta):
                 be useful for model-based or multi-agent algorithms.
 
         Returns:
-            The postprocessed sample batch.
+            The postprocessed, modified SampleBatch (or a new one).
         """
         # The default implementation just returns the same, unaltered batch.
         return sample_batch
@@ -325,6 +356,33 @@ class Policy(metaclass=ABCMeta):
         raise NotImplementedError
 
     @DeveloperAPI
+    @OverrideToImplementCustomLogic
+    def make_optimizer(self) -> Union[List[LocalOptimizer], LocalOptimizer]:
+        """Generates one or more LocalOptimizer objects and returns them.
+
+        A "local" optimizer is either a `tf.keras.optimizer.Optimizer` or a
+        `torch.optim.Optimizer` instance.
+
+        Returns:
+            A single local optimizer or a list/tuple of local optimizers.
+        """
+        return []
+
+    @DeveloperAPI
+    @OverrideToImplementCustomLogic
+    def stats_fn(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
+        """Generates a dict of statistics after loss(es) have been computed.
+
+        Args:
+            train_batch: The SampleBatch (already) used for training.
+
+        Returns:
+            The stats dict, mapping strings to TensorTypes.
+        """
+        return {}
+
+    @DeveloperAPI
+    @OverrideToImplementCustomLogic
     def learn_on_batch(self, samples: SampleBatch) -> Dict[str, TensorType]:
         """Perform one learning update, given `samples`.
 
@@ -412,6 +470,7 @@ class Policy(metaclass=ABCMeta):
         raise NotImplementedError
 
     @DeveloperAPI
+    @OverrideToImplementCustomLogic
     def learn_on_loaded_batch(self, offset: int = 0, buffer_index: int = 0):
         """Runs a single step of SGD on an already loaded data in a buffer.
 
@@ -764,9 +823,11 @@ class Policy(metaclass=ABCMeta):
         )
         self._lazy_tensor_dict(self._dummy_batch)
         if isinstance(self, (DynamicTFPolicyV2, EagerTFPolicyV2, TorchPolicyV2)):
-            actions, state_outs, extra_outs = convert_to_numpy(self.compute_actions(
-                input_dict=self._dummy_batch, explore=False, is_training=False
-            ))
+            actions, state_outs, extra_outs = convert_to_numpy(
+                self.compute_actions(
+                    input_dict=self._dummy_batch, explore=False, is_training=False
+                )
+            )
         else:
             actions, state_outs, extra_outs = self.compute_actions_from_input_dict(
                 self._dummy_batch, explore=False

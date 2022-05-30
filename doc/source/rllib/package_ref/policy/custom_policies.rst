@@ -24,9 +24,9 @@ Then override one or more of these class' methods. The methods of interest are i
 * :py:meth:`~ray.rllib.policy.policy.Policy.make_model`
 * :py:meth:`~ray.rllib.policy.policy.Policy.compute_actions`
 * :py:meth:`~ray.rllib.policy.policy.Policy.loss`
-* :py:meth:`~ray.rllib.policy.policy.Policy.process_gradients`
 * :py:meth:`~ray.rllib.policy.policy.Policy.stats_fn`
 * :py:meth:`~ray.rllib.policy.policy.Policy.postprocess_trajectory`
 
-
 `See here for an example on how to override TorchPolicy <https://github.com/ray-project/ray/blob/master/rllib/agents/ppo/ppo_torch_policy.py>`_.
+
+

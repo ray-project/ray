@@ -2,47 +2,128 @@
 
 .. include:: /_includes/rllib/we_are_hiring.rst
 
+TODO
+    # def action_sampler_fn(
+    #    self,
+    #    model: ModelV2,
+    #    *,
+    #    obs_batch: TensorType,
+    #    state_batches: TensorType,
+    #    **kwargs,
+    # ) -> Tuple[TensorType, TensorType, TensorType, List[TensorType]]:
+    #    """Custom function for sampling new actions given policy.
+
+    #    Args:
+    #        model: Underlying model.
+    #        obs_batch: Observation tensor batch.
+    #        state_batches: Action sampling state batch.
+
+    #    Returns:
+    #        Sampled action
+    #        Log-likelihood
+    #        Action distribution inputs
+    #        Updated state
+    #    """
+    #    return None, None, None, None
+
+    # @DeveloperAPI
+    # @OverrideToImplementCustomLogic
+    # def action_distribution_fn(
+    #    self,
+    #    model: ModelV2,
+    #    *,
+    #    obs_batch: TensorType,
+    #    state_batches: TensorType,
+    #    **kwargs,
+    # ) -> Tuple[TensorType, type, List[TensorType]]:
+    #    """Action distribution function for this Policy.
+
+    #    Args:
+    #        model: Underlying model.
+    #        obs_batch: Observation tensor batch.
+    #        state_batches: Action sampling state batch.
+
+    #    Returns:
+    #        Distribution input.
+    #        ActionDistribution class.
+    #        State outs.
+    #    """
+    #    return None, None, None
+
+
+    # @override(TFPolicy)
+    # @DeveloperAPI
+    # @OverrideToImplementCustomLogic_CallToSuperRecommended
+    # def extra_action_out_fn(self) -> Dict[str, TensorType]:
+    #    """Extra values to fetch and return from compute_actions().
+
+    #    Returns:
+    #         Dict[str, TensorType]: An extra fetch-dict to be passed to and
+    #            returned from the compute_actions() call.
+    #    """
+    #    extra_action_fetches = super().extra_action_out_fn()
+    #    extra_action_fetches.update(self._policy_extra_action_fetches)
+    #    return extra_action_fetches
+
+
+
 How To Customize Policies
 =========================
 
-This page describes the internal concepts used to implement algorithms in RLlib.
-You might find this useful if modifying or adding new algorithms to RLlib.
+This page describes the internal concepts that should be used to implement
+custom or new algorithms in RLlib.
 
 Policy classes encapsulate the core numerical components of RL algorithms.
-This typically includes the policy model that determines actions to take, a trajectory postprocessor for experiences, and a loss function to improve the policy given post-processed experiences.
-For a simple example, see the policy gradients `policy definition <https://github.com/ray-project/ray/blob/master/rllib/algorithms/pg/pg_tf_policy.py>`__.
+This includes the policy's neural network(s) which determine actions to take in an episode,
+a trajectory postprocessor for experiences, loss function(s) to improve the policy
+given post-processed experiences, and a "local" optimizer (e.g. a `tf.keras.optimizer.Optimizer` instance).
 
-Most interaction with deep learning frameworks is isolated to the `Policy interface <https://github.com/ray-project/ray/blob/master/rllib/policy/policy.py>`__, allowing RLlib to support multiple frameworks.
-To simplify the definition of policies, RLlib includes `Tensorflow <#building-policies-in-tensorflow>`__ and `PyTorch-specific <#building-policies-in-pytorch>`__ templates.
-You can also write your own from scratch. Here is an example:
+For a simple example, see the policy gradients `Policy definitions for TensorFlow <https://github.com/ray-project/ray/blob/master/rllib/algorithms/pg/pg_tf_policy.py>`__
+and `PyTorch <https://github.com/ray-project/ray/blob/master/rllib/algorithms/pg/pg_torch_policy.py>`__.
+
+All interactions with the deep learning frameworks (PyTorch and TensorFlow) are encapsulated in the
+`Policy API <https://github.com/ray-project/ray/blob/master/rllib/policy/policy.py>`__,
+allowing RLlib to flexibly support multiple frameworks (work on JAX-support is currently in progress).
+To simplify the definition of policies, RLlib includes `Tensorflow <#building-policies-in-tensorflow>`__ and `PyTorch-specific <#building-policies-in-pytorch>`__ base classes.
+You can also write your own from scratch. Here is an example for a DL framework agnostic Policy subclass:
 
 .. code-block:: python
 
-    class CustomPolicy(Policy):
-        """Example of a custom policy written from scratch.
+    import numpy as np
+    from ray.rllib.policy.policy import Policy
+    from ray.rllib.policy.sample_batch import SampleBatch
 
-        You might find it more convenient to use the `build_tf_policy` and
-        `build_torch_policy` helpers instead for a real policy, which are
-        described in the next sections.
-        """
+    class CustomPolicy(Policy):
+        """Example of a custom policy written from scratch."""
 
         def __init__(self, observation_space, action_space, config):
-            Policy.__init__(self, observation_space, action_space, config)
-            # example parameter
+            super().__init__(observation_space, action_space, config)
+            # Example parameter.
             self.w = 1.0
 
         def compute_actions(self,
-                            obs_batch,
-                            state_batches,
-                            prev_action_batch=None,
-                            prev_reward_batch=None,
-                            info_batch=None,
+                            *,
+                            input_dict: SampleBatch,
+                            explore=None,
+                            timestep=None,
                             episodes=None,
+                            is_training=False,
                             **kwargs):
-            # return action batch, RNN states, extra values to include in batch
-            return [self.action_space.sample() for _ in obs_batch], [], {}
+            observation_batch = input_dict[SampleBatch.OBS]
+            # Return action batch, (RNN) state outputs, and extra outs (e.g.
+            # value function results or other stats).
+            extra_outs = {
+                "action_probabilities": np.zeros(
+                    len(observation_batch), dtype=np.float32
+                )
+            }
+            return (
+                [self.action_space.sample() for _ in observation_batch],
+                [],
+                extra_outs,
+            )
 
-        def learn_on_batch(self, samples):
+        def learn_on_batch(self, samples: SampleBatch):
             # implement your learning code here
             return {}  # return stats
 
@@ -53,7 +134,7 @@ You can also write your own from scratch. Here is an example:
             self.w = weights["w"]
 
 
-The above basic policy, when run, will produce batches of observations with the basic ``obs``, ``new_obs``, ``actions``, ``rewards``, ``dones``, and ``infos`` columns.
+The above basic policy, when run, will produce trajectory batches (SampleBatch) with the ``obs``, ``new_obs``, ``actions``, ``rewards``, ``dones``, and ``infos`` columns.
 There are two more mechanisms to pass along and emit extra information:
 
 **Policy recurrent state**: Suppose you want to compute actions based on the current timestep of the episode.
@@ -67,12 +148,12 @@ While it is possible to have the environment provide this as part of the observa
                     # you could also return multiple values, e.g., [0, "foo"]
 
     def compute_actions(self,
-                        obs_batch,
-                        state_batches,
-                        prev_action_batch=None,
-                        prev_reward_batch=None,
-                        info_batch=None,
+                        *,
+                        input_dict,
+                        explore=None,
+                        timestep=None,
                         episodes=None,
+                        is_training=False,
                         **kwargs):
         assert len(state_batches) == len(self.get_initial_state())
         new_state_batches = [[
@@ -87,25 +168,32 @@ While it is possible to have the environment provide this as part of the observa
         assert "state_out_0" in samples.keys()
 
 
-**Extra action info output**: You can also emit extra outputs at each step which will be available for learning on. For example, you might want to output the behaviour policy logits as extra action info, which can be used for importance weighting, but in general arbitrary values can be stored here (as long as they are convertible to numpy arrays):
+**Extra action outputs**: You can also emit extra outputs at each step which will be available for learning on. For example, you might want to output the behaviour policy logits as extra action info, which can be used for importance weighting, but in general arbitrary values can be stored here (as long as they are convertible to numpy arrays):
 
 .. code-block:: python
 
     def compute_actions(self,
-                        obs_batch,
-                        state_batches,
-                        prev_action_batch=None,
-                        prev_reward_batch=None,
-                        info_batch=None,
+                        *,
+                        input_dict,
+                        explore=None,
+                        timestep=None,
                         episodes=None,
+                        is_training=False,
                         **kwargs):
-        action_info_batch = {
-            "some_value": ["foo" for _ in obs_batch],
-            "other_value": [12345 for _ in obs_batch],
+        observation_batch = input_dict[SampleBatch.OBS]
+        # Produce extra_outs that can be used in the loss function (along with e.g.
+        # actions, observations, and rewards).
+        extra_outs = {
+            "some_value": ["foo" for _ in observation_batch],
+            "other_value": [12345 for _ in observation_batch],
         }
-        return ..., [], action_info_batch
+        return (
+            [self.action_space.sample() for _ in observation_batch],
+            [],
+            extra_outs,
+        )
 
-    def learn_on_batch(self, samples):
+    def learn_on_batch(self, samples: SampleBatch):
         # can access array of the extra values at each timestep
         assert "some_value" in samples.keys()
         assert "other_value" in samples.keys()
@@ -114,14 +202,36 @@ While it is possible to have the environment provide this as part of the observa
 Policies in Multi-Agent
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-Beyond being agnostic of framework implementation, one of the main reasons to have a Policy abstraction is for use in multi-agent environments. For example, the `rock-paper-scissors example <rllib-env.html#rock-paper-scissors-example>`__ shows how you can leverage the Policy abstraction to evaluate heuristic policies against learned policies.
+Beyond being agnostic of framework implementation, one of the main reasons to have a
+Policy abstraction is for use in multi-agent environments.
+For example, the `rock-paper-scissors example <rllib-env.html#rock-paper-scissors-example>`__
+shows how you can leverage the Policy abstraction to evaluate heuristic policies against
+learned policies.
 
 Building Policies in TensorFlow
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-This section covers how to build a TensorFlow RLlib policy using ``tf_policy_template.build_tf_policy()``.
+This section covers how to build a TensorFlow RLlib policy using
+:py:class:`~ray.rllib.policy.eager_tf_policy_v2.EagerTFPolicyV2` (tf2.x/eager) or
+:py:class:`~ray.rllib.policy.dynamic_tf_policy_v2.DynamicTFPolicyV2` (tf static-graph).
 
-To start, you first have to define a loss function. In RLlib, loss functions are defined over batches of trajectory data produced by policy evaluation. A basic policy gradient loss that only tries to maximize the 1-step reward can be defined as follows:
+In this example, we will only build the tf2.x (eager) version of our example policy.
+To do the same for tf static-graph, you only need to flip out the base class (from
+``EagerTFPolicyV2`` to ``DynamicTFPolicyV2``).
+
+To start, you first have to define a sub-class of ``EagerTFPolicyV2``.
+
+.. code-block:: python
+
+    from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
+
+    class MyTFPolicy(EagerTFPolicyV2):
+        pass
+
+Next, we'll add our loss function by overriding the Policy's ``loss()`` method.
+In RLlib, loss functions are defined over batches of trajectory data produced by policy
+evaluation. A basic policy gradient loss that only tries to maximize the 1-step reward
+can be defined as follows:
 
 .. code-block:: python
 

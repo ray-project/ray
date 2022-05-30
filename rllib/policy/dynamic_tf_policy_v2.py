@@ -157,26 +157,6 @@ class DynamicTFPolicyV2(TFPolicy):
     ):
         return {}
 
-    @DeveloperAPI
-    @OverrideToImplementCustomLogic
-    def make_model(self) -> ModelV2:
-        """Build underlying model for this Policy.
-
-        Returns:
-            The Model for the Policy to use.
-        """
-        # Default ModelV2 model.
-        _, logit_dim = ModelCatalog.get_action_dist(
-            self.action_space, self.config["model"]
-        )
-        return ModelCatalog.get_model_v2(
-            obs_space=self.observation_space,
-            action_space=self.action_space,
-            num_outputs=logit_dim,
-            model_config=self.config["model"],
-            framework="tf",
-        )
-
     def compute_actions(
         self,
         *,
@@ -197,19 +177,14 @@ class DynamicTFPolicyV2(TFPolicy):
         # Default distribution generation behavior:
         # Pass through model. E.g., PG, PPO.
         if isinstance(self.model, tf.keras.Model):
-            dist_inputs, state_out, extra_action_fetches = self.model(
-                input_dict
-            )
+            dist_inputs, state_out, extra_action_fetches = self.model(input_dict)
         else:
             dist_inputs, state_out = self.model(input_dict)
 
         action_dist = self.dist_class(dist_inputs, self.model)
 
         # Using exploration to get final action (e.g. via sampling).
-        (
-            actions,
-            logp,
-        ) = self.exploration.get_exploration_action(
+        (actions, logp,) = self.exploration.get_exploration_action(
             action_distribution=action_dist, timestep=timestep, explore=explore
         )
 
@@ -270,18 +245,22 @@ class DynamicTFPolicyV2(TFPolicy):
         """
         raise NotImplementedError
 
-    @DeveloperAPI
+    @override(TFPolicy)
     @OverrideToImplementCustomLogic
-    def stats_fn(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
-        """Stats function. Returns a dict of statistics.
-
-        Args:
-            train_batch: The SampleBatch (already) used for training.
+    def make_optimizer(
+        self,
+    ) -> Union["tf.keras.optimizers.Optimizer", List["tf.keras.optimizers.Optimizer"]]:
+        """TF optimizer to use for policy optimization.
 
         Returns:
-            The stats dict.
+            A local optimizer or a list of local optimizers to use for this
+                Policy's Model.
         """
-        return {}
+        return super().optimizer()
+
+    # TODO: remove this shim once everything is on PolicyV2's.
+    def optimizer(self, *args, **kwargs):
+        return self.make_optimizer(*args, **kwargs)
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic
@@ -341,53 +320,6 @@ class DynamicTFPolicyV2(TFPolicy):
         """
         return None
 
-    #def action_sampler_fn(
-    #    self,
-    #    model: ModelV2,
-    #    *,
-    #    obs_batch: TensorType,
-    #    state_batches: TensorType,
-    #    **kwargs,
-    #) -> Tuple[TensorType, TensorType, TensorType, List[TensorType]]:
-    #    """Custom function for sampling new actions given policy.
-
-    #    Args:
-    #        model: Underlying model.
-    #        obs_batch: Observation tensor batch.
-    #        state_batches: Action sampling state batch.
-
-    #    Returns:
-    #        Sampled action
-    #        Log-likelihood
-    #        Action distribution inputs
-    #        Updated state
-    #    """
-    #    return None, None, None, None
-
-    #@DeveloperAPI
-    #@OverrideToImplementCustomLogic
-    #def action_distribution_fn(
-    #    self,
-    #    model: ModelV2,
-    #    *,
-    #    obs_batch: TensorType,
-    #    state_batches: TensorType,
-    #    **kwargs,
-    #) -> Tuple[TensorType, type, List[TensorType]]:
-    #    """Action distribution function for this Policy.
-
-    #    Args:
-    #        model: Underlying model.
-    #        obs_batch: Observation tensor batch.
-    #        state_batches: Action sampling state batch.
-
-    #    Returns:
-    #        Distribution input.
-    #        ActionDistribution class.
-    #        State outs.
-    #    """
-    #    return None, None, None
-
     @DeveloperAPI
     @OverrideToImplementCustomLogic
     def get_batch_divisibility_req(self) -> int:
@@ -398,20 +330,6 @@ class DynamicTFPolicyV2(TFPolicy):
         """
         # By default, any sized batch is ok, so simply return 1.
         return 1
-
-    #@override(TFPolicy)
-    #@DeveloperAPI
-    #@OverrideToImplementCustomLogic_CallToSuperRecommended
-    #def extra_action_out_fn(self) -> Dict[str, TensorType]:
-    #    """Extra values to fetch and return from compute_actions().
-
-    #    Returns:
-    #         Dict[str, TensorType]: An extra fetch-dict to be passed to and
-    #            returned from the compute_actions() call.
-    #    """
-    #    extra_action_fetches = super().extra_action_out_fn()
-    #    extra_action_fetches.update(self._policy_extra_action_fetches)
-    #    return extra_action_fetches
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic_CallToSuperRecommended
@@ -426,44 +344,6 @@ class DynamicTFPolicyV2(TFPolicy):
     @override(TFPolicy)
     def extra_compute_grad_fetches(self):
         return dict({LEARNER_STATS_KEY: {}}, **self.extra_learn_fetches_fn())
-
-    @override(Policy)
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def postprocess_trajectory(
-        self,
-        sample_batch: SampleBatch,
-        other_agent_batches: Optional[SampleBatch] = None,
-        episode: Optional["Episode"] = None,
-    ):
-        """Post process trajectory in the format of a SampleBatch.
-
-        Args:
-            sample_batch: sample_batch: batch of experiences for the policy,
-                which will contain at most one episode trajectory.
-            other_agent_batches: In a multi-agent env, this contains a
-                mapping of agent ids to (policy, agent_batch) tuples
-                containing the policy and experiences of the other agents.
-            episode: An optional multi-agent episode object to provide
-                access to all of the internal episode state, which may
-                be useful for model-based or multi-agent algorithms.
-
-        Returns:
-            The postprocessed sample batch.
-        """
-        return Policy.postprocess_trajectory(self, sample_batch)
-
-    @override(TFPolicy)
-    @OverrideToImplementCustomLogic
-    def optimizer(
-        self,
-    ) -> Union["tf.keras.optimizers.Optimizer", List["tf.keras.optimizers.Optimizer"]]:
-        """TF optimizer to use for policy optimization.
-
-        Returns:
-            A local optimizer or a list of local optimizers to use for this
-                Policy's Model.
-        """
-        return super().optimizer()
 
     def _init_dist_class(self):
         dist_class, _ = ModelCatalog.get_action_dist(
@@ -628,32 +508,26 @@ class DynamicTFPolicyV2(TFPolicy):
         # graphs.
         actions = None
         logp = None
-        #dist_inputs = None
         self._extra_action_outs = {}
         self._state_out = None
         if not self._is_tower:
             # Create the Exploration object to use for this Policy.
             self.exploration = self._create_exploration()
 
-            ## Distribution generation is customized, e.g., DQN, DDPG.
-            #if is_overridden(self.compute_actions):
             in_dict = self._input_dict
-            (
-                actions,
-                self._state_out,
-                self._extra_action_outs,
-            ) = self.compute_actions(
-                    input_dict=in_dict,
-                    explore=explore,
-                    timestep=timestep,
-                    is_training=in_dict.is_training,
-                )
+            (actions, self._state_out, self._extra_action_outs,) = self.compute_actions(
+                input_dict=in_dict,
+                explore=explore,
+                timestep=timestep,
+                is_training=in_dict.is_training,
+            )
 
             def new_compute_actions(
                 self,
                 *,
                 input_dict: Optional[
-                    Union[SampleBatch, Dict[str, TensorStructType]]] = None,
+                    Union[SampleBatch, Dict[str, TensorStructType]]
+                ] = None,
                 explore: Optional[bool] = None,
                 timestep: Optional[int] = None,
                 episodes: Optional[List["Episode"]] = None,
@@ -681,30 +555,11 @@ class DynamicTFPolicyV2(TFPolicy):
                 return fetched
 
             # Override compute_actions with new session-using one.
-            setattr(self, "compute_actions", new_compute_actions.__get__(self, DynamicTFPolicyV2))
-
-            ## Default distribution generation behavior:
-            ## Pass through model. E.g., PG, PPO.
-            #else:
-            #    if isinstance(self.model, tf.keras.Model):
-            #        dist_inputs, self._state_out, extra_action_fetches = self.model(
-            #            self._input_dict
-            #        )
-            #    else:
-            #        dist_inputs, self._state_out = self.model(self._input_dict)
-
-            #action_dist = self.dist_class(dist_inputs, self.model)
-
-            ## Using exploration to get final action (e.g. via sampling).
-            #(
-            #    sampled_action,
-            #    sampled_action_logp,
-            #) = self.exploration.get_exploration_action(
-            #    action_distribution=action_dist, timestep=timestep, explore=explore
-            #)
-
-        #if dist_inputs is not None:
-        #    extra_action_fetches[SampleBatch.ACTION_DIST_INPUTS] = dist_inputs
+            setattr(
+                self,
+                "compute_actions",
+                new_compute_actions.__get__(self, DynamicTFPolicyV2),
+            )
 
         if logp is not None:
             self._extra_action_outs[SampleBatch.ACTION_LOGP] = logp
@@ -717,7 +572,7 @@ class DynamicTFPolicyV2(TFPolicy):
     def _init_optimizers(self):
         # Create the optimizer/exploration optimizer here. Some initialization
         # steps (e.g. exploration postprocessing) may need this.
-        optimizers = force_list(self.optimizer())
+        optimizers = force_list(self.make_optimizer())
         if getattr(self, "exploration", None):
             optimizers = self.exploration.get_exploration_optimizer(optimizers)
 

@@ -19,6 +19,12 @@ def with_lock(func: Callable) -> Callable:
     """
 
     def wrapper(self, *a, **k):
+        # Early-out for tf static graph policies (no need to lock).
+        from ray.rllib.policy.dynamic_tf_policy_v2 import DynamicTFPolicyV2
+
+        if isinstance(self, DynamicTFPolicyV2):
+            return func(self, *a, **k)
+
         try:
             with self._lock:
                 return func(self, *a, **k)

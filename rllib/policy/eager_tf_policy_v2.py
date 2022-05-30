@@ -151,26 +151,6 @@ class EagerTFPolicyV2(Policy):
     ):
         return {}
 
-    @DeveloperAPI
-    @OverrideToImplementCustomLogic
-    def make_model(self) -> ModelV2:
-        """Build underlying model for this Policy.
-
-        Returns:
-            The Model for the Policy to use.
-        """
-        # Default ModelV2 model.
-        _, logit_dim = ModelCatalog.get_action_dist(
-            self.action_space, self.config["model"]
-        )
-        return ModelCatalog.get_model_v2(
-            self.observation_space,
-            self.action_space,
-            logit_dim,
-            self.config["model"],
-            framework=self.framework,
-        )
-
     @override(Policy)
     def compute_actions(
         self,
@@ -192,9 +172,10 @@ class EagerTFPolicyV2(Policy):
 
         # If old signature used -> Warning and move everything into `input_dict`.
         if input_dict is None:
-            assert obs_batch is not None,\
-                "ERROR: `compute_actions` either takes `input_dict` OR `obs_batch` as" \
+            assert obs_batch is not None, (
+                "ERROR: `compute_actions` either takes `input_dict` OR `obs_batch` as"
                 " arg! You didn't provide either."
+            )
             if log_once("old_compute_actions_signature"):
                 deprecation_warning(
                     old="compute_actions(obs_batch=[..])",
@@ -227,7 +208,6 @@ class EagerTFPolicyV2(Policy):
                 state_batches.append(input_dict[state_key])
                 state_key = f"state_in_{i}"
 
-        #self._state_in = state_batches
         self._is_recurrent = state_batches != []
         self._is_training = False
 
@@ -313,7 +293,7 @@ class EagerTFPolicyV2(Policy):
         return log_likelihoods
 
     def initialize_optimizer_and_loss_if_necessary(self):
-        optimizers = force_list(self.optimizer())
+        optimizers = force_list(self.make_optimizer())
         if getattr(self, "exploration", None):
             optimizers = self.exploration.get_exploration_optimizer(optimizers)
 
@@ -348,34 +328,6 @@ class EagerTFPolicyV2(Policy):
             A single loss tensor or a list of loss tensors.
         """
         raise NotImplementedError
-
-    @DeveloperAPI
-    @OverrideToImplementCustomLogic
-    def stats_fn(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
-        """Stats function. Returns a dict of statistics.
-
-        Args:
-            train_batch: The SampleBatch (already) used for training.
-
-        Returns:
-            The stats dict.
-        """
-        return {}
-
-    @DeveloperAPI
-    @OverrideToImplementCustomLogic
-    def grad_stats_fn(
-        self, train_batch: SampleBatch, grads: ModelGradients
-    ) -> Dict[str, TensorType]:
-        """Gradient stats function. Returns a dict of statistics.
-
-        Args:
-            train_batch: The SampleBatch (already) used for training.
-
-        Returns:
-            The stats dict.
-        """
-        return {}
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic
@@ -420,54 +372,20 @@ class EagerTFPolicyV2(Policy):
         """
         return None
 
-    #@DeveloperAPI
-    #@OverrideToImplementCustomLogic
-    #def action_sampler_fn(
-    #    self,
-    #    model: ModelV2,
-    #    *,
-    #    obs_batch: TensorType,
-    #    state_batches: TensorType,
-    #    **kwargs,
-    #) -> Tuple[TensorType, TensorType, TensorType, List[TensorType]]:
-    #    """Custom function for sampling new actions given policy.
+    @DeveloperAPI
+    @OverrideToImplementCustomLogic
+    def grad_stats_fn(
+        self, train_batch: SampleBatch, grads: ModelGradients
+    ) -> Dict[str, TensorType]:
+        """Gradient stats function. Returns a dict of statistics.
 
-    #    Args:
-    #        model: Underlying model.
-    #        obs_batch: Observation tensor batch.
-    #        state_batches: Action sampling state batch.
+        Args:
+            train_batch: The SampleBatch (already) used for training.
 
-    #    Returns:
-    #        Sampled action
-    #        Log-likelihood
-    #        Action distribution inputs
-    #        Updated state
-    #    """
-    #    return None, None, None, None
-
-    #@DeveloperAPI
-    #@OverrideToImplementCustomLogic
-    #def action_distribution_fn(
-    #    self,
-    #    model: ModelV2,
-    #    *,
-    #    obs_batch: TensorType,
-    #    state_batches: TensorType,
-    #    **kwargs,
-    #) -> Tuple[TensorType, type, List[TensorType]]:
-    #    """Action distribution function for this Policy.
-
-    #    Args:
-    #        model: Underlying model.
-    #        obs_batch: Observation tensor batch.
-    #        state_batches: Action sampling state batch.
-
-    #    Returns:
-    #        Distribution input.
-    #        ActionDistribution class.
-    #        State outs.
-    #    """
-    #    return None, None, None
+        Returns:
+            The stats dict.
+        """
+        return {}
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic
@@ -480,17 +398,6 @@ class EagerTFPolicyV2(Policy):
         # By default, any sized batch is ok, so simply return 1.
         return 1
 
-    #@DeveloperAPI
-    #@OverrideToImplementCustomLogic_CallToSuperRecommended
-    #def extra_action_out_fn(self) -> Dict[str, TensorType]:
-    #    """Extra values to fetch and return from compute_actions().
-
-    #    Returns:
-    #         Dict[str, TensorType]: An extra fetch-dict to be passed to and
-    #            returned from the compute_actions() call.
-    #    """
-    #    return {}
-
     @DeveloperAPI
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def extra_learn_fetches_fn(self) -> Dict[str, TensorType]:
@@ -501,34 +408,8 @@ class EagerTFPolicyV2(Policy):
         """
         return {}
 
-    @override(Policy)
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def postprocess_trajectory(
-        self,
-        sample_batch: SampleBatch,
-        other_agent_batches: Optional[SampleBatch] = None,
-        episode: Optional["Episode"] = None,
-    ):
-        """Post process trajectory in the format of a SampleBatch.
-
-        Args:
-            sample_batch: sample_batch: batch of experiences for the policy,
-                which will contain at most one episode trajectory.
-            other_agent_batches: In a multi-agent env, this contains a
-                mapping of agent ids to (policy, agent_batch) tuples
-                containing the policy and experiences of the other agents.
-            episode: An optional multi-agent episode object to provide
-                access to all of the internal episode state, which may
-                be useful for model-based or multi-agent algorithms.
-
-        Returns:
-            The postprocessed sample batch.
-        """
-        assert tf.executing_eagerly()
-        return Policy.postprocess_trajectory(self, sample_batch)
-
     @OverrideToImplementCustomLogic
-    def optimizer(
+    def make_optimizer(
         self,
     ) -> Union["tf.keras.optimizers.Optimizer", List["tf.keras.optimizers.Optimizer"]]:
         """TF optimizer to use for policy optimization.
@@ -540,16 +421,6 @@ class EagerTFPolicyV2(Policy):
         return tf.keras.optimizers.Adam(self.config["lr"])
 
     def _init_dist_class(self):
-        #dist_class = None
-        #if is_overridden(self.action_sampler_fn) or is_overridden(
-        #    self.action_distribution_fn
-        #):
-        #    if not is_overridden(self.make_model):
-        #        raise ValueError(
-        #            "`make_model` is required if `action_sampler_fn` OR "
-        #            "`action_distribution_fn` is given"
-        #        )
-        #else:
         dist_class, _ = ModelCatalog.get_action_dist(
             self.action_space, self.config["model"]
         )
@@ -747,9 +618,7 @@ class EagerTFPolicyV2(Policy):
                 self._lazy_tensor_dict(input_dict)
                 dist_inputs, state_out, extra_fetches = self.model(input_dict)
             else:
-                dist_inputs, state_out = self.model(
-                    input_dict, state_batches, seq_lens
-                )
+                dist_inputs, state_out = self.model(input_dict, state_batches, seq_lens)
 
             action_dist = self.dist_class(dist_inputs, self.model)
 
@@ -767,8 +636,6 @@ class EagerTFPolicyV2(Policy):
         # Action-dist inputs.
         if dist_inputs is not None:
             extra_fetches[SampleBatch.ACTION_DIST_INPUTS] = dist_inputs
-        ## Custom extra fetches.
-        #extra_fetches.update(self.extra_action_out_fn())
 
         return actions, state_out, extra_fetches
 

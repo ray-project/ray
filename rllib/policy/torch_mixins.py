@@ -161,16 +161,18 @@ class ValueNetworkMixin:
         is_training=False,
         **kwargs,
     ):
-        # Return value function outputs. VF estimates will hence be added to
-        # the SampleBatches produced by the sampler(s) to generate the train
-        # batches going into the loss function.
-        actions, state_outs, extra_outs = super().compute_actions(
+        # Call super()'s `compute_actions()` method to get standard extra_outs ...
+        actions, state_outs, extra_outs = super(
+            ValueNetworkMixin, self
+        ).compute_actions(
             input_dict=input_dict,
             explore=explore,
             timestep=timestep,
             episodes=episodes,
             is_training=is_training,
         )
+        # Add VF estimates to extra_outs in order for the SampleBatches produced by
+        # the sampler(s) to generate the train batches going into the loss function.
         extra_outs.update({SampleBatch.VF_PREDS: self.model.value_function()})
         return actions, state_outs, extra_outs
 
