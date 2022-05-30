@@ -3,7 +3,7 @@
 Replay Buffers
 ##############
 
-Quick intro into replay buffers in RL
+Quick intro to replay buffers in RL
 =====================================
 
 When we talk about replay buffers in reinforcement learning, we generally mean a buffer that stores and replays experiences collected from interactions of our agent(s) with the environment.
@@ -73,13 +73,13 @@ Here are three ways of specifying a type:
 
 Apart from specifying a type, other parameters in that config are:
 
-* Parameters that define how algorithms interact with replay buffers
+1. Parameters that define how algorithms interact with replay buffers
    * e.g. ``worker_side_prioritization`` to decide where to compute priorities
 
-* Constructor arguments to instantiate the replay buffer
+2. Constructor arguments to instantiate the replay buffer
    * e.g. ``capacity`` to limit the buffer's size
 
-* Call arguments for underlying replay buffer methods
+3. Call arguments for underlying replay buffer methods
    * e.g. ``prioritized_replay_beta`` is used by the :py:class:`~ray.rllib.utils.replay_buffers.multi_agent_prioritized_replay_buffer.MultiAgentPrioritizedReplayBuffer` to call the ``sample()`` method of every underlying :py:class:`~ray.rllib.utils.replay_buffers.prioritized_replay_buffer.PrioritizedReplayBuffer`
 
 
@@ -95,7 +95,7 @@ Advanced buffer types add functionality while trying retaining compatibility thr
 The following excerpt from the class documentation only shows how to construct, sample from and add to a replay buffer.
 If you plan on implementing your own buffer, these are also the main places to look at.
 
-.. dropdown:: **Constructor, ``add()`` and ``sample()`` methods.**
+.. dropdown:: **Constructor-, add- and sample- methods.**
     :animate: fade-in-slide-down
 
     .. autoclass:: ray.rllib.utils.replay_buffers.replay_buffer.ReplayBuffer
@@ -121,7 +121,7 @@ Here is an example of how to implement your own toy example of a ReplayBuffer cl
 For a full implementation, you should consider other methods like ``get_state()`` and ``set_state()``.
 A more extensive example is our implementation of `reservoir sampling <https://www.cs.umd.edu/~samir/498/vitter.pdf>`__:
 
-.. dropdown:: **Changing a replay buffer configuration**
+.. dropdown:: **Reservoir Buffer**
     :animate: fade-in-slide-down
 
     .. literalinclude:: ../../../../rllib/utils/replay_buffers/reservoir_replay_buffer.py
