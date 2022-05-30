@@ -81,7 +81,8 @@ class WorkerSet:
                 in the returned set as well (default: True). If `num_workers`
                 is 0, always create a local worker.
             logdir: Optional logging directory for workers.
-            _setup: Whether to setup workers. This is only for testing.
+            _setup: Whether to setup workers. A value of False here is only for
+                testing purposes.
         """
 
         if not trainer_config:
@@ -342,7 +343,8 @@ class WorkerSet:
     def stop(self) -> None:
         """Calls `stop` on all rollout workers (including the local one)."""
         try:
-            self.local_worker().stop()
+            if self.local_worker() is not None:
+                self.local_worker().stop()
             tids = [w.stop.remote() for w in self.remote_workers()]
             ray.get(tids)
         except Exception:

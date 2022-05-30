@@ -20,7 +20,6 @@ from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.typing import (
     EnvConfigDict,
     EnvType,
-    PartialTrainerConfigDict,
     ResultDict,
     TrainerConfigDict,
 )
@@ -60,7 +59,7 @@ class TrainerConfig:
 
         # Define the default RLlib Trainer class that this TrainerConfig will be
         # applied to.
-        self.trainer_class = trainer_class
+        self.trainer_class: Type["Trainer"] = trainer_class
 
         # `self.python_environment()`
         self.extra_python_environs_for_driver = {}
@@ -182,7 +181,7 @@ class TrainerConfig:
         self.evaluation_duration = 10
         self.evaluation_duration_unit = "episodes"
         self.evaluation_parallel_to_training = False
-        self.evaluation_config = {}
+        self.evaluation_config = None
         self.evaluation_num_workers = 0
         self.custom_evaluation_function = None
         self.always_attach_evaluation_results = False
@@ -234,6 +233,14 @@ class TrainerConfig:
         self.prioritized_replay_eps = DEPRECATED_VALUE
         self.input_evaluation = DEPRECATED_VALUE
 
+    def copy(self) -> "TrainerConfig":
+        """Creates a deep copy of this TrainerConfig and returns it.
+
+        Returns:
+            The deep copy of self.
+        """
+        return copy.deepcopy(self)
+
     def to_dict(self) -> TrainerConfigDict:
         """Converts all settings into a legacy config dict for backward compatibility.
 
@@ -268,6 +275,10 @@ class TrainerConfig:
         ]:
             config["multiagent"][k] = config.pop(k)
 
+        # Handle an evaluation config inside this one.
+        if isinstance(config["evaluation_config"], TrainerConfig):
+            config["evaluation_config"] = config["evaluation_config"].to_dict()
+
         # Switch out deprecated vs new config keys.
         config["callbacks"] = config.pop("callbacks_class", DefaultCallbacks)
         config["create_env_on_driver"] = config.pop("create_env_on_local_worker", 1)
@@ -299,7 +310,7 @@ class TrainerConfig:
         if env is not None:
             self.env = env
             if self.evaluation_config is not None:
-                self.evaluation_config["env"] = env
+                self.evaluation_config.env = env
         if logger_creator is not None:
             self.logger_creator = logger_creator
 
@@ -799,9 +810,7 @@ class TrainerConfig:
         evaluation_duration: Optional[int] = None,
         evaluation_duration_unit: Optional[str] = None,
         evaluation_parallel_to_training: Optional[bool] = None,
-        evaluation_config: Optional[
-            Union["TrainerConfig", PartialTrainerConfigDict]
-        ] = None,
+        evaluation_config: Optional["TrainerConfig"] = None,
         evaluation_num_workers: Optional[int] = None,
         custom_evaluation_function: Optional[Callable] = None,
         always_attach_evaluation_results: Optional[bool] = None,
@@ -832,8 +841,11 @@ class TrainerConfig:
                 the Trainer.train() and Trainer.evaluate() calls run in parallel.
                 Note: This is experimental. Possible pitfalls could be race conditions
                 for weight synching at the beginning of the evaluation loop.
-            evaluation_config: Typical usage is to pass extra args to evaluation env
-                creator and to disable exploration by computing deterministic actions.
+            evaluation_config: A TrainerConfig (within this one) that will be used
+                for the evaluation workers. Typical usage for this additional config is
+                to pass extra args to the evaluation environment constructors
+                (`env_config`) or to disable exploration
+                (`.exploration(explore=False)`) to compute deterministic actions.
                 IMPORTANT NOTE: Policy gradient algorithms are able to find the optimal
                 policy, even if this is a stochastic one. Setting "explore=False" here
                 will result in the evaluation workers not using this optimal policy!
@@ -865,11 +877,14 @@ class TrainerConfig:
         if evaluation_parallel_to_training is not None:
             self.evaluation_parallel_to_training = evaluation_parallel_to_training
         if evaluation_config is not None:
-            # Convert another TrainerConfig into dict.
-            if isinstance(evaluation_config, TrainerConfig):
-                self.evaluation_config = evaluation_config.to_dict()
-            else:
-                self.evaluation_config = evaluation_config
+            # Make sure we don't have yet another `evaluation_config` in the given
+            # `evaluation_config`. This could indicate some endless nesting.
+            if evaluation_config.evaluation_config is not None:
+                raise ValueError(
+                    "When specifying your `evaluation_config`, make sure it does not "
+                    "contain yet another `evaluatio_config` inside of it (this "
+                    "property must be None)!")
+            self.evaluation_config = evaluation_config
         if evaluation_num_workers is not None:
             self.evaluation_num_workers = evaluation_num_workers
         if custom_evaluation_function is not None:

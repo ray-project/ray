@@ -38,6 +38,7 @@ class TestCQL(unittest.TestCase):
         data_file = os.path.join(rllib_dir, "tests/data/pendulum/small.json")
         print("data_file={} exists={}".format(data_file, os.path.isfile(data_file)))
 
+        # Main configuration: Read from offline file.
         config = (
             cql.CQLConfig()
             .environment(
@@ -60,16 +61,21 @@ class TestCQL(unittest.TestCase):
                 replay_buffer_config={"learning_starts": 0},
                 bc_iters=2,
             )
-            .evaluation(
-                always_attach_evaluation_results=True,
-                evaluation_interval=2,
-                evaluation_duration=10,
-                evaluation_config={"input": "sampler"},
-                evaluation_parallel_to_training=False,
-                evaluation_num_workers=2,
-            )
             .rollouts(rollout_fragment_length=1)
         )
+        # Configure the evaluation workers (use env samplers).
+        evaluation_config = config.copy()
+        evaluation_config.offline_data(input_="sampler")
+        # Add evaluation config to main config and switch on evaluation.
+        config.evaluation(
+            evaluation_config=evaluation_config,
+            evaluation_interval=2,
+            evaluation_duration=10,
+            evaluation_parallel_to_training=False,
+            evaluation_num_workers=2,
+            always_attach_evaluation_results=True,
+        )
+
         num_iterations = 4
 
         # Test for tf/torch frameworks.

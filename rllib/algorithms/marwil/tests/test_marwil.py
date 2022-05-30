@@ -44,18 +44,23 @@ class TestMARWIL(unittest.TestCase):
         data_file = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
         print("data_file={} exists={}".format(data_file, os.path.isfile(data_file)))
 
+        # Main configuration: Read from offline file.
         config = (
             marwil.MARWILConfig()
             .rollouts(num_rollout_workers=2)
             .environment(env="CartPole-v0")
-            .evaluation(
-                evaluation_interval=3,
-                evaluation_num_workers=1,
-                evaluation_duration=5,
-                evaluation_parallel_to_training=True,
-                evaluation_config={"input": "sampler"},
-            )
             .offline_data(input_=[data_file])
+        )
+        # Configure the evaluation workers (use env samplers).
+        evaluation_confg = config.copy()
+        evaluation_confg.offline_data(input_="sampler")
+        # Add evaluation config to main config and switch on evaluation.
+        config.evaluation(
+            evaluation_interval=3,
+            evaluation_num_workers=1,
+            evaluation_duration=5,
+            evaluation_parallel_to_training=True,
+            evaluation_config=evaluation_confg,
         )
 
         num_iterations = 350

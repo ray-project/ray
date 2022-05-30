@@ -34,17 +34,20 @@ class TestBC(unittest.TestCase):
         data_file = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
         print("data_file={} exists={}".format(data_file, os.path.isfile(data_file)))
 
-        config = (
-            marwil.BCConfig()
-            .evaluation(
-                evaluation_interval=3,
-                evaluation_num_workers=1,
-                evaluation_duration=5,
-                evaluation_parallel_to_training=True,
-                evaluation_config={"input": "sampler"},
-            )
-            .offline_data(input_=[data_file])
+        # Main configuration: Read from offline file.
+        config = marwil.BCConfig().offline_data(input_=[data_file])
+        # Configure the evaluation workers (use env samplers).
+        evaluation_config = config.copy()
+        evaluation_config.offline_data(input_="sampler")
+        # Add evaluation config to main config and switch on evaluation.
+        config.evaluation(
+            evaluation_interval=3,
+            evaluation_num_workers=1,
+            evaluation_duration=5,
+            evaluation_parallel_to_training=True,
+            evaluation_config=evaluation_config,
         )
+
         num_iterations = 350
         min_reward = 75.0
 

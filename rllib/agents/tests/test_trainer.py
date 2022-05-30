@@ -152,15 +152,17 @@ class TestTrainer(unittest.TestCase):
         config = (
             dqn.DQNConfig()
             .environment(env="CartPole-v0")
-            .evaluation(
-                evaluation_interval=2,
-                evaluation_duration=2,
-                evaluation_duration_unit="episodes",
-                evaluation_config={
-                    "gamma": 0.98,
-                },
-            )
             .callbacks(callbacks_class=AssertEvalCallback)
+        )
+        # Configure the evaluation workers (use different gamma).
+        evaluation_config = config.copy()
+        evaluation_config.training(gamma=0.98)
+        # Add evaluation config to main config and switch on evaluation.
+        config.evaluation(
+            evaluation_interval=2,
+            evaluation_duration=2,
+            evaluation_duration_unit="episodes",
+            evaluation_config=evaluation_config,
         )
 
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
@@ -190,17 +192,20 @@ class TestTrainer(unittest.TestCase):
         config = (
             dqn.DQNConfig()
             .environment(env="CartPole-v0")
-            .evaluation(
-                evaluation_interval=2,
-                evaluation_duration=2,
-                evaluation_duration_unit="episodes",
-                evaluation_config={
-                    "gamma": 0.98,
-                },
-                always_attach_evaluation_results=True,
-            )
             .callbacks(callbacks_class=AssertEvalCallback)
         )
+        # Configure the evaluation workers (use different gamma).
+        evaluation_config = config.copy()
+        evaluation_config.training(gamma=0.98)
+        # Add evaluation config to main config and switch on evaluation.
+        config.evaluation(
+            evaluation_config=evaluation_config,
+            evaluation_interval=2,
+            evaluation_duration=2,
+            evaluation_duration_unit="episodes",
+            always_attach_evaluation_results=True,
+        )
+
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
             trainer = config.build()
             # Should always see latest available eval results.
@@ -325,25 +330,27 @@ class TestTrainer(unittest.TestCase):
 
         env = gym.make("CartPole-v0")
 
-        offline_rl_config = (
+        config = (
             BCConfig()
             .environment(
                 observation_space=env.observation_space, action_space=env.action_space
             )
-            .evaluation(
-                evaluation_interval=1,
-                evaluation_num_workers=1,
-                evaluation_config={
-                    "env": "CartPole-v0",
-                    "input": "sampler",
-                    "observation_space": None,  # Test, whether this is inferred.
-                    "action_space": None,  # Test, whether this is inferred.
-                },
-            )
             .offline_data(input_=[input_file])
         )
+        # Configure the evaluation workers (use env samplers).
+        evaluation_config = config.copy()
+        # Test, whether spaces are inferred.
+        evaluation_config\
+            .offline_data(input_="sampler")\
+            .environment(env="CartPole-v0", observation_space=None, action_space=None)
+        # Add evaluation config to main config and switch on evaluation.
+        config.evaluation(
+            evaluation_interval=1,
+            evaluation_num_workers=1,
+            evaluation_config=evaluation_config,
+        )
 
-        bc_trainer = BCTrainer(config=offline_rl_config)
+        bc_trainer = BCTrainer(config=config)
         bc_trainer.train()
         bc_trainer.stop()
 

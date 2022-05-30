@@ -129,9 +129,7 @@ class QMixConfig(SimpleQConfig):
         # metrics are already only reported for the lowest epsilon workers.
         self.evaluation_interval = None
         self.evaluation_duration = 10
-        self.evaluation_config = {
-            "explore": False,
-        }
+        self.evaluation_config = {"explore": False}
         # __sphinx_doc_end__
         # fmt: on
 
