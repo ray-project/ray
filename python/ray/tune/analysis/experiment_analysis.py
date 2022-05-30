@@ -153,6 +153,9 @@ class ExperimentAnalysis:
                 (_decode_checkpoint_from_experiment_state(cp), Path(path).parent)
                 for cp in experiment_state["checkpoints"]
             ]
+            self._checkpoints_and_paths = sorted(
+                self._checkpoints_and_paths, key=lambda tup: tup[0]["trial_id"]
+            )
 
     def _get_latest_checkpoint(self, experiment_checkpoint_path: Path) -> List[str]:
         # Case 1: Dir specified, find latest checkpoint.
