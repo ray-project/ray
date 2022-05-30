@@ -521,7 +521,7 @@ You can configure any Trainer to launch a policy server with the following confi
         # Use the existing trainer process to run the server.
         "num_workers": 0,
         # Disable OPE, since the rollouts are coming from online clients.
-        "input_evaluation": [],
+        "off_policy_estimation_methods": [],
     }
 
 Clients can then connect in either *local* or *remote* inference mode. In local inference mode, copies of the policy are downloaded from the server and cached on the client for a configurable period of time. This allows actions to be computed by the client without requiring a network round trip each time. In remote inference mode, each computed action requires a network call to the server.
