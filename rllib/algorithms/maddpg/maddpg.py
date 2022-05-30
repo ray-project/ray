@@ -12,12 +12,11 @@ and the README for how to run with the multi-agent particle envs.
 import logging
 from typing import Type
 
-from ray.rllib.agents.maddpg.maddpg_tf_policy import MADDPGTFPolicy
 from ray.rllib.algorithms.dqn.dqn import DQNTrainer
-from ray.rllib.agents.trainer import COMMON_CONFIG, with_common_config
+from ray.rllib.algorithms.maddpg.maddpg_tf_policy import MADDPGTFPolicy
+from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
-from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
@@ -77,6 +76,8 @@ DEFAULT_CONFIG = with_common_config({
         "capacity": int(1e6),
         # How many steps of the model to sample before learning starts.
         "learning_starts": 1024 * 25,
+        # Force lockstep replay mode for MADDPG.
+        "replay_mode": "lockstep",
     },
     # Observation compression. Note that compression makes simulation slow in
     # MPE.
@@ -86,10 +87,6 @@ DEFAULT_CONFIG = with_common_config({
     # timesteps. Otherwise, the replay will proceed at the native ratio
     # determined by (train_batch_size / rollout_fragment_length).
     "training_intensity": None,
-    # Force lockstep replay mode for MADDPG.
-    "multiagent": merge_dicts(COMMON_CONFIG["multiagent"], {
-        "replay_mode": "lockstep",
-    }),
 
     # === Optimization ===
     # Learning rate for the critic (Q-function) optimizer.

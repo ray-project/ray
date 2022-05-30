@@ -585,11 +585,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                              rpc::GetSystemConfigReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle a `GetGcsServerAddress` request.
-  void HandleGetGcsServerAddress(const rpc::GetGcsServerAddressRequest &request,
-                                 rpc::GetGcsServerAddressReply *reply,
-                                 rpc::SendReplyCallback send_reply_callback) override;
-
   /// Handle a `HandleGetTasksInfo` request.
   void HandleGetTasksInfo(const rpc::GetTasksInfoRequest &request,
                           rpc::GetTasksInfoReply *reply,

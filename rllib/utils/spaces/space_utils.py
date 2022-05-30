@@ -6,6 +6,7 @@ import tree  # pip install dm_tree
 from typing import Any, List, Optional, Union
 
 
+@DeveloperAPI
 def flatten_space(space: gym.Space) -> List[gym.Space]:
     """Flattens a gym.Space into its primitive components.
 
@@ -37,6 +38,7 @@ def flatten_space(space: gym.Space) -> List[gym.Space]:
     return ret
 
 
+@DeveloperAPI
 def get_base_struct_from_space(space):
     """Returns a Tuple/Dict Space as native (equally structured) py tuple/dict.
 
@@ -67,6 +69,7 @@ def get_base_struct_from_space(space):
     return _helper_struct(space)
 
 
+@DeveloperAPI
 def get_dummy_batch_for_space(
     space: gym.Space,
     batch_size: int = 32,
@@ -144,6 +147,7 @@ def get_dummy_batch_for_space(
         )
 
 
+@DeveloperAPI
 def flatten_to_single_ndarray(input_):
     """Returns a single np.ndarray given a list/tuple of np.ndarrays.
 
@@ -173,6 +177,7 @@ def flatten_to_single_ndarray(input_):
     return input_
 
 
+@DeveloperAPI
 def unbatch(batches_struct):
     """Converts input from (nested) struct of batches to batch of structs.
 
@@ -210,6 +215,7 @@ def unbatch(batches_struct):
     return out
 
 
+@DeveloperAPI
 def clip_action(action, action_space):
     """Clips all components in `action` according to the given Space.
 
@@ -234,6 +240,7 @@ def clip_action(action, action_space):
     return tree.map_structure(map_, action, action_space)
 
 
+@DeveloperAPI
 def unsquash_action(action, action_space_struct):
     """Unsquashes all components in `action` according to the given Space.
 
@@ -277,6 +284,7 @@ def unsquash_action(action, action_space_struct):
     return tree.map_structure(map_, action, action_space_struct)
 
 
+@DeveloperAPI
 def normalize_action(action, action_space_struct):
     """Normalizes all (Box) components in `action` to be in [-1.0, 1.0].
 

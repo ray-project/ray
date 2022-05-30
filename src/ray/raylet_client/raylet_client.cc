@@ -538,10 +538,4 @@ void raylet::RayletClient::GetSystemConfig(
   grpc_client_->GetSystemConfig(request, callback);
 }
 
-void raylet::RayletClient::GetGcsServerAddress(
-    const rpc::ClientCallback<rpc::GetGcsServerAddressReply> &callback) {
-  rpc::GetGcsServerAddressRequest request;
-  grpc_client_->GetGcsServerAddress(request, callback);
-}
-
 }  // namespace ray

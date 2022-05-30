@@ -51,7 +51,7 @@ class TestCQL(unittest.TestCase):
                 # RLlib algorithm (e.g. PPO or SAC).
                 actions_in_input_normalized=False,
                 # Switch on off-policy evaluation.
-                input_evaluation=["is"],
+                off_policy_estimation_methods=["is"],
             )
             .training(
                 clip_actions=False,
@@ -95,10 +95,12 @@ class TestCQL(unittest.TestCase):
 
             # Example on how to do evaluation on the trained Trainer
             # using the data from CQL's global replay buffer.
-            # Get a sample (MultiAgentBatch -> SampleBatch).
-            batch = trainer.local_replay_buffer.replay().policy_batches[
-                "default_policy"
-            ]
+            # Get a sample (MultiAgentBatch).
+            multi_agent_batch = trainer.local_replay_buffer.sample(
+                num_items=config.train_batch_size
+            )
+            # All experiences have been buffered for `default_policy`
+            batch = multi_agent_batch.policy_batches["default_policy"]
 
             if fw == "torch":
                 obs = torch.from_numpy(batch["obs"])

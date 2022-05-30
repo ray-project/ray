@@ -228,7 +228,7 @@ class TestSAC(unittest.TestCase):
         }
 
         env = SimpleEnv
-        batch_size = 100
+        batch_size = 64
         obs_size = (batch_size, 1)
         actions = np.random.random(size=(batch_size, 2))
 

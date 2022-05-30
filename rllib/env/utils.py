@@ -4,7 +4,7 @@ from ray.rllib.env.env_context import EnvContext
 from ray.rllib.utils.error import ERR_MSG_INVALID_ENV_DESCRIPTOR, EnvError
 
 
-def gym_env_creator(env_context: EnvContext, env_descriptor: str) -> gym.Env:
+def _gym_env_creator(env_context: EnvContext, env_descriptor: str) -> gym.Env:
     """Tries to create a gym env given an EnvContext object and descriptor.
 
     Note: This function tries to construct the env from a string descriptor

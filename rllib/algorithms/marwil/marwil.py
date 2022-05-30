@@ -23,6 +23,7 @@ from ray.rllib.utils.typing import (
     ResultDict,
     TrainerConfigDict,
 )
+from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
 
 
 class MARWILConfig(TrainerConfig):
@@ -102,7 +103,9 @@ class MARWILConfig(TrainerConfig):
         # the same line.
         self.input_ = "sampler"
         # Use importance sampling estimators for reward.
-        self.input_evaluation = [ImportanceSampling, WeightedImportanceSampling]
+        self.off_policy_estimation_methods = [
+            ImportanceSampling, WeightedImportanceSampling
+        ]
         self.postprocess_inputs = True
         self.lr = 1e-4
         self.train_batch_size = 2000
@@ -238,10 +241,10 @@ class MARWILTrainer(Trainer):
             return MARWILTorchPolicy
         elif config["framework"] == "tf":
             from ray.rllib.algorithms.marwil.marwil_tf_policy import (
-                MARWILDynamicTFPolicy,
+                MARWILStaticGraphTFPolicy,
             )
 
-            return MARWILDynamicTFPolicy
+            return MARWILStaticGraphTFPolicy
         else:
             from ray.rllib.algorithms.marwil.marwil_tf_policy import MARWILEagerTFPolicy
 
@@ -258,7 +261,11 @@ class MARWILTrainer(Trainer):
         self.local_replay_buffer.add(batch)
 
         # Pull batch from replay buffer and train on it.
-        train_batch = self.local_replay_buffer.sample(self.config["train_batch_size"])
+        train_batch = sample_min_n_steps_from_buffer(
+            self.local_replay_buffer,
+            self.config["train_batch_size"],
+            count_by_agent_steps=self._by_agent_steps,
+        )
         # Train.
         if self.config["simple_optimizer"]:
             train_results = train_one_step(self, train_batch)
