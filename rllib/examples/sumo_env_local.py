@@ -78,7 +78,7 @@ if __name__ == "__main__":
     tune.register_env("sumo_test_env", marlenvironment.env_creator)
 
     # Algorithm.
-    policy_class = ppo.PPOTFPolicy
+    policy_class = ppo.PPOStaticGraphTFPolicy
     config = ppo.DEFAULT_CONFIG
     config["framework"] = "tf"
     config["gamma"] = 0.99

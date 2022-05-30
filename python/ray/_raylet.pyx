@@ -521,6 +521,7 @@ cdef execute_task(
         if core_worker.current_actor_is_asyncio():
             error = SystemExit(0)
             error.is_ray_terminate = True
+            error.ray_terminate_msg = "exit_actor() is called."
             raise error
 
     function_descriptor = CFunctionDescriptorToPython(
@@ -770,6 +771,9 @@ cdef execute_task(
         if task_counter == execution_info.max_calls:
             exit = SystemExit(0)
             exit.is_ray_terminate = True
+            exit.ray_terminate_msg = (
+                "max_call has reached, "
+                f"max_calls: {execution_info.max_calls}")
             raise exit
 
 cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
@@ -815,6 +819,9 @@ cdef CRayStatus task_execution_handler(
                     (&creation_task_exception_pb_bytes)[0] = (
                         ray_error_to_memory_buf(e))
                     sys_exit.is_creation_task_error = True
+                    sys_exit.init_error_message = (
+                        "Exception raised from an actor init method. "
+                        f"Traceback: {str(e)}")
                 else:
                     traceback_str = traceback.format_exc() + (
                         "An unexpected internal error "
@@ -825,28 +832,32 @@ cdef CRayStatus task_execution_handler(
                         "worker_crash",
                         traceback_str,
                         job_id=None)
+                    sys_exit.unexpected_error_traceback = traceback_str
                 raise sys_exit
         except SystemExit as e:
             # Tell the core worker to exit as soon as the result objects
             # are processed.
             if hasattr(e, "is_ray_terminate"):
-                return CRayStatus.IntentionalSystemExit()
+                return CRayStatus.IntentionalSystemExit(e.ray_terminate_msg)
             elif hasattr(e, "is_creation_task_error"):
-                return CRayStatus.CreationTaskError()
-            elif e.code and e.code == 0:
+                return CRayStatus.CreationTaskError(e.init_error_message)
+            elif e.code is not None and e.code == 0:
                 # This means the system exit was
                 # normal based on the python convention.
                 # https://docs.python.org/3/library/sys.html#sys.exit
-                return CRayStatus.IntentionalSystemExit()
+                return CRayStatus.IntentionalSystemExit(
+                    f"Worker exits with an exit code {e.code}.")
             else:
-                msg = "SystemExit was raised from the worker."
+                msg = f"Worker exits with an exit code {e.code}."
                 # In K8s, SIGTERM likely means we hit memory limits, so print
                 # a more informative message there.
                 if "KUBERNETES_SERVICE_HOST" in os.environ:
                     msg += (
                         " The worker may have exceeded K8s pod memory limits.")
+                if hasattr(e, "unexpected_error_traceback"):
+                    msg += (f"\n {e.unexpected_error_traceback}")
                 logger.exception(msg)
-                return CRayStatus.UnexpectedSystemExit()
+                return CRayStatus.UnexpectedSystemExit(msg)
 
     return CRayStatus.OK()
 
@@ -1116,7 +1127,6 @@ cdef class CoreWorker:
         options.unhandled_exception_handler = unhandled_exception_handler
         options.get_lang_stack = get_py_stack
         options.is_local_mode = local_mode
-        options.num_workers = 1
         options.kill_main = kill_main_task
         options.terminate_asyncio_thread = terminate_asyncio_thread
         options.serialized_job_config = serialized_job_config

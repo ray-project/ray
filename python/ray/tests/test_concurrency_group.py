@@ -134,5 +134,33 @@ def test_default_concurrency_group_does_not_block_others(ray_start_regular_share
     assert "ok" == ray.get(async_actor.f2.remote())
 
 
+# This case tests that a blocking group doesn't blocks
+# tasks in other groups.
+# See https://github.com/ray-project/ray/issues/19593
+def test_blocking_group_does_not_block_others(ray_start_regular_shared):
+    @ray.remote(concurrency_groups={"group1": 1, "group2": 1})
+    class AsyncActor:
+        def __init__(self):
+            pass
+
+        @ray.method(concurrency_group="group1")
+        async def f1(self):
+            time.sleep(10000)
+            return "never return"
+
+        @ray.method(concurrency_group="group2")
+        def f2(self):
+            return "ok"
+
+    async_actor = AsyncActor.remote()
+    # Execute f1 twice for blocking the group1.
+    obj_0 = async_actor.f1.remote()
+    obj_1 = async_actor.f1.remote()
+    # Wait a while to make sure f2 is scheduled after f1.
+    ray.wait([obj_0, obj_1], timeout=5)
+    # f2 should work well even if group1 is blocking.
+    assert "ok" == ray.get(async_actor.f2.remote())
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

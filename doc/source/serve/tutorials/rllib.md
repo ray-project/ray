@@ -21,14 +21,14 @@ In particular, we show:
 - How to parse the JSON request and evaluate the payload in RLlib.
 
 ```{margin}
-Check out the {doc}`../core-apis` page to learn more general information about Ray Serve.
+Check out the [Key Concepts](key-concepts) page to learn more general information about Ray Serve.
 ```
 
 We will train and checkpoint a simple PPO model with the `CartPole-v0` environment from `gym`.
 In this tutorial we simply write to local disk, but in production you might want to consider using a cloud
 storage solution like S3 or a shared file system.
 
-Let's get started by defining a `PPOTrainer` instance, training it for one iteration and then creating a checkpoint: 
+Let's get started by defining a `PPOTrainer` instance, training it for one iteration and then creating a checkpoint:
 
 ```{code-cell} python3
 :tags: [remove-output]
@@ -53,7 +53,7 @@ checkpoint_path = train_ppo_model()
 
 You create deployments with Ray Serve by using the `@serve.deployment` on a class that implements two methods:
 
-- The `__init__` call creates the deployment instance and loads your data once. 
+- The `__init__` call creates the deployment instance and loads your data once.
   In the below example we restore our `PPOTrainer` from the checkpoint we just created.
 - The `__call__` method will be invoked every request.
   For each incoming request, this method has access to a `request` object,
