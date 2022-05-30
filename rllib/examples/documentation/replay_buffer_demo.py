@@ -17,20 +17,20 @@ from ray.rllib.policy.sample_batch import SampleBatch
 
 config = {
     "env": "CartPole-v1",
-    "replay_buffer_config": {"type": ReplayBuffer},  # Specify buffer explicitly
+    # Specify buffer via class. This is the recommended way to specify a custom buffer.
+    "replay_buffer_config": {"type": ReplayBuffer},
 }
 
 another_config = {
     "env": "CartPole-v1",
-    "replay_buffer_config": {"type": "ReplayBuffer"}  # Specify buffer type name like
-    # it can be found in RLlib's buffer module
+    # Specify buffer type name like it can be found in RLlib's buffer module.
+    "replay_buffer_config": {"type": "ReplayBuffer"},
 }
 
 yet_another_config = {
     "env": "CartPole-v1",
-    "replay_buffer_config": {"type": "ray.rllib.utils.replay_buffers.ReplayBuffer"}  #
-    # Specify
-    # buffer by path
+    # Specify buffer by python module and class.
+    "replay_buffer_config": {"type": "ray.rllib.utils.replay_buffers.ReplayBuffer"},  #
 }
 
 validate_buffer_config(config)

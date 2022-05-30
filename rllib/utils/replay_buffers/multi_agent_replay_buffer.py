@@ -313,8 +313,8 @@ class MultiAgentReplayBuffer(ReplayBuffer):
 
         Args:
             num_items: Number of items to sample from a policy's buffer.
-            policy_id: ID of the policy that created the experiences we sample.
-                If none is given, sample from all policies.
+            policy_id: ID of the policy that created the experiences we sample. If
+            none is given, sample from all policies.
 
         Returns:
             Concatenated MultiAgentBatch of items.

@@ -115,7 +115,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         Args:
             num_items: Number of items to sample from this buffer.
             beta: To what degree to use importance weights (0 - no corrections,
-                1 - full correction).
+            1 - full correction).
             ``**kwargs``: Forward compatibility kwargs.
 
         Returns:
