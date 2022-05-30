@@ -3,13 +3,12 @@ import logging
 import numpy as np
 from typing import Optional, Union
 
-
 from ray.rllib.env.base_env import BaseEnv
-
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
-#from ray.rllib.policy import Policy
+
+# from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import NullContextManager
 from ray.rllib.utils.annotations import override
@@ -168,11 +167,14 @@ class NovelD(Exploration):
         self.normalize = normalize
         self._moving_mean_std = None
 
+        # Initialize the state counts dictionary.
         self._state_counts = {}
-        self._state_counts_total = 0.0
+        # Also initialize the state count metrics.
+        self._state_counts_total = 0
         self._state_counts_avg = 0.0
+
         if self.normalize:
-            # Use the `_Moving_MeanStd` class to normalize the intrinsic rewards.
+            # Use the `_MovingMeanStd` class to normalize the intrinsic rewards.
             from ray.rllib.utils.exploration.random_encoder import _MovingMeanStd
 
             self._moving_mean_std = _MovingMeanStd()
@@ -297,7 +299,7 @@ class NovelD(Exploration):
         # Reset the state counts.
         self._state_counts = {}
         # Also reset the metrics.
-        self._state_counts_total = 0.0
+        self._state_counts_total = 0
         self._state_counts_avg = 0.0
 
     @override(Exploration)
@@ -498,8 +500,8 @@ class NovelD(Exploration):
         states_hashes = [self._hash_state(single_obs) for single_obs in obs]
         for hash in states_hashes:
             self._state_counts[hash] = self._state_counts.get(hash, 0) + 1
-        self._state_counts_avg = len(self._state_counts) * self._state_counts_avg + len(
-            states_hashes
+        self._state_counts_avg = (
+            self._state_counts_total * self._state_counts_avg + len(states_hashes)
         )
         self._state_counts_total += len(states_hashes)
         self._state_counts_avg /= self._state_counts_total
