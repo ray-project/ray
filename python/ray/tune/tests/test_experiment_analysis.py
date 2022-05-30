@@ -3,7 +3,6 @@ import shutil
 import tempfile
 import random
 import os
-from pathlib import Path
 import pickle
 import pandas as pd
 from numpy import nan
@@ -94,7 +93,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         checkpoints = self.ea._checkpoints_and_paths
         idx = random.randint(0, len(checkpoints) - 1)
         logdir_from_checkpoint = str(
-            Path(checkpoints[idx][1]).joinpath(checkpoints[idx][0]["relative_logdir"])
+            checkpoints[idx][1].joinpath(checkpoints[idx][0]["relative_logdir"])
         )
         logdir_from_trial = self.ea.trials[idx].logdir
 
