@@ -484,17 +484,32 @@ class DynamicTFPolicyV2(TFPolicy):
     def _init_action_fetches(
         self, timestep: Union[int, TensorType], explore: Union[bool, TensorType]
     ) -> Tuple[TensorStructType, TensorType, Dict[str, TensorStructType]]:
-        """Create action related fields for base Policy and loss initialization."""
-        # Multi-GPU towers do not need any action computing/exploration
-        # graphs.
+        """Builds action computing graph from (maybe user provided) `compute_actions`.
+
+        Then converts the method into a session calling one, so it can be used
+        repeatedly with numpy input.
+
+        Args:
+            timestep: The timestep placeholder.
+            explore: The explore placeholder.
+
+        Returns:
+            A tuple consisting of actions op, logp op, and a dict of extra action out
+            ops to fetch from the graph.
+        """
         actions = None
         logp = None
         self._extra_action_outs = {}
         self._state_out = None
+
+        # Multi-GPU towers do not need any action computing/exploration
+        # graphs.
         if not self._is_tower:
             # Create the Exploration object to use for this Policy.
             self.exploration = self._create_exploration()
 
+            # Create the action computing graph based off the user-provided
+            # (or default) `compute_actions()` implementation.
             in_dict = self._input_dict
             (actions, self._state_out, self._extra_action_outs,) = self.compute_actions(
                 input_dict=in_dict,
@@ -503,6 +518,8 @@ class DynamicTFPolicyV2(TFPolicy):
                 is_training=in_dict.is_training,
             )
 
+            # Convert the given `compute_actions` implementation into a session-calling
+            # method, so this one can then be called repeatedly with numpy inputs.
             def new_compute_actions(
                 self,
                 *,
@@ -542,6 +559,7 @@ class DynamicTFPolicyV2(TFPolicy):
                 new_compute_actions.__get__(self, DynamicTFPolicyV2),
             )
 
+        # Add logp and actions probs to extra outs by default.
         if logp is not None:
             self._extra_action_outs[SampleBatch.ACTION_LOGP] = logp
             self._extra_action_outs[SampleBatch.ACTION_PROB] = tf.exp(
