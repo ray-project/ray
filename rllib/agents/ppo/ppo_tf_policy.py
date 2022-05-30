@@ -20,14 +20,11 @@ from ray.rllib.policy.tf_mixins import (
     LearningRateSchedule,
     KLCoeffMixin,
     ValueNetworkMixin,
-    compute_gradients,
 )
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import explained_variance
 from ray.rllib.utils.typing import (
-    LocalOptimizer,
-    ModelGradients,
     TensorType,
     TFPolicyV2Type,
     TrainerConfigDict,
@@ -231,12 +228,6 @@ def get_ppo_tf_policy(base: TFPolicyV2Type) -> TFPolicyV2Type:
             return compute_gae_for_sample_batch(
                 self, sample_batch, other_agent_batches, episode
             )
-
-        @override(base)
-        def compute_gradients_fn(
-            self, optimizer: LocalOptimizer, loss: TensorType
-        ) -> ModelGradients:
-            return compute_gradients(self, optimizer, loss)
 
     return PPOTFPolicy
 

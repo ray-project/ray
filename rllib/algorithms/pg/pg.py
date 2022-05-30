@@ -2,8 +2,6 @@ from typing import Type
 
 from ray.rllib.agents.trainer import Trainer
 from ray.rllib.agents.trainer_config import TrainerConfig
-from ray.rllib.algorithms.pg.pg_tf_policy import PGTFPolicy
-from ray.rllib.algorithms.pg.pg_torch_policy import PGTorchPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
@@ -77,7 +75,18 @@ class PGTrainer(Trainer):
 
     @override(Trainer)
     def get_default_policy_class(self, config) -> Type[Policy]:
-        return PGTorchPolicy if config.get("framework") == "torch" else PGTFPolicy
+        if config["framework"] == "torch":
+            from ray.rllib.algorithms.pg.pg_torch_policy import PGTorchPolicy
+
+            return PGTorchPolicy
+        elif config["framework"] == "tf":
+            from ray.rllib.algorithms.pg.pg_tf_policy import PGStaticGraphTFPolicy
+
+            return PGStaticGraphTFPolicy
+        else:
+            from ray.rllib.algorithms.pg.pg_tf_policy import PGEagerTFPolicy
+
+            return PGEagerTFPolicy
 
 
 # Deprecated: Use ray.rllib.algorithms.pg.PGConfig instead!

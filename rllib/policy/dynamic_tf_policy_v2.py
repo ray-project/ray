@@ -1045,4 +1045,4 @@ class DynamicTFPolicyV2(TFPolicy):
             else:
                 return self.compute_gradients_fn(optimizers[0], losses[0])
         else:
-            return super().gradients(self, optimizers, losses)
+            return super().gradients(optimizers, losses)

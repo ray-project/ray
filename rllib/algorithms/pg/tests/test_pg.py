@@ -22,7 +22,7 @@ from ray import tune
 class TestPG(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init()
+        ray.init(local_mode=True)
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -141,8 +141,9 @@ class TestPG(unittest.TestCase):
                     feed_dict=policy._get_loss_inputs_dict(train_batch_, shuffle=False),
                 )
             else:
-                results = (pg.pg_tf_loss if fw in ["tf2", "tfe"] else pg.pg_torch_loss)(
-                    policy, policy.model, dist_class=dist_cls, train_batch=train_batch_
+
+                results = policy.loss(
+                    policy.model, dist_class=dist_cls, train_batch=train_batch_
                 )
 
             # Calculate expected results.
