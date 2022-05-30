@@ -340,9 +340,9 @@ class TestTrainer(unittest.TestCase):
         # Configure the evaluation workers (use env samplers).
         evaluation_config = config.copy()
         # Test, whether spaces are inferred.
-        evaluation_config\
-            .offline_data(input_="sampler")\
-            .environment(env="CartPole-v0", observation_space=None, action_space=None)
+        evaluation_config.offline_data(input_="sampler").environment(
+            env="CartPole-v0", observation_space=None, action_space=None
+        )
         # Add evaluation config to main config and switch on evaluation.
         config.evaluation(
             evaluation_interval=1,

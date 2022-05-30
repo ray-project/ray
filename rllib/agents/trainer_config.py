@@ -883,7 +883,8 @@ class TrainerConfig:
                 raise ValueError(
                     "When specifying your `evaluation_config`, make sure it does not "
                     "contain yet another `evaluatio_config` inside of it (this "
-                    "property must be None)!")
+                    "property must be None)!"
+                )
             self.evaluation_config = evaluation_config
         if evaluation_num_workers is not None:
             self.evaluation_num_workers = evaluation_num_workers
