@@ -1,4 +1,3 @@
-import higher
 import logging
 from typing import Dict, List, Type, Union
 
@@ -20,8 +19,18 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import TensorType
 
 torch, nn = try_import_torch()
-
 logger = logging.getLogger(__name__)
+
+try:
+    import higher
+except (ImportError, ModuleNotFoundError):
+    raise ImportError(
+        (
+            "The MAML and MB-MPO algorithms require the `higher` module to be "
+            "installed! However, there was no installation found. You can install it "
+            "via `pip install higher`."
+        )
+    )
 
 
 def PPOLoss(
@@ -420,6 +429,7 @@ class MAMLTorchPolicy(ValueNetworkMixin, KLCoeffMixin, TorchPolicyV2):
                 }
             )
 
+    @override(TorchPolicyV2)
     def extra_grad_process(
         self, optimizer: "torch.optim.Optimizer", loss: TensorType
     ) -> Dict[str, TensorType]:
