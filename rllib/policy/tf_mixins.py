@@ -10,6 +10,7 @@ from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.framework import try_import_tf, get_variable
 from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.rllib.utils.tf_utils import make_tf_callable
+from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.typing import (
     LocalOptimizer,
     ModelGradients,
@@ -18,7 +19,6 @@ from ray.rllib.utils.typing import (
 )
 
 logger = logging.getLogger(__name__)
-
 tf1, tf, tfv = try_import_tf()
 
 
@@ -130,7 +130,7 @@ class KLCoeffMixin:
     (from the train_batch).
     """
 
-    def __init__(self, config):
+    def __init__(self, config: TrainerConfigDict):
         # The current KL value (as python float).
         self.kl_coeff_val = config["kl_coeff"]
         # The current KL value (as tf Variable for in-graph operations).
@@ -196,6 +196,52 @@ class KLCoeffMixin:
         super().set_state(state)
 
 
+class TargetNetworkMixin:
+    """Assign the `update_target` method to the Policy.
+
+    The function is called every `target_network_update_freq` steps by the
+    master learner.
+    """
+
+    def __init__(
+        self,
+        obs_space: gym.spaces.Space,
+        action_space: gym.spaces.Space,
+        config: TrainerConfigDict,
+    ):
+        @make_tf_callable(self.get_session())
+        def do_update():
+            # update_target_fn will be called periodically to copy Q network to
+            # target Q network
+            update_target_expr = []
+            assert len(self.q_func_vars) == len(self.target_q_func_vars), (
+                self.q_func_vars,
+                self.target_q_func_vars,
+            )
+            for var, var_target in zip(self.q_func_vars, self.target_q_func_vars):
+                update_target_expr.append(var_target.assign(var))
+                logger.debug("Update target op {}".format(var_target))
+            return tf.group(*update_target_expr)
+
+        self.update_target = do_update
+
+    @property
+    def q_func_vars(self):
+        if not hasattr(self, "_q_func_vars"):
+            self._q_func_vars = self.model.variables()
+        return self._q_func_vars
+
+    @property
+    def target_q_func_vars(self):
+        if not hasattr(self, "_target_q_func_vars"):
+            self._target_q_func_vars = self.target_model.variables()
+        return self._target_q_func_vars
+
+    @override(TFPolicy)
+    def variables(self):
+        return self.q_func_vars + self.target_q_func_vars
+
+
 class ValueNetworkMixin:
     """Assigns the `_value()` method to a TFPolicy.
 
@@ -237,44 +283,67 @@ class ValueNetworkMixin:
         self._should_cache_extra_action = config["framework"] == "tf"
         self._cached_extra_action_fetches = None
 
-    def _extra_action_out_impl(self) -> Dict[str, TensorType]:
-        extra_action_out = super().extra_action_out_fn()
-        # Keras models return values for each call in third return argument
-        # (dict).
-        if isinstance(self.model, tf.keras.Model):
-            return extra_action_out
-        # Return value function outputs. VF estimates will hence be added to the
-        # SampleBatches produced by the sampler(s) to generate the train batches
-        # going into the loss function.
-        extra_action_out.update(
-            {
-                SampleBatch.VF_PREDS: self.model.value_function(),
-            }
+    def compute_actions(
+        self,
+        *,
+        input_dict=None,
+        explore=None,
+        timestep=None,
+        episodes=None,
+        is_training=False,
+        **kwargs,
+    ):
+        # Return value function outputs. VF estimates will hence be added to
+        # the SampleBatches produced by the sampler(s) to generate the train
+        # batches going into the loss function.
+        actions, state_outs, extra_outs = super(ValueNetworkMixin, self).compute_actions(
+            input_dict=input_dict,
+            explore=explore,
+            timestep=timestep,
+            episodes=episodes,
+            is_training=is_training,
         )
-        return extra_action_out
+        extra_outs.update({SampleBatch.VF_PREDS: self.model.value_function()})
+        return actions, state_outs, extra_outs
 
-    def extra_action_out_fn(self) -> Dict[str, TensorType]:
-        if not self._should_cache_extra_action:
-            return self._extra_action_out_impl()
+    #def _extra_action_out_impl(self) -> Dict[str, TensorType]:
+    #    extra_action_out = super().extra_action_out_fn()
+    #    # Keras models return values for each call in third return argument
+    #    # (dict).
+    #    if isinstance(self.model, tf.keras.Model):
+    #        return extra_action_out
+    #    # Return value function outputs. VF estimates will hence be added to the
+    #    # SampleBatches produced by the sampler(s) to generate the train batches
+    #    # going into the loss function.
+    #    extra_action_out.update(
+    #        {
+    #            SampleBatch.VF_PREDS: self.model.value_function(),
+    #        }
+    #    )
+    #    return extra_action_out
 
-        # Note: there are 2 reasons we are caching the extra_action_fetches for
-        # TF1 static graph here.
-        # 1. for better performance, so we don't query base class and model for
-        #    extra fetches every single time.
-        # 2. for correctness. TF1 is special because the static graph may contain
-        #    two logical graphs. One created by DynamicTFPolicy for action
-        #    computation, and one created by MultiGPUTower for GPU training.
-        #    Depending on which logical graph ran last time,
-        #    self.model.value_function() will point to the output tensor
-        #    of the specific logical graph, causing problem if we try to
-        #    fetch action (run inference) using the training output tensor.
-        #    For that reason, we cache the action output tensor from the
-        #    vanilla DynamicTFPolicy once and call it a day.
-        if self._cached_extra_action_fetches is not None:
-            return self._cached_extra_action_fetches
+    #def extra_action_out_fn(self) -> Dict[str, TensorType]:
+    #    if not self._should_cache_extra_action:
+    #        return self._extra_action_out_impl()
 
-        self._cached_extra_action_fetches = self._extra_action_out_impl()
-        return self._cached_extra_action_fetches
+    #    # Note: there are 2 reasons we are caching the extra_action_fetches for
+    #    # TF1 static graph here.
+    #    # 1. for better performance, so we don't query base class and model for
+    #    #    extra fetches every single time.
+    #    # 2. for correctness. TF1 is special because the static graph may contain
+    #    #    two logical graphs. One created by DynamicTFPolicy for action
+    #    #    computation, and one created by MultiGPUTower for GPU training.
+    #    #    Depending on which logical graph ran last time,
+    #    #    self.model.value_function() will point to the output tensor
+    #    #    of the specific logical graph, causing problem if we try to
+    #    #    fetch action (run inference) using the training output tensor.
+    #    #    For that reason, we cache the action output tensor from the
+    #    #    vanilla DynamicTFPolicy once and call it a day.
+    #    if self._cached_extra_action_fetches is not None:
+    #        return self._cached_extra_action_fetches
+
+    #    self._cached_extra_action_fetches = self._extra_action_out_impl()
+    #    return self._cached_extra_action_fetches
 
 
 class TargetNetworkMixin:

@@ -31,6 +31,7 @@ from ray.rllib.utils.annotations import (
     is_overridden,
     override,
 )
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
@@ -41,6 +42,7 @@ from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.typing import (
     LocalOptimizer,
     ModelGradients,
+    TensorStructType,
     TensorType,
     TrainerConfigDict,
 )
@@ -151,55 +153,6 @@ class EagerTFPolicyV2(Policy):
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic
-    @override(Policy)
-    def loss(
-        self,
-        model: Union[ModelV2, "tf.keras.Model"],
-        dist_class: Type[TFActionDistribution],
-        train_batch: SampleBatch,
-    ) -> Union[TensorType, List[TensorType]]:
-        """Compute loss for this policy using model, dist_class and a train_batch.
-
-        Args:
-            model: The Model to calculate the loss for.
-            dist_class: The action distr. class.
-            train_batch: The training data.
-
-        Returns:
-            A single loss tensor or a list of loss tensors.
-        """
-        raise NotImplementedError
-
-    @DeveloperAPI
-    @OverrideToImplementCustomLogic
-    def stats_fn(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
-        """Stats function. Returns a dict of statistics.
-
-        Args:
-            train_batch: The SampleBatch (already) used for training.
-
-        Returns:
-            The stats dict.
-        """
-        return {}
-
-    @DeveloperAPI
-    @OverrideToImplementCustomLogic
-    def grad_stats_fn(
-        self, train_batch: SampleBatch, grads: ModelGradients
-    ) -> Dict[str, TensorType]:
-        """Gradient stats function. Returns a dict of statistics.
-
-        Args:
-            train_batch: The SampleBatch (already) used for training.
-
-        Returns:
-            The stats dict.
-        """
-        return {}
-
-    @DeveloperAPI
-    @OverrideToImplementCustomLogic
     def make_model(self) -> ModelV2:
         """Build underlying model for this Policy.
 
@@ -218,219 +171,64 @@ class EagerTFPolicyV2(Policy):
             framework=self.framework,
         )
 
-    @DeveloperAPI
-    @OverrideToImplementCustomLogic
-    def compute_gradients_fn(
-        self, policy: Policy, optimizer: LocalOptimizer, loss: TensorType
-    ) -> ModelGradients:
-        """Gradients computing function (from loss tensor, using local optimizer).
-
-        Args:
-            policy (Policy): The Policy object that generated the loss tensor and
-                that holds the given local optimizer.
-            optimizer (LocalOptimizer): The tf (local) optimizer object to
-                calculate the gradients with.
-            loss (TensorType): The loss tensor for which gradients should be
-                calculated.
-
-        Returns:
-            ModelGradients: List of the possibly clipped gradients- and variable
-                tuples.
-        """
-        return None
-
-    @DeveloperAPI
-    @OverrideToImplementCustomLogic
-    def apply_gradients_fn(
-        self,
-        policy: Policy,
-        optimizer: "tf.keras.optimizers.Optimizer",
-        grads: ModelGradients,
-    ) -> "tf.Operation":
-        """Gradients computing function (from loss tensor, using local optimizer).
-
-        Args:
-            policy (Policy): The Policy object that generated the loss tensor and
-                that holds the given local optimizer.
-            optimizer (LocalOptimizer): The tf (local) optimizer object to
-                calculate the gradients with.
-            grads (ModelGradients): The gradient tensor to be applied.
-
-        Returns:
-            "tf.Operation": TF operation that applies supplied gradients.
-        """
-        return None
-
-    @DeveloperAPI
-    @OverrideToImplementCustomLogic
-    def action_sampler_fn(
-        self,
-        model: ModelV2,
-        *,
-        obs_batch: TensorType,
-        state_batches: TensorType,
-        **kwargs,
-    ) -> Tuple[TensorType, TensorType, TensorType, List[TensorType]]:
-        """Custom function for sampling new actions given policy.
-
-        Args:
-            model: Underlying model.
-            obs_batch: Observation tensor batch.
-            state_batches: Action sampling state batch.
-
-        Returns:
-            Sampled action
-            Log-likelihood
-            Action distribution inputs
-            Updated state
-        """
-        return None, None, None, None
-
-    @DeveloperAPI
-    @OverrideToImplementCustomLogic
-    def action_distribution_fn(
-        self,
-        model: ModelV2,
-        *,
-        obs_batch: TensorType,
-        state_batches: TensorType,
-        **kwargs,
-    ) -> Tuple[TensorType, type, List[TensorType]]:
-        """Action distribution function for this Policy.
-
-        Args:
-            model: Underlying model.
-            obs_batch: Observation tensor batch.
-            state_batches: Action sampling state batch.
-
-        Returns:
-            Distribution input.
-            ActionDistribution class.
-            State outs.
-        """
-        return None, None, None
-
-    @DeveloperAPI
-    @OverrideToImplementCustomLogic
-    def get_batch_divisibility_req(self) -> int:
-        """Get batch divisibility request.
-
-        Returns:
-            Size N. A sample batch must be of size K*N.
-        """
-        # By default, any sized batch is ok, so simply return 1.
-        return 1
-
-    @DeveloperAPI
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def extra_action_out_fn(self) -> Dict[str, TensorType]:
-        """Extra values to fetch and return from compute_actions().
-
-        Returns:
-             Dict[str, TensorType]: An extra fetch-dict to be passed to and
-                returned from the compute_actions() call.
-        """
-        return {}
-
-    @DeveloperAPI
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def extra_learn_fetches_fn(self) -> Dict[str, TensorType]:
-        """Extra stats to be reported after gradient computation.
-
-        Returns:
-             Dict[str, TensorType]: An extra fetch-dict.
-        """
-        return {}
-
     @override(Policy)
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def postprocess_trajectory(
+    def compute_actions(
         self,
-        sample_batch: SampleBatch,
-        other_agent_batches: Optional[SampleBatch] = None,
-        episode: Optional["Episode"] = None,
-    ):
-        """Post process trajectory in the format of a SampleBatch.
-
-        Args:
-            sample_batch: sample_batch: batch of experiences for the policy,
-                which will contain at most one episode trajectory.
-            other_agent_batches: In a multi-agent env, this contains a
-                mapping of agent ids to (policy, agent_batch) tuples
-                containing the policy and experiences of the other agents.
-            episode: An optional multi-agent episode object to provide
-                access to all of the internal episode state, which may
-                be useful for model-based or multi-agent algorithms.
-
-        Returns:
-            The postprocessed sample batch.
-        """
-        assert tf.executing_eagerly()
-        return Policy.postprocess_trajectory(self, sample_batch)
-
-    @OverrideToImplementCustomLogic
-    def optimizer(
-        self,
-    ) -> Union["tf.keras.optimizers.Optimizer", List["tf.keras.optimizers.Optimizer"]]:
-        """TF optimizer to use for policy optimization.
-
-        Returns:
-            A local optimizer or a list of local optimizers to use for this
-                Policy's Model.
-        """
-        return tf.keras.optimizers.Adam(self.config["lr"])
-
-    def _init_dist_class(self):
-        if is_overridden(self.action_sampler_fn) or is_overridden(
-            self.action_distribution_fn
-        ):
-            if not is_overridden(self.make_model):
-                raise ValueError(
-                    "`make_model` is required if `action_sampler_fn` OR "
-                    "`action_distribution_fn` is given"
-                )
-        else:
-            dist_class, _ = ModelCatalog.get_action_dist(
-                self.action_space, self.config["model"]
-            )
-        return dist_class
-
-    def _init_view_requirements(self):
-        # Auto-update model's inference view requirements, if recurrent.
-        self._update_model_view_requirements_from_init_state()
-        # Combine view_requirements for Model and Policy.
-        # TODO(jungong) : models will not carry view_requirements once they
-        # are migrated to be organic Keras models.
-        self.view_requirements.update(self.model.view_requirements)
-        # Disable env-info placeholder.
-        if SampleBatch.INFOS in self.view_requirements:
-            self.view_requirements[SampleBatch.INFOS].used_for_training = False
-
-    def maybe_initialize_optimizer_and_loss(self):
-        optimizers = force_list(self.optimizer())
-        if getattr(self, "exploration", None):
-            optimizers = self.exploration.get_exploration_optimizer(optimizers)
-
-        # The list of local (tf) optimizers (one per loss term).
-        self._optimizers: List[LocalOptimizer] = optimizers
-        # Backward compatibility: A user's policy may only support a single
-        # loss term and optimizer (no lists).
-        self._optimizer: LocalOptimizer = optimizers[0] if optimizers else None
-
-        self._initialize_loss_from_dummy_batch(
-            auto_remove_unneeded_view_reqs=True,
-        )
-        self._loss_initialized = True
-
-    @override(Policy)
-    def compute_actions_from_input_dict(
-        self,
-        input_dict: Dict[str, TensorType],
-        explore: bool = None,
+        *,
+        input_dict: Optional[Union[SampleBatch, Dict[str, TensorStructType]]] = None,
+        explore: Optional[bool] = None,
         timestep: Optional[int] = None,
-        episodes: Optional[List[Episode]] = None,
+        episodes: Optional[List["Episode"]] = None,
+        is_training: bool = False,
+        # Deprecated args.
+        obs_batch=None,
+        state_batches=None,
+        prev_action_batch=None,
+        prev_reward_batch=None,
+        info_batch=None,
+        # Kwargs for forward compatibility.
         **kwargs,
     ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
+
+        # If old signature used -> Warning and move everything into `input_dict`.
+        if input_dict is None:
+            assert obs_batch is not None,\
+                "ERROR: `compute_actions` either takes `input_dict` OR `obs_batch` as" \
+                " arg! You didn't provide either."
+            if log_once("old_compute_actions_signature"):
+                deprecation_warning(
+                    old="compute_actions(obs_batch=[..])",
+                    new="compute_actions(input_dict=[..])",
+                    error=False,
+                )
+            # Create `input_dict` to continue with.
+            input_dict = SampleBatch(
+                {
+                    SampleBatch.CUR_OBS: obs_batch,
+                },
+                _is_training=tf.constant(False),
+            )
+            if state_batches is not None:
+                for i, s in enumerate(state_batches):
+                    input_dict[f"state_in_{i}"] = s
+            if prev_action_batch is not None:
+                input_dict[SampleBatch.PREV_ACTIONS] = prev_action_batch
+            if prev_reward_batch is not None:
+                input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
+            if info_batch is not None:
+                input_dict[SampleBatch.INFOS] = info_batch
+        else:
+            # Pack internal state inputs into (separate) list.
+            state_key = "state_in_0"
+            state_batches = []
+            i = 0
+            while state_key in input_dict:
+                i += 1
+                state_batches.append(input_dict[state_key])
+                state_key = f"state_in_{i}"
+
+        #self._state_in = state_batches
+        self._is_recurrent = state_batches != []
         self._is_training = False
 
         explore = explore if explore is not None else self.explore
@@ -441,13 +239,6 @@ class EagerTFPolicyV2(Policy):
         # Pass lazy (eager) tensor dict to Model as `input_dict`.
         input_dict = self._lazy_tensor_dict(input_dict)
         input_dict.set_training(False)
-
-        # Pack internal state inputs into (separate) list.
-        state_batches = [
-            input_dict[k] for k in input_dict.keys() if "state_in" in k[:8]
-        ]
-        self._state_in = state_batches
-        self._is_recurrent = state_batches != []
 
         # Call the exploration before_compute_actions hook.
         self.exploration.before_compute_actions(
@@ -462,50 +253,7 @@ class EagerTFPolicyV2(Policy):
             explore,
             timestep,
         )
-        # Update our global timestep by the batch size.
-        self.global_timestep.assign_add(tree.flatten(ret[0])[0].shape.as_list()[0])
-        return convert_to_numpy(ret)
-
-    # TODO(jungong) : deprecate this API and make compute_actions_from_input_dict the
-    # only canonical entry point for inference.
-    @override(Policy)
-    def compute_actions(
-        self,
-        obs_batch,
-        state_batches=None,
-        prev_action_batch=None,
-        prev_reward_batch=None,
-        info_batch=None,
-        episodes=None,
-        explore=None,
-        timestep=None,
-        **kwargs,
-    ):
-        # Create input dict to simply pass the entire call to
-        # self.compute_actions_from_input_dict().
-        input_dict = SampleBatch(
-            {
-                SampleBatch.CUR_OBS: obs_batch,
-            },
-            _is_training=tf.constant(False),
-        )
-        if state_batches is not None:
-            for s in enumerate(state_batches):
-                input_dict["state_in_{i}"] = s
-        if prev_action_batch is not None:
-            input_dict[SampleBatch.PREV_ACTIONS] = prev_action_batch
-        if prev_reward_batch is not None:
-            input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
-        if info_batch is not None:
-            input_dict[SampleBatch.INFOS] = info_batch
-
-        return self.compute_actions_from_input_dict(
-            input_dict=input_dict,
-            explore=explore,
-            timestep=timestep,
-            episodes=episodes,
-            **kwargs,
-        )
+        return ret
 
     @with_lock
     @override(Policy)
@@ -563,6 +311,260 @@ class EagerTFPolicyV2(Policy):
         log_likelihoods = action_dist.logp(actions)
 
         return log_likelihoods
+
+    def initialize_optimizer_and_loss_if_necessary(self):
+        optimizers = force_list(self.optimizer())
+        if getattr(self, "exploration", None):
+            optimizers = self.exploration.get_exploration_optimizer(optimizers)
+
+        # The list of local (tf) optimizers (one per loss term).
+        self._optimizers: List[LocalOptimizer] = optimizers
+        # Backward compatibility: A user's policy may only support a single
+        # loss term and optimizer (no lists).
+        self._optimizer: LocalOptimizer = optimizers[0] if optimizers else None
+
+        self._initialize_loss_from_dummy_batch(
+            auto_remove_unneeded_view_reqs=True,
+        )
+        self._loss_initialized = True
+
+    @DeveloperAPI
+    @OverrideToImplementCustomLogic
+    @override(Policy)
+    def loss(
+        self,
+        model: Union[ModelV2, "tf.keras.Model"],
+        dist_class: Type[TFActionDistribution],
+        train_batch: SampleBatch,
+    ) -> Union[TensorType, List[TensorType]]:
+        """Compute loss for this policy using model, dist_class and a train_batch.
+
+        Args:
+            model: The Model to calculate the loss for.
+            dist_class: The action distr. class.
+            train_batch: The training data.
+
+        Returns:
+            A single loss tensor or a list of loss tensors.
+        """
+        raise NotImplementedError
+
+    @DeveloperAPI
+    @OverrideToImplementCustomLogic
+    def stats_fn(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
+        """Stats function. Returns a dict of statistics.
+
+        Args:
+            train_batch: The SampleBatch (already) used for training.
+
+        Returns:
+            The stats dict.
+        """
+        return {}
+
+    @DeveloperAPI
+    @OverrideToImplementCustomLogic
+    def grad_stats_fn(
+        self, train_batch: SampleBatch, grads: ModelGradients
+    ) -> Dict[str, TensorType]:
+        """Gradient stats function. Returns a dict of statistics.
+
+        Args:
+            train_batch: The SampleBatch (already) used for training.
+
+        Returns:
+            The stats dict.
+        """
+        return {}
+
+    @DeveloperAPI
+    @OverrideToImplementCustomLogic
+    def compute_gradients_fn(
+        self, policy: Policy, optimizer: LocalOptimizer, loss: TensorType
+    ) -> ModelGradients:
+        """Gradients computing function (from loss tensor, using local optimizer).
+
+        Args:
+            policy (Policy): The Policy object that generated the loss tensor and
+                that holds the given local optimizer.
+            optimizer (LocalOptimizer): The tf (local) optimizer object to
+                calculate the gradients with.
+            loss (TensorType): The loss tensor for which gradients should be
+                calculated.
+
+        Returns:
+            ModelGradients: List of the possibly clipped gradients- and variable
+                tuples.
+        """
+        return None
+
+    @DeveloperAPI
+    @OverrideToImplementCustomLogic
+    def apply_gradients_fn(
+        self,
+        policy: Policy,
+        optimizer: "tf.keras.optimizers.Optimizer",
+        grads: ModelGradients,
+    ) -> "tf.Operation":
+        """Gradients computing function (from loss tensor, using local optimizer).
+
+        Args:
+            policy (Policy): The Policy object that generated the loss tensor and
+                that holds the given local optimizer.
+            optimizer (LocalOptimizer): The tf (local) optimizer object to
+                calculate the gradients with.
+            grads (ModelGradients): The gradient tensor to be applied.
+
+        Returns:
+            "tf.Operation": TF operation that applies supplied gradients.
+        """
+        return None
+
+    #@DeveloperAPI
+    #@OverrideToImplementCustomLogic
+    #def action_sampler_fn(
+    #    self,
+    #    model: ModelV2,
+    #    *,
+    #    obs_batch: TensorType,
+    #    state_batches: TensorType,
+    #    **kwargs,
+    #) -> Tuple[TensorType, TensorType, TensorType, List[TensorType]]:
+    #    """Custom function for sampling new actions given policy.
+
+    #    Args:
+    #        model: Underlying model.
+    #        obs_batch: Observation tensor batch.
+    #        state_batches: Action sampling state batch.
+
+    #    Returns:
+    #        Sampled action
+    #        Log-likelihood
+    #        Action distribution inputs
+    #        Updated state
+    #    """
+    #    return None, None, None, None
+
+    #@DeveloperAPI
+    #@OverrideToImplementCustomLogic
+    #def action_distribution_fn(
+    #    self,
+    #    model: ModelV2,
+    #    *,
+    #    obs_batch: TensorType,
+    #    state_batches: TensorType,
+    #    **kwargs,
+    #) -> Tuple[TensorType, type, List[TensorType]]:
+    #    """Action distribution function for this Policy.
+
+    #    Args:
+    #        model: Underlying model.
+    #        obs_batch: Observation tensor batch.
+    #        state_batches: Action sampling state batch.
+
+    #    Returns:
+    #        Distribution input.
+    #        ActionDistribution class.
+    #        State outs.
+    #    """
+    #    return None, None, None
+
+    @DeveloperAPI
+    @OverrideToImplementCustomLogic
+    def get_batch_divisibility_req(self) -> int:
+        """Get batch divisibility request.
+
+        Returns:
+            Size N. A sample batch must be of size K*N.
+        """
+        # By default, any sized batch is ok, so simply return 1.
+        return 1
+
+    #@DeveloperAPI
+    #@OverrideToImplementCustomLogic_CallToSuperRecommended
+    #def extra_action_out_fn(self) -> Dict[str, TensorType]:
+    #    """Extra values to fetch and return from compute_actions().
+
+    #    Returns:
+    #         Dict[str, TensorType]: An extra fetch-dict to be passed to and
+    #            returned from the compute_actions() call.
+    #    """
+    #    return {}
+
+    @DeveloperAPI
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def extra_learn_fetches_fn(self) -> Dict[str, TensorType]:
+        """Extra stats to be reported after gradient computation.
+
+        Returns:
+             Dict[str, TensorType]: An extra fetch-dict.
+        """
+        return {}
+
+    @override(Policy)
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def postprocess_trajectory(
+        self,
+        sample_batch: SampleBatch,
+        other_agent_batches: Optional[SampleBatch] = None,
+        episode: Optional["Episode"] = None,
+    ):
+        """Post process trajectory in the format of a SampleBatch.
+
+        Args:
+            sample_batch: sample_batch: batch of experiences for the policy,
+                which will contain at most one episode trajectory.
+            other_agent_batches: In a multi-agent env, this contains a
+                mapping of agent ids to (policy, agent_batch) tuples
+                containing the policy and experiences of the other agents.
+            episode: An optional multi-agent episode object to provide
+                access to all of the internal episode state, which may
+                be useful for model-based or multi-agent algorithms.
+
+        Returns:
+            The postprocessed sample batch.
+        """
+        assert tf.executing_eagerly()
+        return Policy.postprocess_trajectory(self, sample_batch)
+
+    @OverrideToImplementCustomLogic
+    def optimizer(
+        self,
+    ) -> Union["tf.keras.optimizers.Optimizer", List["tf.keras.optimizers.Optimizer"]]:
+        """TF optimizer to use for policy optimization.
+
+        Returns:
+            A local optimizer or a list of local optimizers to use for this
+                Policy's Model.
+        """
+        return tf.keras.optimizers.Adam(self.config["lr"])
+
+    def _init_dist_class(self):
+        #dist_class = None
+        #if is_overridden(self.action_sampler_fn) or is_overridden(
+        #    self.action_distribution_fn
+        #):
+        #    if not is_overridden(self.make_model):
+        #        raise ValueError(
+        #            "`make_model` is required if `action_sampler_fn` OR "
+        #            "`action_distribution_fn` is given"
+        #        )
+        #else:
+        dist_class, _ = ModelCatalog.get_action_dist(
+            self.action_space, self.config["model"]
+        )
+        return dist_class
+
+    def _init_view_requirements(self):
+        # Auto-update model's inference view requirements, if recurrent.
+        self._update_model_view_requirements_from_init_state()
+        # Combine view_requirements for Model and Policy.
+        # TODO(jungong) : models will not carry view_requirements once they
+        # are migrated to be organic Keras models.
+        self.view_requirements.update(self.model.view_requirements)
+        # Disable env-info placeholder.
+        if SampleBatch.INFOS in self.view_requirements:
+            self.view_requirements[SampleBatch.INFOS].used_for_training = False
 
     @with_lock
     @override(Policy)
@@ -737,54 +739,26 @@ class EagerTFPolicyV2(Policy):
 
         # Use Exploration object.
         with tf.variable_creator_scope(_disallow_var_creation):
-            if is_overridden(self.action_sampler_fn):
-                dist_inputs = None
-                state_out = []
-                actions, logp, dist_inputs, state_out = self.action_sampler_fn(
-                    self.model,
-                    input_dict[SampleBatch.CUR_OBS],
-                    explore=explore,
-                    timestep=timestep,
-                    episodes=episodes,
-                )
+            if isinstance(self.model, tf.keras.Model):
+                input_dict = SampleBatch(input_dict, seq_lens=seq_lens)
+                if state_batches and "state_in_0" not in input_dict:
+                    for i, s in enumerate(state_batches):
+                        input_dict[f"state_in_{i}"] = s
+                self._lazy_tensor_dict(input_dict)
+                dist_inputs, state_out, extra_fetches = self.model(input_dict)
             else:
-                if is_overridden(self.action_distribution_fn):
-
-                    # Try new action_distribution_fn signature, supporting
-                    # state_batches and seq_lens.
-                    (
-                        dist_inputs,
-                        self.dist_class,
-                        state_out,
-                    ) = self.action_distribution_fn(
-                        self.model,
-                        input_dict=input_dict,
-                        state_batches=state_batches,
-                        seq_lens=seq_lens,
-                        explore=explore,
-                        timestep=timestep,
-                        is_training=False,
-                    )
-                elif isinstance(self.model, tf.keras.Model):
-                    input_dict = SampleBatch(input_dict, seq_lens=seq_lens)
-                    if state_batches and "state_in_0" not in input_dict:
-                        for i, s in enumerate(state_batches):
-                            input_dict[f"state_in_{i}"] = s
-                    self._lazy_tensor_dict(input_dict)
-                    dist_inputs, state_out, extra_fetches = self.model(input_dict)
-                else:
-                    dist_inputs, state_out = self.model(
-                        input_dict, state_batches, seq_lens
-                    )
-
-                action_dist = self.dist_class(dist_inputs, self.model)
-
-                # Get the exploration action from the forward results.
-                actions, logp = self.exploration.get_exploration_action(
-                    action_distribution=action_dist,
-                    timestep=timestep,
-                    explore=explore,
+                dist_inputs, state_out = self.model(
+                    input_dict, state_batches, seq_lens
                 )
+
+            action_dist = self.dist_class(dist_inputs, self.model)
+
+            # Get the exploration action from the forward results.
+            actions, logp = self.exploration.get_exploration_action(
+                action_distribution=action_dist,
+                timestep=timestep,
+                explore=explore,
+            )
 
         # Action-logp and action-prob.
         if logp is not None:
@@ -793,8 +767,8 @@ class EagerTFPolicyV2(Policy):
         # Action-dist inputs.
         if dist_inputs is not None:
             extra_fetches[SampleBatch.ACTION_DIST_INPUTS] = dist_inputs
-        # Custom extra fetches.
-        extra_fetches.update(self.extra_action_out_fn())
+        ## Custom extra fetches.
+        #extra_fetches.update(self.extra_action_out_fn())
 
         return actions, state_out, extra_fetches
 

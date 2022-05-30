@@ -3,7 +3,7 @@ from gym.spaces import Discrete, MultiDiscrete
 import numpy as np
 import os
 import tree  # pip install dm_tree
-from typing import Dict, List, Optional, TYPE_CHECKING
+from typing import Dict, List, Optional, TYPE_CHECKING, Union
 import warnings
 
 from ray.rllib.models.repeated_values import RepeatedValues
@@ -19,6 +19,7 @@ from ray.rllib.utils.typing import (
 
 if TYPE_CHECKING:
     from ray.rllib.policy.torch_policy import TorchPolicy
+    from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 
 torch, nn = try_import_torch()
 
@@ -30,7 +31,9 @@ FLOAT_MAX = 3.4e38
 
 @PublicAPI
 def apply_grad_clipping(
-    policy: "TorchPolicy", optimizer: LocalOptimizer, loss: TensorType
+    policy: Union["TorchPolicy", "TorchPolicyV2"],
+    optimizer: LocalOptimizer,
+    loss: TensorType,
 ) -> Dict[str, TensorType]:
     """Applies gradient clipping to already computed grads inside `optimizer`.
 
@@ -44,7 +47,7 @@ def apply_grad_clipping(
         gradients.
     """
     info = {}
-    if policy.config["grad_clip"]:
+    if policy.config.get("grad_clip") is not None:
         for param_group in optimizer.param_groups:
             # Make sure we only pass params with grad != None into torch
             # clip_grad_norm_. Would fail otherwise.
@@ -70,7 +73,9 @@ def atanh(x: TensorType) -> TensorType:
 
 
 @PublicAPI
-def concat_multi_gpu_td_errors(policy: "TorchPolicy") -> Dict[str, TensorType]:
+def concat_multi_gpu_td_errors(
+    policy: Union["TorchPolicy", "TorchPolicyV2"]
+) -> Dict[str, TensorType]:
     """Concatenates multi-GPU (per-tower) TD error tensors given TorchPolicy.
 
     TD-errors are extracted from the TorchPolicy via its tower_stats property.

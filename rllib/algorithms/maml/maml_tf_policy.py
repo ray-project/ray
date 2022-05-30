@@ -409,7 +409,7 @@ def get_maml_tf_policy(base: type) -> type:
 
             # Note: this is a bit ugly, but loss and optimizer initialization must
             # happen after all the MixIns are initialized.
-            self.maybe_initialize_optimizer_and_loss()
+            self.initialize_optimizer_and_loss_if_necessary()
 
         @override(base)
         def loss(

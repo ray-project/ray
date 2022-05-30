@@ -3,9 +3,12 @@ from typing import Dict, List, Union
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import TorchPolicy
+from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.schedules import PiecewiseSchedule
+from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.typing import (
     TensorType,
 )
@@ -147,29 +150,29 @@ class ValueNetworkMixin:
 
         self._value = value
 
-    def extra_action_out(self, input_dict, state_batches, model, action_dist):
-        """Defines extra fetches per action computation.
-
-        Args:
-            input_dict (Dict[str, TensorType]): The input dict used for the action
-                computing forward pass.
-            state_batches (List[TensorType]): List of state tensors (empty for
-                non-RNNs).
-            model (ModelV2): The Model object of the Policy.
-            action_dist (TorchDistributionWrapper): The instantiated distribution
-                object, resulting from the model's outputs and the given
-                distribution class.
-
-        Returns:
-            Dict[str, TensorType]: Dict with extra tf fetches to perform per
-                action computation.
-        """
+    @with_lock
+    def compute_actions(
+        self,
+        *,
+        input_dict=None,
+        explore=None,
+        timestep=None,
+        episodes=None,
+        is_training=False,
+        **kwargs,
+    ):
         # Return value function outputs. VF estimates will hence be added to
         # the SampleBatches produced by the sampler(s) to generate the train
         # batches going into the loss function.
-        return {
-            SampleBatch.VF_PREDS: model.value_function(),
-        }
+        actions, state_outs, extra_outs = super().compute_actions(
+            input_dict=input_dict,
+            explore=explore,
+            timestep=timestep,
+            episodes=episodes,
+            is_training=is_training,
+        )
+        extra_outs.update({SampleBatch.VF_PREDS: self.model.value_function()})
+        return actions, state_outs, extra_outs
 
 
 class TargetNetworkMixin:

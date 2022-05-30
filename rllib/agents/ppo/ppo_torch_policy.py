@@ -42,7 +42,7 @@ class PPOTorchPolicy(
     """PyTorch policy class used with PPOTrainer."""
 
     def __init__(self, observation_space, action_space, config):
-        config = dict(ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG, **config)
+        config = dict(ray.rllib.agents.ppo.PPOConfig().to_dict(), **config)
         validate_config(config)
 
         TorchPolicyV2.__init__(
