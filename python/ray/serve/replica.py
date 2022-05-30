@@ -317,12 +317,12 @@ class RayServeReplica:
         self._shutdown_wait_loop_s = deployment_config.graceful_shutdown_wait_loop_s
 
         if deployment_config.autoscaling_config:
+            process_remote_func = controller_handle.record_autoscaling_metrics.remote
             config = deployment_config.autoscaling_config
             start_metrics_pusher(
                 interval_s=config.metrics_interval_s,
                 collection_callback=self._collect_autoscaling_metrics,
-                metrics_process_func= \
-                    controller_handle.record_autoscaling_metrics.remote
+                metrics_process_func=process_remote_func,
             )
 
         # NOTE(edoakes): we used to recommend that users use the "ray" logger
