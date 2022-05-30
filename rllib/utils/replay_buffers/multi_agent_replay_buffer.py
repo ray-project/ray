@@ -124,10 +124,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         self.replay_burn_in = replay_burn_in
         self.replay_zero_init_states = replay_zero_init_states
 
-        if (
-            replay_sequence_length > 1
-            and self._storage_unit == StorageUnit.SEQUENCES
-        ):
+        if replay_sequence_length > 1 and self._storage_unit == StorageUnit.SEQUENCES:
             logger.warning(
                 "MultiAgentReplayBuffer configured with "
                 "`replay_sequence_length={}`, but `storage_unit={}`. "

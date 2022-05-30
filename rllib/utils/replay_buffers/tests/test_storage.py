@@ -260,6 +260,7 @@ class TestStorage(unittest.TestCase):
             for k in m_batch:
                 assert np.array_equal(m_batch[k], d_batch[k])
 
+
 if __name__ == "__main__":
     import pytest
     import sys
