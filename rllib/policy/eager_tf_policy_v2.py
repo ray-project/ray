@@ -7,13 +7,11 @@ import gym
 import logging
 import threading
 import tree  # pip install dm_tree
-from typing import Dict, List, Optional, Tuple, Type, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 from ray.util.debug import log_once
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.policy.eager_tf_policy import (
     _convert_to_tf,
     _disallow_var_creation,

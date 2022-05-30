@@ -15,7 +15,6 @@ from typing import (
     Optional,
     Set,
     Tuple,
-    Type,
     Union,
     TYPE_CHECKING,
 )
@@ -23,7 +22,6 @@ from typing import (
 import ray
 from ray.util import log_once
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.torch_policy import _directStepOptimizerSingleton

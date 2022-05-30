@@ -18,7 +18,6 @@ from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
 from ray.rllib.utils.numpy import fc
 from ray.rllib.utils.test_utils import (
     check,
-    check_compute_single_action,
     check_train_results,
     framework_iterator,
 )

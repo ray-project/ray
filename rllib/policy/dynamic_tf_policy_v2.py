@@ -3,10 +3,9 @@ import gym
 import logging
 import re
 import tree  # pip install dm_tree
-from typing import Dict, List, Optional, Tuple, Type, TYPE_CHECKING, Union
+from typing import Dict, List, Optional, Tuple, TYPE_CHECKING, Union
 
 from ray.util.debug import log_once
-from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.dynamic_tf_policy import TFMultiGPUTowerStack
 from ray.rllib.policy.policy import Policy
