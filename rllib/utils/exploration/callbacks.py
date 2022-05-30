@@ -1,3 +1,4 @@
+import numpy as np
 from typing import Dict, TYPE_CHECKING
 
 from ray.rllib.agents.callbacks import DefaultCallbacks
@@ -6,6 +7,7 @@ from ray.rllib.evaluation.episode import Episode
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation import RolloutWorker
+    from ray.rllib.policy import Policy
 
 
 class NovelDMetricsCallbacks(DefaultCallbacks):
@@ -52,7 +54,7 @@ class NovelDMetricsCallbacks(DefaultCallbacks):
         *,
         worker: "RolloutWorker",
         base_env: BaseEnv,
-        policies: Dict[str, "policy"],
+        policies: Dict[str, "Policy"],
         episode: Episode,
         env_index: int,
         **kwargs,
@@ -96,8 +98,9 @@ class NovelDMetricsCallbacks(DefaultCallbacks):
         episode.user_data["intrinsic_reward"].append(np.mean(intrinsic_reward))
         episode.user_data["novelty"].append(np.mean(novelty))
         episode.user_data["novelty_next"].append(np.mean(novelty_next))
-        episode.user_data["state_counts_total"].append(np.mean(state_counts_total))
-        episode.user_data["state_counts_avg"].append(np.mean(state_counts_avg))
+        # State count metrics are scalar metrics.
+        episode.user_data["state_counts_total"].append(state_counts_total)
+        episode.user_data["state_counts_avg"].append(state_counts_avg)
 
     def on_episode_end(
         self,
@@ -117,7 +120,9 @@ class NovelDMetricsCallbacks(DefaultCallbacks):
         episode.custom_metrics["noveld/novelty_next"] = np.mean(
             episode.user_data["novelty_next"]
         )
-        episode.custom_metrics["noveld/state_counts_total"] = np.mean(
+        # Take the maximum of the total state counts to get the last
+        # count of the episode.
+        episode.custom_metrics["noveld/state_counts_total"] = np.max(
             episode.user_data["state_counts_total"]
         )
         episode.custom_metrics["noveld/state_counts_avg"] = np.mean(
