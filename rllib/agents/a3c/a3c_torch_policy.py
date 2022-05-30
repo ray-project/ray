@@ -117,13 +117,6 @@ class A3CTorchPolicy(
         return total_loss
 
     @override(TorchPolicyV2)
-    def optimizer(
-        self,
-    ) -> Union[List["torch.optim.Optimizer"], "torch.optim.Optimizer"]:
-        """Returns a torch optimizer (Adam) for A3C."""
-        return torch.optim.Adam(self.model.parameters(), lr=self.config["lr"])
-
-    @override(TorchPolicyV2)
     def stats_fn(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
         return convert_to_numpy(
             {

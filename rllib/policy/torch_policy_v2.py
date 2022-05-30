@@ -223,6 +223,7 @@ class TorchPolicyV2(Policy):
     @with_lock
     @override(Policy)
     @DeveloperAPI
+    @OverrideToImplementCustomLogic
     def compute_actions(
         self,
         *,
@@ -239,7 +240,7 @@ class TorchPolicyV2(Policy):
         info_batch=None,
         # Kwargs for forward compatibility.
         **kwargs,
-    ) -> Tuple[TensorStructType, List[TensorType], Dict[str, TensorType]]:
+    ) -> Tuple[TensorStructType, List[TensorType], Dict[str, TensorStructType]]:
 
         # If old signature used -> Warning and move everything into `input_dict`.
         if input_dict is None:
@@ -306,6 +307,7 @@ class TorchPolicyV2(Policy):
     @with_lock
     @override(Policy)
     @DeveloperAPI
+    @OverrideToImplementCustomLogic
     def compute_log_likelihoods(
         self,
         actions: Union[List[TensorStructType], TensorStructType],
@@ -455,6 +457,7 @@ class TorchPolicyV2(Policy):
     @with_lock
     @override(Policy)
     @DeveloperAPI
+    @OverrideToImplementCustomLogic
     def learn_on_batch(self, postprocessed_batch: SampleBatch) -> Dict[str, TensorType]:
 
         # Set Model to train mode.

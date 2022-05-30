@@ -19,6 +19,7 @@ from ray.rllib.utils.numpy import fc
 from ray.rllib.utils.test_utils import (
     check,
     check_train_results,
+    check_compute_actions_v2,
     framework_iterator,
 )
 
@@ -147,9 +148,9 @@ class TestPPO(unittest.TestCase):
                         check_train_results(results)
                         print(results)
 
-                    # check_compute_single_action(
-                    #    trainer, include_prev_action_reward=True, include_state=lstm
-                    # )
+                    check_compute_actions_v2(
+                        trainer, include_prev_action_reward=True, include_state=lstm
+                    )
                     trainer.stop()
 
     def test_ppo_exploration_setup(self):

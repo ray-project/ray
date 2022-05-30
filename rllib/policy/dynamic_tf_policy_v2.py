@@ -156,6 +156,8 @@ class DynamicTFPolicyV2(TFPolicy):
     ):
         return {}
 
+    @override(Policy)
+    @OverrideToImplementCustomLogic
     def compute_actions(
         self,
         *,
@@ -172,7 +174,7 @@ class DynamicTFPolicyV2(TFPolicy):
         info_batch: Optional[Dict[str, list]] = None,
         # Kwargs for forward compatibility.
         **kwargs,
-    ):
+    ) -> Tuple[TensorStructType, List[TensorType], Dict[str, TensorStructType]]:
         # Default distribution generation behavior:
         # Pass through model. E.g., PG, PPO.
         if isinstance(self.model, tf.keras.Model):
@@ -223,6 +225,7 @@ class DynamicTFPolicyV2(TFPolicy):
         # Initialize again after loss and tower init.
         self.get_session().run(tf1.global_variables_initializer())
 
+    @DeveloperAPI
     @override(TFPolicy)
     @OverrideToImplementCustomLogic
     def make_optimizer(

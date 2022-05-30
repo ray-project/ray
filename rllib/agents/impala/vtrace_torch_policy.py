@@ -170,7 +170,7 @@ class VTraceOptimizer:
         pass
 
     @override(TorchPolicyV2)
-    def optimizer(
+    def make_optimizer(
         self,
     ) -> Union[List["torch.optim.Optimizer"], "torch.optim.Optimizer"]:
         if self.config["opt_type"] == "adam":

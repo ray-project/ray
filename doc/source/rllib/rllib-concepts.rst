@@ -71,25 +71,27 @@ How To Customize Policies
 =========================
 
 This page describes the internal concepts that should be used to implement
-custom or new algorithms in RLlib.
+new and custom algorithms in RLlib.
 
 Policy classes encapsulate the core numerical components of RL algorithms.
-This includes the policy's neural network(s) which determine actions to take in an episode,
-a trajectory postprocessor for experiences, loss function(s) to improve the policy
-given post-processed experiences, and a "local" optimizer (e.g. a `tf.keras.optimizer.Optimizer` instance).
+These include the policy's neural network(s) which compute actions to take in an episode,
+a trajectory postprocessor for these episodes, one or more loss function(s) to improve the policy
+given (post-processed) experiences, and a "local" optimizer (e.g. a `tf.keras.optimizer.Optimizer` instance).
 
-For a simple example, see the policy gradients `Policy definitions for TensorFlow <https://github.com/ray-project/ray/blob/master/rllib/algorithms/pg/pg_tf_policy.py>`__
+For a simple example, see the policy gradients Policy definitions for
+`TensorFlow <https://github.com/ray-project/ray/blob/master/rllib/algorithms/pg/pg_tf_policy.py>`__
 and `PyTorch <https://github.com/ray-project/ray/blob/master/rllib/algorithms/pg/pg_torch_policy.py>`__.
 
 All interactions with the deep learning frameworks (PyTorch and TensorFlow) are encapsulated in the
 `Policy API <https://github.com/ray-project/ray/blob/master/rllib/policy/policy.py>`__,
-allowing RLlib to flexibly support multiple frameworks (work on JAX-support is currently in progress).
+allowing RLlib to flexibly support multiple frameworks (work on supporting JAX is currently in progress).
 To simplify the definition of policies, RLlib includes `Tensorflow <#building-policies-in-tensorflow>`__ and `PyTorch-specific <#building-policies-in-pytorch>`__ base classes.
 You can also write your own from scratch. Here is an example for a DL framework agnostic Policy subclass:
 
 .. code-block:: python
 
     import numpy as np
+
     from ray.rllib.policy.policy import Policy
     from ray.rllib.policy.sample_batch import SampleBatch
 
@@ -134,7 +136,8 @@ You can also write your own from scratch. Here is an example for a DL framework 
             self.w = weights["w"]
 
 
-The above basic policy, when run, will produce trajectory batches (SampleBatch) with the ``obs``, ``new_obs``, ``actions``, ``rewards``, ``dones``, and ``infos`` columns.
+The above policy, when run inside a Trainer, will produce trajectory batches (SampleBatch)
+with the ``obs``, ``new_obs``, ``actions``, ``rewards``, ``dones``, and ``infos`` columns.
 There are two more mechanisms to pass along and emit extra information:
 
 **Policy recurrent state**: Suppose you want to compute actions based on the current timestep of the episode.
@@ -168,7 +171,11 @@ While it is possible to have the environment provide this as part of the observa
         assert "state_out_0" in samples.keys()
 
 
-**Extra action outputs**: You can also emit extra outputs at each step which will be available for learning on. For example, you might want to output the behaviour policy logits as extra action info, which can be used for importance weighting, but in general arbitrary values can be stored here (as long as they are convertible to numpy arrays):
+**Extra action outputs**: You can also emit extra outputs at each (action computing) step,
+which will be available later for learning (inside the loss function).
+For example, you might want to output the behaviour policy logits as such "extra action out" and then
+use these logits for importance weighting. In general, arbitrary values can be stored in this fashion
+(as long as they are convertible to numpy arrays):
 
 .. code-block:: python
 
@@ -211,15 +218,18 @@ learned policies.
 Building Policies in TensorFlow
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-This section covers how to build a TensorFlow RLlib policy using
-:py:class:`~ray.rllib.policy.eager_tf_policy_v2.EagerTFPolicyV2` (tf2.x/eager) or
-:py:class:`~ray.rllib.policy.dynamic_tf_policy_v2.DynamicTFPolicyV2` (tf static-graph).
+This section covers how to build a TensorFlow RLlib policy using either
+:py:class:`~ray.rllib.policy.eager_tf_policy_v2.EagerTFPolicyV2` (tf2.x/eager),
+:py:class:`~ray.rllib.policy.dynamic_tf_policy_v2.DynamicTFPolicyV2` (tf static-graph),
+or both.
 
-In this example, we will only build the tf2.x (eager) version of our example policy.
+In this example, we will only build the tf2.x (eager) version of an example policy.
 To do the same for tf static-graph, you only need to flip out the base class (from
-``EagerTFPolicyV2`` to ``DynamicTFPolicyV2``).
+``EagerTFPolicyV2`` to ``DynamicTFPolicyV2``). See an example of how to do this without
+creating any duplicate code in this
+`PPO tf Policy example here <https://github.com/ray-project/ray/blob/master/rllib/agents/ppo/ppo_tf_policy.py>`__.
 
-To start, you first have to define a sub-class of ``EagerTFPolicyV2``.
+To start, you first have to define a subclass of ``EagerTFPolicyV2``.
 
 .. code-block:: python
 
@@ -668,18 +678,24 @@ In summary, the main differences between the PyTorch and TensorFlow policy build
 Extending Existing Policies
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-You can use the ``with_updates`` method on Trainers and Policy objects built with ``make_*`` to create a copy of the object with some changes, for example:
+You may sub-class any already existing Policy sub-class in order to add your
+custom behavior to that new policy class. For Example:
 
 .. code-block:: python
 
     from ray.rllib.agents.ppo import PPOTrainer
-    from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
+    from ray.rllib.agents.ppo.ppo_tf_policy import PPOStaticGraphTFPolicy
+    from ray.rllib.utils.annotations import override
 
-    CustomPolicy = PPOTFPolicy.with_updates(
-        name="MyCustomPPOTFPolicy",
-        loss_fn=some_custom_loss_fn)
+    class CustomPolicy(PPOStaticGraphTFPolicy):
+        @override(PPOStaticGraphTFPolicy)
+        def loss(self, model, dist_class, train_batch):
+            return some_custom_loss_fn(self, model, dist_class, train_batch)
 
-    CustomTrainer = PPOTrainer.with_updates(
-        default_policy=CustomPolicy)
+    # Then override the respective Trainer to use the new policy by default:
+    class CustomTrainer(PPOTrainer):
+        @override(PPOTrainer)
+        def get_default_policy_class(self):
+            return CustomPolicy
 
 .. include:: /_includes/rllib/announcement_bottom.rst

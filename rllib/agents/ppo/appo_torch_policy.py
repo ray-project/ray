@@ -8,7 +8,7 @@ Keep in sync with changes to VTraceTFPolicy.
 import gym
 import numpy as np
 import logging
-from typing import Any, Dict, List, Optional, Type, Union
+from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
 import ray
 import ray.rllib.agents.impala.vtrace_torch as vtrace
@@ -47,7 +47,7 @@ from ray.rllib.utils.torch_utils import (
     global_norm,
     sequence_mask,
 )
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.typing import TensorStructType, TensorType
 
 torch, nn = try_import_torch()
 
@@ -102,6 +102,27 @@ class APPOTorchPolicy(
     @override(TorchPolicyV2)
     def make_model(self) -> ModelV2:
         return make_appo_model(self)
+
+    @override(TorchPolicyV2)
+    def compute_actions(
+        self,
+        *,
+        input_dict=None,
+        explore=None,
+        timestep=None,
+        episodes=None,
+        is_training=False,
+        **kwargs,
+    ) -> Tuple[TensorStructType, List[TensorType], Dict[str, TensorStructType]]:
+        actions, state_outs, extra_outs = super().compute_actions(
+            input_dict=input_dict,
+            explore=explore,
+            timestep=timestep,
+            is_training=is_training,
+        )
+        if not self.config["vtrace"]:
+            extra_outs[SampleBatch.VF_PREDS] = self.model.value_function()
+        return actions, state_outs, extra_outs
 
     @override(TorchPolicyV2)
     def loss(
@@ -365,19 +386,6 @@ class APPOTorchPolicy(
             stats_dict["KL_Coeff"] = self.kl_coeff
 
         return convert_to_numpy(stats_dict)
-
-    @override(TorchPolicyV2)
-    def extra_action_out(
-        self,
-        input_dict: Dict[str, TensorType],
-        state_batches: List[TensorType],
-        model: TorchModelV2,
-        action_dist: TorchDistributionWrapper,
-    ) -> Dict[str, TensorType]:
-        out = {}
-        if not self.config["vtrace"]:
-            out[SampleBatch.VF_PREDS] = model.value_function()
-        return out
 
     @override(TorchPolicyV2)
     def postprocess_trajectory(

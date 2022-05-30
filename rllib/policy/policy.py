@@ -212,6 +212,7 @@ class Policy(metaclass=ABCMeta):
 
     @abstractmethod
     @DeveloperAPI
+    @OverrideToImplementCustomLogic
     def compute_actions(
         self,
         *,
@@ -228,7 +229,7 @@ class Policy(metaclass=ABCMeta):
         info_batch=None,
         # Kwargs for forward compatibility.
         **kwargs,
-    ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
+    ) -> Tuple[TensorStructType, List[TensorType], Dict[str, TensorStructType]]:
         """Computes actions for the current policy.
 
         Args:

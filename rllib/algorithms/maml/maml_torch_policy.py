@@ -388,7 +388,7 @@ class MAMLTorchPolicy(ValueNetworkMixin, KLCoeffMixin, TorchPolicyV2):
         return self.loss_obj.loss
 
     @override(TorchPolicyV2)
-    def optimizer(
+    def make_optimizer(
         self,
     ) -> Union[List["torch.optim.Optimizer"], "torch.optim.Optimizer"]:
         """

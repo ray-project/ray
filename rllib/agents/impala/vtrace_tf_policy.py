@@ -219,7 +219,7 @@ class VTraceOptimizer:
 
     # TODO: maybe standardize this function, so the choice of optimizers are more
     # predictable for common agents.
-    def optimizer(
+    def make_optimizer(
         self,
     ) -> Union["tf.keras.optimizers.Optimizer", List["tf.keras.optimizers.Optimizer"]]:
         config = self.config

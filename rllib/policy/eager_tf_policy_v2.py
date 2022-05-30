@@ -150,6 +150,7 @@ class EagerTFPolicyV2(Policy):
         return {}
 
     @override(Policy)
+    @OverrideToImplementCustomLogic
     def compute_actions(
         self,
         *,
@@ -166,7 +167,7 @@ class EagerTFPolicyV2(Policy):
         info_batch=None,
         # Kwargs for forward compatibility.
         **kwargs,
-    ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
+    ) -> Tuple[TensorStructType, List[TensorType], Dict[str, TensorStructType]]:
 
         # If old signature used -> Warning and move everything into `input_dict`.
         if input_dict is None:
@@ -235,6 +236,7 @@ class EagerTFPolicyV2(Policy):
 
     @with_lock
     @override(Policy)
+    @OverrideToImplementCustomLogic
     def compute_log_likelihoods(
         self,
         actions,
@@ -385,6 +387,7 @@ class EagerTFPolicyV2(Policy):
         """
         return {}
 
+    @DeveloperAPI
     @OverrideToImplementCustomLogic
     def make_optimizer(
         self,
@@ -414,8 +417,10 @@ class EagerTFPolicyV2(Policy):
         if SampleBatch.INFOS in self.view_requirements:
             self.view_requirements[SampleBatch.INFOS].used_for_training = False
 
+    @DeveloperAPI
     @with_lock
     @override(Policy)
+    @OverrideToImplementCustomLogic
     def learn_on_batch(self, postprocessed_batch):
         # Callback handling.
         learn_stats = {}

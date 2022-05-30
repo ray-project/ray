@@ -467,7 +467,7 @@ def get_maml_tf_policy(base: type) -> type:
             return self.loss_obj.loss
 
         @override(base)
-        def optimizer(
+        def make_optimizer(
             self,
         ) -> Union[
             "tf.keras.optimizers.Optimizer", List["tf.keras.optimizers.Optimizer"]

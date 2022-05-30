@@ -8,7 +8,7 @@ Keep in sync with changes to VTraceTFPolicy.
 import numpy as np
 import logging
 import gym
-from typing import Dict, List, Optional, Type, Union
+from typing import Dict, List, Optional, Tuple, Type, Union
 
 import ray
 from ray.rllib.agents.impala import vtrace_tf as vtrace
@@ -41,7 +41,7 @@ from ray.rllib.utils.annotations import (
 )
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import explained_variance, make_tf_callable
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.typing import TensorStructType, TensorType
 
 tf1, tf, tfv = try_import_tf()
 
@@ -181,6 +181,27 @@ def get_appo_tf_policy(base: type) -> type:
         @override(base)
         def make_model(self) -> ModelV2:
             return make_appo_model(self)
+
+        @override(base)
+        def compute_actions(
+            self,
+            *,
+            input_dict=None,
+            explore=None,
+            timestep=None,
+            episodes=None,
+            is_training=False,
+            **kwargs,
+        ) -> Tuple[TensorStructType, List[TensorType], Dict[str, TensorStructType]]:
+            actions, state_outs, extra_outs = super().compute_actions(
+                input_dict=input_dict,
+                explore=explore,
+                timestep=timestep,
+                is_training=is_training,
+            )
+            if not self.config["vtrace"]:
+                extra_outs[SampleBatch.VF_PREDS] = self.model.value_function()
+            return actions, state_outs, extra_outs
 
         @override(base)
         def loss(
@@ -455,13 +476,6 @@ def get_appo_tf_policy(base: type) -> type:
                 )
 
             return sample_batch
-
-        @override(base)
-        def extra_action_out_fn(self) -> Dict[str, TensorType]:
-            extra_action_fetches = super().extra_action_out_fn()
-            if not self.config["vtrace"]:
-                extra_action_fetches[SampleBatch.VF_PREDS] = self.model.value_function()
-            return extra_action_fetches
 
         @override(base)
         def get_batch_divisibility_req(self) -> int:

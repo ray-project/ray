@@ -5,7 +5,7 @@ import ray.rllib.agents.ppo as ppo
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
 from ray.rllib.utils.test_utils import (
-    check_compute_single_action,
+    check_compute_actions_v2,
     check_train_results,
     framework_iterator,
 )
@@ -33,7 +33,7 @@ class TestAPPO(unittest.TestCase):
                 results = trainer.train()
                 check_train_results(results)
                 print(results)
-            check_compute_single_action(trainer)
+            check_compute_actions_v2(trainer)
             trainer.stop()
 
             print("w/ v-trace")
@@ -43,7 +43,7 @@ class TestAPPO(unittest.TestCase):
                 results = trainer.train()
                 check_train_results(results)
                 print(results)
-            check_compute_single_action(trainer)
+            check_compute_actions_v2(trainer)
             trainer.stop()
 
     def test_appo_compilation_use_kl_loss(self):
@@ -61,7 +61,7 @@ class TestAPPO(unittest.TestCase):
                 results = trainer.train()
                 check_train_results(results)
                 print(results)
-            check_compute_single_action(trainer)
+            check_compute_actions_v2(trainer)
             trainer.stop()
 
     def test_appo_two_tf_optimizers(self):
@@ -85,7 +85,7 @@ class TestAPPO(unittest.TestCase):
                 results = trainer.train()
                 check_train_results(results)
                 print(results)
-            check_compute_single_action(trainer)
+            check_compute_actions_v2(trainer)
             trainer.stop()
 
     def test_appo_entropy_coeff_schedule(self):
