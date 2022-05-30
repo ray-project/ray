@@ -1,7 +1,7 @@
 import logging
 
 from dataclasses import dataclass, fields
-from typing import List, Dict, Union, Literal, Optional
+from typing import List, Dict, Union, Optional
 
 from ray.dashboard.modules.job.common import JobInfo
 
@@ -47,7 +47,7 @@ class GetLogOptions:
     node_ip: Optional[str] = None
     # One of {file, stream}. File means it will return the whole log.
     # stream means it will keep the connection and streaming the log.
-    media_type: Literal["file", "stream"] = "file"
+    media_type: str = "file"
     # The file name of the log.
     filename: Optional[str] = None
     # The actor id of the log. It is used only for worker logs.
