@@ -78,6 +78,7 @@ tune.run(
 
 # __sphinx_doc_replay_buffer_advanced_usage_storage_unit__begin__
 
+# This line will make our buffer store only complete episodes found in a batch
 config["replay_buffer_config"]["storage_unit"] = StorageUnit.EPISODES
 
 less_sampled_buffer = LessSampledReplayBuffer(**config["replay_buffer_config"])
@@ -89,6 +90,8 @@ batch = SampleBatch({})
 t = 0
 while not done:
     obs, reward, done, info = env.step([0, 0])
+    # Note that in order for RLlib to find out about start and end of an episode,
+    # "t" and "dones" have to properly mark an episode's trajectory
     one_step_batch = SampleBatch(
         {"obs": [obs], "t": [t], "reward": [reward], "dones": [done]}
     )

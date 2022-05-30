@@ -3110,6 +3110,14 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
+    name = "examples/documentation/replay_buffer_demo",
+    main = "examples/documentation/replay_buffer_demo.py",
+    tags = ["team:ml", "documentation"],
+    size = "medium",
+    srcs = ["examples/documentation/replay_buffer_demo.py"],
+)
+
+py_test(
     name = "examples/documentation/custom_gym_env",
     main = "examples/documentation/custom_gym_env.py",
     tags = ["team:ml", "documentation"],

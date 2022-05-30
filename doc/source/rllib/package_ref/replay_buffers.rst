@@ -6,9 +6,9 @@ Replay Buffers
 Quick intro into replay buffers in RL
 =====================================
 
-When we talk about replay buffers in reinforcement learning, we generally mean a buffer that stores and replays experiences.
+When we talk about replay buffers in reinforcement learning, we generally mean a buffer that stores and replays experiences collected from interactions of our agent(s) with the environment.
 In python, a simple buffer can be implemented by a list to which elements are added and sampled from.
-Such buffers are used mostly in offline learning algorithms. This makes sense intuitively because these algorithms can learn from
+Such buffers are used mostly in off-policy learning algorithms. This makes sense intuitively because these algorithms can learn from
 experiences that are stored in the buffer but where produced by a previous version of the policy (or even a completely different policy).
 
 Sampling Strategy
@@ -17,14 +17,14 @@ Sampling Strategy
 When sampling from a replay buffer, we choose which experiences to train our agent with. A straightforward strategy to choose these
 samples that has proven effective for many algorithms is uniform sampling. That is, choosing a random item from the buffer each time we sample.
 A strategy that has proven better in many cases is `Prioritized Experiences Replay (PER) <https://arxiv.org/abs/1511.05952>`__.
-In PER, experiences are assigned a priority which denotes their significance, or in simple term, how much we expect
-our algorithm to learn from them. As a consequence, experiences with a higher priority are made more likely to be sampled.
+In PER, single items in the buffer are assigned a priority which denotes their significance, or in simple terms, how much we expect
+to learn from these items. As a consequence, experiences with a higher priority are made more likely to be sampled.
 
 Eviction Strategy
 -----------------
 
-A buffer will generally be limited in it's capacity to hold experiences. In the course of running an algorith, a buffer will eventually reach
-it's capacity and in order to make room for new experiences, we need to delete (evict) older ones. This is generally done on a first-in-first-out basis.
+A buffer will generally be limited in its capacity to hold experiences. In the course of running an algorith, a buffer will eventually reach
+its capacity and in order to make room for new experiences, we need to delete (evict) older ones. This is generally done on a first-in-first-out basis.
 For your algorithms this means that buffers with a high capacity give the opportunity to learn from older samples, while smaller buffers
 make the learning process more on-policy. An exception from this strategy is made in buffers that implement `reservoir sampling <https://www.cs.umd.edu/~samir/498/vitter.pdf>`__.
 
@@ -34,14 +34,16 @@ Replay Buffers in RLlib
 
 RLlib comes with a set of extendable replay buffers built in.
 We provide a base :py:class:`~ray.rllib.utils.replay_buffers.replay_buffer.ReplayBuffer` class from which you can build your own buffer.
-Some use cases may require :py:class:`~ray.rllib.utils.replay_buffers.multi_agent_replay_buffer.MultiAgentReplayBuffer`\s.
+In most algorithms, we require :py:class:`~ray.rllib.utils.replay_buffers.multi_agent_replay_buffer.MultiAgentReplayBuffer`\s.
+This is because we want them to generalize to the the multi-agent case. Therefore, these buffer's ``add()`` and ``sample()`` methods require a ``policy_id`` to handle experiences per policy.
+Have a look at the :py:class:`~ray.rllib.utils.replay_buffers.multi_agent_replay_buffer.MultiAgentReplayBuffer` to get a sense of how it extends our base class.
 You can find buffer types and arguments to modify their behaviour as part of RLlib's default parameters. They are part of
 the ``replay_buffer_config``.
 
 Basic Usage
 -----------
 
-You rarely have to instantiate your own replay buffer when running an experiment, but rather configure it as follows.
+You will rarely have to define your own replay buffer sub-class, when running an experiment, but rather configure existing buffers.
 The following is `from RLlib's examples section <https://github.com/ray-project/ray/blob/master/rllib/examples/replay_buffer_api.py>`__:  and runs the R2D2 algorithm with `PER <https://arxiv.org/abs/1511.05952>`__ (which by default it doesn't).
 The highlighted lines focus on the PER configuration.
 
@@ -54,8 +56,8 @@ The highlighted lines focus on the PER configuration.
         :start-after: __sphinx_doc_replay_buffer_api_example_script_begin__
         :end-before: __sphinx_doc_replay_buffer_api_example_script_end__
 
-.. tip:: Because of it's prevalence, most Q-learning algorithms support PER. The priority update step that is needed is embedded into their training iteration function.
-.. warning:: If you custom buffer requires extra interaction, you will have to change the training iteration function, too!
+.. tip:: Because of its prevalence, most Q-learning algorithms support PER. The priority update step that is needed is embedded into their training iteration functions.
+.. warning:: If your custom buffer requires extra interaction, you will have to change the training iteration function, too!
 
 
 Specifying a buffer type works the same way as specifying an exploration type.

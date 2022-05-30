@@ -20,7 +20,7 @@ from ray.util import log_once
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI
+@DeveloperAPI
 def update_priorities_in_replay_buffer(
     replay_buffer: ReplayBuffer,
     config: TrainerConfigDict,
@@ -97,7 +97,7 @@ def update_priorities_in_replay_buffer(
         replay_buffer.update_priorities(prio_dict)
 
 
-@PublicAPI
+@DeveloperAPI
 def sample_min_n_steps_from_buffer(
     replay_buffer: ReplayBuffer, min_steps: int, count_by_agent_steps: bool
 ) -> Optional[SampleBatchType]:
