@@ -173,7 +173,7 @@ class TestReplayBuffer(unittest.TestCase):
         self._add_data_to_buffer(other_buffer, 1)
         other_buffer.set_state(state)
 
-        assert (other_buffer._storage._samples == buffer._storage._samples).all()
+        assert other_buffer._storage._samples == buffer._storage._samples
         assert other_buffer._storage._offset_idx == buffer._storage._offset_idx
         assert (
             other_buffer._storage._num_timesteps_added
