@@ -348,9 +348,10 @@ class NovelD(Exploration):
             self._novelty_np, _ = self._postprocess_helper_tf(
                 sample_batch[SampleBatch.OBS],
             )
-            self._novelty_next_np, _ = tf.stop_gradient(
-                self._postprocess_helper_tf(sample_batch[SampleBatch.NEXT_OBS])
+            self._novelty_next_np, _ = self._postprocess_helper_tf(
+                sample_batch[SampleBatch.NEXT_OBS]
             )
+            self._novelty_next_np = tf.stop_gradient(self._novelty_next_np)
 
         # TODO: @simonsays1980: Add the ERIR option.
         self._update_state_counts(sample_batch[SampleBatch.NEXT_OBS])
@@ -371,11 +372,10 @@ class NovelD(Exploration):
         obs,
     ):
         with (
-            tf.GradientTape() if self.framework == "tf" else NullContextManager()
+            tf.GradientTape() if self.framework != "tf" else NullContextManager()
         ) as tape:
             # Push observations through the distillation networks.
             phi, _ = self.model._noveld_distill_net({SampleBatch.OBS: obs})
-            # TODO: It needs the target of the actual obs.
             phi_target, _ = self._distill_target_net({SampleBatch.OBS: obs})
             # Avoid dividing by zero in the gradient by adding a small epsilon.
             novelty = tf.norm(phi - phi_target + 1e-12, axis=1)
