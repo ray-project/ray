@@ -1,15 +1,22 @@
 from typing import List, Any, Optional
+import logging
 import random
 
+# Import ray before psutil will make sure we use psutil's bundled version
+import ray  # noqa F401
+import psutil
+
 from ray.actor import ActorHandle
+from ray.util.debug import log_once
 from ray.util.iter import from_actors, LocalIterator, _NextValueNotReady
 from ray.util.iter_metrics import SharedMetrics
-from ray.rllib.utils.replay_buffers.replay_buffer import warn_replay_capacity
 from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import (
     MultiAgentReplayBuffer,
 )
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, _get_shared_metrics
 from ray.rllib.utils.typing import SampleBatchType
+
+logger = logging.getLogger(__name__)
 
 
 class StoreToReplayBuffer:
@@ -146,7 +153,7 @@ class SimpleReplayBuffer:
         self.replay_index = 0
 
     def add_batch(self, sample_batch: SampleBatchType) -> None:
-        warn_replay_capacity(item=sample_batch, num_items=self.num_slots)
+        self.warn_replay_capacity(item=sample_batch, num_items=self.num_slots)
         if self.num_slots > 0:
             if len(self.replay_batches) < self.num_slots:
                 self.replay_batches.append(sample_batch)
@@ -160,6 +167,28 @@ class SimpleReplayBuffer:
 
     def __len__(self):
         return len(self.replay_batches)
+
+    @staticmethod
+    def warn_replay_capacity(*, item: SampleBatchType, num_items: int) -> None:
+        """Warn if the configured replay buffer capacity is too large."""
+        if log_once("replay_capacity"):
+            item_size = item.size_bytes()
+            psutil_mem = psutil.virtual_memory()
+            total_gb = psutil_mem.total / 1e9
+            mem_size = num_items * item_size / 1e9
+            msg = (
+                "Estimated max memory usage for replay buffer is {} GB "
+                "({} batches of size {}, {} bytes each), "
+                "available system memory is {} GB".format(
+                    mem_size, num_items, item.count, item_size, total_gb
+                )
+            )
+            if mem_size > total_gb:
+                raise ValueError(msg)
+            elif mem_size > 0.2 * total_gb:
+                logger.warning(msg)
+            else:
+                logger.info(msg)
 
 
 class MixInReplay:
