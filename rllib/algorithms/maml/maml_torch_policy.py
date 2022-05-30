@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 try:
     import higher
-except (ImportError, ModuleNotFoundError) as e:
+except (ImportError, ModuleNotFoundError):
     raise ImportError(
         (
             "The MAML and MB-MPO algorithms require the `higher` module to be "

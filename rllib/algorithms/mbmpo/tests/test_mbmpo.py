@@ -20,10 +20,12 @@ class TestMBMPO(unittest.TestCase):
 
     def test_mbmpo_compilation(self):
         """Test whether an MBMPOTrainer can be built with all frameworks."""
-        config = mbmpo.MBMPOConfig()\
-            .rollouts(num_rollout_workers=2, horizon=200)\
-            .training(dynamics_model={"ensemble_size": 2})\
+        config = (
+            mbmpo.MBMPOConfig()
+            .rollouts(num_rollout_workers=2, horizon=200)
+            .training(dynamics_model={"ensemble_size": 2})
             .environment(env="ray.rllib.examples.env.mbmpo_env.CartPoleWrapper")
+        )
         num_iterations = 1
 
         # Test for torch framework (tf not implemented yet).
