@@ -22,6 +22,7 @@ from tqdm import trange
 
 import ray
 
+from ray.data.extensions import TensorArray
 
 class TrainCheckpointReportCallback(Callback):
     def on_epoch_end(self, epoch, logs=None):
@@ -29,47 +30,35 @@ class TrainCheckpointReportCallback(Callback):
         train.report(**logs)
 
 
-def train_dataset_factory():
-    return tfds.load("mnist", split=["train"], as_supervised=True)[0]
+
+def get_dataset(split_type="train"): 
+    def dataset_factory():
+        return tfds.load("mnist", split=[split_type], as_supervised=True)[0].take(128)
+
+    dataset = ray.data.read_datasource(
+        SimpleTensorFlowDatasource(), dataset_factory=dataset_factory
+    )
+
+    def normalize_images(x):
+        x = np.float32(x.numpy()) / 255.0
+        x = np.reshape(x, (-1,))
+        return x
+
+    def preprocess_dataset(batch):
+        return [(normalize_images(image), normalize_images(image)) for image, _ in batch]
 
 
-def test_dataset_factory():
-    return tfds.load("mnist", split=["test"], as_supervised=True)[0]
+    dataset = dataset.map_batches(preprocess_dataset)
 
+    def convert_batch_to_pandas(batch):
 
-train_dataset = ray.data.read_datasource(
-    SimpleTensorFlowDatasource(), dataset_factory=train_dataset_factory
-)
-test_dataset = ray.data.read_datasource(
-    SimpleTensorFlowDatasource(), dataset_factory=test_dataset_factory
-)
+        images = [TensorArray(image) for image, _ in batch]
+        # because we did autoencoder here
+        df = pd.DataFrame({"image": images, "label": images})
+        return df
 
-
-def normalize_images(x):
-    x = tf.cast(x, tf.float32) / 255.0
-    x = tf.reshape(x, (-1,))
-    return x
-
-
-def preprocess_dataset(batch):
-    return [(normalize_images(image), normalize_images(image)) for image, _ in batch]
-
-
-train_dataset = train_dataset.map_batches(preprocess_dataset)
-test_dataset = test_dataset.map_batches(preprocess_dataset)
-
-
-def convert_batch_to_pandas(batch):
-
-    images = [image for image, _ in batch]
-
-    # because we did autoencoder here
-    df = pd.DataFrame({"image": images, "label": images})
-    return df
-
-
-train_dataset = train_dataset.map_batches(convert_batch_to_pandas)
-test_dataset = test_dataset.map_batches(convert_batch_to_pandas)
+    dataset = dataset.map_batches(convert_batch_to_pandas)
+    return dataset
 
 
 def build_autoencoder_model() -> tf.keras.Model:
@@ -135,6 +124,7 @@ def train_func(config: dict):
 def train_tensorflow_mnist(
     num_workers: int = 2, use_gpu: bool = False, epochs: int = 4
 ) -> Result:
+    train_dataset = get_dataset(split_type="train")
     config = {"lr": 1e-3, "batch_size": 64, "epochs": epochs}
     scaling_config = dict(num_workers=num_workers, use_gpu=use_gpu)
     trainer = TensorflowTrainer(
@@ -150,6 +140,7 @@ def train_tensorflow_mnist(
 
 
 def predict_tensorflow_mnist(result: Result) -> ray.data.Dataset:
+    test_dataset = get_dataset(split_type="test")
     batch_predictor = BatchPredictor.from_checkpoint(
         result.checkpoint, TensorflowPredictor, model_definition=build_autoencoder_model
     )
@@ -165,7 +156,7 @@ def predict_tensorflow_mnist(result: Result) -> ray.data.Dataset:
 
 
 def visualize_tensorflow_mnist_autoencoder(result: Result) -> None:
-
+    test_dataset = get_dataset(split_type="test")
     batch_predictor = BatchPredictor.from_checkpoint(
         result.checkpoint, TensorflowPredictor, model_definition=build_autoencoder_model
     )
@@ -236,10 +227,10 @@ if __name__ == "__main__":
         # 2 workers, 1 for trainer, 1 for datasets
         num_gpus = args.num_workers if args.use_gpu else 0
         ray.init(num_cpus=4, num_gpus=num_gpus)
-        train_tensorflow_mnist(num_workers=2, use_gpu=args.use_gpu)
+        result = train_tensorflow_mnist(num_workers=2, use_gpu=args.use_gpu)
     else:
         ray.init(address=args.address)
-        train_tensorflow_mnist(
+        result = train_tensorflow_mnist(
             num_workers=args.num_workers, use_gpu=args.use_gpu, epochs=args.epochs
         )
 
