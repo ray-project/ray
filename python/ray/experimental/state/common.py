@@ -65,6 +65,12 @@ class ActorState(StateSchema):
     actor_id: str
     state: str
     class_name: str
+    name: str
+    pid: int
+    serialized_runtime_env: str
+    resource_mapping: dict
+    death_cause: dict
+    is_detached: bool
 
     @classmethod
     def filterable_columns(cls) -> Set[str]:
@@ -75,6 +81,10 @@ class ActorState(StateSchema):
 class PlacementGroupState(StateSchema):
     placement_group_id: str
     state: str
+    name: str
+    bundles: dict
+    is_detached: bool
+    stats: dict
 
     @classmethod
     def filterable_columns(cls) -> Set[str]:
@@ -85,6 +95,8 @@ class PlacementGroupState(StateSchema):
 class NodeState(StateSchema):
     node_id: str
     state: str
+    node_name: str
+    resources_total: dict
 
     @classmethod
     def filterable_columns(cls) -> Set[str]:
@@ -105,6 +117,7 @@ class WorkerState(StateSchema):
     exit_type: str
     exit_detail: str
     pid: str
+    worker_info: dict
 
     @classmethod
     def filterable_columns(cls) -> Set[str]:
@@ -116,6 +129,11 @@ class TaskState(StateSchema):
     task_id: str
     name: str
     scheduling_state: str
+    type: str
+    language: str
+    func_or_class_name: str
+    required_resources: dict
+    runtime_env_info: str
 
     @classmethod
     def filterable_columns(cls) -> Set[str]:
