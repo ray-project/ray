@@ -288,7 +288,7 @@ class NovelD(Exploration):
         *,
         environment: BaseEnv = None,
         episode: int = None,
-        tf_sess: Optional[tf1.Session] = None,
+        tf_sess: Optional["tf.Session"] = None,
     ):
         """Resets the ERIR.
 
