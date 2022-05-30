@@ -224,27 +224,6 @@ class DynamicTFPolicyV2(TFPolicy):
         # Initialize again after loss and tower init.
         self.get_session().run(tf1.global_variables_initializer())
 
-    @DeveloperAPI
-    @OverrideToImplementCustomLogic
-    @override(Policy)
-    def loss(
-        self,
-        model: Union[ModelV2, "tf.keras.Model"],
-        dist_class: Type[TFActionDistribution],
-        train_batch: SampleBatch,
-    ) -> Union[TensorType, List[TensorType]]:
-        """Constructs loss computation graph for this TF1 policy.
-
-        Args:
-            model: The Model to calculate the loss for.
-            dist_class: The action distr. class.
-            train_batch: The training data.
-
-        Returns:
-            A single loss tensor or a list of loss tensors.
-        """
-        raise NotImplementedError
-
     @override(TFPolicy)
     @OverrideToImplementCustomLogic
     def make_optimizer(

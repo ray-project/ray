@@ -310,27 +310,6 @@ class EagerTFPolicyV2(Policy):
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic
-    @override(Policy)
-    def loss(
-        self,
-        model: Union[ModelV2, "tf.keras.Model"],
-        dist_class: Type[TFActionDistribution],
-        train_batch: SampleBatch,
-    ) -> Union[TensorType, List[TensorType]]:
-        """Compute loss for this policy using model, dist_class and a train_batch.
-
-        Args:
-            model: The Model to calculate the loss for.
-            dist_class: The action distr. class.
-            train_batch: The training data.
-
-        Returns:
-            A single loss tensor or a list of loss tensors.
-        """
-        raise NotImplementedError
-
-    @DeveloperAPI
-    @OverrideToImplementCustomLogic
     def compute_gradients_fn(
         self, policy: Policy, optimizer: LocalOptimizer, loss: TensorType
     ) -> ModelGradients:

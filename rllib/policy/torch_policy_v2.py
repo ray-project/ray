@@ -44,7 +44,7 @@ from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.threading import with_lock
-from ray.rllib.utils.torch_utils import apply_grad_clipping, convert_to_torch_tensor
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import (
     GradInfoDict,
     ModelGradients,
@@ -372,27 +372,6 @@ class TorchPolicyV2(Policy):
             log_likelihoods = action_dist.logp(actions)
 
             return log_likelihoods
-
-    @DeveloperAPI
-    @OverrideToImplementCustomLogic
-    @override(Policy)
-    def loss(
-        self,
-        model: ModelV2,
-        dist_class: Type[TorchDistributionWrapper],
-        train_batch: SampleBatch,
-    ) -> Union[TensorType, List[TensorType]]:
-        """Constructs the loss function.
-
-        Args:
-            model: The Model to calculate the loss for.
-            dist_class: The action distr. class.
-            train_batch: The training data.
-
-        Returns:
-            Loss tensor given the input batch.
-        """
-        raise NotImplementedError
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic

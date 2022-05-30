@@ -319,52 +319,6 @@ class ValueNetworkMixin:
         return actions, state_outs, extra_outs
 
 
-class TargetNetworkMixin:
-    """Assign the `update_target` method to the SimpleQTFPolicy
-
-    The function is called every `target_network_update_freq` steps by the
-    master learner.
-    """
-
-    def __init__(
-        self,
-        obs_space: gym.spaces.Space,
-        action_space: gym.spaces.Space,
-        config: TrainerConfigDict,
-    ):
-        @make_tf_callable(self.get_session())
-        def do_update():
-            # update_target_fn will be called periodically to copy Q network to
-            # target Q network
-            update_target_expr = []
-            assert len(self.q_func_vars) == len(self.target_q_func_vars), (
-                self.q_func_vars,
-                self.target_q_func_vars,
-            )
-            for var, var_target in zip(self.q_func_vars, self.target_q_func_vars):
-                update_target_expr.append(var_target.assign(var))
-                logger.debug("Update target op {}".format(var_target))
-            return tf.group(*update_target_expr)
-
-        self.update_target = do_update
-
-    @property
-    def q_func_vars(self):
-        if not hasattr(self, "_q_func_vars"):
-            self._q_func_vars = self.model.variables()
-        return self._q_func_vars
-
-    @property
-    def target_q_func_vars(self):
-        if not hasattr(self, "_target_q_func_vars"):
-            self._target_q_func_vars = self.target_model.variables()
-        return self._target_q_func_vars
-
-    @override(TFPolicy)
-    def variables(self):
-        return self.q_func_vars + self.target_q_func_vars
-
-
 # TODO: find a better place for this util, since it's not technically MixIns.
 @DeveloperAPI
 def compute_gradients(

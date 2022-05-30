@@ -148,7 +148,7 @@ class TestPPO(unittest.TestCase):
                         check_train_results(results)
                         print(results)
 
-                    #check_compute_single_action(
+                    # check_compute_single_action(
                     #    trainer, include_prev_action_reward=True, include_state=lstm
                     # )
                     trainer.stop()
