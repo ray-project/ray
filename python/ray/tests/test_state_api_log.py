@@ -148,7 +148,7 @@ async def test_logs_manager_stream_log(logs_manager):
     assert i == NUM_LOG_CHUNKS
     logs_client.stream_log.assert_awaited_with(
         node_id="1",
-        filename="raylet.out",
+        log_file_name="raylet.out",
         keep_alive=False,
         lines=10,
         interval=None,
