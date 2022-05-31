@@ -362,7 +362,6 @@ class PushBasedShufflePlan(ShuffleOp):
             len({len(mapper_outputs) for mapper_outputs in all_mapper_outputs}) == 1
         ), "Received different number of map inputs"
         stats = BlockExecStats.builder()
-        merged_outputs = []
         if not reduce_args:
             reduce_args = []
 
@@ -379,14 +378,13 @@ class PushBasedShufflePlan(ShuffleOp):
             schema = block.schema()
             del block
 
-
         yield BlockMetadata(
-                num_rows=num_rows,
-                size_bytes=size_bytes,
-                schema=schema,
-                input_files=None,
-                exec_stats=stats.build()
-                )
+            num_rows=num_rows,
+            size_bytes=size_bytes,
+            schema=schema,
+            input_files=None,
+            exec_stats=stats.build(),
+        )
 
     @staticmethod
     def _compute_shuffle_schedule(
