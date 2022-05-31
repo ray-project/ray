@@ -154,7 +154,7 @@ message DeploymentVersion {
 }
 
 message ReplicaConfig {
-  bytes serialized_deployment_def = 1;
+  bytes deployment_def = 1;
   bytes init_args = 2;
   bytes init_kwargs = 3;
   string ray_actor_options = 4;
