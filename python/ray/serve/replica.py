@@ -37,26 +37,12 @@ from ray.serve.version import DeploymentVersion
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-def create_replica_wrapper(
-    name: str, import_path: str = None, serialized_deployment_def: bytes = None
-):
+def create_replica_wrapper(name: str, serialized_deployment_def: bytes = None):
     """Creates a replica class wrapping the provided function or class.
 
     This approach is picked over inheritance to avoid conflict between user
     provided class and the RayServeReplica class.
     """
-
-    if (import_path is None) and (serialized_deployment_def is None):
-        raise ValueError(
-            "Either the import_name or the serialized_deployment_def must "
-            "be specified, but both were unspecified."
-        )
-    elif (import_path is not None) and (serialized_deployment_def is not None):
-        raise ValueError(
-            "Only one of either the import_name or the "
-            "serialized_deployment_def must be specified, but both were "
-            "specified."
-        )
 
     # TODO(architkulkarni): Add type hints after upgrading cloudpickle
     class RayServeWrappedReplica(object):
@@ -78,7 +64,10 @@ def create_replica_wrapper(
                 component_id=replica_tag,
             )
 
-            if import_path is not None:
+            deployment_def = cloudpickle.loads(serialized_deployment_def)
+
+            if type(deployment_def, str):
+                import_path = deployment_def
                 module_name, attr_name = parse_import_path(import_path)
                 deployment_def = getattr(import_module(module_name), attr_name)
                 # For ray or serve decorated class or function, strip to return
@@ -94,9 +83,6 @@ def create_replica_wrapper(
                         "are ignored when deploying via import path."
                     )
                     deployment_def = deployment_def.func_or_class
-
-            else:
-                deployment_def = cloudpickle.loads(serialized_deployment_def)
 
             deployment_config = DeploymentConfig.from_proto_bytes(
                 deployment_config_proto_bytes
