@@ -1,6 +1,6 @@
 # Pattern: Http endpoint for dag graph
 
-The example shows how to add endpoint for dag graph
+This example shows how to configure ingress component of the deployment graph, such as HTTP endpoint prefix, HTTP to python object input adapter.
 
 ## Code
 
