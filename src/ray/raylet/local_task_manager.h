@@ -274,6 +274,8 @@ class LocalTaskManager : public ILocalTaskManager {
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   /// Class to make task dependencies to be local.
   TaskDependencyManagerInterface &task_dependency_manager_;
+  /// manages the physical resource on local nodes.
+  PhysicalResourceManager physical_resource_manager_;
   /// Function to check if the owner is alive on a given node.
   std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive_;
   /// Function to get the node information of a given node id.

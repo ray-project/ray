@@ -55,6 +55,10 @@ LocalTaskManager::LocalTaskManager(
       sched_cls_cap_max_ms_(RayConfig::instance().worker_cap_max_backoff_delay_ms()) {}
 
 void LocalTaskManager::QueueAndScheduleTask(std::shared_ptr<internal::Work> work) {
+  if (!physical_resource_manager_.HasResourceCapacityForTask(
+          work->task.GetTaskSpecification())) {
+    // reject the task.
+  }
   WaitForTaskArgsRequests(work);
   ScheduleAndDispatchTasks();
 }
