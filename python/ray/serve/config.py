@@ -276,6 +276,13 @@ class ReplicaConfig:
             elif init_kwargs:
                 raise ValueError("init_kwargs not supported for function deployments.")
 
+        if not isinstance(deployment_def, (Callable, str)):
+            raise TypeError(
+                f'Got invalid type "{type(deployment_def)}" for '
+                "deployment_def. Expected deployment_def to be a "
+                "class, function, or string."
+            )
+
         if ray_actor_options is None:
             ray_actor_options = {}
 
