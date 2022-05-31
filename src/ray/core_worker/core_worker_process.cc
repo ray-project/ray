@@ -151,7 +151,7 @@ CoreWorkerProcessImpl::~CoreWorkerProcessImpl() {
   {
     absl::WriterMutexLock lock(&mutex_);
     if (core_worker_ != nullptr) {
-      core_worker_ = nullptr; 
+      core_worker_ = nullptr;
     }
   }
 }
