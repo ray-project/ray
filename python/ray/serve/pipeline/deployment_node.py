@@ -17,7 +17,6 @@ from ray.experimental.dag.constants import PARENT_CLASS_NODE_KEY
 from ray.experimental.dag.format_utils import get_dag_node_str
 from ray.serve.deployment import Deployment, schema_to_deployment
 from ray.serve.config import DeploymentConfig
-from ray.serve.utils import get_deployment_import_path
 from ray.serve.schema import DeploymentSchema
 
 
@@ -162,10 +161,3 @@ class DeploymentNode(DAGNode):
 
     def get_deployment_name(self):
         return self._deployment.name
-
-    def get_import_path(self):
-        if (
-            "is_from_serve_deployment" in self._bound_other_args_to_resolve
-        ):  # built by serve top level api, this is ignored for serve.run
-            return "dummy"
-        return get_deployment_import_path(self._deployment)
