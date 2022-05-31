@@ -37,10 +37,10 @@ def get_pg_tf_policy(base: TFPolicyV2Type) -> TFPolicyV2Type:
         base: Base class for this policy. DynamicTFPolicyV2 or EagerTFPolicyV2.
 
     Returns:
-        A TF Policy to be used with PPOTrainer.
+        A TF Policy to be used with PGTrainer.
     """
 
-    class PPOTFPolicy(
+    class PGTFPolicy(
         base,
     ):
         def __init__(
@@ -54,7 +54,7 @@ def get_pg_tf_policy(base: TFPolicyV2Type) -> TFPolicyV2Type:
             # First thing first, enable eager execution if necessary.
             base.enable_eager_execution_if_necessary()
 
-            config = dict(ray.rllib.algorithms.pg.DEFAULT_CONFIG, **config)
+            config = dict(ray.rllib.algorithms.pg.PGConfig().to_dict(), **config)
 
             # Initialize base class.
             base.__init__(
@@ -78,6 +78,9 @@ def get_pg_tf_policy(base: TFPolicyV2Type) -> TFPolicyV2Type:
             train_batch: SampleBatch,
         ) -> Union[TensorType, List[TensorType]]:
             """The basic policy gradients loss function.
+
+            Calculates the vanilla policy gradient loss based on:
+            L = -E[ log(pi(a|s)) * A]
 
             Args:
                 model (ModelV2): The Model to calculate the loss for.
@@ -137,7 +140,7 @@ def get_pg_tf_policy(base: TFPolicyV2Type) -> TFPolicyV2Type:
                 "policy_loss": self.policy_loss,
             }
 
-    return PPOTFPolicy
+    return PGTFPolicy
 
 
 PGStaticGraphTFPolicy = get_pg_tf_policy(DynamicTFPolicyV2)

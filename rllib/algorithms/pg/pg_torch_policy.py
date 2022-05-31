@@ -30,7 +30,8 @@ class PGTorchPolicy(TorchPolicyV2):
     """PyTorch policy class used with PGTrainer."""
 
     def __init__(self, observation_space, action_space, config):
-        config = dict(ray.rllib.algorithms.pg.DEFAULT_CONFIG, **config)
+
+        config = dict(ray.rllib.algorithms.pg.PGConfig().to_dict(), **config)
         validate_config(config)
 
         TorchPolicyV2.__init__(
@@ -52,6 +53,9 @@ class PGTorchPolicy(TorchPolicyV2):
         train_batch: SampleBatch,
     ) -> Union[TensorType, List[TensorType]]:
         """The basic policy gradients loss function.
+
+        Calculates the vanilla policy gradient loss based on:
+        L = -E[ log(pi(a|s)) * A]
 
         Args:
             model (ModelV2): The Model to calculate the loss for.
