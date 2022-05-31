@@ -366,10 +366,6 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
     }
   }
 
-  if (should_notify_raylet) {
-    RAY_CHECK_OK(raylet_client_->NotifyDirectCallTaskUnblocked());
-  }
-
   {
     absl::MutexLock lock(&mu_);
     // Populate results.
