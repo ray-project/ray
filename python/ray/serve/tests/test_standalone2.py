@@ -405,27 +405,27 @@ class TestDeployApp:
         # Launch first graph. Its driver's route_prefix should be "/".
         test_config_1 = ServeApplicationSchema.parse_obj(
             {
-                "import_path": "ray.serve.tests.test_config_files.pizza.serve_dag",
+                "import_path": "ray.serve.tests.test_config_files.world.DagNode",
             }
         )
         client.deploy_app(test_config_1)
 
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
-            == "4 pizzas please!"
+            lambda: requests.get("http://localhost:8000/").text == "wonderful world"
         )
 
         # Launch second graph. Its driver's route_prefix should also be "/".
         # "/" should lead to the new driver.
         test_config_2 = ServeApplicationSchema.parse_obj(
             {
-                "import_path": "ray.serve.tests.test_config_files.world.DagNode",
+                "import_path": "ray.serve.tests.test_config_files.pizza.serve_dag",
             }
         )
         client.deploy_app(test_config_2)
 
         wait_for_condition(
-            lambda: requests.get("http://localhost:8000/").text == "wonderful world"
+            lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
+            == "4 pizzas please!"
         )
 
 
