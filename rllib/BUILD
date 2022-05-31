@@ -415,6 +415,26 @@ py_test(
 )
 
 py_test(
+    name = "learning_tests_cartpole_crashing_pg",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/pg/cartpole-crashing-pg.yaml"],
+    args = ["--yaml-dir=tuned_examples/pg"]
+)
+
+py_test(
+    name = "learning_tests_cartpole_crashing_with_remote_envs_pg",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/pg/cartpole-crashing-with_remote-envs-pg.yaml"],
+    args = ["--yaml-dir=tuned_examples/pg"]
+)
+
+py_test(
     name = "learning_tests_cartpole_pg_fake_gpus",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
@@ -1116,7 +1136,7 @@ py_test(
         "--env", "CartPole-v0",
         "--run", "DQN",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"input\": \"tests/data/cartpole\", \"replay_buffer_config\": {\"learning_starts\": 0}, \"input_evaluation\": [\"wis\", \"is\"], \"exploration_config\": {\"type\": \"SoftQ\"}}'"
+        "--config", "'{\"framework\": \"tf\", \"input\": \"tests/data/cartpole\", \"replay_buffer_config\": {\"learning_starts\": 0}, \"off_policy_estimation_methods\": [\"wis\", \"is\"], \"exploration_config\": {\"type\": \"SoftQ\"}}'"
         ]
 )
 
@@ -1274,6 +1294,20 @@ py_test(
 # Tag: env
 # --------------------------------------------------------------------
 
+py_test(
+    name = "env/tests/test_external_env",
+    tags = ["team:ml", "env"],
+    size = "large",
+    srcs = ["env/tests/test_external_env.py"]
+)
+
+py_test(
+    name = "env/tests/test_external_multi_agent_env",
+    tags = ["team:ml", "env"],
+    size = "medium",
+    srcs = ["env/tests/test_external_multi_agent_env.py"]
+)
+
 sh_test(
     name = "env/tests/test_local_inference_cartpole",
     tags = ["team:ml", "env"],
@@ -1346,6 +1380,13 @@ py_test(
 )
 
 py_test(
+    name = "env/tests/test_env_with_subprocess",
+    tags = ["team:ml", "env"],
+    size = "medium",
+    srcs = ["env/tests/test_env_with_subprocess.py"]
+)
+
+py_test(
     name = "env/wrappers/tests/test_unity3d_env",
     tags = ["team:ml", "env"],
     size = "small",
@@ -1381,6 +1422,20 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
+    name = "evaluation/tests/test_envs_that_crash",
+    tags = ["team:ml", "evaluation"],
+    size = "medium",
+    srcs = ["evaluation/tests/test_envs_that_crash.py"]
+)
+
+py_test(
+    name = "evaluation/tests/test_episode",
+    tags = ["team:ml", "evaluation"],
+    size = "small",
+    srcs = ["evaluation/tests/test_episode.py"]
+)
+
+py_test(
     name = "evaluation/tests/test_postprocessing",
     tags = ["team:ml", "evaluation"],
     size = "small",
@@ -1401,12 +1456,6 @@ py_test(
     srcs = ["evaluation/tests/test_trajectory_view_api.py"]
 )
 
-py_test(
-    name = "evaluation/tests/test_episode",
-    tags = ["team:ml", "evaluation"],
-    size = "small",
-    srcs = ["evaluation/tests/test_episode.py"]
-)
 # --------------------------------------------------------------------
 # Execution Utils
 # rllib/execution/
@@ -1736,14 +1785,6 @@ py_test(
 )
 
 py_test(
-    name = "test_env_with_subprocess",
-    main = "tests/test_env_with_subprocess.py",
-    tags = ["team:ml", "tests_dir", "tests_dir_E"],
-    size = "medium",
-    srcs = ["tests/test_env_with_subprocess.py"]
-)
-
-py_test(
     name = "tests/test_execution",
     tags = ["team:ml", "tests_dir", "tests_dir_E"],
     size = "medium",
@@ -1755,20 +1796,6 @@ py_test(
     tags = ["team:ml", "tests_dir", "tests_dir_E"],
     size = "medium",
     srcs = ["tests/test_export.py"]
-)
-
-py_test(
-    name = "tests/test_external_env",
-    tags = ["team:ml", "tests_dir", "tests_dir_E"],
-    size = "large",
-    srcs = ["tests/test_external_env.py"]
-)
-
-py_test(
-    name = "tests/test_external_multi_agent_env",
-    tags = ["team:ml", "tests_dir", "tests_dir_E"],
-    size = "medium",
-    srcs = ["tests/test_external_multi_agent_env.py"]
 )
 
 py_test(
@@ -2630,6 +2657,24 @@ py_test(
     size = "small",
     srcs = ["examples/multi_agent_custom_policy.py"],
     args = ["--as-test", "--framework=torch", "--stop-reward=80"]
+)
+
+py_test(
+    name = "examples/multi_agent_different_spaces_for_agents_tf2",
+    main = "examples/multi_agent_different_spaces_for_agents.py",
+    tags = ["team:ml", "examples", "examples_M"],
+    size = "medium",
+    srcs = ["examples/multi_agent_different_spaces_for_agents.py"],
+    args = ["--stop-iters=4", "--framework=tf2", "--eager-tracing"]
+)
+
+py_test(
+    name = "examples/multi_agent_different_spaces_for_agents_torch",
+    main = "examples/multi_agent_different_spaces_for_agents.py",
+    tags = ["team:ml", "examples", "examples_M"],
+    size = "medium",
+    srcs = ["examples/multi_agent_different_spaces_for_agents.py"],
+    args = ["--stop-iters=4", "--framework=torch"]
 )
 
 py_test(
