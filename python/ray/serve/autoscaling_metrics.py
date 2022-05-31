@@ -27,8 +27,9 @@ def start_metrics_pusher(
     consistently metrics delivery. Python GIL will ensure that this thread gets
     fair timeshare to execute and run.
 
-    For handle background thread usecase, when the handle is GCed or shutting down
-    the serve instance, stop_event is supposed to be set true.
+    stop_event is passed in only when a RayServeHandle calls this function to push metrics
+    for scale-to-zero. stop_event is set either when the handle is garbage collected or when
+    the Serve application shuts down.
 
     Args:
         interval_s(float): the push interval.
@@ -36,9 +37,9 @@ def start_metrics_pusher(
           be sent to the the controller. The collection callback should take
           no argument and returns a dictionary of str_key -> float_value.
         metrics_process_func: actor handle function.
-        stop_event: the daemon thread will be closed when the stop event is set
+        stop_event: the backgroupd thread will be closed when this event is set
     Returns:
-        timer: return the metrics pusher background thread object
+        timer: The background thread created by this function to push metrics to the controller
     """
 
     def send_once():
@@ -149,7 +150,7 @@ class InMemoryMetricsStore:
         return sum(point.value for point in points_after_idx) / len(points_after_idx)
 
     def max(self, key: str, window_start_timestamp_s: float):
-        """Perform a max operation for metric `key`
+        """Perform a max operation for metric `key`.
 
         Args:
             key(str): the metric name.
