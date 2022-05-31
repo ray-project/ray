@@ -29,7 +29,6 @@ from ray.rllib.utils.typing import (
     LocalOptimizer,
     ModelGradients,
     TensorType,
-    TFPolicyV2Type,
     TrainerConfigDict,
 )
 
@@ -53,7 +52,7 @@ def validate_config(config: TrainerConfigDict) -> None:
 
 # We need this builder function because we want to share the same
 # custom logics between TF1 dynamic and TF2 eager policies.
-def get_ppo_tf_policy(base: TFPolicyV2Type) -> TFPolicyV2Type:
+def get_ppo_tf_policy(base: type) -> type:
     """Construct a PPOTFPolicy inheriting either dynamic or eager base policies.
 
     Args:

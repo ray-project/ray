@@ -2,6 +2,7 @@ import logging
 from typing import Any, Dict, List, Optional, Type, Union
 
 from ray.actor import ActorHandle
+from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
 from ray.rllib.agents.trainer import Trainer
 from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -181,14 +182,8 @@ class A3CTrainer(Trainer):
             from ray.rllib.agents.a3c.a3c_torch_policy import A3CTorchPolicy
 
             return A3CTorchPolicy
-        elif config["framework"] == "tf":
-            from ray.rllib.agents.a3c.a3c_tf_policy import A3CStaticGraphTFPolicy
-
-            return A3CStaticGraphTFPolicy
         else:
-            from ray.rllib.agents.a3c.a3c_tf_policy import A3CEagerTFPolicy
-
-            return A3CEagerTFPolicy
+            return A3CTFPolicy
 
     def training_iteration(self) -> ResultDict:
         # Shortcut.
