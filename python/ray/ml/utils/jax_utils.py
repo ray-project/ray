@@ -70,7 +70,7 @@ def convert_pandas_to_jax_tensor(
             # or otherwise cannot be made into a tensor directly.
             # We assume it's a sequence in that case.
             # This is more robust than checking for dtype.
-            return jax.stack([tensorize(x, dtype) for x in vals])
+            return jax.numpy.stack([tensorize(x, dtype) for x in vals])
 
     def get_tensor_for_columns(columns, dtype):
         feature_tensors = []
