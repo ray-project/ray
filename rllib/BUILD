@@ -674,14 +674,14 @@ py_test(
     name = "test_a2c",
     tags = ["team:ml", "trainers_dir"],
     size = "large",
-    srcs = ["agents/a3c/tests/test_a2c.py"]
+    srcs = ["algorithms/a3c/tests/test_a2c.py"]
 )
 
 py_test(
     name = "test_a3c",
     tags = ["team:ml", "trainers_dir"],
     size = "large",
-    srcs = ["agents/a3c/tests/test_a3c.py"]
+    srcs = ["algorithms/a3c/tests/test_a3c.py"]
 )
 
 # AlphaStar
