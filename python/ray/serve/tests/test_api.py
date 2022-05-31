@@ -212,6 +212,16 @@ def test_user_config(serve_instance):
     wait_for_condition(lambda: check("456", 3))
 
 
+def test_reject_duplicate_route(serve_instance):
+    @serve.deployment(name="A", route_prefix="/api")
+    class A:
+        pass
+
+    A.deploy()
+    with pytest.raises(ValueError):
+        A.options(name="B").deploy()
+
+
 def test_scaling_replicas(serve_instance):
     @serve.deployment(name="counter", num_replicas=2)
     class Counter:
