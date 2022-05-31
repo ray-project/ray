@@ -666,14 +666,16 @@ def test_torch_amp(ray_start_2_cpus):
     trainer = Trainer("torch", num_workers)
     trainer.start()
 
-    outputs = trainer.run(train_fn)
+    trainer.run(train_fn)
     trainer.shutdown()
+
 
 def test_torch_amp_with_custom_get_state(ray_start_2_cpus):
     """Tests amp with a model that has a custom __getstate__ method defined.
 
     See https://discuss.ray.io/t/ray-train-hangs-for-long-time/6333/7?u=amogkam
     """
+
     def train_fn():
         train.torch.accelerate(amp=True)
 
@@ -691,7 +693,7 @@ def test_torch_amp_with_custom_get_state(ray_start_2_cpus):
     trainer = Trainer("torch", num_workers)
     trainer.start()
 
-    outputs = trainer.run(train_fn)
+    trainer.run(train_fn)
     trainer.shutdown()
 
 

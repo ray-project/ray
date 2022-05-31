@@ -1,6 +1,5 @@
 import tempfile
 from dataclasses import dataclass
-import functools
 import io
 import logging
 import os
@@ -120,7 +119,7 @@ class TorchAccelerator(Accelerator):
             # Pickle cannot serialize the wrapped forward method. As a workaround,
             # define a custom `__getstate__` method that unwraps the forward method.
             model._unwrapped_forward = model.forward
-            model.forward = torch.cuda.amp.autocast()(model.forward)
+            model.forward = autocast()(model.forward)
 
             # TODO(amogkam): Replace below logic with a generic "unpack model" method.
             # Replacing the `model.forward` method makes the model no longer
