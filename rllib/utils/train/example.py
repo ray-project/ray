@@ -32,7 +32,7 @@ def train_func(config):
             feature_columns=["x"],
             label_column_dtype=torch.float,
             feature_column_dtypes=torch.float,
-            batch_size=5,
+            batch_size=3,
         )
 
         device = train.torch.get_device()
@@ -55,38 +55,44 @@ def train_func(config):
             loss.backward()
             optimizer.step()
 
-        result = {}
+        result = {"test_key": "test_value"}
         print("reporting ...")
         train.report(**result)
         print("done")
 
 
 if __name__ == "__main__":
-    ray.init(num_cpus=6)
+    ray.init(num_cpus=12)
 
-    scaling_config = {"num_workers": 2, "use_gpu": False}
+    scaling_config = {"num_workers": 1, "use_gpu": False}
 
     trainer1 = TorchTrainer(
         train_loop_per_worker=train_func,
         scaling_config=scaling_config,
         datasets={"dataset": get_dataset(size=6)},
     )
+    trainable_cls1 = trainer1.as_trainable()
+    trainable1 = trainable_cls1()
+
     trainer2 = TorchTrainer(
         train_loop_per_worker=train_func,
         scaling_config=scaling_config,
         datasets={"dataset": get_dataset(size=7)},
     )
-
-    trainable_cls1 = trainer1.as_trainable()
-    trainable1 = trainable_cls1()
     trainable_cls2 = trainer2.as_trainable()
     trainable2 = trainable_cls2()
 
-    results1 = trainable1.train()
+    # Run some `train()` calls on trainer1.
     results1 = trainable1.train()
     print(results1)
+    results1 = trainable1.train()
+    print(results1)
+
+    # Use trainer2.
     results2 = trainable2.train()
     print(results2)
+
+    # Use both once more.
     results1 = trainable1.train()
     results2 = trainable2.train()
 
