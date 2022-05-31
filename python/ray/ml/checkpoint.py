@@ -22,6 +22,7 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 _DICT_CHECKPOINT_FILE_NAME = "dict_checkpoint.pkl"
 _FS_CHECKPOINT_KEY = "fs_checkpoint"
 _BYTES_DATA_KEY = "bytes_data"
+_CHECKPOINT_DIR_PREFIX = "checkpoint_tmp_"
 
 
 @PublicAPI
@@ -299,10 +300,19 @@ class Checkpoint:
         """Return the name for the temporary checkpoint dir."""
         if self._obj_ref:
             tmp_dir_path = tempfile.gettempdir()
-            checkpoint_dir_name = f"checkpoint_tmp_{self._obj_ref.hex()}"
+            checkpoint_dir_name = f"{_CHECKPOINT_DIR_PREFIX}{self._obj_ref.hex()}"
             if platform.system() == "Windows":
                 # Max path on Windows is 260 chars, -1 for joining \
-                checkpoint_dir_name = checkpoint_dir_name[: 259 - len(tmp_dir_path)]
+                # Also leave a little for the del lock
+                del_lock_name = _get_del_lock_path("")
+                checkpoint_dir_name = checkpoint_dir_name[
+                    : 259 - len(tmp_dir_path) - len(del_lock_name)
+                ]
+                if not checkpoint_dir_name.startswith(_CHECKPOINT_DIR_PREFIX):
+                    raise RuntimeError(
+                        "Couldn't create checkpoint directory due to length "
+                        "constraints. Try specifing a shorter checkpoint path."
+                    )
             return os.path.join(tmp_dir_path, checkpoint_dir_name)
         return _temporary_checkpoint_dir()
 
@@ -417,13 +427,16 @@ class Checkpoint:
 
             # In the edge case, we do not remove the directory at all.
             # Since it's in /tmp, this is not that big of a deal.
-            try:
-                with FileLock(f"{temp_dir}.lock", timeout=0):
-                    # check if any lock files are remaining
-                    if not list(Path(temp_dir).glob(".del_lock_*")):
+            # check if any lock files are remaining
+            temp_dir_base_name = Path(temp_dir).name
+            if not list(
+                Path(temp_dir).parent.glob(_get_del_lock_path(temp_dir_base_name, "*"))
+            ):
+                try:
+                    with FileLock(f"{temp_dir}.lock", timeout=0):
                         shutil.rmtree(temp_dir, ignore_errors=True)
-            except TimeoutError:
-                pass
+                except TimeoutError:
+                    pass
 
     @classmethod
     def from_uri(cls, uri: str) -> "Checkpoint":
@@ -529,7 +542,7 @@ def _get_external_path(path: Optional[str]) -> Optional[str]:
 
 def _temporary_checkpoint_dir() -> str:
     """Create temporary checkpoint dir."""
-    return tempfile.mkdtemp(prefix="checkpoint_tmp_")
+    return tempfile.mkdtemp(prefix=_CHECKPOINT_DIR_PREFIX)
 
 
 def _pack(path: str) -> bytes:
@@ -548,9 +561,10 @@ def _unpack(stream: bytes, path: str) -> str:
     return path
 
 
-def _get_del_lock_path(path: str) -> str:
+def _get_del_lock_path(path: str, pid: str = None) -> str:
     """Get the path to the deletion lock file."""
-    return f"{path}.del_lock_{os.getpid()}"
+    pid = pid if pid is not None else os.getpid()
+    return f"{path}.del_lock_{pid}"
 
 
 def _make_dir(path: str, drop_del_lock: bool = True) -> None:
