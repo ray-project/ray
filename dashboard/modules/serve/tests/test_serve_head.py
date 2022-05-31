@@ -153,39 +153,6 @@ def test_put_get_success(ray_start_stop):
             )
 
 
-def test_put_new_rest_api(ray_start_stop):
-    config = {
-        "import_path": "ray.serve.tests.test_config_files.pizza.serve_dag",
-        "deployments": [
-            {
-                "name": "Multiplier",
-                "user_config": {
-                    "factor": 1,
-                },
-            },
-            {
-                "name": "Adder",
-                "user_config": {
-                    "increment": 1,
-                },
-            },
-        ],
-    }
-
-    put_response = requests.put(GET_OR_PUT_URL, json=config, timeout=30)
-    assert put_response.status_code == 200
-    wait_for_condition(
-        lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
-        == "3 pizzas please!",
-        timeout=30,
-    )
-    wait_for_condition(
-        lambda: requests.post("http://localhost:8000/", json=["MUL", 2]).json()
-        == "2 pizzas please!",
-        timeout=30,
-    )
-
-
 def test_delete_success(ray_start_stop):
     ray_actor_options = {
         "runtime_env": {
