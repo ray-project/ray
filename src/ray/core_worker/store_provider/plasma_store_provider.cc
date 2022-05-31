@@ -170,11 +170,8 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
     bool *got_exception) {
   const auto owner_addresses = reference_counter_->GetOwnerAddresses(batch_ids);
-  RAY_RETURN_NOT_OK(
-      raylet_client_->FetchOrReconstruct(batch_ids,
-                                         owner_addresses,
-                                         fetch_only,
-                                         task_id));
+  RAY_RETURN_NOT_OK(raylet_client_->FetchOrReconstruct(
+      batch_ids, owner_addresses, fetch_only, task_id));
 
   std::vector<plasma::ObjectBuffer> plasma_results;
   RAY_RETURN_NOT_OK(store_client_.Get(batch_ids,
@@ -248,8 +245,8 @@ Status CoreWorkerPlasmaStoreProvider::GetIfLocal(
 
 Status UnblockIfNeeded(const std::shared_ptr<raylet::RayletClient> &client,
                        const WorkerContext &ctx) {
-    // NOTE: We still need to issue an unblock IPC to release.
-    return client->NotifyDirectCallTaskUnblocked(); 
+  // NOTE: We still need to issue an unblock IPC to release.
+  return client->NotifyDirectCallTaskUnblocked();
 }
 
 Status CoreWorkerPlasmaStoreProvider::Get(
@@ -377,13 +374,12 @@ Status CoreWorkerPlasmaStoreProvider::Wait(
 
     // This is a separate IPC from the Wait.
     const auto owner_addresses = reference_counter_->GetOwnerAddresses(id_vector);
-    RAY_RETURN_NOT_OK(
-        raylet_client_->Wait(id_vector,
-                             owner_addresses,
-                             num_objects,
-                             call_timeout,
-                             ctx.GetCurrentTaskID(),
-                             &result_pair));
+    RAY_RETURN_NOT_OK(raylet_client_->Wait(id_vector,
+                                           owner_addresses,
+                                           num_objects,
+                                           call_timeout,
+                                           ctx.GetCurrentTaskID(),
+                                           &result_pair));
 
     if (result_pair.first.size() >= static_cast<size_t>(num_objects)) {
       should_break = true;

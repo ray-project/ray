@@ -61,7 +61,7 @@ class WorkerContext {
   std::shared_ptr<const TaskSpecification> GetCurrentTask() const;
 
   const ActorID &GetCurrentActorID() const LOCKS_EXCLUDED(mutex_);
-  
+
   int CurrentActorMaxConcurrency() const LOCKS_EXCLUDED(mutex_);
 
   bool CurrentActorIsAsync() const LOCKS_EXCLUDED(mutex_);
@@ -78,7 +78,6 @@ class WorkerContext {
   int64_t GetTaskDepth() const;
 
  protected:
-
  private:
   const WorkerType worker_type_;
   const WorkerID worker_id_;
