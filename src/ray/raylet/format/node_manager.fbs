@@ -198,7 +198,6 @@ table WaitRequest {
   num_ready_objects: int;
   // timeout
   timeout: long;
-  // The current task ID.
   // False for direct call tasks. Blocking for those tasks is handled via the
   // NotifyDirectCallTaskBlocked/Unblocked IPCs.
   mark_worker_blocked: bool;

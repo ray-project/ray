@@ -80,7 +80,6 @@ class CoreWorkerProcess {
 
   /// Get the core worker.
   /// NOTE (kfstorm): Here we return a reference instead of a `shared_ptr` to make sure
-  /// Do we need to remain TryGetWorker?
   /// `CoreWorkerProcess` has full control of the destruction timing of `CoreWorker`.
   static CoreWorker &GetCoreWorker();
 
