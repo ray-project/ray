@@ -76,8 +76,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::TryGetWorker() {
 CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
     : options_(options),
       worker_id_(options.worker_type == WorkerType::DRIVER
-                            ? ComputeDriverIdFromJob(options_.job_id)
-                            : WorkerID::FromRandom()) {
+                     ? ComputeDriverIdFromJob(options_.job_id)
+                     : WorkerID::FromRandom()) {
   if (options_.enable_logging) {
     std::stringstream app_name;
     app_name << LanguageString(options_.language) << "-core-"
@@ -240,7 +240,10 @@ void CoreWorkerProcessImpl::RunWorkerTaskExecutionLoop() {
   RAY_CHECK(core_worker != nullptr);
   core_worker->RunTaskExecutionLoop();
   RAY_LOG(INFO) << "Task execution loop terminated. Removing the global worker.";
-  // core_worker_ = nullptr;
+  {
+    absl::WriterMutexLock lock(&mutex_);
+    core_worker_ = nullptr;
+  }
 }
 
 void CoreWorkerProcessImpl::ShutdownDriver() {
@@ -251,7 +254,10 @@ void CoreWorkerProcessImpl::ShutdownDriver() {
   global_worker->Disconnect(/*exit_type*/ rpc::WorkerExitType::INTENDED_USER_EXIT,
                             /*exit_detail*/ "Shutdown by ray.shutdown().");
   global_worker->Shutdown();
-  // core_worker_ = nullptr;
+  {
+    absl::WriterMutexLock lock(&mutex_);
+    core_worker_ = nullptr;
+  }
 }
 
 std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::GetCoreWorker() const {

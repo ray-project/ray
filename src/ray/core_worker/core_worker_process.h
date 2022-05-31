@@ -146,10 +146,10 @@ class CoreWorkerProcessImpl {
   /// The various options.
   const CoreWorkerOptions options_;
 
-  /// The only core worker instance.
+  /// The core worker instance of this worker process.
   std::shared_ptr<CoreWorker> core_worker_ GUARDED_BY(mutex_);
 
-  /// The worker ID of the global worker.
+  /// The worker ID of this worker.
   const WorkerID worker_id_;
 
   /// To protect access to core_worker_
