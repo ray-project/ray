@@ -426,6 +426,7 @@ class ServeController:
 
         if self.config_deployment_request_ref is not None:
             ray.cancel(self.config_deployment_request_ref)
+            logger.debug("Canceled existing config deployment request.")
 
         self.config_deployment_request_ref = run_graph.options(
             runtime_env=runtime_env
