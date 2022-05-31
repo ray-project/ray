@@ -346,9 +346,10 @@ class Checkpoint:
         Returns:
             str: Directory containing checkpoint data.
         """
-        path = path if path is not None else self._get_temporary_checkpoint_dir()
+        has_path = path is not None
+        path = path if has_path else self._get_temporary_checkpoint_dir()
 
-        _make_dir(path)
+        _make_dir(path, drop_del_lock=not has_path)
 
         try:
             with FileLock(f"{path}.lock", timeout=0):
@@ -358,7 +359,11 @@ class Checkpoint:
             with FileLock(f"{path}.lock", timeout=-1):
                 pass
             if not os.path.exists(path):
-                return self.to_directory(path)
+                raise RuntimeError(
+                    f"Checkpoint directory {path} does not exist. "
+                    "This should never happen. If it does, please "
+                    "raise an issue on Ray Github."
+                )
 
         return path
 
@@ -542,18 +547,18 @@ def _unpack(stream: bytes, path: str) -> str:
 
 def _get_del_lock_path(path: str) -> str:
     """Get the path to the deletion lock file."""
-    return os.path.join(path, f".del_lock_{os.getpid()}")
+    return f"{path}.del_lock_{os.getpid()}"
 
 
 def _make_dir(path: str, drop_del_lock: bool = True) -> None:
     """Create the temporary checkpoint dir in ``path``."""
-    os.makedirs(path, exist_ok=True)
-    # Drop marker
-    open(os.path.join(path, ".is_checkpoint"), "a").close()
-
     if drop_del_lock:
         # Each process drops a deletion lock file it then cleans up.
         # If there are no lock files left, the last process
         # will remove the entire directory.
         del_lock_path = _get_del_lock_path(path)
         open(del_lock_path, "a").close()
+
+    os.makedirs(path, exist_ok=True)
+    # Drop marker
+    open(os.path.join(path, ".is_checkpoint"), "a").close()
