@@ -394,7 +394,7 @@ def install_matching_ray_locally(ray_wheels: Optional[str]):
         text=True,
     )
     for module_name in RELOAD_MODULES:
-        for loaded_module in sys.modules:
+        for loaded_module in list(sys.modules):
             if loaded_module == module_name or loaded_module.startswith(
                 f"{module_name}."
             ):
