@@ -250,7 +250,7 @@ class CRRTorchPolicy(TorchPolicyV2, TargetNetworkMixin):
         if advantage_type == "mean":
             v_t = reshaped_q_st_pi.mean(dim=0)
         elif advantage_type == "max":
-            v_t = reshaped_q_st_pi.max(dim=0)
+            v_t, _ = reshaped_q_st_pi.max(dim=0)
         else:
             raise ValueError(f"Invalid advantage type: {advantage_type}.")
 
