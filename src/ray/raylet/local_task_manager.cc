@@ -24,6 +24,19 @@
 namespace ray {
 namespace raylet {
 
+namespace {
+void ReplyCancelled(std::shared_ptr<internal::Work> &work,
+                    rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
+                    const std::string &scheduling_failure_message) {
+  auto reply = work->reply;
+  auto callback = work->callback;
+  reply->set_canceled(true);
+  reply->set_failure_type(failure_type);
+  reply->set_scheduling_failure_message(scheduling_failure_message);
+  callback();
+}
+}  // namespace
+
 LocalTaskManager::LocalTaskManager(
     const NodeID &self_node_id,
     std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
@@ -57,7 +70,9 @@ LocalTaskManager::LocalTaskManager(
 void LocalTaskManager::QueueAndScheduleTask(std::shared_ptr<internal::Work> work) {
   if (!physical_resource_manager_.HasResourceCapacityForTask(
           work->task.GetTaskSpecification())) {
-    // reject the task.
+    ReplyCancelled(
+        work, rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_OUT_OF_DISK, "");
+    return;
   }
   WaitForTaskArgsRequests(work);
   ScheduleAndDispatchTasks();
@@ -717,19 +732,6 @@ void LocalTaskManager::ReleaseTaskArgs(const TaskID &task_id) {
     executing_task_args_.erase(it);
   }
 }
-
-namespace {
-void ReplyCancelled(std::shared_ptr<internal::Work> &work,
-                    rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
-                    const std::string &scheduling_failure_message) {
-  auto reply = work->reply;
-  auto callback = work->callback;
-  reply->set_canceled(true);
-  reply->set_failure_type(failure_type);
-  reply->set_scheduling_failure_message(scheduling_failure_message);
-  callback();
-}
-}  // namespace
 
 bool LocalTaskManager::CancelTask(
     const TaskID &task_id,

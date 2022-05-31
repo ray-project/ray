@@ -18,11 +18,12 @@ namespace ray {
 
 namespace raylet {
 
-bool PhysicalResourceManager::HasResourceCapacityForTask(const TaskSpecification& /* unused */) const {
-    if (disk_monitor.OverCapacity()) {
-        return false;
-    }
-    return true;
+bool PhysicalResourceManager::HasResourceCapacityForTask(
+    const TaskSpecification & /* unused */) const {
+  if (disk_monitor.OverCapacity()) {
+    return false;
+  }
+  return true;
 }
 
 }  // namespace raylet

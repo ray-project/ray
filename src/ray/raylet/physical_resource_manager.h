@@ -18,12 +18,12 @@ namespace ray {
 
 namespace raylet {
 
-class PhysicalResourceManager{
+class PhysicalResourceManager {
  public:
-    bool HasResourceCapacityForTask(const TaskSpecification& task_spec) const;
+  bool HasResourceCapacityForTask(const TaskSpecification &task_spec) const;
 
  private:
-    const LocalDiskMonitor disk_monitor;
+  const LocalDiskMonitor disk_monitor;
 };
 
 }  // namespace raylet
