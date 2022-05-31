@@ -582,36 +582,66 @@ class TestServeApplicationSchema:
         with pytest.raises(ValidationError):
             ServeApplicationSchema.parse_obj(serve_application_schema)
 
-    def test_deployment_dicts_basic(self):
+    def test_serve_application_aliasing(self):
+        """Check aliasing behavior for schemas."""
+
+        # Check that private options can optionally include underscore
         app_dict = {
             "import_path": "module.graph",
             "runtime_env": {},
             "deployments": [
                 {
-                    "name": "defaults",
-                    "import_path": "example.path",
-                    "num_replicas": 2,
-                    "max_concurrent_queries": 10,
+                    "name": "d1",
+                    "max_concurrent_queries": 3,
+                    "autoscaling_config": {},
+                    "_graceful_shutdown_wait_loop_s": 30,
+                    "graceful_shutdown_timeout_s": 10,
+                    "_health_check_period_s": 5,
+                    "health_check_timeout_s": 7,
                 },
                 {
-                    "name": "defaults",
-                    "import_path": "example.path",
-                    "num_replicas": 5,
-                    "ray_actor_options": {
-                        "num_gpus": 2,
-                        "runtime_env": {
-                            "packages": ["tensorflow", "requests"],
-                            "env_vars": {"OMP_NUM_THREADS": "32"},
-                        },
-                    },
+                    "name": "d2",
+                    "max_concurrent_queries": 6,
+                    "_autoscaling_config": {},
+                    "graceful_shutdown_wait_loop_s": 50,
+                    "_graceful_shutdown_timeout_s": 15,
+                    "health_check_period_s": 53,
+                    "_health_check_timeout_s": 73,
                 },
             ],
         }
 
-        assert (
-            app_dict["deployments"]
-            == ServeApplicationSchema.parse_obj(app_dict).deployment_dicts()
-        )
+        schema = ServeApplicationSchema.parse_obj(app_dict)
+
+        # Check that schema dictionary can include private options with an
+        # underscore (using the aliases)
+
+        private_options = {
+            "_autoscaling_config",
+            "_graceful_shutdown_wait_loop_s",
+            "_graceful_shutdown_timeout_s",
+            "_health_check_period_s",
+            "_health_check_timeout_s",
+        }
+
+        for deployment in schema.dict(by_alias=True)["deployments"]:
+            for option in private_options:
+                # Option with leading underscore
+                assert option in deployment
+
+                # Option without leading underscore
+                assert option[1:] not in deployment
+
+        # Check that schema dictionary can include private options without an
+        # underscore (using the field names)
+
+        for deployment in schema.dict()["deployments"]:
+            for option in private_options:
+                # Option without leading underscore
+                assert option[1:] in deployment
+
+                # Option with leading underscore
+                assert option not in deployment
 
 
 class TestServeStatusSchema:
