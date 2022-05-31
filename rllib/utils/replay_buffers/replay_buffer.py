@@ -33,6 +33,7 @@ class StorageUnit(Enum):
     episodes: One buffer slot per episode.
     fragemts: One buffer slot per incoming batch.
     """
+
     TIMESTEPS = "timesteps"
     SEQUENCES = "sequences"
     EPISODES = "episodes"
@@ -61,7 +62,8 @@ def warn_replay_capacity(*, item: SampleBatchType, num_items: int) -> None:
         else:
             logger.info(msg)
 
-  # TODO (artur): Remove ParallelIteratorWorker once we no longer support executionplans
+
+# TODO (artur): Remove ParallelIteratorWorker once we no longer support executionplans
 @DeveloperAPI
 class ReplayBuffer(ParallelIteratorWorker):
     """The lowest-level replay buffer interface used by RLlib.

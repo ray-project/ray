@@ -51,6 +51,7 @@ buffer.sample(2)
 # of dummy_batch `{a: [1, 1], b: [2, 2,]}`.
 # __sphinx_doc_replay_buffer_basic_interaction__end__
 
+
 # __sphinx_doc_replay_buffer_own_buffer__begin__
 class LessSampledReplayBuffer(ReplayBuffer):
     @override(ReplayBuffer)
