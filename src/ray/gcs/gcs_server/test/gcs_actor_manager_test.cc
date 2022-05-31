@@ -207,11 +207,12 @@ class GcsActorManagerTest : public ::testing::Test {
     return address;
   }
 
-  std::shared_ptr<gcs::GcsActor> RegisterActor(const JobID &job_id,
-                                               int max_restarts = 0,
-                                               bool detached = false,
-                                               const std::string &name = "",
-                                               const std::string &ray_namespace = "test") {
+  std::shared_ptr<gcs::GcsActor> RegisterActor(
+      const JobID &job_id,
+      int max_restarts = 0,
+      bool detached = false,
+      const std::string &name = "",
+      const std::string &ray_namespace = "test") {
     std::promise<std::shared_ptr<gcs::GcsActor>> promise;
     auto request = Mocker::GenRegisterActorRequest(
         job_id, max_restarts, detached, name, ray_namespace);
@@ -633,7 +634,8 @@ TEST_F(GcsActorManagerTest, TestNamedActors) {
             request2.task_spec().actor_creation_task_spec().actor_id());
 
   // Check that looking up a non-existent name returns ActorID::Nil();
-  ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor3", "test_named_actor"), ActorID::Nil());
+  ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor3", "test_named_actor"),
+            ActorID::Nil());
 
   // Check that naming collisions return Status::Invalid.
   auto request3 = Mocker::GenRegisterActorRequest(job_id_1,
