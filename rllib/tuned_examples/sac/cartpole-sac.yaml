@@ -9,7 +9,7 @@ cartpole-sac:
         framework: tf
         gamma: 0.95
         no_done_at_end: false
-        target_network_update_freq: 128
+        target_network_update_freq: 32
         tau: 1.0
         # initial_alpha: 0.5
         train_batch_size: 32
