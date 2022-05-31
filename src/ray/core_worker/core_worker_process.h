@@ -82,7 +82,14 @@ class CoreWorkerProcess {
   /// NOTE (kfstorm): Here we return a reference instead of a `shared_ptr` to make sure
   /// Do we need to remain TryGetWorker?
   /// `CoreWorkerProcess` has full control of the destruction timing of `CoreWorker`.
-  static std::shared_ptr<CoreWorker> GetCoreWorker();
+  static CoreWorker &GetCoreWorker();
+
+  /// Try to get the `CoreWorker` instance by worker ID.
+  /// If the current thread is not associated with a core worker, returns a null pointer.
+  ///
+  /// \param[in] workerId The worker ID.
+  /// \return The `CoreWorker` instance.
+  static std::shared_ptr<CoreWorker> TryGetWorker();
 
   /// Whether the current process has been initialized for core worker.
   static bool IsInitialized();

@@ -79,7 +79,7 @@ Java_io_ray_runtime_actor_NativeActorHandle_nativeRemoveActorHandleReference(
   // We can't control the timing of Java GC, so it's normal that this method is called but
   // core worker is shutting down (or already shut down). If we can't get a core worker
   // instance here, skip calling the `RemoveLocalReference` method.
-  auto core_worker = CoreWorkerProcess::GetCoreWorker();
+ auto core_worker = CoreWorkerProcess::TryGetWorker();
   if (core_worker != nullptr) {
     const auto actor_id = JavaByteArrayToId<ActorID>(env, actorId);
     core_worker->RemoveActorHandleReference(actor_id);

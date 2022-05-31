@@ -55,15 +55,22 @@ bool CoreWorkerProcess::IsInitialized() { return core_worker_process != nullptr;
 
 void CoreWorkerProcess::HandleAtExit() { core_worker_process.reset(); }
 
-std::shared_ptr<CoreWorker> CoreWorkerProcess::GetCoreWorker() {
+CoreWorker &CoreWorkerProcess::GetCoreWorker() {
   EnsureInitialized(/*quick_exit*/ true);
-  return core_worker_process->GetCoreWorker();
+  return *core_worker_process->GetCoreWorker();
 }
 
 void CoreWorkerProcess::RunTaskExecutionLoop() {
   EnsureInitialized(/*quick_exit*/ false);
   core_worker_process->RunWorkerTaskExecutionLoop();
   core_worker_process.reset();
+}
+
+std::shared_ptr<CoreWorker> CoreWorkerProcess::TryGetWorker() {
+  if (!core_worker_process) {
+    return nullptr;
+  }
+  return core_worker_process->GetCoreWorker();
 }
 
 CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)

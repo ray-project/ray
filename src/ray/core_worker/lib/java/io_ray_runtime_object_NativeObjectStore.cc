@@ -177,7 +177,7 @@ Java_io_ray_runtime_object_NativeObjectStore_nativeAddLocalReference(
 
 JNIEXPORT void JNICALL
 Java_io_ray_runtime_object_NativeObjectStore_nativeRemoveLocalReference(
-    JNIEnv *env, jclass, jbyteArray workerId, jbyteArray objectId) {
+    JNIEnv *env, jclass, jbyteArray objectId) {
   auto object_id = JavaByteArrayToId<ObjectID>(env, objectId);
   // We can't control the timing of Java GC, so it's normal that this method is called but
   // core worker is shutting down (or already shut down). If we can't get a core worker
