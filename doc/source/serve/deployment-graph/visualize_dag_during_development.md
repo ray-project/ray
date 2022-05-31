@@ -1,6 +1,6 @@
 # Pattern: Visualize DAG during development
 
-The example shows how to iteratively develop and visualize your deployment graph.
+The example shows how to iteratively develop and visualize your deployment graph. For a runnable DAG, we will show both full and partial DAG depending on your choice of root node.
 
 ## Code
 
@@ -13,7 +13,10 @@ The example shows how to iteratively develop and visualize your deployment graph
 
 ## Outputs
 
-The node of user choice will become the root of the graph for both execution as well as visualization, where non-reachable nodes from root will be ignored. In the development phase, when we picked `m1_output` as the root, we can see a visualization of the underlying execution path that's partial of the entire graph.
+```{note}
+The node of user choice will become the root of the graph for both execution as well as visualization, where non-reachable nodes from root will be ignored regardless if they appeared in user code.
+```
+In the development phase, when we picked `m1_output` as the root, we can see a visualization of the underlying execution path that's partial of the entire graph.
 
 ![pic](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/deployment-graph/visualize_partial.svg)
 
