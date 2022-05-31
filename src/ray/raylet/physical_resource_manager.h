@@ -14,6 +14,13 @@
 
 #pragma once
 
+#include <filesystem>
+#include <optional>
+#include <string>
+#include <utility>
+
+#include "ray/util/logging.h"
+
 namespace ray {
 
 namespace raylet {
@@ -22,8 +29,14 @@ class PhysicalResourceManager {
  public:
   bool HasResourceCapacityForTask(const TaskSpecification &task_spec) const;
 
+  std::optional<std::filesystem::space_info> FileSystemSpace() const;
+
  private:
-  const LocalDiskMonitor disk_monitor;
+  bool OverFileSystemCapacity() const;
+
+ private:
+  const std::string path_;
+  const double available_threshold_;
 };
 
 }  // namespace raylet
