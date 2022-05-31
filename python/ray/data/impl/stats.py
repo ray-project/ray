@@ -8,7 +8,6 @@ import ray
 from ray.data.block import BlockMetadata
 from ray.data.context import DatasetContext
 from ray.data.impl.block_list import BlockList
-from ray.util.client import ray as client_ray
 
 
 def fmt(seconds: float) -> str:
