@@ -111,44 +111,14 @@ class _StatsActor:
         )
 
 
-# Actor handle, job id, client id the actor was created for.
-_stats_actor = [None, None, None]
-
-
 def _get_or_create_stats_actor():
-    # Whether the context changed:
-    # - On client, it means a new connection to server, reflecting in client id
-    # - On server, it means a new driver, reflecting in job id
-    context_changed = False
-    if _stats_actor[0]:
-        if client_ray.is_connected():
-            if _stats_actor[2] != client_ray.get_context().client_worker._client_id:
-                context_changed = True
-        elif _stats_actor[1] != ray.get_runtime_context().job_id.hex():
-            context_changed = True
-
-    # Need to re-create it if Ray restarts (mostly for unit tests).
-    if (
-        not _stats_actor[0]
-        or not ray.is_initialized()
-        or context_changed
-    ):
-        ctx = DatasetContext.get_current()
-        _stats_actor[0] = _StatsActor.options(
-            name="datasets_stats_actor",
-            get_if_exists=True,
-            scheduling_strategy=ctx.scheduling_strategy,
-        ).remote()
-        _stats_actor[1] = ray.get_runtime_context().job_id.hex()
-        if client_ray.is_connected():
-            _stats_actor[2] = client_ray.get_context().client_worker._client_id
-
-        # Clear the actor handle after Ray reinits since it's no longer valid.
-        def clear_actor():
-            _stats_actor = [None, None, None]
-
-        ray.worker._post_init_hooks.append(clear_actor)
-    return _stats_actor[0]
+    ctx = DatasetContext.get_current()
+    return _StatsActor.options(
+        name="datasets_stats_actor",
+        get_if_exists=True,
+        lifetime="detached",
+        scheduling_strategy=ctx.scheduling_strategy,
+    ).remote()
 
 
 class DatasetStats:
