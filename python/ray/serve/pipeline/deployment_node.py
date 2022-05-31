@@ -1,5 +1,4 @@
 import inspect
-import json
 from typing import Any, Callable, Dict, Optional, List, Tuple, Union
 
 from ray.experimental.dag import DAGNode
@@ -14,13 +13,9 @@ from ray.serve.handle import RayServeLazySyncHandle
 
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.pipeline.deployment_function_node import DeploymentFunctionNode
-from ray.experimental.dag.constants import (
-    DAGNODE_TYPE_KEY,
-    PARENT_CLASS_NODE_KEY,
-)
+from ray.experimental.dag.constants import PARENT_CLASS_NODE_KEY
 from ray.experimental.dag.format_utils import get_dag_node_str
 from ray.serve.deployment import Deployment, schema_to_deployment
-from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.config import DeploymentConfig
 from ray.serve.utils import get_deployment_import_path
 from ray.serve.schema import DeploymentSchema
@@ -64,19 +59,6 @@ class DeploymentNode(DAGNode):
                 return RayServeLazySyncHandle(node._deployment.name)
             elif isinstance(node, DeploymentExecutorNode):
                 return node._deployment_handle
-            elif isinstance(
-                node,
-                (
-                    DeploymentMethodNode,
-                    DeploymentMethodExecutorNode,
-                    DeploymentFunctionNode,
-                    DeploymentFunctionExecutorNode,
-                ),
-            ):
-                from ray.serve.pipeline.json_serde import DAGNodeEncoder
-
-                serve_dag_root_json = json.dumps(node, cls=DAGNodeEncoder)
-                return RayServeDAGHandle(serve_dag_root_json)
 
         (
             replaced_deployment_init_args,
@@ -85,6 +67,9 @@ class DeploymentNode(DAGNode):
             [deployment_init_args, deployment_init_kwargs],
             predictate_fn=lambda node: isinstance(
                 node,
+                # We need to match and replace all DAGNodes even though they
+                # could be None, because no DAGNode replacement should run into
+                # re-resolved child DAGNodes, otherwise with KeyError
                 (
                     DeploymentNode,
                     DeploymentMethodNode,
@@ -184,28 +169,3 @@ class DeploymentNode(DAGNode):
         ):  # built by serve top level api, this is ignored for serve.run
             return "dummy"
         return get_deployment_import_path(self._deployment)
-
-    def to_json(self) -> Dict[str, Any]:
-        return {
-            DAGNODE_TYPE_KEY: DeploymentNode.__name__,
-            "deployment_name": self.get_deployment_name(),
-            # Will be overriden by build()
-            "import_path": self.get_import_path(),
-            "args": self.get_args(),
-            "kwargs": self.get_kwargs(),
-            # .options() should not contain any DAGNode type
-            "options": self.get_options(),
-            "other_args_to_resolve": self.get_other_args_to_resolve(),
-        }
-
-    @classmethod
-    def from_json(cls, input_json):
-        assert input_json[DAGNODE_TYPE_KEY] == DeploymentNode.__name__
-        return cls(
-            input_json["import_path"],
-            input_json["deployment_name"],
-            input_json["args"],
-            input_json["kwargs"],
-            input_json["options"],
-            other_args_to_resolve=input_json["other_args_to_resolve"],
-        )
