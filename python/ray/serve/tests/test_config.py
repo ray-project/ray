@@ -120,13 +120,13 @@ def test_replica_config_validation():
     def function(_):
         pass
 
-    ReplicaConfig(Class)
-    ReplicaConfig(function)
+    ReplicaConfig.create(Class)
+    ReplicaConfig.create(function)
     with pytest.raises(TypeError):
-        ReplicaConfig(Class())
+        ReplicaConfig.create(Class())
 
     # Check ray_actor_options validation.
-    ReplicaConfig(
+    ReplicaConfig.create(
         Class,
         tuple(),
         dict(),
@@ -139,27 +139,27 @@ def test_replica_config_validation():
         },
     )
     with pytest.raises(TypeError):
-        ReplicaConfig(Class, ray_actor_options=1.0)
+        ReplicaConfig.create(Class, ray_actor_options=1.0)
     with pytest.raises(TypeError):
-        ReplicaConfig(Class, ray_actor_options=False)
+        ReplicaConfig.create(Class, ray_actor_options=False)
     with pytest.raises(TypeError):
-        ReplicaConfig(Class, ray_actor_options={"num_cpus": "hello"})
+        ReplicaConfig.create(Class, ray_actor_options={"num_cpus": "hello"})
     with pytest.raises(ValueError):
-        ReplicaConfig(Class, ray_actor_options={"num_cpus": -1})
+        ReplicaConfig.create(Class, ray_actor_options={"num_cpus": -1})
     with pytest.raises(TypeError):
-        ReplicaConfig(Class, ray_actor_options={"num_gpus": "hello"})
+        ReplicaConfig.create(Class, ray_actor_options={"num_gpus": "hello"})
     with pytest.raises(ValueError):
-        ReplicaConfig(Class, ray_actor_options={"num_gpus": -1})
+        ReplicaConfig.create(Class, ray_actor_options={"num_gpus": -1})
     with pytest.raises(TypeError):
-        ReplicaConfig(Class, ray_actor_options={"memory": "hello"})
+        ReplicaConfig.create(Class, ray_actor_options={"memory": "hello"})
     with pytest.raises(ValueError):
-        ReplicaConfig(Class, ray_actor_options={"memory": -1})
+        ReplicaConfig.create(Class, ray_actor_options={"memory": -1})
     with pytest.raises(TypeError):
-        ReplicaConfig(Class, ray_actor_options={"object_store_memory": "hello"})
+        ReplicaConfig.create(Class, ray_actor_options={"object_store_memory": "hello"})
     with pytest.raises(ValueError):
-        ReplicaConfig(Class, ray_actor_options={"object_store_memory": -1})
+        ReplicaConfig.create(Class, ray_actor_options={"object_store_memory": -1})
     with pytest.raises(TypeError):
-        ReplicaConfig(Class, ray_actor_options={"resources": []})
+        ReplicaConfig.create(Class, ray_actor_options={"resources": []})
 
     disallowed_ray_actor_options = {
         "max_concurrency",
@@ -179,7 +179,7 @@ def test_replica_config_validation():
 
     for option in disallowed_ray_actor_options:
         with pytest.raises(ValueError):
-            ReplicaConfig(Class, ray_actor_options={option: None})
+            ReplicaConfig.create(Class, ray_actor_options={option: None})
 
 
 def test_http_options():
