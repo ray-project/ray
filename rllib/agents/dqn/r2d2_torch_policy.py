@@ -4,20 +4,25 @@ from typing import Dict, Tuple
 
 import gym
 import ray
-from ray.rllib.agents.dqn.dqn_tf_policy import PRIO_WEIGHTS, postprocess_nstep_and_prio
-from ray.rllib.agents.dqn.dqn_torch_policy import (
+from ray.rllib.algorithms.dqn.dqn_tf_policy import (
+    PRIO_WEIGHTS,
+    postprocess_nstep_and_prio,
+)
+from ray.rllib.algorithms.dqn.dqn_torch_policy import (
     adam_optimizer,
     build_q_model_and_distribution,
     compute_q_values,
 )
 from ray.rllib.agents.dqn.r2d2_tf_policy import get_distribution_inputs_and_class
-from ray.rllib.agents.dqn.simple_q_torch_policy import TargetNetworkMixin
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_policy import LearningRateSchedule
+from ray.rllib.policy.torch_mixins import (
+    LearningRateSchedule,
+    TargetNetworkMixin,
+)
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import (
     apply_grad_clipping,
@@ -170,7 +175,7 @@ def r2d2_loss(policy: Policy, model, _, train_batch: SampleBatch) -> TensorType:
         # Seq-mask all loss-related terms.
         seq_mask = sequence_mask(train_batch[SampleBatch.SEQ_LENS], T)[:, :-1]
         # Mask away also the burn-in sequence at the beginning.
-        burn_in = policy.config["burn_in"]
+        burn_in = policy.config["replay_buffer_config"]["replay_burn_in"]
         if burn_in > 0 and burn_in < T:
             seq_mask[:, :burn_in] = False
 

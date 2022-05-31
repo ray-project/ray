@@ -6,7 +6,7 @@ import tensorflow as tf
 from ray.ml.predictor import Predictor, DataBatchType
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
-from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY
+from ray.ml.train.data_parallel_trainer import _load_checkpoint
 
 
 class TensorflowPredictor(Predictor):
@@ -47,15 +47,9 @@ class TensorflowPredictor(Predictor):
             model_definition: A callable that returns a TensorFlow Keras model
                 to use. Model weights will be loaded from the checkpoint.
         """
-        checkpoint_dict = checkpoint.to_dict()
-        preprocessor = checkpoint_dict.get(PREPROCESSOR_KEY, None)
-        if MODEL_KEY not in checkpoint_dict:
-            raise RuntimeError(
-                f"No item with key: {MODEL_KEY} is found in the "
-                f"Checkpoint. Make sure this key exists when saving the "
-                f"checkpoint in ``TensorflowTrainer``."
-            )
-        model_weights = checkpoint_dict[MODEL_KEY]
+        # Cannot use TensorFlow load_checkpoint here
+        # due to instantiated models not being pickleable
+        model_weights, preprocessor = _load_checkpoint(checkpoint, "TensorflowTrainer")
         return TensorflowPredictor(
             model_definition=model_definition,
             model_weights=model_weights,
@@ -93,7 +87,7 @@ class TensorflowPredictor(Predictor):
             def build_model(self):
                 return tf.keras.Sequential(
                     [
-                        tf.keras.layers.InputLayer(input_shape=(1,)),
+                        tf.keras.layers.InputLayer(input_shape=(2,)),
                         tf.keras.layers.Dense(1),
                     ]
                 )
@@ -102,9 +96,6 @@ class TensorflowPredictor(Predictor):
 
             data = np.array([[1, 2], [3, 4]])
             predictions = predictor.predict(data)
-
-            # Only use first column as the feature
-            predictions = predictor.predict(data, feature_columns=[0])
 
         .. code-block:: python
 
@@ -141,8 +132,6 @@ class TensorflowPredictor(Predictor):
             if feature_columns:
                 data = data[feature_columns]
             data = data.values
-        else:
-            data = data[:, feature_columns]
 
         tensor = tf.convert_to_tensor(data, dtype=dtype)
 
@@ -150,8 +139,15 @@ class TensorflowPredictor(Predictor):
         # a callable that returns the model and initialize it here,
         # instead of having an initialized model object as an attribute.
         model = self.model_definition()
-        if self.model_weights:
+
+        if self.model_weights is not None:
+            input_shape = list(tensor.shape)
+            # The batch axis can contain varying number of elements, so we set
+            # the shape along the axis to `None`.
+            input_shape[0] = None
+
+            model.build(input_shape=input_shape)
             model.set_weights(self.model_weights)
 
-        prediction = model(tensor).numpy().ravel()
-        return pd.DataFrame(prediction, columns=["predictions"])
+        prediction = list(model(tensor).numpy())
+        return pd.DataFrame({"predictions": prediction}, columns=["predictions"])

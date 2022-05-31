@@ -6,8 +6,10 @@ import ray  # noqa F401
 import psutil  # noqa E402
 
 from ray.rllib.utils.annotations import ExperimentalAPI, override
-from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBuffer
-from ray.rllib.execution.buffers.replay_buffer import warn_replay_capacity
+from ray.rllib.utils.replay_buffers.replay_buffer import (
+    ReplayBuffer,
+    warn_replay_capacity,
+)
 from ray.rllib.utils.typing import SampleBatchType
 
 
@@ -72,7 +74,11 @@ class ReservoirBuffer(ReplayBuffer):
                 self._next_idx = idx
                 self._evicted_hit_stats.push(self._hit_count[idx])
                 self._hit_count[idx] = 0
+
+                item_to_be_removed = self._storage[idx]
+                self._est_size_bytes -= item_to_be_removed.size_bytes()
                 self._storage[idx] = item
+                self._est_size_bytes += item.size_bytes()
 
                 assert item.count > 0, item
                 warn_replay_capacity(item=item, num_items=self.capacity / item.count)

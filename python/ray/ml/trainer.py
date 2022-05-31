@@ -136,7 +136,7 @@ class Trainer(abc.ABC):
         resume_from_checkpoint: A checkpoint to resume training from.
     """
 
-    _scaling_config_allowed_keys: List[str] = []
+    _scaling_config_allowed_keys: List[str] = ["trainer_resources"]
 
     def __init__(
         self,

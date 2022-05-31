@@ -32,7 +32,8 @@ struct LocalityData {
 /// Interface for providers of locality data to the lease policy.
 class LocalityDataProviderInterface {
  public:
-  virtual absl::optional<LocalityData> GetLocalityData(const ObjectID &object_id) = 0;
+  virtual absl::optional<LocalityData> GetLocalityData(
+      const ObjectID &object_id) const = 0;
 
   virtual ~LocalityDataProviderInterface() {}
 };

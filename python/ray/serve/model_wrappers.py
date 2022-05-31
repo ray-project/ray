@@ -64,6 +64,8 @@ class ModelWrapper(SimpleSchemaIngress):
             documentation to learn more.
         batching_params(dict, None, False): override the default parameters to
             :func:`ray.serve.batch`. Pass ``False`` to disable batching.
+        **predictor_kwargs: Additional keyword arguments passed to the
+            ``Predictor.from_checkpoint()`` call.
     """
 
     def __init__(
@@ -74,11 +76,12 @@ class ModelWrapper(SimpleSchemaIngress):
             str, HTTPAdapterFn
         ] = "ray.serve.http_adapters.json_to_ndarray",
         batching_params: Optional[Union[Dict[str, int], bool]] = None,
+        **predictor_kwargs,
     ):
         predictor_cls = _load_predictor_cls(predictor_cls)
         checkpoint = _load_checkpoint(checkpoint)
 
-        self.model = predictor_cls.from_checkpoint(checkpoint)
+        self.model = predictor_cls.from_checkpoint(checkpoint, **predictor_kwargs)
 
         # Configure Batching
         if batching_params is False:

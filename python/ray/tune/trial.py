@@ -15,7 +15,7 @@ import ray
 import ray.cloudpickle as cloudpickle
 from ray.exceptions import RayActorError, RayTaskError
 from ray.tune import TuneError
-from ray.tune.checkpoint_manager import _TuneCheckpoint, CheckpointManager
+from ray.tune.checkpoint_manager import _TuneCheckpoint, _CheckpointManager
 
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
 # need because there are cyclic imports that may cause specific names to not
@@ -45,7 +45,7 @@ DEBUG_PRINT_INTERVAL = 5
 logger = logging.getLogger(__name__)
 
 
-class Location:
+class _Location:
     """Describes the location at which Trial is placed to run."""
 
     def __init__(self, hostname=None, pid=None):
@@ -92,7 +92,7 @@ class ExportFormat:
                 raise TuneError("Unsupported import/export format: " + formats[i])
 
 
-class CheckpointDeleter:
+class _CheckpointDeleter:
     """Checkpoint deleter callback for a runner."""
 
     def __init__(self, trial_id, runner):
@@ -129,7 +129,7 @@ class CheckpointDeleter:
                     logger.debug("Local checkpoint dir not found during deletion.")
 
 
-class TrialInfo:
+class _TrialInfo:
     """Serializable struct for holding information for a Trial.
 
     Attributes:
@@ -286,7 +286,7 @@ class Trial:
         # Parameters that Tune varies across searches.
         self.evaluated_params = evaluated_params or {}
         self.experiment_tag = experiment_tag
-        self.location = Location()
+        self.location = _Location()
         trainable_cls = self.get_trainable_cls()
         if trainable_cls and _setup_default_resource:
             default_resources = trainable_cls.default_resource_request(self.config)
@@ -369,10 +369,10 @@ class Trial:
         self.keep_checkpoints_num = keep_checkpoints_num
         self.checkpoint_score_attr = checkpoint_score_attr
         self.sync_on_checkpoint = sync_on_checkpoint
-        self.checkpoint_manager = CheckpointManager(
+        self.checkpoint_manager = _CheckpointManager(
             keep_checkpoints_num,
             checkpoint_score_attr,
-            CheckpointDeleter(self._trainable_name(), self.runner),
+            _CheckpointDeleter(self._trainable_name(), self.runner),
         )
 
         # Restoration fields
@@ -414,7 +414,7 @@ class Trial:
                 self._default_result_or_future = None
         if self._default_result_or_future and self.runner:
             self.set_location(
-                Location(
+                _Location(
                     self._default_result_or_future.get(NODE_IP),
                     self._default_result_or_future.get(PID),
                 )
@@ -564,7 +564,7 @@ class Trial:
             self._default_result_or_future = runner.get_auto_filled_metrics.remote(
                 debug_metrics_only=True
             )
-        self.checkpoint_manager.delete = CheckpointDeleter(
+        self.checkpoint_manager.delete = _CheckpointDeleter(
             self._trainable_name(), runner
         )
         # No need to invalidate state cache: runner is not stored in json
@@ -618,9 +618,8 @@ class Trial:
         for criteria, stop_value in self.stopping_criterion.items():
             if criteria not in result:
                 raise TuneError(
-                    "Stopping criteria {} not provided in result {}.".format(
-                        criteria, result
-                    )
+                    "Stopping criteria {} not provided in result dict. Keys "
+                    "are {}.".format(criteria, list(result.keys()))
                 )
             elif isinstance(criteria, dict):
                 raise ValueError(
@@ -679,7 +678,7 @@ class Trial:
         if self.experiment_tag:
             result.update(experiment_tag=self.experiment_tag)
 
-        self.set_location(Location(result.get(NODE_IP), result.get(PID)))
+        self.set_location(_Location(result.get(NODE_IP), result.get(PID)))
         self.last_result = result
         self.last_update_time = time.time()
 
@@ -801,7 +800,7 @@ class Trial:
             state[key] = binary_to_hex(cloudpickle.dumps(state.get(key)))
 
         state["runner"] = None
-        state["location"] = Location()
+        state["location"] = _Location()
         # Avoid waiting for events that will never occur on resume.
         state["restoring_from"] = None
         state["saving_to"] = None

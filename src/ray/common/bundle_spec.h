@@ -72,6 +72,10 @@ class BundleSpecification : public MessageWrapper<rpc::Bundle> {
     return bundle_resource_labels_;
   }
 
+  /// TODO(Chong-Li): This function is used for updating PG's wildcard resources
+  /// incrementally in gcs. It should be removed when PG scheduling is refactored.
+  absl::flat_hash_map<std::string, double> GetWildcardResources() const;
+
   std::string DebugString() const;
 
  private:

@@ -13,8 +13,6 @@ By default, Tune automatically runs N concurrent trials, where N is the number o
     # If you have 4 CPUs on your machine, this will run 4 concurrent trials at a time.
     tune.run(trainable, num_samples=10)
 
-.. tip:: To run your code sequentially, use :ref:`Ray Local Mode <tune-debugging>`.
-
 You can override this parallelism with ``resources_per_trial``. Here you can
 specify your resource requests using either a dictionary or a
 :class:`PlacementGroupFactory <ray.tune.utils.placement_groups.PlacementGroupFactory>`
@@ -94,22 +92,8 @@ Read more in the Tune :ref:`distributed experiments guide <tune-distributed-ref>
 How to run distributed training with Tune?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-To tune distributed training jobs, Tune provides a set of ``DistributedTrainableCreator`` for different training frameworks.
-Below is an example for tuning distributed TensorFlow jobs:
-
-.. code-block:: python
-
-    # Please refer to full example in tf_distributed_keras_example.py
-    from ray.tune.integration.tensorflow import DistributedTrainableCreator
-    tf_trainable = DistributedTrainableCreator(
-        train_mnist,
-        use_gpu=args.use_gpu,
-        num_workers=2)
-    tune.run(tf_trainable,
-             num_samples=1)
-
-Read more about tuning :ref:`distributed PyTorch <tune-ddp-doc>`,
-:ref:`TensorFlow <tune-dist-tf-doc>` and :ref:`Horovod <tune-integration-horovod>` jobs.
+To tune distributed training jobs, you should use :ref:`Ray AI Runtime (Ray AIR) <air>` to use Ray Tune and Ray Train in conjunction with
+each other. Ray Tune will run multiple trials in parallel, with each trial running distributed training with Ray Train.
 
 How to limit concurrency?
 ~~~~~~~~~~~~~~~~~~~~~~~~~
