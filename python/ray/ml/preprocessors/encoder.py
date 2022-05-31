@@ -167,19 +167,19 @@ class MultiHotEncoder(Preprocessor):
     >>> import pandas as pd
     >>> mhe = MultiHotEncoder(columns=["A", "B"])
     >>> batch = pd.DataFrame(
-    >>>     {
-    >>>         "A": [["warm"], [], ["hot", "warm", "cold"], ["cold", "cold"]],
-    >>>         "B": ["warm", "cold", "hot", "cold"],
-    >>>     },
-    >>> )
+    ...     {
+    ...         "A": [["warm"], [], ["hot", "warm", "cold"], ["cold", "cold"]],
+    ...         "B": ["warm", "cold", "hot", "cold"],
+    ...     },
+    ... )
     >>> mhe.fit(ray.data.from_pandas(batch))
     >>> transformed_batch = mhe.transform_batch(batch)
     >>> expected_batch = pd.DataFrame(
-    >>>     {
-    >>>         "A": [[0, 0, 1], [0, 0, 0], [1, 1, 1], [2, 0, 0]],
-    >>>         "B": [[0, 0, 1], [1, 0, 0], [0, 1, 0], [1, 0, 0]],
-    >>>     }
-    >>> )
+    ...     {
+    ...         "A": [[0, 0, 1], [0, 0, 0], [1, 1, 1], [2, 0, 0]],
+    ...         "B": [[0, 0, 1], [1, 0, 0], [0, 1, 0], [1, 0, 0]],
+    ...     }
+    ... )
     >>> assert transformed_batch.equals(expected_batch)
 
     Transforming values not included in the fitted dataset or not among
