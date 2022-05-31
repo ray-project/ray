@@ -37,7 +37,7 @@ from ray.serve.version import DeploymentVersion
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-def create_replica_wrapper(name: str, serialized_deployment_def: bytes = None):
+def create_replica_wrapper(name: str):
     """Creates a replica class wrapping the provided function or class.
 
     This approach is picked over inheritance to avoid conflict between user
@@ -50,8 +50,9 @@ def create_replica_wrapper(name: str, serialized_deployment_def: bytes = None):
             self,
             deployment_name,
             replica_tag,
-            init_args,
-            init_kwargs,
+            serialized_deployment_def: bytes,
+            serialized_init_args: bytes,
+            serialized_init_kwargs: bytes,
             deployment_config_proto_bytes: bytes,
             version: DeploymentVersion,
             controller_name: str,
@@ -83,6 +84,16 @@ def create_replica_wrapper(name: str, serialized_deployment_def: bytes = None):
                         "are ignored when deploying via import path."
                     )
                     deployment_def = deployment_def.func_or_class
+
+            if serialized_init_args is not None:
+                init_args = cloudpickle.loads(serialized_init_args)
+            else:
+                init_args = ()
+
+            if serialized_init_kwargs is not None:
+                init_kwargs = cloudpickle.loads(serialized_init_kwargs)
+            else:
+                init_kwargs = {}
 
             deployment_config = DeploymentConfig.from_proto_bytes(
                 deployment_config_proto_bytes

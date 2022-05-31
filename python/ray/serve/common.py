@@ -199,14 +199,8 @@ class DeploymentInfo:
         if self._cached_actor_def is None:
             assert self.actor_name is not None
 
-            # Can't be passed in directly since line is too long for linter
-            serialized_deployment_def = self.replica_config.serialized_deployment_def
-
             self._cached_actor_def = ray.remote(**REPLICA_DEFAULT_ACTOR_OPTIONS)(
-                create_replica_wrapper(
-                    self.actor_name,
-                    serialized_deployment_def=serialized_deployment_def,
-                )
+                create_replica_wrapper(self.actor_name)
             )
 
         return self._cached_actor_def
