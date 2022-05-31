@@ -254,7 +254,6 @@ class ServeController:
             entry["name"] = deployment_name
             entry["namespace"] = ray.get_runtime_context().namespace
             entry["ray_job_id"] = deployment_info.deployer_job_id.hex()
-            entry["class_name"] = deployment_info.replica_config.func_or_class_name
             entry["version"] = deployment_info.version
             entry["http_route"] = route_prefix
             entry["start_time"] = deployment_info.start_time_ms
