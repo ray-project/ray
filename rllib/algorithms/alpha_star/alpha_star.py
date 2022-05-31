@@ -621,7 +621,7 @@ class AlphaStarTrainer(appo.APPOTrainer):
         super().__setstate__(state_copy)
 
 
-# Deprecated: Use ray.rllib.agents.ppo.PPOConfig instead!
+# Deprecated: Use ray.rllib.algorithms.alpha_star.AlphaStarConfig instead!
 class _deprecated_default_config(dict):
     def __init__(self):
         super().__init__(AlphaStarConfig().to_dict())
