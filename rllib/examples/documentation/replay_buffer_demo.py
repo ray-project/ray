@@ -14,7 +14,6 @@ from ray.rllib.policy.sample_batch import SampleBatch
 
 
 # __sphinx_doc_replay_buffer_type_specification__begin__
-
 config = {
     "env": "CartPole-v1",
     # Specify buffer via class. This is the recommended way to specify a custom buffer.
@@ -39,12 +38,10 @@ validate_buffer_config(yet_another_config)
 
 # After validation, all three configs yield the same effective config
 assert config == another_config == yet_another_config
-
 # __sphinx_doc_replay_buffer_type_specification__end__
 
 
 # __sphinx_doc_replay_buffer_basic_interaction__begin__
-
 # We choose fragments because it does not impose restrictions on our batch to be added
 buffer = ReplayBuffer(capacity=2, storage_unit=StorageUnit.FRAGMENTS)
 dummy_batch = SampleBatch({"a": [1], "b": [2]})
@@ -52,12 +49,9 @@ buffer.add(dummy_batch)
 buffer.sample(2)
 # Because elements can be sampled multiple times, we receive a concatenated version
 # of dummy_batch `{a: [1, 1], b: [2, 2,]}`.
-
 # __sphinx_doc_replay_buffer_basic_interaction__end__
 
 # __sphinx_doc_replay_buffer_own_buffer__begin__
-
-
 class LessSampledReplayBuffer(ReplayBuffer):
     @override(ReplayBuffer)
     def sample(
@@ -86,11 +80,9 @@ config["replay_buffer_config"]["type"] = LessSampledReplayBuffer
 tune.run(
     "SimpleQ", config=config, stop={"episode_reward_mean": 70, "training_iteration": 15}
 )
-
 # __sphinx_doc_replay_buffer_own_buffer__end__
 
 # __sphinx_doc_replay_buffer_advanced_usage_storage_unit__begin__
-
 # This line will make our buffer store only complete episodes found in a batch
 config["replay_buffer_config"]["storage_unit"] = StorageUnit.EPISODES
 
@@ -117,12 +109,10 @@ for i in range(10):
     less_sampled_buffer.sample(num_items=1, evict_sampled_more_then=9)
 
 assert len(less_sampled_buffer._storage) == 0
-
 # __sphinx_doc_replay_buffer_advanced_usage_storage_unit__end__
 
 
 # __sphinx_doc_replay_buffer_advanced_usage_underlying_buffers__begin__
-
 config = {
     "env": "CartPole-v1",
     "replay_buffer_config": {
@@ -138,6 +128,4 @@ config = {
 tune.run(
     "DQN", config=config, stop={"episode_reward_mean": 70, "training_iteration": 15}
 )
-
-
 # __sphinx_doc_replay_buffer_advanced_usage_underlying_buffers__end__
