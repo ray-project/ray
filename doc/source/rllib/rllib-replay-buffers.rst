@@ -24,7 +24,7 @@ to learn from these items. As a consequence, experiences with a higher priority 
 Eviction Strategy
 -----------------
 
-A buffer will generally be limited in its capacity to hold experiences. In the course of running an algorith, a buffer will eventually reach
+A buffer is naturally limited in its capacity to hold experiences. In the course of running an algorith, a buffer will eventually reach
 its capacity and in order to make room for new experiences, we need to delete (evict) older ones. This is generally done on a first-in-first-out basis.
 For your algorithms this means that buffers with a high capacity give the opportunity to learn from older samples, while smaller buffers
 make the learning process more on-policy. An exception from this strategy is made in buffers that implement `reservoir sampling <https://www.cs.umd.edu/~samir/498/vitter.pdf>`__.
@@ -75,12 +75,15 @@ Here are three ways of specifying a type:
 Apart from specifying a type, other parameters in that config are:
 
 #. Parameters that define how algorithms interact with replay buffers.
+
    * e.g. ``worker_side_prioritization`` to decide where to compute priorities
 
 #. Constructor arguments to instantiate the replay buffer.
+
    * e.g. ``capacity`` to limit the buffer's size
 
 #. Call arguments for underlying replay buffer methods.
+
    * e.g. ``prioritized_replay_beta`` is used by the :py:class:`~ray.rllib.utils.replay_buffers.multi_agent_prioritized_replay_buffer.MultiAgentPrioritizedReplayBuffer` to call the ``sample()`` method of every underlying :py:class:`~ray.rllib.utils.replay_buffers.prioritized_replay_buffer.PrioritizedReplayBuffer`
 
 
