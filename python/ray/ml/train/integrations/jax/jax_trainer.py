@@ -1,4 +1,4 @@
-from typing import Callable, Optional, Dict, Tuple, Union
+from typing import Callable, Optional, Dict, Tuple, Union, Any
 import jax
 
 from ray.train.jax import JaxConfig
