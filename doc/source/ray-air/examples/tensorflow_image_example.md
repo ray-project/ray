@@ -34,7 +34,13 @@ You should be familiar with TensorFlow before starting this tutorial. If you nee
 
 We'll train our classifier on a popular image dataset called [CIFAR-10](https://www.cs.toronto.edu/~kriz/cifar.html).
 
-First, let's load CIFAR-10 into a Ray Dataset.
+First, let's load CIFAR-10 into a Ray {py:class}`Dataset <ray.data.Dataset>`.
+This'll allow us to train on multiple machines.
+
+To load a TensorFlow dataset into a Ray {py:class}`Dataset <ray.data.Dataset>`, we:
+
+1. Define a factory function that creates and returns a TensorFlow dataset.
+2. Call {py:func}`read_datasource <ray.data.read_datasource>` and pass in our factory function.
 
 ```{code-cell} ipython3
 import ray
@@ -61,7 +67,8 @@ test_dataset = ray.data.read_datasource(
 train_dataset
 ```
 
-Note that {py:class}`SimpleTensorFlowDatasource <ray.data.datasource.SimpleTensorFlowDatasource>` loads all data into memory, so you shouldn't use it with larger datasets.
+Note that {py:class}`SimpleTensorFlowDatasource <ray.data.datasource.SimpleTensorFlowDatasource>`
+loads all data into memory, so you shouldn't use it with larger datasets.
 
 Our model will expect float arrays, so let's normalize pixel values to be between 0 and 1.
 
@@ -212,9 +219,9 @@ predictions.show(1)
 ```
 
 Now that we've classified all of the images, let's figure out which images were
-classified correctly. The ``predictions`` dataset contains predicted labels and 
-the ``test_dataset`` contains the true labels. To determine whether an image 
-was classified correctly, we join the two datasets and check if the predicted 
+classified correctly. The ``predictions`` dataset contains predicted labels and
+the ``test_dataset`` contains the true labels. To determine whether an image
+was classified correctly, we join the two datasets and check if the predicted
 labels are the same as the actual labels.
 
 ```{code-cell} python3
@@ -227,8 +234,8 @@ scores = test_dataset.zip(predictions).map_batches(calculate_prediction_scores)
 scores.show(1)
 ```
 
-To compute our test accuracy, we'll count how many images the model classified 
-correctly and divide that number by the total number of test images. 
+To compute our test accuracy, we'll count how many images the model classified
+correctly and divide that number by the total number of test images.
 
 ```{code-cell} python3
 scores.sum(on="correct") / scores.count()
@@ -236,7 +243,7 @@ scores.sum(on="correct") / scores.count()
 
 ## Deploy the network and make a prediction
 
-Our model seems to perform decently, so let's deploy the model to an 
+Our model seems to perform decently, so let's deploy the model to an
 endpoint. This'll allow us to make predictions over the Internet.
 
 ```{code-cell} python3
