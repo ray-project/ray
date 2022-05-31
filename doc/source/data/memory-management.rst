@@ -1,7 +1,7 @@
 .. _data_advanced:
 
-Execution and Memory Management
-===============================
+Memory Management
+=================
 
 This section deals with how Datasets manages execution and object store memory.
 
@@ -43,7 +43,7 @@ Datasets uses the Ray object store to store data blocks, which means it inherits
 **Load Balancing**: Datasets uses Ray scheduling hints to spread read tasks out across the cluster to balance memory usage.
 
 Lazy Execution Mode
-===================
+~~~~~~~~~~~~~~~~~~~
 
 .. note::
 
