@@ -27,6 +27,8 @@ from ray.data.datasource import SimpleTensorFlowDatasource
 import pandas as pd
 from ray.data.extensions import TensorArray
 
+from ray.ml.train.integrations.jax import JaxTrainer
+
 
 
 def get_dataset(dataset_name="mnist"): 
@@ -39,10 +41,10 @@ def get_dataset(dataset_name="mnist"):
     tf.config.experimental.set_visible_devices([], "GPU")
 
     def train_dataset_factory():
-        return tfds.load(dataset_name, split=["train"], as_supervised=True)[0]
+        return tfds.load(dataset_name, split=["train"], as_supervised=True)[0].take(16)
 
     def test_dataset_factory():
-        return tfds.load(dataset_name, split=["test"], as_supervised=True)[0]
+        return tfds.load(dataset_name, split=["test"], as_supervised=True)[0].take(16)
 
     train_dataset = ray.data.read_datasource(
         SimpleTensorFlowDatasource(), dataset_factory=train_dataset_factory
@@ -58,7 +60,7 @@ def get_dataset(dataset_name="mnist"):
     test_dataset = test_dataset.map_batches(normalize_images)
 
     def convert_batch_to_pandas(batch):
-        images = TensorArray([image.numpy() for image, _ in batch])
+        images = [TensorArray(image.numpy()) for image, _ in batch]
         labels = [label.numpy() for _, label in batch]
 
         df = pd.DataFrame({"image": images, "label": labels})
@@ -124,6 +126,7 @@ def train_func(config: Dict):
     def create_train_state(rng, learning_rate, momentum):
         """Creates initial `TrainState`."""
         mlp = MLP()
+        # TODO: consider the input shape here!
         params = mlp.init(rng, jnp.ones([1, 28, 28, 1]))["params"]
         tx = optax.sgd(learning_rate, momentum)
         return train_state.TrainState.create(apply_fn=MLP().apply, params=params, tx=tx)
@@ -169,15 +172,16 @@ def train_func(config: Dict):
 
     def train_epoch(state, train_ds, batch_size, rng):
         """Train for a single epoch."""
-        train_ds_size = len(train_ds["image"])
-        steps_per_epoch = train_ds_size // batch_size
+        # train_ds_size = len(train_ds["image"])
+        # steps_per_epoch = train_ds_size // batch_size
 
         epoch_loss = []
         epoch_accuracy = []
 
-        for i in range(steps_per_epoch):
-            batch_images = train_ds["image"][i * batch_size : (i + 1) * batch_size]
-            batch_labels = train_ds["label"][i * batch_size : (i + 1) * batch_size]
+        # for i in range(steps_per_epoch):
+        #     batch_images = train_ds["image"][i * batch_size : (i + 1) * batch_size]
+        #     batch_labels = train_ds["label"][i * batch_size : (i + 1) * batch_size]
+        for batch_images, batch_labels in train_ds: 
             batch_images = shard(batch_images)
             batch_labels = shard(batch_labels)
             state, loss, accuracy = train_step(state, batch_images, batch_labels)
@@ -200,7 +204,9 @@ def train_func(config: Dict):
 
     worker_batch_size = worker_batch_size // jax.local_device_count() * jax.local_device_count()
     # Create datasets
-    train_ds, test_ds = get_datasets()
+    # train_ds, test_ds = get_datasets()
+    train_ds = train.get_dataset_shard("train")
+
 
     rng = jax.random.PRNGKey(0)
     rng, init_rng = jax.random.split(rng)
@@ -213,8 +219,17 @@ def train_func(config: Dict):
     for epoch in range(1, num_epochs + 1):
         rng, input_rng = jax.random.split(rng)
         tic = time.time()
+        jax_dataset = train_ds.to_jax(
+                    feature_columns=["image"],
+                    label_column="label",
+                    batch_size=batch_size,
+                    unsqueeze_feature_tensors=False,
+                    unsqueeze_label_tensor=False)
+
+
+
         state, train_loss, train_accuracy = train_epoch(
-            state, train_ds, worker_batch_size, input_rng
+            state, jax_dataset, worker_batch_size, input_rng
         )
         epoch_time = time.time() - tic
         print(
@@ -231,18 +246,27 @@ def train_mnist(num_workers=4, use_gpu=True):
     train_dataset, test_dataset = get_dataset("mnist")
 
     # trainer = Trainer(backend="jax", num_workers=num_workers, use_gpu=use_gpu, resources_per_worker={'GPU': 4})
-    
+    config={
+            "learning_rate": 0.1,
+            "momentum": 0.9,
+            # "batch_size": 8192,
+            "batch_size": 4,
+            "num_epochs": 10,
+        }
+
     scaling_config = dict(num_workers=num_workers, use_gpu=use_gpu)
-    trainer.start()
+    # trainer.start()
 
 
     from ray.ml.train.integrations.jax import JaxTrainer
 
     trainer = JaxTrainer(
-        train_loop_per_worker=train_loop_per_worker,
-        train_loop_config={"batch_size": 2},
+        train_loop_per_worker=train_func,
+        # train_loop_config={"batch_size": 2},
+        train_loop_config=config,
         datasets={"train": train_dataset},
-        scaling_config={"num_workers": 2}
+        scaling_config=scaling_config
+        # {"num_workers": 2}
     )
 
     # result = trainer.run(
@@ -250,9 +274,11 @@ def train_mnist(num_workers=4, use_gpu=True):
     #     config={'learning_rate': 0.1, 'momentum': 0.9, "batch_size": 8192, "num_epochs": 10},
     #     callbacks=[JsonLoggerCallback()],
     # )
-    trainer.shutdown()
+    # trainer.shutdown()
+
+    results = trainer.fit()
     print()
-    print(f"Loss results: {result}")
+    print(f"Loss results: {results}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -263,7 +289,7 @@ if __name__ == "__main__":
         "--num-workers",
         "-n",
         type=int,
-        default=3,
+        default=1,
         help="Sets number of workers for training.",
     )
     parser.add_argument(
