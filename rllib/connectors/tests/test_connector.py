@@ -46,6 +46,11 @@ class TestConnectorPipeline(unittest.TestCase):
         self.assertEqual(len(m.connectors), 3)
         self.assertEqual(m.connectors[2].__class__.__name__, "Mary")
 
+        m.remove("Bob")
+        self.assertEqual(len(m.connectors), 2)
+        self.assertEqual(m.connectors[0].__class__.__name__, "Tom")
+        self.assertEqual(m.connectors[1].__class__.__name__, "Mary")
+
 
 if __name__ == "__main__":
     import pytest

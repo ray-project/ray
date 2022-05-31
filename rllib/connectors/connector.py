@@ -192,6 +192,20 @@ class ActionConnector(Connector):
 class ConnectorPipeline:
     """Utility class for quick manipulation of a connector pipeline."""
 
+    def remove(self, name: str):
+        """Remove a connector by <name>
+
+        Args:
+            name: name of the connector to be removed.
+        """
+        idx = -1
+        for idx, c in enumerate(self.connectors):
+            if c.__class__.__name__ == name:
+                break
+        if idx < 0:
+            raise ValueError(f"Can not find connector {name}")
+        del self.connectors[idx]
+
     def insert_before(self, name: str, connector: Connector):
         """Insert a new connector before connector <name>
 
