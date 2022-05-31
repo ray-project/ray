@@ -1,3 +1,4 @@
+from collections import namedtuple
 import gym
 from typing import (
     Any,
@@ -148,6 +149,22 @@ SampleBatchType = Union["SampleBatch", "MultiAgentBatch"]
 # A (possibly nested) space struct: Either a gym.spaces.Space or a
 # (possibly nested) dict|tuple of gym.space.Spaces.
 SpaceStruct = Union[gym.spaces.Space, dict, tuple]
+
+# A batch of RNN states with dimensions [state_index, batch, state_object].
+StateBatch = List[List[Any]]
+
+# Data type that is feeded into and yielded from agent connectors.
+AgentConnectorDataType = namedtuple(
+    "AgentConnectorDataType", ["env_id", "agent_id", "data"]
+)
+
+# Data type that is feeded into and yielded from agent connectors.
+ActionConnectorDataType = namedtuple(
+    "ActionConnectorDataType", ["env_id", "agent_id", "output"]
+)
+
+# Final output data type of agent connectors.
+AgentConnectorsOutput = namedtuple("AgentConnectorsOut", ["for_training", "for_action"])
 
 # Generic type var.
 T = TypeVar("T")

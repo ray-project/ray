@@ -1292,6 +1292,34 @@ py_test(
 )
 
 # --------------------------------------------------------------------
+# Connector tests
+# rllib/connector/
+#
+# Tag: connector
+# --------------------------------------------------------------------
+
+py_test(
+    name = "test_connector",
+    tags = ["team:ml", "connector"],
+    size = "small",
+    srcs = ["connectors/tests/test_connector.py"]
+)
+
+py_test(
+    name = "test_action",
+    tags = ["team:ml", "connector"],
+    size = "small",
+    srcs = ["connectors/tests/test_action.py"]
+)
+
+py_test(
+    name = "test_agent",
+    tags = ["team:ml", "connector"],
+    size = "small",
+    srcs = ["connectors/tests/test_agent.py"]
+)
+
+# --------------------------------------------------------------------
 # Env tests
 # rllib/env/
 #
