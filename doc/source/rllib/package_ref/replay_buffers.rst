@@ -51,7 +51,7 @@ The highlighted lines focus on the PER configuration.
     :animate: fade-in-slide-down
 
     .. literalinclude:: ../../../../rllib/examples/replay_buffer_api.py
-        :emphasize-lines: 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77
+        :emphasize-lines: 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77
         :language: python
         :start-after: __sphinx_doc_replay_buffer_api_example_script_begin__
         :end-before: __sphinx_doc_replay_buffer_api_example_script_end__
@@ -87,30 +87,22 @@ Apart from specifying a type, other parameters in that config are:
 
 
 ReplayBuffer Base Class
------------------------
+***********************
 
 The base :py:class:`~ray.rllib.utils.replay_buffers.replay_buffer.ReplayBuffer` class only supports storing and replaying
 experiences in different :py:class:`~ray.rllib.utils.replay_buffers.replay_buffer.StorageUnit`\s.
-Advanced buffer types add functionality while trying retaining compatibility through inheritance.
-The following excerpt from the class documentation only shows how to construct, sample from and add to a replay buffer.
-If you plan on implementing your own buffer, these are also the main places to look at.
+Advanced buffer types add functionality while trying to retain compatibility through inheritance.
 
-.. dropdown:: **Constructor-, add- and sample- methods.**
-    :animate: fade-in-slide-down
 
-    .. autoclass:: ray.rllib.utils.replay_buffers.replay_buffer.ReplayBuffer
-        :noindex:
-
-        .. automethod:: __init__
-            :noindex:
-        .. automethod:: add
-            :noindex:
-        .. automethod:: sample
-            :noindex:
+.. literalinclude:: ../../../../rllib/examples/documentation/replay_buffer_demo.py
+    :language: python
+    :start-after: __sphinx_doc_replay_buffer_basic_interaction__begin__
+    :end-before: __sphinx_doc_replay_buffer_basic_interaction__end__
 
 
 Building your own ReplayBuffer
-------------------------------
+******************************
+
 Here is an example of how to implement your own toy example of a ReplayBuffer class and make SimpleQ use it:
 
 .. literalinclude:: ../../../../rllib/examples/documentation/replay_buffer_demo.py
@@ -119,15 +111,7 @@ Here is an example of how to implement your own toy example of a ReplayBuffer cl
     :end-before: __sphinx_doc_replay_buffer_own_buffer__end__
 
 For a full implementation, you should consider other methods like ``get_state()`` and ``set_state()``.
-A more extensive example is our implementation of `reservoir sampling <https://www.cs.umd.edu/~samir/498/vitter.pdf>`__:
-
-.. dropdown:: **Reservoir Buffer**
-    :animate: fade-in-slide-down
-
-    .. literalinclude:: ../../../../rllib/utils/replay_buffers/reservoir_replay_buffer.py
-        :language: python
-        :start-after: __sphinx_doc_reservoir_buffer__begin__
-        :end-before: __sphinx_doc_reservoir_buffer__end__
+A more extensive example is `our implementation <https://github.com/ray-project/ray/blob/master/rllib/utils/replay_buffers/reservoir_buffer.py>`__ of `reservoir sampling <https://www.cs.umd.edu/~samir/498/vitter.pdf>`__, the :py:class:`~ray.rllib.utils.replay_buffers.reservoir_buffer.ReservoirBuffer`.
 
 
 Advanced Usage
@@ -150,7 +134,8 @@ support modification of underlying replay buffers. Under the hood, the :py:class
 stores experiences per policy in separate underlying replay buffers. You can modify their behaviour by specifying an underlying ``replay_buffer_config`` that works
 the same way as the parent's config.
 
-Here is an example of how to specify an underlying replay buffer along with a default call argument:
+Here is an example of how to create an :py:class:`~ray.rllib.utils.replay_buffers.multi_agent_replay_buffer.MultiAgentReplayBuffer` with an alternative underlying :py:class:`~ray.rllib.utils.replay_buffers.replay_buffer.ReplayBuffer`.
+The :py:class:`~ray.rllib.utils.replay_buffers.multi_agent_replay_buffer.MultiAgentReplayBuffer` can stay the same, we only need to specify our own buffer along with a default call argument:
 
 .. literalinclude:: ../../../../rllib/examples/documentation/replay_buffer_demo.py
     :language: python
