@@ -1,7 +1,7 @@
 from functools import partial
-from typing import List, Dict, Optional, OrderedDict, Union
+from typing import List, Dict, Optional, Union
 
-from collections import Counter
+from collections import Counter, OrderedDict
 import pandas as pd
 import pandas.api.types
 
@@ -332,7 +332,7 @@ def _get_unique_value_indices(
     key_format: str = "unique_values({0})",
     limit: Optional[Dict[str, int]] = None,
     encode_lists: bool = True,
-) -> OrderedDict[str, Dict[str, int]]:
+) -> Dict[str, Dict[str, int]]:
     """If drop_na_values is True, will silently drop NA values."""
     limit = limit or {}
     for column in limit:
