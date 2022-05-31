@@ -166,9 +166,8 @@ message DeploymentInfo {
   ReplicaConfig replica_config = 3;
   int64 start_time_ms = 4;
   string actor_name = 5;
-  bytes serialized_deployment_def = 6;
-  string version = 7;
-  int64 end_time_ms = 8;
+  string version = 6;
+  int64 end_time_ms = 7;
 }
 
 // Wrap DeploymentInfo and route. The "" route value need to be convert to None/null.

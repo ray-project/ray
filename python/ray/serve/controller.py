@@ -362,7 +362,6 @@ class ServeController:
 
         deployment_info = DeploymentInfo(
             actor_name=name,
-            serialized_deployment_def=replica_config.serialized_deployment_def,
             version=version,
             deployment_config=deployment_config,
             replica_config=replica_config,
