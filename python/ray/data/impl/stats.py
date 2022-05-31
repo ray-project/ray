@@ -9,6 +9,9 @@ from ray.data.block import BlockMetadata
 from ray.data.context import DatasetContext
 from ray.data.impl.block_list import BlockList
 
+STATS_ACTOR_NAME = "datasets_stats_actor"
+STATS_ACTOR_NAMESPACE = "_dataset_stats_actor"
+
 
 def fmt(seconds: float) -> str:
     if seconds > 1:
@@ -113,7 +116,8 @@ class _StatsActor:
 def _get_or_create_stats_actor():
     ctx = DatasetContext.get_current()
     return _StatsActor.options(
-        name="datasets_stats_actor",
+        name=STATS_ACTOR_NAME,
+        namespace=STATS_ACTOR_NAMESPACE,
         get_if_exists=True,
         lifetime="detached",
         scheduling_strategy=ctx.scheduling_strategy,
