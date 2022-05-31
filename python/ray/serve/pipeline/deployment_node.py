@@ -156,15 +156,6 @@ class DeploymentNode(DAGNode):
             other_args_to_resolve=new_other_args_to_resolve,
         )
 
-    def _execute_impl(self, *args, **kwargs):
-        """Executor of DeploymentNode getting called each time on dag.execute.
-
-        The execute implementation is recursive, that is, the method nodes will receive
-        whatever this method returns. We return a handle here so method node can
-        directly call upon.
-        """
-        return self._deployment_handle
-
     def __getattr__(self, method_name: str):
         # Raise an error if the method is invalid.
         getattr(self._deployment.func_or_class, method_name)
