@@ -1,7 +1,7 @@
 .. _replay-buffer-reference-docs:
 
-ReplayBuffer classes
-====================
+ReplayBuffer API
+================
 
 These classes don't take into account the separation of experiences from different policies, which we use in multi-agent settings.
 
