@@ -326,7 +326,7 @@ class ServeControllerClient:
             self._controller.deploy_app.remote(
                 config.import_path,
                 config.runtime_env,
-                config.dict(by_alias=True, exclude_unset=True),
+                config.dict(by_alias=True, exclude_unset=True).get("deployments", []),
             )
         )
 
