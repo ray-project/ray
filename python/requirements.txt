@@ -18,7 +18,7 @@ msgpack >= 1.0.0, < 2.0.0
 numpy >= 1.16
 opencensus
 prometheus_client >= 0.7.1, < 0.14.0
-protobuf >= 3.8.0
+protobuf >= 3.8.0, < 4.0.0
 py-spy >= 0.2.0
 pydantic >= 1.8
 pyyaml
@@ -46,6 +46,8 @@ aiorwlock
 
 # Requirements for running tests
 pyarrow >= 6.0.1, < 7.0.0
+# Used for Dataset tests.
+polars
 azure-cli-core==2.29.1
 azure-identity==1.7.0
 azure-mgmt-compute==23.1.0
