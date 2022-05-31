@@ -354,6 +354,7 @@ install_dependencies() {
   if [ "${DOC_TESTING-}" = 1 ]; then
     # For Ray Core and Ray Serve DAG visualization docs test
     sudo apt-get install -y graphviz
+    pip install -U pydot  # For DAG visualization
   fi
 
   # Additional RLlib test dependencies.
