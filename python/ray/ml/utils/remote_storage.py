@@ -12,7 +12,7 @@ try:
     import pyarrow
     import pyarrow.fs
 
-    # Todo(krfricke): Remove this once gcsfs > 2022.3.0 is released
+    # TODO(krfricke): Remove this once gcsfs > 2022.3.0 is released
     # (and make sure to pin)
     class _CustomGCSHandler(pyarrow.fs.FSSpecHandler):
         """Custom FSSpecHandler that avoids a bug in gcsfs <= 2022.3.0."""

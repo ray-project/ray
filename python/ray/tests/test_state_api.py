@@ -247,7 +247,7 @@ async def test_api_manager_list_pgs(state_api_manager):
     """
     Test limit
     """
-    assert len(data) == 2
+    assert len(result.result) == 2
     result = await state_api_manager.list_placement_groups(
         option=list_api_options(limit=1)
     )
@@ -282,7 +282,7 @@ async def test_api_manager_list_nodes(state_api_manager):
     """
     Test limit
     """
-    assert len(data) == 2
+    assert len(result.result) == 2
     result = await state_api_manager.list_nodes(option=list_api_options(limit=1))
     data = result.result
     assert len(data) == 1

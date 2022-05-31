@@ -50,3 +50,9 @@ def test_train_test_split(ray_start_4_cpus):
 
     with pytest.raises(ValueError):
         train_test_split(ds, test_size=9)
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", "-x", __file__]))
