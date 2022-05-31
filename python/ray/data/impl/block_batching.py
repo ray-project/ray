@@ -176,15 +176,25 @@ class ActorBlockPrefetcher(BlockPrefetcher):
             name=actor_name,
             namespace=PREFETCHER_ACTOR_NAMESPACE,
             get_if_exists=True,
-        ).remote()
+        ).remote(node_id)
 
     def prefetch_blocks(self, blocks: ObjectRef[Block]):
-        self.prefetch_actor.prefetch.remote(*blocks)
+        node_id = ray.get_runtime_context().node_id
+        self.prefetch_actor.prefetch.remote(node_id, *blocks)
 
 
 @ray.remote(num_cpus=0)
 class _BlockPretcher:
     """Helper actor that prefetches blocks asynchronously."""
 
-    def prefetch(self, *blocks) -> None:
-        pass
+    def __init__(self, expected_node_id: str) -> None:
+        self.expected_node_id = expected_node_id
+        node_id = ray.get_runtime_context().node_id
+        assert (
+            node_id == expected_node_id
+        ), f"creation failed: {node_id} is different from {expected_node_id}"
+
+    def prefetch(self, node_id, *blocks) -> None:
+        assert (
+            node_id == self.expected_node_id
+        ), f"prefetch failed: {node_id} is different from {self.expected_node_id}"
