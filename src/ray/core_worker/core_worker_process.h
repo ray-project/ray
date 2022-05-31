@@ -19,8 +19,7 @@ namespace core {
 
 class CoreWorker;
 
-// TODO(qwang): Update this comment.
-/// Lifecycle management of one or more `CoreWorker` instances in a process.
+/// Lifecycle management of the `CoreWorker` instance in a process.
 ///
 /// To start a driver in the current process:
 ///     CoreWorkerOptions options = {
@@ -32,7 +31,7 @@ class CoreWorker;
 /// To shutdown a driver in the current process:
 ///     CoreWorkerProcess::Shutdown();
 ///
-/// To start one or more workers in the current process:
+/// To start a worker in the current process:
 ///     CoreWorkerOptions options = {
 ///         WorkerType::WORKER,             // worker_type
 ///         ...,                            // other arguments
@@ -44,14 +43,6 @@ class CoreWorker;
 /// To shutdown a worker in the current process, return a system exit status (with status
 /// code `IntentionalSystemExit` or `UnexpectedSystemExit`) in the task execution
 /// callback.
-///
-/// If more than 1 worker is started, only the threads which invoke the
-/// `task_execution_callback` will be automatically associated with the corresponding
-/// worker. If you started your own threads and you want to use core worker APIs in these
-/// threads, remember to call `CoreWorkerProcess::SetCurrentThreadWorkerId(worker_id)`
-/// once in the new thread before calling core worker APIs, to associate the current
-/// thread with a worker. You can obtain the worker ID via
-/// `CoreWorkerProcess::GetCoreWorker()->GetWorkerID()`.
 ///
 /// How does core worker process dealloation work?
 ///
@@ -133,10 +124,10 @@ class CoreWorkerProcessImpl {
   /// Get the `CoreWorker` instance.
   ///
   /// \return The `CoreWorker` instance.
-  std::shared_ptr<CoreWorker> GetCoreWorker() const LOCKS_EXCLUDED(mutex_);
+  std::shared_ptr<CoreWorker> GetCoreWorker() const;
 
   /// Run worker execution loop.
-  void RunWorkerTaskExecutionLoop() LOCKS_EXCLUDED(mutex_);
+  void RunWorkerTaskExecutionLoop();
 
   /// Shutdown the driver completely at the process level.
   void ShutdownDriver();
