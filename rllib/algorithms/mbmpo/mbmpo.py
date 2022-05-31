@@ -1,12 +1,12 @@
 import logging
 import numpy as np
-from typing import List, Type
+from typing import List, Optional, Type
 
 import ray
-from ray.rllib.agents import with_common_config
 from ray.rllib.algorithms.mbmpo.model_ensemble import DynamicsEnsembleCustomModel
 from ray.rllib.algorithms.mbmpo.utils import calculate_gae_advantages, MBMPOExploration
 from ray.rllib.agents.trainer import Trainer
+from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.wrappers.model_vector_env import model_vector_env
 from ray.rllib.evaluation.metrics import (
@@ -24,7 +24,7 @@ from ray.rllib.execution.common import (
 from ray.rllib.execution.metric_ops import CollectMetrics
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import Deprecated, override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.sgd import standardized
@@ -34,90 +34,210 @@ from ray.util.iter import from_actors, LocalIterator
 
 logger = logging.getLogger(__name__)
 
-# fmt: off
-# __sphinx_doc_begin__
 
-# Adds the following updates to the (base) `Trainer` config in
-# rllib/agents/trainer.py (`COMMON_CONFIG` dict).
-DEFAULT_CONFIG = with_common_config({
-    # If true, use the Generalized Advantage Estimator (GAE)
-    # with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
-    "use_gae": True,
-    # GAE(lambda) parameter.
-    "lambda": 1.0,
-    # Initial coefficient for KL divergence.
-    "kl_coeff": 0.0005,
-    # Size of batches collected from each worker.
-    "rollout_fragment_length": 200,
-    # Do create an actual env on the local worker (worker-idx=0).
-    "create_env_on_driver": True,
-    # Step size of SGD.
-    "lr": 1e-3,
-    # Coefficient of the value function loss.
-    "vf_loss_coeff": 0.5,
-    # Coefficient of the entropy regularizer.
-    "entropy_coeff": 0.0,
-    # PPO clip parameter.
-    "clip_param": 0.5,
-    # Clip param for the value function. Note that this is sensitive to the
-    # scale of the rewards. If your expected V is large, increase this.
-    "vf_clip_param": 10.0,
-    # If specified, clip the global norm of gradients by this amount.
-    "grad_clip": None,
-    # Target value for KL divergence.
-    "kl_target": 0.01,
-    # Whether to rollout "complete_episodes" or "truncate_episodes".
-    "batch_mode": "complete_episodes",
-    # Which observation filter to apply to the observation.
-    "observation_filter": "NoFilter",
-    # Number of Inner adaptation steps for the MAML algorithm.
-    "inner_adaptation_steps": 1,
-    # Number of MAML steps per meta-update iteration (PPO steps).
-    "maml_optimizer_steps": 8,
-    # Inner adaptation step size.
-    "inner_lr": 1e-3,
-    # Horizon of the environment (200 in MB-MPO paper).
-    "horizon": 200,
-    # Dynamics ensemble hyperparameters.
-    "dynamics_model": {
-        "custom_model": DynamicsEnsembleCustomModel,
-        # Number of Transition-Dynamics (TD) models in the ensemble.
-        "ensemble_size": 5,
-        # Hidden layers for each model in the TD-model ensemble.
-        "fcnet_hiddens": [512, 512, 512],
-        # Model learning rate.
-        "lr": 1e-3,
-        # Max number of training epochs per MBMPO iter.
-        "train_epochs": 500,
-        # Model batch size.
-        "batch_size": 500,
-        # Training/validation split.
-        "valid_split_ratio": 0.2,
-        # Normalize data (obs, action, and deltas).
-        "normalize_data": True,
-    },
-    # Exploration for MB-MPO is based on StochasticSampling, but uses 8000
-    # random timesteps up-front for worker=0.
-    "exploration_config": {
-        "type": MBMPOExploration,
-        "random_timesteps": 8000,
-    },
-    # Workers sample from dynamics models, not from actual envs.
-    "custom_vector_env": model_vector_env,
-    # How many iterations through MAML per MBMPO iteration.
-    "num_maml_steps": 10,
+class MBMPOConfig(TrainerConfig):
+    """Defines a configuration class from which an MBMPOTrainer can be built.
 
-    # Deprecated keys:
-    # Share layers for value function. If you set this to True, it's important
-    # to tune vf_loss_coeff.
-    # Use config.model.vf_share_layers instead.
-    "vf_share_layers": DEPRECATED_VALUE,
+    Example:
+        >>> from ray.rllib.algorithms.mbmpo import MBMPOConfig
+        >>> config = MBMPOConfig().training(lr=0.0003, train_batch_size=512)\
+        ...     .resources(num_gpus=4)\
+        ...     .rollouts(num_rollout_workers=64)
+        >>> print(config.to_dict())
+        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> trainer = config.build(env="CartPole-v1")
+        >>> trainer.train()
 
-    # Use `execution_plan` instead of `training_iteration`.
-    "_disable_execution_plan_api": False,
-})
-# __sphinx_doc_end__
-# fmt: on
+    Example:
+        >>> from ray.rllib.algorithms.mbmpo import MBMPOConfig
+        >>> from ray import tune
+        >>> config = MBMPOConfig()
+        >>> # Print out some default values.
+        >>> print(config.vtrace)
+        >>> # Update the config object.
+        >>> config.training(lr=tune.grid_search([0.0001, 0.0003]), grad_clip=20.0)
+        >>> # Set the config object's env.
+        >>> config.environment(env="CartPole-v1")
+        >>> # Use to_dict() to get the old-style python config dict
+        >>> # when running with tune.
+        >>> tune.run(
+        ...     "AlphaStar",
+        ...     stop={"episode_reward_mean": 200},
+        ...     config=config.to_dict(),
+        ... )
+    """
+
+    def __init__(self, trainer_class=None):
+        """Initializes a MBMPOConfig instance."""
+        super().__init__(trainer_class=trainer_class or MBMPOTrainer)
+
+        # fmt: off
+        # __sphinx_doc_begin__
+
+        # MBMPO specific config settings:
+        # If true, use the Generalized Advantage Estimator (GAE)
+        # with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
+        self.use_gae = True
+        # GAE(lambda) parameter.
+        self.lambda_ = 1.0
+        # Initial coefficient for KL divergence.
+        self.kl_coeff = 0.0005
+
+        # Coefficient of the value function loss.
+        self.vf_loss_coeff = 0.5
+        # Coefficient of the entropy regularizer.
+        self.entropy_coeff = 0.0
+        # PPO clip parameter.
+        self.clip_param = 0.5
+        # Clip param for the value function. Note that this is sensitive to the
+        # scale of the rewards. If your expected V is large, increase this.
+        self.vf_clip_param = 10.0
+        # If specified, clip the global norm of gradients by this amount.
+        self.grad_clip = None
+        # Target value for KL divergence.
+        self.kl_target = 0.01
+        # Number of Inner adaptation steps for the MAML algorithm.
+        self.inner_adaptation_steps = 1
+        # Number of MAML steps per meta-update iteration (PPO steps).
+        self.maml_optimizer_steps = 8
+        # Inner adaptation step size.
+        self.inner_lr = 1e-3
+        # Horizon of the environment (200 in MB-MPO paper).
+        self.horizon = 200
+        # Dynamics ensemble hyperparameters.
+        self.dynamics_model = {
+            "custom_model": DynamicsEnsembleCustomModel,
+            # Number of Transition-Dynamics (TD) models in the ensemble.
+            "ensemble_size": 5,
+            # Hidden layers for each model in the TD-model ensemble.
+            "fcnet_hiddens": [512, 512, 512],
+            # Model learning rate.
+            "lr": 1e-3,
+            # Max number of training epochs per MBMPO iter.
+            "train_epochs": 500,
+            # Model batch size.
+            "batch_size": 500,
+            # Training/validation split.
+            "valid_split_ratio": 0.2,
+            # Normalize data (obs, action, and deltas).
+            "normalize_data": True,
+        }
+        # Workers sample from dynamics models, not from actual envs.
+        self.custom_vector_env = model_vector_env
+        # How many iterations through MAML per MBMPO iteration.
+        self.num_maml_steps = 10
+
+        # Override some of TrainerConfig's default values with MBMPO-specific
+        # values.
+        self.batch_mode = "complete_episodes"
+        # Size of batches collected from each worker.
+        self.rollout_fragment_length = 200
+        # Do create an actual env on the local worker (worker-idx=0).
+        self.create_env_on_local_worker = True
+        # Step size of SGD.
+        self.lr = 1e-3
+        # Exploration for MB-MPO is based on StochasticSampling, but uses 8000
+        # random timesteps up-front for worker=0.
+        self.exploration_config = {
+            "type": MBMPOExploration,
+            "random_timesteps": 8000,
+        }
+
+        # __sphinx_doc_end__
+        # fmt: on
+
+        self.vf_share_layers = DEPRECATED_VALUE
+        self._disable_execution_plan_api = False
+
+    @override(TrainerConfig)
+    def training(
+        self,
+        *,
+        use_gae: Optional[float] = None,
+        lambda_: Optional[float] = None,
+        kl_coeff: Optional[float] = None,
+        vf_loss_coeff: Optional[float] = None,
+        entropy_coeff: Optional[float] = None,
+        clip_param: Optional[float] = None,
+        vf_clip_param: Optional[float] = None,
+        grad_clip: Optional[float] = None,
+        kl_target: Optional[float] = None,
+        inner_adaptation_steps: Optional[int] = None,
+        maml_optimizer_steps: Optional[int] = None,
+        inner_lr: Optional[float] = None,
+        horizon: Optional[int] = None,
+        dynamics_model: Optional[dict] = None,
+        custom_vector_env: Optional[type] = None,
+        num_maml_steps: Optional[int] = None,
+        **kwargs,
+    ) -> "MBMPOConfig":
+        """Sets the training related configuration.
+
+        Args:
+            use_gae: If true, use the Generalized Advantage Estimator (GAE)
+                with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
+            lambda_: The GAE (lambda) parameter.
+            kl_coeff: Initial coefficient for KL divergence.
+            vf_loss_coeff: Coefficient of the value function loss.
+            entropy_coeff: Coefficient of the entropy regularizer.
+            clip_param: PPO clip parameter.
+            vf_clip_param: Clip param for the value function. Note that this is
+                sensitive to the scale of the rewards. If your expected V is large,
+                increase this.
+            grad_clip: If specified, clip the global norm of gradients by this amount.
+            kl_target: Target value for KL divergence.
+            inner_adaptation_steps: Number of Inner adaptation steps for the MAML
+                algorithm.
+            maml_optimizer_steps: Number of MAML steps per meta-update iteration
+                (PPO steps).
+            inner_lr: Inner adaptation step size.
+            horizon: Horizon of the environment (200 in MB-MPO paper).
+            dynamics_model: Dynamics ensemble hyperparameters.
+            custom_vector_env: Workers sample from dynamics models, not from actual
+                envs.
+            num_maml_steps: How many iterations through MAML per MBMPO iteration.
+
+        Returns:
+            This updated TrainerConfig object.
+        """
+        # Pass kwargs onto super's `training()` method.
+        super().training(**kwargs)
+
+        if use_gae is not None:
+            self.use_gae = use_gae
+        if lambda_ is not None:
+            self.lambda_ = lambda_
+        if kl_coeff is not None:
+            self.kl_coeff = kl_coeff
+        if vf_loss_coeff is not None:
+            self.vf_loss_coeff = vf_loss_coeff
+        if entropy_coeff is not None:
+            self.entropy_coeff = entropy_coeff
+        if clip_param is not None:
+            self.clip_param = clip_param
+        if vf_clip_param is not None:
+            self.vf_clip_param = vf_clip_param
+        if grad_clip is not None:
+            self.grad_clip = grad_clip
+        if kl_target is not None:
+            self.kl_target = kl_target
+        if inner_adaptation_steps is not None:
+            self.inner_adaptation_steps = inner_adaptation_steps
+        if maml_optimizer_steps is not None:
+            self.maml_optimizer_steps = maml_optimizer_steps
+        if inner_lr is not None:
+            self.inner_lr = inner_lr
+        if horizon is not None:
+            self.horizon = horizon
+        if dynamics_model is not None:
+            self.dynamics_model = dynamics_model
+        if custom_vector_env is not None:
+            self.custom_vector_env = custom_vector_env
+        if num_maml_steps is not None:
+            self.num_maml_steps = num_maml_steps
+
+        return self
+
 
 # Select Metric Keys for MAML Stats Tracing
 METRICS_KEYS = ["episode_reward_mean", "episode_reward_min", "episode_reward_max"]
@@ -473,3 +593,20 @@ class MBMPOTrainer(Trainer):
                 f"Env {env} doest not have a `reward()` method, needed for "
                 "MB-MPO! This `reward()` method should return "
             )
+
+
+# Deprecated: Use ray.rllib.algorithms.mbmpo.MBMPOConfig instead!
+class _deprecated_default_config(dict):
+    def __init__(self):
+        super().__init__(MBMPOConfig().to_dict())
+
+    @Deprecated(
+        old="ray.rllib.algorithms.mbmpo.mbmpo.DEFAULT_CONFIG",
+        new="ray.rllib.algorithms.mbmpo.mbmpo.MBMPOConfig(...)",
+        error=False,
+    )
+    def __getitem__(self, item):
+        return super().__getitem__(item)
+
+
+DEFAULT_CONFIG = _deprecated_default_config()

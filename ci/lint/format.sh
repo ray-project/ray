@@ -135,6 +135,7 @@ MYPY_FILES=(
     # in the CI. Type check once we get serious about type checking:
     #'ray_operator/operator.py'
     'ray_operator/operator_utils.py'
+    '_private/gcs_utils.py'
 )
 
 BLACK_EXCLUDES=(
