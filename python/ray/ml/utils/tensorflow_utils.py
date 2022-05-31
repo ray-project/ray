@@ -40,7 +40,7 @@ def convert_pandas_to_tf_tensor(df: pd.DataFrame) -> tf.Tensor:
         >>> convert_pandas_to_tf_tensor(df).shape
         TensorShape([4, 3, 32, 32])
     """
-    def is_valid_dtype(series) -> bool:
+    def is_valid_dtype(series: pd.Series) -> bool:
         if pd.api.types.is_numeric_dtype(series) or isinstance(series, TensorDtype):
             return True
 
