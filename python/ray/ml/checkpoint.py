@@ -341,7 +341,10 @@ class Checkpoint:
 
         Args:
             path: Target directory to restore data in. If not specified,
-                will create a temporary directory.
+                will create a temporary directory. The name of the temporary
+                directory will be random, unless the checkpoint was created
+                from an object reference, in which case it will be equal
+                to the ID of that object reference.
 
         Returns:
             str: Directory containing checkpoint data.
@@ -379,7 +382,7 @@ class Checkpoint:
         which will be deleted after the context is exited.
 
         If the checkpoint has been created from an object reference, the directory name
-        will be constant and based on the object reference ID. This allows for multiple
+        will be constant and equal to the object reference ID. This allows for multiple
         processes to use the same files for improved performance. The directory
         will be deleted after exiting the context only if no other processes are using
         it.
