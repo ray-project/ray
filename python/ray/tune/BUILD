@@ -942,3 +942,12 @@ py_library(
     name = "tune_lib",
     srcs = glob(["**/*.py"], exclude=["tests/*.py"]),
 )
+
+# Check if all tests have the pytest if __name__... snippet.
+# Without it, the test file will pass without running.
+load("//bazel:python.bzl", "check_pytest")
+check_pytest(
+    name = "check_pytest_ml",
+    include = ["tests/test*.py"],
+    exclude = [],
+)
