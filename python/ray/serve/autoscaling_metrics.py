@@ -164,7 +164,4 @@ class InMemoryMetricsStore:
         """
         points_after_idx = self._get_datapoints(key, window_start_timestamp_s)
 
-        if len(points_after_idx) == 0:
-            return
-
-        return max(point.value for point in points_after_idx)
+        return max((point.value for point in points_after_idx), default=None)
