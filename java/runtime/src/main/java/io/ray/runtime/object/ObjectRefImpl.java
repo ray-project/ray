@@ -7,7 +7,6 @@ import com.google.common.collect.Sets;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.api.id.ObjectId;
-import io.ray.api.id.UniqueId;
 import io.ray.runtime.AbstractRayRuntime;
 import java.io.Externalizable;
 import java.io.IOException;
@@ -146,9 +145,7 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
         REFERENCES.remove(this);
         // It's possible that GC is executed after the runtime is shutdown.
         if (Ray.isInitialized()) {
-          ((AbstractRayRuntime) (Ray.internal()))
-              .getObjectStore()
-              .removeLocalReference(objectId);
+          ((AbstractRayRuntime) (Ray.internal())).getObjectStore().removeLocalReference(objectId);
           allObjects.remove(objectId);
           LOG.debug("Object {} is finalized.", objectId);
         }
