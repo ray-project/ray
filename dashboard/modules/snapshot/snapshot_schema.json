@@ -240,9 +240,6 @@
                 "[0-9a-f]*": {
                   "type": "object",
                   "properties": {
-                    "className": {
-                      "type": "string"
-                    },
                     "endTime": {
                       "type": "integer"
                     },
