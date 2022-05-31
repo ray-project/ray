@@ -20,15 +20,21 @@ class TestApexDDPG(unittest.TestCase):
 
     def test_apex_ddpg_compilation_and_per_worker_epsilon_values(self):
         """Test whether an APEX-DDPGTrainer can be built on all frameworks."""
-        config = apex_ddpg.APEX_DDPG_DEFAULT_CONFIG.copy()
-        config["num_workers"] = 2
-        config["min_sample_timesteps_per_reporting"] = 100
-        config["replay_buffer_config"]["learning_starts"] = 0
-        config["optimizer"]["num_replay_buffer_shards"] = 1
+        config = (
+            apex_ddpg.ApexDDPGConfig()
+            .rollouts(num_rollout_workers=2)
+            .reporting(min_sample_timesteps_per_reporting=100)
+            .training(
+                replay_buffer_config={"learning_starts": 0},
+                optimizer={"num_replay_buffer_shards": 1},
+            )
+            .environment(env="Pendulum-v1")
+        )
+
         num_iterations = 1
+
         for _ in framework_iterator(config, with_eager_tracing=True):
-            plain_config = config.copy()
-            trainer = apex_ddpg.ApexDDPGTrainer(config=plain_config, env="Pendulum-v1")
+            trainer = config.build()
 
             # Test per-worker scale distribution.
             infos = trainer.workers.foreach_policy(
@@ -36,8 +42,8 @@ class TestApexDDPG(unittest.TestCase):
             )
             scale = [i["cur_scale"] for i in infos]
             expected = [
-                0.4 ** (1 + (i + 1) / float(config["num_workers"] - 1) * 7)
-                for i in range(config["num_workers"])
+                0.4 ** (1 + (i + 1) / float(config.num_workers - 1) * 7)
+                for i in range(config.num_workers)
             ]
             check(scale, [0.0] + expected)
 

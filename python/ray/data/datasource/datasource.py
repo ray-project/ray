@@ -228,10 +228,13 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
                 schema = int
             else:
                 raise ValueError("Unsupported block type", block_format)
-            shape = np.product(tensor_shape)
+            if block_format == "tensor":
+                element_size = np.product(tensor_shape)
+            else:
+                element_size = 1
             meta = BlockMetadata(
                 num_rows=count,
-                size_bytes=8 * count * shape,
+                size_bytes=8 * count * element_size,
                 schema=schema,
                 input_files=None,
                 exec_stats=None,
