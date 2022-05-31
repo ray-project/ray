@@ -87,7 +87,7 @@ class TensorflowPredictor(Predictor):
             def build_model(self):
                 return tf.keras.Sequential(
                     [
-                        tf.keras.layers.InputLayer(input_shape=(1,)),
+                        tf.keras.layers.InputLayer(input_shape=(2,)),
                         tf.keras.layers.Dense(1),
                     ]
                 )
@@ -96,9 +96,6 @@ class TensorflowPredictor(Predictor):
 
             data = np.array([[1, 2], [3, 4]])
             predictions = predictor.predict(data)
-
-            # Only use first column as the feature
-            predictions = predictor.predict(data, feature_columns=[0])
 
         .. code-block:: python
 
@@ -135,8 +132,6 @@ class TensorflowPredictor(Predictor):
             if feature_columns:
                 data = data[feature_columns]
             data = data.values
-        else:
-            data = data[:, feature_columns]
 
         tensor = tf.convert_to_tensor(data, dtype=dtype)
 
@@ -144,8 +139,15 @@ class TensorflowPredictor(Predictor):
         # a callable that returns the model and initialize it here,
         # instead of having an initialized model object as an attribute.
         model = self.model_definition()
-        if self.model_weights:
+
+        if self.model_weights is not None:
+            input_shape = list(tensor.shape)
+            # The batch axis can contain varying number of elements, so we set
+            # the shape along the axis to `None`.
+            input_shape[0] = None
+
+            model.build(input_shape=input_shape)
             model.set_weights(self.model_weights)
 
-        prediction = model(tensor).numpy().ravel()
-        return pd.DataFrame(prediction, columns=["predictions"])
+        prediction = list(model(tensor).numpy())
+        return pd.DataFrame({"predictions": prediction}, columns=["predictions"])

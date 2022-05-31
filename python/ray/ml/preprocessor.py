@@ -1,7 +1,7 @@
 import abc
 import warnings
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -48,6 +48,15 @@ class Preprocessor(abc.ABC):
             return Preprocessor.FitStatus.FITTED
         else:
             return Preprocessor.FitStatus.NOT_FITTED
+
+    def transform_stats(self) -> Optional[str]:
+        """Return Dataset stats for the most recent transform call, if any.
+
+        TODO(ekl) we should also be able to provide stats for fit().
+        """
+        if not hasattr(self, "_transform_stats"):
+            return None
+        return self._transform_stats
 
     def fit(self, dataset: Dataset) -> "Preprocessor":
         """Fit this Preprocessor to the Dataset.
@@ -117,13 +126,15 @@ class Preprocessor(abc.ABC):
                 "`fit` must be called before `transform`, "
                 "or simply use fit_transform() to run both steps"
             )
-        return self._transform(dataset)
+        transformed_ds = self._transform(dataset)
+        self._transform_stats = transformed_ds.stats()
+        return transformed_ds
 
     def transform_batch(self, df: DataBatchType) -> DataBatchType:
         """Transform a single batch of data.
 
         Args:
-            df (DataBatchType): Input data batch.
+            df: Input data batch.
 
         Returns:
             DataBatchType: The transformed data batch.

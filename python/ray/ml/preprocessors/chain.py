@@ -52,11 +52,13 @@ class Chain(Preprocessor):
     def fit_transform(self, ds: Dataset) -> Dataset:
         for preprocessor in self.preprocessors:
             ds = preprocessor.fit_transform(ds)
+        self._transform_stats = preprocessor.transform_stats()
         return ds
 
     def _transform(self, ds: Dataset) -> Dataset:
         for preprocessor in self.preprocessors:
             ds = preprocessor.transform(ds)
+        self._transform_stats = preprocessor.transform_stats()
         return ds
 
     def _transform_batch(self, df: DataBatchType) -> DataBatchType:

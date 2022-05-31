@@ -182,18 +182,27 @@ class TestSupportedSpacesOffPolicy(unittest.TestCase):
             {
                 "exploration_config": {"ou_base_scale": 100.0},
                 "min_sample_timesteps_per_reporting": 1,
-                "buffer_size": 1000,
+                "replay_buffer_config": {
+                    "capacity": 1000,
+                },
                 "use_state_preprocessor": True,
             },
             check_bounds=True,
         )
 
     def test_dqn(self):
-        config = {"min_sample_timesteps_per_reporting": 1, "buffer_size": 1000}
+        config = {
+            "min_sample_timesteps_per_reporting": 1,
+            "replay_buffer_config": {
+                "capacity": 1000,
+            },
+        }
         check_support("DQN", config, tfe=True)
 
     def test_sac(self):
-        check_support("SAC", {"buffer_size": 1000}, check_bounds=True)
+        check_support(
+            "SAC", {"replay_buffer_config": {"capacity": 1000}}, check_bounds=True
+        )
 
 
 class TestSupportedSpacesEvolutionAlgos(unittest.TestCase):

@@ -5,7 +5,7 @@ import logging
 import pytest
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
-from ray._private.test_utils import wait_for_condition
+from ray._private.test_utils import wait_for_condition, test_external_redis
 from ray.exceptions import RuntimeEnvSetupError
 
 import ray
@@ -169,6 +169,7 @@ class DiasbleTimeoutPlugin(DummyPlugin):
         sleep(10)
 
 
+@pytest.mark.skipif(test_external_redis(), reason="Failing in redis mode.")
 def test_plugin_timeout(start_cluster):
     @ray.remote(num_cpus=0.1)
     def f():

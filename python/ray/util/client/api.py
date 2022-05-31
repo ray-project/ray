@@ -336,6 +336,10 @@ class ClientAPI:
         """Hook for internal_kv._internal_kv_list."""
         return self.worker.internal_kv_list(as_bytes(prefix))
 
+    def _pin_runtime_env_uri(self, uri: str, expiration_s: int) -> None:
+        """Hook for internal_kv._pin_runtime_env_uri."""
+        return self.worker.pin_runtime_env_uri(uri, expiration_s)
+
     def _convert_actor(self, actor: "ActorClass") -> str:
         """Register a ClientActorClass for the ActorClass and return a UUID"""
         return self.worker._convert_actor(actor)
