@@ -1,6 +1,5 @@
 import inspect
 from typing import Any, Callable, Dict, List, Union
-from ray import ObjectRef
 
 from ray.experimental.dag.dag_node import DAGNode
 from ray.experimental.dag.format_utils import get_dag_node_str
@@ -89,14 +88,6 @@ class DeploymentFunctionNode(DAGNode):
             new_options,
             other_args_to_resolve=new_other_args_to_resolve,
         )
-
-    def _execute_impl(self, *args, **kwargs) -> ObjectRef:
-        """Executor of DeploymentFunctionNode by calling .remote() on the
-        deployment handle.
-
-        Deployment method always default to __call__.
-        """
-        return self._deployment_handle.remote(*self._bound_args, **self._bound_kwargs)
 
     def __str__(self) -> str:
         return get_dag_node_str(self, str(self._body))

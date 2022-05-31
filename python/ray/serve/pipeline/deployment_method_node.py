@@ -44,15 +44,6 @@ class DeploymentMethodNode(DAGNode):
             other_args_to_resolve=new_other_args_to_resolve,
         )
 
-    def _execute_impl(self, *args, **kwargs):
-        """Executor of DeploymentMethodNode by ray.remote()"""
-        # Execute with bound args.
-        method_body = getattr(self._deployment_handle, self._deployment_method_name)
-        return method_body.remote(
-            *self._bound_args,
-            **self._bound_kwargs,
-        )
-
     def __str__(self) -> str:
         return get_dag_node_str(
             self,
