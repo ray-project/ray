@@ -1,5 +1,6 @@
 .. _replay-buffer-api-reference-docs:
 
+##############
 Replay Buffers
 ##############
 
@@ -50,7 +51,7 @@ The highlighted lines focus on the PER configuration.
 .. dropdown:: **Executable example script**
     :animate: fade-in-slide-down
 
-    .. literalinclude:: ../../../../rllib/examples/replay_buffer_api.py
+    .. literalinclude:: ../../../rllib/examples/replay_buffer_api.py
         :emphasize-lines: 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77
         :language: python
         :start-after: __sphinx_doc_replay_buffer_api_example_script_begin__
@@ -66,7 +67,7 @@ Here are three ways of specifying a type:
 .. dropdown:: **Changing a replay buffer configuration**
     :animate: fade-in-slide-down
 
-    .. literalinclude:: ../../../../rllib/examples/documentation/replay_buffer_demo.py
+    .. literalinclude:: ../../../rllib/examples/documentation/replay_buffer_demo.py
         :language: python
         :start-after: __sphinx_doc_replay_buffer_type_specification__begin__
         :end-before: __sphinx_doc_replay_buffer_type_specification__end__
@@ -87,25 +88,25 @@ Apart from specifying a type, other parameters in that config are:
 
 
 ReplayBuffer Base Class
-***********************
+-----------------------
 
 The base :py:class:`~ray.rllib.utils.replay_buffers.replay_buffer.ReplayBuffer` class only supports storing and replaying
 experiences in different :py:class:`~ray.rllib.utils.replay_buffers.replay_buffer.StorageUnit`\s.
 Advanced buffer types add functionality while trying to retain compatibility through inheritance.
 
 
-.. literalinclude:: ../../../../rllib/examples/documentation/replay_buffer_demo.py
+.. literalinclude:: ../../../rllib/examples/documentation/replay_buffer_demo.py
     :language: python
     :start-after: __sphinx_doc_replay_buffer_basic_interaction__begin__
     :end-before: __sphinx_doc_replay_buffer_basic_interaction__end__
 
 
 Building your own ReplayBuffer
-******************************
+------------------------------
 
 Here is an example of how to implement your own toy example of a ReplayBuffer class and make SimpleQ use it:
 
-.. literalinclude:: ../../../../rllib/examples/documentation/replay_buffer_demo.py
+.. literalinclude:: ../../../rllib/examples/documentation/replay_buffer_demo.py
     :language: python
     :start-after: __sphinx_doc_replay_buffer_own_buffer__begin__
     :end-before: __sphinx_doc_replay_buffer_own_buffer__end__
@@ -124,7 +125,7 @@ When later calling the ``sample()`` method, num_items will relate to said storag
 
 Here is a full example of how to modify the storage_unit and interact with a custom buffer:
 
-.. literalinclude:: ../../../../rllib/examples/documentation/replay_buffer_demo.py
+.. literalinclude:: ../../../rllib/examples/documentation/replay_buffer_demo.py
     :language: python
     :start-after: __sphinx_doc_replay_buffer_advanced_usage_storage_unit__begin__
     :end-before: __sphinx_doc_replay_buffer_advanced_usage_storage_unit__end__
@@ -137,15 +138,7 @@ the same way as the parent's config.
 Here is an example of how to create an :py:class:`~ray.rllib.utils.replay_buffers.multi_agent_replay_buffer.MultiAgentReplayBuffer` with an alternative underlying :py:class:`~ray.rllib.utils.replay_buffers.replay_buffer.ReplayBuffer`.
 The :py:class:`~ray.rllib.utils.replay_buffers.multi_agent_replay_buffer.MultiAgentReplayBuffer` can stay the same, we only need to specify our own buffer along with a default call argument:
 
-.. literalinclude:: ../../../../rllib/examples/documentation/replay_buffer_demo.py
+.. literalinclude:: ../../../rllib/examples/documentation/replay_buffer_demo.py
     :language: python
     :start-after: __sphinx_doc_replay_buffer_advanced_usage_underlying_buffers__begin__
     :end-before: __sphinx_doc_replay_buffer_advanced_usage_underlying_buffers__end__
-
-
-.. toctree::
-    :hidden:
-    :maxdepth: 2
-
-    replay_buffers/replay_buffer.rst
-

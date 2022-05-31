@@ -60,8 +60,8 @@ if __name__ == "__main__":
     }
 
     # This is where we add prioritized experiences replay
-    # The training iteration function that is shared by DQN and R2D2 already includes
-    # a priority update step.
+    # The training iteration function that is shared by DQN and R2D2 already
+    # includes a priority update step.
     config["replay_buffer_config"] = {
         "type": "MultiAgentPrioritizedReplayBuffer",
         # Although not necessary, we can modify the default constructor args of

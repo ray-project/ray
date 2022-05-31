@@ -42,6 +42,19 @@ assert config == another_config == yet_another_config
 
 # __sphinx_doc_replay_buffer_type_specification__end__
 
+
+# __sphinx_doc_replay_buffer_basic_interaction__begin__
+
+# We choose fragments because it does not impose restrictions on our batch to be added
+buffer = ReplayBuffer(capacity=2, storage_unit=StorageUnit.FRAGMENTS)
+dummy_batch = SampleBatch({"a": [1], "b": [2]})
+buffer.add(dummy_batch)
+buffer.sample(2)
+# Because elements can be sampled multiple times, we receive a concatenated version
+# of dummy_batch `{a: [1, 1], b: [2, 2,]}`.
+
+# __sphinx_doc_replay_buffer_basic_interaction__end__
+
 # __sphinx_doc_replay_buffer_own_buffer__begin__
 
 
