@@ -501,31 +501,36 @@ class Policy(metaclass=ABCMeta):
     ) -> Tuple[ModelGradients, Dict[str, TensorType]]:
         """Computes gradients given a batch of experiences.
 
-        Either this in combination with `apply_gradients()` or
+        Either this - in combination with `apply_gradients()` - or
         `learn_on_batch()` must be implemented by subclasses.
+        The default implementation of `learn_on_batch()` calls `compute_gradients()`
+        and `apply_gradients()` in sequence.
 
         Args:
             postprocessed_batch: The SampleBatch object to use
                 for calculating gradients.
 
         Returns:
-            grads: List of gradient output values.
-            grad_info: Extra policy-specific info values.
+            Tuple, consisting of 1) List of gradient output values and 2)
+            Extra policy-specific info values.
         """
-        raise NotImplementedError
+        # By default, do nothing.
+        return [], {}
 
     @DeveloperAPI
     def apply_gradients(self, gradients: ModelGradients) -> None:
-        """Applies the (previously) computed gradients.
+        """Applies `gradients` to the Policy's model(s) using its local optimizer(s).
 
-        Either this in combination with `compute_gradients()` or
+        Either this - in combination with `compute_gradients()` - or
         `learn_on_batch()` must be implemented by subclasses.
+        The default implementation of `learn_on_batch()` calls `compute_gradients()`
+        and `apply_gradients()` in sequence.
 
         Args:
             gradients: The already calculated gradients to apply to this
                 Policy.
         """
-        raise NotImplementedError
+        pass
 
     @DeveloperAPI
     def get_weights(self) -> ModelWeights:
