@@ -66,7 +66,7 @@ def create_replica_wrapper(name: str, serialized_deployment_def: bytes = None):
 
             deployment_def = cloudpickle.loads(serialized_deployment_def)
 
-            if type(deployment_def, str):
+            if isinstance(deployment_def, str):
                 import_path = deployment_def
                 module_name, attr_name = parse_import_path(import_path)
                 deployment_def = getattr(import_module(module_name), attr_name)

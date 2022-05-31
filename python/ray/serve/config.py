@@ -243,9 +243,9 @@ class ReplicaConfig:
     def __init__(
         self,
         serialized_deployment_def: bytes,
-        serialized_init_args: Optional[bytes],
-        serialized_init_kwargs: Optional[bytes],
-        serialized_ray_actor_options: bytes,
+        serialized_init_args: Optional[bytes] = None,
+        serialized_init_kwargs: Optional[bytes] = None,
+        serialized_ray_actor_options: Optional[bytes] = None,
     ):
         # Store serialized versions of all properties.
         self.serialized_deployment_def = serialized_deployment_def
@@ -271,9 +271,9 @@ class ReplicaConfig:
         """Create a ReplicaConfig from deserialized parameters."""
 
         if inspect.isfunction(deployment_def):
-            if init_args is not None:
+            if init_args:
                 raise ValueError("init_args not supported for function deployments.")
-            elif init_kwargs is not None:
+            elif init_kwargs:
                 raise ValueError("init_kwargs not supported for function deployments.")
 
         if ray_actor_options is None:
@@ -353,8 +353,12 @@ class ReplicaConfig:
         This property is only meaningful if deployment_def is a Python class.
         Otherwise, it is None.
         """
-        if self._init_args is None and self.serialized_init_args is not None:
-            self._init_args = cloudpickle.loads(self.serialized_init_args)
+        if self._init_args is None:
+            if self.serialized_init_args is not None:
+                self._init_args = cloudpickle.loads(self.serialized_init_args)
+            else:
+                self._init_args = ()
+                self.serialized_init_args = cloudpickle.dumps(self._init_args)
 
         return self._init_args
 
@@ -366,8 +370,12 @@ class ReplicaConfig:
         Otherwise, it is None.
         """
 
-        if self._init_kwargs is None and self.serialized_init_kwargs is not None:
-            self._init_kwargs = cloudpickle.loads(self.serialized_init_kwargs)
+        if self._init_kwargs is None:
+            if self.serialized_init_kwargs is not None:
+                self._init_kwargs = cloudpickle.loads(self.serialized_init_kwargs)
+            else:
+                self._init_kwargs = {}
+                self.serialized_init_args = cloudpickle.dumps(self._init_kwargs)
 
         return self._init_kwargs
 
@@ -378,11 +386,16 @@ class ReplicaConfig:
         These are ultimately passed into the replica's actor when it's created.
         """
 
-        if (
-            self._ray_actor_options is None
-            and self.serialized_ray_actor_options is not None
-        ):
-            self._ray_actor_options = json.loads(self.serialized_ray_actor_options)
+        if self._ray_actor_options is None:
+            if self.serialized_ray_actor_options is not None:
+                self._ray_actor_options = json.loads(self.serialized_ray_actor_options)
+            else:
+                self._ray_actor_options = {}
+                self.serialized_ray_actor_options = json.dumps(self._ray_actor_options)
+
+        self._ray_actor_options = self._validate_ray_actor_options(
+            self._ray_actor_options
+        )
 
         return self._ray_actor_options
 
