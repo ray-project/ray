@@ -19,7 +19,7 @@ else
 fi
 echo "Python version is ${PYTHON_VERSION}"
 
-ROOT_DIR=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE:-$0}")")"; pwd)
+ROOT_DIR=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE:-$0}")")" || exit; pwd)
 WORKSPACE_DIR="${ROOT_DIR}/../.."
 
 # Installs conda and python 3.7
