@@ -136,7 +136,7 @@ class StatusOverview:
         )
 
     @classmethod
-    def from_proto(cls, proto: StatusOverviewProto):
+    def from_proto(cls, proto: StatusOverviewProto) -> "StatusOverview":
 
         # Recreate Serve Application info
         app_status = ApplicationStatusInfo.from_proto(proto.app_status)
