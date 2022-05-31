@@ -233,7 +233,7 @@ def test_get_serve_status(shutdown_ray):
 
 
 @pytest.mark.usefixtures("start_and_shutdown_ray_cli_class")
-class TestDeployAppBasic:
+class TestDeployApp:
     @pytest.fixture()
     def client(self):
         ray.init(address="auto", namespace="serve")
@@ -242,12 +242,12 @@ class TestDeployAppBasic:
         serve.shutdown()
         ray.shutdown()
 
-    def get_basic_config(self) -> Dict:
+    def get_test_config(self) -> Dict:
         return {"import_path": "ray.serve.tests.test_config_files.pizza.serve_dag"}
 
     def test_deploy_app_basic(self, client: ServeControllerClient):
 
-        config = ServeApplicationSchema.parse_obj(self.get_basic_config())
+        config = ServeApplicationSchema.parse_obj(self.get_test_config())
         client.deploy_app(config)
 
         wait_for_condition(
@@ -261,7 +261,7 @@ class TestDeployAppBasic:
 
     def test_deploy_app_with_overriden_config(self, client: ServeControllerClient):
 
-        config = self.get_basic_config()
+        config = self.get_test_config()
         config["deployments"] = [
             {
                 "name": "Multiplier",
@@ -289,7 +289,7 @@ class TestDeployAppBasic:
         )
 
     def test_deploy_app_update_config(self, client: ServeControllerClient):
-        config = ServeApplicationSchema.parse_obj(self.get_basic_config())
+        config = ServeApplicationSchema.parse_obj(self.get_test_config())
         client.deploy_app(config)
 
         wait_for_condition(
@@ -297,7 +297,7 @@ class TestDeployAppBasic:
             == "4 pizzas please!"
         )
 
-        config = self.get_basic_config()
+        config = self.get_test_config()
         config["deployments"] = [
             {
                 "name": "Adder",
@@ -315,7 +315,7 @@ class TestDeployAppBasic:
         )
 
     def test_deploy_app_update_num_replicas(self, client: ServeControllerClient):
-        config = ServeApplicationSchema.parse_obj(self.get_basic_config())
+        config = ServeApplicationSchema.parse_obj(self.get_test_config())
         client.deploy_app(config)
 
         wait_for_condition(
@@ -329,7 +329,7 @@ class TestDeployAppBasic:
 
         actors = ray.util.list_named_actors(all_namespaces=True)
 
-        config = self.get_basic_config()
+        config = self.get_test_config()
         config["deployments"] = [
             {
                 "name": "Adder",
@@ -372,7 +372,7 @@ class TestDeployAppBasic:
     def test_deploy_app_update_timestamp(self, client: ServeControllerClient):
         assert client.get_serve_status().app_status.deployment_timestamp == 0
 
-        config = ServeApplicationSchema.parse_obj(self.get_basic_config())
+        config = ServeApplicationSchema.parse_obj(self.get_test_config())
         client.deploy_app(config)
 
         wait_for_condition(
@@ -381,7 +381,7 @@ class TestDeployAppBasic:
 
         first_deploy_time = client.get_serve_status().app_status.deployment_timestamp
 
-        config = self.get_basic_config()
+        config = self.get_test_config()
         config["deployments"] = [
             {
                 "name": "Adder",
@@ -398,6 +398,35 @@ class TestDeployAppBasic:
             ApplicationStatus.DEPLOYING,
             ApplicationStatus.RUNNING,
         }
+
+    def test_deploy_app_overwrite_apps(self, client: ServeControllerClient):
+        """Check that overwriting a live app with a new one works."""
+
+        # Launch first graph. Its driver's route_prefix should be "/".
+        test_config_1 = ServeApplicationSchema.parse_obj(
+            {
+                "import_path": "ray.serve.tests.test_config_files.pizza.serve_dag",
+            }
+        )
+        client.deploy_app(test_config_1)
+
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
+            == "4 pizzas please!"
+        )
+
+        # Launch second graph. Its driver's route_prefix should also be "/".
+        # "/" should lead to the new driver.
+        test_config_2 = ServeApplicationSchema.parse_obj(
+            {
+                "import_path": "ray.serve.tests.test_config_files.world.DagNode",
+            }
+        )
+        client.deploy_app(test_config_2)
+
+        wait_for_condition(
+            lambda: requests.get("http://localhost:8000/").text == "wonderful world"
+        )
 
 
 def test_shutdown_remote(start_and_shutdown_ray_cli_function):
