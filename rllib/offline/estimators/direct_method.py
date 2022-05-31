@@ -71,6 +71,7 @@ class DirectMethod(OffPolicyEstimator):
         **q_model_kwargs,
     ):
         super().__init__(name, policy, gamma)
+        # TODO (rohan): Add support for continuous action spaces
         assert isinstance(
             policy.action_space, Discrete
         ), "DM Estimator only supports discrete action spaces!"
