@@ -26,6 +26,13 @@ logger = logging.getLogger(__name__)
 
 @DeveloperAPI
 class StorageUnit(Enum):
+    """Specifies how batches are structured in a ReplayBuffer.
+
+    timesteps: One buffer slot per timestep.
+    sequences: One buffer slot per sequence.
+    episodes: One buffer slot per episode.
+    fragemts: One buffer slot per incoming batch.
+    """
     TIMESTEPS = "timesteps"
     SEQUENCES = "sequences"
     EPISODES = "episodes"
