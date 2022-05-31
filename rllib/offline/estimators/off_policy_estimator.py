@@ -7,7 +7,7 @@ from ray.rllib.offline.io_context import IOContext
 from ray.rllib.utils.annotations import Deprecated
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import TensorType, SampleBatchType
-from typing import Dict, List
+from typing import List
 
 logger = logging.getLogger(__name__)
 
@@ -21,16 +21,17 @@ class OffPolicyEstimator:
     """Interface for an off policy reward estimator."""
 
     @DeveloperAPI
-    def __init__(self, policy: Policy, gamma: float, config: Dict):
+    def __init__(self, name: str, policy: Policy, gamma: float):
         """Initializes an OffPolicyEstimator instance.
 
         Args:
+            name: string to save OPE results under
             policy: Policy to evaluate.
             gamma: Discount factor of the environment.
         """
+        self.name = name
         self.policy = policy
         self.gamma = gamma
-        self.config = config
         self.new_estimates = []
 
     @DeveloperAPI
@@ -105,8 +106,8 @@ class OffPolicyEstimator:
 
         if isinstance(batch, MultiAgentBatch):
             raise ValueError(
-                "IS-estimation is not implemented for multi-agent batches. "
-                "You can set `input_evaluation: []` to resolve this."
+                "Off-Policy Estimation is not implemented for multi-agent batches. "
+                "You can set `off_policy_estimation_methods: {}` to resolve this."
             )
 
         if "action_prob" not in batch:
@@ -115,7 +116,7 @@ class OffPolicyEstimator:
                 "include action probabilities (i.e., the policy is stochastic "
                 "and emits the 'action_prob' key). For DQN this means using "
                 "`exploration_config: {type: 'SoftQ'}`. You can also set "
-                "`input_evaluation: []` to disable estimation."
+                "`off_policy_estimation_methods: {}` to disable estimation."
             )
 
     @DeveloperAPI

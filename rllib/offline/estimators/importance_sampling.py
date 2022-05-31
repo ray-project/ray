@@ -41,7 +41,7 @@ class ImportanceSampling(OffPolicyEstimator):
 
             estimates.append(
                 OffPolicyEstimate(
-                    "importance_sampling",
+                    self.name,
                     {
                         "v_old": v_old,
                         "v_new": v_new,

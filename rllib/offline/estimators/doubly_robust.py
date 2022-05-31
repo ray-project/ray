@@ -59,7 +59,7 @@ class DoublyRobust(DirectMethod):
 
                 estimates.append(
                     OffPolicyEstimate(
-                        "doubly_robust",
+                        self.name,
                         {
                             "v_old": v_old,
                             "v_new": v_new,

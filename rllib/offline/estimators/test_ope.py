@@ -34,21 +34,6 @@ class TestOPE(unittest.TestCase):
         train_steps = 200000
         n_batches = 100  # Approx. equal to n_episodes
         n_eval_episodes = 10000
-        estimator_config = {
-            "model": {
-                "fcnet_hiddens": [8, 4],
-                "fcnet_activation": "relu",
-                "vf_share_layers": True,
-            },
-            "q_model_type": "fqe",
-            "clip_grad_norm": 100,
-            "k": 5,
-            "n_iters": 160,
-            "lr": 1e-3,
-            "delta": 1e-5,
-            "batch_size": 32,
-            "tau": 0.05,
-        }
 
         config = (
             DQNConfig()
@@ -76,24 +61,56 @@ class TestOPE(unittest.TestCase):
             batch = batch.concat(reader.next())
         n_episodes = len(batch.split_by_episode())
         print("Episodes:", n_episodes, "Steps:", batch.count)
-        estimators = [
-            ImportanceSampling,
-            WeightedImportanceSampling,
-            DirectMethod,
-            DoublyRobust,
-        ]
+        estimators = {
+            "is": {"type": ImportanceSampling},
+            "wis": {"type": WeightedImportanceSampling},
+            "dm": {
+                "type": DirectMethod,
+                "model": {
+                    "fcnet_hiddens": [8, 4],
+                    "fcnet_activation": "relu",
+                    "vf_share_layers": True,
+                },
+                "q_model_type": "fqe",
+                "clip_grad_norm": 100,
+                "k": 5,
+                "n_iters": 160,
+                "lr": 1e-3,
+                "delta": 1e-5,
+                "batch_size": 32,
+                "tau": 0.05,
+            },
+            "dr": {
+                "type": DoublyRobust,
+                "model": {
+                    "fcnet_hiddens": [8, 4],
+                    "fcnet_activation": "relu",
+                    "vf_share_layers": True,
+                },
+                "q_model_type": "fqe",
+                "clip_grad_norm": 100,
+                "k": 5,
+                "n_iters": 160,
+                "lr": 1e-3,
+                "delta": 1e-5,
+                "batch_size": 32,
+                "tau": 0.05,
+            },
+        }
         mean_ret = {}
         # Run estimators on data
-        for estimator_cls in estimators:
+        for name, method_config in estimators.items():
+            estimator_cls = method_config.pop("type")
             estimator = estimator_cls(
-                trainer.get_policy(),
+                name=name,
+                policy=trainer.get_policy(),
                 gamma=gamma,
-                config=estimator_config,
+                **method_config,
             )
             estimates = estimator.estimate(batch)
             assert len(estimates) == n_episodes
             if estimator_cls.__name__ == "WeightedImportanceSampling":
-                # wis estimator improves with data, use last few episodes
+                # wis estimator improves with data, use last few episodes maybe?
                 mean_ret[estimator_cls.__name__] = np.mean(
                     [e.metrics["v_new"] for e in estimates[-10:]]
                 )
@@ -122,7 +139,8 @@ class TestOPE(unittest.TestCase):
         print(mean_ret)
 
         def test_ope_in_trainer(self):
-            # TODO (rohan): Test off_policy_estimation_methods in trainer config
+            # TODO (rohan): Add performance tests for off_policy_estimation_methods,
+            # with fixed seeds and hyperparameters
             pass
 
 

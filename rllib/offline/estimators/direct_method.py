@@ -1,4 +1,4 @@
-from typing import Dict, Tuple, List, Generator
+from typing import Tuple, List, Generator
 from ray.rllib.offline.estimators.off_policy_estimator import (
     OffPolicyEstimator,
     OffPolicyEstimate,
@@ -52,29 +52,35 @@ def k_fold_cv(
 class DirectMethod(OffPolicyEstimator):
     """The Direct Method estimator.
 
-    config: {
-        model: ModelConfigDict,
-        k: k-fold cross validation for training model and evaluating OPE
-    }
+    q_model_type: Either "fqe" for Fitted Q-Evaluation or "qreg" for Q-Regression
+    framework: One of "tf|tf2|tfe|torch", currently only "torch" is supported
+    k: k-fold cross validation for training model and evaluating OPE
+    q_model_kwargs: Optional arguments for the specified Q model
 
     DM estimator described in https://arxiv.org/pdf/1511.03722.pdf"""
 
     @override(OffPolicyEstimator)
-    def __init__(self, policy: Policy, gamma: float, config: Dict):
-        super().__init__(policy, gamma, config)
+    def __init__(
+        self,
+        name: str,
+        policy: Policy,
+        gamma: float,
+        q_model_type: str = "fqe",
+        framework: str = "torch",
+        k: int = 5,
+        **q_model_kwargs,
+    ):
+        super().__init__(name, policy, gamma)
         assert isinstance(
             policy.action_space, Discrete
         ), "DM Estimator only supports discrete action spaces!"
         assert (
             policy.config["batch_mode"] == "complete_episodes"
         ), "DM Estimator only supports batch_mode=`complete_episodes`"
-        assert (
-            policy.framework == "torch"
-        ), "DM estimator only supports `framework`=`torch`"
+        assert framework == "torch", "DM estimator only supports `framework`=`torch`"
 
         # TODO (rohan): Add support for QRegTF, FQETF, custom QModel types!
-        q_model_type = config.get("q_model_type", "qreg")
-        if policy.framework == "torch":
+        if framework == "torch":
             if q_model_type == "qreg":
                 model_cls = QRegTorchModel
             elif q_model_type == "fqe":
@@ -85,9 +91,9 @@ class DirectMethod(OffPolicyEstimator):
         self.model = model_cls(
             policy=policy,
             gamma=gamma,
-            config=config,
+            **q_model_kwargs,
         )
-        self.k = config.get("k", 5)
+        self.k = k
         self.losses = []
 
     @override(OffPolicyEstimator)
@@ -127,7 +133,7 @@ class DirectMethod(OffPolicyEstimator):
 
                 estimates.append(
                     OffPolicyEstimate(
-                        "direct_method",
+                        self.name,
                         {
                             "v_old": v_old,
                             "v_new": v_new,

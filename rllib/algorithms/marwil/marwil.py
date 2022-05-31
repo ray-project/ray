@@ -103,9 +103,10 @@ class MARWILConfig(TrainerConfig):
         # the same line.
         self.input_ = "sampler"
         # Use importance sampling estimators for reward.
-        self.off_policy_estimation_methods = [
-            ImportanceSampling, WeightedImportanceSampling
-        ]
+        self.off_policy_estimation_methods = {
+            "is": {"type": ImportanceSampling},
+            "wis": {"type": WeightedImportanceSampling},
+        }
         self.postprocess_inputs = True
         self.lr = 1e-4
         self.train_batch_size = 2000

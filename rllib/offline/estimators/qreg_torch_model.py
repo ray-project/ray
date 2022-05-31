@@ -1,12 +1,12 @@
 from ray.rllib.models.utils import get_initializer
 from ray.rllib.policy import Policy
-from typing import Dict, List, Union
+from typing import List, Union
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.typing import TensorType, ModelConfigDict
 
 torch, nn = try_import_torch()
 
@@ -18,50 +18,65 @@ class QRegTorchModel:
     Arguments:
         policy: The Policy object correspodning to the target policy in OPE
         gamma: The discount factor for the environment
-        config: Optional config settings for Q-Reg
-        config = {
-            # The ModelConfigDict for self.q_model
-            "model": {"fcnet_hiddens": [32, 32], "fcnet_activation": "relu"},
-            # Maximum number of training iterations to run on the batch
-            "n_iters": 80,
-            # Learning rate for Q-function optimizer
-            "lr": 1e-3,
-            # Early stopping if the mean loss < delta
-            "delta": 1e-4,
-            # Clip gradients to this maximum value
-            "clip_grad_norm": 100,
-            # Minibatch size for training Q-function
-            "batch_size": 32,
-        }
+        # The ModelConfigDict for self.q_model
+        model = {
+                    "fcnet_hiddens": [8, 8],
+                    "fcnet_activation": "relu",
+                    "vf_share_layers": True,
+                },
+        # Maximum number of training iterations to run on the batch
+        n_iters = 160,
+        # Learning rate for Q-function optimizer
+        lr = 1e-3,
+        # Early stopping if the mean loss < delta
+        delta = 1e-4,
+        # Clip gradients to this maximum value
+        clip_grad_norm = 100.0,
+        # Minibatch size for training Q-function
+        batch_size = 32,
+        # Polyak averaging factor for target Q-function
+        tau = 0.01
     """
 
-    def __init__(self, policy: Policy, gamma: float, config: Dict) -> None:
+    def __init__(
+        self,
+        policy: Policy,
+        gamma: float,
+        model: ModelConfigDict = None,
+        n_iters: int = 160,
+        lr: float = 1e-3,
+        delta: float = 1e-4,
+        clip_grad_norm: float = 100.0,
+        batch_size: int = 32,
+        tau: float = 0.01,
+    ) -> None:
         self.policy = policy
         self.gamma = gamma
         self.observation_space = policy.observation_space
         self.action_space = policy.action_space
 
+        if model is None:
+            model = {
+                "fcnet_hiddens": [8, 8],
+                "fcnet_activation": "relu",
+                "vf_share_layers": True,
+            }
+
         self.q_model: TorchModelV2 = ModelCatalog.get_model_v2(
             self.observation_space,
             self.action_space,
             self.action_space.n,
-            config.get(
-                "model",
-                {
-                    "fcnet_hiddens": [32, 32],
-                    "fcnet_activation": "relu",
-                    "vf_share_layers": True,
-                },
-            ),
+            model,
             framework="torch",
             name="TorchQModel",
         )
         self.device = self.policy.device
-        self.n_iters = config.get("n_iters", 80)
-        self.lr = config.get("lr", 1e-3)
-        self.delta = config.get("delta", 1e-4)
-        self.clip_grad_norm = config.get("clip_grad_norm", 100)
-        self.batch_size = config.get("batch_size", 32)
+        self.n_iters = n_iters
+        self.lr = lr
+        self.delta = delta
+        self.clip_grad_norm = clip_grad_norm
+        self.batch_size = batch_size
+        self.tau = tau
         self.optimizer = torch.optim.Adam(self.q_model.variables(), self.lr)
         initializer = get_initializer("xavier_uniform", framework="torch")
 

@@ -51,7 +51,7 @@ class TestCQL(unittest.TestCase):
                 # RLlib algorithm (e.g. PPO or SAC).
                 actions_in_input_normalized=False,
                 # Switch on off-policy evaluation.
-                off_policy_estimation_methods=["is"],
+                off_policy_estimation_methods={"is": {"type": "is"}},
             )
             .training(
                 clip_actions=False,

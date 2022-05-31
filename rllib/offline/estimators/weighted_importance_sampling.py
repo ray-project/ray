@@ -6,7 +6,6 @@ from ray.rllib.policy import Policy
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.typing import SampleBatchType
 import numpy as np
-from typing import Dict
 
 
 @DeveloperAPI
@@ -17,8 +16,8 @@ class WeightedImportanceSampling(OffPolicyEstimator):
     https://arxiv.org/pdf/1911.06854.pdf"""
 
     @override(OffPolicyEstimator)
-    def __init__(self, policy: Policy, gamma: float, config: Dict):
-        super().__init__(policy, gamma, config)
+    def __init__(self, name: str, policy: Policy, gamma: float):
+        super().__init__(name, policy, gamma)
         self.filter_values = []
         self.filter_counts = []
 
@@ -56,7 +55,7 @@ class WeightedImportanceSampling(OffPolicyEstimator):
 
             estimates.append(
                 OffPolicyEstimate(
-                    "weighted_importance_sampling",
+                    self.name,
                     {
                         "v_old": v_old,
                         "v_new": v_new,

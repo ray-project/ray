@@ -34,7 +34,6 @@ from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.evaluation.episode import Episode
-from ray.rllib.utils import force_list
 from ray.rllib.evaluation.metrics import (
     collect_episodes,
     collect_metrics,
@@ -1899,9 +1898,22 @@ class Trainer(Trainable):
                 error=False,
             )
             config["off_policy_estimation_methods"] = input_evaluation
-        config["off_policy_estimation_methods"] = force_list(
-            config["off_policy_estimation_methods"]
-        )
+        if isinstance(config["off_policy_estimation_methods"], list) or isinstance(
+            config["off_policy_estimation_methods"], tuple
+        ):
+            ope_dict = {
+                str(ope): {"type": ope} for ope in self.off_policy_estimation_methods
+            }
+            deprecation_warning(
+                old="config.off_policy_estimation_methods={}".format(
+                    self.off_policy_estimation_methods
+                ),
+                new="config.off_policy_estimation_methods={}".format(
+                    ope_dict,
+                ),
+                error=False,
+            )
+            config["off_policy_estimation_methods"] = ope_dict
 
         # Check model config.
         # If no preprocessing, propagate into model's config as well

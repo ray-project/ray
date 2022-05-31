@@ -117,7 +117,7 @@ class TestMARWIL(unittest.TestCase):
         config["input"] = [data_file]
         config[
             "off_policy_estimation_methods"
-        ] = []  # disable (data has no action-probs)
+        ] = {}  # disable (data has no action-probs)
         num_iterations = 3
 
         # Test for all frameworks.
