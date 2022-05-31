@@ -12,4 +12,3 @@ cartpole-a2c-microbatch:
         rollout_fragment_length: 20
         microbatch_size: 40
         train_batch_size: 120
-        seed: 13
