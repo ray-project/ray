@@ -386,8 +386,6 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
       [this](const ActorID &actor_id) {
         gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenActorDead(actor_id);
       },
-      /*get_job_config_func=*/
-      [this](const JobID &job_id) { return gcs_job_manager_->GetJobConfig(job_id); },
       [this](std::function<void(void)> fn, boost::posix_time::milliseconds delay) {
         boost::asio::deadline_timer timer(main_service_);
         timer.expires_from_now(delay);
