@@ -27,9 +27,9 @@ def start_metrics_pusher(
     consistently metrics delivery. Python GIL will ensure that this thread gets
     fair timeshare to execute and run.
 
-    stop_event is passed in only when a RayServeHandle calls this function to push metrics
-    for scale-to-zero. stop_event is set either when the handle is garbage collected or when
-    the Serve application shuts down.
+    Stop_event is passed in only when a RayServeHandle calls this function to 
+    push metrics for scale-to-zero. stop_event is set either when the handle
+    is garbage collected or when the Serve application shuts down.
 
     Args:
         interval_s(float): the push interval.
@@ -39,7 +39,8 @@ def start_metrics_pusher(
         metrics_process_func: actor handle function.
         stop_event: the backgroupd thread will be closed when this event is set
     Returns:
-        timer: The background thread created by this function to push metrics to the controller
+        timer: The background thread created by this function to push 
+               metrics to the controller
     """
 
     def send_once():
