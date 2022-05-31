@@ -398,4 +398,7 @@ def install_matching_ray_locally(ray_wheels: Optional[str]):
             if loaded_module == module_name or loaded_module.startswith(
                 f"{module_name}."
             ):
-                importlib.reload(sys.modules[loaded_module])
+                try:
+                    importlib.reload(sys.modules[loaded_module])
+                except Exception as e:
+                    logger.warning(f"Could not reload module {loaded_module}: {e}")
