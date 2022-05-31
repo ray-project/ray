@@ -21,14 +21,16 @@ class TestAlphaZero(unittest.TestCase):
 
     def test_alpha_zero_compilation(self):
         """Test whether an AlphaZeroTrainer can be built with all frameworks."""
-        config = az.DEFAULT_CONFIG.copy()
-        config["env"] = CartPoleSparseRewards
-        config["model"]["custom_model"] = DenseModel
+        config = (
+            az.AlphaZeroConfig()
+            .environment(env=CartPoleSparseRewards)
+            .training(model={"custom_model": DenseModel})
+        )
         num_iterations = 1
 
         # Only working for torch right now.
         for _ in framework_iterator(config, frameworks="torch"):
-            trainer = az.AlphaZeroTrainer(config)
+            trainer = config.build()
             for i in range(num_iterations):
                 results = trainer.train()
                 check_train_results(results)
