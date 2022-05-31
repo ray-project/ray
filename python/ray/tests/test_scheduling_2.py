@@ -255,7 +255,10 @@ def test_placement_group_scheduling_strategy(ray_start_cluster, connect_to_clien
 
 
 @pytest.mark.parametrize("connect_to_client", [True, False])
-def test_node_affinity_scheduling_strategy(ray_start_cluster, connect_to_client):
+def test_node_affinity_scheduling_strategy(
+    monkeypatch, ray_start_cluster, connect_to_client
+):
+    monkeypatch.setenv("RAY_num_heartbeats_timeout", "4")
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=8, resources={"head": 1})
     ray.init(address=cluster.address)
@@ -500,7 +503,10 @@ def test_spread_scheduling_strategy(ray_start_cluster, connect_to_client):
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="FakeAutoscaler doesn't work on Windows"
 )
-def test_demand_report_for_node_affinity_scheduling_strategy(shutdown_only):
+def test_demand_report_for_node_affinity_scheduling_strategy(
+    monkeypatch, shutdown_only
+):
+    monkeypatch.setenv("RAY_num_heartbeats_timeout", "4")
     from ray.cluster_utils import AutoscalingCluster
 
     cluster = AutoscalingCluster(
@@ -645,6 +651,50 @@ def test_demand_report_when_scale_up(shutdown_only):
     # Wait for 20s for the cluster to be up
     wait_for_condition(check_backlog_info, 20)
     cluster.shutdown()
+
+
+def test_data_locality_spilled_objects(
+    ray_start_cluster_enabled, fs_only_object_spilling_config
+):
+    cluster = ray_start_cluster_enabled
+    object_spilling_config, _ = fs_only_object_spilling_config
+    cluster.add_node(
+        num_cpus=1,
+        object_store_memory=100 * 1024 * 1024,
+        _system_config={
+            "min_spilling_size": 1,
+            "object_spilling_config": object_spilling_config,
+        },
+    )
+    ray.init(cluster.address)
+    cluster.add_node(
+        num_cpus=1, object_store_memory=100 * 1024 * 1024, resources={"remote": 1}
+    )
+
+    @ray.remote(resources={"remote": 1})
+    def f():
+        return (
+            np.zeros(50 * 1024 * 1024, dtype=np.uint8),
+            ray.runtime_context.get_runtime_context().node_id,
+        )
+
+    @ray.remote
+    def check_locality(x):
+        _, node_id = x
+        assert node_id == ray.runtime_context.get_runtime_context().node_id
+
+    # Check locality works when dependent task is already submitted by the time
+    # the upstream task finishes.
+    for _ in range(5):
+        ray.get(check_locality.remote(f.remote()))
+
+    # Check locality works when some objects were spilled.
+    xs = [f.remote() for _ in range(5)]
+    ray.wait(xs, num_returns=len(xs), fetch_local=False)
+    for i, x in enumerate(xs):
+        task = check_locality.remote(x)
+        print(i, x, task)
+        ray.get(task)
 
 
 if __name__ == "__main__":

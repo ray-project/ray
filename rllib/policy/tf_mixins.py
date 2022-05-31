@@ -1,6 +1,7 @@
+import gym
+import logging
 from typing import Dict, List, Union
 
-from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -13,7 +14,10 @@ from ray.rllib.utils.typing import (
     LocalOptimizer,
     ModelGradients,
     TensorType,
+    TrainerConfigDict,
 )
+
+logger = logging.getLogger(__name__)
 
 tf1, tf, tfv = try_import_tf()
 
@@ -230,10 +234,31 @@ class ValueNetworkMixin:
                 return tf.constant(0.0)
 
         self._value = value
+        self._should_cache_extra_action = config["framework"] == "tf"
         self._cached_extra_action_fetches = None
 
+    def _extra_action_out_impl(self) -> Dict[str, TensorType]:
+        extra_action_out = super().extra_action_out_fn()
+        # Keras models return values for each call in third return argument
+        # (dict).
+        if isinstance(self.model, tf.keras.Model):
+            return extra_action_out
+        # Return value function outputs. VF estimates will hence be added to the
+        # SampleBatches produced by the sampler(s) to generate the train batches
+        # going into the loss function.
+        extra_action_out.update(
+            {
+                SampleBatch.VF_PREDS: self.model.value_function(),
+            }
+        )
+        return extra_action_out
+
     def extra_action_out_fn(self) -> Dict[str, TensorType]:
-        # Note: there are 2 reasons we are caching the extra_action_fetches here.
+        if not self._should_cache_extra_action:
+            return self._extra_action_out_impl()
+
+        # Note: there are 2 reasons we are caching the extra_action_fetches for
+        # TF1 static graph here.
         # 1. for better performance, so we don't query base class and model for
         #    extra fetches every single time.
         # 2. for correctness. TF1 is special because the static graph may contain
@@ -248,67 +273,82 @@ class ValueNetworkMixin:
         if self._cached_extra_action_fetches is not None:
             return self._cached_extra_action_fetches
 
-        # TODO: (sven) Deprecate once we only allow native keras models.
-        self._cached_extra_action_fetches = super().extra_action_out_fn()
-        # Keras models return values for each call in third return argument
-        # (dict).
-        if isinstance(self.model, tf.keras.Model):
-            return self._cached_extra_action_fetches
-        # Return value function outputs. VF estimates will hence be added to the
-        # SampleBatches produced by the sampler(s) to generate the train batches
-        # going into the loss function.
-        self._cached_extra_action_fetches.update(
-            {
-                SampleBatch.VF_PREDS: self.model.value_function(),
-            }
-        )
+        self._cached_extra_action_fetches = self._extra_action_out_impl()
         return self._cached_extra_action_fetches
 
 
-class ComputeGAEMixIn:
-    """Postprocess SampleBatch to Compute GAE before they get used for training."""
+class TargetNetworkMixin:
+    """Assign the `update_target` method to the SimpleQTFPolicy
 
-    def __init__(self):
-        pass
+    The function is called every `target_network_update_freq` steps by the
+    master learner.
+    """
 
-    @DeveloperAPI
-    def postprocess_trajectory(
-        self, sample_batch, other_agent_batches=None, episode=None
+    def __init__(
+        self,
+        obs_space: gym.spaces.Space,
+        action_space: gym.spaces.Space,
+        config: TrainerConfigDict,
     ):
-        sample_batch = super().postprocess_trajectory(sample_batch)
-        return compute_gae_for_sample_batch(
-            self, sample_batch, other_agent_batches, episode
-        )
+        @make_tf_callable(self.get_session())
+        def do_update():
+            # update_target_fn will be called periodically to copy Q network to
+            # target Q network
+            update_target_expr = []
+            assert len(self.q_func_vars) == len(self.target_q_func_vars), (
+                self.q_func_vars,
+                self.target_q_func_vars,
+            )
+            for var, var_target in zip(self.q_func_vars, self.target_q_func_vars):
+                update_target_expr.append(var_target.assign(var))
+                logger.debug("Update target op {}".format(var_target))
+            return tf.group(*update_target_expr)
+
+        self.update_target = do_update
+
+    @property
+    def q_func_vars(self):
+        if not hasattr(self, "_q_func_vars"):
+            self._q_func_vars = self.model.variables()
+        return self._q_func_vars
+
+    @property
+    def target_q_func_vars(self):
+        if not hasattr(self, "_target_q_func_vars"):
+            self._target_q_func_vars = self.target_model.variables()
+        return self._target_q_func_vars
+
+    @override(TFPolicy)
+    def variables(self):
+        return self.q_func_vars + self.target_q_func_vars
 
 
-class ComputeAndClipGradsMixIn:
-    """Compute and maybe clip gradients."""
+# TODO: find a better place for this util, since it's not technically MixIns.
+@DeveloperAPI
+def compute_gradients(
+    policy, optimizer: LocalOptimizer, loss: TensorType
+) -> ModelGradients:
+    # Compute the gradients.
+    variables = policy.model.trainable_variables
+    if isinstance(policy.model, ModelV2):
+        variables = variables()
+    grads_and_vars = optimizer.compute_gradients(loss, variables)
 
-    def __init__(self):
-        pass
-
-    @DeveloperAPI
-    def compute_gradients_fn(
-        self, optimizer: LocalOptimizer, loss: TensorType
-    ) -> ModelGradients:
-        # Compute the gradients.
-        variables = self.model.trainable_variables
-        if isinstance(self.model, ModelV2):
-            variables = variables()
-        grads_and_vars = optimizer.compute_gradients(loss, variables)
-
-        # Clip by global norm, if necessary.
-        if self.config["grad_clip"] is not None:
-            # Defuse inf gradients (due to super large losses).
-            grads = [g for (g, v) in grads_and_vars]
-            grads, _ = tf.clip_by_global_norm(grads, self.config["grad_clip"])
-            # If the global_norm is inf -> All grads will be NaN. Stabilize this
-            # here by setting them to 0.0. This will simply ignore destructive loss
-            # calculations.
-            self.grads = [
-                tf.where(tf.math.is_nan(g), tf.zeros_like(g), g) for g in grads
-            ]
-            clipped_grads_and_vars = list(zip(self.grads, variables))
-            return clipped_grads_and_vars
-        else:
-            return grads_and_vars
+    # Clip by global norm, if necessary.
+    if policy.config["grad_clip"] is not None:
+        # Defuse inf gradients (due to super large losses).
+        grads = [g for (g, v) in grads_and_vars]
+        grads, _ = tf.clip_by_global_norm(grads, policy.config["grad_clip"])
+        # If the global_norm is inf -> All grads will be NaN. Stabilize this
+        # here by setting them to 0.0. This will simply ignore destructive loss
+        # calculations.
+        policy.grads = []
+        for g in grads:
+            if g is not None:
+                policy.grads.append(tf.where(tf.math.is_nan(g), tf.zeros_like(g), g))
+            else:
+                policy.grads.append(None)
+        clipped_grads_and_vars = list(zip(policy.grads, variables))
+        return clipped_grads_and_vars
+    else:
+        return grads_and_vars

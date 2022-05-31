@@ -72,9 +72,6 @@ class DDPGConfig(SimpleQConfig):
         self.huber_threshold = 1.0
         self.l2_reg = 1e-6
 
-        # __sphinx_doc_end__
-        # fmt: on
-
         # Override some of SimpleQ's default values with DDPG-specific values.
         # .exploration()
         self.exploration_config = {
@@ -125,6 +122,9 @@ class DDPGConfig(SimpleQConfig):
         # .rollouts()
         self.rollout_fragment_length = 1
         self.compress_observations = False
+
+        # __sphinx_doc_end__
+        # fmt: on
 
         # Deprecated.
         self.worker_side_prioritization = DEPRECATED_VALUE

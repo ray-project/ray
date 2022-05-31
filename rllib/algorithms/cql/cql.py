@@ -12,6 +12,7 @@ from ray.rllib.execution.train_ops import (
     multi_gpu_train_one_step,
     train_one_step,
 )
+from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
 from ray.rllib.offline.shuffled_input import ShuffledInput
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -66,7 +67,7 @@ class CQLConfig(SACConfig):
 
         # Changes to Trainer's/SACConfig's default:
         # .offline_data()
-        self.input_evaluation = []
+        self.off_policy_estimation_methods = []
 
         # .reporting()
         self.min_sample_timesteps_per_reporting = 0
@@ -150,7 +151,7 @@ class CQLTrainer(SACTrainer):
                     )
                     batch[SampleBatch.DONES][-1] = True
                 self.local_replay_buffer.add_batch(batch)
-            print(
+            logger.info(
                 f"Loaded {num_batches} batches ({total_timesteps} ts) into the"
                 " replay buffer, which has capacity "
                 f"{self.local_replay_buffer.capacity}."
@@ -215,7 +216,11 @@ class CQLTrainer(SACTrainer):
     def training_iteration(self) -> ResultDict:
 
         # Sample training batch from replay buffer.
-        train_batch = self.local_replay_buffer.sample(self.config["train_batch_size"])
+        train_batch = sample_min_n_steps_from_buffer(
+            self.local_replay_buffer,
+            self.config["train_batch_size"],
+            count_by_agent_steps=self._by_agent_steps,
+        )
 
         # Old-style replay buffers return None if learning has not started
         if not train_batch:

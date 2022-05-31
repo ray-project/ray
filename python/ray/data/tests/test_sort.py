@@ -76,12 +76,17 @@ def test_sort_partition_same_key_to_same_block(
 
 @pytest.mark.parametrize("num_items,parallelism", [(100, 1), (1000, 4)])
 @pytest.mark.parametrize("use_push_based_shuffle", [False, True])
-def test_sort_arrow(ray_start_regular, num_items, parallelism, use_push_based_shuffle):
+@pytest.mark.parametrize("use_polars", [False, True])
+def test_sort_arrow(
+    ray_start_regular, num_items, parallelism, use_push_based_shuffle, use_polars
+):
     ctx = ray.data.context.DatasetContext.get_current()
 
     try:
-        original = ctx.use_push_based_shuffle
+        original_push_based_shuffle = ctx.use_push_based_shuffle
         ctx.use_push_based_shuffle = use_push_based_shuffle
+        original_use_polars = ctx.use_polars
+        ctx.use_polars = use_polars
 
         a = list(reversed(range(num_items)))
         b = [f"{x:03}" for x in range(num_items)]
@@ -112,16 +117,22 @@ def test_sort_arrow(ray_start_regular, num_items, parallelism, use_push_based_sh
         assert_sorted(ds.sort(key="b"), zip(a, b))
         assert_sorted(ds.sort(key="a", descending=True), zip(a, b))
     finally:
-        ctx.use_push_based_shuffle = original
+        ctx.use_push_based_shuffle = original_push_based_shuffle
+        ctx.use_polars = original_use_polars
 
 
 @pytest.mark.parametrize("use_push_based_shuffle", [False, True])
-def test_sort_arrow_with_empty_blocks(ray_start_regular, use_push_based_shuffle):
+@pytest.mark.parametrize("use_polars", [False, True])
+def test_sort_arrow_with_empty_blocks(
+    ray_start_regular, use_push_based_shuffle, use_polars
+):
     ctx = ray.data.context.DatasetContext.get_current()
 
     try:
-        original = ctx.use_push_based_shuffle
+        original_push_based_shuffle = ctx.use_push_based_shuffle
         ctx.use_push_based_shuffle = use_push_based_shuffle
+        original_use_polars = ctx.use_polars
+        ctx.use_polars = use_polars
 
         assert (
             BlockAccessor.for_block(pa.Table.from_pydict({})).sample(10, "A").num_rows
@@ -162,7 +173,8 @@ def test_sort_arrow_with_empty_blocks(ray_start_regular, use_push_based_shuffle)
         )
         assert ds.sort("value").count() == 0
     finally:
-        ctx.use_push_based_shuffle = original
+        ctx.use_push_based_shuffle = original_push_based_shuffle
+        ctx.use_polars = original_use_polars
 
 
 def test_push_based_shuffle_schedule():
@@ -210,6 +222,45 @@ def test_push_based_shuffle_schedule():
     _test(20, 3, {"node1": 100})
     _test(100, 3, {"node1": 10, "node2": 10, "node3": 10})
     _test(100, 10, {"node1": 10, "node2": 10, "node3": 10})
+
+
+def test_push_based_shuffle_stats(ray_start_cluster):
+    ctx = ray.data.context.DatasetContext.get_current()
+    try:
+        original = ctx.use_push_based_shuffle
+        ctx.use_push_based_shuffle = True
+
+        cluster = ray_start_cluster
+        cluster.add_node(
+            resources={"bar:1": 100},
+            num_cpus=10,
+            _system_config={"max_direct_call_object_size": 0},
+        )
+        cluster.add_node(resources={"bar:2": 100}, num_cpus=10)
+        cluster.add_node(resources={"bar:3": 100}, num_cpus=0)
+
+        ray.init(cluster.address)
+
+        parallelism = 100
+        ds = ray.data.range(1000, parallelism=parallelism).random_shuffle()
+        assert "random_shuffle_merge" in ds.stats()
+        # Check all nodes used.
+        assert "2 nodes used" in ds.stats()
+        assert "1 nodes used" not in ds.stats()
+
+        # Check all merge tasks are included in stats.
+        internal_stats = ds._plan.stats()
+        num_merge_tasks = len(internal_stats.stages["random_shuffle_merge"])
+        # Merge factor is 2 for random_shuffle ops.
+        merge_factor = 2
+        assert (
+            parallelism // (merge_factor + 1)
+            <= num_merge_tasks
+            <= parallelism // merge_factor
+        )
+
+    finally:
+        ctx.use_push_based_shuffle = original
 
 
 if __name__ == "__main__":

@@ -2373,16 +2373,32 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
   }
   std::vector<std::unique_ptr<RayObject>> results;
   if (!GetObjectsFromPlasma(object_ids, &results)) {
-    RAY_LOG(WARNING)
-        << "Failed to get objects that should have been in the object store. These "
-           "objects may have been evicted while there are still references in scope.";
-    // TODO(suquark): Maybe "Status::ObjectNotFound" is more accurate here.
-    send_reply_callback(Status::Invalid("Failed to get objects."), nullptr, nullptr);
-    return;
+    for (size_t i = 0; i < object_ids.size(); ++i) {
+      reply->add_successes(false);
+    }
+  } else {
+    RAY_CHECK_EQ(object_ids.size(), results.size());
+    auto object_id_it = object_ids.begin();
+    auto result_it = results.begin();
+    while (object_id_it != object_ids.end()) {
+      if (*result_it == nullptr) {
+        RAY_LOG(DEBUG) << "Failed to get object in the object store: " << *object_id_it
+                       << ". This should only happen when the owner tries to pin a "
+                       << "secondary copy and it's evicted in the meantime";
+        object_id_it = object_ids.erase(object_id_it);
+        result_it = results.erase(result_it);
+        reply->add_successes(false);
+      } else {
+        ++object_id_it;
+        ++result_it;
+        reply->add_successes(true);
+      }
+    }
+    // Wait for the object to be freed by the owner, which keeps the ref count.
+    local_object_manager_.PinObjectsAndWaitForFree(
+        object_ids, std::move(results), owner_address);
   }
-  // Wait for the object to be freed by the owner, which keeps the ref count.
-  local_object_manager_.PinObjectsAndWaitForFree(
-      object_ids, std::move(results), owner_address);
+  RAY_CHECK_EQ(request.object_ids_size(), reply->successes_size());
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -2390,16 +2406,6 @@ void NodeManager::HandleGetSystemConfig(const rpc::GetSystemConfigRequest &reque
                                         rpc::GetSystemConfigReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
   reply->set_system_config(initial_config_.raylet_config);
-  send_reply_callback(Status::OK(), nullptr, nullptr);
-}
-
-void NodeManager::HandleGetGcsServerAddress(
-    const rpc::GetGcsServerAddressRequest &request,
-    rpc::GetGcsServerAddressReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  auto address = gcs_client_->GetGcsServerAddress();
-  reply->set_ip(address.first);
-  reply->set_port(address.second);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

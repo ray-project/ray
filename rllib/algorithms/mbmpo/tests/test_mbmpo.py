@@ -20,17 +20,17 @@ class TestMBMPO(unittest.TestCase):
 
     def test_mbmpo_compilation(self):
         """Test whether an MBMPOTrainer can be built with all frameworks."""
-        config = mbmpo.DEFAULT_CONFIG.copy()
-        config["num_workers"] = 2
-        config["horizon"] = 200
-        config["dynamics_model"]["ensemble_size"] = 2
+        config = (
+            mbmpo.MBMPOConfig()
+            .rollouts(num_rollout_workers=2, horizon=200)
+            .training(dynamics_model={"ensemble_size": 2})
+            .environment(env="ray.rllib.examples.env.mbmpo_env.CartPoleWrapper")
+        )
         num_iterations = 1
 
         # Test for torch framework (tf not implemented yet).
         for _ in framework_iterator(config, frameworks="torch"):
-            trainer = mbmpo.MBMPOTrainer(
-                config=config, env="ray.rllib.examples.env.mbmpo_env.CartPoleWrapper"
-            )
+            trainer = config.build()
 
             for i in range(num_iterations):
                 results = trainer.train()
