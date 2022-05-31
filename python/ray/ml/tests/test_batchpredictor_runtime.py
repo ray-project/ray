@@ -91,6 +91,18 @@ def create_data():
     shutil.rmtree(str(path), ignore_errors=True)
 
 
+# This should always take less than 15 seconds (min of 5) on an m5 machine,
+# no matter the number of nodes, cores or workers.
+# Results measured on May 25th 2022.
+# 1 node * 16 cores/workers
+# Times: [9.2977, 9.2603, 9.1659, 9.2752, 9.0771]
+# Min: 9.0771, StdDev: 0.0823, peak tmpdir usage: 1.2 GB
+#
+# 4 nodes * 8 cores/workers
+# Times: [12.0017, 12.0717, 11.9984, 11.8895, 11.8899]
+# Min: 11.8895, StdDev: 0.0707, peak tmpdir usage: 1.2 GB
+
+
 @pytest.mark.parametrize("num_scoring_workers", [1, 4])
 def test_batchpredictor_runtime(
     num_scoring_workers, ray_start_4_cpus, create_data, tmpdir
