@@ -47,3 +47,19 @@ def py_test_run_all_notebooks(include, exclude, **kwargs):
             args = ["--find-recursively", "--path", file],
             **kwargs
         )
+
+# Checks if all globed python files have the pytest snippet.
+def check_pytest(name, include, exclude, **kwargs):
+    pytest_checker = Label("//bazel:pytest_checker.py")
+
+    srcs = [file for file in native.glob(include = include, exclude = exclude, allow_empty=False)]
+    native.py_test(
+        name = name,
+        srcs = [
+            pytest_checker,
+        ] + srcs,
+        main = pytest_checker,
+        args = [x for x in srcs],
+        size="small",
+        **kwargs
+    )
