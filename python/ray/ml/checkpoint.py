@@ -1,10 +1,12 @@
 import contextlib
 import io
+import logging
 import os
 import platform
 import shutil
 import tarfile
 import tempfile
+import traceback
 from filelock import FileLock
 from pathlib import Path
 from typing import Any, Dict, Iterator, Optional, Tuple, Union
@@ -23,6 +25,8 @@ _DICT_CHECKPOINT_FILE_NAME = "dict_checkpoint.pkl"
 _FS_CHECKPOINT_KEY = "fs_checkpoint"
 _BYTES_DATA_KEY = "bytes_data"
 _CHECKPOINT_DIR_PREFIX = "checkpoint_tmp_"
+
+logger = logging.getLogger(__name__)
 
 
 @PublicAPI
@@ -359,12 +363,15 @@ class Checkpoint:
         Returns:
             str: Directory containing checkpoint data.
         """
-        has_path = path is not None
+        user_provided_path = path is not None
         path = path if has_path else self._get_temporary_checkpoint_dir()
 
-        _make_dir(path, drop_del_lock=not has_path)
+        _make_dir(path, acquire_del_lock=not user_provided_path)
 
         try:
+            # Timeout 0 means there will be only one attempt to acquire
+            # the file lock. If it cannot be aquired, a TimeoutError
+            # will be thrown.
             with FileLock(f"{path}.lock", timeout=0):
                 self._to_directory(path)
         except TimeoutError:
@@ -423,9 +430,13 @@ class Checkpoint:
             try:
                 os.remove(del_lock_path)
             except Exception:
-                pass
+                logger.warning(
+                    f"Could not remove {del_lock_path} deletion file lock. "
+                    f"Traceback:\n{traceback.format_exc()}"
+                )
 
-            # In the edge case, we do not remove the directory at all.
+            # In the edge case (process crash before del lock file is removed),
+            # we do not remove the directory at all.
             # Since it's in /tmp, this is not that big of a deal.
             # check if any lock files are remaining
             temp_dir_base_name = Path(temp_dir).name
@@ -433,6 +444,9 @@ class Checkpoint:
                 Path(temp_dir).parent.glob(_get_del_lock_path(temp_dir_base_name, "*"))
             ):
                 try:
+                    # Timeout 0 means there will be only one attempt to acquire
+                    # the file lock. If it cannot be aquired, a TimeoutError
+                    # will be thrown.
                     with FileLock(f"{temp_dir}.lock", timeout=0):
                         shutil.rmtree(temp_dir, ignore_errors=True)
                 except TimeoutError:
@@ -567,7 +581,7 @@ def _get_del_lock_path(path: str, pid: str = None) -> str:
     return f"{path}.del_lock_{pid}"
 
 
-def _make_dir(path: str, drop_del_lock: bool = True) -> None:
+def _make_dir(path: str, acquire_del_lock: bool = True) -> None:
     """Create the temporary checkpoint dir in ``path``."""
     if drop_del_lock:
         # Each process drops a deletion lock file it then cleans up.
