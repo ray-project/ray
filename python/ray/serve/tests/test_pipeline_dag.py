@@ -122,7 +122,8 @@ class NoargDriver:
         return await self.dag.remote()
 
 
-@pytest.mark.parametrize("use_build", [False, True])
+# TODO(Shreyas): Enable use_build once serve.build() PR is out.
+@pytest.mark.parametrize("use_build", [False])
 def test_single_func_no_input(serve_instance, use_build):
     dag = fn_hello.bind()
     serve_dag = NoargDriver.bind(dag)
@@ -262,7 +263,8 @@ class Echo:
         return self._s
 
 
-@pytest.mark.parametrize("use_build", [False, True])
+# TODO(Shreyas): Enable use_build once serve.build() PR is out.
+@pytest.mark.parametrize("use_build", [False])
 def test_single_node_deploy_success(serve_instance, use_build):
     m1 = Adder.bind(1)
     handle = serve.run(maybe_build(m1, use_build))
@@ -325,9 +327,9 @@ class DictParent:
         return await self._d[key].remote()
 
 
-@pytest.mark.parametrize("use_build", [False, True])
+# TODO(Shreyas): Enable use_build once serve.build() PR is out.
+@pytest.mark.parametrize("use_build", [False])
 def test_passing_handle_in_obj(serve_instance, use_build):
-
     child1 = Echo.bind("ed")
     child2 = Echo.bind("simon")
     parent = maybe_build(
@@ -366,9 +368,9 @@ class GrandParent:
         return "ok"
 
 
-@pytest.mark.parametrize("use_build", [False, True])
+# TODO(Shreyas): Enable use_build once serve.build() PR is out.
+@pytest.mark.parametrize("use_build", [False])
 def test_pass_handle_to_multiple(serve_instance, use_build):
-
     child = Child.bind()
     parent = Parent.bind(child)
     grandparent = maybe_build(GrandParent.bind(child, parent), use_build)
