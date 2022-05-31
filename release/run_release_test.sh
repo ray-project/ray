@@ -36,7 +36,25 @@ export RAY_TEST_REPO RAY_TEST_BRANCH RELEASE_RESULTS_DIR
 if [ -z "${NO_INSTALL}" ]; then
   pip install -q -r requirements.txt
   pip install -q -U boto3 botocore
+
+  # Find ray-wheels parameter and install locally
+  i=1
+  for arg in "$@"; do
+    j=$((i+1))
+    if [ "$arg" == "--ray-wheels" ]; then
+      echo found something $i $j
+      PARSED_RAY_WHEELS="${!j}"
+    fi
+    i=$j
+  done
+
+  if [ -n "${PARSED_RAY_WHEELS}" ]; then
+    echo "Installing Ray wheels locally"
+    echo pip install -U "${PARSED_RAY_WHEELS}"
+  fi
 fi
+
+exit 1
 
 if [ -z "${NO_CLONE}" ]; then
   TMPDIR=$(mktemp -d -t release-XXXXXXXXXX)
