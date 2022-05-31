@@ -202,6 +202,7 @@ table WaitRequest {
   // False for direct call tasks. Blocking for those tasks is handled via the
   // NotifyDirectCallTaskBlocked/Unblocked IPCs.
   mark_worker_blocked: bool;
+  // The current task ID.
   task_id: string;
 }
 
