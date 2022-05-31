@@ -375,7 +375,7 @@ class ReplicaConfig:
                 self._init_kwargs = cloudpickle.loads(self.serialized_init_kwargs)
             else:
                 self._init_kwargs = {}
-                self.serialized_init_args = cloudpickle.dumps(self._init_kwargs)
+                self.serialized_init_kwargs = cloudpickle.dumps(self._init_kwargs)
 
         return self._init_kwargs
 
