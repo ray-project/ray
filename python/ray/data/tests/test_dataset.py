@@ -450,6 +450,7 @@ def test_tensors(ray_start_regular_shared):
         "Dataset(num_blocks=5, num_rows=5, "
         "schema={value: <ArrowTensorType: shape=(3, 5), dtype=int64>})"
     )
+    assert ds.size_bytes() == 5 * 3 * 5 * 8
 
     # Pandas conversion.
     res = (
