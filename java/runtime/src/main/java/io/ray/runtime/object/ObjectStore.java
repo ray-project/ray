@@ -6,7 +6,6 @@ import io.ray.api.WaitResult;
 import io.ray.api.exception.RayException;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
-import io.ray.api.id.UniqueId;
 import io.ray.runtime.context.WorkerContext;
 import io.ray.runtime.generated.Common.Address;
 import java.util.ArrayList;
@@ -222,18 +221,16 @@ public abstract class ObjectStore {
   /**
    * Increase the local reference count for this object ID.
    *
-   * @param workerId The ID of the worker to increase on.
    * @param objectId The object ID to increase the reference count for.
    */
-  public abstract void addLocalReference(UniqueId workerId, ObjectId objectId);
+  public abstract void addLocalReference(ObjectId objectId);
 
   /**
    * Decrease the reference count for this object ID.
    *
-   * @param workerId The ID of the worker to decrease on.
    * @param objectId The object ID to decrease the reference count for.
    */
-  public abstract void removeLocalReference(UniqueId workerId, ObjectId objectId);
+  public abstract void removeLocalReference(ObjectId objectId);
 
   public abstract Address getOwnerAddress(ObjectId id);
 
