@@ -12,6 +12,8 @@ from typing import (
     Callable,
     TYPE_CHECKING,
 )
+import os
+import psutil
 
 import numpy as np
 
@@ -109,6 +111,9 @@ class BlockExecStats:
         self.wall_time_s: Optional[float] = None
         self.cpu_time_s: Optional[float] = None
         self.node_id = ray.runtime_context.get_runtime_context().node_id.hex()
+        # Max memory usage. May be an overestimate since we do not
+        # differentiate from previous tasks on the same worker.
+        self.max_rss_bytes: int = 0
 
     @staticmethod
     def builder() -> "_BlockExecStatsBuilder":
@@ -139,6 +144,8 @@ class _BlockExecStatsBuilder:
         stats = BlockExecStats()
         stats.wall_time_s = time.perf_counter() - self.start_time
         stats.cpu_time_s = time.process_time() - self.start_cpu
+        process = psutil.Process(os.getpid())
+        stats.max_rss_bytes = int(process.memory_info().rss)
         return stats
 
 

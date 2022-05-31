@@ -315,6 +315,14 @@ class DatasetStats:
                 fmt(sum([e.cpu_time_s for e in exec_stats])),
             )
 
+            out += indent
+            memory_stats = [int(e.max_rss_bytes / 1e6) for e in exec_stats]
+            out += "* Worker memory usage (MB): {} min, {} max, {} mean\n".format(
+                    min(memory_stats),
+                    max(memory_stats),
+                    int(np.mean(memory_stats)),
+                    )
+
         output_num_rows = [m.num_rows for m in blocks if m.num_rows is not None]
         if output_num_rows:
             out += indent
