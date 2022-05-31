@@ -1,8 +1,5 @@
-import numpy as np
 import pandas as pd
 import tensorflow as tf
-
-from ray.data.extensions.tensor_extension import TensorDtype
 
 
 def convert_pandas_to_tf_tensor(df: pd.DataFrame) -> tf.Tensor:
