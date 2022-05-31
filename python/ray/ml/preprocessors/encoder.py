@@ -17,16 +17,25 @@ class OrdinalEncoder(Preprocessor):
 
     Transforming values not included in the fitted dataset will be encoded as ``None``.
 
+    All column values must be hashable scalars or lists of hashable values.
+
     Args:
         columns: The columns that will individually be encoded.
+        encode_lists: If True, each element of lists inside list
+            columns will be encoded. If False, each list will
+            be treated as a whole separate category. True
+            by default.
     """
 
-    def __init__(self, columns: List[str]):
+    def __init__(self, columns: List[str], *, encode_lists: bool = True):
         # TODO: allow user to specify order of values within each column.
         self.columns = columns
+        self.encode_lists = encode_lists
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
-        self.stats_ = _get_unique_value_indices(dataset, self.columns)
+        self.stats_ = _get_unique_value_indices(
+            dataset, self.columns, encode_lists=self.encode_lists
+        )
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
@@ -37,7 +46,16 @@ class OrdinalEncoder(Preprocessor):
 
         def column_ordinal_encoder(s: pd.Series):
             if _is_series_composed_of_lists(s):
-                return s.map(partial(encode_list, name=s.name))
+                if self.encode_lists:
+                    return s.map(partial(encode_list, name=s.name))
+
+                # cannot simply use map here due to pandas thinking
+                # tuples are to be used for indices
+                def list_as_category(element):
+                    element = tuple(element)
+                    return self.stats_[f"unique_values({s.name})"].get(element)
+
+                return s.apply(list_as_category)
 
             s_values = self.stats_[f"unique_values({s.name})"]
             return s.map(s_values)
@@ -47,7 +65,10 @@ class OrdinalEncoder(Preprocessor):
 
     def __repr__(self):
         stats = getattr(self, "stats_", None)
-        return f"OrdinalEncoder(columns={self.columns}, stats={stats})"
+        return (
+            f"OrdinalEncoder(columns={self.columns}, stats={stats}, "
+            f"encode_lists={self.encode_lists})"
+        )
 
 
 class OneHotEncoder(Preprocessor):
@@ -60,6 +81,10 @@ class OneHotEncoder(Preprocessor):
     Transforming values not included in the fitted dataset or not among
     the top popular values (see ``limit``) will result in all of the encoded column
     values being 0.
+
+    All column values must be hashable or lists. Lists will be treated as separate
+    categories. If you would like to encode list elements,
+    use :class:`MultiHotEncoder`.
 
     Example:
 
@@ -94,22 +119,19 @@ class OneHotEncoder(Preprocessor):
             in ``columns``.
     """
 
-    def __init__(self, columns: List[str], limit: Optional[Dict[str, int]] = None):
+    def __init__(self, columns: List[str], *, limit: Optional[Dict[str, int]] = None):
         # TODO: add `drop` parameter.
         self.columns = columns
         self.limit = limit
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
-        self.stats_ = _get_unique_value_indices(dataset, self.columns, limit=self.limit)
+        self.stats_ = _get_unique_value_indices(
+            dataset, self.columns, limit=self.limit, encode_lists=False
+        )
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
         _validate_df(df, *self.columns)
-
-        def encode_list(element: list, *, name: str):
-            stats = self.stats_[f"unique_values({name})"]
-            counter = Counter(element)
-            return [counter.get(x, 0) for x in stats]
 
         columns_to_drop = set(self.columns)
 
@@ -117,13 +139,11 @@ class OneHotEncoder(Preprocessor):
         for column in self.columns:
             column_values = self.stats_[f"unique_values({column})"]
             if _is_series_composed_of_lists(df[column]):
-                columns_to_drop.remove(column)
-                df[column] = df[column].map(partial(encode_list, name=column))
-            else:
-                for column_value in column_values:
-                    df[f"{column}_{column_value}"] = (
-                        df[column] == column_value
-                    ).astype(int)
+                df[column] = df[column].map(lambda x: tuple(x))
+            for column_value in column_values:
+                df[f"{column}_{column_value}"] = (df[column] == column_value).astype(
+                    int
+                )
         # Drop original unencoded columns.
         df = df.drop(columns=list(columns_to_drop))
         return df
@@ -133,6 +153,87 @@ class OneHotEncoder(Preprocessor):
         return f"OneHotEncoder(columns={self.columns}, stats={stats})"
 
 
+class MultiHotEncoder(Preprocessor):
+    """Encode columns using multi-hot encoding.
+
+    A column of lists or scalars (treated as one element lists) will be
+    encoded as a column of one-hot encoded lists. This is useful for eg.
+    generating embeddings for recommender systems.
+
+    Example:
+
+    >>> import ray.data
+    >>> from ray.ml.preprocessors import MultiHotEncoder
+    >>> import pandas as pd
+    >>> mhe = MultiHotEncoder(columns=["A", "B"])
+    >>> batch = pd.DataFrame(
+    >>>     {
+    >>>         "A": [["warm"], [], ["hot", "warm", "cold"], ["cold", "cold"]],
+    >>>         "B": ["warm", "cold", "hot", "cold"],
+    >>>     },
+    >>> )
+    >>> mhe.fit(ray.data.from_pandas(batch))
+    >>> transformed_batch = mhe.transform_batch(batch)
+    >>> expected_batch = pd.DataFrame(
+    >>>     {
+    >>>         "A": [[0, 0, 1], [0, 0, 0], [1, 1, 1], [2, 0, 0]],
+    >>>         "B": [[0, 0, 1], [1, 0, 0], [0, 1, 0], [1, 0, 0]],
+    >>>     }
+    >>> )
+    >>> assert transformed_batch.equals(expected_batch)
+
+    Transforming values not included in the fitted dataset or not among
+    the top popular values (see ``limit``) will result in all of the encoded column
+    values being 0.
+
+    The logic is similar to scikit-learn's `MultiLabelBinarizer \
+<https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing\
+.MultiLabelBinarizer.html>`_.
+
+    All column values must be hashable scalars or lists of hashable values.
+
+    See also: :class:`OneHotEncoder`.
+
+    Args:
+        columns: The columns that will individually be encoded.
+        limit: If set, only the top "limit" number of most popular values become
+            categorical variables. The less frequent ones will result in all
+            the encoded values being 0. This is a dict of column to
+            its corresponding limit. The column in this dictionary has to be
+            in ``columns``.
+    """
+
+    def __init__(self, columns: List[str], *, limit: Optional[Dict[str, int]] = None):
+        # TODO: add `drop` parameter.
+        self.columns = columns
+        self.limit = limit
+
+    def _fit(self, dataset: Dataset) -> Preprocessor:
+        self.stats_ = _get_unique_value_indices(
+            dataset, self.columns, limit=self.limit, encode_lists=True
+        )
+        return self
+
+    def _transform_pandas(self, df: pd.DataFrame):
+        _validate_df(df, *self.columns)
+
+        def encode_list(element: list, *, name: str):
+            if not isinstance(element, list):
+                element = [element]
+            stats = self.stats_[f"unique_values({name})"]
+            counter = Counter(element)
+            return [counter.get(x, 0) for x in stats]
+
+        for column in self.columns:
+            df[column] = df[column].map(partial(encode_list, name=column))
+
+        return df
+
+    def __repr__(self):
+        stats = getattr(self, "stats_", None)
+        return f"MultiHotEncoder(columns={self.columns}, stats={stats})"
+
+
 class LabelEncoder(Preprocessor):
     """Encode values within a label column as ordered integer values.
 
@@ -140,6 +241,8 @@ class LabelEncoder(Preprocessor):
     dataset in sorted order.
 
     Transforming values not included in the fitted dataset will be encoded as ``None``.
+
+    All column values must be hashable.
 
     Args:
         label_column: The label column that will be encoded.
@@ -228,6 +331,7 @@ def _get_unique_value_indices(
     drop_na_values: bool = False,
     key_format: str = "unique_values({0})",
     limit: Optional[Dict[str, int]] = None,
+    encode_lists: bool = True,
 ) -> OrderedDict[str, Dict[str, int]]:
     """If drop_na_values is True, will silently drop NA values."""
     limit = limit or {}
@@ -240,14 +344,18 @@ def _get_unique_value_indices(
     def get_pd_value_counts_per_column(col: pd.Series):
         # special handling for lists
         if _is_series_composed_of_lists(col):
-            counter = Counter()
+            if encode_lists:
+                counter = Counter()
 
-            def update_counter(element):
-                counter.update(element)
-                return element
+                def update_counter(element):
+                    counter.update(element)
+                    return element
 
-            col.map(update_counter)
-            return counter
+                col.map(update_counter)
+                return counter
+            else:
+                # convert to tuples to make lists hashable
+                col = col.map(lambda x: tuple(x))
         return Counter(col.value_counts(dropna=False).to_dict())
 
     def get_pd_value_counts(df: pd.DataFrame) -> List[Dict[str, Counter]]:
