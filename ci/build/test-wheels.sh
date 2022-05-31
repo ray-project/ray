@@ -6,7 +6,7 @@ set -e
 # Show explicitly which commands are currently running.
 set -x
 
-ROOT_DIR=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE:-$0}")")"; pwd)
+ROOT_DIR=$(cd "$(dirname "$0")/$(dirname "$(test -L "$0" && readlink "$0" || echo "$0")")"; pwd)
 
 platform=""
 case "${OSTYPE}" in
