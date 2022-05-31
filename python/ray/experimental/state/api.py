@@ -1,16 +1,24 @@
 import requests
 import warnings
+import urllib
 
-from typing import List, Tuple
+from typing import List, Tuple, Optional
+from dataclasses import fields
 
 import ray
 from ray.experimental.state.common import (
     SupportedFilterType,
     ListApiOptions,
+    GetLogOptions,
     DEFAULT_RPC_TIMEOUT,
     DEFAULT_LIMIT,
+    ERROR_HASH_CODE,
 )
 from ray.experimental.state.exception import RayStateApiException
+
+"""
+List APIs
+"""
 
 
 # TODO(sang): Replace it with auto-generated methods.
@@ -193,3 +201,98 @@ def list_runtime_envs(
         api_server_url=api_server_url,
         _explain=_explain,
     )
+
+
+"""
+Log APIs
+"""
+
+
+def get_log(
+    api_server_url: str = None,
+    node_id: Optional[str] = None,
+    node_ip: Optional[str] = None,
+    filename: Optional[str] = None,
+    actor_id: Optional[str] = None,
+    task_id: Optional[str] = None,
+    pid: Optional[int] = None,
+    stream: bool = False,
+    lines: int = 100,
+    interval: Optional[float] = None,
+):
+    if api_server_url is None:
+        assert ray.is_initialized()
+        api_server_url = (
+            f"http://{ray.worker.global_worker.node.address_info['webui_url']}"
+        )
+
+    media_type = "stream" if stream else "file"
+    options = GetLogOptions(
+        node_id=node_id,
+        node_ip=node_ip,
+        filename=filename,
+        actor_id=actor_id,
+        task_id=task_id,
+        pid=pid,
+        lines=lines,
+        interval=interval,
+        media_type=media_type,
+        timeout=DEFAULT_RPC_TIMEOUT,
+    )
+    options_dict = {}
+    for field in fields(options):
+        option_val = getattr(options, field.name)
+        if option_val:
+            options_dict[field.name] = option_val
+
+    with requests.get(
+        f"{api_server_url}/api/v0/logs/{media_type}?"
+        f"{urllib.parse.urlencode(options_dict)}",
+        stream=True,
+    ) as r:
+        if r.status_code != 200:
+            raise RayStateApiException(r.text)
+        for bytes in r.iter_content(chunk_size=None):
+            logs = bytes.decode("utf-8")
+            if logs.startswith(ERROR_HASH_CODE):
+                error_msg = logs.split(ERROR_HASH_CODE)[1]
+                raise RayStateApiException(error_msg)
+            yield logs
+
+
+def list_logs(
+    api_server_url: str = None,
+    node_id: str = None,
+    node_ip: str = None,
+    glob_filter: str = None,
+):
+    if api_server_url is None:
+        assert ray.is_initialized()
+        api_server_url = (
+            f"http://{ray.worker.global_worker.node.address_info['webui_url']}"
+        )
+
+    if not glob_filter:
+        glob_filter = "*"
+
+    options_dict = {}
+    if node_ip:
+        options_dict["node_ip"] = node_ip
+    if node_id:
+        options_dict["node_id"] = node_id
+    if glob_filter:
+        options_dict["glob"] = glob_filter
+
+    r = requests.get(
+        f"{api_server_url}/api/v0/logs?{urllib.parse.urlencode(options_dict)}"
+    )
+    r.raise_for_status()
+
+    response = r.json()
+    if response["result"] is False:
+        raise RayStateApiException(
+            "API server internal error. See dashboard.log file for more details. "
+            f"Error: {response['msg']}"
+        )
+
+    return r.json()["data"]["result"]

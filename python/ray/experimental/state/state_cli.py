@@ -37,6 +37,28 @@ def _get_available_formats() -> List[str]:
     return [format_enum.value for format_enum in AvailableFormat]
 
 
+def get_api_server_url():
+    address = services.canonicalize_bootstrap_address(None)
+    gcs_client = GcsClient(address=address, nums_reconnect_retry=0)
+    ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
+    api_server_url = ray._private.utils.internal_kv_get_with_retry(
+        gcs_client,
+        ray_constants.DASHBOARD_ADDRESS,
+        namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+        num_retries=20,
+    )
+
+    if api_server_url is None:
+        raise ValueError(
+            (
+                "Couldn't obtain the API server address from GCS. It is likely that "
+                "the GCS server is down. Check gcs_server.[out | err] to see if it is "
+                "still alive."
+            )
+        )
+    return api_server_url
+
+
 def get_state_api_output_to_print(
     state_data: Union[dict, list], *, format: AvailableFormat = AvailableFormat.DEFAULT
 ):
@@ -73,24 +95,7 @@ def _should_explain(format: AvailableFormat):
 @click.group("list")
 @click.pass_context
 def list_state_cli_group(ctx):
-    address = services.canonicalize_bootstrap_address(None)
-    gcs_client = GcsClient(address=address, nums_reconnect_retry=0)
-    ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
-    api_server_url = ray._private.utils.internal_kv_get_with_retry(
-        gcs_client,
-        ray_constants.DASHBOARD_ADDRESS,
-        namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-        num_retries=20,
-    )
-
-    if api_server_url is None:
-        raise ValueError(
-            (
-                "Couldn't obtain the API server address from GCS. It is likely that "
-                "the GCS server is down. Check gcs_server.[out | err] to see if it is "
-                "still alive."
-            )
-        )
+    api_server_url = get_api_server_url()
 
     assert use_gcs_for_bootstrap()
     ctx.ensure_object(dict)

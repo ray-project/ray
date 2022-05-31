@@ -14,6 +14,7 @@ else:
 
 import ray
 
+from click.testing import CliRunner
 from ray._private.test_utils import (
     format_web_url,
     wait_until_server_available,
@@ -26,10 +27,11 @@ from ray.core.generated.reporter_pb2 import StreamLogReply, ListLogsReply
 from ray.core.generated.gcs_pb2 import ActorTableData
 from ray.dashboard.modules.log.log_agent import tail as tail_file
 from ray.dashboard.modules.log.log_manager import LogsManager
-from ray.experimental.state.api import list_nodes, list_workers
+from ray.experimental.state.api import list_nodes, list_workers, list_logs, get_log
 from ray.experimental.state.common import GetLogOptions
 from ray.experimental.state.exception import DataSourceUnavailable
 from ray.experimental.state.state_manager import StateDataSourceClient
+import ray.scripts.scripts as scripts
 from ray._private.test_utils import wait_for_condition
 
 ASYNCMOCK_MIN_PYTHON_VER = (3, 8)
@@ -471,6 +473,8 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
 
     wait_for_condition(verify_basic)
 
+    print("Basic verified")
+
     @ray.remote
     class Actor:
         def write_log(self, strings):
@@ -484,11 +488,10 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
     actor = Actor.remote()
     ray.get(actor.write_log.remote([test_log_text.format("XXXXXX")]))
 
-    # def verify_actor_stream_log():
     # Test stream and fetching by actor id
     stream_response = requests.get(
         webui_url
-        + f"/api/v0/logs/stream?node_id={node_id}&lines=2"
+        + "/api/v0/logs/stream?&lines=2"
         + f"&actor_id={actor._ray_actor_id.hex()}",
         stream=True,
     )
@@ -519,7 +522,7 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
     LINES = 150
     file_response = requests.get(
         webui_url
-        + f"/api/v0/logs/file?node_id={node_id}&lines={LINES}"
+        + f"/api/v0/logs/file?&lines={LINES}"
         + "&actor_id="
         + actor._ray_actor_id.hex(),
     ).content.decode("utf-8")
@@ -534,6 +537,143 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
         + f"&pid={pid}",
     ).content.decode("utf-8")
     assert file_response == "\n".join(streamed_string.split("\n")[-(LINES + 1) :])
+
+
+def test_log_list(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)
+    ray.init(address=cluster.address)
+
+    def verify():
+        head_node = list(list_nodes().values())[0]
+        # When glob filter is not provided, it should provide all logs
+        logs = list_logs(node_id=head_node["node_id"])
+        assert "raylet" in logs
+        assert "gcs_server" in logs
+        assert "dashboard" in logs
+        assert "agent" in logs
+        assert "internal" in logs
+        assert "driver" in logs
+        assert "autoscaler" in logs
+
+        # Test glob works.
+        logs = list_logs(node_id=head_node["node_id"], glob_filter="raylet*")
+        assert len(logs) == 1
+        return True
+
+    wait_for_condition(verify)
+
+
+def test_log_get(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)
+    ray.init(address=cluster.address)
+    head_node = list(list_nodes().values())[0]
+    cluster.add_node(num_cpus=1)
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def print(self, i):
+            for _ in range(i):
+                print("1")
+
+        def getpid(self):
+            import os
+
+            return os.getpid()
+
+    """
+    Test filename match
+    """
+
+    def verify():
+        # By default, node id should be configured to the head node.
+        for log in get_log(node_id=head_node["node_id"], filename="raylet.out", lines=10):
+            # + 1 since the last line is just empty.
+            assert len(log.split("\n")) == 11
+        return True
+
+    wait_for_condition(verify)
+
+    """
+    Test worker pid / IP match
+    """
+    a = Actor.remote()
+    pid = ray.get(a.getpid.remote())
+    ray.get(a.print.remote(20))
+
+    def verify():
+        # By default, node id should be configured to the head node.
+        for log in get_log(node_ip=head_node["node_ip"], pid=pid, lines=10):
+            # + 1 since the last line is just empty.
+            assert len(log.split("\n")) == 11
+        return True
+
+    wait_for_condition(verify)
+
+    """
+    Test actor logs.
+    """
+    actor_id = a._actor_id.hex()
+
+    def verify():
+        # By default, node id should be configured to the head node.
+        for log in get_log(actor_id=actor_id, lines=10):
+            # + 1 since the last line is just empty.
+            assert len(log.split("\n")) == 11
+        return True
+
+    wait_for_condition(verify)
+
+    with pytest.raises(NotImplementedError):
+        for _ in get_log(task_id=123, lines=10):
+            pass
+
+
+def test_log_cli(shutdown_only):
+    ray.init(num_cpus=1)
+    runner = CliRunner()
+
+    # Test the head node is chosen by default.
+    def verify():
+        result = runner.invoke(scripts.logs)
+        assert result.exit_code == 0
+        print(result.output)
+        assert "raylet.out" in result.output
+        assert "raylet.err" in result.output
+        assert "gcs_server.out" in result.output
+        assert "gcs_server.err" in result.output
+        return True
+
+    wait_for_condition(verify)
+
+    # Test when there's only 1 match, it prints logs.
+    def verify():
+        result = runner.invoke(scripts.logs, ["raylet.out"])
+        assert result.exit_code == 0
+        print(result.output)
+        assert "raylet.out" not in result.output
+        assert "raylet.err" not in result.output
+        assert "gcs_server.out" not in result.output
+        assert "gcs_server.err" not in result.output
+        # Make sure it prints the log message.
+        assert "NodeManager server started" in result.output
+        return True
+
+    wait_for_condition(verify)
+
+    # Test when there's more than 1 match, it prints a list of logs.
+    def verify():
+        result = runner.invoke(scripts.logs, ["raylet.*"])
+        assert result.exit_code == 0
+        print(result.output)
+        assert "raylet.out" in result.output
+        assert "raylet.err" in result.output
+        assert "gcs_server.out" not in result.output
+        assert "gcs_server.err" not in result.output
+        return True
+
+    wait_for_condition(verify)
 
 
 if __name__ == "__main__":

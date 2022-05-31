@@ -39,20 +39,20 @@ from ray.autoscaler._private.commands import (
 from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
 from ray.autoscaler._private.kuberay.run_autoscaler import run_kuberay_autoscaler
-from ray.experimental.log.api import (
-    get_log,
-    list_logs,
-    pretty_print_logs_index,
-)
-from ray.experimental.log.common import (
-    FileIdentifiers,
-    NodeIdentifiers,
-)
 from ray.internal.internal_api import memory_summary
 from ray.internal.storage import _load_class
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cli_logger, cf
 from ray.dashboard.modules.job.cli import job_cli_group
-from ray.experimental.state.state_cli import list_state_cli_group
+from ray.experimental.state.api import (
+    get_log,
+    list_logs,
+)
+from ray.experimental.state.state_cli import (
+    list_state_cli_group,
+    get_api_server_url,
+    get_state_api_output_to_print,
+)
+from ray.experimental.state.common import DEFAULT_LIMIT
 from distutils.dir_util import copy_tree
 
 logger = logging.getLogger(__name__)
@@ -96,6 +96,7 @@ def hide_exception_stacktrace(func):
             try:
                 return func(*args, **kwargs)
             except Exception as e:
+                logger.exception(e)
                 print(f"Ray CLI Error ({e.__class__.__name__}): ", e)
         else:
             return func(*args, **kwargs)
@@ -1972,18 +1973,9 @@ def local_dump(
 
 @cli.command(hidden=True)
 @click.argument(
-    "filters",
-    nargs=-1,
+    "glob_filter",
     required=False,
-    default=None,
-)
-@click.option(
-    "--filename",
-    "-f",
-    type=str,
-    required=False,
-    default=None,
-    help="Specify the exact filename of the log file.",
+    default="*",
 )
 @click.option(
     "-ip",
@@ -2041,10 +2033,16 @@ def local_dump(
     default=None,
     help="Number of lines to tail from log. -1 indicates fetching the whole file.",
 )
+@click.option(
+    "--interval",
+    required=False,
+    type=float,
+    default=None,
+    help="The interval to print new logs when `--follow` is specified.",
+)
 @hide_exception_stacktrace
 def logs(
-    filters,
-    filename: str,
+    glob_filter,
     node_ip: str,
     node_id: str,
     pid: str,
@@ -2052,107 +2050,69 @@ def logs(
     task_id: str,
     follow: bool,
     lines: int,
+    interval: float,
 ):
-    """
-    View logs in the ray cluster.
-
-    FILTERS: Filename substrings (filename, component, file extension, id) to filter
-    the logs by.
-
-    Example usage:
-
-    ray logs -a <actor-id>               # Display worker stdout log by actor-id
-
-    ray logs -ip 198.0.0.1 -pid 98712    # Display worker stdout log by ip & pid
-
-    ray logs -n <node-id> -f raylet.out  # Display log by filename & node-id
-
-    ray logs                             # Display list of logs by category
-
-    ray logs worker .out <worker-id>     # Filter logs by filename substring
-
-    ray logs --endpoint=198.0.0.1:8265   # Retrieves logs from a remote cluster
-
-    """
-
-    found_many = False
-
+    """ """
     if task_id is not None:
-        raise ValueError("--task-id is not yet supported")
+        raise NotImplementedError("--task-id is not yet supported")
 
-    match_node = node_ip is not None or node_id is not None
-    match_file = filename is not None or pid is not None
-    match_actor = actor_id is not None
+    api_server_url = f"http://{get_api_server_url().decode()}"
 
-    match_unique = (match_node and match_file) or match_actor
+    # If both id & ip are not provided, choose a head node as a default.
+    if node_id is None and node_ip is None:
+        address = ray._private.services.canonicalize_bootstrap_address(None)
+        node_ip = address.split(":")[0]
 
-    if match_file and not match_node:
-        identifier = f"filename: {filename}" if filename else f"pid: {pid}"
-        raise ValueError(
-            f"Unique logfile identifier '{identifier}' needs to be "
-            "accompanied with a node identifier (--node-id or --node-ip)."
-        )
+    filename = None
+    match_unique = pid is not None or actor_id is not None  # Worker log  # Actor log
 
+    # If there's no unique match, try listing logs based on the glob filter.
     if not match_unique:
-        # Try to match a single log file.
-        # If we find more than one match, we output the index.
-        logs_dict = list_logs(
-            node_identifiers=NodeIdentifiers(node_id=node_id, node_ip=node_ip),
-            filters=filters,
+        logs = list_logs(
+            api_server_url=api_server_url,
+            node_id=node_id,
+            node_ip=node_ip,
+            glob_filter=glob_filter,
         )
-        if len(logs_dict) == 0:
-            raise ValueError(f"Could not find node {node_id}")
-        if filename is None:
-            total_found = 0
-            for node_id_it, log_list_per_node in logs_dict.items():
-                files_on_node = sum(log_list_per_node.values(), [])
-                total_found += len(files_on_node)
-                if total_found > 1:
-                    found_many = True
-                    break
-                if len(files_on_node) == 1 and total_found == 1:
-                    filename = files_on_node[0]
-                    node_id = node_id_it
-            if not found_many and filename is None:
-                raise Exception(
-                    "Could not find any log file. Please ammend your query. "
-                    "Check --help for more."
-                )
+        log_files_found = []
+        for _, log_files in logs.items():
+            for log_file in log_files:
+                log_files_found.append(log_file)
 
-    if found_many:
-        MAX_NODES = 10
-        for i, (node_id, logs) in enumerate(logs_dict.items()):
-            if i >= MAX_NODES:
+        # if there's only 1 file, that means there's a unique match.
+        if len(log_files_found) == 1:
+            filename = log_files_found[0]
+            match_unique = True
+        # Otherwise, print a list of log files.
+        else:
+            if node_id:
+                print(f"Node ID: {node_id}")
+            elif node_ip:
+                print(f"Node IP: {node_ip}")
+            print(get_state_api_output_to_print(logs))
+
+    # If there's an unique match, print the log file.
+    if match_unique:
+        if not lines:
+            lines = 0 if follow else DEFAULT_LIMIT
+
+            if lines > 0:
                 print(
-                    f"\nDisplaying only {MAX_NODES} nodes."
-                    "Narrow down with --node-id."
+                    f"--- Log has been truncated to last {lines} lines."
+                    " Use `--lines` flag to toggle. ---\n"
                 )
-                break
-            print(f"\nNode ID: {node_id}")
-            pretty_print_logs_index(node_id, logs)
 
-        print(
-            "\nWarning: More than one log file matches your query. Please add "
-            "additional flags or filname globs to narrow down the "
-            "search results to a single file. Check --help for more."
-        )
-    else:
-
-        def default_lines(lines):
-            print(
-                f"--- Log has been truncated to last {lines} lines."
-                " Use `--lines` flag to toggle. ---\n"
-            )
-            return lines
-
-        lines = lines or default_lines(1000 if follow else 100)
         for chunk in get_log(
-            file_identifiers=FileIdentifiers(
-                log_file_name=filename, pid=pid, actor_id=actor_id, task_id=task_id
-            ),
-            node_identifiers=NodeIdentifiers(node_ip=node_ip, node_id=node_id),
-            stream=follow,
+            api_server_url=api_server_url,
+            node_id=node_id,
+            node_ip=node_ip,
+            filename=filename,
+            actor_id=actor_id,
+            task_id=task_id,
+            pid=pid,
             lines=lines,
+            interval=interval,
+            stream=follow,
         ):
             print(chunk, end="", flush=True)
 

@@ -10,6 +10,18 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_RPC_TIMEOUT = 30
 DEFAULT_LIMIT = 1000
+# It is used to identify exceptions in the middle of streaming response.
+# Streaming response sends the http header "before" it writes data
+# to the stream. However, if the operation is failed in the middle of
+# streaming process (e.g., unexpected node failure), streaming can fail
+# after the header is sent (which means we cannot re-sent the header).
+# In this case, this error hash code is used to identify the error.
+# Protocol is as follow:
+# - Streamed data will start from this hash value if there's an error.
+# - The data will look like f"{ERROR_HASH_CODE}::{error_msg}"
+# - When the client reads the data, if the data starts from the hash,
+#   it raises an exception.
+ERROR_HASH_CODE = "8b74caa46a390f1aa810356e70c9ced7"
 
 
 def filter_fields(data: dict, state_dataclass) -> dict:
@@ -89,14 +101,17 @@ class GetLogOptions:
             self.interval = float(self.interval)
         self.lines = int(self.lines)
 
+        if self.task_id:
+            raise NotImplementedError("task_id is not supported yet.")
+
         if self.media_type == "file":
             assert self.interval is None
         if self.media_type not in ["file", "stream"]:
             raise ValueError(f"Invalid media type: {self.media_type}")
         if not (self.node_id or self.node_ip):
             raise ValueError(
-                "Both node_id and node_ip is not given. "
-                "At least one of the should be provided."
+                "node_id, node_ip, actor_id, task_id are all not provided. "
+                "Please provide at least one of them."
             )
         if self.node_id and self.node_ip:
             raise ValueError(
@@ -145,6 +160,7 @@ class PlacementGroupState(StateSchema):
 @dataclass(init=True)
 class NodeState(StateSchema):
     node_id: str
+    node_ip: str
     state: str
     node_name: str
     resources_total: dict
