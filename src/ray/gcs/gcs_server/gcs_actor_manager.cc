@@ -579,7 +579,6 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
   }
 
   // Remove the actor from the unresolved actor map.
-  const auto job_id = JobID::FromBinary(request.task_spec().job_id());
   const auto &actor_namespace = iter->second->GetRayNamespace();
   RAY_CHECK(!actor_namespace.empty())
       << "`ray_namespace` should be set when creating actor in core worker.";
