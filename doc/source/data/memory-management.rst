@@ -1,7 +1,7 @@
 .. _data_advanced:
 
-Memory Management
-=================
+Execution and Memory Management
+===============================
 
 This section deals with how Datasets manages execution and object store memory.
 

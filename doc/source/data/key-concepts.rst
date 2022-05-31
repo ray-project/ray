@@ -146,7 +146,7 @@ scheduling strategy for all Datasets tasks/actors, using the global
   :start-after: __resource_allocation_begin__
   :end-before: __resource_allocation_end__
 
-Memory Management and Other Optimizations
-=========================================
+Execution and Memory Management
+===============================
 
-See :ref:`Dataset Memory Management <data_advanced>` for more details about how Datasets manages memory and other execution optimizations.
+See :ref:`Execution and Memory Management <data_advanced>` for more details about how Datasets manages memory and optimizations such as lazy vs eager execution.
