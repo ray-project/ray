@@ -13,7 +13,7 @@ def convert_pandas_to_tf_tensor(df: pd.DataFrame) -> tf.Tensor:
     2. Concatenate the resulting tensors along the last axis.
 
     Arguments:
-        df: The dataframe to convert to a TensorFlow tensor. Columns must have
+        df: The dataframe to convert to a TensorFlow tensor. Columns must be of
             a numeric dtype, ``TensorDtype``, or object dtype. If a column has
             an object dtype, the column must contain ``ndarray`` objects.
 
