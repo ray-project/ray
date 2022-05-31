@@ -210,4 +210,5 @@ check_pytest(
     name = "check_pytest_ml",
     include = ["tests/test*.py"],
     exclude = [],
+    tags = ["team:ml"],
 )
