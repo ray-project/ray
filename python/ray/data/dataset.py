@@ -626,8 +626,8 @@ class Dataset(Generic[T]):
         """
 
         def do_shuffle(block_list, clear_input_blocks: bool, block_udf, remote_args):
-            num_blocks = block_list.executed_num_blocks()  # Blocking.
-            if num_blocks == 0:
+            num_input_blocks = block_list.executed_num_blocks()  # Blocking.
+            if num_input_blocks == 0:
                 return block_list, {}
             if clear_input_blocks:
                 blocks = block_list.copy()
