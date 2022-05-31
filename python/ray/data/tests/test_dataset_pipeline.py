@@ -130,6 +130,11 @@ def test_epoch(ray_start_regular_shared):
     results = [p.take() for p in pipe.iter_epochs()]
     assert results == [[0, 1, 2], [0, 1, 2], [0, 1, 2]]
 
+    # Test max epochs.
+    pipe = ray.data.range(3).window(blocks_per_window=2).repeat(3)
+    results = [p.take() for p in pipe.iter_epochs(2)]
+    assert results == [[0, 1, 2], [0, 1, 2]]
+
     # Test nested repeat.
     pipe = ray.data.range(5).repeat(2).repeat(2)
     results = [p.take() for p in pipe.iter_epochs()]
