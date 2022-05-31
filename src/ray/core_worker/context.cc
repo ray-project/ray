@@ -237,11 +237,14 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
   absl::WriterMutexLock lock(&mutex_);
   GetThreadContext().SetCurrentTask(task_spec);
   RAY_CHECK(current_job_id_ == task_spec.JobId());
-  if (task_spec.IsActorCreationTask()) {
+  if (task_spec.IsNormalTask()) {
+    current_task_is_direct_call_ = true;
+  } else if (task_spec.IsActorCreationTask()) {
     if (!current_actor_id_.IsNil()) {
       RAY_CHECK(current_actor_id_ == task_spec.ActorCreationId());
     }
     current_actor_id_ = task_spec.ActorCreationId();
+    current_actor_is_direct_call_ = true;
     current_actor_max_concurrency_ = task_spec.MaxActorConcurrency();
     current_actor_is_asyncio_ = task_spec.IsAsyncioActor();
     is_detached_actor_ = task_spec.IsDetachedActor();
@@ -249,8 +252,9 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
     placement_group_capture_child_tasks_ = task_spec.PlacementGroupCaptureChildTasks();
   } else if (task_spec.IsActorTask()) {
     RAY_CHECK(current_actor_id_ == task_spec.ActorId());
+  } else {
+    RAY_CHECK(false);
   }
-
   if (task_spec.IsNormalTask() || task_spec.IsActorCreationTask()) {
     // TODO(architkulkarni): Once workers are cached by runtime env, we should
     // only set runtime_env_ once and then RAY_CHECK that we
@@ -294,6 +298,11 @@ bool WorkerContext::ShouldReleaseResourcesOnBlockingCalls() const {
 bool WorkerContext::CurrentActorIsDirectCall() const {
   absl::ReaderMutexLock lock(&mutex_);
   return current_actor_is_direct_call_;
+}
+
+bool WorkerContext::CurrentTaskIsDirectCall() const {
+  absl::ReaderMutexLock lock(&mutex_);
+  return current_task_is_direct_call_ || current_actor_is_direct_call_;
 }
 
 int WorkerContext::CurrentActorMaxConcurrency() const {

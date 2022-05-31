@@ -170,6 +170,9 @@ table FetchOrReconstruct {
   owner_addresses: [Address];
   // Do we only want to fetch the objects or also reconstruct them?
   fetch_only: bool;
+  // False for direct call tasks. Blocking for those tasks is handled via the
+  // NotifyDirectCallTaskBlocked/Unblocked IPCs.
+  mark_worker_blocked: bool;
   // The current task ID.
   task_id: string;
 }
@@ -196,6 +199,9 @@ table WaitRequest {
   // timeout
   timeout: long;
   // The current task ID.
+  // False for direct call tasks. Blocking for those tasks is handled via the
+  // NotifyDirectCallTaskBlocked/Unblocked IPCs.
+  mark_worker_blocked: bool;
   task_id: string;
 }
 
