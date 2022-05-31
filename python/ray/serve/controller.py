@@ -520,7 +520,7 @@ class ServeController:
             )
         return deployment_route_list.SerializeToString()
 
-    def get_serve_status(self) -> bytes:
+    async def get_serve_status(self) -> bytes:
 
         serve_app_status = ApplicationStatus.RUNNING
         serve_app_message = ""
@@ -535,7 +535,7 @@ class ServeController:
                 serve_app_status = ApplicationStatus.DEPLOYING
             else:
                 try:
-                    ray.get(finished[0])
+                    await finished[0]
                 except RayTaskError:
                     serve_app_status = ApplicationStatus.DEPLOY_FAILED
                     serve_app_message = f"Deployment failed:\n{traceback.format_exc()}"
