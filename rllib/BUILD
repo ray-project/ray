@@ -669,14 +669,16 @@ py_test(
 )
 
 # Specific Trainers (Algorithms)
-# A2/3CTrainer
+
+# A2C
 py_test(
     name = "test_a2c",
     tags = ["team:ml", "trainers_dir"],
     size = "large",
-    srcs = ["algorithms/a3c/tests/test_a2c.py"]
+    srcs = ["algorithms/a2c/tests/test_a2c.py"]
 )
 
+# A3C
 py_test(
     name = "test_a3c",
     tags = ["team:ml", "trainers_dir"],
