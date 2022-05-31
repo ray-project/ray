@@ -1,5 +1,6 @@
 import numpy as np
 import os
+import gc
 import pytest
 import shutil
 import time
@@ -120,9 +121,10 @@ def test_batchpredictor_runtime(
         run_predictor(checkpoint, data, BatchPredictor, num_scoring_workers)
         runtime = time.time() - start_time
         results.append(runtime)
+        gc.collect()
     print(f"results: {results} min: {min(results)}, stddev: {np.std(results)}")
 
-    # should take less than 15 seconds in all cases
+    # should take less than 15 seconds in min case
     assert min(results) < 15
 
 
