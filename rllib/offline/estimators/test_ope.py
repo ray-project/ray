@@ -32,7 +32,7 @@ class TestOPE(unittest.TestCase):
         env_name = "CartPole-v0"
         gamma = 0.99
         train_steps = 200000
-        n_batches = 100 # Approx. equal to n_episodes
+        n_batches = 100  # Approx. equal to n_episodes
         n_eval_episodes = 10000
         estimator_config = {
             "model": {
@@ -40,8 +40,14 @@ class TestOPE(unittest.TestCase):
                 "fcnet_activation": "relu",
                 "vf_share_layers": True,
             },
-            "q_model_type": "fqe", "clip_grad_norm": 100,
-            "k": 5, "n_iters": 160, "lr": 1e-3, "delta": 1e-5, "batch_size": 32, "tau": 0.05,
+            "q_model_type": "fqe",
+            "clip_grad_norm": 100,
+            "k": 5,
+            "n_iters": 160,
+            "lr": 1e-3,
+            "delta": 1e-5,
+            "batch_size": 32,
+            "tau": 0.05,
         }
 
         config = (
@@ -62,7 +68,7 @@ class TestOPE(unittest.TestCase):
         trainer = config.build()
         while trainer._timesteps_total and trainer._timesteps_total < train_steps:
             trainer.train()
-        
+
         # Read n_batches of data
         reader = JsonReader(data_file)
         batch = reader.next()
@@ -114,7 +120,7 @@ class TestOPE(unittest.TestCase):
 
         mean_ret["simulation"] = np.mean(mc_ret)
         print(mean_ret)
-        
+
         def test_ope_in_trainer(self):
             # TODO (rohan): Test off_policy_estimation_methods in trainer config
             pass

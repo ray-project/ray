@@ -1,4 +1,3 @@
-from audioop import reverse
 from ray.rllib.models.utils import get_initializer
 from ray.rllib.policy import Policy
 from typing import Dict, List, Union
@@ -111,17 +110,12 @@ class QRegTorchModel:
             actions_normalized=False,
         ).detach()
         prob_ratio = torch.exp(new_log_prob - old_log_prob)
-        import numpy as np
+
         eps_begin = 0
         for episode in batch.split_by_episode():
             eps_end = eps_begin + episode.count
 
             # calculate importance ratios and returns
-            _rho = 0.
-            for x in range(1, episode.count):
-                _rho += np.log(prob_ratio[eps_begin + x])
-            _rho = np.exp(_rho.item())
-            _rho_copy = _rho
 
             for t in range(episode.count):
                 discounts[eps_begin + t] = self.gamma ** t
@@ -131,33 +125,15 @@ class QRegTorchModel:
                     pt_prev = ps[eps_begin + t - 1]
                 ps[eps_begin + t] = pt_prev * prob_ratio[eps_begin + t]
 
-                ret_ = 0
-                future_prob = 1
-                import time
-                
-                start = time.time()
-                 
-                for t_ in reversed(range(t, episode.count)):
-                    ret_ += (self.gamma ** (t_)) * _rho * rewards[eps_begin + t_]
-                    _rho = np.exp(np.log(_rho) - np.log(prob_ratio[eps_begin + t_]))
-                _rho = _rho_copy
-
-                t1 = time.time() - start
-
-                start = time.time()
                 ret = 0
+                # TODO (rohan): replace this (O(n^3)) with dynamic programming (O(n))
                 for t_prime in range(t, episode.count):
                     gamma = self.gamma ** (t_prime - t)
-                    rho_t_1_t_prime = 1.
-                    for k in range(t+1, t_prime):
+                    rho_t_1_t_prime = 1.0
+                    for k in range(t + 1, t_prime):
                         rho_t_1_t_prime = rho_t_1_t_prime * prob_ratio[eps_begin + k]
                     r = rewards[eps_begin + t_prime]
                     ret += gamma * rho_t_1_t_prime * r
-                t2 = time.time() - start
-                breakpoint()
-                ret = ret_
-
-
 
                 returns[eps_begin + t] = ret
 
