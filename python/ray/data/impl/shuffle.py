@@ -76,8 +76,9 @@ class SimpleShufflePlan(ShuffleOp):
 
         # The first item returned is the BlockMetadata.
         shuffle_map_metadata = []
-        for refs in shuffle_map_out:
-            shuffle_map_metadata.append(refs.pop(0))
+        for i, refs in enumerate(shuffle_map_out):
+            shuffle_map_metadata.append(refs[0])
+            shuffle_map_out[i] = refs[1:]
 
         # Eagerly delete the input block references in order to eagerly release
         # the blocks' memory.
