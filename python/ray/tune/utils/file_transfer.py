@@ -353,6 +353,9 @@ def _unpack_dir(stream: io.BytesIO, target_dir: str) -> None:
     """Unpack tarfile stream into target directory."""
     stream.seek(0)
     try:
+        # Timeout 0 means there will be only one attempt to acquire
+        # the file lock. If it cannot be aquired, a TimeoutError
+        # will be thrown.
         with FileLock(f"{target_dir}.lock", timeout=0):
             with tarfile.open(fileobj=stream) as tar:
                 tar.extractall(target_dir)
@@ -378,6 +381,9 @@ def _unpack_from_actor(pack_actor: ray.ActorID, target_dir: str) -> None:
 def _copy_dir(source_dir: str, target_dir: str) -> None:
     """Copy dir with shutil on the actor."""
     try:
+        # Timeout 0 means there will be only one attempt to acquire
+        # the file lock. If it cannot be aquired, a TimeoutError
+        # will be thrown.
         with FileLock(f"{target_dir}.lock", timeout=0):
             _delete_path_unsafe(target_dir)
             shutil.copytree(source_dir, target_dir)
