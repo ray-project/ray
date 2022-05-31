@@ -230,7 +230,7 @@ class TorchPolicyV2(Policy):
         dist_class: Type[TorchDistributionWrapper],
         train_batch: SampleBatch,
     ) -> Union[TensorType, List[TensorType]]:
-        """Constructs the loss for Proximal Policy Objective.
+        """Constructs the loss function.
 
         Args:
             model: The Model to calculate the loss for.
@@ -396,20 +396,6 @@ class TorchPolicyV2(Policy):
         """
         return {}
 
-    @DeveloperAPI
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def extra_grad_info(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
-        """Return dict of extra grad info.
-
-        Args:
-            train_batch: The training batch for which to produce
-                extra grad info for.
-
-        Returns:
-            The info dict carrying grad info per str key.
-        """
-        return {}
-
     @override(Policy)
     @DeveloperAPI
     @OverrideToImplementCustomLogic_CallToSuperRecommended
@@ -418,8 +404,28 @@ class TorchPolicyV2(Policy):
         sample_batch: SampleBatch,
         other_agent_batches: Optional[Dict[Any, SampleBatch]] = None,
         episode: Optional["Episode"] = None,
-    ):
-        """Additional custom postprocessing of SampleBatch."""
+    ) -> SampleBatch:
+        """Postprocesses a trajectory and returns the processed trajectory.
+
+        The trajectory contains only data from one episode and from one agent.
+        - If  `config.batch_mode=truncate_episodes` (default), sample_batch may
+        contain a truncated (at-the-end) episode, in case the
+        `config.rollout_fragment_length` was reached by the sampler.
+        - If `config.batch_mode=complete_episodes`, sample_batch will contain
+        exactly one episode (no matter how long).
+        New columns can be added to sample_batch and existing ones may be altered.
+
+        Args:
+            sample_batch (SampleBatch): The SampleBatch to postprocess.
+            other_agent_batches (Optional[Dict[PolicyID, SampleBatch]]): Optional
+                dict of AgentIDs mapping to other agents' trajectory data (from the
+                same episode). NOTE: The other agents use the same policy.
+            episode (Optional[Episode]): Optional multi-agent episode
+                object in which the agents operated.
+
+        Returns:
+            SampleBatch: The postprocessed, modified SampleBatch (or a new one).
+        """
         return sample_batch
 
     @DeveloperAPI
@@ -582,7 +588,6 @@ class TorchPolicyV2(Policy):
             # Action dist class and inputs are generated via custom function.
             if is_overridden(self.action_distribution_fn):
                 dist_inputs, dist_class, state_out = self.action_distribution_fn(
-                    self,
                     self.model,
                     input_dict=input_dict,
                     state_batches=state_batches,
@@ -775,7 +780,7 @@ class TorchPolicyV2(Policy):
         for i, (model, batch) in enumerate(zip(self.model_gpu_towers, device_batches)):
             batch_fetches[f"tower_{i}"].update(
                 {
-                    LEARNER_STATS_KEY: self.extra_grad_info(batch),
+                    LEARNER_STATS_KEY: self.stats_fn(batch),
                     "model": model.metrics(),
                 }
             )
@@ -810,7 +815,7 @@ class TorchPolicyV2(Policy):
         all_grads, grad_info = tower_outputs[0]
 
         grad_info["allreduce_latency"] /= len(self._optimizers)
-        grad_info.update(self.extra_grad_info(postprocessed_batch))
+        grad_info.update(self.stats_fn(postprocessed_batch))
 
         fetches = self.extra_compute_grad_fetches()
 
@@ -1019,9 +1024,8 @@ class TorchPolicyV2(Policy):
             self.exploration.before_compute_actions(explore=explore, timestep=timestep)
             if is_overridden(self.action_distribution_fn):
                 dist_inputs, dist_class, state_out = self.action_distribution_fn(
-                    self,
                     self.model,
-                    input_dict=input_dict,
+                    obs_batch=input_dict,
                     state_batches=state_batches,
                     seq_lens=seq_lens,
                     explore=explore,

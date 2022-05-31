@@ -22,6 +22,7 @@ from ray.data.impl.output_buffer import BlockOutputBuffer
 from ray.data.impl.progress_bar import ProgressBar
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.util import _check_pyarrow_version
+from ray.util.annotations import PublicAPI
 
 
 logger = logging.getLogger(__name__)
@@ -55,6 +56,7 @@ def _deregister_parquet_file_fragment_serialization():
     ray.util.deregister_serializer(ParquetFileFragment)
 
 
+@PublicAPI
 class ParquetDatasource(ParquetBaseDatasource):
     """Parquet datasource, for reading and writing Parquet files.
 

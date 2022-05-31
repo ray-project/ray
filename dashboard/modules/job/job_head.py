@@ -10,7 +10,11 @@ from dataclasses import dataclass
 import ray
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as optional_utils
-from ray._private.runtime_env.packaging import package_exists, upload_package_to_gcs
+from ray._private.runtime_env.packaging import (
+    package_exists,
+    upload_package_to_gcs,
+    pin_runtime_env_uri,
+)
 from ray.dashboard.modules.job.common import (
     CURRENT_VERSION,
     http_uri_components_to_uri,
@@ -76,6 +80,15 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             protocol=req.match_info["protocol"],
             package_name=req.match_info["package_name"],
         )
+
+        logger.debug(f"Adding temporary reference to package {package_uri}.")
+        try:
+            pin_runtime_env_uri(package_uri)
+        except Exception:
+            return Response(
+                text=traceback.format_exc(),
+                status=aiohttp.web.HTTPInternalServerError.status_code,
+            )
 
         if not package_exists(package_uri):
             return Response(

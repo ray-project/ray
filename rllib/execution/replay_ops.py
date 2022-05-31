@@ -71,6 +71,7 @@ class StoreToReplayBuffer:
 def Replay(
     *,
     local_buffer: Optional[MultiAgentReplayBuffer] = None,
+    num_items_to_replay: int = 1,
     actors: Optional[List[ActorHandle]] = None,
     num_async: int = 4,
 ) -> LocalIterator[SampleBatchType]:
@@ -82,6 +83,7 @@ def Replay(
     Args:
         local_buffer: Local buffer to use. Only one of this and replay_actors
             can be specified.
+        num_items_to_replay: Number of items to sample from buffer
         actors: List of replay actors. Only one of this and local_buffer
             can be specified.
         num_async: In async mode, the max number of async requests in flight
@@ -91,7 +93,8 @@ def Replay(
         >>> from ray.rllib.utils.replay_buffers import multi_agent_replay_buffer
         >>> actors = [ # doctest: +SKIP
         ...     multi_agent_replay_buffer.ReplayActor.remote() for _ in range(4)]
-        >>> replay_op = Replay(actors=actors) # doctest: +SKIP
+        >>> replay_op = Replay(actors=actors, # doctest: +SKIP
+        ...     num_items_to_replay=batch_size)
         >>> next(replay_op) # doctest: +SKIP
         SampleBatch(...)
     """
@@ -100,12 +103,14 @@ def Replay(
         raise ValueError("Exactly one of local_buffer and replay_actors must be given.")
 
     if actors is not None:
+        for actor in actors:
+            actor.make_iterator.remote(num_items_to_replay=num_items_to_replay)
         replay = from_actors(actors)
         return replay.gather_async(num_async=num_async).filter(lambda x: x is not None)
 
     def gen_replay(_):
         while True:
-            item = local_buffer.replay()
+            item = local_buffer.sample(num_items_to_replay)
             if item is None:
                 yield _NextValueNotReady()
             else:

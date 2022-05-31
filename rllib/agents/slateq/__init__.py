@@ -1,6 +1,10 @@
-from ray.rllib.agents.slateq.slateq import SlateQConfig, SlateQTrainer, DEFAULT_CONFIG
-from ray.rllib.agents.slateq.slateq_tf_policy import SlateQTFPolicy
-from ray.rllib.agents.slateq.slateq_torch_policy import SlateQTorchPolicy
+from ray.rllib.algorithms.slateq.slateq import (
+    SlateQConfig,
+    SlateQTrainer,
+    DEFAULT_CONFIG,
+)
+from ray.rllib.algorithms.slateq.slateq_tf_policy import SlateQTFPolicy
+from ray.rllib.algorithms.slateq.slateq_torch_policy import SlateQTorchPolicy
 
 __all__ = [
     "DEFAULT_CONFIG",
@@ -9,3 +13,9 @@ __all__ = [
     "SlateQTorchPolicy",
     "SlateQTrainer",
 ]
+
+from ray.rllib.utils.deprecation import deprecation_warning
+
+deprecation_warning(
+    "ray.rllib.agents.slateq", "ray.rllib.algorithms.slateq", error=False
+)

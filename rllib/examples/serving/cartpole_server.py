@@ -165,7 +165,7 @@ if __name__ == "__main__":
         # Use n worker processes to listen on different ports.
         "num_workers": args.num_workers,
         # Disable OPE, since the rollouts are coming from online clients.
-        "input_evaluation": [],
+        "off_policy_estimation_methods": [],
         # Create a "chatty" client/server or not.
         "callbacks": MyCallbacks if args.callbacks_verbose else None,
         # DL framework to use.

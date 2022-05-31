@@ -9,8 +9,11 @@ from typing import Dict, List, Tuple, Type, Union
 
 import ray
 import ray.experimental.tf_utils
-from ray.rllib.agents.sac.sac_tf_policy import postprocess_trajectory, validate_spaces
-from ray.rllib.agents.sac.sac_torch_policy import (
+from ray.rllib.algorithms.sac.sac_tf_policy import (
+    postprocess_trajectory,
+    validate_spaces,
+)
+from ray.rllib.algorithms.sac.sac_torch_policy import (
     _get_dist_class,
     stats,
     build_sac_model_and_action_dist,
@@ -387,7 +390,7 @@ CQLTorchPolicy = build_policy_class(
     name="CQLTorchPolicy",
     framework="torch",
     loss_fn=cql_loss,
-    get_default_config=lambda: ray.rllib.algorithms.cql.cql.CQL_DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.algorithms.cql.cql.DEFAULT_CONFIG,
     stats_fn=cql_stats,
     postprocess_fn=postprocess_trajectory,
     extra_grad_process_fn=apply_grad_clipping,
