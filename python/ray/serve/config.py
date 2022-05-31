@@ -243,9 +243,9 @@ class ReplicaConfig:
     def __init__(
         self,
         serialized_deployment_def: bytes,
-        serialized_init_args: Optional[bytes] = None,
-        serialized_init_kwargs: Optional[bytes] = None,
-        serialized_ray_actor_options: Optional[bytes] = None,
+        serialized_init_args: bytes = cloudpickle.dumps(tuple()),
+        serialized_init_kwargs: bytes = cloudpickle.dumps(dict()),
+        serialized_ray_actor_options: bytes = cloudpickle.dumps(dict()),
     ):
         # Store serialized versions of all properties.
         self.serialized_deployment_def = serialized_deployment_def
@@ -264,9 +264,9 @@ class ReplicaConfig:
     def create(
         cls,
         deployment_def: Union[Callable, str],
-        init_args: Optional[Tuple[Any]] = None,
-        init_kwargs: Optional[Dict[Any, Any]] = None,
-        ray_actor_options=None,
+        init_args: Tuple[Any] = None,
+        init_kwargs: Dict[Any, Any] = None,
+        ray_actor_options: Dict = None,
     ):
         """Create a ReplicaConfig from deserialized parameters."""
 
@@ -283,13 +283,19 @@ class ReplicaConfig:
                 "class, function, or string."
             )
 
+        # Set defaults
+        if init_args is None:
+            init_args = ()
+        if init_kwargs is None:
+            init_kwargs = {}
         if ray_actor_options is None:
             ray_actor_options = {}
+        ray_actor_options = cls._validate_ray_actor_options(ray_actor_options)
 
         config = cls(
             cloudpickle.dumps(deployment_def),
-            cloudpickle.dumps(init_args) if init_args else None,
-            cloudpickle.dumps(init_kwargs) if init_kwargs else None,
+            cloudpickle.dumps(init_args),
+            cloudpickle.dumps(init_kwargs),
             json.dumps(ray_actor_options),
         )
 
@@ -361,11 +367,7 @@ class ReplicaConfig:
         Otherwise, it is None.
         """
         if self._init_args is None:
-            if self.serialized_init_args is not None:
-                self._init_args = cloudpickle.loads(self.serialized_init_args)
-            else:
-                self._init_args = ()
-                self.serialized_init_args = cloudpickle.dumps(self._init_args)
+            self._init_args = cloudpickle.loads(self.serialized_init_args)
 
         return self._init_args
 
@@ -378,11 +380,7 @@ class ReplicaConfig:
         """
 
         if self._init_kwargs is None:
-            if self.serialized_init_kwargs is not None:
-                self._init_kwargs = cloudpickle.loads(self.serialized_init_kwargs)
-            else:
-                self._init_kwargs = {}
-                self.serialized_init_kwargs = cloudpickle.dumps(self._init_kwargs)
+            self._init_kwargs = cloudpickle.loads(self.serialized_init_kwargs)
 
         return self._init_kwargs
 
@@ -394,11 +392,7 @@ class ReplicaConfig:
         """
 
         if self._ray_actor_options is None:
-            if self.serialized_ray_actor_options is not None:
-                self._ray_actor_options = json.loads(self.serialized_ray_actor_options)
-            else:
-                self._ray_actor_options = {}
-                self.serialized_ray_actor_options = json.dumps(self._ray_actor_options)
+            self._ray_actor_options = json.loads(self.serialized_ray_actor_options)
 
         self._ray_actor_options = self._validate_ray_actor_options(
             self._ray_actor_options
@@ -428,13 +422,9 @@ class ReplicaConfig:
             # TODO use messagepack
             deployment_def = proto.deployment_def
 
-        init_args = proto.init_args if proto.init_args != b"" else None
-        init_kwargs = proto.init_kwargs if proto.init_kwargs != b"" else None
-        ray_actor_options = (
-            proto.ray_actor_options if proto.ray_actor_options != "" else None
+        return ReplicaConfig(
+            deployment_def, proto.init_args, proto.init_kwargs, proto.ray_actor_options
         )
-
-        return ReplicaConfig(deployment_def, init_args, init_kwargs, ray_actor_options)
 
     @classmethod
     def from_proto_bytes(
@@ -444,14 +434,12 @@ class ReplicaConfig:
         return cls.from_proto(proto, deployment_language)
 
     def to_proto(self):
-        data = {"deployment_def": self.serialized_deployment_def}
-        if self.serialized_init_args:
-            data["init_args"] = self.serialized_init_args
-        if self.serialized_init_kwargs:
-            data["init_kwargs"] = self.serialized_init_kwargs
-        if self.serialized_ray_actor_options:
-            data["ray_actor_options"] = self.serialized_ray_actor_options
-        return ReplicaConfigProto(**data)
+        return ReplicaConfigProto(
+            deployment_def=self.serialized_deployment_def,
+            init_args=self.serialized_init_args,
+            init_kwargs=self.serialized_init_kwargs,
+            ray_actor_options=self.serialized_ray_actor_options,
+        )
 
     def to_proto_bytes(self):
         return self.to_proto().SerializeToString()
