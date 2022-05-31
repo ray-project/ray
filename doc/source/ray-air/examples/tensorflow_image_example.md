@@ -73,7 +73,7 @@ train_dataset = train_dataset.map_batches(normalize_images)
 test_dataset = test_dataset.map_batches(normalize_images)
 ```
 
-Next, let's represent our data using pandas dataframes instead of tuples. This lets us call methods like {py:meth}`Dataset.to_tf <ray.data.Dataset.to_tf>` later in the tutorial.
+Next, let's represent our data using Pandas DataFrames instead of tuples. This lets us call methods like {py:meth}`Dataset.to_tf <ray.data.Dataset.to_tf>` later in the tutorial.
 
 ```{code-cell} python3
 import pandas as pd
