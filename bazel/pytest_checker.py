@@ -24,7 +24,9 @@ def main(args):
         raise RuntimeError(f"Found files without pytest snippet: {bad_files}")
 
 
-parser = argparse.ArgumentParser(description="Check if files have the pytest snippet")
+parser = argparse.ArgumentParser(
+    description='Check if files have the pytest snippet (`if __name__ == "__main__":`)'
+)
 parser.add_argument("files", nargs="+", help="Files to check")
 
 if __name__ == "__main__":
