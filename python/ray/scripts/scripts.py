@@ -340,8 +340,8 @@ def debug(address):
     required=False,
     type=int,
     default=10001,
-    help="the port number the ray client server will bind on. If not set, "
-    "the ray client server will not be started.",
+    help="the port number the ray client server will bind on. "
+    "It will be 10001 as the default port if not set.",
 )
 @click.option(
     "--memory",
