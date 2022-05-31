@@ -1,6 +1,7 @@
 from ray import serve
 from ray.serve.deployment_graph import RayServeDAGHandle
 
+
 @serve.deployment
 def f(*args):
     return "wonderful world"
