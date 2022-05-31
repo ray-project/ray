@@ -61,17 +61,7 @@ class WorkerContext {
   std::shared_ptr<const TaskSpecification> GetCurrentTask() const;
 
   const ActorID &GetCurrentActorID() const LOCKS_EXCLUDED(mutex_);
-
-  /// Returns whether the current thread is the main worker thread.
-  bool CurrentThreadIsMain() const;
-
-  /// Returns whether we should Block/Unblock through the raylet on Get/Wait.
-  /// This only applies to direct task calls.
-  bool ShouldReleaseResourcesOnBlockingCalls() const;
-
-  /// Returns whether we are in a direct call actor.
-  bool CurrentActorIsDirectCall() const LOCKS_EXCLUDED(mutex_);
-
+  
   int CurrentActorMaxConcurrency() const LOCKS_EXCLUDED(mutex_);
 
   bool CurrentActorIsAsync() const LOCKS_EXCLUDED(mutex_);
@@ -88,9 +78,6 @@ class WorkerContext {
   int64_t GetTaskDepth() const;
 
  protected:
-  // allow unit test to set.
-  bool current_actor_is_direct_call_ = false;
-  bool current_task_is_direct_call_ = false;
 
  private:
   const WorkerType worker_type_;
