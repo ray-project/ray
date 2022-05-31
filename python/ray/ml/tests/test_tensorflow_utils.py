@@ -10,11 +10,12 @@ def test_convert_simple_df_to_tensor():
     df = pd.DataFrame({"X1": [1, 3], "X2": [2, 4]})
 
     actual_tensor = convert_pandas_to_tf_tensor(df)
-    expected_tensor = tf.constant([[1, 2], [3, 4]], dtype=tf.dtypes.float32)
+    expected_tensor = tf.constant([[1, 2], [3, 4]], dtype=tf.dtypes.int64)
+    print(actual_tensor.dtype, expected_tensor.dtype)
     tf.debugging.assert_equal(actual_tensor, expected_tensor)
 
     actual_tensor = convert_pandas_to_tf_tensor(df[["X1"]])
-    expected_tensor = tf.constant([1, 3], dtype=tf.dtypes.float32)
+    expected_tensor = tf.constant([[1], [3]], dtype=tf.dtypes.int64)
     tf.debugging.assert_equal(actual_tensor, expected_tensor)
 
 
@@ -24,5 +25,5 @@ def test_convert_image_df_to_tensor():
 
     actual_tensor = convert_pandas_to_tf_tensor(df)
 
-    expected_tensor = tf.zeros([4, 3, 32, 32], dtype=tf.dtypes.float32)
+    expected_tensor = tf.zeros([4, 3, 32, 32], dtype=images.dtype)
     tf.debugging.assert_equal(actual_tensor, expected_tensor)

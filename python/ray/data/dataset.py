@@ -2545,6 +2545,7 @@ class Dataset(Generic[T]):
             ):
                 if label_column:
                     targets = convert_pandas_to_tf_tensor(batch[[label_column]])
+                    targets = tf.squeeze(targets)
                     batch.pop(label_column)
 
                 features = None
@@ -2573,9 +2574,6 @@ class Dataset(Generic[T]):
                         "Expected `feature_columns` to be a list or a dictionary, "
                         f"but got a `{type(feature_columns).__name__}` instead."
                     )
-
-                if features.ndim == 1:
-                    features = tf.expand_dims(features, axis=1)
 
                 if label_column:
                     yield features, targets

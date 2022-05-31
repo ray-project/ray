@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 import tensorflow as tf
 
@@ -27,7 +28,7 @@ def convert_pandas_to_tf_tensor(df: pd.DataFrame) -> tf.Tensor:
         >>>
         >>> df = pd.DataFrame({"X1": [1, 2, 3], "X2": [4, 5, 6]})
         >>> convert_pandas_to_tf_tensor(df[["X1"]]).shape
-        TensorShape([3])
+        TensorShape([3, 1])
         >>> convert_pandas_to_tf_tensor(df[["X1", "X2"]]).shape
         TensorShape([3, 2])
 
@@ -44,6 +45,17 @@ def convert_pandas_to_tf_tensor(df: pd.DataFrame) -> tf.Tensor:
         except ValueError:
             return tf.stack([tensorize(element) for element in series])
 
+    try:
+        # We need to cast the tensors to a common type so that we can concatenate them.
+        # If the columns contain different types (for example, `float32`s and
+        # `int32`s), then `tf.expand_dims` raises an error.
+        common_type: np.dtype = np.find_common_type(df.dtypes, [])
+        df = df.astype(common_type)
+    except TypeError:
+        # `find_common_type` fails if a series has `TensorDtype`. In this case,
+        # don't cast any of the series and continue.
+        pass
+
     tensors = []
     for column in df.columns:
         series = df[column]
@@ -53,4 +65,9 @@ def convert_pandas_to_tf_tensor(df: pd.DataFrame) -> tf.Tensor:
     if len(tensors) > 1:
         tensors = [tf.expand_dims(tensor, axis=-1) for tensor in tensors]
 
-    return tf.concat(tensors, axis=-1)
+    concatenated_tensor = tf.concat(tensors, axis=-1)
+
+    if concatenated_tensor.ndim == 1:
+        return tf.expand_dims(concatenated_tensor, axis=1)
+
+    return concatenated_tensor
