@@ -1,14 +1,13 @@
 from gym.spaces import Discrete, MultiDiscrete, Space
 import logging
 import numpy as np
-from typing import Optional, Union
+from typing import Optional, TYPE_CHECKING, Union
 
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 
-# from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import NullContextManager
 from ray.rllib.utils.annotations import override
@@ -17,6 +16,9 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.tf_utils import get_placeholder
 from ray.rllib.utils.typing import FromConfigSpec, ModelConfigDict, TensorType
+
+if TYPE_CHECKING:
+    from ray.rllib.policy import Policy
 
 logger = logging.getLogger(__name__)
 
@@ -137,7 +139,7 @@ class NovelD(Exploration):
 
         # Try to import xxhash.
         try:
-            import xxhash
+            import xxhash  # noqa
 
             self._hash_state = self._xxhash_state
             logger.info(
