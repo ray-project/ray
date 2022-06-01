@@ -126,6 +126,7 @@ class RayServeHandle:
 
     def stop_metrics_pusher(self):
         self._stop_event.set()
+        self._pusher.join()
 
     @property
     def is_polling(self) -> bool:
