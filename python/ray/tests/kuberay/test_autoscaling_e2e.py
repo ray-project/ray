@@ -350,18 +350,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
             container="ray-head",
             namespace="default",
         )
-        logger.info("Scaling down all workers by editing maxReplicas.")
-        # TODO (Dmitri) Expose worker idleTimeout in KubeRay CRD, set it low,
-        # and validate autoscaler-initiated idle timeout, instead of modifying the CR.
-        # (replicas=2 reflects the current number of workers)
-        self._apply_ray_cr(
-            min_replicas=0,
-            max_replicas=0,
-            replicas=2,
-            # Check that the replicas set on the Ray CR by the
-            # autoscaler is indeed 2:
-            validate_replicas=True,
-        )
+        # Autoscaler should trigger scale-down after resource demands are removed.
         logger.info("Confirming workers are gone.")
         wait_for_pods(goal_num_pods=1, namespace=RAY_CLUSTER_NAMESPACE)
 
