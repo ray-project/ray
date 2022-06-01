@@ -1,6 +1,6 @@
 from typing import Optional, Type
 
-from ray.rllib.algorithms.dqn.simple_q import SimpleQConfig, SimpleQTrainer
+from ray.rllib.algorithms.simple_q.simple_q import SimpleQ, SimpleQConfig
 from ray.rllib.algorithms.qmix.qmix_policy import QMixTorchPolicy
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
@@ -191,13 +191,13 @@ class QMixConfig(SimpleQConfig):
         return self
 
 
-class QMixTrainer(SimpleQTrainer):
+class QMixTrainer(SimpleQ):
     @classmethod
-    @override(SimpleQTrainer)
+    @override(SimpleQ)
     def get_default_config(cls) -> TrainerConfigDict:
         return QMixConfig().to_dict()
 
-    @override(SimpleQTrainer)
+    @override(SimpleQ)
     def validate_config(self, config: TrainerConfigDict) -> None:
         # Call super's validation method.
         super().validate_config(config)
@@ -205,11 +205,11 @@ class QMixTrainer(SimpleQTrainer):
         if config["framework"] != "torch":
             raise ValueError("Only `framework=torch` supported so far for QMixTrainer!")
 
-    @override(SimpleQTrainer)
+    @override(SimpleQ)
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         return QMixTorchPolicy
 
-    @override(SimpleQTrainer)
+    @override(SimpleQ)
     def training_iteration(self) -> ResultDict:
         """QMIX training iteration function.
 

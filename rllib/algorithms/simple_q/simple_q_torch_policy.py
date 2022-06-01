@@ -5,7 +5,7 @@ from typing import Dict, Tuple
 
 import gym
 import ray
-from ray.rllib.algorithms.dqn.simple_q_tf_policy import (
+from ray.rllib.algorithms.simple_q.simple_q_tf_policy import (
     build_q_models,
     compute_q_values,
     get_distribution_inputs_and_class,
@@ -135,7 +135,7 @@ SimpleQTorchPolicy = build_policy_class(
     name="SimpleQPolicy",
     framework="torch",
     loss_fn=build_q_losses,
-    get_default_config=lambda: ray.rllib.algorithms.dqn.simple_q.DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.algorithms.simple_q.simple_q.DEFAULT_CONFIG,
     stats_fn=stats_fn,
     extra_action_out_fn=extra_action_out_fn,
     after_init=setup_late_mixins,

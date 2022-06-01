@@ -187,7 +187,7 @@ def setup_late_mixins(
 # above.
 SimpleQTFPolicy: Type[DynamicTFPolicy] = build_tf_policy(
     name="SimpleQTFPolicy",
-    get_default_config=lambda: ray.rllib.algorithms.dqn.simple_q.DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.algorithms.simple_q.simple_q.DEFAULT_CONFIG,
     make_model=build_q_models,
     action_distribution_fn=get_distribution_inputs_and_class,
     loss_fn=build_q_losses,

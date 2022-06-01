@@ -15,9 +15,9 @@ import numpy as np
 
 from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.algorithms.dqn.dqn_torch_policy import DQNTorchPolicy
-from ray.rllib.algorithms.dqn.simple_q import (
+from ray.rllib.algorithms.simple_q.simple_q import (
+    SimpleQ,
     SimpleQConfig,
-    SimpleQTrainer,
 )
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
@@ -54,7 +54,7 @@ logger = logging.getLogger(__name__)
 
 
 class DQNConfig(SimpleQConfig):
-    """Defines a DQNTrainer configuration class from which a DQNTrainer can be built.
+    """Defines a configuration class from which a DQN Trainer can be built.
 
     Example:
         >>> from ray.rllib.algorithms.dqn.dqn import DQNConfig
@@ -72,7 +72,7 @@ class DQNConfig(SimpleQConfig):
         >>>       .resources(num_gpus=1)\
         >>>       .rollouts(num_rollout_workers=3)\
         >>>       .environment("CartPole-v1")
-        >>> trainer = DQNTrainer(config=config)
+        >>> trainer = DQN(config=config)
         >>> while True:
         >>>     trainer.train()
 
@@ -118,7 +118,7 @@ class DQNConfig(SimpleQConfig):
 
     def __init__(self, trainer_class=None):
         """Initializes a DQNConfig instance."""
-        super().__init__(trainer_class=trainer_class or DQNTrainer)
+        super().__init__(trainer_class=trainer_class or DQN)
 
         # DQN specific config settings.
         # fmt: off
@@ -211,7 +211,8 @@ class DQNConfig(SimpleQConfig):
                 -> natural value = 250 / 1 = 250.0
                 -> will make sure that replay+train op will be executed 4x asoften as
                 rollout+insert op (4 * 250 = 1000).
-                See: rllib/agents/dqn/dqn.py::calculate_rr_weights for further details.
+                See: rllib/algorithms/dqn/dqn.py::calculate_rr_weights for further
+                details.
             replay_buffer_config: Replay buffer config.
                 Examples:
                 {
@@ -308,13 +309,13 @@ def calculate_rr_weights(config: TrainerConfigDict) -> List[float]:
         return [1, int(np.round(sample_and_train_weight))]
 
 
-class DQNTrainer(SimpleQTrainer):
+class DQN(SimpleQ):
     @classmethod
-    @override(SimpleQTrainer)
+    @override(SimpleQ)
     def get_default_config(cls) -> TrainerConfigDict:
         return DEFAULT_CONFIG
 
-    @override(SimpleQTrainer)
+    @override(SimpleQ)
     def validate_config(self, config: TrainerConfigDict) -> None:
         # Call super's validation method.
         super().validate_config(config)
@@ -323,7 +324,7 @@ class DQNTrainer(SimpleQTrainer):
         adjusted_rollout_len = max(config["rollout_fragment_length"], config["n_step"])
         config["rollout_fragment_length"] = adjusted_rollout_len
 
-    @override(SimpleQTrainer)
+    @override(SimpleQ)
     def get_default_policy_class(
         self, config: TrainerConfigDict
     ) -> Optional[Type[Policy]]:
@@ -449,7 +450,7 @@ DEFAULT_CONFIG = _deprecated_default_config()
 
 
 @Deprecated(
-    new="Sub-class directly from `DQNTrainer` and override its methods", error=False
+    new="Sub-class directly from `DQN` and override its methods", error=False
 )
-class GenericOffPolicyTrainer(DQNTrainer):
+class GenericOffPolicyTrainer(SimpleQ):
     pass

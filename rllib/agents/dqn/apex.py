@@ -22,7 +22,7 @@ import ray
 from ray.actor import ActorHandle
 from ray.rllib import Policy
 from ray.rllib.agents import Trainer
-from ray.rllib.algorithms.dqn.dqn import DQNConfig, DQNTrainer
+from ray.rllib.algorithms.dqn.dqn import DQNConfig, DQN
 from ray.rllib.algorithms.dqn.learner_thread import LearnerThread
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.execution.common import (

@@ -9,8 +9,8 @@ from ray.rllib.algorithms.simple_q.simple_q import (
     SimpleQConfig,
     DEFAULT_CONFIG as SIMPLE_Q_DEFAULT_CONFIG,
 )
-from ray.rllib.algorithms.dqn.simple_q_tf_policy import SimpleQTFPolicy
-from ray.rllib.algorithms.dqn.simple_q_torch_policy import SimpleQTorchPolicy
+from ray.rllib.algorithms.simple_q.simple_q_tf_policy import SimpleQTFPolicy
+from ray.rllib.algorithms.simple_q.simple_q_torch_policy import SimpleQTorchPolicy
 
 __all__ = [
     "ApexConfig",
@@ -34,4 +34,4 @@ __all__ = [
 
 from ray.rllib.utils.deprecation import deprecation_warning
 
-deprecation_warning("ray.rllib.agents.dqn", "ray.rllib.algorithms.dqn", error=False)
+deprecation_warning("ray.rllib.agents.dqn", "ray.rllib.algorithms.[dqn|simple_q|r2d2|apex_dqn]", error=False)

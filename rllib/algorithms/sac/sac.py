@@ -1,7 +1,7 @@
 import logging
 from typing import Type, Dict, Any, Optional, Union
 
-from ray.rllib.algorithms.dqn.dqn import DQNTrainer
+from ray.rllib.algorithms.dqn.dqn import DQN
 from ray.rllib.algorithms.sac.sac_tf_policy import SACTFPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
@@ -212,7 +212,8 @@ class SACConfig(TrainerConfig):
                 -> natural value = 250 / 1 = 250.0
                 -> will make sure that replay+train op will be executed 4x asoften as
                 rollout+insert op (4 * 250 = 1000).
-                See: rllib/agents/dqn/dqn.py::calculate_rr_weights for further details.
+                See: rllib/algorithms/dqn/dqn.py::calculate_rr_weights for further
+                details.
             clip_actions: Whether to clip actions. If actions are already normalized,
                 this should be set to False.
             grad_clip: If not None, clip gradients during optimization at this value.
@@ -270,7 +271,7 @@ class SACConfig(TrainerConfig):
         return self
 
 
-class SACTrainer(DQNTrainer):
+class SACTrainer(DQN):
     """Soft Actor Critic (SAC) Trainer class.
 
     This file defines the distributed Trainer class for the soft actor critic
@@ -286,11 +287,11 @@ class SACTrainer(DQNTrainer):
         super().__init__(*args, **kwargs)
 
     @classmethod
-    @override(DQNTrainer)
+    @override(DQN)
     def get_default_config(cls) -> TrainerConfigDict:
         return SACConfig().to_dict()
 
-    @override(DQNTrainer)
+    @override(DQN)
     def validate_config(self, config: TrainerConfigDict) -> None:
         # Call super's validation method.
         super().validate_config(config)

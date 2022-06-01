@@ -13,7 +13,7 @@ from ray.rllib.algorithms.dqn.dqn_torch_policy import (
     build_q_model_and_distribution,
     compute_q_values,
 )
-from ray.rllib.agents.dqn.r2d2_tf_policy import get_distribution_inputs_and_class
+from ray.rllib.algorithms.r2d2.r2d2_tf_policy import get_distribution_inputs_and_class
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.policy import Policy
@@ -314,7 +314,7 @@ R2D2TorchPolicy = build_policy_class(
     name="R2D2TorchPolicy",
     framework="torch",
     loss_fn=r2d2_loss,
-    get_default_config=lambda: ray.rllib.agents.dqn.r2d2.R2D2_DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.algorithms.r2d2.r2d2.R2D2_DEFAULT_CONFIG,
     make_model_and_action_dist=build_r2d2_model_and_distribution,
     action_distribution_fn=get_distribution_inputs_and_class,
     stats_fn=build_q_stats,

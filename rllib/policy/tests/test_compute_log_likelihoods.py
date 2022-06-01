@@ -133,7 +133,7 @@ class TestComputeLogLikelihood(unittest.TestCase):
         # Soft-Q for DQN.
         config["exploration_config"] = {"type": "SoftQ", "temperature": 0.5}
         config["seed"] = 42
-        do_test_log_likelihood(dqn.DQNTrainer, config)
+        do_test_log_likelihood(dqn.DQN, config)
 
     def test_pg_cont(self):
         """Tests PG's (cont. actions) compute_log_likelihoods method."""

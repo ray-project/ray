@@ -15,7 +15,7 @@ environment (https://github.com/google-research/recsim).
 import logging
 from typing import Any, Dict, List, Optional, Type, Union
 
-from ray.rllib.algorithms.dqn.dqn import DQNTrainer
+from ray.rllib.algorithms.dqn.dqn import DQN
 from ray.rllib.algorithms.slateq.slateq_tf_policy import SlateQTFPolicy
 from ray.rllib.algorithms.slateq.slateq_torch_policy import SlateQTorchPolicy
 from ray.rllib.agents.trainer_config import TrainerConfig
@@ -218,9 +218,9 @@ def calculate_round_robin_weights(config: TrainerConfigDict) -> List[float]:
     return weights
 
 
-class SlateQTrainer(DQNTrainer):
+class SlateQTrainer(DQN):
     @classmethod
-    @override(DQNTrainer)
+    @override(DQN)
     def get_default_config(cls) -> TrainerConfigDict:
         return SlateQConfig().to_dict()
 

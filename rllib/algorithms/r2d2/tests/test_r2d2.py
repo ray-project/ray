@@ -54,7 +54,7 @@ class TestR2D2(unittest.TestCase):
         ray.shutdown()
 
     def test_r2d2_compilation(self):
-        """Test whether a R2D2Trainer can be built on all frameworks."""
+        """Test whether R2D2 can be built on all frameworks."""
         config = (
             r2d2.R2D2Config()
             .rollouts(num_rollout_workers=0)

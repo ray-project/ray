@@ -1,7 +1,7 @@
 import logging
 from typing import List, Optional, Type
 
-from ray.rllib.algorithms.dqn.simple_q import SimpleQConfig, SimpleQTrainer
+from ray.rllib.algorithms.simple_q.simple_q import SimpleQConfig, SimpleQ
 from ray.rllib.algorithms.ddpg.ddpg_tf_policy import DDPGTFPolicy
 from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.policy.policy import Policy
@@ -205,7 +205,8 @@ class DDPGConfig(SimpleQConfig):
                     -> natural value = 250 / 1 = 250.0
                     -> will make sure that replay+train op will be executed 4x as
                     often as rollout+insert op (4 * 250 = 1000).
-                See: rllib/agents/dqn/dqn.py::calculate_rr_weights for further details.
+                See: rllib/algorithms/dqn/dqn.py::calculate_rr_weights for further
+                details.
 
         Returns:
             This updated DDPGConfig object.
@@ -252,14 +253,14 @@ class DDPGConfig(SimpleQConfig):
         return self
 
 
-class DDPGTrainer(SimpleQTrainer):
+class DDPGTrainer(SimpleQ):
     @classmethod
-    @override(SimpleQTrainer)
+    @override(SimpleQ)
     # TODO make this return a TrainerConfig
     def get_default_config(cls) -> TrainerConfigDict:
         return DDPGConfig().to_dict()
 
-    @override(SimpleQTrainer)
+    @override(SimpleQ)
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.ddpg.ddpg_torch_policy import DDPGTorchPolicy
@@ -268,7 +269,7 @@ class DDPGTrainer(SimpleQTrainer):
         else:
             return DDPGTFPolicy
 
-    @override(SimpleQTrainer)
+    @override(SimpleQ)
     def validate_config(self, config: TrainerConfigDict) -> None:
 
         # Call super's validation method.

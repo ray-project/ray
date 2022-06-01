@@ -96,9 +96,9 @@ def _import_ddppo():
 
 
 def _import_dqn():
-    from ray.rllib.algorithms import dqn
+    import ray.rllib.algorithms.dqn as dqn
 
-    return dqn.DQNTrainer, dqn.DEFAULT_CONFIG
+    return dqn.DQN, dqn.DQNConfig().to_dict()
 
 
 def _import_dreamer():
@@ -162,9 +162,9 @@ def _import_qmix():
 
 
 def _import_r2d2():
-    from ray.rllib.agents import dqn
+    import ray.rllib.algorithms.r2d2 as r2d2
 
-    return dqn.R2D2Trainer, dqn.R2D2_DEFAULT_CONFIG
+    return r2d2.R2D2, r2d2.R2D2Config().to_dict()
 
 
 def _import_sac():

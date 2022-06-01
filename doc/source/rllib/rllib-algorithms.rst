@@ -82,8 +82,8 @@ Distributed Prioritized Experience Replay (Ape-X)
 -------------------------------------------------
 |pytorch| |tensorflow|
 `[paper] <https://arxiv.org/abs/1803.00933>`__
-`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/dqn/apex.py>`__
-Ape-X variations of DQN and DDPG (`APEX_DQN <https://github.com/ray-project/ray/blob/master/rllib/agents/dqn/apex.py>`__, `APEX_DDPG <https://github.com/ray-project/ray/blob/master/rllib/algorithms/ddpg/apex.py>`__) use a single GPU learner and many CPU workers for experience collection. Experience collection can scale to hundreds of CPU workers due to the distributed prioritization of experience prior to storage in replay buffers.
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/apex_dqn/apex_dqn.py>`__
+Ape-X variations of DQN and DDPG (`APEX_DQN <https://github.com/ray-project/ray/blob/master/rllib/algorithms/apex_dqn/apex_dqn.py>`__, `APEX_DDPG <https://github.com/ray-project/ray/blob/master/rllib/algorithms/ddpg/apex.py>`__) use a single GPU learner and many CPU workers for experience collection. Experience collection can scale to hundreds of CPU workers due to the distributed prioritization of experience prior to storage in replay buffers.
 
 .. figure:: images/apex-arch.svg
 
@@ -119,7 +119,7 @@ SpaceInvaders  646                               ~300
 
 **Ape-X specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/agents/dqn/apex.py
+.. literalinclude:: ../../../rllib/algorithms/apex_dqn/apex_dqn.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__

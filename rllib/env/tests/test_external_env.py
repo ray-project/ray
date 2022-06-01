@@ -5,7 +5,7 @@ import unittest
 import uuid
 
 import ray
-from ray.rllib.algorithms.dqn import DQNTrainer
+from ray.rllib.algorithms.dqn import DQN
 from ray.rllib.algorithms.pg import PGTrainer
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.env.external_env import ExternalEnv
@@ -177,7 +177,7 @@ class TestExternalEnv(unittest.TestCase):
             "exploration_config": {"epsilon_timesteps": 100},
         }
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            dqn = DQNTrainer(env="test3", config=config)
+            dqn = DQN(env="test3", config=config)
             reached = False
             for i in range(50):
                 result = dqn.train()

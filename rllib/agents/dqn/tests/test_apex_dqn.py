@@ -47,7 +47,7 @@ class TestApexDQN(unittest.TestCase):
             trainer.stop()
 
     def test_apex_dqn_compilation_and_per_worker_epsilon_values(self):
-        """Test whether an APEX-DQNTrainer can be built on all frameworks."""
+        """Test whether APEXDQN can be built on all frameworks."""
         config = (
             apex_dqn.ApexDQNConfig()
             .rollouts(num_rollout_workers=3)

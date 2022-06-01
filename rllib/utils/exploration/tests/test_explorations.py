@@ -131,7 +131,7 @@ class TestExplorations(unittest.TestCase):
 
     def test_dqn(self):
         do_test_explorations(
-            dqn.DQNTrainer,
+            dqn.DQN,
             "CartPole-v0",
             dqn.DEFAULT_CONFIG,
             np.array([0.0, 0.1, 0.0, 0.0]),

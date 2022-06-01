@@ -1,9 +1,9 @@
 import logging
 from typing import Optional, Type
 
-from ray.rllib.algorithms.dqn import DQNConfig, DQNTrainer
-from ray.rllib.agents.dqn.r2d2_tf_policy import R2D2TFPolicy
-from ray.rllib.agents.dqn.r2d2_torch_policy import R2D2TorchPolicy
+from ray.rllib.algorithms.dqn import DQN, DQNConfig
+from ray.rllib.algorithms.r2d2.r2d2_tf_policy import R2D2TFPolicy
+from ray.rllib.algorithms.r2d2.r2d2_torch_policy import R2D2TorchPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 class R2D2Config(DQNConfig):
-    """Defines a configuration class from which a R2D2Trainer can be built.
+    """Defines a configuration class from which a R2D2 Trainer can be built.
 
     Example:
         >>> from ray.rllib.algorithms.r2d2.r2d2 import R2D2Config
@@ -30,7 +30,7 @@ class R2D2Config(DQNConfig):
         >>>       .resources(num_gpus=1)\
         >>>       .rollouts(num_rollout_workers=30)\
         >>>       .environment("CartPole-v1")
-        >>> trainer = R2D2Trainer(config=config)
+        >>> trainer = R2D2(config=config)
         >>> while True:
         >>>     trainer.train()
 
@@ -172,7 +172,7 @@ class R2D2Config(DQNConfig):
 
 # Build an R2D2 trainer, which uses the framework specific Policy
 # determined in `get_policy_class()` above.
-class R2D2(DQNTrainer):
+class R2D2(DQN):
     """Recurrent Experience Replay in Distrib. Reinforcement Learning (R2D2).
 
     Trainer defining the distributed R2D2 algorithm.
@@ -188,18 +188,18 @@ class R2D2(DQNTrainer):
     """
 
     @classmethod
-    @override(DQNTrainer)
+    @override(DQN)
     def get_default_config(cls) -> TrainerConfigDict:
         return R2D2Config().to_dict()
 
-    @override(DQNTrainer)
+    @override(DQN)
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             return R2D2TorchPolicy
         else:
             return R2D2TFPolicy
 
-    @override(DQNTrainer)
+    @override(DQN)
     def validate_config(self, config: TrainerConfigDict) -> None:
         """Checks and updates the config based on settings.
 
