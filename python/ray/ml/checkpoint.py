@@ -580,7 +580,7 @@ def _get_del_lock_path(path: str, pid: str = None) -> str:
 
 def _make_dir(path: str, acquire_del_lock: bool = True) -> None:
     """Create the temporary checkpoint dir in ``path``."""
-    if drop_del_lock:
+    if acquire_del_lock:
         # Each process drops a deletion lock file it then cleans up.
         # If there are no lock files left, the last process
         # will remove the entire directory.
