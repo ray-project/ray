@@ -2,7 +2,6 @@ import unittest
 
 import ray
 import ray.rllib.algorithms.appo as appo
-import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
 from ray.rllib.utils.test_utils import (
@@ -50,9 +49,7 @@ class TestAPPO(unittest.TestCase):
     def test_appo_compilation_use_kl_loss(self):
         """Test whether APPO can be built with kl_loss enabled."""
         config = (
-            appo.APPOConfig()
-            .rollouts(num_rollout_workers=1)
-            .training(use_kl_loss=True)
+            appo.APPOConfig().rollouts(num_rollout_workers=1).training(use_kl_loss=True)
         )
         num_iterations = 2
 
