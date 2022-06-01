@@ -45,10 +45,10 @@ def build_q_losses(
     """Constructs the loss for SimpleQTorchPolicy.
 
     Args:
-        policy (Policy): The Policy to calculate the loss for.
+        policy: The Policy to calculate the loss for.
         model (ModelV2): The Model to calculate the loss for.
         dist_class (Type[ActionDistribution]): The action distribution class.
-        train_batch (SampleBatch): The training data.
+        train_batch: The training data.
 
     Returns:
         TensorType: A single loss tensor.
@@ -123,10 +123,10 @@ def setup_late_mixins(
     initialization.
 
     Args:
-        policy (Policy): The Policy object.
+        policy: The Policy object.
         obs_space (gym.spaces.Space): The Policy's observation space.
         action_space (gym.spaces.Space): The Policy's action space.
-        config (TrainerConfigDict): The Policy's config.
+        config: The Policy's config.
     """
     TargetNetworkMixin.__init__(policy)
 

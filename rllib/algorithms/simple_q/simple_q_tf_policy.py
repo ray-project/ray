@@ -37,7 +37,7 @@ def build_q_models(
     Note that this function works for both Tensorflow and PyTorch.
 
     Args:
-        policy (Policy): The Policy, which will use the model for optimization.
+        policy: The Policy, which will use the model for optimization.
         obs_space (gym.spaces.Space): The policy's observation space.
         action_space (gym.spaces.Space): The policy's action space.
         config (TrainerConfigDict):
@@ -103,10 +103,10 @@ def build_q_losses(
     """Constructs the loss for SimpleQTFPolicy.
 
     Args:
-        policy (Policy): The Policy to calculate the loss for.
+        policy: The Policy to calculate the loss for.
         model (ModelV2): The Model to calculate the loss for.
         dist_class (Type[ActionDistribution]): The action distribution class.
-        train_batch (SampleBatch): The training data.
+        train_batch: The training data.
 
     Returns:
         TensorType: A single loss tensor.
@@ -175,10 +175,10 @@ def setup_late_mixins(
     """Call all mixin classes' constructors before SimpleQTFPolicy initialization.
 
     Args:
-        policy (Policy): The Policy object.
+        policy: The Policy object.
         obs_space (gym.spaces.Space): The Policy's observation space.
         action_space (gym.spaces.Space): The Policy's action space.
-        config (TrainerConfigDict): The Policy's config.
+        config: The Policy's config.
     """
     TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
 

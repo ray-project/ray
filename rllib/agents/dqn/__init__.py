@@ -19,6 +19,7 @@ __all__ = [
     "DQNTFPolicy",
     "DQNTorchPolicy",
     "DQNTrainer",
+    "R2D2Config",
     "R2D2TorchPolicy",
     "R2D2Trainer",
     "SimpleQConfig",
