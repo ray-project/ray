@@ -150,7 +150,7 @@ class QRegTorchModel:
                 #         rho_t_1_t_prime = rho_t_1_t_prime * prob_ratio[eps_begin + k]
                 #     r = rewards[eps_begin + t_prime]
                 #     ret += gamma * rho_t_1_t_prime * r
-                
+
                 # O(n^2)
                 ret = 0
                 rho = 1
