@@ -256,18 +256,18 @@ class DataParallelTrainer(Trainer):
         if not ray.is_initialized():
             ray.init()
 
-        self.train_loop_per_worker = train_loop_per_worker
-        self.train_loop_config = train_loop_config
+        self._train_loop_per_worker = train_loop_per_worker
+        self._train_loop_config = train_loop_config
 
         backend_config = (
             backend_config if backend_config is not None else BackendConfig()
         )
-        self.backend_config = backend_config
-        self.dataset_config = DatasetConfig.validated(
+        self._backend_config = backend_config
+        self._dataset_config = DatasetConfig.validated(
             DatasetConfig.merge(self._dataset_config, dataset_config), datasets
         )
-        self.ingest_spec = _DataParallelIngestSpec(
-            dataset_config=self.dataset_config,
+        self._ingest_spec = _DataParallelIngestSpec(
+            dataset_config=self._dataset_config,
         )
 
         super(DataParallelTrainer, self).__init__(
@@ -302,13 +302,15 @@ class DataParallelTrainer(Trainer):
             )
 
         self._validate_train_loop_per_worker(
-            self.train_loop_per_worker, "train_loop_per_worker"
+            self._train_loop_per_worker, "train_loop_per_worker"
         )
 
     def preprocess_datasets(self) -> None:
         # Evaluate all datasets.
-        self.datasets = {k: d() if callable(d) else d for k, d in self.datasets.items()}
-        self.datasets = self.ingest_spec.preprocess_datasets(
+        self.datasets = {
+            k: d() if callable(d) else d for k, d in self.datasets.items()
+        }
+        self.datasets = self._ingest_spec.preprocess_datasets(
             self.preprocessor, self.datasets
         )
 
@@ -328,8 +330,8 @@ class DataParallelTrainer(Trainer):
         )
 
         train_loop_per_worker = construct_train_func(
-            self.train_loop_per_worker,
-            self.train_loop_config,
+            self._train_loop_per_worker,
+            self._train_loop_config,
             fn_arg_name="train_loop_per_worker",
         )
 
@@ -338,7 +340,7 @@ class DataParallelTrainer(Trainer):
         )
 
         backend_executor = BackendExecutor(
-            backend_config=self.backend_config,
+            backend_config=self._backend_config,
             num_workers=scaling_config_dataclass.num_workers,
             num_cpus_per_worker=scaling_config_dataclass.num_cpus_per_worker,
             num_gpus_per_worker=scaling_config_dataclass.num_gpus_per_worker,
@@ -361,9 +363,9 @@ class DataParallelTrainer(Trainer):
         #  of just a Dict.
         training_iterator = TrainingIterator(
             backend_executor=backend_executor,
-            backend_config=self.backend_config,
+            backend_config=self._backend_config,
             train_func=train_loop_per_worker,
-            dataset_spec=self.ingest_spec,
+            dataset_spec=self._ingest_spec,
             checkpoint_manager=checkpoint_manager,
             checkpoint=resume_checkpoint_dict,
             checkpoint_strategy=None,
@@ -384,7 +386,7 @@ class DataParallelTrainer(Trainer):
         Returns:
             The merged default + user-supplied dataset config.
         """
-        return self.dataset_config.copy()
+        return self._dataset_config.copy()
 
 
 def _load_checkpoint(

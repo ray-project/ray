@@ -126,6 +126,7 @@ if __name__ == "__main__":
         prefetch_blocks=1,  # Number of blocks to prefetch when reading data.
         batch_size=None,
     )
+    print("Dataset config", trainer.get_dataset_config())
     trainer.fit()
 
     # Print memory stats (you can also use "ray memory --stats-only" to monitor this
