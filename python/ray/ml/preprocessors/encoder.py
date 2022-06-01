@@ -19,6 +19,42 @@ class OrdinalEncoder(Preprocessor):
 
     All column values must be hashable scalars or lists of hashable values.
 
+    Example:
+
+    .. code-block:: python
+
+        import ray.data
+        from ray.ml.preprocessors import OrdinalEncoder
+        import pandas as pd
+        batch = pd.DataFrame(
+            {
+                "A": [["warm"], [], ["hot", "warm", "cold"], ["cold", "cold"]],
+                "B": ["warm", "cold", "hot", "cold"],
+            },
+        )
+        oe = OrdinalEncoder(columns=["A", "B"], encode_lists=True)
+        oe.fit(ray.data.from_pandas(batch))
+        transformed_batch = oe.transform_batch(batch)
+        expected_batch = pd.DataFrame(
+            {
+                "A": [[2], [], [1, 2, 0], [0, 0]],
+                "B": [2, 0, 1, 0],
+            }
+        )
+        assert transformed_batch.equals(expected_batch)
+
+        oe = OrdinalEncoder(columns=["A", "B"], encode_lists=False)
+        oe.fit(ray.data.from_pandas(batch))
+        transformed_batch = oe.transform_batch(batch)
+        expected_batch = pd.DataFrame(
+            {
+                "A": [3, 0, 2, 1],
+                "B": [2, 0, 1, 0],
+            }
+        )
+        assert transformed_batch.equals(expected_batch)
+
+
     Args:
         columns: The columns that will individually be encoded.
         encode_lists: If True, each element of lists inside list
@@ -162,25 +198,27 @@ class MultiHotEncoder(Preprocessor):
 
     Example:
 
-    >>> import ray.data
-    >>> from ray.ml.preprocessors import MultiHotEncoder
-    >>> import pandas as pd
-    >>> mhe = MultiHotEncoder(columns=["A", "B"])
-    >>> batch = pd.DataFrame(
-    ...     {
-    ...         "A": [["warm"], [], ["hot", "warm", "cold"], ["cold", "cold"]],
-    ...         "B": ["warm", "cold", "hot", "cold"],
-    ...     },
-    ... )
-    >>> mhe.fit(ray.data.from_pandas(batch))
-    >>> transformed_batch = mhe.transform_batch(batch)
-    >>> expected_batch = pd.DataFrame(
-    ...     {
-    ...         "A": [[0, 0, 1], [0, 0, 0], [1, 1, 1], [2, 0, 0]],
-    ...         "B": [[0, 0, 1], [1, 0, 0], [0, 1, 0], [1, 0, 0]],
-    ...     }
-    ... )
-    >>> assert transformed_batch.equals(expected_batch)
+    .. code-block:: python
+
+        import ray.data
+        from ray.ml.preprocessors import MultiHotEncoder
+        import pandas as pd
+        mhe = MultiHotEncoder(columns=["A", "B"])
+        batch = pd.DataFrame(
+            {
+                "A": [["warm"], [], ["hot", "warm", "cold"], ["cold", "cold"]],
+                "B": ["warm", "cold", "hot", "cold"],
+            },
+        )
+        mhe.fit(ray.data.from_pandas(batch))
+        transformed_batch = mhe.transform_batch(batch)
+        expected_batch = pd.DataFrame(
+            {
+                "A": [[0, 0, 1], [0, 0, 0], [1, 1, 1], [2, 0, 0]],
+                "B": [[0, 0, 1], [1, 0, 0], [0, 1, 0], [1, 0, 0]],
+            }
+        )
+        assert transformed_batch.equals(expected_batch)
 
     Transforming values not included in the fitted dataset or not among
     the top popular values (see ``limit``) will result in all of the encoded column
@@ -410,7 +448,9 @@ def _validate_df(df: pd.DataFrame, *columns: str) -> None:
 
 def _is_series_composed_of_lists(series: pd.Series) -> bool:
     # we assume that all elements are a list here
-    # TODO add handling for the case where first element is None
+    first_not_none_element = next(
+        (element for element in series if element is not None), None
+    )
     return pandas.api.types.is_object_dtype(series.dtype) and isinstance(
-        series[0], list
+        first_not_none_element, list
     )
