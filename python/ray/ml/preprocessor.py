@@ -50,10 +50,7 @@ class Preprocessor(abc.ABC):
             return Preprocessor.FitStatus.NOT_FITTED
 
     def transform_stats(self) -> Optional[str]:
-        """Return Dataset stats for the most recent transform call, if any.
-
-        TODO(ekl) we should also be able to provide stats for fit().
-        """
+        """Return Dataset stats for the most recent transform call, if any."""
         if not hasattr(self, "_transform_stats"):
             return None
         return self._transform_stats

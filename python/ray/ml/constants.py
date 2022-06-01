@@ -8,6 +8,9 @@ MODEL_KEY = "model"
 # This is the dataset that the preprocessor is fit on.
 TRAIN_DATASET_KEY = "train"
 
+# Key to denote all user-specified auxiliary datasets in DatasetConfig.
+WILDCARD_KEY = "*"
+
 # Key to denote which dataset is the evaluation dataset.
 # Only used in trainers which do not support multiple
 # evaluation datasets.

@@ -6,8 +6,12 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Uni
 import ray
 from ray.util import PublicAPI
 from ray.ml.checkpoint import Checkpoint
-from ray.ml.config import RunConfig, ScalingConfig, ScalingConfigDataClass
 from ray.ml.constants import TRAIN_DATASET_KEY
+from ray.ml.config import (
+    RunConfig,
+    ScalingConfig,
+    ScalingConfigDataClass,
+)
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.result import Result
 from ray.ml.utils.config import (
@@ -264,6 +268,7 @@ class Trainer(abc.ABC):
         The transformed datasets will be set back in the ``self.datasets`` attribute
         of the Trainer to be used when overriding ``training_loop``.
         """
+
         # Evaluate all datasets.
         self.datasets = {k: d() if callable(d) else d for k, d in self.datasets.items()}
 

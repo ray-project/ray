@@ -4,7 +4,7 @@ import tensorflow as tf
 from ray.train.tensorflow import TensorflowConfig
 from ray.ml.trainer import GenDataset
 from ray.ml.train.data_parallel_trainer import DataParallelTrainer, _load_checkpoint
-from ray.ml.config import ScalingConfig, RunConfig
+from ray.ml.config import ScalingConfig, RunConfig, DatasetConfig
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
 from ray.util import PublicAPI
@@ -144,6 +144,7 @@ class TensorflowTrainer(DataParallelTrainer):
             If set to None, use the default configuration. This replaces the
             ``backend_config`` arg of ``DataParallelTrainer``.
         scaling_config: Configuration for how to scale data parallel training.
+        dataset_config: Configuration for dataset ingest.
         run_config: Configuration for the execution of the training run.
         datasets: Any Ray Datasets to use for training. Use
             the key "train" to denote which dataset is the training
@@ -162,6 +163,7 @@ class TensorflowTrainer(DataParallelTrainer):
         train_loop_config: Optional[Dict] = None,
         tensorflow_config: Optional[TensorflowConfig] = None,
         scaling_config: Optional[ScalingConfig] = None,
+        dataset_config: Optional[Dict[str, DatasetConfig]] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
         preprocessor: Optional[Preprocessor] = None,
@@ -175,6 +177,7 @@ class TensorflowTrainer(DataParallelTrainer):
             train_loop_config=train_loop_config,
             backend_config=tensorflow_config,
             scaling_config=scaling_config,
+            dataset_config=dataset_config,
             run_config=run_config,
             datasets=datasets,
             preprocessor=preprocessor,
