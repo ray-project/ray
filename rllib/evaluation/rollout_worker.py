@@ -1562,6 +1562,9 @@ class RolloutWorker(ParallelIteratorWorker):
         collective.init_collective_group(world_size, rank, backend, group_name)
         return True
 
+    def get_rank(self, group_name = "default"):
+        return collective.get_rank(group_name=group_name)
+
     # def do_send(self, group_name="default", dst_rank=0):
     #     collective.send(self.policy_map_buffer, dst_rank, group_name)
 
@@ -1572,9 +1575,9 @@ class RolloutWorker(ParallelIteratorWorker):
         # TODO (jiaodong): build better API to send multiple tensors in batch
         print(f">>>> Broadcasting ... len: buffer_key_list: {len(self.buffer_key_list)}, len: buffer_list: {len(self.buffer_list)}")
         # nccl_util.groupStart()
-        for i in range(len(self.buffer_key_list)):
-            print(f">>>> Broadcasting tensor for {self.buffer_key_list[i]}.. ")
-            collective.broadcast(self.buffer_list[i], src_rank, group_name)
+        for tensor in enumerate(self.buffer_list):
+            print(f">>>> Broadcasting tensor of type {type(tensor)}.. ")
+            collective.broadcast(tensor, src_rank, group_name)
         # nccl_util.groupEnd()
 
     def set_buffer_key_list(self, buffer_key_list: List[str]):
@@ -1582,6 +1585,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
     def set_buffer_list(self, buffer_list: List[cp.ndarray]):
         self.buffer_list = buffer_list
+        print(f">>>> buffer list set as {self.buffer_list}")
 
     # def get_policy_map_buffer(self):
     #     return self.policy_map_buffer
