@@ -7,12 +7,15 @@ from pathlib import Path
 def check_file(file_contents: str) -> bool:
     return bool(re.search(r"^if __name__ == \"__main__\":", file_contents, re.M))
 
+
 def parse_json(data: str) -> dict:
     return json.loads(data)
+
 
 def treat_path(path: str) -> Path:
     path = path[2:].replace(":", "/")
     return Path(path)
+
 
 def get_paths_from_parsed_data(parsed_data: dict) -> list:
     paths = []
@@ -23,6 +26,7 @@ def get_paths_from_parsed_data(parsed_data: dict) -> list:
             list_args = {e["@name"]: e for e in rule["list"]}
             paths.append(treat_path(list_args["srcs"]["label"]["@value"]))
     return paths
+
 
 def main(data: str):
     print("Checking files for the pytest snippet...")
@@ -38,7 +42,7 @@ def main(data: str):
                 bad_paths.append(path)
     if bad_paths:
         raise RuntimeError(
-            "Found py_test files without `if __name__ == \"__main__\":` snippet:"
+            'Found py_test files without `if __name__ == "__main__":` snippet:'
             f" {[str(x) for x in bad_paths]}\n"
             "If this is intentional, please add a `no_main` tag to bazel BUILD "
             "entry for that file."
