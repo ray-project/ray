@@ -1287,3 +1287,10 @@ def simulate_storage(storage_type, root=None):
             yield url
     else:
         raise ValueError(f"Unknown storage type: {storage_type}")
+
+
+def job_hook(**kwargs):
+    """Function called by reflection by test_cli_integration."""
+    cmd = " ".join(kwargs["entrypoint"])
+    print(f"hook intercepted: {cmd}")
+    sys.exit(0)
