@@ -24,6 +24,8 @@ from typing import (
 
 import ray
 import ray.util.collective as collective
+from ray.util.collective.collective_group import nccl_util
+
 from ray.util.collective.types import Backend
 from ray import ObjectRef
 from ray import cloudpickle as pickle
@@ -379,7 +381,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 validates the properties of the passed environment.
         """
         self.buffer_key_list = []
-        self.buffer_list = []
+        self.buffer_list = [cp.ones([1,1])] * 12
         # Deprecated args.
         if policy is not None:
             deprecation_warning("policy", "policy_spec", error=False)
@@ -1569,9 +1571,11 @@ class RolloutWorker(ParallelIteratorWorker):
     def broadcast(self, group_name="default", src_rank=0):
         # TODO (jiaodong): build better API to send multiple tensors in batch
         print(f">>>> Broadcasting ... len: buffer_key_list: {len(self.buffer_key_list)}, len: buffer_list: {len(self.buffer_list)}")
+        # nccl_util.groupStart()
         for i in range(len(self.buffer_key_list)):
             print(f">>>> Broadcasting tensor for {self.buffer_key_list[i]}.. ")
             collective.broadcast(self.buffer_list[i], src_rank, group_name)
+        # nccl_util.groupEnd()
 
     def set_buffer_key_list(self, buffer_key_list: List[str]):
         self.buffer_key_list = buffer_key_list
