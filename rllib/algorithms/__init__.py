@@ -27,7 +27,7 @@ from ray.rllib.algorithms.mbmpo.mbmpo import MBMPOTrainer, MBMPOConfig
 from ray.rllib.algorithms.pg.pg import PGTrainer, PGConfig
 from ray.rllib.algorithms.ppo.ppo import PPO, PPOConfig
 from ray.rllib.algorithms.qmix.qmix import QMixTrainer, QMixConfig
-from ray.rllib.algorithms.r2d2.r2d2 import R2D2Trainer, R2D2Config
+from ray.rllib.algorithms.r2d2.r2d2 import R2D2, R2D2Config
 from ray.rllib.algorithms.sac.sac import SACTrainer, SACConfig
 from ray.rllib.algorithms.simple_q.simple_q import SimpleQ, SimpleQConfig
 from ray.rllib.algorithms.slateq.slateq import SlateQTrainer, SlateQConfig
@@ -43,6 +43,10 @@ __all__ = [
     "AlphaStarConfig",
     "AlphaZeroTrainer",
     "AlphaZeroConfig",
+    "ApexDDPG",
+    "ApexDDPGConfig",
+    "ApexDQN"
+    "ApexDQNConfig",
     "APPO",
     "APPOConfig",
     "ARSTrainer",
@@ -51,13 +55,15 @@ __all__ = [
     "BanditLinTSConfig",
     "BanditLinUCBTrainer",
     "BanditLinUCBConfig",
+    "BC",
+    "BCConfig",
     "CQLTrainer",
     "CQLConfig",
     "DDPGTrainer",
     "DDPGConfig",
     "DDPPO",
     "DDPPOConfig",
-    "DQNTrainer",
+    "DQN",
     "DQNConfig",
     "DREAMERTrainer",
     "DREAMERConfig",
@@ -69,7 +75,7 @@ __all__ = [
     "MADDPGConfig",
     "MAMLTrainer",
     "MAMLConfig",
-    "MARWILTrainer",
+    "MARWIL",
     "MARWILConfig",
     "MBMPOTrainer",
     "MBMPOConfig",
@@ -79,8 +85,14 @@ __all__ = [
     "PPOConfig",
     "QMixTrainer",
     "QMixConfig",
+    "R2D2",
+    "R2D2Config",
     "SACTrainer",
     "SACConfig",
+    "SimpleQ",
+    "SimpleQConfig",
     "SlateQTrainer",
     "SlateQConfig",
+    "TD3",
+    "TD3Config",
 ]

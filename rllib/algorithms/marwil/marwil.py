@@ -63,7 +63,7 @@ class MARWILConfig(TrainerConfig):
 
     def __init__(self, trainer_class=None):
         """Initializes a MARWILConfig instance."""
-        super().__init__(trainer_class=trainer_class or MARWILTrainer)
+        super().__init__(trainer_class=trainer_class or MARWIL)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -206,7 +206,7 @@ class MARWILConfig(TrainerConfig):
         return self
 
 
-class MARWILTrainer(Trainer):
+class MARWIL(Trainer):
     @classmethod
     @override(Trainer)
     def get_default_config(cls) -> TrainerConfigDict:

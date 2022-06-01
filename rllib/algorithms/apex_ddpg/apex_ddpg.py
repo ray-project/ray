@@ -3,7 +3,7 @@ from typing import List, Optional
 from ray.actor import ActorHandle
 from ray.rllib.agents import Trainer
 from ray.rllib.algorithms.apex_dqn.apex_dqn import ApexDQN
-from ray.rllib.algorithms.ddpg.ddpg import DDPGConfig, DDPGTrainer
+from ray.rllib.algorithms.ddpg.ddpg import DDPG, DDPGConfig
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TrainerConfigDict
@@ -14,7 +14,7 @@ from ray.util.iter import LocalIterator
 
 
 class ApexDDPGConfig(DDPGConfig):
-    """Defines a configuration class from which an ApexDDPGTrainer can be built.
+    """Defines a configuration class from which an ApexDDPG Trainer can be built.
 
     Example:
         >>> from ray.rllib.algorithms.ddpg.apex import ApexDDPGConfig
@@ -45,8 +45,8 @@ class ApexDDPGConfig(DDPGConfig):
     """
 
     def __init__(self, trainer_class=None):
-        """Initializes a DDPGConfig instance."""
-        super().__init__(trainer_class=trainer_class or ApexDDPGTrainer)
+        """Initializes an ApexDDPGConfig instance."""
+        super().__init__(trainer_class=trainer_class or ApexDDPG)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -112,7 +112,7 @@ class ApexDDPGConfig(DDPGConfig):
         timeout_s_sampler_manager: Optional[float] = None,
         timeout_s_replay_manager: Optional[float] = None,
         **kwargs,
-    ) -> "DDPGConfig":
+    ) -> "ApexDDPGConfig":
         """Sets the training related configuration.
 
         Args:
@@ -171,20 +171,20 @@ class ApexDDPGConfig(DDPGConfig):
         return self
 
 
-class ApexDDPGTrainer(DDPGTrainer, ApexTrainer):
+class ApexDDPG(DDPG, ApexDQN):
     @classmethod
-    @override(DDPGTrainer)
+    @override(DDPG)
     def get_default_config(cls) -> TrainerConfigDict:
         return ApexDDPGConfig().to_dict()
 
-    @override(DDPGTrainer)
+    @override(DDPG)
     def setup(self, config: PartialTrainerConfigDict):
-        return ApexTrainer.setup(self, config)
+        return ApexDQN.setup(self, config)
 
-    @override(DDPGTrainer)
+    @override(DDPG)
     def training_iteration(self) -> ResultDict:
         """Use APEX-DQN's training iteration function."""
-        return ApexTrainer.training_iteration(self)
+        return ApexDQN.training_iteration(self)
 
     @override(Trainer)
     def on_worker_failures(
@@ -200,22 +200,22 @@ class ApexDDPGTrainer(DDPGTrainer, ApexTrainer):
         self._sampling_actor_manager.add_workers(new_workers)
 
     @staticmethod
-    @override(DDPGTrainer)
+    @override(DDPG)
     def execution_plan(
         workers: WorkerSet, config: dict, **kwargs
     ) -> LocalIterator[dict]:
         """Use APEX-DQN's execution plan."""
-        return ApexTrainer.execution_plan(workers, config, **kwargs)
+        return ApexDQN.execution_plan(workers, config, **kwargs)
 
 
-# Deprecated: Use ray.rllib.algorithms.ddpg.ApexDDPGConfig instead!
+# Deprecated: Use ray.rllib.algorithms.apex_ddpg.ApexDDPGConfig instead!
 class _deprecated_default_config(dict):
     def __init__(self):
         super().__init__(ApexDDPGConfig().to_dict())
 
     @Deprecated(
         old="ray.rllib.algorithms.ddpg.apex.APEX_DDPG_DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.ddpg.apex.ApexDDPGConfig(...)",
+        new="ray.rllib.algorithms.apex_ddpg.apex_ddpg::ApexDDPGConfig(...)",
         error=False,
     )
     def __getitem__(self, item):

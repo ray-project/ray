@@ -1,7 +1,7 @@
 import logging
 from typing import List, Optional, Type
 
-from ray.rllib.algorithms.simple_q.simple_q import SimpleQConfig, SimpleQ
+from ray.rllib.algorithms.simple_q.simple_q import SimpleQ, SimpleQConfig
 from ray.rllib.algorithms.ddpg.ddpg_tf_policy import DDPGTFPolicy
 from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.policy.policy import Policy
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 class DDPGConfig(SimpleQConfig):
-    """Defines a configuration class from which a DDPGTrainer can be built.
+    """Defines a configuration class from which a DDPG Trainer can be built.
 
     Example:
         >>> from ray.rllib.algorithms.ddpg.ddpg import DDPGConfig
@@ -46,7 +46,7 @@ class DDPGConfig(SimpleQConfig):
 
     def __init__(self, trainer_class=None):
         """Initializes a DDPGConfig instance."""
-        super().__init__(trainer_class=trainer_class or DDPGTrainer)
+        super().__init__(trainer_class=trainer_class or DDPG)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -253,7 +253,7 @@ class DDPGConfig(SimpleQConfig):
         return self
 
 
-class DDPGTrainer(SimpleQ):
+class DDPG(SimpleQ):
     @classmethod
     @override(SimpleQ)
     # TODO make this return a TrainerConfig

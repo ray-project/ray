@@ -43,7 +43,7 @@ class TD3Config(DDPGConfig):
 
     def __init__(self, trainer_class=None):
         """Initializes a TD3Config instance."""
-        super().__init__(trainer_class=trainer_class or TD3Trainer)
+        super().__init__(trainer_class=trainer_class or TD3)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -98,9 +98,9 @@ class TD3Config(DDPGConfig):
         # fmt: on
 
 
-class TD3Trainer(DDPGTrainer):
+class TD3(DDPG):
     @classmethod
-    @override(DDPGTrainer)
+    @override(DDPG)
     def get_default_config(cls) -> TrainerConfigDict:
         return TD3Config().to_dict()
 
@@ -112,7 +112,7 @@ class _deprecated_default_config(dict):
 
     @Deprecated(
         old="ray.rllib.algorithms.ddpg.td3::TD3_DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.ddpg.td3.TD3Config(...)",
+        new="ray.rllib.algorithms.td3.td3::TD3Config(...)",
         error=False,
     )
     def __getitem__(self, item):
