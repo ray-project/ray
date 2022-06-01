@@ -31,10 +31,10 @@ def build_rnnsac_model(
     """Constructs the necessary ModelV2 for the Policy and returns it.
 
     Args:
-        policy (Policy): The TFPolicy that will use the models.
+        policy: The TFPolicy that will use the models.
         obs_space (gym.spaces.Space): The observation space.
         action_space (gym.spaces.Space): The action space.
-        config (TrainerConfigDict): The SAC trainer's config dict.
+        config: The SAC trainer's config dict.
 
     Returns:
         ModelV2: The ModelV2 to be used by the Policy. Note: An additional
@@ -104,10 +104,10 @@ def build_sac_model_and_action_dist(
     """Constructs the necessary ModelV2 and action dist class for the Policy.
 
     Args:
-        policy (Policy): The TFPolicy that will use the models.
+        policy: The TFPolicy that will use the models.
         obs_space (gym.spaces.Space): The observation space.
         action_space (gym.spaces.Space): The action space.
-        config (TrainerConfigDict): The SAC trainer's config dict.
+        config: The SAC trainer's config dict.
 
     Returns:
         ModelV2: The ModelV2 to be used by the Policy. Note: An additional
@@ -144,12 +144,12 @@ def action_distribution_fn(
     will be made on it to generate actions.
 
     Args:
-        policy (Policy): The Policy being queried for actions and calling this
+        policy: The Policy being queried for actions and calling this
             function.
         model (TorchModelV2): The SAC specific Model to use to generate the
             distribution inputs (see sac_tf|torch_model.py). Must support the
             `get_action_model_outputs` method.
-        input_dict (ModelInputDict): The input-dict to be used for the model
+        input_dict: The input-dict to be used for the model
             call.
         state_batches (Optional[List[TensorType]]): The list of internal state
             tensor batches.
@@ -201,10 +201,10 @@ def actor_critic_loss(
     """Constructs the loss for the Soft Actor Critic.
 
     Args:
-        policy (Policy): The Policy to calculate the loss for.
+        policy: The Policy to calculate the loss for.
         model (ModelV2): The Model to calculate the loss for.
         dist_class (Type[TorchDistributionWrapper]: The action distr. class.
-        train_batch (SampleBatch): The training data.
+        train_batch: The training data.
 
     Returns:
         Union[TensorType, List[TensorType]]: A single loss tensor or a list

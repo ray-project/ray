@@ -32,6 +32,20 @@ check_python_command_exist() {
     fi
 }
 
+check_docstyle() {
+    echo "Checking docstyle..."
+    violations=$(git ls-files | grep '.py$' | xargs grep -E '^[ a-z_]+ \([a-zA-Z]*\): ' || true)
+    if [[ -n "$violations" ]]; then
+        echo
+        echo "=== Found Ray docstyle violations ==="
+        echo "$violations"
+        echo
+        echo "Per the Google pydoc style, omit types from pydoc args as they are redundant: https://docs.ray.io/en/latest/ray-contribute/getting-involved.html#code-style "
+        exit 1
+    fi
+    return 0
+}
+
 check_python_command_exist black
 check_python_command_exist flake8
 check_python_command_exist mypy
@@ -346,6 +360,8 @@ else
     # Format only the files that changed in last commit.
     format_changed
 fi
+
+check_docstyle
 
 # Ensure import ordering
 # Make sure that for every import psutil; import setproctitle
