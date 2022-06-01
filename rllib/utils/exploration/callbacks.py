@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 class NovelDMetricsCallbacks(DefaultCallbacks):
     """Collects metrics for NovelD exploration.
 
-    The metrics should help users monitor the exploration of
+    The metrics should help users to monitor the exploration of
     the environment. The metrics tracked are:
 
     intrinsic_reward: The intrinsic reward given by NovelD for
@@ -25,11 +25,11 @@ class NovelDMetricsCallbacks(DefaultCallbacks):
         This error decreases over the run of an experiment for
         already explored states. A low metric indicates that
         the agent visits states where it has already been or
-        states that are very similar to states he visited before.
-        If the state is truly novel this metric increases.
+        states that are very similar to states it visited before.
+        If the states ae truly novel this metric increases.
     novelty_next: This is the equivalent metric for the next
         state visited (see `novelty`). Together with `novelty`
-        this metric helps the user to understand the values for
+        this metric helps the user to understand the values of
         the `intrinsic_reward`.
     state_counts_total: The number of states explored over the
         course of the experiment. If this metric stagnates it is
