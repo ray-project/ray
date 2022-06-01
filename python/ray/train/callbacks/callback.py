@@ -27,7 +27,14 @@ class TrainingCallback(abc.ABC):
             config (Dict): The config dict passed into ``trainer.run()``.
             **info: kwargs dict for forward compatibility.
         """
-        pass
+        results_to_exclude = ALL_RESERVED_KEYS.difference(self.RESERVED_KEYS)
+        system_preprocessor = ExcludedKeysResultsPreprocessor(results_to_exclude)
+        if self.results_preprocessor:
+            self.results_preprocessor = SequentialResultsPreprocessor(
+                [system_preprocessor, self.results_preprocessor]
+            )
+        else:
+            self.results_preprocessor = system_preprocessor
 
     def process_results(self, results: List[Dict], **info):
         """Called every time train.report() is called.
@@ -63,14 +70,6 @@ class TrainingCallback(abc.ABC):
             The preprocessed results.
 
         """
-        results_to_exclude = ALL_RESERVED_KEYS.difference(self.RESERVED_KEYS)
-        system_preprocessor = ExcludedKeysResultsPreprocessor(results_to_exclude)
-        if self.results_preprocessor:
-            self.results_preprocessor = SequentialResultsPreprocessor(
-                [system_preprocessor, self.results_preprocessor]
-            )
-        else:
-            self.results_preprocessor = system_preprocessor
         results = self.results_preprocessor.preprocess(results)
         return results
 

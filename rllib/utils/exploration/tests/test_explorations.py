@@ -3,7 +3,8 @@ import sys
 import unittest
 
 import ray
-import ray.rllib.agents.a3c as a3c
+import ray.rllib.algorithms.a2c as a2c
+import ray.rllib.algorithms.a3c as a3c
 import ray.rllib.algorithms.ddpg as ddpg
 import ray.rllib.algorithms.ddpg.td3 as td3
 import ray.rllib.algorithms.dqn as dqn
@@ -20,7 +21,7 @@ def do_test_explorations(
     """Calls an Agent's `compute_actions` with different `explore` options."""
 
     core_config = config.copy()
-    if run not in [a3c.A3CTrainer]:
+    if run not in [a3c.A3C]:
         core_config["num_workers"] = 0
 
     # Test all frameworks.
@@ -91,16 +92,16 @@ class TestExplorations(unittest.TestCase):
 
     def test_a2c(self):
         do_test_explorations(
-            a3c.A2CTrainer,
+            a2c.A2C,
             "CartPole-v0",
-            a3c.a2c.A2C_DEFAULT_CONFIG,
+            a2c.A2C_DEFAULT_CONFIG,
             np.array([0.0, 0.1, 0.0, 0.0]),
             prev_a=np.array(1),
         )
 
     def test_a3c(self):
         do_test_explorations(
-            a3c.A3CTrainer,
+            a3c.A3C,
             "CartPole-v0",
             a3c.DEFAULT_CONFIG,
             np.array([0.0, 0.1, 0.0, 0.0]),
