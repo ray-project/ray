@@ -307,9 +307,7 @@ class DataParallelTrainer(Trainer):
 
     def preprocess_datasets(self) -> None:
         # Evaluate all datasets.
-        self.datasets = {
-            k: d() if callable(d) else d for k, d in self.datasets.items()
-        }
+        self.datasets = {k: d() if callable(d) else d for k, d in self.datasets.items()}
         self.datasets = self._ingest_spec.preprocess_datasets(
             self.preprocessor, self.datasets
         )
