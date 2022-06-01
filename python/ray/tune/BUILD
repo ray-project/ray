@@ -428,7 +428,7 @@ py_test(
     size = "small",
     srcs = ["tests/example.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
+    tags = ["team:ml", "exclusive", "example", "no_main"],
 )
 
 py_test(
@@ -445,7 +445,7 @@ py_test(
     size = "medium",
     srcs = ["tests/tutorial.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
+    tags = ["team:ml", "exclusive", "example", "no_main"],
 )
 
 # --------------------------------------------------------------------
@@ -941,14 +941,4 @@ py_test(
 py_library(
     name = "tune_lib",
     srcs = glob(["**/*.py"], exclude=["tests/*.py"]),
-)
-
-# Check if all tests have the pytest if __name__... snippet.
-# Without it, the test file will pass without running.
-load("//bazel:python.bzl", "check_pytest")
-check_pytest(
-    name = "check_pytest_ml",
-    include = ["tests/test*.py"],
-    exclude = [],
-    tags = ["team:ml"],
 )

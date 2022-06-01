@@ -2574,7 +2574,7 @@ py_test(
 py_test(
     name = "examples/export/onnx_tf",
     main = "examples/export/onnx_tf.py",
-    tags = ["team:ml", "examples", "examples_E"],
+    tags = ["team:ml", "examples", "examples_E", "no_main"],
     size = "medium",
     srcs = ["examples/export/onnx_tf.py"],
 )
@@ -2582,7 +2582,7 @@ py_test(
 py_test(
     name = "examples/export/onnx_torch",
     main = "examples/export/onnx_torch.py",
-    tags = ["team:ml", "examples", "examples_E"],
+    tags = ["team:ml", "examples", "examples_E", "no_main"],
     size = "medium",
     srcs = ["examples/export/onnx_torch.py"],
 )
@@ -3105,7 +3105,7 @@ py_test(
 py_test(
     name = "examples/documentation/custom_gym_env",
     main = "examples/documentation/custom_gym_env.py",
-    tags = ["team:ml", "documentation"],
+    tags = ["team:ml", "documentation", "no_main"],
     size = "medium",
     srcs = ["examples/documentation/custom_gym_env.py"],
 )
@@ -3113,7 +3113,7 @@ py_test(
 py_test(
     name = "examples/documentation/rllib_in_60s",
     main = "examples/documentation/rllib_in_60s.py",
-    tags = ["team:ml", "documentation"],
+    tags = ["team:ml", "documentation", "no_main"],
     size = "medium",
     srcs = ["examples/documentation/rllib_in_60s.py"],
 )
@@ -3121,7 +3121,7 @@ py_test(
 py_test(
     name = "examples/documentation/rllib_on_ray_readme",
     main = "examples/documentation/rllib_on_ray_readme.py",
-    tags = ["team:ml", "documentation"],
+    tags = ["team:ml", "documentation", "no_main"],
     size = "medium",
     srcs = ["examples/documentation/rllib_on_ray_readme.py"],
 )
@@ -3129,7 +3129,7 @@ py_test(
 py_test(
     name = "examples/documentation/rllib_on_rllib_readme",
     main = "examples/documentation/rllib_on_rllib_readme.py",
-    tags = ["team:ml", "documentation"],
+    tags = ["team:ml", "documentation", "no_main"],
     size = "medium",
     srcs = ["examples/documentation/rllib_on_rllib_readme.py"],
 )
@@ -3157,15 +3157,5 @@ py_test_module_list(
   size = "large",
   extra_srcs = [],
   deps = [],
-  tags = ["manual", "team:ml"],
-)
-
-# Check if all tests have the pytest if __name__... snippet.
-# Without it, the test file will pass without running.
-load("//bazel:python.bzl", "check_pytest")
-check_pytest(
-    name = "check_pytest_ml",
-    include = ["tests/test*.py"],
-    exclude = [],
-    tags = ["team:ml"],
+  tags = ["manual", "team:ml", "no_main"],
 )

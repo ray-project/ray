@@ -17,7 +17,7 @@ py_test(
     size = "medium",
     main = "examples/mlflow_simple_example.py",
     srcs = ["examples/mlflow_simple_example.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "no_main"],
     deps = [":train_lib"],
 )
 
@@ -99,7 +99,7 @@ py_test(
     name = "pytorch_pbt_failure",
     size = "medium",
     srcs = ["tests/pytorch_pbt_failure.py"],
-    tags = ["team:ml", "exlusive"],
+    tags = ["team:ml", "exlusive", "no_main"],
     deps = [":train_lib"],
     args = ["--smoke-test"]
 )
@@ -200,15 +200,4 @@ py_test(
 py_library(
     name = "train_lib",
     srcs = glob(["**/*.py"], exclude=["tests/*.py"]),
-)
-
-
-# Check if all tests have the pytest if __name__... snippet.
-# Without it, the test file will pass without running.
-load("//bazel:python.bzl", "check_pytest")
-check_pytest(
-    name = "check_pytest_ml",
-    include = ["tests/test*.py"],
-    exclude = [],
-    tags = ["team:ml"],
 )

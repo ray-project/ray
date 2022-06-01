@@ -496,6 +496,12 @@ lint_bazel() {
   )
 }
 
+lint_bazel_pytest() {
+  pip install yq
+  cd "${WORKSPACE_DIR}"
+  bazel query 'kind(py_test.*, tests(python/...) intersect attr(tags, "\bteam:ml\b", python/...)  except attr(tags, "\bno_main\b", python/...))' --output xml | xq | python scripts/pytest_checker.py 
+}
+
 lint_web() {
   (
     cd "${WORKSPACE_DIR}"/python/ray/dashboard/client
@@ -561,6 +567,9 @@ _lint() {
   if [ "${platform}" = linux ]; then
     # Run Bazel linter Buildifier.
     lint_bazel
+
+    # Check if py_test files have the if __name__... snippet
+    lint_bazel_pytest
 
     # Run TypeScript and HTML linting.
     lint_web
