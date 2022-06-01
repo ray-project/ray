@@ -92,10 +92,12 @@ class DirectMethod(OffPolicyEstimator):
             elif q_model_type == "fqe":
                 model_cls = FQETorchModel
             else:
-                assert hasattr(q_model_type, 
-                "estimate_q"), "q_model_type must implement `estimate_q`!"
-                assert hasattr(q_model_type, 
-                "estimate_v"), "q_model_type must implement `estimate_v`!"
+                assert hasattr(
+                    q_model_type, "estimate_q"
+                ), "q_model_type must implement `estimate_q`!"
+                assert hasattr(
+                    q_model_type, "estimate_v"
+                ), "q_model_type must implement `estimate_v`!"
 
         self.model = model_cls(
             policy=policy,

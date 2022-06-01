@@ -154,24 +154,18 @@ class QRegTorchModel:
 
             # Update before next episode
             eps_begin = eps_end
-        for _ in range(self.n_iters):
 
+        for _ in range(self.n_iters):
             minibatch_losses = []
+            indices = torch.randperm(batch.count)
             for idx in range(0, batch.count, self.batch_size):
-                q_values, _ = self.q_model(
-                    {"obs": obs[idx : idx + self.batch_size]}, [], None
-                )
+                idxs = indices[idx : idx + self.batch_size]
+                q_values, _ = self.q_model({"obs": obs[idxs]}, [], None)
                 q_acts = torch.gather(
-                    q_values, -1, actions[idx : idx + self.batch_size].unsqueeze(-1)
+                    q_values, -1, actions[idxs].unsqueeze(-1)
                 ).squeeze()
-                loss = (
-                    discounts[idx : idx + self.batch_size]
-                    * ps[idx : idx + self.batch_size]
-                    * (returns[idx : idx + self.batch_size] - q_acts) ** 2
-                )
+                loss = discounts[idxs] * ps[idxs] * (returns[idxs] - q_acts) ** 2
                 loss = torch.mean(loss)
-                if torch.isinf(loss):
-                    breakpoint()
                 self.optimizer.zero_grad()
                 loss.backward()
                 nn.utils.clip_grad.clip_grad_norm_(
