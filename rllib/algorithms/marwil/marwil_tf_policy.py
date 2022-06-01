@@ -215,7 +215,7 @@ def get_marwil_tf_policy(base: type) -> type:
             action_dist = dist_class(model_out, model)
             value_estimates = model.value_function()
 
-            self.loss = MARWILLoss(
+            self._loss = MARWILLoss(
                 self,
                 value_estimates,
                 action_dist,
@@ -224,18 +224,18 @@ def get_marwil_tf_policy(base: type) -> type:
                 self.config["beta"],
             )
 
-            return self.loss.total_loss
+            return self._loss.total_loss
 
         @override(base)
         def stats_fn(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
             stats = {
-                "policy_loss": self.loss.p_loss,
-                "total_loss": self.loss.total_loss,
+                "policy_loss": self._loss.p_loss,
+                "total_loss": self._loss.total_loss,
             }
             if self.config["beta"] != 0.0:
                 stats["moving_average_sqd_adv_norm"] = self._moving_average_sqd_adv_norm
-                stats["vf_explained_var"] = self.loss.explained_variance
-                stats["vf_loss"] = self.loss.v_loss
+                stats["vf_explained_var"] = self._loss.explained_variance
+                stats["vf_loss"] = self._loss.v_loss
 
             return stats
 
