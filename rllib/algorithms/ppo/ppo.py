@@ -280,7 +280,7 @@ class PPO(Trainer):
         """Validates the Trainer's config dict.
 
         Args:
-            config (TrainerConfigDict): The Trainer's config to check.
+            config: The Trainer's config to check.
 
         Raises:
             ValueError: In case something is wrong with the config.

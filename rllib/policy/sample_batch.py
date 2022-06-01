@@ -1116,7 +1116,7 @@ class MultiAgentBatch:
     Attributes:
         policy_batches (Dict[PolicyID, SampleBatch]): Mapping from policy
             ids to SampleBatches of experiences.
-        count (int): The number of env steps in this batch.
+        count: The number of env steps in this batch.
     """
 
     @PublicAPI

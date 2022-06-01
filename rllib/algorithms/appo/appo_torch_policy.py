@@ -117,7 +117,7 @@ class APPOTorchPolicy(
         Args:
             model (ModelV2): The Model to calculate the loss for.
             dist_class (Type[ActionDistribution]): The action distr. class.
-            train_batch (SampleBatch): The training data.
+            train_batch: The training data.
 
         Returns:
             Union[TensorType, List[TensorType]]: A single loss tensor or a list
@@ -331,8 +331,8 @@ class APPOTorchPolicy(
         """Stats function for APPO. Returns a dict with important loss stats.
 
         Args:
-            policy (Policy): The Policy to generate stats for.
-            train_batch (SampleBatch): The SampleBatch (already) used for training.
+            policy: The Policy to generate stats for.
+            train_batch: The SampleBatch (already) used for training.
 
         Returns:
             Dict[str, TensorType]: The stats dict.

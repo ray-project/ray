@@ -102,14 +102,14 @@ class _AgentCollector:
         """Adds an initial observation (after reset) to the Agent's trajectory.
 
         Args:
-            episode_id (EpisodeID): Unique ID for the episode we are adding the
+            episode_id: Unique ID for the episode we are adding the
                 initial observation for.
-            agent_index (int): Unique int index (starting from 0) for the agent
+            agent_index: Unique int index (starting from 0) for the agent
                 within its episode. Not to be confused with AGENT_ID (Any).
-            env_id (EnvID): The environment index (in a vectorized setup).
-            t (int): The time step (episode length - 1). The initial obs has
+            env_id: The environment index (in a vectorized setup).
+            t: The time step (episode length - 1). The initial obs has
                 ts=-1(!), then an action/reward/next-obs at t=0, etc..
-            init_obs (TensorType): The initial observation tensor (after
+            init_obs: The initial observation tensor (after
             `env.reset()`).
         """
         # Store episode ID + unroll ID, which will be constant throughout this
@@ -200,7 +200,7 @@ class _AgentCollector:
         by a Policy.
 
         Args:
-            view_requirements (ViewRequirementsDict): The view
+            view_requirements: The view
                 requirements dict needed to build the SampleBatch from the raw
                 buffers (which may have data shifts as well as mappings from
                 view-col to data-col in them).
@@ -457,7 +457,7 @@ class _PolicyCollector:
         """Initializes a _PolicyCollector instance.
 
         Args:
-            policy (Policy): The policy object.
+            policy: The policy object.
         """
 
         self.batches = []
@@ -474,9 +474,9 @@ class _PolicyCollector:
         """Adds a postprocessed SampleBatch (single agent) to our buffers.
 
         Args:
-            batch (SampleBatch): An individual agent's (one trajectory)
+            batch: An individual agent's (one trajectory)
                 SampleBatch to be added to the Policy's buffers.
-            view_requirements (ViewRequirementsDict): The view
+            view_requirements: The view
                 requirements for the policy. This is so we know, whether a
                 view-column needs to be copied at all (not needed for
                 training).
@@ -1066,7 +1066,7 @@ class SimpleListCollector(SampleCollector):
         would return an empty input-dict.
 
         Args:
-            policy_id (PolicyID): The policy ID for which to reset the
+            policy_id: The policy ID for which to reset the
                 inference pointers.
         """
         self.forward_pass_size[policy_id] = 0
