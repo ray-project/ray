@@ -17,7 +17,8 @@ class OrdinalEncoder(Preprocessor):
 
     Transforming values not included in the fitted dataset will be encoded as ``None``.
 
-    All column values must be hashable scalars or lists of hashable values.
+    All column values must be hashable scalars or lists of hashable values. Those
+    two types cannot be mixed.
 
     Example:
 
@@ -228,7 +229,8 @@ class MultiHotEncoder(Preprocessor):
 <https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing\
 .MultiLabelBinarizer.html>`_.
 
-    All column values must be hashable scalars or lists of hashable values.
+    All column values must be hashable scalars or lists of hashable values. Those
+    two types cannot be mixed.
 
     See also: :class:`OneHotEncoder`.
 
