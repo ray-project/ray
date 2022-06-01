@@ -255,10 +255,7 @@ def test_placement_group_scheduling_strategy(ray_start_cluster, connect_to_clien
 
 
 @pytest.mark.parametrize("connect_to_client", [True, False])
-def test_node_affinity_scheduling_strategy(
-    monkeypatch, ray_start_cluster, connect_to_client
-):
-    monkeypatch.setenv("RAY_num_heartbeats_timeout", "4")
+def test_node_affinity_scheduling_strategy(ray_start_cluster, connect_to_client):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=8, resources={"head": 1})
     ray.init(address=cluster.address)
@@ -503,10 +500,7 @@ def test_spread_scheduling_strategy(ray_start_cluster, connect_to_client):
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="FakeAutoscaler doesn't work on Windows"
 )
-def test_demand_report_for_node_affinity_scheduling_strategy(
-    monkeypatch, shutdown_only
-):
-    monkeypatch.setenv("RAY_num_heartbeats_timeout", "4")
+def test_demand_report_for_node_affinity_scheduling_strategy(shutdown_only):
     from ray.cluster_utils import AutoscalingCluster
 
     cluster = AutoscalingCluster(
