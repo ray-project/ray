@@ -48,7 +48,7 @@ def convert_pandas_to_tf_tensor(df: pd.DataFrame) -> tf.Tensor:
     try:
         # We need to cast the tensors to a common type so that we can concatenate them.
         # If the columns contain different types (for example, `float32`s and
-        # `int32`s), then `tf.expand_dims` raises an error.
+        # `int32`s), then `tf.concat` raises an error.
         common_type: np.dtype = np.find_common_type(df.dtypes, [])
         df = df.astype(common_type)
     except TypeError:
