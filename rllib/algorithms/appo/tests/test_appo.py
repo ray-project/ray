@@ -69,7 +69,7 @@ class TestAPPO(unittest.TestCase):
         # Not explicitly setting this should cause a warning, but not fail.
         # config["_tf_policy_handles_more_than_one_loss"] = True
         config = (
-            ppo.appo.APPOConfig()
+            appo.APPOConfig()
             .rollouts(num_rollout_workers=1)
             .training(_separate_vf_optimizer=True, _lr_vf=0.002)
         )
@@ -92,7 +92,7 @@ class TestAPPO(unittest.TestCase):
     def test_appo_entropy_coeff_schedule(self):
         # Initial lr, doesn't really matter because of the schedule below.
         config = (
-            ppo.appo.APPOConfig()
+            appo.APPOConfig()
             .rollouts(
                 num_rollout_workers=1,
                 batch_mode="truncate_episodes",

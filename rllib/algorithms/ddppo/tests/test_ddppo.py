@@ -44,7 +44,7 @@ class TestDDPPO(unittest.TestCase):
 
     def test_ddppo_schedule(self):
         """Test whether lr_schedule will anneal lr to 0"""
-        config = ppo.DDPPOConfig()
+        config = ddppo.DDPPOConfig()
         config.resources(num_gpus_per_worker=0)
         config.training(lr_schedule=[[0, config.lr], [1000, 0.0]])
 
@@ -64,7 +64,7 @@ class TestDDPPO(unittest.TestCase):
 
     def test_validate_config(self):
         """Test if DDPPO will raise errors after invalid configs are passed."""
-        config = ppo.DDPPOConfig().training(kl_coeff=1.0)
+        config = ddppo.DDPPOConfig().training(kl_coeff=1.0)
         msg = "DDPPO doesn't support KL penalties like PPO-1"
         with pytest.raises(ValueError, match=msg):
             config.build(env="CartPole-v0")
