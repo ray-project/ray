@@ -2,14 +2,13 @@ from collections import defaultdict
 import gym
 import numpy as np
 import tree  # dm_tree
-from typing import Any, List
+from typing import Any, Callable, Dict, List, Type
 
 from ray.rllib.connectors.connector import (
     Connector,
     ConnectorContext,
     ConnectorPipeline,
     AgentConnector,
-    PolicyOutputType,
     register_connector,
     get_connector,
 )
@@ -22,13 +21,51 @@ from ray.rllib.utils.typing import (
     ActionConnectorDataType,
     AgentConnectorDataType,
     AgentConnectorsOutput,
+    PolicyOutputType,
+    TensorStructType,
     TrainerConfigDict,
 )
 
 
 @DeveloperAPI
+def register_lambda_agent_connector(
+    name: str, fn: Callable[[Any], Any]
+) -> Type[AgentConnector]:
+    """A util to register any simple transforming function as an AgentConnector
+
+    The only requirement is that fn should take a single data object and return
+    a single data object.
+
+    Args:
+        name: Name of the resulting actor connector.
+        fn: The function that transforms env / agent data.
+
+    Returns:
+        A new AgentConnector class that transforms data using fn.
+    """
+    class LambdaAgentConnector(AgentConnector):
+        def __call__(self, ac_data: AgentConnectorDataType) -> List[AgentConnectorDataType]:
+            d = ac_data.data
+            return [AgentConnectorDataType(ac_data.env_id, ac_data.agent_id, fn(d))]
+
+        def to_config(self):
+            return name, None
+
+        @staticmethod
+        def from_config(ctx: ConnectorContext, params: List[Any]):
+            return LambdaAgentConnector(ctx)
+
+    LambdaAgentConnector.__name__ = name
+    LambdaAgentConnector.__qualname__ = name
+
+    register_connector(name, LambdaAgentConnector)
+
+    return LambdaAgentConnector
+
+
+@DeveloperAPI
 class EnvToPerAgentDataConnector(AgentConnector):
-    """Xonverts per environment multi-agent obs into per agent SampleBatches."""
+    """Converts per environment multi-agent obs into per agent SampleBatches."""
 
     def __init__(self, ctx: ConnectorContext):
         super().__init__(ctx)
@@ -88,6 +125,9 @@ class EnvToPerAgentDataConnector(AgentConnector):
 register_connector(EnvToPerAgentDataConnector.__name__, EnvToPerAgentDataConnector)
 
 
+# Bridging between current obs preprocessors and connector.
+# We should not introduce any new preprocessors.
+# TODO(jungong) : migrate and implement preprocessor library in Connector framework.
 @DeveloperAPI
 class ObsPreprocessorConnector(AgentConnector):
     """A connector that wraps around existing RLlib observation preprocessors.
@@ -135,38 +175,32 @@ register_connector(ObsPreprocessorConnector.__name__, ObsPreprocessorConnector)
 
 
 @DeveloperAPI
-class FlattenDataConnector(AgentConnector):
-    def __call__(self, ac_data: AgentConnectorDataType) -> List[AgentConnectorDataType]:
-        d = ac_data.data
-        assert (
-            type(d) == dict
-        ), "Single agent data must be of type Dict[str, TensorStructType]"
+def flatten_data(data: Dict[str, TensorStructType]):
+    assert (
+        type(data) == dict
+    ), "Single agent data must be of type Dict[str, TensorStructType]"
 
-        flattened = {}
-        for k, v in d.items():
-            if k in [SampleBatch.INFOS, SampleBatch.ACTIONS] or k.startswith(
-                "state_out_"
-            ):
-                # Do not flatten infos, actions, and state_out_ columns.
-                flattened[k] = v
-                continue
-            if v is None:
-                # Keep the same column shape.
-                flattened[k] = None
-                continue
-            flattened[k] = np.array(tree.flatten(v))
-
-        return [AgentConnectorDataType(ac_data.env_id, ac_data.agent_id, flattened)]
-
-    def to_config(self):
-        return FlattenDataConnector.__name__, None
-
-    @staticmethod
-    def from_config(ctx: ConnectorContext, params: List[Any]):
-        return FlattenDataConnector(ctx)
+    flattened = {}
+    for k, v in data.items():
+        if k in [SampleBatch.INFOS, SampleBatch.ACTIONS] or k.startswith(
+            "state_out_"
+        ):
+            # Do not flatten infos, actions, and state_out_ columns.
+            flattened[k] = v
+            continue
+        if v is None:
+            # Keep the same column shape.
+            flattened[k] = None
+            continue
+        flattened[k] = np.array(tree.flatten(v))
+    
+    return flattened
 
 
-register_connector(FlattenDataConnector.__name__, FlattenDataConnector)
+# Flatten observation data.
+FlattenDataConnector = register_lambda_agent_connector(
+    "FlattenDataConnector", flatten_data
+)
 
 
 @DeveloperAPI
@@ -455,7 +489,7 @@ register_connector(AgentConnectorPipeline.__name__, AgentConnectorPipeline)
 # TODO(jungong) : finish this.
 @DeveloperAPI
 def get_agent_connectors_from_config(
-    config: TrainerConfigDict, obs_space: gym.spaces.Space
+    config: TrainerConfigDict, obs_space: gym.Space
 ) -> AgentConnectorPipeline:
     connectors = [FlattenDataConnector()]
 

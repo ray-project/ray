@@ -13,16 +13,12 @@ from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.typing import (
     ActionConnectorDataType,
     AgentConnectorDataType,
-    StateBatch,
-    TensorStructType,
+    PolicyOutputType,
     TensorType,
     TrainerConfigDict,
 )
 
 logger = logging.getLogger(__name__)
-
-
-PolicyOutputType = Tuple[TensorStructType, StateBatch, dict]
 
 
 @DeveloperAPI
@@ -86,10 +82,10 @@ class Connector(abc.ABC):
     A connector is a step of transformation, of either envrionment data before they
     get to a policy, or policy output before it is sent back to the environment.
 
-    Connectors may be training-awere, for example, behave slightly differently
+    Connectors may be training-aware, for example, behave slightly differently
     during training and inference.
 
-    All connectors are required to be seriializable and implement to_config().
+    All connectors are required to be serializable and implement to_config().
     """
 
     def __init__(self, ctx: ConnectorContext):

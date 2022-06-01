@@ -1,10 +1,10 @@
-from collections import namedtuple
 import gym
 from typing import (
     Any,
     Callable,
     Dict,
     List,
+    NamedTuple,
     Optional,
     Tuple,
     Type,
@@ -153,18 +153,23 @@ SpaceStruct = Union[gym.spaces.Space, dict, tuple]
 # A batch of RNN states with dimensions [state_index, batch, state_object].
 StateBatch = List[List[Any]]
 
-# Data type that is feeded into and yielded from agent connectors.
-AgentConnectorDataType = namedtuple(
-    "AgentConnectorDataType", ["env_id", "agent_id", "data"]
-)
+# Format of data output from policy forward pass.
+PolicyOutputType = Tuple[TensorStructType, StateBatch, Dict]
 
 # Data type that is feeded into and yielded from agent connectors.
-ActionConnectorDataType = namedtuple(
-    "ActionConnectorDataType", ["env_id", "agent_id", "output"]
-)
+AgentConnectorDataType = NamedTuple("AgentConnectorDataType", [
+    ("env_id", str), ("agent_id", str), ("data", Any)
+])
+
+# Data type that is feeded into and yielded from agent connectors.
+ActionConnectorDataType = NamedTuple("ActionConnectorDataType", [
+    ("env_id", str), ("agent_id", str), ("output", PolicyOutputType)
+])
 
 # Final output data type of agent connectors.
-AgentConnectorsOutput = namedtuple("AgentConnectorsOut", ["for_training", "for_action"])
+AgentConnectorsOutput = NamedTuple("AgentConnectorsOut", [
+    ("for_training", Dict[str, TensorStructType]), ("for_action", "SampleBatch")
+])
 
 # Generic type var.
 T = TypeVar("T")

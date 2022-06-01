@@ -1,4 +1,4 @@
-from typing import Any, List
+from typing import Any, Callable, Dict, List, Type
 
 from ray.rllib.connectors.connector import (
     Connector,
@@ -18,58 +18,74 @@ from ray.rllib.utils.spaces.space_utils import (
 )
 from ray.rllib.utils.typing import (
     ActionConnectorDataType,
+    PolicyOutputType,
+    StateBatch,
+    TensorStructType,
     TrainerConfigDict,
 )
 
 
 @DeveloperAPI
-class ConvertToNumpyConnector(ActionConnector):
-    def __call__(self, ac_data: ActionConnectorDataType) -> ActionConnectorDataType:
-        assert isinstance(
-            ac_data.output, tuple
-        ), "Action connector requires PolicyOutputType data."
+def register_lambda_action_connector(
+    name: str,
+    fn: Callable[[TensorStructType, StateBatch, Dict], PolicyOutputType]
+) -> Type[ActionConnector]:
+    """A util to register any function transforming PolicyOutputType as an ActionConnector.
 
-        actions, states, fetches = ac_data.output
-        return ActionConnectorDataType(
-            ac_data.env_id,
-            ac_data.agent_id,
-            (convert_to_numpy(actions), convert_to_numpy(states), fetches),
-        )
+    The only requirement is that fn should take actions, states, and fetches as input,
+    and return transformed actions, states, and fetches.
 
-    def to_config(self):
-        return ConvertToNumpyConnector.__name__, None
+    Args:
+        name: Name of the resulting actor connector.
+        fn: The function that transforms PolicyOutputType.
 
-    @staticmethod
-    def from_config(ctx: ConnectorContext, params: List[Any]):
-        return ConvertToNumpyConnector(ctx)
+    Returns:
+        A new ActionConnector class that transforms PolicyOutputType using fn.
+    """
+    class LambdaActionConnector(ActionConnector):
+        def __call__(self, ac_data: ActionConnectorDataType) -> ActionConnectorDataType:
+            assert isinstance(
+                ac_data.output, tuple
+            ), "Action connector requires PolicyOutputType data."
 
+            actions, states, fetches = ac_data.output
+            return ActionConnectorDataType(
+                ac_data.env_id,
+                ac_data.agent_id,
+                fn(actions, states, fetches),
+            )
 
-register_connector(ConvertToNumpyConnector.__name__, ConvertToNumpyConnector)
+        def to_config(self):
+            return name, None
 
+        @staticmethod
+        def from_config(ctx: ConnectorContext, params: List[Any]):
+            return LambdaActionConnector(ctx)
 
-@DeveloperAPI
-class UnbatchActionsConnector(ActionConnector):
-    """Split action-component batches into single action rows."""
+    LambdaActionConnector.__name__ = name
+    LambdaActionConnector.__qualname__ = name
 
-    def __call__(self, ac_data: ActionConnectorDataType) -> ActionConnectorDataType:
-        assert isinstance(
-            ac_data.output, tuple
-        ), "Action connector requires PolicyOutputType data."
+    register_connector(name, LambdaActionConnector)
 
-        actions, states, fetches = ac_data.output
-        return ActionConnectorDataType(
-            ac_data.env_id, ac_data.agent_id, (unbatch(actions), states, fetches)
-        )
-
-    def to_config(self):
-        return UnbatchActionsConnector.__name__, None
-
-    @staticmethod
-    def from_config(ctx: ConnectorContext, params: List[Any]):
-        return UnbatchActionsConnector(ctx)
+    return LambdaActionConnector
 
 
-register_connector(UnbatchActionsConnector.__name__, UnbatchActionsConnector)
+# Convert actions and states into numpy arrays if necessary.
+ConvertToNumpyConnector = register_lambda_action_connector(
+    "ConvertToNumpyConnector",
+    lambda actions, states, fetches: (
+        convert_to_numpy(actions), convert_to_numpy(states), fetches
+    )
+)
+
+
+# Split action-component batches into single action rows.
+UnbatchActionsConnector = register_lambda_action_connector(
+    "UnbatchActionsConnector",
+    lambda actions, states, fetches: (
+        unbatch(actions), states, fetches
+    )
+)
 
 
 @DeveloperAPI
@@ -167,7 +183,7 @@ register_connector(ActionConnectorPipeline.__name__, ActionConnectorPipeline)
 
 @DeveloperAPI
 def get_action_connectors_from_trainer_config(
-    config: TrainerConfigDict,
+    config: TrainerConfigDict, action_space: gym.Space
 ) -> ActionConnectorPipeline:
     connectors = [ConvertToNumpyConnector()]
     return ActionConnectorPipeline(connectors)

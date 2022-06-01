@@ -59,13 +59,29 @@ class TestActionConnector(unittest.TestCase):
         restored = get_connector(ctx, name, params)
         self.assertTrue(isinstance(restored, UnbatchActionsConnector))
 
-        # TODO(jungong) : bring this test online once I understand how it works.
-        # ac_data = ActionConnectorDataType(
-        #    0, 1, ({"a": [1, 2, 3], "b": ([4, 5, 6], [7, 8, 9])}, [], {})
-        # )
-        #
-        # unbatched = c(ctx={}, ac_data=ac_data)
-        # self.assertEqual(len(unbatched.output), 3)
+        ac_data = ActionConnectorDataType(
+            0, 1, (
+                {
+                    "a": np.array([1, 2, 3]),
+                    "b": (np.array([4, 5, 6]), np.array([7, 8, 9]))
+                },
+                [],
+                {},
+            )
+        )
+
+        unbatched = c(ac_data)
+        actions, _, _ = unbatched.output
+
+        self.assertEqual(len(actions), 3)
+        self.assertEqual(actions[0]["a"], 1)
+        self.assertTrue((actions[0]["b"] == np.array((4, 7))).all())
+
+        self.assertEqual(actions[1]["a"], 2)
+        self.assertTrue((actions[1]["b"] == np.array((5, 8))).all())
+
+        self.assertEqual(actions[2]["a"], 3)
+        self.assertTrue((actions[2]["b"] == np.array((6, 9))).all())
 
     def test_normalize_action_connector(self):
         ctx = ConnectorContext(
