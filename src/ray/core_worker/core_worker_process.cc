@@ -147,13 +147,6 @@ CoreWorkerProcessImpl::~CoreWorkerProcessImpl() {
   if (options_.enable_logging) {
     RayLog::ShutDownRayLog();
   }
-
-  {
-    absl::WriterMutexLock lock(&mutex_);
-    if (core_worker_ != nullptr) {
-      core_worker_ = nullptr;
-    }
-  }
 }
 
 void CoreWorkerProcess::EnsureInitialized(bool quick_exit) {
