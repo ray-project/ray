@@ -352,6 +352,7 @@ def _iter_remote(actor: ray.ActorID) -> Generator[bytes, None, None]:
 def _unpack_dir(stream: io.BytesIO, target_dir: str) -> None:
     """Unpack tarfile stream into target directory."""
     stream.seek(0)
+    target_dir = os.path.normpath(target_dir)
     try:
         # Timeout 0 means there will be only one attempt to acquire
         # the file lock. If it cannot be aquired, a TimeoutError
@@ -380,6 +381,7 @@ def _unpack_from_actor(pack_actor: ray.ActorID, target_dir: str) -> None:
 
 def _copy_dir(source_dir: str, target_dir: str) -> None:
     """Copy dir with shutil on the actor."""
+    target_dir = os.path.normpath(target_dir)
     try:
         # Timeout 0 means there will be only one attempt to acquire
         # the file lock. If it cannot be aquired, a TimeoutError
@@ -403,6 +405,7 @@ _remote_copy_dir = ray.remote(_copy_dir)
 
 def _delete_path(target_path: str) -> bool:
     """Delete path (files and directories)"""
+    target_path = os.path.normpath(target_path)
     with FileLock(f"{target_path}.lock"):
         return _delete_path_unsafe(target_path)
 

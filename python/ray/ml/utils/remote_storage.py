@@ -1,3 +1,4 @@
+import os
 import urllib.parse
 from filelock import FileLock
 from typing import Optional, Tuple
@@ -158,7 +159,7 @@ def download_from_uri(uri: str, local_path: str, filelock: bool = True):
         )
 
     if filelock:
-        with FileLock(f"{local_path}.lock"):
+        with FileLock(f"{os.path.normpath(local_path)}.lock"):
             pyarrow.fs.copy_files(bucket_path, local_path, source_filesystem=fs)
     else:
         pyarrow.fs.copy_files(bucket_path, local_path, source_filesystem=fs)

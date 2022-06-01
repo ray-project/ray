@@ -368,6 +368,7 @@ class Checkpoint:
         """
         user_provided_path = path is not None
         path = path if user_provided_path else self._get_temporary_checkpoint_dir()
+        path = os.path.normpath(path)
 
         _make_dir(path, acquire_del_lock=not user_provided_path)
 
