@@ -2545,7 +2545,8 @@ class Dataset(Generic[T]):
             ):
                 if label_column:
                     targets = convert_pandas_to_tf_tensor(batch[[label_column]])
-                    targets = tf.squeeze(targets)
+                    assert targets.ndim == 2
+                    targets = tf.squeeze(targets, axis=1)
                     batch.pop(label_column)
 
                 features = None

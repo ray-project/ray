@@ -63,9 +63,9 @@ def convert_pandas_to_tf_tensor(df: pd.DataFrame) -> tf.Tensor:
         tensors.append(tensor)
 
     if len(tensors) > 1:
-        tensors = [tf.expand_dims(tensor, axis=-1) for tensor in tensors]
+        tensors = [tf.expand_dims(tensor, axis=1) for tensor in tensors]
 
-    concatenated_tensor = tf.concat(tensors, axis=-1)
+    concatenated_tensor = tf.concat(tensors, axis=1)
 
     if concatenated_tensor.ndim == 1:
         return tf.expand_dims(concatenated_tensor, axis=1)
