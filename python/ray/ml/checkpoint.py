@@ -184,10 +184,10 @@ class Checkpoint:
         else:
             raise ValueError("Cannot create checkpoint without data.")
 
-        self._local_path: str = local_path
-        self._data_dict: Dict[str, Any] = data_dict
-        self._uri: str = uri
-        self._obj_ref: ray.ObjectRef = obj_ref
+        self._local_path: Optional[str] = local_path
+        self._data_dict: Optional[Dict[str, Any]] = data_dict
+        self._uri: Optional[str] = uri
+        self._obj_ref: Optional[ray.ObjectRef] = obj_ref
 
     @classmethod
     def from_bytes(cls, data: bytes) -> "Checkpoint":
