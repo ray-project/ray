@@ -1,4 +1,4 @@
-from typing import Dict, List, Union, TYPE_CHECKING
+from typing import Optional, Dict, List, Union, TYPE_CHECKING
 
 from ray.actor import ActorHandle
 from ray.ml.config import DatasetConfig
@@ -9,11 +9,32 @@ if TYPE_CHECKING:
 
 
 class _DataParallelIngestSpec:
-    def __init__(self, dataset_config: Dict[str, DatasetConfig]):
-        self.dataset_config = dataset_config
-        self.preprocessed_datasets = None
+    """Implements the execution of DatasetConfig preprocessing and ingest."""
 
-    def preprocess_datasets(self, prep: Preprocessor, datasets: Dict[str, "Dataset"]):
+    def __init__(self, dataset_config: Dict[str, DatasetConfig]):
+        """Construct an ingest spec.
+
+        Args:
+            dataset_config: The merged default + user config dict for the trainer
+                with all defaults filled in.
+        """
+        self.dataset_config = dataset_config
+        self.preprocessed_datasets: Optional[Dict[str, "Dataset"]] = None
+
+    def preprocess_datasets(
+        self, prep: Preprocessor, datasets: Dict[str, "Dataset"]
+    ) -> Dict[str, "Dataset"]:
+        """Preprocess the given datasets.
+
+        This will be called prior to `get_dataset_shards()`.
+
+        Args:
+            prep: The preprocessor to fit, if needed.
+            dataset: The datasets to fit and transform.
+
+        Returns:
+            Dict of transformed datasets.
+        """
         if prep:
             ds_to_fit = None
             for k, v in self.dataset_config.items():
@@ -36,7 +57,17 @@ class _DataParallelIngestSpec:
     def get_dataset_shards(
         self, training_worker_handles: List[ActorHandle]
     ) -> List[Dict[str, Union["Dataset", "DatasetPipeline"]]]:
-        """Note: this has to match the signature of DatasetSpec in legacy train."""
+        """Get the shards to pass to training workers.
+
+        Note: this has to match the signature of DatasetSpec in legacy train.
+
+        Args:
+            training_worker_handles: Actor handles of the workers, which can be used
+                for locality-aware splitting.
+
+        Returns:
+            List of dataset shard dicts, one for each training worker.
+        """
         dataset_dict_splits = [{} for _ in range(len(training_worker_handles))]
 
         for key, dataset in self.preprocessed_datasets.items():
@@ -60,6 +91,7 @@ class _DataParallelIngestSpec:
         return dataset_dict_splits
 
     def _config(self, key: str) -> "DatasetConfig":
+        """Get the dataset config for the given dataset name."""
         if key in self.dataset_config:
             return self.dataset_config[key]
         return self.dataset_config["*"]

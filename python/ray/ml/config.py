@@ -155,7 +155,8 @@ class DatasetConfig:
     # False by default for all datasets.
     streamable: Optional[bool] = None
 
-    # Whether to skip preprocessing for this dataset.
+    # Whether to transform the dataset with the fitted preprocessor. This must be
+    # enabled at least for the dataset that is fit.
     # True by default for all datasets.
     transform: Optional[bool] = None
 
