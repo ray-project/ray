@@ -361,7 +361,7 @@ class Checkpoint:
             str: Directory containing checkpoint data.
         """
         user_provided_path = path is not None
-        path = path if has_path else self._get_temporary_checkpoint_dir()
+        path = path if user_provided_path else self._get_temporary_checkpoint_dir()
 
         _make_dir(path, acquire_del_lock=not user_provided_path)
 
