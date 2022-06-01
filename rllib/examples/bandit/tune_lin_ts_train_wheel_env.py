@@ -10,7 +10,7 @@ import time
 
 import ray
 from ray import tune
-from ray.rllib.agents.bandit.bandit import BanditLinTSTrainer
+from ray.rllib.algorithms.bandit.bandit import BanditLinTSTrainer
 from ray.rllib.examples.env.bandit_envs_discrete import WheelBanditEnv
 
 

@@ -4,14 +4,13 @@ from typing import Dict, List, Optional, Tuple
 
 import gym
 import ray
-from ray.rllib.agents.dqn.dqn_tf_policy import (
+from ray.rllib.algorithms.dqn.dqn_tf_policy import (
     clip_gradients,
     compute_q_values,
     PRIO_WEIGHTS,
     postprocess_nstep_and_prio,
 )
-from ray.rllib.agents.dqn.dqn_tf_policy import build_q_model
-from ray.rllib.agents.dqn.simple_q_tf_policy import TargetNetworkMixin
+from ray.rllib.algorithms.dqn.dqn_tf_policy import build_q_model
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import Categorical
@@ -19,7 +18,10 @@ from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.tf_mixins import LearningRateSchedule
+from ray.rllib.policy.tf_mixins import (
+    LearningRateSchedule,
+    TargetNetworkMixin,
+)
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import huber_loss
 from ray.rllib.utils.typing import ModelInputDict, TensorType, TrainerConfigDict

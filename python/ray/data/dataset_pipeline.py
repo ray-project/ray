@@ -57,7 +57,6 @@ _OUTPUT_ITER_OPS = ["take", "take_all", "show", "to_tf", "to_torch"]
 class DatasetPipeline(Generic[T]):
     """Implements a pipeline of Datasets.
 
-    Unlike Datasets, which execute all transformations synchronously,
     DatasetPipelines implement pipelined execution. This allows for the
     overlapped execution of data input (e.g., reading files), computation
     (e.g. feature preprocessing), and output (e.g., distributed ML training).
@@ -574,7 +573,7 @@ class DatasetPipeline(Generic[T]):
             print("=== Window {} ===".format(i))
             ds.show(limit_per_dataset)
 
-    def iter_epochs(self) -> Iterator["DatasetPipeline[T]"]:
+    def iter_epochs(self, max_epoch: int = -1) -> Iterator["DatasetPipeline[T]"]:
         """Split this pipeline up by epoch.
 
         This allows reading of data per-epoch for repeated Datasets, which is
@@ -582,6 +581,9 @@ class DatasetPipeline(Generic[T]):
         generates a pipeline with 500 rows total split across 50 epochs. This
         method allows iterating over the data individually per epoch
         (repetition) of the original data.
+
+        Args:
+            max_epoch: If greater than zero, stop after the given number of epochs.
 
         Examples:
             >>> import ray
@@ -638,15 +640,18 @@ class DatasetPipeline(Generic[T]):
                 return self
 
         class EpochDelimitedIterator:
-            def __init__(self, pipe):
+            def __init__(self, pipe, max_epoch):
                 self._iter = Peekable(pipe.iter_datasets())
                 self._cur_epoch = None
+                self._max_epoch = max_epoch
 
             def __next__(self) -> "DatasetPipeline[T]":
                 if self._cur_epoch is None:
                     self._cur_epoch = self._iter.peek()._get_epoch()
                 else:
                     self._cur_epoch += 1
+                if self._max_epoch > 0 and self._cur_epoch >= self._max_epoch:
+                    raise StopIteration
                 warned = False
                 while self._iter.peek()._get_epoch() < self._cur_epoch:
                     if not warned:
@@ -664,7 +669,7 @@ class DatasetPipeline(Generic[T]):
             def __iter__(self):
                 return self
 
-        return EpochDelimitedIterator(self)
+        return EpochDelimitedIterator(self, max_epoch)
 
     @DeveloperAPI
     def iter_datasets(self) -> Iterator[Dataset[T]]:
@@ -786,7 +791,7 @@ class DatasetPipeline(Generic[T]):
 
 for method in _PER_DATASET_OPS:
 
-    def make_impl(method):
+    def _make_impl(method):
         delegate = getattr(Dataset, method)
 
         def impl(self, *args, **kwargs) -> "DatasetPipeline[U]":
@@ -805,11 +810,11 @@ Apply ``Dataset.{method}`` to each dataset/window in this pipeline.
         )
         return impl
 
-    setattr(DatasetPipeline, method, make_impl(method))
+    setattr(DatasetPipeline, method, _make_impl(method))
 
 for method in _HOLISTIC_PER_DATASET_OPS:
 
-    def make_impl(method):
+    def _make_impl(method):
         delegate = getattr(Dataset, method)
 
         def impl(self, *args, **kwargs) -> "DatasetPipeline[U]":
@@ -828,7 +833,7 @@ Apply ``Dataset.{method}`` to each dataset/window in this pipeline.
         )
         return impl
 
-    def deprecation_warning(method: str):
+    def _deprecation_warning(method: str):
         def impl(*a, **kw):
             raise DeprecationWarning(
                 "`{}` has been renamed to `{}_each_window`.".format(method, method)
@@ -836,12 +841,12 @@ Apply ``Dataset.{method}`` to each dataset/window in this pipeline.
 
         return impl
 
-    setattr(DatasetPipeline, method, deprecation_warning(method))
-    setattr(DatasetPipeline, method + "_each_window", make_impl(method))
+    setattr(DatasetPipeline, method, _deprecation_warning(method))
+    setattr(DatasetPipeline, method + "_each_window", _make_impl(method))
 
 for method in _PER_DATASET_OUTPUT_OPS:
 
-    def make_impl(method):
+    def _make_impl(method):
         delegate = getattr(Dataset, method)
 
         def impl(self, *args, **kwargs):
@@ -861,11 +866,11 @@ Call ``Dataset.{method}`` on each output dataset of this pipeline.
         setattr(impl, "__signature__", inspect.signature(delegate))
         return impl
 
-    setattr(DatasetPipeline, method, make_impl(method))
+    setattr(DatasetPipeline, method, _make_impl(method))
 
 for method in _OUTPUT_ITER_OPS:
 
-    def make_impl(method):
+    def _make_impl(method):
         delegate = getattr(Dataset, method)
 
         def impl(self, *args, **kwargs):
@@ -880,4 +885,4 @@ Call ``Dataset.{method}`` over the stream of output batches from the pipeline.
         setattr(impl, "__signature__", inspect.signature(delegate))
         return impl
 
-    setattr(DatasetPipeline, method, make_impl(method))
+    setattr(DatasetPipeline, method, _make_impl(method))

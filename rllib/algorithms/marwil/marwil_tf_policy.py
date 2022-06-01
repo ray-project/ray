@@ -1,100 +1,76 @@
 import logging
-import gym
-from typing import Optional, Dict
+from typing import Any, Dict, List, Optional, Type, Union
 
 import ray
-from ray.rllib.agents.ppo.ppo_tf_policy import compute_and_clip_gradients
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import compute_advantages, Postprocessing
-from ray.rllib.policy.tf_policy_template import build_tf_policy
-from ray.rllib.utils.framework import try_import_tf, get_variable
-from ray.rllib.utils.tf_utils import explained_variance, make_tf_callable
-from ray.rllib.policy.policy import Policy
-from ray.rllib.utils.typing import TrainerConfigDict, TensorType, PolicyID
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
+from ray.rllib.policy.dynamic_tf_policy_v2 import DynamicTFPolicyV2
+from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
+from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.tf_mixins import (
+    ValueNetworkMixin,
+    compute_gradients,
+)
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.framework import try_import_tf, get_variable
+from ray.rllib.utils.tf_utils import explained_variance
+from ray.rllib.utils.typing import (
+    LocalOptimizer,
+    ModelGradients,
+    TensorType,
+)
 
 tf1, tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
 
 
-class ValueNetworkMixin:
-    def __init__(
+class PostprocessAdvantages:
+    """Marwil's custom trajectory post-processing mixin."""
+
+    def __init__(self):
+        pass
+
+    def postprocess_trajectory(
         self,
-        obs_space: gym.spaces.Space,
-        action_space: gym.spaces.Space,
-        config: TrainerConfigDict,
+        sample_batch: SampleBatch,
+        other_agent_batches: Optional[Dict[Any, SampleBatch]] = None,
+        episode: Optional["Episode"] = None,
     ):
-
-        # Input dict is provided to us automatically via the Model's
-        # requirements. It's a single-timestep (last one in trajectory)
-        # input_dict.
-        @make_tf_callable(self.get_session())
-        def value(**input_dict):
-            model_out, _ = self.model(input_dict)
-            # [0] = remove the batch dim.
-            return self.model.value_function()[0]
-
-        self._value = value
-
-
-def postprocess_advantages(
-    policy: Policy,
-    sample_batch: SampleBatch,
-    other_agent_batches: Optional[Dict[PolicyID, SampleBatch]] = None,
-    episode=None,
-) -> SampleBatch:
-    """Postprocesses a trajectory and returns the processed trajectory.
-
-    The trajectory contains only data from one episode and from one agent.
-    - If  `config.batch_mode=truncate_episodes` (default), sample_batch may
-    contain a truncated (at-the-end) episode, in case the
-    `config.rollout_fragment_length` was reached by the sampler.
-    - If `config.batch_mode=complete_episodes`, sample_batch will contain
-    exactly one episode (no matter how long).
-    New columns can be added to sample_batch and existing ones may be altered.
-
-    Args:
-        policy (Policy): The Policy used to generate the trajectory
-            (`sample_batch`)
-        sample_batch (SampleBatch): The SampleBatch to postprocess.
-        other_agent_batches (Optional[Dict[PolicyID, SampleBatch]]): Optional
-            dict of AgentIDs mapping to other agents' trajectory data (from the
-            same episode). NOTE: The other agents use the same policy.
-        episode (Optional[Episode]): Optional multi-agent episode
-            object in which the agents operated.
-
-    Returns:
-        SampleBatch: The postprocessed, modified SampleBatch (or a new one).
-    """
-
-    # Trajectory is actually complete -> last r=0.0.
-    if sample_batch[SampleBatch.DONES][-1]:
-        last_r = 0.0
-    # Trajectory has been truncated -> last r=VF estimate of last obs.
-    else:
-        # Input dict is provided to us automatically via the Model's
-        # requirements. It's a single-timestep (last one in trajectory)
-        # input_dict.
-        # Create an input dict according to the Model's requirements.
-        index = "last" if SampleBatch.NEXT_OBS in sample_batch else -1
-        input_dict = sample_batch.get_single_step_input_dict(
-            policy.model.view_requirements, index=index
+        sample_batch = super().postprocess_trajectory(
+            sample_batch, other_agent_batches, episode
         )
-        last_r = policy._value(**input_dict)
 
-    # Adds the "advantages" (which in the case of MARWIL are simply the
-    # discounted cummulative rewards) to the SampleBatch.
-    return compute_advantages(
-        sample_batch,
-        last_r,
-        policy.config["gamma"],
-        # We just want the discounted cummulative rewards, so we won't need
-        # GAE nor critic (use_critic=True: Subtract vf-estimates from returns).
-        use_gae=False,
-        use_critic=False,
-    )
+        # Trajectory is actually complete -> last r=0.0.
+        if sample_batch[SampleBatch.DONES][-1]:
+            last_r = 0.0
+        # Trajectory has been truncated -> last r=VF estimate of last obs.
+        else:
+            # Input dict is provided to us automatically via the Model's
+            # requirements. It's a single-timestep (last one in trajectory)
+            # input_dict.
+            # Create an input dict according to the Model's requirements.
+            index = "last" if SampleBatch.NEXT_OBS in sample_batch else -1
+            input_dict = sample_batch.get_single_step_input_dict(
+                self.model.view_requirements, index=index
+            )
+            last_r = self._value(**input_dict)
+
+        # Adds the "advantages" (which in the case of MARWIL are simply the
+        # discounted cumulative rewards) to the SampleBatch.
+        return compute_advantages(
+            sample_batch,
+            last_r,
+            self.config["gamma"],
+            # We just want the discounted cumulative rewards, so we won't need
+            # GAE nor critic (use_critic=True: Subtract vf-estimates from returns).
+            use_gae=False,
+            use_critic=False,
+        )
 
 
 class MARWILLoss:
@@ -174,69 +150,103 @@ class MARWILLoss:
         self.total_loss = self.p_loss + vf_loss_coeff * self.v_loss
 
 
-def marwil_loss(
-    policy: Policy,
-    model: ModelV2,
-    dist_class: ActionDistribution,
-    train_batch: SampleBatch,
-) -> TensorType:
-    model_out, _ = model(train_batch)
-    action_dist = dist_class(model_out, model)
-    value_estimates = model.value_function()
+# We need this builder function because we want to share the same
+# custom logics between TF1 dynamic and TF2 eager policies.
+def get_marwil_tf_policy(base: type) -> type:
+    """Construct a MARWILTFPolicy inheriting either dynamic or eager base policies.
 
-    policy.loss = MARWILLoss(
-        policy,
-        value_estimates,
-        action_dist,
-        train_batch,
-        policy.config["vf_coeff"],
-        policy.config["beta"],
-    )
+    Args:
+        base: Base class for this policy. DynamicTFPolicyV2 or EagerTFPolicyV2.
 
-    return policy.loss.total_loss
+    Returns:
+        A TF Policy to be used with MAMLTrainer.
+    """
+
+    class MARWILTFPolicy(ValueNetworkMixin, PostprocessAdvantages, base):
+        def __init__(
+            self,
+            obs_space,
+            action_space,
+            config,
+            existing_model=None,
+            existing_inputs=None,
+        ):
+            # First thing first, enable eager execution if necessary.
+            base.enable_eager_execution_if_necessary()
+
+            config = dict(ray.rllib.algorithms.marwil.marwil.DEFAULT_CONFIG, **config)
+
+            # Initialize base class.
+            base.__init__(
+                self,
+                obs_space,
+                action_space,
+                config,
+                existing_inputs=existing_inputs,
+                existing_model=existing_model,
+            )
+
+            ValueNetworkMixin.__init__(self, config)
+            PostprocessAdvantages.__init__(self)
+
+            # Not needed for pure BC.
+            if config["beta"] != 0.0:
+                # Set up a tf-var for the moving avg (do this here to make it work
+                # with eager mode); "c^2" in the paper.
+                self._moving_average_sqd_adv_norm = get_variable(
+                    config["moving_average_sqd_adv_norm_start"],
+                    framework="tf",
+                    tf_name="moving_average_of_advantage_norm",
+                    trainable=False,
+                )
+
+            # Note: this is a bit ugly, but loss and optimizer initialization must
+            # happen after all the MixIns are initialized.
+            self.maybe_initialize_optimizer_and_loss()
+
+        @override(base)
+        def loss(
+            self,
+            model: Union[ModelV2, "tf.keras.Model"],
+            dist_class: Type[TFActionDistribution],
+            train_batch: SampleBatch,
+        ) -> Union[TensorType, List[TensorType]]:
+            model_out, _ = model(train_batch)
+            action_dist = dist_class(model_out, model)
+            value_estimates = model.value_function()
+
+            self.loss = MARWILLoss(
+                self,
+                value_estimates,
+                action_dist,
+                train_batch,
+                self.config["vf_coeff"],
+                self.config["beta"],
+            )
+
+            return self.loss.total_loss
+
+        @override(base)
+        def stats_fn(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
+            stats = {
+                "policy_loss": self.loss.p_loss,
+                "total_loss": self.loss.total_loss,
+            }
+            if self.config["beta"] != 0.0:
+                stats["moving_average_sqd_adv_norm"] = self._moving_average_sqd_adv_norm
+                stats["vf_explained_var"] = self.loss.explained_variance
+                stats["vf_loss"] = self.loss.v_loss
+
+            return stats
+
+        @override(base)
+        def compute_gradients_fn(
+            self, optimizer: LocalOptimizer, loss: TensorType
+        ) -> ModelGradients:
+            return compute_gradients(self, optimizer, loss)
+
+    return MARWILTFPolicy
 
 
-def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
-    stats = {
-        "policy_loss": policy.loss.p_loss,
-        "total_loss": policy.loss.total_loss,
-    }
-    if policy.config["beta"] != 0.0:
-        stats["moving_average_sqd_adv_norm"] = policy._moving_average_sqd_adv_norm
-        stats["vf_explained_var"] = policy.loss.explained_variance
-        stats["vf_loss"] = policy.loss.v_loss
-
-    return stats
-
-
-def setup_mixins(
-    policy: Policy,
-    obs_space: gym.spaces.Space,
-    action_space: gym.spaces.Space,
-    config: TrainerConfigDict,
-) -> None:
-    # Setup Value branch of our NN.
-    ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
-
-    # Not needed for pure BC.
-    if policy.config["beta"] != 0.0:
-        # Set up a tf-var for the moving avg (do this here to make it work
-        # with eager mode); "c^2" in the paper.
-        policy._moving_average_sqd_adv_norm = get_variable(
-            policy.config["moving_average_sqd_adv_norm_start"],
-            framework="tf",
-            tf_name="moving_average_of_advantage_norm",
-            trainable=False,
-        )
-
-
-MARWILTFPolicy = build_tf_policy(
-    name="MARWILTFPolicy",
-    get_default_config=lambda: ray.rllib.algorithms.marwil.marwil.DEFAULT_CONFIG,
-    loss_fn=marwil_loss,
-    stats_fn=stats,
-    postprocess_fn=postprocess_advantages,
-    before_loss_init=setup_mixins,
-    compute_gradients_fn=compute_and_clip_gradients,
-    mixins=[ValueNetworkMixin],
-)
+MARWILStaticGraphTFPolicy = get_marwil_tf_policy(DynamicTFPolicyV2)
+MARWILEagerTFPolicy = get_marwil_tf_policy(EagerTFPolicyV2)

@@ -8,7 +8,9 @@ import logging
 import math
 import numpy as np
 import os
+from packaging import version
 import pickle
+import pkg_resources
 import tempfile
 import time
 from typing import (
@@ -26,13 +28,13 @@ from typing import (
 
 import ray
 from ray.actor import ActorHandle
-from ray.exceptions import RayError
+from ray.exceptions import RayActorError, RayError
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.env.env_context import EnvContext
-from ray.rllib.env.multi_agent_env import MultiAgentEnv
-from ray.rllib.env.utils import gym_env_creator
+from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.evaluation.episode import Episode
+from ray.rllib.utils import force_list
 from ray.rllib.evaluation.metrics import (
     collect_episodes,
     collect_metrics,
@@ -57,6 +59,8 @@ from ray.rllib.utils.annotations import (
     DeveloperAPI,
     ExperimentalAPI,
     override,
+    OverrideToImplementCustomLogic,
+    OverrideToImplementCustomLogic_CallToSuperRecommended,
     PublicAPI,
 )
 from ray.rllib.utils.debug import update_global_seed_if_necessary
@@ -94,7 +98,7 @@ from ray.rllib.utils.typing import (
     TrainerConfigDict,
 )
 from ray.tune.logger import Logger, UnifiedLogger
-from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
+from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.tune.resources import Resources
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.trainable import Trainable
@@ -106,10 +110,6 @@ from ray.util.timer import _Timer
 tf1, tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
-
-# Max number of times to retry a worker failure. We shouldn't try too many
-# times in a row since that would indicate a persistent cluster issue.
-MAX_WORKER_FAILURE_RETRIES = 3
 
 
 @DeveloperAPI
@@ -153,7 +153,7 @@ class Trainer(Trainable):
     This allows you to override the `execution_plan` method to implement
     your own algorithm logic. You can find the different built-in
     algorithms' execution plans in their respective main py files,
-    e.g. rllib.agents.dqn.dqn.py or rllib.agents.impala.impala.py.
+    e.g. rllib.algorithms.dqn.dqn.py or rllib.agents.impala.impala.py.
 
     The most important API methods a Trainer exposes are `train()`,
     `evaluate()`, `save()` and `restore()`. Trainer objects retain internal
@@ -220,18 +220,15 @@ class Trainer(Trainable):
         if isinstance(config, TrainerConfig):
             config = config.to_dict()
 
-        # Convert `env` provided in config into a string:
-        # - If `env` is a string: `self._env_id` = `env`.
-        # - If `env` is a class: `self._env_id` = `env.__name__` -> Already
-        #   register it with a auto-generated env creator.
-        # - If `env` is None: `self._env_id` is None.
-        self._env_id: Optional[str] = self._register_if_needed(
+        # Convert `env` provided in config into a concrete env creator callable, which
+        # takes an EnvContext (config dict) as arg and returning an RLlib supported Env
+        # type (e.g. a gym.Env).
+        self._env_id, self.env_creator = self._get_env_id_and_creator(
             env or config.get("env"), config
         )
-
-        # The env creator callable, taking an EnvContext (config dict)
-        # as arg and returning an RLlib supported Env type (e.g. a gym.Env).
-        self.env_creator: Optional[EnvCreator] = None
+        env_descr = (
+            self._env_id.__name__ if isinstance(self._env_id, type) else self._env_id
+        )
 
         # Placeholder for a local replay buffer instance.
         self.local_replay_buffer = None
@@ -241,7 +238,7 @@ class Trainer(Trainable):
             # Default logdir prefix containing the agent's name and the
             # env id.
             timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-            logdir_prefix = "{}_{}_{}".format(str(self), self._env_id, timestr)
+            logdir_prefix = "{}_{}_{}".format(str(self), env_descr, timestr)
             if not os.path.exists(DEFAULT_RESULTS_DIR):
                 os.makedirs(DEFAULT_RESULTS_DIR)
             logdir = tempfile.mkdtemp(prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
@@ -293,10 +290,12 @@ class Trainer(Trainable):
             config, logger_creator, remote_checkpoint_dir, sync_function_tpl
         )
 
+    @OverrideToImplementCustomLogic
     @classmethod
     def get_default_config(cls) -> TrainerConfigDict:
         return TrainerConfig().to_dict()
 
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
     @override(Trainable)
     def setup(self, config: PartialTrainerConfigDict):
 
@@ -309,10 +308,6 @@ class Trainer(Trainable):
 
         # Validate the framework settings in config.
         self.validate_framework(self.config)
-
-        # Setup the self.env_creator callable (to be passed
-        # e.g. to RolloutWorkers' c'tors).
-        self.env_creator = self._get_env_creator_from_env_id(self._env_id)
 
         # Set Trainer's seed after we have - if necessary - enabled
         # tf eager-execution.
@@ -351,33 +346,58 @@ class Trainer(Trainable):
         # Instead, sub-classes should override the Trainable's `setup()`
         # method and call super().setup() from within that override at some
         # point.
-        # Old design: Override `Trainer._init` (or use `build_trainer()`, which
-        # will do this for you).
+        # Old design: Override `Trainer._init`.
+        _init = False
         try:
             self._init(self.config, self.env_creator)
-        # New design: Override `Trainable.setup()` (as indented by Trainable)
-        # and do or don't call super().setup() from within your override.
+            _init = True
+        # New design: Override `Trainable.setup()` (as indented by tune.Trainable)
+        # and do or don't call `super().setup()` from within your override.
         # By default, `super().setup()` will create both worker sets:
         # "rollout workers" for collecting samples for training and - if
         # applicable - "evaluation workers" for evaluation runs in between or
         # parallel to training.
         # TODO: Deprecate `_init()` and remove this try/except block.
         except NotImplementedError:
-            # Only if user did not override `_init()`:
+            pass
+
+        # Only if user did not override `_init()`:
+        if _init is False:
             # - Create rollout workers here automatically.
             # - Run the execution plan to create the local iterator to `next()`
             #   in each training iteration.
             # This matches the behavior of using `build_trainer()`, which
             # has been deprecated.
-            self.workers = WorkerSet(
-                env_creator=self.env_creator,
-                validate_env=self.validate_env,
-                policy_class=self.get_default_policy_class(self.config),
-                trainer_config=self.config,
-                num_workers=self.config["num_workers"],
-                local_worker=True,
-                logdir=self.logdir,
-            )
+            try:
+                self.workers = WorkerSet(
+                    env_creator=self.env_creator,
+                    validate_env=self.validate_env,
+                    policy_class=self.get_default_policy_class(self.config),
+                    trainer_config=self.config,
+                    num_workers=self.config["num_workers"],
+                    local_worker=True,
+                    logdir=self.logdir,
+                )
+            # WorkerSet creation possibly fails, if some (remote) workers cannot
+            # be initialized properly (due to some errors in the RolloutWorker's
+            # constructor).
+            except RayActorError as e:
+                # In case of an actor (remote worker) init failure, the remote worker
+                # may still exist and will be accessible, however, e.g. calling
+                # its `sample.remote()` would result in strange "property not found"
+                # errors.
+                if e.actor_init_failed:
+                    # Raise the original error here that the RolloutWorker raised
+                    # during its construction process. This is to enforce transparency
+                    # for the user (better to understand the real reason behind the
+                    # failure).
+                    # - e.args[0]: The RayTaskError (inside the caught RayActorError).
+                    # - e.args[0].args[2]: The original Exception (e.g. a ValueError due
+                    # to a config mismatch) thrown inside the actor.
+                    raise e.args[0].args[2]
+                # In any other case, raise the RayActorError as-is.
+                else:
+                    raise e
             # By default, collect metrics for all remote workers.
             self._remote_workers_for_metrics = self.workers.remote_workers()
 
@@ -466,8 +486,9 @@ class Trainer(Trainable):
 
             self.config["evaluation_config"] = eval_config
 
-            env_id = self._register_if_needed(eval_config.get("env"), eval_config)
-            env_creator = self._get_env_creator_from_env_id(env_id)
+            env_id, env_creator = self._get_env_id_and_creator(
+                eval_config.get("env"), eval_config
+            )
 
             # Create a separate evaluation worker set for evaluation.
             # If evaluation_num_workers=0, use the evaluation set's local
@@ -495,6 +516,7 @@ class Trainer(Trainable):
     def _init(self, config: TrainerConfigDict, env_creator: EnvCreator) -> None:
         raise NotImplementedError
 
+    @OverrideToImplementCustomLogic
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         """Returns a default Policy class to use, given a config.
 
@@ -526,12 +548,27 @@ class Trainer(Trainable):
             and - if required - evaluation.
         """
         step_attempt_results = None
-
+        self._rollout_worker_metrics = []
+        local_worker = (
+            self.workers.local_worker()
+            if hasattr(self.workers, "local_worker")
+            else None
+        )
         with self._step_context() as step_ctx:
             while not step_ctx.should_stop(step_attempt_results):
                 # Try to train one step.
                 try:
                     step_attempt_results = self.step_attempt()
+                    # Collect rollout worker metrics.
+                    episodes, self._episodes_to_be_collected = collect_episodes(
+                        local_worker,
+                        self._remote_workers_for_metrics,
+                        self._episodes_to_be_collected,
+                        timeout_seconds=self.config[
+                            "metrics_episode_collection_timeout_s"
+                        ],
+                    )
+                    self._rollout_worker_metrics.extend(episodes)
                 # @ray.remote RolloutWorker failure.
                 except RayError as e:
                     # Try to recover w/o the failed worker.
@@ -853,6 +890,7 @@ class Trainer(Trainable):
         # Also return the results here for convenience.
         return self.evaluation_metrics
 
+    @OverrideToImplementCustomLogic
     @DeveloperAPI
     def training_iteration(self) -> ResultDict:
         """Default single iteration logic of an algorithm.
@@ -1475,9 +1513,12 @@ class Trainer(Trainable):
     @override(Trainable)
     def cleanup(self) -> None:
         # Stop all workers.
-        if hasattr(self, "workers"):
+        if hasattr(self, "workers") and self.workers is not None:
             self.workers.stop()
+        if hasattr(self, "evaluation_workers") and self.evaluation_workers is not None:
+            self.evaluation_workers.stop()
 
+    @OverrideToImplementCustomLogic
     @classmethod
     @override(Trainable)
     def default_resource_request(
@@ -1541,37 +1582,87 @@ class Trainer(Trainable):
         """Pre-evaluation callback."""
         pass
 
-    def _get_env_creator_from_env_id(self, env_id: Optional[str] = None) -> EnvCreator:
-        """Returns an env creator callable, given an `env_id` (e.g. "CartPole-v0").
+    @staticmethod
+    def _get_env_id_and_creator(
+        env_specifier: Union[str, EnvType, None], config: PartialTrainerConfigDict
+    ) -> Tuple[Optional[str], EnvCreator]:
+        """Returns env_id and creator callable given original env id from config.
 
         Args:
-            env_id: An already tune registered env ID, a known gym env name,
-                or None (if no env is used).
+            env_specifier: An env class, an already tune registered env ID, a known
+                gym env name, or None (if no env is used).
+            config: The Trainer's (maybe partial) config dict.
 
         Returns:
+            Tuple consisting of a) env ID string and b) env creator callable.
         """
-        if env_id:
+        # Environment is specified via a string.
+        if isinstance(env_specifier, str):
             # An already registered env.
-            if _global_registry.contains(ENV_CREATOR, env_id):
-                return _global_registry.get(ENV_CREATOR, env_id)
+            if _global_registry.contains(ENV_CREATOR, env_specifier):
+                return env_specifier, _global_registry.get(ENV_CREATOR, env_specifier)
 
             # A class path specifier.
-            elif "." in env_id:
+            elif "." in env_specifier:
 
                 def env_creator_from_classpath(env_context):
                     try:
-                        env_obj = from_config(env_id, env_context)
+                        env_obj = from_config(env_specifier, env_context)
                     except ValueError:
-                        raise EnvError(ERR_MSG_INVALID_ENV_DESCRIPTOR.format(env_id))
+                        raise EnvError(
+                            ERR_MSG_INVALID_ENV_DESCRIPTOR.format(env_specifier)
+                        )
                     return env_obj
 
-                return env_creator_from_classpath
+                return env_specifier, env_creator_from_classpath
             # Try gym/PyBullet/Vizdoom.
             else:
-                return functools.partial(gym_env_creator, env_descriptor=env_id)
+                return env_specifier, functools.partial(
+                    _gym_env_creator, env_descriptor=env_specifier
+                )
+
+        elif isinstance(env_specifier, type):
+            env_id = env_specifier  # .__name__
+
+            if config.get("remote_worker_envs"):
+                # Check gym version (0.22 or higher?).
+                # If > 0.21, can't perform auto-wrapping of the given class as this
+                # would lead to a pickle error.
+                gym_version = pkg_resources.get_distribution("gym").version
+                if version.parse(gym_version) >= version.parse("0.22"):
+                    raise ValueError(
+                        "Cannot specify a gym.Env class via `config.env` while setting "
+                        "`config.remote_worker_env=True` AND your gym version is >= "
+                        "0.22! Try installing an older version of gym or set `config."
+                        "remote_worker_env=False`."
+                    )
+
+                @ray.remote(num_cpus=1)
+                class _wrapper(env_specifier):
+                    # Add convenience `_get_spaces` and `_is_multi_agent`
+                    # methods:
+                    def _get_spaces(self):
+                        return self.observation_space, self.action_space
+
+                    def _is_multi_agent(self):
+                        from ray.rllib.env.multi_agent_env import MultiAgentEnv
+
+                        return isinstance(self, MultiAgentEnv)
+
+                return env_id, lambda cfg: _wrapper.remote(cfg)
+            else:
+                return env_id, lambda cfg: env_specifier(cfg)
+
         # No env -> Env creator always returns None.
+        elif env_specifier is None:
+            return None, lambda env_config: None
+
         else:
-            return lambda env_config: None
+            raise ValueError(
+                "{} is an invalid env specifier. ".format(env_specifier)
+                + "You can specify a custom env as either a class "
+                '(e.g., YourEnvCls) or a registered env id (e.g., "your_env").'
+            )
 
     def _sync_filters_if_needed(self, workers: WorkerSet):
         if self.config.get("observation_filter", "NoFilter") != "NoFilter":
@@ -1735,6 +1826,7 @@ class Trainer(Trainable):
         check_if_correct_nn_framework_installed()
         resolve_tf_settings()
 
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
     @DeveloperAPI
     def validate_config(self, config: TrainerConfigDict) -> None:
         """Validates a given config dict for this Trainer.
@@ -1752,16 +1844,6 @@ class Trainer(Trainable):
         model_config = config.get("model")
         if model_config is None:
             config["model"] = model_config = {}
-
-        # Monitor should be replaced by `record_env`.
-        if config.get("monitor", DEPRECATED_VALUE) != DEPRECATED_VALUE:
-            deprecation_warning("monitor", "record_env", error=False)
-            config["record_env"] = config.get("monitor", False)
-        # Empty string would fail some if-blocks checking for this setting.
-        # Set to True instead, meaning: use default output dir to store
-        # the videos.
-        if config.get("record_env") == "":
-            config["record_env"] = True
 
         # Use DefaultCallbacks class, if callbacks is None.
         if config["callbacks"] is None:
@@ -1833,14 +1915,17 @@ class Trainer(Trainable):
                 )
 
         # Offline RL settings.
-        if isinstance(config["input_evaluation"], tuple):
-            config["input_evaluation"] = list(config["input_evaluation"])
-        elif not isinstance(config["input_evaluation"], list):
-            raise ValueError(
-                "`input_evaluation` must be a list of strings, got {}!".format(
-                    config["input_evaluation"]
-                )
+        input_evaluation = config.get("input_evaluation")
+        if input_evaluation is not None and input_evaluation is not DEPRECATED_VALUE:
+            deprecation_warning(
+                old="config.input_evaluation: {}".format(input_evaluation),
+                new="config.off_policy_estimation_methods={}".format(input_evaluation),
+                error=False,
             )
+            config["off_policy_estimation_methods"] = input_evaluation
+        config["off_policy_estimation_methods"] = force_list(
+            config["off_policy_estimation_methods"]
+        )
 
         # Check model config.
         # If no preprocessing, propagate into model's config as well
@@ -1976,8 +2061,8 @@ class Trainer(Trainable):
                 ">0!".format(config["evaluation_duration"])
             )
 
-    @ExperimentalAPI
     @staticmethod
+    @ExperimentalAPI
     def validate_env(env: EnvType, env_context: EnvContext) -> None:
         """Env validator function for this Trainer class.
 
@@ -2010,11 +2095,13 @@ class Trainer(Trainable):
         if not isinstance(workers, WorkerSet):
             return
 
+        removed_workers, new_workers = [], []
         # Search for failed workers and try to recover (restart) them.
         if self.config["recreate_failed_workers"] is True:
-            workers.recreate_failed_workers()
+            removed_workers, new_workers = workers.recreate_failed_workers()
         elif self.config["ignore_worker_failures"] is True:
-            workers.remove_failed_workers()
+            removed_workers = workers.remove_failed_workers()
+        self.on_worker_failures(removed_workers, new_workers)
 
         if not self.config.get("_disable_execution_plan_api") and callable(
             self.execution_plan
@@ -2023,6 +2110,17 @@ class Trainer(Trainable):
             self.train_exec_impl = self.execution_plan(
                 workers, self.config, **self._kwargs_for_execution_plan()
             )
+
+    def on_worker_failures(
+        self, removed_workers: List[ActorHandle], new_workers: List[ActorHandle]
+    ):
+        """Called after a worker failure is detected.
+
+        Args:
+            removed_workers: List of removed workers.
+            new_workers: List of new workers.
+        """
+        pass
 
     @override(Trainable)
     def _export_model(
@@ -2149,44 +2247,12 @@ class Trainer(Trainable):
             kwargs["local_replay_buffer"] = self.local_replay_buffer
         return kwargs
 
-    def _register_if_needed(
-        self, env_object: Union[str, EnvType, None], config
-    ) -> Optional[str]:
-        if isinstance(env_object, str):
-            return env_object
-        elif isinstance(env_object, type):
-            name = env_object.__name__
-
-            if config.get("remote_worker_envs"):
-
-                @ray.remote(num_cpus=0)
-                class _wrapper(env_object):
-                    # Add convenience `_get_spaces` and `_is_multi_agent`
-                    # methods.
-                    def _get_spaces(self):
-                        return self.observation_space, self.action_space
-
-                    def _is_multi_agent(self):
-                        return isinstance(self, MultiAgentEnv)
-
-                register_env(name, lambda cfg: _wrapper.remote(cfg))
-            else:
-                register_env(name, lambda cfg: env_object(cfg))
-            return name
-        elif env_object is None:
-            return None
-        raise ValueError(
-            "{} is an invalid env specification. ".format(env_object)
-            + "You can specify a custom env as either a class "
-            '(e.g., YourEnvCls) or a registered env id (e.g., "your_env").'
-        )
-
     def _step_context(trainer):
         class StepCtx:
             def __enter__(self):
-                # First call to stop, `result` is expected to be None ->
-                # Start with self.failures=-1 -> set to 0 the very first call
-                # to `self.stop()`.
+                # Before first call to `step()`, `result` is expected to be None ->
+                # Start with self.failures=-1 -> set to 0 before the very first call
+                # to `self.step()`.
                 self.failures = -1
 
                 self.time_start = time.time()
@@ -2200,6 +2266,9 @@ class Trainer(Trainable):
                 self.init_agent_steps_trained = trainer._counters[
                     NUM_AGENT_STEPS_TRAINED
                 ]
+                self.failure_tolerance = trainer.config[
+                    "num_consecutive_worker_failures_tolerance"
+                ]
                 return self
 
             def __exit__(self, *args):
@@ -2207,13 +2276,20 @@ class Trainer(Trainable):
 
             def should_stop(self, result):
 
-                # First call to stop, `result` is expected to be None ->
+                # Before first call to `step()`, `result` is expected to be None ->
                 # self.failures=0.
                 if result is None:
                     # Fail after n retries.
                     self.failures += 1
-                    if self.failures > MAX_WORKER_FAILURE_RETRIES:
-                        raise RuntimeError("Failed to recover from worker crash.")
+                    if self.failures > self.failure_tolerance:
+                        raise RuntimeError(
+                            "More than `num_consecutive_worker_failures_tolerance="
+                            f"{self.failure_tolerance}` consecutive worker failures! "
+                            "Exiting."
+                        )
+                    # Continue to very first `step()` call or retry `step()` after
+                    # a (tolerable) failure.
+                    return False
 
                 # Stopping criteria: Only when using the `training_iteration`
                 # API, b/c for the `exec_plan` API, the logic to stop is
@@ -2252,11 +2328,12 @@ class Trainer(Trainable):
                         and (not min_train_ts or self.trained >= min_train_ts)
                     ):
                         return True
-                # No errors (we got results) -> Break.
-                elif result is not None:
+                    else:
+                        return False
+                # No errors (we got results != None) -> Return True
+                # (meaning: yes, should stop -> no further step attempts).
+                else:
                     return True
-
-                return False
 
         return StepCtx()
 
@@ -2276,13 +2353,7 @@ class Trainer(Trainable):
         # Learner info.
         results["info"] = {LEARNER_INFO: step_attempt_results}
 
-        # Collect rollout worker metrics.
-        episodes, self._episodes_to_be_collected = collect_episodes(
-            self.workers.local_worker(),
-            self._remote_workers_for_metrics,
-            self._episodes_to_be_collected,
-            timeout_seconds=self.config["metrics_episode_collection_timeout_s"],
-        )
+        episodes = self._rollout_worker_metrics
         orig_episodes = list(episodes)
         missing = self.config["metrics_num_episodes_for_smoothing"] - len(episodes)
         if missing > 0:

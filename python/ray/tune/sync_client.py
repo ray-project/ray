@@ -16,7 +16,7 @@ from shlex import quote
 import ray
 from ray.tune.error import TuneError
 from ray.tune.utils.file_transfer import sync_dir_between_nodes, delete_on_node
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import PublicAPI, DeveloperAPI
 from ray.ml.utils.remote_storage import (
     S3_PREFIX,
     GS_PREFIX,
@@ -186,6 +186,7 @@ def _is_legacy_sync_fn(func) -> bool:
         return True
 
 
+@DeveloperAPI
 class FunctionBasedClient(SyncClient):
     def __init__(self, sync_up_func, sync_down_func, delete_func=None):
         self.sync_up_func = sync_up_func
@@ -226,6 +227,7 @@ class FunctionBasedClient(SyncClient):
 NOOP = FunctionBasedClient(noop, noop)
 
 
+@DeveloperAPI
 class CommandBasedClient(SyncClient):
     """Syncs between two directories with the given command.
 
@@ -429,6 +431,7 @@ class CommandBasedClient(SyncClient):
                 )
 
 
+@DeveloperAPI
 class RemoteTaskClient(SyncClient):
     """Sync client that uses remote tasks to synchronize two directories.
 
@@ -509,6 +512,9 @@ class RemoteTaskClient(SyncClient):
 
         return self._execute_sync(self._last_source_tuple, self._last_target_tuple)
 
+    def _sync_function(self, *args, **kwargs):
+        return sync_dir_between_nodes(*args, **kwargs)
+
     def _execute_sync(
         self,
         source_tuple: Tuple[str, str],
@@ -517,7 +523,7 @@ class RemoteTaskClient(SyncClient):
         source_ip, source_path = source_tuple
         target_ip, target_path = target_tuple
 
-        self._sync_future, pack_actor, files_stats = sync_dir_between_nodes(
+        self._sync_future, pack_actor, files_stats = self._sync_function(
             source_ip=source_ip,
             source_path=source_path,
             target_ip=target_ip,

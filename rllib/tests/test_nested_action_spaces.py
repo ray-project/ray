@@ -7,7 +7,7 @@ import unittest
 
 import ray
 from ray.rllib.algorithms.marwil import BCTrainer
-from ray.rllib.agents.pg import PGTrainer, DEFAULT_CONFIG
+from ray.rllib.algorithms.pg import PGTrainer, DEFAULT_CONFIG
 from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.offline.json_reader import JsonReader
 from ray.rllib.utils.test_utils import framework_iterator
@@ -69,7 +69,7 @@ class NestedActionSpacesTest(unittest.TestCase):
         config["output"] = tmp_dir
         # Switch off OPE as we don't write action-probs.
         # TODO: We should probably always write those if `output` is given.
-        config["input_evaluation"] = []
+        config["off_policy_estimation_methods"] = []
 
         # Pretend actions in offline files are already normalized.
         config["actions_in_input_normalized"] = True

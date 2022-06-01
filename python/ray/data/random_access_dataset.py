@@ -11,6 +11,7 @@ from ray.types import ObjectRef
 from ray.data.block import T, BlockAccessor
 from ray.data.context import DatasetContext, DEFAULT_SCHEDULING_STRATEGY
 from ray.data.impl.remote_fn import cached_remote_fn
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.data import Dataset
@@ -18,6 +19,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+@PublicAPI(stability="beta")
 class RandomAccessDataset(Generic[T]):
     """A class that provides distributed, random access to a Dataset.
 

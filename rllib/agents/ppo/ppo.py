@@ -13,7 +13,6 @@ import logging
 from typing import List, Optional, Type, Union
 
 from ray.util.debug import log_once
-from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
 from ray.rllib.agents.trainer import Trainer
 from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.execution.rollout_ops import (
@@ -72,9 +71,9 @@ class PPOConfig(TrainerConfig):
         ... )
     """
 
-    def __init__(self):
+    def __init__(self, trainer_class=None):
         """Initializes a PPOConfig instance."""
-        super().__init__(trainer_class=PPOTrainer)
+        super().__init__(trainer_class=trainer_class or PPOTrainer)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -369,8 +368,14 @@ class PPOTrainer(Trainer):
             from ray.rllib.agents.ppo.ppo_torch_policy import PPOTorchPolicy
 
             return PPOTorchPolicy
+        elif config["framework"] == "tf":
+            from ray.rllib.agents.ppo.ppo_tf_policy import PPOStaticGraphTFPolicy
+
+            return PPOStaticGraphTFPolicy
         else:
-            return PPOTFPolicy
+            from ray.rllib.agents.ppo.ppo_tf_policy import PPOEagerTFPolicy
+
+            return PPOEagerTFPolicy
 
     @ExperimentalAPI
     def training_iteration(self) -> ResultDict:

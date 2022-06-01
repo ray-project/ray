@@ -2,8 +2,8 @@ import numpy as np
 import unittest
 
 import ray
-import ray.rllib.agents.ddpg as ddpg
-import ray.rllib.agents.dqn as dqn
+import ray.rllib.algorithms.ddpg as ddpg
+import ray.rllib.algorithms.dqn as dqn
 from ray.rllib.utils.test_utils import check, framework_iterator
 
 

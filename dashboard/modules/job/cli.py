@@ -17,12 +17,7 @@ def _get_sdk_client(
     address: Optional[str], create_cluster_if_needed: bool = False
 ) -> JobSubmissionClient:
 
-    if address is None:
-        if "RAY_ADDRESS" not in os.environ:
-            raise ValueError(
-                "Address must be specified using either the --address flag "
-                "or RAY_ADDRESS environment variable."
-            )
+    if address is None and "RAY_ADDRESS" in os.environ:
         address = os.environ["RAY_ADDRESS"]
 
     cli_logger.labeled_value("Job submission server address", address)

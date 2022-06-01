@@ -4,8 +4,6 @@ import com.google.common.base.Preconditions;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.runtime.AbstractRayRuntime;
-import io.ray.runtime.RayRuntimeInternal;
-import io.ray.runtime.RayRuntimeProxy;
 import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.config.RunMode;
 import io.ray.runtime.task.ArgumentsBuilder;
@@ -36,8 +34,8 @@ public class TestUtils {
 
   private static final int WAIT_INTERVAL_MS = 5;
 
-  public static boolean isSingleProcessMode() {
-    return getRuntime().getRayConfig().runMode == RunMode.SINGLE_PROCESS;
+  public static boolean isLocalMode() {
+    return getRuntime().getRayConfig().runMode == RunMode.LOCAL;
   }
 
   /**
@@ -124,25 +122,8 @@ public class TestUtils {
     Assert.assertEquals(obj.get(), "hi");
   }
 
-  public static RayRuntimeInternal getRuntime() {
-    return (RayRuntimeInternal) Ray.internal();
-  }
-
-  public static RayRuntimeInternal getUnderlyingRuntime() {
-    if (Ray.internal() instanceof AbstractRayRuntime) {
-      return (RayRuntimeInternal) Ray.internal();
-    }
-    RayRuntimeProxy proxy =
-        (RayRuntimeProxy) (java.lang.reflect.Proxy.getInvocationHandler(Ray.internal()));
-    return proxy.getRuntimeObject();
-  }
-
-  private static int getNumWorkersPerProcessRemoteFunction() {
-    return TestUtils.getRuntime().getRayConfig().numWorkersPerProcess;
-  }
-
-  public static int getNumWorkersPerProcess() {
-    return Ray.task(TestUtils::getNumWorkersPerProcessRemoteFunction).remote().get();
+  public static AbstractRayRuntime getRuntime() {
+    return (AbstractRayRuntime) Ray.internal();
   }
 
   public static ProcessBuilder buildDriver(Class<?> mainClass, String[] args) {
