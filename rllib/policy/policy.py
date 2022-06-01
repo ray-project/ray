@@ -25,6 +25,7 @@ from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.annotations import (
     PublicAPI,
     DeveloperAPI,
@@ -911,7 +912,7 @@ class Policy(metaclass=ABCMeta):
         # loss) such that we can then adjust our view requirements.
         self._no_tracing = True
         # Save for later so that loss init does not change global timestep
-        global_ts_before_init = self.global_timestep
+        global_ts_before_init = int(convert_to_numpy(self.global_timestep))
 
         sample_batch_size = max(self.batch_divisibility_req * 4, 32)
         self._dummy_batch = self._get_dummy_batch_from_view_requirements(
@@ -1051,7 +1052,16 @@ class Policy(metaclass=ABCMeta):
                         elif self.config["output"] is None:
                             del self.view_requirements[key]
 
-        self.global_timestep = global_ts_before_init
+        if type(self.global_timestep) is int:
+            self.global_timestep = global_ts_before_init
+        elif isinstance(self.global_timestep, tf.Variable):
+            self.global_timestep.assign(global_ts_before_init)
+        else:
+            raise ValueError(
+                "Variable self.global_timestep of policy {} needs to be "
+                "either of type `int` or `tf.Variable`, "
+                "but is of type {}.".format(self, type(self.global_timestep))
+            )
 
     def _get_dummy_batch_from_view_requirements(
         self, batch_size: int = 1
