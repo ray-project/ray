@@ -72,15 +72,15 @@ load("//bazel:python.bzl", "py_test_module_list")
 # inside rllib/tuned_examples/[algo-name] for actual learning success.
 # --------------------------------------------------------------------
 
-# A2C/A3C
+# A2C
 # py_test(
 #    name = "learning_tests_cartpole_a2c",
 #    main = "tests/run_regression_tests.py",
 #    tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
 #    size = "large",
 #    srcs = ["tests/run_regression_tests.py"],
-#    data = ["tuned_examples/a3c/cartpole-a2c.yaml"],
-#    args = ["--yaml-dir=tuned_examples/a3c"]
+#    data = ["tuned_examples/a2c/cartpole-a2c.yaml"],
+#    args = ["--yaml-dir=tuned_examples/a2c"]
 # )
 
 py_test(
@@ -89,8 +89,8 @@ py_test(
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/a3c/cartpole-a2c-microbatch.yaml"],
-    args = ["--yaml-dir=tuned_examples/a3c"]
+    data = ["tuned_examples/a2c/cartpole-a2c-microbatch.yaml"],
+    args = ["--yaml-dir=tuned_examples/a2c"]
 )
 
 py_test(
@@ -99,9 +99,11 @@ py_test(
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/a3c/cartpole-a2c-fake-gpus.yaml"],
-    args = ["--yaml-dir=tuned_examples/a3c"]
+    data = ["tuned_examples/a2c/cartpole-a2c-fake-gpus.yaml"],
+    args = ["--yaml-dir=tuned_examples/a2c"]
 )
+
+# A3C
 
 # py_test(
 #    name = "learning_tests_cartpole_a3c",
