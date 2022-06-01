@@ -133,7 +133,7 @@ class OffPolicyEstimator:
     @DeveloperAPI
     def get_metrics(self, get_losses: bool = False) -> List[OffPolicyEstimate]:
         """Returns list of new episode metric estimates since the last call.
-        
+
         Args:
             get_losses: If True, also return self.losses for the OPE estimator
         Returns:

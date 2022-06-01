@@ -83,7 +83,7 @@ class DirectMethod(OffPolicyEstimator):
             k: k-fold cross validation for training model and evaluating OPE
             kwargs: Optional arguments for the specified Q model
         """
-        
+
         super().__init__(name, policy, gamma)
         # TODO (rohan): Add support for continuous action spaces
         assert isinstance(

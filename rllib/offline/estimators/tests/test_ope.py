@@ -103,7 +103,7 @@ class TestOPE(unittest.TestCase):
         # Run estimators on data
         for name, method_config in estimators.items():
             estimator_cls = method_config.pop("type")
-            estimator : OffPolicyEstimator = estimator_cls(
+            estimator: OffPolicyEstimator = estimator_cls(
                 name=name,
                 policy=trainer.get_policy(),
                 gamma=gamma,
