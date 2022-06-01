@@ -21,15 +21,13 @@ class _DataParallelIngestSpec:
         ds_to_fit = None
         for k, v in self.dataset_config.items():
             if v.fit:
-                ds_to_fit = v
+                ds_to_fit = self.datasets[k]
         if ds_to_fit:
             prep.fit(ds_to_fit)
-        else:
-            raise ValueError(f"No dataset was found that could be fitted: {datasets})")
         new_datasets = {}
 
         for key, dataset in self.datasets.items():
-            if self._config(key).no_preprocess:
+            if self._config(key).no_transform:
                 new_datasets[key] = dataset
             else:
                 new_datasets[key] = prep.transform(dataset)

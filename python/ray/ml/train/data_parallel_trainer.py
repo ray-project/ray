@@ -236,7 +236,7 @@ class DataParallelTrainer(Trainer):
     _dataset_config = {
         # TODO(ekl) set streamable=True by default. This will flip the default value
         # of get_dataset_shard() to DatasetPipeline for DataParallelTrainers.
-        TRAIN_DATASET_KEY: DatasetConfig(fit=True, split=True, required=True),
+        TRAIN_DATASET_KEY: DatasetConfig(fit=True, split=True),
         WILDCARD_KEY: DatasetConfig(),
     }
 

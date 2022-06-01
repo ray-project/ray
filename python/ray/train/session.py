@@ -11,7 +11,7 @@ from typing import Optional, Dict, Type, Union
 import warnings
 
 import ray
-from ray.data import DatasetPipeline
+from ray.data import Dataset, DatasetPipeline
 from ray.train.accelerator import Accelerator
 from ray.train.constants import (
     DETAILED_AUTOFILLED_KEYS,
@@ -27,7 +27,6 @@ from ray.train.constants import (
     SESSION_MISUSE_LOG_ONCE_KEY,
 )
 from ray.train.utils import PropagatingThread
-from ray.train.impl.dataset_spec import RayDataset
 from ray.util import PublicAPI, log_once
 
 
@@ -51,7 +50,7 @@ class Session:
         world_rank: int,
         local_rank: int,
         world_size: int,
-        dataset_shard: Optional[Union[RayDataset, DatasetPipeline]] = None,
+        dataset_shard: Optional[Union[Dataset, DatasetPipeline]] = None,
         checkpoint: Optional[Dict] = None,
         encode_data_fn: Callable = None,
         detailed_autofilled_metrics: bool = False,
@@ -281,7 +280,7 @@ def shutdown_session():
 @PublicAPI(stability="beta")
 def get_dataset_shard(
     dataset_name: Optional[str] = None,
-) -> Optional[Union[RayDataset, DatasetPipeline]]:
+) -> Optional[Union[Dataset, DatasetPipeline]]:
     """Returns the Ray Dataset or DatasetPipeline shard for this worker.
 
     You should call ``to_torch()`` or ``to_tf()`` on this shard to convert

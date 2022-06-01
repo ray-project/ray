@@ -157,12 +157,12 @@ class DatasetConfig:
 
     # Whether to skip preprocessing for this dataset.
     # False by default for all datasets.
-    no_preprocess: Optional[bool] = None
+    no_transform: Optional[bool] = None
 
     # List of fields that the user cannot override in ``dataset_config``.
     _noncustomizable_fields: Tuple[str] = ()
 
-    # TODO: add no_preprocess, stream_window_size, global/local shuffle options
+    # TODO: add no_transform, stream_window_size, global/local shuffle options
 
     def fill_defaults(self) -> "DatasetConfig":
         """Return a copy of this config with all default values filled in."""
@@ -171,7 +171,7 @@ class DatasetConfig:
             split=self.split or False,
             required=self.required or False,
             streamable=self.streamable or False,
-            no_preprocess=self.no_preprocess or False,
+            no_transform=self.no_transform or False,
             _noncustomizable_fields=self._noncustomizable_fields,
         )
 
@@ -213,10 +213,10 @@ class DatasetConfig:
         for k, v in result.items():
             if v.fit:
                 fittable.add(k)
-                if v.no_preprocess:
+                if v.no_transform:
                     raise ValueError(
                         f"Error configuring dataset `{k}`: cannot specify both "
-                        "fit=True and no_preprocess=True."
+                        "fit=True and no_transform=True."
                     )
             if v.required:
                 if k not in datasets:
@@ -255,9 +255,9 @@ class DatasetConfig:
             streamable=self.streamable
             if other.streamable is None
             else other.streamable,
-            no_preprocess=self.no_preprocess
-            if other.no_preprocess is None
-            else other.no_preprocess,
+            no_transform=self.no_transform
+            if other.no_transform is None
+            else other.no_transform,
             _noncustomizable_fields=self._noncustomizable_fields,
         )
 
