@@ -104,25 +104,18 @@ def test_map_unordered(init):
 def test_retry(init):
     @ray.remote(max_restarts=1, max_task_retries=3)
     class MyActor:
-
         def f(self, x):
             raise RuntimeError("Bip problem")
 
     pool = ActorPool([MyActor.remote() for _ in range(4)])
     with pytest.raises(RuntimeError, match="Bip problem"):
         _ = list(
-            pool.map_unordered(
-                lambda actor, value: actor.f.remote(value), [1, 2, 3, 4]
-            )
+            pool.map_unordered(lambda actor, value: actor.f.remote(value), [1, 2, 3, 4])
         )
 
     pool = ActorPool([MyActor.remote() for _ in range(4)])
     with pytest.raises(RuntimeError, match="Bip problem"):
-        _ = list(
-            pool.map(
-                lambda actor, value: actor.f.remote(value), [1, 2, 3, 4]
-            )
-        )
+        _ = list(pool.map(lambda actor, value: actor.f.remote(value), [1, 2, 3, 4]))
 
 
 def test_map_gh23107(init):

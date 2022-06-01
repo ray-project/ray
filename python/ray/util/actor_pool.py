@@ -266,7 +266,7 @@ class ActorPool:
 
     def _get_retry(self, future, retries=0):
         # 0 to only try once so needs to do +1
-        for _ in range(retries+1):
+        for _ in range(retries + 1):
             future_ = copy.deepcopy(future)
             try:
                 return ray.get(future_)

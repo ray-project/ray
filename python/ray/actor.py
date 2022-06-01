@@ -918,7 +918,7 @@ class ActorClass:
             meta.actor_creation_function_descriptor,
             worker.current_session_and_job,
             original_handle=True,
-            actor_options=actor_options
+            actor_options=actor_options,
         )
 
         return actor_handle
@@ -978,7 +978,7 @@ class ActorHandle:
         actor_creation_function_descriptor,
         session_and_job,
         original_handle=False,
-        actor_options=None
+        actor_options=None,
     ):
         self._ray_actor_language = language
         self._ray_actor_id = actor_id
