@@ -3,9 +3,11 @@ import gym
 from gym import spaces
 import numpy as np
 
+from ray.rllib.utils.annotations import Deprecated, PublicAPI
 from ray.rllib.utils.images import rgb2gray, resize
 
 
+@PublicAPI
 def is_atari(env):
     if (
         hasattr(env.observation_space, "shape")
@@ -16,6 +18,7 @@ def is_atari(env):
     return hasattr(env, "unwrapped") and hasattr(env.unwrapped, "ale")
 
 
+@PublicAPI
 def get_wrapper_by_cls(env, cls):
     """Returns the gym env wrapper of the given class, or None."""
     currentenv = env
@@ -28,6 +31,7 @@ def get_wrapper_by_cls(env, cls):
             return None
 
 
+@PublicAPI
 class MonitorEnv(gym.Wrapper):
     def __init__(self, env=None):
         """Record episodes stats prior to EpisodicLifeEnv, etc."""
@@ -78,6 +82,7 @@ class MonitorEnv(gym.Wrapper):
         self._num_returned = len(self._episode_rewards)
 
 
+@PublicAPI
 class NoopResetEnv(gym.Wrapper):
     def __init__(self, env, noop_max=30):
         """Sample initial states by taking random number of no-ops on reset.
@@ -114,6 +119,7 @@ class NoopResetEnv(gym.Wrapper):
         return self.env.step(ac)
 
 
+@PublicAPI
 class ClipRewardEnv(gym.RewardWrapper):
     def __init__(self, env):
         gym.RewardWrapper.__init__(self, env)
@@ -123,6 +129,7 @@ class ClipRewardEnv(gym.RewardWrapper):
         return np.sign(reward)
 
 
+@PublicAPI
 class FireResetEnv(gym.Wrapper):
     def __init__(self, env):
         """Take action on reset.
@@ -146,6 +153,7 @@ class FireResetEnv(gym.Wrapper):
         return self.env.step(ac)
 
 
+@PublicAPI
 class EpisodicLifeEnv(gym.Wrapper):
     def __init__(self, env):
         """Make end-of-life == end-of-episode, but only reset on true game over.
@@ -183,6 +191,7 @@ class EpisodicLifeEnv(gym.Wrapper):
         return obs
 
 
+@PublicAPI
 class MaxAndSkipEnv(gym.Wrapper):
     def __init__(self, env, skip=4):
         """Return only every `skip`-th frame"""
@@ -214,6 +223,7 @@ class MaxAndSkipEnv(gym.Wrapper):
         return self.env.reset(**kwargs)
 
 
+@PublicAPI
 class WarpFrame(gym.ObservationWrapper):
     def __init__(self, env, dim):
         """Warp frames to the specified size (dim x dim)."""
@@ -230,7 +240,7 @@ class WarpFrame(gym.ObservationWrapper):
         return frame[:, :, None]
 
 
-# TODO: (sven) Deprecated class. Remove once traj. view is the norm.
+@Deprecated(error=False)
 class FrameStack(gym.Wrapper):
     def __init__(self, env, k):
         """Stack k last frames."""
@@ -261,6 +271,7 @@ class FrameStack(gym.Wrapper):
         return np.concatenate(self.frames, axis=2)
 
 
+@PublicAPI
 class FrameStackTrajectoryView(gym.ObservationWrapper):
     def __init__(self, env):
         """No stacking. Trajectory View API takes care of this."""
@@ -275,6 +286,7 @@ class FrameStackTrajectoryView(gym.ObservationWrapper):
         return np.squeeze(observation, axis=-1)
 
 
+@PublicAPI
 class ScaledFloatFrame(gym.ObservationWrapper):
     def __init__(self, env):
         gym.ObservationWrapper.__init__(self, env)
@@ -288,6 +300,7 @@ class ScaledFloatFrame(gym.ObservationWrapper):
         return np.array(observation).astype(np.float32) / 255.0
 
 
+@PublicAPI
 def wrap_deepmind(env, dim=84, framestack=True):
     """Configure environment for DeepMind-style Atari.
 

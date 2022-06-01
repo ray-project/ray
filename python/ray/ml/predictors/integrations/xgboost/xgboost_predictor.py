@@ -32,7 +32,7 @@ class XGBoostPredictor(Predictor):
         The checkpoint is expected to be a result of ``XGBoostTrainer``.
 
         Args:
-            checkpoint (Checkpoint): The checkpoint to load the model and
+            checkpoint: The checkpoint to load the model and
                 preprocessor from. It is expected to be from the result of a
                 ``XGBoostTrainer`` run.
 

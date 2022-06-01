@@ -464,7 +464,7 @@ class TestSyncFunctionality(unittest.TestCase):
         with open(os.path.join(path, "dir_level0", "file_level1.txt"), "r") as f:
             assert f.read() == "Data\n"
 
-    def testSyncInNodeAndDelete(self):
+    def _testSyncInNodeAndDelete(self, num_workers: int = 1):
         temp_source = tempfile.mkdtemp()
         temp_up_target = tempfile.mkdtemp()
         temp_down_target = tempfile.mkdtemp()
@@ -480,22 +480,32 @@ class TestSyncFunctionality(unittest.TestCase):
         self._check_dir_contents(temp_source)
         node_ip = ray.util.get_node_ip_address()
 
-        _sync_dir_on_same_node(
-            ip=node_ip,
-            source_path=temp_source,
-            target_path=temp_up_target,
-        )
+        futures = [
+            _sync_dir_on_same_node(
+                ip=node_ip,
+                source_path=temp_source,
+                target_path=temp_up_target,
+                return_futures=True,
+            )
+            for i in range(num_workers)
+        ]
+        ray.get(futures)
 
         # Check sync up
         self._check_dir_contents(temp_up_target)
 
         assert not os.listdir(temp_down_target)
 
-        _sync_dir_on_same_node(
-            ip=node_ip,
-            source_path=temp_up_target,
-            target_path=temp_down_target,
-        )
+        futures = [
+            _sync_dir_on_same_node(
+                ip=node_ip,
+                source_path=temp_up_target,
+                target_path=temp_down_target,
+                return_futures=True,
+            )
+            for i in range(num_workers)
+        ]
+        ray.get(futures)
 
         # Check sync down
         self._check_dir_contents(temp_down_target)
@@ -505,7 +515,13 @@ class TestSyncFunctionality(unittest.TestCase):
 
         assert not os.path.exists(temp_up_target)
 
-    def testSyncBetweenNodesAndDelete(self):
+    def testSyncInNodeAndDelete(self):
+        self._testSyncInNodeAndDelete(num_workers=1)
+
+    def testSyncInNodeAndDeleteMultipleWorkers(self):
+        self._testSyncInNodeAndDelete(num_workers=8)
+
+    def _testSyncBetweenNodesAndDelete(self, num_workers: int = 1):
         temp_source = tempfile.mkdtemp()
         temp_up_target = tempfile.mkdtemp()
         temp_down_target = tempfile.mkdtemp()
@@ -521,12 +537,17 @@ class TestSyncFunctionality(unittest.TestCase):
         self._check_dir_contents(temp_source)
         node_ip = ray.util.get_node_ip_address()
 
-        _sync_dir_between_different_nodes(
-            source_ip=node_ip,
-            source_path=temp_source,
-            target_ip=node_ip,
-            target_path=temp_up_target,
-        )
+        futures = [
+            _sync_dir_between_different_nodes(
+                source_ip=node_ip,
+                source_path=temp_source,
+                target_ip=node_ip,
+                target_path=temp_up_target,
+                return_futures=True,
+            )[0]
+            for i in range(num_workers)
+        ]
+        ray.get(futures)
 
         # Check sync up
         self._check_dir_contents(temp_up_target)
@@ -543,12 +564,17 @@ class TestSyncFunctionality(unittest.TestCase):
 
         assert not os.listdir(temp_down_target)
 
-        _sync_dir_between_different_nodes(
-            source_ip=node_ip,
-            source_path=temp_up_target,
-            target_ip=node_ip,
-            target_path=temp_down_target,
-        )
+        futures = [
+            _sync_dir_between_different_nodes(
+                source_ip=node_ip,
+                source_path=temp_up_target,
+                target_ip=node_ip,
+                target_path=temp_down_target,
+                return_futures=True,
+            )[0]
+            for i in range(num_workers)
+        ]
+        ray.get(futures)
 
         # Check sync down
         self._check_dir_contents(temp_down_target)
@@ -557,6 +583,12 @@ class TestSyncFunctionality(unittest.TestCase):
         delete_on_node(node_ip=node_ip, path=temp_up_target)
 
         assert not os.path.exists(temp_up_target)
+
+    def testSyncBetweenNodesAndDelete(self):
+        self._testSyncBetweenNodesAndDelete(num_workers=1)
+
+    def testSyncBetweenNodesAndDeleteMultipleWorkers(self):
+        self._testSyncBetweenNodesAndDelete(num_workers=8)
 
     def _prepareDirForTestSyncRemoteTask(self):
         temp_source = tempfile.mkdtemp()

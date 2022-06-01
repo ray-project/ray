@@ -6,15 +6,15 @@ from ray.rllib.contrib.registry import CONTRIBUTED_ALGORITHMS
 
 
 def _import_a2c():
-    from ray.rllib.agents import a3c
+    import ray.rllib.algorithms.a2c as a2c
 
-    return a3c.A2CTrainer, a3c.a2c.A2C_DEFAULT_CONFIG
+    return a2c.A2C, a2c.A2C_DEFAULT_CONFIG
 
 
 def _import_a3c():
-    from ray.rllib.agents import a3c
+    import ray.rllib.algorithms.a3c as a3c
 
-    return a3c.A3CTrainer, a3c.DEFAULT_CONFIG
+    return a3c.A3C, a3c.DEFAULT_CONFIG
 
 
 def _import_alpha_star():
@@ -80,7 +80,7 @@ def _import_bc():
 def _import_cql():
     from ray.rllib.algorithms import cql
 
-    return cql.CQLTrainer, cql.CQL_DEFAULT_CONFIG
+    return cql.CQLTrainer, cql.DEFAULT_CONFIG
 
 
 def _import_ddpg():

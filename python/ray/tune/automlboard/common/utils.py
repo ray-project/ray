@@ -10,8 +10,8 @@ def dump_json(json_info, json_file, overwrite=True):
     Overwrite the file if the overwrite flag set.
 
     Args:
-        json_info (dict): Information dict to be dumped.
-        json_file (str): File path to be dumped to.
+        json_info: Information dict to be dumped.
+        json_file: File path to be dumped to.
         overwrite(boolean)
     """
     if overwrite:
@@ -32,7 +32,7 @@ def parse_json(json_file):
     Return None if the json file does not exists or exception occurs.
 
     Args:
-        json_file (str): File path to be parsed.
+        json_file: File path to be parsed.
 
     Returns:
         A dict of json info.
@@ -59,8 +59,8 @@ def parse_multiple_json(json_file, offset=None):
     not exists or exception occurs.
 
     Args:
-        json_file (str): File path to be parsed.
-        offset (int): Initial seek position of the file.
+        json_file: File path to be parsed.
+        offset: Initial seek position of the file.
 
     Returns:
         A dict of json info.
