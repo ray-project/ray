@@ -45,12 +45,9 @@ def ray_cluster():
         pytest.skip("Cluster not supported")
     cluster = Cluster()
     yield Cluster()
-    try:
-        serve.shutdown()
-        ray.shutdown()
-        cluster.shutdown()
-    except Exception as e:
-        pass
+    serve.shutdown()
+    ray.shutdown()
+    cluster.shutdown()
 
 
 def test_shutdown(ray_shutdown):
