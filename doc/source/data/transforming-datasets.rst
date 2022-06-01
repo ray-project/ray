@@ -68,6 +68,40 @@ the Iris dataset.
    :start-after: __dataset_transformation_begin__
    :end-before: __dataset_transformation_end__
 
+Writing UDFs
+------------
+
+User-defined functions (UDFs) are routines that apply on one row (e.g.
+:meth:`.map() <ray.data.Dataset.map>`) or a batch of rows (e.g.
+:meth:`.map_batches() <ray.data.Dataset.map_batches>`) of a dataset. UDFs let you
+express your customized business logic in transformation. Here we will focus on
+:meth:`.map_batches() <ray.data.Dataset.map_batches>` as it's the primary mapping
+transformation API in dataset.
+
+A UDF can be a function or a callable class, which has the following input/output:
+
+* Input type: a Pandas.DataFrame, pyarrow.Table or a Python list. You can control the
+  input type fed to your UDF by specifying the ``batch_format`` parameter in
+  :meth:`.map_batches() <ray.data.Dataset.map_batches>`.
+* Output type: a Pandas.DataFrame, pyarrow.Table or a Python list. Note the output type
+  doesn't need to be the same as input.
+
+The following are some UDF examples.
+
+.. literalinclude:: ./doc_code/transforming_datasets.py
+   :language: python
+   :start-after: __writing_udfs_begin__
+   :end-before: __writing_udfs_end__
+
+You may reference `pyarrow.Table APIs <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`
+or `Pandas.DataFrame APIs <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html>`
+in writing UDFs.
+
+.. tip::
+
+   Write your UDFs in the native vectorized manner in Pandas.DataFrame or pyarrow.Table
+   for better performance.
+
 Compute Strategy
 ----------------
 

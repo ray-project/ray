@@ -77,6 +77,51 @@ ds.groupby("variety").count().show()
 # fmt: on 
 
 # fmt: off
+# __writing_udfs_begin__
+import ray
+import pandas
+import pyarrow
+
+# Load dataset and make it 5 partitions.
+ds = ray.data.read_csv("example://iris.csv").repartition(5)
+
+# UDF in function on Pandas DataFrame.
+def pandas_filter_rows(df: pandas.DataFrame) -> pandas.DataFrame:
+    return df[df["variety"] == "Versicolor"]
+
+ds.map_batches(pandas_filter_rows).show(2)
+# -> {'sepal.length': 7.0, 'sepal.width': 3.2,
+#     'petal.length': 4.7, 'petal.width': 1.4, 'variety': 'Versicolor'}
+# -> {'sepal.length': 6.4, 'sepal.width': 3.2,
+#     'petal.length': 4.5, 'petal.width': 1.5, 'variety': 'Versicolor'}
+
+# UDF in function on PyArrow Table.
+def pyarrow_filter_rows(batch: pyarrow.Table) -> pyarrow.Table:
+    return batch.filter(pyarrow.compute.equal(batch["variety"], "Versicolor"))
+
+ds.map_batches(pyarrow_filter_rows, batch_format="pyarrow").show(2)
+# -> {'sepal.length': 7.0, 'sepal.width': 3.2,
+#     'petal.length': 4.7, 'petal.width': 1.4, 'variety': 'Versicolor'}
+# -> {'sepal.length': 6.4, 'sepal.width': 3.2,
+#     'petal.length': 4.5, 'petal.width': 1.5, 'variety': 'Versicolor'}
+
+# UDF in callable class on Pandas DataFrame.
+class UDFClassOnPandas:
+    def __int__(self):
+        pass
+
+    def __call__(self, df: pandas.DataFrame) -> pandas.DataFrame:
+        return df[df["variety"] == "Versicolor"]
+
+ds.map_batches(UDFClassOnPandas, compute="actors").show(2)
+# -> {'sepal.length': 7.0, 'sepal.width': 3.2,
+#     'petal.length': 4.7, 'petal.width': 1.4, 'variety': 'Versicolor'}
+# -> {'sepal.length': 6.4, 'sepal.width': 3.2,
+#     'petal.length': 4.5, 'petal.width': 1.5, 'variety': 'Versicolor'}
+# __writing_udfs_end__
+# fmt: on 
+
+# fmt: off
 # __dataset_compute_strategy_begin__
 import ray
 import pandas
