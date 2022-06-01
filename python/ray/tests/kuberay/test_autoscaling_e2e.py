@@ -149,15 +149,12 @@ class KubeRayAutoscalingTest(unittest.TestCase):
             for container in containers:
                 container["imagePullPolicy"] = PULL_POLICY
 
-        head_containers = config["spec"]["headGroupSpec"]["template"]["spec"][
-            "containers"
-        ]
-        autoscaler_container = [
-            container
-            for container in head_containers
-            if container["name"] == "autoscaler"
-        ].pop()
-        autoscaler_container["image"] = AUTOSCALER_IMAGE
+        autoscaler_options = {
+            "image": AUTOSCALER_IMAGE,
+            # Allow quick scale-down for test purposes.
+            "idleTimeoutSeconds": 10
+        }
+        config["spec"]["headGroupSepc"]["autoscalerOptions"] = autoscaler_options
 
         return config
 
