@@ -80,9 +80,17 @@ bool FileSystemMonitor::OverCapacity() const {
     return false;
   }
   if (space_info->capacity == 0) {
-    RAY_LOG_EVERY_MS(WARNING, 60 * 1000) << ray_file_path_ << " has no capacity.";
+    RAY_LOG_EVERY_MS(ERROR, 60 * 1000) << ray_file_path_ << " has no capacity.";
     return true;
   }
-  return (1 - 1.0f * space_info->available / space_info->capacity) > capacity_threshold_;
+
+  if ((1 - 1.0f * space_info->available / space_info->capacity) < capacity_threshold_) {
+    return false;
+  }
+
+  RAY_LOG_EVERY_MS(ERROR, 10 * 1000)
+      << ray_file_path_ << " is over capacity, available: " << space_info->available
+      << ", capacity: " << space_info->capacity << ", threshold: " << capacity_threshold_;
+  return true;
 }
 }  // namespace ray

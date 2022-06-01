@@ -40,6 +40,7 @@
 #include "ray/object_manager/plasma/plasma.h"
 #include "ray/object_manager/plasma/plasma_allocator.h"
 #include "ray/object_manager/plasma/protocol.h"
+#include "ray/util/filesystem.h"
 
 namespace plasma {
 
@@ -55,6 +56,7 @@ class PlasmaStore {
  public:
   PlasmaStore(instrumented_io_context &main_service,
               IAllocator &allocator,
+              ray::FileSystemMonitor &fs_monitor,
               const std::string &socket_name,
               uint32_t delay_on_oom_ms,
               float object_spilling_threshold,
@@ -248,6 +250,9 @@ class PlasmaStore {
 
   /// The allocator that allocates mmaped memory.
   IAllocator &allocator_ GUARDED_BY(mutex_);
+
+  /// Monitor the disk utilization.
+  ray::FileSystemMonitor &fs_monitor_;
 
   /// A callback to asynchronously notify that an object is sealed.
   /// NOTE: This function should guarantee the thread-safety because the callback is

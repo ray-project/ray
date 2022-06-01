@@ -71,6 +71,7 @@ ray::ObjectID GetCreateRequestObjectId(const std::vector<uint8_t> &message) {
 
 PlasmaStore::PlasmaStore(instrumented_io_context &main_service,
                          IAllocator &allocator,
+                         ray::FileSystemMonitor &fs_monitor,
                          const std::string &socket_name,
                          uint32_t delay_on_oom_ms,
                          float object_spilling_threshold,
@@ -83,6 +84,7 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service,
       acceptor_(main_service, ParseUrlEndpoint(socket_name)),
       socket_(main_service),
       allocator_(allocator),
+      fs_monitor_(fs_monitor),
       add_object_callback_(add_object_callback),
       delete_object_callback_(delete_object_callback),
       object_lifecycle_mgr_(allocator_, delete_object_callback_),
@@ -158,6 +160,10 @@ PlasmaError PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client>
     return PlasmaError::OutOfMemory;
   }
 
+  if (fs_monitor_.OverCapacity()) {
+    RAY_LOG(ERROR) << "device_num != 0 but CUDA not enabled";
+    return PlasmaError::OutOfMemory;
+  }
   auto error = CreateObject(object_info, source, client, fallback_allocator, object);
   if (error == PlasmaError::OutOfMemory) {
     RAY_LOG(DEBUG) << "Not enough memory to create the object " << object_info.object_id
