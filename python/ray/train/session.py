@@ -281,82 +281,19 @@ def shutdown_session():
 
 
 @PublicAPI(stability="beta")
-def get_dataset_reader(dataset_name: Optional[str] = None) -> Optional[DatasetPipeline]:
-    """Returns the specified data reader for this worker.
+def get_dataset_shard(dataset_name: Optional[str] = None) -> Optional[Union[RayDataset, DatasetPipeline]]:
+    """Returns the Ray Dataset or DatasetPipeline shard for this worker.
 
-    The DatasetPipeline returned will loop over its data shard indefinitely.
-
-    You should call ``to_torch()`` or ``to_tf()`` on the pipeline object to convert
+    You should call ``to_torch()`` or ``to_tf()`` on this shard to convert
     it to the appropriate framework-specific Dataset.
-
-    .. code-block:: python
-
-        import ray
-        from ray import train
-
-        def train_func():
-            model = Net()
-            for epoch in train.get_dataset_reader().iter_epochs(100):
-                data_shard = epoch.to_torch()
-                model.train(data_shard)
-            return model
-
-        dataset = ray.data.read_csv("train.csv")
-        dataset.filter(...).repeat().random_shuffle()
-
-        trainer = Trainer(backend="torch")
-        trainer.start()
-        # Trainer will automatically handle sharding.
-        train_model = trainer.run(train_func, dataset=dataset)
-        trainer.shutdown()
-
-    Args:
-        dataset_name: If a Dictionary of Datasets was passed to
-            ``Trainer``, then specifies which dataset shard to return.
-
-    Returns:
-        The ``DatasetPipeline`` reader to use for this worker. If no dataset is passed
-        into Trainer, then returns None.
-    """
-    session = get_session()
-    if session is None:
-        _warn_session_misuse(get_dataset_reader.__name__)
-        return
-    reader = session.dataset_reader
-    if reader is None:
-        warnings.warn(
-            "No dataset passed in. Returning None. Make sure to "
-            "pass in a Ray Dataset to Trainer.run to use this "
-            "function."
-        )
-    elif isinstance(reader, dict):
-        if not dataset_name:
-            raise RuntimeError(
-                "Multiple datasets were passed into ``Trainer``, "
-                "but no ``dataset_name`` is passed into "
-                "``get_dataset_reader``. Please specify which "
-                "dataset reader to retrieve."
-            )
-        return reader[dataset_name]
-    return reader
-
-
-@PublicAPI(stability="beta")
-def get_dataset_shard(dataset_name: Optional[str] = None) -> Optional[RayDataset]:
-    """Returns the Ray Dataset shard for this worker.
-
-    This is only allowed to be called for the `train` dataset when using bulk ingest
-    mode. Prefer to use ``get_dataset_reader()`` instead when possible, which works
-    for both bulk and pipelined ingest modes. However, in some cases it may be useful
-    to have raw access to the underlying Dataset instead of a DatasetPipeline.
 
     Args:
         dataset_name: If a Dictionary of Datasets was passed to ``Trainer``, then
             specifies which dataset shard to return.
 
     Returns:
-        The ``Dataset`` shard to use for this worker. If no dataset is passed into
-        Trainer, then returns None.
+        The ``Dataset`` or ``DatasetPipeline`` shard to use for this worker.
+        If no dataset is passed into Trainer, then returns None.
     """
     session = get_session()
     if session is None:
