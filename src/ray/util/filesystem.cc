@@ -65,6 +65,7 @@ FileSystemMonitor::FileSystemMonitor(const std::string &path, double capacity_th
 
 std::optional<std::filesystem::space_info> FileSystemMonitor::Space() const {
   std::error_code ec;
+  // TODO: add cache to improve performance.
   const std::filesystem::space_info si = std::filesystem::space(ray_file_path_, ec);
   if (ec) {
     RAY_LOG_EVERY_MS(WARNING, 60 * 1000) << "Failed to get capacity of " << ray_file_path_

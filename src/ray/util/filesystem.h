@@ -61,6 +61,7 @@ std::string JoinPaths(std::string base, const Paths &...components) {
 }
 
 /// Monitor the filesystem capacity ray is using.
+/// This class is not thread safe.
 class FileSystemMonitor {
  public:
   FileSystemMonitor(const std::string &path, double capacity_threshold);
