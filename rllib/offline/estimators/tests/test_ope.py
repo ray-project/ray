@@ -26,7 +26,7 @@ class TestOPE(unittest.TestCase):
         ray.shutdown()
 
     def test_build_ope_methods(self):
-        rllib_dir = Path(__file__).parent.parent.parent
+        rllib_dir = Path(__file__).parent.parent.parent.parent
         print("rllib dir={}".format(rllib_dir))
         data_file = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
         print("data_file={} exists={}".format(data_file, os.path.isfile(data_file)))
