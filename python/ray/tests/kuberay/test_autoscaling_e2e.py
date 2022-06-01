@@ -91,15 +91,6 @@ class KubeRayAutoscalingTest(unittest.TestCase):
                 "ray/python/ray/autoscaler/kuberay/config/default",
             ]
         )
-        logger.info("Creating autoscaler RBAC objects.")
-        subprocess.check_call(
-            [
-                "kubectl",
-                "apply",
-                "-f",
-                "ray/python/ray/autoscaler/kuberay/kuberay-autoscaler-rbac.yaml",
-            ]
-        )
         logger.info("Making sure RayCluster CRD has been registered.")
         wait_for_crd("rayclusters.ray.io")
 
