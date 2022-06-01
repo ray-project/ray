@@ -85,7 +85,7 @@ class DirectMethod(OffPolicyEstimator):
         ), "DM Estimator only supports batch_mode=`complete_episodes`"
         assert framework == "torch", "DM estimator only supports `framework`=`torch`"
 
-        # TODO (rohan): Add support for QRegTF, FQETF, custom QModel types!
+        # TODO (rohan): Add support for TF!
         if framework == "torch":
             if q_model_type == "qreg":
                 model_cls = QRegTorchModel
