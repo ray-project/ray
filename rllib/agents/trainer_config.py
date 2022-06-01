@@ -939,7 +939,9 @@ class TrainerConfig:
                 Available keys:
                 - {"simulation": None}: Run the environment in the background, but use
                 this data for evaluation only and not for learning.
-                - {ope_method_name: {"type": ope_type, ...}} where `ope_type` can be:
+                - {ope_method_name: {"type": ope_type, ...}} where `ope_method_name` 
+                is a user-defined string to save the OPE results under, and
+                `ope_type` can be:
                     - "is": ImportanceSampling
                     - "wis": WeightedImportanceSampling
                     - "dm": DirectMethod

@@ -131,13 +131,22 @@ class OffPolicyEstimator:
         self.new_estimates.extend(self.estimate(batch))
 
     @DeveloperAPI
-    def get_metrics(self) -> List[OffPolicyEstimate]:
+    def get_metrics(self, get_losses: bool = False) -> List[OffPolicyEstimate]:
         """Returns list of new episode metric estimates since the last call.
+        
+        Args:
+            get_losses: If True, also return self.losses for the OPE estimator
         Returns:
-            List of OffPolicyEstimate objects.
+            out: List of OffPolicyEstimate objects.
+            losses: List of training losses for the estimator.
         """
         out = self.new_estimates
         self.new_estimates = []
+        if hasattr(self, "losses"):
+            losses = self.losses
+            self.losses = []
+            if get_losses:
+                return out, losses
         return out
 
     # TODO (rohan): Remove deprecated methods; set to error=True because changing

@@ -55,13 +55,6 @@ def k_fold_cv(
 class DirectMethod(OffPolicyEstimator):
     """The Direct Method estimator.
 
-    q_model_type: Either "fqe" for Fitted Q-Evaluation or "qreg" for Q-Regression, or
-        a custom model that implements `estimate_q(states,actions)`
-        and `estimate_v(states, action_probs)`
-    framework: One of "tf|tf2|tfe|torch", currently only "torch" is supported
-    k: k-fold cross validation for training model and evaluating OPE
-    q_model_kwargs: Optional arguments for the specified Q model
-
     DM estimator described in https://arxiv.org/pdf/1511.03722.pdf"""
 
     @override(OffPolicyEstimator)
@@ -73,8 +66,24 @@ class DirectMethod(OffPolicyEstimator):
         q_model_type: str = "fqe",
         framework: str = "torch",
         k: int = 5,
-        **q_model_kwargs,
+        **kwargs,
     ):
+        """
+        Initializes a Direct Method OPE Estimator.
+
+        Args:
+            name: string to save OPE results under
+            policy: Policy to evaluate.
+            gamma: Discount factor of the environment.
+            q_model_type: Either "fqe" for Fitted Q-Evaluation
+                or "qreg" for Q-Regression, or a custom model that implements:
+                - `estimate_q(states,actions)`
+                - `estimate_v(states, action_probs)`
+            framework: One of "tf|tf2|tfe|torch", currently only supports "torch"
+            k: k-fold cross validation for training model and evaluating OPE
+            kwargs: Optional arguments for the specified Q model
+        """
+        
         super().__init__(name, policy, gamma)
         # TODO (rohan): Add support for continuous action spaces
         assert isinstance(
@@ -82,7 +91,7 @@ class DirectMethod(OffPolicyEstimator):
         ), "DM Estimator only supports discrete action spaces!"
         assert (
             policy.config["batch_mode"] == "complete_episodes"
-        ), "DM Estimator only supports batch_mode=`complete_episodes`"
+        ), "DM Estimator only supports `batch_mode`=`complete_episodes`"
         assert framework == "torch", "DM estimator only supports `framework`=`torch`"
 
         # TODO (rohan): Add support for TF!
@@ -102,7 +111,7 @@ class DirectMethod(OffPolicyEstimator):
         self.model = model_cls(
             policy=policy,
             gamma=gamma,
-            **q_model_kwargs,
+            **kwargs,
         )
         self.k = k
         self.losses = []
@@ -121,7 +130,7 @@ class DirectMethod(OffPolicyEstimator):
                 # Reinitialize model
                 self.model.reset()
                 train_batch = SampleBatch.concat_samples(train_episodes)
-                losses = self.train(train_batch)  # noqa: F841
+                losses = self.train(train_batch)
                 self.losses.append(losses)
 
             # Calculate direct method OPE estimates

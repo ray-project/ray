@@ -13,6 +13,8 @@ import os
 import numpy as np
 import gym
 
+from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
+
 
 class TestOPE(unittest.TestCase):
     @classmethod
@@ -101,13 +103,14 @@ class TestOPE(unittest.TestCase):
         # Run estimators on data
         for name, method_config in estimators.items():
             estimator_cls = method_config.pop("type")
-            estimator = estimator_cls(
+            estimator : OffPolicyEstimator = estimator_cls(
                 name=name,
                 policy=trainer.get_policy(),
                 gamma=gamma,
                 **method_config,
             )
-            estimates = estimator.estimate(batch)
+            estimator.process(batch)
+            estimates = estimator.get_metrics()
             assert len(estimates) == n_episodes
             if estimator_cls.__name__ == "WeightedImportanceSampling":
                 # wis estimator improves with data, use last few episodes maybe?

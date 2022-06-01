@@ -26,7 +26,7 @@ class DoublyRobust(DirectMethod):
                 # Reinitialize model
                 self.model.reset()
                 train_batch = SampleBatch.concat_samples(train_episodes)
-                losses = self.train(train_batch)  # noqa: F841
+                losses = self.train(train_batch)
                 self.losses.append(losses)
 
             # Calculate doubly robust OPE estimates

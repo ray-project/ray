@@ -17,13 +17,14 @@
 
 # - Quick agent compilation/tune-train tests, tagged "quick_train".
 #   NOTE: These should be obsoleted in favor of "trainers_dir" tests as
-#         they cover the same functionaliy.
+#         they cover the same functionality.
 
 # - Folder-bound tests, tagged with the name of the top-level dir:
 #   - `env` directory tests.
 #   - `evaluation` directory tests.
 #   - `execution` directory tests.
 #   - `models` directory tests.
+#   - `offline` directory tests.
 #   - `policy` directory tests.
 #   - `utils` directory tests.
 
@@ -1529,6 +1530,20 @@ py_test(
     tags = ["team:ml", "models"],
     size = "large",
     srcs = ["models/tests/test_preprocessors.py"]
+)
+
+# --------------------------------------------------------------------
+# Offline
+# rllib/offline/
+#
+# Tag: offline
+# --------------------------------------------------------------------
+
+py_test(
+    name = "test_ope",
+    tags = ["team:ml", "offline", "torch_only"],
+    size = "small",
+    srcs = ["offline/estimators/tests/test_ope.py"]
 )
 
 # --------------------------------------------------------------------
