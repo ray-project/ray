@@ -259,7 +259,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         logger.info("Scaling up to one worker via Ray resource request.")
         # The request for 2 cpus should give us a 1-cpu head (already present) and a
         # 1-cpu worker (will await scale-up).
-        out = kubectl_exec_python_script(  # Interaction mode #1: `kubectl exec`
+        kubectl_exec_python_script(  # Interaction mode #1: `kubectl exec`
             script_name="scale_up.py",
             pod=head_pod,
             container="ray-head",

@@ -32,6 +32,8 @@ def main():
             )
 
     # Wait for the expected autoscaler event message to appear.
+    # It should take at most (5 + epsilon) seconds for this to happen.
+    # To prevent flakiness, use a large timeout of 15 seconds.
     test_utils.wait_for_condition(
         condition_predictor=scale_event_logged, timeout=15, retry_interval_ms=1500
     )
