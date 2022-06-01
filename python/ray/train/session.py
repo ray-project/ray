@@ -333,7 +333,7 @@ def get_dataset_shard(
                 "``get_dataset_shard``. Please specify which "
                 "dataset shard to retrieve."
             )
-        return shard[dataset_name]
+        return shard.get(dataset_name)
     return shard
 
 

@@ -255,9 +255,7 @@ class DatasetConfig:
             streamable=self.streamable
             if other.streamable is None
             else other.streamable,
-            transform=self.transform
-            if other.transform is None
-            else other.transform,
+            transform=self.transform if other.transform is None else other.transform,
             _noncustomizable_fields=self._noncustomizable_fields,
         )
 

@@ -267,7 +267,6 @@ class DataParallelTrainer(Trainer):
             DatasetConfig.merge(self._dataset_config, dataset_config), datasets
         )
         self.ingest_spec = _DataParallelIngestSpec(
-            datasets=datasets,
             dataset_config=self.dataset_config,
         )
 

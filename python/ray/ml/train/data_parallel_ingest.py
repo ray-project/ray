@@ -9,42 +9,41 @@ if TYPE_CHECKING:
 
 
 class _DataParallelIngestSpec:
-    def __init__(
-        self, datasets: Dict[str, "Dataset"], dataset_config: Dict[str, DatasetConfig]
-    ):
-        self.datasets = datasets
+    def __init__(self, dataset_config: Dict[str, DatasetConfig]):
         self.dataset_config = dataset_config
+        self.preprocessed_datasets = None
 
     def preprocess_datasets(self, prep: Preprocessor, datasets: Dict[str, "Dataset"]):
-        if not prep:
-            return datasets
-        ds_to_fit = None
-        for k, v in self.dataset_config.items():
-            if v.fit:
-                ds_to_fit = self.datasets[k]
-        if ds_to_fit:
-            prep.fit(ds_to_fit)
-        new_datasets = {}
+        if prep:
+            ds_to_fit = None
+            for k, v in self.dataset_config.items():
+                if v.fit:
+                    ds_to_fit = datasets[k]
+            if ds_to_fit:
+                prep.fit(ds_to_fit)
+            new_datasets = {}
 
-        for key, dataset in self.datasets.items():
-            if self._config(key).transform:
-                new_datasets[key] = prep.transform(dataset)
-            else:
-                new_datasets[key] = dataset
+            for key, dataset in datasets.items():
+                if self._config(key).transform:
+                    new_datasets[key] = prep.transform(dataset)
+                else:
+                    new_datasets[key] = dataset
+        else:
+            new_datasets = datasets
+        self.preprocessed_datasets = new_datasets
         return new_datasets
 
     def get_dataset_shards(
         self, training_worker_handles: List[ActorHandle]
     ) -> List[Dict[str, Union["Dataset", "DatasetPipeline"]]]:
+        """Note: this has to match the signature of DatasetSpec in legacy train."""
         dataset_dict_splits = [{} for _ in range(len(training_worker_handles))]
 
-        for key, dataset in self.datasets.items():
+        for key, dataset in self.preprocessed_datasets.items():
             config = self._config(key)
 
             if config.streamable:
-                # TODO(ekl) implement and test this option.
-                # dataset = dataset.repeat()
-                raise NotImplementedError
+                dataset = dataset.repeat()
 
             if config.split:
                 dataset_splits = dataset.split(
@@ -53,9 +52,7 @@ class _DataParallelIngestSpec:
                     locality_hints=training_worker_handles,
                 )
             else:
-                # TODO(ekl) implement and test this option.
-                # dataset_splits = [dataset] * len(training_worker_handles)
-                raise NotImplementedError
+                dataset_splits = [dataset] * len(training_worker_handles)
 
             for i in range(len(dataset_splits)):
                 dataset_dict_splits[i][key] = dataset_splits[i]
