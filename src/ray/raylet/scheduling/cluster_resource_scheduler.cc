@@ -107,12 +107,10 @@ bool ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_req
 }
 
 namespace {
-bool IsHardNodeAffinitySchedulingStrategy(
+bool IsNodeAffinitySchedulingStrategy(
     const rpc::SchedulingStrategy &scheduling_strategy) {
   return scheduling_strategy.scheduling_strategy_case() ==
-             rpc::SchedulingStrategy::SchedulingStrategyCase::
-                 kNodeAffinitySchedulingStrategy &&
-         !scheduling_strategy.node_affinity_scheduling_strategy().soft();
+         rpc::SchedulingStrategy::SchedulingStrategyCase::kNodeAffinitySchedulingStrategy;
 }
 }  // namespace
 
@@ -124,9 +122,9 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
     int64_t *total_violations,
     bool *is_infeasible) {
   // The zero cpu actor is a special case that must be handled the same way by all
-  // scheduling policies, except for HARD node affnity scheduling policy.
+  // scheduling policies, except for node affnity scheduling policy.
   if (actor_creation && resource_request.IsEmpty() &&
-      !IsHardNodeAffinitySchedulingStrategy(scheduling_strategy)) {
+      !IsNodeAffinitySchedulingStrategy(scheduling_strategy)) {
     return scheduling_policy_->Schedule(resource_request, SchedulingOptions::Random());
   }
 
