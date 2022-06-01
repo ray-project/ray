@@ -6,7 +6,12 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Uni
 import ray
 from ray.util import PublicAPI
 from ray.ml.checkpoint import Checkpoint
-from ray.ml.config import RunConfig, ScalingConfig, ScalingConfigDataClass
+from ray.ml.config import (
+    RunConfig,
+    ScalingConfig,
+    ScalingConfigDataClass,
+    DatasetConfig,
+)
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.result import Result
 from ray.ml.utils.config import (
@@ -162,9 +167,7 @@ class Trainer(abc.ABC):
     ):
 
         self.scaling_config = scaling_config if scaling_config is not None else {}
-        self.dataset_config = _merge_dataset_config(
-            self._dataset_config, dataset_config
-        )
+        self.dataset_config = self._dataset_config.check_merge(dataset_config)
         self.run_config = run_config if run_config is not None else RunConfig()
         self.datasets = datasets if datasets is not None else {}
         self.preprocessor = preprocessor

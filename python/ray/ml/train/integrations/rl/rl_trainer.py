@@ -4,7 +4,7 @@ from typing import Optional, Dict, Tuple, Type, Union, Callable, Any
 
 import ray.cloudpickle as cpickle
 from ray.ml.checkpoint import Checkpoint
-from ray.ml.config import ScalingConfig, RunConfig
+from ray.ml.config import ScalingConfig, RunConfig, DatasetConfig
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.trainer import Trainer, GenDataset
 from ray.ml.utils.checkpointing import (

@@ -1,6 +1,6 @@
 from typing import Dict, Callable, Optional, Union
 
-from ray.ml.config import ScalingConfig, RunConfig
+from ray.ml.config import ScalingConfig, RunConfig, DatasetConfig
 from ray.ml.trainer import GenDataset
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint

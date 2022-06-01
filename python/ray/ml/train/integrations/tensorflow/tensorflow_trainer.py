@@ -4,7 +4,7 @@ import tensorflow as tf
 from ray.train.tensorflow import TensorflowConfig
 from ray.ml.trainer import GenDataset
 from ray.ml.train.data_parallel_trainer import DataParallelTrainer, _load_checkpoint
-from ray.ml.config import ScalingConfig, RunConfig
+from ray.ml.config import ScalingConfig, RunConfig, DatasetConfig
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
 from ray.util import PublicAPI

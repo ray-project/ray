@@ -135,7 +135,7 @@ class DatasetConfig:
     global_shuffle: Optional[bool] = None
     _noncustomizable_fields: List[str] = []
 
-    def fill_defaults(self) -> DatasetConfig:
+    def fill_defaults(self) -> "DatasetConfig":
         return DatasetConfig(
             fit=self.fit or False,
             split=self.split or False,
@@ -147,7 +147,7 @@ class DatasetConfig:
             _noncustomizable_fields=self._noncustomizable_fields.copy(),
         )
 
-    def check_merge(self, other: DatasetConfig) -> DatasetConfig:
+    def check_merge(self, other: "DatasetConfig") -> "DatasetConfig":
         for field in self._noncustomizable_fields:
             if getattr(other, field) is not None:
                 raise ValueError(

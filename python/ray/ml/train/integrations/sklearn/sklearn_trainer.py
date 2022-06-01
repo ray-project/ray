@@ -13,7 +13,7 @@ from joblib import parallel_backend
 from ray import tune
 import ray.cloudpickle as cpickle
 from ray.ml.checkpoint import Checkpoint
-from ray.ml.config import RunConfig, ScalingConfig
+from ray.ml.config import RunConfig, ScalingConfig, DatasetConfig
 from ray.ml.constants import MODEL_KEY, TRAIN_DATASET_KEY
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.trainer import GenDataset, Trainer

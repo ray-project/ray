@@ -19,7 +19,7 @@ from ray import train
 from ray import tune
 from ray.util import PublicAPI, get_node_ip_address
 from ray.ml.checkpoint import Checkpoint
-from ray.ml.config import RunConfig, ScalingConfig
+from ray.ml.config import RunConfig, ScalingConfig, DatasetConfig
 from ray.ml.constants import EVALUATION_DATASET_KEY, TRAIN_DATASET_KEY
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.train.integrations.torch import TorchTrainer
