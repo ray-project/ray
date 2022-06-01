@@ -107,7 +107,10 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
     bool *is_infeasible) {
   // The zero cpu actor is a special case that must be handled the same way by all
   // scheduling policies.
-  if (actor_creation && resource_request.IsEmpty()) {
+  if (actor_creation && resource_request.IsEmpty() &&
+      scheduling_strategy.scheduling_strategy_case() !=
+          rpc::SchedulingStrategy::SchedulingStrategyCase::
+              kNodeAffinitySchedulingStrategy) {
     return scheduling_policy_->Schedule(resource_request, SchedulingOptions::Random());
   }
 
