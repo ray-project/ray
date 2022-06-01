@@ -16,7 +16,7 @@ def convert_pandas_to_tf_tensor(df: pd.DataFrame) -> tf.Tensor:
             an object dtype, the column must contain ``ndarray`` objects.
 
     Returns:
-        A tensor of data type ``float32`` constructed from the dataframe.
+        A tensor constructed from the dataframe.
 
     Raises:
         ValueError: if a column has an invalid dtype.
