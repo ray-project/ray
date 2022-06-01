@@ -416,9 +416,9 @@ class ServeController:
         application.
 
         Args:
-            import_path (str): Serve deployment graph's import path
-            runtime_env (str): runtime_env to run the deployment graph in
-            deployment_override_options (List[Dict]): All dictionaries should
+            import_path: Serve deployment graph's import path
+            runtime_env: runtime_env to run the deployment graph in
+            deployment_override_options: All dictionaries should
                 contain argument-value options that can be passed directly
                 into a set_options() call. Overrides deployment options set
                 in the graph itself.
