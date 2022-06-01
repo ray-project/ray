@@ -80,11 +80,12 @@ API in Datasets.
 
 A UDF can be a function or a callable class, which has the following input/output:
 
-* **Input type**: a pandas.DataFrame, pyarrow.Table or a Python list. You can control the
-  input type fed to your UDF by specifying the ``batch_format`` parameter in
-  :meth:`.map_batches() <ray.data.Dataset.map_batches>`.
-* **Output type**: a pandas.DataFrame, pyarrow.Table or a Python list. Note the output type
-  doesn't need to be the same as input.
+* **Input type**: a ``pandas.DataFrame``, ``pyarrow.Table`` or a Python list. You can
+  control the input type fed to your UDF by specifying the ``batch_format`` parameter in
+  :meth:`.map_batches() <ray.data.Dataset.map_batches>`. By default, the ``batch_format``
+  is "native", which will feed ``pandas.DataFrame`` to UDF for all these input types.
+* **Output type**: a ``pandas.DataFrame``, ``pyarrow.Table`` or a Python list. Note
+  the output type doesn't need to be the same as input type.
 
 The following are some UDF examples.
 
@@ -94,7 +95,7 @@ The following are some UDF examples.
    :end-before: __writing_udfs_end__
 
 You may reference the `pyarrow.Table APIs <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`
-or the `Pandas.DataFrame APIs <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html>`
+or the `pandas.DataFrame APIs <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html>`
 in writing UDFs.
 
 .. tip::
