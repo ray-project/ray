@@ -80,9 +80,9 @@ class AutoscalingPolicy:
                 ongoing requests for each replica.
             curr_target_num_replicas: The number of replicas that the
                 deployment is currently trying to scale to.
-            current_handle_queued_queries (float): The number of handle queued queries,
-            if there are multiple handles, the max number of queries at a single handle
-            should be passed in
+            current_handle_queued_queries : The number of handle queued queries,
+                if there are multiple handles, the max number of queries at a single handle
+                should be passed in
 
         Returns:
             int: The new number of replicas to scale to.
