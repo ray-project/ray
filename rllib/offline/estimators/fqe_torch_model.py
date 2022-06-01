@@ -14,28 +14,6 @@ torch, nn = try_import_torch()
 class FQETorchModel:
     """Pytorch implementation of the Fitted Q-Evaluation (FQE) model from
     https://arxiv.org/pdf/1911.06854.pdf
-
-    Arguments:
-        policy: The Policy object correspodning to the target policy in OPE
-        gamma: The discount factor for the environment
-        # The ModelConfigDict for self.q_model
-        model = {
-                    "fcnet_hiddens": [8, 8],
-                    "fcnet_activation": "relu",
-                    "vf_share_layers": True,
-                },
-        # Maximum number of training iterations to run on the batch
-        n_iters = 160,
-        # Learning rate for Q-function optimizer
-        lr = 1e-3,
-        # Early stopping if the mean loss < delta
-        delta = 1e-4,
-        # Clip gradients to this maximum value
-        clip_grad_norm = 100.0,
-        # Minibatch size for training Q-function
-        batch_size = 32,
-        # Polyak averaging factor for target Q-function
-        tau = 0.01
     """
 
     def __init__(
@@ -50,6 +28,29 @@ class FQETorchModel:
         batch_size: int = 32,
         tau: float = 0.01,
     ) -> None:
+        """
+        Args:
+            policy: Policy to evaluate.
+            gamma: Discount factor of the environment.
+            # The ModelConfigDict for self.q_model
+            model = {
+                        "fcnet_hiddens": [8, 8],
+                        "fcnet_activation": "relu",
+                        "vf_share_layers": True,
+                    },
+            # Maximum number of training iterations to run on the batch
+            n_iters = 160,
+            # Learning rate for Q-function optimizer
+            lr = 1e-3,
+            # Early stopping if the mean loss < delta
+            delta = 1e-4,
+            # Clip gradients to this maximum value
+            clip_grad_norm = 100.0,
+            # Minibatch size for training Q-function
+            batch_size = 32,
+            # Polyak averaging factor for target Q-function
+            tau = 0.01
+        """
         self.policy = policy
         self.gamma = gamma
         self.observation_space = policy.observation_space
