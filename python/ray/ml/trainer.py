@@ -150,6 +150,8 @@ class Trainer(abc.ABC):
     _scaling_config_allowed_keys: List[str] = ["trainer_resources"]
 
     _dataset_config = {
+        # TODO(ekl) set streamable=True by default. This will flip the default value
+        # of get_dataset_shard() to DatasetPipeline for Trainers.
         "train": DatasetConfig(fit=True, split=True, required=True),
         "*": DatasetConfig(),
     }
