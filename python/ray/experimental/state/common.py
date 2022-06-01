@@ -46,18 +46,30 @@ class ActorState:
     actor_id: str
     state: str
     class_name: str
+    name: str
+    pid: int
+    serialized_runtime_env: str
+    resource_mapping: dict
+    death_cause: dict
+    is_detached: bool
 
 
 @dataclass(init=True)
 class PlacementGroupState:
     placement_group_id: str
     state: str
+    name: str
+    bundles: dict
+    is_detached: bool
+    stats: dict
 
 
 @dataclass(init=True)
 class NodeState:
     node_id: str
     state: str
+    node_name: str
+    resources_total: dict
 
 
 JobState = JobInfo
@@ -71,6 +83,7 @@ class WorkerState:
     exit_type: str
     exit_detail: str
     pid: str
+    worker_info: dict
 
 
 @dataclass(init=True)
@@ -78,6 +91,11 @@ class TaskState:
     task_id: str
     name: str
     scheduling_state: str
+    type: str
+    language: str
+    func_or_class_name: str
+    required_resources: dict
+    runtime_env_info: str
 
 
 @dataclass(init=True)

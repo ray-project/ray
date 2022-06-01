@@ -9,6 +9,7 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.torch_utils import get_device
 
 torch, nn = try_import_torch()
 
@@ -62,9 +63,8 @@ class MBMPOTorchPolicy(MAMLTorchPolicy):
         # Build one dynamics model if we are a Worker.
         # If we are the main MAML learner, build n (num_workers) dynamics Models
         # for being able to create checkpoints for the current state of training.
-        device = (
-            torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-        )
+        device = get_device(self.config)
+
         self.dynamics_model = ModelCatalog.get_model_v2(
             self.observation_space,
             self.action_space,
