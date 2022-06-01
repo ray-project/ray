@@ -304,14 +304,20 @@ class Checkpoint:
         """Return the name for the temporary checkpoint dir."""
         if self._obj_ref:
             tmp_dir_path = tempfile.gettempdir()
-            checkpoint_dir_name = f"{_CHECKPOINT_DIR_PREFIX}{self._obj_ref.hex()}"
+            checkpoint_dir_name = _CHECKPOINT_DIR_PREFIX + self._obj_ref.hex()
             if platform.system() == "Windows":
                 # Max path on Windows is 260 chars, -1 for joining \
                 # Also leave a little for the del lock
                 del_lock_name = _get_del_lock_path("")
-                checkpoint_dir_name = checkpoint_dir_name[
-                    : 259 - len(tmp_dir_path) - len(del_lock_name)
-                ]
+                checkpoint_dir_name = (
+                    _CHECKPOINT_DIR_PREFIX
+                    + self._obj_ref.hex()[
+                        -259
+                        + len(_CHECKPOINT_DIR_PREFIX)
+                        + len(tmp_dir_path)
+                        + len(del_lock_name) :
+                    ]
+                )
                 if not checkpoint_dir_name.startswith(_CHECKPOINT_DIR_PREFIX):
                     raise RuntimeError(
                         "Couldn't create checkpoint directory due to length "
