@@ -17,10 +17,10 @@ namespace ray {
 class MockPinObjectsInterface : public PinObjectsInterface {
  public:
   MOCK_METHOD(void,
-              PinObjectID,
+              PinObjectIDs,
               (const rpc::Address &caller_address,
-               const ObjectID &object_id,
-               rpc::ClientCallback<rpc::PinObjectIDReply> callback),
+               const std::vector<ObjectID> &object_ids,
+               const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback),
               (override));
 };
 
@@ -132,6 +132,7 @@ class MockRayletClientInterface : public RayletClientInterface {
               WaitForDirectActorCallArgs,
               (const std::vector<rpc::ObjectReference> &references, int64_t tag),
               (override));
+  MOCK_METHOD(std::shared_ptr<grpc::Channel>, GetChannel, (), (const));
   MOCK_METHOD(void,
               ReportWorkerBacklog,
               (const WorkerID &worker_id,
@@ -188,18 +189,14 @@ class MockRayletClientInterface : public RayletClientInterface {
                const rpc::ClientCallback<rpc::ReleaseUnusedBundlesReply> &callback),
               (override));
   MOCK_METHOD(void,
-              PinObjectID,
+              PinObjectIDs,
               (const rpc::Address &caller_address,
-               const ObjectID &object_id,
-               rpc::ClientCallback<rpc::PinObjectIDReply> callback),
+               const std::vector<ObjectID> &object_ids,
+               const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback),
               (override));
   MOCK_METHOD(void,
               GetSystemConfig,
               (const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback),
-              (override));
-  MOCK_METHOD(void,
-              GetGcsServerAddress,
-              (const rpc::ClientCallback<rpc::GetGcsServerAddressReply> &callback),
               (override));
   MOCK_METHOD(void,
               UpdateResourceUsage,
@@ -213,6 +210,10 @@ class MockRayletClientInterface : public RayletClientInterface {
   MOCK_METHOD(void,
               GetResourceLoad,
               (const rpc::ClientCallback<rpc::GetResourceLoadReply> &callback),
+              (override));
+  MOCK_METHOD(void,
+              NotifyGCSRestart,
+              (const rpc::ClientCallback<rpc::NotifyGCSRestartReply> &callback),
               (override));
   MOCK_METHOD(void,
               ShutdownRaylet,

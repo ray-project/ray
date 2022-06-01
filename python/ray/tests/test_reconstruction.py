@@ -10,19 +10,19 @@ import ray
 from ray._private.test_utils import (
     wait_for_condition,
     wait_for_pid_to_exit,
-    SignalActor,
-    Semaphore,
 )
-from ray.internal.internal_api import memory_summary
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
+<<<<<<< HEAD
 # Task status.
 WAITING_FOR_DEPENDENCIES = "WAITING_FOR_DEPENDENCIES"
 SCHEDULED = "SCHEDULED"
 FINISHED = "FINISHED"
 WAITING_FOR_EXECUTION = "WAITING_FOR_EXECUTION"
 
+=======
+>>>>>>> master
 
 def test_cached_object(ray_start_cluster):
     config = {
@@ -385,6 +385,14 @@ def test_basic_reconstruction_actor_lineage_disabled(
     with pytest.raises(ray.exceptions.ObjectLostError):
         ray.get(obj)
 
+    while True:
+        time.sleep(1)
+        try:
+            ray.get(a.pid.remote())
+            break
+        except ray.exceptions.RayActorError:
+            pass
+
     # Make sure the actor handle is still usable.
     pid = ray.get(a.pid.remote())
 
@@ -703,6 +711,7 @@ def test_reconstruction_stress_spill(ray_start_cluster):
             i += 1
 
 
+<<<<<<< HEAD
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
 def test_nondeterministic_output(ray_start_cluster, reconstruction_enabled):
@@ -1103,6 +1112,8 @@ def test_memory_util(ray_start_cluster):
     wait_for_condition(lambda: stats() == (0, 0, 2))
 
 
+=======
+>>>>>>> master
 if __name__ == "__main__":
     import pytest
 

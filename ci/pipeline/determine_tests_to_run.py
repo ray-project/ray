@@ -7,7 +7,6 @@ import argparse
 import json
 import os
 from pprint import pformat
-import py_dep_analysis as pda
 import re
 import subprocess
 import sys
@@ -102,6 +101,8 @@ if __name__ == "__main__":
 
         # Dry run py_dep_analysis.py to see which tests we would have run.
         try:
+            import py_dep_analysis as pda
+
             graph = pda.build_dep_graph()
             rllib_tests = pda.list_rllib_tests()
             print("Total # of RLlib tests: ", len(rllib_tests), file=sys.stderr)
@@ -191,10 +192,18 @@ if __name__ == "__main__":
             elif changed_file.startswith("docker/"):
                 RAY_CI_DOCKER_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
-            elif changed_file.startswith("doc/") and changed_file.endswith(".py"):
+            elif changed_file.startswith("doc/") and (
+                changed_file.endswith(".py")
+                or changed_file.endswith(".ipynb")
+                or changed_file.endswith("BUILD")
+            ):
                 RAY_CI_DOC_AFFECTED = 1
             elif any(changed_file.startswith(prefix) for prefix in skip_prefix_list):
                 # nothing is run but linting in these cases
+                pass
+            elif changed_file.startswith("release/ray_release/"):
+                # Tests for release/ray_release always run, so it is unnecessary to
+                # tag affected tests.
                 pass
             elif changed_file.endswith("build-docker-images.py"):
                 RAY_CI_DOCKER_AFFECTED = 1

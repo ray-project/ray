@@ -42,6 +42,7 @@ To simplify Operator configuration, Ray provides a :ref:`a Helm chart <Ray-helm>
 Installing the Helm chart will create an Operator Deployment.
 The Operator manages autoscaling Ray clusters; each Ray node runs in its own K8s Pod.
 
+.. _deployment-guide-autoscaler:
 
 Autoscaling with Ray
 --------------------

@@ -260,8 +260,6 @@ message JobConfig {
     NON_DETACHED = 1;
   }
 
-  // The number of java workers per worker process.
-  uint32 num_java_workers_per_process = 1;
   // The jvm options for java workers of the job.
   repeated string jvm_options = 2;
   // A list of directories or files (jar files or dynamic libraries) that specify the
@@ -306,8 +304,6 @@ message WorkerTableData {
   Address worker_address = 2;
   // The UNIX timestamp at which this worker's state was updated.
   int64 timestamp = 3;
-  // Whether it's an intentional disconnect, only applies then `is_alive` is false.
-  WorkerExitType exit_type = 4;
   // Type of this worker.
   WorkerType worker_type = 5;
   // This is for AddWorker.
@@ -315,6 +311,12 @@ message WorkerTableData {
   // The exception thrown in creation task. This field is set if this worker died because
   // of exception thrown in actor's creation task. Only applies when is_alive=false.
   RayException creation_task_exception = 18;
+  // Whether it's an intentional disconnect, only applies then `is_alive` is false.
+  optional WorkerExitType exit_type = 19;
+  // The detailed message about worker exit.
+  optional string exit_detail = 20;
+  // pid of the worker process.
+  uint32 pid = 21;
 }
 
 // Fields to publish when worker fails.

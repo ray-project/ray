@@ -38,5 +38,4 @@ def decide(result: int) -> str:
 
 
 if __name__ == "__main__":
-    workflow.init()
     print(workflow.create(decide.bind(get_size.bind())).run())

@@ -13,7 +13,6 @@ import logging
 from typing import List, Optional, Type, Union
 
 from ray.util.debug import log_once
-from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
 from ray.rllib.agents.trainer import Trainer
 from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.execution.rollout_ops import (
@@ -44,15 +43,17 @@ class PPOConfig(TrainerConfig):
     """Defines a PPOTrainer configuration class from which a PPOTrainer can be built.
 
     Example:
-        >>> config = PPOConfig().training(gamma=0.9, lr=0.01)\
-        ...     .resources(num_gpus=0)\
-        ...     .rollouts(num_rollout_workers=4)
+        >>> from ray.rllib.agents.ppo import PPOConfig
+        >>> config = PPOConfig().training(gamma=0.9, lr=0.01, kl_coeff=0.3)\
+        ...             .resources(num_gpus=0)\
+        ...             .rollouts(num_workers=4)
         >>> print(config.to_dict())
         >>> # Build a Trainer object from the config and run 1 training iteration.
         >>> trainer = config.build(env="CartPole-v1")
         >>> trainer.train()
 
     Example:
+        >>> from ray.rllib.agents.ppo import PPOConfig
         >>> from ray import tune
         >>> config = PPOConfig()
         >>> # Print out some default values.
@@ -70,9 +71,9 @@ class PPOConfig(TrainerConfig):
         ... )
     """
 
-    def __init__(self):
+    def __init__(self, trainer_class=None):
         """Initializes a PPOConfig instance."""
-        super().__init__(trainer_class=PPOTrainer)
+        super().__init__(trainer_class=trainer_class or PPOTrainer)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -367,8 +368,14 @@ class PPOTrainer(Trainer):
             from ray.rllib.agents.ppo.ppo_torch_policy import PPOTorchPolicy
 
             return PPOTorchPolicy
+        elif config["framework"] == "tf":
+            from ray.rllib.agents.ppo.ppo_tf_policy import PPOStaticGraphTFPolicy
+
+            return PPOStaticGraphTFPolicy
         else:
-            return PPOTFPolicy
+            from ray.rllib.agents.ppo.ppo_tf_policy import PPOEagerTFPolicy
+
+            return PPOEagerTFPolicy
 
     @ExperimentalAPI
     def training_iteration(self) -> ResultDict:

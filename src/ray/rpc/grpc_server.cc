@@ -99,7 +99,7 @@ void GrpcServer::Run() {
       << "it indicates the server fails to start because the port is already used by "
       << "other processes (such as --node-manager-port, --object-manager-port, "
       << "--gcs-server-port, and ports between --min-worker-port, --max-worker-port). "
-      << "Try running lsof -i :" << specified_port
+      << "Try running sudo lsof -i :" << specified_port
       << " to check if there are other processes listening to the port.";
   RAY_CHECK(port_ > 0);
   RAY_LOG(INFO) << name_ << " server started, listening on port " << port_ << ".";
@@ -125,6 +125,10 @@ void GrpcServer::Run() {
   }
   // Set the server as running.
   is_closed_ = false;
+}
+
+void GrpcServer::RegisterService(grpc::Service &service) {
+  services_.emplace_back(service);
 }
 
 void GrpcServer::RegisterService(GrpcService &service) {

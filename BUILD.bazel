@@ -1459,6 +1459,7 @@ cc_test(
     deps = [
         ":ray_util",
         "@boost//:asio",
+        "@boost//:process",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1977,6 +1978,7 @@ cc_library(
         ":gcs_pub_sub_lib",
         ":gcs_service_rpc",
         ":pubsub_lib",
+        ":ray_common",
         ":redis_store_client",
     ],
 )
@@ -2045,6 +2047,29 @@ cc_test(
     name = "gcs_client_test",
     srcs = [
         "src/ray/gcs/gcs_client/test/gcs_client_test.cc",
+    ],
+    args = [
+        "$(location redis-server)",
+        "$(location redis-cli)",
+    ],
+    copts = COPTS,
+    data = [
+        "//:redis-cli",
+        "//:redis-server",
+    ],
+    tags = ["team:core"],
+    deps = [
+        ":gcs_client_lib",
+        ":gcs_server_lib",
+        ":gcs_test_util_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "gcs_client_reconnection_test",
+    srcs = [
+        "src/ray/gcs/gcs_client/test/gcs_client_reconnection_test.cc",
     ],
     args = [
         "$(location redis-server)",

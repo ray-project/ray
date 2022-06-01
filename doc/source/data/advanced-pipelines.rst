@@ -136,9 +136,17 @@ Readers pulling batches from the pipeline will see the same data blocks repeated
 Pre-repeat vs post-repeat transforms
 ====================================
 
-Transformations made prior to the Dataset prior to the call to ``.repeat()`` are executed once. Transformations made to the DatasetPipeline after the repeat will be executed once for each repetition of the Dataset.
+Transformations prior to the call to ``.repeat()`` will be cached. However, note that the initial read will not be cached unless there is a subsequent transformation or ``.fully_executed()`` call. Transformations made to the DatasetPipeline after the repeat will always be executed once for each repetition of the Dataset.
 
-For example, in the following pipeline, the ``map(func)`` transformation only occurs once. However, the random shuffle is applied to each repetition in the pipeline.
+For example, in the following pipeline, the ``map(func)`` transformation only occurs once. However, the random shuffle is applied to each repetition in the pipeline. However, if we omitted the map transformation, then the pipeline would re-read from the base data on each repetition.
+
+.. note::
+  Global per-epoch shuffling is an expensive operation that will slow down your ML
+  ingest pipeline, prevents you from using a fully-streaming ML ingest pipeline, and
+  can cause large increases in memory utilization and spilling to disk; only use
+  global per-epoch shuffling if your model benefits from it! If your model doesn't
+  benefit from global per-epoch shuffling and/or you run into performance or stability
+  issues, you should try out windowed or local per-epoch shuffling.
 
 **Code**:
 
@@ -167,7 +175,7 @@ For example, in the following pipeline, the ``map(func)`` transformation only oc
 
 .. important::
 
-    Result caching only applies if there are *transformation* stages prior to the pipelining operation. If you ``repeat()`` or ``window()`` a Dataset right after the read call (e.g., ``ray.data.read_parquet(...).repeat()``), then the read will still be re-executed on each repetition. This optimization saves memory, at the cost of repeated reads from the datasource.
+    Result caching only applies if there are *transformation* stages prior to the pipelining operation. If you ``repeat()`` or ``window()`` a Dataset right after the read call (e.g., ``ray.data.read_parquet(...).repeat()``), then the read will still be re-executed on each repetition. This optimization saves memory, at the cost of repeated reads from the datasource. To force result caching in all cases, use ``.fully_executed().repeat()``.
 
 Splitting pipelines for distributed ingest
 ==========================================
