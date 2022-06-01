@@ -53,7 +53,7 @@ if __name__ == "__main__":
     # Expects a json
     # Invocation from workspace root:
     # bazel query 'kind(py_test.*, tests(python/...) intersect
-    # attr(tags, "\bteam:ml\b", python/...) except attr(tags, "\bno_main\b", 
+    # attr(tags, "\bteam:ml\b", python/...) except attr(tags, "\bno_main\b",
     # python/...))' --output xml | xq | python scripts/pytest_checker.py
     data = sys.stdin.read()
     main(data)
