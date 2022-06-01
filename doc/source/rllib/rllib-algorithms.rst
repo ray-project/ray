@@ -250,7 +250,7 @@ Tuned examples: `Atari environments <https://github.com/ray-project/ray/blob/mas
 **Atari results @10M steps**: `more details <https://github.com/ray-project/rl-experiments>`__
 
 =============  ========================  ==============================
- Atari env     RLlib A2C 5-workers       Mnih et al A3C 16-workers
+Atari env      RLlib A2C 5-workers       Mnih et al A3C 16-workers
 =============  ========================  ==============================
 BeamRider      1401                      ~3000
 Breakout       374                       ~150
