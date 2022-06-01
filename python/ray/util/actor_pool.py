@@ -1,3 +1,5 @@
+import copy
+
 import ray
 from ray.util.annotations import PublicAPI
 
@@ -211,7 +213,8 @@ class ActorPool:
             raise TimeoutError(
                 timeout_msg + ". The task {} has been ignored.".format(future)
             )
-        return ray.get(future)
+        retries = a._ray_actor_options.get("max_task_retries", 1)
+        return self._get_retry(future=future, retries=retries)
 
     def get_next_unordered(self, timeout=None, ignore_if_timedout=False):
         """Returns any of the next pending results.
@@ -258,7 +261,18 @@ class ActorPool:
             raise TimeoutError(
                 timeout_msg + ". The task {} has been ignored.".format(future)
             )
-        return ray.get(future)
+        retries = a._ray_actor_options.get("max_task_retries", 1)
+        return self._get_retry(future=future, retries=retries)
+
+    def _get_retry(self, future, retries=0):
+        # 0 to only try once so needs to do +1
+        for _ in range(retries+1):
+            future_ = copy.deepcopy(future)
+            try:
+                return ray.get(future_)
+            except Exception as exc:  # noqa
+                last_exc = exc
+        raise last_exc  # noqa
 
     def _return_actor(self, actor):
         self._idle_actors.append(actor)
