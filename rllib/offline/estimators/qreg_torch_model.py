@@ -141,15 +141,22 @@ class QRegTorchModel:
                     pt_prev = ps[eps_begin + t - 1]
                 ps[eps_begin + t] = pt_prev * prob_ratio[eps_begin + t]
 
+                # O(n^3)
+                # ret = 0
+                # for t_prime in range(t, t + episode.count):
+                #     gamma = self.gamma ** (t_prime - t)
+                #     rho_t_1_t_prime = 1.0
+                #     for k in range(t + 1, min(t_prime + 1, episode.count)):
+                #         rho_t_1_t_prime = rho_t_1_t_prime * prob_ratio[eps_begin + k]
+                #     r = rewards[eps_begin + t_prime]
+                #     ret += gamma * rho_t_1_t_prime * r
+                
+                # O(n^2)
                 ret = 0
-                # TODO (rohan): replace this (O(n^3)) with dynamic programming (O(n))
-                for t_prime in range(t, episode.count):
-                    gamma = self.gamma ** (t_prime - t)
-                    rho_t_1_t_prime = 1.0
-                    for k in range(t + 1, t_prime):
-                        rho_t_1_t_prime = rho_t_1_t_prime * prob_ratio[eps_begin + k]
-                    r = rewards[eps_begin + t_prime]
-                    ret += gamma * rho_t_1_t_prime * r
+                rho = 1
+                for t_ in reversed(range(t, t + episode.count)):
+                    ret = rewards[eps_begin + t_] + self.gamma * rho * ret
+                    rho = prob_ratio[eps_begin + t_]
 
                 returns[eps_begin + t] = ret
 

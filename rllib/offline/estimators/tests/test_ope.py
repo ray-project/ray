@@ -73,7 +73,7 @@ class TestOPE(unittest.TestCase):
                     "fcnet_activation": "relu",
                     "vf_share_layers": True,
                 },
-                "q_model_type": "fqe",
+                "q_model_type": "qreg",
                 "clip_grad_norm": 100,
                 "k": 5,
                 "n_iters": 160,
