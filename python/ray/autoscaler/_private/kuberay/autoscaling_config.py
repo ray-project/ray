@@ -16,12 +16,16 @@ from ray.autoscaler._private.util import validate_config
 
 logger = logging.getLogger(__name__)
 
+IDLE_SECONDS_KEY = "idleTimeoutSeconds"
+UPSCALING_KEY = "upscalingMode"
+UPSCALING_VALUE_AGGRESSIVE = "Aggressive"
 
 # Logical group name for the KubeRay head group.
 # Used as the name of the "head node type" by the autoscaler.
 _HEAD_GROUP_NAME = "head-group"
 
 _GPU_WARNING_LOGGED = False
+
 
 
 class AutoscalingConfigProducer:
@@ -77,11 +81,11 @@ def _derive_autoscaling_config_from_ray_cr(ray_cr: Dict[str, Any]) -> Dict[str, 
 
     # Process autoscaler options.
     autoscaler_options = ray_cr["spec"].get("autoscalerOptions")
-    if "idleTimeoutSeconds" in autoscaler_options:
-        idle_timeout_minutes = autoscaler_options["idleTimeoutSeconds"] / 60.0
+    if IDLE_SECONDS_KEY in autoscaler_options:
+        idle_timeout_minutes = autoscaler_options[IDLE_SECONDS_KEY] / 60.0
     else:
         idle_timeout_minutes = 5.0
-    if autoscaler_options.get("upscalingMode") == "Aggressive":
+    if autoscaler_options.get(UPSCALING_KEY) == UPSCALING_VALUE_AGGRESSIVE:
         upscaling_speed = 1000  # i.e. big
     else:
         upscaling_speed = 1
