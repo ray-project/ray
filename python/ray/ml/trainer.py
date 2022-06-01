@@ -268,7 +268,6 @@ class Trainer(abc.ABC):
         The transformed datasets will be set back in the ``self.datasets`` attribute
         of the Trainer to be used when overriding ``training_loop``.
         """
-
         # Evaluate all datasets.
         self.datasets = {k: d() if callable(d) else d for k, d in self.datasets.items()}
 

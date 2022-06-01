@@ -2,11 +2,7 @@ from typing import TYPE_CHECKING, Dict, Tuple, Type, Any, Optional
 import warnings
 
 from ray.ml.trainer import GenDataset
-from ray.ml.config import (
-    ScalingConfig,
-    RunConfig,
-    ScalingConfigDataClass,
-)
+from ray.ml.config import ScalingConfig, RunConfig, ScalingConfigDataClass
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.utils.checkpointing import save_preprocessor_to_dir
 from ray.tune.utils.trainable import TrainableUtil
@@ -76,7 +72,6 @@ class GBDTTrainer(Trainer):
         "additional_resources_per_worker",
         "use_gpu",
     ]
-
     _dmatrix_cls: type
     _ray_params_cls: type
     _tune_callback_cls: type
