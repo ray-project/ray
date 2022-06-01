@@ -378,6 +378,14 @@ class DataParallelTrainer(Trainer):
         # Shutdown workers.
         backend_executor.shutdown()
 
+    def get_dataset_config(self) -> Dict[str, DatasetConfig]:
+        """Return a copy of this Trainer's final dataset configs.
+
+        Returns:
+            The merged default + user-supplied dataset config.
+        """
+        return self.dataset_config.copy()
+
 
 def _load_checkpoint(
     checkpoint: Checkpoint, trainer_name: str

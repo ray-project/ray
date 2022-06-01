@@ -96,6 +96,9 @@ def test_basic(ray_start_4_cpus):
         dataset_config={"test": DatasetConfig(split=True)},
         datasets={"train": ds, "test": ds},
     )
+    # Test get config.
+    assert test.get_dataset_config()["train"].split
+    assert test.get_dataset_config()["test"].split
     test.fit()
 
 
