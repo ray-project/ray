@@ -1,4 +1,4 @@
-from typing import Optional, Union, List
+from typing import Optional, Union, List, Any
 
 import numpy as np
 import pandas as pd
@@ -9,6 +9,26 @@ from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.train.integrations.torch import load_checkpoint
 from ray.ml.utils.torch_utils import convert_pandas_to_torch_tensor
+
+def convert_numpy_to_arrow(data: np.ndarray):
+
+
+
+def convert_pandas_to_arrow():
+    pass
+
+def convert_arrow_to_torch():
+    pass
+
+def convert_arrow_to_numpy():
+    pass
+
+def convert_arrow_to_pandas():
+    pass
+
+class TypeConverter:
+    def __init__(self, source_type: Any, destination_type: Any):
+
 
 
 class TorchPredictor(Predictor):
@@ -21,7 +41,7 @@ class TorchPredictor(Predictor):
     """
 
     MODEL_INPUT_TYPE = torch.Tensor
-    MODEL_OUTPUT_TYPE = torch.Tensor
+    MODEL_OUTPUT_TYPE = np.ndarray
 
     def __init__(
         self, model: torch.nn.Module, preprocessor: Optional[Preprocessor] = None
@@ -83,9 +103,9 @@ class TorchPredictor(Predictor):
         return features_tensor
 
 
-    @DeveloperAPI
     def _predict(self, data: MODEL_INPUT_TYPE) -> MODEL_OUTPUT_TYPE:
         """Handle actual prediction."""
+        self.model.eval()
         prediction = self.model(data).cpu().detach().numpy()
         return prediction
 
@@ -179,6 +199,13 @@ class TorchPredictor(Predictor):
         # # in the list can still be Numpy arrays).
         # return pd.DataFrame({"predictions": list(prediction)}, columns=["predictions"])
 
-        type_converter = ArrowConverter(source_type=type(data),
+        input_converter = TypeConverter(source_type=type(data),
                                         destination_type=self.MODEL_INPUT_TYPE)
+        model_input_batch = input_converter.convert(data)
+        model_output = self._predict(model_input_batch)
+        output_converter = TypeConverter(source_type = self.MODEL_OUTPUT_TYPE,
+                                         destination_type=type(data))
+        return output_converter.convert(model_output)
+
+
 

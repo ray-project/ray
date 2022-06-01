@@ -1,7 +1,8 @@
 import abc
-from typing import Union, TYPE_CHECKING
+from typing import Union, TYPE_CHECKING, Any
 
 from ray.ml.checkpoint import Checkpoint
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     import numpy as np
@@ -24,10 +25,14 @@ class PredictorNotSerializableException(RuntimeError):
 
     pass
 
-
+@DeveloperAPI
 class Predictor(abc.ABC):
     """Predictors load models from checkpoints to perform inference."""
 
+    MODEL_INPUT_TYPE = object
+    MODEL_OUTPUT_TYPE = object
+
+    @PublicAPI(stability="alpha")
     @classmethod
     def from_checkpoint(cls, checkpoint: Checkpoint, **kwargs) -> "Predictor":
         """Create a specific predictor from a checkpoint.
@@ -41,18 +46,34 @@ class Predictor(abc.ABC):
         """
         raise NotImplementedError
 
+    # @DeveloperAPI
+    # @abc.abstractmethod
+    # def _predict(self, data: MODEL_INPUT_TYPE, **kwargs) -> MODEL_OUTPUT_TYPE:
+    #     raise NotImplementedError
+
+
+    @PublicAPI(stability="alpha")
     def predict(self, data: DataBatchType, **kwargs) -> DataBatchType:
         """Perform inference on a batch of data.
+
+        When implementing a custom Predictor, you should set the `MODEL_INPUT_TYPE`
+        and `MODEL_OUTPUT_TYPE` class attributes for your predictor class and override
+        `_predict` method. This `predict` method should not be overridden.
 
         Args:
             data: A batch of input data. Either a pandas Dataframe or numpy
                 array.
-            kwargs: Arguments specific to predictor implementations.
+            kwargs: Arguments specific to predictor implementations. These are passed
+            directly
 
         Returns:
             DataBatchType: Prediction result.
         """
-        raise NotImplementedError
+        # if hasattr(self, "preprocessor") and self.preprocessor:
+        #     data = self.preprocessor.transform_batch(data)
+        pass
+
+
 
     def __reduce__(self):
         raise PredictorNotSerializableException(
