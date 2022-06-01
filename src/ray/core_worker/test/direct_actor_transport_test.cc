@@ -713,9 +713,7 @@ class MockDependencyWaiter : public DependencyWaiter {
 class MockWorkerContext : public WorkerContext {
  public:
   MockWorkerContext(WorkerType worker_type, const JobID &job_id)
-      : WorkerContext(worker_type, WorkerID::FromRandom(), job_id) {
-    current_actor_is_direct_call_ = true;
-  }
+      : WorkerContext(worker_type, WorkerID::FromRandom(), job_id) {}
 };
 
 class MockCoreWorkerDirectTaskReceiver : public CoreWorkerDirectTaskReceiver {
