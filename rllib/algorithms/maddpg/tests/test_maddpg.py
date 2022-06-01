@@ -21,28 +21,32 @@ class TestMADDPG(unittest.TestCase):
 
     def test_maddpg_compilation(self):
         """Test whether an MADDPGTrainer can be built with all frameworks."""
-        config = maddpg.DEFAULT_CONFIG.copy()
-        config["env"] = TwoStepGame
-        config["env_config"] = {
-            "actions_are_logits": True,
-        }
-        config["multiagent"] = {
-            "policies": {
-                "pol1": PolicySpec(
-                    config={"agent_id": 0},
-                ),
-                "pol2": PolicySpec(
-                    config={"agent_id": 1},
-                ),
-            },
-            "policy_mapping_fn": (lambda aid, **kwargs: "pol2" if aid else "pol1"),
-        }
+        config = (
+            maddpg.MADDPGConfig()
+            .environment(
+                env=TwoStepGame,
+                env_config={
+                    "actions_are_logits": True,
+                },
+            )
+            .multi_agent(
+                policies={
+                    "pol1": PolicySpec(
+                        config={"agent_id": 0},
+                    ),
+                    "pol2": PolicySpec(
+                        config={"agent_id": 1},
+                    ),
+                },
+                policy_mapping_fn=lambda aid, **kwargs: "pol2" if aid else "pol1",
+            )
+        )
 
         num_iterations = 1
 
         # Only working for tf right now.
         for _ in framework_iterator(config, frameworks="tf"):
-            trainer = maddpg.MADDPGTrainer(config)
+            trainer = config.build()
             for i in range(num_iterations):
                 results = trainer.train()
                 check_train_results(results)

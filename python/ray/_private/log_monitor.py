@@ -9,6 +9,7 @@ import re
 import shutil
 import time
 import traceback
+from typing import Set, List
 
 from typing import Callable
 
@@ -103,14 +104,14 @@ class LogMonitor:
        lines in the file. If so, we will publish them to Ray pubsub.
 
     Attributes:
-        host (str): The hostname of this machine, for grouping log messages.
-        logs_dir (str): The directory that the log files are in.
-        log_filenames (set): This is the set of filenames of all files in
+        ip: The hostname of this machine, for grouping log messages.
+        logs_dir: The directory that the log files are in.
+        log_filenames: This is the set of filenames of all files in
             open_file_infos and closed_file_infos.
         open_file_infos (list[LogFileInfo]): Info for all of the open files.
         closed_file_infos (list[LogFileInfo]): Info for all of the closed
             files.
-        can_open_more_files (bool): True if we can still open more files and
+        can_open_more_files: True if we can still open more files and
             false otherwise.
         max_files_open: The maximum number of files that can be open.
     """
@@ -123,15 +124,15 @@ class LogMonitor:
         max_files_open: int = ray_constants.LOG_MONITOR_MAX_OPEN_FILES,
     ):
         """Initialize the log monitor object."""
-        self.ip = services.get_node_ip_address()
-        self.logs_dir = logs_dir
+        self.ip: str = services.get_node_ip_address()
+        self.logs_dir: str = logs_dir
         self.publisher = gcs_publisher
-        self.log_filenames = set()
-        self.open_file_infos = []
-        self.closed_file_infos = []
-        self.can_open_more_files = True
-        self.max_files_open = max_files_open
-        self.is_proc_alive_fn = is_proc_alive_fn
+        self.log_filenames: Set[str] = set()
+        self.open_file_infos: List[LogFileInfo] = []
+        self.closed_file_infos: List[LogFileInfo] = []
+        self.can_open_more_files: bool = True
+        self.max_files_open: int = max_files_open
+        self.is_proc_alive_fn: Callable[[int], bool] = is_proc_alive_fn
 
     def _close_all_files(self):
         """Close all open files (so that we can open more)."""
