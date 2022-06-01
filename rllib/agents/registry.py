@@ -114,9 +114,9 @@ def _import_es():
 
 
 def _import_impala():
-    from ray.rllib.agents import impala
+    import ray.rllib.algorithms.impala as impala
 
-    return impala.ImpalaTrainer, impala.DEFAULT_CONFIG
+    return impala.Impala, impala.ImpalaConfig().to_dict()
 
 
 def _import_maddpg():

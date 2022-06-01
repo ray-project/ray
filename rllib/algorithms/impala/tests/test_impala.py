@@ -25,7 +25,7 @@ class TestIMPALA(unittest.TestCase):
         ray.shutdown()
 
     def test_impala_compilation(self):
-        """Test whether an ImpalaTrainer can be built with both frameworks."""
+        """Test whether Impala can be built with both frameworks."""
         config = (
             impala.ImpalaConfig()
             .resources(num_gpus=0)

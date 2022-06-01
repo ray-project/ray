@@ -34,7 +34,7 @@ def do_test_explorations(
             local_config = core_config.copy()
             if exploration == "Random":
                 # TODO(sven): Random doesn't work for IMPALA yet.
-                if run is impala.ImpalaTrainer:
+                if run is impala.Impala:
                     continue
                 local_config["exploration_config"] = {"type": "Random"}
             print("exploration={}".format(exploration or "default"))
@@ -139,7 +139,7 @@ class TestExplorations(unittest.TestCase):
 
     def test_impala(self):
         do_test_explorations(
-            impala.ImpalaTrainer,
+            impala.Impala,
             "CartPole-v0",
             dict(impala.DEFAULT_CONFIG.copy(), num_gpus=0),
             np.array([0.0, 0.1, 0.0, 0.0]),

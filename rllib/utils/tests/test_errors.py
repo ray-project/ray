@@ -32,7 +32,7 @@ class TestErrors(unittest.TestCase):
                 RuntimeError,
                 # (?s): "dot matches all" (also newlines).
                 "(?s)Found 0 GPUs on your machine.+To change the config",
-                lambda: impala.ImpalaTrainer(config=config, env=env),
+                lambda: impala.Impala(config=config, env=env),
             )
 
     def test_bad_envs(self):

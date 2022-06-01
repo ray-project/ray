@@ -123,7 +123,7 @@ def get_appo_tf_policy(base: type) -> type:
         base: Base class for this policy. DynamicTFPolicyV2 or EagerTFPolicyV2.
 
     Returns:
-        A TF Policy to be used with ImpalaTrainer.
+        A TF Policy to be used with Impala.
     """
 
     class APPOTFPolicy(
