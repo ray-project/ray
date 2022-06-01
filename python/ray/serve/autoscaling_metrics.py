@@ -68,7 +68,7 @@ def start_metrics_pusher(
                 except Exception as e:
                     logger.warning(
                         "Autoscaling metrics pusher thread "
-                        "is failing to send metrics to the controller, "
+                        "is failing to send metrics to the controller "
                         f": {e}"
                     )
 
