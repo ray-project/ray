@@ -8,7 +8,7 @@ import gym
 from typing import Dict, List, Type, Union
 
 import ray
-from ray.rllib.agents.impala import vtrace_tf as vtrace
+from ray.rllib.algorithms.impala import vtrace_tf as vtrace
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import Categorical, TFActionDistribution
 from ray.rllib.policy.dynamic_tf_policy_v2 import DynamicTFPolicyV2
@@ -23,6 +23,7 @@ from ray.rllib.utils.typing import (
     LocalOptimizer,
     ModelGradients,
     TensorType,
+    TFPolicyV2Type,
 )
 
 tf1, tf, tfv = try_import_tf()
@@ -218,7 +219,7 @@ class VTraceOptimizer:
         pass
 
     # TODO: maybe standardize this function, so the choice of optimizers are more
-    # predictable for common agents.
+    #  predictable for common algorithms.
     def optimizer(
         self,
     ) -> Union["tf.keras.optimizers.Optimizer", List["tf.keras.optimizers.Optimizer"]]:
@@ -253,19 +254,19 @@ class VTraceOptimizer:
 
 # We need this builder function because we want to share the same
 # custom logics between TF1 dynamic and TF2 eager policies.
-def get_vtrace_tf_policy(base: type) -> type:
-    """Construct an VTraceTFPolicy inheriting either dynamic or eager base policies.
+def get_impala_tf_policy(base: TFPolicyV2Type) -> TFPolicyV2Type:
+    """Construct an ImpalaTFPolicy inheriting either dynamic or eager base policies.
 
     Args:
         base: Base class for this policy. DynamicTFPolicyV2 or EagerTFPolicyV2.
 
     Returns:
-        A TF Policy to be used with ImpalaTrainer.
+        A TF Policy to be used with Impala.
     """
     # VTrace mixins are placed in front of more general mixins to make sure
     # their functions like optimizer() overrides all the other implementations
     # (e.g., LearningRateSchedule.optimizer())
-    class VTraceTFPolicy(
+    class ImpalaTFPolicy(
         VTraceClipGradients,
         VTraceOptimizer,
         LearningRateSchedule,
@@ -283,7 +284,7 @@ def get_vtrace_tf_policy(base: type) -> type:
             # First thing first, enable eager execution if necessary.
             base.enable_eager_execution_if_necessary()
 
-            config = dict(ray.rllib.agents.impala.impala.DEFAULT_CONFIG, **config)
+            config = dict(ray.rllib.algorithms.impala.impala.ImpalaConfig().to_dict(), **config)
 
             # Initialize base class.
             base.__init__(
@@ -434,8 +435,8 @@ def get_vtrace_tf_policy(base: type) -> type:
         def get_batch_divisibility_req(self) -> int:
             return self.config["rollout_fragment_length"]
 
-    return VTraceTFPolicy
+    return ImpalaTFPolicy
 
 
-VTraceStaticGraphTFPolicy = get_vtrace_tf_policy(DynamicTFPolicyV2)
-VTraceEagerTFPolicy = get_vtrace_tf_policy(EagerTFPolicyV2)
+ImpalaTF1Policy = get_impala_tf_policy(DynamicTFPolicyV2)
+ImpalaTF2Policy = get_impala_tf_policy(EagerTFPolicyV2)

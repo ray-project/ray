@@ -15,9 +15,9 @@ from ray.rllib.agents.trainer import Trainer
 from ray.rllib.algorithms.dqn.dqn import DEFAULT_CONFIG as DQN_CONFIG
 from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.algorithms.dqn.dqn_torch_policy import DQNTorchPolicy
-from ray.rllib.agents.ppo.ppo import DEFAULT_CONFIG as PPO_CONFIG
-from ray.rllib.agents.ppo.ppo_tf_policy import PPOStaticGraphTFPolicy
-from ray.rllib.agents.ppo.ppo_torch_policy import PPOTorchPolicy
+from ray.rllib.algorithms.ppo.ppo import DEFAULT_CONFIG as PPO_CONFIG
+from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
+from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import train_one_step
@@ -181,7 +181,7 @@ if __name__ == "__main__":
         "ppo_policy": (
             PPOTorchPolicy
             if args.torch or args.mixed_torch_tf
-            else PPOStaticGraphTFPolicy,
+            else PPOTF1Policy,
             None,
             None,
             ppo_config,

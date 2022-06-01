@@ -48,9 +48,9 @@ def _import_apex_ddpg():
 
 
 def _import_appo():
-    from ray.rllib.agents import ppo
+    import ray.rllib.algorithms.appo as appo
 
-    return ppo.APPOTrainer, ppo.appo.DEFAULT_CONFIG
+    return appo.APPO, appo.APPOConfig().to_dict()
 
 
 def _import_ars():
@@ -90,9 +90,9 @@ def _import_ddpg():
 
 
 def _import_ddppo():
-    from ray.rllib.agents import ppo
+    import ray.rllib.algorithms.ddppo as ddppo
 
-    return ppo.DDPPOTrainer, ppo.DEFAULT_CONFIG
+    return ddppo.DDPPO, ddppo.DDPPOConfig().to_dict()
 
 
 def _import_dqn():
@@ -150,9 +150,9 @@ def _import_pg():
 
 
 def _import_ppo():
-    from ray.rllib.agents import ppo
+    import ray.rllib.algorithms.ppo as ppo
 
-    return ppo.PPOTrainer, ppo.DEFAULT_CONFIG
+    return ppo.PPO, ppo.PPOConfig().to_dict()
 
 
 def _import_qmix():

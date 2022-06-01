@@ -8,9 +8,9 @@ import ray.rllib.algorithms.a3c as a3c
 import ray.rllib.algorithms.ddpg as ddpg
 import ray.rllib.algorithms.ddpg.td3 as td3
 import ray.rllib.algorithms.dqn as dqn
-import ray.rllib.agents.impala as impala
+import ray.rllib.algorithms.impala as impala
 import ray.rllib.algorithms.pg as pg
-import ray.rllib.agents.ppo as ppo
+import ray.rllib.algorithms.ppo as ppo
 import ray.rllib.algorithms.sac as sac
 from ray.rllib.utils import check, framework_iterator
 
@@ -157,7 +157,7 @@ class TestExplorations(unittest.TestCase):
 
     def test_ppo_discr(self):
         do_test_explorations(
-            ppo.PPOTrainer,
+            ppo.PPO,
             "CartPole-v0",
             ppo.DEFAULT_CONFIG,
             np.array([0.0, 0.1, 0.0, 0.0]),
@@ -166,7 +166,7 @@ class TestExplorations(unittest.TestCase):
 
     def test_ppo_cont(self):
         do_test_explorations(
-            ppo.PPOTrainer,
+            ppo.PPO,
             "Pendulum-v1",
             ppo.DEFAULT_CONFIG,
             np.array([0.0, 0.1, 0.0]),

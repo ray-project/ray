@@ -11,8 +11,8 @@ import gym
 from typing import Dict, List, Optional, Type, Union
 
 import ray
-from ray.rllib.agents.impala import vtrace_tf as vtrace
-from ray.rllib.agents.impala.vtrace_tf_policy import (
+from ray.rllib.algorithms.impala import vtrace_tf as vtrace
+from ray.rllib.algorithms.impala.impala_tf_policy import (
     _make_time_major,
     VTraceClipGradients,
     VTraceOptimizer,
@@ -147,7 +147,7 @@ def get_appo_tf_policy(base: type) -> type:
             # First thing first, enable eager execution if necessary.
             base.enable_eager_execution_if_necessary()
 
-            config = dict(ray.rllib.agents.ppo.appo.DEFAULT_CONFIG, **config)
+            config = dict(ray.rllib.algorithms.appo.appo.APPOConfig().to_dict(), **config)
 
             # Although this is a no-op, we call __init__ here to make it clear
             # that base.__init__ will use the make_model() call.
@@ -470,5 +470,5 @@ def get_appo_tf_policy(base: type) -> type:
     return APPOTFPolicy
 
 
-APPOStaticGraphTFPolicy = get_appo_tf_policy(DynamicTFPolicyV2)
-APPOEagerTFPolicy = get_appo_tf_policy(EagerTFPolicyV2)
+APPOTF1Policy = get_appo_tf_policy(DynamicTFPolicyV2)
+APPOTF2Policy = get_appo_tf_policy(EagerTFPolicyV2)

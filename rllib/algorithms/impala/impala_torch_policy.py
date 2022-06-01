@@ -4,7 +4,7 @@ import numpy as np
 from typing import Dict, List, Type, Union
 
 import ray
-import ray.rllib.agents.impala.vtrace_torch as vtrace
+import ray.rllib.algorithms.impala.vtrace_torch as vtrace
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
@@ -188,16 +188,16 @@ class VTraceOptimizer:
 # VTrace mixins are placed in front of more general mixins to make sure
 # their functions like optimizer() overrides all the other implementations
 # (e.g., LearningRateSchedule.optimizer())
-class VTraceTorchPolicy(
+class ImpalaTorchPolicy(
     VTraceOptimizer,
     LearningRateSchedule,
     EntropyCoeffSchedule,
     TorchPolicyV2,
 ):
-    """PyTorch policy class used with ImpalaTrainer."""
+    """PyTorch policy class used with Impala."""
 
     def __init__(self, observation_space, action_space, config):
-        config = dict(ray.rllib.agents.impala.impala.DEFAULT_CONFIG, **config)
+        config = dict(ray.rllib.algorithms.impala.impala.ImpalaConfig().to_dict(), **config)
 
         VTraceOptimizer.__init__(self)
         # Need to initialize learning rate variable before calling

@@ -25,7 +25,7 @@ class TestRE3(unittest.TestCase):
         """
         if rl_algorithm == "PPO":
             config = ppo.DEFAULT_CONFIG.copy()
-            trainer_cls = ppo.PPOTrainer
+            trainer_cls = ppo.PPO
             beta_schedule = "constant"
         elif rl_algorithm == "SAC":
             config = sac.DEFAULT_CONFIG.copy()

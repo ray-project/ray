@@ -1,7 +1,7 @@
 import unittest
 
 import ray
-import ray.rllib.agents.impala as impala
+import ray.rllib.algorithms.impala as impala
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY

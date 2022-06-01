@@ -1,7 +1,7 @@
 import unittest
 
 import ray
-import ray.rllib.agents.impala as impala
+import ray.rllib.algorithms.impala as impala
 import ray.rllib.algorithms.pg as pg
 from ray.rllib.utils.error import EnvError
 from ray.rllib.utils.test_utils import framework_iterator

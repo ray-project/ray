@@ -29,7 +29,7 @@ class TestRayClient(unittest.TestCase):
                 "num_workers": 0,
                 "framework": "tf",
             }
-            resources = ppo.PPOTrainer.default_resource_request(config)
+            resources = ppo.PPO.default_resource_request(config)
             from ray.rllib.examples.custom_train_fn import my_train_fn
 
             tune.run(my_train_fn, resources_per_trial=resources, config=config)
@@ -63,7 +63,7 @@ class TestRayClient(unittest.TestCase):
             tune.run(
                 experiment,
                 config=config,
-                resources_per_trial=ppo.PPOTrainer.default_resource_request(config),
+                resources_per_trial=ppo.PPO.default_resource_request(config),
             )
 
 

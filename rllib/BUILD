@@ -781,13 +781,13 @@ py_test(
     name = "test_impala",
     tags = ["team:ml", "trainers_dir"],
     size = "large",
-    srcs = ["agents/impala/tests/test_impala.py"]
+    srcs = ["algorithms/impala/tests/test_impala.py"]
 )
 py_test(
     name = "test_vtrace",
     tags = ["team:ml", "trainers_dir"],
     size = "small",
-    srcs = ["agents/impala/tests/test_vtrace.py"]
+    srcs = ["algorithms/impala/tests/test_vtrace.py"]
 )
 
 # MARWILTrainer
