@@ -157,8 +157,6 @@ def train_func(config: Dict):
     print(train.world_size(), jax.local_device_count(), jax.device_count(), jax.process_index(), jax.process_count())
 
     worker_batch_size = worker_batch_size // jax.local_device_count() * jax.local_device_count()
-    # print(worker_batch_size)
-    # exit()
 
     # Create datasets
     train_ds = train.get_dataset_shard("train")
