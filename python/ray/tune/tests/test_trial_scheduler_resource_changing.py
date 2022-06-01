@@ -560,7 +560,7 @@ class TestTopJobResourceAllocationAddBundles(TestTopJobResourceAllocation):
         self._allocateAndAssertNewResources(
             trial1,
             scheduler,
-            PlacementGroupFactory([{"CPU": 2, "GPU": 2}] * 4),
+            PlacementGroupFactory([{}] + [{"CPU": 2, "GPU": 2}] * 4),
             metric=1.2,
         )
 
