@@ -47,12 +47,18 @@ class NovelD(Exploration):
     and unexplored states. It compares the prior state novelty with the
     actual state novelty.
 
-    The novelty difference between the prior and actual state is considered
-    as intrinsic reward and added to the environment's extrinsic reward
-    for policy optimization.
+    The novelty difference (hence NovelD) between the prior and actual
+    state is considered as intrinsic reward and added to the environment's
+    extrinsic reward for policy optimization. By this, NovelD focuses on
+    exploring the boundary.
 
-    Novelty is actual a very general approach and any novelty measure could be
-    used. Here the distillation error is used.
+    Novelty is actually a very general approach and any novelty measure
+    could be used. Here the distillation error is used.
+
+    NovelD has been shown to work well in both, deterministic and stochastic
+    environments and also to avoid procrastination. If an environment contains
+    some state stochasticity like in the `noisy-TV` problem NovelD still shows
+    good performance in contrast to curiosity-based exploration.
     """
 
     def __init__(
@@ -87,7 +93,7 @@ class NovelD(Exploration):
                 used to compute the novelty of a state. This is the output
                 size of the distillation networks. A larger embedding size
                 will generalize less and therefore states have to be very
-                similar for the intrinsic reward o shrink to zero. Note
+                similar for the intrinsic reward to shrink to zero. Note
                 that large embedding sizes will necessarily result in slower
                 training times for the agent as the distillation network is
                 trained for one iteration after each single rollout.
@@ -118,6 +124,8 @@ class NovelD(Exploration):
             normalize: Indicates, if intrinsic rewards should be normalized. In
                 experiments with distillation networks a normalization of intrinsic
                 rewards results in more stable exploration (after a burn-in).
+                Rewards are normalized by a logarithmic scaling using the intrinsic
+                rewards moving standard deviation.
             random_timesteps: The number of timesteps to act fully random when the
                 default sub-exploration is used (`subexploration=None`).
             subexploration: The config dict for the underlying Exploration
@@ -375,6 +383,7 @@ class NovelD(Exploration):
         self,
         obs,
     ):
+        """Computes novelty and gradients."""
         with (
             tf.GradientTape() if self.framework != "tf" else NullContextManager()
         ) as tape:
