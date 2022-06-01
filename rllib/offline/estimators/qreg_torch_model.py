@@ -143,7 +143,7 @@ class QRegTorchModel:
 
                 # O(n^3)
                 # ret = 0
-                # for t_prime in range(t, t + episode.count):
+                # for t_prime in range(t, episode.count):
                 #     gamma = self.gamma ** (t_prime - t)
                 #     rho_t_1_t_prime = 1.0
                 #     for k in range(t + 1, min(t_prime + 1, episode.count)):
@@ -154,7 +154,7 @@ class QRegTorchModel:
                 # O(n^2)
                 ret = 0
                 rho = 1
-                for t_ in reversed(range(t, t + episode.count)):
+                for t_ in reversed(range(t, episode.count)):
                     ret = rewards[eps_begin + t_] + self.gamma * rho * ret
                     rho = prob_ratio[eps_begin + t_]
 
