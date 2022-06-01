@@ -20,6 +20,9 @@ class TorchPredictor(Predictor):
             to prediction.
     """
 
+    MODEL_INPUT_TYPE = torch.Tensor
+    MODEL_OUTPUT_TYPE = torch.Tensor
+
     def __init__(
         self, model: torch.nn.Module, preprocessor: Optional[Preprocessor] = None
     ):
@@ -79,14 +82,12 @@ class TorchPredictor(Predictor):
             )
         return features_tensor
 
-    def _predict(self, tensor: torch.Tensor) -> pd.DataFrame:
+
+    @DeveloperAPI
+    def _predict(self, data: MODEL_INPUT_TYPE) -> MODEL_OUTPUT_TYPE:
         """Handle actual prediction."""
-        prediction = self.model(tensor).cpu().detach().numpy()
-        # If model has outputs a Numpy array (for example outputting logits),
-        # these cannot be used as values in a Pandas Dataframe.
-        # We have to convert the outermost dimension to a python list (but the values
-        # in the list can still be Numpy arrays).
-        return pd.DataFrame({"predictions": list(prediction)}, columns=["predictions"])
+        prediction = self.model(data).cpu().detach().numpy()
+        return prediction
 
     def predict(
         self,
@@ -164,11 +165,20 @@ class TorchPredictor(Predictor):
         if self.preprocessor:
             data = self.preprocessor.transform_batch(data)
 
-        if isinstance(data, np.ndarray):
-            # If numpy array, then convert to pandas dataframe.
-            data = pd.DataFrame(data)
+        # if isinstance(data, np.ndarray):
+        #     # If numpy array, then convert to pandas dataframe.
+        #     data = pd.DataFrame(data)
+        #
+        # tensor = self._convert_to_tensor(
+        #     data, feature_columns=feature_columns, dtypes=dtype, unsqueeze=unsqueeze
+        # )
+        # prediction = self._predict(tensor)
+        # # If model has outputs a Numpy array (for example outputting logits),
+        # # these cannot be used as values in a Pandas Dataframe.
+        # # We have to convert the outermost dimension to a python list (but the values
+        # # in the list can still be Numpy arrays).
+        # return pd.DataFrame({"predictions": list(prediction)}, columns=["predictions"])
 
-        tensor = self._convert_to_tensor(
-            data, feature_columns=feature_columns, dtypes=dtype, unsqueeze=unsqueeze
-        )
-        return self._predict(tensor)
+        type_converter = ArrowConverter(source_type=type(data),
+                                        destination_type=self.MODEL_INPUT_TYPE)
+

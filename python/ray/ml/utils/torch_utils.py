@@ -1,5 +1,6 @@
 from typing import Optional, Union, List, Dict
 
+import pyarrow
 import pandas as pd
 import torch
 

@@ -9,6 +9,15 @@ if TYPE_CHECKING:
 
 DataBatchType = Union["pd.DataFrame", "np.ndarray"]
 
+from ray.ml.predictor import DataBatchType
+
+class TypeConverter:
+    def __init__
+    def convert_to_arrow(self, data: ) -> pyarrow.Table:
+        pass
+
+    def convert_from_arrow(self, arrow_table):
+
 
 class PredictorNotSerializableException(RuntimeError):
     """Error raised when trying to serialize a Predictor instance."""
