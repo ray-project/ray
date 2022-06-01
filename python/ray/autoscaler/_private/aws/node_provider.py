@@ -67,7 +67,7 @@ def list_ec2_instances(
 ) -> List[Dict[str, Any]]:
     """Get all instance-types/resources available in the user's AWS region.
     Args:
-        region (str): the region of the AWS provider. e.g., "us-west-2".
+        region: the region of the AWS provider. e.g., "us-west-2".
     Returns:
         final_instance_types: a list of instances. An example of one element in
         the list:

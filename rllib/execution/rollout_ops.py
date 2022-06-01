@@ -129,15 +129,15 @@ def ParallelRollouts(
     the local worker instance instead.
 
     Args:
-        workers (WorkerSet): set of rollout workers to use.
-        mode (str): One of 'async', 'bulk_sync', 'raw'. In 'async' mode,
+        workers: set of rollout workers to use.
+        mode: One of 'async', 'bulk_sync', 'raw'. In 'async' mode,
             batches are returned as soon as they are computed by rollout
             workers with no order guarantees. In 'bulk_sync' mode, we collect
             one batch from each worker and concatenate them together into a
             large batch to return. In 'raw' mode, the ParallelIterator object
             is returned directly and the caller is responsible for implementing
             gather and updating the timesteps counter.
-        num_async (int): In async mode, the max number of async
+        num_async: In async mode, the max number of async
             requests in flight per actor.
 
     Returns:
@@ -200,7 +200,7 @@ def AsyncGradients(workers: WorkerSet) -> LocalIterator[Tuple[ModelGradients, in
     """Operator to compute gradients in parallel from rollout workers.
 
     Args:
-        workers (WorkerSet): set of rollout workers to use.
+        workers: set of rollout workers to use.
 
     Returns:
         A local iterator over policy gradients computed on rollout workers.

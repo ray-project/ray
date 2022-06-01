@@ -377,6 +377,22 @@ def test_node_affinity_scheduling_strategy(ray_start_cluster, connect_to_client)
         ).remote()
         assert head_node_id == ray.get(actor.get_node_id.remote())
 
+        actor = Actor.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(
+                worker_node_id, soft=False
+            ),
+            num_cpus=0,
+        ).remote()
+        assert worker_node_id == ray.get(actor.get_node_id.remote())
+
+        actor = Actor.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(
+                head_node_id, soft=False
+            ),
+            num_cpus=0,
+        ).remote()
+        assert head_node_id == ray.get(actor.get_node_id.remote())
+
         # Wait until the target node becomes available.
         worker_actor = Actor.options(resources={"worker": 1}).remote()
         assert worker_node_id == ray.get(worker_actor.get_node_id.remote())

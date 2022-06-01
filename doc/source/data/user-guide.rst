@@ -26,4 +26,5 @@ you will learn
     advanced-pipelines
     random-access
     custom-data
+    memory-management
     performance-tips
