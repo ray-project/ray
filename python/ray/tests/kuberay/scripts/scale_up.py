@@ -1,32 +1,47 @@
 import ray
-import time
+from ray._private import test_utils
+import io
+import sys
+
+SCALE_MESSAGE = "Adding 1 nodes of type small-group."
 
 
 def main():
-    """Submits CPU request."""
+    """Submits CPU request.
+    Waits for autoscaler scale-up event to get emitted to stdout."""
+    # Redirect stdout to a StringIO object.
+    out_stream = io.StringIO()
+    sys.stdout = out_stream
+
+    # Make the scale request
     ray.autoscaler.sdk.request_resources(num_cpus=2)
 
-    # Hold the driver for a bit to allow the message
-    # "Adding 1 nodes of type small-group" to reach the driver's stdout.
-    time.sleep(15)
+    def scale_event_logged() -> bool:
+        """Return True if the scale up event message is in the out_stream.
+        Otherwise, raise an Exception.
+        """
+        stdout_so_far = out_stream.getvalue()
+        if SCALE_MESSAGE in out_stream.getvalue():
+            return True
+        else:
+            # This error will be logged to stderr once if SCALE_MESSAGE doesn't
+            # appear in STDOUT in time.
+            raise RuntimeError(
+                "Expected autoscaler event not  detected. Driver stdout follows:\n"
+                + stdout_so_far
+            )
 
-    # Unexplained "time.sleep" is not good style, so here are some details:
+    # Wait for the expected autoscaler event message to appear.
+    test_utils.wait_for_condition(
+        condition_predictor=scale_event_logged, timeout=15, retry_interval_ms=1500
+    )
 
-    # This script is executed on the Ray head via kubectl in
-    # tests/kuberay/test_autoscaling_e2e.py.
-    # The test receives the stdout of this script and checks for presence of
-    # the string "Adding 1 nodes of type small-group" in the output.
-    # This validates piping of autoscaling events to driver stdout.
+    # Reset stdout and print driver logs.
+    sys.stdout = sys.__stdout__
+    print("Expected autoscaler event detected. Driver stdout follows:")
+    print(out_stream.getvalue())
 
-    # Since it takes some time for the autoscaler event to appear in stdout, and since
-    # there isn't a convenient way to inspect stdout from within this script, we wait
-    # long enough for the autoscaling event to be piped to stdout.
-
-    # 15 seconds is overkill meant to avoid test flakiness.
-    # It should take at most 5 seconds (the autoscaler update interval)
-    # for the autoscaling event to be emitted to the driver.
-    # (If the autoscaler event isn't emitted in that time frame,
-    # it's a legitimate test failure.)
+    out_stream.close()
 
 
 if __name__ == "__main__":

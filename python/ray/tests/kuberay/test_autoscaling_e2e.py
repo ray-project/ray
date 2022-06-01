@@ -265,8 +265,6 @@ class KubeRayAutoscalingTest(unittest.TestCase):
             container="ray-head",
             namespace="default",
         )
-        # Check that autoscaler events are piped to the driver.
-        assert "Adding 1 nodes of type small-group." in out
         # Check that stdout autoscaler logging is working.
         logs = kubectl_logs(head_pod, namespace="default", container="autoscaler")
         assert "Adding 1 nodes of type small-group." in logs
