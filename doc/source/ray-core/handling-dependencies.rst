@@ -200,6 +200,10 @@ You can also specify files via a remote cloud storage URI; see :ref:`remote-uris
 Using ``conda`` or ``pip`` packages
 """""""""""""""""""""""""""""""""""
 
+.. note:: 
+
+  ``conda`` and ``pip`` environments must have the same Ray and Python version as the cluster. The Ray version will be matched by default if you don't specify ``ray`` as a dependency.
+
 Your Ray application might depend on Python packages (for example, ``pendulum`` or ``requests``) via ``import`` statements.
 
 Ray ordinarily expects all imported packages to be preinstalled on every node of the cluster; in particular, these packages are not automatically shipped from your local machine to the cluster or downloaded from any repository.
@@ -321,6 +325,7 @@ The ``runtime_env`` is a Python dictionary or a python class :class:`ray.runtime
   The syntax of a requirement specifier is defined in full in `PEP 508 <https://www.python.org/dev/peps/pep-0508/>`_.
   This will be installed in the Ray workers at runtime.  Packages in the preinstalled cluster environment will still be available.
   To use a library like Ray Serve or Ray Tune, you will need to include ``"ray[serve]"`` or ``"ray[tune]"`` here.
+  The Ray version must match that of the cluster.
 
   - Example: ``["requests==1.0.0", "aiohttp", "ray[serve]"]``
 
@@ -334,6 +339,7 @@ The ``runtime_env`` is a Python dictionary or a python class :class:`ray.runtime
   `conda “environment.yml” <https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#create-env-file-manually>`_ file,
   or (3) the name of a local conda environment already installed on each node in your cluster (e.g., ``"pytorch_p36"``).
   In the first two cases, the Ray and Python dependencies will be automatically injected into the environment to ensure compatibility, so there is no need to manually include them.
+  The Python and Ray version must match that of the cluster, so you likely should not specify them manually.
   Note that the ``conda`` and ``pip`` keys of ``runtime_env`` cannot both be specified at the same time---to use them together, please use ``conda`` and add your pip dependencies in the ``"pip"`` field in your conda ``environment.yaml``.
 
   - Example: ``{"dependencies": ["pytorch", "torchvision", "pip", {"pip": ["pendulum"]}]}``

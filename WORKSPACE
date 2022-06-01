@@ -17,6 +17,9 @@ grpc_extra_deps()
 
 load("@bazel_skylib//lib:versions.bzl", "versions")
 
+# TODO (shrekris-anyscale): Update the min version to 4.2.2 once Windows uses
+# it in CI.
+
 # When the bazel version is updated, make sure to update it
 # in setup.py as well.
 versions.check(minimum_bazel_version = "4.2.1")

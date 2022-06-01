@@ -158,13 +158,13 @@ def _build_docker_image(
 ):
     """Builds Docker image with the provided info.
 
-    image_name (str): The name of the image to build. Must be one of
+    image_name: The name of the image to build. Must be one of
         IMAGE_NAMES.
-    py_version (str): The Python version to build the image for.
+    py_version: The Python version to build the image for.
         Must be one of PY_MATRIX.keys()
-    image_type (str): The image type to build. Must be one of
+    image_type: The image type to build. Must be one of
         BASE_IMAGES.keys()
-    no_cache (bool): If True, don't use caching when building the image.
+    no_cache: If True, don't use caching when building the image.
     """
 
     if image_name not in IMAGE_NAMES:

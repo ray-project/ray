@@ -28,12 +28,13 @@ from typing import (
 
 import ray
 from ray.actor import ActorHandle
-from ray.exceptions import RayError
+from ray.exceptions import RayActorError, RayError
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.evaluation.episode import Episode
+from ray.rllib.utils import force_list
 from ray.rllib.evaluation.metrics import (
     collect_episodes,
     collect_metrics,
@@ -110,17 +111,13 @@ tf1, tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
 
-# Max number of times to retry a worker failure. We shouldn't try too many
-# times in a row since that would indicate a persistent cluster issue.
-MAX_WORKER_FAILURE_RETRIES = 3
-
 
 @DeveloperAPI
 def with_common_config(extra_config: PartialTrainerConfigDict) -> TrainerConfigDict:
     """Returns the given config dict merged with common agent confs.
 
     Args:
-        extra_config (PartialTrainerConfigDict): A user defined partial config
+        extra_config: A user defined partial config
             which will get merged with a default TrainerConfig() object and returned
             as plain python dict.
 
@@ -229,6 +226,9 @@ class Trainer(Trainable):
         self._env_id, self.env_creator = self._get_env_id_and_creator(
             env or config.get("env"), config
         )
+        env_descr = (
+            self._env_id.__name__ if isinstance(self._env_id, type) else self._env_id
+        )
 
         # Placeholder for a local replay buffer instance.
         self.local_replay_buffer = None
@@ -238,7 +238,7 @@ class Trainer(Trainable):
             # Default logdir prefix containing the agent's name and the
             # env id.
             timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-            logdir_prefix = "{}_{}_{}".format(str(self), self._env_id, timestr)
+            logdir_prefix = "{}_{}_{}".format(str(self), env_descr, timestr)
             if not os.path.exists(DEFAULT_RESULTS_DIR):
                 os.makedirs(DEFAULT_RESULTS_DIR)
             logdir = tempfile.mkdtemp(prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
@@ -346,33 +346,58 @@ class Trainer(Trainable):
         # Instead, sub-classes should override the Trainable's `setup()`
         # method and call super().setup() from within that override at some
         # point.
-        # Old design: Override `Trainer._init` (or use `build_trainer()`, which
-        # will do this for you).
+        # Old design: Override `Trainer._init`.
+        _init = False
         try:
             self._init(self.config, self.env_creator)
-        # New design: Override `Trainable.setup()` (as indented by Trainable)
-        # and do or don't call super().setup() from within your override.
+            _init = True
+        # New design: Override `Trainable.setup()` (as indented by tune.Trainable)
+        # and do or don't call `super().setup()` from within your override.
         # By default, `super().setup()` will create both worker sets:
         # "rollout workers" for collecting samples for training and - if
         # applicable - "evaluation workers" for evaluation runs in between or
         # parallel to training.
         # TODO: Deprecate `_init()` and remove this try/except block.
         except NotImplementedError:
-            # Only if user did not override `_init()`:
+            pass
+
+        # Only if user did not override `_init()`:
+        if _init is False:
             # - Create rollout workers here automatically.
             # - Run the execution plan to create the local iterator to `next()`
             #   in each training iteration.
             # This matches the behavior of using `build_trainer()`, which
             # has been deprecated.
-            self.workers = WorkerSet(
-                env_creator=self.env_creator,
-                validate_env=self.validate_env,
-                policy_class=self.get_default_policy_class(self.config),
-                trainer_config=self.config,
-                num_workers=self.config["num_workers"],
-                local_worker=True,
-                logdir=self.logdir,
-            )
+            try:
+                self.workers = WorkerSet(
+                    env_creator=self.env_creator,
+                    validate_env=self.validate_env,
+                    policy_class=self.get_default_policy_class(self.config),
+                    trainer_config=self.config,
+                    num_workers=self.config["num_workers"],
+                    local_worker=True,
+                    logdir=self.logdir,
+                )
+            # WorkerSet creation possibly fails, if some (remote) workers cannot
+            # be initialized properly (due to some errors in the RolloutWorker's
+            # constructor).
+            except RayActorError as e:
+                # In case of an actor (remote worker) init failure, the remote worker
+                # may still exist and will be accessible, however, e.g. calling
+                # its `sample.remote()` would result in strange "property not found"
+                # errors.
+                if e.actor_init_failed:
+                    # Raise the original error here that the RolloutWorker raised
+                    # during its construction process. This is to enforce transparency
+                    # for the user (better to understand the real reason behind the
+                    # failure).
+                    # - e.args[0]: The RayTaskError (inside the caught RayActorError).
+                    # - e.args[0].args[2]: The original Exception (e.g. a ValueError due
+                    # to a config mismatch) thrown inside the actor.
+                    raise e.args[0].args[2]
+                # In any other case, raise the RayActorError as-is.
+                else:
+                    raise e
             # By default, collect metrics for all remote workers.
             self._remote_workers_for_metrics = self.workers.remote_workers()
 
@@ -1890,14 +1915,17 @@ class Trainer(Trainable):
                 )
 
         # Offline RL settings.
-        if isinstance(config["input_evaluation"], tuple):
-            config["input_evaluation"] = list(config["input_evaluation"])
-        elif not isinstance(config["input_evaluation"], list):
-            raise ValueError(
-                "`input_evaluation` must be a list of strings, got {}!".format(
-                    config["input_evaluation"]
-                )
+        input_evaluation = config.get("input_evaluation")
+        if input_evaluation is not None and input_evaluation is not DEPRECATED_VALUE:
+            deprecation_warning(
+                old="config.input_evaluation: {}".format(input_evaluation),
+                new="config.off_policy_estimation_methods={}".format(input_evaluation),
+                error=False,
             )
+            config["off_policy_estimation_methods"] = input_evaluation
+        config["off_policy_estimation_methods"] = force_list(
+            config["off_policy_estimation_methods"]
+        )
 
         # Check model config.
         # If no preprocessing, propagate into model's config as well
@@ -2120,7 +2148,7 @@ class Trainer(Trainable):
         Note: Currently, only h5 files are supported.
 
         Args:
-            import_file (str): The file to import the model from.
+            import_file: The file to import the model from.
 
         Returns:
             A dict that maps ExportFormats to successfully exported models.
@@ -2222,9 +2250,9 @@ class Trainer(Trainable):
     def _step_context(trainer):
         class StepCtx:
             def __enter__(self):
-                # First call to stop, `result` is expected to be None ->
-                # Start with self.failures=-1 -> set to 0 the very first call
-                # to `self.stop()`.
+                # Before first call to `step()`, `result` is expected to be None ->
+                # Start with self.failures=-1 -> set to 0 before the very first call
+                # to `self.step()`.
                 self.failures = -1
 
                 self.time_start = time.time()
@@ -2238,6 +2266,9 @@ class Trainer(Trainable):
                 self.init_agent_steps_trained = trainer._counters[
                     NUM_AGENT_STEPS_TRAINED
                 ]
+                self.failure_tolerance = trainer.config[
+                    "num_consecutive_worker_failures_tolerance"
+                ]
                 return self
 
             def __exit__(self, *args):
@@ -2245,13 +2276,20 @@ class Trainer(Trainable):
 
             def should_stop(self, result):
 
-                # First call to stop, `result` is expected to be None ->
+                # Before first call to `step()`, `result` is expected to be None ->
                 # self.failures=0.
                 if result is None:
                     # Fail after n retries.
                     self.failures += 1
-                    if self.failures > MAX_WORKER_FAILURE_RETRIES:
-                        raise RuntimeError("Failed to recover from worker crash.")
+                    if self.failures > self.failure_tolerance:
+                        raise RuntimeError(
+                            "More than `num_consecutive_worker_failures_tolerance="
+                            f"{self.failure_tolerance}` consecutive worker failures! "
+                            "Exiting."
+                        )
+                    # Continue to very first `step()` call or retry `step()` after
+                    # a (tolerable) failure.
+                    return False
 
                 # Stopping criteria: Only when using the `training_iteration`
                 # API, b/c for the `exec_plan` API, the logic to stop is
@@ -2290,11 +2328,12 @@ class Trainer(Trainable):
                         and (not min_train_ts or self.trained >= min_train_ts)
                     ):
                         return True
-                # No errors (we got results) -> Break.
-                elif result is not None:
+                    else:
+                        return False
+                # No errors (we got results != None) -> Return True
+                # (meaning: yes, should stop -> no further step attempts).
+                else:
                     return True
-
-                return False
 
         return StepCtx()
 

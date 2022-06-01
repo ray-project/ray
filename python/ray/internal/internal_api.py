@@ -169,7 +169,7 @@ def store_stats_summary(reply):
     return store_summary
 
 
-def free(object_refs, local_only=False):
+def free(object_refs: list, local_only: bool = False):
     """Free a list of IDs from the in-process and plasma object stores.
 
     This function is a low-level API which should be used in restricted
@@ -189,7 +189,7 @@ def free(object_refs, local_only=False):
 
     Args:
         object_refs (List[ObjectRef]): List of object refs to delete.
-        local_only (bool): Whether only deleting the list of objects in local
+        local_only: Whether only deleting the list of objects in local
             object store or all object stores.
     """
     worker = ray.worker.global_worker
