@@ -19,7 +19,6 @@ import threading
 import time
 import traceback
 import _thread
-import typing
 
 from libc.stdint cimport (
     int32_t,
@@ -700,8 +699,6 @@ cdef execute_task(
                                     exc_info=True)
                     raise e
                 if c_return_ids.size() == 1:
-                    # If there is only one return specified, we should return
-                    # all return values as a single object.
                     outputs = (outputs,)
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
                 # Record actor repr via :actor_name: magic token in the log.
@@ -723,14 +720,11 @@ cdef execute_task(
                 task_exception = True
                 raise TaskCancelledError(
                             core_worker.get_current_task_id())
-
             if (c_return_ids.size() > 0 and
-                    not inspect.isgenerator(outputs) and
                     len(outputs) != int(c_return_ids.size())):
                 raise ValueError(
                     "Task returned {} objects, but num_returns={}.".format(
                         len(outputs), c_return_ids.size()))
-
             # Store the outputs in the object store.
             with core_worker.profile_event(b"task:store_outputs"):
                 core_worker.store_task_outputs(
@@ -2035,16 +2029,11 @@ cdef class CoreWorker:
         if return_ids.size() == 0:
             return
 
-        n_returns = return_ids.size()
+        n_returns = len(outputs)
         returns.resize(n_returns)
         task_output_inlined_bytes = 0
-        for i, output in enumerate(outputs):
-            if i >= n_returns:
-                raise ValueError(
-                    "Task returned more than num_returns={} objects.".format(
-                        n_returns))
-
-            return_id = return_ids[i]
+        for i in range(n_returns):
+            return_id, output = return_ids[i], outputs[i]
             context = worker.get_serialization_context()
             serialized_object = context.serialize(output)
             data_size = serialized_object.total_bytes
@@ -2072,12 +2061,6 @@ cdef class CoreWorker:
                         serialized_object, return_id, data_size, metadata,
                         contained_id, &task_output_inlined_bytes,
                         &returns[0][i])
-
-        i += 1
-        if i < n_returns:
-            raise ValueError(
-                    "Task returned {} objects, but num_returns={}.".format(
-                        i, n_returns))
 
     cdef c_function_descriptors_to_python(
             self,
