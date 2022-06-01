@@ -138,8 +138,6 @@ ds.map_batches(drop_column).show(2)
 # -> {'sepal.width': 3.5, 'petal.length': 1.4, 'petal.width': 0.2, 'variety': 'Setosa'}
 # -> {'sepal.width': 3.0, 'petal.length': 1.4, 'petal.width': 0.2, 'variety': 'Setosa'}
 # __writing_udfs_end__
-
-# More UDF examples: add a column.
 # fmt: on 
 
 # fmt: off
