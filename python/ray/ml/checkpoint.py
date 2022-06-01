@@ -355,16 +355,13 @@ class Checkpoint:
 
         Args:
             path: Target directory to restore data in. If not specified,
-                will create a temporary directory. The name of the temporary
-                directory will be random, unless the checkpoint was created
-                from an object reference, in which case it will be equal
-                to the ID of that object reference.
+                will create a temporary directory.
 
         Returns:
             str: Directory containing checkpoint data.
         """
         user_provided_path = path is not None
-        path = path if has_path else self._get_temporary_checkpoint_dir()
+        path = path if user_provided_path else self._get_temporary_checkpoint_dir()
 
         _make_dir(path, acquire_del_lock=not user_provided_path)
 
@@ -583,7 +580,7 @@ def _get_del_lock_path(path: str, pid: str = None) -> str:
 
 def _make_dir(path: str, acquire_del_lock: bool = True) -> None:
     """Create the temporary checkpoint dir in ``path``."""
-    if drop_del_lock:
+    if acquire_del_lock:
         # Each process drops a deletion lock file it then cleans up.
         # If there are no lock files left, the last process
         # will remove the entire directory.
