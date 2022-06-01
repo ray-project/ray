@@ -27,10 +27,10 @@ class _DataParallelIngestSpec:
         new_datasets = {}
 
         for key, dataset in self.datasets.items():
-            if self._config(key).no_transform:
-                new_datasets[key] = dataset
-            else:
+            if self._config(key).transform:
                 new_datasets[key] = prep.transform(dataset)
+            else:
+                new_datasets[key] = dataset
         return new_datasets
 
     def get_dataset_shards(
