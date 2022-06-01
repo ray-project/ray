@@ -260,7 +260,7 @@ class GumbelSoftmax(TFActionDistribution):
         """Initializes a GumbelSoftmax distribution.
 
         Args:
-            temperature (float): Temperature parameter. For low temperatures,
+            temperature: Temperature parameter. For low temperatures,
                 the expected value approaches a categorical random variable.
                 For high temperatures, the expected value approaches a uniform
                 distribution.
@@ -398,9 +398,9 @@ class SquashedGaussian(TFActionDistribution):
         """Parameterizes the distribution via `inputs`.
 
         Args:
-            low (float): The lowest possible sampling value
+            low: The lowest possible sampling value
                 (excluding this value).
-            high (float): The highest possible sampling value
+            high: The highest possible sampling value
                 (excluding this value).
         """
         assert tfp is not None

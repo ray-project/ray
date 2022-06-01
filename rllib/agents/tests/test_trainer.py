@@ -8,7 +8,7 @@ import time
 import unittest
 
 import ray
-import ray.rllib.agents.a3c as a3c
+import ray.rllib.algorithms.a3c as a3c
 import ray.rllib.algorithms.dqn as dqn
 from ray.rllib.algorithms.marwil import BCConfig, BCTrainer
 import ray.rllib.algorithms.pg as pg

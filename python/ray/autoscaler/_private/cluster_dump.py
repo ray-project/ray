@@ -121,10 +121,10 @@ class Archive:
                         sd.add("/tmp/logs/nested/file.txt")
 
         Args:
-            subdir (str): Subdir to which to add files to. Calling the
+            subdir: Subdir to which to add files to. Calling the
                 ``add(path)`` command will place files into the ``subdir``
                 directory of the archive.
-            root (str): Root path. Files without an explicit ``arcname``
+            root: Root path. Files without an explicit ``arcname``
                 will be named relatively to this path.
 
         Yields:
@@ -158,10 +158,10 @@ def get_local_ray_logs(
     """Copy local log files into an archive.
 
     Args:
-        archive (Archive): Archive object to add log files to.
+        archive: Archive object to add log files to.
         exclude (Sequence[str]): Sequence of regex patterns. Files that match
             any of these patterns will not be included in the archive.
-        session_dir (str): Path to the Ray session files. Defaults to
+        session_dir: Path to the Ray session files. Defaults to
             ``/tmp/ray/session_latest``
 
     Returns:
@@ -194,8 +194,8 @@ def get_local_debug_state(
     """Copy local log files into an archive.
 
     Args:
-        archive (Archive): Archive object to add log files to.
-        session_dir (str): Path to the Ray session files. Defaults to
+        archive: Archive object to add log files to.
+        session_dir: Path to the Ray session files. Defaults to
             ``/tmp/ray/session_latest``
 
     Returns:
@@ -221,7 +221,7 @@ def get_local_pip_packages(archive: Archive):
     """Get currently installed pip packages and write into an archive.
 
     Args:
-        archive (Archive): Archive object to add meta files to.
+        archive: Archive object to add meta files to.
 
     Returns:
         Open archive object.
@@ -252,12 +252,12 @@ def get_local_ray_processes(
 ):
     """Get the status of all the relevant ray processes.
     Args:
-        archive (Archive): Archive object to add process info files to.
-        processes (list): List of processes to get information on. The first
+        archive: Archive object to add process info files to.
+        processes: List of processes to get information on. The first
             element of the tuple is a string to filter by, and the second
             element is a boolean indicating if we should filter by command
             name (True) or command line including parameters (False)
-        verbose (bool): If True, show entire executable command line.
+        verbose: If True, show entire executable command line.
             If False, show just the first term.
     Returns:
         Open archive object.
@@ -318,8 +318,8 @@ def get_all_local_data(archive: Archive, parameters: GetParameters):
         - The currently installed pip packages
 
     Args:
-        archive (Archive): Archive object to add meta files to.
-        parameters (GetParameters): Parameters (settings) for getting data.
+        archive: Archive object to add meta files to.
+        parameters: Parameters (settings) for getting data.
 
     Returns:
         Open archive object.
@@ -374,9 +374,9 @@ def create_and_get_archive_from_remote_node(
     returned.
 
     Args:
-        remote_node (Node): Remote node to gather archive from.
-        script_path (str): Path to this script on the remote node.
-        parameters (GetParameters): Parameters (settings) for getting data.
+        remote_node: Remote node to gather archive from.
+        script_path: Path to this script on the remote node.
+        parameters: Parameters (settings) for getting data.
 
     Returns:
         Path to a temporary file containing the node's collected data.
@@ -434,9 +434,9 @@ def create_and_add_remote_data_to_local_archive(
     """Create and get data from remote node and add to local archive.
 
     Args:
-        archive (Archive): Archive object to add remote data to.
-        remote_node (Node): Remote node to gather archive from.
-        parameters (GetParameters): Parameters (settings) for getting data.
+        archive: Archive object to add remote data to.
+        remote_node: Remote node to gather archive from.
+        parameters: Parameters (settings) for getting data.
 
     Returns:
         Open archive object.
@@ -460,8 +460,8 @@ def create_and_add_local_data_to_local_archive(
     """Create and get data from this node and add to archive.
 
     Args:
-        archive (Archive): Archive object to add remote data to.
-        parameters (GetParameters): Parameters (settings) for getting data.
+        archive: Archive object to add remote data to.
+        parameters: Parameters (settings) for getting data.
 
     Returns:
         Open archive object.
@@ -488,9 +488,9 @@ def create_archive_for_remote_nodes(
     This will parallelize calls to get data from remote nodes.
 
     Args:
-        archive (Archive): Archive object to add remote data to.
+        archive: Archive object to add remote data to.
         remote_nodes (Sequence[Node]): Sequence of remote nodes.
-        parameters (GetParameters): Parameters (settings) for getting data.
+        parameters: Parameters (settings) for getting data.
 
     Returns:
         Open archive object.
@@ -519,9 +519,9 @@ def create_archive_for_local_and_remote_nodes(
     This will parallelize calls to get data from remote nodes.
 
     Args:
-        archive (Archive): Archive object to add data to.
+        archive: Archive object to add data to.
         remote_nodes (Sequence[Node]): Sequence of remote nodes.
-        parameters (GetParameters): Parameters (settings) for getting data.
+        parameters: Parameters (settings) for getting data.
 
     Returns:
         Open archive object.
@@ -555,7 +555,7 @@ def get_info_from_ray_cluster_config(
     container.
 
     Args:
-        cluster_config (str): Path to ray cluster config.
+        cluster_config: Path to ray cluster config.
 
     Returns:
         Tuple of list of host IPs, ssh user name, ssh key file path,
