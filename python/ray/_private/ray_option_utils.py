@@ -6,6 +6,7 @@ from ray.util.scheduling_strategies import (
     PlacementGroupSchedulingStrategy,
     NodeAffinitySchedulingStrategy,
 )
+import ray.ray_constants as ray_constants
 
 
 @dataclass
@@ -104,7 +105,9 @@ _task_only_options = {
     "max_calls": _counting_option("max_calls", False, default_value=0),
     # Normal tasks may be retried on failure this many times.
     # TODO(swang): Allow this to be set globally for an application.
-    "max_retries": _counting_option("max_retries", default_value=3),
+    "max_retries": _counting_option(
+        "max_retries", default_value=ray_constants.DEFAULT_TASK_MAX_RETRIES
+    ),
     # override "_common_options"
     "num_cpus": _resource_option("num_cpus", default_value=1),
     "num_returns": _counting_option("num_returns", False, default_value=1),
