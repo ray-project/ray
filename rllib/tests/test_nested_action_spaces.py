@@ -6,7 +6,7 @@ import tree  # pip install dm_tree
 import unittest
 
 import ray
-from ray.rllib.algorithms.marwil import BCTrainer
+from ray.rllib.algorithms.bc import BC
 from ray.rllib.algorithms.pg import PGTrainer, DEFAULT_CONFIG
 from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.offline.json_reader import JsonReader
@@ -108,7 +108,7 @@ class NestedActionSpacesTest(unittest.TestCase):
                     # BCTrainer, configured accordingly.
                     config["input"] = config["output"]
                     del config["output"]
-                    bc_trainer = BCTrainer(config=config)
+                    bc_trainer = BC(config=config)
                     bc_trainer.train()
                     bc_trainer.stop()
                     config["output"] = tmp_dir

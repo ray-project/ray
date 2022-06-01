@@ -3,7 +3,7 @@ from pathlib import Path
 import unittest
 
 import ray
-import ray.rllib.algorithms.marwil as marwil
+import ray.rllib.algorithms.bc as bc
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import (
     check_compute_single_action,
@@ -35,7 +35,7 @@ class TestBC(unittest.TestCase):
         print("data_file={} exists={}".format(data_file, os.path.isfile(data_file)))
 
         config = (
-            marwil.BCConfig()
+            bc.BCConfig()
             .evaluation(
                 evaluation_interval=3,
                 evaluation_num_workers=1,
@@ -50,7 +50,7 @@ class TestBC(unittest.TestCase):
 
         # Test for all frameworks.
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            trainer = marwil.BCTrainer(config=config, env="CartPole-v0")
+            trainer = config.build(env="CartPole-v0")
             learnt = False
             for i in range(num_iterations):
                 results = trainer.train()

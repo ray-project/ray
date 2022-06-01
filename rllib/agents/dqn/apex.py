@@ -57,11 +57,11 @@ from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.util.ml_utils.dict import merge_dicts
 
 
-class ApexConfig(DQNConfig):
+class ApexDQNConfig(DQNConfig):
     """Defines a configuration class from which an ApexTrainer can be built.
 
     Example:
-        >>> from ray.rllib.agents.dqn.apex import ApexConfig
+        >>> from ray.rllib.algorithms.apex_dqn.apex_dqn import ApexDQNConfig
         >>> config = ApexConfig()
         >>> print(config.replay_buffer_config)
         >>> replay_config = config.replay_buffer_config.update(
@@ -81,7 +81,7 @@ class ApexConfig(DQNConfig):
         >>>     trainer.train()
 
     Example:
-        >>> from ray.rllib.agents.dqn.apex import ApexConfig
+        >>> from ray.rllib.algorithms.apex_dqn.apex_dqn import ApexDQNConfig
         >>> from ray import tune
         >>> config = ApexConfig()
         >>> config.training(num_atoms=tune.grid_search(list(range(1, 11)))
@@ -93,7 +93,7 @@ class ApexConfig(DQNConfig):
         >>> )
 
     Example:
-        >>> from ray.rllib.agents.dqn.apex import ApexConfig
+        >>> from ray.rllib.algorithms.apex_dqn.apex_dqn import ApexDQNConfig
         >>> config = ApexConfig()
         >>> print(config.exploration_config)
         >>> explore_config = config.exploration_config.update(
@@ -108,7 +108,7 @@ class ApexConfig(DQNConfig):
         >>>       .exploration(exploration_config=explore_config)
 
     Example:
-        >>> from ray.rllib.agents.dqn.apex import ApexConfig
+        >>> from ray.rllib.algorithms.apex_dqn.apex_dqn import ApexDQNConfig
         >>> config = ApexConfig()
         >>> print(config.exploration_config)
         >>> explore_config = config.exploration_config.update(
@@ -123,7 +123,7 @@ class ApexConfig(DQNConfig):
 
     def __init__(self, trainer_class=None):
         """Initializes a ApexConfig instance."""
-        super().__init__(trainer_class=trainer_class or ApexTrainer)
+        super().__init__(trainer_class=trainer_class or ApexDQN)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -223,7 +223,7 @@ class ApexConfig(DQNConfig):
         timeout_s_sampler_manager: Optional[float] = None,
         timeout_s_replay_manager: Optional[float] = None,
         **kwargs,
-    ) -> "ApexConfig":
+    ) -> "ApexDQNConfig":
         """Sets the training related configuration.
 
         Args:
@@ -350,7 +350,7 @@ class ApexConfig(DQNConfig):
         return self
 
 
-class ApexTrainer(DQNTrainer):
+class ApexDQN(DQN):
     @override(Trainable)
     def setup(self, config: PartialTrainerConfigDict):
         super().setup(config)
@@ -423,11 +423,11 @@ class ApexTrainer(DQNTrainer):
         self._num_ts_trained_since_last_target_update = 0
 
     @classmethod
-    @override(DQNTrainer)
+    @override(DQN)
     def get_default_config(cls) -> TrainerConfigDict:
-        return ApexConfig().to_dict()
+        return ApexDQNConfig().to_dict()
 
-    @override(DQNTrainer)
+    @override(DQN)
     def validate_config(self, config):
         if config["num_gpus"] > 1:
             raise ValueError("`num_gpus` > 1 not yet supported for APEX-DQN!")
@@ -731,14 +731,14 @@ class ApexTrainer(DQNTrainer):
         )
 
 
-# Deprecated: Use ray.rllib.algorithms.dqn.DQNConfig instead!
+# Deprecated: Use ray.rllib.algorithms.apex_dqn.ApexDQNConfig instead!
 class _deprecated_default_config(dict):
     def __init__(self):
-        super().__init__(ApexConfig().to_dict())
+        super().__init__(ApexDQNConfig().to_dict())
 
     @Deprecated(
         old="ray.rllib.agents.dqn.apex.APEX_DEFAULT_CONFIG",
-        new="ray.rllib.agents.dqn.apex.ApexConfig(...)",
+        new="ray.rllib.algorithms.apex_dqn.apex_dqn.ApexDQNConfig(...)",
         error=False,
     )
     def __getitem__(self, item):

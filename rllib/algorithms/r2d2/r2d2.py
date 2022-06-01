@@ -17,7 +17,7 @@ class R2D2Config(DQNConfig):
     """Defines a configuration class from which a R2D2Trainer can be built.
 
     Example:
-        >>> from ray.rllib.agents.dqn.r2d2 import R2D2Config
+        >>> from ray.rllib.algorithms.r2d2.r2d2 import R2D2Config
         >>> config = R2D2Config()
         >>> print(config.h_function_epsilon)
         >>> replay_config = config.replay_buffer_config.update(
@@ -35,7 +35,7 @@ class R2D2Config(DQNConfig):
         >>>     trainer.train()
 
     Example:
-        >>> from ray.rllib.agents.dqn.r2d2 import R2D2Config
+        >>> from ray.rllib.algorithms.r2d2.r2d2 import R2D2Config
         >>> from ray import tune
         >>> config = R2D2Config()
         >>> config.training(train_batch_size=tune.grid_search([256, 64])
@@ -47,7 +47,7 @@ class R2D2Config(DQNConfig):
         >>> )
 
     Example:
-        >>> from ray.rllib.agents.dqn.r2d2 import R2D2Config
+        >>> from ray.rllib.algorithms.r2d2.r2d2 import R2D2Config
         >>> config = R2D2Config()
         >>> print(config.exploration_config)
         >>> explore_config = config.exploration_config.update(
@@ -61,7 +61,7 @@ class R2D2Config(DQNConfig):
         >>>       .exploration(exploration_config=explore_config)
 
     Example:
-        >>> from ray.rllib.agents.dqn.r2d2 import R2D2Config
+        >>> from ray.rllib.algorithms.r2d2.r2d2 import R2D2Config
         >>> config = R2D2Config()
         >>> print(config.exploration_config)
         >>> explore_config = config.exploration_config.update(
@@ -76,7 +76,7 @@ class R2D2Config(DQNConfig):
 
     def __init__(self, trainer_class=None):
         """Initializes a ApexConfig instance."""
-        super().__init__(trainer_class=trainer_class or R2D2Trainer)
+        super().__init__(trainer_class=trainer_class or R2D2)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -172,7 +172,7 @@ class R2D2Config(DQNConfig):
 
 # Build an R2D2 trainer, which uses the framework specific Policy
 # determined in `get_policy_class()` above.
-class R2D2Trainer(DQNTrainer):
+class R2D2(DQNTrainer):
     """Recurrent Experience Replay in Distrib. Reinforcement Learning (R2D2).
 
     Trainer defining the distributed R2D2 algorithm.
@@ -225,14 +225,14 @@ class R2D2Trainer(DQNTrainer):
             raise ValueError("`batch_mode` must be 'complete_episodes'!")
 
 
-# Deprecated: Use ray.rllib.agents.dqn.r2d2.R2D2Config instead!
+# Deprecated: Use ray.rllib.algorithms.r2d2.r2d2.R2D2Config instead!
 class _deprecated_default_config(dict):
     def __init__(self):
         super().__init__(R2D2Config().to_dict())
 
     @Deprecated(
-        old="ray.rllib.agents.dqn.r2d2.R2D2_DEFAULT_CONFIG",
-        new="ray.rllib.agents.dqn.r2d2.R2D2Config(...)",
+        old="ray.rllib.agents.dqn.r2d2::R2D2_DEFAULT_CONFIG",
+        new="ray.rllib.algorithms.r2d2.r2d2::R2D2Config(...)",
         error=False,
     )
     def __getitem__(self, item):

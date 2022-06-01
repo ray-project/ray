@@ -381,7 +381,7 @@ Let's look at how to implement a different family of policies, by looking at the
 
     SimpleQPolicy = build_tf_policy(
         name="SimpleQPolicy",
-        get_default_config=lambda: ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG,
+        get_default_config=lambda: ray.rllib.algorithms.dqn.dqn.DEFAULT_CONFIG,
         make_model=build_q_models,
         action_sampler_fn=build_action_sampler,
         loss_fn=build_q_losses,

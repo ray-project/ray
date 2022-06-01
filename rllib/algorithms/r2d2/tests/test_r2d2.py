@@ -1,7 +1,7 @@
 import unittest
 
 import ray
-import ray.rllib.agents.dqn as dqn
+import ray.rllib.algorithms.r2d2 as r2d2
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.test_utils import (
@@ -56,7 +56,7 @@ class TestR2D2(unittest.TestCase):
     def test_r2d2_compilation(self):
         """Test whether a R2D2Trainer can be built on all frameworks."""
         config = (
-            dqn.r2d2.R2D2Config()
+            r2d2.R2D2Config()
             .rollouts(num_rollout_workers=0)
             .training(
                 model={

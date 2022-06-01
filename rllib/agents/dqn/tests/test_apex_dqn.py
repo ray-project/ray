@@ -2,7 +2,7 @@ import pytest
 import unittest
 
 import ray
-import ray.rllib.agents.dqn.apex as apex
+import ray.rllib.algorithms.apex_dqn.apex_dqn as apex_dqn
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
 from ray.rllib.utils.test_utils import (
@@ -22,7 +22,7 @@ class TestApexDQN(unittest.TestCase):
 
     def test_apex_zero_workers(self):
         config = (
-            apex.ApexConfig()
+            apex_dqn.ApexDQNConfig()
             .rollouts(num_rollout_workers=0)
             .resources(num_gpus=0)
             .training(
@@ -49,7 +49,7 @@ class TestApexDQN(unittest.TestCase):
     def test_apex_dqn_compilation_and_per_worker_epsilon_values(self):
         """Test whether an APEX-DQNTrainer can be built on all frameworks."""
         config = (
-            apex.ApexConfig()
+            apex_dqn.ApexDQNConfig()
             .rollouts(num_rollout_workers=3)
             .resources(num_gpus=0)
             .training(
@@ -94,7 +94,7 @@ class TestApexDQN(unittest.TestCase):
 
     def test_apex_lr_schedule(self):
         config = (
-            apex.ApexConfig()
+            apex_dqn.ApexDQNConfig()
             .rollouts(
                 num_rollout_workers=1,
                 rollout_fragment_length=5,

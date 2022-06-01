@@ -145,9 +145,9 @@ py_test(
 #    size = "large",
 #    srcs = ["tests/run_regression_tests.py"],
 #    data = [
-#        "tuned_examples/dqn/cartpole-apex.yaml",
+#        "tuned_examples/apex_dqn/cartpole-apex.yaml",
 #    ],
-#    args = ["--yaml-dir=tuned_examples/dqn", "--num-cpus=6"]
+#    args = ["--yaml-dir=tuned_examples/apex_dqn", "--num-cpus=6"]
 # )
 
 # Once APEX supports multi-GPU.
@@ -157,8 +157,8 @@ py_test(
 #    tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
 #    size = "large",
 #    srcs = ["tests/run_regression_tests.py"],
-#    data = ["tuned_examples/dqn/cartpole-apex-fake-gpus.yaml"],
-#    args = ["--yaml-dir=tuned_examples/dqn"]
+#    data = ["tuned_examples/apex_dqn/cartpole-apex-fake-gpus.yaml"],
+#    args = ["--yaml-dir=tuned_examples/apex_dqn"]
 # )
 
 # APPO
@@ -334,9 +334,9 @@ py_test(
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = [
-        "tuned_examples/dqn/cartpole-simpleq.yaml",
+        "tuned_examples/simple_q/cartpole-simpleq.yaml",
     ],
-    args = ["--yaml-dir=tuned_examples/dqn"]
+    args = ["--yaml-dir=tuned_examples/simple_q"]
 )
 
 py_test(
@@ -345,8 +345,8 @@ py_test(
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/dqn/cartpole-simpleq-fake-gpus.yaml"],
-    args = ["--yaml-dir=tuned_examples/dqn"]
+    data = ["tuned_examples/simple_q/cartpole-simpleq-fake-gpus.yaml"],
+    args = ["--yaml-dir=tuned_examples/simple_q"]
 )
 
 # ES
@@ -535,8 +535,8 @@ py_test(
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/dqn/stateless-cartpole-r2d2.yaml"],
-    args = ["--yaml-dir=tuned_examples/dqn"]
+    data = ["tuned_examples/r2d2/stateless-cartpole-r2d2.yaml"],
+    args = ["--yaml-dir=tuned_examples/r2d2"]
 )
 
 py_test(
@@ -545,8 +545,8 @@ py_test(
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "fake_gpus"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/dqn/stateless-cartpole-r2d2-fake-gpus.yaml"],
-    args = ["--yaml-dir=tuned_examples/dqn"]
+    data = ["tuned_examples/r2d2/stateless-cartpole-r2d2-fake-gpus.yaml"],
+    args = ["--yaml-dir=tuned_examples/r2d2"]
 )
 
 # SAC
@@ -903,7 +903,7 @@ py_test(
     name = "test_simple_q",
     tags = ["team:ml", "algorithms_dir"],
     size = "medium",
-    srcs = ["algorithms/dqn/tests/test_simple_q.py"]
+    srcs = ["algorithms/simple_q/tests/test_simple_q.py"]
 )
 
 # SlateQ
