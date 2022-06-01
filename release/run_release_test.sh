@@ -62,8 +62,6 @@ if [ -z "${NO_INSTALL}" ]; then
   fi
 fi
 
-exit 1
-
 if [ -z "${NO_CLONE}" ]; then
   TMPDIR=$(mktemp -d -t release-XXXXXXXXXX)
   git clone --depth 1 -b "${RAY_TEST_BRANCH}" "${RAY_TEST_REPO}" "${TMPDIR}"
