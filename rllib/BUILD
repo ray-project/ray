@@ -863,7 +863,7 @@ py_test(
     name = "test_ppo",
     tags = ["team:ml", "algorithms_dir"],
     size = "large",
-    srcs = ["agents/ppo/tests/test_ppo.py"]
+    srcs = ["algorithms/ppo/tests/test_ppo.py"]
 )
 
 # QMix
