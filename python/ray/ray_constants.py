@@ -82,8 +82,7 @@ RAY_RUNTIME_ENV_HOOK = "RAY_RUNTIME_ENV_HOOK"
 # but otherwise returns void. Example: "your.module.ray_start_hook".
 RAY_START_HOOK = "RAY_START_HOOK"
 # Hook that is invoked on `ray job submit`. It will be given all the same args as the
-# job.cli.submit() function gets, passed as kwargs to this function. If defined, this
-# fully replaces the usual execution of submit().
+# job.cli.submit() function gets, passed as kwargs to this function.
 RAY_JOB_SUBMIT_HOOK = "RAY_JOB_SUBMIT_HOOK"
 
 DEFAULT_DASHBOARD_IP = "127.0.0.1"

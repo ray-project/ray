@@ -141,7 +141,7 @@ def submit(
 
     if ray_constants.RAY_JOB_SUBMIT_HOOK in os.environ:
         # Submit all args as **kwargs per the JOB_SUBMIT_HOOK contract.
-        return _load_class(os.environ[ray_constants.RAY_JOB_SUBMIT_HOOK])(
+        _load_class(os.environ[ray_constants.RAY_JOB_SUBMIT_HOOK])(
             address=address,
             job_id=job_id,
             runtime_env=runtime_env,
