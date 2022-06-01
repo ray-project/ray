@@ -63,7 +63,7 @@
 /doc/source/workflows/ @ericl @iycheng @stephanie-wang @suquark @maxpumperla
 
 # RLlib.
-/rllib/ @sven1977 @gjoliver @avnishn @arturniederfahrenhorst @smorad @maxpumperla @kouroshhakha
+/rllib/ @sven1977 @gjoliver @avnishn @arturniederfahrenhorst @smorad @maxpumperla @kouroshhakha @krfricke
 
 # ML Docker Dependencies
 /python/requirements/ml/requirements_dl.txt @amogkam @sven1977 @richardliaw @matthewdeng
