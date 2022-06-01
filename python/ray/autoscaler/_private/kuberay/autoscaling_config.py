@@ -75,6 +75,17 @@ def _derive_autoscaling_config_from_ray_cr(ray_cr: Dict[str, Any]) -> Dict[str, 
     # Legacy autoscaling fields carry no information but are required for compatibility.
     legacy_autoscaling_fields = _generate_legacy_autoscaling_config_fields()
 
+    # Process autoscaler options.
+    autoscaler_options = ray_cr["spec"].get("autoscalerOptions")
+    if "idleTimeoutSeconds" in autoscaler_options:
+        idle_timeout_minutes = autoscaler_options["idleTimeoutSeconds"] / 60.0
+    else:
+        idle_timeout_minutes = 5.0
+    if autoscaler_options.get("upscalingMode") == "Aggressive":
+        upscaling_speed = 1000  # i.e. big
+    else:
+        upscaling_speed = 1
+
     autoscaling_config = {
         "provider": provider_config,
         "cluster_name": ray_cr["metadata"]["name"],
@@ -83,10 +94,10 @@ def _derive_autoscaling_config_from_ray_cr(ray_cr: Dict[str, Any]) -> Dict[str, 
         "max_workers": global_max_workers,
         # Should consider exposing `idleTimeoutMinutes` in the RayCluster CRD,
         # under an `autoscaling` field.
-        "idle_timeout_minutes": 5,
+        "idle_timeout_minutes": idle_timeout_minutes,
         # Should consider exposing `upscalingSpeed` in the RayCluster CRD,
         # under an `autoscaling` field.
-        "upscaling_speed": 1,
+        "upscaling_speed": upscaling_speed,
         **legacy_autoscaling_fields,
     }
 
