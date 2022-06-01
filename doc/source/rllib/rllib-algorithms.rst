@@ -233,7 +233,7 @@ Gradient-based
 Advantage Actor-Critic (A2C, A3C)
 ---------------------------------
 |pytorch| |tensorflow|
-`[paper] <https://arxiv.org/abs/1602.01783>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/a3c/a3c.py>`__
+`[paper] <https://arxiv.org/abs/1602.01783>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/a3c/a3c.py>`__
 RLlib implements both A2C and A3C. These algorithms scale to 16-32+ worker processes depending on the environment.
 
 A2C also supports microbatching (i.e., gradient accumulation), which can be enabled by setting the ``microbatch_size`` config. Microbatching allows for training with a ``train_batch_size`` much larger than GPU memory.
@@ -260,7 +260,7 @@ SpaceInvaders  692                       ~600
 
 **A3C-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/agents/a3c/a3c.py
+.. literalinclude:: ../../../rllib/algorithms/a3c/a3c.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
