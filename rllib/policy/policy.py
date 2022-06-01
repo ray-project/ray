@@ -910,6 +910,8 @@ class Policy(metaclass=ABCMeta):
         # in the dummy batch are accessed by the different function (e.g.
         # loss) such that we can then adjust our view requirements.
         self._no_tracing = True
+        # Save for later so that loss init does not change global timestep
+        global_ts_before_init = self.global_timestep
 
         sample_batch_size = max(self.batch_divisibility_req * 4, 32)
         self._dummy_batch = self._get_dummy_batch_from_view_requirements(
@@ -1048,6 +1050,8 @@ class Policy(metaclass=ABCMeta):
                         # this key to save space in the sample batch.
                         elif self.config["output"] is None:
                             del self.view_requirements[key]
+
+        self.global_timestep = global_ts_before_init
 
     def _get_dummy_batch_from_view_requirements(
         self, batch_size: int = 1
