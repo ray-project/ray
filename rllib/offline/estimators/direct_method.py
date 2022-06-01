@@ -6,12 +6,15 @@ from ray.rllib.offline.estimators.off_policy_estimator import (
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import SampleBatchType
 from ray.rllib.offline.estimators.fqe_torch_model import FQETorchModel
 from ray.rllib.offline.estimators.qreg_torch_model import QRegTorchModel
 from gym.spaces import Discrete
 import numpy as np
+
+torch, nn = try_import_torch()
 
 
 # TODO (rohan): replace with AIR/parallel workers
@@ -52,7 +55,9 @@ def k_fold_cv(
 class DirectMethod(OffPolicyEstimator):
     """The Direct Method estimator.
 
-    q_model_type: Either "fqe" for Fitted Q-Evaluation or "qreg" for Q-Regression
+    q_model_type: Either "fqe" for Fitted Q-Evaluation or "qreg" for Q-Regression, or
+        a custom model that implements `estimate_q(states,actions)`
+        and `estimate_v(states, action_probs)`
     framework: One of "tf|tf2|tfe|torch", currently only "torch" is supported
     k: k-fold cross validation for training model and evaluating OPE
     q_model_kwargs: Optional arguments for the specified Q model
@@ -87,7 +92,10 @@ class DirectMethod(OffPolicyEstimator):
             elif q_model_type == "fqe":
                 model_cls = FQETorchModel
             else:
-                raise ValueError(f"Unknown `q_model_type`= {q_model_type}")
+                assert hasattr(q_model_type, 
+                "estimate_q"), "q_model_type must implement `estimate_q`!"
+                assert hasattr(q_model_type, 
+                "estimate_v"), "q_model_type must implement `estimate_v`!"
 
         self.model = model_cls(
             policy=policy,
