@@ -2,7 +2,6 @@ import logging
 from typing import Any, Dict, List, Optional, Type, Union
 
 from ray.actor import ActorHandle
-from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
 from ray.rllib.agents.trainer import Trainer
 from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -63,7 +62,7 @@ class A3CConfig(TrainerConfig):
 
     def __init__(self, trainer_class=None):
         """Initializes a A3CConfig instance."""
-        super().__init__(trainer_class=trainer_class or A3CTrainer)
+        super().__init__(trainer_class=trainer_class or A3C)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -153,7 +152,7 @@ class A3CConfig(TrainerConfig):
         return self
 
 
-class A3CTrainer(Trainer):
+class A3C(Trainer):
     @classmethod
     @override(Trainer)
     def get_default_config(cls) -> TrainerConfigDict:
@@ -179,11 +178,17 @@ class A3CTrainer(Trainer):
     @override(Trainer)
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
-            from ray.rllib.agents.a3c.a3c_torch_policy import A3CTorchPolicy
+            from ray.rllib.algorithms.a3c.a3c_torch_policy import A3CTorchPolicy
 
             return A3CTorchPolicy
+        elif config["framework"] == "tf":
+            from ray.rllib.algorithms.a3c.a3c_tf_policy import A3CStaticGraphTFPolicy
+
+            return A3CStaticGraphTFPolicy
         else:
-            return A3CTFPolicy
+            from ray.rllib.algorithms.a3c.a3c_tf_policy import A3CEagerTFPolicy
+
+            return A3CEagerTFPolicy
 
     def training_iteration(self) -> ResultDict:
         # Shortcut.
@@ -265,14 +270,14 @@ class A3CTrainer(Trainer):
         self._worker_manager.add_workers(new_workers)
 
 
-# Deprecated: Use ray.rllib.agents.a3c.A3CConfig instead!
+# Deprecated: Use ray.rllib.algorithms.a3c.A3CConfig instead!
 class _deprecated_default_config(dict):
     def __init__(self):
         super().__init__(A3CConfig().to_dict())
 
     @Deprecated(
-        old="ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG",
-        new="ray.rllib.agents.ppo.ppo.PPOConfig(...)",
+        old="ray.rllib.agents.a3c.a3c.DEFAULT_CONFIG",
+        new="ray.rllib.algorithms.a3c.a3c.A3CConfig(...)",
         error=False,
     )
     def __getitem__(self, item):

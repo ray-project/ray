@@ -257,25 +257,6 @@ def test_spread_hint_inherit(ray_start_regular_shared):
     assert optimized_stages[0].ray_remote_args == {"scheduling_strategy": "SPREAD"}
 
 
-def test_execution_preserves_original(ray_start_regular_shared):
-    ds = ray.data.range(10).map(lambda x: x + 1).experimental_lazy()
-    ds1 = ds.map(lambda x: x + 1)
-    assert ds1._plan._snapshot_blocks is not None
-    assert len(ds1._plan._stages_after_snapshot) == 1
-    ds2 = ds1.fully_executed()
-    # Confirm that snapshot blocks and stages on original lazy dataset have not changed.
-    assert ds1._plan._snapshot_blocks is not None
-    assert len(ds1._plan._stages_after_snapshot) == 1
-    # Confirm that UUID on executed dataset is properly set.
-    assert ds2._get_uuid() == ds1._get_uuid()
-    # Check content.
-    assert ds2.take() == list(range(2, 12))
-    # Check original lazy dataset content.
-    assert ds1.take() == list(range(2, 12))
-    # Check source lazy dataset content.
-    assert ds.take() == list(range(1, 11))
-
-
 def _assert_has_stages(stages, stage_names):
     assert len(stages) == len(stage_names)
     for stage, name in zip(stages, stage_names):
