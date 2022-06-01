@@ -384,9 +384,10 @@ class Checkpoint:
                 pass
             if not os.path.exists(path):
                 raise RuntimeError(
-                    f"Checkpoint directory {path} does not exist. "
-                    "This should never happen. If it does, please "
-                    "raise an issue on Ray Github."
+                    f"Checkpoint directory {path} does not exist, "
+                    "even though it should have been created by "
+                    "another process. Please raise an issue on GitHub: "
+                    "https://github.com/ray-project/ray/issues"
                 )
 
         return path
