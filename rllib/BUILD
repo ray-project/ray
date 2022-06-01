@@ -168,8 +168,8 @@ py_test(
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/ppo/cartpole-appo.yaml"],
-    args = ["--yaml-dir=tuned_examples/ppo"]
+    data = ["tuned_examples/appo/cartpole-appo.yaml"],
+    args = ["--yaml-dir=tuned_examples/appo"]
 )
 
 # py_test(
@@ -178,8 +178,8 @@ py_test(
 #    tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
 #    size = "large",
 #    srcs = ["tests/run_regression_tests.py"],
-#    data = ["tuned_examples/ppo/cartpole-appo-vtrace.yaml"],
-#    args = ["--yaml-dir=tuned_examples/ppo"]
+#    data = ["tuned_examples/appo/cartpole-appo-vtrace.yaml"],
+#    args = ["--yaml-dir=tuned_examples/appo"]
 # )
 
 py_test(
@@ -189,9 +189,9 @@ py_test(
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = [
-        "tuned_examples/ppo/cartpole-appo-vtrace-separate-losses.yaml"
+        "tuned_examples/appo/cartpole-appo-vtrace-separate-losses.yaml"
     ],
-    args = ["--yaml-dir=tuned_examples/ppo"]
+    args = ["--yaml-dir=tuned_examples/appo"]
 )
 
 # py_test(
@@ -200,8 +200,8 @@ py_test(
 #    tags = ["team:ml", "learning_tests", "learning_tests_discrete"],
 #    size = "large",
 #    srcs = ["tests/run_regression_tests.py"],
-#    data = ["tuned_examples/ppo/frozenlake-appo-vtrace.yaml"],
-#    args = ["--yaml-dir=tuned_examples/ppo"]
+#    data = ["tuned_examples/appo/frozenlake-appo-vtrace.yaml"],
+#    args = ["--yaml-dir=tuned_examples/appo"]
 # )
 
 py_test(
@@ -210,8 +210,8 @@ py_test(
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/ppo/cartpole-appo-vtrace-fake-gpus.yaml"],
-    args = ["--yaml-dir=tuned_examples/ppo"]
+    data = ["tuned_examples/appo/cartpole-appo-vtrace-fake-gpus.yaml"],
+    args = ["--yaml-dir=tuned_examples/appo"]
 )
 
 # ARS
@@ -268,8 +268,8 @@ py_test(
     tags = ["team:ml", "torch_only", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
-    data = glob(["tuned_examples/ppo/cartpole-ddppo.yaml"]),
-    args = ["--yaml-dir=tuned_examples/ppo"]
+    data = glob(["tuned_examples/ddppo/cartpole-ddppo.yaml"]),
+    args = ["--yaml-dir=tuned_examples/ddppo"]
 )
 
 py_test(
@@ -278,8 +278,8 @@ py_test(
     tags = ["team:ml", "torch_only", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
-    data = glob(["tuned_examples/ppo/pendulum-ddppo.yaml"]),
-    args = ["--yaml-dir=tuned_examples/ppo"]
+    data = glob(["tuned_examples/ddppo/pendulum-ddppo.yaml"]),
+    args = ["--yaml-dir=tuned_examples/ddppo"]
 )
 
 # DQN

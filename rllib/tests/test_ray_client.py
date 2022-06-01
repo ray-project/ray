@@ -5,7 +5,7 @@ import unittest
 import pytest
 import ray
 from ray import tune
-from ray.rllib.agents import ppo
+import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
 from ray.util.client.ray_client_helpers import ray_start_client_server
 

@@ -2,7 +2,7 @@
 import gym
 
 import ray
-from ray.rllib.agents import ppo
+import ray.rllib.algorithms.ppo as ppo
 
 
 class SimpleCorridor(gym.Env):
