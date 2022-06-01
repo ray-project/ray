@@ -58,6 +58,7 @@ class GBDTTrainer(Trainer):
         dmatrix_params: Dict of ``dataset name:dict of kwargs`` passed to respective
             :class:`xgboost_ray.RayDMatrix` initializations.
         scaling_config: Configuration for how to scale data parallel training.
+        dataset_config: Configuration for dataset ingest.
         run_config: Configuration for the execution of the training run.
         preprocessor: A ray.ml.preprocessor.Preprocessor to preprocess the
             provided datasets.
@@ -72,6 +73,18 @@ class GBDTTrainer(Trainer):
         "additional_resources_per_worker",
         "use_gpu",
     ]
+
+    _dataset_config = {
+        "train": DatasetConfig(
+            fit=True,
+            split=True,
+            streamable=False,
+            required=True,
+            _noncustomizable_fields_=["streamable"],
+        ),
+        "*": DatasetConfig(),
+    }
+
     _dmatrix_cls: type
     _ray_params_cls: type
     _tune_callback_cls: type
@@ -86,6 +99,7 @@ class GBDTTrainer(Trainer):
         params: Dict[str, Any],
         dmatrix_params: Optional[Dict[str, Dict[str, Any]]] = None,
         scaling_config: Optional[ScalingConfig] = None,
+        dataset_config: Optional[Dict[str, DatasetConfig]] = None,
         run_config: Optional[RunConfig] = None,
         preprocessor: Optional[Preprocessor] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
@@ -97,6 +111,7 @@ class GBDTTrainer(Trainer):
         self.train_kwargs = train_kwargs
         super().__init__(
             scaling_config=scaling_config,
+            dataset_config=dataset_config,
             run_config=run_config,
             datasets=datasets,
             preprocessor=preprocessor,

@@ -127,6 +127,8 @@ class Trainer(abc.ABC):
 
     Args:
         scaling_config: Configuration for how to scale training.
+        dataset_config: Configuration for dataset ingest. This is merged with the
+            default dataset config for the given trainer (`cls._dataset_config`).
         run_config: Configuration for the execution of the training run.
         datasets: Any Ray Datasets to use for training. Use the key "train"
             to denote which dataset is the training
@@ -142,10 +144,16 @@ class Trainer(abc.ABC):
 
     _scaling_config_allowed_keys: List[str] = ["trainer_resources"]
 
+    _dataset_config = {
+        "train": DatasetConfig(fit=True, split=True, required=True),
+        "*": DatasetConfig(),
+    }
+
     def __init__(
         self,
         *,
         scaling_config: Optional[ScalingConfig] = None,
+        dataset_config: Optional[Dict[str, DatasetConfig]] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
         preprocessor: Optional[Preprocessor] = None,
@@ -154,6 +162,9 @@ class Trainer(abc.ABC):
     ):
 
         self.scaling_config = scaling_config if scaling_config is not None else {}
+        self.dataset_config = _merge_dataset_config(
+            self._dataset_config, dataset_config
+        )
         self.run_config = run_config if run_config is not None else RunConfig()
         self.datasets = datasets if datasets is not None else {}
         self.preprocessor = preprocessor

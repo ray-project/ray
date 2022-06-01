@@ -54,6 +54,7 @@ class XGBoostTrainer(GBDTTrainer):
             to ``xgboost.DMatrix`` objects created on each worker. For example, this can
             be used to add sample weights with the ``weights`` parameter.
         scaling_config: Configuration for how to scale data parallel training.
+        dataset_config: Configuration for dataset ingest.
         run_config: Configuration for the execution of the training run.
         preprocessor: A ray.ml.preprocessor.Preprocessor to preprocess the
             provided datasets.

@@ -40,6 +40,7 @@ class RLTrainer(Trainer):
         algorithm: Algorithm to train on. Can be a string reference,
             (e.g. ``"PPO"``) or a RLlib trainer class.
         scaling_config: Configuration for how to scale training.
+        dataset_config: Configuration for dataset ingest.
         run_config: Configuration for the execution of the training run.
         datasets: Any Ray Datasets to use for training. Use the key "train"
             to denote which dataset is the training
@@ -116,6 +117,7 @@ class RLTrainer(Trainer):
         algorithm: Union[str, Type[RLlibTrainer]],
         config: Optional[Dict[str, Any]] = None,
         scaling_config: Optional[ScalingConfig] = None,
+        dataset_config: Optional[Dict[str, DatasetConfig]] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
         preprocessor: Optional[Preprocessor] = None,
@@ -126,6 +128,7 @@ class RLTrainer(Trainer):
 
         super(RLTrainer, self).__init__(
             scaling_config=scaling_config,
+            dataset_config=dataset_config,
             run_config=run_config,
             datasets=datasets,
             preprocessor=preprocessor,

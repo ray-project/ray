@@ -149,12 +149,23 @@ class SklearnTrainer(Trainer):
         scaling_config: Configuration for how to scale training.
             Only the ``trainer_resources`` key can be provided,
             as the training is not distributed.
+        dataset_config: Configuration for dataset ingest.
         run_config: Configuration for the execution of the training run.
         preprocessor: A ray.ml.preprocessor.Preprocessor to preprocess the
             provided datasets.
         **fit_params: Additional kwargs passed to ``estimator.fit()``
             method.
     """
+
+    _dataset_config = {
+        "train": DatasetConfig(
+            fit=True,
+            streamable=False,
+            required=True,
+            _noncustomizable_fields=["streamable"],
+        ),
+        "evaluation": DatasetConfig(),
+    }
 
     def __init__(
         self,
@@ -169,6 +180,7 @@ class SklearnTrainer(Trainer):
         parallelize_cv: Optional[bool] = None,
         set_estimator_cpus: bool = True,
         scaling_config: Optional[ScalingConfig] = None,
+        dataset_config: Optional[Dict[str, DatasetConfig]] = None,
         run_config: Optional[RunConfig] = None,
         preprocessor: Optional[Preprocessor] = None,
         **fit_params,
@@ -190,6 +202,7 @@ class SklearnTrainer(Trainer):
         self.return_train_score_cv = return_train_score_cv
         super().__init__(
             scaling_config=scaling_config,
+            dataset_config=dataset_config,
             run_config=run_config,
             datasets=datasets,
             preprocessor=preprocessor,

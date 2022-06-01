@@ -116,6 +116,62 @@ class ScalingConfigDataClass:
         return PlacementGroupFactory(bundles, strategy=self.placement_strategy)
 
 
+@dataclass
+@PublicAPI(stability="alpha")
+class DatasetConfig:
+    """Configuration for ingest of a single Dataset.
+
+    This is the schema for the scaling_config dict, and after beta, this will be the
+    actual representation for Scaling config objects.
+
+    """
+
+    fit: Optional[bool] = None
+    split: Optional[bool] = None
+    streamable: Optional[bool] = None
+    no_preprocess: Optional[bool] = False
+    required: Optional[bool] = None
+    stream_window_size: Optional[int] = None
+    global_shuffle: Optional[bool] = None
+    _noncustomizable_fields: List[str] = []
+
+    def fill_defaults(self) -> DatasetConfig:
+        return DatasetConfig(
+            fit=self.fit or False,
+            split=self.split or False,
+            streamable=self.streamable or False,
+            no_preprocessor=self.no_preprocess or False,
+            required=self.required or False,
+            stream_window_size=self.stream_window_size,
+            global_shuffle=self.global_shuffle or False,
+            _noncustomizable_fields=self._noncustomizable_fields.copy(),
+        )
+
+    def check_merge(self, other: DatasetConfig) -> DatasetConfig:
+        for field in self._noncustomizable_fields:
+            if getattr(other, field) is not None:
+                raise ValueError(
+                    f"Cannot override noncustomizable field `{field}` in the "
+                    "dataset config."
+                )
+        return DatasetConfig(
+            fit=self.fit if other.fit is None else other.fit,
+            split=self.split if other.split is None else self.split,
+            streamable=self.streamable if other.streamable is None else self.streamable,
+            no_preprocessor=self.no_preprocessor
+            if other.no_preprocessor is None
+            else other.no_preprocessor,
+            required=self.required if other.required is None else self.required,
+            stream_window_size=self.stream_window_size
+            if other.stream_window_size is None
+            else other.stream_window_size,
+            global_shuffle=self.global_shuffle
+            if other.global_shuffle is None
+            else other.global_shuffle,
+            _noncustomizable_fields=self._noncustomizable_fields.copy(),
+        )
+
+
 @PublicAPI(stability="alpha")
 class FailureConfig:
     """Configuration related to failure handling of each run/trial.

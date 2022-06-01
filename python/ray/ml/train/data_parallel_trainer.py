@@ -210,6 +210,7 @@ class DataParallelTrainer(Trainer):
             Tensorflow, Horovod) on each worker to enable distributed
             communication. If no Backend should be set up, then set this to None.
         scaling_config: Configuration for how to scale data parallel training.
+        dataset_config: Configuration for dataset ingest.
         run_config: Configuration for the execution of the training run.
         datasets: Any Ray Datasets to use for training. Use
             the key "train" to denote which dataset is the training
@@ -240,6 +241,7 @@ class DataParallelTrainer(Trainer):
         train_loop_config: Optional[Dict] = None,
         backend_config: Optional[BackendConfig] = None,
         scaling_config: Optional[ScalingConfig] = None,
+        dataset_config: Optional[Dict[str, DatasetConfig]] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
         preprocessor: Optional[Preprocessor] = None,
@@ -259,6 +261,7 @@ class DataParallelTrainer(Trainer):
 
         super(DataParallelTrainer, self).__init__(
             scaling_config=scaling_config,
+            dataset_config=dataset_config,
             run_config=run_config,
             datasets=datasets,
             preprocessor=preprocessor,
