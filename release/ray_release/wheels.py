@@ -32,7 +32,7 @@ INIT_URL_TPL = (
 DEFAULT_REPO = REPO_URL_TPL.format(owner=DEFAULT_GIT_OWNER, package=DEFAULT_GIT_PACKAGE)
 
 # Modules to be reloaded after installing a new local ray version
-RELOAD_MODULES = ["ray"]
+RELOAD_MODULES = ["ray", "ray.job_submission"]
 
 
 def get_ray_version(repo_url: str, commit: str) -> str:
@@ -394,11 +394,5 @@ def install_matching_ray_locally(ray_wheels: Optional[str]):
         text=True,
     )
     for module_name in RELOAD_MODULES:
-        for loaded_module in list(sys.modules):
-            if loaded_module == module_name or loaded_module.startswith(
-                f"{module_name}."
-            ):
-                try:
-                    importlib.reload(sys.modules[loaded_module])
-                except Exception as e:
-                    logger.warning(f"Could not reload module {loaded_module}: {e}")
+        if module_name in sys.modules:
+            importlib.reload(sys.modules[module_name])
