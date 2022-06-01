@@ -4,11 +4,11 @@ import unittest
 
 import ray
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
+from ray.rllib.env.tests.test_external_env import make_simple_serving
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.tests.test_rollout_worker import MockPolicy
 from ray.rllib.examples.env.multi_agent import BasicMultiAgent
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.tests.test_external_env import make_simple_serving
 
 SimpleMultiServing = make_simple_serving(True, ExternalMultiAgentEnv)
 
