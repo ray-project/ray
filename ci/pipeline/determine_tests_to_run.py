@@ -12,7 +12,7 @@ import subprocess
 import sys
 
 
-def list_changed_files(commit_range):
+def list_changed_files(commit_range: str):
     """Returns a list of names of files changed in the given commit range.
 
     The function works by opening a subprocess and running git. If an error

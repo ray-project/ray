@@ -14,12 +14,12 @@ class CommandRunnerInterface:
 
     def run(
         self,
-        cmd: str = None,
+        cmd: Optional[str] = None,
         timeout: int = 120,
         exit_on_fail: bool = False,
         port_forward: List[Tuple[int, int]] = None,
         with_output: bool = False,
-        environment_variables: Dict[str, object] = None,
+        environment_variables: Optional[Dict[str, object]] = None,
         run_env: str = "auto",
         ssh_options_override_ssh_key: str = "",
         shutdown_after_run: bool = False,

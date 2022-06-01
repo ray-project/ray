@@ -35,7 +35,7 @@ def format_args(worker, args, kwargs):
 
 
 def get_function_descriptor_for_actor_method(
-    language, actor_creation_function_descriptor, method_name, signature: str
+    language: str, actor_creation_function_descriptor, method_name: str, signature: str
 ):
     """Get function descriptor for cross language actor method call.
 
@@ -69,7 +69,7 @@ def get_function_descriptor_for_actor_method(
 
 
 @PublicAPI(stability="beta")
-def java_function(class_name, function_name):
+def java_function(class_name: str, function_name: str):
     """Define a Java function.
 
     Args:
@@ -87,7 +87,7 @@ def java_function(class_name, function_name):
 
 
 @PublicAPI(stability="beta")
-def cpp_function(function_name):
+def cpp_function(function_name: str):
     """Define a Cpp function.
 
     Args:
@@ -104,7 +104,7 @@ def cpp_function(function_name):
 
 
 @PublicAPI(stability="beta")
-def java_actor_class(class_name):
+def java_actor_class(class_name: str):
     """Define a Java actor class.
 
     Args:
@@ -120,7 +120,7 @@ def java_actor_class(class_name):
 
 
 @PublicAPI(stability="beta")
-def cpp_actor_class(create_function_name, class_name):
+def cpp_actor_class(create_function_name: str, class_name: str):
     """Define a Cpp actor class.
 
     Args:

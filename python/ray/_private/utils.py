@@ -77,7 +77,7 @@ def _random_string():
     return id_bytes
 
 
-def format_error_message(exception_message: str, task_exception=False):
+def format_error_message(exception_message: str, task_exception: bool = False):
     """Improve the formatting of an exception thrown by a remote function.
 
     This method takes a traceback from an exception and makes it nicer by
@@ -99,7 +99,9 @@ def format_error_message(exception_message: str, task_exception=False):
     return "\n".join(lines)
 
 
-def push_error_to_driver(worker, error_type: str, message: str, job_id=None):
+def push_error_to_driver(
+    worker, error_type: str, message: str, job_id: Optional[str] = None
+):
     """Push an error message to the driver to be printed in the background.
 
     Args:

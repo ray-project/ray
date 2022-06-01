@@ -1,13 +1,13 @@
 import os
 from traceback import format_exception
 
-from typing import Union
+from typing import Union, Optional
 
 import ray.cloudpickle as pickle
 from ray.core.generated.common_pb2 import RayException, Language, PYTHON
 from ray.core.generated.common_pb2 import Address, ActorDiedErrorContext
 import ray.ray_constants as ray_constants
-from ray._raylet import WorkerID, ActorID
+from ray._raylet import WorkerID, ActorID, TaskID
 import colorama
 import setproctitle
 
@@ -63,7 +63,7 @@ class TaskCancelledError(RayError):
             cancelled.
     """
 
-    def __init__(self, task_id=None):
+    def __init__(self, task_id: Optional[TaskID] = None):
         self.task_id = task_id
 
     def __str__(self):

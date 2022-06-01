@@ -258,12 +258,12 @@ class RuntimeEnv(dict):
             "pip_version": "==22.0.2;python_version=='3.8.11'"})
 
     Args:
-        py_modules (List[URI]): List of URIs (either in the GCS or external
+        py_modules: List of URIs (either in the GCS or external
             storage), each of which is a zip file that will be unpacked and
             inserted into the PYTHONPATH of the workers.
         working_dir: URI (either in the GCS or external storage) of a zip
             file that will be unpacked in the directory of each task/actor.
-        pip (dict | List[str] | str): Either a list of pip packages, a string
+        pip: Either a list of pip packages, a string
             containing the path to a pip requirements.txt file, or a python
             dictionary that has three fields: 1) ``packages`` (required, List[str]): a
             list of pip packages, 2) ``pip_check`` (optional, bool): whether enable
@@ -272,7 +272,7 @@ class RuntimeEnv(dict):
             the package name "pip" in front of the ``pip_version`` to form the final
             requirement string, the syntax of a requirement specifier is defined in
             full in PEP 508.
-        conda (dict | str): Either the conda YAML config, the name of a
+        conda: Either the conda YAML config, the name of a
             local conda env (e.g., "pytorch_p36"), or the path to a conda
             environment.yaml file.
             The Ray dependency will be automatically injected into the conda
@@ -289,7 +289,7 @@ class RuntimeEnv(dict):
             The `run_options` list spec is here:
             https://docs.docker.com/engine/reference/run/
         env_vars: Environment variables to set.
-        config (dict | RuntimeEnvConfig): config for runtime environment. Either
+        config: config for runtime environment. Either
             a dict or a RuntimeEnvConfig. Field: (1) setup_timeout_seconds, the
             timeout of runtime environment creation,  timeout is in seconds.
     """

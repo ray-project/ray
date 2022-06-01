@@ -595,7 +595,7 @@ def start_ray_process(
     command: List[str],
     process_type: str,
     fate_share: bool,
-    env_updates: dict = None,
+    env_updates: Optional[dict] = None,
     cwd: Optional[str] = None,
     use_valgrind: bool = False,
     use_gdb: bool = False,
@@ -934,18 +934,18 @@ def start_reaper(fate_share=None):
 
 
 def start_redis(
-    node_ip_address,
-    redirect_files,
+    node_ip_address: str,
+    redirect_files: bool,
     resource_spec,
-    session_dir_path,
-    port=None,
-    redis_shard_ports=None,
-    num_redis_shards=1,
-    redis_max_clients=None,
-    password=None,
-    fate_share=None,
-    external_addresses=None,
-    port_denylist=None,
+    session_dir_path: str,
+    port: Optional[int] = None,
+    redis_shard_ports: List[int] = None,
+    num_redis_shards: int = 1,
+    redis_max_clients: Optional[int] = None,
+    password: Optional[str] = None,
+    fate_share: Optional[bool] = None,
+    external_addresses: Optional[List[str]] = None,
+    port_denylist: Optional[List[int]] = None,
 ):
     """Start the Redis global state store.
 
@@ -1087,18 +1087,18 @@ def start_redis(
 
 
 def _start_redis_instance(
-    executable,
-    session_dir_path,
-    port,
-    redis_max_clients=None,
-    num_retries=20,
-    stdout_file=None,
-    stderr_file=None,
-    password=None,
-    redis_max_memory=None,
-    fate_share=None,
-    port_denylist=None,
-    listen_to_localhost_only=False,
+    executable: str,
+    session_dir_path: str,
+    port: int,
+    redis_max_clients: Optional[int] = None,
+    num_retries: int = 20,
+    stdout_file: Optional[str] = None,
+    stderr_file: Optional[str] = None,
+    password: Optional[str] = None,
+    redis_max_memory: Optional[int] = None,
+    fate_share: Optional[bool] = None,
+    port_denylist: Optional[List[int]] = None,
+    listen_to_localhost_only: bool = False,
 ):
     """Start a single Redis server.
 

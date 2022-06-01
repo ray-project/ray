@@ -161,7 +161,7 @@ class TensorFlowVariables:
         # Graph mode.
         return self.sess.run(self.variables)
 
-    def set_weights(self, new_weights):
+    def set_weights(self, new_weights: dict):
         """Sets the weights to new_weights.
 
         Note:

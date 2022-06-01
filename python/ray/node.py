@@ -1250,7 +1250,7 @@ class Node:
 
         del self.all_processes[process_type]
 
-    def kill_redis(self, check_alive=True):
+    def kill_redis(self, check_alive: bool = True):
         """Kill the Redis servers.
 
         Args:
@@ -1261,7 +1261,7 @@ class Node:
             ray_constants.PROCESS_TYPE_REDIS_SERVER, check_alive=check_alive
         )
 
-    def kill_raylet(self, check_alive=True):
+    def kill_raylet(self, check_alive: bool = True):
         """Kill the raylet.
 
         Args:
@@ -1272,7 +1272,7 @@ class Node:
             ray_constants.PROCESS_TYPE_RAYLET, check_alive=check_alive
         )
 
-    def kill_log_monitor(self, check_alive=True):
+    def kill_log_monitor(self, check_alive: bool = True):
         """Kill the log monitor.
 
         Args:
@@ -1283,7 +1283,7 @@ class Node:
             ray_constants.PROCESS_TYPE_LOG_MONITOR, check_alive=check_alive
         )
 
-    def kill_reporter(self, check_alive=True):
+    def kill_reporter(self, check_alive: bool = True):
         """Kill the reporter.
 
         Args:
@@ -1294,7 +1294,7 @@ class Node:
             ray_constants.PROCESS_TYPE_REPORTER, check_alive=check_alive
         )
 
-    def kill_dashboard(self, check_alive=True):
+    def kill_dashboard(self, check_alive: bool = True):
         """Kill the dashboard.
 
         Args:
@@ -1305,7 +1305,7 @@ class Node:
             ray_constants.PROCESS_TYPE_DASHBOARD, check_alive=check_alive
         )
 
-    def kill_monitor(self, check_alive=True):
+    def kill_monitor(self, check_alive: bool = True):
         """Kill the monitor.
 
         Args:
@@ -1316,8 +1316,9 @@ class Node:
             ray_constants.PROCESS_TYPE_MONITOR, check_alive=check_alive
         )
 
-    def kill_gcs_server(self, check_alive=True):
+    def kill_gcs_server(self, check_alive: bool = True):
         """Kill the gcs server.
+
         Args:
             check_alive: Raise an exception if the process was already
                 dead.
@@ -1329,7 +1330,7 @@ class Node:
         self._gcs_address = None
         self._gcs_client = None
 
-    def kill_reaper(self, check_alive=True):
+    def kill_reaper(self, check_alive: bool = True):
         """Kill the reaper process.
 
         Args:

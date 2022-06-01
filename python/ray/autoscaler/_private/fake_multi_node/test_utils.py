@@ -121,7 +121,7 @@ class DockerCluster:
         """Wait until Ray cluster resources are available
 
         Args:
-            resources (Dict[str, float]): Minimum resources needed before
+            resources: Minimum resources needed before
                 this function returns.
             timeout: Timeout in seconds.
 
@@ -144,7 +144,7 @@ class DockerCluster:
         This can change autoscaling behavior.
 
         Args:
-            config (Dict[str, Any]): Partial config to update current
+            config: Partial config to update current
                 config with.
 
         """
