@@ -1459,7 +1459,6 @@ cc_test(
     deps = [
         ":ray_util",
         "@boost//:asio",
-        "@boost//:process",
         "@com_google_googletest//:gtest_main",
     ],
 )
