@@ -112,6 +112,7 @@ class FQETorchModel:
         losses = []
         for _ in range(self.n_iters):
             minibatch_losses = []
+            batch.shuffle()
             for idx in range(0, batch.count, self.batch_size):
                 minibatch = batch[idx : idx + self.batch_size]
                 obs = torch.tensor(minibatch[SampleBatch.OBS], device=self.device)
