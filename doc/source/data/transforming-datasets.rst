@@ -83,7 +83,8 @@ A UDF can be a function or a callable class, which has the following input/outpu
 * **Input type**: a ``pandas.DataFrame``, ``pyarrow.Table`` or a Python list. You can
   control the input type fed to your UDF by specifying the ``batch_format`` parameter in
   :meth:`.map_batches() <ray.data.Dataset.map_batches>`. By default, the ``batch_format``
-  is "native", which will feed ``pandas.DataFrame`` to UDF for all these input types.
+  is "native", which will feed ``pandas.DataFrame`` to UDF regardless of the underlying
+  batch type.
 * **Output type**: a ``pandas.DataFrame``, ``pyarrow.Table`` or a Python list. Note
   the output type doesn't need to be the same as input type.
 
