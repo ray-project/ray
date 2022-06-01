@@ -18,6 +18,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
         self.usage_stats_enabled = ray_usage_lib.usage_stats_enabled()
+        self.usage_stats_prompt_enabled = ray_usage_lib.usage_stats_prompt_enabled()
         self.cluster_metadata = ray_usage_lib.get_cluster_metadata(
             ray.experimental.internal_kv.internal_kv_get_gcs_client(),
             num_retries=20,
@@ -44,7 +45,8 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
             return ray.dashboard.optional_utils.rest_response(
                 success=True,
                 message="Fetched usage stats enabled",
-                enabled=self.usage_stats_enabled,
+                usage_stats_enabled=self.usage_stats_enabled,
+                usage_stats_prompt_enabled=self.usage_stats_prompt_enabled,
             )
 
     def _report_usage_sync(self):

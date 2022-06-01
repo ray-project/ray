@@ -27,8 +27,10 @@
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_resource_report_poller.h"
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
+#include "ray/gcs/gcs_server/runtime_env_handler.h"
 #include "ray/gcs/gcs_server/stats_handler_impl.h"
 #include "ray/gcs/gcs_server/store_client_kv.h"
+#include "ray/gcs/store_client/observable_store_client.h"
 #include "ray/pubsub/publisher.h"
 
 namespace ray {
@@ -48,6 +50,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                            RayConfig::instance().gcs_server_rpc_client_thread_num()),
       raylet_client_pool_(
           std::make_shared<rpc::NodeManagerClientPool>(client_call_manager_)),
+      local_node_id_(NodeID::FromRandom()),
       pubsub_periodical_runner_(pubsub_io_service_),
       periodical_runner_(main_service),
       is_started_(false),
@@ -88,7 +91,6 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
           rpc::ChannelType::GCS_ACTOR_CHANNEL,
           rpc::ChannelType::GCS_JOB_CHANNEL,
           rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
-          rpc::ChannelType::GCS_NODE_RESOURCE_CHANNEL,
           rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL,
           rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
           rpc::ChannelType::RAY_LOG_CHANNEL,
@@ -146,7 +148,7 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init Pub/Sub handler
   InitPubSubHandler();
 
-  // Init RuntimeENv manager
+  // Init RuntimeEnv manager
   InitRuntimeEnvManager();
 
   // Init gcs job manager.
@@ -204,8 +206,12 @@ void GcsServer::Stop() {
     // won't handle heartbeat calls anymore, some nodes will be marked as dead during this
     // time, causing many nodes die after GCS's failure.
     gcs_heartbeat_manager_->Stop();
-
-    ray_syncer_->Stop();
+    if (RayConfig::instance().use_ray_syncer()) {
+      ray_syncer_io_context_.stop();
+      ray_syncer_thread_->join();
+    } else {
+      gcs_ray_syncer_->Stop();
+    }
 
     // Shutdown the rpc server
     rpc_server_.Shutdown();
@@ -248,11 +254,13 @@ void GcsServer::InitGcsHeartbeatManager(const GcsInitData &gcs_init_data) {
 }
 
 void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
-  RAY_CHECK(gcs_table_storage_ && cluster_resource_scheduler_);
+  RAY_CHECK(gcs_table_storage_ && cluster_resource_scheduler_ && cluster_task_manager_);
   gcs_resource_manager_ = std::make_shared<GcsResourceManager>(
+      main_service_,
       gcs_table_storage_,
       cluster_resource_scheduler_->GetClusterResourceManager(),
-      scheduling::NodeID(local_node_id_.Binary()));
+      local_node_id_,
+      cluster_task_manager_);
 
   // Initialize by gcs tables data.
   gcs_resource_manager_->Initialize(gcs_init_data);
@@ -297,7 +305,6 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
 }
 
 void GcsServer::InitClusterResourceScheduler() {
-  local_node_id_ = NodeID::FromRandom();
   cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
       scheduling::NodeID(local_node_id_.Binary()),
       NodeResources(),
@@ -319,7 +326,7 @@ void GcsServer::InitClusterTaskManager() {
       /*announce_infeasible_task=*/
       nullptr,
       /*local_task_manager=*/
-      nullptr);
+      std::make_shared<NoopLocalTaskManager>());
 }
 
 void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
@@ -416,7 +423,7 @@ void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
                                                    *gcs_resource_manager_,
                                                    *cluster_resource_scheduler_,
                                                    raylet_client_pool_,
-                                                   *ray_syncer_);
+                                                   gcs_ray_syncer_.get());
 
   gcs_placement_group_manager_ = std::make_shared<GcsPlacementGroupManager>(
       main_service_,
@@ -467,15 +474,39 @@ void GcsServer::StoreGcsServerAddressInRedis() {
 }
 
 void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
-  /*
-    The current synchronization flow is:
-        raylet -> syncer::poller --> syncer::update -> gcs_resource_manager
-        gcs_placement_scheduler --/
-  */
-  ray_syncer_ = std::make_unique<gcs_syncer::RaySyncer>(
-      main_service_, raylet_client_pool_, *gcs_resource_manager_);
-  ray_syncer_->Initialize(gcs_init_data);
-  ray_syncer_->Start();
+  if (RayConfig::instance().use_ray_syncer()) {
+    ray_syncer_ = std::make_unique<syncer::RaySyncer>(ray_syncer_io_context_,
+                                                      local_node_id_.Binary());
+    ray_syncer_->Register(
+        syncer::MessageType::RESOURCE_VIEW, nullptr, gcs_resource_manager_.get());
+    ray_syncer_thread_ = std::make_unique<std::thread>([this]() {
+      boost::asio::io_service::work work(ray_syncer_io_context_);
+      ray_syncer_io_context_.run();
+    });
+
+    for (const auto &pair : gcs_init_data.Nodes()) {
+      if (pair.second.state() ==
+          rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_ALIVE) {
+        rpc::Address address;
+        address.set_raylet_id(pair.second.node_id());
+        address.set_ip_address(pair.second.node_manager_address());
+        address.set_port(pair.second.node_manager_port());
+
+        auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(address);
+        ray_syncer_->Connect(raylet_client->GetChannel());
+      }
+    }
+  } else {
+    /*
+      The current synchronization flow is:
+      raylet -> syncer::poller --> syncer::update -> gcs_resource_manager
+      gcs_placement_scheduler --/
+    */
+    gcs_ray_syncer_ = std::make_unique<gcs_syncer::RaySyncer>(
+        main_service_, raylet_client_pool_, *gcs_resource_manager_);
+    gcs_ray_syncer_->Initialize(gcs_init_data);
+    gcs_ray_syncer_->Start();
+  }
 }
 
 void GcsServer::InitStatsHandler() {
@@ -496,8 +527,9 @@ void GcsServer::InitKVManager() {
   if (storage_type_ == "redis") {
     instance = std::make_unique<RedisInternalKV>(GetRedisClientOptions());
   } else if (storage_type_ == "memory") {
-    instance = std::make_unique<StoreClientInternalKV>(
-        std::make_unique<InMemoryStoreClient>(main_service_));
+    instance =
+        std::make_unique<StoreClientInternalKV>(std::make_unique<ObservableStoreClient>(
+            std::make_unique<InMemoryStoreClient>(main_service_)));
   }
 
   kv_manager_ = std::make_unique<GcsInternalKVManager>(std::move(instance));
@@ -518,34 +550,38 @@ void GcsServer::InitPubSubHandler() {
 void GcsServer::InitRuntimeEnvManager() {
   runtime_env_manager_ = std::make_unique<RuntimeEnvManager>(
       /*deleter=*/[this](const std::string &plugin_uri, auto callback) {
-        // A valid runtime env URI is of the form "plugin|protocol://hash".
-        std::string plugin_sep = "|";
+        // A valid runtime env URI is of the form "protocol://hash".
         std::string protocol_sep = "://";
-        auto plugin_end_pos = plugin_uri.find(plugin_sep);
         auto protocol_end_pos = plugin_uri.find(protocol_sep);
-        if (protocol_end_pos == std::string::npos ||
-            plugin_end_pos == std::string::npos) {
+        if (protocol_end_pos == std::string::npos) {
           RAY_LOG(ERROR) << "Plugin URI must be of form "
-                         << "<plugin>|<protocol>://<hash>, got " << plugin_uri;
+                         << "<protocol>://<hash>, got " << plugin_uri;
           callback(false);
         } else {
-          auto protocol_pos = plugin_end_pos + plugin_sep.size();
-          int protocol_len = protocol_end_pos - protocol_pos;
-          auto protocol = plugin_uri.substr(protocol_pos, protocol_len);
+          auto protocol = plugin_uri.substr(0, protocol_end_pos);
           if (protocol != "gcs") {
             // Some URIs do not correspond to files in the GCS.  Skip deletion for
             // these.
             callback(true);
           } else {
-            auto uri = plugin_uri.substr(protocol_pos);
             this->kv_manager_->GetInstance().Del(
                 "" /* namespace */,
-                uri /* key */,
+                plugin_uri /* key */,
                 false /* del_by_prefix*/,
                 [callback = std::move(callback)](int64_t) { callback(false); });
           }
         }
       });
+  runtime_env_handler_ = std::make_unique<RuntimeEnvHandler>(
+      main_service_,
+      *runtime_env_manager_, /*delay_executor=*/
+      [this](std::function<void()> task, uint32_t delay_ms) {
+        return execute_after(main_service_, task, delay_ms);
+      });
+  runtime_env_service_ =
+      std::make_unique<rpc::RuntimeEnvGrpcService>(main_service_, *runtime_env_handler_);
+  // Register service.
+  rpc_server_.RegisterService(*runtime_env_service_);
 }
 
 void GcsServer::InitGcsWorkerManager() {
@@ -562,12 +598,23 @@ void GcsServer::InstallEventListeners() {
   gcs_node_manager_->AddNodeAddedListener([this](std::shared_ptr<rpc::GcsNodeInfo> node) {
     // Because a new node has been added, we need to try to schedule the pending
     // placement groups and the pending actors.
+    auto node_id = NodeID::FromBinary(node->node_id());
     gcs_resource_manager_->OnNodeAdd(*node);
-    gcs_placement_group_manager_->OnNodeAdd(NodeID::FromBinary(node->node_id()));
+    gcs_placement_group_manager_->OnNodeAdd(node_id);
     gcs_actor_manager_->SchedulePendingActors();
-    cluster_task_manager_->ScheduleAndDispatchTasks();
     gcs_heartbeat_manager_->AddNode(NodeID::FromBinary(node->node_id()));
-    ray_syncer_->AddNode(*node);
+    cluster_task_manager_->ScheduleAndDispatchTasks();
+    if (RayConfig::instance().use_ray_syncer()) {
+      rpc::Address address;
+      address.set_raylet_id(node->node_id());
+      address.set_ip_address(node->node_manager_address());
+      address.set_port(node->node_manager_port());
+
+      auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(address);
+      ray_syncer_->Connect(raylet_client->GetChannel());
+    } else {
+      gcs_ray_syncer_->AddNode(*node);
+    }
   });
   gcs_node_manager_->AddNodeRemovedListener(
       [this](std::shared_ptr<rpc::GcsNodeInfo> node) {
@@ -579,7 +626,11 @@ void GcsServer::InstallEventListeners() {
         gcs_placement_group_manager_->OnNodeDead(node_id);
         gcs_actor_manager_->OnNodeDead(node_id, node_ip_address);
         raylet_client_pool_->Disconnect(NodeID::FromBinary(node->node_id()));
-        ray_syncer_->RemoveNode(*node);
+        if (RayConfig::instance().use_ray_syncer()) {
+          ray_syncer_->Disconnect(node_id.Binary());
+        } else {
+          gcs_ray_syncer_->RemoveNode(*node);
+        }
       });
 
   // Install worker event listener.
@@ -597,6 +648,7 @@ void GcsServer::InstallEventListeners() {
                                          worker_id,
                                          worker_ip,
                                          worker_failure_data->exit_type(),
+                                         worker_failure_data->exit_detail(),
                                          creation_task_exception);
       });
 
@@ -646,8 +698,9 @@ std::string GcsServer::GetDebugState() const {
          << gcs_placement_group_manager_->DebugString() << "\n\n"
          << gcs_publisher_->DebugString() << "\n\n"
          << runtime_env_manager_->DebugString() << "\n\n";
-
-  stream << ray_syncer_->DebugString();
+  if (gcs_ray_syncer_) {
+    stream << gcs_ray_syncer_->DebugString();
+  }
   return stream.str();
 }
 

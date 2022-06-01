@@ -1,4 +1,5 @@
 import urllib.parse
+from filelock import FileLock
 from typing import Optional, Tuple
 
 try:
@@ -11,7 +12,7 @@ try:
     import pyarrow
     import pyarrow.fs
 
-    # Todo(krfricke): Remove this once gcsfs > 2022.3.0 is released
+    # TODO(krfricke): Remove this once gcsfs > 2022.3.0 is released
     # (and make sure to pin)
     class _CustomGCSHandler(pyarrow.fs.FSSpecHandler):
         """Custom FSSpecHandler that avoids a bug in gcsfs <= 2022.3.0."""
@@ -156,7 +157,8 @@ def download_from_uri(uri: str, local_path: str):
             f"Hint: {fs_hint(uri)}"
         )
 
-    pyarrow.fs.copy_files(bucket_path, local_path, source_filesystem=fs)
+    with FileLock(f"{local_path}.lock"):
+        pyarrow.fs.copy_files(bucket_path, local_path, source_filesystem=fs)
 
 
 def upload_to_uri(local_path: str, uri: str):

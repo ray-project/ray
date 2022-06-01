@@ -4,9 +4,7 @@ import unittest
 import ray
 from ray.rllib.agents.callbacks import DefaultCallbacks
 import ray.rllib.agents.ppo as ppo
-from ray.rllib.agents.ppo.ppo_tf_policy import (
-    ppo_surrogate_loss as ppo_surrogate_loss_tf,
-)
+from ray.rllib.agents.ppo.ppo_tf_policy import PPOEagerTFPolicy
 from ray.rllib.agents.ppo.ppo_torch_policy import PPOTorchPolicy
 from ray.rllib.evaluation.postprocessing import (
     compute_gae_for_sample_batch,
@@ -315,7 +313,7 @@ class TestPPO(unittest.TestCase):
 
             # Calculate actual PPO loss.
             if fw in ["tf2", "tfe"]:
-                ppo_surrogate_loss_tf(policy, policy.model, Categorical, train_batch)
+                PPOEagerTFPolicy.loss(policy, policy.model, Categorical, train_batch)
             elif fw == "torch":
                 PPOTorchPolicy.loss(
                     policy, policy.model, policy.dist_class, train_batch

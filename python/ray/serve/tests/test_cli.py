@@ -1,11 +1,11 @@
-import yaml
-import json
 import os
-import subprocess
 import sys
+import time
+import yaml
 import signal
 import pytest
 import requests
+import subprocess
 from tempfile import NamedTemporaryFile
 
 import ray
@@ -107,11 +107,18 @@ def test_deploy(ray_start_stop):
             assert success_message_fragment in deploy_response
 
             for name, deployment_config in expected_deployments.items():
+                # New deployments must be deployed
                 wait_for_condition(
                     lambda: (
                         requests.get(f"{request_url}{name}").text
                         == deployment_config["response"]
                     ),
+                    timeout=15,
+                )
+
+                # Outdated deployments should be deleted
+                wait_for_condition(
+                    lambda: len(serve.list_deployments()) == len(expected_deployments),
                     timeout=15,
                 )
 
@@ -209,14 +216,20 @@ def test_status(ray_start_stop):
 
     subprocess.check_output(["serve", "deploy", config_file_name])
     status_response = subprocess.check_output(["serve", "status"])
-    statuses = json.loads(status_response)
+    serve_status = yaml.safe_load(status_response)
 
     expected_deployments = {"shallow", "deep", "one"}
-    for status in statuses:
+    for status in serve_status["deployment_statuses"]:
         expected_deployments.remove(status["name"])
         assert status["status"] in {"HEALTHY", "UPDATING"}
         assert "message" in status
     assert len(expected_deployments) == 0
+
+    assert serve_status["app_status"]["status"] in {"DEPLOYING", "RUNNING"}
+    wait_for_condition(
+        lambda: time.time() > serve_status["app_status"]["deployment_timestamp"],
+        timeout=2,
+    )
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -392,8 +405,9 @@ TestBuildFNode = global_f.bind()
 TestBuildDagNode = NoArgDriver.bind(TestBuildFNode)
 
 
+# TODO(Shreyas): Add TestBuildDagNode back once serve build new PRs out.
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-@pytest.mark.parametrize("node", ["TestBuildFNode", "TestBuildDagNode"])
+@pytest.mark.parametrize("node", ["TestBuildFNode"])
 def test_build(ray_start_stop, node):
     with NamedTemporaryFile(mode="w+", suffix=".yaml") as tmp:
 

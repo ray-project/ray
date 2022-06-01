@@ -2,7 +2,7 @@
 
 Configurations you can try:
     - normal policy gradients (PG)
-    - contrib/MADDPG
+    - MADDPG
     - QMIX
 
 See also: centralized_critic.py for centralized critic PPO on this game.
@@ -10,15 +10,19 @@ See also: centralized_critic.py for centralized critic PPO on this game.
 
 import argparse
 from gym.spaces import Dict, Discrete, Tuple, MultiDiscrete
+import logging
 import os
 
 import ray
 from ray import tune
 from ray.tune import register_env
+from ray.rllib.algorithms.qmix import QMixConfig
 from ray.rllib.env.multi_agent_env import ENV_STATE
 from ray.rllib.examples.env.two_step_game import TwoStepGame
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.test_utils import check_learning_achieved
+
+logger = logging.getLogger(__name__)
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -64,6 +68,13 @@ if __name__ == "__main__":
 
     ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
 
+    if args.run == "contrib/MADDPG":
+        logger.warning(
+            "`contrib/MADDPG` is not longer a valid algorithm descriptor! "
+            "Use `MADDPG` instead."
+        )
+        args.run = "MADDPG"
+
     grouping = {
         "group_1": [0, 1],
     }
@@ -96,14 +107,15 @@ if __name__ == "__main__":
         ),
     )
 
-    if args.run == "contrib/MADDPG":
+    if args.run == "MADDPG":
         obs_space = Discrete(6)
         act_space = TwoStepGame.action_space
         config = {
-            "learning_starts": 100,
+            "env": TwoStepGame,
             "env_config": {
                 "actions_are_logits": True,
             },
+            "replay_buffer_config": {"learning_starts": 100},
             "multiagent": {
                 "policies": {
                     "pol1": PolicySpec(
@@ -123,44 +135,39 @@ if __name__ == "__main__":
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
             "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         }
-        group = False
     elif args.run == "QMIX":
-        config = {
-            "rollout_fragment_length": 4,
-            "train_batch_size": 32,
-            "exploration_config": {
-                "final_epsilon": 0.0,
-            },
-            "num_workers": 0,
-            "mixer": args.mixer,
-            "env_config": {
-                "separate_state_space": True,
-                "one_hot_state_encoding": True,
-            },
-            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-            "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        }
-        group = True
+        config = (
+            QMixConfig()
+            .training(mixer=args.mixer, train_batch_size=32)
+            .rollouts(num_rollout_workers=0, rollout_fragment_length=4)
+            .exploration(
+                exploration_config={
+                    "final_epsilon": 0.0,
+                }
+            )
+            .environment(
+                env="grouped_twostep",
+                env_config={
+                    "separate_state_space": True,
+                    "one_hot_state_encoding": True,
+                },
+            )
+            .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        )
+        config = config.to_dict()
     else:
         config = {
+            "env": TwoStepGame,
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
             "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
             "framework": args.framework,
         }
-        group = False
 
     stop = {
         "episode_reward_mean": args.stop_reward,
         "timesteps_total": args.stop_timesteps,
         "training_iteration": args.stop_iters,
     }
-
-    config = dict(
-        config,
-        **{
-            "env": "grouped_twostep" if group else TwoStepGame,
-        }
-    )
 
     results = tune.run(args.run, stop=stop, config=config, verbose=2)
 

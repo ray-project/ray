@@ -14,13 +14,14 @@ from ray.ml.utils.remote_storage import (
     is_non_local_path_uri,
     upload_to_uri,
 )
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 _DICT_CHECKPOINT_FILE_NAME = "dict_checkpoint.pkl"
 _FS_CHECKPOINT_KEY = "fs_checkpoint"
 _BYTES_DATA_KEY = "bytes_data"
 
 
+@PublicAPI
 class Checkpoint:
     """Ray ML Checkpoint.
 
@@ -185,7 +186,7 @@ class Checkpoint:
         """Create a checkpoint from the given byte string.
 
         Args:
-            data (bytes): Data object containing pickled checkpoint data.
+            data: Data object containing pickled checkpoint data.
 
         Returns:
             Checkpoint: checkpoint object.
@@ -214,7 +215,7 @@ class Checkpoint:
         """Create checkpoint object from dictionary.
 
         Args:
-            data (dict): Dictionary containing checkpoint data.
+            data: Dictionary containing checkpoint data.
 
         Returns:
             Checkpoint: checkpoint object.
@@ -260,7 +261,7 @@ class Checkpoint:
         """Create checkpoint object from object reference.
 
         Args:
-            obj_ref (ray.ObjectRef): ObjectRef pointing to checkpoint data.
+            obj_ref: ObjectRef pointing to checkpoint data.
 
         Returns:
             Checkpoint: checkpoint object.
@@ -283,18 +284,20 @@ class Checkpoint:
         """Create checkpoint object from directory.
 
         Args:
-            path (str): Directory containing checkpoint data.
+            path: Directory containing checkpoint data. The caller promises to
+                not delete the directory (gifts ownership of the directory to this
+                Checkpoint).
 
         Returns:
             Checkpoint: checkpoint object.
         """
         return Checkpoint(local_path=path)
 
-    def to_directory(self, path: Optional[str] = None) -> str:
+    def to_directory(self, path: Optional[str] = None, dedup: bool = True) -> str:
         """Write checkpoint data to directory.
 
         Args:
-            path (str): Target directory to restore data in.
+            path: Target directory to restore data in. If not specified,
 
         Returns:
             str: Directory containing checkpoint data.
@@ -377,7 +380,7 @@ class Checkpoint:
         local files (``file://``).
 
         Args:
-            uri (str): Source location URI to read data from.
+            uri: Source location URI to read data from.
 
         Returns:
             Checkpoint: checkpoint object.
@@ -388,7 +391,7 @@ class Checkpoint:
         """Write checkpoint data to location URI (e.g. cloud storage).
 
         Args:
-            uri (str): Target location URI to write data to.
+            uri: Target location URI to write data to.
 
         Returns:
             str: Cloud location containing checkpoint data.
@@ -478,7 +481,7 @@ def _temporary_checkpoint_dir() -> str:
 def _pack(path: str) -> bytes:
     """Pack directory in ``path`` into an archive, return as bytes string."""
     stream = io.BytesIO()
-    with tarfile.open(fileobj=stream, mode="w:gz", format=tarfile.PAX_FORMAT) as tar:
+    with tarfile.open(fileobj=stream, mode="w", format=tarfile.PAX_FORMAT) as tar:
         tar.add(path, arcname="")
 
     return stream.getvalue()

@@ -119,10 +119,10 @@ void ObjectRecoveryManager::PinExistingObjectCopy(
   }
 
   client->PinObjectIDs(rpc_address_,
-                       object_id,
+                       {object_id},
                        [this, object_id, other_locations, node_id](
                            const Status &status, const rpc::PinObjectIDsReply &reply) {
-                         if (status.ok()) {
+                         if (status.ok() && reply.successes(0)) {
                            // TODO(swang): Make sure that the node is still alive when
                            // marking the object as pinned.
                            RAY_CHECK(in_memory_store_->Put(

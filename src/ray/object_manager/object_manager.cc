@@ -609,6 +609,8 @@ bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id,
     // have to check again here because the pull manager runs in a different
     // thread and the object may have been deactivated right before creating
     // the chunk.
+    RAY_LOG(INFO) << "Aborting object creation because it is no longer actively pulled: "
+                  << object_id;
     buffer_pool_.AbortCreate(object_id);
     return false;
   }
@@ -716,7 +718,7 @@ std::string ObjectManager::DebugString() const {
   result << "ObjectManager:";
   result << "\n- num local objects: " << local_objects_.size();
   result << "\n- num unfulfilled push requests: " << unfulfilled_push_requests_.size();
-  result << "\n- num pull requests: " << pull_manager_->NumActiveRequests();
+  result << "\n- num object pull requests: " << pull_manager_->NumObjectPullRequests();
   result << "\n- num chunks received total: " << num_chunks_received_total_;
   result << "\n- num chunks received failed (all): " << num_chunks_received_total_failed_;
   result << "\n- num chunks received failed / cancelled: "
@@ -734,12 +736,19 @@ std::string ObjectManager::DebugString() const {
 void ObjectManager::RecordMetrics() {
   pull_manager_->RecordMetrics();
   push_manager_->RecordMetrics();
-  stats::ObjectStoreAvailableMemory().Record(config_.object_store_memory - used_memory_);
-  stats::ObjectStoreUsedMemory().Record(used_memory_);
+  // used_memory_ includes the fallback allocation, so we should add it again here
+  // to calculate the exact available memory.
+  stats::ObjectStoreAvailableMemory().Record(
+      config_.object_store_memory - used_memory_ +
+      plasma::plasma_store_runner->GetFallbackAllocated());
+  // Subtract fallback allocated memory. It is tracked separately by
+  // `ObjectStoreFallbackMemory`.
+  stats::ObjectStoreUsedMemory().Record(
+      used_memory_ - plasma::plasma_store_runner->GetFallbackAllocated());
   stats::ObjectStoreFallbackMemory().Record(
       plasma::plasma_store_runner->GetFallbackAllocated());
   stats::ObjectStoreLocalObjects().Record(local_objects_.size());
-  stats::ObjectManagerPullRequests().Record(pull_manager_->NumActiveRequests());
+  stats::ObjectManagerPullRequests().Record(pull_manager_->NumObjectPullRequests());
 
   ray::stats::STATS_object_manager_bytes.Record(num_bytes_pushed_from_plasma_,
                                                 "PushedFromLocalPlasma");

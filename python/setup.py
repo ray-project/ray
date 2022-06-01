@@ -21,10 +21,11 @@ import urllib.request
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_PYTHONS = [(3, 6), (3, 7), (3, 8), (3, 9)]
+SUPPORTED_PYTHONS = [(3, 6), (3, 7), (3, 8), (3, 9), (3, 10)]
 # When the bazel version is updated, make sure to update it
 # in WORKSPACE file as well.
-SUPPORTED_BAZEL = (4, 2, 1)
+
+SUPPORTED_BAZEL = (4, 2, 2)
 
 ROOT_DIR = os.path.dirname(__file__)
 BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA") == "1"
@@ -255,6 +256,15 @@ if setup_spec.type == SetupType.RAY:
         "scipy",
     ]
 
+    # Ray AI Runtime should encompass Data, Tune, and Serve.
+    setup_spec.extras["air"] = list(
+        set(
+            setup_spec.extras["tune"]
+            + setup_spec.extras["data"]
+            + setup_spec.extras["serve"]
+        )
+    )
+
     setup_spec.extras["all"] = list(
         set(chain.from_iterable(setup_spec.extras.values()))
     )
@@ -273,7 +283,7 @@ if setup_spec.type == SetupType.RAY:
         "msgpack >= 1.0.0, < 2.0.0",
         "numpy >= 1.16; python_version < '3.9'",
         "numpy >= 1.19.3; python_version >= '3.9'",
-        "protobuf >= 3.15.3",
+        "protobuf >= 3.15.3, < 4.0.0",
         "pyyaml",
         "aiosignal",
         "frozenlist",
