@@ -74,9 +74,9 @@ Writing UDFs
 User-defined functions (UDFs) are routines that apply on one row (e.g.
 :meth:`.map() <ray.data.Dataset.map>`) or a batch of rows (e.g.
 :meth:`.map_batches() <ray.data.Dataset.map_batches>`) of a dataset. UDFs let you
-express your customized business logic in transformation. Here we will focus on
+express your customized business logic in transformations. Here we will focus on
 :meth:`.map_batches() <ray.data.Dataset.map_batches>` as it's the primary mapping
-transformation API in dataset.
+transformation API in Datasets.
 
 A UDF can be a function or a callable class, which has the following input/output:
 
