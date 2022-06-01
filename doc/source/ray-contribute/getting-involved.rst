@@ -1,3 +1,5 @@
+.. include:: /_includes/_latest_contribution_doc.rst
+
 .. _getting-involved:
 
 Getting Involved / Contributing

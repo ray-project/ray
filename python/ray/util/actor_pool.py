@@ -333,4 +333,4 @@ class ActorPool:
         if actor in self._idle_actors or actor in busy_actors:
             raise ValueError("Actor already belongs to current ActorPool")
         else:
-            self._idle_actors.append(actor)
+            self._return_actor(actor)

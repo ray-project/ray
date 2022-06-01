@@ -2,8 +2,8 @@ import logging
 import math
 from typing import Optional
 
-from ray.rllib.agents.a3c.a3c import A3CConfig, A3CTrainer
 from ray.rllib.agents.trainer import Trainer
+from ray.rllib.algorithms.a3c.a3c import A3CConfig, A3C
 from ray.rllib.execution.common import (
     STEPS_TRAINED_COUNTER,
     STEPS_TRAINED_THIS_ITER_COUNTER,
@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 
 class A2CConfig(A3CConfig):
-    """Defines a A2CTrainer configuration class from which a new Trainer can be built.
+    """Defines a configuration class from which a new A2C can be built.
 
     Example:
         >>> from ray import tune
@@ -62,7 +62,7 @@ class A2CConfig(A3CConfig):
 
     def __init__(self):
         """Initializes a A2CConfig instance."""
-        super().__init__(trainer_class=A2CTrainer)
+        super().__init__(trainer_class=A2C)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -104,13 +104,13 @@ class A2CConfig(A3CConfig):
         return self
 
 
-class A2CTrainer(A3CTrainer):
+class A2C(A3C):
     @classmethod
-    @override(A3CTrainer)
+    @override(A3C)
     def get_default_config(cls) -> TrainerConfigDict:
         return A2CConfig().to_dict()
 
-    @override(A3CTrainer)
+    @override(A3C)
     def validate_config(self, config: TrainerConfigDict) -> None:
         # Call super's validation method.
         super().validate_config(config)
@@ -144,7 +144,7 @@ class A2CTrainer(A3CTrainer):
             self._microbatches_grads = None
             self._microbatches_counts = self._num_microbatches = 0
 
-    @override(A3CTrainer)
+    @override(A3C)
     def training_iteration(self) -> ResultDict:
         # W/o microbatching: Identical to Trainer's default implementation.
         # Only difference to a default Trainer being the value function loss term
@@ -217,14 +217,14 @@ class A2CTrainer(A3CTrainer):
         return train_results
 
 
-# Deprecated: Use ray.rllib.agents.a3c.A2CConfig instead!
+# Deprecated: Use ray.rllib.algorithms.a2c.A2CConfig instead!
 class _deprecated_default_config(dict):
     def __init__(self):
         super().__init__(A2CConfig().to_dict())
 
     @Deprecated(
         old="ray.rllib.agents.a3c.a2c.A2C_DEFAULT_CONFIG",
-        new="ray.rllib.agents.a3c.a2c.A2CConfig(...)",
+        new="ray.rllib.algorithms.a2c.a2c.A2CConfig(...)",
         error=False,
     )
     def __getitem__(self, item):

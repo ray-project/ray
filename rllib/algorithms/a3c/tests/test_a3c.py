@@ -1,7 +1,7 @@
 import unittest
 
 import ray
-import ray.rllib.agents.a3c as a3c
+import ray.rllib.algorithms.a3c as a3c
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
 from ray.rllib.utils.test_utils import (
@@ -21,7 +21,7 @@ class TestA3C(unittest.TestCase):
         ray.shutdown()
 
     def test_a3c_compilation(self):
-        """Test whether an A3CTrainer can be built with both frameworks."""
+        """Test whether an A3C can be built with both frameworks."""
         config = a3c.A3CConfig().rollouts(num_rollout_workers=2, num_envs_per_worker=2)
 
         num_iterations = 2
@@ -42,7 +42,7 @@ class TestA3C(unittest.TestCase):
                 trainer.stop()
 
     def test_a3c_entropy_coeff_schedule(self):
-        """Test A3CTrainer entropy coeff schedule support."""
+        """Test A3C entropy coeff schedule support."""
         config = a3c.A3CConfig().rollouts(
             num_rollout_workers=1,
             num_envs_per_worker=1,
