@@ -349,7 +349,7 @@ def _iter_remote(actor: ray.ActorID) -> Generator[bytes, None, None]:
         yield buffer
 
 
-def _unpack_dir(stream: io.BytesIO, target_dir: str) -> None:
+def _unpack_dir(stream: io.BytesIO, target_dir: str, *, _retry: bool = True) -> None:
     """Unpack tarfile stream into target directory."""
     stream.seek(0)
     target_dir = os.path.normpath(target_dir)
@@ -367,7 +367,15 @@ def _unpack_dir(stream: io.BytesIO, target_dir: str) -> None:
         # if the dir was locked due to being deleted,
         # recreate
         if not os.path.exists(target_dir):
-            _unpack_dir(stream, target_dir)
+            if _retry:
+                _unpack_dir(stream, target_dir, _retry=False)
+            else:
+                raise RuntimeError(
+                    f"Target directory {target_dir} does not exist "
+                    "and couldn't be recreated. "
+                    "Please raise an issue on GitHub: "
+                    "https://github.com/ray-project/ray/issues"
+                )
 
 
 @ray.remote
@@ -379,7 +387,7 @@ def _unpack_from_actor(pack_actor: ray.ActorID, target_dir: str) -> None:
     _unpack_dir(stream, target_dir=target_dir)
 
 
-def _copy_dir(source_dir: str, target_dir: str) -> None:
+def _copy_dir(source_dir: str, target_dir: str, *, _retry: bool = True) -> None:
     """Copy dir with shutil on the actor."""
     target_dir = os.path.normpath(target_dir)
     try:
@@ -396,7 +404,15 @@ def _copy_dir(source_dir: str, target_dir: str) -> None:
         # if the dir was locked due to being deleted,
         # recreate
         if not os.path.exists(target_dir):
-            _copy_dir(source_dir, target_dir)
+            if _retry:
+                _copy_dir(source_dir, target_dir, _retry=False)
+            else:
+                raise RuntimeError(
+                    f"Target directory {target_dir} does not exist "
+                    "and couldn't be recreated. "
+                    "Please raise an issue on GitHub: "
+                    "https://github.com/ray-project/ray/issues"
+                )
 
 
 # Only export once
