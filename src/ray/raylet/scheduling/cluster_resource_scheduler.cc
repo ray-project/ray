@@ -106,6 +106,14 @@ bool ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_req
       /*ignore_object_store_memory_requirement*/ node_id == local_node_id_);
 }
 
+namespace {
+bool IsNodeAffinitySchedulingStrategy(
+    const rpc::SchedulingStrategy &scheduling_strategy) {
+  return scheduling_strategy.scheduling_strategy_case() ==
+         rpc::SchedulingStrategy::SchedulingStrategyCase::kNodeAffinitySchedulingStrategy;
+}
+}  // namespace
+
 scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
     const ResourceRequest &resource_request,
     const rpc::SchedulingStrategy &scheduling_strategy,
@@ -114,8 +122,9 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
     int64_t *total_violations,
     bool *is_infeasible) {
   // The zero cpu actor is a special case that must be handled the same way by all
-  // scheduling policies.
-  if (actor_creation && resource_request.IsEmpty()) {
+  // scheduling policies, except for node affnity scheduling policy.
+  if (actor_creation && resource_request.IsEmpty() &&
+      !IsNodeAffinitySchedulingStrategy(scheduling_strategy)) {
     return scheduling_policy_->Schedule(resource_request, SchedulingOptions::Random());
   }
 
