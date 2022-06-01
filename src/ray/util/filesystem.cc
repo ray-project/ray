@@ -60,4 +60,29 @@ std::string GetUserTempDir() {
   return result;
 }
 
+FileSystemMonitor::FileSystemMonitor(const std::string &path, double capacity_threshold)
+    : ray_file_path_(path), capacity_threshold_(capacity_threshold) {}
+
+std::optional<std::filesystem::space_info> FileSystemMonitor::Space() const {
+  std::error_code ec;
+  const std::filesystem::space_info si = std::filesystem::space(ray_file_path_, ec);
+  if (ec) {
+    RAY_LOG_EVERY_MS(WARNING, 60 * 1000) << "Failed to get capacity of " << ray_file_path_
+                                         << " with error: " << ec.message();
+    return std::nullopt;
+  }
+  return si;
+}
+
+bool FileSystemMonitor::OverCapacity() const {
+  auto space_info = Space();
+  if (!space_info.has_value()) {
+    return false;
+  }
+  if (space_info->capacity == 0) {
+    RAY_LOG_EVERY_MS(WARNING, 60 * 1000) << ray_file_path_ << " has no capacity.";
+    return true;
+  }
+  return (1 - 1.0f * space_info->available / space_info->capacity) > capacity_threshold_;
+}
 }  // namespace ray

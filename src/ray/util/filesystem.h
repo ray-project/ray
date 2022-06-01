@@ -15,6 +15,7 @@
 #pragma once
 
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -58,4 +59,16 @@ std::string JoinPaths(std::string base, const Paths &...components) {
   (join(base, std::string_view(components)), ...);
   return base;
 }
+
+/// Monitor the filesystem capacity ray is using.
+class FileSystemMonitor {
+ public:
+  FileSystemMonitor(const std::string &path, double capacity_threshold);
+  std::optional<std::filesystem::space_info> Space() const;
+  bool OverCapacity() const;
+
+ private:
+  const std::string ray_file_path_;
+  const double capacity_threshold_;
+};
 }  // namespace ray
