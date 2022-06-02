@@ -930,9 +930,9 @@ often: The "forward" model will eventually get better at predicting these next l
 NovelD (Novelty Difference Exploration)
 ---------------------------------------
 
-|tensorflow|
-`[paper] <https://proceedings.neurips.cc/paper/2021/file/d428d070622e0f4363fceae11f4a3576-Paper.pdf>`
-`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/utils/exploration/noveld.py>`
+|tensorflow||pytorch|
+`[paper] <https://proceedings.neurips.cc/paper/2021/file/d428d070622e0f4363fceae11f4a3576-Paper.pdf>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/utils/exploration/noveld.py>`__
 
 Examples:
 `Test cases with FrozenLake-v1 and MsPacmanNoFrameskip-v4 examples <https://github.com/ray-project/ray/blob/master/rllib/utils/exploration/tests/test_noveld.py>`__ (UnitTest cases: ``test_noveld_compilation`` and ``test_noveld_normalization``) 
@@ -984,8 +984,8 @@ The NovelD plugin can be easily activated by specifying it as the Exploration cl
 **Functionality**
 The NovelD module is based on `"RND" (Random Network Distillation) described in this paper here <https://arxiv.org/pdf/1810.12894.pdf>`__. NovelD computes the difference between the novelties of the current and last state and uses these differences to calculate an intrinsic reward that motivates the agent to cross boundaries. 
 Novelties are calculated by the prediction errors of a network distillation like in RND. Intrinsic rewards, however, are computed differently and drop to zero for a state as soon as this state has been visited once. Effective exploration in sparse reward environments is still a challenge in reinforcement learning as the agent
-does not receive enough rewards to learn how to solve its task. Prominent examples for environments with sparse reward signals are the `[MiniGrid-ObstructedMaze-2Dlh-v0] <https://github.com/Farama-Foundation/gym-minigrid#obstructed-maze-environment>` and 
-`[MontezumaRevenge-v5] <https://www.gymlibrary.ml/environments/atari/montezuma_revenge/?highlight=montezuma>` from the ATARI environments. Constructing task-specific reward schemes in such situations is difficult and usually involves many attempts. Exploration algorithms try to overcome these obstacles by creating intrinsic reward 
+does not receive enough rewards to learn how to solve its task. Prominent examples for environments with sparse reward signals are the `[MiniGrid-ObstructedMaze-2Dlh-v0] <https://github.com/Farama-Foundation/gym-minigrid#obstructed-maze-environment>`__ and 
+`[MontezumaRevenge-v5] <https://www.gymlibrary.ml/environments/atari/montezuma_revenge/?highlight=montezuma>`__ from the ATARI environments. Constructing task-specific reward schemes in such situations is difficult and usually involves many attempts. Exploration algorithms try to overcome these obstacles by creating intrinsic reward 
 schemes based on the agent's exploration behavior. Exploring more states helps the agent to find a solution faster and in many cases to find a solution at all. One remaining challenge for exploration methods is that in scenarios where there are many novel areas to be explored they often focus on one (like a depth-wise first search) 
 without sufficiently trying out the ohers. NovelD tris to solve this problem and motivates the agent to explore more broadly by rewarding specifically boundary crossings between explored and unexplored regions. 
 
@@ -993,8 +993,8 @@ NovelD when configured as the Exploration class in the Trainer config (see for m
 embed a state into a random embedding and a learned embedding with their difference defining the state's novelty (the network error). Over the course of an experiment the trainable network learns to imitate the random one. It fails in doing so, when a state is fairly novel, i.e. when it is very dissimilar to already visited ones, because 
 generalization then does not work, yet. If the current state has a significantly higher novelty than the last state, NovelD grants the agent a high intrinisic reward. This only happens, if the agent crosses a boundary between an already explored region and a novel one, incentivizing it to search for solutions in the environment more broadly.
 
-The trainable network gets trained after each rollout of the agent inside of the overwritten ``Exploration.postprocess_trajectory()``. As this is called more often than the learning step of the Policy's model it should be kept in mind that large distillation networks with many embedding coordinates will consume therefore a lot of compute 
-ressources. 
+The trainable network gets trained after each rollout of the agent inside of the overwritten ``Exploration.postprocess_trajectory()``. As this is called more often than the learning step of the Policy's model it should be kept in mind that large distillation networks with many embedding coordinates will slow down training speed significantly. 
+Also note, NovelD keeps a hash table to track visited states. This hash table grows over the course of the experiment and is the reaosn why NovelD might step-wise increase memory ressources used when the state space is large.
 
 Each batch of new experiences improves on average the trainable distillaton network's ability to predict the random network's output embeddings for the states visited in the rollout. Note, this also enables the trainable network to better generalize over similar states which decreases the novelty of these very states. As a result the agent 
 can then collect only intrinsic rewards from states that a rather dissimilar to already visited ones motivating it to move towards the frontier of its explorated region. In contrast to curiosity-based exploration algorithms the distillation network approach thereby becomes robust to procrastination in noisy-TV settings like with sticky 
@@ -1002,11 +1002,11 @@ actions in the `Montezuma Revenge`, `PrivateEye` or `Pitfall!`` in the ATARI env
 curiosity exploration to predict the next state due to the stochasticity in actions leading to the agent oscillating between two rooms. Because of the distillation of the trainable network in NovelD the agent cannot exploit such non-determinism in the environment to collect intrinsic reward. Furthermore, it should be mentioned that the NovelD 
 approach uses only a single trainable network in contrast to :ref:`Curiosity` that maintains three neural nets. If computing resources are an issue single network exploration algorithms like `NovelD` or :ref:`RE3` should be considered. 
 
-Hyperparameters that can be optimized for NovelD are specifically ``alpha`` the intrinsic reward factor, ``beta`` the clipping factor, and ``intrinsic_reward_coeff`` the scaling factor for the intrinsic reward. The former two are used to scale the intrinsic reward and the latter to scale the ratio between intrinsic and extrinsic reward. Another 
-parameter that could be considered is the embedding size of the states ``embed_dim``. An ablation study has shown that the values of ``alpha=0.5`` and ``beta=0.0`` perform best for NovelD and it is therefore advisable to keep these values fixed. The ratio between the extrinsic and intrinsic reward might have a larger or smaller impact on training 
+Hyperparameters that can be optimized for NovelD are specifically ``alpha`` the novelty factor, ``beta`` the clipping factor, and ``intrinsic_reward_coeff`` the scaling factor for the intrinsic reward. The former two are used to scale the intrinsic reward and the latter to scale the ratio between intrinsic and extrinsic reward. Another 
+parameter that could be considered is the embedding size ``embed_dim`` of the states. An ablation study has shown that the values of ``alpha=0.5`` and ``beta=0.0`` perform best for NovelD and it is therefore advisable to keep these values fixed. The ratio between the extrinsic and intrinsic reward might have a larger or smaller impact on training 
 as this depends on the environment itself. For this reason reward clipping can be advantageous, together with the ``normalize=True`` option. 
 
-For monitoring xploration with the NovelD module we provide the `NovelDMetricsCallbacks` that can be easily plugged in by configuring the Trainer's ``callbacks`` parameter. Next to the novelties and the intrinsic reward also the state counts are reported. 
+For monitoring exploration with the NovelD module we provide the `NovelDMetricsCallbacks` that can be easily plugged in by configuring the Trainer's ``callbacks`` parameter. Next to the novelties and the intrinsic reward also the state counts are reported. 
 
 
 .. _re3:
