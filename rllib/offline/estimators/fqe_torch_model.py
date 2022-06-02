@@ -200,6 +200,7 @@ class FQETorchModel:
         state value V(s) = sum_A pi(a|s)Q(s,a).
         """
         q_values = self.estimate_q(obs)
+        action_probs = torch.tensor(action_probs, device=self.device)
         v_values = torch.sum(q_values * action_probs, axis=-1)
         return v_values.detach()
 

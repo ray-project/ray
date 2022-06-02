@@ -63,6 +63,7 @@ class QRegTorchModel:
                 "vf_share_layers": True,
             }
 
+        self.device = self.policy.device
         self.q_model: TorchModelV2 = ModelCatalog.get_model_v2(
             self.observation_space,
             self.action_space,
@@ -70,8 +71,7 @@ class QRegTorchModel:
             model,
             framework="torch",
             name="TorchQModel",
-        )
-        self.device = self.policy.device
+        ).to(self.device)
         self.n_iters = n_iters
         self.lr = lr
         self.delta = delta
@@ -124,7 +124,7 @@ class QRegTorchModel:
             prev_action_batch=batch.get(SampleBatch.PREV_ACTIONS),
             prev_reward_batch=batch.get(SampleBatch.PREV_REWARDS),
             actions_normalized=False,
-        ).detach()
+        ).detach().cpu()
         prob_ratio = torch.exp(new_log_prob - old_log_prob)
 
         eps_begin = 0
@@ -215,5 +215,6 @@ class QRegTorchModel:
         state value V(s) = sum_A pi(a|s)Q(s,a).
         """
         q_values = self.estimate_q(obs)
+        action_probs = torch.tensor(action_probs, device=self.device)
         v_values = torch.sum(q_values * action_probs, axis=-1)
         return v_values.detach()

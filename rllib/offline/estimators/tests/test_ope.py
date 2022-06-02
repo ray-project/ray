@@ -40,6 +40,7 @@ class TestOPE(unittest.TestCase):
         config = (
             DQNConfig()
             .environment(env=env_name)
+            .resources(num_gpus=1)
             .exploration(
                 explore=True,
                 exploration_config={

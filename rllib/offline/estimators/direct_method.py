@@ -64,7 +64,6 @@ class DirectMethod(OffPolicyEstimator):
         policy: Policy,
         gamma: float,
         q_model_type: str = "fqe",
-        framework: str = "torch",
         k: int = 5,
         **kwargs,
     ):
@@ -79,7 +78,6 @@ class DirectMethod(OffPolicyEstimator):
                 or "qreg" for Q-Regression, or a custom model that implements:
                 - `estimate_q(states,actions)`
                 - `estimate_v(states, action_probs)`
-            framework: One of "tf|tf2|tfe|torch", currently only supports "torch"
             k: k-fold cross validation for training model and evaluating OPE
             kwargs: Optional arguments for the specified Q model
         """
@@ -92,10 +90,9 @@ class DirectMethod(OffPolicyEstimator):
         assert (
             policy.config["batch_mode"] == "complete_episodes"
         ), "DM Estimator only supports `batch_mode`=`complete_episodes`"
-        assert framework == "torch", "DM estimator only supports `framework`=`torch`"
 
         # TODO (rohan): Add support for TF!
-        if framework == "torch":
+        if policy.framework == "torch":
             if q_model_type == "qreg":
                 model_cls = QRegTorchModel
             elif q_model_type == "fqe":
@@ -107,6 +104,11 @@ class DirectMethod(OffPolicyEstimator):
                 assert hasattr(
                     q_model_type, "estimate_v"
                 ), "q_model_type must implement `estimate_v`!"
+        else:
+            raise ValueError(
+                f"{self.__class__.__name__}" 
+                "estimator only supports `policy.framework`=`torch`"
+            )
 
         self.model = model_cls(
             policy=policy,
