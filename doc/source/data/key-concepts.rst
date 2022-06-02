@@ -153,7 +153,7 @@ Datasets relies on :ref:`task-based fault tolerance <task-fault-tolerance>` in R
 
 There are a few cases that are not currently supported:
 1. If the original creator of the ``Dataset`` dies. This is because the ``Dataset creator`` stores the metadata for the :ref:`objects <object-fault-tolerance>` that comprise the ``Dataset``.
-2. For a ``DatasetPipeline.split``, we do not support recovery for a consumer failure. When there are multiple consumers, they must all read the split pipeline in lockstep. To recover from this case, the pipeline and all consumers must be restarted together.
+2. For a :meth:`DatasetPipeline.split() <ray.data.DatasetPipeline.split>`, we do not support recovery for a consumer failure. When there are multiple consumers, they must all read the split pipeline in lockstep. To recover from this case, the pipeline and all consumers must be restarted together.
 3. The ``compute=actors`` option for transformations.
 
 
