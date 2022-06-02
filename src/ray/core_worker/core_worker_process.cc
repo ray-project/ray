@@ -265,7 +265,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::GetCoreWorker() const {
     // TODO (scv119): A better solution could be returning error code
     // and handling it at language frontend.
     if (options_.worker_type == WorkerType::DRIVER) {
-      RAY_LOG(ERROR) << "The core worker has already been shutdown. This happens when "
+      // TODO(qwang): debugging
+      RAY_LOG(FATAL) << "The core worker has already been shutdown. This happens when "
                         "the language frontend accesses the Ray's worker after it is "
                         "shutdown. The process will exit";
     } else {
