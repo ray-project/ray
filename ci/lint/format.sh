@@ -34,7 +34,7 @@ check_python_command_exist() {
 
 check_docstyle() {
     echo "Checking docstyle..."
-    violations=$(git ls-files | grep '.py$' | xargs grep -E '^[ a-z_]+ \([a-zA-Z]*\): ' || true)
+    violations=$(git ls-files | grep '.py$' | xargs grep -E '^[ a-z_]+ \([a-zA-Z]+\): ' || true)
     if [[ -n "$violations" ]]; then
         echo
         echo "=== Found Ray docstyle violations ==="

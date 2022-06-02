@@ -345,7 +345,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 DefaultCallbacks for training/policy/rollout-worker callbacks.
             input_creator: Function that returns an InputReader object for
                 loading previous generated experiences.
-            off_policy_estimation_methods: A dict that specifies how to 
+            off_policy_estimation_methods: A dict that specifies how to
                 evaluate the current policy.
                 This only has an effect when reading offline experiences
                 ("input" is not "sampler").
@@ -361,7 +361,7 @@ class RolloutWorker(ParallelIteratorWorker):
                     - A class path string, e.g.
                     "ray.rllib.offline.estimators::ImportanceSampling"
                 You can also add additional config arguments to be passed to the
-                OffPolicyEstimator e.g. 
+                OffPolicyEstimator e.g.
                 of_policy_estimation_methods = {
                     "dr_qreg": {"type": DoublyRobust, "q_model_type": "qreg"},
                     "dm_64": {"type": DirectMethod, "batch_size": 64},
@@ -732,10 +732,10 @@ class RolloutWorker(ParallelIteratorWorker):
             method_type = method_config.pop("type")
             if method_type in ope_types:
                 deprecation_warning(
-                    old=method_type, 
+                    old=method_type,
                     new=str(ope_types[method_type]),
                     error=False,
-                    )
+                )
                 method_type = ope_types[method_type]
             if name == "simulation":
                 logger.warning(

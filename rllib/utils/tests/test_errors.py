@@ -1,7 +1,7 @@
 import unittest
 
 import ray
-import ray.rllib.agents.impala as impala
+import ray.rllib.algorithms.impala as impala
 import ray.rllib.algorithms.pg as pg
 from ray.rllib.utils.error import EnvError
 from ray.rllib.utils.test_utils import framework_iterator
@@ -32,7 +32,7 @@ class TestErrors(unittest.TestCase):
                 RuntimeError,
                 # (?s): "dot matches all" (also newlines).
                 "(?s)Found 0 GPUs on your machine.+To change the config",
-                lambda: impala.ImpalaTrainer(config=config, env=env),
+                lambda: impala.Impala(config=config, env=env),
             )
 
     def test_bad_envs(self):
