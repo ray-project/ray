@@ -231,21 +231,35 @@ class DeploymentConfig(BaseModel):
 
 
 class ReplicaConfig:
-    # TODO (shrekris-anyscale): Add docstring enumerating all the ReplicaConfig
-    # properties.
+    """Configuration for a deployment's replicas.
 
-    # TODO (shrekris-anyscale): Update references to ReplicaConfig's import_path
-    # and func_or_class_name. These attributes have been removed.
+    Provides five main properties (see property docstrings for more info):
+        deployment_def: the code, or a reference to the code, that this
+            replica should run.
+        init_args: the deployment_def's init_args.
+        init_kwargs: the deployment_def's init_kwargs.
+        ray_actor_options: the Ray actor options to pass into the replica's
+            actor.
+        resource_dict: contains info on this replica's actor's resource needs.
 
-    # TODO (shrekris-anyscale): Make sure deserialization logic works with
-    # existing usage of ReplicaConfig.
+    Offers a serialized equivalent (e.g. serialized_deployment_def) for all
+    properties except resource_dict. Deserializes properties when they're first
+    accessed, if they were not passed in directly through create().
+
+    Use the classmethod create() to make a ReplicaConfig with the deserialized
+    properties.
+
+    Note: overwriting or setting any property after the ReplicaConfig has been
+    constructed is currently undefined behavior. The config's fields should not
+    be modified externally after it is created.
+    """
 
     def __init__(
         self,
         serialized_deployment_def: bytes,
         serialized_init_args: bytes = cloudpickle.dumps(tuple()),
         serialized_init_kwargs: bytes = cloudpickle.dumps(dict()),
-        serialized_ray_actor_options: bytes = cloudpickle.dumps(dict()),
+        serialized_ray_actor_options: bytes = json.dumps(dict()),
     ):
         # Store serialized versions of all properties.
         self.serialized_deployment_def = serialized_deployment_def
