@@ -22,9 +22,9 @@ prep.transform(env.reset()).shape
 # __query_action_dist_start__
 # Get a reference to the policy
 import numpy as np
-from ray.rllib.agents.ppo import PPOTrainer
+from ray.rllib.algorithms.ppo import PPO
 
-trainer = PPOTrainer(env="CartPole-v0", config={"framework": "tf2", "num_workers": 0})
+trainer = PPO(env="CartPole-v0", config={"framework": "tf2", "num_workers": 0})
 policy = trainer.get_policy()
 # <ray.rllib.policy.eager_tf_policy.PPOTFPolicy_eager object at 0x7fd020165470>
 
