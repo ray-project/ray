@@ -4,7 +4,7 @@
 Replay Buffers
 ##############
 
-Quick intro to replay buffers in RL
+Quick Intro to Replay Buffers in RL
 =====================================
 
 When we talk about replay buffers in reinforcement learning, we generally mean a buffer that stores and replays experiences collected from interactions of our agent(s) with the environment.
