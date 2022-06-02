@@ -91,6 +91,7 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service,
       delay_on_oom_ms_(delay_on_oom_ms),
       object_spilling_threshold_(object_spilling_threshold),
       create_request_queue_(
+          fs_monitor_,
           /*oom_grace_period_s=*/RayConfig::instance().oom_grace_period_s(),
           spill_objects_callback,
           object_store_full_callback,
@@ -160,10 +161,6 @@ PlasmaError PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client>
     return PlasmaError::OutOfMemory;
   }
 
-  if (fs_monitor_.OverCapacity()) {
-    RAY_LOG(ERROR) << "device_num != 0 but CUDA not enabled";
-    return PlasmaError::OutOfMemory;
-  }
   auto error = CreateObject(object_info, source, client, fallback_allocator, object);
   if (error == PlasmaError::OutOfMemory) {
     RAY_LOG(DEBUG) << "Not enough memory to create the object " << object_info.object_id

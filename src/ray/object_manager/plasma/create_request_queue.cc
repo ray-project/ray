@@ -85,6 +85,14 @@ Status CreateRequestQueue::ProcessRequest(bool fallback_allocator,
   }
 }
 
+bool CreateRequestQueue::MayHandleOutOfDisk(std::unique_ptr<CreateRequest> &request) {
+  if (request->error == PlasmaError::OutOfMemory && fs_monitor_.OverCapacity()) {
+    request->error = PlasmaError::OutOfDisk;
+    return true;
+  }
+  return false;
+}
+
 Status CreateRequestQueue::ProcessRequests() {
   // Suppress OOM dump to once per grace period.
   bool logged_oom = false;
@@ -93,6 +101,12 @@ Status CreateRequestQueue::ProcessRequests() {
     bool spilling_required = false;
     auto status =
         ProcessRequest(/*fallback_allocator=*/false, *request_it, &spilling_required);
+
+    if (MayHandleOutOfDisk(*request_it)) {
+      FinishRequest(request_it);
+      continue;
+    }
+
     if (spilling_required) {
       spill_objects_callback_();
     }
