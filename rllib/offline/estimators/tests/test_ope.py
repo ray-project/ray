@@ -34,8 +34,8 @@ class TestOPE(unittest.TestCase):
         env_name = "CartPole-v0"
         gamma = 0.99
         train_steps = 200000
-        n_batches = 100  # Approx. equal to n_episodes
-        n_eval_episodes = 10000
+        n_batches = 20  # Approx. equal to n_episodes
+        n_eval_episodes = 100
 
         config = (
             DQNConfig()
