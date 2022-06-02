@@ -1,0 +1,43 @@
+halfcheetah_cql:
+    env: 'Pendulum-v1'
+    run: CRR
+    config:
+        input:
+          - 'rllib/tests/data/pendulum/pendulum_random_v1.1.0.json'
+        framework: torch
+        soft_horizon: False
+        horizon: 1000
+        q_model_config:
+            fcnet_activation: relu
+            fcnet_hiddens: [256, 256, 256]
+        policy_model_config:
+            fcnet_activation: relu
+            fcnet_hiddens: [256, 256, 256]
+        tau: 0.005
+        target_entropy: auto
+        no_done_at_end: false
+        n_step: 3
+        rollout_fragment_length: 1
+        replay_buffer_config:
+          type: MultiAgentReplayBuffer
+          learning_starts: 256
+        train_batch_size: 256
+        target_network_update_freq: 0
+        min_train_timesteps_per_reporting: 1000
+        optimization:
+            actor_learning_rate: 0.0001
+            critic_learning_rate: 0.0003
+            entropy_learning_rate: 0.0001
+        num_workers: 0
+        num_gpus: 1
+        metrics_smoothing_episodes: 5
+        # CQL Configs
+        min_q_weight: 5.0
+        bc_iters: 20000
+        temperature: 1.0
+        num_actions: 10
+        lagrangian: False
+
+        evaluation_interval: 3
+        evaluation_config:
+            input: sampler
