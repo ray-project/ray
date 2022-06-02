@@ -16,6 +16,7 @@ from ray.autoscaler._private.util import validate_config
 
 logger = logging.getLogger(__name__)
 
+AUTOSCALER_OPTIONS_KEY = "autoscalerOptions"
 IDLE_SECONDS_KEY = "idleTimeoutSeconds"
 UPSCALING_KEY = "upscalingMode"
 UPSCALING_VALUE_AGGRESSIVE = "Aggressive"
@@ -25,7 +26,6 @@ UPSCALING_VALUE_AGGRESSIVE = "Aggressive"
 _HEAD_GROUP_NAME = "head-group"
 
 _GPU_WARNING_LOGGED = False
-
 
 
 class AutoscalingConfigProducer:
@@ -80,7 +80,7 @@ def _derive_autoscaling_config_from_ray_cr(ray_cr: Dict[str, Any]) -> Dict[str, 
     legacy_autoscaling_fields = _generate_legacy_autoscaling_config_fields()
 
     # Process autoscaler options.
-    autoscaler_options = ray_cr["spec"].get("autoscalerOptions")
+    autoscaler_options = ray_cr["spec"].get(AUTOSCALER_OPTIONS_KEY, {})
     if IDLE_SECONDS_KEY in autoscaler_options:
         idle_timeout_minutes = autoscaler_options[IDLE_SECONDS_KEY] / 60.0
     else:
