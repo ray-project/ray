@@ -367,10 +367,10 @@ class ServeControllerClient:
         """Retrieve RayServeHandle for service deployment to invoke it from Python.
 
         Args:
-            deployment_name (str): A registered service deployment.
-            missing_ok (bool): If true, then Serve won't check the deployment
+            deployment_name: A registered service deployment.
+            missing_ok: If true, then Serve won't check the deployment
                 is registered. False by default.
-            sync (bool): If true, then Serve will return a ServeHandle that
+            sync: If true, then Serve will return a ServeHandle that
                 works everywhere. Otherwise, Serve will return a ServeHandle
                 that's only usable in asyncio loop.
 
@@ -554,7 +554,7 @@ def get_controller_namespace(
     """Gets the controller's namespace.
 
     Args:
-        detached (bool): Whether serve.start() was called with detached=True
+        detached: Whether serve.start() was called with detached=True
         _override_controller_namespace (Optional[str]): When set, this is the
             controller's namespace
     """

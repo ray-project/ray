@@ -679,8 +679,8 @@ class _BakedWorkflowInputs:
         are not. See `api.wait()` for details.
 
         Args:
-            num_returns (int): The number of workflows that should be returned.
-            timeout (float): The maximum amount of time in seconds to wait
+            num_returns: The number of workflows that should be returned.
+            timeout: The maximum amount of time in seconds to wait
             before returning.
 
         Returns:

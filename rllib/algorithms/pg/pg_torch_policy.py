@@ -58,9 +58,9 @@ class PGTorchPolicy(TorchPolicyV2):
         L = -E[ log(pi(a|s)) * A]
 
         Args:
-            model (ModelV2): The Model to calculate the loss for.
-            dist_class (Type[ActionDistribution]: The action distr. class.
-            train_batch (SampleBatch): The training data.
+            model: The Model to calculate the loss for.
+            dist_class: The action distr. class.
+            train_batch: The training data.
 
         Returns:
             Union[TensorType, List[TensorType]]: A single loss tensor or a list
@@ -90,8 +90,8 @@ class PGTorchPolicy(TorchPolicyV2):
         """Returns the calculated loss in a stats dict.
 
         Args:
-            policy (Policy): The Policy object.
-            train_batch (SampleBatch): The data used for training.
+            policy: The Policy object.
+            train_batch: The data used for training.
 
         Returns:
             Dict[str, TensorType]: The stats dict.

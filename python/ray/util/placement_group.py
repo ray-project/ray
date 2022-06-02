@@ -195,7 +195,7 @@ def remove_placement_group(placement_group: PlacementGroup) -> None:
     """Asynchronously remove placement group.
 
     Args:
-        placement_group (PlacementGroup): The placement group to delete.
+        placement_group: The placement group to delete.
     """
     assert placement_group is not None
     worker = ray.worker.global_worker
@@ -234,7 +234,7 @@ def placement_group_table(placement_group: PlacementGroup = None) -> dict:
     """Get the state of the placement group from GCS.
 
     Args:
-        placement_group (PlacementGroup): placement group to see
+        placement_group: placement group to see
             states.
     """
     worker = ray.worker.global_worker
