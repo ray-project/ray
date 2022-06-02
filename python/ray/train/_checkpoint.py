@@ -135,7 +135,7 @@ class CheckpointManager(CommonCheckpointManager):
     def on_start_training(
         self,
         checkpoint_strategy: Optional[CheckpointStrategy],
-        run_dir: str,
+        run_dir: Path,
         latest_checkpoint_id: Optional[int] = 0,
     ):
         checkpoint_strategy = checkpoint_strategy or CheckpointStrategy()
@@ -221,6 +221,17 @@ class TuneCheckpointManager(CheckpointManager):
             checkpoint.commit(path)
 
         return super()._process_persistent_checkpoint(checkpoint)
+
+    @property
+    def latest_checkpoint_dir(self) -> Optional[Path]:
+        raise NotImplementedError
+
+    @property
+    def next_checkpoint_path(self) -> Optional[Path]:
+        return None
+
+    def _get_next_checkpoint_path(self) -> Optional[Path]:
+        return None
 
 
 def _construct_checkpoint_path_name(checkpoint_id: int) -> str:

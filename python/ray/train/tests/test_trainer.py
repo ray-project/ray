@@ -537,7 +537,7 @@ def test_persisted_checkpoint_strategy(ray_start_2_cpus):
     assert trainer.best_checkpoint["loss"] == 3
 
     checkpoint_dir = trainer.latest_checkpoint_dir
-    file_names = [f.name for f in checkpoint_dir.iterdir()]
+    file_names = [f.name for f in checkpoint_dir.iterdir() if f.is_dir()]
     assert len(file_names) == 2
     assert f"checkpoint_{2:06d}" in file_names
     assert f"checkpoint_{3:06d}" not in file_names
