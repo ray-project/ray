@@ -119,6 +119,8 @@ Here are some examples of configuring Dataset ingest options and what they do:
 
     .. code:: python
 
+        from ray.ml.config import DatasetConfig
+
         my_trainer = MyTrainer(
             ...,
             datasets={
@@ -138,6 +140,8 @@ Here are some examples of configuring Dataset ingest options and what they do:
     the original dataset will be returned by ``.get_dataset_shard("side")``.
 
     .. code:: python
+
+        from ray.ml.config import DatasetConfig
 
         my_trainer = MyTrainer(
             ...,
