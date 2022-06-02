@@ -56,15 +56,10 @@ class TorchPredictor(Predictor):
 
         # TODO: Arrow is completely useless. We have to work with numpy here anyways.
         #  Pytorch does not have native support for arrow.
-        import pdb
-
-        pdb.set_trace()
         numpy_array = convert_arrow_to_data_batch(data, np.ndarray)
         torch_tensor = torch.tensor(numpy_array, dtype=dtype)
         prediction = self.model(torch_tensor).cpu().detach().numpy()
-        import pdb
 
-        pdb.set_trace()
         return convert_data_batch_to_arrow(prediction)
 
     def predict(
