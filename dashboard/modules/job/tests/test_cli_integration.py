@@ -78,6 +78,15 @@ def _run_cmd(cmd: str, should_fail=False) -> Tuple[str, str]:
     return p.stdout.decode("utf-8"), p.stderr.decode("utf-8")
 
 
+class TestJobSubmitHook:
+    """Tests the RAY_JOB_SUBMIT_HOOK env var."""
+
+    def test_hook(self, ray_start_stop):
+        with set_env_var("RAY_JOB_SUBMIT_HOOK", "ray._private.test_utils.job_hook"):
+            stdout, _ = _run_cmd("ray job submit -- echo hello")
+            assert "hook intercepted: echo hello" in stdout
+
+
 class TestRayAddress:
     """
     Integration version of job CLI test that ensures interaction with the

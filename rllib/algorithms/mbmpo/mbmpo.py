@@ -250,13 +250,13 @@ class MetaUpdate:
         Adapted for MBMPO for multiple MAML Iterations.
 
         Args:
-            workers (WorkerSet): Set of Workers
-            num_steps (int): Number of meta-update steps per MAML Iteration
-            maml_steps (int): MAML Iterations per MBMPO Iteration
-            metric_gen (Iterator): Generates metrics dictionary
+            workers: Set of Workers
+            num_steps: Number of meta-update steps per MAML Iteration
+            maml_steps: MAML Iterations per MBMPO Iteration
+            metric_gen: Generates metrics dictionary
 
         Returns:
-            metrics (dict): MBMPO metrics for logging.
+            metrics: MBMPO metrics for logging.
         """
         self.workers = workers
         self.num_steps = num_steps
@@ -267,7 +267,7 @@ class MetaUpdate:
 
     def __call__(self, data_tuple):
         """Args:
-        data_tuple (tuple): 1st element is samples collected from MAML
+        data_tuple: 1st element is samples collected from MAML
         Inner adaptation steps and 2nd element is accumulated metrics
         """
         # Metaupdate Step.
@@ -335,8 +335,8 @@ class MetaUpdate:
         """Appends prefix to current metrics
 
         Args:
-            metrics (dict): Dictionary of current metrics
-            prefix (str): Prefix string to be appended
+            metrics: Dictionary of current metrics
+            prefix: Prefix string to be appended
         """
         for key in metrics.keys():
             self.metrics[prefix + "_" + key] = metrics[key]
@@ -346,9 +346,9 @@ def post_process_metrics(prefix, workers, metrics):
     """Update current dataset metrics and filter out specific keys.
 
     Args:
-        prefix (str): Prefix string to be appended
-        workers (WorkerSet): Set of workers
-        metrics (dict): Current metrics dictionary
+        prefix: Prefix string to be appended
+        workers: Set of workers
+        metrics: Current metrics dictionary
     """
     res = collect_metrics(remote_workers=workers.remote_workers())
     for key in METRICS_KEYS:
@@ -360,7 +360,7 @@ def inner_adaptation(workers: WorkerSet, samples: List[SampleBatch]):
     """Performs one gradient descend step on each remote worker.
 
     Args:
-        workers (WorkerSet): The WorkerSet of the Trainer.
+        workers: The WorkerSet of the Trainer.
         samples (List[SampleBatch]): The list of SampleBatches to perform
             a training step on (one for each remote worker).
     """
@@ -377,7 +377,7 @@ def sync_ensemble(workers: WorkerSet) -> None:
     """Syncs dynamics ensemble weights from driver (main) to workers.
 
     Args:
-        workers (WorkerSet): Set of workers, including driver (main).
+        workers: Set of workers, including driver (main).
     """
 
     def get_ensemble_weights(worker):
