@@ -34,9 +34,9 @@ def deep_update(
     in the allow_new_subkey_list, then new subkeys can be introduced.
 
     Args:
-        original (dict): Dictionary with default values.
-        new_dict (dict): Dictionary with values to be updated
-        new_keys_allowed (bool): Whether new keys are allowed.
+        original: Dictionary with default values.
+        new_dict: Dictionary with values to be updated
+        new_keys_allowed: Whether new keys are allowed.
         allow_new_subkey_list (Optional[List[str]]): List of keys that
             correspond to dict values where new subkeys can be introduced.
             This is only at the top level.
@@ -161,9 +161,9 @@ def unflatten_list_dict(dt: Dict[str, T], delimiter: str = "/") -> Dict[str, T]:
     please also improve the unit test. See #14487 for more details.
 
     Args:
-        dt (dict): Flattened dictionary that is originally nested by multiple
+        dt: Flattened dictionary that is originally nested by multiple
             list and dict.
-        delimiter (str): Delimiter of keys.
+        delimiter: Delimiter of keys.
 
     Example:
         >>> dt = {"aaa/0/bb": 12, "aaa/1/cc": 56, "aaa/1/dd": 92}

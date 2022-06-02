@@ -41,12 +41,12 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
         """Initialize variables of this model.
 
         Extra model kwargs:
-            actor_hidden_activation (str): activation for actor network
-            actor_hiddens (list): hidden layers sizes for actor network
-            critic_hidden_activation (str): activation for critic network
-            critic_hiddens (list): hidden layers sizes for critic network
-            twin_q (bool): build twin Q networks.
-            add_layer_norm (bool): Enable layer norm (for param noise).
+            actor_hidden_activation: activation for actor network
+            actor_hiddens: hidden layers sizes for actor network
+            critic_hidden_activation: activation for critic network
+            critic_hiddens: hidden layers sizes for critic network
+            twin_q: build twin Q networks.
+            add_layer_norm: Enable layer norm (for param noise).
 
         Note that the core layers for forward() are not defined here, this
         only defines the layers for the output heads. Those layers for
@@ -170,9 +170,9 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
         This implements Q(s, a).
 
         Args:
-            model_out (Tensor): obs embeddings from the model layers, of shape
+            model_out: obs embeddings from the model layers, of shape
                 [BATCH_SIZE, num_outputs].
-            actions (Tensor): Actions to return the Q-values for.
+            actions: Actions to return the Q-values for.
                 Shape: [BATCH_SIZE, action_dim].
 
         Returns:
@@ -188,7 +188,7 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
         This implements the twin Q(s, a).
 
         Args:
-            model_out (Tensor): obs embeddings from the model layers, of shape
+            model_out: obs embeddings from the model layers, of shape
                 [BATCH_SIZE, num_outputs].
             actions (Optional[Tensor]): Actions to return the Q-values for.
                 Shape: [BATCH_SIZE, action_dim].
@@ -205,7 +205,7 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
         is the action directly. For discrete, is is the mean / std dev.
 
         Args:
-            model_out (Tensor): obs embeddings from the model layers, of shape
+            model_out: obs embeddings from the model layers, of shape
                 [BATCH_SIZE, num_outputs].
 
         Returns:
