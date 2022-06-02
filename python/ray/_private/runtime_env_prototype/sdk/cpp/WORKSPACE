@@ -1,0 +1,5 @@
+workspace(name = "com_github_runtime_env")
+
+load("//bazel:deps_setup.bzl", "deps_setup")
+
+deps_setup()

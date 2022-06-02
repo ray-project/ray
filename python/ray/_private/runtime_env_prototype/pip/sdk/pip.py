@@ -1,12 +1,12 @@
 import logging
 
-from ray._private.runtime_env_prototype.sdk.runtime_env import BaseRuntimeEnv
+from ray._private.runtime_env_prototype.sdk.runtime_env import RuntimeEnvBase
 
 
 default_logger = logging.getLogger(__name__)
 
 
-class Pip(BaseRuntimeEnv):
+class Pip(RuntimeEnvBase):
     def __init__(self, packages=None, pip_check=False):
         super().__init__()
         self.packages = packages

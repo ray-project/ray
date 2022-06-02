@@ -8,13 +8,13 @@ from abc import ABC, abstractmethod, abstractstaticmethod
 logger = logging.getLogger(__name__)
 
 
-class BaseRuntimeEnv(ABC):
+class RuntimeEnvBase(ABC):
     @abstractmethod
     def to_jsonable_type(self):
         raise NotImplementedError()
 
     @abstractstaticmethod
-    def from_jsonable_type(jsonable_data) -> "BaseRuntimeEnv":
+    def from_jsonable_type(jsonable_data) -> "RuntimeEnvBase":
         raise NotImplementedError()
 
 
@@ -28,6 +28,9 @@ class RuntimeEnv(dict):
 
     def get(self, runtime_env_name, runtime_env_type):
         return runtime_env_type.from_jsonable_type(self[runtime_env_name])
+    
+    def remove(self, runtime_env_name):
+        del self[runtime_env_name]
 
     def serialize(self) -> str:
         return json.dumps(self, sort_keys=True)

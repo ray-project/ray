@@ -1,0 +1,12 @@
+cc_binary(
+    name = "test_runtime_env",
+    srcs = glob([
+        "*.cc",
+        "*.h",
+    ]),
+    linkstatic = True,
+    deps = [
+        "@nlohmann_json",
+    ],
+)
+

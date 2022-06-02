@@ -1,11 +1,11 @@
 import logging
 
-from ray._private.runtime_env_prototype.sdk.runtime_env import BaseRuntimeEnv
+from ray._private.runtime_env_prototype.sdk.runtime_env import RuntimeEnvBase
 
 default_logger = logging.getLogger(__name__)
 
 
-class WorkingDir(BaseRuntimeEnv):
+class WorkingDir(RuntimeEnvBase):
     def __init__(self, working_dir: str):
         super().__init__()
         self.working_dir = working_dir
