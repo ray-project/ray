@@ -14,7 +14,7 @@ from ray.rllib.algorithms.bandit.bandit import (
 )
 from ray.rllib.algorithms.bc.bc import BC, BCConfig
 from ray.rllib.algorithms.cql.cql import CQLTrainer, CQLConfig
-from ray.rllib.algorithms.ddpg.ddpg import DDPGTrainer, DDPGConfig
+from ray.rllib.algorithms.ddpg.ddpg import DDPG, DDPGConfig
 from ray.rllib.algorithms.ddppo.ddppo import DDPPO, DDPPOConfig
 from ray.rllib.algorithms.dqn.dqn import DQN, DQNConfig
 from ray.rllib.algorithms.dreamer.dreamer import DREAMERTrainer, DREAMERConfig
@@ -45,7 +45,7 @@ __all__ = [
     "AlphaZeroConfig",
     "ApexDDPG",
     "ApexDDPGConfig",
-    "ApexDQN"
+    "ApexDQN",
     "ApexDQNConfig",
     "APPO",
     "APPOConfig",
@@ -59,7 +59,7 @@ __all__ = [
     "BCConfig",
     "CQLTrainer",
     "CQLConfig",
-    "DDPGTrainer",
+    "DDPG",
     "DDPGConfig",
     "DDPPO",
     "DDPPOConfig",

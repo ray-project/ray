@@ -449,8 +449,6 @@ class _deprecated_default_config(dict):
 DEFAULT_CONFIG = _deprecated_default_config()
 
 
-@Deprecated(
-    new="Sub-class directly from `DQN` and override its methods", error=False
-)
+@Deprecated(new="Sub-class directly from `DQN` and override its methods", error=False)
 class GenericOffPolicyTrainer(SimpleQ):
     pass

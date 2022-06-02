@@ -3,7 +3,7 @@
 By default, this uses a near-identical configuration to that reported in the
 TD3 paper.
 """
-from ray.rllib.algorithms.ddpg.ddpg import DDPGConfig, DDPGTrainer
+from ray.rllib.algorithms.ddpg.ddpg import DDPG, DDPGConfig
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.typing import TrainerConfigDict

@@ -224,7 +224,7 @@ class SlateQTrainer(DQN):
     def get_default_config(cls) -> TrainerConfigDict:
         return SlateQConfig().to_dict()
 
-    @override(DQNTrainer)
+    @override(DQN)
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             return SlateQTorchPolicy
@@ -238,8 +238,8 @@ class _deprecated_default_config(dict):
         super().__init__(SlateQConfig().to_dict())
 
     @Deprecated(
-        old="ray.rllib.algorithms.slateq.slateq.DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.slateq.slateq.SlateQConfig(...)",
+        old="ray.rllib.algorithms.slateq.slateq::DEFAULT_CONFIG",
+        new="ray.rllib.algorithms.slateq.slateq::SlateQConfig(...)",
         error=False,
     )
     def __getitem__(self, item):

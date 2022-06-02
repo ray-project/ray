@@ -1,4 +1,8 @@
-from ray.rllib.algorithms.apex_dqn.apex import ApexConfig, Apex as ApexTrainer, APEX_DEFAULT_CONFIG
+from ray.rllib.algorithms.apex_dqn.apex import (
+    ApexConfig,
+    Apex as ApexTrainer,
+    APEX_DEFAULT_CONFIG,
+)
 from ray.rllib.algorithms.dqn.dqn import DQNConfig, DQN as DQNTrainer, DEFAULT_CONFIG
 from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.algorithms.dqn.dqn_torch_policy import DQNTorchPolicy
@@ -35,4 +39,8 @@ __all__ = [
 
 from ray.rllib.utils.deprecation import deprecation_warning
 
-deprecation_warning("ray.rllib.agents.dqn", "ray.rllib.algorithms.[dqn|simple_q|r2d2|apex_dqn]", error=False)
+deprecation_warning(
+    "ray.rllib.agents.dqn",
+    "ray.rllib.algorithms.[dqn|simple_q|r2d2|apex_dqn]",
+    error=False,
+)

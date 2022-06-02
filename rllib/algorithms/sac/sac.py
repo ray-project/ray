@@ -328,7 +328,7 @@ class SACTrainer(DQN):
             )
             try_import_tfp(error=True)
 
-    @override(DQNTrainer)
+    @override(DQN)
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.sac.sac_torch_policy import SACTorchPolicy
