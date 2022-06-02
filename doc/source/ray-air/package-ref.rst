@@ -81,6 +81,8 @@ Predictors
 .. autoclass:: ray.ml.predictor.Predictor
     :members:
 
+.. autoclass:: ray.ml.predictor.DataBatchType
+
 .. autoclass:: ray.ml.batch_predictor.BatchPredictor
     :members:
 

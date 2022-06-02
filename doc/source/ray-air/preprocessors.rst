@@ -12,21 +12,26 @@ Ray AIR provides several common preprocessors out of the box as well as interfac
 Overview
 --------
 
-Ray AIR exposes a ``Preprocessor`` class for preprocessing. The Preprocessor has 4 methods that make up its core interface.
+Ray AIR exposes a ``Preprocessor`` class for preprocessing. The ``Preprocessor`` has four methods that make up its core interface.
 
-#. ``fit()``: Compute some state for a Dataset and save it to the Preprocessor.
-#. ``transform()``: Apply a transformation to a Dataset.
-#. ``transform_batch()``: Apply a transformation to a single batch of data.
-#. ``fit_transform()``: Syntactic sugar for calling both ``fit()`` and ``transform()`` on a Dataset.
+#. ``fit()``: Compute state information about a :class:`Dataset <ray.data.Dataset>` (e.g. the mean or standard deviation of a column)
+   and save it to the ``Preprocessor``. This information should then be used to perform ``transform()``.
+   *This is typically called on the training dataset.*
+#. ``transform()``: Apply a transformation to a ``Dataset``.
+   If the ``Preprocessor`` is stateful, then ``fit()`` must be called first.
+   *This is typically called on the training, validation, test datasets.*
+#. ``transform_batch()``: Apply a transformation to a single :class:`batch <ray.ml.predictor.DataBatchType>` of data.
+   *This is typically called on online or offline inference data.*
+#. ``fit_transform()``: Syntactic sugar for calling both ``fit()`` and ``transform()`` on a ``Dataset``.
 
-To show these in action, let's walk through a basic example. First we'll set up 2 simple Ray Datasets.
+To show these in action, let's walk through a basic example. First we'll set up two simple Ray ``Dataset``\s.
 
 .. literalinclude:: doc_code/preprocessors.py
     :language: python
     :start-after: __preprocessor_setup_start__
     :end-before: __preprocessor_setup_end__
 
-Next, ``fit`` the Preprocessor on one Dataset, and ``transform`` both Datasets with this fitted information.
+Next, ``fit`` the ``Preprocessor`` on one ``Dataset``, and ``transform`` both ``Dataset``\s with this fitted information.
 
 .. literalinclude:: doc_code/preprocessors.py
     :language: python
@@ -43,21 +48,27 @@ Finally, call ``transform_batch`` on a single batch of data.
 Life of an AIR Preprocessor
 ---------------------------
 
-Now that we've gone over the basics, let's dive into how Preprocessors fit into an end-to-end application built with AIR.
+Now that we've gone over the basics, let's dive into how ``Preprocessor``\s fit into an end-to-end application built with AIR.
+The diagram below depicts an overview of the main steps of a ``Preprocessor``:
+
+#. Passed into a ``Trainer`` to ``fit`` and ``transform`` input ``Dataset``\s.
+#. Saved as a ``Checkpoint``.
+#. Reconstructed in a ``Predictor`` to ``fit_batch`` on batches of data.
 
 .. figure:: images/air-preprocessor.svg
 
-Throughout this section, we'll go through an example using XGBoost. The same logic is applicable to other integrations as well.
+Throughout this section we'll go through this workflow in more detail, with code examples using XGBoost.
+The same logic is applicable to other integrations as well.
 
 Trainer
 ~~~~~~~
 
-The journey of the Preprocessor starts with the ``Trainer``. If the Trainer is instantiated with a Preprocessor,
-then the following logic will be executed when ``Trainer.fit()`` is called:
+The journey of the ``Preprocessor`` starts with the :class:`Trainer <ray.ml.trainer.Trainer>`.
+If the ``Trainer`` is instantiated with a ``Preprocessor``, then the following logic will be executed when ``Trainer.fit()`` is called:
 
-#. If a ``"train"`` Dataset is passed in, then the Preprocessor will call ``fit()`` on it.
-#. The Preprocessor will then call ``transform()`` on *all* Datasets, including the ``"train"`` Dataset.
-#. The Trainer will then perform training on the preprocessed Datasets.
+#. If a ``"train"`` ``Dataset`` is passed in, then the ``Preprocessor`` will call ``fit()`` on it.
+#. The ``Preprocessor`` will then call ``transform()`` on *all* ``Dataset``\s, including the ``"train"`` ``Dataset``.
+#. The ``Trainer`` will then perform training on the preprocessed ``Dataset``\s.
 
 .. literalinclude:: doc_code/preprocessors.py
     :language: python
@@ -66,23 +77,25 @@ then the following logic will be executed when ``Trainer.fit()`` is called:
 
 .. note::
 
-    If you're passing a Preprocessor that is already fitted, it will be refitted on the ``"train"`` Dataset.
+    If you're passing a ``Preprocessor`` that is already fitted, it will be refitted on the ``"train"`` ``Dataset``.
     Adding the functionality to support passing in a fitted Preprocessor is being tracked
     `here <https://github.com/ray-project/ray/issues/25299>`__.
+
+.. TODO: Remove the note above once the issue is resolved.
 
 Tune
 ~~~~
 
-If you're using ``Ray Tune`` for hyperparameter optimization, be aware that each Trial will instantiate its own copy of
-the Preprocessor and the fitting and transformation logic will occur once per Trial.
+If you're using ``Ray Tune`` for hyperparameter optimization, be aware that each ``Trial`` will instantiate its own copy of
+the ``Preprocessor`` and the fitting and transformation logic will occur once per ``Trial``.
 
 Checkpoint
 ~~~~~~~~~~
 
 ``Trainer.fit()`` returns a ``Results`` object which contains a ``Checkpoint``.
-If a Preprocessor was passed into the Trainer, then it will be saved in the Checkpoint along with any fitted state.
+If a ``Preprocessor`` was passed into the ``Trainer``, then it will be saved in the ``Checkpoint`` along with any fitted state.
 
-As a sanity check, let's confirm the Preprocessor is available in the Checkpoint. In practice you should not need to do this.
+As a sanity check, let's confirm the ``Preprocessor`` is available in the ``Checkpoint``. In practice you should not need to do this.
 
 .. literalinclude:: doc_code/preprocessors.py
     :language: python
@@ -93,10 +106,10 @@ As a sanity check, let's confirm the Preprocessor is available in the Checkpoint
 Predictor
 ~~~~~~~~~
 
-A ``Predictor`` can be constructed from a saved ``Checkpoint``. If the Checkpoint contains a Preprocessor,
-then the Preprocessor will be used to call ``transform_batch`` on input batches prior to performing inference.
+A ``Predictor`` can be constructed from a saved ``Checkpoint``. If the ``Checkpoint`` contains a ``Preprocessor``,
+then the ``Preprocessor`` will be used to call ``transform_batch`` on input batches prior to performing inference.
 
-In the following example, we show the Batch Predictor flow. The same logic applies to the Online Inference flow.
+In the following example, we show the Batch Predictor flow. The same logic applies to the :ref:`Online Inference flow <air-key-concepts-online-inference>`.
 
 .. literalinclude:: doc_code/preprocessors.py
     :language: python
@@ -105,8 +118,18 @@ In the following example, we show the Batch Predictor flow. The same logic appli
 
 Types of Preprocessors
 ----------------------
-Ray AIR provides a handful of Preprocessors that you can use out of the box, and more will be added over time.
+
+Basic Preprocessors
+~~~~~~~~~~~~~~~~~~~
+
+Ray AIR provides a handful of ``Preprocessor``\s that you can use out of the box, and more will be added over time.
 `Contributions <https://docs.ray.io/en/master/getting-involved.html>`__ are welcome!
+
+.. tabbed:: Common APIs
+
+    #. :class:`Preprocessor <ray.ml.preprocessor.Preprocessor>`
+    #. :class:`BatchMapper <ray.ml.preprocessors.BatchMapper>`
+    #. :class:`Chain <ray.ml.preprocessors.Chain>`
 
 .. tabbed:: Tabular
 
@@ -134,21 +157,15 @@ Ray AIR provides a handful of Preprocessors that you can use out of the box, and
 
     Coming soon!
 
-.. tabbed:: Common APIs
-
-    #. :class:`Preprocessor <ray.ml.preprocessor.Preprocessor>`
-    #. :class:`BatchMapper <ray.ml.preprocessors.BatchMapper>`
-    #. :class:`Chain <ray.ml.preprocessors.Chain>`
-
 .. tabbed:: Utilities
 
     #. :func:`train_test_split <ray.ml.train_test_split>`
 
-Chain
-~~~~~
+Chaining Preprocessors
+~~~~~~~~~~~~~~~~~~~~~~
 
 More often than not, your preprocessing logic will contain multiple logical steps or apply different transformations to each column.
-A simple ``Chain`` Preprocessor is provided which can be used to apply individual Preprocessor operations sequentially.
+A simple ``Chain`` ``Preprocessor`` is provided which can be used to apply individual ``Preprocessor`` operations sequentially.
 
 .. literalinclude:: doc_code/preprocessors.py
     :language: python
@@ -157,11 +174,11 @@ A simple ``Chain`` Preprocessor is provided which can be used to apply individua
 
 .. tip::
 
-    Keep in mind that the operations are sequential. For example, if you define a Preprocessor
+    Keep in mind that the operations are sequential. For example, if you define a ``Preprocessor``
     ``Chain([preprocessorA, preprocessorB])``, then ``preprocessorB.transform()`` will be applied
     to the result of ``preprocessorA.transform()``.
 
-Custom preprocessors
+Custom Preprocessors
 ~~~~~~~~~~~~~~~~~~~~
 
 **Stateless Preprocessors:** Stateless preprocessors can be implemented with the ``BatchMapper``.
