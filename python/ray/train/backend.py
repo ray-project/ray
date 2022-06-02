@@ -41,7 +41,7 @@ class Backend(metaclass=Singleton):
     """Singleton for distributed communication backend.
 
     Attributes:
-        share_cuda_visible_devices (bool): If True, each worker
+        share_cuda_visible_devices: If True, each worker
             process will have CUDA_VISIBLE_DEVICES set as the visible device
             IDs of all workers on the same node for this training instance.
             If False, each worker will have CUDA_VISIBLE_DEVICES set to the
@@ -96,16 +96,16 @@ class BackendExecutor:
     from ``train.report()`` and ``train.checkpoint()``.
 
     Args:
-        backend_config (BackendConfig): The configurations for this
+        backend_config: The configurations for this
             specific backend.
-        num_workers (int): Number of workers to use for training.
-        num_cpus_per_worker (float): Number of CPUs to use per worker.
-        num_gpus_per_worker (float): Number of GPUs to use per worker.
+        num_workers: Number of workers to use for training.
+        num_cpus_per_worker: Number of CPUs to use per worker.
+        num_gpus_per_worker: Number of GPUs to use per worker.
         additional_resources_per_worker (Optional[Dict[str, float]]):
             Dictionary specifying the extra resources that will be
             requested for each worker in addition to ``num_cpus_per_worker``
             and ``num_gpus_per_worker``.
-        max_retries (int): Number of retries when Ray actors fail.
+        max_retries: Number of retries when Ray actors fail.
             Defaults to 3. Set to -1 for unlimited retries.
     """
 
@@ -508,7 +508,7 @@ class BackendExecutor:
         is executed and a ``TrainingWorkerError`` is raised.
 
         Args:
-            remote_values (list): List of object refs representing functions
+            remote_values: List of object refs representing functions
                 that may fail in the middle of execution. For example, running
                 a Train training loop in multiple parallel actor calls.
         Returns:

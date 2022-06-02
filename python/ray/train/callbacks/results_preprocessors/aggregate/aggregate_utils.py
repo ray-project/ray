@@ -21,7 +21,7 @@ def _check_if_key_is_reported(key: str, results: List[Dict]) -> bool:
     """Check if a particular key is reported by some workers.
 
     Args:
-        key (str): A key string.
+        key: A key string.
         results (List[Dict]): The results list returned from workers.
 
     Returns:
@@ -35,7 +35,7 @@ def _check_if_any_value_is_valid(key: str, results: List[Dict]) -> bool:
     """Check if some values of ``key`` are valid types.
 
     Args:
-        key (str): A key string.
+        key: A key string.
         results (List[Dict]): The results list returned from workers.
 
     Returns:
@@ -52,7 +52,7 @@ def _get_valid_values_from_results(
     """Get the list of values specified by ``key``.
 
     Args:
-        key (str): A key string.
+        key: A key string.
         results (List[Dict]): The results list returned from workers.
 
     Returns:
@@ -76,7 +76,7 @@ def _get_metrics_from_results(
     """Return the metric values specified by ``key`` from each worker's result dict.
 
     Args:
-        key (str): A key string specifies the metric.
+        key: A key string specifies the metric.
         results (List[Dict]): The results list returned from workers.
 
     Returns:
@@ -113,7 +113,7 @@ def _get_weights_from_results(
     """Return weight values specified by ``key`` from all workers.
 
     Args:
-        key (str): A key string specifies the weight metric.
+        key: A key string specifies the weight metric.
         results (List[Dict]): The results list returned from workers.
 
     Returns:

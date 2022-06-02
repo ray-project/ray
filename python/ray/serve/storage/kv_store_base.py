@@ -16,10 +16,10 @@ class KVStoreBase(metaclass=abc.ABCMeta):
         """Get internal key for storage.
 
         Args:
-            key (str): User provided key
+            key: User provided key
 
         Returns:
-            storage_key (str): Formatted key for storage, usually by
+            storage_key: Formatted key for storage, usually by
                 prepending namespace.
         """
         raise NotImplementedError("get_storage_key() has to be implemented")
@@ -29,8 +29,8 @@ class KVStoreBase(metaclass=abc.ABCMeta):
         """Put object into kv store, bytes only.
 
         Args:
-            key (str): Key for object to be stored.
-            val (bytes): Byte value of object.
+            key: Key for object to be stored.
+            val: Byte value of object.
         """
         raise NotImplementedError("put() has to be implemented")
 
@@ -39,10 +39,10 @@ class KVStoreBase(metaclass=abc.ABCMeta):
         """Get object from storage.
 
         Args:
-            key (str): Key for object to be retrieved.
+            key: Key for object to be retrieved.
 
         Returns:
-            val (bytes): Byte value of object from storage.
+            val: Byte value of object from storage.
         """
         raise NotImplementedError("get() has to be implemented")
 
@@ -51,6 +51,6 @@ class KVStoreBase(metaclass=abc.ABCMeta):
         """Delete an object.
 
         Args:
-            key (str): Key for object to be deleted.
+            key: Key for object to be deleted.
         """
         raise NotImplementedError("delete() has to be implemented")

@@ -12,6 +12,7 @@ import ray.train as train
 from ray.train import Trainer
 from ray.train.backend import BackendConfig, Backend
 from ray.train.callbacks import (
+    TrainingCallback,
     JsonLoggerCallback,
     PrintCallback,
     TBXLoggerCallback,
@@ -300,6 +301,51 @@ def test_torch_tensorboard_profiler_callback(ray_start_4_cpus, tmp_path):
         assert path.is_file()
         count += 1
     assert count == num_workers * num_epochs
+
+
+# fix issue: repeat assignments for preprocessor results nested recursive calling
+# see https://github.com/ray-project/ray/issues/25005
+def test_hotfix_callback_nested_recusive_calling():
+    from ray.train.callbacks.results_preprocessors.preprocessor import (
+        SequentialResultsPreprocessor,
+    )
+    from typing import Dict, List
+
+    # test callback used to simulate the nested recursive calling for preprocess()
+    class TestCallback(TrainingCallback):
+        def __init__(self):
+            self.max_process_time = 0
+
+        def count_process_times(self, processor):
+            count = 0
+            if processor:
+                if isinstance(processor, SequentialResultsPreprocessor):
+                    for preprocessor in processor.preprocessors:
+                        # recursive calling preprocessors in list
+                        count += self.count_process_times(preprocessor)
+                else:
+                    count = 1
+            return count
+
+        def handle_result(self, results: List[Dict], **info):
+            process_times = self.count_process_times(self.results_preprocessor)
+            if process_times > self.max_process_time:
+                self.max_process_time = process_times
+            print(f"process times: {process_times}")
+
+    def train_func():
+        for idx in range(num_iterates):
+            train.report(iterate=idx + 1)
+
+    # python default limitation for iterate depth
+    num_iterates = 1000
+    trainer = Trainer(TestConfig(), num_workers=1)
+    trainer.start()
+    test_callback = TestCallback()
+    trainer.run(train_func, callbacks=[test_callback])
+    assert test_callback.max_process_time == 1
+    print(f"callback max process time: {test_callback.max_process_time}")
+    trainer.shutdown()
 
 
 if __name__ == "__main__":

@@ -157,7 +157,7 @@ def build_q_model(
     """Build q_model and target_model for DQN
 
     Args:
-        policy (Policy): The Policy, which will use the model for optimization.
+        policy: The Policy, which will use the model for optimization.
         obs_space (gym.spaces.Space): The policy's observation space.
         action_space (gym.spaces.Space): The policy's action space.
         config (TrainerConfigDict):
@@ -241,9 +241,9 @@ def build_q_losses(policy: Policy, model, _, train_batch: SampleBatch) -> Tensor
     """Constructs the loss for DQNTFPolicy.
 
     Args:
-        policy (Policy): The Policy to calculate the loss for.
+        policy: The Policy to calculate the loss for.
         model (ModelV2): The Model to calculate the loss for.
-        train_batch (SampleBatch): The training data.
+        train_batch: The training data.
 
     Returns:
         TensorType: A single loss tensor.
