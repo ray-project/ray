@@ -510,7 +510,7 @@ class ServeControllerClient:
         controller_deploy_args = {
             "name": name,
             "deployment_config_proto_bytes": deployment_config.to_proto_bytes(),
-            "replica_config_proto_bytes": replica_config.to_proto_bytes(),
+            "replica_config_proto_bytes": replica_config.to_proto_bytes(deployment_config.get_api_client_lang()),
             "route_prefix": route_prefix,
             "deployer_job_id": ray.get_runtime_context().job_id,
         }

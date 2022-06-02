@@ -43,7 +43,7 @@ public class RayServeWrappedReplica implements RayServeReplica {
       String controllerNamespace) {
 
     // Parse DeploymentConfig.
-    DeploymentConfig deploymentConfig = DeploymentConfig.fromProtoBytes(deploymentVersionBytes);
+    DeploymentConfig deploymentConfig = DeploymentConfig.fromProtoBytes(deploymentConfigBytes);
 
     // Parse init args.
     Object[] initArgs = null;

@@ -8,8 +8,19 @@ import os
 import random
 from typing import Any, Tuple, Callable, DefaultDict, Dict, Set, Union
 
+from ray.serve.common import ReplicaName
+from ray.serve.generated.serve_pb2 import (
+    LongPollRequest,
+    UpdatedObject as UpdatedObjectProto,
+    LongPollResult,
+    EndpointSet,
+    EndpointInfo as EndpointInfoProto,
+    ActorNameList,
+)
+
 import ray
 from ray.serve.constants import SERVE_LOGGER_NAME
+from ray.serve.utils import format_actor_name
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -243,6 +254,82 @@ class LongPollHost:
                     self.snapshot_ids[updated_object_key],
                 )
             }
+
+    async def listen_for_change_xlang(
+        self,
+        keys_to_snapshot_ids_bytes: bytes,
+    ) -> bytes:
+        """Listen for changed objects. only call by java proxy/router now.
+        Args:
+            keys_to_snapshot_ids_bytes (Dict[str, int]): the protobuf bytes of keys_to_snapshot_ids (Dict[str, int]).
+        """
+        keys_to_snapshot_ids_proto = LongPollRequest.FromString(keys_to_snapshot_ids_bytes)
+        keys_to_snapshot_ids = {
+            self._parse_xlang_key(xlang_key): snapshot_id
+            for xlang_key, snapshot_id in keys_to_snapshot_ids_proto.keys_to_snapshot_ids.items()
+        }
+        keys_to_updated_objects = await self.listen_for_change(keys_to_snapshot_ids)
+        return self._listen_result_to_proto_bytes(keys_to_updated_objects)
+
+    def _parse_poll_namespace(self, name: str):
+        if name == LongPollNamespace.ROUTE_TABLE.name:
+            return LongPollNamespace.ROUTE_TABLE
+        elif name == LongPollNamespace.RUNNING_REPLICAS.name:
+            return LongPollNamespace.RUNNING_REPLICAS
+        else:
+            return name
+
+    def _parse_xlang_key(self, xlang_key: str) -> KeyType:
+        if xlang_key is None:
+            raise ValueError("func _parse_xlang_key: xlang_key is None")
+        if xlang_key.startswith("(") and xlang_key.endswith(")"):
+            fields = xlang_key[1:-1].split(',')
+            if len(fields) == 2:
+                enum_field = self._parse_poll_namespace(fields[0].strip())
+                if isinstance(enum_field, LongPollNamespace):
+                    return enum_field, fields[1].strip()
+        else:
+            return self._parse_poll_namespace(xlang_key)
+        raise ValueError("can not parse key type from xlang_key {}".format(xlang_key))
+
+    def _build_xlang_key(self, key: KeyType) -> str:
+        if isinstance(key, tuple):
+            return '(' + key[0].name + ',' + key[1] + ')'
+        elif isinstance(key, LongPollNamespace):
+            return key.name
+        else:
+            return key
+
+    def _object_snapshot_to_proto_bytes(self, key: KeyType, object_snapshot: Any) -> bytes:
+        if key == LongPollNamespace.ROUTE_TABLE:
+            # object_snapshot is Dict[EndpointTag, EndpointInfo]
+            xlang_endpoints = {
+                endpoint_tag: EndpointInfoProto(route=endpoint_info.route)
+                for endpoint_tag, endpoint_info in object_snapshot.items()
+            }
+            return EndpointSet(endpoints=xlang_endpoints).SerializeToString()
+        elif isinstance(key, tuple) and key[0] == LongPollNamespace.RUNNING_REPLICAS:
+            # object_snapshot is List[RunningReplicaInfo]
+            actor_name_list = [
+                f"{ReplicaName.prefix}{format_actor_name(replica_info.replica_tag)}"
+                for replica_info in object_snapshot
+            ]
+            return ActorNameList(names=actor_name_list).SerializeToString()
+        else:
+            return str.encode(str(object_snapshot))
+
+    def _listen_result_to_proto_bytes(self, keys_to_updated_objects: Dict[KeyType, UpdatedObject]) -> bytes:
+        xlang_keys_to_updated_objects = {
+            self._build_xlang_key(key): UpdatedObjectProto(snapshot_id=updated_object.snapshot_id,
+                                                           object_snapshot=self._object_snapshot_to_proto_bytes(
+                                                               key, updated_object.object_snapshot))
+            for key, updated_object in keys_to_updated_objects.items()
+        }
+        data = {
+            "updated_objects": xlang_keys_to_updated_objects,
+        }
+        proto = LongPollResult(**data)
+        return proto.SerializeToString()
 
     def notify_changed(
         self,

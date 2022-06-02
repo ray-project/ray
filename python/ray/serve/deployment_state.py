@@ -318,6 +318,8 @@ class ActorReplicaWrapper:
                 version.to_proto().SerializeToString(),
                 # String controllerName
                 self._controller_name,
+                # String controllerNamespace
+                self._controller_namespace,
             )
 
         self._actor_handle = actor_def.options(

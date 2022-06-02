@@ -154,6 +154,14 @@ class ServeController:
         """
         return await (self.long_poll_host.listen_for_change(keys_to_snapshot_ids))
 
+    async def listen_for_change_xlang(self, keys_to_snapshot_ids_bytes: bytes):
+        """Proxy long pull client's listen request.
+
+        Args:
+            keys_to_snapshot_ids_bytes (Dict[str, int]): the protobuf bytes of keys_to_snapshot_ids (Dict[str, int]).
+        """
+        return await (self.long_poll_host.listen_for_change_xlang(keys_to_snapshot_ids_bytes))
+
     def get_checkpoint_path(self) -> str:
         return self.checkpoint_path
 
@@ -332,7 +340,7 @@ class ServeController:
         version = deployment_config.version
         prev_version = deployment_config.prev_version
         replica_config = ReplicaConfig.from_proto_bytes(
-            replica_config_proto_bytes, deployment_config.deployment_language
+            replica_config_proto_bytes, deployment_config.get_api_client_lang()
         )
 
         if prev_version is not None:

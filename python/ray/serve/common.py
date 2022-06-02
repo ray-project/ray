@@ -259,7 +259,7 @@ class DeploymentInfo:
         if self.deployment_config:
             data["deployment_config"] = self.deployment_config.to_proto()
         if self.replica_config:
-            data["replica_config"] = self.replica_config.to_proto()
+            data["replica_config"] = self.replica_config.to_proto(self.deployment_config.get_api_client_lang())
         return DeploymentInfoProto(**data)
 
 

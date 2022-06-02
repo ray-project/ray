@@ -8,6 +8,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import io.ray.serve.generated.ActorNameList;
 import org.apache.commons.lang3.RandomUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,7 +23,6 @@ import io.ray.runtime.metric.Gauge;
 import io.ray.runtime.metric.Metrics;
 import io.ray.runtime.metric.TagKey;
 import io.ray.serve.exception.RayServeException;
-import io.ray.serve.generated.ActorSet;
 import io.ray.serve.metrics.RayServeMetrics;
 import io.ray.serve.replica.RayServeWrappedReplica;
 import io.ray.serve.util.CollectionUtil;
@@ -53,7 +53,7 @@ public class ReplicaSet {
 
   @SuppressWarnings("unchecked")
   public synchronized void updateWorkerReplicas(Object actorSet) { // TODO
-    List<String> actorNames = ((ActorSet) actorSet).getNamesList();
+    List<String> actorNames = ((ActorNameList) actorSet).getNamesList();
     Set<ActorHandle<RayServeWrappedReplica>> workerReplicas = new HashSet<>();
     if (!CollectionUtil.isEmpty(actorNames)) {
       actorNames.forEach(
@@ -67,7 +67,7 @@ public class ReplicaSet {
         new HashSet<>(Sets.difference(inFlightQueries.keySet(), workerReplicas));
 
     added.forEach(actorHandle -> inFlightQueries.put(actorHandle, Sets.newConcurrentHashSet()));
-    removed.forEach(actorHandle -> inFlightQueries.remove(actorHandle));
+    removed.forEach(inFlightQueries::remove);
 
     if (added.size() > 0 || removed.size() > 0) {
       LOGGER.info("ReplicaSet: +{}, -{} replicas.", added.size(), removed.size());
