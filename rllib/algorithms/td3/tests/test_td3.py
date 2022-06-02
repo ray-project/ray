@@ -24,7 +24,7 @@ class TestTD3(unittest.TestCase):
         ray.shutdown()
 
     def test_td3_compilation(self):
-        """Test whether a TD3Trainer can be built with both frameworks."""
+        """Test whether TD3 can be built with both frameworks."""
         config = td3.TD3Config()
 
         # Test against all frameworks.

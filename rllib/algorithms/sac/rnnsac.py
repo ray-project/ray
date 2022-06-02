@@ -1,7 +1,7 @@
 from typing import Type, Optional
 
 from ray.rllib.algorithms.sac import (
-    SACTrainer,
+    SAC,
     SACConfig,
 )
 from ray.rllib.algorithms.sac.rnnsac_torch_policy import RNNSACTorchPolicy
@@ -82,13 +82,13 @@ class RNNSACConfig(SACConfig):
         return self
 
 
-class RNNSACTrainer(SACTrainer):
+class RNNSAC(SAC):
     @classmethod
-    @override(SACTrainer)
+    @override(SAC)
     def get_default_config(cls) -> TrainerConfigDict:
         return RNNSACConfig().to_dict()
 
-    @override(SACTrainer)
+    @override(SAC)
     def validate_config(self, config: TrainerConfigDict) -> None:
         # Call super's validation method.
         super().validate_config(config)
@@ -120,7 +120,7 @@ class RNNSACTrainer(SACTrainer):
                 "Only `framework=torch` supported so far for RNNSACTrainer!"
             )
 
-    @override(SACTrainer)
+    @override(SAC)
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         return RNNSACTorchPolicy
 

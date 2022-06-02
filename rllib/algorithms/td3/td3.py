@@ -11,7 +11,7 @@ from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 
 class TD3Config(DDPGConfig):
-    """Defines a configuration class from which a TD3Trainer can be built.
+    """Defines a configuration class from which a TD3 Trainer can be built.
 
     Example:
         >>> from ray.rllib.algorithms.ddpg.td3 import TD3Config

@@ -86,7 +86,7 @@ class BanditLinUCBConfig(BanditConfig):
         # fmt: on
 
 
-class BanditLinTSTrainer(Trainer):
+class BanditLinTS(Trainer):
     """Bandit Trainer using ThompsonSampling exploration."""
 
     @classmethod
@@ -104,7 +104,7 @@ class BanditLinTSTrainer(Trainer):
             raise NotImplementedError("Only `framework=[torch|tf2]` supported!")
 
 
-class BanditLinUCBTrainer(Trainer):
+class BanditLinUCB(Trainer):
     @classmethod
     @override(Trainer)
     def get_default_config(cls) -> BanditLinUCBConfig:

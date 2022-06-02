@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 class SACConfig(TrainerConfig):
-    """Defines a configuration class from which an SACTrainer can be built.
+    """Defines a configuration class from which an SAC Trainer can be built.
 
     Example:
         >>> config = SACConfig().training(gamma=0.9, lr=0.01)\
@@ -34,7 +34,7 @@ class SACConfig(TrainerConfig):
     """
 
     def __init__(self, trainer_class=None):
-        super().__init__(trainer_class=trainer_class or SACTrainer)
+        super().__init__(trainer_class=trainer_class or SAC)
         # fmt: off
         # __sphinx_doc_begin__
         # SAC-specific config settings.
@@ -271,7 +271,7 @@ class SACConfig(TrainerConfig):
         return self
 
 
-class SACTrainer(DQN):
+class SAC(DQN):
     """Soft Actor Critic (SAC) Trainer class.
 
     This file defines the distributed Trainer class for the soft actor critic
@@ -344,8 +344,8 @@ class _deprecated_default_config(dict):
         super().__init__(SACConfig().to_dict())
 
     @Deprecated(
-        old="ray.rllib.algorithms.sac.sac.DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.sac.sac.SACConfig(...)",
+        old="ray.rllib.algorithms.sac.sac::DEFAULT_CONFIG",
+        new="ray.rllib.algorithms.sac.sac::SACConfig(...)",
         error=False,
     )
     def __getitem__(self, item):

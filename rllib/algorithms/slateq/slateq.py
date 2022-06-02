@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 class SlateQConfig(TrainerConfig):
-    """Defines a configuration class from which a SlateQTrainer can be built.
+    """Defines a configuration class from which a SlateQ Trainer can be built.
 
     Example:
         >>> from ray.rllib.algorithms.slateq import SlateQConfig
@@ -60,7 +60,7 @@ class SlateQConfig(TrainerConfig):
 
     def __init__(self):
         """Initializes a PGConfig instance."""
-        super().__init__(trainer_class=SlateQTrainer)
+        super().__init__(trainer_class=SlateQ)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -218,7 +218,7 @@ def calculate_round_robin_weights(config: TrainerConfigDict) -> List[float]:
     return weights
 
 
-class SlateQTrainer(DQN):
+class SlateQ(DQN):
     @classmethod
     @override(DQN)
     def get_default_config(cls) -> TrainerConfigDict:

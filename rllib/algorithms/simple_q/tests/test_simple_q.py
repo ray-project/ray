@@ -2,7 +2,7 @@ import numpy as np
 import unittest
 
 import ray
-from ray.rllib.algorithms import dqn
+import ray.rllib.algorithms.simple_q as simple_q
 from ray.rllib.algorithms.simple_q.simple_q_tf_policy import build_q_losses as loss_tf
 from ray.rllib.algorithms.simple_q.simple_q_torch_policy import (
     build_q_losses as loss_torch,
@@ -32,7 +32,7 @@ class TestSimpleQ(unittest.TestCase):
     def test_simple_q_compilation(self):
         """Test whether a SimpleQTrainer can be built on all frameworks."""
         # Run locally and with compression
-        config = dqn.simple_q.SimpleQConfig().rollouts(
+        config = simple_q.SimpleQConfig().rollouts(
             num_rollout_workers=0, compress_observations=True
         )
 
@@ -52,7 +52,7 @@ class TestSimpleQ(unittest.TestCase):
 
     def test_simple_q_loss_function(self):
         """Tests the Simple-Q loss function results on all frameworks."""
-        config = dqn.simple_q.SimpleQConfig().rollouts(num_rollout_workers=0)
+        config = simple_q.SimpleQConfig().rollouts(num_rollout_workers=0)
         # Use very simple net (layer0=10 nodes, q-layer=2 nodes (2 actions)).
         config.training(
             model={
@@ -63,7 +63,7 @@ class TestSimpleQ(unittest.TestCase):
 
         for fw in framework_iterator(config):
             # Generate Trainer and get its default Policy object.
-            trainer = dqn.SimpleQTrainer(config=config, env="CartPole-v0")
+            trainer = simple_q.SimpleQ(config=config, env="CartPole-v0")
             policy = trainer.get_policy()
             # Batch of size=2.
             input_ = SampleBatch(

@@ -27,7 +27,7 @@ from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
 
 
 class MARWILConfig(TrainerConfig):
-    """Defines a configuration class from which a MARWILTrainer can be built.
+    """Defines a configuration class from which a MARWIL Trainer can be built.
 
 
     Example:

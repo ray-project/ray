@@ -24,7 +24,7 @@ class TestBC(unittest.TestCase):
         ray.shutdown()
 
     def test_bc_compilation_and_learning_from_offline_file(self):
-        """Test whether a BCTrainer can be built with all frameworks.
+        """Test whether BC can be built with all frameworks.
 
         And learns from a historic-data file (while being evaluated on an
         actual env using evaluation_num_workers > 0).
@@ -68,7 +68,7 @@ class TestBC(unittest.TestCase):
 
             if not learnt:
                 raise ValueError(
-                    "BCTrainer did not reach {} reward from expert offline "
+                    "`BC` did not reach {} reward from expert offline "
                     "data!".format(min_reward)
                 )
 

@@ -293,7 +293,7 @@ class DreamerIteration:
         return _postprocess_gif(gif=gif)
 
 
-class DREAMERTrainer(Trainer):
+class Dreamer(Trainer):
     @classmethod
     @override(Trainer)
     def get_default_config(cls) -> TrainerConfigDict:

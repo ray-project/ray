@@ -47,7 +47,7 @@ from ray.util.timer import _Timer
 
 
 class AlphaStarConfig(appo.APPOConfig):
-    """Defines a configuration class from which an AlphaStarTrainer can be built.
+    """Defines a configuration class from which an AlphaStar Trainer can be built.
 
     Example:
         >>> from ray.rllib.algorithms.alpha_star import AlphaStarConfig
@@ -80,7 +80,7 @@ class AlphaStarConfig(appo.APPOConfig):
 
     def __init__(self, trainer_class=None):
         """Initializes a AlphaStarConfig instance."""
-        super().__init__(trainer_class=trainer_class or AlphaStarTrainer)
+        super().__init__(trainer_class=trainer_class or AlphaStar)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -232,7 +232,7 @@ class AlphaStarConfig(appo.APPOConfig):
         return self
 
 
-class AlphaStarTrainer(appo.APPO):
+class AlphaStar(appo.APPO):
     _allow_unknown_subkeys = appo.APPO._allow_unknown_subkeys + [
         "league_builder_config",
     ]

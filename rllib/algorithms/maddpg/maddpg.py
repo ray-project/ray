@@ -274,7 +274,7 @@ def before_learn_on_batch(multi_agent_batch, policies, train_batch_size):
     return MultiAgentBatch(policy_batches, train_batch_size)
 
 
-class MADDPGTrainer(DQN):
+class MADDPG(DQN):
     @classmethod
     @override(DQN)
     def get_default_config(cls) -> TrainerConfigDict:

@@ -18,7 +18,7 @@ class TestParameterNoise(unittest.TestCase):
 
     def test_ddpg_parameter_noise(self):
         self.do_test_parameter_noise_exploration(
-            ddpg.DDPGTrainer,
+            ddpg.DDPG,
             ddpg.DEFAULT_CONFIG,
             "Pendulum-v1",
             {},

@@ -5,7 +5,7 @@ from typing import Optional, Type
 from ray.rllib.algorithms.cql.cql_tf_policy import CQLTFPolicy
 from ray.rllib.algorithms.cql.cql_torch_policy import CQLTorchPolicy
 from ray.rllib.algorithms.sac.sac import (
-    SACTrainer,
+    SAC,
     SACConfig,
 )
 from ray.rllib.execution.train_ops import (
@@ -120,7 +120,7 @@ class CQLConfig(SACConfig):
         return self
 
 
-class CQLTrainer(SACTrainer):
+class CQL(SAC):
     """CQL (derived from SAC)."""
 
     def __init__(self, *args, **kwargs):
@@ -164,11 +164,11 @@ class CQLTrainer(SACTrainer):
             )
 
     @classmethod
-    @override(SACTrainer)
+    @override(SAC)
     def get_default_config(cls) -> TrainerConfigDict:
         return CQLConfig().to_dict()
 
-    @override(SACTrainer)
+    @override(SAC)
     def validate_config(self, config: TrainerConfigDict) -> None:
         # First check, whether old `timesteps_per_iteration` is used. If so
         # convert right away as for CQL, we must measure in training timesteps,
@@ -205,14 +205,14 @@ class CQLTrainer(SACTrainer):
             )
             try_import_tfp(error=True)
 
-    @override(SACTrainer)
+    @override(SAC)
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             return CQLTorchPolicy
         else:
             return CQLTFPolicy
 
-    @override(SACTrainer)
+    @override(SAC)
     def training_iteration(self) -> ResultDict:
 
         # Sample training batch from replay buffer.
@@ -274,8 +274,8 @@ class _deprecated_default_config(dict):
         super().__init__(CQLConfig().to_dict())
 
     @Deprecated(
-        old="ray.rllib.algorithms.cql.cql.DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.cql.cql.CQLConfig(...)",
+        old="ray.rllib.algorithms.cql.cql::DEFAULT_CONFIG",
+        new="ray.rllib.algorithms.cql.cql::CQLConfig(...)",
         error=False,
     )
     def __getitem__(self, item):

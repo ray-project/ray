@@ -114,7 +114,7 @@ class TestExplorations(unittest.TestCase):
         config = ddpg.DEFAULT_CONFIG.copy()
         config["exploration_config"]["random_timesteps"] = 0
         do_test_explorations(
-            ddpg.DDPGTrainer,
+            ddpg.DDPG,
             "Pendulum-v1",
             config,
             np.array([0.0, 0.1, 0.0]),
@@ -123,9 +123,9 @@ class TestExplorations(unittest.TestCase):
 
     def test_simple_dqn(self):
         do_test_explorations(
-            dqn.SimpleQTrainer,
+            simple_q.SimpleQ,
             "CartPole-v0",
-            dqn.SIMPLE_Q_DEFAULT_CONFIG,
+            simple_q.SimpleQConfig().to_dict(),
             np.array([0.0, 0.1, 0.0, 0.0]),
         )
 
@@ -148,7 +148,7 @@ class TestExplorations(unittest.TestCase):
 
     def test_pg(self):
         do_test_explorations(
-            pg.PGTrainer,
+            pg.PG,
             "CartPole-v0",
             pg.DEFAULT_CONFIG,
             np.array([0.0, 0.1, 0.0, 0.0]),
@@ -176,7 +176,7 @@ class TestExplorations(unittest.TestCase):
 
     def test_sac(self):
         do_test_explorations(
-            sac.SACTrainer,
+            sac.SAC,
             "Pendulum-v1",
             sac.DEFAULT_CONFIG,
             np.array([0.0, 0.1, 0.0]),
@@ -189,7 +189,7 @@ class TestExplorations(unittest.TestCase):
         # GaussianNoise right away.
         config["exploration_config"]["random_timesteps"] = 0
         do_test_explorations(
-            td3.TD3Trainer,
+            td3.TD3,
             "Pendulum-v1",
             config,
             np.array([0.0, 0.1, 0.0]),

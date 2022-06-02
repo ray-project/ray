@@ -97,12 +97,12 @@ RL for recommender systems:
 
 Bandits: 
 
-- `Linear Upper Confidence Bound (BanditLinUCBTrainer) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#lin-ucb>`__ 
-- `Linear Thompson Sampling (BanditLinTSTrainer) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#lints>`__ 
+- `Linear Upper Confidence Bound (BanditLinUCB) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#lin-ucb>`__
+- `Linear Thompson Sampling (BanditLinTS) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#lints>`__
 
 Multi-agent:  
 
-- `Single-Player Alpha Zero (contrib/AlphaZero)  <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#alphazero>`__ 
+- `Single-Player Alpha Zero (AlphaZero)  <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#alphazero>`__
 - `Parameter Sharing <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#parameter>`__ 
 - `QMIX Monotonic Value Factorisation (QMIX, VDN, IQN)) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#qmix>`__ 
 - `Multi-Agent Deep Deterministic Policy Gradient (MADDPG) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#maddpg>`__

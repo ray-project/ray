@@ -22,7 +22,7 @@ import ray
 from ray.actor import ActorHandle
 from ray.rllib import Policy
 from ray.rllib.agents import Trainer
-from ray.rllib.algorithms.dqn.dqn import DQNConfig, DQN
+from ray.rllib.algorithms.dqn.dqn import DQN, DQNConfig
 from ray.rllib.algorithms.dqn.learner_thread import LearnerThread
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.execution.common import (
@@ -58,11 +58,11 @@ from ray.util.ml_utils.dict import merge_dicts
 
 
 class ApexDQNConfig(DQNConfig):
-    """Defines a configuration class from which an ApexTrainer can be built.
+    """Defines a configuration class from which an ApexDQN Trainer can be built.
 
     Example:
         >>> from ray.rllib.algorithms.apex_dqn.apex_dqn import ApexDQNConfig
-        >>> config = ApexConfig()
+        >>> config = ApexDQNConfig()
         >>> print(config.replay_buffer_config)
         >>> replay_config = config.replay_buffer_config.update(
         >>>     {
@@ -76,14 +76,14 @@ class ApexDQNConfig(DQNConfig):
         >>>       .resources(num_gpus=1)\
         >>>       .rollouts(num_rollout_workers=30)\
         >>>       .environment("CartPole-v1")
-        >>> trainer = ApexTrainer(config=config)
+        >>> trainer = config.build()
         >>> while True:
         >>>     trainer.train()
 
     Example:
         >>> from ray.rllib.algorithms.apex_dqn.apex_dqn import ApexDQNConfig
         >>> from ray import tune
-        >>> config = ApexConfig()
+        >>> config = ApexDQNConfig()
         >>> config.training(num_atoms=tune.grid_search(list(range(1, 11)))
         >>> config.environment(env="CartPole-v1")
         >>> tune.run(
@@ -94,7 +94,7 @@ class ApexDQNConfig(DQNConfig):
 
     Example:
         >>> from ray.rllib.algorithms.apex_dqn.apex_dqn import ApexDQNConfig
-        >>> config = ApexConfig()
+        >>> config = ApexDQNConfig()
         >>> print(config.exploration_config)
         >>> explore_config = config.exploration_config.update(
         >>>     {
@@ -109,7 +109,7 @@ class ApexDQNConfig(DQNConfig):
 
     Example:
         >>> from ray.rllib.algorithms.apex_dqn.apex_dqn import ApexDQNConfig
-        >>> config = ApexConfig()
+        >>> config = ApexDQNConfig()
         >>> print(config.exploration_config)
         >>> explore_config = config.exploration_config.update(
         >>>     {

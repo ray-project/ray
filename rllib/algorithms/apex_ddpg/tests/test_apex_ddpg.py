@@ -19,7 +19,7 @@ class TestApexDDPG(unittest.TestCase):
         ray.shutdown()
 
     def test_apex_ddpg_compilation_and_per_worker_epsilon_values(self):
-        """Test whether an APEX-DDPGTrainer can be built on all frameworks."""
+        """Test whether APEX-DDPG can be built on all frameworks."""
         config = (
             apex_ddpg.ApexDDPGConfig()
             .rollouts(num_rollout_workers=2)

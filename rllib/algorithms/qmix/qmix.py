@@ -25,7 +25,7 @@ from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 
 class QMixConfig(SimpleQConfig):
-    """Defines a configuration class from which a QMixTrainer can be built.
+    """Defines a configuration class from which a QMix Trainer can be built.
 
     Example:
         >>> from ray.rllib.examples.env.two_step_game import TwoStepGame
@@ -60,7 +60,7 @@ class QMixConfig(SimpleQConfig):
 
     def __init__(self):
         """Initializes a PPOConfig instance."""
-        super().__init__(trainer_class=QMixTrainer)
+        super().__init__(trainer_class=QMix)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -191,7 +191,7 @@ class QMixConfig(SimpleQConfig):
         return self
 
 
-class QMixTrainer(SimpleQ):
+class QMix(SimpleQ):
     @classmethod
     @override(SimpleQ)
     def get_default_config(cls) -> TrainerConfigDict:
@@ -203,7 +203,7 @@ class QMixTrainer(SimpleQ):
         super().validate_config(config)
 
         if config["framework"] != "torch":
-            raise ValueError("Only `framework=torch` supported so far for QMixTrainer!")
+            raise ValueError("Only `framework=torch` supported so far for QMix!")
 
     @override(SimpleQ)
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
