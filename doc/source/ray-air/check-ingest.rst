@@ -98,7 +98,8 @@ Dataset ingest options and what they do:
 
 .. tabbed:: Split All
 
-    This example shows overriding the split config for the "valid" and "test" datasets.
+    This example shows overriding the split config for the "valid" and "test" datasets. This means that
+    both the valid and test datasets here will be ``.split()`` across the training workers.
 
     .. code:: python
 
@@ -117,7 +118,8 @@ Dataset ingest options and what they do:
 
 .. tabbed:: Disable Transform
 
-    This example shows overriding the transform config for the "side" dataset.
+    This example shows overriding the transform config for the "side" dataset. This means that
+    the original dataset will be returned by ``.get_dataset_shard("side")``.
 
     .. code:: python
 
