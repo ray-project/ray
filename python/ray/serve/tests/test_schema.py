@@ -352,23 +352,6 @@ class TestDeploymentSchema:
         deployment_schema["route_prefix"] = None
         DeploymentSchema.parse_obj(deployment_schema)
 
-    def test_mutually_exclusive_num_replicas_and_autoscaling_config(self):
-        # num_replicas and autoscaling_config cannot be set at the same time
-        deployment_schema = self.get_minimal_deployment_schema()
-
-        deployment_schema["num_replicas"] = 5
-        deployment_schema["autoscaling_config"] = None
-        DeploymentSchema.parse_obj(deployment_schema)
-
-        deployment_schema["num_replicas"] = None
-        deployment_schema["autoscaling_config"] = AutoscalingConfig().dict()
-        DeploymentSchema.parse_obj(deployment_schema)
-
-        deployment_schema["num_replicas"] = 5
-        deployment_schema["autoscaling_config"] = AutoscalingConfig().dict()
-        with pytest.raises(ValueError):
-            DeploymentSchema.parse_obj(deployment_schema)
-
     def test_extra_fields_invalid_deployment_schema(self):
         # Undefined fields should be forbidden in the schema
 

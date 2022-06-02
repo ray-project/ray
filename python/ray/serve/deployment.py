@@ -83,15 +83,6 @@ class Deployment:
         if init_kwargs is None:
             init_kwargs = {}
 
-        # TODO(architkulkarni): Enforce that autoscaling_config and
-        # user-provided num_replicas should be mutually exclusive.
-        if version is None and config.autoscaling_config is not None:
-            # TODO(architkulkarni): Remove this restriction.
-            raise ValueError(
-                "Currently autoscaling is only supported for "
-                "versioned deployments. Try @serve.deployment(version=...)."
-            )
-
         self._func_or_class = func_or_class
         self._name = name
         self._version = version
