@@ -1,7 +1,7 @@
 import unittest
 
 import ray
-import ray.rllib.agents.ppo as ppo
+import ray.rllib.algorithms.appo as appo
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
 from ray.rllib.utils.test_utils import (
@@ -21,8 +21,8 @@ class TestAPPO(unittest.TestCase):
         ray.shutdown()
 
     def test_appo_compilation(self):
-        """Test whether an APPOTrainer can be built with both frameworks."""
-        config = ppo.appo.APPOConfig().rollouts(num_rollout_workers=1)
+        """Test whether APPO can be built with both frameworks."""
+        config = appo.APPOConfig().rollouts(num_rollout_workers=1)
         num_iterations = 2
 
         for _ in framework_iterator(config, with_eager_tracing=True):
@@ -47,11 +47,9 @@ class TestAPPO(unittest.TestCase):
             trainer.stop()
 
     def test_appo_compilation_use_kl_loss(self):
-        """Test whether an APPOTrainer can be built with kl_loss enabled."""
+        """Test whether APPO can be built with kl_loss enabled."""
         config = (
-            ppo.appo.APPOConfig()
-            .rollouts(num_rollout_workers=1)
-            .training(use_kl_loss=True)
+            appo.APPOConfig().rollouts(num_rollout_workers=1).training(use_kl_loss=True)
         )
         num_iterations = 2
 
@@ -68,7 +66,7 @@ class TestAPPO(unittest.TestCase):
         # Not explicitly setting this should cause a warning, but not fail.
         # config["_tf_policy_handles_more_than_one_loss"] = True
         config = (
-            ppo.appo.APPOConfig()
+            appo.APPOConfig()
             .rollouts(num_rollout_workers=1)
             .training(_separate_vf_optimizer=True, _lr_vf=0.002)
         )
@@ -91,7 +89,7 @@ class TestAPPO(unittest.TestCase):
     def test_appo_entropy_coeff_schedule(self):
         # Initial lr, doesn't really matter because of the schedule below.
         config = (
-            ppo.appo.APPOConfig()
+            appo.APPOConfig()
             .rollouts(
                 num_rollout_workers=1,
                 batch_mode="truncate_episodes",
