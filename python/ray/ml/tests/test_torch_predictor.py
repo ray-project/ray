@@ -58,7 +58,7 @@ def test_predict_array(model):
     predictions = predictor.predict(data_batch)
 
     assert len(predictions) == 3
-    assert predictions.to_numpy().flatten().tolist() == [2, 4, 6]
+    assert predictions.flatten().tolist() == [2, 4, 6]
 
 
 def test_predict_array_with_preprocessor(model, preprocessor):
@@ -68,7 +68,7 @@ def test_predict_array_with_preprocessor(model, preprocessor):
     predictions = predictor.predict(data_batch)
 
     assert len(predictions) == 3
-    assert predictions.to_numpy().flatten().tolist() == [4, 8, 12]
+    assert predictions.flatten().tolist() == [4, 8, 12]
 
 
 def test_predict_dataframe():
@@ -96,20 +96,7 @@ def test_predict_array_with_different_dtypes(input_dtype, expected_output_dtype)
     data_batch = np.array([[1], [2], [3]])
     predictions = predictor.predict(data_batch, dtype=input_dtype)
 
-    assert all(
-        prediction.dtype == expected_output_dtype
-        for prediction in predictions["predictions"]
-    )
-
-
-def test_predict_dataframe_with_feature_columns():
-    predictor = TorchPredictor(model=torch.nn.Identity())
-
-    data_batch = pd.DataFrame({"X0": [0.0, 0.0, 0.0], "X1": [1.0, 1.0, 1.0]})
-    predictions = predictor.predict(data_batch, feature_columns=["X0"])
-
-    assert len(predictions) == 3
-    assert predictions.to_numpy().flatten().tolist() == [0.0, 0.0, 0.0]
+    assert all(prediction.dtype == expected_output_dtype for prediction in predictions)
 
 
 def test_predict_array_from_checkpoint(model):
@@ -120,7 +107,7 @@ def test_predict_array_from_checkpoint(model):
     predictions = predictor.predict(data_batch)
 
     assert len(predictions) == 3
-    assert predictions.to_numpy().flatten().tolist() == [2, 4, 6]
+    assert predictions.flatten().tolist() == [2, 4, 6]
 
 
 if __name__ == "__main__":
