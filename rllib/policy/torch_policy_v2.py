@@ -41,7 +41,7 @@ from ray.rllib.utils.annotations import (
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
-from ray.rllib.utils.numpy import convert_to_numpy
+from ray.rllib.utils.numpy import convert_to_numpy, convert_to_cupy
 from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
@@ -534,9 +534,9 @@ class TorchPolicyV2(Policy):
                 }
             )
             if prev_action_batch is not None:
-                input_dict[SampleBatch.PREV_ACTIONS] = np.asarray(prev_action_batch)
+                input_dict[SampleBatch.PREV_ACTIONS] = cp.asarray(prev_action_batch)
             if prev_reward_batch is not None:
-                input_dict[SampleBatch.PREV_REWARDS] = np.asarray(prev_reward_batch)
+                input_dict[SampleBatch.PREV_REWARDS] = cp.asarray(prev_reward_batch)
             state_batches = [
                 convert_to_torch_tensor(s, self.device) for s in (state_batches or [])
             ]
@@ -836,7 +836,9 @@ class TorchPolicyV2(Policy):
                     if torch.is_tensor(g):
                         p.grad = g.to(self.device)
                     else:
-                        p.grad = torch.from_numpy(g).to(self.device)
+
+                        # p.grad = torch.from_numpy(g).to(self.device)
+                        p.grad = torch.as_tensor(g, device=self.device)
 
             self._optimizers[0].step()
 
@@ -896,7 +898,7 @@ class TorchPolicyV2(Policy):
     @override(Policy)
     @DeveloperAPI
     def get_initial_state(self) -> List[TensorType]:
-        return [s.detach().cpu().numpy() for s in self.model.get_initial_state()]
+        return [cp.asarray(s) for s in self.model.get_initial_state()]
 
     @override(Policy)
     @DeveloperAPI
@@ -904,7 +906,7 @@ class TorchPolicyV2(Policy):
         state = super().get_state()
         state["_optimizer_variables"] = []
         for i, o in enumerate(self._optimizers):
-            optim_state_dict = convert_to_numpy(o.state_dict())
+            optim_state_dict = convert_to_cupy(o.state_dict())
             state["_optimizer_variables"].append(optim_state_dict)
         # Add exploration state.
         state["_exploration_state"] = self.exploration.get_state()
@@ -1074,7 +1076,7 @@ class TorchPolicyV2(Policy):
         # Update our global timestep by the batch size.
         self.global_timestep += len(input_dict[SampleBatch.CUR_OBS])
 
-        return convert_to_numpy((actions, state_out, extra_fetches))
+        return convert_to_cupy((actions, state_out, extra_fetches))
 
     def _lazy_tensor_dict(self, postprocessed_batch: SampleBatch, device=None):
         # TODO: (sven): Keep for a while to ensure backward compatibility.

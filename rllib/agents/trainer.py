@@ -775,7 +775,7 @@ class Trainer(Trainable):
         else:
             if (
                 self.evaluation_workers is None
-                and self.workers.local_worker().input_reader is None
+                and ray.get(self.workers.local_worker().get_input_reader.remote()) is None
             ):
                 raise ValueError(
                     "Cannot evaluate w/o an evaluation worker set in "
@@ -823,7 +823,7 @@ class Trainer(Trainable):
                 # `rollout_fragment_length` is exactly the desired ts.
                 iters = duration if unit == "episodes" else 1
                 for _ in range(iters):
-                    num_ts_run += len(self.workers.local_worker().sample())
+                    num_ts_run += len(ray.get(self.workers.local_worker().sample.remote()))
                 metrics = collect_metrics(
                     self.workers.local_worker(),
                     keep_custom_metrics=self.config["keep_per_episode_custom_metrics"],
@@ -837,7 +837,7 @@ class Trainer(Trainable):
                 # `rollout_fragment_length` is exactly the desired ts.
                 iters = duration if unit == "episodes" else 1
                 for _ in range(iters):
-                    num_ts_run += len(self.evaluation_workers.local_worker().sample())
+                    num_ts_run += len(ray.get(self.evaluation_workers.local_worker().sample.remote()))
 
             # Evaluation worker set has n remote workers.
             else:
@@ -1264,7 +1264,7 @@ class Trainer(Trainable):
         Args:
             policy_id: ID of the policy to return.
         """
-        return self.workers.local_worker().get_policy(policy_id)
+        return ray.get(self.workers.local_worker().get_policy.remote(policy_id))
 
     @PublicAPI
     def get_weights(self, policies: Optional[List[PolicyID]] = None) -> dict:
@@ -1274,7 +1274,7 @@ class Trainer(Trainable):
             policies: Optional list of policies to return weights for,
                 or None for all policies.
         """
-        return self.workers.local_worker().get_weights(policies)
+        return ray.get(self.workers.local_worker().get_weights.remote(policies))
 
     @PublicAPI
     def set_weights(self, weights: Dict[PolicyID, dict]):
@@ -1283,7 +1283,7 @@ class Trainer(Trainable):
         Args:
             weights: Map of policy ids to weights to set.
         """
-        self.workers.local_worker().set_weights(weights)
+        ray.get(self.workers.local_worker().set_weights.remote(weights))
 
     @PublicAPI
     def add_policy(
@@ -1667,13 +1667,13 @@ class Trainer(Trainable):
     def _sync_filters_if_needed(self, workers: WorkerSet):
         if self.config.get("observation_filter", "NoFilter") != "NoFilter":
             FilterManager.synchronize(
-                workers.local_worker().filters,
+                ray.get(workers.local_worker().get_filters.remote()),
                 workers.remote_workers(),
                 update_remote=self.config["synchronize_filters"],
             )
-            logger.debug(
-                "synchronized filters: {}".format(workers.local_worker().filters)
-            )
+            # logger.debug(
+            #     "synchronized filters: {}".format(workers.local_worker().filters)
+            # )
 
     @DeveloperAPI
     def _sync_weights_to_workers(
@@ -1686,7 +1686,7 @@ class Trainer(Trainable):
         assert worker_set is not None
         # Broadcast the new policy weights to all evaluation workers.
         logger.info("Synchronizing weights to workers.")
-        weights = ray.put(self.workers.local_worker().save())
+        weights = ray.put(ray.get(self.workers.local_worker().save.remote()))
         worker_set.foreach_worker(lambda w: w.restore(ray.get(weights)))
 
     def _exec_plan_or_training_iteration_fn(self):
@@ -2172,7 +2172,7 @@ class Trainer(Trainable):
     def __getstate__(self) -> dict:
         state = {}
         if hasattr(self, "workers"):
-            state["worker"] = self.workers.local_worker().save()
+            state["worker"] = ray.get(self.workers.local_worker().save.remote())
         # TODO: Experimental functionality: Store contents of replay buffer
         #  to checkpoint, only if user has configured this.
         if self.local_replay_buffer is not None and self.config.get(
@@ -2187,7 +2187,7 @@ class Trainer(Trainable):
 
     def __setstate__(self, state: dict):
         if hasattr(self, "workers") and "worker" in state:
-            self.workers.local_worker().restore(state["worker"])
+            ray.get(self.workers.local_worker().restore.remote(state["worker"]))
             remote_state = ray.put(state["worker"])
             for r in self.workers.remote_workers():
                 r.restore.remote(remote_state)

@@ -1331,6 +1331,12 @@ class RolloutWorker(ParallelIteratorWorker):
     def get_policy_dict(self):
         return self.policy_dict
 
+    def get_input_reader(self):
+        return self.input_reader
+
+    def get_filters(self):
+        return self.filters
+
     @DeveloperAPI
     def set_policy_mapping_fn(
         self,

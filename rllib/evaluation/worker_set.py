@@ -208,7 +208,7 @@ class WorkerSet:
 
         self.create_collective_group()
 
-    def local_worker(self) -> RolloutWorker:
+    def local_worker(self) -> ActorHandle:
         """Returns the local rollout worker."""
         return self._local_worker
 
@@ -289,12 +289,11 @@ class WorkerSet:
             # If `from_worker` is provided, also sync to this WorkerSet's
             # local worker.
             if from_worker is not None and self.local_worker() is not None:
-                start = time.time()
-                self.local_worker().set_weights.remote(weights, global_vars=global_vars)
+                ray.get(self.local_worker().set_weights.remote(weights, global_vars=global_vars))
             # If `global_vars` is provided and local worker exists  -> Update its
             # global_vars.
             elif self.local_worker() is not None and global_vars is not None:
-                self.local_worker().set_global_vars.remote(global_vars)
+                ray.get(self.local_worker().set_global_vars.remote(global_vars))
         else:
             # Broadcast on subsequent workers
             print(f">>>> Taking broadcast path ...")
@@ -325,11 +324,11 @@ class WorkerSet:
             # local worker.
             if from_worker is not None and self.local_worker() is not None:
                 start = time.time()
-                self.local_worker().set_weights.remote(weights, global_vars=global_vars)
+                ray.get(self.local_worker().set_weights.remote(weights, global_vars=global_vars))
             # If `global_vars` is provided and local worker exists  -> Update its
             # global_vars.
             elif self.local_worker() is not None and global_vars is not None:
-                self.local_worker().set_global_vars.remote(global_vars)
+                ray.get(self.local_worker().set_global_vars.remote(global_vars))
 
 
         self._iteration += 1
@@ -451,8 +450,8 @@ class WorkerSet:
             )
             # Sync new worker from local one.
             new_worker.set_weights.remote(
-                weights=self.local_worker().get_weights(),
-                global_vars=self.local_worker().get_global_vars(),
+                weights=ray.get(self.local_worker().get_weights.remote()),
+                global_vars=ray.get(self.local_worker().get_global_vars.remote()),
             )
             # Add new worker to list of remote workers.
             self._remote_workers[worker_index - 1] = new_worker
@@ -462,7 +461,7 @@ class WorkerSet:
     def stop(self) -> None:
         """Calls `stop` on all rollout workers (including the local one)."""
         try:
-            self.local_worker().stop()
+            ray.get(self.local_worker().stop.remote())
             tids = [w.stop.remote() for w in self.remote_workers()]
             ray.get(tids)
         except Exception:
@@ -520,10 +519,14 @@ class WorkerSet:
         # Local worker: Index=0.
         if self.local_worker() is not None:
             local_result = [ray.get(self.local_worker().apply.remote(func, 0))]
+        print(f">>>>> local_result: {local_result}")
         # Remote workers: Index > 0.
+        # import ipdb
+        # ipdb.set_trace()
         remote_results = ray.get(
             [w.apply.remote(func, i + 1) for i, w in enumerate(self.remote_workers())]
         )
+        print(f">>>>> remote_results: {remote_results}")
         return local_result + remote_results
 
     @DeveloperAPI
@@ -547,7 +550,7 @@ class WorkerSet:
         """
         results = []
         if self.local_worker() is not None:
-            results = self.local_worker().foreach_policy(func)
+            results = ray.get(self.local_worker().foreach_policy.remote(func))
         ray_gets = []
         for worker in self.remote_workers():
             ray_gets.append(worker.apply.remote(lambda w: w.foreach_policy(func)))
@@ -571,7 +574,7 @@ class WorkerSet:
         """
         results = []
         if self.local_worker() is not None:
-            results = self.local_worker().foreach_policy_to_train(func)
+            results = ray.get(self.local_worker().foreach_policy_to_train.remote(func))
         ray_gets = []
         for worker in self.remote_workers():
             ray_gets.append(
@@ -601,7 +604,7 @@ class WorkerSet:
         """
         local_results = []
         if self.local_worker() is not None:
-            local_results = [self.local_worker().foreach_env(func)]
+            local_results = [ray.get(self.local_worker().foreach_env.remote(func))]
         ray_gets = []
         for worker in self.remote_workers():
             ray_gets.append(worker.foreach_env.remote(func))
@@ -629,7 +632,7 @@ class WorkerSet:
         """
         local_results = []
         if self.local_worker() is not None:
-            local_results = [self.local_worker().foreach_env_with_context(func)]
+            local_results = [ray.get(self.local_worker().foreach_env_with_context.remote(func))]
         ray_gets = []
         for worker in self.remote_workers():
             ray_gets.append(worker.foreach_env_with_context.remote(func))

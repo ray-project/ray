@@ -1,6 +1,8 @@
 from collections import OrderedDict
 from gym.spaces import Discrete, MultiDiscrete
 import numpy as np
+import cupy as cp
+
 import tree  # pip install dm_tree
 from types import MappingProxyType
 from typing import List, Optional
@@ -107,6 +109,40 @@ def concat_aligned(
     else:
         return np.concatenate(items, axis=1 if time_major else 0)
 
+
+def convert_to_cupy(
+    x: TensorStructType, reduce_type: bool = True, reduce_floats=DEPRECATED_VALUE
+):
+    """Copied code from convert_to_numpy and convert to cupy for torch."""
+    if reduce_floats != DEPRECATED_VALUE:
+        deprecation_warning(old="reduce_floats", new="reduce_types", error=False)
+        reduce_type = reduce_floats
+
+    # The mapping function used to numpyize torch/tf Tensors (and move them
+    # to the CPU beforehand).
+    def mapping(item):
+        if torch and isinstance(item, torch.Tensor):
+            ret = (
+                item.cpu().item()
+                if len(item.size()) == 0
+                else cp.asarray(item)
+            )
+        elif (
+            tf and isinstance(item, (tf.Tensor, tf.Variable)) and hasattr(item, "numpy")
+        ):
+            assert tf.executing_eagerly()
+            ret = item.numpy()
+        else:
+            ret = item
+        if reduce_type and isinstance(ret, np.ndarray):
+            if np.issubdtype(ret.dtype, np.floating):
+                ret = ret.astype(np.float32)
+            elif np.issubdtype(ret.dtype, int):
+                ret = ret.astype(np.int32)
+            return ret
+        return ret
+
+    return tree.map_structure(mapping, x)
 
 @PublicAPI
 def convert_to_numpy(
