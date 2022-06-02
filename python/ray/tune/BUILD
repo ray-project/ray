@@ -408,16 +408,6 @@ py_test(
     tags = ["team:ml", "exclusive", "tests_dir_U"],
 )
 
-py_test_module_list(
-  files = [
-      "tests/test_trial_executor_inheritance.py",
-  ],
-  size = "large",
-  extra_srcs = [],
-  tags = ["exclusive", "manual", "team:ml"],
-  deps = ["//:tune_lib"],
-)
-
 # --------------------------------------------------------------------
 # Tests from the python/ray/tune/tests directory.
 # Covers all remaining tests that do not start with `test_`.
