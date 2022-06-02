@@ -72,8 +72,10 @@ class _TrackedCheckpoint:
         self.metrics = metrics or {}
         self.node_ip = node_ip or self.metrics.get(NODE_IP, None)
 
-        if storage_mode == CheckpointStorage.MEMORY and not isinstance(
-            dir_or_data, (dict, ray.ObjectRef)
+        if (
+            dir_or_data is not None
+            and storage_mode == CheckpointStorage.MEMORY
+            and not isinstance(dir_or_data, (dict, ray.ObjectRef))
         ):
             raise ValueError(
                 f"Memory checkpoints only support Ray object references and dicts "
