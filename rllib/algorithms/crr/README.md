@@ -2,9 +2,8 @@
 # Logbook
 
 # updates 05/20
-- [ ] Implement CRR in RLlib 
+- [x] Implement CRR in RLlib 
   - [ ] policy
-  - [ ] d
   
 - [x] Benchmark CartPole and Pendulum performance in d3rlpy with offline RL algos including CRR? 
 
