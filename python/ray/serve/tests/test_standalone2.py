@@ -215,6 +215,38 @@ def test_get_serve_status(shutdown_ray):
     ray.shutdown()
 
 
+def test_no_controller_deserialization(start_and_shutdown_ray_cli):
+    """Ensure controller doesn't deserialize deployment_def or init_args/kwargs."""
+
+    runtime_env = {
+        "working_dir": (
+            "https://github.com/shrekris-anyscale/test_dag/archive/"
+            "1037818961158ccc754684fbf8b86cc2fe9ca040.zip"
+        )
+    }
+
+    @ray.remote(runtime_env=runtime_env)
+    def run_graph():
+        """Deploys a Serve application to the controller's Ray cluster."""
+        from ray import serve
+        from ray._private.utils import import_attr
+
+        # Import and build the graph
+        graph = import_attr("conditional_dag.serve_dag")
+
+        # Run the graph locally on the cluster
+        serve.start(detached=True, _override_controller_namespace="serve")
+        serve.run(graph)
+
+    ray.init(address="auto")
+    serve.start(detached=True, _override_controller_namespace="serve")
+    ray.get(run_graph.remote())
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
+        == "4 pizzas please!"
+    )
+
+
 def test_shutdown_remote(start_and_shutdown_ray_cli):
     """Check that serve.shutdown() works on a remote Ray cluster."""
 
