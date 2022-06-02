@@ -70,7 +70,7 @@ class _SyncedTrackedCheckpoint(_TrackedCheckpoint):
             # Move contents of source_path, but not source_path
             # itself. shutil.move is already recursive.
             for inner in Path(source_path).iterdir():
-                shutil.move(str(path.absolute()), inner)
+                shutil.move(str(inner.absolute()), str(path))
             shutil.rmtree(source_path, ignore_errors=True)
         else:
             sync_dir_between_nodes(
