@@ -25,7 +25,7 @@ class TempFileLock:
 
     @property
     def lock_path(self) -> Path:
-        self.lock_dir / f"{self.path_hash}.lock"
+        return self.lock_dir / f"{self.path_hash}.lock"
 
     def __enter__(self):
         self._lock.acquire()
