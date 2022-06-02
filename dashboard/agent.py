@@ -43,17 +43,19 @@ class DashboardAgent(object):
         dashboard_agent_port,
         gcs_address,
         minimal,
-        temp_dir=None,
-        session_dir=None,
-        runtime_env_dir=None,
-        log_dir=None,
         metrics_export_port=None,
         node_manager_port=None,
         listen_port=0,
-        object_store_name=None,
-        raylet_name=None,
-        logging_params=None,
         disable_metrics_collection: bool = False,
+        *,  # the following are required kwargs
+        object_store_name: str,
+        raylet_name: str,
+        log_dir: str,
+        temp_dir: str,
+        session_dir: str,
+        runtime_env_dir: str,
+        logging_params: dict,
+        agent_id: int,
     ):
         """Initialize the DashboardAgent object."""
         # Public attributes are accessible for all agent modules.
@@ -76,6 +78,7 @@ class DashboardAgent(object):
         self.logging_params = logging_params
         self.node_id = os.environ["RAY_NODE_ID"]
         self.metrics_collection_disabled = disable_metrics_collection
+        self.agent_id = agent_id
         # TODO(edoakes): RAY_RAYLET_PID isn't properly set on Windows. This is
         # only used for fate-sharing with the raylet and we need a different
         # fate-sharing mechanism for Windows anyways.
@@ -203,7 +206,7 @@ class DashboardAgent(object):
 
         await raylet_stub.RegisterAgent(
             agent_manager_pb2.RegisterAgentRequest(
-                agent_pid=os.getpid(),
+                agent_id=self.agent_id,
                 agent_port=self.grpc_port,
                 agent_ip_address=self.ip,
             )
@@ -354,6 +357,12 @@ if __name__ == "__main__":
         action="store_true",
         help=("If this arg is set, metrics report won't be enabled from the agent."),
     )
+    parser.add_argument(
+        "--agent-id",
+        required=True,
+        type=int,
+        help="ID to report when registering with raylet",
+    )
 
     args = parser.parse_args()
     try:
@@ -383,6 +392,7 @@ if __name__ == "__main__":
             raylet_name=args.raylet_name,
             logging_params=logging_params,
             disable_metrics_collection=args.disable_metrics_collection,
+            agent_id=args.agent_id,
         )
         if os.environ.get("_RAY_AGENT_FAILING"):
             raise Exception("Failure injection failure.")
