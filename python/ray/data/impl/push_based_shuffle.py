@@ -290,40 +290,56 @@ class PushBasedShufflePlan(ShuffleOp):
         shuffle_reduce = cached_remote_fn(self.reduce)
         # Execute the final reduce stage.
         shuffle_reduce_out = []
-        for reducer_idx in range(output_num_blocks):
-            merge_idx = schedule.get_merge_idx_for_reducer_idx(reducer_idx)
-            # Submit one partition of reduce tasks, one for each of the P
-            # outputs produced by the corresponding merge task.
-            # We also add the merge task arguments so that the reduce task
-            # is colocated with its inputs.
-            shuffle_reduce_out.append(
-                shuffle_reduce.options(
-                    **reduce_ray_remote_args,
-                    **schedule.get_merge_task_options(merge_idx),
-                    num_returns=2,
-                ).remote(
-                    *self._reduce_args,
-                    *[
-                        merge_results.pop(0)
-                        for merge_results in all_merge_results[merge_idx]
-                    ],
-                )
-            )
-        for merge_idx, merge_results in enumerate(all_merge_results):
-            assert all(len(merge_result) == 0 for merge_result in merge_results), (
-                "Reduce stage did not process outputs from merge tasks at index: "
-                f"{merge_idx}"
-            )
-        assert (
-            len(shuffle_reduce_out) == output_num_blocks
-        ), f"Expected {output_num_blocks} outputs, produced {len(shuffle_reduce_out)}"
 
+        # Every node should have at least one task queued for each CPU.
+        num_reduce_tasks_per_stage = (schedule.num_map_tasks_per_round + schedule.num_merge_tasks_per_round)
+        reducer_idx = 0
+
+        def submit_reduce_tasks():
+            if reducer_idx >= output_num_blocks:
+                return None
+            idx = 0
+            reduce_outs, reduce_metas = [], []
+            while reducer_idx + idx < output_num_blocks and idx < num_reduce_tasks_per_stage:
+                merge_idx = schedule.get_merge_idx_for_reducer_idx(reducer_idx + idx)
+                # Submit one partition of reduce tasks, one for each of the P
+                # outputs produced by the corresponding merge task.
+                # We also add the merge task arguments so that the reduce task
+                # is colocated with its inputs.
+                reduce_out, reduce_meta = shuffle_reduce.options(
+                        **reduce_ray_remote_args,
+                        **schedule.get_merge_task_options(merge_idx),
+                        num_returns=2,
+                    ).remote(*self._reduce_args, *[
+                                merge_results.pop(0)
+                                for merge_results in all_merge_results[merge_idx]
+                    ])
+                shuffle_reduce_out.append(reduce_out)
+                reduce_metas.append(reduce_meta)
+
+                idx += 1
+            return reduce_metas, idx
+
+        stages = [None, None]
         reduce_bar = ProgressBar("Shuffle Reduce", total=output_num_blocks)
-        reduce_blocks, reduce_metadata = zip(*shuffle_reduce_out)
-        reduce_metadata = reduce_bar.fetch_until_complete(list(reduce_metadata))
-        reduce_bar.close()
+        reduce_metadata = []
+        stages[0], idx = submit_reduce_tasks()
+        reducer_idx += idx
+        while True:
+            out = submit_reduce_tasks()
+            if out is not None:
+                stages[1], idx = out
+                reducer_idx += idx
 
-        return reduce_metadata, reduce_blocks
+            if stages[0] is None:
+                break
+
+            reduce_metadata += reduce_bar.fetch_until_complete(stages[0])
+            stages[0] = stages[1]
+            stages[1] = None
+
+        reduce_bar.close()
+        return reduce_metadata, shuffle_reduce_out
 
     @staticmethod
     def _map_partition(
