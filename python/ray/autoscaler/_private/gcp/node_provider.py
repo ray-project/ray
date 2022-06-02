@@ -164,10 +164,10 @@ class GCPNodeProvider(NodeProvider):
             return ip
 
     @_retry
-    def create_node(self, base_config: dict, tags: dict, count: int) -> Dict[str, None]:
+    def create_node(self, base_config: dict, tags: dict, count: int) -> Dict[str, dict]:
         """Creates instances.
 
-        Returns dict mapping instance id to None for the created
+        Returns dict mapping instance id to each create operation result for the created
         instances.
         """
         with self.lock:
@@ -177,9 +177,9 @@ class GCPNodeProvider(NodeProvider):
             resource = self.resources[node_type]
 
             results = resource.create_instances(base_config, labels, count)
-            instance_dict: Dict[str, None] = {}
-            for _, instance_id in results:
-                instance_dict[instance_id] = None
+            instance_dict: Dict[str, dict] = {}
+            for result, instance_id in results:
+                instance_dict[instance_id] = result
             return instance_dict
 
     @_retry
