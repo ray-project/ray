@@ -242,9 +242,10 @@ class ReplicaConfig:
             actor.
         resource_dict: contains info on this replica's actor's resource needs.
 
-    Offers a serialized equivalent (e.g. serialized_deployment_def) for all
-    properties except resource_dict. Deserializes properties when they're first
-    accessed, if they were not passed in directly through create().
+    Offers a serialized equivalent (e.g. serialized_deployment_def) for
+    deployment_def, init_args, and init_kwargs. Deserializes these properties
+    when they're first accessed, if they were not passed in directly through
+    create().
 
     Use the classmethod create() to make a ReplicaConfig with the deserialized
     properties.
@@ -259,28 +260,38 @@ class ReplicaConfig:
         serialized_deployment_def: bytes,
         serialized_init_args: bytes = cloudpickle.dumps(tuple()),
         serialized_init_kwargs: bytes = cloudpickle.dumps(dict()),
-        serialized_ray_actor_options: bytes = json.dumps(dict()),
+        ray_actor_options: Optional[Dict] = None,
     ):
-        # Store serialized versions of all properties.
+        # Store serialized versions of code properties.
         self.serialized_deployment_def = serialized_deployment_def
         self.serialized_init_args = serialized_init_args
         self.serialized_init_kwargs = serialized_init_kwargs
-        self.serialized_ray_actor_options = serialized_ray_actor_options
 
         # Deserialize properties when first accessed. See @property methods.
         self._deployment_def = None
         self._init_args = None
         self._init_kwargs = None
-        self._ray_actor_options = None
-        self._resource_dict = None
+
+        # Configure ray_actor_options. These are the Ray options ultimately
+        # passed into the replica's actor when it's created.
+        if ray_actor_options is None:
+            self.ray_actor_options = {}
+        else:
+            self.ray_actor_options = ray_actor_options
+        self._validate_ray_actor_options()
+
+        # Create resource_dict. This contains info about the replica's resource
+        # needs. It does NOT set the replica's resource usage. That's done by
+        # the ray_actor_options.
+        self.resource_dict = resources_from_ray_options(self.ray_actor_options)
 
     @classmethod
     def create(
         cls,
         deployment_def: Union[Callable, str],
-        init_args: Tuple[Any] = None,
-        init_kwargs: Dict[Any, Any] = None,
-        ray_actor_options: Dict = None,
+        init_args: Optional[Tuple[Any]] = None,
+        init_kwargs: Optional[Dict[Any, Any]] = None,
+        ray_actor_options: Optional[Dict] = None,
     ):
         """Create a ReplicaConfig from deserialized parameters."""
 
@@ -302,31 +313,25 @@ class ReplicaConfig:
             init_args = ()
         if init_kwargs is None:
             init_kwargs = {}
-        if ray_actor_options is None:
-            ray_actor_options = {}
-        ray_actor_options = cls._validate_ray_actor_options(ray_actor_options)
 
         config = cls(
             cloudpickle.dumps(deployment_def),
             cloudpickle.dumps(init_args),
             cloudpickle.dumps(init_kwargs),
-            json.dumps(ray_actor_options),
+            ray_actor_options,
         )
 
         config._deployment_def = deployment_def
         config._init_args = init_args
         config._init_kwargs = init_kwargs
-        config._ray_actor_options = ray_actor_options
-        config._resource_dict = resources_from_ray_options(config.ray_actor_options)
 
         return config
 
-    @staticmethod
-    def _validate_ray_actor_options(ray_actor_options: Dict) -> Dict:
+    def _validate_ray_actor_options(self) -> None:
 
-        if not isinstance(ray_actor_options, dict):
+        if not isinstance(self.ray_actor_options, dict):
             raise TypeError(
-                f'Got invalid type "{type(ray_actor_options)}" for '
+                f'Got invalid type "{type(self.ray_actor_options)}" for '
                 "ray_actor_options. Expected a dictionary."
             )
 
@@ -342,19 +347,17 @@ class ReplicaConfig:
             "runtime_env",
         }
 
-        for option in ray_actor_options:
+        for option in self.ray_actor_options:
             if option not in allowed_ray_actor_options:
                 raise ValueError(
                     f"Specifying '{option}' in ray_actor_options is not allowed. "
                     f"Allowed options: {allowed_ray_actor_options}"
                 )
-        ray_option_utils.validate_actor_options(ray_actor_options, in_options=True)
+        ray_option_utils.validate_actor_options(self.ray_actor_options, in_options=True)
 
         # Set Serve replica defaults
-        if ray_actor_options.get("num_cpus") is None:
-            ray_actor_options["num_cpus"] = 1
-
-        return ray_actor_options
+        if self.ray_actor_options.get("num_cpus") is None:
+            self.ray_actor_options["num_cpus"] = 1
 
     @property
     def deployment_def(self) -> Union[Callable, str]:
@@ -398,34 +401,6 @@ class ReplicaConfig:
 
         return self._init_kwargs
 
-    @property
-    def ray_actor_options(self) -> Dict:
-        """The replica's actor's Ray options.
-
-        These are ultimately passed into the replica's actor when it's created.
-        """
-
-        if self._ray_actor_options is None:
-            self._ray_actor_options = json.loads(self.serialized_ray_actor_options)
-
-        self._ray_actor_options = self._validate_ray_actor_options(
-            self._ray_actor_options
-        )
-
-        return self._ray_actor_options
-
-    @property
-    def resource_dict(self) -> Dict:
-        """Informs the user about replica's resource usage during initialization.
-
-        This does NOT set the replica's resource usage. That is done by the
-        ray_actor_options.
-        """
-        if self._resource_dict is None:
-            self._resource_dict = resources_from_ray_options(self.ray_actor_options)
-
-        return self._resource_dict
-
     @classmethod
     def from_proto(
         cls, proto: ReplicaConfigProto, deployment_language: DeploymentLanguage
@@ -437,7 +412,10 @@ class ReplicaConfig:
             deployment_def = proto.deployment_def
 
         return ReplicaConfig(
-            deployment_def, proto.init_args, proto.init_kwargs, proto.ray_actor_options
+            deployment_def,
+            proto.init_args,
+            proto.init_kwargs,
+            json.loads(proto.ray_actor_options),
         )
 
     @classmethod
@@ -452,7 +430,7 @@ class ReplicaConfig:
             deployment_def=self.serialized_deployment_def,
             init_args=self.serialized_init_args,
             init_kwargs=self.serialized_init_kwargs,
-            ray_actor_options=self.serialized_ray_actor_options,
+            ray_actor_options=json.dumps(self.ray_actor_options),
         )
 
     def to_proto_bytes(self):
