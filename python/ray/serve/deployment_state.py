@@ -310,7 +310,7 @@ class ActorReplicaWrapper:
                 # String replicaTag,
                 self.replica_tag,
                 # String deploymentDef
-                deployment_info.replica_config.deployment_def,
+                deployment_info.replica_config.deployment_def_name,
                 # byte[] initArgsbytes
                 msgpack_serialize(deployment_info.replica_config.init_args),
                 # byte[] deploymentConfigBytes,
