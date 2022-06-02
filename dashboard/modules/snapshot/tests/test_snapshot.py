@@ -137,6 +137,7 @@ my_func_deleted.delete()
     assert entry["version"] is None
     assert entry["namespace"] == "serve"
     assert entry["httpRoute"] == "/my_func"
+    assert entry["className"] == "my_func"
     assert entry["status"] == "RUNNING"
     assert entry["rayJobId"] is not None
     assert entry["startTime"] > 0
@@ -156,6 +157,7 @@ my_func_deleted.delete()
     assert entry_deleted["version"] == "v1"
     assert entry_deleted["namespace"] == "serve"
     assert entry_deleted["httpRoute"] is None
+    assert entry_deleted["className"] == "my_func_deleted"
     assert entry_deleted["status"] == "DELETED"
     assert entry["rayJobId"] is not None
     assert entry_deleted["startTime"] > 0
@@ -168,6 +170,7 @@ my_func_deleted.delete()
     assert entry_nondetached["version"] == "v1"
     assert entry_nondetached["namespace"] == "default_test_namespace"
     assert entry_nondetached["httpRoute"] == "/my_func_nondetached"
+    assert entry_nondetached["className"] == "my_func_nondetached"
     assert entry_nondetached["status"] == "RUNNING"
     assert entry_nondetached["rayJobId"] is not None
     assert entry_nondetached["startTime"] > 0
