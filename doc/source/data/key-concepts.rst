@@ -152,7 +152,7 @@ Fault tolerance
 Datasets relies on :ref:`task-based fault tolerance <task-fault-tolerance>` in Ray core. Specifically, a ``Dataset`` will be automatically recovered by Ray in case of failures. This works through **lineage reconstruction**: a Dataset is a collection of Ray objects stored in shared memory, and if any of these objects are lost, then Ray will recreate them by re-executing the task(s) that created them.
 
 There are a few cases that are not currently supported:
-1. If the original creator of the ``Dataset`` dies. This is because the ``Dataset creator`` stores the metadata for the :ref:`objects <object-fault-tolerance>` that comprise the ``Dataset``.
+1. If the original creator of the ``Dataset`` dies. This is because the creator stores the metadata for the :ref:`objects <object-fault-tolerance>` that comprise the ``Dataset``.
 2. For a :meth:`DatasetPipeline.split() <ray.data.DatasetPipeline.split>`, we do not support recovery for a consumer failure. When there are multiple consumers, they must all read the split pipeline in lockstep. To recover from this case, the pipeline and all consumers must be restarted together.
 3. The ``compute=actors`` option for transformations.
 
