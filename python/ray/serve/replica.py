@@ -85,15 +85,8 @@ def create_replica_wrapper(name: str):
                     )
                     deployment_def = deployment_def.func_or_class
 
-            if serialized_init_args is not None:
-                init_args = cloudpickle.loads(serialized_init_args)
-            else:
-                init_args = ()
-
-            if serialized_init_kwargs is not None:
-                init_kwargs = cloudpickle.loads(serialized_init_kwargs)
-            else:
-                init_kwargs = {}
+            init_args = cloudpickle.loads(serialized_init_args)
+            init_kwargs = cloudpickle.loads(serialized_init_kwargs)
 
             deployment_config = DeploymentConfig.from_proto_bytes(
                 deployment_config_proto_bytes
