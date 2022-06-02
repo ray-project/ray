@@ -1,4 +1,3 @@
-from ray.rllib.agents.dqn.apex import ApexConfig, ApexTrainer, APEX_DEFAULT_CONFIG
 from ray.rllib.algorithms.dqn.dqn import DQNConfig, DQNTrainer, DEFAULT_CONFIG
 from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.algorithms.dqn.dqn_torch_policy import DQNTorchPolicy
@@ -11,6 +10,7 @@ from ray.rllib.algorithms.dqn.simple_q import (
 )
 from ray.rllib.algorithms.dqn.simple_q_tf_policy import SimpleQTFPolicy
 from ray.rllib.algorithms.dqn.simple_q_torch_policy import SimpleQTorchPolicy
+from ray.rllib.agents.dqn.apex import ApexConfig, ApexTrainer, APEX_DEFAULT_CONFIG
 
 __all__ = [
     "ApexConfig",
