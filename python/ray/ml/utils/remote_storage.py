@@ -32,13 +32,6 @@ except (ImportError, ModuleNotFoundError):
 
 from ray import logger
 
-# We keep these constants for legacy compatibility with Tune's sync client
-# After Tune fully moved to using pyarrow.fs we can remove these.
-S3_PREFIX = "s3://"
-GS_PREFIX = "gs://"
-HDFS_PREFIX = "hdfs://"
-ALLOWED_REMOTE_PREFIXES = (S3_PREFIX, GS_PREFIX, HDFS_PREFIX)
-
 
 def _assert_pyarrow_installed():
     if pyarrow is None:
@@ -75,11 +68,7 @@ def is_non_local_path_uri(uri: str) -> bool:
 
     if bool(get_fs_and_path(uri)[0]):
         return True
-    # Keep manual check for prefixes for backwards compatibility with the
-    # TrialCheckpoint class. Remove once fully deprecated.
-    # Deprecated: Remove in Ray > 1.13
-    if any(uri.startswith(p) for p in ALLOWED_REMOTE_PREFIXES):
-        return True
+
     return False
 
 

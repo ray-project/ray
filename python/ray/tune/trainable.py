@@ -15,7 +15,6 @@ import uuid
 import ray
 import ray.cloudpickle as pickle
 from ray.ml.checkpoint import Checkpoint
-from ray.tune.cloud import TrialCheckpoint
 from ray.tune.logger import Logger
 from ray.tune.resources import Resources
 from ray.tune.result import (
@@ -529,9 +528,13 @@ class Trainable:
                 on cloud storage.
 
         """
-        # Ensure TrialCheckpoints are converted
-        if isinstance(checkpoint_path, TrialCheckpoint):
-            checkpoint_path = checkpoint_path.local_path
+        # Ensure Checkpoints are converted
+        if isinstance(checkpoint_path, Checkpoint):
+            with checkpoint_path.as_directory() as converted_checkpoint_path:
+                return self.restore(
+                    checkpoint_path=converted_checkpoint_path,
+                    checkpoint_node_ip=checkpoint_node_ip,
+                )
 
         if self.uses_cloud_checkpointing:
             rel_checkpoint_dir = TrainableUtil.find_rel_checkpoint_dir(
@@ -612,9 +615,9 @@ class Trainable:
         Args:
             checkpoint_path: Path to checkpoint.
         """
-        # Ensure TrialCheckpoints are converted
-        if isinstance(checkpoint_path, TrialCheckpoint):
-            checkpoint_path = checkpoint_path.local_path
+        # Ensure Checkpoints are converted
+        if isinstance(checkpoint_path, Checkpoint) and checkpoint_path._local_path:
+            checkpoint_path = checkpoint_path._local_path
 
         try:
             checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)

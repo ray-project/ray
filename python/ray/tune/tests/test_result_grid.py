@@ -16,7 +16,6 @@ def test_result_grid():
                 f.write(json.dumps({"step": 0}))
 
     analysis = tune.run(f, config={"a": 1})
-    analysis._legacy_checkpoint = False
     result_grid = ResultGrid(analysis)
     result = result_grid[0]
     assert isinstance(result.checkpoint, Checkpoint)
@@ -31,7 +30,6 @@ def test_result_grid_no_checkpoint():
         pass
 
     analysis = tune.run(f)
-    analysis._legacy_checkpoint = False
     result_grid = ResultGrid(analysis)
     result = result_grid[0]
     assert result.checkpoint is None
@@ -82,7 +80,6 @@ def test_result_grid_df():
         tune.report(metric=config["nested"]["param"] * 3)
 
     analysis = tune.run(f, config={"nested": {"param": tune.grid_search([1, 2])}})
-    analysis._legacy_checkpoint = False
     result_grid = ResultGrid(analysis)
 
     assert len(result_grid) == 2

@@ -17,12 +17,13 @@ import ray
 from ray.tune.error import TuneError
 from ray.tune.utils.file_transfer import sync_dir_between_nodes, delete_on_node
 from ray.util.annotations import PublicAPI, DeveloperAPI
-from ray.ml.utils.remote_storage import (
-    S3_PREFIX,
-    GS_PREFIX,
-    HDFS_PREFIX,
-    ALLOWED_REMOTE_PREFIXES,
-)
+
+# We keep these constants for legacy compatibility with Tune's sync client
+# After Tune fully moved to using pyarrow.fs we can remove these.
+S3_PREFIX = "s3://"
+GS_PREFIX = "gs://"
+HDFS_PREFIX = "hdfs://"
+ALLOWED_REMOTE_PREFIXES = (S3_PREFIX, GS_PREFIX, HDFS_PREFIX)
 
 logger = logging.getLogger(__name__)
 

@@ -7,7 +7,6 @@ from numbers import Number
 from typing import Any, Dict, List, Optional, Tuple
 
 from ray.ml.checkpoint import Checkpoint
-from ray.tune.cloud import TrialCheckpoint
 from ray.util.debug import log_once
 from ray.tune.syncer import SyncConfig
 from ray.tune.utils import flatten_dict
@@ -127,10 +126,6 @@ class ExperimentAnalysis:
             os.path.join(os.path.dirname(experiment_checkpoint_path), "..")
         )
         self._sync_config = sync_config
-
-        # If True, will return a legacy TrialCheckpoint class.
-        # If False, will just return a Checkpoint class.
-        self._legacy_checkpoint = True
 
     def _parse_cloud_path(self, local_path: str):
         """Convert local path into cloud storage path"""
@@ -464,9 +459,6 @@ class ExperimentAnalysis:
 
         best_path, best_metric = best_path_metrics[0]
         cloud_path = self._parse_cloud_path(best_path)
-
-        if self._legacy_checkpoint:
-            return TrialCheckpoint(local_path=best_path, cloud_path=cloud_path)
 
         if cloud_path:
             # Prefer cloud path over local path for downsteam processing
