@@ -66,37 +66,21 @@ class TestOPE(unittest.TestCase):
         estimators = {
             "is": {"type": ImportanceSampling},
             "wis": {"type": WeightedImportanceSampling},
-            "dm": {
+            "dm_qreg": {
                 "type": DirectMethod,
-                "model": {
-                    "fcnet_hiddens": [8, 4],
-                    "fcnet_activation": "relu",
-                    "vf_share_layers": True,
-                },
                 "q_model_type": "qreg",
-                "clip_grad_norm": 100,
-                "k": 5,
-                "n_iters": 160,
-                "lr": 1e-3,
-                "delta": 1e-5,
-                "batch_size": 32,
-                "tau": 0.05,
             },
-            "dr": {
-                "type": DoublyRobust,
-                "model": {
-                    "fcnet_hiddens": [8, 4],
-                    "fcnet_activation": "relu",
-                    "vf_share_layers": True,
-                },
+            "dm_fqe": {
+                "type": DirectMethod,
                 "q_model_type": "fqe",
-                "clip_grad_norm": 100,
-                "k": 5,
-                "n_iters": 160,
-                "lr": 1e-3,
-                "delta": 1e-5,
-                "batch_size": 32,
-                "tau": 0.05,
+            },
+            "dr_qreg": {
+                "type": DoublyRobust,
+                "q_model_type": "qreg",
+            },
+            "dr_fqe": {
+                "type": DoublyRobust,
+                "q_model_type": "fqe",
             },
         }
         mean_ret = {}
@@ -112,15 +96,7 @@ class TestOPE(unittest.TestCase):
             estimator.process(batch)
             estimates = estimator.get_metrics()
             assert len(estimates) == n_episodes
-            if estimator_cls.__name__ == "WeightedImportanceSampling":
-                # wis estimator improves with data, use last few episodes maybe?
-                mean_ret[estimator_cls.__name__] = np.mean(
-                    [e.metrics["v_new"] for e in estimates[-10:]]
-                )
-            else:
-                mean_ret[estimator_cls.__name__] = np.mean(
-                    [e.metrics["v_new"] for e in estimates]
-                )
+            mean_ret[name] = np.mean([e.metrics["v_new"] for e in estimates])
 
         # Simulate Monte-Carlo rollouts
         mc_ret = []

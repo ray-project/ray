@@ -26,7 +26,7 @@ class FQETorchModel:
         delta: float = 1e-4,
         clip_grad_norm: float = 100.0,
         batch_size: int = 32,
-        tau: float = 0.01,
+        tau: float = 0.05,
     ) -> None:
         """
         Args:

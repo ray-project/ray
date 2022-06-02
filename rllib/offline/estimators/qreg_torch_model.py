@@ -27,7 +27,6 @@ class QRegTorchModel:
         delta: float = 1e-4,
         clip_grad_norm: float = 100.0,
         batch_size: int = 32,
-        tau: float = 0.01,
     ) -> None:
         """
         Args:
@@ -49,8 +48,6 @@ class QRegTorchModel:
             clip_grad_norm = 100.0,
             # Minibatch size for training Q-function
             batch_size = 32,
-            # Polyak averaging factor for target Q-function
-            tau = 0.01
         """
         self.policy = policy
         self.gamma = gamma
@@ -78,7 +75,6 @@ class QRegTorchModel:
         self.delta = delta
         self.clip_grad_norm = clip_grad_norm
         self.batch_size = batch_size
-        self.tau = tau
         self.optimizer = torch.optim.Adam(self.q_model.variables(), self.lr)
         initializer = get_initializer("xavier_uniform", framework="torch")
 
