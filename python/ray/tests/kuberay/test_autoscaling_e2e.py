@@ -147,7 +147,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
             # Allow quick scale-down for test purposes.
             "idleTimeoutSeconds": 10,
         }
-        config["spec"]["headGroupSpec"]["autoscalerOptions"] = autoscaler_options
+        config["spec"]["autoscalerOptions"] = autoscaler_options
 
         return config
 
