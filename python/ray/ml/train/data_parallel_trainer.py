@@ -55,10 +55,6 @@ class _DataParallelCheckpointManager(TuneCheckpointManager):
             checkpoint=checkpoint
         )
 
-    @property
-    def latest_checkpoint_dir(self) -> Optional[Path]:
-        raise NotImplementedError
-
 
 @DeveloperAPI
 class DataParallelTrainer(Trainer):
