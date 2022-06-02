@@ -286,6 +286,21 @@ class CheckpointsConversionTest(unittest.TestCase):
 
         assert not os.path.exists(checkpoint_dir)
 
+    def test_obj_store_cp_as_directory(self):
+        checkpoint = self._prepare_dict_checkpoint()
+
+        # Convert into obj ref checkpoint
+        obj_ref = checkpoint.to_object_ref()
+
+        # Create from object ref
+        checkpoint = Checkpoint.from_object_ref(obj_ref)
+
+        with checkpoint.as_directory() as checkpoint_dir:
+            assert os.path.exists(checkpoint_dir)
+            assert checkpoint_dir.endswith(obj_ref.hex())
+
+        assert not os.path.exists(checkpoint_dir)
+
 
 class CheckpointsSerdeTest(unittest.TestCase):
     def setUp(self) -> None:

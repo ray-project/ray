@@ -24,7 +24,7 @@ def setup_logger(logging_level, logging_format):
         logger.addHandler(_default_handler)
     _default_handler.setFormatter(logging.Formatter(logging_format))
     # Setting this will avoid the message
-    # is propagated to the parent logger.
+    # being propagated to the parent logger.
     logger.propagate = False
 
 

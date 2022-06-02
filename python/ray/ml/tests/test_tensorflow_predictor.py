@@ -4,6 +4,7 @@ from ray.ml.checkpoint import Checkpoint
 from ray.ml.constants import PREPROCESSOR_KEY, MODEL_KEY
 
 import numpy as np
+import pandas as pd
 import tensorflow as tf
 
 
@@ -20,7 +21,6 @@ def build_model() -> tf.keras.Model:
             tf.keras.layers.Dense(1),
         ]
     )
-
     return model
 
 
@@ -43,7 +43,7 @@ def test_init():
     assert checkpoint_predictor.preprocessor == predictor.preprocessor
 
 
-def test_predict():
+def test_predict_array_with_preprocessor():
     preprocessor = DummyPreprocessor()
     predictor = TensorflowPredictor(
         model_definition=build_model, preprocessor=preprocessor, model_weights=weights
@@ -53,25 +53,24 @@ def test_predict():
     predictions = predictor.predict(data_batch)
 
     assert len(predictions) == 3
-    assert predictions.to_numpy().flatten().round().tolist() == [2, 4, 6]
+    assert predictions.to_numpy().flatten().tolist() == [2, 4, 6]
     assert hasattr(predictor.preprocessor, "_batch_transformed")
 
 
-def test_predict_feature_columns():
-    preprocessor = DummyPreprocessor()
-    predictor = TensorflowPredictor(
-        model_definition=build_model, preprocessor=preprocessor, model_weights=weights
-    )
+def test_predict_array_with_input_shape_unspecified():
+    def model_definition():
+        return tf.keras.models.Sequential(tf.keras.layers.Lambda(lambda tensor: tensor))
 
-    data_batch = np.array([[1, 4], [2, 5], [3, 6]])
-    predictions = predictor.predict(data_batch, feature_columns=[0])
+    predictor = TensorflowPredictor(model_definition=model_definition, model_weights=[])
+
+    data_batch = np.array([[1], [2], [3]])
+    predictions = predictor.predict(data_batch)
 
     assert len(predictions) == 3
-    assert predictions.to_numpy().flatten().round().tolist() == [2, 4, 6]
-    assert hasattr(predictor.preprocessor, "_batch_transformed")
+    assert predictions.to_numpy().flatten().tolist() == [1, 2, 3]
 
 
-def test_predict_no_preprocessor():
+def test_predict_array():
     checkpoint = {MODEL_KEY: weights}
     predictor = TensorflowPredictor.from_checkpoint(
         Checkpoint.from_dict(checkpoint), build_model
@@ -82,3 +81,20 @@ def test_predict_no_preprocessor():
 
     assert len(predictions) == 3
     assert predictions.to_numpy().flatten().tolist() == [1, 2, 3]
+
+
+def test_predict_dataframe_with_feature_columns():
+    predictor = TensorflowPredictor(model_definition=build_model, model_weights=weights)
+
+    data = pd.DataFrame([[1, 2], [3, 4]], columns=["A", "B"])
+    predictions = predictor.predict(data, feature_columns=["A"])
+
+    assert len(predictions) == 2
+    assert predictions.to_numpy().flatten().tolist() == [1, 3]
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+
+    sys.exit(pytest.main(["-v", "-x", __file__]))

@@ -1,7 +1,7 @@
 import unittest
 
 import ray
-import ray.rllib.agents.a3c as a3c
+import ray.rllib.algorithms.a2c as a2c
 from ray.rllib.utils.test_utils import (
     check_compute_single_action,
     check_train_results,
@@ -19,8 +19,8 @@ class TestA2C(unittest.TestCase):
         ray.shutdown()
 
     def test_a2c_compilation(self):
-        """Test whether an A2CTrainer can be built with both frameworks."""
-        config = a3c.A2CConfig().rollouts(num_rollout_workers=2, num_envs_per_worker=2)
+        """Test whether an A2C can be built with both frameworks."""
+        config = a2c.A2CConfig().rollouts(num_rollout_workers=2, num_envs_per_worker=2)
 
         num_iterations = 1
 
@@ -36,9 +36,14 @@ class TestA2C(unittest.TestCase):
                 trainer.stop()
 
     def test_a2c_exec_impl(self):
-        config = a3c.A2CConfig().reporting(min_time_s_per_reporting=0)
+        config = (
+            a2c.A2CConfig()
+            .environment(env="CartPole-v0")
+            .reporting(min_time_s_per_reporting=0)
+        )
+
         for _ in framework_iterator(config):
-            trainer = a3c.A2CTrainer(env="CartPole-v0", config=config)
+            trainer = config.build()
             results = trainer.train()
             check_train_results(results)
             print(results)
@@ -47,13 +52,14 @@ class TestA2C(unittest.TestCase):
 
     def test_a2c_exec_impl_microbatch(self):
         config = (
-            a3c.A2CConfig()
+            a2c.A2CConfig()
+            .environment(env="CartPole-v0")
             .reporting(min_time_s_per_reporting=0)
             .training(microbatch_size=10)
         )
 
         for _ in framework_iterator(config):
-            trainer = config.build(env="CartPole-v0")
+            trainer = config.build()
             results = trainer.train()
             check_train_results(results)
             print(results)
