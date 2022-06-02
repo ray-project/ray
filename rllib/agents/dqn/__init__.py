@@ -1,4 +1,4 @@
-from ray.rllib.algorithms.apex_dqn.apex import (
+from ray.rllib.algorithms.apex_dqn.apex_dqn import (
     ApexConfig,
     Apex as ApexTrainer,
     APEX_DEFAULT_CONFIG,
@@ -6,7 +6,12 @@ from ray.rllib.algorithms.apex_dqn.apex import (
 from ray.rllib.algorithms.dqn.dqn import DQNConfig, DQN as DQNTrainer, DEFAULT_CONFIG
 from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.algorithms.dqn.dqn_torch_policy import DQNTorchPolicy
-from ray.rllib.algorithms.r2d2.r2d2 import R2D2 as R2D2Trainer, R2D2_DEFAULT_CONFIG
+from ray.rllib.algorithms.r2d2.r2d2 import (
+    R2D2 as R2D2Trainer,
+    R2D2Config,
+    R2D2_DEFAULT_CONFIG,
+)
+from ray.rllib.algorithms.r2d2.r2d2_tf_policy import R2D2TFPolicy
 from ray.rllib.algorithms.r2d2.r2d2_torch_policy import R2D2TorchPolicy
 from ray.rllib.algorithms.simple_q.simple_q import (
     SimpleQ as SimpleQTrainer,
@@ -24,6 +29,7 @@ __all__ = [
     "DQNTorchPolicy",
     "DQNTrainer",
     "R2D2Config",
+    "R2D2TFPolicy",
     "R2D2TorchPolicy",
     "R2D2Trainer",
     "SimpleQConfig",
