@@ -1,5 +1,6 @@
 import unittest
 import ray
+from ray import tune
 from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.offline.estimators import (
     ImportanceSampling,
@@ -39,6 +40,7 @@ class TestOPE(unittest.TestCase):
 
         config = (
             DQNConfig()
+            .resources()
             .environment(env=env_name)
             .offline_data(
                 input_=data_file,
@@ -57,8 +59,12 @@ class TestOPE(unittest.TestCase):
         trainer = config.build()
 
         # Train DQN for evaluation policy
-        while trainer._timesteps_total and trainer._timesteps_total < train_steps:
-            trainer.train()
+        tune.run(
+            "DQN",
+            config=config.to_dict(),
+            stop={"timesteps_total": train_steps},
+            verbose=0,
+        )
 
         # Read n_batches of data
         reader = JsonReader(data_file)
@@ -89,20 +95,6 @@ class TestOPE(unittest.TestCase):
         }
         mean_ret = {}
         std_ret = {}
-        # Run estimators on data
-        for name, method_config in estimators.items():
-            estimator_cls = method_config.pop("type")
-            estimator: OffPolicyEstimator = estimator_cls(
-                name=name,
-                policy=trainer.get_policy(),
-                gamma=gamma,
-                **method_config,
-            )
-            estimator.process(batch)
-            estimates = estimator.get_metrics()
-            assert len(estimates) == n_episodes
-            mean_ret[name] = np.mean([e.metrics["v_new"] for e in estimates])
-            std_ret[name] = np.std([e.metrics["v_new"] for e in estimates])
 
         # Simulate Monte-Carlo rollouts
         mc_ret = []
@@ -122,6 +114,22 @@ class TestOPE(unittest.TestCase):
 
         mean_ret["simulation"] = np.mean(mc_ret)
         std_ret["simulation"] = np.std(mc_ret)
+
+        # Run estimators on data
+        for name, method_config in estimators.items():
+            estimator_cls = method_config.pop("type")
+            estimator: OffPolicyEstimator = estimator_cls(
+                name=name,
+                policy=trainer.get_policy(),
+                gamma=gamma,
+                **method_config,
+            )
+            estimator.process(batch)
+            estimates = estimator.get_metrics()
+            assert len(estimates) == n_episodes
+            mean_ret[name] = np.mean([e.metrics["v_new"] for e in estimates])
+            std_ret[name] = np.std([e.metrics["v_new"] for e in estimates])
+
         print("mean: ", mean_ret)
         print("stddev: ", std_ret)
 
