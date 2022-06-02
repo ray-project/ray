@@ -118,10 +118,10 @@ class _TrackedCheckpoint:
 
     def __repr__(self):
         if self.storage_mode == CheckpointStorage.MEMORY:
-            return f"<TrackedCheckpoint storage='MEMORY' result={self.metrics}>"
+            return f"<_TrackedCheckpoint storage='MEMORY' result={self.metrics}>"
 
         return (
-            f"<TrackedCheckpoint storage='PERSISTENT' "
+            f"<_TrackedCheckpoint storage='PERSISTENT' "
             f"dir_or_data={self.dir_or_data}>"
         )
 
@@ -210,7 +210,7 @@ class _CheckpointManager:
     keeps a configured number of checkpoints according to specified metrics.
 
     The manager supports lazy data writing by utilizing the
-    ``TrackedCheckpoint.commit()`` API, which is only invoked if the checkpoint
+    ``_TrackedCheckpoint.commit()`` API, which is only invoked if the checkpoint
     should be persisted to disk.
 
     Args:

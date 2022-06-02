@@ -7,7 +7,7 @@ from ray.exceptions import RayTaskError
 from ray.tune import TuneError
 from ray.util.annotations import DeveloperAPI
 from ray.tune.trial import Trial
-from ray.util.ml_utils.checkpoint_manager import TrackedCheckpoint, CheckpointStorage
+from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 
 logger = logging.getLogger(__name__)
 
@@ -196,7 +196,7 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
         trial: Trial,
         storage: str = CheckpointStorage.PERSISTENT,
         result: Optional[Dict] = None,
-    ) -> TrackedCheckpoint:
+    ) -> _TrackedCheckpoint:
         """Saves training state of this trial to a checkpoint.
 
         If result is None, this trial's last result will be used.

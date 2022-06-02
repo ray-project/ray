@@ -3,7 +3,7 @@ import os
 import pytest
 import ray
 import ray.train as train
-from ray import tune, cloudpickle
+from ray import tune
 from ray.ml import Checkpoint
 from ray.tune import TuneError
 from ray.train import Trainer

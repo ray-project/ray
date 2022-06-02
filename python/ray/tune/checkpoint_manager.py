@@ -7,12 +7,10 @@ from ray.util.ml_utils.checkpoint_manager import (
     CheckpointStrategy,
     MIN,
     MAX,
-    CheckpointManager as CommonCheckpointManager,
-    TrackedCheckpoint,
+    _CheckpointManager as CommonCheckpointManager,
+    _TrackedCheckpoint,
     CheckpointStorage,
 )
-from ray.util.ml_utils.dict import flatten_dict
-from ray.util.ml_utils.util import is_nan
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +35,7 @@ class _CheckpointManager(CommonCheckpointManager):
         self,
         keep_checkpoints_num: int,
         checkpoint_score_attr: Optional[str],
-        delete_fn: Optional[Callable[["TrackedCheckpoint"], None]] = None,
+        delete_fn: Optional[Callable[["_TrackedCheckpoint"], None]] = None,
     ):
         if keep_checkpoints_num == 0:
             raise RuntimeError(
@@ -61,7 +59,7 @@ class _CheckpointManager(CommonCheckpointManager):
 
         super().__init__(checkpoint_strategy=checkpoint_strategy, delete_fn=delete_fn)
 
-    def handle_checkpoint(self, checkpoint: TrackedCheckpoint):
+    def handle_checkpoint(self, checkpoint: _TrackedCheckpoint):
         # Set checkpoint ID
         checkpoint.id = checkpoint.id or self._latest_checkpoint_id
         self._latest_checkpoint_id += 1
@@ -74,14 +72,14 @@ class _CheckpointManager(CommonCheckpointManager):
                 self._checkpoint_strategy.num_to_keep is None
                 or self._checkpoint_strategy.num_to_keep > 0
             )
-            self._decide_what_to_do_with_checkpoint(checkpoint)
+            self._process_persistent_checkpoint(checkpoint)
 
-    def on_checkpoint(self, checkpoint: TrackedCheckpoint):
+    def on_checkpoint(self, checkpoint: _TrackedCheckpoint):
         """Ray Tune's entrypoint"""
         # Todo (krfricke): Replace with handle_checkpoint.
         self.handle_checkpoint(checkpoint)
 
-    def _skip_persisted_checkpoint(self, persisted_checkpoint: TrackedCheckpoint):
+    def _skip_persisted_checkpoint(self, persisted_checkpoint: _TrackedCheckpoint):
         assert persisted_checkpoint.storage_mode == CheckpointStorage.PERSISTENT
         super()._skip_persisted_checkpoint(persisted_checkpoint=persisted_checkpoint)
         # Ray Tune always keeps track of the latest persisted checkpoint.
@@ -95,7 +93,7 @@ class _CheckpointManager(CommonCheckpointManager):
 
     @property
     def newest_persistent_checkpoint(self):
-        return self._latest_persisted_checkpoint or TrackedCheckpoint(
+        return self._latest_persisted_checkpoint or _TrackedCheckpoint(
             dir_or_data=None,
             checkpoint_id=-1,
             storage_mode=CheckpointStorage.PERSISTENT,
@@ -112,7 +110,7 @@ class _CheckpointManager(CommonCheckpointManager):
 
     @property
     def newest_memory_checkpoint(self):
-        return self._latest_memory_checkpoint or TrackedCheckpoint(
+        return self._latest_memory_checkpoint or _TrackedCheckpoint(
             dir_or_data=None,
             checkpoint_id=-1,
             storage_mode=CheckpointStorage.MEMORY,
@@ -123,21 +121,10 @@ class _CheckpointManager(CommonCheckpointManager):
         checkpoints = sorted(self._top_persisted_checkpoints, key=lambda c: c.priority)
         return [wrapped.tracked_checkpoint for wrapped in checkpoints]
 
-    def _priority(self, checkpoint):
-        result = flatten_dict(checkpoint.result)
-        priority = result[self._checkpoint_score_attr]
-        if self._checkpoint_score_desc:
-            priority = -priority
-        return (
-            not is_nan(priority),
-            priority if not is_nan(priority) else 0,
-            checkpoint.order,
-        )
-
     def __getstate__(self):
         state = self.__dict__.copy()
         # Avoid serializing the memory checkpoint.
-        state["_newest_memory_checkpoint"] = TrackedCheckpoint(
+        state["_newest_memory_checkpoint"] = _TrackedCheckpoint(
             CheckpointStorage.MEMORY, None
         )
         # Avoid serializing lambda since it may capture cyclical dependencies.

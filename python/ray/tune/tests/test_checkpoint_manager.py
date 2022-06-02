@@ -9,7 +9,7 @@ from unittest.mock import patch
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.checkpoint_manager import _CheckpointManager
 from ray.util.ml_utils.checkpoint_manager import (
-    TrackedCheckpoint,
+    _TrackedCheckpoint,
     logger,
     CheckpointStorage,
 )
@@ -29,14 +29,14 @@ class CheckpointManagerTest(unittest.TestCase):
 
     def testNewestCheckpoint(self):
         checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num=1)
-        memory_checkpoint = TrackedCheckpoint(
-            dir_or_data={0},
+        memory_checkpoint = _TrackedCheckpoint(
+            dir_or_data={"a": 0},
             storage_mode=CheckpointStorage.MEMORY,
             metrics=self.mock_result(0, 0),
         )
         checkpoint_manager.on_checkpoint(memory_checkpoint)
-        persistent_checkpoint = TrackedCheckpoint(
-            dir_or_data={1},
+        persistent_checkpoint = _TrackedCheckpoint(
+            dir_or_data={"a": 1},
             storage_mode=CheckpointStorage.PERSISTENT,
             metrics=self.mock_result(1, 1),
         )
@@ -53,7 +53,7 @@ class CheckpointManagerTest(unittest.TestCase):
         keep_checkpoints_num = 2
         checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num)
         checkpoints = [
-            TrackedCheckpoint(
+            _TrackedCheckpoint(
                 dir_or_data={i},
                 storage_mode=CheckpointStorage.PERSISTENT,
                 metrics=self.mock_result(i, i),
@@ -85,7 +85,7 @@ class CheckpointManagerTest(unittest.TestCase):
         keep_checkpoints_num = 2
         checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num)
         checkpoints = [
-            TrackedCheckpoint(
+            _TrackedCheckpoint(
                 dir_or_data={i},
                 storage_mode=CheckpointStorage.PERSISTENT,
                 metrics=self.mock_result(i, i),
@@ -119,7 +119,7 @@ class CheckpointManagerTest(unittest.TestCase):
         """
         keep_checkpoints_num = 4
         checkpoints = [
-            TrackedCheckpoint(
+            _TrackedCheckpoint(
                 dir_or_data=i,
                 storage_mode=CheckpointStorage.PERSISTENT,
                 metrics=self.mock_result(i, i),
@@ -144,14 +144,14 @@ class CheckpointManagerTest(unittest.TestCase):
         """
         keep_checkpoints_num = 2
         checkpoints = [
-            TrackedCheckpoint(
+            _TrackedCheckpoint(
                 dir_or_data=None,
                 storage_mode=CheckpointStorage.PERSISTENT,
                 metrics=self.mock_result(float("nan"), i),
             )
             for i in range(2)
         ] + [
-            TrackedCheckpoint(
+            _TrackedCheckpoint(
                 dir_or_data=3,
                 storage_mode=CheckpointStorage.PERSISTENT,
                 metrics=self.mock_result(0, 3),
@@ -176,7 +176,7 @@ class CheckpointManagerTest(unittest.TestCase):
         keep_checkpoints_num = 2
         checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num)
         checkpoints = [
-            TrackedCheckpoint(
+            _TrackedCheckpoint(
                 dir_or_data=i,
                 storage_mode=CheckpointStorage.PERSISTENT,
                 metrics=self.mock_result(float("nan"), i),
@@ -200,7 +200,7 @@ class CheckpointManagerTest(unittest.TestCase):
         """
         checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num=1)
 
-        no_attr_checkpoint = TrackedCheckpoint(
+        no_attr_checkpoint = _TrackedCheckpoint(
             dir_or_data=0,
             storage_mode=CheckpointStorage.PERSISTENT,
             metrics={},
@@ -216,13 +216,13 @@ class CheckpointManagerTest(unittest.TestCase):
 
     def testOnMemoryCheckpoint(self):
         checkpoints = [
-            TrackedCheckpoint(
-                dir_or_data=0,
+            _TrackedCheckpoint(
+                dir_or_data={"a": 0},
                 storage_mode=CheckpointStorage.MEMORY,
                 metrics=self.mock_result(0, 0),
             ),
-            TrackedCheckpoint(
-                dir_or_data=0,
+            _TrackedCheckpoint(
+                dir_or_data={"a": 0},
                 storage_mode=CheckpointStorage.MEMORY,
                 metrics=self.mock_result(0, 0),
             ),
@@ -250,22 +250,22 @@ class CheckpointManagerTest(unittest.TestCase):
             tmpfiles.append(tmpfile)
 
         checkpoints = [
-            TrackedCheckpoint(
+            _TrackedCheckpoint(
                 dir_or_data=tmpfiles[0],
                 storage_mode=CheckpointStorage.PERSISTENT,
                 metrics=self.mock_result(5, 5),
             ),
-            TrackedCheckpoint(
+            _TrackedCheckpoint(
                 dir_or_data=tmpfiles[1],
                 storage_mode=CheckpointStorage.PERSISTENT,
                 metrics=self.mock_result(10, 10),
             ),
-            TrackedCheckpoint(
+            _TrackedCheckpoint(
                 dir_or_data=tmpfiles[2],
                 storage_mode=CheckpointStorage.PERSISTENT,
                 metrics=self.mock_result(0, 0),
             ),
-            TrackedCheckpoint(
+            _TrackedCheckpoint(
                 dir_or_data=tmpfiles[1],
                 storage_mode=CheckpointStorage.PERSISTENT,
                 metrics=self.mock_result(20, 20),

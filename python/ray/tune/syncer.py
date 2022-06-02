@@ -37,7 +37,7 @@ from ray.tune.sync_client import (
     RemoteTaskClient,
 )
 from ray.util.annotations import PublicAPI, DeveloperAPI
-from ray.util.ml_utils.checkpoint_manager import CheckpointStorage
+from ray.util.ml_utils.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 
 if TYPE_CHECKING:
     from ray.tune.trial import Trial
@@ -531,7 +531,7 @@ class SyncerCallback(Callback):
     def _remove_trial_syncer(self, trial: "Trial"):
         self._syncers.pop(trial, None)
 
-    def _sync_trial_checkpoint(self, trial: "Trial", checkpoint: TrackedCheckpoint):
+    def _sync_trial_checkpoint(self, trial: "Trial", checkpoint: _TrackedCheckpoint):
         if checkpoint.storage_mode == CheckpointStorage.MEMORY:
             return
 
@@ -623,7 +623,7 @@ class SyncerCallback(Callback):
         iteration: int,
         trials: List["Trial"],
         trial: "Trial",
-        checkpoint: TrackedCheckpoint,
+        checkpoint: _TrackedCheckpoint,
         **info,
     ):
         self._sync_trial_checkpoint(trial, checkpoint)

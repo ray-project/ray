@@ -18,7 +18,7 @@ from ray.tune.resources import Resources
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.tests.utils_for_test_trial_runner import TrialResultObserver
 from ray.tune.utils.trainable import TrainableUtil
-from ray.util.ml_utils.checkpoint_manager import TrackedCheckpoint, CheckpointStorage
+from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 
 
 def create_mock_components():
@@ -333,7 +333,7 @@ class TrialRunnerTest2(unittest.TestCase):
             with open(os.path.join(checkpoint_dir, "cp.json"), "w") as f:
                 json.dump(result, f)
 
-            tune_cp = TrackedCheckpoint(
+            tune_cp = _TrackedCheckpoint(
                 dir_or_data=checkpoint_dir,
                 storage_mode=CheckpointStorage.PERSISTENT,
                 metrics=result,

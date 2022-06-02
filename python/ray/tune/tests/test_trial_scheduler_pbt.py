@@ -20,7 +20,7 @@ from ray._private.test_utils import object_memory_usage
 
 # Import psutil after ray so the packaged version is used.
 import psutil
-from ray.util.ml_utils.checkpoint_manager import TrackedCheckpoint, CheckpointStorage
+from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 
 MB = 1024 ** 2
 
@@ -440,7 +440,7 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
         class MockTrial(Trial):
             @property
             def checkpoint(self):
-                return TrackedCheckpoint(
+                return _TrackedCheckpoint(
                     dir_or_data="None",
                     storage_mode=CheckpointStorage.MEMORY,
                     metrics={},

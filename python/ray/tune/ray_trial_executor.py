@@ -38,7 +38,7 @@ from ray.tune.utils import warn_if_slow
 from ray.tune.utils.resource_updater import _ResourceUpdater
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
-from ray.util.ml_utils.checkpoint_manager import TrackedCheckpoint, CheckpointStorage
+from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.util.placement_group import remove_placement_group, PlacementGroup
 
 logger = logging.getLogger(__name__)
@@ -679,7 +679,7 @@ class RayTrialExecutor(TrialExecutor):
         trial: Trial,
         storage: str = CheckpointStorage.PERSISTENT,
         result: Optional[Dict] = None,
-    ) -> TrackedCheckpoint:
+    ) -> _TrackedCheckpoint:
         """Saves the trial's state to a checkpoint asynchronously.
 
         Args:
@@ -697,13 +697,13 @@ class RayTrialExecutor(TrialExecutor):
         with self._change_working_directory(trial):
             if storage == CheckpointStorage.MEMORY:
                 value = trial.runner.save_to_object.remote()
-                checkpoint = TrackedCheckpoint(
+                checkpoint = _TrackedCheckpoint(
                     dir_or_data=value, storage_mode=storage, metrics=result
                 )
                 trial.on_checkpoint(checkpoint)
             else:
                 value = trial.runner.save.remote()
-                checkpoint = TrackedCheckpoint(
+                checkpoint = _TrackedCheckpoint(
                     dir_or_data=value, storage_mode=storage, metrics=result
                 )
                 trial.saving_to = checkpoint
