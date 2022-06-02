@@ -3,12 +3,12 @@ package io.ray.test;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
+import io.ray.api.exception.RayActorException;
+import io.ray.api.exception.RayTaskException;
+import io.ray.api.exception.RayWorkerException;
+import io.ray.api.exception.UnreconstructableException;
 import io.ray.api.function.RayFunc0;
 import io.ray.api.id.ObjectId;
-import io.ray.runtime.exception.RayActorException;
-import io.ray.runtime.exception.RayTaskException;
-import io.ray.runtime.exception.RayWorkerException;
-import io.ray.runtime.exception.UnreconstructableException;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
@@ -23,10 +23,6 @@ public class FailureTest extends BaseTest {
 
   @BeforeClass
   public void setUp() {
-    // This is needed by `testGetThrowsQuicklyWhenFoundException`.
-    // Set one worker per process. Otherwise, if `badFunc2` and `slowFunc` run in the same
-    // process, `sleep` will delay `System.exit`.
-    System.setProperty("ray.job.num-java-workers-per-process", "1");
     System.setProperty("ray.raylet.startup-token", "0");
   }
 
@@ -194,14 +190,16 @@ public class FailureTest extends BaseTest {
         Assert.expectThrows(
             RayTaskException.class,
             () -> {
-              Ray.put(new RayTaskException("xxx", new RayActorException())).get();
+              Ray.put(new RayTaskException(10008, "localhost", "xxx", new RayActorException()))
+                  .get();
             });
     Assert.assertEquals(ex1.getCause().getClass(), RayActorException.class);
     RayTaskException ex2 =
         Assert.expectThrows(
             RayTaskException.class,
             () -> {
-              Ray.put(new RayTaskException("xxx", new RayWorkerException())).get();
+              Ray.put(new RayTaskException(10008, "localhost", "xxx", new RayWorkerException()))
+                  .get();
             });
     Assert.assertEquals(ex2.getCause().getClass(), RayWorkerException.class);
 
@@ -210,7 +208,10 @@ public class FailureTest extends BaseTest {
         Assert.expectThrows(
             RayTaskException.class,
             () -> {
-              Ray.put(new RayTaskException("xxx", new UnreconstructableException(objectId))).get();
+              Ray.put(
+                      new RayTaskException(
+                          10008, "localhost", "xxx", new UnreconstructableException(objectId)))
+                  .get();
             });
     Assert.assertEquals(ex3.getCause().getClass(), UnreconstructableException.class);
     Assert.assertEquals(((UnreconstructableException) ex3.getCause()).objectId, objectId);

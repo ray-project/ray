@@ -1,8 +1,9 @@
 from ray.rllib.offline.off_policy_estimator import OffPolicyEstimator, OffPolicyEstimate
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.typing import SampleBatchType
 
 
+@DeveloperAPI
 class ImportanceSampling(OffPolicyEstimator):
     """The step-wise IS estimator.
 

@@ -22,6 +22,7 @@ from ray.rllib.utils.typing import SampleBatchType
 logger = logging.getLogger(__name__)
 
 
+@PublicAPI
 class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
     """REST policy server that acts as an offline data source.
 
@@ -34,7 +35,7 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
 
     Examples:
         >>> import gym
-        >>> from ray.rllib.agents.pg import PGTrainer
+        >>> from ray.rllib.algorithms.pg import PGTrainer
         >>> from ray.rllib.env.policy_client import PolicyClient
         >>> from ray.rllib.env.policy_server_input import PolicyServerInput
         >>> addr, port = ... # doctest: +SKIP
@@ -74,9 +75,9 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
         server using rllib.env.PolicyClient.
 
         Args:
-            ioctx (IOContext): IOContext provided by RLlib.
-            address (str): Server addr (e.g., "localhost").
-            port (int): Server port (e.g., 9900).
+            ioctx: IOContext provided by RLlib.
+            address: Server addr (e.g., "localhost").
+            port: Server port (e.g., 9900).
         """
 
         self.rollout_worker = ioctx.worker

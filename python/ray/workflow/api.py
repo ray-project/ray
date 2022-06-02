@@ -286,7 +286,8 @@ def list_all(
                 f" {status_filter}"
             )
     elif status_filter is None:
-        status_filter = set(WorkflowStatus.__members__.keys())
+        status_filter = set(WorkflowStatus)
+        status_filter.discard(WorkflowStatus.NONE)
     else:
         raise TypeError(
             "status_filter must be WorkflowStatus or a set of WorkflowStatus."
@@ -546,10 +547,10 @@ def wait(
     This method will issue a warning if it's running inside an async context.
 
     Args:
-        workflows (List[Workflow]): List of workflows that may
+        workflows: List of workflows that may
             or may not be ready. Note that these workflows must be unique.
-        num_returns (int): The number of workflows that should be returned.
-        timeout (float): The maximum amount of time in seconds to wait before
+        num_returns: The number of workflows that should be returned.
+        timeout: The maximum amount of time in seconds to wait before
             returning.
 
     Returns:

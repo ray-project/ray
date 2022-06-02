@@ -17,7 +17,7 @@ from ray.util.ml_utils.util import is_nan
 logger = logging.getLogger(__name__)
 
 
-class CheckpointManager(CommonCheckpointManager):
+class _CheckpointManager(CommonCheckpointManager):
     """Initializes a new CheckpointManager.
 
     `newest_persistent_checkpoint` and `newest_memory_checkpoint` are

@@ -75,7 +75,7 @@ class AutoscalingPolicy:
         Arguments:
             current_num_ongoing_requests: List[float]: List of number of
                 ongoing requests for each replica.
-            curr_target_num_replicas (int): The number of replicas that the
+            curr_target_num_replicas: The number of replicas that the
                 deployment is currently trying to scale to.
 
         Returns:

@@ -6,15 +6,15 @@ from ray.rllib.contrib.registry import CONTRIBUTED_ALGORITHMS
 
 
 def _import_a2c():
-    from ray.rllib.agents import a3c
+    import ray.rllib.algorithms.a2c as a2c
 
-    return a3c.A2CTrainer, a3c.a2c.A2C_DEFAULT_CONFIG
+    return a2c.A2C, a2c.A2C_DEFAULT_CONFIG
 
 
 def _import_a3c():
-    from ray.rllib.agents import a3c
+    import ray.rllib.algorithms.a3c as a3c
 
-    return a3c.A3CTrainer, a3c.DEFAULT_CONFIG
+    return a3c.A3C, a3c.DEFAULT_CONFIG
 
 
 def _import_alpha_star():
@@ -26,6 +26,15 @@ def _import_alpha_star():
     return AlphaStarTrainer, DEFAULT_CONFIG
 
 
+def _import_alpha_zero():
+    from ray.rllib.algorithms.alpha_zero.alpha_zero import (
+        AlphaZeroTrainer,
+        DEFAULT_CONFIG,
+    )
+
+    return AlphaZeroTrainer, DEFAULT_CONFIG
+
+
 def _import_apex():
     from ray.rllib.agents import dqn
 
@@ -33,7 +42,7 @@ def _import_apex():
 
 
 def _import_apex_ddpg():
-    from ray.rllib.agents import ddpg
+    from ray.rllib.algorithms import ddpg
 
     return ddpg.ApexDDPGTrainer, ddpg.apex.APEX_DDPG_DEFAULT_CONFIG
 
@@ -51,13 +60,13 @@ def _import_ars():
 
 
 def _import_bandit_lints():
-    from ray.rllib.agents.bandit.bandit import BanditLinTSTrainer
+    from ray.rllib.algorithms.bandit.bandit import BanditLinTSTrainer
 
     return BanditLinTSTrainer, BanditLinTSTrainer.get_default_config()
 
 
 def _import_bandit_linucb():
-    from ray.rllib.agents.bandit.bandit import BanditLinUCBTrainer
+    from ray.rllib.algorithms.bandit.bandit import BanditLinUCBTrainer
 
     return BanditLinUCBTrainer, BanditLinUCBTrainer.get_default_config()
 
@@ -71,11 +80,11 @@ def _import_bc():
 def _import_cql():
     from ray.rllib.algorithms import cql
 
-    return cql.CQLTrainer, cql.CQL_DEFAULT_CONFIG
+    return cql.CQLTrainer, cql.DEFAULT_CONFIG
 
 
 def _import_ddpg():
-    from ray.rllib.agents import ddpg
+    from ray.rllib.algorithms import ddpg
 
     return ddpg.DDPGTrainer, ddpg.DEFAULT_CONFIG
 
@@ -87,7 +96,7 @@ def _import_ddppo():
 
 
 def _import_dqn():
-    from ray.rllib.agents import dqn
+    from ray.rllib.algorithms import dqn
 
     return dqn.DQNTrainer, dqn.DEFAULT_CONFIG
 
@@ -135,7 +144,7 @@ def _import_mbmpo():
 
 
 def _import_pg():
-    from ray.rllib.agents import pg
+    from ray.rllib.algorithms import pg
 
     return pg.PGTrainer, pg.DEFAULT_CONFIG
 
@@ -147,7 +156,7 @@ def _import_ppo():
 
 
 def _import_qmix():
-    from ray.rllib.agents import qmix
+    from ray.rllib.algorithms import qmix
 
     return qmix.QMixTrainer, qmix.DEFAULT_CONFIG
 
@@ -159,31 +168,31 @@ def _import_r2d2():
 
 
 def _import_sac():
-    from ray.rllib.agents import sac
+    from ray.rllib.algorithms import sac
 
     return sac.SACTrainer, sac.DEFAULT_CONFIG
 
 
 def _import_rnnsac():
-    from ray.rllib.agents import sac
+    from ray.rllib.algorithms import sac
 
     return sac.RNNSACTrainer, sac.RNNSAC_DEFAULT_CONFIG
 
 
 def _import_simple_q():
-    from ray.rllib.agents import dqn
+    from ray.rllib.algorithms import dqn
 
     return dqn.SimpleQTrainer, dqn.simple_q.DEFAULT_CONFIG
 
 
 def _import_slate_q():
-    from ray.rllib.agents import slateq
+    from ray.rllib.algorithms import slateq
 
     return slateq.SlateQTrainer, slateq.DEFAULT_CONFIG
 
 
 def _import_td3():
-    from ray.rllib.agents import ddpg
+    from ray.rllib.algorithms import ddpg
 
     return ddpg.TD3Trainer, ddpg.td3.TD3_DEFAULT_CONFIG
 
@@ -191,6 +200,8 @@ def _import_td3():
 ALGORITHMS = {
     "A2C": _import_a2c,
     "A3C": _import_a3c,
+    "AlphaStar": _import_alpha_star,
+    "AlphaZero": _import_alpha_zero,
     "APPO": _import_appo,
     "APEX": _import_apex,
     "APEX_DDPG": _import_apex_ddpg,
@@ -218,7 +229,6 @@ ALGORITHMS = {
     "SimpleQ": _import_simple_q,
     "SlateQ": _import_slate_q,
     "TD3": _import_td3,
-    "AlphaStar": _import_alpha_star,
 }
 
 

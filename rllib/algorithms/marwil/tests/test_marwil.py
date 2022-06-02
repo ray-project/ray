@@ -5,6 +5,8 @@ import unittest
 
 import ray
 import ray.rllib.algorithms.marwil as marwil
+from ray.rllib.algorithms.marwil.marwil_tf_policy import MARWILEagerTFPolicy
+from ray.rllib.algorithms.marwil.marwil_torch_policy import MARWILTorchPolicy
 from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.offline import JsonReader
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -42,17 +44,20 @@ class TestMARWIL(unittest.TestCase):
         data_file = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
         print("data_file={} exists={}".format(data_file, os.path.isfile(data_file)))
 
-        config = marwil.DEFAULT_CONFIG.copy()
-        config["num_workers"] = 2
-        config["env"] = "CartPole-v0"
-        config["evaluation_num_workers"] = 1
-        config["evaluation_interval"] = 3
-        config["evaluation_duration"] = 5
-        config["evaluation_parallel_to_training"] = True
-        # Evaluate on actual environment.
-        config["evaluation_config"] = {"input": "sampler"}
-        # Learn from offline data.
-        config["input"] = [data_file]
+        config = (
+            marwil.MARWILConfig()
+            .rollouts(num_rollout_workers=2)
+            .environment(env="CartPole-v0")
+            .evaluation(
+                evaluation_interval=3,
+                evaluation_num_workers=1,
+                evaluation_duration=5,
+                evaluation_parallel_to_training=True,
+                evaluation_config={"input": "sampler"},
+            )
+            .offline_data(input_=[data_file])
+        )
+
         num_iterations = 350
         min_reward = 70.0
 
@@ -110,7 +115,9 @@ class TestMARWIL(unittest.TestCase):
         config["evaluation_config"] = {"input": "sampler"}
         # Learn from offline data.
         config["input"] = [data_file]
-        config["input_evaluation"] = []  # disable (data has no action-probs)
+        config[
+            "off_policy_estimation_methods"
+        ] = []  # disable (data has no action-probs)
         num_iterations = 3
 
         # Test for all frameworks.
@@ -182,9 +189,7 @@ class TestMARWIL(unittest.TestCase):
             batch.set_get_interceptor(None)
             postprocessed_batch = policy.postprocess_trajectory(batch)
             loss_func = (
-                marwil.marwil_tf_policy.marwil_loss
-                if fw != "torch"
-                else marwil.marwil_torch_policy.marwil_loss
+                MARWILEagerTFPolicy.loss if fw != "torch" else MARWILTorchPolicy.loss
             )
             if fw != "tf":
                 policy._lazy_tensor_dict(postprocessed_batch)

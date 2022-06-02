@@ -1,6 +1,7 @@
 import inspect
 import logging
 import weakref
+from typing import Optional, List, Dict, Any
 
 import ray.ray_constants as ray_constants
 import ray._raylet
@@ -633,7 +634,7 @@ class ActorClass:
             runtime_env (Dict[str, Any]): Specifies the runtime environment for
                 this actor or task and its children (see
                 :ref:`runtime-environments` for details).
-            max_pending_calls (int): Set the max number of pending calls
+            max_pending_calls: Set the max number of pending calls
                 allowed on the actor handle. When this value is exceeded,
                 PendingCallsLimitExceeded will be raised for further tasks.
                 Note that this limit is counted per handle. -1 means that the
@@ -1021,12 +1022,12 @@ class ActorHandle:
 
     def _actor_method_call(
         self,
-        method_name,
-        args=None,
-        kwargs=None,
-        name="",
-        num_returns=None,
-        concurrency_group_name=None,
+        method_name: str,
+        args: List[Any] = None,
+        kwargs: Dict[str, Any] = None,
+        name: str = "",
+        num_returns: Optional[int] = None,
+        concurrency_group_name: Optional[str] = None,
     ):
         """Method execution stub for an actor handle.
 
@@ -1039,8 +1040,8 @@ class ActorHandle:
             method_name: The name of the actor method to execute.
             args: A list of arguments for the actor method.
             kwargs: A dictionary of keyword arguments for the actor method.
-            name (str): The name to give the actor method call task.
-            num_returns (int): The number of return values for the method.
+            name: The name to give the actor method call task.
+            num_returns: The number of return values for the method.
 
         Returns:
             object_refs: A list of object refs returned by the remote actor
@@ -1295,6 +1296,7 @@ def exit_actor():
         # reduces log verbosity.
         exit = SystemExit(0)
         exit.is_ray_terminate = True
+        exit.ray_terminate_msg = "exit_actor() is called."
         raise exit
         assert False, "This process should have terminated."
     else:

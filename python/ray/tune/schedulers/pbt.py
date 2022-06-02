@@ -17,13 +17,14 @@ from ray.tune.sample import Domain, Function
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest.variant_generator import format_vars
 from ray.tune.trial import Trial
+from ray.util import PublicAPI
 from ray.util.debug import log_once
 from ray.util.ml_utils.checkpoint_manager import CheckpointStorage
 
 logger = logging.getLogger(__name__)
 
 
-class PBTTrialState:
+class _PBTTrialState:
     """Internal PBT state tracked per-trial."""
 
     def __init__(self, trial: Trial):
@@ -45,7 +46,7 @@ class PBTTrialState:
         )
 
 
-def explore(
+def _explore(
     config: Dict,
     mutations: Dict,
     resample_probability: float,
@@ -66,7 +67,7 @@ def explore(
     for key, distribution in mutations.items():
         if isinstance(distribution, dict):
             new_config.update(
-                {key: explore(config[key], mutations[key], resample_probability, None)}
+                {key: _explore(config[key], mutations[key], resample_probability, None)}
             )
         elif isinstance(distribution, list):
             if (
@@ -101,7 +102,7 @@ def explore(
     return new_config
 
 
-def make_experiment_tag(orig_tag: str, config: Dict, mutations: Dict) -> str:
+def _make_experiment_tag(orig_tag: str, config: Dict, mutations: Dict) -> str:
     """Appends perturbed params to the trial name to show in the console."""
 
     resolved_vars = {}
@@ -110,7 +111,7 @@ def make_experiment_tag(orig_tag: str, config: Dict, mutations: Dict) -> str:
     return "{}@perturbed[{}]".format(orig_tag, format_vars(resolved_vars))
 
 
-def fill_config(
+def _fill_config(
     config: Dict, attr: str, search_space: Union[Callable, Domain, list, dict]
 ):
     """Add attr to config by sampling from search_space."""
@@ -123,9 +124,10 @@ def fill_config(
     elif isinstance(search_space, dict):
         config[attr] = {}
         for k, v in search_space.items():
-            fill_config(config[attr], k, v)
+            _fill_config(config[attr], k, v)
 
 
+@PublicAPI
 class PopulationBasedTraining(FIFOScheduler):
     """Implements the Population Based Training (PBT) algorithm.
 
@@ -363,7 +365,7 @@ class PopulationBasedTraining(FIFOScheduler):
                 )
             )
 
-        self._trial_state[trial] = PBTTrialState(trial)
+        self._trial_state[trial] = _PBTTrialState(trial)
 
         for attr in self._hyperparam_mutations.keys():
             if attr not in trial.config:
@@ -374,7 +376,7 @@ class PopulationBasedTraining(FIFOScheduler):
                     )
                 # Add attr to trial's config by sampling search space from
                 # hyperparam_mutations.
-                fill_config(trial.config, attr, self._hyperparam_mutations[attr])
+                _fill_config(trial.config, attr, self._hyperparam_mutations[attr])
                 # Make sure this attribute is added to CLI output.
                 trial.evaluated_params[attr] = trial.config[attr]
 
@@ -491,7 +493,7 @@ class PopulationBasedTraining(FIFOScheduler):
             )
 
     def _save_trial_state(
-        self, state: PBTTrialState, time: int, result: Dict, trial: Trial
+        self, state: _PBTTrialState, time: int, result: Dict, trial: Trial
     ):
         """Saves necessary trial information when result is received.
         Args:
@@ -549,8 +551,8 @@ class PopulationBasedTraining(FIFOScheduler):
 
     def _log_config_on_step(
         self,
-        trial_state: PBTTrialState,
-        new_state: PBTTrialState,
+        trial_state: _PBTTrialState,
+        new_state: _PBTTrialState,
         trial: Trial,
         trial_to_clone: Trial,
         new_config: Dict,
@@ -587,7 +589,7 @@ class PopulationBasedTraining(FIFOScheduler):
 
     def _get_new_config(self, trial, trial_to_clone):
         """Gets new config for trial by exploring trial_to_clone's config."""
-        return explore(
+        return _explore(
             trial_to_clone.config,
             self._hyperparam_mutations,
             self._resample_probability,
@@ -633,7 +635,7 @@ class PopulationBasedTraining(FIFOScheduler):
                 trial_state, new_state, trial, trial_to_clone, new_config
             )
 
-        new_tag = make_experiment_tag(
+        new_tag = _make_experiment_tag(
             trial_state.orig_tag, new_config, self._hyperparam_mutations
         )
         if trial.status == Trial.PAUSED:
@@ -729,6 +731,7 @@ class PopulationBasedTraining(FIFOScheduler):
         )
 
 
+@PublicAPI
 class PopulationBasedTrainingReplay(FIFOScheduler):
     """Replays a Population Based Training run.
 
@@ -876,7 +879,7 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
             trial, CheckpointStorage.MEMORY, result=result
         )
 
-        new_tag = make_experiment_tag(self.experiment_tag, new_config, new_config)
+        new_tag = _make_experiment_tag(self.experiment_tag, new_config, new_config)
 
         trial_executor = trial_runner.trial_executor
         trial_executor.stop_trial(trial)

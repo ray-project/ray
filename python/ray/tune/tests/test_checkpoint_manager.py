@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import patch
 
 from ray.tune.result import TRAINING_ITERATION
-from ray.tune.checkpoint_manager import CheckpointManager
+from ray.tune.checkpoint_manager import _CheckpointManager
 from ray.util.ml_utils.checkpoint_manager import (
     TrackedCheckpoint,
     logger,
@@ -21,7 +21,7 @@ class CheckpointManagerTest(unittest.TestCase):
         return {"i": metric, TRAINING_ITERATION: i}
 
     def checkpoint_manager(self, keep_checkpoints_num):
-        return CheckpointManager(
+        return _CheckpointManager(
             keep_checkpoints_num=keep_checkpoints_num,
             checkpoint_score_attr="i",
             delete_fn=lambda c: None,
@@ -236,7 +236,7 @@ class CheckpointManagerTest(unittest.TestCase):
         self.assertEqual(checkpoint_manager.best_checkpoints(), [])
 
     def testSameCheckpoint(self):
-        checkpoint_manager = CheckpointManager(
+        checkpoint_manager = _CheckpointManager(
             keep_checkpoints_num=1,
             checkpoint_score_attr="i",
             delete_fn=lambda c: os.remove(c.dir_or_data),

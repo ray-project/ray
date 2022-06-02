@@ -24,10 +24,11 @@ from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
 from ray.train import BackendConfig, TrainingIterator
 from ray.train.backend import BackendExecutor
-from ray.train.checkpoint import TuneCheckpointManager
+from ray.train._checkpoint import TuneCheckpointManager
 from ray.train.impl.dataset_spec import _RayDatasetSpec
 from ray.train.utils import construct_train_func
 from ray.util.annotations import DeveloperAPI
+from ray.util.ml_utils.checkpoint_manager import CheckpointStrategy, _TrackedCheckpoint
 
 if TYPE_CHECKING:
     from ray.data import Dataset
@@ -37,20 +38,22 @@ logger = logging.getLogger(__name__)
 
 # TODO(team-ml): Refactor checkpoint management along with Tune.
 class _DataParallelCheckpointManager(TuneCheckpointManager):
-    def on_init(self, preprocessor: Preprocessor):
+    def __init__(
+        self,
+        preprocessor: Preprocessor,
+        run_dir: Optional[Path] = None,
+        checkpoint_strategy: Optional[CheckpointStrategy] = None,
+    ):
         self.preprocessor = preprocessor
-        super(_DataParallelCheckpointManager, self).on_init()
+        super(_DataParallelCheckpointManager, self).__init__(
+            run_dir=run_dir, checkpoint_strategy=checkpoint_strategy
+        )
 
-    def write_checkpoint(self, checkpoint: Dict):
-        self.add_tune_checkpoint_id(checkpoint)
-
-        # Add the preprocessor to the checkpoint.
-        checkpoint[PREPROCESSOR_KEY] = self.preprocessor
-
-        checkpoint_obj = Checkpoint.from_dict(checkpoint)
-        # If inside a Tune Trainable, then checkpoint with Tune.
-        with tune.checkpoint_dir(step=self._latest_checkpoint_id) as checkpoint_dir:
-            checkpoint_obj.to_directory(path=checkpoint_dir)
+    def _process_persistent_checkpoint(self, checkpoint: _TrackedCheckpoint):
+        checkpoint.dir_or_data[PREPROCESSOR_KEY] = self.preprocessor
+        super(_DataParallelCheckpointManager, self)._process_persistent_checkpoint(
+            checkpoint=checkpoint
+        )
 
     @property
     def latest_checkpoint_dir(self) -> Optional[Path]:
@@ -224,7 +227,7 @@ class DataParallelTrainer(Trainer):
         TuneCheckpointManager
     ] = _DataParallelCheckpointManager
 
-    _scaling_config_allowed_keys = [
+    _scaling_config_allowed_keys = Trainer._scaling_config_allowed_keys + [
         "num_workers",
         "num_cpus_per_worker",
         "num_gpus_per_worker",
@@ -324,8 +327,9 @@ class DataParallelTrainer(Trainer):
             max_retries=0,
         )
 
-        checkpoint_manager = self._checkpoint_manager_cls()
-        checkpoint_manager.on_init(preprocessor=self.preprocessor)
+        checkpoint_manager = self._checkpoint_manager_cls(
+            preprocessor=self.preprocessor
+        )
 
         # Start the remote actors.
         backend_executor.start(initialization_hook=None)

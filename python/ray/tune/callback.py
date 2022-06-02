@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 from abc import ABCMeta
 import warnings
 
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import PublicAPI, DeveloperAPI
 from ray.util.ml_utils.checkpoint_manager import TrackedCheckpoint
 
 if TYPE_CHECKING:
@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from ray.tune.stopper import Stopper
 
 
-class CallbackMeta(ABCMeta):
+class _CallbackMeta(ABCMeta):
     """A helper metaclass to ensure container classes (e.g. CallbackList) have
     implemented all the callback methods (e.g. `on_*`).
     """
@@ -60,7 +60,7 @@ class CallbackMeta(ABCMeta):
 
 
 @PublicAPI(stability="beta")
-class Callback(metaclass=CallbackMeta):
+class Callback(metaclass=_CallbackMeta):
     """Tune base callback that can be extended and passed to a ``TrialRunner``
 
     Tune callbacks are called from within the ``TrialRunner`` class. There are
@@ -270,6 +270,7 @@ class Callback(metaclass=CallbackMeta):
         pass
 
 
+@DeveloperAPI
 class CallbackList(Callback):
     """Call multiple callbacks at once."""
 

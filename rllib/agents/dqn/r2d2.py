@@ -1,43 +1,110 @@
 import logging
-from typing import Type
+from typing import Optional, Type
 
-from ray.rllib.agents.dqn import DQNTrainer, DEFAULT_CONFIG as DQN_DEFAULT_CONFIG
+from ray.rllib.algorithms.dqn import DQNConfig, DQNTrainer
 from ray.rllib.agents.dqn.r2d2_tf_policy import R2D2TFPolicy
 from ray.rllib.agents.dqn.r2d2_torch_policy import R2D2TorchPolicy
-from ray.rllib.agents.trainer import Trainer
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 logger = logging.getLogger(__name__)
 
-# fmt: off
-# __sphinx_doc_begin__
-R2D2_DEFAULT_CONFIG = Trainer.merge_trainer_configs(
-    DQN_DEFAULT_CONFIG,  # See keys in dqn.py, which are also supported.
-    {
-        # Learning rate for adam optimizer.
-        "lr": 1e-4,
-        # Discount factor.
-        "gamma": 0.997,
-        # Train batch size (in number of single timesteps).
-        "train_batch_size": 64,
-        # Adam epsilon hyper parameter
-        "adam_epsilon": 1e-3,
-        # Run in parallel by default.
-        "num_workers": 2,
-        # Batch mode must be complete_episodes.
-        "batch_mode": "complete_episodes",
 
-        # === Replay buffer ===
-        "replay_buffer_config": {
+class R2D2Config(DQNConfig):
+    """Defines a configuration class from which a R2D2Trainer can be built.
+
+    Example:
+        >>> from ray.rllib.agents.dqn.r2d2 import R2D2Config
+        >>> config = R2D2Config()
+        >>> print(config.h_function_epsilon)
+        >>> replay_config = config.replay_buffer_config.update(
+        >>>     {
+        >>>         "capacity": 1000000,
+        >>>         "replay_burn_in": 20,
+        >>>     }
+        >>> )
+        >>> config.training(replay_buffer_config=replay_config)\
+        >>>       .resources(num_gpus=1)\
+        >>>       .rollouts(num_rollout_workers=30)\
+        >>>       .environment("CartPole-v1")
+        >>> trainer = R2D2Trainer(config=config)
+        >>> while True:
+        >>>     trainer.train()
+
+    Example:
+        >>> from ray.rllib.agents.dqn.r2d2 import R2D2Config
+        >>> from ray import tune
+        >>> config = R2D2Config()
+        >>> config.training(train_batch_size=tune.grid_search([256, 64])
+        >>> config.environment(env="CartPole-v1")
+        >>> tune.run(
+        >>>     "R2D2",
+        >>>     stop={"episode_reward_mean":200},
+        >>>     config=config.to_dict()
+        >>> )
+
+    Example:
+        >>> from ray.rllib.agents.dqn.r2d2 import R2D2Config
+        >>> config = R2D2Config()
+        >>> print(config.exploration_config)
+        >>> explore_config = config.exploration_config.update(
+        >>>     {
+        >>>         "initial_epsilon": 1.0,
+        >>>         "final_epsilon": 0.1,
+        >>>         "epsilone_timesteps": 200000,
+        >>>     }
+        >>> )
+        >>> config.training(lr_schedule=[[1, 1e-3, [500, 5e-3]])\
+        >>>       .exploration(exploration_config=explore_config)
+
+    Example:
+        >>> from ray.rllib.agents.dqn.r2d2 import R2D2Config
+        >>> config = R2D2Config()
+        >>> print(config.exploration_config)
+        >>> explore_config = config.exploration_config.update(
+        >>>     {
+        >>>         "type": "SoftQ",
+        >>>         "temperature": [1.0],
+        >>>     }
+        >>> )
+        >>> config.training(lr_schedule=[[1, 1e-3, [500, 5e-3]])\
+        >>>       .exploration(exploration_config=explore_config)
+    """
+
+    def __init__(self, trainer_class=None):
+        """Initializes a ApexConfig instance."""
+        super().__init__(trainer_class=trainer_class or R2D2Trainer)
+
+        # fmt: off
+        # __sphinx_doc_begin__
+        # R2D2-specific settings:
+        self.zero_init_states = True
+        self.use_h_function = True
+        self.h_function_epsilon = 1e-3
+
+        # R2D2 settings overriding DQN ones:
+        # .training()
+        self.adam_epsilon = 1e-3
+        self.lr = 1e-4
+        self.gamma = 0.997
+        self.train_batch_size = 1000
+        self.target_network_update_freq = 2500
+        self.training_intensity = 1000
+        # R2D2 is using a buffer that stores sequences.
+        self.replay_buffer_config = {
             "type": "MultiAgentReplayBuffer",
             # Specify prioritized replay by supplying a buffer type that supports
             # prioritization, for example: MultiAgentPrioritizedReplayBuffer.
             "prioritized_replay": DEPRECATED_VALUE,
             # Size of the replay buffer (in sequences, not timesteps).
             "capacity": 100000,
+            # This algorithm learns on sequences. We therefore require the replay buffer
+            # to slice sampled batches into sequences before replay. How sequences
+            # are sliced depends on the parameters `replay_sequence_length`,
+            # `replay_burn_in`, and `replay_zero_init_states`.
             "storage_unit": "sequences",
             # Set automatically: The number
             # of contiguous environment steps to
@@ -53,34 +120,54 @@ R2D2_DEFAULT_CONFIG = Trainer.merge_trainer_configs(
             # used for loss calculation is `n - replay_burn_in` time steps
             # (n=LSTM’s/attention net’s max_seq_len).
             "replay_burn_in": 0,
-        },
-        # If True, assume a zero-initialized state input (no matter where in
-        # the episode the sequence is located).
-        # If False, store the initial states along with each SampleBatch, use
-        # it (as initial state when running through the network for training),
-        # and update that initial state during training (from the internal
-        # state outputs of the immediately preceding sequence).
-        "zero_init_states": True,
+        }
 
-        # Whether to use the h-function from the paper [1] to scale target
-        # values in the R2D2-loss function:
-        # h(x) = sign(x)(􏰅|x| + 1 − 1) + εx
-        "use_h_function": True,
-        # The epsilon parameter from the R2D2 loss function (only used
-        # if `use_h_function`=True.
-        "h_function_epsilon": 1e-3,
+        # .rollouts()
+        self.num_workers = 2
+        self.batch_mode = "complete_episodes"
 
-        # Update the target network every `target_network_update_freq` sample steps.
-        "target_network_update_freq": 2500,
+        # fmt: on
+        # __sphinx_doc_end__
 
-        # Deprecated keys:
-        # Use config["replay_buffer_config"]["replay_burn_in"] instead
-        "burn_in": DEPRECATED_VALUE
-    },
-    _allow_unknown_configs=True,
-)
-# __sphinx_doc_end__
-# fmt: on
+        self.burn_in = DEPRECATED_VALUE
+
+    def training(
+        self,
+        *,
+        zero_init_states: Optional[bool] = None,
+        use_h_function: Optional[bool] = None,
+        h_function_epsilon: Optional[float] = None,
+        **kwargs,
+    ) -> "R2D2Config":
+        """Sets the training related configuration.
+
+        Args:
+            zero_init_states: If True, assume a zero-initialized state input (no
+                matter where in the episode the sequence is located).
+                If False, store the initial states along with each SampleBatch, use
+                it (as initial state when running through the network for training),
+                and update that initial state during training (from the internal
+                state outputs of the immediately preceding sequence).
+            use_h_function: Whether to use the h-function from the paper [1] to scale
+                target values in the R2D2-loss function:
+                h(x) = sign(x)(􏰅|x| + 1 − 1) + εx
+            h_function_epsilon: The epsilon parameter from the R2D2 loss function (only
+                used if `use_h_function`=True.
+
+        Returns:
+            This updated TrainerConfig object.
+        """
+        # Pass kwargs onto super's `training()` method.
+        super().training(**kwargs)
+
+        if zero_init_states is not None:
+            self.zero_init_states = zero_init_states
+        if use_h_function is not None:
+            self.use_h_function = use_h_function
+        if h_function_epsilon is not None:
+            self.h_function_epsilon = h_function_epsilon
+
+        return self
 
 
 # Build an R2D2 trainer, which uses the framework specific Policy
@@ -103,7 +190,7 @@ class R2D2Trainer(DQNTrainer):
     @classmethod
     @override(DQNTrainer)
     def get_default_config(cls) -> TrainerConfigDict:
-        return R2D2_DEFAULT_CONFIG
+        return R2D2Config().to_dict()
 
     @override(DQNTrainer)
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
@@ -136,3 +223,20 @@ class R2D2Trainer(DQNTrainer):
 
         if config.get("batch_mode") != "complete_episodes":
             raise ValueError("`batch_mode` must be 'complete_episodes'!")
+
+
+# Deprecated: Use ray.rllib.agents.dqn.r2d2.R2D2Config instead!
+class _deprecated_default_config(dict):
+    def __init__(self):
+        super().__init__(R2D2Config().to_dict())
+
+    @Deprecated(
+        old="ray.rllib.agents.dqn.r2d2.R2D2_DEFAULT_CONFIG",
+        new="ray.rllib.agents.dqn.r2d2.R2D2Config(...)",
+        error=False,
+    )
+    def __getitem__(self, item):
+        return super().__getitem__(item)
+
+
+R2D2_DEFAULT_CONFIG = _deprecated_default_config()

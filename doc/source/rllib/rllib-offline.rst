@@ -48,7 +48,7 @@ Then, we can tell DQN to train using these previously generated experiences with
         --env=CartPole-v0 \
         --config='{
             "input": "/tmp/cartpole-out",
-            "input_evaluation": [],
+            "off_policy_estimation_methods": [],
             "explore": false}'
 
 .. _is:
@@ -62,7 +62,7 @@ Then, we can tell DQN to train using these previously generated experiences with
         --env=CartPole-v0 \
         --config='{
             "input": "/tmp/cartpole-out",
-            "input_evaluation": ["is", "wis"],
+            "off_policy_estimation_methods": ["is", "wis"],
             "exploration_config": {
                 "type": "SoftQ",
                 "temperature": 1.0,
@@ -90,7 +90,7 @@ This example plot shows the Q-value metric in addition to importance sampling (I
             print(estimator.estimate(episode))
 
 
-**Simulation-based estimation:** If true simulation is also possible (i.e., your env supports ``step()``), you can also set ``"input_evaluation": ["simulation"]`` to tell RLlib to run background simulations to estimate current policy performance. The output of these simulations will not be used for learning. Note that in all cases you still need to specify an environment object to define the action and observation spaces. However, you don't need to implement functions like reset() and step().
+**Simulation-based estimation:** If true simulation is also possible (i.e., your env supports ``step()``), you can also set ``"off_policy_estimation_methods": ["simulation"]`` to tell RLlib to run background simulations to estimate current policy performance. The output of these simulations will not be used for learning. Note that in all cases you still need to specify an environment object to define the action and observation spaces. However, you don't need to implement functions like reset() and step().
 
 Example: Converting external experiences to batch format
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -106,7 +106,7 @@ This `runnable example <https://github.com/ray-project/ray/blob/master/rllib/exa
 On-policy algorithms and experience postprocessing
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-RLlib assumes that input batches are of `postprocessed experiences <https://github.com/ray-project/ray/blob/cf21c634a390745ba6f8916b1f34f7b0453bc7dd/rllib/policy/policy.py#L376>`__. This isn't typically critical for off-policy algorithms (e.g., DQN's `post-processing <https://github.com/ray-project/ray/blob/cf21c634a390745ba6f8916b1f34f7b0453bc7dd/rllib/agents/dqn/dqn_tf_policy.py#L387>`__ is only needed if ``n_step > 1`` or ``worker_side_prioritization: True``). For off-policy algorithms, you can also safely set the ``postprocess_inputs: True`` config to auto-postprocess data.
+RLlib assumes that input batches are of `postprocessed experiences <https://github.com/ray-project/ray/blob/cf21c634a390745ba6f8916b1f34f7b0453bc7dd/rllib/policy/policy.py#L376>`__. This isn't typically critical for off-policy algorithms (e.g., DQN's `post-processing <https://github.com/ray-project/ray/blob/cf21c634a390745ba6f8916b1f34f7b0453bc7dd/rllib/agents/dqn/dqn_tf_policy.py#L387>`__ is only needed if ``n_step > 1`` or ``replay_buffer_config.worker_side_prioritization: True``). For off-policy algorithms, you can also safely set the ``postprocess_inputs: True`` config to auto-postprocess data.
 
 However, for on-policy algorithms like PPO, you'll need to pass in the extra values added during policy evaluation and postprocessing to ``batch_builder.add_values()``, e.g., ``logits``, ``vf_preds``, ``value_target``, and ``advantages`` for PPO. This is needed since the calculation of these values depends on the parameters of the *behaviour* policy, which RLlib does not have access to in the offline setting (in online training, these values are automatically added during policy evaluation).
 
@@ -270,7 +270,7 @@ You can configure experience input for an agent using the following options:
     #  - Any subclass of OffPolicyEstimator, e.g.
     #    ray.rllib.offline.estimators.is::ImportanceSampling or your own custom
     #    subclass.
-    "input_evaluation": [
+    "off_policy_estimation_methods": [
         ImportanceSampling,
         WeightedImportanceSampling,
     ],

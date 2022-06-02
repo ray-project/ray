@@ -115,14 +115,17 @@ extern jclass java_ray_pending_calls_limit_exceeded_exception_class;
 /// RayIntentionalSystemExitException class
 extern jclass java_ray_intentional_system_exit_exception_class;
 
-/// RayActorCreationTaskException class
+/// RayActorException class
 extern jclass java_ray_actor_exception_class;
+
+/// RayExceptionSerializer class
+extern jclass java_ray_exception_serializer_class;
 
 /// RayTimeoutException class
 extern jclass java_ray_timeout_exception_class;
 
-/// toBytes method of RayException
-extern jmethodID java_ray_exception_to_bytes;
+/// RayExceptionSerializer to bytes
+extern jmethodID java_ray_exception_serializer_to_bytes;
 
 /// JniExceptionUtil class
 extern jclass java_jni_exception_util_class;
@@ -673,7 +676,9 @@ inline NativeT JavaProtobufObjectToNativeProtobufObject(JNIEnv *env, jobject jav
 inline std::shared_ptr<LocalMemoryBuffer> SerializeActorCreationException(
     JNIEnv *env, jthrowable creation_exception) {
   jbyteArray exception_jbyte_array = static_cast<jbyteArray>(
-      env->CallObjectMethod(creation_exception, java_ray_exception_to_bytes));
+      env->CallStaticObjectMethod(java_ray_exception_serializer_class,
+                                  java_ray_exception_serializer_to_bytes,
+                                  creation_exception));
   int len = env->GetArrayLength(exception_jbyte_array);
   auto buf = std::make_shared<LocalMemoryBuffer>(len);
   env->GetByteArrayRegion(

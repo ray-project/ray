@@ -501,6 +501,21 @@ service InternalKVGcsService {
   rpc InternalKVKeys(InternalKVKeysRequest) returns (InternalKVKeysReply);
 }
 
+message PinRuntimeEnvURIRequest {
+  string uri = 1;
+  int32 expiration_s = 2;
+}
+
+message PinRuntimeEnvURIReply {
+  GcsStatus status = 1;
+}
+
+/// Handles pinning package URIs that are stored in the GCS.
+/// Future runtime_env-related RPCs should be added to this service.
+service RuntimeEnvGcsService {
+  rpc PinRuntimeEnvURI(PinRuntimeEnvURIRequest) returns (PinRuntimeEnvURIReply);
+}
+
 message GcsPublishRequest {
   /// The messages that are published.
   repeated PubMessage pub_messages = 1;

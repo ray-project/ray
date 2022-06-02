@@ -1,6 +1,6 @@
 from ray.train.backend import BackendConfig
 from ray.train.callbacks import TrainingCallback
-from ray.train.checkpoint import CheckpointStrategy
+from ray.train._checkpoint import CheckpointStrategy
 from ray.train.session import (
     get_dataset_shard,
     local_rank,

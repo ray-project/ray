@@ -6,6 +6,7 @@ import numpy as np
 
 import ray
 from ray.data.block import BlockMetadata
+from ray.data.context import DatasetContext
 from ray.data.impl.block_list import BlockList
 
 
@@ -77,7 +78,7 @@ class _DatasetStatsBuilder:
         return stats
 
 
-@ray.remote(num_cpus=0, placement_group=None)
+@ray.remote(num_cpus=0)
 class _StatsActor:
     """Actor holding stats for blocks created by LazyBlockList.
 
@@ -120,8 +121,11 @@ def _get_or_create_stats_actor():
         or not ray.is_initialized()
         or _stats_actor[1] != ray.get_runtime_context().job_id.hex()
     ):
+        ctx = DatasetContext.get_current()
         _stats_actor[0] = _StatsActor.options(
-            name="datasets_stats_actor", get_if_exists=True
+            name="datasets_stats_actor",
+            get_if_exists=True,
+            scheduling_strategy=ctx.scheduling_strategy,
         ).remote()
         _stats_actor[1] = ray.get_runtime_context().job_id.hex()
 
@@ -225,7 +229,7 @@ class DatasetStats:
             stage_uuid = self.dataset_uuid + stage_name
             out += "Stage {} {}: ".format(self.number, stage_name)
             if stage_uuid in already_printed:
-                out += "[execution cached]"
+                out += "[execution cached]\n"
             else:
                 already_printed.add(stage_uuid)
                 out += self._summarize_blocks(metadata, is_substage=False)
@@ -242,7 +246,7 @@ class DatasetStats:
                 out += "\n"
                 out += "\tSubstage {} {}: ".format(n, stage_name)
                 if stage_uuid in already_printed:
-                    out += "\t[execution cached]"
+                    out += "\t[execution cached]\n"
                 else:
                     already_printed.add(stage_uuid)
                     out += self._summarize_blocks(metadata, is_substage=True)

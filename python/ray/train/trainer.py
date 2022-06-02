@@ -22,7 +22,7 @@ from ray.train.utils import (
     construct_train_func,
     ActorWrapper,
 )
-from ray.train.checkpoint import (
+from ray.train._checkpoint import (
     CheckpointStrategy,
     TuneCheckpointManager,
     CheckpointManager,
@@ -31,7 +31,6 @@ from ray.train.checkpoint import (
 from ray.train.constants import (
     TUNE_INSTALLED,
     DEFAULT_RESULTS_DIR,
-    TUNE_CHECKPOINT_FILE_NAME,
     ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
     TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
@@ -113,11 +112,11 @@ class Trainer:
             distributed communication. If configurations are needed,
             a subclass of ``BackendConfig`` can be passed in.
             Supported ``str`` values: {"torch", "tensorflow", "horovod"}.
-        num_workers (int): The number of workers (Ray actors) to launch.
+        num_workers: The number of workers (Ray actors) to launch.
             Each worker will reserve 1 CPU by default. The number of CPUs
             reserved by each worker can be overridden with the
             ``resources_per_worker`` argument.
-        use_gpu (bool): If True, training will be done on GPUs (1 per
+        use_gpu: If True, training will be done on GPUs (1 per
             worker). Defaults to False. The number of GPUs reserved by each
             worker can be overridden with the ``resources_per_worker``
             argument.
@@ -128,7 +127,7 @@ class Trainer:
         logdir (Optional[str]): Path to the file directory where logs
             should be persisted. If this is not specified, one will be
             generated.
-         max_retries (int): Number of retries when Ray actors fail.
+         max_retries: Number of retries when Ray actors fail.
             Defaults to 3. Set to -1 for unlimited retries.
     """
 
@@ -299,7 +298,7 @@ class Trainer:
         """Runs a training function in a distributed manner.
 
         Args:
-            train_func (Callable): The training function to execute.
+            train_func: The training function to execute.
                 This can either take in no arguments or a ``config`` dict.
             config (Optional[Dict]): Configurations to pass into
                 ``train_func``. If None then an empty Dict will be created.
@@ -402,7 +401,7 @@ class Trainer:
             model = iterator.get_fin()[0]
 
         Args:
-            train_func (Callable): The training function to execute.
+            train_func: The training function to execute.
                 This can either take in no arguments or a ``config`` dict.
             config (Optional[Dict]): Configurations to pass into
                 ``train_func``. If None then an empty Dict will be created.
@@ -526,7 +525,7 @@ class Trainer:
         """Creates a Tune ``Trainable`` from the input training function.
 
         Args:
-            train_func (Callable): The function that should be executed on each
+            train_func: The function that should be executed on each
                 training worker.
             dataset (Optional[Union[RayDataset, Dict[str, RayDataset]]]):
                 Distributed Ray p:ref:`Dataset <dataset-api>` or
@@ -590,7 +589,7 @@ class Trainer:
             workers.shutdown()
 
         Args:
-            train_cls (Type): The class definition to use for the Ray
+            train_cls: The class definition to use for the Ray
                 actors/workers.
             args, kwargs: Arguments to pass into the ``__init__`` of the
                 provided ``train_cls``.
@@ -645,7 +644,7 @@ class TrainWorkerGroup:
         """Shutdown all the workers.
 
         Args:
-            patience_s (float): Attempt a graceful shutdown
+            patience_s: Attempt a graceful shutdown
                 of the workers for this many seconds. Fallback to force kill
                 if graceful shutdown is not complete after this time. If
                 this is less than or equal to 0, immediately force kill all
@@ -881,13 +880,8 @@ def _create_tune_trainable(
 
         trainer.start()
 
-        if checkpoint_dir is not None:
-            checkpoint_path = os.path.join(checkpoint_dir, TUNE_CHECKPOINT_FILE_NAME)
-        else:
-            checkpoint_path = None
-
         iterator = trainer.run_iterator(
-            train_func, config, dataset=dataset, checkpoint=checkpoint_path
+            train_func, config, dataset=dataset, checkpoint=checkpoint_dir
         )
 
         for results in iterator:

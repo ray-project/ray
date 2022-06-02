@@ -18,7 +18,7 @@ from ray.data.context import DatasetContext
 from ray.data.impl.arrow_block import ArrowRow
 from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.impl.util import _check_pyarrow_version
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 WriteResult = Any
 
@@ -159,6 +159,7 @@ class ReadTask(Callable[[], BlockPartition]):
             return builder.build()
 
 
+@PublicAPI
 class RangeDatasource(Datasource[Union[ArrowRow, int]]):
     """An example datasource that generates ranges of numbers from [0..n).
 
@@ -227,9 +228,13 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
                 schema = int
             else:
                 raise ValueError("Unsupported block type", block_format)
+            if block_format == "tensor":
+                element_size = np.product(tensor_shape)
+            else:
+                element_size = 1
             meta = BlockMetadata(
                 num_rows=count,
-                size_bytes=8 * count,
+                size_bytes=8 * count * element_size,
                 schema=schema,
                 input_files=None,
                 exec_stats=None,
@@ -242,6 +247,7 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
         return read_tasks
 
 
+@DeveloperAPI
 class DummyOutputDatasource(Datasource[Union[ArrowRow, int]]):
     """An example implementation of a writable datasource for testing.
 
@@ -254,9 +260,11 @@ class DummyOutputDatasource(Datasource[Union[ArrowRow, int]]):
     """
 
     def __init__(self):
+        ctx = DatasetContext.get_current()
+
         # Setup a dummy actor to send the data. In a real datasource, write
         # tasks would send data to an external system instead of a Ray actor.
-        @ray.remote
+        @ray.remote(scheduling_strategy=ctx.scheduling_strategy)
         class DataSink:
             def __init__(self):
                 self.rows_written = 0
@@ -301,6 +309,7 @@ class DummyOutputDatasource(Datasource[Union[ArrowRow, int]]):
         self.num_failed += 1
 
 
+@DeveloperAPI
 class RandomIntRowDatasource(Datasource[ArrowRow]):
     """An example datasource that generates rows with random int64 columns.
 
