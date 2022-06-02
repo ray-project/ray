@@ -687,7 +687,7 @@ class ReporterAgent(
             # -- raylet mem --
             raylet_mem_full_info = raylet_stats["memory_full_info"]
             if raylet_mem_full_info:
-                raylet_uss = raylet_mem_full_info.uss
+                raylet_uss = float(raylet_mem_full_info.uss) / 1.0e6
                 records_reported.append(
                     Record(
                         gauge=METRICS_GAUGES["raylet_mem"],
@@ -696,7 +696,7 @@ class ReporterAgent(
                     )
                 )
                 raylet_rss_other = (
-                    float(raylet_stats["memory_info"].rss) / 1e6 - raylet_uss
+                    float(raylet_stats["memory_info"].rss) / 1.0e6 - raylet_uss
                 )
                 records_reported.append(
                     Record(
@@ -706,7 +706,7 @@ class ReporterAgent(
                     )
                 )
             else:
-                raylet_rss = float(raylet_stats["memory_info"].rss) / 1e6
+                raylet_rss = float(raylet_stats["memory_info"].rss) / 1.0e6
                 records_reported.append(
                     Record(
                         gauge=METRICS_GAUGES["raylet_mem"],
@@ -720,6 +720,7 @@ class ReporterAgent(
         if workers_stats:
             workers_count = len(workers_stats)
 
+            total_workers_cpu_percentage = 0.0
             total_workers_uss = 0.0
             total_workers_rss_other = 0.0
             total_workers_rss = 0.0

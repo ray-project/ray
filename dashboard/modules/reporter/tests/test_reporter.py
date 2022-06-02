@@ -125,6 +125,7 @@ def test_prometheus_physical_stats_record(enable_test_module, shutdown_only):
                 "ray_node_mem_total" in metric_names,
                 "ray_raylet_cpu" in metric_names,
                 "ray_raylet_mem" in metric_names,
+                "ray_workers_count" in metric_names,
                 "ray_node_disk_io_read" in metric_names,
                 "ray_node_disk_io_write" in metric_names,
                 "ray_node_disk_io_read_count" in metric_names,
@@ -158,6 +159,51 @@ def test_prometheus_physical_stats_record(enable_test_module, shutdown_only):
 
     wait_for_condition(test_case_stats_exist, retry_interval_ms=1000)
     wait_for_condition(test_case_ip_correct, retry_interval_ms=1000)
+
+
+@pytest.mark.skipif(
+    prometheus_client is None or sys.platform != "linux",
+    reason="prometheus_client must be installed. Detailed worker memory stats "
+    "are only available on Linux.",
+)
+def test_prometheus_export_worker_and_memory_stats(enable_test_module, shutdown_only):
+    addresses = ray.init(include_dashboard=True, num_cpus=1)
+    metrics_export_port = addresses["metrics_export_port"]
+    addr = addresses["raylet_ip_address"]
+    prom_addresses = [f"{addr}:{metrics_export_port}"]
+
+    @ray.remote
+    def f():
+        return 1
+
+    ret = f.remote()
+    ray.get(ret)
+
+    def test_worker_stats():
+        _, metric_names, metric_samples = fetch_prometheus(prom_addresses)
+        for metric in ["ray_workers_count", "ray_workers_cpu", "ray_workers_mem"]:
+            if metric not in metric_names:
+                raise RuntimeError(
+                    f"Metric {metric} not found in exported metric names"
+                )
+
+        found_raylet_uss = False
+        found_workers_uss = False
+        for sample in metric_samples:
+            if "uss" not in sample.labels:
+                continue
+            if sample.name == "ray_raylet_mem":
+                found_raylet_uss = True
+            elif sample.name == "ray_workers_mem":
+                found_workers_uss = True
+        if not found_raylet_uss:
+            raise RuntimeError("Raylet uss memory not reported!")
+        elif not found_workers_uss:
+            raise RuntimeError("Worker total uss memory not reported!")
+
+        return True
+
+    wait_for_condition(test_worker_stats, retry_interval_ms=1000)
 
 
 def test_report_stats():
