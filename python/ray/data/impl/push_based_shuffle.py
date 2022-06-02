@@ -167,7 +167,7 @@ class PushBasedShufflePlan(ShuffleOp):
                 mapper_idx,
                 block,
                 output_num_blocks,
-                schedule,
+                num_reducers_per_merge_idx,
                 *self._map_args,
             )
             metadata_ref = map_result.pop(-1)
@@ -194,6 +194,7 @@ class PushBasedShufflePlan(ShuffleOp):
             merge_factor,
             output_num_blocks,
         )
+        num_reducers_per_merge_idx = [schedule.get_num_reducers_per_merge_idx(i) for i in range(schedule.num_merge_tasks_per_round)]
 
         # ObjectRef results from the last round of tasks. Used to add
         # backpressure during pipelining of map and merge tasks.
@@ -330,14 +331,14 @@ class PushBasedShufflePlan(ShuffleOp):
         idx: int,
         block: Block,
         output_num_blocks: int,
-        schedule: _PushBasedShuffleTaskSchedule,
+        num_reducers_per_merge_idx: List[int],
         *map_args: List[Any],
     ) -> List[Union[BlockMetadata, Block]]:
         mapper_outputs = map_fn(idx, block, output_num_blocks, *map_args)
 
         merge_idx = 0
-        while merge_idx < schedule.num_merge_tasks_per_round:
-            partition_size = schedule.get_num_reducers_per_merge_idx(merge_idx)
+        while merge_idx < len(num_reducers_per_merge_idx):
+            partition_size = num_reducers_per_merge_idx[merge_idx]
             yield [next(mapper_outputs) for _ in range(partition_size)]
             merge_idx += 1
         meta = next(mapper_outputs)
