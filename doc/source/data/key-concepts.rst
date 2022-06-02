@@ -119,8 +119,14 @@ You can also change the partitioning of a Dataset using :meth:`ds.random_shuffle
 ..
   https://docs.google.com/drawings/d/132jhE3KXZsf29ho1yUdPrCHB9uheHBWHJhDQMXqIVPA/edit
 
+Execution and Memory Management
+===============================
+
+See :ref:`Execution and Memory Management <data_advanced>` for more details about how Datasets manages memory and optimizations such as lazy vs eager execution.
+
+-------------------------
 Resource Allocation Model
-=========================
+-------------------------
 
 Unlike other libraries in Ray's ML ecosystem, such as Tune and Train, Datasets does not
 natively use placement groups to allocate resources for Datasets workloads (tasks and
@@ -136,17 +142,36 @@ scheduled within a placement group by specifying a placement group as the global
 scheduling strategy for all Datasets tasks/actors, using the global
 :class:`DatasetContext <ray.data.DatasetContext>`.
 
-.. note::
+Example: Datasets in Tune
+=========================
 
-  This is an experimental feature subject to change as we work to improve our
-  resource allocation model for Datasets.
+Here's an example of how you can configure Datasets to run within Tune trials, which
+is the typical case of when you'd encounter placement groups with Datasets. Two
+scenarios are shown: running outside the trial group, and running within the trial placement group.
 
-.. literalinclude:: ./doc_code/key_concepts.py
-  :language: python
-  :start-after: __resource_allocation_begin__
-  :end-before: __resource_allocation_end__
+.. tabbed:: Outside Trial Placement Group
 
-Execution and Memory Management
-===============================
+    By default, Dataset tasks escape the trial placement group. This means they will use
+    spare cluster resources for execution, which can be problematic since the availability
+    of such resources is not guaranteed.
 
-See :ref:`Execution and Memory Management <data_advanced>` for more details about how Datasets manages memory and optimizations such as lazy vs eager execution.
+    .. literalinclude:: ./doc_code/key_concepts.py
+      :language: python
+      :start-after: __resource_allocation_1_begin__
+      :end-before: __resource_allocation_1_end__
+
+.. tabbed:: Inside Trial Placement Group
+
+    Datasets can be configured to use resources within the trial's placement group. This
+    requires you to explicitly reserve resource bundles in the placement group for
+    use by Datasets.
+
+    .. literalinclude:: ./doc_code/key_concepts.py
+      :language: python
+      :start-after: __resource_allocation_2_begin__
+      :end-before: __resource_allocation_2_end__
+
+    .. note::
+
+      This is an experimental feature subject to change as we work to improve our
+      resource allocation model for Datasets.
