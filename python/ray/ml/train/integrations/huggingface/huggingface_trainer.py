@@ -239,13 +239,14 @@ class HuggingFaceTrainer(TorchTrainer):
 
     _dataset_config = {
         "train": DatasetConfig(
-            fit=True,
-            split=True,
             required=True,
             streamable=False,
             _noncustomizable_fields=["streamable"],
         ),
-        "evaluation": DatasetConfig(),
+        "evaluation": DatasetConfig(
+            streamable=False,
+            _noncustomizable_fields=["streamable"],
+        ),
     }
 
     def __init__(
