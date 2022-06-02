@@ -75,13 +75,13 @@ Here are three ways of specifying a type:
 Apart from specifying a type, other parameters in that config are:
 
 #. Parameters that define how algorithms interact with replay buffers.
-   e.g. ``worker_side_prioritization`` to decide where to compute priorities
+    e.g. ``worker_side_prioritization`` to decide where to compute priorities
 
 #. Constructor arguments to instantiate the replay buffer.
-   e.g. ``capacity`` to limit the buffer's size
+    e.g. ``capacity`` to limit the buffer's size
 
 #. Call arguments for underlying replay buffer methods.
-   e.g. ``prioritized_replay_beta`` is used by the :py:class:`~ray.rllib.utils.replay_buffers.multi_agent_prioritized_replay_buffer.MultiAgentPrioritizedReplayBuffer` to call the ``sample()`` method of every underlying :py:class:`~ray.rllib.utils.replay_buffers.prioritized_replay_buffer.PrioritizedReplayBuffer`
+    e.g. ``prioritized_replay_beta`` is used by the :py:class:`~ray.rllib.utils.replay_buffers.multi_agent_prioritized_replay_buffer.MultiAgentPrioritizedReplayBuffer` to call the ``sample()`` method of every underlying :py:class:`~ray.rllib.utils.replay_buffers.prioritized_replay_buffer.PrioritizedReplayBuffer`
 
 
 .. tip:: Most of the time, only 1. and 2. are of interest. 3. is an advanced feature that supports use cases where a :py:class:`~ray.rllib.utils.replay_buffers.multi_agent_replay_buffer.MultiAgentReplayBuffer` instantiates underlying buffers that need constructor or default call arguments.
