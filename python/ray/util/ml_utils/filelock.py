@@ -10,7 +10,7 @@ RAY_LOCKFILE_DIR = "ray_lockfiles"
 class TempFileLock:
     """FileLock wrapper that uses temporary file locks."""
 
-    def __init__(self, path: str, *, **kwargs):
+    def __init__(self, path: str, **kwargs):
         self.path = path
         os.makedirs(str(self.lock_dir), exist_ok=True)
         self._lock = FileLock(self.lock_path, **kwargs)
