@@ -10,7 +10,7 @@ index 7df72cd..506e45f 100644
 +  newTag: 0abb204
  
 diff --git a/ray-operator/config/manager/manager.yaml b/ray-operator/config/manager/manager.yaml
-index 1ddde41..92fa4ad 100644
+index 1ddde41..274bfc9 100644
 --- a/ray-operator/config/manager/manager.yaml
 +++ b/ray-operator/config/manager/manager.yaml
 @@ -21,8 +21,8 @@ spec:
@@ -19,7 +19,7 @@ index 1ddde41..92fa4ad 100644
          - /manager
 -#        args:
 -#        - --enable-leader-election
-+      - args:
++        args:
 +        - --prioritize-workers-to-delete
          image: kuberay/operator
          ports:
