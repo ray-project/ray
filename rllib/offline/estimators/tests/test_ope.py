@@ -41,10 +41,7 @@ class TestOPE(unittest.TestCase):
         config = (
             DQNConfig()
             .environment(env=env_name)
-            .offline_data(
-                input_=data_file,
-                off_policy_estimation_methods={"simulation": {"type": "simulation"}},
-            )
+            .training(gamma=gamma)
             .exploration(
                 explore=True,
                 exploration_config={
@@ -133,14 +130,59 @@ class TestOPE(unittest.TestCase):
 
         print("mean: ", mean_ret)
         print("stddev: ", std_ret)
-    
-    def test_offline_evaluation_input(self):
-        # Test that we can use input_=some_dataset on eval workers ONLY
-        pass
 
-    def test_offline_input_no_evaluation_input(self):
-        # Current method; should raise warning then clone input config to eval worker
-        pass
+    def test_offline_evaluation_input(self):
+        # Test that we can use input_=some_dataset on eval workers
+        rllib_dir = Path(__file__).parent.parent.parent.parent
+        print("rllib dir={}".format(rllib_dir))
+        data_file = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
+        print("data_file={} exists={}".format(data_file, os.path.isfile(data_file)))
+
+        env_name = "CartPole-v0"
+        gamma = 0.99
+        train_steps = 200000
+
+        config = (
+            DQNConfig()
+            .training(gamma=gamma)
+            .environment(env=env_name)
+            .offline_data(
+                input_=data_file,
+                off_policy_estimation_methods={
+                    "simulation": {"type": "simulation"},
+                    "is" : {"type" : ImportanceSampling},
+                },
+            )
+            .exploration(
+                explore=True,
+                exploration_config={
+                    "type": "SoftQ",
+                    "temperature": 1.0,
+                },
+            )
+            .evaluation(
+                evaluation_interval = 1,
+                evaluation_num_workers = 0,
+                evaluation_config={
+                    "input": data_file,
+                    # "off_policy_estimation_methods": {
+                    #     "simulation": {"type": "simulation"},
+                    #     "wis" : {"type" : WeightedImportanceSampling},
+                    # },
+                }
+            )
+            .framework("torch")
+            .rollouts(batch_mode="complete_episodes")
+        )
+
+        # Train DQN for evaluation policy
+        analysis = tune.run(
+            "DQN",
+            config=config.to_dict(),
+            stop={"timesteps_total": train_steps},
+            verbose=3,
+        )
+        breakpoint()
 
     def test_offline_both_inputs(self):
         # Should probably just error out
