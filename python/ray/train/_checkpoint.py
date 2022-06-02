@@ -6,7 +6,6 @@ from ray.ml import Checkpoint
 from ray.train.constants import (
     TIMESTAMP,
     TRAIN_CHECKPOINT_SUBDIR,
-    TUNE_CHECKPOINT_FILE_NAME,
     TUNE_CHECKPOINT_ID,
     TUNE_INSTALLED,
 )
@@ -219,10 +218,7 @@ class TuneCheckpointManager(CheckpointManager):
         # If inside a Tune Trainable, then checkpoint with Tune.
         with tune.checkpoint_dir(step=self._latest_checkpoint_id) as checkpoint_dir:
             path = Path(checkpoint_dir)
-            # Use a standard file name so that we know which file to load
-            # the checkpoint from.
-            file_path = path.joinpath(TUNE_CHECKPOINT_FILE_NAME)
-            checkpoint.commit(file_path)
+            checkpoint.commit(path)
 
         return super()._process_persistent_checkpoint(checkpoint)
 

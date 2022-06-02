@@ -327,8 +327,9 @@ class DataParallelTrainer(Trainer):
             max_retries=0,
         )
 
-        checkpoint_manager = self._checkpoint_manager_cls()
-        checkpoint_manager.on_init(preprocessor=self.preprocessor)
+        checkpoint_manager = self._checkpoint_manager_cls(
+            preprocessor=self.preprocessor
+        )
 
         # Start the remote actors.
         backend_executor.start(initialization_hook=None)

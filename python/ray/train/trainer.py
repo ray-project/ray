@@ -31,7 +31,6 @@ from ray.train._checkpoint import (
 from ray.train.constants import (
     TUNE_INSTALLED,
     DEFAULT_RESULTS_DIR,
-    TUNE_CHECKPOINT_FILE_NAME,
     ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
     TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
@@ -881,13 +880,8 @@ def _create_tune_trainable(
 
         trainer.start()
 
-        if checkpoint_dir is not None:
-            checkpoint_path = os.path.join(checkpoint_dir, TUNE_CHECKPOINT_FILE_NAME)
-        else:
-            checkpoint_path = None
-
         iterator = trainer.run_iterator(
-            train_func, config, dataset=dataset, checkpoint=checkpoint_path
+            train_func, config, dataset=dataset, checkpoint=checkpoint_dir
         )
 
         for results in iterator:
