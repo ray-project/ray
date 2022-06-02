@@ -1,6 +1,4 @@
 import ray.train as train
-from ray.train.trainer import Trainer
-from ray.train.callbacks import JsonLoggerCallback
 
 from typing import Dict
 import argparse
@@ -12,17 +10,13 @@ import jax.numpy as jnp
 import numpy as np
 import optax
 import functools
-import tensorflow_datasets as tfds
 from jax import lax
 from flax import jax_utils
-from flax.training.common_utils import get_metrics, onehot, shard, shard_prng_key
-import einops
+from flax.training.common_utils import shard
 import ray
 from ray.data.datasource import SimpleTensorFlowDatasource
 import pandas as pd
 from ray.data.extensions import TensorArray
-
-from ray.ml.train.integrations.jax import JaxTrainer
 
 def get_dataset(dataset_name="mnist"): 
     """Load MNIST train and test datasets using Ray dataset."""
@@ -35,11 +29,9 @@ def get_dataset(dataset_name="mnist"):
 
     def train_dataset_factory():
         return tfds.load(dataset_name, split=["train"], as_supervised=True)[0]
-        # .take(100)
 
     def test_dataset_factory():
         return tfds.load(dataset_name, split=["test"], as_supervised=True)[0]
-        # .take(100)
 
     train_dataset = ray.data.read_datasource(
         SimpleTensorFlowDatasource(), dataset_factory=train_dataset_factory
@@ -190,19 +182,16 @@ def train_func(config: Dict):
     
     return acc_results
 
-def train_mnist(num_workers=4, use_gpu=True):
+def train_mnist(num_workers=4, use_gpu=True, num_gpu_per_worker=1):
     train_dataset, test_dataset = get_dataset("mnist")
-
-    # trainer = Trainer(backend="jax", num_workers=num_workers, use_gpu=use_gpu, resources_per_worker={'GPU': 4})
+    
     config={
             "learning_rate": 0.1,
             "momentum": 0.9,
-            "batch_size": 8192,
-            # "batch_size": 5000,
-            # "batch_size": 4,
-            "num_epochs": 10,
+            "batch_size": 5000,
+            "num_epochs": 100,
         }
-    scaling_config = dict(num_workers=num_workers, use_gpu=use_gpu, resources_per_worker={'GPU': 4})
+    scaling_config = dict(num_workers=num_workers, use_gpu=use_gpu, resources_per_worker={'GPU': num_gpu_per_worker})
     from ray.ml.train.integrations.jax import JaxTrainer
 
     trainer = JaxTrainer(
@@ -222,11 +211,18 @@ if __name__ == "__main__":
         "--address", required=False, type=str, help="the address to use for Ray"
     )
     parser.add_argument(
-        "--num-workers",
+        "--num-nodes",
         "-n",
         type=int,
         default=1,
-        help="Sets number of workers for training.",
+        help="Sets number of node for training.",
+    )
+    parser.add_argument(
+        "--num-gpu-per-worker",
+        "-ngpu",
+        type=int,
+        default=1,
+        help="Sets the number of gpus on each node for training.",
     )
     parser.add_argument(
         "--use-gpu", action="store_true", default=True, help="Enables GPU training"
@@ -235,6 +231,5 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
 
     import ray
-    # ray.init(address=args.address)
-    ray.init('auto')
-    train_mnist(num_workers=args.num_workers, use_gpu=args.use_gpu)
+    ray.init(address=args.address)
+    train_mnist(num_workers=args.num_nodes, use_gpu=args.use_gpu, args.num_gpu_per_worker)
