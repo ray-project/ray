@@ -62,6 +62,37 @@ This section is a placeholder.
 AIR will support streamed ingest and enable it by default by Beta. Streamed ingest is preferable when you are using large
 datasets that don't fit into memory, and also don't need advanced training quality features such as global random shuffle.
 
+Configuring Ingest Per-Dataset
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+About dataset config / why
+
+Each trainer has default dataset config
+
+.. code:: python
+
+    # The default DataParallelTrainer dataset config, which is inherited
+    # by sub-classes such as TorchTrainer, HorovodTrainer, etc.
+    _dataset_config = {
+        # Fit preprocessors on the train dataset only. Split the dataset
+        # across workers if scaling_config["num_workers"] > 1.
+        "train": DatasetConfig(fit=True, split=True),
+        # For all other datasets, use the defaults (don't fit, don't split).
+        # The datasets will be transformed by the fitted preprocessor.
+        "*": DatasetConfig(),
+    }
+
+How to override trainer config and view result:
+
+    Trainer(dataset_config={"valid": DatasetConfig(transform=False)})
+    ``Trainer.get_dataset_config()``
+
+Common config options and what they do.
+
+    Fit?
+    Split?
+    Transform?
+
 Ingest and Ray Tune
 -------------------
 
