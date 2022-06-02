@@ -3,6 +3,7 @@ from ray.ml.preprocessors.chain import Chain
 from ray.ml.preprocessors.encoder import (
     Categorizer,
     LabelEncoder,
+    MultiHotEncoder,
     OneHotEncoder,
     OrdinalEncoder,
 )
@@ -29,6 +30,7 @@ __all__ = [
     "LabelEncoder",
     "MaxAbsScaler",
     "MinMaxScaler",
+    "MultiHotEncoder",
     "Normalizer",
     "OneHotEncoder",
     "OrdinalEncoder",

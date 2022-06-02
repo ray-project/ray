@@ -182,6 +182,17 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_gcs_ha_e2e.py",
+  ],
+  size = "small",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "ray_ha", "team:core"],
+  deps = ["//:ray_lib"],
+)
+
+
+py_test_module_list(
+  files = [
     "test_autoscaler.py",
     "test_autoscaler_drain_node_api.py",
     "test_autoscaler_gcp.py",

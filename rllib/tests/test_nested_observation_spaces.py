@@ -6,7 +6,7 @@ import pickle
 import unittest
 
 import ray
-from ray.rllib.agents.a3c import A2CTrainer
+from ray.rllib.algorithms.a2c import A2C
 from ray.rllib.algorithms.pg import PGTrainer
 from ray.rllib.env import MultiAgentEnv
 from ray.rllib.env.base_env import convert_to_base_env
@@ -568,7 +568,7 @@ class NestedObservationSpacesTest(unittest.TestCase):
     def test_py_torch_model(self):
         ModelCatalog.register_custom_model("composite", TorchSpyModel)
         register_env("nested", lambda _: NestedDictEnv())
-        a2c = A2CTrainer(
+        a2c = A2C(
             env="nested",
             config={
                 "num_workers": 0,
@@ -607,7 +607,7 @@ class NestedObservationSpacesTest(unittest.TestCase):
     def test_torch_repeated(self):
         ModelCatalog.register_custom_model("r1", TorchRepeatedSpyModel)
         register_env("repeat", lambda _: RepeatedSpaceEnv())
-        a2c = A2CTrainer(
+        a2c = A2C(
             env="repeat",
             config={
                 "num_workers": 0,
