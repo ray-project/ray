@@ -2,6 +2,8 @@
 
 The example shows how to iteratively develop and visualize your deployment graph. For a runnable DAG, we will show both full and partial DAG depending on your choice of root node.
 
+Please ensure do install dependencies in order to generate visualizations `sudo apt-get install -y graphviz` and `pip install -U pydot`.
+
 ## Code
 
 +++
