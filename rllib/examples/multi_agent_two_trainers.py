@@ -14,10 +14,10 @@ import os
 
 import ray
 from ray.rllib.algorithms.dqn import DQNTrainer, DQNTFPolicy, DQNTorchPolicy
-from ray.rllib.agents.ppo import (
-    PPOTrainer,
-    PPOStaticGraphTFPolicy,
-    PPOEagerTFPolicy,
+from ray.rllib.algorithms.ppo import (
+    PPO,
+    PPOTF1Policy,
+    PPOTF2Policy,
     PPOTorchPolicy,
 )
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
@@ -66,9 +66,9 @@ if __name__ == "__main__":
             if framework == "torch":
                 return PPOTorchPolicy
             elif framework == "tf":
-                return PPOStaticGraphTFPolicy
+                return PPOTF1Policy
             else:
-                return PPOEagerTFPolicy
+                return PPOTF2Policy
         elif algorithm == "DQN":
             if framework == "torch":
                 return DQNTorchPolicy
@@ -100,7 +100,7 @@ if __name__ == "__main__":
         else:
             return "dqn_policy"
 
-    ppo_trainer = PPOTrainer(
+    ppo_trainer = PPO(
         env="multi_agent_cartpole",
         config={
             "multiagent": {

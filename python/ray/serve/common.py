@@ -101,7 +101,7 @@ class StatusOverview:
         """Get a deployment's status by name.
 
         Args:
-            name (str): Deployment's name.
+            name: Deployment's name.
 
         Return (Optional[DeploymentStatusInfo]): Status with a name matching
             the argument, if one exists. Otherwise, returns None.
@@ -136,7 +136,7 @@ class StatusOverview:
         )
 
     @classmethod
-    def from_proto(cls, proto: StatusOverviewProto) -> "StatusOverview":
+    def from_proto(cls, proto: StatusOverviewProto):
 
         # Recreate Serve Application info
         app_status = ApplicationStatusInfo.from_proto(proto.app_status)

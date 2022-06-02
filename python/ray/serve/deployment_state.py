@@ -699,7 +699,7 @@ class DeploymentReplica(VersionedReplica):
         Should handle the case where the replica has already stopped.
 
         Returns:
-            status (ReplicaStartupStatus): Most recent state of replica by
+            status: Most recent state of replica by
                 querying actor obj ref
         """
         status, version = self._actor.check_ready()
@@ -780,8 +780,8 @@ class ReplicaStateContainer:
         """Add the provided replica under the provided state.
 
         Args:
-            state (ReplicaState): state to add the replica under.
-            replica (VersionedReplica): replica to add.
+            state: state to add the replica under.
+            replica: replica to add.
         """
         assert isinstance(state, ReplicaState)
         assert isinstance(replica, VersionedReplica)
@@ -796,7 +796,7 @@ class ReplicaStateContainer:
         in order of state as passed in.
 
         Args:
-            states (str): states to consider. If not specified, all replicas
+            states: states to consider. If not specified, all replicas
                 are considered.
         """
         if states is None:
@@ -821,13 +821,13 @@ class ReplicaStateContainer:
         in order of state as passed in.
 
         Args:
-            exclude_version (DeploymentVersion): if specified, replicas of the
+            exclude_version: if specified, replicas of the
                 provided version will *not* be removed.
-            states (str): states to consider. If not specified, all replicas
+            states: states to consider. If not specified, all replicas
                 are considered.
-            max_replicas (int): max number of replicas to return. If not
+            max_replicas: max number of replicas to return. If not
                 specified, will pop all replicas matching the criteria.
-            ranking_function (callable): optional function to sort the replicas
+            ranking_function: optional function to sort the replicas
                 within each state before they are truncated to max_replicas and
                 returned.
         """
@@ -871,7 +871,7 @@ class ReplicaStateContainer:
                 specified, all versions are considered.
             version(DeploymentVersion): version to filter to. If not specified,
                 all versions are considered.
-            states (str): states to consider. If not specified, all replicas
+            states: states to consider. If not specified, all replicas
                 are considered.
         """
         if states is None:
@@ -943,6 +943,7 @@ class DeploymentState:
         self._curr_status_info: DeploymentStatusInfo = DeploymentStatusInfo(
             self._name, DeploymentStatus.UPDATING
         )
+        self._deleting = False
 
     def get_target_state_checkpoint_data(self):
         """
@@ -1044,6 +1045,7 @@ class DeploymentState:
 
         else:
             self._target_replicas = 0
+            self._deleting = True
 
         self._curr_status_info = DeploymentStatusInfo(
             self._name, DeploymentStatus.UPDATING
@@ -1331,11 +1333,11 @@ class DeploymentState:
             == 0
         ):
             # Check for deleting.
-            if target_replica_count == 0 and all_running_replica_cnt == 0:
+            if self._deleting and all_running_replica_cnt == 0:
                 return True
 
             # Check for a non-zero number of deployments.
-            elif target_replica_count == running_at_target_version_replica_cnt:
+            if target_replica_count == running_at_target_version_replica_cnt:
                 self._curr_status_info = DeploymentStatusInfo(
                     self._name, DeploymentStatus.HEALTHY
                 )

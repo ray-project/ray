@@ -244,7 +244,7 @@ def _warn_session_misuse(fn_name: str):
     """Logs warning message on provided fn being used outside of session.
 
     Args:
-        fn_name (str): The name of the function to warn about.
+        fn_name: The name of the function to warn about.
     """
 
     if log_once(f"{SESSION_MISUSE_LOG_ONCE_KEY}-{fn_name}"):
@@ -540,7 +540,7 @@ def set_accelerator(accelerator: Accelerator) -> None:
     """Sets the accelerator for this training session.
 
     Args:
-        accelerator (Accelerator): The accelerator to use for training.
+        accelerator: The accelerator to use for training.
 
     Raises:
         SessionMisuseError: if the session is unitialized.

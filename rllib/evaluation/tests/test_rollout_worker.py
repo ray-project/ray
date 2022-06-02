@@ -8,8 +8,8 @@ import time
 import unittest
 
 import ray
+from ray.rllib.algorithms.a2c import A2C
 from ray.rllib.algorithms.pg import PGTrainer
-from ray.rllib.agents.a3c import A2CTrainer
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.metrics import collect_metrics
@@ -143,7 +143,7 @@ class TestRolloutWorker(unittest.TestCase):
 
     def test_global_vars_update(self):
         for fw in framework_iterator(frameworks=("tf2", "tf")):
-            agent = A2CTrainer(
+            agent = A2C(
                 env="CartPole-v0",
                 config={
                     "num_workers": 1,
