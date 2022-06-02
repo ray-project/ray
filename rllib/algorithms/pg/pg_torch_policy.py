@@ -8,11 +8,11 @@ import ray
 
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.utils.typing import AgentID
-from ray.rllib.agents.ppo.ppo_tf_policy import validate_config
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.algorithms.pg.utils import post_process_advantages
+from ray.rllib.algorithms.ppo.ppo_tf_policy import validate_config
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.models.modelv2 import ModelV2
