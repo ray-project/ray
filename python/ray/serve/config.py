@@ -199,7 +199,7 @@ class DeploymentConfig(BaseModel):
         keyword raises a ValueError.
 
         Args:
-            ignore_none (bool): When True, any valid keywords with value None
+            ignore_none: When True, any valid keywords with value None
                 are ignored, and their values stay default. Invalid keywords
                 still raise a TypeError.
 

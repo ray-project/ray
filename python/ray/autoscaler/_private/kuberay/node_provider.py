@@ -98,8 +98,8 @@ def load_k8s_secrets() -> Tuple[Dict[str, str], str]:
     Loads secrets needed to access K8s resources.
 
     Returns:
-        headers (dict): Headers with K8s access token
-        verify (str): Path to certificate
+        headers: Headers with K8s access token
+        verify: Path to certificate
     """
     with open("/var/run/secrets/kubernetes.io/serviceaccount/token") as secret:
         token = secret.read()

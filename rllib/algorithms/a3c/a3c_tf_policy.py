@@ -59,7 +59,7 @@ def get_a3c_tf_policy(base: TFPolicyV2Type) -> TFPolicyV2Type:
             # First thing first, enable eager execution if necessary.
             base.enable_eager_execution_if_necessary()
 
-            config = dict(ray.rllib.agents.a3c.a3c.A3CConfig().to_dict(), **config)
+            config = dict(ray.rllib.algorithms.a3c.a3c.A3CConfig().to_dict(), **config)
 
             # Initialize base class.
             base.__init__(
@@ -186,7 +186,7 @@ A3CEagerTFPolicy = get_a3c_tf_policy(EagerTFPolicyV2)
 
 
 @Deprecated(
-    old="rllib.agents.a3c.a3c_tf_policy.postprocess_advantages",
+    old="rllib.algorithms.a3c.a3c_tf_policy.postprocess_advantages",
     new="rllib.evaluation.postprocessing.compute_gae_for_sample_batch",
     error=True,
 )

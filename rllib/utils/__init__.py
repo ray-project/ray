@@ -66,7 +66,7 @@ def force_list(elements=None, to_tuple=False):
     Args:
         elements (Optional[any]): The inputs as single item, list, or tuple to
             be converted into a list/tuple. If None, returns empty list/tuple.
-        to_tuple (bool): Whether to use tuple (instead of list).
+        to_tuple: Whether to use tuple (instead of list).
 
     Returns:
         Union[list,tuple]: All given elements in a list/tuple depending on
