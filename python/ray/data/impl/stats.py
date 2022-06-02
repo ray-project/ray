@@ -85,7 +85,7 @@ class _DatasetStatsBuilder:
 class _StatsActor:
     """Actor holding stats for blocks created by LazyBlockList.
 
-    This actor is shared across all datasets created by the same process.
+    This actor is shared across all datasets created in the same cluster.
     The stats data is small so we don't worry about clean up for now.
 
     TODO(ekl) we should consider refactoring LazyBlockList so stats can be
