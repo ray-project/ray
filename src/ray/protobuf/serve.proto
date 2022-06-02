@@ -154,10 +154,11 @@ message DeploymentVersion {
 }
 
 message ReplicaConfig {
-  bytes deployment_def = 1;
-  bytes init_args = 2;
-  bytes init_kwargs = 3;
-  string ray_actor_options = 4;
+  string deployment_def_name = 1;
+  bytes deployment_def = 2;
+  bytes init_args = 3;
+  bytes init_kwargs = 4;
+  string ray_actor_options = 5;
 }
 
 message DeploymentInfo {

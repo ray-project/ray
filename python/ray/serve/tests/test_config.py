@@ -191,7 +191,9 @@ class TestReplicaConfig:
             return "Check this out!"
 
         f_serialized = cloudpickle.dumps(f)
-        config = ReplicaConfig(f_serialized)
+        config = ReplicaConfig(
+            "f", f_serialized, cloudpickle.dumps(()), cloudpickle.dumps({}), {}
+        )
 
         assert config.serialized_deployment_def == f_serialized
         assert config._deployment_def is None

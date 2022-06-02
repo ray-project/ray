@@ -257,11 +257,18 @@ class ReplicaConfig:
 
     def __init__(
         self,
+        deployment_def_name: str,
         serialized_deployment_def: bytes,
-        serialized_init_args: bytes = cloudpickle.dumps(tuple()),
-        serialized_init_kwargs: bytes = cloudpickle.dumps(dict()),
-        ray_actor_options: Optional[Dict] = None,
+        serialized_init_args: bytes,
+        serialized_init_kwargs: bytes,
+        ray_actor_options: Dict,
     ):
+        """Construct a ReplicaConfig with serialized properties.
+
+        All parameters are required. See classmethod create() for defaults.
+        """
+        self.deployment_def_name = deployment_def_name
+
         # Store serialized versions of code properties.
         self.serialized_deployment_def = serialized_deployment_def
         self.serialized_init_args = serialized_init_args
@@ -274,10 +281,7 @@ class ReplicaConfig:
 
         # Configure ray_actor_options. These are the Ray options ultimately
         # passed into the replica's actor when it's created.
-        if ray_actor_options is None:
-            self.ray_actor_options = {}
-        else:
-            self.ray_actor_options = ray_actor_options
+        self.ray_actor_options = ray_actor_options
         self._validate_ray_actor_options()
 
         # Create resource_dict. This contains info about the replica's resource
@@ -292,6 +296,7 @@ class ReplicaConfig:
         init_args: Optional[Tuple[Any]] = None,
         init_kwargs: Optional[Dict[Any, Any]] = None,
         ray_actor_options: Optional[Dict] = None,
+        deployment_def_name: Optional[str] = None,
     ):
         """Create a ReplicaConfig from deserialized parameters."""
 
@@ -313,8 +318,14 @@ class ReplicaConfig:
             init_args = ()
         if init_kwargs is None:
             init_kwargs = {}
+        if deployment_def_name is None:
+            if isinstance(deployment_def, str):
+                deployment_def_name = deployment_def
+            else:
+                deployment_def_name = deployment_def.__name__
 
         config = cls(
+            deployment_def_name,
             cloudpickle.dumps(deployment_def),
             cloudpickle.dumps(init_args),
             cloudpickle.dumps(init_kwargs),
@@ -412,6 +423,7 @@ class ReplicaConfig:
             deployment_def = proto.deployment_def
 
         return ReplicaConfig(
+            proto.deployment_def_name,
             deployment_def,
             proto.init_args,
             proto.init_kwargs,
@@ -427,6 +439,7 @@ class ReplicaConfig:
 
     def to_proto(self):
         return ReplicaConfigProto(
+            deployment_def_name=self.deployment_def_name,
             deployment_def=self.serialized_deployment_def,
             init_args=self.serialized_init_args,
             init_kwargs=self.serialized_init_kwargs,
