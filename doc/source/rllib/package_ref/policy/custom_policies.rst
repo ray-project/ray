@@ -23,4 +23,4 @@ framework-agnostic policy),
 * :py:meth:`~ray.rllib.policy.policy.Policy.postprocess_trajectory`
 * :py:meth:`~ray.rllib.policy.policy.Policy.loss`
 
-`See here for an example on how to override TorchPolicy <https://github.com/ray-project/ray/blob/master/rllib/agents/ppo/ppo_torch_policy.py>`_.
+`See here for an example on how to override TorchPolicy <https://github.com/ray-project/ray/blob/master/rllib/algorithms/ppo/ppo_torch_policy.py>`_.

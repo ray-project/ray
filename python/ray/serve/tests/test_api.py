@@ -311,6 +311,11 @@ def test_delete_deployment_group(serve_instance, blocking):
                 timeout=5,
             )
 
+            wait_for_condition(
+                lambda: len(serve_instance.list_deployments()) == 0,
+                timeout=5,
+            )
+
 
 def test_starlette_request(serve_instance):
     @serve.deployment(name="api")
