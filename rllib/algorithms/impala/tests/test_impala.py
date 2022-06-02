@@ -1,7 +1,7 @@
 import unittest
 
 import ray
-import ray.rllib.agents.impala as impala
+import ray.rllib.algorithms.impala as impala
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
@@ -25,7 +25,7 @@ class TestIMPALA(unittest.TestCase):
         ray.shutdown()
 
     def test_impala_compilation(self):
-        """Test whether an ImpalaTrainer can be built with both frameworks."""
+        """Test whether Impala can be built with both frameworks."""
         config = (
             impala.ImpalaConfig()
             .resources(num_gpus=0)

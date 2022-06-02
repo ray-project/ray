@@ -1341,7 +1341,7 @@ class Node:
             ray_constants.PROCESS_TYPE_REAPER, check_alive=check_alive
         )
 
-    def kill_all_processes(self, check_alive=True, allow_graceful=False, wait=False):
+    def kill_all_processes(self, check_alive=True, allow_graceful=False):
         """Kill all of the processes.
 
         Note that This is slower than necessary because it calls kill, wait,
@@ -1350,8 +1350,6 @@ class Node:
         Args:
             check_alive: Raise an exception if any of the processes were
                 already dead.
-            wait: If true, then this method will not return until the
-                process in question has exited.
         """
         # Kill the raylet first. This is important for suppressing errors at
         # shutdown because we give the raylet a chance to exit gracefully and
@@ -1363,7 +1361,6 @@ class Node:
                 ray_constants.PROCESS_TYPE_RAYLET,
                 check_alive=check_alive,
                 allow_graceful=allow_graceful,
-                wait=wait,
             )
 
         if ray_constants.PROCESS_TYPE_GCS_SERVER in self.all_processes:
@@ -1371,7 +1368,6 @@ class Node:
                 ray_constants.PROCESS_TYPE_GCS_SERVER,
                 check_alive=check_alive,
                 allow_graceful=allow_graceful,
-                wait=wait,
             )
 
         # We call "list" to copy the keys because we are modifying the
@@ -1381,10 +1377,7 @@ class Node:
             # while cleaning up.
             if process_type != ray_constants.PROCESS_TYPE_REAPER:
                 self._kill_process_type(
-                    process_type,
-                    check_alive=check_alive,
-                    allow_graceful=allow_graceful,
-                    wait=wait,
+                    process_type, check_alive=check_alive, allow_graceful=allow_graceful
                 )
 
         if ray_constants.PROCESS_TYPE_REAPER in self.all_processes:
@@ -1392,7 +1385,6 @@ class Node:
                 ray_constants.PROCESS_TYPE_REAPER,
                 check_alive=check_alive,
                 allow_graceful=allow_graceful,
-                wait=wait,
             )
 
     def live_processes(self):
