@@ -73,6 +73,7 @@ if __name__ == "__main__":
         },
     )
     print("Best hyperparameters: ", analysis.best_config)
-    print("Best checkpoint directory: ", analysis.best_checkpoint)
-    with open(os.path.join(analysis.best_checkpoint, "checkpoint"), "r") as f:
-        print("Best checkpoint: ", json.load(f))
+    print("Best checkpoint: ", analysis.best_checkpoint)
+    with analysis.best_checkpoint.as_directory() as checkpoint_dir:
+        with open(os.path.join(checkpoint_dir, "checkpoint"), "r") as f:
+            print("Best checkpoint: ", json.load(f))
