@@ -246,6 +246,9 @@ def test_no_controller_deserialization(start_and_shutdown_ray_cli):
         == "4 pizzas please!"
     )
 
+    serve.shutdown()
+    ray.shutdown()
+
 
 def test_shutdown_remote(start_and_shutdown_ray_cli):
     """Check that serve.shutdown() works on a remote Ray cluster."""
