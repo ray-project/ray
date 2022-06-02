@@ -123,7 +123,7 @@ Quick First Experiment
 .. code-block:: python
 
     import gym
-    from ray.rllib.agents.ppo import PPOTrainer
+    from ray.rllib.algorithms.ppo import PPO
 
 
     # Define your problem using python and openAI's gym API:
@@ -176,7 +176,7 @@ Quick First Experiment
 
     # Create an RLlib Trainer instance to learn how to act in the above
     # environment.
-    trainer = PPOTrainer(
+    trainer = PPO(
         config={
             # Env class to use (here: our gym.Env sub-class from above).
             "env": ParrotEnv,
