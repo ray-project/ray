@@ -36,9 +36,9 @@ def _import_apex():
 
 
 def _import_apex_ddpg():
-    import ray.rllib.algorithms.ddpg as ddpg
+    import ray.rllib.algorithms.apex_ddpg as apex_ddpg
 
-    return ddpg.ApexDDPG, ddpg.apex.ApexDDPGConfig().to_dict()
+    return apex_ddpg.ApexDDPG, apex_ddpg.ApexDDPGConfig().to_dict()
 
 
 def _import_appo():
