@@ -530,7 +530,7 @@ def _rewrite_read_stage(
     remote_args = in_blocks._remote_args
     blocks, metadata = [], []
     for read_task in in_blocks._tasks:
-        blocks.append(read_task._read_fn)
+        blocks.append(ray.put(read_task._read_fn))
         metadata.append(read_task.get_metadata())
     block_list = BlockList(blocks, metadata)
 

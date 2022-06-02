@@ -142,7 +142,7 @@ class BlockList:
 
             def __next__(self):
                 ref, meta = next(self._base_iter)
-                #assert isinstance(ref, ray.ObjectRef), (ref, meta)
+                assert isinstance(ref, ray.ObjectRef), (ref, meta)
                 return ref
 
         return Iter()
