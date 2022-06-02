@@ -75,11 +75,13 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         os.chdir(RAY_PARENT)
 
         logger.info("Cloning KubeRay and setting up KubeRay configuration.")
+        # For faster run-time when triggering the test locally, don't run the init script if it
+        # has already been run.
         subprocess.check_call(
             [
                 "bash",
                 "-c",
-                "ls kuberay || ./ray/python/ray/autoscaler/kuberay/init-config.sh",
+                "ls ray/python/ray/autoscaler/kuberay/config || ./ray/python/ray/autoscaler/kuberay/init-config.sh",
             ]
         )
         logger.info("Creating KubeRay operator.")
