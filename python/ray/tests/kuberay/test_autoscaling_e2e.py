@@ -88,7 +88,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         subprocess.check_call(
             [
                 "kubectl",
-                "apply",
+                "create",
                 "-k",
                 "ray/python/ray/autoscaler/kuberay/config/default",
             ]
