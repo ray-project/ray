@@ -29,7 +29,7 @@ multi_from_logits method accepts lists of tensors instead of just
 tensors.
 """
 
-from ray.rllib.agents.impala.vtrace_tf import VTraceFromLogitsReturns, VTraceReturns
+from ray.rllib.algorithms.impala.vtrace_tf import VTraceFromLogitsReturns, VTraceReturns
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.utils import force_list
 from ray.rllib.utils.framework import try_import_torch
