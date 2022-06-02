@@ -145,7 +145,7 @@ scheduling strategy for all Datasets tasks/actors, using the global
 Example: Datasets in Tune
 =========================
 
-.. _dataset_tune:
+.. _datasets_tune:
 
 Here's an example of how you can configure Datasets to run within Tune trials, which
 is the typical case of when you'd encounter placement groups with Datasets. Two
