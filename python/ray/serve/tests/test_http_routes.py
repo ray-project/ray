@@ -37,9 +37,8 @@ def test_path_validation(serve_instance):
 
     D4.deploy()
 
-    # Reject duplicate route.
-    with pytest.raises(ValueError):
-        D4.options(name="test2").deploy()
+    # Allow duplicate route.
+    D4.options(name="test2").deploy()
 
 
 def test_routes_endpoint(serve_instance):
