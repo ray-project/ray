@@ -748,14 +748,14 @@ class ReporterAgent(
                     Record(
                         gauge=METRICS_GAUGES["workers_mem"],
                         value=total_workers_uss,
-                        tags={"ip": ip, "mem_ype": "uss"},
+                        tags={"ip": ip, "mem_type": "uss"},
                     )
                 )
                 records_reported.append(
                     Record(
                         gauge=METRICS_GAUGES["workers_mem"],
                         value=total_workers_rss_other,
-                        tags={"ip": ip, "mem_ype": "rss_other"},
+                        tags={"ip": ip, "mem_type": "rss_other"},
                     )
                 )
             else:
@@ -763,7 +763,7 @@ class ReporterAgent(
                     Record(
                         gauge=METRICS_GAUGES["workers_mem"],
                         value=total_workers_rss,
-                        tags={"ip": ip, "mem_ype": "rss"},
+                        tags={"ip": ip, "mem_type": "rss"},
                     )
                 )
         records_reported.append(
