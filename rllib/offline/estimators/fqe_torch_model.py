@@ -49,7 +49,7 @@ class FQETorchModel:
             # Minibatch size for training Q-function
             batch_size = 32,
             # Polyak averaging factor for target Q-function
-            tau = 0.01
+            tau = 0.05
         """
         self.policy = policy
         self.gamma = gamma
