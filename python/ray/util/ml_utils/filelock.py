@@ -4,7 +4,7 @@ import hashlib
 import os
 import tempfile
 
-RAY_LOCKFILE_DIR = "ray_lockfiles"
+RAY_LOCKFILE_DIR = "_ray_lockfiles"
 
 
 class TempFileLock:
@@ -12,23 +12,18 @@ class TempFileLock:
 
     def __init__(self, path: str, **kwargs):
         self.path = path
-        os.makedirs(str(self.lock_dir), exist_ok=True)
-        self._lock = FileLock(self.lock_path, **kwargs)
+        self._lock_dir = Path(tempfile.gettempdir()).resolve() / RAY_LOCKFILE_DIR
+        self._path_hash = hashlib.md5(
+            str(Path(self.path).resolve()).encode("utf-8")
+        ).hexdigest()
+        self._lock_path = self._lock_dir / f"{self._path_hash}.lock"
 
-    @property
-    def lock_dir(self) -> Path:
-        return Path(tempfile.gettempdir()).resolve() / RAY_LOCKFILE_DIR
-
-    @property
-    def path_hash(self) -> str:
-        return hashlib.md5(str(Path(self.path).resolve()).encode("utf-8")).hexdigest()
-
-    @property
-    def lock_path(self) -> Path:
-        return self.lock_dir / f"{self.path_hash}.lock"
+        os.makedirs(str(self._lock_dir), exist_ok=True)
+        self._lock = FileLock(self._lock_path, **kwargs)
 
     def __enter__(self):
         self._lock.acquire()
+        return self
 
     def __exit__(self, type, value, traceback):
         self._lock.release()
