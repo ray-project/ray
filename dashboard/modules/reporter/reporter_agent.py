@@ -685,8 +685,8 @@ class ReporterAgent(
             )
 
             # -- raylet mem --
-            raylet_mem_full_info = raylet_stats["memory_full_info"]
-            if raylet_mem_full_info:
+            raylet_mem_full_info = raylet_stats.get("memory_full_info")
+            if raylet_mem_full_info is not None:
                 raylet_uss = float(raylet_mem_full_info.uss) / 1.0e6
                 records_reported.append(
                     Record(
@@ -725,11 +725,11 @@ class ReporterAgent(
             total_workers_rss_other = 0.0
             total_workers_rss = 0.0
             for worker in workers_stats:
-                total_workers_cpu_percentage += float(worker["cpu_percent"]) * 100
-                worker_mem_full_info = worker["memory_full_info"]
-                worker_rss = float(worker["memory_info"].rss) / 1e6
-                if worker_mem_full_info:
-                    worker_uss = float(worker_mem_full_info.uss) / 1e6
+                total_workers_cpu_percentage += float(worker["cpu_percent"]) * 100.0
+                worker_mem_full_info = worker.get("memory_full_info")
+                worker_rss = float(worker["memory_info"].rss) / 1.0e6
+                if worker_mem_full_info is not None:
+                    worker_uss = float(worker_mem_full_info.uss) / 1.0e6
                     total_workers_uss += worker_uss
                     total_workers_rss_other += worker_rss - worker_uss
                 else:

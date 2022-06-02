@@ -277,21 +277,21 @@ def test_report_stats():
     }
 
     records = ReporterAgent._record_stats(obj, test_stats, cluster_stats)
-    assert len(records) == 24
+    assert len(records) == 27
     # Test stats without raylets
     test_stats["raylet"] = {}
     records = ReporterAgent._record_stats(obj, test_stats, cluster_stats)
-    assert len(records) == 22
+    assert len(records) == 25
     # Test stats with gpus
     test_stats["gpus"] = [
         {"utilization_gpu": 1, "memory_used": 100, "memory_total": 1000}
     ]
     records = ReporterAgent._record_stats(obj, test_stats, cluster_stats)
-    assert len(records) == 26
+    assert len(records) == 29
     # Test stats without autoscaler report
     cluster_stats = {}
     records = ReporterAgent._record_stats(obj, test_stats, cluster_stats)
-    assert len(records) == 24
+    assert len(records) == 27
 
 
 @pytest.mark.parametrize("enable_k8s_disk_usage", [True, False])
