@@ -1,7 +1,6 @@
 package io.ray.serve.poll;
 
 import io.ray.serve.exception.RayServeException;
-
 import java.io.Serializable;
 import java.util.function.Function;
 

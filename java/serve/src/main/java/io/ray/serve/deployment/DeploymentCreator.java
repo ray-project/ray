@@ -67,19 +67,19 @@ public class DeploymentCreator {
   private Integer maxConcurrentQueries;
 
   private AutoscalingConfig autoscalingConfig;
-  
+
   private Double gracefulShutdownWaitLoopS;
-  
+
   private Double gracefulShutdownTimeoutS;
-  
+
   private Double healthCheckPeriodS;
-  
+
   private Double healthCheckTimeoutS;
 
   private boolean routed;
 
   public Deployment create() {
-  	
+
     Preconditions.checkArgument(
         numReplicas != null && autoscalingConfig != null,
         "Manually setting num_replicas is not allowed when autoscalingConfig is provided.");

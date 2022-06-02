@@ -23,7 +23,7 @@ public class RayServeHandle {
   private Count requestCounter;
 
   private Router router;
-  
+
   public RayServeHandle(
       BaseActorHandle controllerHandle,
       String deploymentName,

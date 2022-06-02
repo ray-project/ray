@@ -1,8 +1,7 @@
 package io.ray.serve.poll;
 
-import org.apache.commons.lang3.StringUtils;
-
 import io.ray.serve.exception.RayServeException;
+import org.apache.commons.lang3.StringUtils;
 
 /** The long poll namespace enum. */
 public enum LongPollNamespace {
