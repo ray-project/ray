@@ -94,6 +94,30 @@
 #  # It can then let the test fail, e.g. if a metric regression is observed.
 #  alert: default
 
+#######################
+# Cluster scaling tests
+#######################
+- name: cluster_tune_scale_up_down
+  group: Cluster tests
+  working_dir: cluster_tests
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: cpt_autoscaling_1-3.yaml
+
+  run:
+    timeout: 1500
+    script: python workloads/tune_scale_up_down.py
+    wait_for_nodes:
+      num_nodes: 0
+
+    type: sdk_command
+
+  alert: default
+
 
 #########################
 # AIR release tests
