@@ -270,7 +270,7 @@ class ServeControllerClient:
         tag = self.log_deployment_update_status(name, version, updating)
 
         if _blocking:
-            self._wait_for_deployment_healthy(name, timeout_s)
+            self._wait_for_deployment_healthy(name, timeout)
             self.log_deployment_ready(name, version, url, tag)
 
     @_ensure_connected
