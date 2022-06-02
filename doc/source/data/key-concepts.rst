@@ -149,7 +149,7 @@ scheduling strategy for all Datasets tasks/actors, using the global
 Fault tolerance
 ===============
 
-Datasets relies on :ref:`task-based fault tolerance <task-fault-tolerance>` in Ray core. Specifically, a ``Dataset`` will be automatically recovered by Ray in case of failures. This works through **lineage reconstruction**: a Dataset is a collection of Ray objects stored in shared memory, and if any of these objects are lost, then Ray will recreate these by re-executing the task(s) that created them.
+Datasets relies on :ref:`task-based fault tolerance <task-fault-tolerance>` in Ray core. Specifically, a ``Dataset`` will be automatically recovered by Ray in case of failures. This works through **lineage reconstruction**: a Dataset is a collection of Ray objects stored in shared memory, and if any of these objects are lost, then Ray will recreate them by re-executing the task(s) that created them.
 
 There are a few cases that are not currently supported:
 1. If the original creator of the ``Dataset`` dies. This is because the ``Dataset creator`` stores the metadata for the :ref:`objects <object-fault-tolerance>` that comprise the ``Dataset``.
