@@ -196,7 +196,7 @@ class TestMARWIL(unittest.TestCase):
                 )
             else:
                 loss_out, v_loss, p_loss = policy.get_session().run(
-                    [policy._loss, policy.loss.v_loss, policy.loss.p_loss],
+                    [policy._loss, policy._loss.v_loss, policy._loss.p_loss],
                     feed_dict=policy._get_loss_inputs_dict(
                         postprocessed_batch, shuffle=False
                     ),
@@ -210,8 +210,8 @@ class TestMARWIL(unittest.TestCase):
                 check(v_loss, expected_vf_loss, decimals=4)
                 check(p_loss, expected_pol_loss, decimals=4)
             else:
-                check(policy.loss.v_loss, expected_vf_loss, decimals=4)
-                check(policy.loss.p_loss, expected_pol_loss, decimals=4)
+                check(policy._loss.v_loss, expected_vf_loss, decimals=4)
+                check(policy._loss.p_loss, expected_pol_loss, decimals=4)
             check(loss_out, expected_loss, decimals=3)
 
 
