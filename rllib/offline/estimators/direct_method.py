@@ -145,9 +145,7 @@ class DirectMethod(OffPolicyEstimator):
 
                 init_step = episode[0:1]
                 init_obs = np.array([init_step[SampleBatch.OBS]])
-                all_actions = np.array(
-                    [a for a in range(self.policy.action_space.n)], dtype=float
-                )
+                all_actions = np.arange(self.policy.action_space.n, dtype=float)
                 init_step[SampleBatch.ACTIONS] = all_actions
                 action_probs = np.exp(self.action_log_likelihood(init_step))
                 v_value = self.model.estimate_v(init_obs, action_probs)
