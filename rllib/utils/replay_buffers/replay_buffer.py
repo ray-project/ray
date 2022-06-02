@@ -271,7 +271,7 @@ class ReplayBuffer(ParallelIteratorWorker):
 
     @DeveloperAPI
     def sample(self, num_items: int, **kwargs) -> Optional[SampleBatchType]:
-        """Samples 'num_items' items from this buffer.
+        """Samples `num_items` items from this buffer.
 
         The items depend on the buffer's storage_unit.
         Samples in the results may be repeated.
@@ -342,11 +342,11 @@ class ReplayBuffer(ParallelIteratorWorker):
 
     @DeveloperAPI
     def set_state(self, state: Dict[str, Any]) -> None:
-        """Restores all local state to the provided 'state'.
+        """Restores all local state to the provided `state`.
 
         Args:
             state: The new state to set this buffer. Can be
-                obtained by calling 'self.get_state()'.
+                obtained by calling `self.get_state()`.
         """
         # The actual storage.
         self._storage = state["_storage"]
