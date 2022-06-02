@@ -210,11 +210,11 @@ You might be wondering how RLlib makes the advantages placeholder automatically 
 
 In the above section you saw how to compose a simple policy gradient algorithm with RLlib.
 In this example, we'll dive into how PPO is defined within RLlib and how you can modify it.
-First, check out the `PPO trainer definition <https://github.com/ray-project/ray/blob/master/rllib/agents/ppo/ppo.py>`__:
+First, check out the `PPO trainer definition <https://github.com/ray-project/ray/blob/master/rllib/algorithms/ppo/ppo.py>`__:
 
 .. code-block:: python
 
-    class PPOTrainer(Trainer):
+    class PPO(Trainer):
         @classmethod
         @override(Trainer)
         def get_default_config(cls) -> TrainerConfigDict:
@@ -280,7 +280,7 @@ Suppose we want to customize PPO to use an asynchronous-gradient optimization st
 
 .. code-block:: python
 
-    from ray.rllib.agents.ppo import PPOTrainer
+    from ray.rllib.algorithms.ppo import PPO
     from ray.rllib.execution.rollout_ops import AsyncGradients
     from ray.rllib.execution.train_ops import ApplyGradients
     from ray.rllib.execution.metric_ops import StandardMetricsReporting
@@ -307,7 +307,7 @@ Now let's look at each PPO policy definition:
 
     PPOTFPolicy = build_tf_policy(
         name="PPOTFPolicy",
-        get_default_config=lambda: ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG,
+        get_default_config=lambda: ray.rllib.algorithms.ppo.ppo.PPOConfig().to_dict(),
         loss_fn=ppo_surrogate_loss,
         stats_fn=kl_and_loss_stats,
         extra_action_out_fn=vf_preds_and_logits_fetches,
@@ -562,8 +562,8 @@ You can use the ``with_updates`` method on Trainers and Policy objects built wit
 
 .. code-block:: python
 
-    from ray.rllib.agents.ppo import PPOTrainer
-    from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
+    from ray.rllib.algorithms.ppo import PPO
+    from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTFPolicy
 
     CustomPolicy = PPOTFPolicy.with_updates(
         name="MyCustomPPOTFPolicy",

@@ -21,7 +21,7 @@ import time
 from typing import Callable, Optional, Union
 
 import ray
-from ray.rllib.agents.ppo.ppo import PPOConfig, PPOTrainer
+from ray.rllib.algorithms.ppo import PPOConfig, PPO
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.execution.common import (
@@ -52,10 +52,10 @@ logger = logging.getLogger(__name__)
 
 
 class DDPPOConfig(PPOConfig):
-    """Defines a PPOTrainer configuration class from which a PPOTrainer can be built.
+    """Defines a configuration class from which a DDPPO Trainer can be built.
 
     Example:
-        >>> from ray.rllib.agents.ppo import DDPPOConfig
+        >>> from ray.rllib.algorithms.ddppo import DDPPOConfig
         >>> config = DDPPOConfig().training(lr=0.003, keep_local_weights_in_sync=True)\
         ...             .resources(num_gpus=1)\
         ...             .rollouts(num_workers=10)
@@ -65,7 +65,7 @@ class DDPPOConfig(PPOConfig):
         >>> trainer.train()
 
     Example:
-        >>> from ray.rllib.agents.ppo import DDPPOConfig
+        >>> from ray.rllib.algorithms.ddppo import DDPPOConfig
         >>> from ray import tune
         >>> config = DDPPOConfig()
         >>> # Print out some default values.
@@ -85,7 +85,7 @@ class DDPPOConfig(PPOConfig):
 
     def __init__(self, trainer_class=None):
         """Initializes a DDPPOConfig instance."""
-        super().__init__(trainer_class=trainer_class or DDPPOTrainer)
+        super().__init__(trainer_class=trainer_class or DDPPO)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -157,7 +157,7 @@ class DDPPOConfig(PPOConfig):
         return self
 
 
-class DDPPOTrainer(PPOTrainer):
+class DDPPO(PPO):
     def __init__(
         self,
         config: Optional[PartialTrainerConfigDict] = None,
@@ -166,7 +166,7 @@ class DDPPOTrainer(PPOTrainer):
         remote_checkpoint_dir: Optional[str] = None,
         sync_function_tpl: Optional[str] = None,
     ):
-        """Initializes a DDPPOTrainer instance.
+        """Initializes a DDPPO instance.
 
         Args:
             config: Algorithm-specific configuration dict.
@@ -195,11 +195,11 @@ class DDPPOTrainer(PPOTrainer):
         ) * config.get("num_envs_per_worker", DEFAULT_CONFIG["num_envs_per_worker"])
 
     @classmethod
-    @override(PPOTrainer)
+    @override(PPO)
     def get_default_config(cls) -> TrainerConfigDict:
         return DDPPOConfig().to_dict()
 
-    @override(PPOTrainer)
+    @override(PPO)
     def validate_config(self, config):
         """Validates the Trainer's config dict.
 
@@ -250,7 +250,7 @@ class DDPPOTrainer(PPOTrainer):
         if config["kl_coeff"] != 0.0 or config["kl_target"] != 0.0:
             raise ValueError("DDPPO doesn't support KL penalties like PPO-1")
 
-    @override(PPOTrainer)
+    @override(PPO)
     def setup(self, config: PartialTrainerConfigDict):
         super().setup(config)
 
@@ -281,7 +281,7 @@ class DDPPOTrainer(PPOTrainer):
                 ray_wait_timeout_s=0.03,
             )
 
-    @override(PPOTrainer)
+    @override(PPO)
     def training_iteration(self) -> ResultDict:
         # Shortcut.
         first_worker = self.workers.remote_workers()[0]
@@ -372,14 +372,14 @@ class DDPPOTrainer(PPOTrainer):
         }
 
 
-# Deprecated: Use ray.rllib.agents.ppo.DDPPOConfig instead!
+# Deprecated: Use ray.rllib.algorithms.ddppo.DDPPOConfig instead!
 class _deprecated_default_config(dict):
     def __init__(self):
         super().__init__(DDPPOConfig().to_dict())
 
     @Deprecated(
-        old="ray.rllib.agents.ppo.ddppo.DEFAULT_CONFIG",
-        new="ray.rllib.agents.ppo.ddppo.DDPPOConfig(...)",
+        old="ray.rllib.agents.ppo.ddppo::DEFAULT_CONFIG",
+        new="ray.rllib.algorithms.ddppo.ddppo::DDPPOConfig(...)",
         error=False,
     )
     def __getitem__(self, item):
