@@ -36,11 +36,10 @@ class TestOPE(unittest.TestCase):
         gamma = 0.99
         train_steps = 200000
         n_batches = 20  # Approx. equal to n_episodes
-        n_eval_episodes = 100
+        n_eval_episodes = 10000
 
         config = (
             DQNConfig()
-            .resources()
             .environment(env=env_name)
             .offline_data(
                 input_=data_file,
@@ -114,6 +113,8 @@ class TestOPE(unittest.TestCase):
 
         mean_ret["simulation"] = np.mean(mc_ret)
         std_ret["simulation"] = np.std(mc_ret)
+
+        print("Discounted reward:", np.mean(mc_ret), "+-", np.std(mc_ret))
 
         # Run estimators on data
         for name, method_config in estimators.items():
