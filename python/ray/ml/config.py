@@ -172,7 +172,7 @@ class DatasetConfig:
             split=self.split or False,
             required=self.required or False,
             streamable=self.streamable or False,
-            transform=self.transform or True,
+            transform=self.transform if self.transform is not None else True,
             _noncustomizable_fields=self._noncustomizable_fields,
         )
 

@@ -67,11 +67,11 @@ datasets that don't fit into memory, and also don't need advanced training quali
 Configuring Ingest Per-Dataset
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-It is common to need to customize processing per-dataset. For example, you may want to enable sharding
+It is common to customize processing per-dataset. For example, you may want to enable sharding
 on a validation dataset, disable preprocessing of an auxiliary dataset, or adjust ingest strategy per dataset.
 
 Each DataParallelTrainer has a default per-dataset config given by a ``Trainer._dataset_config`` class field. It is a mapping
-from dataset names to ``DatasetConfig`` objects, and implements the default policy described in :ref:`Ingest Basics <ingest_basics>`:
+from dataset names to ``DatasetConfig`` objects, and implements the default behavior described in :ref:`Ingest Basics <ingest_basics>`:
 
 .. code:: python
 
@@ -91,10 +91,26 @@ These configs can be overriden via the ``dataset_config`` kwarg, which is recurs
 .. code:: python
 
     # Sets transform=False for the "valid" dataset of this Trainer.
-    MyTrainer(..., dataset_config={"valid": DatasetConfig(transform=False)})
+    trainer = MyTrainer(
+        ...,
+        datasets={
+            "train": train_ds,
+            "valid": valid_ds,
+        },
+        dataset_config={
+            "valid": DatasetConfig(transform=False),
+        },
+    )
 
-Use ``Trainer.get_dataset_config()`` to get the final merged DatasetConfig for debugging purposes. Here are some examples of configuring
-Dataset ingest options and what they do:
+    # Print the merged config for debugging.
+    print(trainer.get_dataset_config())
+    # -> Dataset config {
+    #      'train': DatasetConfig(fit=True, split=True, transform=True, ...),
+    #      'valid': DatasetConfig(fit=False, split=False, transform=True, ...),
+    #      '*': DatasetConfig(fit=False, split=False, transform=True, ...),
+    #    }
+
+Here are some examples of configuring Dataset ingest options and what they do:
 
 .. tabbed:: Split All
 
