@@ -1,4 +1,4 @@
-from ray.rllib.algorithms.impala.impala import ImpalaConfig, Impala, DEFAULT_CONFIG
+from ray.rllib.algorithms.impala.impala import Impala, ImpalaConfig, DEFAULT_CONFIG
 from ray.rllib.algorithms.impala.impala_tf_policy import (
     ImpalaTF1Policy,
     ImpalaTF2Policy,
