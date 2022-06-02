@@ -253,15 +253,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         RayConfig::instance().raylet_death_check_interval_milliseconds());
   }
 
-  plasma_store_provider_.reset(new CoreWorkerPlasmaStoreProvider(
-      options_.store_socket,
-      local_raylet_client_,
-      reference_counter_,
-      options_.check_signals,
-      /*warmup=*/
-      (options_.worker_type != WorkerType::SPILL_WORKER &&
-       options_.worker_type != WorkerType::RESTORE_WORKER),
-      /*get_current_call_site=*/boost::bind(&CoreWorker::CurrentCallSite, this)));
   memory_store_.reset(new CoreWorkerMemoryStore(
       reference_counter_,
       local_raylet_client_,
@@ -470,6 +461,17 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   // Start the IO thread after all other members have been initialized, in case
   // the thread calls back into any of our members.
   io_thread_ = std::thread([this]() { RunIOService(); });
+
+  plasma_store_provider_.reset(new CoreWorkerPlasmaStoreProvider(
+      options_.store_socket,
+      local_raylet_client_,
+      reference_counter_,
+      options_.check_signals,
+      /*warmup=*/
+      (options_.worker_type != WorkerType::SPILL_WORKER &&
+       options_.worker_type != WorkerType::RESTORE_WORKER),
+      /*get_current_call_site=*/boost::bind(&CoreWorker::CurrentCallSite, this)));
+
   // Tell the raylet the port that we are listening on.
   // NOTE: This also marks the worker as available in Raylet. We do this at the
   // very end in case there is a problem during construction.
