@@ -47,7 +47,7 @@ if __name__ == "__main__":
         "framework": args.framework,
         "eager_tracing": (args.framework == "tf2"),
     }
-    trainer = BanditLinTSTrainer(env=WheelBanditEnv, config=config)
+    trainer = BanditLinTS(env=WheelBanditEnv, config=config)
 
     policy = trainer.get_policy()
     model = policy.model

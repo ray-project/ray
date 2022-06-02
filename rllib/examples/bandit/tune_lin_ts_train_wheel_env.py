@@ -85,7 +85,7 @@ if __name__ == "__main__":
 
     # Restore trainer from checkpoint
     trial = analysis.trials[0]
-    trainer = BanditLinTSTrainer(config=config)
+    trainer = BanditLinTS(config=config)
     trainer.restore(trial.checkpoint.value)
 
     # Get model to plot arm weights distribution

@@ -1,7 +1,7 @@
 from ray.rllib.algorithms.mbmpo.mbmpo import MBMPO as MBMPOTrainer, DEFAULT_CONFIG
 
 __all__ = [
-    "MBMPO",
+    "MBMPOTrainer",
     "DEFAULT_CONFIG",
 ]
 

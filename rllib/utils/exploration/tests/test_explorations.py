@@ -6,12 +6,13 @@ import ray
 import ray.rllib.algorithms.a2c as a2c
 import ray.rllib.algorithms.a3c as a3c
 import ray.rllib.algorithms.ddpg as ddpg
-import ray.rllib.algorithms.ddpg.td3 as td3
 import ray.rllib.algorithms.dqn as dqn
 import ray.rllib.algorithms.impala as impala
 import ray.rllib.algorithms.pg as pg
 import ray.rllib.algorithms.ppo as ppo
 import ray.rllib.algorithms.sac as sac
+import ray.rllib.algorithms.simple_q as simple_q
+import ray.rllib.algorithms.td3.td3 as td3
 from ray.rllib.utils import check, framework_iterator
 
 

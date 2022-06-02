@@ -116,9 +116,7 @@ class RNNSAC(SAC):
         ] = replay_sequence_length
 
         if config["framework"] != "torch":
-            raise ValueError(
-                "Only `framework=torch` supported so far for RNNSAC!"
-            )
+            raise ValueError("Only `framework=torch` supported so far for RNNSAC!")
 
     @override(SAC)
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:

@@ -21,9 +21,7 @@ class BanditConfig(TrainerConfig):
     instead.
     """
 
-    def __init__(
-        self, trainer_class: Union["BanditLinTS", "BanditLinUCB"] = None
-    ):
+    def __init__(self, trainer_class: Union["BanditLinTS", "BanditLinUCB"] = None):
         super().__init__(trainer_class=trainer_class)
         # fmt: off
         # __sphinx_doc_begin__
