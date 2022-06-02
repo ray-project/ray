@@ -732,7 +732,7 @@ class RolloutWorker(ParallelIteratorWorker):
             method_type = method_config.pop("type")
             if method_type in ope_types:
                 method_type = ope_types[method_type]
-            if method_type == "simulation":
+            if name == "simulation":
                 logger.warning(
                     "Requested 'simulation' input evaluation method: "
                     "will discard all sampler outputs and keep only metrics."
