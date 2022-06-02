@@ -198,8 +198,8 @@ parts:
                     title: "Fine-tune a 🤗 Transformers model"
                   - file: ray-air/examples/tfx_tabular_train_to_serve
                     title: "Train a Keras model with Tabular data and serve it"
-                  - file: ray-air/examples/feast
-                    title: "Integrate with Feast feature store in both training and inferencing"
+                  - file: ray-air/examples/feast_example
+                    title: "Integrate with Feast feature store in both train and inference"
               - file: ray-air/package-ref
           - file: ray-more-libs/joblib
           - file: ray-more-libs/lightgbm-ray
