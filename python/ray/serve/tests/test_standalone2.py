@@ -229,10 +229,16 @@ def test_no_controller_deserialization(start_and_shutdown_ray_cli):
     def run_graph():
         """Deploys a Serve application to the controller's Ray cluster."""
         from ray import serve
+        from ray.serve.api import build
         from ray._private.utils import import_attr
 
         # Import and build the graph
         graph = import_attr("conditional_dag.serve_dag")
+        app = build(graph)
+
+        # Override options for each deployment
+        for name in app.deployments:
+            app.deployments[name].set_options(ray_actor_options={"num_cpus": 0.1})
 
         # Run the graph locally on the cluster
         serve.start(detached=True, _override_controller_namespace="serve")
