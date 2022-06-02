@@ -344,9 +344,9 @@ class PushBasedShufflePlan(ShuffleOp):
             parts.append(mapper_outputs[:partition_size])
             mapper_outputs = mapper_outputs[partition_size:]
             merge_idx += 1
-        assert len(parts) == schedule.num_merge_tasks_per_round, (
+        assert len(parts) == len(num_reducers_per_merge_idx), (
             len(parts),
-            schedule.num_merge_tasks_per_round,
+            len(num_reducers_per_merge_idx),
         )
         return [meta] + parts
 
