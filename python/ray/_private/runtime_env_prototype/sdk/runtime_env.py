@@ -9,12 +9,18 @@ logger = logging.getLogger(__name__)
 
 
 class RuntimeEnvBase(ABC):
+    """ The abstract class which makes sure the class could be converted to/from json.
+    """
     @abstractmethod
     def to_jsonable_type(self):
+        """ Convert class to a jsonable type, e.g. dict, list, string and so on.
+        """
         raise NotImplementedError()
 
     @abstractstaticmethod
     def from_jsonable_type(jsonable_data) -> "RuntimeEnvBase":
+        """ Convert from jsonable type.
+        """
         raise NotImplementedError()
 
 
@@ -24,6 +30,7 @@ class RuntimeEnv(dict):
         super().__init__()
 
     def set(self, runtime_env_name, typed_runtime_env):
+        # Maybe we can do this automatically using `typed_runtime_env.__dict__` ?
         self[runtime_env_name] = typed_runtime_env.to_jsonable_type()
 
     def get(self, runtime_env_name, runtime_env_type):

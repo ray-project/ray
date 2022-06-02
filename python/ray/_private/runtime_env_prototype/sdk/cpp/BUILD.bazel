@@ -1,5 +1,5 @@
 cc_binary(
-    name = "test_runtime_env",
+    name = "runtime_env_test",
     srcs = glob([
         "*.cc",
         "*.h",

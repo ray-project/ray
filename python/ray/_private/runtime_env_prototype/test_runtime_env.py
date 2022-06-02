@@ -5,10 +5,11 @@ from ray._private.runtime_env_prototype.pluggability.plugin_manager import (
     RuntimeEnvPluginManager,
 )
 from ray.core.generated.common_pb2 import Language
+import json
 
 
 def test_runtime_env():
-    # Load plugins when the Ray node is started.
+    # [runtime env agent] Load plugins when the Ray node is started.
     plugins = [
         "ray._private.runtime_env_prototype.pip.pip_plugin.PipPlugin",
         "ray._private.runtime_env_prototype.working_dir.working_dir_plugin."
@@ -16,7 +17,7 @@ def test_runtime_env():
     ]
     RuntimeEnvPluginManager.load_plugins(plugins)
 
-    # Construct runtime env in user code.
+    # [user code] Construct runtime env in user code.
     # Strong-typed API
     runtime_env = RuntimeEnv()
     pip_runtime_env = Pip(packages=["requests"], pip_check=True)
@@ -28,29 +29,31 @@ def test_runtime_env():
     assert isinstance(runtime_env, RuntimeEnv)
     assert isinstance(runtime_env, dict)
 
-    # Serialize it in caller worker side.
+    # [Worker internal] Serialize it in caller worker side.
     serialized_runtime_env = runtime_env.serialize()
 
-    # Deserialize it in runtime env agent.
-    runtime_env_2 = RuntimeEnv.deserialize(serialized_runtime_env)
-
+    # [Worker internal] Get current runtime env for users
+    current_runtime_env = RuntimeEnv.deserialize(serialized_runtime_env)
     # Make sure we can recover the instance.
-    pip_runtime_env_2 = runtime_env_2.get("pip", Pip)
-    pip_runtime_env_2 == pip_runtime_env
-    runtime_env_2["working_dir"] == "https://path/to/working_dir.zip"
-    assert runtime_env_2 == runtime_env
-
+    current_pip_runtime_env = current_runtime_env.get("pip", Pip)
+    current_pip_runtime_env == pip_runtime_env
+    current_runtime_env["working_dir"] == "https://path/to/working_dir.zip"
+    assert current_runtime_env == runtime_env
     # The instance is both RuntimeEnv and dict.
-    assert isinstance(runtime_env_2, RuntimeEnv)
-    assert isinstance(runtime_env_2, dict)
+    assert isinstance(current_runtime_env, RuntimeEnv)
+    assert isinstance(current_runtime_env, dict)
 
-    # Setup runtime env in runtime env agent by the plugins.
+    # [runtime env agent] parse json string
+    runtime_env_in_agent = json.loads(serialized_runtime_env)
     all_uris = []
-    for name, plugin_config in runtime_env_2.items():
-        uris, size, workerly, jobly = RuntimeEnvPluginManager.plugins[name].create(
-            plugin_config, None, None, None, Language.PYTHON
-        )
+    for name, plugin_config in runtime_env_in_agent.items():
+        # Setup runtime env in runtime env agent by the plugins.
+        uris = RuntimeEnvPluginManager.plugins[name].validate(plugin_config)
         all_uris.append(uris)
+        size, workerly, jobly = RuntimeEnvPluginManager.plugins[name].create(
+            uris, plugin_config, None, None, None, Language.PYTHON
+        )
+    assert len(all_uris) == 2
 
 
 if __name__ == "__main__":

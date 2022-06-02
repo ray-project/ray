@@ -6,6 +6,8 @@ logger = logging.getLogger(__name__)
 
 
 class RuntimeEnvPluginManager:
+    """ This mananger is used to load plugins in runtime env agent.
+    """
     plugins = {}
 
     @classmethod

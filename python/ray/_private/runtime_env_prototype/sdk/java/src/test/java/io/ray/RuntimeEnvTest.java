@@ -21,6 +21,7 @@ public class RuntimeEnvTest
       runtimeEnv.set("working_dir", workingDir);
       // Serialize
       String serializedRuntimeEnv = runtimeEnv.serialize();
+      System.out.println("serializedRuntimeEnv " + serializedRuntimeEnv);
 
       // Deserialize
       RuntimeEnv runtimeEnv2 = RuntimeEnv.deserialize(serializedRuntimeEnv);
