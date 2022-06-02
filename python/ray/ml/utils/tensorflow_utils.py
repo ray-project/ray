@@ -1,9 +1,13 @@
+from typing import Optional
+
 import numpy as np
 import pandas as pd
 import tensorflow as tf
 
 
-def convert_pandas_to_tf_tensor(df: pd.DataFrame) -> tf.Tensor:
+def convert_pandas_to_tf_tensor(
+    df: pd.DataFrame, dtype: Optional[tf.dtypes.DType] = None
+) -> tf.Tensor:
     """Convert a pandas dataframe to a TensorFlow tensor.
 
     This function works in two steps:
@@ -14,13 +18,11 @@ def convert_pandas_to_tf_tensor(df: pd.DataFrame) -> tf.Tensor:
         df: The dataframe to convert to a TensorFlow tensor. Columns must be of
             a numeric dtype, ``TensorDtype``, or object dtype. If a column has
             an object dtype, the column must contain ``ndarray`` objects.
+        dtype: Optional data type for the returned tensor. If a dtype isn't
+            provided, the dtype is inferred from ``df``.
 
     Returns:
         A tensor constructed from the dataframe.
-
-    Raises:
-        ValueError: if a column has an invalid dtype.
-        ValueError: if the columns can't be combined into a single tensor.
 
     Examples:
         >>> import pandas as pd
@@ -38,23 +40,22 @@ def convert_pandas_to_tf_tensor(df: pd.DataFrame) -> tf.Tensor:
         >>> convert_pandas_to_tf_tensor(df).shape
         TensorShape([4, 3, 32, 32])
     """
+    if dtype is None:
+        try:
+            # We need to cast the tensors to a common type so that we can concatenate them.
+            # If the columns contain different types (for example, `float32`s and
+            # `int32`s), then `tf.concat` raises an error.
+            dtype: np.dtype = np.find_common_type(df.dtypes, [])
+        except TypeError:
+            # `find_common_type` fails if a series has `TensorDtype`. In this case,
+            # don't cast any of the series and continue.
+            pass
 
     def tensorize(series):
         try:
-            return tf.convert_to_tensor(series)
+            return tf.convert_to_tensor(series, dtype=dtype)
         except ValueError:
             return tf.stack([tensorize(element) for element in series])
-
-    try:
-        # We need to cast the tensors to a common type so that we can concatenate them.
-        # If the columns contain different types (for example, `float32`s and
-        # `int32`s), then `tf.concat` raises an error.
-        common_type: np.dtype = np.find_common_type(df.dtypes, [])
-        df = df.astype(common_type)
-    except TypeError:
-        # `find_common_type` fails if a series has `TensorDtype`. In this case,
-        # don't cast any of the series and continue.
-        pass
 
     tensors = []
     for column in df.columns:

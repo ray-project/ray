@@ -132,7 +132,7 @@ class TensorflowPredictor(Predictor):
         if isinstance(data, pd.DataFrame):
             if feature_columns:
                 data = data[feature_columns]
-            tensor = convert_pandas_to_tf_tensor(data)
+            tensor = convert_pandas_to_tf_tensor(data, dtype=dtype)
         else:
             tensor = tf.convert_to_tensor(data, dtype=dtype)
 
