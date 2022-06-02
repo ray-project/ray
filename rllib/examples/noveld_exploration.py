@@ -3,7 +3,7 @@
 Note: NovelD works to this point only synchronously, i.e. the
 `config["num_workers"]=0` is a requirement.
 
-The example also uses the NovelDMetricsCallbacks that activates
+The example also uses the `NovelDMetricsCallbacks` that activates
 some metrics in TensorBoard and gives the user a possibility to
 monitor the process of exploring.
 
@@ -14,7 +14,7 @@ that can be found here:
 
 To install this environment simply run `pip install gym_minigrid`.
 
-Note, NovelD works also with the torch framework and it can be
+Note, NovelD works also with the `PyTorch` framework and it can be
 used with most of RLLib's algorithms (agents). The distillation
 network of the NovelD exploration can be configured in the same
 way as the Policy Network (and should use the same input layer).
