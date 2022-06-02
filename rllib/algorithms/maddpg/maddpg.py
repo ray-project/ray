@@ -26,7 +26,7 @@ logger.setLevel(logging.INFO)
 
 
 class MADDPGConfig(TrainerConfig):
-    """Defines a configuration class from which a MADDPGTrainer can be built.
+    """Defines a configuration class from which a MADDPG Trainer can be built.
 
     Example:
         >>> from ray.rllib.algorithms.maddpg.maddpg import MADDPGConfig
@@ -63,7 +63,7 @@ class MADDPGConfig(TrainerConfig):
 
     def __init__(self, trainer_class=None):
         """Initializes a DQNConfig instance."""
-        super().__init__(trainer_class=trainer_class or MADDPGTrainer)
+        super().__init__(trainer_class=trainer_class or MADDPG)
 
         # fmt: off
         # __sphinx_doc_begin__

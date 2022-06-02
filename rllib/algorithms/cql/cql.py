@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 
 class CQLConfig(SACConfig):
-    """Defines a configuration class from which a CQLTrainer can be built.
+    """Defines a configuration class from which a CQL Trainer can be built.
 
     Example:
         >>> config = CQLConfig().training(gamma=0.9, lr=0.01)\
@@ -53,7 +53,7 @@ class CQLConfig(SACConfig):
     """
 
     def __init__(self, trainer_class=None):
-        super().__init__(trainer_class=trainer_class or CQLTrainer)
+        super().__init__(trainer_class=trainer_class or CQL)
 
         # fmt: off
         # __sphinx_doc_begin__

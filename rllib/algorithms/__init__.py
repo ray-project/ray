@@ -17,7 +17,7 @@ from ray.rllib.algorithms.cql.cql import CQL, CQLConfig
 from ray.rllib.algorithms.ddpg.ddpg import DDPG, DDPGConfig
 from ray.rllib.algorithms.ddppo.ddppo import DDPPO, DDPPOConfig
 from ray.rllib.algorithms.dqn.dqn import DQN, DQNConfig
-from ray.rllib.algorithms.dreamer.dreamer import DREAMER, DREAMERConfig
+from ray.rllib.algorithms.dreamer.dreamer import Dreamer, DreamerConfig
 from ray.rllib.algorithms.es.es import ES, ESConfig
 from ray.rllib.algorithms.impala.impala import Impala, ImpalaConfig
 from ray.rllib.algorithms.maddpg.maddpg import MADDPG, MADDPGConfig
@@ -65,8 +65,8 @@ __all__ = [
     "DDPPOConfig",
     "DQN",
     "DQNConfig",
-    "DREAMER",
-    "DREAMERConfig",
+    "Dreamer",
+    "DreamerConfig",
     "ES",
     "ESConfig",
     "Impala",

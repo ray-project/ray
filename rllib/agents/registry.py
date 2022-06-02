@@ -208,7 +208,7 @@ ALGORITHMS = {
     "DDPG": _import_ddpg,
     "DDPPO": _import_ddppo,
     "DQN": _import_dqn,
-    "DREAMER": _import_dreamer,
+    "Dreamer": _import_dreamer,
     "IMPALA": _import_impala,
     "MADDPG": _import_maddpg,
     "MAML": _import_maml,

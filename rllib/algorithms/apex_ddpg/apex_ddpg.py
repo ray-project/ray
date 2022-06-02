@@ -17,7 +17,7 @@ class ApexDDPGConfig(DDPGConfig):
     """Defines a configuration class from which an ApexDDPG Trainer can be built.
 
     Example:
-        >>> from ray.rllib.algorithms.ddpg.apex import ApexDDPGConfig
+        >>> from ray.rllib.algorithms.apex_ddpg.apex_ddpg import ApexDDPGConfig
         >>> config = ApexDDPGConfig().training(lr=0.01).resources(num_gpus=1)
         >>> print(config.to_dict())
         >>> # Build a Trainer object from the config and run one training iteration.
@@ -25,7 +25,7 @@ class ApexDDPGConfig(DDPGConfig):
         >>> trainer.train()
 
     Example:
-        >>> from ray.rllib.algorithms.ddpg.apex import ApexDDPGConfig
+        >>> from ray.rllib.algorithms.apex_ddpg.apex_ddpg import ApexDDPGConfig
         >>> from ray import tune
         >>> config = ApexDDPGConfig()
         >>> # Print out some default values.

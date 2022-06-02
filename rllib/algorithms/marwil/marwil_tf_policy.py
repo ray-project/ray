@@ -159,7 +159,7 @@ def get_marwil_tf_policy(base: type) -> type:
         base: Base class for this policy. DynamicTFPolicyV2 or EagerTFPolicyV2.
 
     Returns:
-        A TF Policy to be used with MAMLTrainer.
+        A TF Policy to be used with MAML.
     """
 
     class MARWILTFPolicy(ValueNetworkMixin, PostprocessAdvantages, base):

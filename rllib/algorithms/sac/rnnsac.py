@@ -25,7 +25,7 @@ class RNNSACConfig(SACConfig):
     """
 
     def __init__(self, trainer_class=None):
-        super().__init__(trainer_class=trainer_class or RNNSACTrainer)
+        super().__init__(trainer_class=trainer_class or RNNSAC)
         # fmt: off
         # __sphinx_doc_begin__
         self.batch_mode = "complete_episodes"
@@ -117,7 +117,7 @@ class RNNSAC(SAC):
 
         if config["framework"] != "torch":
             raise ValueError(
-                "Only `framework=torch` supported so far for RNNSACTrainer!"
+                "Only `framework=torch` supported so far for RNNSAC!"
             )
 
     @override(SAC)

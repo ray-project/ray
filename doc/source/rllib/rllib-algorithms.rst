@@ -746,8 +746,8 @@ named after the exploration strategies that they employ:
 
 .. _lin-ucb:
 
-Linear Upper Confidence Bound (BanditLinUCBTrainer)
----------------------------------------------------
+Linear Upper Confidence Bound (BanditLinUCB)
+--------------------------------------------
 |pytorch|
 `[paper] <http://rob.schapire.net/papers/www10.pdf>`__ `[implementation]
 <https://github.com/ray-project/ray/blob/master/rllib/algorithms/bandit/bandit.py>`__
@@ -773,8 +773,8 @@ Tuned examples:
 
 .. _lints:
 
-Linear Thompson Sampling (BanditLinTSTrainer)
----------------------------------------------
+Linear Thompson Sampling (BanditLinTS)
+--------------------------------------
 |pytorch|
 `[paper] <http://proceedings.mlr.press/v28/agrawal13.pdf>`__
 `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/bandit/bandit.py>`__

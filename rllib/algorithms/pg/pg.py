@@ -11,7 +11,7 @@ from ray.rllib.utils.typing import TrainerConfigDict
 
 
 class PGConfig(TrainerConfig):
-    """Defines a PGTrainer configuration class from which a PGTrainer can be built.
+    """Defines a configuration class from which a PG Trainer can be built.
 
     Example:
         >>> from ray.rllib.algorithms.pg import PGConfig

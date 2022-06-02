@@ -3,7 +3,7 @@ from ray.rllib.algorithms.sac.sac_tf_policy import SACTFPolicy
 from ray.rllib.algorithms.sac.sac_torch_policy import SACTorchPolicy
 
 from ray.rllib.algorithms.sac.rnnsac import (
-    RNNSACTrainer,
+    RNNSAC,
     DEFAULT_CONFIG as RNNSAC_DEFAULT_CONFIG,
 )
 from ray.rllib.algorithms.sac.rnnsac import RNNSACTorchPolicy, RNNSACConfig
@@ -13,9 +13,10 @@ __all__ = [
     "SACTFPolicy",
     "SACTorchPolicy",
     "SACConfig",
-    "RNNSAC_DEFAULT_CONFIG",
     "RNNSACTorchPolicy",
-    "RNNSACTrainer",
+    "RNNSAC",
     "RNNSACConfig",
+    # Deprecated.
     "DEFAULT_CONFIG",
+    "RNNSAC_DEFAULT_CONFIG",
 ]
