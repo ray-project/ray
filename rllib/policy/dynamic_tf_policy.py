@@ -638,7 +638,7 @@ class DynamicTFPolicy(TFPolicy):
         Input_dict: Str -> tf.placeholders, dummy_batch: str -> np.arrays.
 
         Args:
-            view_requirements (ViewReqs): The view requirements dict.
+            view_requirements: The view requirements dict.
             existing_inputs (Dict[str, tf.placeholder]): A dict of already
                 existing placeholders.
 
@@ -929,7 +929,7 @@ class TFMultiGPUTowerStack:
         """Initializes a TFMultiGPUTowerStack instance.
 
         Args:
-            policy (TFPolicy): The TFPolicy object that this tower stack
+            policy: The TFPolicy object that this tower stack
                 belongs to.
         """
         # Obsoleted usage, use only `policy` arg from here on.

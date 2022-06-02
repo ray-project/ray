@@ -49,7 +49,7 @@ class BatchPredictor(Predictor):
         num_cpus_per_worker: int = 1,
         num_gpus_per_worker: int = 0,
         ray_remote_args: Optional[Dict[str, Any]] = None,
-        **predict_kwargs
+        **predict_kwargs,
     ) -> ray.data.Dataset:
         """Run batch scoring on dataset.
 
@@ -75,8 +75,9 @@ class BatchPredictor(Predictor):
 
         class ScoringWrapper:
             def __init__(self):
+                checkpoint = Checkpoint.from_object_ref(checkpoint_ref)
                 self.predictor = predictor_cls.from_checkpoint(
-                    Checkpoint.from_object_ref(checkpoint_ref), **predictor_kwargs
+                    checkpoint, **predictor_kwargs
                 )
 
             def __call__(self, batch):
@@ -95,5 +96,5 @@ class BatchPredictor(Predictor):
             compute=compute,
             batch_format="pandas",
             batch_size=batch_size,
-            **ray_remote_args
+            **ray_remote_args,
         )

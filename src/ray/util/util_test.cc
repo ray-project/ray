@@ -17,15 +17,9 @@
 #include <stdio.h>
 
 #include <boost/asio/generic/basic_endpoint.hpp>
-#include <boost/process/child.hpp>
-#include <chrono>
-#include <thread>
 
 #include "gtest/gtest.h"
 #include "ray/util/logging.h"
-#include "ray/util/process.h"
-
-using namespace std::chrono_literals;
 
 static const char *argv0 = NULL;
 
@@ -188,21 +182,6 @@ TEST(UtilTest, CreateCommandLineTest) {
       }
     }
   }
-}
-
-TEST(UtilTest, IsProcessAlive) {
-  namespace bp = boost::process;
-  bp::child c("bash");
-  auto pid = c.id();
-  c.join();
-  for (int i = 0; i < 5; ++i) {
-    if (IsProcessAlive(pid)) {
-      std::this_thread::sleep_for(1s);
-    } else {
-      break;
-    }
-  }
-  RAY_CHECK(!IsProcessAlive(pid));
 }
 
 }  // namespace ray

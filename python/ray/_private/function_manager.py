@@ -371,7 +371,7 @@ class FunctionActorManager:
         else:
             return False
 
-    def _wait_for_function(self, function_descriptor, job_id, timeout=10):
+    def _wait_for_function(self, function_descriptor, job_id: str, timeout=10):
         """Wait until the function to be executed is present on this worker.
         This method will simply loop until the import thread has imported the
         relevant function. If we spend too long in this loop, that may indicate
@@ -381,7 +381,7 @@ class FunctionActorManager:
         Args:
             function_descriptor : The FunctionDescriptor of the function that
                 we want to execute.
-            job_id (str): The ID of the job to push the error message to
+            job_id: The ID of the job to push the error message to
                 if this times out.
         """
         start_time = time.time()
@@ -646,16 +646,18 @@ class FunctionActorManager:
         actor_class.__module__ = module_name
         return actor_class
 
-    def _make_actor_method_executor(self, method_name, method, actor_imported):
+    def _make_actor_method_executor(
+        self, method_name: str, method, actor_imported: bool
+    ):
         """Make an executor that wraps a user-defined actor method.
         The wrapped method updates the worker's internal state and performs any
         necessary checkpointing operations.
         Args:
-            method_name (str): The name of the actor method.
-            method (instancemethod): The actor method to wrap. This should be a
+            method_name: The name of the actor method.
+            method: The actor method to wrap. This should be a
                 method defined on the actor class and should therefore take an
                 instance of the actor as the first argument.
-            actor_imported (bool): Whether the actor has been imported.
+            actor_imported: Whether the actor has been imported.
                 Checkpointing operations will not be run if this is set to
                 False.
         Returns:

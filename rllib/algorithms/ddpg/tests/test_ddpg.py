@@ -1,7 +1,6 @@
 import numpy as np
 import re
 import unittest
-from tempfile import TemporaryDirectory
 
 import ray
 import ray.rllib.algorithms.ddpg as ddpg
@@ -62,23 +61,6 @@ class TestDDPG(unittest.TestCase):
             else:
                 a = pol.global_step
             check(a, 500)
-            trainer.stop()
-
-    def test_ddpg_checkpoint_save_and_restore(self):
-        """Test whether a DDPGTrainer can save and load checkpoints."""
-        config = ddpg.DEFAULT_CONFIG.copy()
-        config["num_workers"] = 1
-        config["num_envs_per_worker"] = 2
-        config["replay_buffer_config"]["learning_starts"] = 0
-        config["exploration_config"]["random_timesteps"] = 100
-
-        # Test against all frameworks.
-        for _ in framework_iterator(config, with_eager_tracing=True):
-            trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v1")
-            trainer.train()
-            with TemporaryDirectory() as temp_dir:
-                checkpoint = trainer.save(temp_dir)
-                trainer.restore(checkpoint)
             trainer.stop()
 
     def test_ddpg_exploration_and_with_random_prerun(self):

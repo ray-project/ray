@@ -63,27 +63,6 @@ async def test_simple_deployment_async(serve_instance):
     assert ray.get(await node.get.execute()) == ray.get(await handle.get.remote())
 
 
-def test_simple_deployment_sync(serve_instance):
-    """Internal testing only for simple creation and execution.
-
-    User should NOT directly create instances of Deployment or DeploymentNode.
-    """
-    node = DeploymentNode(
-        Actor,
-        "test",
-        (10,),
-        {},
-        {},
-    )
-    node._deployment.deploy()
-    handle = node._deployment_handle
-
-    assert ray.get(node.get.execute()) == 10
-    ray.get(node.inc.execute())
-    assert ray.get(node.get.execute()) == 11
-    assert ray.get(node.get.execute()) == ray.get(handle.get.remote())
-
-
 def test_mix_sync_async_handle(serve_instance):
     # TODO: (jiaodong) Add complex multi-deployment tests from ray DAG.
     pass

@@ -2409,6 +2409,16 @@ void NodeManager::HandleGetSystemConfig(const rpc::GetSystemConfigRequest &reque
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
+void NodeManager::HandleGetGcsServerAddress(
+    const rpc::GetGcsServerAddressRequest &request,
+    rpc::GetGcsServerAddressReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  auto address = gcs_client_->GetGcsServerAddress();
+  reply->set_ip(address.first);
+  reply->set_port(address.second);
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
 void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_request,
                                      rpc::GetNodeStatsReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
