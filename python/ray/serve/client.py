@@ -242,6 +242,7 @@ class ServeControllerClient:
         prev_version: Optional[str] = None,
         route_prefix: Optional[str] = None,
         url: Optional[str] = None,
+        timeout_s: Optional[int] = -1,
         _blocking: Optional[bool] = True,
     ):
 
@@ -262,7 +263,7 @@ class ServeControllerClient:
         tag = self.log_deployment_update_status(name, version, updating)
 
         if _blocking:
-            self._wait_for_deployment_healthy(name)
+            self._wait_for_deployment_healthy(name, timeout_s)
             self.log_deployment_ready(name, version, url, tag)
 
     @_ensure_connected
@@ -302,9 +303,10 @@ class ServeControllerClient:
         for i, deployment in enumerate(deployments):
             name = deployment["name"]
             url = deployment["url"]
+            timeout_s = deployment.get("timeout_s", -1)
 
             if _blocking:
-                self._wait_for_deployment_healthy(name)
+                self._wait_for_deployment_healthy(name, timeout_s)
                 self.log_deployment_ready(name, version, url, tags[i])
 
         if remove_past_deployments:
