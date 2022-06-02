@@ -383,7 +383,7 @@ def _workflow_step_executor(
     baked_inputs: "_BakedWorkflowInputs",
     runtime_options: "WorkflowStepRuntimeOptions",
     inplace: bool = False,
-) -> Tuple[Any, Any]:
+) -> Any:
     """Executor function for workflow step.
 
     Args:
@@ -456,11 +456,8 @@ def _workflow_step_executor(
                     f"consumes the same resource as the caller. This may result "
                     f"in oversubscribing resources."
                 )
-            return (
-                InplaceReturnedWorkflow(
-                    sub_workflow, {"outer_most_step_id": outer_most_step_id}
-                ),
-                None,
+            return InplaceReturnedWorkflow(
+                sub_workflow, {"outer_most_step_id": outer_most_step_id}
             )
         # Execute sub-workflow. Pass down "outer_most_step_id".
         with workflow_context.fork_workflow_step_context(
