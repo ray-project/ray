@@ -336,8 +336,8 @@ class OutOfDiskError(RayError):
     def __str__(self):
         return super(OutOfDiskError, self).__str__() + (
             "\n"
-            "The local object store is full of objects that are still in "
-            "scope and cannot be evicted. Tip: Use the `ray memory` command "
+            "The local object store is full and local disk is also full."
+            "Tip: Use the `ray memory` command "
             "to list active objects in the cluster."
         )
 
