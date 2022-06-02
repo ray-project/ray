@@ -86,30 +86,7 @@ from dataset names to ``DatasetConfig`` objects, and implements the default beha
         "*": DatasetConfig(),
     }
 
-These configs can be overriden via the ``dataset_config`` kwarg, which is recursively merged with the Trainer defaults:
-
-.. code:: python
-
-    # Sets transform=False for the "valid" dataset of this Trainer.
-    trainer = MyTrainer(
-        ...,
-        datasets={
-            "train": train_ds,
-            "valid": valid_ds,
-        },
-        dataset_config={
-            "valid": DatasetConfig(transform=False),
-        },
-    )
-
-    # Print the merged config for debugging.
-    print(trainer.get_dataset_config())
-    # -> Dataset config {
-    #      'train': DatasetConfig(fit=True, split=True, transform=True, ...),
-    #      'valid': DatasetConfig(fit=False, split=False, transform=True, ...),
-    #      '*': DatasetConfig(fit=False, split=False, transform=True, ...),
-    #    }
-
+These configs can be overriden via the ``dataset_config`` kwarg, which is recursively merged with the Trainer defaults.
 Here are some examples of configuring Dataset ingest options and what they do:
 
 .. tabbed:: Split All
@@ -117,42 +94,20 @@ Here are some examples of configuring Dataset ingest options and what they do:
     This example shows overriding the split config for the "valid" and "test" datasets. This means that
     both the valid and test datasets here will be ``.split()`` across the training workers.
 
-    .. code:: python
-
-        from ray.ml.config import DatasetConfig
-
-        my_trainer = MyTrainer(
-            ...,
-            datasets={
-                "train": train_ds,
-                "valid": valid_ds,
-                "test": test_ds,
-            },
-            dataset_config={
-                "valid": DatasetConfig(split=True),
-                "test": DatasetConfig(split=True),
-            },
-        )
+    .. literalinclude:: doc_code/air_ingest.py
+        :language: python
+        :start-after: __config_1__
+        :end-before: __config_1_end__
 
 .. tabbed:: Disable Transform
 
     This example shows overriding the transform config for the "side" dataset. This means that
     the original dataset will be returned by ``.get_dataset_shard("side")``.
 
-    .. code:: python
-
-        from ray.ml.config import DatasetConfig
-
-        my_trainer = MyTrainer(
-            ...,
-            datasets={
-                "train": train_ds,
-                "side": side_ds,
-            },
-            dataset_config={
-                "side": DatasetConfig(transform=False),
-            },
-        )
+    .. literalinclude:: doc_code/air_ingest.py
+        :language: python
+        :start-after: __config_2__
+        :end-before: __config_2_end__
 
 Ingest and Ray Tune
 -------------------

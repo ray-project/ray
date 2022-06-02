@@ -87,3 +87,52 @@ trainer = DummyTrainer(
 )
 trainer.fit()
 # __check_ingest_2_end__
+
+# __config_1__
+import ray
+from ray.ml.train.data_parallel_trainer import DataParallelTrainer
+from ray.ml.config import DatasetConfig
+
+train_ds = ray.data.range_tensor(1000)
+valid_ds = ray.data.range_tensor(100)
+test_ds = ray.data.range_tensor(100)
+
+my_trainer = DataParallelTrainer(
+    lambda: None,  # No-op training loop.
+    scaling_config={"num_workers": 2},
+    datasets={
+        "train": train_ds,
+        "valid": valid_ds,
+        "test": test_ds,
+    },
+    dataset_config={
+        "valid": DatasetConfig(split=True),
+        "test": DatasetConfig(split=True),
+    },
+)
+print(my_trainer.get_dataset_config())
+# -> {'train': DatasetConfig(fit=True, split=True, ...), 'valid': DatasetConfig(fit=False, split=True, ...), 'test': DatasetConfig(fit=False, split=True, ...), ...}
+# __config_1_end__
+
+# __config_2__
+import ray
+from ray.ml.train.data_parallel_trainer import DataParallelTrainer
+from ray.ml.config import DatasetConfig
+
+train_ds = ray.data.range_tensor(1000)
+side_ds = ray.data.range_tensor(10)
+
+my_trainer = DataParallelTrainer(
+    lambda: None,  # No-op training loop.
+    scaling_config={"num_workers": 2},
+    datasets={
+        "train": train_ds,
+        "side": side_ds,
+    },
+    dataset_config={
+        "side": DatasetConfig(transform=False),
+    },
+)
+print(my_trainer.get_dataset_config())
+# -> {'train': DatasetConfig(fit=True, split=True, ...), 'side': DatasetConfig(fit=False, split=False, transform=False, ...), ...}
+# __config_2_end__
