@@ -49,11 +49,15 @@ def _adjust_obs_actions_for_policy(json_data: dict, policy: Policy) -> dict:
     """
     for k, v in json_data.items():
         data_col = (
-            policy.view_requirements[k].data_col if k in policy.view_requirements else ""
+            policy.view_requirements[k].data_col
+            if k in policy.view_requirements
+            else ""
         )
         if policy.config.get("_disable_action_flattening") and (
-            k == SampleBatch.ACTIONS or data_col == SampleBatch.ACTIONS or
-            k == SampleBatch.PREV_ACTIONS or data_col == SampleBatch.PREV_ACTIONS
+            k == SampleBatch.ACTIONS
+            or data_col == SampleBatch.ACTIONS
+            or k == SampleBatch.PREV_ACTIONS
+            or data_col == SampleBatch.PREV_ACTIONS
         ):
             json_data[k] = tree.map_structure_up_to(
                 policy.action_space_struct,
@@ -62,8 +66,10 @@ def _adjust_obs_actions_for_policy(json_data: dict, policy: Policy) -> dict:
                 check_types=False,
             )
         elif policy.config.get("_disable_preprocessor_api") and (
-            k == SampleBatch.OBS or data_col == SampleBatch.OBS or
-            k == SampleBatch.NEXT_OBS or data_col == SampleBatch.NEXT_OBS
+            k == SampleBatch.OBS
+            or data_col == SampleBatch.OBS
+            or k == SampleBatch.NEXT_OBS
+            or data_col == SampleBatch.NEXT_OBS
         ):
             json_data[k] = tree.map_structure_up_to(
                 policy.observation_space_struct,
