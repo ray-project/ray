@@ -17,7 +17,7 @@ class TempFileLock:
 
     @property
     def lock_dir(self) -> Path:
-        return Path(tempfile.gettempdir()) / RAY_LOCKFILE_DIR
+        return Path(tempfile.gettempdir()).resolve() / RAY_LOCKFILE_DIR
 
     @property
     def path_hash(self) -> str:
