@@ -1,6 +1,6 @@
 package io.ray;
 
-public class PipRuntimeEnv {
+public class Pip {
   public String[] packages;
   public Boolean pip_check;
 }
