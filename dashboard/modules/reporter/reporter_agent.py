@@ -174,8 +174,8 @@ METRICS_GAUGES = {
     ),
     "workers_mem": Gauge(
         "workers_mem",
-        "Memory usage of all workers on a node. Type includes uss and the remaining rss "
-        "on Linux, and just rss on other platforms.",
+        "Memory usage of all workers on a node. Type includes uss and "
+        "the remaining rss on Linux, and just rss on other platforms.",
         "MB",
         ["ip", "mem_type"],
     ),
@@ -362,7 +362,8 @@ class ReporterAgent(
             return []
         else:
             workers = set(raylet_proc.children())
-            # Remove this process which is also a child of Raylet, but not a worker.
+            # Remove the current process (reporter agent), which is also a child of
+            # the Raylet.
             workers.discard(psutil.Process())
             self._workers = workers
             return [
@@ -714,17 +715,11 @@ class ReporterAgent(
                     )
                 )
 
+        workers_count = 0
         workers_stats = stats["workers"]
         if workers_stats:
-            records_reported.append(
-                Record(
-                    gauge=METRICS_GAUGES["workers_count"],
-                    value=len(workers_stats),
-                    tags={"ip": ip},
-                )
-            )
+            workers_count = len(workers_stats)
 
-            total_workers_cpu_percentage = 0.0
             total_workers_uss = 0.0
             total_workers_rss_other = 0.0
             total_workers_rss = 0.0
@@ -770,6 +765,13 @@ class ReporterAgent(
                         tags={"ip": ip, "type": "rss"},
                     )
                 )
+        records_reported.append(
+            Record(
+                gauge=METRICS_GAUGES["workers_count"],
+                value=workers_count,
+                tags={"ip": ip},
+            )
+        )
 
         records_reported.extend(
             [
