@@ -731,6 +731,11 @@ class RolloutWorker(ParallelIteratorWorker):
         for name, method_config in off_policy_estimation_methods.items():
             method_type = method_config.pop("type")
             if method_type in ope_types:
+                deprecation_warning(
+                    old=method_type, 
+                    new=str(ope_types[method_type]),
+                    error=False,
+                    )
                 method_type = ope_types[method_type]
             if name == "simulation":
                 logger.warning(
