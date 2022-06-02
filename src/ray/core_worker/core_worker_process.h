@@ -121,7 +121,11 @@ class CoreWorkerProcessImpl {
 
   void InitializeSystemConfig();
 
-  /// Get the `CoreWorker` instance.
+  /// Try to get core worker. Returns nullptr if core worker doesn't exist.
+  std::shared_ptr<CoreWorker> TryGetCoreWorker() const;
+
+  /// Get the `CoreWorker` instance. The process will be exited if
+  /// the core worker is nullptr.
   ///
   /// \return The `CoreWorker` instance.
   std::shared_ptr<CoreWorker> GetCoreWorker() const;

@@ -70,7 +70,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::TryGetWorker() {
   if (!core_worker_process) {
     return nullptr;
   }
-  return core_worker_process->GetCoreWorker();
+  return core_worker_process->TryGetCoreWorker();
 }
 
 CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
@@ -255,6 +255,11 @@ void CoreWorkerProcessImpl::ShutdownDriver() {
     absl::WriterMutexLock lock(&mutex_);
     core_worker_.reset();
   }
+}
+
+std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::TryGetCoreWorker() const {
+  absl::ReaderMutexLock lock(&mutex_);
+  return core_worker_;
 }
 
 std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::GetCoreWorker() const {
