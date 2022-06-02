@@ -3,7 +3,8 @@ import unittest
 
 import pytest
 import ray
-from ray.rllib.agents import ppo, sac
+import ray.rllib.algorithms.ppo as ppo
+import ray.rllib.algorithms.sac as sac
 from ray.rllib.agents.callbacks import RE3UpdateCallbacks
 
 
@@ -24,11 +25,11 @@ class TestRE3(unittest.TestCase):
         Both the on-policy and off-policy setups are validated.
         """
         if rl_algorithm == "PPO":
-            config = ppo.DEFAULT_CONFIG.copy()
+            config = ppo.PPOConfig().to_dict()
             trainer_cls = ppo.PPO
             beta_schedule = "constant"
         elif rl_algorithm == "SAC":
-            config = sac.DEFAULT_CONFIG.copy()
+            config = sac.SACConfig().to_dict()
             trainer_cls = sac.SACTrainer
             beta_schedule = "linear_decay"
 

@@ -11,12 +11,12 @@ import logging
 from typing import Any, Dict, List, Optional, Type, Union
 
 import ray
+from ray.rllib.algorithms.appo.appo_tf_policy import make_appo_model
 import ray.rllib.algorithms.impala.vtrace_torch as vtrace
 from ray.rllib.algorithms.impala.impala_torch_policy import (
     make_time_major,
     VTraceOptimizer,
 )
-from ray.rllib.algorithms.appo.appo_tf_policy import make_appo_model
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import (
     compute_gae_for_sample_batch,
