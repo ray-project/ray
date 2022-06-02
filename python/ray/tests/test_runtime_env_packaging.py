@@ -143,6 +143,25 @@ class TestGetURIForDirectory:
         hex_hash = uri.split("_")[-1][: -len(".zip")]
         assert len(hex_hash) == 16
 
+    def test_unopenable_files_skipped(self, random_dir):
+        """Test that unopenable files can be present in the working_dir.
+
+        Some files such as `.sock` files are unopenable. This test ensures that
+        we skip those files when generating the content hash. Previously this
+        would raise an exception, see #25411.
+        """
+        # Create a file that can't be opened.
+        with open(random_dir / "test_file", "w") as f:
+            f.write("test")
+        os.chmod(random_dir / "test_file", 0o000)
+
+        # Check that opening the file raises an exception.
+        with pytest.raises(OSError):
+            Path(random_dir / "test_file").open()
+
+        # Check that the hash can still be generated without errors.
+        get_uri_for_directory(random_dir)
+
 
 class TestUploadPackageIfNeeded:
     def test_create_upload_once(self, tmp_path, random_dir, ray_start_regular):
