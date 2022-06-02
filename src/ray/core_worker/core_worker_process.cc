@@ -239,7 +239,7 @@ void CoreWorkerProcessImpl::RunWorkerTaskExecutionLoop() {
   RAY_LOG(INFO) << "Task execution loop terminated. Removing the global worker.";
   {
     absl::WriterMutexLock lock(&mutex_);
-    core_worker_ = nullptr;
+    core_worker_.reset();
   }
 }
 
@@ -253,7 +253,7 @@ void CoreWorkerProcessImpl::ShutdownDriver() {
   global_worker->Shutdown();
   {
     absl::WriterMutexLock lock(&mutex_);
-    core_worker_ = nullptr;
+    core_worker_.reset();
   }
 }
 
