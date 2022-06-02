@@ -11,6 +11,7 @@ End-to-end tutorials
 - :doc:`/ray-air/examples/torch_incremental_learning`: Incrementally train and deploy a PyTorch CV model
 - :doc:`/ray-air/examples/huggingface_text_classification`: How to use Ray AIR to run Hugging Face Transformers fine-tuning on a text classification task.
 - :doc:`/ray-air/examples/rl_serving_example`
+- :doc:`/ray-air/examples/feast_example`: Integrate with Feast feature store in both train and inference
 
 .. air-general-examples:
 
