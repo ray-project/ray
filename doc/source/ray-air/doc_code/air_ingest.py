@@ -111,7 +111,9 @@ my_trainer = DataParallelTrainer(
     },
 )
 print(my_trainer.get_dataset_config())
-# -> {'train': DatasetConfig(fit=True, split=True, ...), 'valid': DatasetConfig(fit=False, split=True, ...), 'test': DatasetConfig(fit=False, split=True, ...), ...}
+# -> {'train': DatasetConfig(fit=True, split=True, ...),
+#     'valid': DatasetConfig(fit=False, split=True, ...),
+#     'test': DatasetConfig(fit=False, split=True, ...), ...}
 # __config_1_end__
 
 # __config_2__
@@ -134,5 +136,6 @@ my_trainer = DataParallelTrainer(
     },
 )
 print(my_trainer.get_dataset_config())
-# -> {'train': DatasetConfig(fit=True, split=True, ...), 'side': DatasetConfig(fit=False, split=False, transform=False, ...), ...}
+# -> {'train': DatasetConfig(fit=True, split=True, ...),
+#     'side': DatasetConfig(fit=False, split=False, transform=False, ...), ...}
 # __config_2_end__
