@@ -345,23 +345,28 @@ class RolloutWorker(ParallelIteratorWorker):
                 DefaultCallbacks for training/policy/rollout-worker callbacks.
             input_creator: Function that returns an InputReader object for
                 loading previous generated experiences.
-            off_policy_estimation_methods: Specify how to evaluate the current policy,
-                along with any optional config parameters.
+            off_policy_estimation_methods: A dict that specifies how to 
+                evaluate the current policy.
                 This only has an effect when reading offline experiences
                 ("input" is not "sampler").
-                Available keys:
+                Available key-value pairs:
                 - {"simulation": None}: Run the environment in the background, but use
                 this data for evaluation only and not for learning.
-                - {ope_method_name: {"type": ope_type, ...}} where `ope_type` can be:
-                    - "is": ImportanceSampling
-                    - "wis": WeightedImportanceSampling
-                    - "dm": DirectMethod
-                    - "dr": DoublyRobust
+                - {ope_name: {"type": ope_type, args}}. where `ope_name` is an arbitrary
+                string under which the metrics for this OPE estimator are saved,
+                and `ope_type` can be:
                     - Any subclass of OffPolicyEstimator, e.g.
-                    ray.rllib.offline.estimators.is::ImportanceSampling
+                    ray.rllib.offline.estimators::ImportanceSampling
                     or your own custom subclass.
+                    - A class path string, e.g.
+                    "ray.rllib.offline.estimators::ImportanceSampling"
                 You can also add additional config arguments to be passed to the
-                OffPolicyEstimator in the dict, e.g. {"my_dr": {"type": "dr", "k": 5}}}
+                OffPolicyEstimator e.g. 
+                of_policy_estimation_methods = {
+                    "dr_qreg": {"type": DoublyRobust, "q_model_type": "qreg"},
+                    "dm_64": {"type": DirectMethod, "batch_size": 64},
+                }
+                See ray/rllib/offline/estimators for more information.
             output_creator: Function that returns an OutputWriter object for
                 saving generated experiences.
             remote_worker_envs: If using num_envs_per_worker > 1,
