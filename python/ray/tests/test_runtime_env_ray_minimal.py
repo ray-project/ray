@@ -14,6 +14,7 @@ import sys
 import pytest
 
 import ray
+from ray._private.runtime_env.context import RuntimeEnvContext
 
 
 def _test_task_and_actor(capsys):
@@ -77,6 +78,20 @@ def test_ray_init(shutdown_only, capsys):
         return 1
 
     assert ray.get(f.remote()) == 1
+
+
+@pytest.mark.skipif(
+    sys.platform != "win32", reason="Windows-specific test"
+)
+def test_exec_worker_parse_correct(shutdown_only):
+    runtime_env_ctx = RuntimeEnvContext()
+    runtime_env_ctx._fix_windows_args(["C:\Program Files", "some", "other", "arguments"])
+    assert runtime_env_ctx.exec_worker_args == [
+        '"C:\Program Files"',
+        "some",
+        "other",
+        "arguments",
+    ]
 
 
 @pytest.mark.skipif(

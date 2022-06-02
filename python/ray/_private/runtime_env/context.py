@@ -42,14 +42,30 @@ class RuntimeEnvContext:
     def deserialize(json_string):
         return RuntimeEnvContext(**json.loads(json_string))
 
+    @staticmethod
+    def _fix_windows_args(passthrough_args: List[str]) -> List[str]:
+        """
+        Fixes arguments on Windows if the argument is a path with a space
+
+        Note that the function only works if the file path actually exists.
+
+        Args:
+            passthrough_args: the passthrough arguments
+
+        Returns:
+            Fixed passthrough arguments
+        """
+        for i, arg in enumerate(passthrough_args):
+            if os.path.isfile(arg) or os.path.isdir(arg):
+                passthrough_args[i] = f'"{arg}"'  # Some arguments may be files, which may contain spaces
+        return passthrough_args
+
     def exec_worker(self, passthrough_args: List[str], language: Language):
         os.environ.update(self.env_vars)
 
         if language == Language.PYTHON and sys.platform == "win32":
             executable = f'"{self.py_executable}"'  # Path may contain spaces
-            for i, arg in enumerate(passthrough_args):
-                if os.path.isfile(arg) or os.path.isdir(arg):
-                    passthrough_args[i] = f'"{arg}"'  # Some arguments may be files, which may contain spaces
+            passthrough_args = self._fix_windows_args(passthrough_args)
         elif language == Language.PYTHON:
             executable = f"exec {self.py_executable}"
         elif language == Language.JAVA:
