@@ -190,7 +190,8 @@ def test_prometheus_export_worker_and_memory_stats(enable_test_module, shutdown_
         found_raylet_uss = False
         found_workers_uss = False
         for sample in metric_samples:
-            if "uss" not in sample.labels:
+            mem_type = sample.labels.get("mem_type")
+            if mem_type is None or mem_type != "uss":
                 continue
             if sample.name == "ray_raylet_mem":
                 found_raylet_uss = True
