@@ -133,10 +133,58 @@ class TestOPE(unittest.TestCase):
 
         print("mean: ", mean_ret)
         print("stddev: ", std_ret)
+    
+    def test_offline_evaluation_input(self):
+        # Test that we can use input_=some_dataset on eval workers ONLY
+        pass
 
-    def test_ope_in_trainer(self):
-        # TODO (rohan): Add performance tests for off_policy_estimation_methods,
-        # with fixed seeds and hyperparameters
+    def test_offline_input_no_evaluation_input(self):
+        # Current method; should raise warning then clone input config to eval worker
+        pass
+
+    def test_offline_both_inputs(self):
+        # Should probably just error out
+        pass
+
+    def test_ope_on_eval_only(self):
+        # Move ope to eval workers only, raise warning ope is specified in training
+        pass
+
+    def test_ope_simple_replaybuffer(self):
+        # Move estimator.process calls out of worker.sample and make it take in a
+        # whole ReplayBuffer instead of a SampleBatch
+        pass
+
+    def test_5_fold_cv_eval_worker_1(self):
+        # 5-fold cv, 1 eval worker; current default after the previous tests pass
+        pass
+
+    def test_5_fold_cv_eval_worker_3(self):
+        # 5-fold cv, 3 eval workers
+        pass
+
+    def test_5_fold_cv_eval_worker_5(self):
+        # 5-fold cv, 5 eval workers
+        pass
+
+    def test_5_fold_cv_eval_worker_10(self):
+        # 5-fold cv, 10 eval workers; can we use the extra 5 workers for something else?
+        pass
+
+    def test_ope_weird_replaybuffer(self):
+        # Get OPE to work with distributed or other weird replay buffers
+        pass
+
+    def test_d3rply_cartpole_random(self):
+        # Test OPE methods on d3rlpy cartpole-random
+        pass
+
+    def test_d3rlpy_cartpole_replay(self):
+        # Test OPE methods on d3rlpy cartpole-random
+        pass
+
+    def test_cobs_mountaincar(self):
+        # Test OPE methods on COBS MountainCar
         pass
 
 
