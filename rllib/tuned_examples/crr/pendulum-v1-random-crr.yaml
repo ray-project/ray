@@ -1,43 +1,39 @@
-halfcheetah_cql:
+pendulum_random_crr:
     env: 'Pendulum-v1'
     run: CRR
     config:
         input:
-          - 'rllib/tests/data/pendulum/pendulum_random_v1.1.0.json'
+          - 'tests/data/pendulum/pendulum_random_v1.1.0.json'
         framework: torch
-        soft_horizon: False
-        horizon: 1000
-        q_model_config:
-            fcnet_activation: relu
-            fcnet_hiddens: [256, 256, 256]
-        policy_model_config:
-            fcnet_activation: relu
-            fcnet_hiddens: [256, 256, 256]
-        tau: 0.005
-        target_entropy: auto
-        no_done_at_end: false
-        n_step: 3
-        rollout_fragment_length: 1
-        replay_buffer_config:
-          type: MultiAgentReplayBuffer
-          learning_starts: 256
-        train_batch_size: 256
-        target_network_update_freq: 0
-        min_train_timesteps_per_reporting: 1000
-        optimization:
-            actor_learning_rate: 0.0001
-            critic_learning_rate: 0.0003
-            entropy_learning_rate: 0.0001
-        num_workers: 0
-        num_gpus: 1
-        metrics_smoothing_episodes: 5
-        # CQL Configs
-        min_q_weight: 5.0
-        bc_iters: 20000
-        temperature: 1.0
-        num_actions: 10
-        lagrangian: False
-
-        evaluation_interval: 3
+        gamma: 0.99
+        critic_hidden_activation: 'relu'
+        critic_hiddens: [256, 256]
+        critic_lr: 0.0003
+        actor_hidden_activation: 'relu'
+        actor_hiddens: [256, 256]
+        actor_lr: 0.0003
+        actions_in_input_normalized: True
+        clip_actions: True
+        # Q function update setting
+        twin_q: True
+        target_update_grad_intervals: 10000
+        tau: 1.0
+        # evaluation
         evaluation_config:
+            explore: False
             input: sampler
+        evaluation_duration: 10
+        evaluation_duration_unit: episodes
+        evaluation_interval: 1
+        evaluation_num_workers: 4
+        evaluation_parallel_to_training: True
+        # replay buffer
+        replay_buffer_config:
+          type: ray.rllib.utils.replay_buffers.MultiAgentReplayBuffer
+          learning_starts: 0
+          capacity: 100000
+        # specific to CRR
+        weight_type: bin
+        advantage_type: max
+        max_weight: 20.0
+        n_action_sample: 4
