@@ -14,7 +14,7 @@ def test_put_out_of_disk(shutdown_only):
         },
     )
     arr = np.random.rand(20 * 1024 * 1024)  # 80 MB data
-    with pytest.raises(ray.exceptions.RaySystemError):
+    with pytest.raises(ray.exceptions.OutOfDiskError):
         ray.put(arr)
 
 
@@ -51,6 +51,7 @@ def test_task_put(shutdown_only):
 
     with pytest.raises(ray.exceptions.RayTaskError):
         ray.get(foo.remote())
+
 
 def test_task_args(shutdown_only):
     ray.init(

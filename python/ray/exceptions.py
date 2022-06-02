@@ -326,6 +326,22 @@ class ObjectStoreFullError(RayError):
         )
 
 
+class OutOfDiskError(RayError):
+    """Indicates that the local disk is full.
+
+    This is raised if the attempt to store the object fails
+    because both the object store and disk are full.
+    """
+
+    def __str__(self):
+        return super(OutOfDiskError, self).__str__() + (
+            "\n"
+            "The local object store is full of objects that are still in "
+            "scope and cannot be evicted. Tip: Use the `ray memory` command "
+            "to list active objects in the cluster."
+        )
+
+
 class ObjectLostError(RayError):
     """Indicates that the object is lost from distributed memory, due to
     node failure or system error.
