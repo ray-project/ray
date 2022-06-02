@@ -983,23 +983,24 @@ class TrainerConfig:
                 ),
                 error=True,
             )
-            self.off_policy_estimation_methods = input_evaluation
-        if isinstance(self.off_policy_estimation_methods, list) or isinstance(
-            self.off_policy_estimation_methods, tuple
+        if isinstance(off_policy_estimation_methods, list) or isinstance(
+            off_policy_estimation_methods, tuple
         ):
             ope_dict = {
-                str(ope): {"type": ope} for ope in self.off_policy_estimation_methods
+                str(ope): {"type": ope} for ope in off_policy_estimation_methods
             }
             deprecation_warning(
                 old="offline_data(off_policy_estimation_methods={}".format(
-                    self.off_policy_estimation_methods
+                    off_policy_estimation_methods
                 ),
                 new="offline_data(off_policy_estimation_methods={}".format(
                     ope_dict,
                 ),
                 error=False,
             )
-            self.off_policy_estimation_methods = ope_dict
+            off_policy_estimation_methods = ope_dict
+        if off_policy_estimation_methods is not None:
+            self.off_policy_estimation_methods = off_policy_estimation_methods
 
         if postprocess_inputs is not None:
             self.postprocess_inputs = postprocess_inputs
