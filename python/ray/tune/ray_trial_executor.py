@@ -273,6 +273,13 @@ class RayTrialExecutor:
     def mark_trial_to_checkpoint(self, trial: Trial) -> None:
         self._trials_to_cache.add(trial)
 
+    def get_checkpoints(self) -> Dict[str, str]:
+        """Returns a copy of mapping of the trial ID to pickled metadata."""
+        for trial in self._trials_to_cache:
+            self._cached_trial_state[trial.trial_id] = trial.get_json_state()
+        self._trials_to_cache.clear()
+        return self._cached_trial_state
+
     def _stage_and_update_status(self, trials: Iterable[Trial]):
         """Check and update statuses of scheduled placement groups.
 
