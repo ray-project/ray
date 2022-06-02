@@ -180,6 +180,16 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                 << rpc_address_.port() << ", worker ID " << worker_context_.GetWorkerID()
                 << ", raylet " << local_raylet_id;
 
+  // Begin to get gcs server address from raylet.
+  gcs_server_address_updater_ = std::make_unique<GcsServerAddressUpdater>(
+      options_.raylet_ip_address,
+      options_.node_manager_port,
+      [this](std::string ip, int port) {
+        absl::MutexLock lock(&gcs_server_address_mutex_);
+        gcs_server_address_.first = ip;
+        gcs_server_address_.second = port;
+      });
+
   gcs_client_ = std::make_shared<gcs::GcsClient>(options_.gcs_options);
 
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
@@ -236,7 +246,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         return std::shared_ptr<rpc::CoreWorkerClient>(
             new rpc::CoreWorkerClient(addr, *client_call_manager_));
       });
-  if (options_.worker_type != WorkerType::DRIVER) {
+
+  if (options_.worker_type == WorkerType::WORKER) {
     periodical_runner_.RunFnPeriodically(
         [this] { ExitIfParentRayletDies(); },
         RayConfig::instance().raylet_death_check_interval_milliseconds());
@@ -748,14 +759,16 @@ void CoreWorker::RegisterToGcs() {
 }
 
 void CoreWorker::ExitIfParentRayletDies() {
+  RAY_CHECK(options_.worker_type == WorkerType::WORKER);
   RAY_CHECK(!RayConfig::instance().RAYLET_PID().empty());
-  static auto raylet_pid =
-      static_cast<pid_t>(std::stoi(RayConfig::instance().RAYLET_PID()));
+  auto raylet_pid = static_cast<pid_t>(std::stoi(RayConfig::instance().RAYLET_PID()));
   bool should_shutdown = !IsProcessAlive(raylet_pid);
   if (should_shutdown) {
-    RAY_LOG(WARNING) << "Shutting down the core worker because the local raylet failed. "
-                     << "Check out the raylet.out log file. Raylet pid: " << raylet_pid;
-    QuickExit();
+    std::ostringstream stream;
+    stream << "Shutting down the core worker because the local raylet failed. "
+           << "Check out the raylet.out log file. Raylet pid: " << raylet_pid;
+    RAY_LOG(WARNING) << stream.str();
+    task_execution_service_.post([this]() { Shutdown(); }, "CoreWorker.Shutdown");
   }
 }
 
