@@ -106,7 +106,7 @@ class TorchAccelerator(Accelerator):
                 state["__getstate__"] = state["_original_get_state"]
                 del state["_original_get_state"]
             else:
-                # If model does not have a __getstate__ already defined, use default
+                # If model does not have a `__getstate__` already defined, use default
                 # implementation.
                 state = self.__dict__.copy()
                 del state["__getstate__"]
