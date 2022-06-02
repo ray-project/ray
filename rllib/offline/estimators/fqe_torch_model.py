@@ -63,6 +63,7 @@ class FQETorchModel:
                 "vf_share_layers": True,
             }
 
+        self.device = self.policy.device
         self.q_model: TorchModelV2 = ModelCatalog.get_model_v2(
             self.observation_space,
             self.action_space,
@@ -70,7 +71,7 @@ class FQETorchModel:
             model,
             framework="torch",
             name="TorchQModel",
-        )
+        ).to(self.device)
         self.target_q_model: TorchModelV2 = ModelCatalog.get_model_v2(
             self.observation_space,
             self.action_space,
@@ -78,8 +79,7 @@ class FQETorchModel:
             model,
             framework="torch",
             name="TargetTorchQModel",
-        )
-        self.device = self.policy.device
+        ).to(self.device)
         self.n_iters = n_iters
         self.lr = lr
         self.delta = delta

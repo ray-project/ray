@@ -1,6 +1,7 @@
 from ray.rllib.models.utils import get_initializer
 from ray.rllib.policy import Policy
 from typing import List, Union
+import numpy as np
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
@@ -117,14 +118,18 @@ class QRegTorchModel:
         # get rewards, old_prob, new_prob
         rewards = batch[SampleBatch.REWARDS]
         old_log_prob = torch.tensor(batch[SampleBatch.ACTION_LOGP])
-        new_log_prob = self.policy.compute_log_likelihoods(
-            actions=batch[SampleBatch.ACTIONS],
-            obs_batch=batch[SampleBatch.OBS],
-            state_batches=[batch[k] for k in state_keys],
-            prev_action_batch=batch.get(SampleBatch.PREV_ACTIONS),
-            prev_reward_batch=batch.get(SampleBatch.PREV_REWARDS),
-            actions_normalized=False,
-        ).detach().cpu()
+        new_log_prob = (
+            self.policy.compute_log_likelihoods(
+                actions=batch[SampleBatch.ACTIONS],
+                obs_batch=batch[SampleBatch.OBS],
+                state_batches=[batch[k] for k in state_keys],
+                prev_action_batch=batch.get(SampleBatch.PREV_ACTIONS),
+                prev_reward_batch=batch.get(SampleBatch.PREV_REWARDS),
+                actions_normalized=False,
+            )
+            .detach()
+            .cpu()
+        )
         prob_ratio = torch.exp(new_log_prob - old_log_prob)
 
         eps_begin = 0
@@ -163,9 +168,10 @@ class QRegTorchModel:
             # Update before next episode
             eps_begin = eps_end
 
+        indices = np.arange(batch.count)
         for _ in range(self.n_iters):
             minibatch_losses = []
-            indices = torch.randperm(batch.count)
+            np.random.shuffle(indices)
             for idx in range(0, batch.count, self.batch_size):
                 idxs = indices[idx : idx + self.batch_size]
                 q_values, _ = self.q_model({"obs": obs[idxs]}, [], None)

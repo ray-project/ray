@@ -106,7 +106,7 @@ class DirectMethod(OffPolicyEstimator):
                 ), "q_model_type must implement `estimate_v`!"
         else:
             raise ValueError(
-                f"{self.__class__.__name__}" 
+                f"{self.__class__.__name__}"
                 "estimator only supports `policy.framework`=`torch`"
             )
 
