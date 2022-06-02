@@ -40,10 +40,10 @@ logger = logging.getLogger(__name__)
 
 
 class PPOConfig(TrainerConfig):
-    """Defines a PPOTrainer configuration class from which a PPOTrainer can be built.
+    """Defines a configuration class from which a PPO Trainer can be built.
 
     Example:
-        >>> from ray.rllib.agents.ppo import PPOConfig
+        >>> from ray.rllib.algorithms.ppo import PPOConfig
         >>> config = PPOConfig().training(gamma=0.9, lr=0.01, kl_coeff=0.3)\
         ...             .resources(num_gpus=0)\
         ...             .rollouts(num_workers=4)
@@ -53,7 +53,7 @@ class PPOConfig(TrainerConfig):
         >>> trainer.train()
 
     Example:
-        >>> from ray.rllib.agents.ppo import PPOConfig
+        >>> from ray.rllib.algorithms.ppo import PPOConfig
         >>> from ray import tune
         >>> config = PPOConfig()
         >>> # Print out some default values.
@@ -73,7 +73,7 @@ class PPOConfig(TrainerConfig):
 
     def __init__(self, trainer_class=None):
         """Initializes a PPOConfig instance."""
-        super().__init__(trainer_class=trainer_class or PPOTrainer)
+        super().__init__(trainer_class=trainer_class or PPO)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -267,7 +267,7 @@ def warn_about_bad_reward_scales(config, result):
     return result
 
 
-class PPOTrainer(Trainer):
+class PPO(Trainer):
     # TODO: Change the return value of this method to return a TrainerConfig object
     #  instead.
     @classmethod
@@ -365,17 +365,17 @@ class PPOTrainer(Trainer):
     @override(Trainer)
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
-            from ray.rllib.agents.ppo.ppo_torch_policy import PPOTorchPolicy
+            from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
 
             return PPOTorchPolicy
         elif config["framework"] == "tf":
-            from ray.rllib.agents.ppo.ppo_tf_policy import PPOStaticGraphTFPolicy
+            from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
 
-            return PPOStaticGraphTFPolicy
+            return PPOTF1Policy
         else:
-            from ray.rllib.agents.ppo.ppo_tf_policy import PPOEagerTFPolicy
+            from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF2Policy
 
-            return PPOEagerTFPolicy
+            return PPOTF2Policy
 
     @ExperimentalAPI
     def training_iteration(self) -> ResultDict:
@@ -455,14 +455,14 @@ class PPOTrainer(Trainer):
         return train_results
 
 
-# Deprecated: Use ray.rllib.agents.ppo.PPOConfig instead!
+# Deprecated: Use ray.rllib.algorithms.ppo.PPOConfig instead!
 class _deprecated_default_config(dict):
     def __init__(self):
         super().__init__(PPOConfig().to_dict())
 
     @Deprecated(
-        old="ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG",
-        new="ray.rllib.agents.ppo.ppo.PPOConfig(...)",
+        old="ray.rllib.agents.ppo.ppo::DEFAULT_CONFIG",
+        new="ray.rllib.algorithms.ppo.ppo::PPOConfig(...)",
         error=False,
     )
     def __getitem__(self, item):
