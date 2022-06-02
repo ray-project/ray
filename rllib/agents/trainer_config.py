@@ -944,7 +944,7 @@ class TrainerConfig:
                     ray.rllib.offline.estimators.is::ImportanceSampling
                     or your own custom subclass.
                 You can also add additional config arguments to be passed to the
-                OffPolicyEstimator in the dict, e.g. 
+                OffPolicyEstimator in the dict, e.g.
                 {"qreg_dr": {"type": DoublyRobust, "q_model_type": "qreg", "k": 5}}
             postprocess_inputs: Whether to run postprocess_trajectory() on the
                 trajectory fragments from offline inputs. Note that postprocessing will

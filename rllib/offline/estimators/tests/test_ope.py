@@ -1,6 +1,5 @@
 import unittest
 import ray
-from ray import tune
 from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.offline.estimators import (
     ImportanceSampling,
@@ -130,7 +129,6 @@ class TestOPE(unittest.TestCase):
         # TODO (rohan): Add performance tests for off_policy_estimation_methods,
         # with fixed seeds and hyperparameters
         pass
-
 
 
 if __name__ == "__main__":
