@@ -1,5 +1,6 @@
 import unittest
 import ray
+from ray import tune
 from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.offline.estimators import (
     ImportanceSampling,
@@ -40,6 +41,10 @@ class TestOPE(unittest.TestCase):
         config = (
             DQNConfig()
             .environment(env=env_name)
+            .offline_data(
+                input_=data_file,
+                off_policy_estimation_methods={"simulation": {"type": "simulation"}},
+            )
             .exploration(
                 explore=True,
                 exploration_config={
@@ -50,9 +55,9 @@ class TestOPE(unittest.TestCase):
             .framework("torch")
             .rollouts(batch_mode="complete_episodes")
         )
+        trainer = config.build()
 
         # Train DQN for evaluation policy
-        trainer = config.build()
         while trainer._timesteps_total and trainer._timesteps_total < train_steps:
             trainer.train()
 
@@ -121,10 +126,11 @@ class TestOPE(unittest.TestCase):
         print("mean: ", mean_ret)
         print("stddev: ", std_ret)
 
-        def test_ope_in_trainer(self):
-            # TODO (rohan): Add performance tests for off_policy_estimation_methods,
-            # with fixed seeds and hyperparameters
-            pass
+    def test_ope_in_trainer(self):
+        # TODO (rohan): Add performance tests for off_policy_estimation_methods,
+        # with fixed seeds and hyperparameters
+        pass
+
 
 
 if __name__ == "__main__":

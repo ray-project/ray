@@ -179,6 +179,7 @@ class Trainer(Trainable):
         "extra_python_environs_for_worker",
         "input_config",
         "output_config",
+        "off_policy_estimation_methods",
     ]
 
     # List of top level keys with value=dict, for which we always override the

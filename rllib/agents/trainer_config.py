@@ -779,8 +779,6 @@ class TrainerConfig:
         if explore is not None:
             self.explore = explore
         if exploration_config is not None:
-            # Override entire `exploration_config` if `type` key changes.
-            # Update, if `type` key remains the same or is not specified.
             new_exploration_config = deep_update(
                 {"exploration_config": self.exploration_config},
                 {"exploration_config": exploration_config},
@@ -937,20 +935,17 @@ class TrainerConfig:
                 This only has an effect when reading offline experiences
                 ("input" is not "sampler").
                 Available keys:
-                - {"simulation": None}: Run the environment in the background, but use
-                this data for evaluation only and not for learning.
                 - {ope_method_name: {"type": ope_type, ...}} where `ope_method_name`
                 is a user-defined string to save the OPE results under, and
                 `ope_type` can be:
-                    - "is": ImportanceSampling
-                    - "wis": WeightedImportanceSampling
-                    - "dm": DirectMethod
-                    - "dr": DoublyRobust
+                    - "simulation": Run the environment in the background, but use
+                    this data for evaluation only and not for learning.
                     - Any subclass of OffPolicyEstimator, e.g.
                     ray.rllib.offline.estimators.is::ImportanceSampling
                     or your own custom subclass.
                 You can also add additional config arguments to be passed to the
-                OffPolicyEstimator in the dict, e.g. {"my_dr": {"type": "dr", "k": 5}}}
+                OffPolicyEstimator in the dict, e.g. 
+                {"qreg_dr": {"type": DoublyRobust, "q_model_type": "qreg", "k": 5}}
             postprocess_inputs: Whether to run postprocess_trajectory() on the
                 trajectory fragments from offline inputs. Note that postprocessing will
                 be done using the *current* policy, not the *behavior* policy, which
@@ -989,8 +984,6 @@ class TrainerConfig:
                 error=True,
             )
             self.off_policy_estimation_methods = input_evaluation
-        if off_policy_estimation_methods is not None:
-            self.off_policy_estimation_methods = off_policy_estimation_methods
         if isinstance(self.off_policy_estimation_methods, list) or isinstance(
             self.off_policy_estimation_methods, tuple
         ):
