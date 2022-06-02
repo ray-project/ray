@@ -85,6 +85,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--shuffle", help="shuffle instead of sort", action="store_true"
     )
+    parser.add_argument(
+        "--repartition", help="", action="store_true"
+    )
 
     args = parser.parse_args()
 
@@ -108,6 +111,8 @@ if __name__ == "__main__":
     try:
         if args.shuffle:
             ds = ds.random_shuffle()
+        elif args.repartition:
+            ds = ds.repartition(num_blocks=num_partitions, shuffle=True)
         else:
             ds = ds.sort(key="c_0")
     except Exception as e:
