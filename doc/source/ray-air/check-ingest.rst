@@ -17,6 +17,8 @@ which are not possible in less general ML data preprocessing libraries.
 Ingest Basics
 -------------
 
+.. _ingest_basics:
+
 The following figure illustrates a simple Ray AIR training job that (1) loads parquet data from S3, (2) applies a simple
 user-defined function to preprocess batches of data, and (3) runs an AIR Trainer with the given dataset and preprocessor.
 
@@ -32,7 +34,7 @@ that you pass to the Trainer. Dataset blocks that don't fit into memory will be 
 the dataset initially, typically only the first block and block metadata is read into memory. The rest of the blocks are
 not loaded until ``fit`` is called.
 
-**Preprocessing**: Next, if a preprocessor is defined, AIR will ``fit`` the preprocessor (e.g., for stateful preprocessors) on the
+**Preprocessing**: Next, if a preprocessor is defined, AIR will by default ``fit`` the preprocessor (e.g., compute statistics) on the
 ``"train"`` dataset, and then ``transform`` all given datasets with the fitted preprocessor. This is done by calling ``prep.fit_transform()``
 on the train dataset passed to the Trainer, followed by ``prep.transform()`` on remaining datasets. Preprocessors use Dataset APIs to execute
 preprocessing in a parallelized way across the cluster. Both read and preprocessing stages use Ray tasks under the hood.
@@ -65,9 +67,11 @@ datasets that don't fit into memory, and also don't need advanced training quali
 Configuring Ingest Per-Dataset
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-About dataset config / why
+It is common to need to customize processing per-dataset. For example, you may want to enable sharding
+on a validation dataset, disable preprocessing of an auxiliary dataset, or adjust ingest strategy per dataset.
 
-Each trainer has default dataset config
+Each DataParallelTrainer has a default per-dataset config given by a ``Trainer._dataset_config`` class field. It is a mapping
+from dataset names to ``DatasetConfig`` objects, and implements the default policy described in :ref:`Ingest Basics <ingest_basics>`:
 
 .. code:: python
 
@@ -82,16 +86,51 @@ Each trainer has default dataset config
         "*": DatasetConfig(),
     }
 
-How to override trainer config and view result:
+These configs can be overriden via the ``dataset_config`` kwarg, which is recursively merged with the Trainer defaults:
 
-    Trainer(dataset_config={"valid": DatasetConfig(transform=False)})
-    ``Trainer.get_dataset_config()``
+.. code:: python
 
-Common config options and what they do.
+    # Sets transform=False for the "valid" dataset of this Trainer.
+    MyTrainer(..., dataset_config={"valid": DatasetConfig(transform=False)})
 
-    Fit?
-    Split?
-    Transform?
+Use ``Trainer.get_dataset_config()`` to get the final merged DatasetConfig for debugging purposes. Here are some examples of configuring
+Dataset ingest options and what they do:
+
+.. tabbed:: Split All
+
+    This example shows overriding the split config for the "valid" and "test" datasets.
+
+    .. code:: python
+
+        my_trainer = MyTrainer(
+            ...,
+            datasets={
+                "train": train_ds,
+                "valid": valid_ds,
+                "test": test_ds,
+            },
+            dataset_config={
+                "valid": DatasetConfig(split=True),
+                "test": DatasetConfig(split=True),
+            },
+        )
+
+.. tabbed:: Disable Transform
+
+    This example shows overriding the transform config for the "side" dataset.
+
+    .. code:: python
+
+        my_trainer = MyTrainer(
+            ...,
+            datasets={
+                "train": train_ds,
+                "side": side_ds,
+            },
+            dataset_config={
+                "side": DatasetConfig(transform=False),
+            },
+        )
 
 Ingest and Ray Tune
 -------------------
