@@ -3,9 +3,9 @@ import unittest
 
 import ray
 from ray.rllib.agents.callbacks import DefaultCallbacks
-import ray.rllib.algorithms.ppo as ppo
-from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF2Policy
-from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
+import ray.rllib.agents.ppo as ppo
+from ray.rllib.agents.ppo.ppo_tf_policy import PPOEagerTFPolicy
+from ray.rllib.agents.ppo.ppo_torch_policy import PPOTorchPolicy
 from ray.rllib.evaluation.postprocessing import (
     compute_gae_for_sample_batch,
     Postprocessing,
@@ -89,7 +89,7 @@ class TestPPO(unittest.TestCase):
         ray.shutdown()
 
     def test_ppo_compilation_and_schedule_mixins(self):
-        """Test whether PPO can be built with all frameworks."""
+        """Test whether a PPOTrainer can be built with all frameworks."""
 
         # Build a PPOConfig object.
         config = (
@@ -172,7 +172,7 @@ class TestPPO(unittest.TestCase):
         # Test against all frameworks.
         for fw in framework_iterator(config):
             # Default Agent should be setup with StochasticSampling.
-            trainer = ppo.PPO(config=config, env="FrozenLake-v1")
+            trainer = ppo.PPOTrainer(config=config, env="FrozenLake-v1")
             # explore=False, always expect the same (deterministic) action.
             a_ = trainer.compute_single_action(
                 obs, explore=False, prev_action=np.array(2), prev_reward=np.array(1.0)
@@ -223,7 +223,7 @@ class TestPPO(unittest.TestCase):
         )
 
         for fw, sess in framework_iterator(config, session=True):
-            trainer = ppo.PPO(config=config, env="CartPole-v0")
+            trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
             policy = trainer.get_policy()
 
             # Check the free log std var is created.
@@ -265,7 +265,7 @@ class TestPPO(unittest.TestCase):
         # Expect warning.
         print(f"Accessing learning-rate from legacy config dict: {ppo_config['lr']}")
         # Build Trainer.
-        ppo_trainer = ppo.PPO(config=ppo_config, env="CartPole-v1")
+        ppo_trainer = ppo.PPOTrainer(config=ppo_config, env="CartPole-v1")
         print(ppo_trainer.train())
 
     def test_ppo_loss_function(self):
@@ -286,7 +286,7 @@ class TestPPO(unittest.TestCase):
         )
 
         for fw, sess in framework_iterator(config, session=True):
-            trainer = ppo.PPO(config=config, env="CartPole-v0")
+            trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
             policy = trainer.get_policy()
 
             # Check no free log std var by default.
@@ -313,7 +313,7 @@ class TestPPO(unittest.TestCase):
 
             # Calculate actual PPO loss.
             if fw in ["tf2", "tfe"]:
-                PPOTF2Policy.loss(policy, policy.model, Categorical, train_batch)
+                PPOEagerTFPolicy.loss(policy, policy.model, Categorical, train_batch)
             elif fw == "torch":
                 PPOTorchPolicy.loss(
                     policy, policy.model, policy.dist_class, train_batch

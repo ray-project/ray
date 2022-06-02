@@ -351,12 +351,12 @@ class WandbIntegrationTest(unittest.TestCase):
         """Test compatibility with RLlib configuration dicts"""
         # Local import to avoid tune dependency on rllib
         try:
-            from ray.rllib.algorithms.ppo import PPO
+            from ray.rllib.agents.ppo import PPOTrainer
         except ImportError:
             self.skipTest("ray[rllib] not available")
             return
 
-        class WandbPPOTrainer(_MockWandbTrainableMixin, PPO):
+        class WandbPPOTrainer(_MockWandbTrainableMixin, PPOTrainer):
             pass
 
         config = {
