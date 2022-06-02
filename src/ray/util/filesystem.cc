@@ -80,7 +80,7 @@ bool FileSystemMonitor::OverCapacity() const {
   if (!space_info.has_value()) {
     return false;
   }
-  if (space_info->capacity == 0) {
+  if (space_info->capacity <= 0) {
     RAY_LOG_EVERY_MS(ERROR, 60 * 1000) << ray_file_path_ << " has no capacity.";
     return true;
   }
