@@ -84,6 +84,7 @@ class TestOPE(unittest.TestCase):
             },
         }
         mean_ret = {}
+        std_ret = {}
         # Run estimators on data
         for name, method_config in estimators.items():
             estimator_cls = method_config.pop("type")
@@ -97,6 +98,7 @@ class TestOPE(unittest.TestCase):
             estimates = estimator.get_metrics()
             assert len(estimates) == n_episodes
             mean_ret[name] = np.mean([e.metrics["v_new"] for e in estimates])
+            std_ret[name] = np.std([e.metrics["v_new"] for e in estimates])
 
         # Simulate Monte-Carlo rollouts
         mc_ret = []
@@ -115,7 +117,9 @@ class TestOPE(unittest.TestCase):
             mc_ret.append(ret)
 
         mean_ret["simulation"] = np.mean(mc_ret)
-        print(mean_ret)
+        std_ret["simulation"] = np.std(mc_ret)
+        print("mean: ", mean_ret)
+        print("stddev: ", std_ret)
 
         def test_ope_in_trainer(self):
             # TODO (rohan): Add performance tests for off_policy_estimation_methods,
