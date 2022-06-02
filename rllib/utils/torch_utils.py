@@ -165,12 +165,7 @@ def convert_to_torch_tensor(x: TensorStructType, device: Optional[str] = None):
             # Object type (e.g. info dicts in train batch): leave as-is.
             if item.dtype == object:
                 return item
-            # Non-writable numpy-arrays will cause PyTorch warning.
-            elif item.flags.writeable is False:
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore")
-                    tensor = torch.as_tensor(item, device="cuda")
-            # Already numpy: Wrap as torch tensor.
+            # Already cupy: Wrap as torch tensor.
             else:
                 tensor = torch.as_tensor(item, device="cuda")
         # Everything else: Convert to numpy, then wrap as torch tensor.

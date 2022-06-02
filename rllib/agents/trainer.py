@@ -419,7 +419,7 @@ class Trainer(Trainable):
             # unpreprocessed spaces).
             self.config["multiagent"][
                 "policies"
-            ] = self.workers.local_worker().policy_dict
+            ] = ray.get(self.workers.local_worker().get_policy_dict.remote())
 
         # Evaluation WorkerSet setup.
         # User would like to setup a separate evaluation worker set.

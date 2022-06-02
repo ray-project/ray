@@ -7,6 +7,7 @@ import numpy as np
 import cupy as cp
 import platform
 import os
+from regex import I
 import tree  # pip install dm_tree
 from typing import (
     Any,
@@ -380,8 +381,8 @@ class RolloutWorker(ParallelIteratorWorker):
             disable_env_checking: If True, disables the env checking module that
                 validates the properties of the passed environment.
         """
-        self.buffer_key_list = []
-        self.buffer_list = [cp.ones([1,1])] * 12
+        self.buffer_key_list = [None] * 12
+        self.buffer_list = [None] * 12
         # Deprecated args.
         if policy is not None:
             deprecation_warning("policy", "policy_spec", error=False)
@@ -1327,6 +1328,9 @@ class RolloutWorker(ParallelIteratorWorker):
         if policies_to_train is not None:
             self.set_is_policy_to_train(policies_to_train)
 
+    def get_policy_dict(self):
+        return self.policy_dict
+
     @DeveloperAPI
     def set_policy_mapping_fn(
         self,
@@ -1572,27 +1576,39 @@ class RolloutWorker(ParallelIteratorWorker):
     #     collective.recv(self.policy_map_buffer, src_rank, group_name)
 
     def broadcast(self, group_name="default", src_rank=0):
-        # TODO (jiaodong): build better API to send multiple tensors in batch
+        print(f">>>> Putting current policy map to buffer_list")
+        self.policy_map_to_buffer_list()
         print(f">>>> Broadcasting ... len: buffer_key_list: {len(self.buffer_key_list)}, len: buffer_list: {len(self.buffer_list)}")
+        print(f">>>> group_name: {group_name}, src_rank: {src_rank}")
         # nccl_util.groupStart()
-        for tensor in enumerate(self.buffer_list):
-            print(f">>>> Broadcasting tensor of type {type(tensor)}.. ")
-            collective.broadcast(tensor, src_rank, group_name)
+        for i in range(len(self.buffer_list)):
+            print(f">>>> Broadcasting tensor of type {type(self.buffer_list[i])}, shape: {self.buffer_list[i].shape}")
+            collective.broadcast(self.buffer_list[i], src_rank, group_name)
         # nccl_util.groupEnd()
+        print(f">>>> Putting current buffer_list to policy map")
+        self.buffer_list_to_policy_map()
 
-    def set_buffer_key_list(self, buffer_key_list: List[str]):
-        self.buffer_key_list = buffer_key_list
+    # def set_buffer_key_list(self, buffer_key_list: List[str]):
+    #     self.buffer_key_list = buffer_key_list
 
-    def set_buffer_list(self, buffer_list: List[cp.ndarray]):
-        self.buffer_list = buffer_list
-        print(f">>>> buffer list set as {self.buffer_list}")
+    # def set_buffer_list(self, buffer_list: List[cp.ndarray]):
+    #     self.buffer_list = buffer_list
 
-    # def get_policy_map_buffer(self):
-    #     return self.policy_map_buffer
+    def policy_map_to_buffer_list(self):
+        """Given a policy map, convert into list of tensor buffers with out
+        nesting
+        """
+        self.buffer_key_list = []
+        self.buffer_list = []
+        weights = self.get_weights()
+        for key in weights['default_policy'].keys():
+            tensor = weights['default_policy'][key]
+            self.buffer_key_list.append(key)
+            self.buffer_list.append(tensor)
 
-    def buffer_to_policy_map(self):
-        self.policy_map['default_policy'][self.buffer_key] = self.buffer
-
+    def buffer_list_to_policy_map(self):
+        for buffer_key, buffer_tensor in zip(self.buffer_key_list, self.buffer_list):
+            self.policy_map['default_policy'][buffer_key] = buffer_tensor
 
     @DeveloperAPI
     def get_weights(
