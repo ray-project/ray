@@ -5,7 +5,7 @@ import queue
 import unittest
 
 import ray
-from ray.rllib.agents.ppo.ppo_tf_policy import PPOStaticGraphTFPolicy
+from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, STEPS_TRAINED_COUNTER
@@ -38,13 +38,13 @@ def iter_list(values):
 def make_workers(n):
     local = RolloutWorker(
         env_creator=lambda _: gym.make("CartPole-v0"),
-        policy_spec=PPOStaticGraphTFPolicy,
+        policy_spec=PPOTF1Policy,
         rollout_fragment_length=100,
     )
     remotes = [
         RolloutWorker.as_remote().remote(
             env_creator=lambda _: gym.make("CartPole-v0"),
-            policy_spec=PPOStaticGraphTFPolicy,
+            policy_spec=PPOTF1Policy,
             rollout_fragment_length=100,
         )
         for _ in range(n)

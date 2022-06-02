@@ -6,15 +6,11 @@ import json
 from ray.experimental.dag import (
     DAGNode,
     ClassNode,
-    ClassMethodNode,
     FunctionNode,
     InputNode,
     InputAttributeNode,
     DAGNODE_TYPE_KEY,
 )
-from ray.serve.pipeline.deployment_node import DeploymentNode
-from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
-from ray.serve.pipeline.deployment_function_node import DeploymentFunctionNode
 from ray.serve.deployment_executor_node import DeploymentExecutorNode
 from ray.serve.deployment_method_executor_node import DeploymentMethodExecutorNode
 from ray.serve.deployment_function_executor_node import DeploymentFunctionExecutorNode
@@ -133,12 +129,6 @@ def dagnode_from_json(input_json: Any) -> Union[DAGNode, RayServeHandle, Any]:
         # Ray DAG Inputs
         InputNode.__name__: InputNode,
         InputAttributeNode.__name__: InputAttributeNode,
-        # Ray DAG Nodes
-        ClassMethodNode.__name__: ClassMethodNode,
-        # Deployment transformation nodes
-        DeploymentNode.__name__: DeploymentNode,
-        DeploymentMethodNode.__name__: DeploymentMethodNode,
-        DeploymentFunctionNode.__name__: DeploymentFunctionNode,
         # Deployment graph execution nodes
         DeploymentExecutorNode.__name__: DeploymentExecutorNode,
         DeploymentMethodExecutorNode.__name__: DeploymentMethodExecutorNode,

@@ -216,7 +216,7 @@ class DatasetStats:
             stage_uuid = self.dataset_uuid + stage_name
             out += "Stage {} {}: ".format(self.number, stage_name)
             if stage_uuid in already_printed:
-                out += "[execution cached]"
+                out += "[execution cached]\n"
             else:
                 already_printed.add(stage_uuid)
                 out += self._summarize_blocks(metadata, is_substage=False)
@@ -233,7 +233,7 @@ class DatasetStats:
                 out += "\n"
                 out += "\tSubstage {} {}: ".format(n, stage_name)
                 if stage_uuid in already_printed:
-                    out += "\t[execution cached]"
+                    out += "\t[execution cached]\n"
                 else:
                     already_printed.add(stage_uuid)
                     out += self._summarize_blocks(metadata, is_substage=True)

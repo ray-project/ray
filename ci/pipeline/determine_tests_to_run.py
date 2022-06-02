@@ -12,6 +12,7 @@ import subprocess
 import sys
 
 
+# NOTE(simon): do not add type hint here because it's ran using python2 in CI.
 def list_changed_files(commit_range):
     """Returns a list of names of files changed in the given commit range.
 
@@ -19,7 +20,7 @@ def list_changed_files(commit_range):
     occurs while running git, the script will abort.
 
     Args:
-        commit_range (string): The commit range to diff, consisting of the two
+        commit_range: The commit range to diff, consisting of the two
             commit IDs separated by \"..\"
 
     Returns:

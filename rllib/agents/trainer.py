@@ -117,7 +117,7 @@ def with_common_config(extra_config: PartialTrainerConfigDict) -> TrainerConfigD
     """Returns the given config dict merged with common agent confs.
 
     Args:
-        extra_config (PartialTrainerConfigDict): A user defined partial config
+        extra_config: A user defined partial config
             which will get merged with a default TrainerConfig() object and returned
             as plain python dict.
 
@@ -1431,9 +1431,9 @@ class Trainer(Trainable):
                 If None, the output format will be DL framework specific.
 
         Example:
-            >>> from ray.rllib.agents.ppo import PPOTrainer
+            >>> from ray.rllib.algorithms.ppo import PPO
             >>> # Use a Trainer from RLlib or define your own.
-            >>> trainer = PPOTrainer(...) # doctest: +SKIP
+            >>> trainer = PPO(...) # doctest: +SKIP
             >>> for _ in range(10): # doctest: +SKIP
             >>>     trainer.train() # doctest: +SKIP
             >>> trainer.export_policy_model("/tmp/dir") # doctest: +SKIP
@@ -1456,9 +1456,9 @@ class Trainer(Trainable):
             policy_id: Optional policy id to export.
 
         Example:
-            >>> from ray.rllib.agents.ppo import PPOTrainer
+            >>> from ray.rllib.algorithms.ppo import PPO
             >>> # Use a Trainer from RLlib or define your own.
-            >>> trainer = PPOTrainer(...) # doctest: +SKIP
+            >>> trainer = PPO(...) # doctest: +SKIP
             >>> for _ in range(10): # doctest: +SKIP
             >>>     trainer.train() # doctest: +SKIP
             >>> trainer.export_policy_checkpoint("/tmp/export_dir") # doctest: +SKIP
@@ -1478,8 +1478,8 @@ class Trainer(Trainable):
             policy_id: Optional policy id to import into.
 
         Example:
-            >>> from ray.rllib.agents.ppo import PPOTrainer
-            >>> trainer = PPOTrainer(...) # doctest: +SKIP
+            >>> from ray.rllib.algorithms.ppo import PPO
+            >>> trainer = PPO(...) # doctest: +SKIP
             >>> trainer.import_policy_model_from_h5("/tmp/weights.h5") # doctest: +SKIP
             >>> for _ in range(10): # doctest: +SKIP
             >>>     trainer.train() # doctest: +SKIP
@@ -2148,7 +2148,7 @@ class Trainer(Trainable):
         Note: Currently, only h5 files are supported.
 
         Args:
-            import_file (str): The file to import the model from.
+            import_file: The file to import the model from.
 
         Returns:
             A dict that maps ExportFormats to successfully exported models.
