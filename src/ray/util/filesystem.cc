@@ -76,6 +76,9 @@ std::optional<std::filesystem::space_info> FileSystemMonitor::Space() const {
 }
 
 bool FileSystemMonitor::OverCapacity() const {
+  if (capacity_threshold_ == 1) {
+    return false;
+  }
   auto space_info = Space();
   if (!space_info.has_value()) {
     return false;

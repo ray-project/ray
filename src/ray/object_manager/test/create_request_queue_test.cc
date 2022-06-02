@@ -17,6 +17,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/common/status.h"
+#include "ray/util/filesystem.h"
 
 namespace plasma {
 
@@ -52,7 +53,9 @@ class CreateRequestQueueTest : public ::testing::Test {
   CreateRequestQueueTest()
       : oom_grace_period_s_(1),
         current_time_ns_(0),
+        monitor_("/", 1),
         queue_(
+            monitor_,
             /*oom_grace_period_s=*/oom_grace_period_s_,
             /*spill_object_callback=*/[&]() { return false; },
             /*on_global_gc=*/[&]() { num_global_gc_++; },
@@ -68,6 +71,7 @@ class CreateRequestQueueTest : public ::testing::Test {
 
   int64_t oom_grace_period_s_;
   int64_t current_time_ns_;
+  ray::FileSystemMonitor monitor_;
   CreateRequestQueue queue_;
   int num_global_gc_ = 0;
 };
@@ -180,7 +184,9 @@ TEST_F(CreateRequestQueueTest, TestFallbackAllocator) {
 TEST(CreateRequestQueueParameterTest, TestOomInfiniteRetry) {
   int num_global_gc_ = 0;
   int64_t current_time_ns;
+  ray::FileSystemMonitor monitor{"/", 1};
   CreateRequestQueue queue(
+      monitor,
       /*oom_grace_period_s=*/100,
       // Spilling is failing.
       /*spill_object_callback=*/[&]() { return false; },
@@ -212,7 +218,9 @@ TEST(CreateRequestQueueParameterTest, TestOomInfiniteRetry) {
 }
 
 TEST_F(CreateRequestQueueTest, TestTransientOom) {
+  ray::FileSystemMonitor monitor{"/", 1};
   CreateRequestQueue queue(
+      monitor,
       /*oom_grace_period_s=*/oom_grace_period_s_,
       /*spill_object_callback=*/[&]() { return true; },
       /*on_global_gc=*/[&]() { num_global_gc_++; },
@@ -258,6 +266,7 @@ TEST_F(CreateRequestQueueTest, TestTransientOom) {
 TEST_F(CreateRequestQueueTest, TestOomTimerWithSpilling) {
   int spill_object_callback_ret = true;
   CreateRequestQueue queue(
+      monitor_,
       /*oom_grace_period_s=*/oom_grace_period_s_,
       /*spill_object_callback=*/
       [&]() { return spill_object_callback_ret; },
@@ -316,6 +325,7 @@ TEST_F(CreateRequestQueueTest, TestOomTimerWithSpilling) {
 TEST_F(CreateRequestQueueTest, TestTransientOomThenOom) {
   bool is_spilling_possible = true;
   CreateRequestQueue queue(
+      monitor_,
       /*oom_grace_period_s=*/oom_grace_period_s_,
       /*spill_object_callback=*/[&]() { return is_spilling_possible; },
       /*on_global_gc=*/[&]() { num_global_gc_++; },
@@ -368,7 +378,9 @@ TEST_F(CreateRequestQueueTest, TestTransientOomThenOom) {
 
 TEST(CreateRequestQueueParameterTest, TestNoEvictIfFull) {
   int64_t current_time_ns = 0;
+  ray::FileSystemMonitor monitor{"/", 1};
   CreateRequestQueue queue(
+      monitor,
       /*oom_grace_period_s=*/1,
       /*spill_object_callback=*/[&]() { return false; },
       /*on_global_gc=*/[&]() {},
