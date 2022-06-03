@@ -2,7 +2,7 @@ import pytest
 import unittest
 
 import ray
-import ray.rllib.algorithms.ddpg.apex as apex_ddpg
+import ray.rllib.algorithms.apex_ddpg.apex_ddpg as apex_ddpg
 from ray.rllib.utils.test_utils import (
     check,
     check_compute_single_action,
