@@ -35,3 +35,10 @@ def test_convert_image_df_to_tensor():
 
     expected_tensor = tf.zeros([4, 3, 32, 32], dtype=images.dtype)
     tf.debugging.assert_equal(actual_tensor, expected_tensor)
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+
+    sys.exit(pytest.main(["-v", "-x", __file__]))
