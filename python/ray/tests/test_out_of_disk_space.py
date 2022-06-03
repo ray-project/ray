@@ -16,6 +16,20 @@ def calculate_capacity_threshold(disk_capacity_in_bytes):
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Not targeting Windows")
+def test_put_fits_in_memory(shutdown_only):
+    local_fs_capacity_threshold = calculate_capacity_threshold(10 * 1024 * 1024)
+    ray.init(
+        num_cpus=1,
+        object_store_memory=80 * 1024 * 1024,
+        _system_config={
+            "local_fs_capacity_threshold": local_fs_capacity_threshold,
+        },
+    )
+    arr = np.random.rand(9 * 1024 * 1024)  # 160 MB data
+    ray.put(arr)
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not targeting Windows")
 def test_put_out_of_disk(shutdown_only):
     local_fs_capacity_threshold = calculate_capacity_threshold(10 * 1024 * 1024)
     ray.init(
