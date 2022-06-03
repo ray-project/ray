@@ -51,7 +51,7 @@ NODE_QUERY_FAILURE_WARNING = (
 
 
 def _convert_filters_type(
-    filter: List[Tuple[str, str]], schema: StateSchema
+    filter: List[Tuple[str, SupportedFilterType]], schema: StateSchema
 ) -> List[Tuple[str, SupportedFilterType]]:
     """Convert the given filter's type to SupportedFilterType.
 
@@ -71,7 +71,10 @@ def _convert_filters_type(
     for col, val in filter:
         if col in schema:
             column_type = schema[col]
-            if column_type is int:
+            if isinstance(val, column_type):
+                # Do nothing.
+                pass
+            elif column_type is int:
                 try:
                     val = int(val)
                 except ValueError:
