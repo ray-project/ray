@@ -101,7 +101,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         wait_for_crd("rayclusters.ray.io")
 
     def _get_ray_cr_config(
-        self, min_replicas=0, max_replicas=300, replicas=0
+        self, min_replicas=0, cpu_replicas=0, gpu_replicas=0
     ) -> Dict[str, Any]:
         """Get Ray CR config yaml.
 
@@ -116,16 +116,17 @@ class KubeRayAutoscalingTest(unittest.TestCase):
             ray_cr_config_str = ray_cr_config_file.read()
         config = yaml.safe_load(ray_cr_config_str)
         cpu_group = config["spec"]["workerGroupSpecs"][0]
-        cpu_group["replicas"] = replicas
+        cpu_group["replicas"] = cpu_replicas
         cpu_group["minReplicas"] = min_replicas
-        cpu_group["maxReplicas"] = max_replicas
+        # Keep maxReplicas big throughout the test.
+        cpu_group["maxReplicas"] = 300
 
         # Add a GPU-annotated group.
         # (We're not using real GPUs, just adding a GPU annotation for the autoscaler
         # and Ray scheduler.)
         gpu_group = copy.deepcopy(cpu_group)
         gpu_group["rayStartParams"]["num-gpus"] = "1"
-        gpu_group["replicas"] = 0
+        gpu_group["replicas"] = gpu_replicas
         gpu_group["minReplicas"] = 0
         gpu_group["maxReplicas"] = 1
         gpu_group["groupName"] = "fake-gpu-group"
@@ -158,8 +159,8 @@ class KubeRayAutoscalingTest(unittest.TestCase):
     def _apply_ray_cr(
         self,
         min_replicas=0,
-        max_replicas=300,
-        replicas=0,
+        cpu_replicas=0,
+        gpu_replicas=0,
         validate_replicas: bool = False,
     ) -> None:
         """Apply Ray CR config yaml, with configurable replica fields for the cpu
@@ -167,7 +168,8 @@ class KubeRayAutoscalingTest(unittest.TestCase):
 
         If the CR does not yet exist, `replicas` can be set as desired.
         If the CR does already exist, the recommended usage is this:
-            (1) Set `replicas` to what we currently expect it to be.
+            (1) Set `cpu_replicas` and `gpu_replicas` to what we currently expect them
+                to be.
             (2) Set `validate_replicas` to True. We will then check that the replicas
             set on the CR coincides with `replicas`.
         """
@@ -176,13 +178,23 @@ class KubeRayAutoscalingTest(unittest.TestCase):
                 raycluster = get_raycluster(
                     RAY_CLUSTER_NAME, namespace=RAY_CLUSTER_NAMESPACE
                 )
-                assert raycluster["spec"]["workerGroupSpecs"][0]["replicas"] == replicas
+                assert (
+                    raycluster["spec"]["workerGroupSpecs"][0]["replicas"]
+                    == cpu_replicas
+                )
+                assert (
+                    raycluster["spec"]["workerGroupSpecs"][1]["replicas"]
+                    == gpu_replicas
+                )
                 logger.info(
-                    f"Validated that worker replicas for {RAY_CLUSTER_NAME}"
-                    f" is currently {replicas}."
+                    f"Validated that cpu and gpu worker replicas for "
+                    f"{RAY_CLUSTER_NAME} are currently {cpu_replicas} and"
+                    f" {gpu_replicas}, respectively."
                 )
             cr_config = self._get_ray_cr_config(
-                min_replicas=min_replicas, max_replicas=max_replicas, replicas=replicas
+                min_replicas=min_replicas,
+                cpu_replicas=cpu_replicas,
+                gpu_replicas=gpu_replicas,
             )
             yaml.dump(cr_config, config_file)
             config_file.flush()
@@ -230,7 +242,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         """
         # Cluster creation
         logger.info("Creating a RayCluster with no worker pods.")
-        self._apply_ray_cr(min_replicas=0, replicas=0, max_replicas=3)
+        self._apply_ray_cr(min_replicas=0, cpu_replicas=0, gpu_replicas=0)
 
         logger.info("Confirming presence of head.")
         wait_for_pods(goal_num_pods=1, namespace=RAY_CLUSTER_NAMESPACE)
@@ -311,9 +323,9 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         # (which is what we expect to be already present in the Ray CR)
         self._apply_ray_cr(
             min_replicas=2,
-            replicas=1,
-            # Validate that replicas set on the Ray CR by the autoscaler
-            # is indeed 1:
+            cpu_replicas=1,
+            gpu_replicas=0,
+            # Confirm CPU, GPU replicas set on the Ray CR by the autoscaler are 1, 0:
             validate_replicas=True,
         )
         logger.info("Confirming number of workers.")
@@ -353,6 +365,15 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         assert "on-a-gpu-node" in out
 
         # Scale-down
+        logger.info("Reducing min workers to 0.")
+        # Max workers remains 300.
+        self._apply_ray_cr(
+            min_replicas=0,
+            cpu_replicas=2,
+            gpu_replicas=1,
+            # Confirm CPU, GPU replicas set on the Ray CR by the autoscaler are 2, 1:
+            validate_replicas=True,
+        )
         logger.info("Removing resource demands.")
         kubectl_exec_python_script(
             script_name="scale_down.py",
@@ -362,18 +383,13 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         )
         # Autoscaler should trigger scale-down after resource demands are removed.
         logger.info("Confirming workers are gone.")
+        # Check that stdout autoscaler logging is working.
+        logs = kubectl_logs(head_pod, namespace="default", container="autoscaler")
+        assert "Removing 1 nodes of type fake-gpu-group (idle)." in logs
+        assert "Removing 2 nodes of type small-group (idle)." in logs
         wait_for_pods(goal_num_pods=1, namespace=RAY_CLUSTER_NAMESPACE)
 
         # Check custom resource upscaling.
-        # First, restore max replicas to allow worker upscaling.
-        self._apply_ray_cr(
-            min_replicas=0,
-            max_replicas=10,
-            replicas=0,
-            # Check that the replicas set on the Ray CR by the
-            # autoscaler is indeed 2:
-            validate_replicas=True,
-        )
 
         # Submit two {"Custom2": 3} bundles to upscale two workers with 5
         # Custom2 capacity each.

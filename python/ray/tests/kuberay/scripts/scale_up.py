@@ -21,7 +21,7 @@ def main():
         Otherwise, raise an Exception.
         """
         stdout_so_far = out_stream.getvalue()
-        if SCALE_MESSAGE in out_stream.getvalue():
+        if SCALE_MESSAGE in stdout_so_far:
             return True
         else:
             # This error will be logged to stderr once if SCALE_MESSAGE doesn't
@@ -33,6 +33,7 @@ def main():
 
     # Wait for the expected autoscaler event message to appear.
     # It should take at most (5 + epsilon) seconds for this to happen.
+    # [5 sec autoscaler poll interval + processing time]
     # To prevent flakiness, use a large timeout of 15 seconds.
     test_utils.wait_for_condition(
         condition_predictor=scale_event_logged, timeout=15, retry_interval_ms=1500
