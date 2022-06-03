@@ -415,18 +415,18 @@ class ServeControllerClient:
         if asyncio_loop_running and sync and _WARN_SYNC_ASYNC_HANDLE_CONTEXT:
             logger.warning(
                 "You are retrieving a sync handle inside an asyncio loop. "
-                "Try getting client.get_handle(.., sync=False) to get better "
-                "performance. Learn more at https://docs.ray.io/en/master/"
-                "serve/http-servehandle.html#sync-and-async-handles"
+                "Try getting Deployment.get_handle(.., sync=False) to get better "
+                "performance. Learn more at https://docs.ray.io/en/latest/serve/"
+                "handle-guide.html#sync-and-async-handles"
             )
 
         if not asyncio_loop_running and not sync and _WARN_SYNC_ASYNC_HANDLE_CONTEXT:
             logger.warning(
                 "You are retrieving an async handle outside an asyncio loop. "
-                "You should make sure client.get_handle is called inside a "
-                "running event loop. Or call client.get_handle(.., sync=True) "
-                "to create sync handle. Learn more at https://docs.ray.io/en/"
-                "master/serve/http-servehandle.html#sync-and-async-handles"
+                "You should make sure Deployment.get_handle is called inside a "
+                "running event loop. Or call Deployment.get_handle(.., sync=True) "
+                "to create sync handle. Learn more at https://docs.ray.io/en/latest/serve/"
+                "handle-guide.html#sync-and-async-handles"
             )
 
         if sync:
