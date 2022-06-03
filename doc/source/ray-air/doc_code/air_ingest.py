@@ -147,6 +147,7 @@ from ray.data import DatasetPipeline
 from ray.ml.train.data_parallel_trainer import DataParallelTrainer
 from ray.ml.config import DatasetConfig
 
+
 def train_loop_per_worker():
     data_shard = train.get_dataset_shard("train")
     assert isinstance(data_shard, DatasetPipeline)
@@ -182,6 +183,7 @@ from ray.data import Dataset
 from ray.ml.train.data_parallel_trainer import DataParallelTrainer
 from ray.ml.config import DatasetConfig
 
+
 def train_loop_per_worker():
     data_shard = train.get_dataset_shard("train")
     assert isinstance(data_shard, Dataset)
@@ -215,6 +217,7 @@ from ray import train
 from ray.data import DatasetPipeline
 from ray.ml.train.data_parallel_trainer import DataParallelTrainer
 from ray.ml.config import DatasetConfig
+
 
 def train_loop_per_worker():
     data_shard = train.get_dataset_shard("train")
