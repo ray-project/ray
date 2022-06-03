@@ -91,9 +91,11 @@ TEST(FileSystemTest, TestOverCapacity) {
   FileSystemMonitor monitor(tmp_path, 0.1);
   ASSERT_FALSE(monitor.OverCapacityImpl(std::nullopt));
   ASSERT_FALSE(monitor.OverCapacityImpl({std::filesystem::space_info{
-      /* capacity */ 11, /* free */ 10, /* available */ 1}}));
+      /* capacity */ 11, /* free */ 10, /* available */ 10}}));
   ASSERT_TRUE(monitor.OverCapacityImpl(
-      {std::filesystem::space_info{/* capacity */ 11, /* free */ 9, /* available */ 2}}));
+      {std::filesystem::space_info{/* capacity */ 11, /* free */ 9, /* available */ 9}}));
+  ASSERT_TRUE(monitor.OverCapacityImpl(
+      {std::filesystem::space_info{/* capacity */ 0, /* free */ 0, /* available */ 0}}));
 }
 
 }  // namespace ray
