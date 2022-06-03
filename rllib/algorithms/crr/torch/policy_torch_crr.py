@@ -209,6 +209,7 @@ class CRRTorchPolicy(TorchPolicyV2, TargetNetworkMixin):
         # questions: Do we use pessimistic q approximate or the normal one?
         advantage_type = self.config["advantage_type"]
         n_action_sample = self.config["n_action_sample"]
+        breakpoint()
         batch_size = len(train_batch)
         out_t, _ = model(train_batch)
 
