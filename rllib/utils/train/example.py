@@ -64,7 +64,7 @@ def train_func(config):
 if __name__ == "__main__":
     ray.init(num_cpus=12)
 
-    scaling_config = {"num_workers": 1, "use_gpu": False}
+    scaling_config = {"num_workers": 2, "use_gpu": False}
 
     trainer1 = TorchTrainer(
         train_loop_per_worker=train_func,
