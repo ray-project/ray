@@ -635,7 +635,7 @@ py_test(
 
 # --------------------------------------------------------------------
 # Agents (Compilation, Losses, simple agent functionality tests)
-# rllib/agents/
+# rllib/algorithms/
 #
 # Tag: algorithms_dir
 # --------------------------------------------------------------------
@@ -709,7 +709,7 @@ py_test(
     name = "test_apex_dqn",
     tags = ["team:ml", "algorithms_dir"],
     size = "large",
-    srcs = ["agents/dqn/tests/test_apex_dqn.py"]
+    srcs = ["algorithms/apex_dqn/tests/test_apex_dqn.py"]
 )
 
 # APEX-DDPG
@@ -717,7 +717,7 @@ py_test(
     name = "test_apex_ddpg",
     tags = ["team:ml", "algorithms_dir"],
     size = "medium",
-    srcs = ["algorithms/ddpg/tests/test_apex_ddpg.py"]
+    srcs = ["algorithms/apex_ddpg/tests/test_apex_ddpg.py"]
 )
 
 # APPO
@@ -742,6 +742,16 @@ py_test(
     tags = ["team:ml", "algorithms_dir"],
     size = "medium",
     srcs = ["algorithms/bandit/tests/test_bandits.py"],
+)
+
+# BC
+py_test(
+    name = "test_bc",
+    tags = ["team:ml", "algorithms_dir"],
+    size = "large",
+    # Include the json data file.
+    data = ["tests/data/cartpole/large.json"],
+    srcs = ["algorithms/bc/tests/test_bc.py"]
 )
 
 # CQL
@@ -816,16 +826,6 @@ py_test(
     srcs = ["algorithms/marwil/tests/test_marwil.py"]
 )
 
-# BC (sub-type of MARWIL)
-py_test(
-    name = "test_bc",
-    tags = ["team:ml", "algorithms_dir"],
-    size = "large",
-    # Include the json data file.
-    data = ["tests/data/cartpole/large.json"],
-    srcs = ["algorithms/marwil/tests/test_bc.py"]
-)
-
 # MADDPG
 py_test(
     name = "test_maddpg",
@@ -879,7 +879,7 @@ py_test(
     name = "test_r2d2",
     tags = ["team:ml", "algorithms_dir"],
     size = "large",
-    srcs = ["agents/dqn/tests/test_r2d2.py"]
+    srcs = ["algorithms/r2d2/tests/test_r2d2.py"]
 )
 
 # RNNSAC
@@ -919,7 +919,7 @@ py_test(
     name = "test_td3",
     tags = ["team:ml", "algorithms_dir"],
     size = "large",
-    srcs = ["algorithms/ddpg/tests/test_td3.py"]
+    srcs = ["algorithms/td3/tests/test_td3.py"]
 )
 
 # --------------------------------------------------------------------
