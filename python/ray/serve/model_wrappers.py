@@ -71,7 +71,7 @@ def collate_dataframe(
             return output_df
         assert isinstance(
             output_df, pd.DataFrame
-        ), f"The output should be a DataFrame but Serve got {type(output_df)}"
+        ), f"The output should be a Pandas DataFrame but Serve got {type(output_df)}"
         assert len(output_df) % batch_size == 0, (
             f"The output dataframe should have length divisible by {batch_size}, "
             f"but Serve got length {len(output_df)}."
@@ -87,7 +87,7 @@ class ModelWrapper(SimpleSchemaIngress):
     Args:
         predictor_cls(str, Type[Predictor]): The class or path for predictor class.
             The type must be a subclass of :class:`ray.ml.predictor.Predictor`.
-        checkpoint(Checkpoint, str): The checkpoint object or an uri to load checkpoint
+        checkpoint(Checkpoint, str): The checkpoint object or a uri to load checkpoint
             from
 
             - The checkpoint object must be an instance of
