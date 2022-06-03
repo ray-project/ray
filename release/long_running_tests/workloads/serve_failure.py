@@ -27,6 +27,21 @@ CPUS_PER_NODE = 10
 RAY_UNIT_TEST = "RAY_UNIT_TEST" in os.environ
 
 
+def call_func_and_retry_on_exception(f, delay=10, retry=1):
+    def inner(self):
+        while True:
+            try:
+                return f(self)
+            except Exception as ex:
+                if retry:
+                    retry -= 1
+                    time.sleep(delay)
+                    continue
+                raise ex
+
+    return inner
+
+
 def update_progress(result):
     """
     Write test result json to /tmp/, which will be read from
@@ -97,16 +112,13 @@ class RandomTest:
         for _ in range(max_deployments):
             self.create_deployment()
 
+    # Sometimes it is bad luck, the controller keeps getting killed.
+    # let's try one more time before we fail the test.
+    @call_func_and_retry_on_exception
     def create_deployment(self):
         if len(self.deployments) == self.max_deployments:
             deployment_to_delete = self.deployments.pop()
-            try:
-                serve.get_deployment(deployment_to_delete).delete()
-            except Exception:
-                # Sometimes it is bad luck, the controller keeps getting killed.
-                # let's try one more time before we fail the test.
-                time.sleep(10)
-                serve.get_deployment(deployment_to_delete).delete()
+            serve.get_deployment(deployment_to_delete).delete()
 
         new_name = "".join([random.choice(string.ascii_letters) for _ in range(10)])
 
