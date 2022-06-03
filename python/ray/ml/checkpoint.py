@@ -7,7 +7,6 @@ import shutil
 import tarfile
 import tempfile
 import traceback
-from filelock import FileLock
 from pathlib import Path
 from typing import Any, Dict, Iterator, Optional, Tuple, Union
 
@@ -20,6 +19,7 @@ from ray.ml.utils.remote_storage import (
     upload_to_uri,
 )
 from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.ml_utils.filelock import TempFileLock
 
 _DICT_CHECKPOINT_FILE_NAME = "dict_checkpoint.pkl"
 _FS_CHECKPOINT_KEY = "fs_checkpoint"
@@ -376,11 +376,11 @@ class Checkpoint:
             # Timeout 0 means there will be only one attempt to acquire
             # the file lock. If it cannot be aquired, a TimeoutError
             # will be thrown.
-            with FileLock(f"{path}.lock", timeout=0):
+            with TempFileLock(f"{path}.lock", timeout=0):
                 self._to_directory(path)
         except TimeoutError:
             # if the directory is already locked, then wait but do not do anything.
-            with FileLock(f"{path}.lock", timeout=-1):
+            with TempFileLock(f"{path}.lock", timeout=-1):
                 pass
             if not os.path.exists(path):
                 raise RuntimeError(
@@ -452,7 +452,7 @@ class Checkpoint:
                     # Timeout 0 means there will be only one attempt to acquire
                     # the file lock. If it cannot be aquired, a TimeoutError
                     # will be thrown.
-                    with FileLock(f"{temp_dir}.lock", timeout=0):
+                    with TempFileLock(f"{temp_dir}.lock", timeout=0):
                         shutil.rmtree(temp_dir, ignore_errors=True)
                 except TimeoutError:
                     pass

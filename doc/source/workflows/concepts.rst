@@ -132,26 +132,6 @@ The continuation feature enables nesting, looping, and recursion within workflow
 
     assert workflow.create(fib.bind(10)).run() == 55
 
-Virtual Actors
-~~~~~~~~~~~~~~
-Virtual actors have their state durably logged to workflow storage. This enables the management of long-running business workflows. Virtual actors can launch sub-workflows from method calls and receive timer-based and externally triggered events.
-
-.. code-block:: python
-    :caption: A persistent virtual actor counter:
-
-    @workflow.virtual_actor
-    class Counter:
-        def __init__(self):
-            self.count = 0
-
-        def incr(self):
-            self.count += 1
-            return self.count
-
-    ray.init(storage="/tmp/data")
-    c1 = Counter.get_or_create("counter_1")
-    assert c1.incr.run() == 1
-    assert c1.incr.run() == 2
 
 Events
 ~~~~~~
