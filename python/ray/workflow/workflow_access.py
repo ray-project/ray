@@ -133,7 +133,6 @@ class WorkflowManagementActor:
         # "WorkflowRef". The dictionary entry is removed when the status of
         # a step is marked as finished (successful or failed).
         self._step_output_cache: Dict[Tuple[str, str], LatestWorkflowOutput] = {}
-        self._actor_initialized: Dict[str, ray.ObjectRef] = {}
         self._step_status: Dict[str, Dict[str, common.WorkflowStatus]] = {}
         self._workflow_status: Dict[str, common.WorkflowStatus] = {}
 
@@ -186,13 +185,9 @@ class WorkflowManagementActor:
         result = recovery.resume_workflow_step(
             job_id, workflow_id, step_id, current_output
         )
-        latest_output = LatestWorkflowOutput(
-            result.persisted_output, workflow_id, step_id
-        )
+        latest_output = LatestWorkflowOutput(result.output, workflow_id, step_id)
         self._workflow_outputs[workflow_id] = latest_output
-        logger.info(
-            f"run_or_resume: {workflow_id}, {step_id}," f"{result.persisted_output.ref}"
-        )
+        logger.info(f"run_or_resume: {workflow_id}, {step_id}," f"{result.output.ref}")
         self._step_output_cache[(workflow_id, step_id)] = latest_output
 
         self._update_workflow_status(workflow_id, common.WorkflowStatus.RUNNING)
@@ -260,45 +255,6 @@ class WorkflowManagementActor:
 
     def list_running_workflow(self) -> List[str]:
         return list(self._step_status.keys())
-
-    def init_actor(self, actor_id: str, init_marker: List[ray.ObjectRef]) -> None:
-        """Initialize a workflow virtual actor.
-
-        Args:
-            actor_id: The ID of a workflow virtual actor.
-            init_marker: A future object (wrapped in a list) that represents
-                the state of the actor. "ray.get" the object successfully
-                indicates the actor is initialized successfully.
-        """
-        # TODO(suquark): Maybe we should raise an error if the actor_id
-        # already exists?
-        self._actor_initialized[actor_id] = init_marker[0]
-
-    def actor_ready(self, actor_id: str) -> ray.ObjectRef:
-        """Check if a workflow virtual actor is fully initialized.
-
-        Args:
-            actor_id: The ID of a workflow virtual actor.
-
-        Returns:
-            A future object that represents the state of the actor.
-            "ray.get" the object successfully indicates the actor is
-            initialized successfully.
-        """
-        ws = workflow_storage.WorkflowStorage(actor_id)
-        try:
-            step_id = ws.get_entrypoint_step_id()
-            output_exists = ws.inspect_step(step_id).output_object_valid
-            if output_exists:
-                return ray.put(None)
-        except Exception:
-            pass
-        if actor_id not in self._actor_initialized:
-            raise ValueError(
-                f"Actor '{actor_id}' has not been created, or "
-                "it has failed before initialization."
-            )
-        return self._actor_initialized[actor_id]
 
     def get_output(self, workflow_id: str, name: Optional[str]) -> WorkflowStaticRef:
         """Get the output of a running workflow.

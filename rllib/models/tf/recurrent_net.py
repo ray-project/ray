@@ -83,9 +83,9 @@ class RecurrentNetwork(TFModelV2):
         """Call the model with the given input tensors and state.
 
         Args:
-            inputs (dict): observation tensor with shape [B, T, obs_size].
-            state (list): list of state tensors, each with shape [B, T, size].
-            seq_lens (Tensor): 1d tensor holding input sequence lengths.
+            inputs: observation tensor with shape [B, T, obs_size].
+            state: list of state tensors, each with shape [B, T, size].
+            seq_lens: 1d tensor holding input sequence lengths.
 
         Returns:
             (outputs, new_state): The model output tensor of shape

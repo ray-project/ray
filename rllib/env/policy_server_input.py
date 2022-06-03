@@ -75,9 +75,9 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
         server using rllib.env.PolicyClient.
 
         Args:
-            ioctx (IOContext): IOContext provided by RLlib.
-            address (str): Server addr (e.g., "localhost").
-            port (int): Server port (e.g., 9900).
+            ioctx: IOContext provided by RLlib.
+            address: Server addr (e.g., "localhost").
+            port: Server port (e.g., 9900).
         """
 
         self.rollout_worker = ioctx.worker

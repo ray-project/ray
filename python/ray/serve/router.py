@@ -205,6 +205,9 @@ class Router:
             call_in_event_loop=event_loop,
         )
 
+    def get_num_queued_queries(self):
+        return self._replica_set.num_queued_queries
+
     async def assign_request(
         self,
         request_meta: RequestMetadata,

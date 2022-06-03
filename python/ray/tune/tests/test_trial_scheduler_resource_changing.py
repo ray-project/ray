@@ -560,7 +560,7 @@ class TestTopJobResourceAllocationAddBundles(TestTopJobResourceAllocation):
         self._allocateAndAssertNewResources(
             trial1,
             scheduler,
-            PlacementGroupFactory([{"CPU": 2, "GPU": 2}] * 4),
+            PlacementGroupFactory([{}] + [{"CPU": 2, "GPU": 2}] * 4),
             metric=1.2,
         )
 
@@ -631,3 +631,10 @@ class TestTopJobResourceAllocationAddBundles(TestTopJobResourceAllocation):
         self._allocateAndAssertNewResources(
             trial1, scheduler, PlacementGroupFactory([{"CPU": 1}, {"GPU": 2}])
         )
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))

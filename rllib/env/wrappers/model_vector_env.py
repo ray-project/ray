@@ -16,7 +16,7 @@ def model_vector_env(env: EnvType) -> BaseEnv:
     To obtain worker configs, one can call get_global_worker().
 
     Args:
-        env (EnvType): The input environment (of any supported environment
+        env: The input environment (of any supported environment
             type) to be convert to a _VectorizedModelGymEnv (wrapped as
             an RLlib BaseEnv).
 

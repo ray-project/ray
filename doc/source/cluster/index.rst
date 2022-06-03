@@ -29,7 +29,7 @@ Where to go from here?
     :column: col-lg-6 px-2 py-2
     :card:
 
-    Quick Start
+    **Quick Start** 
     ^^^
 
     In this quick start tutorial you will take a sample application designed to
@@ -42,7 +42,7 @@ Where to go from here?
         :classes: btn-outline-info btn-block
     ---
 
-    Key Concepts
+    **Key Concepts**
     ^^^
 
     Understand the key concepts behind Ray Clusters. Learn about the main
@@ -55,7 +55,7 @@ Where to go from here?
         :classes: btn-outline-info btn-block
     ---
 
-    Deployment Guide
+    **Deployment Guide**
     ^^^
 
     Learn how to set up a distributed Ray cluster and run your workloads on it.
@@ -67,7 +67,7 @@ Where to go from here?
         :classes: btn-outline-info btn-block
     ---
 
-    API
+    **API**
     ^^^
 
     Get more in-depth information about the various APIs to interact with Ray
