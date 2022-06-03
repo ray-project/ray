@@ -2,7 +2,7 @@ import logging
 from pathlib import Path
 from typing import List, Optional, Dict, Union, Callable
 
-from ray.ml import Checkpoint
+from ray.air import Checkpoint
 from ray.train.constants import (
     TIMESTAMP,
     TRAIN_CHECKPOINT_SUBDIR,

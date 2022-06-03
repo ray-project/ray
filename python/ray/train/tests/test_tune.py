@@ -4,7 +4,7 @@ import pytest
 import ray
 import ray.train as train
 from ray import tune
-from ray.ml import Checkpoint
+from ray.air import Checkpoint
 from ray.tune import TuneError
 from ray.train import Trainer
 from ray.train.backend import Backend, BackendConfig
