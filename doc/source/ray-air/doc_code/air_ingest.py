@@ -2,7 +2,7 @@
 
 # __shared_dataset_start__
 import ray
-from ray.ml.utils.check_ingest import DummyTrainer
+from ray.air.utils.check_ingest import DummyTrainer
 from ray.tune.tuner import Tuner, TuneConfig
 
 ray.init(num_cpus=5)
@@ -26,7 +26,7 @@ ray.shutdown()
 # __indep_dataset_start__
 import ray
 from ray import tune
-from ray.ml.utils.check_ingest import DummyTrainer
+from ray.air.utils.check_ingest import DummyTrainer
 from ray.tune.tuner import Tuner, TuneConfig
 
 ray.init(num_cpus=5)
@@ -60,8 +60,8 @@ tuner.fit()
 
 # __check_ingest_1__
 import ray
-from ray.ml.preprocessors import Chain, BatchMapper
-from ray.ml.utils.check_ingest import DummyTrainer
+from ray.air.preprocessors import Chain, BatchMapper
+from ray.air.utils.check_ingest import DummyTrainer
 
 # Generate a synthetic dataset of ~10GiB of float64 data. The dataset is sharded
 # into 100 blocks (parallelism=100).
