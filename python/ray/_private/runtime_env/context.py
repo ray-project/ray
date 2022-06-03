@@ -57,7 +57,9 @@ class RuntimeEnvContext:
         """
         for i, arg in enumerate(passthrough_args):
             if os.path.exists(arg):
-                passthrough_args[i] = f'"{arg}"'  # Some arguments may be files, which may contain spaces
+                passthrough_args[
+                    i
+                ] = f'"{arg}"'  # Some arguments may be files, which may contain spaces
         return passthrough_args
 
     def exec_worker(self, passthrough_args: List[str], language: Language):
