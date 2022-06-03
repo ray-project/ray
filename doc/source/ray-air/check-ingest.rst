@@ -112,8 +112,8 @@ AIR also supports streaming ingest via the DatasetPipeline feature. Streaming in
 that don't fit into memory, and prefer to read *windows* of data repeatedly from storage to minimize the active memory required
 for data ingest.
 
-To configure streaming ingest, the ``streamable`` (this is on by default for the "train" dataset) and ``stream_window_size``
-options must be set for the Dataset to stream.
+To configure streaming ingest, the ``streamable`` and ``stream_window_size`` options must be set for the dataset to stream. Note that
+``streamable=True`` is set by default for the "train" dataset.
 
 Using `train.get_dataset_shard()`
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
