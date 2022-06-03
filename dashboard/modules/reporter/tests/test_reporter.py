@@ -125,7 +125,6 @@ def test_prometheus_physical_stats_record(enable_test_module, shutdown_only):
                 "ray_node_mem_total" in metric_names,
                 "ray_raylet_cpu" in metric_names,
                 "ray_raylet_mem" in metric_names,
-                "ray_workers_count" in metric_names,
                 "ray_node_disk_io_read" in metric_names,
                 "ray_node_disk_io_write" in metric_names,
                 "ray_node_disk_io_read_count" in metric_names,
@@ -181,27 +180,11 @@ def test_prometheus_export_worker_and_memory_stats(enable_test_module, shutdown_
 
     def test_worker_stats():
         _, metric_names, metric_samples = fetch_prometheus(prom_addresses)
-        for metric in ["ray_workers_count", "ray_workers_cpu", "ray_workers_mem"]:
+        for metric in ["ray_workers_cpu", "ray_workers_mem_rss", "ray_workers_mem_uss"]:
             if metric not in metric_names:
                 raise RuntimeError(
                     f"Metric {metric} not found in exported metric names"
                 )
-
-        found_raylet_uss = False
-        found_workers_uss = False
-        for sample in metric_samples:
-            mem_type = sample.labels.get("mem_type")
-            if mem_type is None or mem_type != "uss":
-                continue
-            if sample.name == "ray_raylet_mem":
-                found_raylet_uss = True
-            elif sample.name == "ray_workers_mem":
-                found_workers_uss = True
-        if not found_raylet_uss:
-            raise RuntimeError("Raylet uss memory not reported!")
-        elif not found_workers_uss:
-            raise RuntimeError("Worker total uss memory not reported!")
-
         return True
 
     wait_for_condition(test_worker_stats, retry_interval_ms=1000)
@@ -226,6 +209,7 @@ def test_report_stats():
                 "memory_info": Bunch(
                     rss=55934976, vms=7026937856, pfaults=15354, pageins=0
                 ),
+                "memory_full_info": Bunch(uss=51428381),
                 "cpu_percent": 0.0,
                 "cmdline": ["ray::IDLE", "", "", "", "", "", "", "", "", "", "", ""],
                 "create_time": 1614826391.338613,

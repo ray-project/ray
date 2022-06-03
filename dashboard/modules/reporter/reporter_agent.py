@@ -161,25 +161,23 @@ METRICS_GAUGES = {
         "MB",
         ["ip", "pid", "mem_type"],
     ),
-    "workers_count": Gauge(
-        "workers_count",
-        "Number of workers on a node.",
-        "count",
-        ["ip"],
-    ),
     "workers_cpu": Gauge(
         "workers_cpu",
         "Total CPU usage of all workers on a node.",
         "percentage",
         ["ip"],
     ),
-    "workers_mem": Gauge(
-        "workers_mem",
-        "Memory usage of all workers on the node. mem_type includes uss (memory "
-        "released to the system if all workers die) and rss_other (uss + rss_other = "
-        "rss) on Linux, and just total workers' rss on other platforms.",
+    "workers_mem_rss": Gauge(
+        "workers_mem_rss",
+        "Memory usage of all workers' RSS on the node.",
         "MB",
-        ["ip", "mem_type"],
+        ["ip"],
+    ),
+    "workers_mem_uss": Gauge(
+        "workers_mem_uss",
+        "Memory usage of all workers' USS on the node. Only available on Linux",
+        "MB",
+        ["ip"],
     ),
     "cluster_active_nodes": Gauge(
         "cluster_active_nodes", "Active nodes on the cluster", "count", ["node_type"]
@@ -717,25 +715,17 @@ class ReporterAgent(
                     )
                 )
 
-        workers_count = 0
         workers_stats = stats["workers"]
         if workers_stats:
-            workers_count = len(workers_stats)
-
             total_workers_cpu_percentage = 0.0
-            total_workers_uss = 0.0
-            total_workers_rss_other = 0.0
             total_workers_rss = 0.0
+            total_workers_uss = 0.0
             for worker in workers_stats:
                 total_workers_cpu_percentage += float(worker["cpu_percent"]) * 100.0
+                total_workers_rss += float(worker["memory_info"].rss) / 1.0e6
                 worker_mem_full_info = worker.get("memory_full_info")
-                worker_rss = float(worker["memory_info"].rss) / 1.0e6
                 if worker_mem_full_info is not None:
-                    worker_uss = float(worker_mem_full_info.uss) / 1.0e6
-                    total_workers_uss += worker_uss
-                    total_workers_rss_other += worker_rss - worker_uss
-                else:
-                    total_workers_rss += worker_rss
+                    total_workers_uss += float(worker_mem_full_info.uss) / 1.0e6
 
             records_reported.append(
                 Record(
@@ -745,36 +735,21 @@ class ReporterAgent(
                 )
             )
 
-            if total_workers_rss == 0.0 and total_workers_uss > 0.0:
-                records_reported.append(
-                    Record(
-                        gauge=METRICS_GAUGES["workers_mem"],
-                        value=total_workers_uss,
-                        tags={"ip": ip, "mem_type": "uss"},
-                    )
+            records_reported.append(
+                Record(
+                    gauge=METRICS_GAUGES["workers_mem_rss"],
+                    value=total_workers_rss,
+                    tags={"ip": ip},
                 )
-                records_reported.append(
-                    Record(
-                        gauge=METRICS_GAUGES["workers_mem"],
-                        value=total_workers_rss_other,
-                        tags={"ip": ip, "mem_type": "rss_other"},
-                    )
-                )
-            else:
-                records_reported.append(
-                    Record(
-                        gauge=METRICS_GAUGES["workers_mem"],
-                        value=total_workers_rss,
-                        tags={"ip": ip, "mem_type": "rss"},
-                    )
-                )
-        records_reported.append(
-            Record(
-                gauge=METRICS_GAUGES["workers_count"],
-                value=workers_count,
-                tags={"ip": ip},
             )
-        )
+            if total_workers_uss > 0.0:
+                records_reported.append(
+                    Record(
+                        gauge=METRICS_GAUGES["workers_mem_uss"],
+                        value=total_workers_uss,
+                        tags={"ip": ip},
+                    )
+                )
 
         records_reported.extend(
             [
