@@ -198,7 +198,7 @@ Debugging Ingest with the ``DummyTrainer``
 ------------------------------------------
 
 Data ingest problems can be challenging to debug when combined in a full training pipeline. To isolate data
-ingest issues from other possible training problems, we provide the ``ray.ml.util.check_ingest.DummyTrainer``
+ingest issues from other possible training problems, we provide the ``ray.air.util.check_ingest.DummyTrainer``
 utility class that can be used to debug ingest problems. Let's walk through using DummyTrainer to understand
 and resolve an ingest misconfiguration.
 

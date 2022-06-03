@@ -79,7 +79,7 @@ class NestedActionSpacesTest(unittest.TestCase):
                 config["env_config"] = {
                     "action_space": action_space,
                 }
-                for flatten in [False, True]:
+                for flatten in [True, False]:
                     print(f"A={action_space} flatten={flatten}")
                     shutil.rmtree(config["output"])
                     config["_disable_action_flattening"] = not flatten
