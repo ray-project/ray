@@ -40,29 +40,9 @@ on the train dataset passed to the Trainer, followed by ``prep.transform()`` on 
 preprocessing in a parallelized way across the cluster. Both read and preprocessing stages use Ray tasks under the hood.
 
 **Training**: Finally, AIR passes a reference to the preprocessed dataset to Train workers (Ray actors) launched by the Trainer. Each worker then
-typically calls ``iter_batches``, ``to_tf``, or ``to_torch`` to iterate over the dataset reference retrieved by ``get_dataset_shard``.
+typically calls ``iter_batches``, ``to_tf``, or ``to_torch`` to iterate over the dataset reader retrieved by ``get_dataset_shard``.
 These read methods load blocks of the dataset into the local worker's memory in a streaming fashion, only fetching / prefetching a
 limited number of blocks at once. Workers loop over the dataset blocks repeatedly until training completes.
-
-Bulk Ingest
-~~~~~~~~~~~
-
-By default, AIR loads all Dataset blocks into the object store at the start of training. This provides the best performance if the
-cluster has enough aggregate memory to fit all the data blocks in object store memory. Note that data often requires more space
-when loaded uncompressed in memory than when resident in storage.
-
-If there is insufficient object store memory, blocks may be spilled to disk during reads or preprocessing. Ray will print log messages
-if spilling is occuring, and you can check this as well with the ``ray memory --stats-only`` utility. If spilling is happening, take
-care to ensure the cluster has enough disk space to handle the spilled blocks. Alternatively, consider using machine with more memory /
-more machines to avoid spilling.
-
-Streamed Ingest
-~~~~~~~~~~~~~~~
-
-This section is a placeholder.
-
-AIR will support streamed ingest and enable it by default by Beta. Streamed ingest is preferable when you are using large
-datasets that don't fit into memory, and also don't need advanced training quality features such as global random shuffle.
 
 Configuring Ingest Per-Dataset
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -108,6 +88,78 @@ Here are some examples of configuring Dataset ingest options and what they do:
         :language: python
         :start-after: __config_2__
         :end-before: __config_2_end__
+
+
+Bulk vs Streaming Ingest
+------------------------
+
+Bulk Ingest
+~~~~~~~~~~~
+
+By default, AIR loads all Dataset blocks into the object store at the start of training. This provides the best performance if the
+cluster has enough aggregate memory to fit all the data blocks in object store memory. Note that data often requires more space
+when loaded uncompressed in memory than when resident in storage.
+
+If there is insufficient object store memory, blocks may be spilled to disk during reads or preprocessing. Ray will print log messages
+if spilling is occuring, and you can check this as well with the ``ray memory --stats-only`` utility. If spilling is happening, take
+care to ensure the cluster has enough disk space to handle the spilled blocks. Alternatively, consider using machine with more memory /
+more machines to avoid spilling.
+
+Streaming Ingest
+~~~~~~~~~~~~~~~~
+
+AIR also supports streaming ingest via the DatasetPipeline feature. Streaming ingest is preferable when you are using large datasets
+that don't fit into memory, and prefer to read *windows* of data repeatedly from storage to minimize the active memory required
+for data ingest.
+
+To configure streaming ingest, the ``streamable`` (this is on by default for the "train" dataset) and ``stream_window_size``
+options must be set for the Dataset to stream.
+
+Using `train.get_dataset_shard()`
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The `get_dataset_shard` method can return either a ``Dataset`` or ``DatasetPipeline``, depending on whether the ``streamable``
+option is set. The former is a finite set of records, and the latter represents an infinite stream of records. By default,
+AIR sets ``streamable=True`` for the "train" Dataset, which means that a ``DatasetPipeline`` is returned. Note that actual
+streaming ingest is **NOT** enabled unless ``stream_window_size`` is also set. See the following examples for clarification:
+
+.. tabbed:: Bulk Ingest (streamable=True)
+
+    This example shows bulk ingest with streamable=True, which is the default configuration for the "train" dataset.
+    Data is bulk loaded, but made accessible via a ``DatasetPipeline`` wrapper that loops over
+    the data blocks indefinitely.
+
+    .. literalinclude:: doc_code/air_ingest.py
+        :language: python
+        :start-after: __config_3__
+        :end-before: __config_3_end__
+
+.. tabbed:: Bulk Ingest (streamable=False)
+
+    This example shows bulk ingest with streamable=False. Data is bulk loaded and made available
+    directly via a ``Dataset`` object that can be looped over manually.
+
+    .. warning::
+
+        Avoid setting ``streamable=False`` unless you really need direct access to the underlying Dataset object.
+        Using this option makes it harder to switch between bulk and streaming ingest modes without code changes.
+
+    .. literalinclude:: doc_code/air_ingest.py
+        :language: python
+        :start-after: __config_4__
+        :end-before: __config_4_end__
+
+.. tabbed:: Streaming Ingest
+
+    This example shows enabling streaming ingest (with a 1GiB window) for the "train" dataset.
+    This means that AIR will only load 1GiB of files from storage at a time (note that the data
+    may be larger once deserialized in memory).
+
+    .. literalinclude:: doc_code/air_ingest.py
+        :language: python
+        :start-after: __config_5__
+        :end-before: __config_5_end__
+
 
 Ingest and Ray Tune
 -------------------

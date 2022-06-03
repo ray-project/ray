@@ -139,3 +139,107 @@ print(my_trainer.get_dataset_config())
 # -> {'train': DatasetConfig(fit=True, split=True, ...),
 #     'side': DatasetConfig(fit=False, split=False, transform=False, ...), ...}
 # __config_2_end__
+
+# __config_3__
+import ray
+from ray import train
+from ray.data import DatasetPipeline
+from ray.ml.train.data_parallel_trainer import DataParallelTrainer
+from ray.ml.config import DatasetConfig
+
+def train_loop_per_worker():
+    data_shard = train.get_dataset_shard("train")
+    assert isinstance(data_shard, DatasetPipeline)
+
+    # Use iter_epochs(10) to iterate over 10 epochs of data.
+    for epoch in data_shard.iter_epochs(10):
+        for batch in epoch.iter_batches():
+            print("Do some training on batch", batch)
+
+    # View the stats for performance debugging.
+    print(data_shard.stats())
+
+
+my_trainer = DataParallelTrainer(
+    train_loop_per_worker,
+    scaling_config={"num_workers": 1},
+    datasets={
+        "train": ray.data.range_tensor(1000),
+    },
+    dataset_config={
+        # Loads all 1000 records into memory in bulk, but wraps it in
+        # a DatasetPipeline that loops over these records.
+        "train": DatasetConfig(streamable=True),
+    },
+)
+my_trainer.fit()
+# __config_3_end__
+
+# __config_4__
+import ray
+from ray import train
+from ray.data import Dataset
+from ray.ml.train.data_parallel_trainer import DataParallelTrainer
+from ray.ml.config import DatasetConfig
+
+def train_loop_per_worker():
+    data_shard = train.get_dataset_shard("train")
+    assert isinstance(data_shard, Dataset)
+
+    # Manually iterate over the data 10 times (10 epochs).
+    for _ in range(10):
+        for batch in data_shard.iter_batches():
+            print("Do some training on batch", batch)
+
+    # View the stats for performance debugging.
+    print(data_shard.stats())
+
+
+my_trainer = DataParallelTrainer(
+    train_loop_per_worker,
+    scaling_config={"num_workers": 1},
+    datasets={
+        "train": ray.data.range_tensor(1000),
+    },
+    dataset_config={
+        # Loads all 1000 records into memory in bulk.
+        "train": DatasetConfig(streamable=False),
+    },
+)
+my_trainer.fit()
+# __config_4_end__
+
+# __config_5__
+import ray
+from ray import train
+from ray.data import DatasetPipeline
+from ray.ml.train.data_parallel_trainer import DataParallelTrainer
+from ray.ml.config import DatasetConfig
+
+def train_loop_per_worker():
+    data_shard = train.get_dataset_shard("train")
+    assert isinstance(data_shard, DatasetPipeline)
+
+    # Use iter_epochs(10) to iterate over 10 epochs of data.
+    for epoch in data_shard.iter_epochs(10):
+        for batch in epoch.iter_batches():
+            print("Do some training on batch", batch)
+
+    # View the stats for performance debugging.
+    print(data_shard.stats())
+
+
+my_trainer = DataParallelTrainer(
+    train_loop_per_worker,
+    scaling_config={"num_workers": 1},
+    datasets={
+        "train": ray.data.range_tensor(1000),
+    },
+    dataset_config={
+        # Stream in 200 bytes of data at a time. This is really tiny since the
+        # dataset is synthetic and has only 1000 records.
+        "train": DatasetConfig(streamable=True, stream_window_size=200),
+    },
+)
+my_trainer.fit()
+# __config_5_end__
