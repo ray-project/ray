@@ -454,9 +454,9 @@ class ServeController:
 
         self.deployment_timestamp = time.time()
 
-    def delete_deployment(self, name: str):
-        self.endpoint_state.delete_endpoint(name)
-        return self.deployment_state_manager.delete_deployment(name)
+    async def delete_deployment(self, name: str):
+        await self.endpoint_state.delete_endpoint(name)
+        await self.deployment_state_manager.delete_deployment(name)
 
     async def delete_deployments(self, names: Iterable[str]) -> None:
         for name in names:
