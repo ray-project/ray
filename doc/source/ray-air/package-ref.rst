@@ -81,6 +81,8 @@ Predictors
 .. autoclass:: ray.air.predictor.Predictor
     :members:
 
+.. autoclass:: ray.air.predictor.DataBatchType
+
 .. autoclass:: ray.air.batch_predictor.BatchPredictor
     :members:
 
