@@ -179,7 +179,6 @@ class Trainer(Trainable):
         "extra_python_environs_for_worker",
         "input_config",
         "output_config",
-        "off_policy_estimation_methods",
     ]
 
     # List of top level keys with value=dict, for which we always override the
@@ -1741,6 +1740,10 @@ class Trainer(Trainable):
             config2["callbacks"] = make_callbacks
         if _allow_unknown_configs is None:
             _allow_unknown_configs = cls._allow_unknown_configs
+        # Hack to update nested dicts correctly
+        config1["off_policy_estimation_methods"] = (
+            config2.get("off_policy_estimation_methods") or {}
+        )
         return deep_update(
             config1,
             config2,
