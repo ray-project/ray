@@ -104,3 +104,10 @@ def test_predict_no_preprocessor():
     predictions = predictor.predict(data_batch)
 
     assert len(predictions) == 3
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+
+    sys.exit(pytest.main(["-sv", __file__]))

@@ -113,3 +113,10 @@ class NestedActionSpacesTest(unittest.TestCase):
                     bc_trainer.stop()
                     config["output"] = tmp_dir
                     config["input"] = "sampler"
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
