@@ -149,21 +149,30 @@ class DatasetConfig:
     # True by default for the "train" dataset only.
     required: Optional[bool] = None
 
+    # Whether to transform the dataset with the fitted preprocessor. This must be
+    # enabled at least for the dataset that is fit.
+    # True by default for all datasets.
+    transform: Optional[bool] = None
+
     # Whether the dataset can be streamed into memory using pipelined reads.
     # When enabled, get_dataset_shard() returns DatasetPipeline instead of Dataset.
     # Note that streaming isn't enabled unless you set stream_window_size too.
     # False by default for all datasets.
     streamable: Optional[bool] = None
 
-    # Whether to transform the dataset with the fitted preprocessor. This must be
-    # enabled at least for the dataset that is fit.
-    # True by default for all datasets.
-    transform: Optional[bool] = None
+    # Enable streaming ingest and configure the streaming window size in bytes.
+    # A typical value is something like 20% of object store memory. Should be >1GiB at
+    # min. This requires `streamable = True` to have an effect.
+    stream_window_size: Optional[float] = None
+
+    # Whether to enable global shuffle (per pipeline window in streaming mode). Note
+    # that this is an expensive all-to-all operation, and most likely you want to use
+    # local shuffle instead.
+    # False by default for all datasets.
+    global_shuffle: Optional[bool] = None
 
     # List of fields that the user cannot override in ``dataset_config``.
     _noncustomizable_fields: Tuple[str] = ()
-
-    # TODO: add stream_window_size, global/local shuffle options
 
     def fill_defaults(self) -> "DatasetConfig":
         """Return a copy of this config with all default values filled in."""
@@ -172,6 +181,10 @@ class DatasetConfig:
             split=self.split or False,
             required=self.required or False,
             streamable=self.streamable or False,
+            stream_window_size=self.stream_window_size
+            if self.stream_window_size is not None
+            else -1,
+            global_shuffle=self.global_shuffle or False,
             transform=self.transform if self.transform is not None else True,
             _noncustomizable_fields=self._noncustomizable_fields,
         )
@@ -212,6 +225,11 @@ class DatasetConfig:
         fittable = set()
         result = {k: v.fill_defaults() for k, v in config.items()}
         for k, v in result.items():
+            if v.stream_window_size > 0:
+                if not v.streamable:
+                    raise ValueError(
+                        "`stream_window_size` cannot be set unless `streamable=True`"
+                    )
             if v.fit:
                 fittable.add(k)
                 if not v.transform:
@@ -253,10 +271,16 @@ class DatasetConfig:
             fit=self.fit if other.fit is None else other.fit,
             split=self.split if other.split is None else other.split,
             required=self.required if other.required is None else other.required,
+            transform=self.transform if other.transform is None else other.transform,
             streamable=self.streamable
             if other.streamable is None
             else other.streamable,
-            transform=self.transform if other.transform is None else other.transform,
+            stream_window_size=self.stream_window_size
+            if other.stream_window_size is None
+            else other.stream_window_size,
+            global_shuffle=self.global_shuffle
+            if other.global_shuffle is None
+            else other.global_shuffle,
             _noncustomizable_fields=self._noncustomizable_fields,
         )
 
