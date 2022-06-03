@@ -122,9 +122,16 @@ Serving
 Outputs
 ~~~~~~~
 
+.. _air-checkpoint-ref:
+
+Checkpoint
+##########
+
 .. automodule:: ray.ml.checkpoint
     :members:
 
+Result
+######
 
 .. automodule:: ray.ml.result
     :members:
