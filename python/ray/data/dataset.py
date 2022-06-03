@@ -2285,6 +2285,7 @@ class Dataset(Generic[T]):
         batch_size: int = 1,
         prefetch_blocks: int = 0,
         drop_last: bool = False,
+        unsqueeze_label_tensor: bool = True,
         unsqueeze_feature_tensors: bool = True,
     ) -> "torch.utils.data.IterableDataset":
         """Return a Torch IterableDataset over this dataset.
@@ -2315,6 +2316,12 @@ class Dataset(Generic[T]):
           {key1: (N, m),..., keyN: (N, k)}, with columns of each
           tensor corresponding to the value of ``feature_columns`` under the
           key.
+
+        If ``unsqueeze_label_tensor=True`` (default), the label tensor will be
+        of shape (N, 1). Otherwise, it will be of shape (N,).
+        If ``label_column`` is specified as ``None``, then no column from the
+        ``Dataset`` will be treated as the label, and the output label tensor
+        will be ``None``.
 
         Note that you probably want to call ``.split()`` on this dataset if
         there are to be multiple Torch workers consuming the data.
@@ -2453,7 +2460,6 @@ class Dataset(Generic[T]):
         prefetch_blocks: int = 0,
         batch_size: int = 1,
         drop_last: bool = False,
-        unsqueeze_label_tensor: bool = False,
     ) -> "tf.data.Dataset":
         """Return a TF Dataset over this dataset.
 
@@ -2477,12 +2483,6 @@ class Dataset(Generic[T]):
           {key1: (N, n1),..., keyN: (N, nk)}, with columns of each
           tensor corresponding to the value of ``feature_columns`` under the
           key.
-
-        If ``unsqueeze_label_tensor=True``, the label tensor will be
-        of shape (N, 1). Otherwise, it will be of shape (N,).
-        If ``label_column`` is specified as ``None``, then no column from the
-        ``Dataset`` will be treated as the label, and the output label tensor
-        will be ``None``.
 
         This is only supported for datasets convertible to Arrow records.
 
@@ -2517,11 +2517,6 @@ class Dataset(Generic[T]):
                 if the dataset size is not divisible by the batch size. If
                 False and the size of dataset is not divisible by the batch
                 size, then the last batch will be smaller. Defaults to False.
-            unsqueeze_label_tensor (bool): If set to True, the label tensor
-                will be unsqueezed (reshaped to (N, 1)). Otherwise, it will
-                be left as is, that is (N, ). In general, regression loss
-                functions expect an unsqueezed tensor, while classification
-                loss functions expect a squeezed one. Defaults to False.
 
         Returns:
             A tf.data.Dataset.
