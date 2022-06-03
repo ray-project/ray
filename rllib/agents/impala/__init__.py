@@ -1,17 +1,7 @@
-from ray.rllib.algorithms.impala.impala import (
-    DEFAULT_CONFIG,
-    ImpalaConfig,
-    Impala as ImpalaTrainer,
-)
-from ray.rllib.utils.deprecation import deprecation_warning
-
+from ray.rllib.agents.impala.impala import DEFAULT_CONFIG, ImpalaConfig, ImpalaTrainer
 
 __all__ = [
     "ImpalaConfig",
     "ImpalaTrainer",
     "DEFAULT_CONFIG",
 ]
-
-deprecation_warning(
-    "ray.rllib.agents.impala", "ray.rllib.algorithms.impala", error=False
-)

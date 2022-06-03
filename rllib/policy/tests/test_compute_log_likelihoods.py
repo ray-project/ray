@@ -5,7 +5,7 @@ import unittest
 import ray
 import ray.rllib.algorithms.dqn as dqn
 import ray.rllib.algorithms.pg as pg
-import ray.rllib.algorithms.ppo as ppo
+import ray.rllib.agents.ppo as ppo
 import ray.rllib.algorithms.sac as sac
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check, framework_iterator
@@ -164,14 +164,14 @@ class TestComputeLogLikelihood(unittest.TestCase):
         config["model"]["fcnet_hiddens"] = [10]
         config["model"]["fcnet_activation"] = "linear"
         prev_a = np.array([0.0])
-        do_test_log_likelihood(ppo.PPO, config, prev_a, continuous=True)
+        do_test_log_likelihood(ppo.PPOTrainer, config, prev_a, continuous=True)
 
     def test_ppo_discr(self):
         """Tests PPO's (discr. actions) compute_log_likelihoods method."""
         config = ppo.DEFAULT_CONFIG.copy()
         config["seed"] = 42
         prev_a = np.array(0)
-        do_test_log_likelihood(ppo.PPO, config, prev_a)
+        do_test_log_likelihood(ppo.PPOTrainer, config, prev_a)
 
     def test_sac_cont(self):
         """Tests SAC's (cont. actions) compute_log_likelihoods method."""

@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Optional, Dict, Union, Callable, Tuple, List, Any
 
 import ray
-from ray.ml import Checkpoint
+from ray.air import Checkpoint
 from ray.tune.result import NODE_IP
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI

@@ -1431,9 +1431,9 @@ class Trainer(Trainable):
                 If None, the output format will be DL framework specific.
 
         Example:
-            >>> from ray.rllib.algorithms.ppo import PPO
+            >>> from ray.rllib.agents.ppo import PPOTrainer
             >>> # Use a Trainer from RLlib or define your own.
-            >>> trainer = PPO(...) # doctest: +SKIP
+            >>> trainer = PPOTrainer(...) # doctest: +SKIP
             >>> for _ in range(10): # doctest: +SKIP
             >>>     trainer.train() # doctest: +SKIP
             >>> trainer.export_policy_model("/tmp/dir") # doctest: +SKIP
@@ -1456,9 +1456,9 @@ class Trainer(Trainable):
             policy_id: Optional policy id to export.
 
         Example:
-            >>> from ray.rllib.algorithms.ppo import PPO
+            >>> from ray.rllib.agents.ppo import PPOTrainer
             >>> # Use a Trainer from RLlib or define your own.
-            >>> trainer = PPO(...) # doctest: +SKIP
+            >>> trainer = PPOTrainer(...) # doctest: +SKIP
             >>> for _ in range(10): # doctest: +SKIP
             >>>     trainer.train() # doctest: +SKIP
             >>> trainer.export_policy_checkpoint("/tmp/export_dir") # doctest: +SKIP
@@ -1478,8 +1478,8 @@ class Trainer(Trainable):
             policy_id: Optional policy id to import into.
 
         Example:
-            >>> from ray.rllib.algorithms.ppo import PPO
-            >>> trainer = PPO(...) # doctest: +SKIP
+            >>> from ray.rllib.agents.ppo import PPOTrainer
+            >>> trainer = PPOTrainer(...) # doctest: +SKIP
             >>> trainer.import_policy_model_from_h5("/tmp/weights.h5") # doctest: +SKIP
             >>> for _ in range(10): # doctest: +SKIP
             >>>     trainer.train() # doctest: +SKIP
