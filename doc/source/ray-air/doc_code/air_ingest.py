@@ -144,8 +144,8 @@ print(my_trainer.get_dataset_config())
 import ray
 from ray import train
 from ray.data import Dataset
-from ray.ml.train.data_parallel_trainer import DataParallelTrainer
-from ray.ml.config import DatasetConfig
+from ray.air.train.data_parallel_trainer import DataParallelTrainer
+from ray.air.config import DatasetConfig
 
 
 def train_loop_per_worker():
@@ -175,8 +175,8 @@ my_trainer.fit()
 import ray
 from ray import train
 from ray.data import DatasetPipeline
-from ray.ml.train.data_parallel_trainer import DataParallelTrainer
-from ray.ml.config import DatasetConfig
+from ray.air.train.data_parallel_trainer import DataParallelTrainer
+from ray.air.config import DatasetConfig
 
 
 def train_loop_per_worker():
