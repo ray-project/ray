@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 from unittest.mock import patch
-from ray.ml.train.integrations.huggingface.huggingface_utils import TrainReportCallback
+from ray.air.train.integrations.huggingface.huggingface_utils import TrainReportCallback
 
 from transformers import (
     AutoConfig,
@@ -13,11 +13,11 @@ from transformers import (
 from transformers.trainer_callback import TrainerState
 
 import ray.data
-from ray.ml.train.integrations.huggingface import HuggingFaceTrainer
-from ray.ml.predictors.integrations.huggingface import HuggingFacePredictor
-from ray.ml.batch_predictor import BatchPredictor
+from ray.air.train.integrations.huggingface import HuggingFaceTrainer
+from ray.air.predictors.integrations.huggingface import HuggingFacePredictor
+from ray.air.batch_predictor import BatchPredictor
 
-from ray.ml.tests._huggingface_data import train_data, validation_data
+from ray.air.tests._huggingface_data import train_data, validation_data
 
 # 16 first rows of tokenized wikitext-2-raw-v1 training & validation
 train_df = pd.read_json(train_data)

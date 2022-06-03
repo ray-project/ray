@@ -6,11 +6,11 @@ import xgboost as xgb
 
 import ray
 from ray import tune
-from ray.ml.checkpoint import Checkpoint
-from ray.ml.constants import TRAIN_DATASET_KEY
+from ray.air.checkpoint import Checkpoint
+from ray.air.constants import TRAIN_DATASET_KEY
 
-from ray.ml.train.integrations.xgboost import XGBoostTrainer, load_checkpoint
-from ray.ml.preprocessor import Preprocessor
+from ray.air.train.integrations.xgboost import XGBoostTrainer, load_checkpoint
+from ray.air.preprocessor import Preprocessor
 
 from sklearn.datasets import load_breast_cancer
 from sklearn.model_selection import train_test_split

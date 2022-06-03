@@ -4,8 +4,8 @@ from typing import List, Callable, Optional
 import pandas as pd
 
 from ray.data import Dataset
-from ray.ml.preprocessor import Preprocessor
-from ray.ml.preprocessors.utils import simple_split_tokenizer, simple_hash
+from ray.air.preprocessor import Preprocessor
+from ray.air.preprocessors.utils import simple_split_tokenizer, simple_hash
 
 
 class HashingVectorizer(Preprocessor):

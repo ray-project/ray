@@ -3,16 +3,16 @@ import numpy as np
 
 
 import tensorflow as tf
-from ray.ml.batch_predictor import BatchPredictor
+from ray.air.batch_predictor import BatchPredictor
 from tensorflow.keras.callbacks import Callback
 
 import ray
 import ray.train as train
 from ray.data import Dataset
 from ray.train.tensorflow import prepare_dataset_shard
-from ray.ml.train.integrations.tensorflow import TensorflowTrainer
-from ray.ml.predictors.integrations.tensorflow import TensorflowPredictor
-from ray.ml.result import Result
+from ray.air.train.integrations.tensorflow import TensorflowTrainer
+from ray.air.predictors.integrations.tensorflow import TensorflowPredictor
+from ray.air.result import Result
 
 
 class TrainCheckpointReportCallback(Callback):

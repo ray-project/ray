@@ -8,9 +8,9 @@ from pathlib import Path
 from typing import Type
 
 import ray
-from ray.ml.checkpoint import Checkpoint
-from ray.ml.batch_predictor import BatchPredictor
-from ray.ml.predictor import Predictor
+from ray.air.checkpoint import Checkpoint
+from ray.air.batch_predictor import BatchPredictor
+from ray.air.predictor import Predictor
 
 NUM_REPEATS = 3
 

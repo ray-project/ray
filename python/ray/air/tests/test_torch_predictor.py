@@ -4,10 +4,10 @@ import numpy as np
 import pandas as pd
 import torch
 
-from ray.ml.predictors.integrations.torch import TorchPredictor
-from ray.ml.preprocessor import Preprocessor
-from ray.ml.checkpoint import Checkpoint
-from ray.ml.constants import PREPROCESSOR_KEY, MODEL_KEY
+from ray.air.predictors.integrations.torch import TorchPredictor
+from ray.air.preprocessor import Preprocessor
+from ray.air.checkpoint import Checkpoint
+from ray.air.constants import PREPROCESSOR_KEY, MODEL_KEY
 
 
 class DummyPreprocessor(Preprocessor):

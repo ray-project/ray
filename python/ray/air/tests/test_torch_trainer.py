@@ -2,10 +2,12 @@ import pytest
 import torch
 
 import ray
-from ray.ml.predictors.integrations.torch import TorchPredictor
-from ray.ml.train.integrations.torch import TorchTrainer
+from ray.air.predictors.integrations.torch import TorchPredictor
+from ray.air.train.integrations.torch import TorchTrainer
 from ray import train
-from ray.ml.examples.pytorch.torch_linear_example import train_func as linear_train_func
+from ray.air.examples.pytorch.torch_linear_example import (
+    train_func as linear_train_func,
+)
 
 
 @pytest.fixture

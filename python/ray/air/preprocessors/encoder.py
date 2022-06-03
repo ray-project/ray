@@ -6,7 +6,7 @@ import pandas as pd
 import pandas.api.types
 
 from ray.data import Dataset
-from ray.ml.preprocessor import Preprocessor
+from ray.air.preprocessor import Preprocessor
 
 
 class OrdinalEncoder(Preprocessor):

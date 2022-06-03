@@ -1,7 +1,7 @@
 import abc
 from typing import Union, TYPE_CHECKING
 
-from ray.ml.checkpoint import Checkpoint
+from ray.air.checkpoint import Checkpoint
 
 if TYPE_CHECKING:
     import numpy as np

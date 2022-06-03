@@ -3,8 +3,8 @@ import os
 from typing import Any, Callable, Dict, Optional, Type, Union
 
 import ray.cloudpickle as pickle
-from ray.ml.config import RunConfig
-from ray.ml.trainer import Trainer
+from ray.air.config import RunConfig
+from ray.air.trainer import Trainer
 from ray.tune import Experiment, TuneError, ExperimentAnalysis
 from ray.tune.impl.utils import execute_dataset
 from ray.tune.result_grid import ResultGrid

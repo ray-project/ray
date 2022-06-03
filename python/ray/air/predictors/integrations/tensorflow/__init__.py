@@ -1,4 +1,4 @@
-from ray.ml.predictors.integrations.tensorflow.tensorflow_predictor import (
+from ray.air.predictors.integrations.tensorflow.tensorflow_predictor import (
     TensorflowPredictor,
 )
 

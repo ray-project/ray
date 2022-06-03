@@ -1,12 +1,12 @@
 from typing import Dict, Any, Optional, Tuple
 import os
 
-from ray.ml.checkpoint import Checkpoint
-from ray.ml.preprocessor import Preprocessor
-from ray.ml.train.gbdt_trainer import GBDTTrainer
-from ray.ml.utils.checkpointing import load_preprocessor_from_dir
+from ray.air.checkpoint import Checkpoint
+from ray.air.preprocessor import Preprocessor
+from ray.air.train.gbdt_trainer import GBDTTrainer
+from ray.air.utils.checkpointing import load_preprocessor_from_dir
 from ray.util.annotations import PublicAPI
-from ray.ml.constants import MODEL_KEY
+from ray.air.constants import MODEL_KEY
 
 import lightgbm
 import lightgbm_ray

@@ -2,8 +2,8 @@ from typing import List, Callable, Optional
 
 import pandas as pd
 
-from ray.ml.preprocessor import Preprocessor
-from ray.ml.preprocessors.utils import simple_split_tokenizer
+from ray.air.preprocessor import Preprocessor
+from ray.air.preprocessors.utils import simple_split_tokenizer
 
 
 class Tokenizer(Preprocessor):

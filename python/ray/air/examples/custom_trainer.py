@@ -5,7 +5,7 @@
 # __custom_trainer_begin__
 import torch
 
-from ray.ml.trainer import Trainer
+from ray.air.trainer import Trainer
 from ray import tune
 
 

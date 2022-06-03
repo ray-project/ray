@@ -7,7 +7,7 @@ if TYPE_CHECKING:
     import pandas as pd
 
 from ray.data import Dataset
-from ray.ml.predictor import DataBatchType
+from ray.air.predictor import DataBatchType
 
 
 class PreprocessorNotFittedException(RuntimeError):

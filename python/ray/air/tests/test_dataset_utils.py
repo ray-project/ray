@@ -3,7 +3,7 @@ import pytest
 import ray
 import ray.data
 
-from ray.ml import train_test_split
+from ray.air import train_test_split
 
 
 @pytest.fixture

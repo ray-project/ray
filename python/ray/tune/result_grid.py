@@ -4,8 +4,8 @@ from typing import Optional, Union
 import pandas as pd
 from ray.cloudpickle import cloudpickle
 from ray.exceptions import RayTaskError
-from ray.ml.checkpoint import Checkpoint
-from ray.ml.result import Result
+from ray.air.checkpoint import Checkpoint
+from ray.air.result import Result
 from ray.tune import ExperimentAnalysis
 from ray.tune.error import TuneError
 from ray.tune.trial import Trial

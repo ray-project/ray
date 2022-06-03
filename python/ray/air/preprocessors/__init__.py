@@ -1,24 +1,24 @@
-from ray.ml.preprocessors.batch_mapper import BatchMapper
-from ray.ml.preprocessors.chain import Chain
-from ray.ml.preprocessors.encoder import (
+from ray.air.preprocessors.batch_mapper import BatchMapper
+from ray.air.preprocessors.chain import Chain
+from ray.air.preprocessors.encoder import (
     Categorizer,
     LabelEncoder,
     MultiHotEncoder,
     OneHotEncoder,
     OrdinalEncoder,
 )
-from ray.ml.preprocessors.hasher import FeatureHasher
-from ray.ml.preprocessors.imputer import SimpleImputer
-from ray.ml.preprocessors.normalizer import Normalizer
-from ray.ml.preprocessors.scaler import (
+from ray.air.preprocessors.hasher import FeatureHasher
+from ray.air.preprocessors.imputer import SimpleImputer
+from ray.air.preprocessors.normalizer import Normalizer
+from ray.air.preprocessors.scaler import (
     StandardScaler,
     MinMaxScaler,
     MaxAbsScaler,
     RobustScaler,
 )
-from ray.ml.preprocessors.tokenizer import Tokenizer
-from ray.ml.preprocessors.transformer import PowerTransformer
-from ray.ml.preprocessors.vectorizer import CountVectorizer, HashingVectorizer
+from ray.air.preprocessors.tokenizer import Tokenizer
+from ray.air.preprocessors.transformer import PowerTransformer
+from ray.air.preprocessors.vectorizer import CountVectorizer, HashingVectorizer
 
 __all__ = [
     "BatchMapper",

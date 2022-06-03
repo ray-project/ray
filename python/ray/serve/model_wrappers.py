@@ -1,8 +1,8 @@
 from typing import Dict, Optional, Type, Union
 
 from ray._private.utils import import_attr
-from ray.ml.checkpoint import Checkpoint
-from ray.ml.predictor import Predictor
+from ray.air.checkpoint import Checkpoint
+from ray.air.predictor import Predictor
 from ray.serve.drivers import HTTPAdapterFn, SimpleSchemaIngress
 import ray
 from ray import serve

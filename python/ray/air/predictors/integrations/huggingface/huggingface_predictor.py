@@ -8,10 +8,10 @@ from transformers.pipelines.table_question_answering import (
     TableQuestionAnsweringPipeline,
 )
 
-from ray.ml.predictor import DataBatchType, Predictor
-from ray.ml.preprocessor import Preprocessor
-from ray.ml.checkpoint import Checkpoint
-from ray.ml.utils.checkpointing import load_preprocessor_from_dir
+from ray.air.predictor import DataBatchType, Predictor
+from ray.air.preprocessor import Preprocessor
+from ray.air.checkpoint import Checkpoint
+from ray.air.utils.checkpointing import load_preprocessor_from_dir
 
 
 class HuggingFacePredictor(Predictor):

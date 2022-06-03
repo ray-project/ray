@@ -4,11 +4,11 @@ import pandas as pd
 import numpy as np
 from joblib import parallel_backend
 
-from ray.ml.checkpoint import Checkpoint
-from ray.ml.predictor import Predictor, DataBatchType
-from ray.ml.preprocessor import Preprocessor
-from ray.ml.train.integrations.sklearn import load_checkpoint
-from ray.ml.utils.sklearn_utils import set_cpu_params
+from ray.air.checkpoint import Checkpoint
+from ray.air.predictor import Predictor, DataBatchType
+from ray.air.preprocessor import Preprocessor
+from ray.air.train.integrations.sklearn import load_checkpoint
+from ray.air.utils.sklearn_utils import set_cpu_params
 from ray.util.joblib import register_ray
 
 from sklearn.base import BaseEstimator

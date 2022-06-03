@@ -6,10 +6,10 @@ import pandas as pd
 import pytest
 import tempfile
 
-from ray.ml.predictors.integrations.rl.rl_predictor import RLPredictor
-from ray.ml.preprocessor import Preprocessor
-from ray.ml.checkpoint import Checkpoint
-from ray.ml.train.integrations.rl import RLTrainer
+from ray.air.predictors.integrations.rl.rl_predictor import RLPredictor
+from ray.air.preprocessor import Preprocessor
+from ray.air.checkpoint import Checkpoint
+from ray.air.train.integrations.rl import RLTrainer
 
 from ray.rllib.agents import Trainer
 from ray.rllib.policy import Policy

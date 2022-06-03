@@ -5,12 +5,12 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Uni
 
 import ray
 from ray.util import PublicAPI
-from ray.ml.checkpoint import Checkpoint
-from ray.ml.config import RunConfig, ScalingConfig, ScalingConfigDataClass
-from ray.ml.constants import TRAIN_DATASET_KEY
-from ray.ml.preprocessor import Preprocessor
-from ray.ml.result import Result
-from ray.ml.utils.config import (
+from ray.air.checkpoint import Checkpoint
+from ray.air.config import RunConfig, ScalingConfig, ScalingConfigDataClass
+from ray.air.constants import TRAIN_DATASET_KEY
+from ray.air.preprocessor import Preprocessor
+from ray.air.result import Result
+from ray.air.utils.config import (
     ensure_only_allowed_dataclass_keys_updated,
     ensure_only_allowed_dict_keys_set,
 )
@@ -199,7 +199,7 @@ class Trainer(abc.ABC):
             )
         # Preprocessor
         if self.preprocessor is not None and not isinstance(
-            self.preprocessor, ray.ml.preprocessor.Preprocessor
+            self.preprocessor, ray.air.preprocessor.Preprocessor
         ):
             raise ValueError(
                 f"`preprocessor` should be an instance of `ray.air.Preprocessor`, "
@@ -207,7 +207,7 @@ class Trainer(abc.ABC):
             )
 
         if self.resume_from_checkpoint is not None and not isinstance(
-            self.resume_from_checkpoint, ray.ml.Checkpoint
+            self.resume_from_checkpoint, ray.air.Checkpoint
         ):
             raise ValueError(
                 f"`resume_from_checkpoint` should be an instance of "

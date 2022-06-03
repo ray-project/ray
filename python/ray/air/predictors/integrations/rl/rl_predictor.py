@@ -3,9 +3,9 @@ from typing import Optional
 import numpy
 import numpy as np
 import pandas as pd
-from ray.ml import Preprocessor, Checkpoint
-from ray.ml.predictor import Predictor, DataBatchType
-from ray.ml.train.integrations.rl import load_checkpoint
+from ray.air import Preprocessor, Checkpoint
+from ray.air.predictor import Predictor, DataBatchType
+from ray.air.train.integrations.rl import load_checkpoint
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.typing import EnvType
 

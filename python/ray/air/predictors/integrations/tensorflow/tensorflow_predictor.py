@@ -3,10 +3,10 @@ from typing import Callable, Optional, Union, List, Type
 import pandas as pd
 import tensorflow as tf
 
-from ray.ml.predictor import Predictor, DataBatchType
-from ray.ml.preprocessor import Preprocessor
-from ray.ml.checkpoint import Checkpoint
-from ray.ml.train.data_parallel_trainer import _load_checkpoint
+from ray.air.predictor import Predictor, DataBatchType
+from ray.air.preprocessor import Preprocessor
+from ray.air.checkpoint import Checkpoint
+from ray.air.train.data_parallel_trainer import _load_checkpoint
 
 
 class TensorflowPredictor(Predictor):

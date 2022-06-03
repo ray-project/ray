@@ -6,8 +6,8 @@ import unittest
 from typing import Any
 
 import ray
-from ray.ml.checkpoint import Checkpoint
-from ray.ml.utils.remote_storage import delete_at_uri, _ensure_directory
+from ray.air.checkpoint import Checkpoint
+from ray.air.utils.remote_storage import delete_at_uri, _ensure_directory
 
 
 class CheckpointsConversionTest(unittest.TestCase):

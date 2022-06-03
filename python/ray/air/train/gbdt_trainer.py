@@ -1,16 +1,16 @@
 from typing import TYPE_CHECKING, Dict, Tuple, Type, Any, Optional
 import warnings
 
-from ray.ml.trainer import GenDataset
-from ray.ml.config import ScalingConfig, RunConfig, ScalingConfigDataClass
-from ray.ml.preprocessor import Preprocessor
-from ray.ml.utils.checkpointing import save_preprocessor_to_dir
+from ray.air.trainer import GenDataset
+from ray.air.config import ScalingConfig, RunConfig, ScalingConfigDataClass
+from ray.air.preprocessor import Preprocessor
+from ray.air.utils.checkpointing import save_preprocessor_to_dir
 from ray.tune.utils.trainable import TrainableUtil
 from ray.util.annotations import DeveloperAPI
-from ray.ml.trainer import Trainer
-from ray.ml.checkpoint import Checkpoint
+from ray.air.trainer import Trainer
+from ray.air.checkpoint import Checkpoint
 from ray.tune import Trainable
-from ray.ml.constants import MODEL_KEY, TRAIN_DATASET_KEY
+from ray.air.constants import MODEL_KEY, TRAIN_DATASET_KEY
 
 if TYPE_CHECKING:
     import xgboost_ray

@@ -3,8 +3,8 @@ from pathlib import Path
 from typing import Optional
 
 import ray.cloudpickle as cpickle
-from ray.ml.preprocessor import Preprocessor
-from ray.ml.constants import PREPROCESSOR_KEY
+from ray.air.preprocessor import Preprocessor
+from ray.air.constants import PREPROCESSOR_KEY
 
 
 def save_preprocessor_to_dir(

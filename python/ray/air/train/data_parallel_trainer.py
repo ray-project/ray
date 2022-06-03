@@ -16,12 +16,12 @@ from typing import (
 import ray
 from ray import tune
 from ray.actor import ActorHandle
-from ray.ml.constants import MODEL_KEY, TRAIN_DATASET_KEY, PREPROCESSOR_KEY
-from ray.ml.trainer import Trainer
-from ray.ml.config import ScalingConfig, RunConfig
-from ray.ml.trainer import GenDataset
-from ray.ml.preprocessor import Preprocessor
-from ray.ml.checkpoint import Checkpoint
+from ray.air.constants import MODEL_KEY, TRAIN_DATASET_KEY, PREPROCESSOR_KEY
+from ray.air.trainer import Trainer
+from ray.air.config import ScalingConfig, RunConfig
+from ray.air.trainer import GenDataset
+from ray.air.preprocessor import Preprocessor
+from ray.air.checkpoint import Checkpoint
 from ray.train import BackendConfig, TrainingIterator
 from ray.train.backend import BackendExecutor
 from ray.train.checkpoint import TuneCheckpointManager

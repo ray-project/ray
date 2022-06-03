@@ -10,7 +10,7 @@ from torchvision import datasets, transforms
 
 import ray
 from ray import train
-from ray.ml.train.integrations.horovod import HorovodTrainer
+from ray.air.train.integrations.horovod import HorovodTrainer
 
 
 def metric_average(val, name):

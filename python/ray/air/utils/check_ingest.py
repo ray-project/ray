@@ -6,8 +6,8 @@ from typing import Optional
 
 import ray
 from ray import train
-from ray.ml.preprocessors import Chain, BatchMapper
-from ray.ml.train.data_parallel_trainer import DataParallelTrainer
+from ray.air.preprocessors import Chain, BatchMapper
+from ray.air.train.data_parallel_trainer import DataParallelTrainer
 
 
 class DummyTrainer(DataParallelTrainer):

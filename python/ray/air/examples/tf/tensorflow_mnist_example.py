@@ -6,12 +6,12 @@ import json
 import os
 
 import numpy as np
-from ray.ml.result import Result
+from ray.air.result import Result
 import tensorflow as tf
 from tensorflow.keras.callbacks import Callback
 
 import ray.train as train
-from ray.ml.train.integrations.tensorflow import TensorflowTrainer
+from ray.air.train.integrations.tensorflow import TensorflowTrainer
 
 
 class TrainCheckpointReportCallback(Callback):

@@ -1,11 +1,11 @@
 import pytest
 
 import ray
-from ray.ml import Checkpoint
-from ray.ml.config import ScalingConfigDataClass
-from ray.ml.trainer import Trainer
-from ray.ml.preprocessor import Preprocessor
-from ray.ml.utils.config import (
+from ray.air import Checkpoint
+from ray.air.config import ScalingConfigDataClass
+from ray.air.trainer import Trainer
+from ray.air.preprocessor import Preprocessor
+from ray.air.utils.config import (
     ensure_only_allowed_dataclass_keys_updated,
     ensure_only_allowed_dict_keys_set,
 )
@@ -38,7 +38,7 @@ def test_run_config():
     DummyTrainer(run_config=None)
 
     # Succeed
-    DummyTrainer(run_config=ray.ml.RunConfig())
+    DummyTrainer(run_config=ray.air.RunConfig())
 
 
 def test_scaling_config():

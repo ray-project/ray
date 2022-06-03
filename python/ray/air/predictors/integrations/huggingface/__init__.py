@@ -1,4 +1,4 @@
-from ray.ml.predictors.integrations.huggingface.huggingface_predictor import (
+from ray.air.predictors.integrations.huggingface.huggingface_predictor import (
     HuggingFacePredictor,
 )
 

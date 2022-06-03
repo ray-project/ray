@@ -2,13 +2,13 @@ from typing import Callable, Optional, Dict, Tuple, Union
 import torch
 
 from ray.train.torch import TorchConfig
-from ray.ml.trainer import GenDataset
-from ray.ml.train.data_parallel_trainer import DataParallelTrainer, _load_checkpoint
-from ray.ml.config import ScalingConfig, RunConfig
-from ray.ml.preprocessor import Preprocessor
-from ray.ml.checkpoint import Checkpoint
+from ray.air.trainer import GenDataset
+from ray.air.train.data_parallel_trainer import DataParallelTrainer, _load_checkpoint
+from ray.air.config import ScalingConfig, RunConfig
+from ray.air.preprocessor import Preprocessor
+from ray.air.checkpoint import Checkpoint
 from ray.util import PublicAPI
-from ray.ml.utils.torch_utils import load_torch_model
+from ray.air.utils.torch_utils import load_torch_model
 
 
 @PublicAPI(stability="alpha")

@@ -1,4 +1,4 @@
-from ray.ml.train.integrations.xgboost.xgboost_trainer import (
+from ray.air.train.integrations.xgboost.xgboost_trainer import (
     XGBoostTrainer,
     load_checkpoint,
 )

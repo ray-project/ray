@@ -18,25 +18,25 @@ from torch.utils.data import Dataset as TorchDataset
 from ray import train
 from ray import tune
 from ray.util import PublicAPI, get_node_ip_address
-from ray.ml.checkpoint import Checkpoint
-from ray.ml.config import RunConfig, ScalingConfig
-from ray.ml.constants import EVALUATION_DATASET_KEY, TRAIN_DATASET_KEY
-from ray.ml.preprocessor import Preprocessor
-from ray.ml.train.integrations.torch import TorchTrainer
-from ray.ml.trainer import GenDataset
-from ray.ml.train.data_parallel_trainer import _DataParallelCheckpointManager
-from ray.ml.train.integrations.huggingface.huggingface_utils import (
+from ray.air.checkpoint import Checkpoint
+from ray.air.config import RunConfig, ScalingConfig
+from ray.air.constants import EVALUATION_DATASET_KEY, TRAIN_DATASET_KEY
+from ray.air.preprocessor import Preprocessor
+from ray.air.train.integrations.torch import TorchTrainer
+from ray.air.trainer import GenDataset
+from ray.air.train.data_parallel_trainer import _DataParallelCheckpointManager
+from ray.air.train.integrations.huggingface.huggingface_utils import (
     CHECKPOINT_PATH_ON_NODE_KEY,
     NODE_IP_KEY,
     process_datasets,
     TrainReportCallback,
     wrap_transformers_trainer,
 )
-from ray.ml.utils.checkpointing import (
+from ray.air.utils.checkpointing import (
     load_preprocessor_from_dir,
     save_preprocessor_to_dir,
 )
-from ray.ml.utils.torch_utils import load_torch_model
+from ray.air.utils.torch_utils import load_torch_model
 from ray.train.constants import TUNE_CHECKPOINT_ID
 from ray.train.torch import TorchConfig
 from ray.tune.trainable import Trainable

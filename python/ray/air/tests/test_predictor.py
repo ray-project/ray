@@ -2,13 +2,13 @@ import pytest
 import time
 
 import ray
-from ray.ml.checkpoint import Checkpoint
-from ray.ml.predictor import (
+from ray.air.checkpoint import Checkpoint
+from ray.air.predictor import (
     Predictor,
     DataBatchType,
     PredictorNotSerializableException,
 )
-from ray.ml.batch_predictor import BatchPredictor
+from ray.air.batch_predictor import BatchPredictor
 
 
 class DummyPredictor(Predictor):

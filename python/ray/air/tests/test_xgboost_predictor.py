@@ -1,13 +1,13 @@
 import os
-from ray.ml.predictors.integrations.xgboost import XGBoostPredictor
-from ray.ml.preprocessor import Preprocessor
-from ray.ml.checkpoint import Checkpoint
-from ray.ml.constants import MODEL_KEY
+from ray.air.predictors.integrations.xgboost import XGBoostPredictor
+from ray.air.preprocessor import Preprocessor
+from ray.air.checkpoint import Checkpoint
+from ray.air.constants import MODEL_KEY
 import json
 
 import numpy as np
 import pandas as pd
-from ray.ml.utils.checkpointing import save_preprocessor_to_dir
+from ray.air.utils.checkpointing import save_preprocessor_to_dir
 import xgboost as xgb
 import tempfile
 

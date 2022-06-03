@@ -12,16 +12,16 @@ from joblib import parallel_backend
 
 from ray import tune
 import ray.cloudpickle as cpickle
-from ray.ml.checkpoint import Checkpoint
-from ray.ml.config import RunConfig, ScalingConfig
-from ray.ml.constants import MODEL_KEY, TRAIN_DATASET_KEY
-from ray.ml.preprocessor import Preprocessor
-from ray.ml.trainer import GenDataset, Trainer
-from ray.ml.utils.checkpointing import (
+from ray.air.checkpoint import Checkpoint
+from ray.air.config import RunConfig, ScalingConfig
+from ray.air.constants import MODEL_KEY, TRAIN_DATASET_KEY
+from ray.air.preprocessor import Preprocessor
+from ray.air.trainer import GenDataset, Trainer
+from ray.air.utils.checkpointing import (
     load_preprocessor_from_dir,
     save_preprocessor_to_dir,
 )
-from ray.ml.utils.sklearn_utils import has_cpu_params, set_cpu_params
+from ray.air.utils.sklearn_utils import has_cpu_params, set_cpu_params
 from ray.util import PublicAPI
 from ray.util.joblib import register_ray
 

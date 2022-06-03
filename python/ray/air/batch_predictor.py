@@ -1,8 +1,8 @@
 from typing import Type, Optional, Dict, Any
 
 import ray
-from ray.ml import Checkpoint
-from ray.ml.predictor import Predictor
+from ray.air import Checkpoint
+from ray.air.predictor import Predictor
 
 
 class BatchPredictor(Predictor):

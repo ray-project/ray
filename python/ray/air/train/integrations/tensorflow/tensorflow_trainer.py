@@ -2,11 +2,11 @@ from typing import Callable, Optional, Dict, Tuple, Type, Union
 import tensorflow as tf
 
 from ray.train.tensorflow import TensorflowConfig
-from ray.ml.trainer import GenDataset
-from ray.ml.train.data_parallel_trainer import DataParallelTrainer, _load_checkpoint
-from ray.ml.config import ScalingConfig, RunConfig
-from ray.ml.preprocessor import Preprocessor
-from ray.ml.checkpoint import Checkpoint
+from ray.air.trainer import GenDataset
+from ray.air.train.data_parallel_trainer import DataParallelTrainer, _load_checkpoint
+from ray.air.config import ScalingConfig, RunConfig
+from ray.air.preprocessor import Preprocessor
+from ray.air.checkpoint import Checkpoint
 from ray.util import PublicAPI
 
 

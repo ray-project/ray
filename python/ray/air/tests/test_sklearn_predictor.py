@@ -8,12 +8,12 @@ from sklearn.ensemble import RandomForestClassifier
 
 import ray
 import ray.cloudpickle as cpickle
-from ray.ml.predictors.integrations.sklearn import SklearnPredictor
-from ray.ml.preprocessor import Preprocessor
-from ray.ml.checkpoint import Checkpoint
-from ray.ml.constants import MODEL_KEY
-from ray.ml.batch_predictor import BatchPredictor
-from ray.ml.utils.checkpointing import save_preprocessor_to_dir
+from ray.air.predictors.integrations.sklearn import SklearnPredictor
+from ray.air.preprocessor import Preprocessor
+from ray.air.checkpoint import Checkpoint
+from ray.air.constants import MODEL_KEY
+from ray.air.batch_predictor import BatchPredictor
+from ray.air.utils.checkpointing import save_preprocessor_to_dir
 
 
 @pytest.fixture

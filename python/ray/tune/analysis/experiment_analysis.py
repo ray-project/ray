@@ -5,7 +5,7 @@ import traceback
 from numbers import Number
 from typing import Any, Dict, List, Optional, Tuple
 
-from ray.ml.checkpoint import Checkpoint
+from ray.air.checkpoint import Checkpoint
 from ray.tune.cloud import TrialCheckpoint
 from ray.tune.syncer import SyncConfig
 from ray.tune.utils import flatten_dict

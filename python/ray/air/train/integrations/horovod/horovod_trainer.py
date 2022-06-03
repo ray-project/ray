@@ -1,12 +1,12 @@
 from typing import Dict, Callable, Optional, Union
 
-from ray.ml.config import ScalingConfig, RunConfig
-from ray.ml.trainer import GenDataset
-from ray.ml.preprocessor import Preprocessor
-from ray.ml.checkpoint import Checkpoint
+from ray.air.config import ScalingConfig, RunConfig
+from ray.air.trainer import GenDataset
+from ray.air.preprocessor import Preprocessor
+from ray.air.checkpoint import Checkpoint
 
 
-from ray.ml.train.data_parallel_trainer import DataParallelTrainer
+from ray.air.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.horovod import HorovodConfig
 
 

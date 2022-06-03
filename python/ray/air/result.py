@@ -1,7 +1,7 @@
 from typing import Any, Dict, Optional
 from dataclasses import dataclass
 
-from ray.ml.checkpoint import Checkpoint
+from ray.air.checkpoint import Checkpoint
 
 
 @dataclass

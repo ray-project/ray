@@ -3,13 +3,13 @@ import numpy as np
 
 import ray
 from ray import train
-from ray.ml.train.integrations.tensorflow import TensorflowTrainer
-from ray.ml.examples.tf.tensorflow_linear_dataset_example import (
+from ray.air.train.integrations.tensorflow import TensorflowTrainer
+from ray.air.examples.tf.tensorflow_linear_dataset_example import (
     train_func as tensorflow_linear_train_func,
     get_dataset,
 )
-from ray.ml.predictors.integrations.tensorflow import TensorflowPredictor
-from ray.ml.constants import MODEL_KEY, TRAIN_DATASET_KEY
+from ray.air.predictors.integrations.tensorflow import TensorflowPredictor
+from ray.air.constants import MODEL_KEY, TRAIN_DATASET_KEY
 
 
 @pytest.fixture

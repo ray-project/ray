@@ -5,7 +5,7 @@ import pandas as pd
 
 from ray.data import Dataset
 from ray.data.aggregate import Mean, Std, Min, Max, AbsMax
-from ray.ml.preprocessor import Preprocessor
+from ray.air.preprocessor import Preprocessor
 
 
 class StandardScaler(Preprocessor):

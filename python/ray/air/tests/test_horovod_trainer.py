@@ -6,12 +6,12 @@ from torchvision import datasets
 from torchvision.transforms import transforms
 
 import ray
-from ray.ml.examples.horovod.horovod_pytorch_example import (
+from ray.air.examples.horovod.horovod_pytorch_example import (
     train_func as hvd_train_func,
     Net,
 )
-from ray.ml.predictors.integrations.torch import TorchPredictor
-from ray.ml.train.integrations.horovod import HorovodTrainer
+from ray.air.predictors.integrations.torch import TorchPredictor
+from ray.air.train.integrations.horovod import HorovodTrainer
 
 
 @pytest.fixture

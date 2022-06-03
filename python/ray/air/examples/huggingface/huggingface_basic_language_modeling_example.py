@@ -17,9 +17,9 @@ import torch
 
 import ray
 import ray.data
-from ray.ml.train.integrations.huggingface import HuggingFaceTrainer
-from ray.ml.predictors.integrations.huggingface import HuggingFacePredictor
-from ray.ml.batch_predictor import BatchPredictor
+from ray.air.train.integrations.huggingface import HuggingFaceTrainer
+from ray.air.predictors.integrations.huggingface import HuggingFacePredictor
+from ray.air.batch_predictor import BatchPredictor
 
 
 def main(
