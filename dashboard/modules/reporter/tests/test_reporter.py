@@ -161,9 +161,8 @@ def test_prometheus_physical_stats_record(enable_test_module, shutdown_only):
 
 
 @pytest.mark.skipif(
-    prometheus_client is None or sys.platform != "linux",
-    reason="prometheus_client must be installed. Detailed worker memory stats "
-    "are only available on Linux.",
+    prometheus_client is None,
+    reason="prometheus_client must be installed.",
 )
 def test_prometheus_export_worker_and_memory_stats(enable_test_module, shutdown_only):
     addresses = ray.init(include_dashboard=True, num_cpus=1)
@@ -180,7 +179,10 @@ def test_prometheus_export_worker_and_memory_stats(enable_test_module, shutdown_
 
     def test_worker_stats():
         _, metric_names, metric_samples = fetch_prometheus(prom_addresses)
-        for metric in ["ray_workers_cpu", "ray_workers_mem_rss", "ray_workers_mem_uss"]:
+        expected_metrics = ["ray_workers_cpu", "ray_workers_mem_rss"]
+        if sys.platform == "linux":
+            expected_metrics.append("ray_workers_mem_uss")
+        for metric in expected_metrics:
             if metric not in metric_names:
                 raise RuntimeError(
                     f"Metric {metric} not found in exported metric names"
