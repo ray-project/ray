@@ -155,8 +155,9 @@ METRICS_GAUGES = {
     ),
     "raylet_mem": Gauge(
         "raylet_mem",
-        "Memory usage of the raylet on a node. Type includes uss and the remaining rss "
-        "on Linux, and just rss on other platforms.",
+        "Memory usage of the Raylet on the node. mem_type includes uss (memory "
+        "released to the system if the raylet dies) and rss_other (uss + rss_other = "
+        "rss) on Linux, and just Raylet's rss on other platforms.",
         "MB",
         ["ip", "pid", "mem_type"],
     ),
@@ -174,8 +175,9 @@ METRICS_GAUGES = {
     ),
     "workers_mem": Gauge(
         "workers_mem",
-        "Memory usage of all workers on a node. Type includes uss and "
-        "the remaining rss on Linux, and just rss on other platforms.",
+        "Memory usage of all workers on the node. mem_type includes uss (memory "
+        "released to the system if all workers die) and rss_other (uss + rss_other = "
+        "rss) on Linux, and just total workers' rss on other platforms.",
         "MB",
         ["ip", "mem_type"],
     ),
