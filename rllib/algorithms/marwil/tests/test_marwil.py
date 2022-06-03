@@ -198,7 +198,11 @@ class TestMARWIL(unittest.TestCase):
                 loss_out, v_loss, p_loss = policy.get_session().run(
                     # policy._loss is create by TFPolicy, and is basically the
                     # loss tensor of the static graph.
-                    [policy._loss, policy._marwil_loss.v_loss, policy._marwil_loss.p_loss],
+                    [
+                        policy._loss,
+                        policy._marwil_loss.v_loss,
+                        policy._marwil_loss.p_loss,
+                    ],
                     feed_dict=policy._get_loss_inputs_dict(
                         postprocessed_batch, shuffle=False
                     ),
