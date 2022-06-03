@@ -242,7 +242,7 @@ def test_no_controller_deserialization(start_and_shutdown_ray_cli_function):
         )
     }
 
-    @ray.remote(runtime_env=runtime_env)
+    @ray.remote
     def run_graph():
         """Deploys a Serve application to the controller's Ray cluster."""
         from ray import serve
@@ -250,7 +250,7 @@ def test_no_controller_deserialization(start_and_shutdown_ray_cli_function):
         from ray._private.utils import import_attr
 
         # Import and build the graph
-        graph = import_attr("conditional_dag.serve_dag")
+        graph = import_attr("test_config_files.pizza.serve_dag")
         app = build(graph)
 
         # Override options for each deployment
@@ -261,8 +261,11 @@ def test_no_controller_deserialization(start_and_shutdown_ray_cli_function):
         serve.start(detached=True, _override_controller_namespace="serve")
         serve.run(graph)
 
-    ray.init(address="auto")
-    serve.start(detached=True, _override_controller_namespace="serve")
+    ray.init(address="auto", namespace="serve")
+    serve.start(detached=True)
+    serve.context._global_client = None
+    ray.shutdown()
+    ray.init(address="auto", runtime_env={"working_dir": "."}, namespace="serve")
     ray.get(run_graph.remote())
     wait_for_condition(
         lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
