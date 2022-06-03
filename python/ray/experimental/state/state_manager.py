@@ -199,7 +199,8 @@ class StateDataSourceClient:
 
         Returns:
             None if the corresponding id doesn't exist.
-            Node id otherwise.
+            Node id otherwise. If None node_ip is given,
+            it will also return None.
         """
         if not ip:
             return None

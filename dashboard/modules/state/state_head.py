@@ -167,8 +167,8 @@ class StateHead(dashboard_utils.DashboardHeadModule):
     async def list_logs(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         """Return a list of log files on a given node id.
 
-        Note that the semantic of this "list" is different from other
-        list state API's such as actor, placement group, or task.
+        Unlike other list APIs that display all existing resources in the cluster,
+        this API always require to specify node id and node ip.
         """
         glob_filter = req.query.get("glob", "*")
         node_id = req.query.get("node_id", None)
@@ -186,7 +186,7 @@ class StateHead(dashboard_utils.DashboardHeadModule):
                 result=None,
             )
 
-        node_id = node_id or self.resolve_node_id(node_ip)
+        node_id = node_id or self._log_api.ip_to_node_id(node_ip)
         if not node_id:
             return self._reply(
                 success=False,

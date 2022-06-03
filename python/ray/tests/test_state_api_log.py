@@ -7,14 +7,23 @@ from typing import List
 import pytest
 import sys
 
+if sys.version_info > (3, 7, 0):
+    from unittest.mock import AsyncMock
+else:
+    from asyncmock import AsyncMock
+
 import ray
 
 from ray._private.test_utils import (
     format_web_url,
     wait_until_server_available,
 )
+from ray._raylet import WorkerID, ActorID, TaskID, NodeID
+from ray.dashboard.modules.actor.actor_head import actor_table_data_to_dict
 from ray.dashboard.tests.conftest import *  # noqa
+from ray.core.generated.common_pb2 import Address
 from ray.core.generated.reporter_pb2 import StreamLogReply, ListLogsReply
+from ray.core.generated.gcs_pb2 import ActorTableData
 from ray.dashboard.modules.log.log_agent import tail as tail_file
 from ray.dashboard.modules.log.log_manager import LogsManager
 from ray.experimental.state.api import list_nodes, list_workers
@@ -25,7 +34,27 @@ from ray._private.test_utils import wait_for_condition
 
 ASYNCMOCK_MIN_PYTHON_VER = (3, 8)
 
-# Unit Tests (LogAgentV1)
+
+def generate_actor_data(id, node_id, worker_id):
+    if worker_id:
+        worker_id = worker_id.binary()
+    message = ActorTableData(
+        actor_id=id.binary(),
+        state=ActorTableData.ActorState.ALIVE,
+        name="abc",
+        pid=1234,
+        class_name="class",
+        address=Address(
+            raylet_id=node_id.binary(),
+            ip_address="127.0.0.1",
+            port=1234,
+            worker_id=worker_id,
+        ),
+    )
+    return actor_table_data_to_dict(message)
+
+
+# Unit Tests (Log Agent)
 
 
 def test_logs_tail():
@@ -127,6 +156,153 @@ async def test_logs_manager_list_logs(logs_manager):
     " or higher",
 )
 @pytest.mark.asyncio
+async def test_logs_manager_resolve_file(logs_manager):
+    node_id = NodeID(b"1" * 28)
+    """
+    Test filename is given.
+    """
+    expected_filename = "filename"
+    log_file_name = await logs_manager.resolve_filename(
+        node_id=node_id,
+        log_filename=expected_filename,
+        actor_id=None,
+        task_id=None,
+        pid=None,
+        get_actor_fn=lambda _: True,
+        timeout=10,
+    )
+    assert log_file_name == expected_filename
+    """
+    Test actor id is given.
+    """
+    # Actor doesn't exist.
+    with pytest.raises(ValueError):
+        actor_id = ActorID(b"2" * 16)
+
+        def get_actor_fn(id):
+            if id == actor_id:
+                return None
+            assert False, "Not reachable."
+
+        log_file_name = await logs_manager.resolve_filename(
+            node_id=node_id,
+            log_filename=None,
+            actor_id=actor_id,
+            task_id=None,
+            pid=None,
+            get_actor_fn=get_actor_fn,
+            timeout=10,
+        )
+
+    # Actor exists, but it is not scheduled yet.
+    actor_id = ActorID(b"2" * 16)
+
+    with pytest.raises(ValueError):
+        log_file_name = await logs_manager.resolve_filename(
+            node_id=node_id,
+            log_filename=None,
+            actor_id=actor_id,
+            task_id=None,
+            pid=None,
+            get_actor_fn=lambda _: generate_actor_data(actor_id, node_id, None),
+            timeout=10,
+        )
+
+    # Actor exists.
+    actor_id = ActorID(b"2" * 16)
+    worker_id = WorkerID(b"3" * 28)
+    logs_manager.list_logs = AsyncMock()
+    logs_manager.list_logs.return_value = {
+        "worker_out": [f"worker-{worker_id.hex()}-123-123.out"]
+    }
+    log_file_name = await logs_manager.resolve_filename(
+        node_id=node_id.hex(),
+        log_filename=None,
+        actor_id=actor_id,
+        task_id=None,
+        pid=None,
+        get_actor_fn=lambda _: generate_actor_data(actor_id, node_id, worker_id),
+        timeout=10,
+    )
+    logs_manager.list_logs.assert_awaited_with(
+        node_id.hex(), 10, glob_filter=f"*{worker_id.hex()}*"
+    )
+    assert log_file_name == f"worker-{worker_id.hex()}-123-123.out"
+
+    """
+    Test task id is given.
+    """
+    with pytest.raises(NotImplementedError):
+        task_id = TaskID(b"2" * 24)
+        log_file_name = await logs_manager.resolve_filename(
+            node_id=node_id.hex(),
+            log_filename=None,
+            actor_id=None,
+            task_id=task_id,
+            pid=None,
+            get_actor_fn=lambda _: generate_actor_data(actor_id, node_id, worker_id),
+            timeout=10,
+        )
+
+    """
+    Test pid is given.
+    """
+    # Pid doesn't exist.
+    with pytest.raises(FileNotFoundError):
+        pid = 456
+        logs_manager.list_logs = AsyncMock()
+        # Provide the wrong pid.
+        logs_manager.list_logs.return_value = {"worker_out": ["worker-123-123-123.out"]}
+        log_file_name = await logs_manager.resolve_filename(
+            node_id=node_id.hex(),
+            log_filename=None,
+            actor_id=None,
+            task_id=None,
+            pid=pid,
+            get_actor_fn=lambda _: generate_actor_data(actor_id, node_id, worker_id),
+            timeout=10,
+        )
+
+    # Pid exists.
+    pid = 123
+    logs_manager.list_logs = AsyncMock()
+    # Provide the wrong pid.
+    logs_manager.list_logs.return_value = {"worker_out": [f"worker-123-123-{pid}.out"]}
+    log_file_name = await logs_manager.resolve_filename(
+        node_id=node_id.hex(),
+        log_filename=None,
+        actor_id=None,
+        task_id=None,
+        pid=pid,
+        get_actor_fn=lambda _: generate_actor_data(actor_id, node_id, worker_id),
+        timeout=10,
+    )
+    logs_manager.list_logs.assert_awaited_with(
+        node_id.hex(), 10, glob_filter=f"*{pid}*"
+    )
+    assert log_file_name == f"worker-123-123-{pid}.out"
+
+    """
+    Test nothing is given.
+    """
+    with pytest.raises(FileNotFoundError):
+        log_file_name = await logs_manager.resolve_filename(
+            node_id=node_id.hex(),
+            log_filename=None,
+            actor_id=None,
+            task_id=None,
+            pid=None,
+            get_actor_fn=lambda _: generate_actor_data(actor_id, node_id, worker_id),
+            timeout=10,
+        )
+
+
+@pytest.mark.skipif(
+    sys.version_info < ASYNCMOCK_MIN_PYTHON_VER,
+    reason=f"unittest.mock.AsyncMock requires python {ASYNCMOCK_MIN_PYTHON_VER}"
+    " or higher",
+)
+@pytest.mark.asyncio
 async def test_logs_manager_stream_log(logs_manager):
     NUM_LOG_CHUNKS = 10
     logs_client = logs_manager.data_source_client
@@ -175,7 +351,7 @@ async def test_logs_manager_stream_log(logs_manager):
     assert i == NUM_LOG_CHUNKS
     logs_client.stream_log.assert_awaited_with(
         node_id="1",
-        filename="worker-0-0-10.out",
+        log_file_name="worker-0-0-10.out",
         keep_alive=True,
         lines=10,
         interval=0.5,

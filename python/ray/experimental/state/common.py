@@ -74,15 +74,15 @@ class GetLogOptions:
             assert self.interval is None
         if self.media_type not in ["file", "stream"]:
             raise ValueError(f"Invalid media type: {self.media_type}")
-        if self.node_id and self.node_ip:
-            raise ValueError(
-                "Both node_id and node_ip are given. Only one of them can be provided. "
-                f"Given node id: {self.node_id}, given node ip: {self.node_ip}"
-            )
         if not (self.node_id or self.node_ip):
             raise ValueError(
                 "Both node_id and node_ip is not given. "
                 "At least one of the should be provided."
+            )
+        if self.node_id and self.node_ip:
+            raise ValueError(
+                "Both node_id and node_ip are given. Only one of them can be provided. "
+                f"Given node id: {self.node_id}, given node ip: {self.node_ip}"
             )
         if not (self.actor_id or self.task_id or self.pid or self.filename):
             raise ValueError(

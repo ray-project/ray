@@ -1,10 +1,9 @@
 import logging
+import re
 
 from collections import defaultdict
 from typing import List, Optional, Dict, AsyncIterable, Tuple, Callable
 
-from ray._private.log_monitor import JOB_LOG_PATTERN
-from ray.core.generated.gcs_pb2 import ActorTableData
 from ray.experimental.state.common import GetLogOptions
 from ray.experimental.state.exception import DataSourceUnavailable
 from ray.experimental.state.state_manager import StateDataSourceClient
@@ -15,6 +14,8 @@ from ray.dashboard.datacenter import DataSource
 
 logger = logging.getLogger(__name__)
 
+WORKER_LOG_PATTERN = re.compile(".*worker-([0-9a-f]+)-([0-9a-f]+)-(\d+).out")
+
 
 class LogsManager:
     def __init__(self, data_source_client: StateDataSourceClient):
@@ -24,7 +25,7 @@ class LogsManager:
     def data_source_client(self) -> StateDataSourceClient:
         return self.client
 
-    def resolve_node_id(self, node_ip: Optional[str]):
+    def ip_to_node_id(self, node_ip: Optional[str]):
         """Resolve the node id from a given node ip.
 
         Args:
@@ -68,8 +69,17 @@ class LogsManager:
         Return:
             Async generator of streamed logs in bytes.
         """
-        log_file_name, node_id = await self._resolve_file_and_node(
-            options, DataSource.actors.get
+        node_id = options.node_id or self.ip_to_node_id(options.node_ip)
+        self._verify_node_registered(node_id)
+
+        log_file_name = await self.resolve_filename(
+            node_id=node_id,
+            log_filename=options.filename,
+            actor_id=options.actor_id,
+            task_id=options.task_id,
+            pid=options.pid,
+            get_actor_fn=DataSource.actors.get,
+            timeout=options.timeout,
         )
 
         keep_alive = options.media_type == "stream"
@@ -97,59 +107,70 @@ class LogsManager:
             )
         assert node_id is not None
 
-    async def _resolve_file_and_node(
-        self, options: GetLogOptions, get_actor_fn: Callable[[str], ActorTableData]
+    async def resolve_filename(
+        self,
+        *,
+        node_id: str,
+        log_filename: Optional[str],
+        actor_id: Optional[str],
+        task_id: Optional[str],
+        pid: Optional[str],
+        get_actor_fn: Callable[[str], Dict],
+        timeout: int,
     ) -> Tuple[str, str]:
-        """Return the file name and a node id of that file based on the given option."""
-        node_id = options.node_id or self.resolve_node_id(options.node_ip)
-        self._verify_node_registered(node_id)
+        """Return the file name given all options."""
+        if actor_id:
+            actor_data = get_actor_fn(actor_id)
+            if actor_data is None:
+                raise ValueError(f"Actor ID {actor_id} not found.")
 
-        # If `log_file_name` is not provided, check if we can get the
-        # corresponding `log_file_name` if an `actor_id` is provided.
-        log_file_name = options.filename
-        if log_file_name is None:
-            if options.actor_id is not None:
-                actor_data = get_actor_fn(options.actor_id)
-                if actor_data is None:
-                    raise ValueError(f"Actor ID {options.actor_id} not found.")
-                worker_id = actor_data["address"].get("workerId")
-                if worker_id is None:
-                    raise ValueError(
-                        f"Worker ID for Actor ID {options.actor_id} not found. "
-                        "Actor is not scheduled yet."
-                    )
-
-                log_files = await self.list_logs(
-                    node_id, options.timeout, glob_filter=f"*{worker_id}*"
+            # TODO(sang): Only the latest worker id can be obtained from
+            # actor information now. That means, if actors are restarted,
+            # there's no way for us to get the past worker ids.
+            worker_id = actor_data["address"].get("workerId")
+            if not worker_id:
+                raise ValueError(
+                    f"Worker ID for Actor ID {actor_id} not found. "
+                    "Actor is not scheduled yet."
                 )
-                for file in log_files["worker_out"]:
-                    if file.split(".")[0].split("-")[1] == worker_id:
-                        log_file_name = file
-                        break
 
-        # If `log_file_name` cannot be resolved, check if we can get the
-        # corresponding `log_file_name` if a `pid` is provided.
-        if log_file_name is None:
-            pid = options.pid
-            if pid is not None:
-                log_files = await self.list_logs(
-                    node_id, timeout=options.timeout, glob_filter=f"*{pid}*"
+            # List all worker logs that match actor's worker id.
+            log_files = await self.list_logs(
+                node_id, timeout, glob_filter=f"*{worker_id}*"
+            )
+
+            # Find matching worker logs.
+            for filename in log_files["worker_out"]:
+                # Worker logs look like worker-[worker_id]-[job_id]-[pid].log
+                worker_id_from_filename = WORKER_LOG_PATTERN.match(filename).group(1)
+                if worker_id_from_filename == worker_id:
+                    log_filename = filename
+                    break
+        elif task_id:
+            raise NotImplementedError("task_id is not supported yet.")
+        elif pid:
+            log_files = await self.list_logs(node_id, timeout, glob_filter=f"*{pid}*")
+            for filename in log_files["worker_out"]:
+                # worker-[worker_id]-[job_id]-[pid].log
+                worker_pid_from_filename = int(
+                    WORKER_LOG_PATTERN.match(filename).group(3)
                 )
-                logger.info(log_files)
-                for file in log_files["worker_out"]:
-                    worker_pid = int(JOB_LOG_PATTERN.match(file).group(2))
-                    if worker_pid == pid:
-                        log_file_name = file
-                        break
-                if log_file_name is None:
-                    raise ValueError(
-                        f"Worker with pid {pid} not found on node {node_id}"
-                    )
+                if worker_pid_from_filename == pid:
+                    log_filename = filename
+                    break
 
-        if log_file_name is None:
-            raise ValueError(f"Could not find a log file for a given option {options}")
+        if log_filename is None:
+            raise FileNotFoundError(
+                "Could not find a log file. Please make sure the given "
+                "option exists in the cluster.\n"
+                f"\node_id: {node_id}\n"
+                f"\filename: {log_filename}\n"
+                f"\tactor_id: {actor_id}\n"
+                f"\task_id: {task_id}\n"
+                f"\tpid: {pid}\n"
+            )
 
-        return log_file_name, node_id
+        return log_filename
 
     def _categorize_log_files(self, log_files: List[str]) -> Dict[str, List[str]]:
         """Categorize the given log files after filterieng them out using a given glob.
