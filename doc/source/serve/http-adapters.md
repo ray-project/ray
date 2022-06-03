@@ -39,7 +39,7 @@ Let's go over them one by one.
 ## Ray AIR `ModelWrapper`
 
 Ray Serve provides a suite of adapters to convert HTTP requests to ML inputs like `numpy` arrays.
-You can just use it with [Ray AI Runtime (AIR) model wrapper](air-serving-guide) feature
+You can use it with [Ray AI Runtime (AIR) model wrapper](air-serving-guide) feature
 to one click deploy pre-trained models.
 
 For example, we provide a simple adapter for n-dimensional array.
