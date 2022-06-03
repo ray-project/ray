@@ -1,4 +1,5 @@
 from typing import Callable
+import threading
 
 from ray.rllib.utils.annotations import DeveloperAPI
 
@@ -20,7 +21,8 @@ def with_lock(func: Callable) -> Callable:
 
     def wrapper(self, *a, **k):
         try:
-            with self._lock:
+            # with self._lock:
+            with threading.RLock():
                 return func(self, *a, **k)
         except AttributeError as e:
             if "has no attribute '_lock'" in e.args[0]:

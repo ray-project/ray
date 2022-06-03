@@ -210,7 +210,8 @@ class Trainer(Trainable):
             logger_creator: Callable that creates a ray.tune.Logger
                 object. If unspecified, a default logger is created.
         """
-
+        # import threading
+        # ray.util.register_serializer(threading.RLock, serializer=lambda _:None, deserializer=lambda _:threading.RLock())
         # User provided (partial) config (this may be w/o the default
         # Trainer's Config object). Will get merged with TrainerConfig()
         # in self.setup().

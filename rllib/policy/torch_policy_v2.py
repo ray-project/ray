@@ -83,6 +83,7 @@ class TorchPolicyV2(Policy):
             config: The Policy's config dict.
             max_seq_len: Max sequence length for LSTM training.
         """
+        # ray.util.register_serializer(threading.RLock, serializer=lambda _:None, deserializer=lambda _:threading.RLock())
         self.framework = config["framework"] = "torch"
 
         super().__init__(observation_space, action_space, config)
@@ -182,7 +183,7 @@ class TorchPolicyV2(Policy):
         # first, then its value function (e.g. in a loss function), in
         # between of which another model call is made (e.g. to compute an
         # action).
-        self._lock = threading.RLock()
+        # self._lock = threading.RLock()
 
         self._state_inputs = self.model.get_initial_state()
         self._is_recurrent = len(self._state_inputs) > 0

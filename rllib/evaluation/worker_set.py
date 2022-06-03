@@ -250,7 +250,7 @@ class WorkerSet:
     def sync_weights(
         self,
         policies: Optional[List[PolicyID]] = None,
-        from_worker: Optional[RolloutWorker] = None,
+        from_worker: Optional[ActorHandle] = None,
         global_vars: Optional[Dict[str, TensorType]] = None,
     ) -> None:
         """Syncs model weights from the local worker to all remote workers.

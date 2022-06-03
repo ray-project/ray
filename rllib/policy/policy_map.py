@@ -59,6 +59,7 @@ class PolicyMap(dict):
 
         self.worker_index = worker_index
         self.num_workers = num_workers
+        self.capacity = capacity
         self.session_creator = session_creator
         self.seed = seed
 
@@ -84,7 +85,13 @@ class PolicyMap(dict):
         # Lock used for locking some methods on the object-level.
         # This prevents possible race conditions when accessing the map
         # and the underlying structures, like self.deque and others.
-        self._lock = threading.RLock()
+        # self._lock = threading.RLock()
+
+    def __reduce__(self):
+        return PolicyMap, (
+            self.worker_index, self.num_workers, self.capacity, self.path,
+            self.policy_config, self.session_creator, self.seed,
+        )
 
     def create_policy(
         self,
@@ -230,9 +237,10 @@ class PolicyMap(dict):
 
     @override(dict)
     def keys(self):
-        self._lock.acquire()
-        ks = list(self.valid_keys)
-        self._lock.release()
+        # self._lock.acquire()
+        with threading.RLock():
+            ks = list(self.valid_keys)
+        # self._lock.release()
 
         def gen():
             for key in ks:
@@ -242,9 +250,10 @@ class PolicyMap(dict):
 
     @override(dict)
     def values(self):
-        self._lock.acquire()
-        vs = [self[k] for k in self.valid_keys]
-        self._lock.release()
+        # self._lock.acquire()
+        with threading.RLock():
+            vs = [self[k] for k in self.valid_keys]
+        # self._lock.release()
 
         def gen():
             for value in vs:

@@ -88,7 +88,6 @@ RESTORE_WORKER_MODE = 4
 # entry/init points.
 logger = logging.getLogger(__name__)
 
-
 # Visible for testing.
 def _unhandled_error_handler(e: Exception):
     logger.error(
@@ -145,6 +144,8 @@ class Worker:
         # Create the lock here because the serializer will use it before
         # initializing Ray.
         self.lock = threading.RLock()
+        # print(f">>>>>> Creating new worker with RLock serializer ....")
+        # ray.util.register_serializer(threading.RLock, serializer=lambda _:None, deserializer=lambda _:threading.RLock())
 
     @property
     def connected(self):

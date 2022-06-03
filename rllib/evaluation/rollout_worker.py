@@ -381,6 +381,9 @@ class RolloutWorker(ParallelIteratorWorker):
             disable_env_checking: If True, disables the env checking module that
                 validates the properties of the passed environment.
         """
+        print(f">>>>> Creating worker index: {worker_index}")
+        # import threading
+        # ray.util.register_serializer(threading.RLock, serializer=lambda _:None, deserializer=lambda _:threading.RLock())
         self.buffer_key_list = [None] * 12
         self.buffer_list = [None] * 12
         # Deprecated args.
@@ -398,7 +401,7 @@ class RolloutWorker(ParallelIteratorWorker):
             pid: spec if isinstance(spec, PolicySpec) else PolicySpec(*spec)
             for pid, spec in policy_spec.copy().items()
         }
-
+        print(f">>>>> 1 - Creating worker index: {worker_index}")
         self._original_kwargs: dict = locals().copy()
         del self._original_kwargs["self"]
 
@@ -442,6 +445,7 @@ class RolloutWorker(ParallelIteratorWorker):
             remote=remote_worker_envs,
             recreated_worker=recreated_worker,
         )
+        print(f">>>>> 2 - Creating worker index: {worker_index}")
         self.env_context = env_context
         self.policy_config: PartialTrainerConfigDict = policy_config
         if callbacks:
@@ -478,7 +482,7 @@ class RolloutWorker(ParallelIteratorWorker):
         self.global_vars: Optional[dict] = None
         self.fake_sampler: bool = fake_sampler
         self._disable_env_checking: bool = disable_env_checking
-
+        print(f">>>>> 3 - Creating worker index: {worker_index}")
         # Update the global seed for numpy/random/tf-eager/torch if we are not
         # the local worker, otherwise, this was already done in the Trainer
         # object itself.
@@ -504,7 +508,7 @@ class RolloutWorker(ParallelIteratorWorker):
         ):
             # Run the `env_creator` function passing the EnvContext.
             self.env = env_creator(copy.deepcopy(self.env_context))
-
+        print(f">>>>> 4 - Creating worker index: {worker_index}")
         if self.env is not None:
             # Validate environment (general validation function).
             if not self._disable_env_checking:
@@ -547,7 +551,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
                 def wrap(env):
                     return env
-
+            print(f">>>>> 5 - Creating worker index: {worker_index}")
             # Wrap env through the correct wrapper.
             self.env: EnvType = wrap(self.env)
             # Ideally, we would use the same make_sub_env() function below
@@ -576,7 +580,7 @@ class RolloutWorker(ParallelIteratorWorker):
         # is optional and mainly used for backward compatibility.
         self.policies_to_train = policies_to_train
         self.is_policy_to_train: Callable[[PolicyID, SampleBatchType], bool]
-
+        print(f">>>>> 6 - Creating worker index: {worker_index}")
         # By default (None), use the set of all policies found in the
         # policy_dict.
         if self.policies_to_train is None:
@@ -624,7 +628,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 f"Policies are placed on the CPU and the `num_gpus` setting "
                 f"is ignored."
             )
-
+        print(f">>>>> 7 - Creating worker index: {worker_index}")
         self._build_policy_map(
             self.policy_dict,
             policy_config,
@@ -651,7 +655,7 @@ class RolloutWorker(ParallelIteratorWorker):
                     f"env {self.env} is not a subclass of BaseEnv, "
                     f"MultiAgentEnv, ActorHandle, or ExternalMultiAgentEnv!"
                 )
-
+        print(f">>>>> 8 - Creating worker index: {worker_index}")
         self.filters: Dict[PolicyID, Filter] = {}
         for (policy_id, policy) in self.policy_map.items():
             filter_shape = tree.map_structure(
@@ -666,7 +670,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
         if self.worker_index == 0:
             logger.info("Built filter map: {}".format(self.filters))
-
+        print(f">>>>> 9 - Creating worker index: {worker_index}")
         # Vectorize environment, if any.
         self.num_envs: int = num_envs
         # This RolloutWorker has no env.
@@ -704,7 +708,7 @@ class RolloutWorker(ParallelIteratorWorker):
             pack = False
         else:
             raise ValueError("Unsupported batch mode: {}".format(self.batch_mode))
-
+        print(f">>>>> 10 - Creating worker index: {worker_index}")
         # Create the IOContext for this worker.
         self.io_context: IOContext = IOContext(
             log_dir, policy_config, worker_index, self
@@ -746,7 +750,7 @@ class RolloutWorker(ParallelIteratorWorker):
                     "either `simulation` or a sub-class of ray.rllib.offline."
                     "off_policy_estimator::OffPolicyEstimator"
                 )
-
+        print(f">>>>> 11 - Creating worker index: {worker_index}")
         render = False
         if policy_config.get("render_env") is True and (
             num_workers == 0 or worker_index == 1
@@ -794,7 +798,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 sample_collector_class=policy_config.get("sample_collector"),
                 render=render,
             )
-
+        print(f">>>>> 12 - Creating worker index: {worker_index}")
         self.input_reader: InputReader = input_creator(self.io_context)
         self.output_writer: OutputWriter = output_creator(self.io_context)
 
@@ -803,6 +807,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 self.async_env, self.env, self.policy_map
             )
         )
+        print(f">>>>> 13 - Creating worker index: {worker_index}")
 
     @DeveloperAPI
     def sample(self) -> SampleBatchType:
@@ -1217,7 +1222,9 @@ class RolloutWorker(ParallelIteratorWorker):
         Returns:
             The policy under the given ID (or None if not found).
         """
-        return self.policy_map.get(policy_id)
+        obj = self.policy_map.get(policy_id)
+        print(f">>>>>>> Type of policy obj: {type(obj)}")
+        return obj
 
     @DeveloperAPI
     def add_policy(
