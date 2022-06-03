@@ -176,9 +176,6 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
         worker_index = get_global_worker().worker_index
         self.sample_index = int((worker_index - 1) / self.num_models)
         self.global_itr = 0
-        self.device = (
-            torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-        )
 
     def forward(self, x):
         """Outputs the delta between next and current observation."""
@@ -256,11 +253,12 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
         def convert_to_str(lst):
             return " ".join([str(elem) for elem in lst])
 
+        device = next(iter(self.dynamics_ensemble[i].parameters()))[0].device
         for epoch in range(self.max_epochs):
             # Training
             for data in zip(*train_loaders):
-                x = torch.cat([d[0] for d in data], dim=0).to(self.device)
-                y = torch.cat([d[1] for d in data], dim=0).to(self.device)
+                x = torch.cat([d[0] for d in data], dim=0).to(device)
+                y = torch.cat([d[1] for d in data], dim=0).to(device)
                 train_losses = self.loss(x, y)
                 for ind in indexes:
                     self.optimizers[ind].zero_grad()
@@ -273,8 +271,8 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
             # Validation
             val_lists = []
             for data in zip(*val_loaders):
-                x = torch.cat([d[0] for d in data], dim=0).to(self.device)
-                y = torch.cat([d[1] for d in data], dim=0).to(self.device)
+                x = torch.cat([d[0] for d in data], dim=0).to(device)
+                y = torch.cat([d[1] for d in data], dim=0).to(device)
                 val_losses = self.loss(x, y)
                 val_lists.append(val_losses)
 

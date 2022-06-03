@@ -450,6 +450,7 @@ def test_tensors(ray_start_regular_shared):
         "Dataset(num_blocks=5, num_rows=5, "
         "schema={value: <ArrowTensorType: shape=(3, 5), dtype=int64>})"
     )
+    assert ds.size_bytes() == 5 * 3 * 5 * 8
 
     # Pandas conversion.
     res = (
@@ -1123,7 +1124,7 @@ def test_tensors_in_tables_to_tf_mix(ray_start_regular_shared, pipelined):
         feature_columns=[["one"], ["two"]],
         output_signature=(
             (
-                tf.TensorSpec(shape=(None, 1, 2, 2, 2), dtype=tf.float32),
+                tf.TensorSpec(shape=(None, 2, 2, 2), dtype=tf.float32),
                 tf.TensorSpec(shape=(None, 1), dtype=tf.float32),
             ),
             tf.TensorSpec(shape=(None,), dtype=tf.float32),
@@ -1135,7 +1136,7 @@ def test_tensors_in_tables_to_tf_mix(ray_start_regular_shared, pipelined):
         col1.append(batch[0][0])
         col2.append(batch[0][1])
         labels.append(batch[1])
-    col1 = np.squeeze(np.concatenate(col1), axis=1)
+    col1 = np.concatenate(col1)
     col2 = np.squeeze(np.concatenate(col2), axis=1)
     labels = np.concatenate(labels)
     np.testing.assert_array_equal(col1, np.sort(df["one"].to_numpy()))

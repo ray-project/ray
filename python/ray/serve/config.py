@@ -108,7 +108,7 @@ class DeploymentConfig(BaseModel):
             replica's health check before marking it unhealthy.
     """
 
-    num_replicas: PositiveInt = 1
+    num_replicas: NonNegativeInt = 1
     max_concurrent_queries: Optional[int] = None
     user_config: Any = None
 
@@ -199,7 +199,7 @@ class DeploymentConfig(BaseModel):
         keyword raises a ValueError.
 
         Args:
-            ignore_none (bool): When True, any valid keywords with value None
+            ignore_none: When True, any valid keywords with value None
                 are ignored, and their values stay default. Invalid keywords
                 still raise a TypeError.
 
