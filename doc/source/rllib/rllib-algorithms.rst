@@ -15,7 +15,8 @@ Available Algorithms - Overview
 ============================== ========== ============================= ================== =========== ============================================================= ===============
 Algorithm                      Frameworks Discrete Actions              Continuous Actions Multi-Agent Model Support                                                 Multi-GPU
 ============================== ========== ============================= ================== =========== ============================================================= ===============
-`A2C, A3C`_                    tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   A2C: tf + torch
+`A2C`_                         tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   A2C: tf + torch
+`A3C`_                         tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   No
 `ARS`_                         tf + torch **Yes**                       **Yes**            No                                                                        No
 `Bandits`_ (`TS`_ & `LinUCB`_) torch      **Yes** `+parametric`_        No                 **Yes**                                                                   No
 `BC`_                          tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_                                                       torch
@@ -60,7 +61,6 @@ Algorithm                        Frameworks Discrete Actions        Continuous A
 `Curiosity`_                     tf + torch **Yes** `+parametric`_  No                 **Yes**     `+RNN`_
 ================================ ========== ======================= ================== =========== =====================
 
-.. _`A2C, A3C`: rllib-algorithms.html#a3c
 .. _`APEX-DQN`: rllib-algorithms.html#apex
 .. _`APEX-DDPG`: rllib-algorithms.html#apex
 .. _`+autoreg`: rllib-models.html#autoregressive-action-distributions
@@ -130,7 +130,7 @@ Importance Weighted Actor-Learner Architecture (IMPALA)
 -------------------------------------------------------
 |pytorch| |tensorflow|
 `[paper] <https://arxiv.org/abs/1802.01561>`__
-`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/impala/impala.py>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/impala/impala.py>`__
 In IMPALA, a central learner runs SGD in a tight loop while asynchronously pulling sample batches from many actor processes. RLlib's IMPALA implementation uses DeepMind's reference `V-trace code <https://github.com/deepmind/scalable_agent/blob/master/vtrace.py>`__. Note that we do not provide a deep residual network out of the box, but one can be plugged in as a `custom model <rllib-models.html#custom-models-tensorflow>`__. Multiple learner GPUs and experience replay are also supported.
 
 .. figure:: images/impala-arch.svg
@@ -168,7 +168,7 @@ SpaceInvaders  843                              ~300
 
 **IMPALA-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/agents/impala/impala.py
+.. literalinclude:: ../../../rllib/algorithms/impala/impala.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -179,7 +179,7 @@ Asynchronous Proximal Policy Optimization (APPO)
 ------------------------------------------------
 |pytorch| |tensorflow|
 `[paper] <https://arxiv.org/abs/1707.06347>`__
-`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/ppo/appo.py>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/appo/appo.py>`__
 We include an asynchronous variant of Proximal Policy Optimization (PPO) based on the IMPALA architecture. This is similar to IMPALA but using a surrogate policy loss with clipping. Compared to synchronous PPO, APPO is more efficient in wall-clock time due to its use of asynchronous sampling. Using a clipped loss also allows for multiple SGD passes, and therefore the potential for better sample efficiency compared to IMPALA. V-trace can also be enabled to correct for off-policy samples.
 
 .. tip::
@@ -190,11 +190,11 @@ We include an asynchronous variant of Proximal Policy Optimization (PPO) based o
 
     APPO architecture (same as IMPALA)
 
-Tuned examples: `PongNoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ppo/pong-appo.yaml>`__
+Tuned examples: `PongNoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/appo/pong-appo.yaml>`__
 
 **APPO-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/agents/ppo/appo.py
+.. literalinclude:: ../../../rllib/algorithms/appo/appo.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -205,7 +205,7 @@ Decentralized Distributed Proximal Policy Optimization (DD-PPO)
 ---------------------------------------------------------------
 |pytorch|
 `[paper] <https://arxiv.org/abs/1911.00357>`__
-`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/ppo/ddppo.py>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/ddppo/ddppo.py>`__
 Unlike APPO or PPO, with DD-PPO policy improvement is no longer done centralized in the trainer process. Instead, gradients are computed remotely on each rollout worker and all-reduced at each mini-batch using `torch distributed <https://pytorch.org/docs/stable/distributed.html>`__. This allows each worker's GPU to be used both for sampling and for training.
 
 .. tip::
@@ -216,11 +216,11 @@ Unlike APPO or PPO, with DD-PPO policy improvement is no longer done centralized
 
     DD-PPO architecture (both sampling and learning are done on worker GPUs)
 
-Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ppo/cartpole-ddppo.yaml>`__, `BreakoutNoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ppo/atari-ddppo.yaml>`__
+Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ddppo/cartpole-ddppo.yaml>`__, `BreakoutNoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ddppo/atari-ddppo.yaml>`__
 
 **DDPPO-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/agents/ppo/ddppo.py
+.. literalinclude:: ../../../rllib/algorithms/ddppo/ddppo.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -228,21 +228,21 @@ Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rll
 Gradient-based
 ~~~~~~~~~~~~~~
 
-.. _a3c:
+.. _a2c:
 
-Advantage Actor-Critic (A2C, A3C)
----------------------------------
+Advantage Actor-Critic (A2C)
+----------------------------
 |pytorch| |tensorflow|
-`[paper] <https://arxiv.org/abs/1602.01783>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/a3c/a3c.py>`__
-RLlib implements both A2C and A3C. These algorithms scale to 16-32+ worker processes depending on the environment.
-
-A2C also supports microbatching (i.e., gradient accumulation), which can be enabled by setting the ``microbatch_size`` config. Microbatching allows for training with a ``train_batch_size`` much larger than GPU memory.
+`[paper] <https://arxiv.org/abs/1602.01783>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/a2c/a2c.py>`__
+A2C scales to 16-32+ worker processes depending on the environment and supports microbatching
+(i.e., gradient accumulation), which can be enabled by setting the ``microbatch_size`` config.
+Microbatching allows for training with a ``train_batch_size`` much larger than GPU memory.
 
 .. figure:: images/a2c-arch.svg
 
     A2C architecture
 
-Tuned examples: `PongDeterministic-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/a3c/pong-a3c.yaml>`__, `{BeamRider,Breakout,Qbert,SpaceInvaders}NoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/a3c/atari-a2c.yaml>`__
+Tuned examples: `Atari environments <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/a2c/atari-a2c.yaml>`__
 
 .. tip::
     Consider using `IMPALA <#importance-weighted-actor-learner-architecture-impala>`__ for faster training with similar timestep efficiency.
@@ -250,7 +250,7 @@ Tuned examples: `PongDeterministic-v4 <https://github.com/ray-project/ray/blob/m
 **Atari results @10M steps**: `more details <https://github.com/ray-project/rl-experiments>`__
 
 =============  ========================  ==============================
- Atari env     RLlib A2C 5-workers       Mnih et al A3C 16-workers
+Atari env      RLlib A2C 5-workers       Mnih et al A3C 16-workers
 =============  ========================  ==============================
 BeamRider      1401                      ~3000
 Breakout       374                       ~150
@@ -258,12 +258,37 @@ Qbert          3620                      ~1000
 SpaceInvaders  692                       ~600
 =============  ========================  ==============================
 
-**A3C-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+**A2C-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/agents/a3c/a3c.py
+.. literalinclude:: ../../../rllib/algorithms/a2c/a2c.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
+
+
+.. _a3c:
+
+Asynchronous Advantage Actor-Critic (A3C)
+-----------------------------------------
+|pytorch| |tensorflow|
+`[paper] <https://arxiv.org/abs/1602.01783>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/a3c/a3c.py>`__
+A3C is the asynchronous version of A2C, where gradients are computed on the workers directly after trajectory rollouts,
+and only then shipped to a central learner to accumulate these gradients on the central model. After the central model update, parameters are broadcast back to
+all workers.
+Similar to A2C, A3C scales to 16-32+ worker processes depending on the environment.
+
+Tuned examples: `PongDeterministic-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/a3c/pong-a3c.yaml>`__
+
+.. tip::
+    Consider using `IMPALA <#importance-weighted-actor-learner-architecture-impala>`__ for faster training with similar timestep efficiency.
+
+**A3C-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+
+.. literalinclude:: ../../../rllib/algorithms/a3c/a3c.py
+   :language: python
+   :start-after: __sphinx_doc_begin__
+   :end-before: __sphinx_doc_end__
+
 
 .. _ddpg:
 
@@ -371,7 +396,7 @@ Proximal Policy Optimization (PPO)
 ----------------------------------
 |pytorch| |tensorflow|
 `[paper] <https://arxiv.org/abs/1707.06347>`__
-`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/ppo/ppo.py>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/ppo/ppo.py>`__
 PPO's clipped objective supports multiple SGD passes over the same batch of experiences. RLlib's multi-GPU optimizer pins that data in GPU memory to avoid unnecessary transfers from host memory, substantially improving performance over a naive implementation. PPO scales out using multiple workers for experience collection, and also to multiple GPUs for SGD.
 
 .. tip::
@@ -420,7 +445,7 @@ HalfCheetah    9664                       ~7700
 
 **PPO-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/agents/ppo/ppo.py
+.. literalinclude:: ../../../rllib/algorithms/ppo/ppo.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__

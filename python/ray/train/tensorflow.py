@@ -35,8 +35,8 @@ def setup_tensorflow_environment(worker_addresses: List[str], index: int):
     This function should be called on each worker.
 
     Args:
-        worker_addresses (list): Addresses of all the workers.
-        index (int): Index (i.e. world rank) of the current worker.
+        worker_addresses: Addresses of all the workers.
+        index: Index (i.e. world rank) of the current worker.
     """
     tf_config = {
         "cluster": {"worker": worker_addresses},

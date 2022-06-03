@@ -82,7 +82,7 @@ def extract_deployments_from_serve_dag(
     to return.
 
     Args:
-        serve_dag_root (DAGNode): Transformed serve dag root node.
+        serve_dag_root: Transformed serve dag root node.
     Returns:
         deployments (List[Deployment]): List of deployment python objects
             fetched from serve dag.
@@ -138,12 +138,12 @@ def generate_executor_dag_driver_deployment(
     dag as init_args.
 
     Args:
-        serve_executor_dag_root_node (DeploymentExecutorNode): Transformed
+        serve_executor_dag_root_node: Transformed
             executor serve dag with only barebone deployment handles.
-        original_driver_deployment (Deployment): User's original DAGDriver
+        original_driver_deployment: User's original DAGDriver
             deployment that wrapped Ray DAG as init args.
     Returns:
-        executor_dag_driver_deployment (Deployment): New DAGDriver deployment
+        executor_dag_driver_deployment: New DAGDriver deployment
             with executor serve dag as init args.
     """
 

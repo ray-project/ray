@@ -37,7 +37,7 @@ from ray.autoscaler._private.commands import (
 )
 from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
-from ray.autoscaler._private.kuberay.run_autoscaler import run_autoscaler_with_retries
+from ray.autoscaler._private.kuberay.run_autoscaler import run_kuberay_autoscaler
 from ray.internal.internal_api import memory_summary
 from ray.internal.storage import _load_class
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cli_logger, cf
@@ -340,8 +340,7 @@ def debug(address):
     required=False,
     type=int,
     default=10001,
-    help="the port number the ray client server will bind on. If not set, "
-    "the ray client server will not be started.",
+    help="the port number the ray client server binds on, default to 10001.",
 )
 @click.option(
     "--memory",
@@ -2096,25 +2095,14 @@ def global_gc(address):
     help="The Kubernetes namespace the Ray Cluster lives in.\n"
     "Should coincide with the `metadata.namespace` of the RayCluster CR.",
 )
-@click.option(
-    "--redis-password",
-    required=False,
-    type=str,
-    default="",
-    help="The password to use for Redis.\n"
-    "Ray versions >= 1.11.0 don't use Redis.\n"
-    "Only set this if you really know what you're doing.",
-)
-def kuberay_autoscaler(
-    cluster_name: str, cluster_namespace: str, redis_password: str
-) -> None:
+def kuberay_autoscaler(cluster_name: str, cluster_namespace: str) -> None:
     """Runs the autoscaler for a Ray cluster managed by the KubeRay operator.
 
     `ray kuberay-autoscaler` is meant to be used as an entry point in
         KubeRay cluster configs.
     `ray kuberay-autoscaler` is NOT a public CLI.
     """
-    run_autoscaler_with_retries(cluster_name, cluster_namespace, redis_password)
+    run_kuberay_autoscaler(cluster_name, cluster_namespace)
 
 
 @cli.command(name="health-check", hidden=True)
