@@ -24,7 +24,6 @@ from ray.tune.progress_reporter import (
     JupyterNotebookReporter,
 )
 from ray.tune.sample import (
-    function,
     sample_from,
     uniform,
     quniform,
