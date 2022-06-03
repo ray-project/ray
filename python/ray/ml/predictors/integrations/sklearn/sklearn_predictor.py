@@ -45,6 +45,9 @@ class SklearnPredictor(Predictor):
         estimator, preprocessor = load_checkpoint(checkpoint)
         return SklearnPredictor(estimator=estimator, preprocessor=preprocessor)
 
+    def predict_pandas(self, data: pd.DataFrame, **kwargs) -> pd.DataFrame:
+        pass
+
     def predict(
         self,
         data: DataBatchType,

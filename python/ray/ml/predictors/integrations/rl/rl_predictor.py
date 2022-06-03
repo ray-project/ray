@@ -49,6 +49,9 @@ class RLPredictor(Predictor):
         policy, preprocessor = load_checkpoint(checkpoint, env)
         return RLPredictor(policy=policy, preprocessor=preprocessor)
 
+    def predict_pandas(self, data: pd.DataFrame, **kwargs) -> pd.DataFrame:
+        pass
+
     def predict(self, data: DataBatchType, **kwargs) -> DataBatchType:
         if isinstance(data, pd.DataFrame):
             obs = data.to_numpy()

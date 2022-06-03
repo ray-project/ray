@@ -40,6 +40,9 @@ class LightGBMPredictor(Predictor):
         bst, preprocessor = load_checkpoint(checkpoint)
         return LightGBMPredictor(model=bst, preprocessor=preprocessor)
 
+    def predict_pandas(self, data: pd.DataFrame, **kwargs) -> pd.DataFrame:
+        pass
+
     def predict(
         self,
         data: DataBatchType,
