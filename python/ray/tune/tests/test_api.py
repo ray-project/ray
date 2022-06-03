@@ -14,7 +14,7 @@ import gym
 import numpy as np
 import ray
 from ray import tune
-from ray.ml.utils.remote_storage import _ensure_directory
+from ray.air.utils.remote_storage import _ensure_directory
 from ray.rllib import _register_all
 from ray.tune import (
     register_env,
@@ -315,19 +315,19 @@ class TrainableFunctionApiTest(unittest.TestCase):
         os.environ["TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S"] = "0"
 
         with self.assertRaises(RuntimeError), patch.object(
-            ray.tune.trial_executor.logger, "warning"
+            ray.tune.ray_trial_executor.logger, "warning"
         ) as warn_mock:
             self.assertRaises(TuneError, lambda: g(100, 100))
             assert warn_mock.assert_called_once()
 
         with self.assertRaises(RuntimeError), patch.object(
-            ray.tune.trial_executor.logger, "warning"
+            ray.tune.ray_trial_executor.logger, "warning"
         ) as warn_mock:
             self.assertRaises(TuneError, lambda: g(0, 100))
             assert warn_mock.assert_called_once()
 
         with self.assertRaises(RuntimeError), patch.object(
-            ray.tune.trial_executor.logger, "warning"
+            ray.tune.ray_trial_executor.logger, "warning"
         ) as warn_mock:
             self.assertRaises(TuneError, lambda: g(100, 0))
             assert warn_mock.assert_called_once()

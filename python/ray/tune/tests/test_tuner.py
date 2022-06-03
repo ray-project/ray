@@ -9,11 +9,13 @@ from sklearn.utils import shuffle
 from ray import tune
 from ray.data import from_pandas, read_datasource, Dataset, Datasource, ReadTask
 from ray.data.block import BlockMetadata
-from ray.ml.config import RunConfig
-from ray.ml.examples.pytorch.torch_linear_example import train_func as linear_train_func
-from ray.ml.train.integrations.torch import TorchTrainer
-from ray.ml.train.integrations.xgboost import XGBoostTrainer
-from ray.ml.train import Trainer
+from ray.air.config import RunConfig
+from ray.air.examples.pytorch.torch_linear_example import (
+    train_func as linear_train_func,
+)
+from ray.air.train.integrations.torch import TorchTrainer
+from ray.air.train.integrations.xgboost import XGBoostTrainer
+from ray.air.train import Trainer
 from ray.tune import Callback, TuneError
 from ray.tune.cloud import TrialCheckpoint
 from ray.tune.result import DEFAULT_RESULTS_DIR

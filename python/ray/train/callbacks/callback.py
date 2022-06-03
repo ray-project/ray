@@ -22,9 +22,9 @@ class TrainingCallback(abc.ABC):
         """Called once on training start.
 
         Args:
-            logdir (str): Path to the file directory where logs
+            logdir: Path to the file directory where logs
                 should be persisted.
-            config (Dict): The config dict passed into ``trainer.run()``.
+            config: The config dict passed into ``trainer.run()``.
             **info: kwargs dict for forward compatibility.
         """
         results_to_exclude = ALL_RESERVED_KEYS.difference(self.RESERVED_KEYS)
@@ -90,7 +90,7 @@ class TrainingCallback(abc.ABC):
         """Called once after training is over.
 
         Args:
-            error (bool): If True, there was an exception during training.
+            error: If True, there was an exception during training.
             **info: kwargs dict for forward compatibility.
         """
         pass
