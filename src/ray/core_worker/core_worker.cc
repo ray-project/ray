@@ -117,6 +117,16 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   // instead of crashing.
   auto grpc_client = rpc::NodeManagerWorkerClient::make(
       options_.raylet_ip_address, options_.node_manager_port, *client_call_manager_);
+
+  if (options_.worker_type == WorkerType::WORKER) {
+    periodical_runner_.RunFnPeriodically(
+        [this] { ExitIfParentRayletDies(); },
+        RayConfig::instance().raylet_death_check_interval_milliseconds());
+  }
+
+  // Start the IO thread first to make sure the checker is working.
+  io_thread_ = std::thread([this]() { RunIOService(); });
+
   Status raylet_client_status;
   NodeID local_raylet_id;
   int assigned_port;
@@ -247,12 +257,15 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
             new rpc::CoreWorkerClient(addr, *client_call_manager_));
       });
 
-  if (options_.worker_type == WorkerType::WORKER) {
-    periodical_runner_.RunFnPeriodically(
-        [this] { ExitIfParentRayletDies(); },
-        RayConfig::instance().raylet_death_check_interval_milliseconds());
-  }
-
+  plasma_store_provider_.reset(new CoreWorkerPlasmaStoreProvider(
+      options_.store_socket,
+      local_raylet_client_,
+      reference_counter_,
+      options_.check_signals,
+      /*warmup=*/
+      (options_.worker_type != WorkerType::SPILL_WORKER &&
+       options_.worker_type != WorkerType::RESTORE_WORKER),
+      /*get_current_call_site=*/boost::bind(&CoreWorker::CurrentCallSite, this)));
   memory_store_.reset(new CoreWorkerMemoryStore(
       reference_counter_,
       local_raylet_client_,
@@ -268,9 +281,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
             },
             "CoreWorker.HandleException");
       }));
-
-  periodical_runner_.RunFnPeriodically([this] { InternalHeartbeat(); },
-                                       kInternalHeartbeatMillis);
 
   auto push_error_callback = [this](const JobID &job_id,
                                     const std::string &type,
@@ -458,20 +468,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                          /*pin_object=*/pin_object));
       });
 
-  // Start the IO thread after all other members have been initialized, in case
-  // the thread calls back into any of our members.
-  io_thread_ = std::thread([this]() { RunIOService(); });
-
-  plasma_store_provider_.reset(new CoreWorkerPlasmaStoreProvider(
-      options_.store_socket,
-      local_raylet_client_,
-      reference_counter_,
-      options_.check_signals,
-      /*warmup=*/
-      (options_.worker_type != WorkerType::SPILL_WORKER &&
-       options_.worker_type != WorkerType::RESTORE_WORKER),
-      /*get_current_call_site=*/boost::bind(&CoreWorker::CurrentCallSite, this)));
-
   // Tell the raylet the port that we are listening on.
   // NOTE: This also marks the worker as available in Raylet. We do this at the
   // very end in case there is a problem during construction.
@@ -522,6 +518,9 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         }
       },
       100);
+
+  periodical_runner_.RunFnPeriodically([this] { InternalHeartbeat(); },
+                                       kInternalHeartbeatMillis);
 
 #ifndef _WIN32
   // Doing this last during CoreWorker initialization, so initialization logic like
