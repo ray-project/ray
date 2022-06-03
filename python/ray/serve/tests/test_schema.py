@@ -272,8 +272,12 @@ class TestDeploymentSchema:
 
         # Python requires an import path
         deployment_schema = self.get_minimal_deployment_schema()
+        del deployment_schema["import_path"]
 
-        # DeploymentSchema should be generated with valid import_paths
+        with pytest.raises(ValueError, match="must be specified"):
+            DeploymentSchema.parse_obj(deployment_schema)
+
+        # DeploymentSchema should be generated once import_path is set
         for path in get_valid_import_paths():
             deployment_schema["import_path"] = path
             DeploymentSchema.parse_obj(deployment_schema)
@@ -499,67 +503,6 @@ class TestServeApplicationSchema:
         serve_application_schema["import_path"] = path
         with pytest.raises(ValidationError):
             ServeApplicationSchema.parse_obj(serve_application_schema)
-
-    def test_serve_application_aliasing(self):
-        """Check aliasing behavior for schemas."""
-
-        # Check that private options can optionally include underscore
-        app_dict = {
-            "import_path": "module.graph",
-            "runtime_env": {},
-            "deployments": [
-                {
-                    "name": "d1",
-                    "max_concurrent_queries": 3,
-                    "autoscaling_config": {},
-                    "_graceful_shutdown_wait_loop_s": 30,
-                    "graceful_shutdown_timeout_s": 10,
-                    "_health_check_period_s": 5,
-                    "health_check_timeout_s": 7,
-                },
-                {
-                    "name": "d2",
-                    "max_concurrent_queries": 6,
-                    "_autoscaling_config": {},
-                    "graceful_shutdown_wait_loop_s": 50,
-                    "_graceful_shutdown_timeout_s": 15,
-                    "health_check_period_s": 53,
-                    "_health_check_timeout_s": 73,
-                },
-            ],
-        }
-
-        schema = ServeApplicationSchema.parse_obj(app_dict)
-
-        # Check that schema dictionary can include private options with an
-        # underscore (using the aliases)
-
-        private_options = {
-            "_autoscaling_config",
-            "_graceful_shutdown_wait_loop_s",
-            "_graceful_shutdown_timeout_s",
-            "_health_check_period_s",
-            "_health_check_timeout_s",
-        }
-
-        for deployment in schema.dict(by_alias=True)["deployments"]:
-            for option in private_options:
-                # Option with leading underscore
-                assert option in deployment
-
-                # Option without leading underscore
-                assert option[1:] not in deployment
-
-        # Check that schema dictionary can include private options without an
-        # underscore (using the field names)
-
-        for deployment in schema.dict()["deployments"]:
-            for option in private_options:
-                # Option without leading underscore
-                assert option[1:] in deployment
-
-                # Option with leading underscore
-                assert option not in deployment
 
 
 class TestServeStatusSchema:

@@ -399,7 +399,7 @@ def test_ordinal_encoder_no_encode_list():
         "unique_values(B)": {"cold": 0, "hot": 1, "warm": 2},
         "unique_values(C)": {1: 0, 5: 1, 10: 2},
         "unique_values(D)": {
-            tuple(): 0,
+            (): 0,
             ("cold", "cold"): 1,
             ("hot", "warm", "cold"): 2,
             ("warm",): 3,
@@ -475,7 +475,7 @@ def test_one_hot_encoder():
         "unique_values(B)": {"cold": 0, "hot": 1, "warm": 2},
         "unique_values(C)": {1: 0, 5: 1, 10: 2},
         "unique_values(D)": {
-            tuple(): 0,
+            (): 0,
             ("cold", "cold"): 1,
             ("hot", "warm", "cold"): 2,
             ("warm",): 3,
