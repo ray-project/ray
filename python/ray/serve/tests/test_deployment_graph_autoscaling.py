@@ -16,7 +16,6 @@ def get_num_running_replicas(controller, deployment_name):
         controller._dump_replica_states_for_testing.remote(deployment_name)
     )
     running_replicas = replicas.get([ReplicaState.RUNNING])
-    print(deployment_name, len(running_replicas))
     return len(running_replicas)
 
 
@@ -34,7 +33,7 @@ def test_autoscaling_0_replica(serve_instance):
     @serve.deployment(
         _autoscaling_config=autoscaling_config,
     )
-    class Model1:
+    class Model:
         def __init__(self, weight):
             self.weight = weight
 
@@ -42,8 +41,8 @@ def test_autoscaling_0_replica(serve_instance):
             return input + self.weight
 
     with InputNode() as user_input:
-        model1 = Model1.bind(1)
-        output = model1.forward.bind(user_input)
+        model = Model.bind(1)
+        output = model.forward.bind(user_input)
         serve_dag = DAGDriver.options(
             route_prefix="/my-dag",
             _autoscaling_config=autoscaling_config,
@@ -57,14 +56,12 @@ def test_autoscaling_with_chain_nodes(min_replicas, serve_instance):
 
     serve_constants.HANDLE_METRIC_PUSH_INTERVAL_S = 1
 
-    signal1 = SignalActor.remote()
-    signal2 = SignalActor.remote()
     autoscaling_config = {
         "metrics_interval_s": 0.1,
         "min_replicas": min_replicas,
         "max_replicas": 2,
         "look_back_period_s": 0.4,
-        "downscale_delay_s": 0,
+        "downscale_delay_s": 30,
         "upscale_delay_s": 0,
     }
 
@@ -77,7 +74,6 @@ def test_autoscaling_with_chain_nodes(min_replicas, serve_instance):
             self.weight = weight
 
         def forward(self, input):
-            ray.get(signal1.wait.remote())
             return input + self.weight
 
     @serve.deployment(
@@ -89,7 +85,6 @@ def test_autoscaling_with_chain_nodes(min_replicas, serve_instance):
             self.weight = weight
 
         def forward(self, input):
-            ray.get(signal2.wait.remote())
             return input + self.weight
 
     with InputNode() as user_input:
@@ -106,25 +101,23 @@ def test_autoscaling_with_chain_nodes(min_replicas, serve_instance):
 
     dag_handle = serve.run(serve_dag)
 
-    [dag_handle.predict.remote(w) for w in range(100)]
-
+    dag_handle.predict.remote(0)
     controller = serve_instance._controller
 
     wait_for_condition(
         lambda: get_num_running_replicas(controller, DAGDriver.name) >= 1
     )
-    signal1.send.remote()
-    wait_for_condition(lambda: get_num_running_replicas(controller, Model1.name) >= 1)
-    signal2.send.remote()
+    wait_for_condition(
+        lambda: get_num_running_replicas(controller, Model1.name) >= 1, timeout=40
+    )
 
     wait_for_condition(
-        lambda: get_num_running_replicas(controller, DAGDriver.name) == min_replicas
+        lambda: get_num_running_replicas(controller, Model1.name) == min_replicas,
+        timeout=300,
     )
     wait_for_condition(
-        lambda: get_num_running_replicas(controller, Model1.name) == min_replicas
-    )
-    wait_for_condition(
-        lambda: get_num_running_replicas(controller, Model2.name) == min_replicas
+        lambda: get_num_running_replicas(controller, Model2.name) == min_replicas,
+        timeout=300,
     )
 
 

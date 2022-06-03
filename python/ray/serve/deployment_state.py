@@ -1,3 +1,4 @@
+from copy import copy
 from collections import defaultdict, OrderedDict
 from enum import Enum
 import itertools
@@ -1032,7 +1033,9 @@ class DeploymentState:
             self.get_running_replica_infos(),
         )
 
-    def _set_deployment_goal(self, deployment_info: Optional[DeploymentInfo]) -> None:
+    def _set_deployment_goal(
+        self, deployment_info: Optional[DeploymentInfo], version_preserve: bool = False
+    ) -> None:
         """
         Set desirable state for a given deployment, identified by tag.
 
@@ -1041,14 +1044,15 @@ class DeploymentState:
                 replica config, if passed in as None, we're marking
                 target deployment as shutting down.
         """
+
         if deployment_info is not None:
             self._target_info = deployment_info
             self._target_replicas = deployment_info.deployment_config.num_replicas
-
-            self._target_version = DeploymentVersion(
-                deployment_info.version,
-                user_config=deployment_info.deployment_config.user_config,
-            )
+            if version_preserve is False:
+                self._target_version = DeploymentVersion(
+                    deployment_info.version,
+                    user_config=deployment_info.deployment_config.user_config,
+                )
 
         else:
             self._target_replicas = 0
@@ -1096,6 +1100,16 @@ class DeploymentState:
         self._save_checkpoint_func()
 
         return True
+
+    def autoscale(self, num_replicas):
+        if self._deleting:
+            return
+        new_config = copy(self._target_info)
+        new_config.deployment_config.num_replicas = num_replicas
+        # Reset constructor retry counter.
+        self._replica_constructor_retry_counter = 0
+        self._set_deployment_goal(new_config, True)
+        self._save_checkpoint_func()
 
     def delete(self) -> None:
         self._set_deployment_goal(None)
@@ -1569,6 +1583,9 @@ class DeploymentStateManager:
         self._deleted_deployment_metadata: Dict[str, DeploymentInfo] = OrderedDict()
 
         self._recover_from_checkpoint(all_current_actor_names)
+
+    def autoscale(self, deployment_name, num_replicas):
+        self._deployment_states[deployment_name].autoscale(num_replicas)
 
     def _map_actor_names_to_deployment(
         self, all_current_actor_names: List[str]

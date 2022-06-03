@@ -226,23 +226,17 @@ class ServeController:
             if current_handle_queued_queries is None:
                 current_handle_queued_queries = 0
 
-            new_deployment_config = deployment_config.copy()
-
             decision_num_replicas = autoscaling_policy.get_decision_num_replicas(
                 curr_target_num_replicas=deployment_config.num_replicas,
                 current_num_ongoing_requests=current_num_ongoing_requests,
                 current_handle_queued_queries=current_handle_queued_queries,
             )
-
             if decision_num_replicas == deployment_config.num_replicas:
                 continue
 
-            new_deployment_config.num_replicas = decision_num_replicas
-
-            new_deployment_info = copy(deployment_info)
-            new_deployment_info.deployment_config = new_deployment_config
-
-            self.deployment_state_manager.deploy(deployment_name, new_deployment_info)
+            self.deployment_state_manager.autoscale(
+                deployment_name, decision_num_replicas
+            )
 
     async def run_control_loop(self) -> None:
         # NOTE(edoakes): we catch all exceptions here and simply log them,

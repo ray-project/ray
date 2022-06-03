@@ -365,7 +365,7 @@ py_test(
 
 py_test(
     name = "test_deployment_graph_autoscaling",
-    size = "small",
+    size = "large",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
