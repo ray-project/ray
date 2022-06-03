@@ -14,6 +14,8 @@
 
 #include "ray/util/filesystem.h"
 
+#include <filesystem>
+
 #include "gtest/gtest.h"
 
 namespace ray {
@@ -61,6 +63,37 @@ TEST(FileSystemTest, JoinPathTest) {
       ray::JoinPaths(GetUserTempDir(), "hello", "/subdir", "more", "", "last/");
   ASSERT_EQ(old_path, new_path);
 #endif
+}
+
+TEST(FileSystemTest, TestFileSystemMonitor) {
+  std::string tmp_path = std::filesystem::temp_directory_path().string();
+  {
+    FileSystemMonitor monitor(tmp_path, 1);
+    ASSERT_FALSE(monitor.OverCapacity());
+  }
+
+  {
+    FileSystemMonitor monitor(tmp_path, 0);
+    ASSERT_TRUE(monitor.OverCapacity());
+  }
+
+  {
+    FileSystemMonitor monitor(tmp_path, 0);
+    auto result = monitor.Space();
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->available > 0);
+    ASSERT_TRUE(result->capacity > 0);
+  }
+}
+
+TEST(FileSystemTest, TestOverCapacity) {
+  std::string tmp_path = std::filesystem::temp_directory_path().string();
+  FileSystemMonitor monitor(tmp_path, 0.1);
+  ASSERT_FALSE(monitor.OverCapacityImpl(std::nullopt));
+  ASSERT_FALSE(monitor.OverCapacityImpl({std::filesystem::space_info{
+      /* capacity */ 11, /* free */ 10, /* available */ 1}}));
+  ASSERT_TRUE(monitor.OverCapacityImpl(
+      {std::filesystem::space_info{/* capacity */ 11, /* free */ 9, /* available */ 2}}));
 }
 
 }  // namespace ray

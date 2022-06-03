@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <gtest/gtest_prod.h>
+
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -69,6 +71,11 @@ class FileSystemMonitor {
   bool OverCapacity() const;
 
  private:
+  // For testing purpose.
+  bool OverCapacityImpl(const std::optional<std::filesystem::space_info> &info) const;
+
+ private:
+  FRIEND_TEST(FileSystemTest, TestOverCapacity);
   const std::string ray_file_path_;
   const double capacity_threshold_;
 };
