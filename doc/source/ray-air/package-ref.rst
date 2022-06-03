@@ -9,6 +9,8 @@ AIR API
 Components
 ----------
 
+.. _air-preprocessor-ref:
+
 Preprocessors
 ~~~~~~~~~~~~~
 
