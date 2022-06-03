@@ -150,10 +150,6 @@ class TestOPE(unittest.TestCase):
             .environment(env=env_name)
             .offline_data(
                 input_=data_file,
-                off_policy_estimation_methods={
-                    "simulation": {"type": "simulation"},
-                    "is" : {"type" : ImportanceSampling},
-                },
             )
             .exploration(
                 explore=True,
@@ -163,15 +159,15 @@ class TestOPE(unittest.TestCase):
                 },
             )
             .evaluation(
-                evaluation_interval = 1,
-                evaluation_num_workers = 1,
+                evaluation_interval=1,
+                evaluation_num_workers=1,
                 evaluation_config={
                     "input": os.path.join(rllib_dir, "tests/data/cartpole/small.json"),
-                    "off_policy_estimation_methods": {
-                        "simulation": {"type": "simulation"},
-                        "wis" : {"type" : WeightedImportanceSampling},
-                    },
-                }
+                },
+                off_policy_estimation_methods={
+                    "is": {"type": ImportanceSampling},
+                    "wis": {"type": WeightedImportanceSampling},
+                },
             )
             .framework("torch")
             .rollouts(batch_mode="complete_episodes")
@@ -183,8 +179,10 @@ class TestOPE(unittest.TestCase):
             stop={"timesteps_total": train_steps},
             verbose=3,
         )
-        print("Training", analysis.best_result["off_policy_estimator"])
-        print("Evaluation", analysis.best_result["evaluation"]["off_policy_estimator"])
+        result = list(analysis.results.values())[0]
+        print("Training", result["off_policy_estimator"])
+        print("Evaluation", result["evaluation"]["off_policy_estimator"])
+        assert not result["off_policy_estimator"] # Should be None or {}
 
     def test_ope_simple_replaybuffer(self):
         # Move estimator.process calls out of worker.sample and make it take in a

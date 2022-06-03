@@ -797,12 +797,11 @@ class TrainerConfig:
         evaluation_duration: Optional[int] = None,
         evaluation_duration_unit: Optional[str] = None,
         evaluation_parallel_to_training: Optional[bool] = None,
-        input_ : str = "sampler",
-        off_policy_estimation_methods = None,
         evaluation_num_workers: Optional[int] = None,
         evaluation_config: Optional[
             Union["TrainerConfig", PartialTrainerConfigDict]
         ] = None,
+        off_policy_estimation_methods: Optional[Dict] = None,
         custom_evaluation_function: Optional[Callable] = None,
         always_attach_evaluation_results: Optional[bool] = None,
     ) -> "TrainerConfig":
@@ -832,17 +831,29 @@ class TrainerConfig:
                 the Trainer.train() and Trainer.evaluate() calls run in parallel.
                 Note: This is experimental. Possible pitfalls could be race conditions
                 for weight synching at the beginning of the evaluation loop.
-            evaluation_config: Typical usage is to pass extra args to evaluation env
-                creator and to disable exploration by computing deterministic actions.
-                IMPORTANT NOTE: Policy gradient algorithms are able to find the optimal
-                policy, even if this is a stochastic one. Setting "explore=False" here
-                will result in the evaluation workers not using this optimal policy!
             evaluation_num_workers: Number of parallel workers to use for evaluation.
                 Note that this is set to zero by default, which means evaluation will
                 be run in the trainer process (only if evaluation_interval is not None).
                 If you increase this, it will increase the Ray resource usage of the
                 trainer since evaluation workers are created separately from rollout
                 workers (used to sample data for training).
+            evaluation_config: Typical usage is to pass extra args to evaluation env
+                creator and to disable exploration by computing deterministic actions.
+                IMPORTANT NOTE: Policy gradient algorithms are able to find the optimal
+                policy, even if this is a stochastic one. Setting "explore=False" here
+                will result in the evaluation workers not using this optimal policy!
+            off_policy_estimation_methods: Specify how to evaluate the current policy,
+                along with any optional config parameters. This only has an effect when
+                reading offline experiences ("input" is not "sampler").
+                Available keys:
+                {ope_method_name: {"type": ope_type, ...}} where `ope_method_name`
+                is a user-defined string to save the OPE results under, and
+                `ope_type` can be any subclass of OffPolicyEstimator, e.g.
+                ray.rllib.offline.estimators.is::ImportanceSampling
+                or your own custom subclass, or the full class path to the subclass.
+                You can also add additional config arguments to be passed to the
+                OffPolicyEstimator in the dict, e.g.
+                {"qreg_dr": {"type": DoublyRobust, "q_model_type": "qreg", "k": 5}}
             custom_evaluation_function: Customize the evaluation method. This must be a
                 function of signature (trainer: Trainer, eval_workers: WorkerSet) ->
                 metrics: dict. See the Trainer.evaluate() method to see the default
@@ -864,14 +875,16 @@ class TrainerConfig:
             self.evaluation_duration_unit = evaluation_duration_unit
         if evaluation_parallel_to_training is not None:
             self.evaluation_parallel_to_training = evaluation_parallel_to_training
+        if evaluation_num_workers is not None:
+            self.evaluation_num_workers = evaluation_num_workers
         if evaluation_config is not None:
             # Convert another TrainerConfig into dict.
             if isinstance(evaluation_config, TrainerConfig):
                 self.evaluation_config = evaluation_config.to_dict()
             else:
                 self.evaluation_config = evaluation_config
-        if evaluation_num_workers is not None:
-            self.evaluation_num_workers = evaluation_num_workers
+        if off_policy_estimation_methods is not None:
+            self.off_policy_estimation_methods = off_policy_estimation_methods
         if custom_evaluation_function is not None:
             self.custom_evaluation_function = custom_evaluation_function
         if always_attach_evaluation_results:
@@ -886,7 +899,6 @@ class TrainerConfig:
         input_config=None,
         actions_in_input_normalized=None,
         input_evaluation=None,
-        off_policy_estimation_methods=None,
         postprocess_inputs=None,
         shuffle_buffer_size=None,
         output=None,
@@ -931,26 +943,9 @@ class TrainerConfig:
                 are already normalized (between -1.0 and 1.0). This is usually the case
                 when the offline file has been generated by another RLlib algorithm
                 (e.g. PPO or SAC), while "normalize_actions" was set to True.
-            input_evaluation: DEPRECATED: Use `off_policy_estimation_methods` instead!
-            off_policy_estimation_methods: DEPRECATED: Running OPE on training workers
-                is not recommended, use `evaluation(off_policy_estimation_methods)` to 
+            input_evaluation: DEPRECATED: Running OPE on training workers
+                is not recommended, use `evaluation(off_policy_estimation_methods)` to
                 run it on the evaluation workers instead.
-                Specify how to evaluate the current policy,
-                along with any optional config parameters.
-                This only has an effect when reading offline experiences
-                ("input" is not "sampler").
-                Available keys:
-                - {ope_method_name: {"type": ope_type, ...}} where `ope_method_name`
-                is a user-defined string to save the OPE results under, and
-                `ope_type` can be:
-                    - "simulation": Run the environment in the background, but use
-                    this data for evaluation only and not for learning.
-                    - Any subclass of OffPolicyEstimator, e.g.
-                    ray.rllib.offline.estimators.is::ImportanceSampling
-                    or your own custom subclass.
-                You can also add additional config arguments to be passed to the
-                OffPolicyEstimator in the dict, e.g.
-                {"qreg_dr": {"type": DoublyRobust, "q_model_type": "qreg", "k": 5}}
             postprocess_inputs: Whether to run postprocess_trajectory() on the
                 trajectory fragments from offline inputs. Note that postprocessing will
                 be done using the *current* policy, not the *behavior* policy, which
@@ -983,30 +978,11 @@ class TrainerConfig:
         if input_evaluation is not None:
             deprecation_warning(
                 old="offline_data(input_evaluation={})".format(input_evaluation),
-                new="offline_data(off_policy_estimation_methods={})".format(
+                new="evaluation(off_policy_estimation_methods={})".format(
                     input_evaluation
                 ),
                 error=True,
             )
-        if isinstance(off_policy_estimation_methods, list) or isinstance(
-            off_policy_estimation_methods, tuple
-        ):
-            ope_dict = {
-                str(ope): {"type": ope} for ope in off_policy_estimation_methods
-            }
-            deprecation_warning(
-                old="offline_data(off_policy_estimation_methods={}".format(
-                    off_policy_estimation_methods
-                ),
-                new="offline_data(off_policy_estimation_methods={}".format(
-                    ope_dict,
-                ),
-                error=False,
-            )
-            off_policy_estimation_methods = ope_dict
-        if off_policy_estimation_methods is not None:
-            self.off_policy_estimation_methods = off_policy_estimation_methods
-
         if postprocess_inputs is not None:
             self.postprocess_inputs = postprocess_inputs
         if shuffle_buffer_size is not None:
