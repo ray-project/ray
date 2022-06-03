@@ -71,29 +71,31 @@ if __name__ == "__main__":
         scaling_config=scaling_config,
         datasets={"dataset": get_dataset(size=6)},
     )
-    trainable_cls1 = trainer1.as_trainable()
-    trainable1 = trainable_cls1()
+    trainable_cls1 = ray.remote(num_cpus=1)(trainer1.as_trainable())
+    trainable1 = trainable_cls1.remote()
 
     trainer2 = TorchTrainer(
         train_loop_per_worker=train_func,
         scaling_config=scaling_config,
         datasets={"dataset": get_dataset(size=7)},
     )
-    trainable_cls2 = trainer2.as_trainable()
-    trainable2 = trainable_cls2()
+    trainable_cls2 = ray.remote(num_cpus=1)(trainer2.as_trainable())
+    trainable2 = trainable_cls2.remote()
 
     # Run some `train()` calls on trainer1.
-    results1 = trainable1.train()
-    print(results1)
-    results1 = trainable1.train()
-    print(results1)
+    results1 = trainable1.train.remote()
+    print(ray.get(results1))
+    results1 = trainable1.train.remote()
+    print(ray.get(results1))
 
     # Use trainer2.
-    results2 = trainable2.train()
-    print(results2)
+    results2 = trainable2.train.remote()
+    print(ray.get(results2))
 
     # Use both once more.
-    results1 = trainable1.train()
-    results2 = trainable2.train()
+    results1 = trainable1.train.remote()
+    print(ray.get(results1))
+    results2 = trainable2.train.remote()
+    print(ray.get(results2))
 
     print("ok")
