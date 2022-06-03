@@ -85,8 +85,8 @@ def test_ray_init(shutdown_only, capsys):
 )
 def test_exec_worker_parse_correct(shutdown_only):
     runtime_env_ctx = RuntimeEnvContext()
-    runtime_env_ctx._fix_windows_args(["C:\Program Files", "some", "other", "arguments"])
-    assert runtime_env_ctx.exec_worker_args == [
+    ret = runtime_env_ctx._fix_windows_args(["C:\Program Files", "some", "other", "arguments"])
+    assert ret == [
         '"C:\Program Files"',
         "some",
         "other",
