@@ -132,6 +132,8 @@ See the following examples for clarification:
     This example shows bulk ingest with use_stream_api=False. Data is bulk loaded and made available
     directly via a ``Dataset`` object that can be looped over manually.
 
+    This is the default ingest mode.
+
     .. literalinclude:: doc_code/air_ingest.py
         :language: python
         :start-after: __config_4__
