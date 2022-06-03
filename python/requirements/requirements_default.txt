@@ -5,3 +5,5 @@ colorful
 opencensus
 prometheus_client >= 0.7.1, < 0.14.0
 smart_open
+numpy
+pandas
