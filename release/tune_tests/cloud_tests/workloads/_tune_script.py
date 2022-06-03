@@ -8,7 +8,7 @@ import time
 import ray
 from ray import tune
 from ray.rllib.agents import DefaultCallbacks
-from ray.rllib.algorithms.ppo import PPO
+from ray.rllib.agents.ppo import PPOTrainer
 
 
 def fn_trainable(config, checkpoint_dir=None):
@@ -68,7 +68,7 @@ def run_tune(
         if trainable == "rllib_str":
             train = "PPO"
         else:
-            train = PPO
+            train = PPOTrainer
 
         config = {
             "env": "CartPole-v1",
