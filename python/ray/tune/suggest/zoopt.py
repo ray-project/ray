@@ -297,10 +297,6 @@ class ZOOptSearch(Searcher):
     def restore(self, checkpoint_path: str):
         with open(checkpoint_path, "rb") as inputFile:
             save_object = pickle.load(inputFile)
-        if not isinstance(save_object, dict):
-            # backwards compatibility
-            # Deprecate: 1.8
-            self.optimizer = save_object
         self.__dict__.update(save_object)
 
     @staticmethod

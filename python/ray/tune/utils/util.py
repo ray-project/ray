@@ -15,8 +15,8 @@ from typing import Optional
 import numpy as np
 import psutil
 import ray
-from ray.ml.checkpoint import Checkpoint
-from ray.ml.utils.remote_storage import delete_at_uri
+from ray.air.checkpoint import Checkpoint
+from ray.air.utils.remote_storage import delete_at_uri
 from ray.util.ml_utils.dict import (  # noqa: F401
     merge_dicts,
     deep_update,
