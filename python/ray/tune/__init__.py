@@ -6,7 +6,6 @@ from ray.tune.analysis import Analysis, ExperimentAnalysis
 from ray.tune.stopper import Stopper
 from ray.tune.registry import register_env, register_trainable
 from ray.tune.trainable import Trainable
-from ray.tune.durable_trainable import DurableTrainable, durable
 from ray.tune.callback import Callback
 from ray.tune.suggest import grid_search
 from ray.tune.session import (

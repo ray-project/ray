@@ -1,7 +1,8 @@
 import os
 import urllib.parse
-from filelock import FileLock
 from typing import Optional, Tuple
+
+from ray.util.ml_utils.filelock import TempFileLock
 
 try:
     import fsspec
@@ -148,7 +149,7 @@ def download_from_uri(uri: str, local_path: str, filelock: bool = True):
         )
 
     if filelock:
-        with FileLock(f"{os.path.normpath(local_path)}.lock"):
+        with TempFileLock(f"{os.path.normpath(local_path)}.lock"):
             pyarrow.fs.copy_files(bucket_path, local_path, source_filesystem=fs)
     else:
         pyarrow.fs.copy_files(bucket_path, local_path, source_filesystem=fs)
