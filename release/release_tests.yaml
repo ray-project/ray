@@ -3477,7 +3477,7 @@
 
   run:
     timeout: 7200
-    script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=200000 --partition-size=1e8 --shuffle
+    script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=200000 --partition-size=5e8 --shuffle
     wait_for_nodes:
       num_nodes: 100
     type: sdk_command
