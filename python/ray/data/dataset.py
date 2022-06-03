@@ -2285,7 +2285,6 @@ class Dataset(Generic[T]):
         batch_size: int = 1,
         prefetch_blocks: int = 0,
         drop_last: bool = False,
-        unsqueeze_label_tensor: bool = True,
         unsqueeze_feature_tensors: bool = True,
     ) -> "torch.utils.data.IterableDataset":
         """Return a Torch IterableDataset over this dataset.
@@ -2316,12 +2315,6 @@ class Dataset(Generic[T]):
           {key1: (N, m),..., keyN: (N, k)}, with columns of each
           tensor corresponding to the value of ``feature_columns`` under the
           key.
-
-        If ``unsqueeze_label_tensor=True`` (default), the label tensor will be
-        of shape (N, 1). Otherwise, it will be of shape (N,).
-        If ``label_column`` is specified as ``None``, then no column from the
-        ``Dataset`` will be treated as the label, and the output label tensor
-        will be ``None``.
 
         Note that you probably want to call ``.split()`` on this dataset if
         there are to be multiple Torch workers consuming the data.
@@ -2587,9 +2580,6 @@ class Dataset(Generic[T]):
                         "Expected `feature_columns` to be a list or a dictionary, "
                         f"but got a `{type(feature_columns).__name__}` instead."
                     )
-
-                if unsqueeze_label_tensor:
-                    targets = tf.expand_dims(targets, axis=-1)
 
                 if label_column:
                     yield features, targets
