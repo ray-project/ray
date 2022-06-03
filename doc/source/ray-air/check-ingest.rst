@@ -145,13 +145,13 @@ Let's look at code examples for both cases. Generally, you'd prefer to use "Expe
 Placement Group Behavior
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-Tune typically creates a placement group reserving resource for each of its trials. These placement groups only reserve resources for the Train actors, however. Dataset preprocessing tasks run using "spare" CPU resources in the cluster, which enables better autoscaling and utilization of resources.
+Tune typically creates a placement group reserving resource for each of its trials. These placement groups only reserve resources for the Train actors, however. By default, Dataset preprocessing tasks run using "spare" CPU resources in the cluster, which enables better autoscaling and utilization of resources. It is also possible to configure the Dataset tasks to run within the Tune trial placement groups.
 
 .. warning::
 
-    If trial placement groups reserve all the CPUs in the cluster, then it may be that no CPUs are left for Datasets to use, and trials can hang. This doesn't occur frequently in real clusters since workers typically use GPUs only and leave spare CPUs in the cluster, but can easily happen when using CPU-only trainers. For example, if you can change the above example to ``ray.init(num_cpus=2)``, such a hang will happen.
+    If trial placement groups reserve all the CPUs in the cluster, then it may be that no CPUs are left for Datasets to use, and trials can hang. This can easily happen when using CPU-only trainers. For example, if you can change the above ingest example to use ``ray.init(num_cpus=2)``, such a hang will happen.
 
-In the future, Tune will support reserving resources that can be used for per-trial Dataset processing as well.
+Refer to the :ref:`Datasets in Tune Example <datasets_tune>` to understand each of these options and how to configure them. We recommend starting with the default of allowing tasks to run using spare cluster resources, and only changing this if you encounter resource contention or want more performance predictability.
 
 Debugging Ingest with the ``DummyTrainer``
 ------------------------------------------

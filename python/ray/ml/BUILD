@@ -7,7 +7,7 @@ py_test(
     size = "small",
     main = "examples/custom_trainer.py",
     srcs = ["examples/custom_trainer.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "no_main"],
     deps = [":ml_lib"]
 )
 
