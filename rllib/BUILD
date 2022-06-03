@@ -536,8 +536,7 @@ py_test(
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/dqn/stateless-cartpole-r2d2.yaml"],
-    # Stateless R2D2 is slow. Only run it once.
-    args = ["--yaml-dir=tuned_examples/dqn", "--num-runs=1"]
+    args = ["--yaml-dir=tuned_examples/dqn"]
 )
 
 py_test(
@@ -547,8 +546,7 @@ py_test(
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/dqn/stateless-cartpole-r2d2-fake-gpus.yaml"],
-    # Stateless R2D2 is slow. Only run it once.
-    args = ["--yaml-dir=tuned_examples/dqn", "--num-runs=1"]
+    args = ["--yaml-dir=tuned_examples/dqn"]
 )
 
 # SAC
