@@ -189,7 +189,7 @@ def _build_docker_image(
 
     # TODO(https://github.com/ray-project/ray/issues/16599):
     # remove below after supporting ray-ml images with Python 3.9+
-    if image_name == "ray-ml" and py_version in {"py39", "py310"}:
+    if image_name == "ray-air" and py_version in {"py39", "py310"}:
         print(f"{image_name} image is currently unsupported with " "Python 3.9/3.10")
         return
 
@@ -356,7 +356,7 @@ def prep_ray_ml():
         f"{_get_root_dir()}/python/**/requirements*.txt", recursive=True
     )
     for fl in requirement_files:
-        shutil.copy(fl, os.path.join(root_dir, "docker/ray-ml/"))
+        shutil.copy(fl, os.path.join(root_dir, "docker/ray-air/"))
 
 
 def _get_docker_creds() -> Tuple[str, str]:
@@ -424,7 +424,7 @@ def push_and_tag_images(
         date_tag = release_name
         sha_tag = release_name
 
-    image_list = ["ray", "ray-ml"]
+    image_list = ["ray", "ray-air"]
     if push_base_images:
         image_list.extend(["base-deps", "ray-deps"])
 
@@ -438,7 +438,7 @@ def push_and_tag_images(
         tag_mapping = defaultdict(list)
         for py_name in py_versions:
             for image_type in image_types:
-                if image_name == "ray-ml" and image_type not in [
+                if image_name == "ray-air" and image_type not in [
                     ML_CUDA_VERSION,
                     "cpu",
                 ]:
@@ -450,7 +450,7 @@ def push_and_tag_images(
 
                 # TODO(https://github.com/ray-project/ray/issues/16599):
                 # remove below after supporting ray-ml images with Python 3.9
-                if image_name in ["ray-ml"] and (
+                if image_name in ["ray-air"] and (
                     PY_MATRIX[py_name].startswith("3.9")
                     or PY_MATRIX[py_name].startswith("3.10")
                 ):
@@ -467,7 +467,7 @@ def push_and_tag_images(
         # For ray-ml image, if no device specified, it should map to GPU image.
         # "-gpu" tag should refer to the ML_CUDA_VERSION
         for old_tag in tag_mapping.keys():
-            if "cpu" in old_tag and image_name != "ray-ml":
+            if "cpu" in old_tag and image_name != "ray-air":
                 new_tags = _create_new_tags(
                     tag_mapping[old_tag], old_str="-cpu", new_str=""
                 )
@@ -478,7 +478,7 @@ def push_and_tag_images(
                 )
                 tag_mapping[old_tag].extend(new_tags)
 
-                if image_name == "ray-ml":
+                if image_name == "ray-air":
                     new_tags = _create_new_tags(
                         tag_mapping[old_tag], old_str=f"-{ML_CUDA_VERSION}", new_str=""
                     )
@@ -517,7 +517,7 @@ def push_and_tag_images(
                         assert f"{sha_tag}-cpu" in tag_mapping[old_tag]
                         assert f"{sha_tag}" in tag_mapping[old_tag]
                     # For ray-ml, nightly should refer to the GPU image.
-                    elif image_name == "ray-ml":
+                    elif image_name == "ray-air":
                         assert f"{sha_tag}-cpu" in tag_mapping[old_tag]
                     else:
                         raise RuntimeError(f"Invalid image name: {image_name}")
@@ -529,7 +529,7 @@ def push_and_tag_images(
                     elif image_name == "ray":
                         assert f"{sha_tag}-gpu" in tag_mapping[old_tag]
                     # For ray-ml, nightly should refer to the GPU image.
-                    elif image_name == "ray-ml":
+                    elif image_name == "ray-air":
                         assert "nightly" in tag_mapping[old_tag]
                         assert f"{sha_tag}" in tag_mapping[old_tag]
                         assert f"{sha_tag}-gpu" in tag_mapping[old_tag]

@@ -130,8 +130,8 @@ print(f"Last result: {result.metrics}")
 
 # # __air_pytorch_batchpred_start__
 # import random
-# from ray.ml.batch_predictor import BatchPredictor
-# from ray.ml.predictors.integrations.torch import TorchPredictor
+# from ray.air.batch_predictor import BatchPredictor
+# from ray.air.predictors.integrations.torch import TorchPredictor
 
 # batch_predictor = BatchPredictor.from_checkpoint(result.checkpoint, TorchPredictor)
 

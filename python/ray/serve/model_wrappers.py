@@ -33,7 +33,7 @@ def _load_predictor_cls(
         predictor_cls = import_attr(predictor_cls)
     if not issubclass(predictor_cls, Predictor):
         raise ValueError(
-            f"{predictor_cls} class must be a subclass of ray.ml `Predictor`"
+            f"{predictor_cls} class must be a subclass of ray.air `Predictor`"
         )
     return predictor_cls
 
@@ -43,12 +43,12 @@ class ModelWrapper(SimpleSchemaIngress):
 
     Args:
         predictor_cls(str, Type[Predictor]): The class or path for predictor class.
-            The type must be a subclass of :class:`ray.ml.predicotr.Predictor`.
+            The type must be a subclass of :class:`ray.air.predictor.Predictor`.
         checkpoint(Checkpoint, dict): The checkpoint object or a dictionary describe
             the object.
 
             - The checkpoint object must be a subclass of
-              :class:`ray.ml.checkpoint.Checkpoint`.
+              :class:`ray.air.checkpoint.Checkpoint`.
             - The dictionary should be in the form of
               ``{"checkpoint_cls": "import.path.MyCheckpoint",
               "uri": "uri_to_load_from"}``.

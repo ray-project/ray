@@ -217,7 +217,7 @@ class ExperimentAnalysis:
         `get_best_checkpoint(trial, metric, mode)` instead.
 
         Returns:
-            :class:`Checkpoint <ray.ml.Checkpoint>` object.
+            :class:`Checkpoint <ray.air.Checkpoint>` object.
         """
         if not self.default_metric or not self.default_mode:
             raise ValueError(
@@ -432,7 +432,7 @@ class ExperimentAnalysis:
             mode: One of [min, max]. Defaults to ``self.default_mode``.
 
         Returns:
-            :class:`Checkpoint <ray.ml.Checkpoint>` object.
+            :class:`Checkpoint <ray.air.Checkpoint>` object.
         """
         metric = metric or self.default_metric or TRAINING_ITERATION
         mode = self._validate_mode(mode)

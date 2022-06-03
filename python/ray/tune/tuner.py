@@ -36,7 +36,7 @@ class Tuner:
             Refer to ray.tune.tune_config.TuneConfig for more info.
         run_config: Runtime configuration that is specific to individual trials.
             If passed, this will overwrite the run config passed to the Trainer,
-            if applicable. Refer to ray.ml.config.RunConfig for more info.
+            if applicable. Refer to ray.air.config.RunConfig for more info.
 
     Usage pattern:
 
@@ -46,8 +46,8 @@ class Tuner:
 
         from ray import tune
         from ray.data import from_pandas
-        from ray.ml.config import RunConfig
-        from ray.ml.train.integrations.xgboost import XGBoostTrainer
+        from ray.air.config import RunConfig
+        from ray.air.train.integrations.xgboost import XGBoostTrainer
         from ray.tune.tuner import Tuner
 
         def get_dataset():
