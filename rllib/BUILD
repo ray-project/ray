@@ -1542,7 +1542,7 @@ py_test(
 py_test(
     name = "test_ope",
     tags = ["team:ml", "offline", "torch_only"],
-    size = "small",
+    size = "medium",
     srcs = ["offline/estimators/tests/test_ope.py"]
 )
 
