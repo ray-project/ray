@@ -3415,7 +3415,7 @@ class Dataset(Generic[T]):
         return repr(self)
 
     def __bool__(self) -> bool:
-        return False
+        return True
 
     def __len__(self) -> int:
         raise AttributeError(
