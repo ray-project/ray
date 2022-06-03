@@ -345,14 +345,10 @@ class RolloutWorker(ParallelIteratorWorker):
                 DefaultCallbacks for training/policy/rollout-worker callbacks.
             input_creator: Function that returns an InputReader object for
                 loading previous generated experiences.
-            off_policy_estimation_methods: A dict that specifies how to
-                evaluate the current policy.
-                This only has an effect when reading offline experiences
-                ("input" is not "sampler").
-                Available key-value pairs:
-                - {"simulation": None}: Run the environment in the background, but use
-                this data for evaluation only and not for learning.
-                - {ope_name: {"type": ope_type, args}}. where `ope_name` is an arbitrary
+            off_policy_estimation_methods: A dict that specifies how to evaluate the 
+                current policy. This only has an effect when reading offline 
+                experiences ("input" is not "sampler"). The inputs are as follows:
+                {ope_name: {"type": ope_type, args}}. where `ope_name` is an arbitrary
                 string under which the metrics for this OPE estimator are saved,
                 and `ope_type` can be:
                     - Any subclass of OffPolicyEstimator, e.g.
@@ -738,12 +734,6 @@ class RolloutWorker(ParallelIteratorWorker):
                     error=False,
                 )
                 method_type = ope_types[method_type]
-            if name == "simulation":
-                logger.warning(
-                    "Requested 'simulation' input evaluation method: "
-                    "will discard all sampler outputs and keep only metrics."
-                )
-                sample_async = True
             elif isinstance(method_type, type) and issubclass(
                 method_type, OffPolicyEstimator
             ):
@@ -762,7 +752,7 @@ class RolloutWorker(ParallelIteratorWorker):
             else:
                 raise ValueError(
                     f"Unknown off_policy_estimation type: {method_type}! Must be "
-                    "either `simulation|is|wis|dm|dr` or a sub-class of ray.rllib."
+                    "either a sub-class or a class path to a subclass of ray.rllib."
                     "offline.estimators.off_policy_estimator::OffPolicyEstimator"
                 )
 
@@ -786,7 +776,6 @@ class RolloutWorker(ParallelIteratorWorker):
                 multiple_episodes_in_batch=pack,
                 normalize_actions=normalize_actions,
                 clip_actions=clip_actions,
-                blackhole_outputs="simulation" in off_policy_estimation_methods,
                 soft_horizon=soft_horizon,
                 no_done_at_end=no_done_at_end,
                 observation_fn=observation_fn,
