@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 class DREAMERConfig(TrainerConfig):
-    """Defines a configuration class from which a Dreamer Trainer can be built.
+    """Defines a PPOTrainer configuration class from which a PPOTrainer can be built.
 
     Example:
         >>> from ray.rllib.algorithms.dreamer import DREAMERConfig

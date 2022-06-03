@@ -25,14 +25,14 @@ Trainers also implement the :ref:`Tune Trainable API <tune-60-seconds>` for easy
 
 You have three ways to interact with a trainer. You can use the basic Python API or the command line to train it, or you
 can use Ray Tune to tune hyperparameters of your reinforcement learning algorithm.
-The following example shows three equivalent ways of interacting with the ``PPO`` Trainer,
+The following example shows three equivalent ways of interacting with the ``PPOTrainer``,
 which implements the proximal policy optimization algorithm in RLlib.
 
 .. tabbed:: Basic RLlib Trainer
 
     .. code-block:: python
 
-        trainer = PPO(env="CartPole-v0", config={"train_batch_size": 4000})
+        trainer = PPOTrainer(env="CartPole-v0", config={"train_batch_size": 4000})
         while True:
             print(trainer.train())
 
@@ -47,7 +47,7 @@ which implements the proximal policy optimization algorithm in RLlib.
     .. code-block:: python
 
         from ray import tune
-        tune.run(PPO, config={"env": "CartPole-v0", "train_batch_size": 4000})
+        tune.run(PPOTrainer, config={"env": "CartPole-v0", "train_batch_size": 4000})
 
 
 

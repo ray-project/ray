@@ -23,10 +23,10 @@ Training example via RLlib CLI:
     rllib train --run DQN --env CartPole-v0
 
 Grid search example via RLlib CLI:
-    rllib train -f tuned_examples/cartpole-ppo-grid-search-example.yaml
+    rllib train -f tuned_examples/cartpole-grid-search-example.yaml
 
 Grid search example via executable:
-    ./train.py -f tuned_examples/cartpole-ppo-grid-search-example.yaml
+    ./train.py -f tuned_examples/cartpole-grid-search-example.yaml
 
 Note that -f overrides all other trial-specific command-line options.
 """

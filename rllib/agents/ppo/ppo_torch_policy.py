@@ -2,7 +2,7 @@ import logging
 from typing import Dict, List, Type, Union
 
 import ray
-from ray.rllib.algorithms.ppo.ppo_tf_policy import validate_config
+from ray.rllib.agents.ppo.ppo_tf_policy import validate_config
 from ray.rllib.evaluation.postprocessing import (
     Postprocessing,
     compute_gae_for_sample_batch,
@@ -39,10 +39,10 @@ class PPOTorchPolicy(
     KLCoeffMixin,
     TorchPolicyV2,
 ):
-    """PyTorch policy class used with PPO."""
+    """PyTorch policy class used with PPOTrainer."""
 
     def __init__(self, observation_space, action_space, config):
-        config = dict(ray.rllib.algorithms.ppo.ppo.PPOConfig().to_dict(), **config)
+        config = dict(ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG, **config)
         validate_config(config)
 
         TorchPolicyV2.__init__(
