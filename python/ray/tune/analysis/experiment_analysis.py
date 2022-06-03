@@ -1,14 +1,12 @@
 import json
 import logging
 import os
-import warnings
 import traceback
 from numbers import Number
 from typing import Any, Dict, List, Optional, Tuple
 
 from ray.ml.checkpoint import Checkpoint
 from ray.tune.cloud import TrialCheckpoint
-from ray.util.debug import log_once
 from ray.tune.syncer import SyncConfig
 from ray.tune.utils import flatten_dict
 from ray.tune.utils.serialization import TuneFunctionDecoder
@@ -38,7 +36,7 @@ from ray.tune.trial_runner import (
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.utils.util import unflattened_lookup
 
-from ray.util.annotations import PublicAPI, Deprecated
+from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
 
@@ -297,16 +295,7 @@ class ExperimentAnalysis:
         return self.best_trial.last_result
 
     def _delimiter(self):
-        # Deprecate: 1.9  (default should become `/`)
-        delimiter = os.environ.get("TUNE_RESULT_DELIM", ".")
-        if delimiter == "." and log_once("delimiter_deprecation"):
-            warnings.warn(
-                "Dataframes will use '/' instead of '.' to delimit "
-                "nested result keys in future versions of Ray. For forward "
-                "compatibility, set the environment variable "
-                "TUNE_RESULT_DELIM='/'"
-            )
-        return delimiter
+        return os.environ.get("TUNE_RESULT_DELIM", "/")
 
     @property
     def best_result_df(self) -> DataFrame:
@@ -846,13 +835,3 @@ class ExperimentAnalysis:
 
         state["trials"] = [make_stub_if_needed(t) for t in state["trials"]]
         return state
-
-
-# Deprecated: Remove in Ray > 1.13
-@Deprecated
-class Analysis(ExperimentAnalysis):
-    def __init__(self, *args, **kwargs):
-        raise DeprecationWarning(
-            "The `Analysis` class is being "
-            "deprecated. Please use `ExperimentAnalysis` instead."
-        )
