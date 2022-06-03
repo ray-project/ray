@@ -1,4 +1,4 @@
-from gym.spaces import Discrete, MultiDiscrete, Space
+from gym.spaces import Space
 import logging
 import numpy as np
 from typing import Optional, TYPE_CHECKING, Union
@@ -132,10 +132,6 @@ class NovelD(Exploration):
                 to use (e.g. epsilon-greedy for DQN). If None, `EpsilonGreedy` is
                 used with a `PiecewiseSchedule`, i.e. using the `random_timesteps`.
         """
-        if not isinstance(action_space, (Discrete, MultiDiscrete)):
-            raise ValueError(
-                "Only (Multi)Discrete action spaces supported for NovelD so far!"
-            )
 
         super().__init__(action_space, framework=framework, model=model, **kwargs)
 
@@ -188,12 +184,6 @@ class NovelD(Exploration):
             from ray.rllib.utils.exploration.random_encoder import _MovingMeanStd
 
             self._moving_mean_std = _MovingMeanStd()
-
-        self.action_dim = (
-            self.action_space.n
-            if isinstance(self.action_space, Discrete)
-            else np.sum(self.action_space.nvec)
-        )
 
         if sub_exploration is None:
             sub_exploration = {
