@@ -188,6 +188,9 @@ class Trainer(Trainable):
         "replay_buffer_config",
     ]
 
+    # List of keys that are always fully overridden if present in any dict or sub-dict
+    _override_all_key_list = ["off_policy_estimation_methods"]
+
     @PublicAPI
     def __init__(
         self,
@@ -1740,16 +1743,13 @@ class Trainer(Trainable):
             config2["callbacks"] = make_callbacks
         if _allow_unknown_configs is None:
             _allow_unknown_configs = cls._allow_unknown_configs
-        # Hack to update nested dicts correctly
-        config1["off_policy_estimation_methods"] = (
-            config2.get("off_policy_estimation_methods") or {}
-        )
         return deep_update(
             config1,
             config2,
             _allow_unknown_configs,
             cls._allow_unknown_subkeys,
             cls._override_all_subkeys_if_type_changes,
+            cls._override_all_key_list,
         )
 
     @staticmethod
