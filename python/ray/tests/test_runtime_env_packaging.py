@@ -2,6 +2,8 @@ import os
 from pathlib import Path
 import random
 from shutil import copytree, rmtree, make_archive
+import shutil
+import socket
 import string
 import sys
 from filecmp import dircmp
@@ -55,6 +57,21 @@ def random_dir(tmp_path):
         with p2.open("w") as f2:
             f2.write(random_string(200))
     yield tmp_path
+
+
+@pytest.fixture
+def short_path_dir():
+    """A directory with a short path.
+
+    This directory is used to test the case where a socket file is in the
+    directory.  Socket files have a maximum length of 108 characters, so the
+    path from the built-in pytest fixture tmp_path is too long.
+    """
+    dir = Path("short_path")
+    dir.mkdir()
+    yield dir
+    # Remove the directory after the test, even if it is nonempty.
+    shutil.rmtree(str(dir))
 
 
 @pytest.fixture
@@ -143,7 +160,7 @@ class TestGetURIForDirectory:
         hex_hash = uri.split("_")[-1][: -len(".zip")]
         assert len(hex_hash) == 16
 
-    def test_unopenable_files_skipped(self, random_dir):
+    def test_unopenable_files_skipped(self, random_dir, short_path_dir):
         """Test that unopenable files can be present in the working_dir.
 
         Some files such as `.sock` files are unopenable. This test ensures that
@@ -161,6 +178,18 @@ class TestGetURIForDirectory:
 
         # Check that the hash can still be generated without errors.
         get_uri_for_directory(random_dir)
+
+        # Create a socket file.
+        sock = socket.socket(socket.AF_UNIX)
+        sock.bind(str(short_path_dir / "test_socket"))
+
+        # Check that opening the socket raises an exception.
+        with pytest.raises(OSError) as excinfo:
+            (short_path_dir / "test_socket").open()
+        assert "Operation not supported on socket" in str(excinfo.value)
+
+        # Check that the hash can still be generated without errors.
+        get_uri_for_directory(short_path_dir)
 
 
 class TestUploadPackageIfNeeded:
