@@ -50,7 +50,7 @@ class CheckpointStrategy:
             checkpoint will be deleted. If this is ``None`` then checkpoints
             will not be deleted. If this is ``0`` then no checkpoints will be
             persisted to disk.
-        checkpoint_score_attribute (str): The attribute that will be used to
+        checkpoint_score_attribute: The attribute that will be used to
             score checkpoints to determine which checkpoints should be kept
             on disk when there are greater than ``num_to_keep`` checkpoints.
             This attribute must be a key from the checkpoint

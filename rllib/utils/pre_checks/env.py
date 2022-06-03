@@ -41,7 +41,8 @@ def check_env(env: EnvType) -> None:
     if hasattr(env, "_skip_env_checking") and env._skip_env_checking:
         # This is a work around for some environments that we already have in RLlb
         # that we want to skip checking for now until we have the time to fix them.
-        logger.warning("Skipping env checking for this experiment")
+        if log_once("skip_env_checking"):
+            logger.warning("Skipping env checking for this experiment")
         return
 
     try:
@@ -133,16 +134,17 @@ def check_gym_environments(env: gym.Env) -> None:
     if not isinstance(env.action_space, gym.spaces.Space):
         raise ValueError("Action space must be a gym.space")
 
-    # raise a warning if there isn't a max_episode_steps attribute
+    # Raise a warning if there isn't a max_episode_steps attribute.
     if not hasattr(env, "spec") or not hasattr(env.spec, "max_episode_steps"):
-        logger.warning(
-            "Your env doesn't have a .spec.max_episode_steps "
-            "attribute. This is fine if you have set 'horizon' "
-            "in your config dictionary, or `soft_horizon`. "
-            "However, if you haven't, 'horizon' will default "
-            "to infinity, and your environment will not be "
-            "reset."
-        )
+        if log_once("max_episode_steps"):
+            logger.warning(
+                "Your env doesn't have a .spec.max_episode_steps "
+                "attribute. This is fine if you have set 'horizon' "
+                "in your config dictionary, or `soft_horizon`. "
+                "However, if you haven't, 'horizon' will default "
+                "to infinity, and your environment will not be "
+                "reset."
+            )
     # check if sampled actions and observations are contained within their
     # respective action and observation spaces.
 

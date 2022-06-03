@@ -39,10 +39,14 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch, DEFAULT_POLICY_ID
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.torch_policy import TorchPolicy
+from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils import force_list, merge_dicts, check_env
 from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI
 from ray.rllib.utils.debug import summarize, update_global_seed_if_necessary
-from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
+from ray.rllib.utils.deprecation import (
+    Deprecated,
+    deprecation_warning,
+)
 from ray.rllib.utils.error import ERR_MSG_NO_GPUS, HOWTO_CHANGE_CONFIG
 from ray.rllib.utils.filter import get_filter, Filter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -238,7 +242,7 @@ class RolloutWorker(ParallelIteratorWorker):
         input_creator: Callable[
             [IOContext], InputReader
         ] = lambda ioctx: ioctx.default_sampler_input(),
-        input_evaluation: List[str] = frozenset([]),
+        off_policy_estimation_methods: List[str] = frozenset([]),
         output_creator: Callable[
             [IOContext], OutputWriter
         ] = lambda ioctx: NoopOutput(),
@@ -335,8 +339,8 @@ class RolloutWorker(ParallelIteratorWorker):
                 DefaultCallbacks for training/policy/rollout-worker callbacks.
             input_creator: Function that returns an InputReader object for
                 loading previous generated experiences.
-            input_evaluation: How to evaluate the policy performance. Setting this only
-                makes sense when the input is reading offline data.
+            off_policy_estimation_methods: How to evaluate the policy performance.
+                Setting this only makes sense when the input is reading offline data.
                 Available options:
                 - "simulation" (str): Run the environment in the background, but use
                 this data for evaluation only and not for learning.
@@ -675,6 +679,9 @@ class RolloutWorker(ParallelIteratorWorker):
                 remote_envs=remote_worker_envs,
                 remote_env_batch_wait_ms=remote_env_batch_wait_ms,
                 worker=self,
+                restart_failed_sub_environments=self.policy_config.get(
+                    "restart_failed_sub_environments", False
+                ),
             )
 
         # `truncate_episodes`: Allow a batch to contain more than one episode
@@ -695,22 +702,22 @@ class RolloutWorker(ParallelIteratorWorker):
             log_dir, policy_config, worker_index, self
         )
         self.reward_estimators: List[OffPolicyEstimator] = []
-        for method in input_evaluation:
+        for method in off_policy_estimation_methods:
             if method == "is":
                 method = ImportanceSampling
                 deprecation_warning(
-                    old="config.input_evaluation=[is]",
+                    old="config.off_policy_estimation_methods=[is]",
                     new="from ray.rllib.offline.estimators import "
-                    f"{method.__name__}; config.input_evaluation="
+                    f"{method.__name__}; config.off_policy_estimation_methods="
                     f"[{method.__name__}]",
                     error=False,
                 )
             elif method == "wis":
                 method = WeightedImportanceSampling
                 deprecation_warning(
-                    old="config.input_evaluation=[wis]",
+                    old="config.off_policy_estimation_methods=[wis]",
                     new="from ray.rllib.offline.estimators import "
-                    f"{method.__name__}; config.input_evaluation="
+                    f"{method.__name__}; config.off_policy_estimation_methods="
                     f"[{method.__name__}]",
                     error=False,
                 )
@@ -752,7 +759,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 multiple_episodes_in_batch=pack,
                 normalize_actions=normalize_actions,
                 clip_actions=clip_actions,
-                blackhole_outputs="simulation" in input_evaluation,
+                blackhole_outputs="simulation" in off_policy_estimation_methods,
                 soft_horizon=soft_horizon,
                 no_done_at_end=no_done_at_end,
                 observation_fn=observation_fn,
@@ -1698,7 +1705,7 @@ class RolloutWorker(ParallelIteratorWorker):
         )
 
         for pid, policy in self.policy_map.items():
-            if not isinstance(policy, TorchPolicy):
+            if not isinstance(policy, (TorchPolicy, TorchPolicyV2)):
                 raise ValueError(
                     "This policy does not support torch distributed", policy
                 )
@@ -1894,12 +1901,29 @@ class RolloutWorker(ParallelIteratorWorker):
 
 
 def _determine_spaces_for_multi_agent_dict(
-    multi_agent_dict: MultiAgentPolicyConfigDict,
+    multi_agent_policies_dict: MultiAgentPolicyConfigDict,
     env: Optional[EnvType] = None,
     spaces: Optional[Dict[PolicyID, Tuple[Space, Space]]] = None,
     policy_config: Optional[PartialTrainerConfigDict] = None,
 ) -> MultiAgentPolicyConfigDict:
+    """Infers the observation- and action spaces in a multi-agent policy dict.
 
+    Args:
+        multi_agent_policies_dict: The multi-agent `policies` dict mapping policy IDs
+            to PolicySpec objects. Note that the `observation_space` and `action_space`
+            properties in these PolicySpecs may be None and must therefor be inferred
+            here.
+        env: An optional env instance, from which to infer the different spaces for
+            the different policies.
+        spaces: Optional dict mapping policy IDs to tuples of 1) observation space
+            and 2) action space that should be used for the respective policy.
+            These spaces were usually provided by an already instantiated remote worker.
+        policy_config: Optional partial config dict of the Trainer.
+
+    Returns:
+        The updated MultiAgentPolicyConfigDict (changed in-place from the incoming
+        `multi_agent_policies_dict` arg).
+    """
     policy_config = policy_config or {}
 
     # Try extracting spaces from env or from given spaces dict.
@@ -1928,12 +1952,40 @@ def _determine_spaces_for_multi_agent_dict(
         if env_act_space is None:
             env_act_space = spaces.get("__env__", [None, None])[1]
 
-    for pid, policy_spec in multi_agent_dict.copy().items():
+    for pid, policy_spec in multi_agent_policies_dict.copy().items():
         if policy_spec.observation_space is None:
             if spaces is not None and pid in spaces:
                 obs_space = spaces[pid][0]
             elif env_obs_space is not None:
-                obs_space = env_obs_space
+                # Multi-agent case AND different agents have different spaces:
+                # Need to reverse map spaces (for the different agents) to certain
+                # policy IDs.
+                if isinstance(env, MultiAgentEnv) and env._spaces_in_preferred_format:
+                    obs_space = None
+                    mapping_fn = policy_config.get("multiagent", {}).get(
+                        "policy_mapping_fn", None
+                    )
+                    if mapping_fn:
+                        for aid in env.get_agent_ids():
+                            # Match: Assign spaces for this agentID to the policy ID.
+                            if mapping_fn(aid, None, None) == pid:
+                                # Make sure, different agents that map to the same
+                                # policy don't have different spaces.
+                                if (
+                                    obs_space is not None
+                                    and env_obs_space[aid] != obs_space
+                                ):
+                                    raise ValueError(
+                                        "Two agents in your environment map to the same"
+                                        " policyID (as per your `policy_mapping_fn`), "
+                                        "however, these agents also have different "
+                                        "observation spaces!"
+                                    )
+                                obs_space = env_obs_space[aid]
+                # Otherwise, just use env's obs space as-is.
+                else:
+                    obs_space = env_obs_space
+            # Space given directly in config.
             elif policy_config.get("observation_space"):
                 obs_space = policy_config["observation_space"]
             else:
@@ -1944,7 +1996,7 @@ def _determine_spaces_for_multi_agent_dict(
                     "`observation_space` specified in config!"
                 )
 
-            multi_agent_dict[pid] = multi_agent_dict[pid]._replace(
+            multi_agent_policies_dict[pid] = multi_agent_policies_dict[pid]._replace(
                 observation_space=obs_space
             )
 
@@ -1952,7 +2004,34 @@ def _determine_spaces_for_multi_agent_dict(
             if spaces is not None and pid in spaces:
                 act_space = spaces[pid][1]
             elif env_act_space is not None:
-                act_space = env_act_space
+                # Multi-agent case AND different agents have different spaces:
+                # Need to reverse map spaces (for the different agents) to certain
+                # policy IDs.
+                if isinstance(env, MultiAgentEnv) and env._spaces_in_preferred_format:
+                    act_space = None
+                    mapping_fn = policy_config.get("multiagent", {}).get(
+                        "policy_mapping_fn", None
+                    )
+                    if mapping_fn:
+                        for aid in env.get_agent_ids():
+                            # Match: Assign spaces for this agentID to the policy ID.
+                            if mapping_fn(aid, None, None) == pid:
+                                # Make sure, different agents that map to the same
+                                # policy don't have different spaces.
+                                if (
+                                    act_space is not None
+                                    and env_act_space[aid] != act_space
+                                ):
+                                    raise ValueError(
+                                        "Two agents in your environment map to the same"
+                                        " policyID (as per your `policy_mapping_fn`), "
+                                        "however, these agents also have different "
+                                        "action spaces!"
+                                    )
+                                act_space = env_act_space[aid]
+                # Otherwise, just use env's action space as-is.
+                else:
+                    act_space = env_act_space
             elif policy_config.get("action_space"):
                 act_space = policy_config["action_space"]
             else:
@@ -1962,7 +2041,7 @@ def _determine_spaces_for_multi_agent_dict(
                     "no spaces received from other workers' env(s) OR no "
                     "`action_space` specified in config!"
                 )
-            multi_agent_dict[pid] = multi_agent_dict[pid]._replace(
+            multi_agent_policies_dict[pid] = multi_agent_policies_dict[pid]._replace(
                 action_space=act_space
             )
-    return multi_agent_dict
+    return multi_agent_policies_dict

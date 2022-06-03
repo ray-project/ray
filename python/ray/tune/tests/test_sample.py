@@ -1894,6 +1894,21 @@ class SearchSpaceTest(unittest.TestCase):
                 ("Pre-set value `2` is not equal to the value of parameter `a`: 1",),
             )
 
+    def testGridSearchGenerator(self):
+        from ray.tune.suggest.basic_variant import BasicVariantGenerator
+
+        searcher = BasicVariantGenerator(constant_grid_search=False)
+        exp = Experiment(
+            run=_mock_objective,
+            name="test",
+            config={"parameter": tune.grid_search(range(10))},
+            num_samples=1,
+        )
+        searcher.add_configurations(exp)
+
+        trials = [searcher.next_trial() for i in range(10)]
+        assert [t.config["parameter"] for t in trials] == list(range(10))
+
     def testConstantGridSearchBasicVariant(self):
         config = {
             "grid": tune.grid_search([1, 2, 3]),

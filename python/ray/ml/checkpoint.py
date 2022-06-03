@@ -1,10 +1,15 @@
 import contextlib
 import io
+import logging
 import os
+import platform
 import shutil
 import tarfile
 import tempfile
-from typing import Iterator, Optional, Tuple, Union
+import traceback
+from filelock import FileLock
+from pathlib import Path
+from typing import Any, Dict, Iterator, Optional, Tuple, Union
 
 import ray
 from ray import cloudpickle as pickle
@@ -19,6 +24,9 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 _DICT_CHECKPOINT_FILE_NAME = "dict_checkpoint.pkl"
 _FS_CHECKPOINT_KEY = "fs_checkpoint"
 _BYTES_DATA_KEY = "bytes_data"
+_CHECKPOINT_DIR_PREFIX = "checkpoint_tmp_"
+
+logger = logging.getLogger(__name__)
 
 
 @PublicAPI
@@ -176,17 +184,17 @@ class Checkpoint:
         else:
             raise ValueError("Cannot create checkpoint without data.")
 
-        self._local_path = local_path
-        self._data_dict = data_dict
-        self._uri = uri
-        self._obj_ref = obj_ref
+        self._local_path: Optional[str] = local_path
+        self._data_dict: Optional[Dict[str, Any]] = data_dict
+        self._uri: Optional[str] = uri
+        self._obj_ref: Optional[ray.ObjectRef] = obj_ref
 
     @classmethod
     def from_bytes(cls, data: bytes) -> "Checkpoint":
         """Create a checkpoint from the given byte string.
 
         Args:
-            data (bytes): Data object containing pickled checkpoint data.
+            data: Data object containing pickled checkpoint data.
 
         Returns:
             Checkpoint: checkpoint object.
@@ -215,12 +223,12 @@ class Checkpoint:
         """Create checkpoint object from dictionary.
 
         Args:
-            data (dict): Dictionary containing checkpoint data.
+            data: Dictionary containing checkpoint data.
 
         Returns:
             Checkpoint: checkpoint object.
         """
-        return Checkpoint(data_dict=data)
+        return cls(data_dict=data)
 
     def to_dict(self) -> dict:
         """Return checkpoint data as dictionary.
@@ -251,8 +259,7 @@ class Checkpoint:
                     checkpoint_data = {
                         _FS_CHECKPOINT_KEY: data,
                     }
-
-            return checkpoint_data
+                return checkpoint_data
         else:
             raise RuntimeError(f"Empty data for checkpoint {self}")
 
@@ -261,12 +268,12 @@ class Checkpoint:
         """Create checkpoint object from object reference.
 
         Args:
-            obj_ref (ray.ObjectRef): ObjectRef pointing to checkpoint data.
+            obj_ref: ObjectRef pointing to checkpoint data.
 
         Returns:
             Checkpoint: checkpoint object.
         """
-        return Checkpoint(obj_ref=obj_ref)
+        return cls(obj_ref=obj_ref)
 
     def to_object_ref(self) -> ray.ObjectRef:
         """Return checkpoint data as object reference.
@@ -284,32 +291,45 @@ class Checkpoint:
         """Create checkpoint object from directory.
 
         Args:
-            path (str): Directory containing checkpoint data.
+            path: Directory containing checkpoint data. The caller promises to
+                not delete the directory (gifts ownership of the directory to this
+                Checkpoint).
 
         Returns:
             Checkpoint: checkpoint object.
         """
-        return Checkpoint(local_path=path)
+        return cls(local_path=path)
 
-    def to_directory(self, path: Optional[str] = None) -> str:
-        """Write checkpoint data to directory.
+    def _get_temporary_checkpoint_dir(self) -> str:
+        """Return the name for the temporary checkpoint dir."""
+        if self._obj_ref:
+            tmp_dir_path = tempfile.gettempdir()
+            checkpoint_dir_name = _CHECKPOINT_DIR_PREFIX + self._obj_ref.hex()
+            if platform.system() == "Windows":
+                # Max path on Windows is 260 chars, -1 for joining \
+                # Also leave a little for the del lock
+                del_lock_name = _get_del_lock_path("")
+                checkpoint_dir_name = (
+                    _CHECKPOINT_DIR_PREFIX
+                    + self._obj_ref.hex()[
+                        -259
+                        + len(_CHECKPOINT_DIR_PREFIX)
+                        + len(tmp_dir_path)
+                        + len(del_lock_name) :
+                    ]
+                )
+                if not checkpoint_dir_name.startswith(_CHECKPOINT_DIR_PREFIX):
+                    raise RuntimeError(
+                        "Couldn't create checkpoint directory due to length "
+                        "constraints. Try specifing a shorter checkpoint path."
+                    )
+            return os.path.join(tmp_dir_path, checkpoint_dir_name)
+        return _temporary_checkpoint_dir()
 
-        Args:
-            path (str): Target directory to restore data in.
-
-        Returns:
-            str: Directory containing checkpoint data.
-        """
-        path = path if path is not None else _temporary_checkpoint_dir()
-
-        os.makedirs(path, exist_ok=True)
-        # Drop marker
-        open(os.path.join(path, ".is_checkpoint"), "a").close()
-
+    def _to_directory(self, path: str) -> None:
         if self._data_dict or self._obj_ref:
             # This is a object ref or dict
             data_dict = self.to_dict()
-
             if _FS_CHECKPOINT_KEY in data_dict:
                 # This used to be a true fs checkpoint, so restore
                 _unpack(data_dict[_FS_CHECKPOINT_KEY], path)
@@ -330,10 +350,44 @@ class Checkpoint:
                     shutil.copytree(local_path, path)
             elif external_path:
                 # If this exists on external storage (e.g. cloud), download
-                download_from_uri(uri=external_path, local_path=path)
+                download_from_uri(uri=external_path, local_path=path, filelock=False)
             else:
                 raise RuntimeError(
                     f"No valid location found for checkpoint {self}: {self._uri}"
+                )
+
+    def to_directory(self, path: Optional[str] = None) -> str:
+        """Write checkpoint data to directory.
+
+        Args:
+            path: Target directory to restore data in. If not specified,
+                will create a temporary directory.
+
+        Returns:
+            str: Directory containing checkpoint data.
+        """
+        user_provided_path = path is not None
+        path = path if user_provided_path else self._get_temporary_checkpoint_dir()
+        path = os.path.normpath(path)
+
+        _make_dir(path, acquire_del_lock=not user_provided_path)
+
+        try:
+            # Timeout 0 means there will be only one attempt to acquire
+            # the file lock. If it cannot be aquired, a TimeoutError
+            # will be thrown.
+            with FileLock(f"{path}.lock", timeout=0):
+                self._to_directory(path)
+        except TimeoutError:
+            # if the directory is already locked, then wait but do not do anything.
+            with FileLock(f"{path}.lock", timeout=-1):
+                pass
+            if not os.path.exists(path):
+                raise RuntimeError(
+                    f"Checkpoint directory {path} does not exist, "
+                    "even though it should have been created by "
+                    "another process. Please raise an issue on GitHub: "
+                    "https://github.com/ray-project/ray/issues"
                 )
 
         return path
@@ -348,6 +402,14 @@ class Checkpoint:
         If the checkpoint is already a directory checkpoint, it will return
         the existing path. If it is not, it will create a temporary directory,
         which will be deleted after the context is exited.
+
+        If the checkpoint has been created from an object reference, the directory name
+        will be constant and equal to the object reference ID. This allows for multiple
+        processes to use the same files for improved performance. The directory
+        will be deleted after exiting the context only if no other processes are using
+        it.
+        In any other case, a new temporary directory will be created with each call
+        to ``as_directory``.
 
         Users should treat the returned checkpoint directory as read-only and avoid
         changing any data within it, as it might get deleted when exiting the context.
@@ -366,8 +428,34 @@ class Checkpoint:
             yield self._local_path
         else:
             temp_dir = self.to_directory()
+            del_lock_path = _get_del_lock_path(temp_dir)
             yield temp_dir
-            shutil.rmtree(temp_dir, ignore_errors=True)
+
+            # Cleanup
+            try:
+                os.remove(del_lock_path)
+            except Exception:
+                logger.warning(
+                    f"Could not remove {del_lock_path} deletion file lock. "
+                    f"Traceback:\n{traceback.format_exc()}"
+                )
+
+            # In the edge case (process crash before del lock file is removed),
+            # we do not remove the directory at all.
+            # Since it's in /tmp, this is not that big of a deal.
+            # check if any lock files are remaining
+            temp_dir_base_name = Path(temp_dir).name
+            if not list(
+                Path(temp_dir).parent.glob(_get_del_lock_path(temp_dir_base_name, "*"))
+            ):
+                try:
+                    # Timeout 0 means there will be only one attempt to acquire
+                    # the file lock. If it cannot be aquired, a TimeoutError
+                    # will be thrown.
+                    with FileLock(f"{temp_dir}.lock", timeout=0):
+                        shutil.rmtree(temp_dir, ignore_errors=True)
+                except TimeoutError:
+                    pass
 
     @classmethod
     def from_uri(cls, uri: str) -> "Checkpoint":
@@ -378,18 +466,18 @@ class Checkpoint:
         local files (``file://``).
 
         Args:
-            uri (str): Source location URI to read data from.
+            uri: Source location URI to read data from.
 
         Returns:
             Checkpoint: checkpoint object.
         """
-        return Checkpoint(uri=uri)
+        return cls(uri=uri)
 
     def to_uri(self, uri: str) -> str:
         """Write checkpoint data to location URI (e.g. cloud storage).
 
         Args:
-            uri (str): Target location URI to write data to.
+            uri: Target location URI to write data to.
 
         Returns:
             str: Cloud location containing checkpoint data.
@@ -446,7 +534,7 @@ class Checkpoint:
     def __getstate__(self):
         if self._local_path:
             blob = self.to_bytes()
-            return Checkpoint.from_bytes(blob).__getstate__()
+            return self.__class__.from_bytes(blob).__getstate__()
         return self.__dict__
 
     def __setstate__(self, state):
@@ -473,13 +561,13 @@ def _get_external_path(path: Optional[str]) -> Optional[str]:
 
 def _temporary_checkpoint_dir() -> str:
     """Create temporary checkpoint dir."""
-    return tempfile.mkdtemp(prefix="checkpoint_tmp_")
+    return tempfile.mkdtemp(prefix=_CHECKPOINT_DIR_PREFIX)
 
 
 def _pack(path: str) -> bytes:
     """Pack directory in ``path`` into an archive, return as bytes string."""
     stream = io.BytesIO()
-    with tarfile.open(fileobj=stream, mode="w:gz", format=tarfile.PAX_FORMAT) as tar:
+    with tarfile.open(fileobj=stream, mode="w", format=tarfile.PAX_FORMAT) as tar:
         tar.add(path, arcname="")
 
     return stream.getvalue()
@@ -490,3 +578,23 @@ def _unpack(stream: bytes, path: str) -> str:
     with tarfile.open(fileobj=io.BytesIO(stream)) as tar:
         tar.extractall(path)
     return path
+
+
+def _get_del_lock_path(path: str, pid: str = None) -> str:
+    """Get the path to the deletion lock file."""
+    pid = pid if pid is not None else os.getpid()
+    return f"{path}.del_lock_{pid}"
+
+
+def _make_dir(path: str, acquire_del_lock: bool = True) -> None:
+    """Create the temporary checkpoint dir in ``path``."""
+    if acquire_del_lock:
+        # Each process drops a deletion lock file it then cleans up.
+        # If there are no lock files left, the last process
+        # will remove the entire directory.
+        del_lock_path = _get_del_lock_path(path)
+        open(del_lock_path, "a").close()
+
+    os.makedirs(path, exist_ok=True)
+    # Drop marker
+    open(os.path.join(path, ".is_checkpoint"), "a").close()

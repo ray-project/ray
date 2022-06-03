@@ -138,6 +138,8 @@ parts:
                   - file: serve/deployment-graph/deployment-graph-e2e-tutorial
                   - file: serve/deployment-graph/chain_nodes_same_class_different_args
                   - file: serve/deployment-graph/combine_two_nodes_with_passing_input_parallel
+                  - file: serve/deployment-graph/control_flow_based_on_user_inputs
+                  - file: serve/deployment-graph/http_endpoint_for_dag_graph
           - file: serve/architecture
           - file: serve/tutorials/index
           - file: serve/faq
@@ -165,7 +167,6 @@ parts:
         sections:
           - file: workflows/basics
           - file: workflows/management
-          - file: workflows/actors
           - file: workflows/metadata
           - file: workflows/events
           - file: workflows/comparison
@@ -183,6 +184,8 @@ parts:
                 sections:
                   - file: ray-air/examples/analyze_tuning_results
                     title: "Analyze hyperparameter tuning results"
+                  - file: ray-air/examples/torch_image_example
+                  - file: ray-air/examples/torch_incremental_learning
                   - file: ray-air/examples/rl_serving_example
                   - file: ray-air/examples/upload_to_comet_ml
                   - file: ray-air/examples/upload_to_wandb
@@ -193,6 +196,8 @@ parts:
                   - file: ray-air/examples/xgboost_example
                   - file: ray-air/examples/huggingface_text_classification
                     title: "Fine-tune a 🤗 Transformers model"
+                  - file: ray-air/examples/tfx_tabular_train_to_serve
+                    title: "Train a Keras model with Tabular data and serve it"
               - file: ray-air/package-ref
           - file: ray-more-libs/joblib
           - file: ray-more-libs/lightgbm-ray
@@ -224,7 +229,9 @@ parts:
 
   - caption: Ray Clusters
     chapters:
+      - file: cluster/index
       - file: cluster/quickstart
+      - file: cluster/key-concepts
       - file: cluster/user-guide
       - file: cluster/cloud
       - file: cluster/deploy

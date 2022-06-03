@@ -44,6 +44,7 @@ py_test_module_list(
     "test_basic_5.py",
     "test_cancel.py",
     "test_gcs_fault_tolerance.py",
+    "test_generators.py",
     "test_metrics_agent.py",
     "test_component_failures_2.py",
     "test_component_failures_3.py",
@@ -59,7 +60,6 @@ py_test_module_list(
     "test_healthcheck.py",
     "test_kill_raylet_signal_log.py",
     "test_memstat.py",
-    "test_mldataset.py",
   ],
   size = "medium",
   extra_srcs = SRCS,
@@ -173,12 +173,24 @@ py_test_module_list(
     "test_raylet_output.py",
     "test_scheduling_performance.py",
     "test_get_or_create_actor.py",
+    "test_gcs_utils.py",
   ],
   size = "small",
   extra_srcs = SRCS,
   tags = ["exclusive", "small_size_python_tests", "team:core"],
   deps = ["//:ray_lib"],
 )
+
+py_test_module_list(
+  files = [
+    "test_gcs_ha_e2e.py",
+  ],
+  size = "small",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "ray_ha", "team:core"],
+  deps = ["//:ray_lib"],
+)
+
 
 py_test_module_list(
   files = [
@@ -221,6 +233,7 @@ py_test_module_list(
     "test_threaded_actor.py",
     "test_stress_failure.py",
     "test_reconstruction.py",
+    "test_reconstruction_2.py",
     "test_failure_2.py",
     "test_failure_3.py",
     "test_chaos.py",

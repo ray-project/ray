@@ -27,7 +27,7 @@ from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.execution.common import (
     STEPS_TRAINED_THIS_ITER_COUNTER,
 )
-from ray.rllib.execution.parallel_requests import asynchronous_parallel_requests
+from ray.rllib.execution.parallel_requests import AsyncRequestsManager
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics import (
@@ -204,7 +204,7 @@ class DDPPOTrainer(PPOTrainer):
         """Validates the Trainer's config dict.
 
         Args:
-            config (TrainerConfigDict): The Trainer's config to check.
+            config: The Trainer's config to check.
 
         Raises:
             ValueError: In case something is wrong with the config.
@@ -275,20 +275,21 @@ class DDPPOTrainer(PPOTrainer):
                 ]
             )
             logger.info("Torch process group init completed")
+            self._ddppo_worker_manager = AsyncRequestsManager(
+                self.workers.remote_workers(),
+                max_remote_requests_in_flight_per_worker=1,
+                ray_wait_timeout_s=0.03,
+            )
 
     @override(PPOTrainer)
     def training_iteration(self) -> ResultDict:
         # Shortcut.
         first_worker = self.workers.remote_workers()[0]
 
-        # Run sampling and update steps on each worker in asynchronous fashion.
-        sample_and_update_results = asynchronous_parallel_requests(
-            remote_requests_in_flight=self.remote_requests_in_flight,
-            actors=self.workers.remote_workers(),
-            ray_wait_timeout_s=0.0,
-            max_remote_requests_in_flight_per_actor=1,  # 2
-            remote_fn=self._sample_and_train_torch_distributed,
+        self._ddppo_worker_manager.call_on_all_available(
+            self._sample_and_train_torch_distributed
         )
+        sample_and_update_results = self._ddppo_worker_manager.get_ready()
 
         # For all results collected:
         # - Update our counters and timers.

@@ -12,6 +12,7 @@ class TestInMemoryMetricsStore:
         s.add_metrics_point({"m1": 1}, timestamp=1)
         s.add_metrics_point({"m1": 2}, timestamp=2)
         assert s.window_average("m1", window_start_timestamp_s=0) == 1.5
+        assert s.max("m1", window_start_timestamp_s=0) == 2
 
     def test_out_of_order_insert(self):
         s = InMemoryMetricsStore()
@@ -21,10 +22,12 @@ class TestInMemoryMetricsStore:
         s.add_metrics_point({"m1": 2}, timestamp=2)
         s.add_metrics_point({"m1": 4}, timestamp=4)
         assert s.window_average("m1", window_start_timestamp_s=0) == 3
+        assert s.max("m1", window_start_timestamp_s=0) == 5
 
     def test_window_start_timestamp(self):
         s = InMemoryMetricsStore()
         assert s.window_average("m1", window_start_timestamp_s=0) is None
+        assert s.max("m1", window_start_timestamp_s=0) is None
 
         s.add_metrics_point({"m1": 1}, timestamp=2)
         assert s.window_average("m1", window_start_timestamp_s=0) == 1
@@ -51,7 +54,8 @@ class TestInMemoryMetricsStore:
         s.add_metrics_point({"m1": 1, "m2": -1}, timestamp=1)
         s.add_metrics_point({"m1": 2, "m2": -2}, timestamp=2)
         assert s.window_average("m1", window_start_timestamp_s=0) == 1.5
-        assert s.window_average("m2", window_start_timestamp_s=0) == -1.5
+        assert s.max("m1", window_start_timestamp_s=0) == 2
+        assert s.max("m2", window_start_timestamp_s=0) == -1
 
 
 def test_e2e(serve_instance):

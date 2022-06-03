@@ -13,7 +13,6 @@ import logging
 from typing import List, Optional, Type, Union
 
 from ray.util.debug import log_once
-from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
 from ray.rllib.agents.trainer import Trainer
 from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.execution.rollout_ops import (
@@ -281,7 +280,7 @@ class PPOTrainer(Trainer):
         """Validates the Trainer's config dict.
 
         Args:
-            config (TrainerConfigDict): The Trainer's config to check.
+            config: The Trainer's config to check.
 
         Raises:
             ValueError: In case something is wrong with the config.
@@ -369,8 +368,14 @@ class PPOTrainer(Trainer):
             from ray.rllib.agents.ppo.ppo_torch_policy import PPOTorchPolicy
 
             return PPOTorchPolicy
+        elif config["framework"] == "tf":
+            from ray.rllib.agents.ppo.ppo_tf_policy import PPOStaticGraphTFPolicy
+
+            return PPOStaticGraphTFPolicy
         else:
-            return PPOTFPolicy
+            from ray.rllib.agents.ppo.ppo_tf_policy import PPOEagerTFPolicy
+
+            return PPOEagerTFPolicy
 
     @ExperimentalAPI
     def training_iteration(self) -> ResultDict:

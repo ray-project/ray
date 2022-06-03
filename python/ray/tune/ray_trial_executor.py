@@ -23,19 +23,19 @@ from typing import (
 import ray
 from ray.exceptions import GetTimeoutError, RayTaskError
 from ray.tune.error import (
-    AbortTrialExecution,
+    _AbortTrialExecution,
     TuneError,
-    TuneStartTrialError,
-    TuneGetNextExecutorEventError,
+    _TuneStartTrialError,
+    _TuneNoNextExecutorEventError,
 )
 from ray.tune.logger import NoopLogger
 from ray.tune.result import TRIAL_INFO, STDOUT_FILE, STDERR_FILE
-from ray.tune.utils.placement_groups import PlacementGroupManager, get_tune_pg_prefix
+from ray.tune.utils.placement_groups import _PlacementGroupManager, get_tune_pg_prefix
 from ray.tune.utils.trainable import TrainableUtil
-from ray.tune.trial import Trial, _TuneCheckpoint, Location, TrialInfo
+from ray.tune.trial import Trial, _TuneCheckpoint, _Location, _TrialInfo
 from ray.tune.trial_executor import TrialExecutor
 from ray.tune.utils import warn_if_slow
-from ray.tune.utils.resource_updater import ResourceUpdater
+from ray.tune.utils.resource_updater import _ResourceUpdater
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
 from ray.util.placement_group import remove_placement_group, PlacementGroup
@@ -149,7 +149,7 @@ def noop_logger_creator(config, logdir):
     return NoopLogger(config, logdir)
 
 
-class ExecutorEventType(Enum):
+class _ExecutorEventType(Enum):
     """The executor event type.
 
     Some of the events are internal events to executor while others
@@ -165,7 +165,7 @@ class ExecutorEventType(Enum):
     YIELD = 8  # Yielding back to TrialRunner's main event loop.
 
 
-class ExecutorEvent:
+class _ExecutorEvent:
     """A struct that describes the event to be processed by TrialRunner.
 
     Attributes:
@@ -180,7 +180,7 @@ class ExecutorEvent:
 
     def __init__(
         self,
-        event_type: ExecutorEventType,
+        event_type: _ExecutorEventType,
         trial: Optional[Trial] = None,
         result: Optional[Dict] = None,
     ):
@@ -215,13 +215,13 @@ class RayTrialExecutor(TrialExecutor):
         else:
             self._trial_cleanup = None
 
-        self._resource_updater = ResourceUpdater(refresh_period)
+        self._resource_updater = _ResourceUpdater(refresh_period)
 
         self._has_cleaned_up_pgs = False
         self._reuse_actors = reuse_actors
         # The maxlen will be updated when `set_max_pending_trials()` is called
         self._cached_actor_pg = deque(maxlen=1)
-        self._pg_manager = PlacementGroupManager(prefix=get_tune_pg_prefix())
+        self._pg_manager = _PlacementGroupManager(prefix=get_tune_pg_prefix())
         self._staged_trials = set()
         self._trial_just_finished = False
         self._trial_just_finished_before = False
@@ -308,7 +308,7 @@ class RayTrialExecutor(TrialExecutor):
             if not self.reset_trial(
                 trial, trial.config, trial.experiment_tag, logger_creator
             ):
-                raise AbortTrialExecution(
+                raise _AbortTrialExecution(
                     "Trainable runner reuse requires reset_config() to be "
                     "implemented and return True."
                 )
@@ -316,7 +316,7 @@ class RayTrialExecutor(TrialExecutor):
 
         trainable_cls = trial.get_trainable_cls()
         if not trainable_cls:
-            raise AbortTrialExecution(
+            raise _AbortTrialExecution(
                 f"Invalid trainable: {trial.trainable_name}. If you passed "
                 f"a string, make sure the trainable was registered before."
             )
@@ -328,12 +328,12 @@ class RayTrialExecutor(TrialExecutor):
         full_actor_class = self._pg_manager.get_full_actor_cls(trial, _actor_cls)
         # Clear the Trial's location (to be updated later on result)
         # since we don't know where the remote runner is placed.
-        trial.set_location(Location())
+        trial.set_location(_Location())
         logger.debug("Trial %s: Setting up new remote runner.", trial)
         # Logging for trials is handled centrally by TrialRunner, so
         # configure the remote runner to use a noop-logger.
         trial_config = copy.deepcopy(trial.config)
-        trial_config[TRIAL_INFO] = TrialInfo(trial)
+        trial_config[TRIAL_INFO] = _TrialInfo(trial)
 
         stdout_file, stderr_file = trial.log_to_file
         trial_config[STDOUT_FILE] = stdout_file
@@ -410,7 +410,7 @@ class RayTrialExecutor(TrialExecutor):
         if isinstance(remote, dict):
             remote = _LocalWrapper(remote)
 
-        self._futures[remote] = (ExecutorEventType.TRAINING_RESULT, trial)
+        self._futures[remote] = (_ExecutorEventType.TRAINING_RESULT, trial)
         trial_item = self._find_future(trial)
         assert len(trial_item) < 2, trial_item
 
@@ -458,7 +458,7 @@ class RayTrialExecutor(TrialExecutor):
         """
         self.set_status(trial, Trial.ERROR if error or exc else Trial.TERMINATED)
         self._trial_just_finished = True
-        trial.set_location(Location())
+        trial.set_location(_Location())
 
         try:
             trial.write_error_log(exc=exc)
@@ -498,7 +498,7 @@ class RayTrialExecutor(TrialExecutor):
                         future = trial.runner.stop.remote()
 
                     pg = self._pg_manager.remove_from_in_use(trial)
-                    self._futures[future] = (ExecutorEventType.STOP_RESULT, pg)
+                    self._futures[future] = (_ExecutorEventType.STOP_RESULT, pg)
                     if self._trial_cleanup:  # force trial cleanup within a deadline
                         self._trial_cleanup.add(future)
 
@@ -524,7 +524,7 @@ class RayTrialExecutor(TrialExecutor):
         """
         try:
             return self._start_trial(trial)
-        except AbortTrialExecution as e:
+        except _AbortTrialExecution as e:
             logger.exception("Trial %s: Error starting runner, aborting!", trial)
             time.sleep(2)
             self._stop_trial(trial, exc=e)
@@ -535,7 +535,9 @@ class RayTrialExecutor(TrialExecutor):
             if isinstance(e, TuneError):
                 self._stop_trial(trial, exc=e)
             else:
-                self._stop_trial(trial, exc=TuneStartTrialError(traceback.format_exc()))
+                self._stop_trial(
+                    trial, exc=_TuneStartTrialError(traceback.format_exc())
+                )
             # Note that we don't return the resources, since they may
             # have been lost. TODO(ujvl): is this the right thing to do?
             return False
@@ -590,7 +592,7 @@ class RayTrialExecutor(TrialExecutor):
 
         # Pass magic variables
         extra_config = copy.deepcopy(new_config)
-        extra_config[TRIAL_INFO] = TrialInfo(trial)
+        extra_config[TRIAL_INFO] = _TrialInfo(trial)
 
         stdout_file, stderr_file = trial.log_to_file
         extra_config[STDOUT_FILE] = stdout_file
@@ -700,7 +702,7 @@ class RayTrialExecutor(TrialExecutor):
                 value = trial.runner.save.remote()
                 checkpoint = _TuneCheckpoint(storage, value, result)
                 trial.saving_to = checkpoint
-                self._futures[value] = (ExecutorEventType.SAVING_RESULT, trial)
+                self._futures[value] = (_ExecutorEventType.SAVING_RESULT, trial)
         return checkpoint
 
     def restore(self, trial: Trial) -> None:
@@ -745,13 +747,13 @@ class RayTrialExecutor(TrialExecutor):
                 with self._change_working_directory(trial):
                     remote = trial.runner.restore_from_object.remote(obj)
             else:
-                raise AbortTrialExecution(
+                raise _AbortTrialExecution(
                     "Pass in `sync_on_checkpoint=True` for driver-based trial"
                     "restoration. Pass in an `upload_dir` for remote "
                     "storage-based restoration"
                 )
 
-            self._futures[remote] = (ExecutorEventType.RESTORING_RESULT, trial)
+            self._futures[remote] = (_ExecutorEventType.RESTORING_RESULT, trial)
             trial.restoring_from = checkpoint
 
     def export_trial_if_needed(self, trial: Trial) -> Dict:
@@ -782,7 +784,7 @@ class RayTrialExecutor(TrialExecutor):
             if not ready:
                 continue
             event_type, trial_or_pg = self._futures.pop(ready[0])
-            if event_type == ExecutorEventType.STOP_RESULT:
+            if event_type == _ExecutorEventType.STOP_RESULT:
                 post_stop_cleanup(ready[0], trial_or_pg)
 
         self._pg_manager.reconcile_placement_groups(trials)
@@ -808,7 +810,7 @@ class RayTrialExecutor(TrialExecutor):
 
     def get_next_executor_event(
         self, live_trials: Set[Trial], next_trial_exists: bool
-    ) -> ExecutorEvent:
+    ) -> _ExecutorEvent:
         """Get the next executor event to be processed in TrialRunner.
 
         In case there are multiple events available for handling, the next
@@ -863,11 +865,11 @@ class RayTrialExecutor(TrialExecutor):
             # runner. The next trial can then be scheduled on this PG.
             if next_trial_exists:
                 if len(self._cached_actor_pg) > 0:
-                    return ExecutorEvent(ExecutorEventType.PG_READY)
+                    return _ExecutorEvent(_ExecutorEventType.PG_READY)
                 # TODO(xwjiang): Expose proper API when we decide to do
                 #  ActorPool abstraction.
                 if any(len(r) > 0 for r in self._pg_manager._ready.values()):
-                    return ExecutorEvent(ExecutorEventType.PG_READY)
+                    return _ExecutorEvent(_ExecutorEventType.PG_READY)
 
             ###################################################################
             # Prepare for futures to wait
@@ -901,11 +903,11 @@ class RayTrialExecutor(TrialExecutor):
                     # infeasible.
                     # TODO: Move InsufficientResourceManager's logic
                     #  to TrialExecutor. It is not Runner's responsibility!
-                    return ExecutorEvent(ExecutorEventType.NO_RUNNING_TRIAL_TIMEOUT)
+                    return _ExecutorEvent(_ExecutorEventType.NO_RUNNING_TRIAL_TIMEOUT)
                 else:
                     # Training simply takes long time, yield the control back to main
                     # event loop to print progress info etc.
-                    return ExecutorEvent(ExecutorEventType.YIELD)
+                    return _ExecutorEvent(_ExecutorEventType.YIELD)
 
             ###################################################################
             # If there is future returned.
@@ -918,13 +920,13 @@ class RayTrialExecutor(TrialExecutor):
             ###################################################################
             if ready_future not in self._futures.keys():
                 self._pg_manager.handle_ready_future(ready_future)
-                return ExecutorEvent(ExecutorEventType.PG_READY)
+                return _ExecutorEvent(_ExecutorEventType.PG_READY)
 
             ###################################################################
             # non PG_READY event
             ###################################################################
             result_type, trial_or_pg = self._futures.pop(ready_future)
-            if result_type == ExecutorEventType.STOP_RESULT:
+            if result_type == _ExecutorEventType.STOP_RESULT:
                 pg = trial_or_pg
                 post_stop_cleanup(ready_future, pg)
             else:
@@ -936,30 +938,30 @@ class RayTrialExecutor(TrialExecutor):
                     if isinstance(future_result, _LocalWrapper):
                         future_result = future_result.unwrap()
                     if result_type in (
-                        ExecutorEventType.TRAINING_RESULT,
-                        ExecutorEventType.SAVING_RESULT,
-                        ExecutorEventType.RESTORING_RESULT,
+                        _ExecutorEventType.TRAINING_RESULT,
+                        _ExecutorEventType.SAVING_RESULT,
+                        _ExecutorEventType.RESTORING_RESULT,
                     ):
                         logger.debug(f"Returning [{result_type}] for trial {trial}")
-                        return ExecutorEvent(
+                        return _ExecutorEvent(
                             result_type,
                             trial,
-                            result={ExecutorEvent.KEY_FUTURE_RESULT: future_result},
+                            result={_ExecutorEvent.KEY_FUTURE_RESULT: future_result},
                         )
                     else:
                         raise TuneError(f"Unexpected future type - [{result_type}]")
                 except RayTaskError as e:
-                    return ExecutorEvent(
-                        ExecutorEventType.ERROR,
+                    return _ExecutorEvent(
+                        _ExecutorEventType.ERROR,
                         trial,
-                        result={ExecutorEvent.KEY_EXCEPTION: e.as_instanceof_cause()},
+                        result={_ExecutorEvent.KEY_EXCEPTION: e.as_instanceof_cause()},
                     )
                 except Exception:
-                    return ExecutorEvent(
-                        ExecutorEventType.ERROR,
+                    return _ExecutorEvent(
+                        _ExecutorEventType.ERROR,
                         trial,
                         result={
-                            ExecutorEvent.KEY_EXCEPTION: TuneGetNextExecutorEventError(
+                            _ExecutorEvent.KEY_EXCEPTION: _TuneNoNextExecutorEventError(
                                 traceback.format_exc()
                             )
                         },

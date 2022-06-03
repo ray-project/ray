@@ -16,10 +16,11 @@ from collections import defaultdict
 import copy
 import platform
 import random
-from typing import Dict, List, DefaultDict, Set
+from typing import Dict, List, Type, Optional, Callable
 
 import ray
 from ray.actor import ActorHandle
+from ray.rllib import Policy
 from ray.rllib.agents import Trainer
 from ray.rllib.algorithms.dqn.dqn import DQNConfig, DQNTrainer
 from ray.rllib.algorithms.dqn.learner_thread import LearnerThread
@@ -29,9 +30,9 @@ from ray.rllib.execution.common import (
     STEPS_TRAINED_THIS_ITER_COUNTER,
 )
 from ray.rllib.execution.parallel_requests import (
-    asynchronous_parallel_requests,
-    wait_asynchronous_requests,
+    AsyncRequestsManager,
 )
+from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.actors import create_colocated_actors
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated, DEPRECATED_VALUE
@@ -50,7 +51,6 @@ from ray.rllib.utils.typing import (
     TrainerConfigDict,
     ResultDict,
     PartialTrainerConfigDict,
-    T,
 )
 from ray.tune.trainable import Trainable
 from ray.tune.utils.placement_groups import PlacementGroupFactory
@@ -139,6 +139,22 @@ class ApexConfig(DQNConfig):
         self.train_batch_size = 512
         self.target_network_update_freq = 500000
         self.training_intensity = 1
+
+        # max number of inflight requests to each sampling worker
+        # see the AsyncRequestsManager class for more details
+        # Tuning these values is important when running experimens with large sample
+        # batches. If the sample batches are large in size, then there is the risk that
+        # the object store may fill up, causing the store to spill objects to disk.
+        # This can cause any asynchronous requests to become very slow, making your
+        # experiment run slowly. You can inspect the object store during your
+        # experiment via a call to ray memory on your headnode, and by using the ray
+        # dashboard. If you're seeing that the object store is filling up, turn down
+        # the number of remote requests in flight, or enable compression in your
+        # experiment of timesteps.
+        self.max_requests_in_flight_per_sampler_worker = 2
+        self.max_requests_in_flight_per_replay_worker = float("inf")
+        self.timeout_s_sampler_manager = 0.0
+        self.timeout_s_replay_manager = 0.0
         # APEX-DQN is using a distributed (non local) replay buffer.
         self.replay_buffer_config = {
             "no_local_replay_buffer": True,
@@ -184,6 +200,155 @@ class ApexConfig(DQNConfig):
         # fmt: on
         # __sphinx_doc_end__
 
+    def training(
+        self,
+        *,
+        num_atoms: Optional[int] = None,
+        v_min: Optional[float] = None,
+        v_max: Optional[float] = None,
+        noisy: Optional[bool] = None,
+        sigma0: Optional[float] = None,
+        dueling: Optional[bool] = None,
+        hiddens: Optional[int] = None,
+        double_q: Optional[bool] = None,
+        n_step: Optional[int] = None,
+        before_learn_on_batch: Callable[
+            [Type[MultiAgentBatch], List[Type[Policy]], Type[int]],
+            Type[MultiAgentBatch],
+        ] = None,
+        training_intensity: Optional[float] = None,
+        replay_buffer_config: Optional[dict] = None,
+        max_requests_in_flight_per_sampler_worker: Optional[int] = None,
+        max_requests_in_flight_per_replay_worker: Optional[int] = None,
+        timeout_s_sampler_manager: Optional[float] = None,
+        timeout_s_replay_manager: Optional[float] = None,
+        **kwargs,
+    ) -> "ApexConfig":
+        """Sets the training related configuration.
+
+        Args:
+            num_atoms: Number of atoms for representing the distribution of return.
+                When this is greater than 1, distributional Q-learning is used.
+            v_min: Minimum value estimation
+            v_max: Maximum value estimation
+            noisy: Whether to use noisy network to aid exploration. This adds
+                parametric noise to the model weights.
+            sigma0: Control the initial parameter noise for noisy nets.
+            dueling: Whether to use dueling DQN policy.
+            hiddens: Dense-layer setup for each the advantage branch and the value
+                branch
+            double_q: Whether to use double DQN for the policy.
+            n_step: N-step for Q-learning.
+            before_learn_on_batch: Callback to run before learning on a multi-agent
+                batch of experiences.
+            training_intensity: The ratio of timesteps to train on for every
+                timestep that is sampled. This must be greater than 0.
+            replay_buffer_config: Replay buffer config.
+                Examples:
+                {
+                "_enable_replay_buffer_api": True,
+                "type": "MultiAgentReplayBuffer",
+                "learning_starts": 1000,
+                "capacity": 50000,
+                "replay_batch_size": 32,
+                "replay_sequence_length": 1,
+                }
+                - OR -
+                {
+                "_enable_replay_buffer_api": True,
+                "type": "MultiAgentPrioritizedReplayBuffer",
+                "capacity": 50000,
+                "prioritized_replay_alpha": 0.6,
+                "prioritized_replay_beta": 0.4,
+                "prioritized_replay_eps": 1e-6,
+                "replay_sequence_length": 1,
+                }
+                - Where -
+                prioritized_replay_alpha: Alpha parameter controls the degree of
+                prioritization in the buffer. In other words, when a buffer sample has
+                a higher temporal-difference error, with how much more probability
+                should it drawn to use to update the parametrized Q-network. 0.0
+                corresponds to uniform probability. Setting much above 1.0 may quickly
+                result as the sampling distribution could become heavily “pointy” with
+                low entropy.
+                prioritized_replay_beta: Beta parameter controls the degree of
+                importance sampling which suppresses the influence of gradient updates
+                from samples that have higher probability of being sampled via alpha
+                parameter and the temporal-difference error.
+                prioritized_replay_eps: Epsilon parameter sets the baseline probability
+                for sampling so that when the temporal-difference error of a sample is
+                zero, there is still a chance of drawing the sample.
+            max_requests_in_flight_per_sampler_worker: Max number of inflight requests
+                to each sampling worker. See the AsyncRequestsManager class for more
+                details. Tuning these values is important when running experimens with
+                large sample batches, where there is the risk that the object store may
+                fill up, causing spilling of objects to disk. This can cause any
+                asynchronous requests to become very slow, making your experiment run
+                slow as well. You can inspect the object store during your experiment
+                via a call to ray memory on your headnode, and by using the ray
+                dashboard. If you're seeing that the object store is filling up,
+                turn down the number of remote requests in flight, or enable compression
+                in your experiment of timesteps.
+            max_requests_in_flight_per_replay_worker: Max number of inflight requests
+                to each replay (shard) worker. See the AsyncRequestsManager class for
+                more details. Tuning these values is important when running experimens
+                with large sample batches, where there is the risk that the object store
+                may fill up, causing spilling of objects to disk. This can cause any
+                asynchronous requests to become very slow, making your experiment run
+                slow as well. You can inspect the object store during your experiment
+                via a call to ray memory on your headnode, and by using the ray
+                dashboard. If you're seeing that the object store is filling up,
+                turn down the number of remote requests in flight, or enable compression
+                in your experiment of timesteps.
+            timeout_s_sampler_manager: The timeout for waiting for sampling results
+                for workers -- typically if this is too low, the manager won't be able
+                to retrieve ready sampling results.
+            timeout_s_replay_manager: The timeout for waiting for replay worker
+                results -- typically if this is too low, the manager won't be able to
+                retrieve ready replay requests.
+        """
+        # Pass kwargs onto super's `training()` method.
+        super().training(**kwargs)
+
+        if num_atoms is not None:
+            self.num_atoms = num_atoms
+        if v_min is not None:
+            self.v_min = v_min
+        if v_max is not None:
+            self.v_max = v_max
+        if noisy is not None:
+            self.noisy = noisy
+        if sigma0 is not None:
+            self.sigma0 = sigma0
+        if dueling is not None:
+            self.dueling = dueling
+        if hiddens is not None:
+            self.hiddens = hiddens
+        if double_q is not None:
+            self.double_q = double_q
+        if n_step is not None:
+            self.n_step = n_step
+        if before_learn_on_batch is not None:
+            self.before_learn_on_batch = before_learn_on_batch
+        if training_intensity is not None:
+            self.training_intensity = training_intensity
+        if replay_buffer_config is not None:
+            self.replay_buffer_config = replay_buffer_config
+        if max_requests_in_flight_per_sampler_worker is not None:
+            self.max_requests_in_flight_per_sampler_worker = (
+                max_requests_in_flight_per_sampler_worker
+            )
+        if max_requests_in_flight_per_replay_worker is not None:
+            self.max_requests_in_flight_per_replay_worker = (
+                max_requests_in_flight_per_replay_worker
+            )
+        if timeout_s_sampler_manager is not None:
+            self.timeout_s_sampler_manager = timeout_s_sampler_manager
+        if timeout_s_replay_manager is not None:
+            self.timeout_s_replay_manager = timeout_s_replay_manager
+
+        return self
+
 
 class ApexTrainer(DQNTrainer):
     @override(Trainable)
@@ -215,7 +380,7 @@ class ApexTrainer(DQNTrainer):
         # Place all replay buffer shards on the same node as the learner
         # (driver process that runs this execution plan).
         if replay_actor_config["replay_buffer_shards_colocated_with_driver"]:
-            self.replay_actors = create_colocated_actors(
+            self._replay_actors = create_colocated_actors(
                 actor_specs=[  # (class, args, kwargs={}, count)
                     (
                         ReplayActor,
@@ -230,21 +395,29 @@ class ApexTrainer(DQNTrainer):
             ]  # [0]=only one item in `actor_specs`.
         # Place replay buffer shards on any node(s).
         else:
-            self.replay_actors = [
+            self._replay_actors = [
                 ReplayActor.remote(*replay_actor_config)
                 for _ in range(num_replay_buffer_shards)
             ]
+        self._replay_actor_manager = AsyncRequestsManager(
+            self._replay_actors,
+            max_remote_requests_in_flight_per_worker=self.config[
+                "max_requests_in_flight_per_replay_worker"
+            ],
+            ray_wait_timeout_s=self.config["timeout_s_replay_manager"],
+        )
+        self._sampling_actor_manager = AsyncRequestsManager(
+            self.workers.remote_workers(),
+            max_remote_requests_in_flight_per_worker=self.config[
+                "max_requests_in_flight_per_sampler_worker"
+            ],
+            ray_wait_timeout_s=self.config["timeout_s_sampler_manager"],
+        )
         self.learner_thread = LearnerThread(self.workers.local_worker())
         self.learner_thread.start()
         self.steps_since_update = defaultdict(int)
         weights = self.workers.local_worker().get_weights()
         self.curr_learner_weights = ray.put(weights)
-        self.remote_sampling_requests_in_flight: DefaultDict[
-            ActorHandle, Set[ray.ObjectRef]
-        ] = defaultdict(set)
-        self.remote_replay_requests_in_flight: DefaultDict[
-            ActorHandle, Set[ray.ObjectRef]
-        ] = defaultdict(set)
         self.curr_num_samples_collected = 0
         self.replay_sample_batches = []
         self._num_ts_trained_since_last_target_update = 0
@@ -260,9 +433,6 @@ class ApexTrainer(DQNTrainer):
             raise ValueError("`num_gpus` > 1 not yet supported for APEX-DQN!")
         # Call DQN's validation method.
         super().validate_config(config)
-        # if config["_disable_execution_plan_api"]:
-        #     if not config.get("training_intensity", 1.0) > 0:
-        #         raise ValueError("training_intensity must be > 0")
 
     @override(Trainable)
     def training_iteration(self) -> ResultDict:
@@ -294,7 +464,7 @@ class ApexTrainer(DQNTrainer):
             with self._timers[SAMPLE_TIMER]:
                 local_sampling_worker = self.workers.local_worker()
                 batch = local_sampling_worker.sample()
-                actor = random.choice(self.replay_actors)
+                actor = random.choice(self._replay_actors)
                 ray.get(actor.add.remote(batch))
                 batch_statistics = {
                     local_sampling_worker: [
@@ -326,19 +496,11 @@ class ApexTrainer(DQNTrainer):
 
         # Sample and Store in the Replay Actors on the sampling workers.
         with self._timers[SAMPLE_TIMER]:
-            # Results are a mapping from ActorHandle (RolloutWorker) to their
-            # returned gradient calculation results.
-            num_samples_ready_dict: Dict[
-                ActorHandle, T
-            ] = asynchronous_parallel_requests(
-                remote_requests_in_flight=self.remote_sampling_requests_in_flight,
-                actors=self.workers.remote_workers(),
-                ray_wait_timeout_s=0.1,
-                max_remote_requests_in_flight_per_actor=4,
-                remote_fn=remote_worker_sample_and_store,
-                remote_kwargs=[{"replay_actors": self.replay_actors}]
-                * len(self.workers.remote_workers()),
+            self._sampling_actor_manager.call_on_all_available(
+                remote_worker_sample_and_store,
+                fn_kwargs={"replay_actors": self._replay_actors},
             )
+            num_samples_ready_dict = self._sampling_actor_manager.get_ready()
         return num_samples_ready_dict
 
     def update_workers(self, _num_samples_ready: Dict[ActorHandle, int]) -> int:
@@ -388,23 +550,20 @@ class ApexTrainer(DQNTrainer):
 
         """
 
-        def wait_on_replay_actors(timeout: float) -> None:
+        def wait_on_replay_actors() -> None:
             """Wait for the replay actors to finish sampling for timeout seconds.
             If the timeout is None, then block on the actors indefinitely.
             """
-            replay_samples_ready: Dict[ActorHandle, T] = wait_asynchronous_requests(
-                remote_requests_in_flight=self.remote_replay_requests_in_flight,
-                ray_wait_timeout_s=timeout,
-            )
+            _replay_samples_ready = self._replay_actor_manager.get_ready()
 
-            for replay_actor, sample_batches in replay_samples_ready.items():
-                for sample_batch in sample_batches:
-                    self.replay_sample_batches.append((replay_actor, sample_batch))
+            for _replay_actor, _sample_batches in _replay_samples_ready.items():
+                for _sample_batch in _sample_batches:
+                    self.replay_sample_batches.append((_replay_actor, _sample_batch))
 
         num_samples_collected = sum(num_samples_collected.values())
         self.curr_num_samples_collected += num_samples_collected
+        wait_on_replay_actors()
         if self.curr_num_samples_collected >= self.config["train_batch_size"]:
-            wait_on_replay_actors(None)
             training_intensity = int(self.config["training_intensity"] or 1)
             num_requests_to_launch = (
                 self.curr_num_samples_collected / self.config["train_batch_size"]
@@ -412,22 +571,11 @@ class ApexTrainer(DQNTrainer):
             num_requests_to_launch = max(1, round(num_requests_to_launch))
             self.curr_num_samples_collected = 0
             for _ in range(num_requests_to_launch):
-                rand_actor = random.choice(self.replay_actors)
-                replay_samples_ready: Dict[
-                    ActorHandle, T
-                ] = asynchronous_parallel_requests(
-                    remote_requests_in_flight=self.remote_replay_requests_in_flight,
-                    actors=[rand_actor],
-                    ray_wait_timeout_s=0.1,
-                    max_remote_requests_in_flight_per_actor=num_requests_to_launch,
-                    remote_args=[[self.config["train_batch_size"]]],
-                    remote_fn=lambda actor, num_items: actor.sample(num_items),
+                self._replay_actor_manager.call(
+                    lambda actor, num_items: actor.sample(num_items),
+                    fn_args=[self.config["train_batch_size"]],
                 )
-            for replay_actor, sample_batches in replay_samples_ready.items():
-                for sample_batch in sample_batches:
-                    self.replay_sample_batches.append((replay_actor, sample_batch))
-
-        wait_on_replay_actors(0.1)
+            wait_on_replay_actors()
 
         # add the sample batches to the learner queue
         while self.replay_sample_batches:
@@ -495,12 +643,25 @@ class ApexTrainer(DQNTrainer):
             ]
 
     @override(Trainer)
+    def on_worker_failures(
+        self, removed_workers: List[ActorHandle], new_workers: List[ActorHandle]
+    ):
+        """Handle the failures of remote sampling workers
+
+        Args:
+            removed_workers: removed worker ids.
+            new_workers: ids of newly created workers.
+        """
+        self._sampling_actor_manager.remove_workers(removed_workers)
+        self._sampling_actor_manager.add_workers(new_workers)
+
+    @override(Trainer)
     def _compile_step_results(self, *, step_ctx, step_attempt_results=None):
         result = super()._compile_step_results(
             step_ctx=step_ctx, step_attempt_results=step_attempt_results
         )
         replay_stats = ray.get(
-            self.replay_actors[0].stats.remote(self.config["optimizer"].get("debug"))
+            self._replay_actors[0].stats.remote(self.config["optimizer"].get("debug"))
         )
         exploration_infos_list = self.workers.foreach_policy_to_train(
             lambda p, pid: {pid: p.get_exploration_state()}
