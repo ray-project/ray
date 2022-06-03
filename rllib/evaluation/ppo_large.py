@@ -7,9 +7,9 @@ from ray.rllib.agents.ppo import PPOTrainer
 config = {
     # Environment (RLlib understands openAI gym registered strings).
     "env": "CartPole-v0",
-    # Use 2 environment workers (aka "rollout workers") that parallelly
+    # Use 4 environment workers (aka "rollout workers") that parallelly
     # collect samples from their own environment clone(s).
-    "num_workers": 2,
+    "num_workers": 3,
     # Change this to "framework: torch", if you are using PyTorch.
     # Also, use "framework: tf2" for tf2.x eager execution.
     "framework": "torch",
@@ -21,7 +21,7 @@ config = {
     },
     # Set up a separate evaluation worker set for the
     # `trainer.evaluate()` call after training (see below).
-    "evaluation_num_workers": 2,
+    # "evaluation_num_workers": 2,
     # Only for evaluation runs, render the env.
     "evaluation_config": {
         "render_env": True,
@@ -40,4 +40,4 @@ for _ in range(3):
 
 # Evaluate the trained Trainer (and render each timestep to the shell's
 # output).
-trainer.evaluate()
+# trainer.evaluate()

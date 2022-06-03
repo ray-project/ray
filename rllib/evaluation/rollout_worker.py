@@ -1328,6 +1328,12 @@ class RolloutWorker(ParallelIteratorWorker):
         if policies_to_train is not None:
             self.set_is_policy_to_train(policies_to_train)
 
+    def is_policy_to_train(self):
+        return self.is_policy_to_train
+
+    def get_policy_map(self):
+        return self.policy_map
+
     def get_policy_dict(self):
         return self.policy_dict
 
