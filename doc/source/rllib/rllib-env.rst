@@ -33,7 +33,7 @@ You can pass either a string name or a Python class to specify an environment. B
             return <obs>, <reward: float>, <done: bool>, <info: dict>
 
     ray.init()
-    trainer = ppo.PPO(env=MyEnv, config={
+    trainer = ppo.PPOTrainer(env=MyEnv, config={
         "env_config": {},  # config to pass to env class
     })
 
@@ -50,7 +50,7 @@ You can also register a custom env creator function with a string name. This fun
         return MyEnv(...)  # return an env instance
 
     register_env("my_env", env_creator)
-    trainer = ppo.PPO(env="my_env")
+    trainer = ppo.PPOTrainer(env="my_env")
 
 For a full runnable code example using the custom environment API, see `custom_env.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__.
 

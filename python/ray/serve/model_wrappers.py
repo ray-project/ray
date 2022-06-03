@@ -2,8 +2,8 @@ from typing import Callable, Dict, List, Optional, Tuple, Type, Union
 import numpy as np
 
 from ray._private.utils import import_attr
-from ray.ml.checkpoint import Checkpoint
-from ray.ml.predictor import Predictor
+from ray.air.checkpoint import Checkpoint
+from ray.air.predictor import Predictor
 from ray.serve.drivers import HTTPAdapterFn, SimpleSchemaIngress
 import ray
 from ray import serve
@@ -31,7 +31,7 @@ def _load_predictor_cls(
         predictor_cls = import_attr(predictor_cls)
     if not issubclass(predictor_cls, Predictor):
         raise ValueError(
-            f"{predictor_cls} class must be a subclass of ray.ml `Predictor`"
+            f"{predictor_cls} class must be a subclass of ray.air `Predictor`"
         )
     return predictor_cls
 
@@ -86,12 +86,12 @@ class ModelWrapper(SimpleSchemaIngress):
 
     Args:
         predictor_cls(str, Type[Predictor]): The class or path for predictor class.
-            The type must be a subclass of :class:`ray.ml.predictor.Predictor`.
+            The type must be a subclass of :class:`ray.air.predictor.Predictor`.
         checkpoint(Checkpoint, str): The checkpoint object or a uri to load checkpoint
             from
 
             - The checkpoint object must be an instance of
-              :class:`ray.ml.checkpoint.Checkpoint`.
+              :class:`ray.air.checkpoint.Checkpoint`.
             - The uri string will be called to construct a checkpoint object using
               ``Checkpoint.from_uri("uri_to_load_from")``.
 

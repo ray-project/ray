@@ -6,13 +6,14 @@ import numpy as np
 import requests
 import pytest
 
-from ray.ml.checkpoint import Checkpoint
-from ray.ml.predictor import DataBatchType, Predictor
 from ray.serve.model_wrappers import (
     ModelWrapperDeployment,
     collate_array,
     collate_dataframe,
 )
+from ray.air.checkpoint import Checkpoint
+from ray.air.predictor import DataBatchType, Predictor
+from ray.serve.model_wrappers import ModelWrapperDeployment
 from ray.serve.pipeline.api import build
 from ray.serve.dag import InputNode
 from ray.serve.deployment_graph import RayServeDAGHandle
