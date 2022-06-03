@@ -234,7 +234,7 @@ if __name__ == "__main__":
         help="Sets the number of gpus on each node for training.",
     )
     parser.add_argument(
-        "--use-tpu", action="store_true", default=True, help="Enables TPU training"
+        "--use-tpu", action="store_true", default=False, help="Enables TPU training"
     )
 
     args, _ = parser.parse_known_args()
