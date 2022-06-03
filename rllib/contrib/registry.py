@@ -17,7 +17,7 @@ def _import_alphazero():
 
 
 def _import_maddpg():
-    from ray.rllib.agents.maddpg import maddpg
+    from ray.rllib.algorithms.maddpg import maddpg
 
     return maddpg.MADDPGTrainer, maddpg.DEFAULT_CONFIG
 

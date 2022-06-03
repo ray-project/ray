@@ -19,7 +19,6 @@ from ray.dashboard.modules.dashboard_sdk import (
     parse_cluster_info,
 )
 from ray.dashboard.tests.conftest import *  # noqa
-from ray.ray_constants import DEFAULT_DASHBOARD_PORT
 from ray.tests.conftest import _ray_start
 from ray._private.test_utils import (
     chdir,
@@ -481,10 +480,9 @@ def test_parse_cluster_info(scheme: str, host: str, port: Optional[int]):
     if port is not None:
         address += f":{port}"
 
-    final_port = port if port is not None else DEFAULT_DASHBOARD_PORT
     if scheme in {"http", "https"}:
         assert parse_cluster_info(address, False) == ClusterInfo(
-            address=f"{scheme}://{host}:{final_port}",
+            address=address,
             cookies=None,
             metadata=None,
             headers=None,

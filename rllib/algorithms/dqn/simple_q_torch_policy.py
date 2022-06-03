@@ -18,8 +18,7 @@ from ray.rllib.models.torch.torch_action_dist import (
 from ray.rllib.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_policy import TorchPolicy
-from ray.rllib.utils.annotations import override
+from ray.rllib.policy.torch_mixins import TargetNetworkMixin
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import concat_multi_gpu_td_errors, huber_loss
 from ray.rllib.utils.typing import TensorType, TrainerConfigDict
@@ -29,33 +28,6 @@ F = None
 if nn:
     F = nn.functional
 logger = logging.getLogger(__name__)
-
-
-class TargetNetworkMixin:
-    """Assign the `update_target` method to the SimpleQTorchPolicy
-
-    The function is called every `target_network_update_freq` steps by the
-    master learner.
-    """
-
-    def __init__(self):
-        # Hard initial update from Q-net(s) to target Q-net(s).
-        self.update_target()
-
-    def update_target(self):
-        # Update_target_fn will be called periodically to copy Q network to
-        # target Q networks.
-        state_dict = self.model.state_dict()
-        for target in self.target_models.values():
-            target.load_state_dict(state_dict)
-
-    @override(TorchPolicy)
-    def set_weights(self, weights):
-        # Makes sure that whenever we restore weights for this policy's
-        # model, we sync the target network (from the main model)
-        # at the same time.
-        TorchPolicy.set_weights(self, weights)
-        self.update_target()
 
 
 def build_q_model_and_distribution(
@@ -73,10 +45,10 @@ def build_q_losses(
     """Constructs the loss for SimpleQTorchPolicy.
 
     Args:
-        policy (Policy): The Policy to calculate the loss for.
+        policy: The Policy to calculate the loss for.
         model (ModelV2): The Model to calculate the loss for.
         dist_class (Type[ActionDistribution]): The action distribution class.
-        train_batch (SampleBatch): The training data.
+        train_batch: The training data.
 
     Returns:
         TensorType: A single loss tensor.
@@ -151,10 +123,10 @@ def setup_late_mixins(
     initialization.
 
     Args:
-        policy (Policy): The Policy object.
+        policy: The Policy object.
         obs_space (gym.spaces.Space): The Policy's observation space.
         action_space (gym.spaces.Space): The Policy's action space.
-        config (TrainerConfigDict): The Policy's config.
+        config: The Policy's config.
     """
     TargetNetworkMixin.__init__(policy)
 

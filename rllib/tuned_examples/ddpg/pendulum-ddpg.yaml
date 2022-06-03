@@ -36,7 +36,7 @@ pendulum-ddpg:
         replay_buffer_config:
           type: MultiAgentPrioritizedReplayBuffer
           capacity: 10000
-          worker_side_prioritization: False
+          worker_side_prioritization: false
         clip_rewards: False
 
         # === Optimization ===

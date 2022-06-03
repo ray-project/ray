@@ -321,10 +321,10 @@ def setup_early_mixins(
     Adds the necessary optimizers to the given Policy.
 
     Args:
-        policy (Policy): The Policy object.
+        policy: The Policy object.
         obs_space (gym.spaces.Space): The Policy's observation space.
         action_space (gym.spaces.Space): The Policy's action space.
-        config (TrainerConfigDict): The Policy's config.
+        config: The Policy's config.
     """
     policy.cur_iter = 0
     ActorCriticOptimizerMixin.__init__(policy, config)
@@ -411,7 +411,7 @@ def apply_gradients_fn(policy, optimizer, grads_and_vars):
 CQLTFPolicy = build_tf_policy(
     name="CQLTFPolicy",
     loss_fn=cql_loss,
-    get_default_config=lambda: ray.rllib.algorithms.cql.cql.CQL_DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.algorithms.cql.cql.DEFAULT_CONFIG,
     validate_spaces=validate_spaces,
     stats_fn=cql_stats,
     postprocess_fn=postprocess_trajectory,

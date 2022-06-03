@@ -1,15 +1,17 @@
 from typing import Optional
 
+from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
 
 
+@DeveloperAPI
 def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
     """Returns a framework specific activation function, given a name string.
 
     Args:
         name (Optional[str]): One of "relu" (default), "tanh", "elu",
             "swish", or "linear" (same as None).
-        framework (str): One of "jax", "tf|tfe|tf2" or "torch".
+        framework: One of "jax", "tf|tfe|tf2" or "torch".
 
     Returns:
         A framework-specific activtion function. e.g. tf.nn.tanh or
@@ -65,6 +67,7 @@ def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
     )
 
 
+@DeveloperAPI
 def get_filter_config(shape):
     """Returns a default Conv2D filter config (list) for a given image shape.
 
@@ -134,12 +137,13 @@ def get_filter_config(shape):
         )
 
 
+@DeveloperAPI
 def get_initializer(name, framework="tf"):
     """Returns a framework specific initializer, given a name string.
 
     Args:
-        name (str): One of "xavier_uniform" (default), "xavier_normal".
-        framework (str): One of "jax", "tf|tfe|tf2" or "torch".
+        name: One of "xavier_uniform" (default), "xavier_normal".
+        framework: One of "jax", "tf|tfe|tf2" or "torch".
 
     Returns:
         A framework-specific initializer function, e.g.

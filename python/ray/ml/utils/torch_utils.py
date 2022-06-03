@@ -18,14 +18,14 @@ def convert_pandas_to_torch_tensor(
     tensors.
 
     Args:
-        data_batch (pandas.DataFrame): The pandas dataframe to convert to a
+        data_batch: The pandas dataframe to convert to a
             torch tensor.
-        columns (Optional[Union[List[str], List[List[str]]]):
+        columns:
             The names of the columns in the dataframe to include in the
             torch tensor. If this arg is a List[List[str]], then the return
             type will be a List of tensors. This is useful for multi-input
             models. If None, then use all columns in the ``data_batch``.
-        column_dtype (Optional[Union[torch.dtype, List[torch.dtype]): The
+        column_dtype: The
             torch dtype to use for the tensor. If set to None,
             then automatically infer the dtype.
         unsqueeze: If set to True, the tensors

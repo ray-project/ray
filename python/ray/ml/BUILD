@@ -7,7 +7,7 @@ py_test(
     size = "small",
     main = "examples/custom_trainer.py",
     srcs = ["examples/custom_trainer.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "no_main"],
     deps = [":ml_lib"]
 )
 
@@ -147,22 +147,6 @@ py_test(
     args = ["--smoke-test"]
 )
 
-py_test(
-    name = "upload_to_comet_ml",
-    size = "medium",
-    srcs = ["examples/upload_to_comet_ml.py"],
-    tags = ["team:ml", "exclusive", "needs_credentials"],
-    deps = [":ml_lib"]
-)
-
-py_test(
-    name = "upload_to_wandb",
-    size = "medium",
-    srcs = ["examples/upload_to_wandb.py"],
-    tags = ["team:ml", "exclusive", "needs_credentials"],
-    deps = [":ml_lib"]
-)
-
 # --------------------------------------------------------------------
 # Tests from the python/ray/ml/tests directory.
 # Covers all tests starting with `test_`.
@@ -173,6 +157,14 @@ py_test(
     name = "test_api",
     size = "small",
     srcs = ["tests/test_api.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_batchpredictor_runtime",
+    size = "medium",
+    srcs = ["tests/test_batchpredictor_runtime.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
@@ -211,7 +203,7 @@ py_test(
 
 py_test(
     name = "test_huggingface_predictor",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_huggingface_predictor.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]

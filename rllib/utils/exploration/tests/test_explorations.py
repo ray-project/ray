@@ -3,13 +3,14 @@ import sys
 import unittest
 
 import ray
-import ray.rllib.agents.a3c as a3c
+import ray.rllib.algorithms.a2c as a2c
+import ray.rllib.algorithms.a3c as a3c
 import ray.rllib.algorithms.ddpg as ddpg
 import ray.rllib.algorithms.ddpg.td3 as td3
 import ray.rllib.algorithms.dqn as dqn
-import ray.rllib.agents.impala as impala
+import ray.rllib.algorithms.impala as impala
 import ray.rllib.algorithms.pg as pg
-import ray.rllib.agents.ppo as ppo
+import ray.rllib.algorithms.ppo as ppo
 import ray.rllib.algorithms.sac as sac
 from ray.rllib.utils import check, framework_iterator
 
@@ -20,7 +21,7 @@ def do_test_explorations(
     """Calls an Agent's `compute_actions` with different `explore` options."""
 
     core_config = config.copy()
-    if run not in [a3c.A3CTrainer]:
+    if run not in [a3c.A3C]:
         core_config["num_workers"] = 0
 
     # Test all frameworks.
@@ -33,7 +34,7 @@ def do_test_explorations(
             local_config = core_config.copy()
             if exploration == "Random":
                 # TODO(sven): Random doesn't work for IMPALA yet.
-                if run is impala.ImpalaTrainer:
+                if run is impala.Impala:
                     continue
                 local_config["exploration_config"] = {"type": "Random"}
             print("exploration={}".format(exploration or "default"))
@@ -91,16 +92,16 @@ class TestExplorations(unittest.TestCase):
 
     def test_a2c(self):
         do_test_explorations(
-            a3c.A2CTrainer,
+            a2c.A2C,
             "CartPole-v0",
-            a3c.a2c.A2C_DEFAULT_CONFIG,
+            a2c.A2C_DEFAULT_CONFIG,
             np.array([0.0, 0.1, 0.0, 0.0]),
             prev_a=np.array(1),
         )
 
     def test_a3c(self):
         do_test_explorations(
-            a3c.A3CTrainer,
+            a3c.A3C,
             "CartPole-v0",
             a3c.DEFAULT_CONFIG,
             np.array([0.0, 0.1, 0.0, 0.0]),
@@ -138,7 +139,7 @@ class TestExplorations(unittest.TestCase):
 
     def test_impala(self):
         do_test_explorations(
-            impala.ImpalaTrainer,
+            impala.Impala,
             "CartPole-v0",
             dict(impala.DEFAULT_CONFIG.copy(), num_gpus=0),
             np.array([0.0, 0.1, 0.0, 0.0]),
@@ -156,7 +157,7 @@ class TestExplorations(unittest.TestCase):
 
     def test_ppo_discr(self):
         do_test_explorations(
-            ppo.PPOTrainer,
+            ppo.PPO,
             "CartPole-v0",
             ppo.DEFAULT_CONFIG,
             np.array([0.0, 0.1, 0.0, 0.0]),
@@ -165,7 +166,7 @@ class TestExplorations(unittest.TestCase):
 
     def test_ppo_cont(self):
         do_test_explorations(
-            ppo.PPOTrainer,
+            ppo.PPO,
             "Pendulum-v1",
             ppo.DEFAULT_CONFIG,
             np.array([0.0, 0.1, 0.0]),

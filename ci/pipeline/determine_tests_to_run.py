@@ -12,6 +12,7 @@ import subprocess
 import sys
 
 
+# NOTE(simon): do not add type hint here because it's ran using python2 in CI.
 def list_changed_files(commit_range):
     """Returns a list of names of files changed in the given commit range.
 
@@ -19,7 +20,7 @@ def list_changed_files(commit_range):
     occurs while running git, the script will abort.
 
     Args:
-        commit_range (string): The commit range to diff, consisting of the two
+        commit_range: The commit range to diff, consisting of the two
             commit IDs separated by \"..\"
 
     Returns:
@@ -200,6 +201,10 @@ if __name__ == "__main__":
                 RAY_CI_DOC_AFFECTED = 1
             elif any(changed_file.startswith(prefix) for prefix in skip_prefix_list):
                 # nothing is run but linting in these cases
+                pass
+            elif changed_file.startswith("release/ray_release/"):
+                # Tests for release/ray_release always run, so it is unnecessary to
+                # tag affected tests.
                 pass
             elif changed_file.endswith("build-docker-images.py"):
                 RAY_CI_DOCKER_AFFECTED = 1

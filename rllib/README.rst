@@ -105,7 +105,7 @@ Multi-agent:
 - `Single-Player Alpha Zero (contrib/AlphaZero)  <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#alphazero>`__ 
 - `Parameter Sharing <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#parameter>`__ 
 - `QMIX Monotonic Value Factorisation (QMIX, VDN, IQN)) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#qmix>`__ 
-- `Multi-Agent Deep Deterministic Policy Gradient (contrib/MADDPG) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#maddpg>`__ 
+- `Multi-Agent Deep Deterministic Policy Gradient (MADDPG) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#maddpg>`__
 - `Shared Critic Methods <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#sc>`__ 
 
 Others:  
@@ -123,7 +123,7 @@ Quick First Experiment
 .. code-block:: python
 
     import gym
-    from ray.rllib.agents.ppo import PPOTrainer
+    from ray.rllib.algorithms.ppo import PPO
 
 
     # Define your problem using python and openAI's gym API:
@@ -176,7 +176,7 @@ Quick First Experiment
 
     # Create an RLlib Trainer instance to learn how to act in the above
     # environment.
-    trainer = PPOTrainer(
+    trainer = PPO(
         config={
             # Env class to use (here: our gym.Env sub-class from above).
             "env": ParrotEnv,

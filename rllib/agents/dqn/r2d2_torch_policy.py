@@ -14,13 +14,15 @@ from ray.rllib.algorithms.dqn.dqn_torch_policy import (
     compute_q_values,
 )
 from ray.rllib.agents.dqn.r2d2_tf_policy import get_distribution_inputs_and_class
-from ray.rllib.algorithms.dqn.simple_q_torch_policy import TargetNetworkMixin
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_mixins import LearningRateSchedule
+from ray.rllib.policy.torch_mixins import (
+    LearningRateSchedule,
+    TargetNetworkMixin,
+)
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import (
     apply_grad_clipping,
@@ -46,7 +48,7 @@ def build_r2d2_model_and_distribution(
     """Build q_model and target_model for DQN
 
     Args:
-        policy (Policy): The policy, which will use the model for optimization.
+        policy: The policy, which will use the model for optimization.
         obs_space (gym.spaces.Space): The policy's observation space.
         action_space (gym.spaces.Space): The policy's action space.
         config (TrainerConfigDict):
@@ -82,9 +84,9 @@ def r2d2_loss(policy: Policy, model, _, train_batch: SampleBatch) -> TensorType:
     """Constructs the loss for R2D2TorchPolicy.
 
     Args:
-        policy (Policy): The Policy to calculate the loss for.
+        policy: The Policy to calculate the loss for.
         model (ModelV2): The Model to calculate the loss for.
-        train_batch (SampleBatch): The training data.
+        train_batch: The training data.
 
     Returns:
         TensorType: A single loss tensor.
