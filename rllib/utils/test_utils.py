@@ -161,17 +161,17 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
     after the floating point. Uses assertions.
 
     Args:
-        x (any): The value to be compared (to the expectation: `y`). This
+        x: The value to be compared (to the expectation: `y`). This
             may be a Tensor.
-        y (any): The expected value to be compared to `x`. This must not
+        y: The expected value to be compared to `x`. This must not
             be a tf-Tensor, but may be a tfe/torch-Tensor.
-        decimals (int): The number of digits after the floating point up to
+        decimals: The number of digits after the floating point up to
             which all numeric values have to match.
-        atol (float): Absolute tolerance of the difference between x and y
+        atol: Absolute tolerance of the difference between x and y
             (overrides `decimals` if given).
-        rtol (float): Relative tolerance of the difference between x and y
+        rtol: Relative tolerance of the difference between x and y
             (overrides `decimals` if given).
-        false (bool): Whether to check that x and y are NOT the same.
+        false: Whether to check that x and y are NOT the same.
     """
     # A dict type.
     if isinstance(x, dict):
@@ -470,7 +470,7 @@ def check_learning_achieved(tune_results, min_reward, evaluation=False):
 
     Args:
         tune_results: The tune.run returned results object.
-        min_reward (float): The min reward that must be reached.
+        min_reward: The min reward that must be reached.
 
     Raises:
         ValueError: If `min_reward` not reached.

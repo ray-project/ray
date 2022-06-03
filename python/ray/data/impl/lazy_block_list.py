@@ -183,7 +183,7 @@ class LazyBlockList(BlockList):
                 cur_size = 0
             cur_tasks.append(t)
             cur_blocks.append(b)
-            cur_blocks_meta.append(b)
+            cur_blocks_meta.append(bm)
             cur_size += size
         if cur_blocks:
             output.append(LazyBlockList(cur_tasks, cur_blocks, cur_blocks_meta))
