@@ -12,7 +12,7 @@ This example shows how to configure ingress component of the deployment graph, s
 ```
 
 ````{note}
-1. Serve provide a special driver ([DAGDriver](deployment-graph-e2e-tutorial.html#step-4-driver-deployment-to-handle-http-ingress)) to accept the http request and drive the dag graph execution
+1. Serve provide a special driver ([DAGDriver](deployment-graph-e2e-tutorial.md)) to accept the http request and drive the dag graph execution
 2. User can specify the customized http adapter to adopt the cusomized input format
 ````
 

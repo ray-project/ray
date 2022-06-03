@@ -56,10 +56,10 @@ logger = logging.getLogger(__name__)
 
 
 class ImpalaConfig(TrainerConfig):
-    """Defines a configuration class from which an ImpalaTrainer can be built.
+    """Defines a configuration class from which an Impala can be built.
 
     Example:
-        >>> from ray.rllib.agents.impala import ImpalaConfig
+        >>> from ray.rllib.algorithms.impala import ImpalaConfig
         >>> config = ImpalaConfig().training(lr=0.0003, train_batch_size=512)\
         ...     .resources(num_gpus=4)\
         ...     .rollouts(num_rollout_workers=64)
@@ -69,7 +69,7 @@ class ImpalaConfig(TrainerConfig):
         >>> trainer.train()
 
     Example:
-        >>> from ray.rllib.agents.impala import ImpalaConfig
+        >>> from ray.rllib.algorithms.impala import ImpalaConfig
         >>> from ray import tune
         >>> config = ImpalaConfig()
         >>> # Print out some default values.
@@ -89,7 +89,7 @@ class ImpalaConfig(TrainerConfig):
 
     def __init__(self, trainer_class=None):
         """Initializes a ImpalaConfig instance."""
-        super().__init__(trainer_class=trainer_class or ImpalaTrainer)
+        super().__init__(trainer_class=trainer_class or Impala)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -433,7 +433,7 @@ class BroadcastUpdateLearnerWeights:
         self.workers.local_worker().set_global_vars(_get_global_vars())
 
 
-class ImpalaTrainer(Trainer):
+class Impala(Trainer):
     """Importance weighted actor/learner architecture (IMPALA) Trainer
 
     == Overview of data flow in IMPALA ==
@@ -458,31 +458,31 @@ class ImpalaTrainer(Trainer):
     ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             if config["vtrace"]:
-                from ray.rllib.agents.impala.vtrace_torch_policy import (
-                    VTraceTorchPolicy,
+                from ray.rllib.algorithms.impala.impala_torch_policy import (
+                    ImpalaTorchPolicy,
                 )
 
-                return VTraceTorchPolicy
+                return ImpalaTorchPolicy
             else:
                 from ray.rllib.algorithms.a3c.a3c_torch_policy import A3CTorchPolicy
 
                 return A3CTorchPolicy
         elif config["framework"] == "tf":
             if config["vtrace"]:
-                from ray.rllib.agents.impala.vtrace_tf_policy import (
-                    VTraceStaticGraphTFPolicy,
+                from ray.rllib.algorithms.impala.impala_tf_policy import (
+                    ImpalaTF1Policy,
                 )
 
-                return VTraceStaticGraphTFPolicy
+                return ImpalaTF1Policy
             else:
                 from ray.rllib.algorithms.a3c.a3c_tf_policy import A3CTFPolicy
 
                 return A3CTFPolicy
         else:
             if config["vtrace"]:
-                from ray.rllib.agents.impala.vtrace_tf_policy import VTraceEagerTFPolicy
+                from ray.rllib.algorithms.impala.impala_tf_policy import ImpalaTF2Policy
 
-                return VTraceEagerTFPolicy
+                return ImpalaTF2Policy
             else:
                 from ray.rllib.algorithms.a3c.a3c_tf_policy import A3CTFPolicy
 
@@ -940,14 +940,14 @@ class AggregatorWorker:
         return platform.node()
 
 
-# Deprecated: Use ray.rllib.agents.pg.PGConfig instead!
+# Deprecated: Use ray.rllib.algorithms.impala.ImpalaConfig instead!
 class _deprecated_default_config(dict):
     def __init__(self):
         super().__init__(ImpalaConfig().to_dict())
 
     @Deprecated(
-        old="ray.rllib.agents.impala.default_config::DEFAULT_CONFIG",
-        new="ray.rllib.agents.impala.impala.IMPALAConfig(...)",
+        old="ray.rllib.agents.impala.impala::DEFAULT_CONFIG",
+        new="ray.rllib.algorithms.impala.impala::IMPALAConfig(...)",
         error=False,
     )
     def __getitem__(self, item):
