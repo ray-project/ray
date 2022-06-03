@@ -450,8 +450,8 @@ ray.init(address="auto")
 
 run_experiments(
     {
-        "ppo": {
-            "run": "PPO",
+        "pg": {
+            "run": "PG",
             "env": "CartPole-v0",
             "num_samples": 10,
             "config": {
