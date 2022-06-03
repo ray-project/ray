@@ -81,6 +81,9 @@ RAY_RUNTIME_ENV_HOOK = "RAY_RUNTIME_ENV_HOOK"
 # whether we are the head node as arguments. The function can modify the params class,
 # but otherwise returns void. Example: "your.module.ray_start_hook".
 RAY_START_HOOK = "RAY_START_HOOK"
+# Hook that is invoked on `ray job submit`. It will be given all the same args as the
+# job.cli.submit() function gets, passed as kwargs to this function.
+RAY_JOB_SUBMIT_HOOK = "RAY_JOB_SUBMIT_HOOK"
 
 DEFAULT_DASHBOARD_IP = "127.0.0.1"
 DEFAULT_DASHBOARD_PORT = 8265
@@ -363,3 +366,7 @@ KV_NAMESPACE_FUNCTION_TABLE = b"fun"
 LANGUAGE_WORKER_TYPES = ["python", "java", "cpp"]
 
 NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"
+
+# Default max_retries option in @ray.remote for non-actor
+# tasks.
+DEFAULT_TASK_MAX_RETRIES = 3

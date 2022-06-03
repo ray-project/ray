@@ -116,7 +116,7 @@ def build_tf_policy(
     be created in make_model (if defined).
 
     Args:
-        name (str): Name of the policy (e.g., "PPOTFPolicy").
+        name: Name of the policy (e.g., "PPOTFPolicy").
         loss_fn (Callable[[
             Policy, ModelV2, Type[TFActionDistribution], SampleBatch],
             Union[TensorType, List[TensorType]]]): Callable for calculating a

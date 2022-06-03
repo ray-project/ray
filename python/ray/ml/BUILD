@@ -7,7 +7,7 @@ py_test(
     size = "small",
     main = "examples/custom_trainer.py",
     srcs = ["examples/custom_trainer.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "no_main"],
     deps = [":ml_lib"]
 )
 
@@ -157,6 +157,14 @@ py_test(
     name = "test_api",
     size = "small",
     srcs = ["tests/test_api.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_batchpredictor_runtime",
+    size = "medium",
+    srcs = ["tests/test_batchpredictor_runtime.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )

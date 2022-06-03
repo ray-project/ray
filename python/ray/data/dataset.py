@@ -3039,28 +3039,17 @@ class Dataset(Generic[T]):
             )
         return pipe
 
-    def fully_executed(self, preserve_original: bool = True) -> "Dataset[T]":
+    def fully_executed(self) -> "Dataset[T]":
         """Force full evaluation of the blocks of this dataset.
 
         This can be used to read all blocks into memory. By default, Datasets
         doesn't read blocks from the datasource until the first transform.
 
-        Args:
-            preserve_original: Whether the original unexecuted dataset should be
-                preserved. If False, this function will mutate the original dataset,
-                which can more efficiently reclaim memory.
-
         Returns:
             A Dataset with all blocks fully materialized in memory.
         """
-        if preserve_original:
-            plan = self._plan.deep_copy(preserve_uuid=True)
-            ds = Dataset(plan, self._epoch, self._lazy)
-            ds._set_uuid(self._get_uuid())
-        else:
-            ds = self
-        ds._plan.execute(force_read=True)
-        return ds
+        self._plan.execute(force_read=True)
+        return self
 
     def is_fully_executed(self) -> bool:
         """Returns whether this Dataset has been fully executed.

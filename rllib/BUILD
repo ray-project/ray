@@ -72,15 +72,15 @@ load("//bazel:python.bzl", "py_test_module_list")
 # inside rllib/tuned_examples/[algo-name] for actual learning success.
 # --------------------------------------------------------------------
 
-# A2C/A3C
+# A2C
 # py_test(
 #    name = "learning_tests_cartpole_a2c",
 #    main = "tests/run_regression_tests.py",
 #    tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
 #    size = "large",
 #    srcs = ["tests/run_regression_tests.py"],
-#    data = ["tuned_examples/a3c/cartpole-a2c.yaml"],
-#    args = ["--yaml-dir=tuned_examples/a3c"]
+#    data = ["tuned_examples/a2c/cartpole-a2c.yaml"],
+#    args = ["--yaml-dir=tuned_examples/a2c"]
 # )
 
 py_test(
@@ -89,8 +89,8 @@ py_test(
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/a3c/cartpole-a2c-microbatch.yaml"],
-    args = ["--yaml-dir=tuned_examples/a3c"]
+    data = ["tuned_examples/a2c/cartpole-a2c-microbatch.yaml"],
+    args = ["--yaml-dir=tuned_examples/a2c"]
 )
 
 py_test(
@@ -99,9 +99,11 @@ py_test(
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/a3c/cartpole-a2c-fake-gpus.yaml"],
-    args = ["--yaml-dir=tuned_examples/a3c"]
+    data = ["tuned_examples/a2c/cartpole-a2c-fake-gpus.yaml"],
+    args = ["--yaml-dir=tuned_examples/a2c"]
 )
+
+# A3C
 
 # py_test(
 #    name = "learning_tests_cartpole_a3c",
@@ -669,19 +671,21 @@ py_test(
 )
 
 # Specific Trainers (Algorithms)
-# A2/3CTrainer
+
+# A2C
 py_test(
     name = "test_a2c",
     tags = ["team:ml", "trainers_dir"],
     size = "large",
-    srcs = ["agents/a3c/tests/test_a2c.py"]
+    srcs = ["algorithms/a2c/tests/test_a2c.py"]
 )
 
+# A3C
 py_test(
     name = "test_a3c",
     tags = ["team:ml", "trainers_dir"],
     size = "large",
-    srcs = ["agents/a3c/tests/test_a3c.py"]
+    srcs = ["algorithms/a3c/tests/test_a3c.py"]
 )
 
 # AlphaStar
@@ -2574,7 +2578,7 @@ py_test(
 py_test(
     name = "examples/export/onnx_tf",
     main = "examples/export/onnx_tf.py",
-    tags = ["team:ml", "examples", "examples_E"],
+    tags = ["team:ml", "examples", "examples_E", "no_main"],
     size = "medium",
     srcs = ["examples/export/onnx_tf.py"],
 )
@@ -2582,7 +2586,7 @@ py_test(
 py_test(
     name = "examples/export/onnx_torch",
     main = "examples/export/onnx_torch.py",
-    tags = ["team:ml", "examples", "examples_E"],
+    tags = ["team:ml", "examples", "examples_E", "no_main"],
     size = "medium",
     srcs = ["examples/export/onnx_torch.py"],
 )
@@ -3105,7 +3109,7 @@ py_test(
 py_test(
     name = "examples/documentation/custom_gym_env",
     main = "examples/documentation/custom_gym_env.py",
-    tags = ["team:ml", "documentation"],
+    tags = ["team:ml", "documentation", "no_main"],
     size = "medium",
     srcs = ["examples/documentation/custom_gym_env.py"],
 )
@@ -3113,7 +3117,7 @@ py_test(
 py_test(
     name = "examples/documentation/rllib_in_60s",
     main = "examples/documentation/rllib_in_60s.py",
-    tags = ["team:ml", "documentation"],
+    tags = ["team:ml", "documentation", "no_main"],
     size = "medium",
     srcs = ["examples/documentation/rllib_in_60s.py"],
 )
@@ -3121,7 +3125,7 @@ py_test(
 py_test(
     name = "examples/documentation/rllib_on_ray_readme",
     main = "examples/documentation/rllib_on_ray_readme.py",
-    tags = ["team:ml", "documentation"],
+    tags = ["team:ml", "documentation", "no_main"],
     size = "medium",
     srcs = ["examples/documentation/rllib_on_ray_readme.py"],
 )
@@ -3129,7 +3133,7 @@ py_test(
 py_test(
     name = "examples/documentation/rllib_on_rllib_readme",
     main = "examples/documentation/rllib_on_rllib_readme.py",
-    tags = ["team:ml", "documentation"],
+    tags = ["team:ml", "documentation", "no_main"],
     size = "medium",
     srcs = ["examples/documentation/rllib_on_rllib_readme.py"],
 )
@@ -3157,5 +3161,5 @@ py_test_module_list(
   size = "large",
   extra_srcs = [],
   deps = [],
-  tags = ["manual", "team:ml"],
+  tags = ["manual", "team:ml", "no_main"],
 )
