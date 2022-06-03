@@ -6,6 +6,7 @@ cartpole_random_crr:
           - 'tests/data/cartpole/cartpole_random_v1.1.0.json'
         framework: torch
         gamma: 0.99
+        train_batch_size: 1024
         critic_hidden_activation: 'relu'
         critic_hiddens: [256, 256]
         critic_lr: 0.0003
@@ -25,7 +26,7 @@ cartpole_random_crr:
         evaluation_duration: 10
         evaluation_duration_unit: episodes
         evaluation_interval: 1
-        evaluation_num_workers: 4
+        evaluation_num_workers: 1
         evaluation_parallel_to_training: True
         # replay buffer
         replay_buffer_config:
