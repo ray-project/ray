@@ -60,10 +60,46 @@ std::string GetUserTempDir() {
   return result;
 }
 
-FileSystemMonitor::FileSystemMonitor(const std::string &path, double capacity_threshold)
-    : ray_file_path_(path), capacity_threshold_(capacity_threshold) {}
+FileSystemMonitor::FileSystemMonitor(const std::string &path,
+                                     double capacity_threshold,
+                                     int64_t monitor_interval_ms)
+    : ray_file_path_(path),
+      capacity_threshold_(capacity_threshold),
+      monitor_interval_ms_(monitor_interval_ms),
+      mutex_(),
+      last_check_result_(),
+      last_check_time_() {
+  last_check_time_ = std::chrono::steady_clock::now();
+  last_check_result_ = SpaceImpl();
+}
 
-std::optional<std::filesystem::space_info> FileSystemMonitor::Space() const {
+std::optional<std::filesystem::space_info> FileSystemMonitor::Space() {
+  if (monitor_interval_ms_ == 0) {
+    return SpaceImpl();
+  }
+  {
+    absl::ReaderMutexLock lock(&mutex_);
+    if (std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - last_check_time_)
+            .count() < monitor_interval_ms_) {
+      return last_check_result_;
+    }
+  }
+
+  {
+    absl::WriterMutexLock lock(&mutex_);
+    if (std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - last_check_time_)
+            .count() < monitor_interval_ms_) {
+      return last_check_result_;
+    }
+    last_check_time_ = std::chrono::steady_clock::now();
+    last_check_result_ = SpaceImpl();
+    return last_check_result_;
+  }
+}
+
+std::optional<std::filesystem::space_info> FileSystemMonitor::SpaceImpl() const {
   std::error_code ec;
   // TODO: add cache to improve performance.
   const std::filesystem::space_info si = std::filesystem::space(ray_file_path_, ec);
@@ -75,7 +111,7 @@ std::optional<std::filesystem::space_info> FileSystemMonitor::Space() const {
   return si;
 }
 
-bool FileSystemMonitor::OverCapacity() const {
+bool FileSystemMonitor::OverCapacity() {
   if (capacity_threshold_ == 1) {
     return false;
   }

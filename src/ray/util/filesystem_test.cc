@@ -68,17 +68,17 @@ TEST(FileSystemTest, JoinPathTest) {
 TEST(FileSystemTest, TestFileSystemMonitor) {
   std::string tmp_path = std::filesystem::temp_directory_path().string();
   {
-    FileSystemMonitor monitor(tmp_path, 1);
+    FileSystemMonitor monitor(tmp_path, 1, 0);
     ASSERT_FALSE(monitor.OverCapacity());
   }
 
   {
-    FileSystemMonitor monitor(tmp_path, 0);
+    FileSystemMonitor monitor(tmp_path, 0, 0);
     ASSERT_TRUE(monitor.OverCapacity());
   }
 
   {
-    FileSystemMonitor monitor(tmp_path, 0);
+    FileSystemMonitor monitor(tmp_path, 0, 0);
     auto result = monitor.Space();
     ASSERT_TRUE(result.has_value());
     ASSERT_TRUE(result->available > 0);
@@ -88,7 +88,7 @@ TEST(FileSystemTest, TestFileSystemMonitor) {
 
 TEST(FileSystemTest, TestOverCapacity) {
   std::string tmp_path = std::filesystem::temp_directory_path().string();
-  FileSystemMonitor monitor(tmp_path, 0.1);
+  FileSystemMonitor monitor(tmp_path, 0.1, 0);
   ASSERT_FALSE(monitor.OverCapacityImpl(std::nullopt));
   ASSERT_FALSE(monitor.OverCapacityImpl({std::filesystem::space_info{
       /* capacity */ 11, /* free */ 10, /* available */ 10}}));
