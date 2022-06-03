@@ -11,6 +11,7 @@ ray[default] but not in ray (e.g., `pip uninstall aiohttp`) and set
 
 import os
 import sys
+import subprocess
 import pytest
 
 import ray
@@ -92,6 +93,13 @@ def test_exec_worker_parse_correct(shutdown_only):
         "other",
         "arguments",
     ]
+    args = ["C:\Program Files", "some", "other", "arguments"]
+    # ensure no re-quoting occurs
+    for _ in range(3):
+        args = runtime_env_ctx._fix_windows_args(args)
+        subprocess.check_call([sys.executable, "-c", f"import os; os.listdir({args[0]})"])
+
+
 
 
 @pytest.mark.skipif(
