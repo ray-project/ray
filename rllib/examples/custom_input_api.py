@@ -49,7 +49,7 @@ class CustomJsonReader(JsonReader):
         """
         The constructor must take an IOContext to be used in the input config.
         Args:
-            ioctx (IOContext): use this to access the `input_config` arguments.
+            ioctx: use this to access the `input_config` arguments.
         """
         super().__init__(ioctx.input_config["input_files"], ioctx)
 
@@ -60,7 +60,7 @@ def input_creator(ioctx: IOContext) -> InputReader:
     config["input"] parameter.
 
     Args:
-        ioctx (IOContext): use this to access the `input_config` arguments.
+        ioctx: use this to access the `input_config` arguments.
 
     Returns:
         instance of ShuffledInput to work with some offline rl algorithms

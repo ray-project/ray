@@ -1311,7 +1311,7 @@ def _get_or_raise(
         mapping (Dict[PolicyID, Union[Policy, Preprocessor, Filter]]): The
             mapping dict from policy id (str) to actual object (Policy,
             Preprocessor, etc.).
-        policy_id (str): The policy ID to lookup.
+        policy_id: The policy ID to lookup.
 
     Returns:
         Union[Policy, Preprocessor, Filter]: The found object.

@@ -20,7 +20,7 @@ class BaseWorkerMixin:
         """Executes the input function and returns the output.
 
         Args:
-            func (Callable): The function to execute.
+            func: The function to execute.
             args, kwargs: The arguments to pass into func.
         """
         return func(*args, **kwargs)
@@ -34,9 +34,9 @@ class WorkerMetadata:
     actor.
 
     Args:
-        node_id (str): ID of the node this worker is on.
-        node_ip (str): IP address of the node this worker is on.
-        hostname (str): Hostname that this worker is on.
+        node_id: ID of the node this worker is on.
+        node_ip: IP address of the node this worker is on.
+        hostname: Hostname that this worker is on.
         gpu_ids (List[int]): List of CUDA IDs available to this worker.
     """
 
@@ -95,11 +95,11 @@ class WorkerGroup:
     cluster will automatically scale up if autoscaling is enabled.
 
     Args:
-        num_workers (int): The number of workers (Ray actors) to launch.
+        num_workers: The number of workers (Ray actors) to launch.
             Defaults to 1.
-        num_cpus_per_worker (float): The number of CPUs to reserve for each
+        num_cpus_per_worker: The number of CPUs to reserve for each
             worker. Fractional values are allowed. Defaults to 1.
-        num_gpus_per_worker (float): The number of GPUs to reserve for each
+        num_gpus_per_worker: The number of GPUs to reserve for each
             worker. Fractional values are allowed. Defaults to 0.
         additional_resources_per_worker (Optional[Dict[str, float]]):
             Dictionary specifying the extra resources that will be
@@ -195,7 +195,7 @@ class WorkerGroup:
         """Shutdown all the workers in this worker group.
 
         Args:
-            patience_s (float): Attempt a graceful shutdown
+            patience_s: Attempt a graceful shutdown
                 of the workers for this many seconds. Fallback to force kill
                 if graceful shutdown is not complete after this time. If
                 this is less than or equal to 0, immediately force kill all
@@ -222,7 +222,7 @@ class WorkerGroup:
         """Execute ``func`` on each worker and return the futures.
 
         Args:
-            func (Callable): A function to call on each worker.
+            func: A function to call on each worker.
             args, kwargs: Passed directly into func.
 
         Returns:
@@ -247,7 +247,7 @@ class WorkerGroup:
         """Execute ``func`` on each worker and return the outputs of ``func``.
 
         Args:
-            func (Callable): A function to call on each worker.
+            func: A function to call on each worker.
             args, kwargs: Passed directly into func.
 
         Returns:
@@ -263,8 +263,8 @@ class WorkerGroup:
         """Execute ``func`` on worker ``worker_index`` and return futures.
 
         Args:
-            worker_index (int): The index to execute func on.
-            func (Callable): A function to call on the first worker.
+            worker_index: The index to execute func on.
+            func: A function to call on the first worker.
             args, kwargs: Passed directly into func.
 
         Returns:
@@ -286,8 +286,8 @@ class WorkerGroup:
         """Execute ``func`` on worker with index ``worker_index``.
 
         Args:
-            worker_index (int): The index to execute func on.
-            func (Callable): A function to call on the first worker.
+            worker_index: The index to execute func on.
+            func: A function to call on the first worker.
             args, kwargs: Passed directly into func.
 
         Returns:
@@ -321,7 +321,7 @@ class WorkerGroup:
         be called first.
 
         Args:
-            num_workers (int): The number of workers to add.
+            num_workers: The number of workers to add.
         """
         new_actors = []
         new_actor_metadata = []

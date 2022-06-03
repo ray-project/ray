@@ -22,8 +22,14 @@ def get_all_ray_worker_processes():
     return result
 
 
+@pytest.fixture
+def short_gcs_publish_timeout(monkeypatch):
+    monkeypatch.setenv("RAY_MAX_GCS_PUBLISH_RETRIES", "3")
+    yield
+
+
 @pytest.mark.skipif(platform.system() == "Windows", reason="Hang on Windows.")
-def test_ray_shutdown(shutdown_only):
+def test_ray_shutdown(short_gcs_publish_timeout, shutdown_only):
     """Make sure all ray workers are shutdown when driver is done."""
     ray.init()
 
@@ -43,7 +49,7 @@ def test_ray_shutdown(shutdown_only):
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Hang on Windows.")
-def test_driver_dead(shutdown_only):
+def test_driver_dead(short_gcs_publish_timeout, shutdown_only):
     """Make sure all ray workers are shutdown when driver is killed."""
     driver = """
 import ray
@@ -72,7 +78,7 @@ tasks = [f.remote() for _ in range(num_cpus)]
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Hang on Windows.")
-def test_node_killed(ray_start_cluster):
+def test_node_killed(short_gcs_publish_timeout, ray_start_cluster):
     """Make sure all ray workers when nodes are dead."""
     cluster = ray_start_cluster
     # head node.
@@ -104,7 +110,7 @@ def test_node_killed(ray_start_cluster):
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Hang on Windows.")
-def test_head_node_down(ray_start_cluster):
+def test_head_node_down(short_gcs_publish_timeout, ray_start_cluster):
     """Make sure all ray workers when head node is dead."""
     cluster = ray_start_cluster
     # head node.

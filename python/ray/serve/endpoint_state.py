@@ -1,12 +1,16 @@
+import logging
 from typing import Dict, Any, Optional
 
 from ray import cloudpickle
 from ray.serve.common import EndpointInfo, EndpointTag
+from ray.serve.constants import SERVE_LOGGER_NAME
 from ray.serve.long_poll import LongPollNamespace
 from ray.serve.storage.kv_store import KVStoreBase
 from ray.serve.long_poll import LongPollHost
 
 CHECKPOINT_KEY = "serve-endpoint-state-checkpoint"
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 class EndpointState:
@@ -54,15 +58,19 @@ class EndpointState:
         updated to match the given parameters. Calling this twice with the same
         arguments is a no-op.
         """
+
+        if self._endpoints.get(endpoint) == endpoint_info:
+            return
+
         existing_route_endpoint = self._get_endpoint_for_route(endpoint_info.route)
         if existing_route_endpoint is not None and existing_route_endpoint != endpoint:
-            raise ValueError(
-                f"route_prefix '{endpoint_info.route}' is already registered."
+            logger.warn(
+                f'route_prefix "{endpoint_info.route}" is currently '
+                f'registered to deployment "{existing_route_endpoint}". '
+                f'Re-registering route_prefix "{endpoint_info.route}" to '
+                f'deployment "{endpoint}".'
             )
-
-        if endpoint in self._endpoints:
-            if self._endpoints[endpoint] == endpoint_info:
-                return
+            del self._endpoints[existing_route_endpoint]
 
         self._endpoints[endpoint] = endpoint_info
 
