@@ -153,7 +153,7 @@ the following states: ``"PENDING"``, ``"RUNNING"``, ``"PAUSED"``, ``"ERRORED"``,
 See the docstring at :ref:`trial-docstring`.
 
 RayTrialExecutor
-~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~
 [`source code <https://github.com/ray-project/ray/blob/master/python/ray/tune/ray_trial_executor.py>`__]
 The RayTrialExecutor is a component that interacts with the underlying execution framework.
 It also manages resources to ensure the cluster isn't overloaded.
