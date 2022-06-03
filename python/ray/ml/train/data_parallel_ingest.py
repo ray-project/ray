@@ -74,7 +74,13 @@ class _DataParallelIngestSpec:
             config = self._config(key)
 
             if config.streamable:
-                dataset = dataset.repeat()
+                if config.stream_window_size > 0:
+                    dataset = dataset.window(bytes_per_window=config.stream_window_size)
+                else:
+                    dataset = dataset.repeat()
+
+            if config.global_shuffle:
+                dataset = dataset.random_shuffle_each_window()
 
             if config.split:
                 dataset_splits = dataset.split(
