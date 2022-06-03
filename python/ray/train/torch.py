@@ -1,6 +1,5 @@
 import tempfile
 from dataclasses import dataclass
-import functools
 import io
 import logging
 import os
@@ -53,7 +52,7 @@ class TorchAccelerator(Accelerator):
     """A utility that implements methods to accelerate PyTorch training.
 
     Arguments:
-        amp (bool): If true, perform training with automatic mixed precision.
+        amp: If true, perform training with automatic mixed precision.
             Otherwise, use full precision.
     """
 
@@ -76,10 +75,10 @@ class TorchAccelerator(Accelerator):
 
         Args:
             model (torch.nn.Module): A torch model to prepare.
-            move_to_device (bool): Whether to move the model to the correct
+            move_to_device: Whether to move the model to the correct
                 device. If set to False, the model needs to manually be moved
                 to the correct device.
-            wrap_ddp (bool): Whether to wrap models in
+            wrap_ddp: Whether to wrap models in
                 ``DistributedDataParallel``.
             ddp_kwargs (Dict[str, Any]): Args to pass into
                 ``DistributedDataParallel`` initialization if ``wrap_ddp`` is
@@ -98,34 +97,38 @@ class TorchAccelerator(Accelerator):
             logger.info(f"Moving model to device: {device}")
             model = model.to(device)
 
-        def wrap_forward(forward):
-            @functools.wraps(forward)
-            def wrapper(*args, **kwargs):
-                with autocast():
-                    outputs = forward(*args, **kwargs)
-                assert isinstance(outputs, torch.Tensor)
-                return outputs.float()
-
-            return wrapper
-
         def model_get_state(self):
             # `__getstate__` is an special method that informs pickle which attributes
             # to serialize. This custom implementation ensures that the wrapped forward
             # method and custom `__getstate__` method aren't serialized.
-            state = self.__dict__.copy()
+            if hasattr(self, "_original_get_state"):
+                state = self._original_get_state()
+                state["__getstate__"] = state["_original_get_state"]
+                del state["_original_get_state"]
+            else:
+                # If model does not have a `__getstate__` already defined, use default
+                # implementation.
+                state = self.__dict__.copy()
+                del state["__getstate__"]
             state["forward"] = state["_unwrapped_forward"]
             del state["_unwrapped_forward"]
-            del state["__getstate__"]
+
             return state
 
         if self.amp_is_enabled:
             # Pickle cannot serialize the wrapped forward method. As a workaround,
             # define a custom `__getstate__` method that unwraps the forward method.
             model._unwrapped_forward = model.forward
-            model.forward = wrap_forward(model.forward)
+            model.forward = autocast()(model.forward)
+
+            # TODO(amogkam): Replace below logic with a generic "unpack model" method.
+            # Replacing the `model.forward` method makes the model no longer
+            # serializable. When serializing the model, we have to override the
+            # `__getstate__` method to set back the original forward method.
+            if hasattr(model, "__getstate__"):
+                model._original_get_state = model.__getstate__
             # `__getstate__` must be a bound method rather than an callable attribute.
             # See https://stackoverflow.com/questions/972/adding-a-method-to-an-existing-object-instance.  # noqa: E501
-            assert not hasattr(model, "__getstate__")
             model.__getstate__ = types.MethodType(model_get_state, model)
 
         if wrap_ddp and train.world_size() > 1:
@@ -154,11 +157,11 @@ class TorchAccelerator(Accelerator):
         Args:
             data_loader (torch.utils.data.DataLoader): The DataLoader to
                 prepare.
-            add_dist_sampler (bool): Whether to add a DistributedSampler to
+            add_dist_sampler: Whether to add a DistributedSampler to
                 the provided DataLoader.
-            move_to_device (bool): If set, automatically move the data
+            move_to_device: If set, automatically move the data
                 returned by the data loader to the correct device.
-            auto_transfer (bool): If set and device is GPU, another CUDA stream
+            auto_transfer: If set and device is GPU, another CUDA stream
                 is created to automatically copy data from host (CPU) memory
                 to device (GPU) memory (the default CUDA stream still runs the
                 training procedure). If device is CPU, it will be disabled
@@ -307,15 +310,15 @@ class TorchConfig(BackendConfig):
     See https://pytorch.org/docs/stable/distributed.html for more info.
 
     Args:
-        backend (str): The backend to use for training.
+        backend: The backend to use for training.
             See ``torch.distributed.init_process_group`` for more info and
             valid values.
             If set to None, nccl will be used if GPUs are requested, else gloo
             will be used.
-        init_method (str): The initialization method to use. Either "env"
+        init_method: The initialization method to use. Either "env"
             for environment variable initialization or "tcp" for TCP
             initialization. Defaults to "env".
-        timeout_s (int): Seconds for process group operations to timeout.
+        timeout_s: Seconds for process group operations to timeout.
     """
 
     backend: Optional[str] = None
@@ -337,11 +340,11 @@ def setup_torch_process_group(
     """Connects the distributed PyTorch backend.
 
     Args:
-        backend (str): The backend (nccl, gloo, etc.) to use for training.
-        world_rank (int): Rank of the current worker.
-        world_size (int): Number of workers participating in the job.
-        init_method (str): URL specifying how to initialize the process group.
-        timeout_s (timedelta): Seconds for process group operations to timeout.
+        backend: The backend (nccl, gloo, etc.) to use for training.
+        world_rank: Rank of the current worker.
+        world_size: Number of workers participating in the job.
+        init_method: URL specifying how to initialize the process group.
+        timeout_s: Seconds for process group operations to timeout.
     """
     logger.info(
         f"Setting up process group for: {init_method} [rank={world_rank}, "
@@ -602,10 +605,10 @@ def prepare_model(
 
     Args:
         model (torch.nn.Module): A torch model to prepare.
-        move_to_device (bool): Whether to move the model to the correct
+        move_to_device: Whether to move the model to the correct
             device. If set to False, the model needs to manually be moved
             to the correct device.
-        wrap_ddp (bool): Whether to wrap models in
+        wrap_ddp: Whether to wrap models in
             ``DistributedDataParallel``.
         ddp_kwargs (Dict[str, Any]): Args to pass into
             ``DistributedDataParallel`` initialization if ``wrap_ddp`` is
@@ -634,11 +637,11 @@ def prepare_data_loader(
     Args:
         data_loader (torch.utils.data.DataLoader): The DataLoader to
             prepare.
-        add_dist_sampler (bool): Whether to add a DistributedSampler to
+        add_dist_sampler: Whether to add a DistributedSampler to
             the provided DataLoader.
-        move_to_device (bool): If set, automatically move the data
+        move_to_device: If set, automatically move the data
             returned by the data loader to the correct device.
-        auto_transfer (bool): If set and device is GPU, another CUDA stream
+        auto_transfer: If set and device is GPU, another CUDA stream
             is created to automatically copy data from host (CPU) memory
             to device (GPU) memory (the default CUDA stream still runs the
             training procedure). If device is CPU, it will be disabled
@@ -658,7 +661,7 @@ def accelerate(amp: bool = False) -> None:
     """Enables training optimizations.
 
     Arguments:
-        amp (bool): If true, perform training with automatic mixed precision.
+        amp: If true, perform training with automatic mixed precision.
             Otherwise, use full precision.
 
     .. warning:: ``train.torch.accelerate`` cannot be called more than once, and it
@@ -708,7 +711,7 @@ def enable_reproducibility(seed: int = 0) -> None:
         * Seeds workers spawned for multi-process data loading.
 
     Args:
-        seed (int): The number to seed libraries and data workers with.
+        seed: The number to seed libraries and data workers with.
 
     .. warning:: ``train.torch.enable_reproducibility()`` can't guarantee
         completely reproducible results across executions. To learn more, read
@@ -753,7 +756,7 @@ class TorchWorkerProfiler:
         ``get_and_clear_profile_traces``.
 
         Args:
-            p (profile): A PyTorch Profiler profile.
+            p: A PyTorch Profiler profile.
         """
         trace_filename = f"worker_{train.world_rank()}_epoch_{p.step_num}.pt.trace.json"
         trace_path = self.trace_dir.joinpath(trace_filename)

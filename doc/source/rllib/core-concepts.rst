@@ -180,7 +180,6 @@ of a sequence of repeating steps, or *dataflow*, of:
 
 .. code-block:: python
 
-    @staticmethod
     def training_iteration(self) -> ResultDict:
         # type: SampleBatchType
         train_batch = synchronous_parallel_sample(

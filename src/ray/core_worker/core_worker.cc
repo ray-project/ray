@@ -117,6 +117,16 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   // instead of crashing.
   auto grpc_client = rpc::NodeManagerWorkerClient::make(
       options_.raylet_ip_address, options_.node_manager_port, *client_call_manager_);
+
+  if (options_.worker_type == WorkerType::WORKER) {
+    periodical_runner_.RunFnPeriodically(
+        [this] { ExitIfParentRayletDies(); },
+        RayConfig::instance().raylet_death_check_interval_milliseconds());
+  }
+
+  // Start the IO thread first to make sure the checker is working.
+  io_thread_ = std::thread([this]() { RunIOService(); });
+
   Status raylet_client_status;
   NodeID local_raylet_id;
   int assigned_port;
@@ -180,6 +190,16 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                 << rpc_address_.port() << ", worker ID " << worker_context_.GetWorkerID()
                 << ", raylet " << local_raylet_id;
 
+  // Begin to get gcs server address from raylet.
+  gcs_server_address_updater_ = std::make_unique<GcsServerAddressUpdater>(
+      options_.raylet_ip_address,
+      options_.node_manager_port,
+      [this](std::string ip, int port) {
+        absl::MutexLock lock(&gcs_server_address_mutex_);
+        gcs_server_address_.first = ip;
+        gcs_server_address_.second = port;
+      });
+
   gcs_client_ = std::make_shared<gcs::GcsClient>(options_.gcs_options);
 
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
@@ -236,11 +256,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         return std::shared_ptr<rpc::CoreWorkerClient>(
             new rpc::CoreWorkerClient(addr, *client_call_manager_));
       });
-  if (options_.worker_type != WorkerType::DRIVER) {
-    periodical_runner_.RunFnPeriodically(
-        [this] { ExitIfParentRayletDies(); },
-        RayConfig::instance().raylet_death_check_interval_milliseconds());
-  }
 
   plasma_store_provider_.reset(new CoreWorkerPlasmaStoreProvider(
       options_.store_socket,
@@ -266,9 +281,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
             },
             "CoreWorker.HandleException");
       }));
-
-  periodical_runner_.RunFnPeriodically([this] { InternalHeartbeat(); },
-                                       kInternalHeartbeatMillis);
 
   auto push_error_callback = [this](const JobID &job_id,
                                     const std::string &type,
@@ -456,9 +468,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                          /*pin_object=*/pin_object));
       });
 
-  // Start the IO thread after all other members have been initialized, in case
-  // the thread calls back into any of our members.
-  io_thread_ = std::thread([this]() { RunIOService(); });
   // Tell the raylet the port that we are listening on.
   // NOTE: This also marks the worker as available in Raylet. We do this at the
   // very end in case there is a problem during construction.
@@ -509,6 +518,9 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         }
       },
       100);
+
+  periodical_runner_.RunFnPeriodically([this] { InternalHeartbeat(); },
+                                       kInternalHeartbeatMillis);
 
 #ifndef _WIN32
   // Doing this last during CoreWorker initialization, so initialization logic like
@@ -748,14 +760,16 @@ void CoreWorker::RegisterToGcs() {
 }
 
 void CoreWorker::ExitIfParentRayletDies() {
+  RAY_CHECK(options_.worker_type == WorkerType::WORKER);
   RAY_CHECK(!RayConfig::instance().RAYLET_PID().empty());
-  static auto raylet_pid =
-      static_cast<pid_t>(std::stoi(RayConfig::instance().RAYLET_PID()));
+  auto raylet_pid = static_cast<pid_t>(std::stoi(RayConfig::instance().RAYLET_PID()));
   bool should_shutdown = !IsProcessAlive(raylet_pid);
   if (should_shutdown) {
-    RAY_LOG(WARNING) << "Shutting down the core worker because the local raylet failed. "
-                     << "Check out the raylet.out log file. Raylet pid: " << raylet_pid;
-    QuickExit();
+    std::ostringstream stream;
+    stream << "Shutting down the core worker because the local raylet failed. "
+           << "Check out the raylet.out log file. Raylet pid: " << raylet_pid;
+    RAY_LOG(WARNING) << stream.str();
+    task_execution_service_.post([this]() { Shutdown(); }, "CoreWorker.Shutdown");
   }
 }
 
@@ -2262,10 +2276,6 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     return_ids.pop_back();
     task_type = TaskType::ACTOR_TASK;
   }
-
-  // Because we support concurrent actor calls, we need to update the
-  // worker ID for the current thread.
-  CoreWorkerProcess::SetCurrentThreadWorkerId(GetWorkerID());
 
   std::shared_ptr<LocalMemoryBuffer> creation_task_exception_pb_bytes = nullptr;
 

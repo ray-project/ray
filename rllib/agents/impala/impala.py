@@ -464,7 +464,7 @@ class ImpalaTrainer(Trainer):
 
                 return VTraceTorchPolicy
             else:
-                from ray.rllib.agents.a3c.a3c_torch_policy import A3CTorchPolicy
+                from ray.rllib.algorithms.a3c.a3c_torch_policy import A3CTorchPolicy
 
                 return A3CTorchPolicy
         elif config["framework"] == "tf":
@@ -475,7 +475,7 @@ class ImpalaTrainer(Trainer):
 
                 return VTraceStaticGraphTFPolicy
             else:
-                from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
+                from ray.rllib.algorithms.a3c.a3c_tf_policy import A3CTFPolicy
 
                 return A3CTFPolicy
         else:
@@ -484,7 +484,7 @@ class ImpalaTrainer(Trainer):
 
                 return VTraceEagerTFPolicy
             else:
-                from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
+                from ray.rllib.algorithms.a3c.a3c_tf_policy import A3CTFPolicy
 
                 return A3CTFPolicy
 

@@ -28,10 +28,10 @@ torch, nn = try_import_torch()
 class A3CTorchPolicy(
     ValueNetworkMixin, LearningRateSchedule, EntropyCoeffSchedule, TorchPolicyV2
 ):
-    """PyTorch Policy class used with A3CTrainer."""
+    """PyTorch Policy class used with A3C."""
 
     def __init__(self, observation_space, action_space, config):
-        config = dict(ray.rllib.agents.a3c.a3c.A3CConfig().to_dict(), **config)
+        config = dict(ray.rllib.algorithms.a3c.a3c.A3CConfig().to_dict(), **config)
 
         TorchPolicyV2.__init__(
             self,
@@ -157,7 +157,7 @@ class A3CTorchPolicy(
 
 
 @Deprecated(
-    old="rllib.agents.a3c.a3c_torch_policy.add_advantages",
+    old="rllib.algorithms.a3c.a3c_torch_policy.add_advantages",
     new="rllib.evaluation.postprocessing.compute_gae_for_sample_batch",
     error=True,
 )

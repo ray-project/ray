@@ -4,7 +4,7 @@
 # and buildifier is also installed. The example is showed in .travis.yml.
 set -e
 
-ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
+ROOT_DIR=$(cd "$(dirname "$0")/$(dirname "$(test -L "$0" && readlink "$0" || echo "/")")"; pwd)
 
 function usage()
 {

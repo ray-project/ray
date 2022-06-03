@@ -24,14 +24,14 @@ def StandardMetricsReporting(
     """Operator to periodically collect and report metrics.
 
     Args:
-        train_op (LocalIterator): Operator for executing training steps.
+        train_op: Operator for executing training steps.
             We ignore the output values.
-        workers (WorkerSet): Rollout workers to collect metrics from.
-        config (dict): Trainer configuration, used to determine the frequency
+        workers: Rollout workers to collect metrics from.
+        config: Trainer configuration, used to determine the frequency
             of stats reporting.
-        selected_workers (list): Override the list of remote workers
+        selected_workers: Override the list of remote workers
             to collect metrics from.
-        by_steps_trained (bool): If True, uses the `STEPS_TRAINED_COUNTER`
+        by_steps_trained: If True, uses the `STEPS_TRAINED_COUNTER`
             instead of the `STEPS_SAMPLED_COUNTER` in metrics.
 
     Returns:
@@ -218,9 +218,9 @@ class OncePerTimestepsElapsed:
     def __init__(self, delay_steps: int, by_steps_trained: bool = False):
         """
         Args:
-            delay_steps (int): The number of steps (sampled or trained) every
+            delay_steps: The number of steps (sampled or trained) every
                 which this op returns True.
-            by_steps_trained (bool): If True, uses the `STEPS_TRAINED_COUNTER`
+            by_steps_trained: If True, uses the `STEPS_TRAINED_COUNTER`
                 instead of the `STEPS_SAMPLED_COUNTER` in metrics.
         """
         self.delay_steps = delay_steps
