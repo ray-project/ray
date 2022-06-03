@@ -5,12 +5,14 @@ from typing import List, Union
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
 
 torch, nn = try_import_torch()
 
 
+@DeveloperAPI
 class FQETorchModel:
     """Pytorch implementation of the Fitted Q-Evaluation (FQE) model from
     https://arxiv.org/pdf/1911.06854.pdf
