@@ -56,7 +56,7 @@ class RuntimeEnvContext:
             Fixed passthrough arguments
         """
         for i, arg in enumerate(passthrough_args):
-            if os.path.isfile(arg) or os.path.isdir(arg):
+            if os.path.exists(arg):
                 passthrough_args[i] = f'"{arg}"'  # Some arguments may be files, which may contain spaces
         return passthrough_args
 
