@@ -1090,7 +1090,7 @@ class Dataset(Generic[T]):
 
         A common use case for this would be splitting the dataset into train
         and test sets (equivalent to eg. scikit-learn's ``train_test_split``).
-        See also :func:`ray.ml.train_test_split` for a higher level abstraction.
+        See also :func:`ray.air.train_test_split` for a higher level abstraction.
 
         The indices to split at will be calculated in such a way so that all splits
         always contains at least one element. If that is not possible,
@@ -1113,7 +1113,7 @@ class Dataset(Generic[T]):
         Time complexity: O(num splits)
 
         See also: ``Dataset.split``, ``Dataset.split_at_indices``,
-        :func:`ray.ml.train_test_split`
+        :func:`ray.air.train_test_split`
 
         Args:
             proportions: List of proportions to split the dataset according to.
@@ -2369,7 +2369,7 @@ class Dataset(Generic[T]):
         import torch
 
         from ray.data.impl.torch_iterable_dataset import TorchIterableDataset
-        from ray.ml.utils.torch_utils import convert_pandas_to_torch_tensor
+        from ray.air.utils.torch_utils import convert_pandas_to_torch_tensor
 
         # If an empty collection is passed in, treat it the same as None
         if not feature_columns:
@@ -2529,7 +2529,7 @@ class Dataset(Generic[T]):
         except ImportError:
             raise ValueError("tensorflow must be installed!")
 
-        from ray.ml.utils.tensorflow_utils import convert_pandas_to_tf_tensor
+        from ray.air.utils.tensorflow_utils import convert_pandas_to_tf_tensor
 
         # `output_signature` can be a tuple but not a list. See
         # https://stackoverflow.com/questions/59092423/what-is-a-nested-structure-in-tensorflow.
