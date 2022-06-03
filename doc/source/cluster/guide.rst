@@ -85,7 +85,7 @@ removal from the cluster. But there are two important additional conditions
 to note: 
 
 * The head node is never removed unless the cluster is torn down.
-* If Ray Object Store is used, and a Worker node still holds objects, it won't be removed
+* If the Ray Object Store is used, and a Worker node still holds objects (including spilled objects on disk), it won't be removed.
 
 
 
