@@ -2,7 +2,7 @@ import unittest
 import pytest
 
 import ray
-import ray.rllib.algorithms.ddppo as ddppo
+import ray.rllib.agents.ppo as ppo
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
 from ray.rllib.utils.test_utils import (
@@ -23,8 +23,8 @@ class TestDDPPO(unittest.TestCase):
         ray.shutdown()
 
     def test_ddppo_compilation(self):
-        """Test whether DDPPO can be built with both frameworks."""
-        config = ddppo.DDPPOConfig().resources(num_gpus_per_worker=0)
+        """Test whether a DDPPOTrainer can be built with both frameworks."""
+        config = ppo.DDPPOConfig().resources(num_gpus_per_worker=0)
 
         num_iterations = 2
 
@@ -44,7 +44,7 @@ class TestDDPPO(unittest.TestCase):
 
     def test_ddppo_schedule(self):
         """Test whether lr_schedule will anneal lr to 0"""
-        config = ddppo.DDPPOConfig()
+        config = ppo.DDPPOConfig()
         config.resources(num_gpus_per_worker=0)
         config.training(lr_schedule=[[0, config.lr], [1000, 0.0]])
 
@@ -64,7 +64,7 @@ class TestDDPPO(unittest.TestCase):
 
     def test_validate_config(self):
         """Test if DDPPO will raise errors after invalid configs are passed."""
-        config = ddppo.DDPPOConfig().training(kl_coeff=1.0)
+        config = ppo.DDPPOConfig().training(kl_coeff=1.0)
         msg = "DDPPO doesn't support KL penalties like PPO-1"
         with pytest.raises(ValueError, match=msg):
             config.build(env="CartPole-v0")

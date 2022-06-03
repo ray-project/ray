@@ -60,7 +60,7 @@ def get_ppo_tf_policy(base: TFPolicyV2Type) -> TFPolicyV2Type:
         base: Base class for this policy. DynamicTFPolicyV2 or EagerTFPolicyV2.
 
     Returns:
-        A TF Policy to be used with PPO.
+        A TF Policy to be used with PPOTrainer.
     """
 
     class PPOTFPolicy(
@@ -81,7 +81,7 @@ def get_ppo_tf_policy(base: TFPolicyV2Type) -> TFPolicyV2Type:
             # First thing first, enable eager execution if necessary.
             base.enable_eager_execution_if_necessary()
 
-            config = dict(ray.rllib.algorithms.ppo.ppo.PPOConfig().to_dict(), **config)
+            config = dict(ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG, **config)
             validate_config(config)
 
             # Initialize base class.
@@ -241,5 +241,5 @@ def get_ppo_tf_policy(base: TFPolicyV2Type) -> TFPolicyV2Type:
     return PPOTFPolicy
 
 
-PPOTF1Policy = get_ppo_tf_policy(DynamicTFPolicyV2)
-PPOTF2Policy = get_ppo_tf_policy(EagerTFPolicyV2)
+PPOStaticGraphTFPolicy = get_ppo_tf_policy(DynamicTFPolicyV2)
+PPOEagerTFPolicy = get_ppo_tf_policy(EagerTFPolicyV2)

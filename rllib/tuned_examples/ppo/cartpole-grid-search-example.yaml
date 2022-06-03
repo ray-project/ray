@@ -1,4 +1,4 @@
-cartpole-ppo-grid-search-example:
+cartpole-ppo:
     env: CartPole-v0
     run: PPO
     stop:

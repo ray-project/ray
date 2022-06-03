@@ -2,7 +2,7 @@ import unittest
 
 import ray
 import ray.rllib.algorithms.dqn as dqn
-import ray.rllib.algorithms.ppo as ppo
+import ray.rllib.agents.ppo as ppo
 from ray.rllib.examples.env.memory_leaking_env import MemoryLeakingEnv
 from ray.rllib.examples.policy.memory_leaking_policy import MemoryLeakingPolicy
 from ray.rllib.policy.policy import PolicySpec
@@ -30,7 +30,7 @@ class TestMemoryLeaks(unittest.TestCase):
         config["env_config"] = {
             "static_samples": True,
         }
-        trainer = ppo.PPO(config=config)
+        trainer = ppo.PPOTrainer(config=config)
         results = check_memory_leaks(trainer, to_check={"env"}, repeats=150)
         assert results["env"]
         trainer.stop()

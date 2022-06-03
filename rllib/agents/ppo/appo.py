@@ -13,7 +13,7 @@ from typing import Optional, Type
 import logging
 
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
-from ray.rllib.algorithms.impala import Impala, ImpalaConfig
+from ray.rllib.agents.impala import ImpalaTrainer, ImpalaConfig
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
@@ -33,10 +33,10 @@ logger = logging.getLogger(__name__)
 
 
 class APPOConfig(ImpalaConfig):
-    """Defines a configuration class from which an APPO Trainer can be built.
+    """Defines a APPOTrainer configuration class from which a new Trainer can be built.
 
     Example:
-        >>> from ray.rllib.algorithms.appo import APPOConfig
+        >>> from ray.rllib.agents.ppo import APPOConfig
         >>> config = APPOConfig().training(lr=0.01, grad_clip=30.0)\
         ...     .resources(num_gpus=1)\
         ...     .rollouts(num_rollout_workers=16)
@@ -46,7 +46,7 @@ class APPOConfig(ImpalaConfig):
         >>> trainer.train()
 
     Example:
-        >>> from ray.rllib.algorithms.appo import APPOConfig
+        >>> from ray.rllib.agents.ppo import APPOConfig
         >>> from ray import tune
         >>> config = APPOConfig()
         >>> # Print out some default values.
@@ -66,7 +66,7 @@ class APPOConfig(ImpalaConfig):
 
     def __init__(self, trainer_class=None):
         """Initializes a APPOConfig instance."""
-        super().__init__(trainer_class=trainer_class or APPO)
+        super().__init__(trainer_class=trainer_class or APPOTrainer)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -166,9 +166,8 @@ class APPOConfig(ImpalaConfig):
         return self
 
 
-class APPO(Impala):
+class APPOTrainer(ImpalaTrainer):
     def __init__(self, config, *args, **kwargs):
-        """Initializes a DDPPO instance."""
         super().__init__(config, *args, **kwargs)
 
         # After init: Initialize target net.
@@ -227,7 +226,7 @@ class APPO(Impala):
                 # Worker.
                 self.workers.local_worker().foreach_policy_to_train(update)
 
-    @override(Impala)
+    @override(ImpalaTrainer)
     def training_iteration(self) -> ResultDict:
         train_results = super().training_iteration()
 
@@ -237,36 +236,36 @@ class APPO(Impala):
         return train_results
 
     @classmethod
-    @override(Impala)
+    @override(ImpalaTrainer)
     def get_default_config(cls) -> TrainerConfigDict:
         return APPOConfig().to_dict()
 
-    @override(Impala)
+    @override(ImpalaTrainer)
     def get_default_policy_class(
         self, config: PartialTrainerConfigDict
     ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
-            from ray.rllib.algorithms.appo.appo_torch_policy import APPOTorchPolicy
+            from ray.rllib.agents.ppo.appo_torch_policy import APPOTorchPolicy
 
             return APPOTorchPolicy
         elif config["framework"] == "tf":
-            from ray.rllib.algorithms.appo.appo_tf_policy import APPOTF1Policy
+            from ray.rllib.agents.ppo.appo_tf_policy import APPOStaticGraphTFPolicy
 
-            return APPOTF1Policy
+            return APPOStaticGraphTFPolicy
         else:
-            from ray.rllib.algorithms.appo.appo_tf_policy import APPOTF2Policy
+            from ray.rllib.agents.ppo.appo_tf_policy import APPOEagerTFPolicy
 
-            return APPOTF2Policy
+            return APPOEagerTFPolicy
 
 
-# Deprecated: Use ray.rllib.algorithms.appo.APPOConfig instead!
+# Deprecated: Use ray.rllib.agents.ppo.APPOConfig instead!
 class _deprecated_default_config(dict):
     def __init__(self):
         super().__init__(APPOConfig().to_dict())
 
     @Deprecated(
-        old="ray.rllib.agents.ppo.appo::DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.appo.appo::APPOConfig(...)",
+        old="ray.rllib.agents.ppo.appo.DEFAULT_CONFIG",
+        new="ray.rllib.agents.ppo.appo.APPOConfig(...)",
         error=False,
     )
     def __getitem__(self, item):
