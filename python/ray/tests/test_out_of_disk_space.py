@@ -97,7 +97,7 @@ def test_task_args(shutdown_only):
     )
     cluster.add_node(
         num_cpus=1,
-        object_store_memory=100 * 1024 * 1024,
+        object_store_memory=200 * 1024 * 1024,
         resources={"sufficient_memory": 1},
     )
     cluster.wait_for_nodes()
@@ -105,8 +105,7 @@ def test_task_args(shutdown_only):
 
     @ray.remote
     def foo():
-        ref = ray.put(np.random.rand(11 * 1024 * 1024))  # 88 MB data
-        return ref
+        return np.random.rand(20 * 1024 * 1024)  # 160 MB data
 
     @ray.remote
     def bar(obj):
