@@ -1930,11 +1930,11 @@ class Trainer(Trainable):
             config["off_policy_estimation_methods"], tuple
         ):
             ope_dict = {
-                str(ope): {"type": ope} for ope in self.off_policy_estimation_methods
+                str(ope): {"type": ope} for ope in ["off_policy_estimation_methods"]
             }
             deprecation_warning(
                 old="config.off_policy_estimation_methods={}".format(
-                    self.off_policy_estimation_methods
+                    ["off_policy_estimation_methods"]
                 ),
                 new="config.off_policy_estimation_methods={}".format(
                     ope_dict,
