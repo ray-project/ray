@@ -70,7 +70,6 @@ def short_path_dir():
     dir = Path("short_path")
     dir.mkdir()
     yield dir
-    # Remove the directory after the test, even if it is nonempty.
     shutil.rmtree(str(dir))
 
 
