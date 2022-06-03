@@ -354,12 +354,9 @@ class RolloutWorker(ParallelIteratorWorker):
                 this data for evaluation only and not for learning.
                 - {ope_name: {"type": ope_type, args}}. where `ope_name` is an arbitrary
                 string under which the metrics for this OPE estimator are saved,
-                and `ope_type` can be:
-                    - Any subclass of OffPolicyEstimator, e.g.
-                    ray.rllib.offline.estimators::ImportanceSampling
-                    or your own custom subclass.
-                    - A class path string, e.g.
-                    "ray.rllib.offline.estimators::ImportanceSampling"
+                and `ope_type` can be any subclass of OffPolicyEstimator, e.g.
+                ray.rllib.offline.estimators::ImportanceSampling
+                or your own custom subclass.
                 You can also add additional config arguments to be passed to the
                 OffPolicyEstimator e.g.
                 off_policy_estimation_methods = {
