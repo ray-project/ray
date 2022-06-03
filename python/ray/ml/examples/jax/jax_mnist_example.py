@@ -3,16 +3,8 @@ import ray.train as train
 from typing import Dict
 import argparse
 import time
-from flax import linen as nn
-from flax.training import train_state
-import jax
-import jax.numpy as jnp
 import numpy as np
-import optax
 import functools
-from jax import lax
-from flax import jax_utils
-from flax.training.common_utils import shard
 import ray
 from ray.data.datasource import SimpleTensorFlowDatasource
 import pandas as pd
@@ -63,6 +55,14 @@ def train_func(config: Dict):
     # NOTE: the flax nn module has to define inside 
     # otherwise, the error message `ValueError: parent must be None, Module or Scope`
     # see: https://github.com/google/flax/discussions/1390
+    from flax import linen as nn
+    from flax.training import train_state
+    import jax
+    import jax.numpy as jnp
+    import optax
+    from jax import lax
+    from flax import jax_utils
+    from flax.training.common_utils import shard
     class MLP(nn.Module):
         """A simple mlp model."""
         @nn.compact
@@ -182,7 +182,7 @@ def train_func(config: Dict):
     
     return acc_results
 
-def train_mnist(num_workers=4, use_gpu=True, num_gpu_per_worker=1):
+def train_mnist(num_workers=4, use_gpu=True, use_tpu=True, num_gpu_per_worker=1):
     train_dataset, test_dataset = get_dataset("mnist")
     
     config={
@@ -191,7 +191,13 @@ def train_mnist(num_workers=4, use_gpu=True, num_gpu_per_worker=1):
             "batch_size": 5000,
             "num_epochs": 100,
         }
-    scaling_config = dict(num_workers=num_workers, use_gpu=use_gpu, resources_per_worker={'GPU': num_gpu_per_worker})
+    
+    scaling_config = dict(num_workers=num_workers, use_gpu=use_gpu)
+    if use_gpu: 
+        scaling_config = dict(num_workers=num_workers, use_gpu=use_gpu, resources_per_worker={'GPU': num_gpu_per_worker})
+    if use_tpu: 
+        scaling_config = dict(num_workers=num_workers, use_gpu=False, resources_per_worker={'TPU': 1})
+        
     from ray.ml.train.integrations.jax import JaxTrainer
 
     trainer = JaxTrainer(
@@ -218,6 +224,9 @@ if __name__ == "__main__":
         help="Sets number of node for training.",
     )
     parser.add_argument(
+        "--use-gpu", action="store_true", default=True, help="Enables GPU training"
+    )
+    parser.add_argument(
         "--num-gpu-per-worker",
         "-ngpu",
         type=int,
@@ -225,11 +234,11 @@ if __name__ == "__main__":
         help="Sets the number of gpus on each node for training.",
     )
     parser.add_argument(
-        "--use-gpu", action="store_true", default=True, help="Enables GPU training"
+        "--use-tpu", action="store_true", default=True, help="Enables TPU training"
     )
 
     args, _ = parser.parse_known_args()
 
     import ray
     ray.init(address=args.address)
-    train_mnist(num_workers=args.num_nodes, use_gpu=args.use_gpu, num_gpu_per_worker=args.num_gpu_per_worker)
+    train_mnist(num_workers=args.num_nodes, use_gpu=args.use_gpu, use_tpu=args.use_tpu, num_gpu_per_worker=args.num_gpu_per_worker)
