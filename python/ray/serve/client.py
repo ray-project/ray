@@ -28,6 +28,7 @@ from ray.serve.config import (
     HTTPOptions,
     ReplicaConfig,
 )
+from ray.serve.schema import ServeApplicationSchema
 from ray.serve.constants import (
     MAX_CACHED_HANDLES,
     CLIENT_POLLING_INTERVAL_S,
@@ -120,6 +121,12 @@ class ServeControllerClient:
         Shuts down all processes and deletes all state associated with the
         instance.
         """
+
+        # Shut down handles
+        for k in list(self.handle_cache):
+            self.handle_cache[k].stop_metrics_pusher()
+            del self.handle_cache[k]
+
         if ray.is_initialized() and not self._shutdown:
             ray.get(self._controller.shutdown.remote())
             self._wait_for_deployments_shutdown()
@@ -318,6 +325,16 @@ class ServeControllerClient:
                 new_deployments_names
             )
             self.delete_deployments(deployment_names_to_delete, blocking=_blocking)
+
+    @_ensure_connected
+    def deploy_app(self, config: ServeApplicationSchema) -> None:
+        ray.get(
+            self._controller.deploy_app.remote(
+                config.import_path,
+                config.runtime_env,
+                config.dict(by_alias=True, exclude_unset=True).get("deployments", []),
+            )
+        )
 
     @_ensure_connected
     def delete_deployments(self, names: Iterable[str], blocking: bool = True) -> None:

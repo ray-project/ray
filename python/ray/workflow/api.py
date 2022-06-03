@@ -1,6 +1,5 @@
 import logging
-import types
-from typing import Dict, Set, List, Tuple, Union, Optional, Any, TYPE_CHECKING
+from typing import Dict, Set, List, Tuple, Union, Optional, Any
 import time
 
 import ray
@@ -13,7 +12,6 @@ from ray.workflow.step_function import WorkflowStepFunction
 
 # avoid collision with arguments & APIs
 
-from ray.workflow import virtual_actor_class
 from ray.workflow.common import (
     WorkflowStatus,
     Workflow,
@@ -30,9 +28,6 @@ from ray.workflow import workflow_access
 from ray.workflow.workflow_storage import get_workflow_storage
 from ray.util.annotations import PublicAPI
 from ray._private.usage import usage_lib
-
-if TYPE_CHECKING:
-    from ray.workflow.virtual_actor_class import VirtualActorClass, VirtualActor
 
 logger = logging.getLogger(__name__)
 
@@ -117,73 +112,6 @@ def step(*args, **kwargs):
         ray_options=ray_options,
     )
     return make_step_decorator(options, name, metadata)
-
-
-@PublicAPI(stability="beta")
-class _VirtualActorDecorator:
-    """A decorator used for creating a virtual actor based on a class.
-
-    The class that is based on must have the "__getstate__" and
-     "__setstate__" method.
-
-    Examples:
-        >>> from ray import workflow
-        >>> @workflow.virtual_actor
-        ... class Counter:
-        ...     def __init__(self, x: int):
-        ...         self.x = x
-        ...
-        ...     # Mark a method as a readonly method. It would not modify the
-        ...     # state of the virtual actor.
-        ...     @workflow.virtual_actor.readonly
-        ...     def get(self):
-        ...         return self.x
-        ...
-        ...     def incr(self):
-        ...         self.x += 1
-        ...         return self.x
-        ...
-        ...     def __getstate__(self):
-        ...         return self.x
-        ...
-        ...     def __setstate__(self, state):
-        ...         self.x = state
-        ...
-        ... # Create and run a virtual actor.
-        ... counter = Counter.get_or_create(actor_id="Counter", x=1) # doctest: +SKIP
-        ... assert ray.get(counter.run(incr)) == 2 # doctest: +SKIP
-    """
-
-    @classmethod
-    def __call__(cls, _cls: type) -> "VirtualActorClass":
-        return virtual_actor_class.decorate_actor(_cls)
-
-    @classmethod
-    def readonly(cls, method: types.FunctionType) -> types.FunctionType:
-        if not isinstance(method, types.FunctionType):
-            raise TypeError(
-                "The @workflow.virtual_actor.readonly "
-                "decorator can only wrap a method."
-            )
-        method.__virtual_actor_readonly__ = True
-        return method
-
-
-virtual_actor = _VirtualActorDecorator()
-
-
-@PublicAPI(stability="beta")
-def get_actor(actor_id: str) -> "VirtualActor":
-    """Get an virtual actor.
-
-    Args:
-        actor_id: The ID of the actor.
-
-    Returns:
-        A virtual actor.
-    """
-    _ensure_workflow_initialized()
-    return virtual_actor_class.get_actor(actor_id)
 
 
 @PublicAPI(stability="beta")
@@ -678,10 +606,8 @@ class options:
 
 __all__ = (
     "step",
-    "virtual_actor",
     "resume",
     "get_output",
-    "get_actor",
     "resume_all",
     "get_status",
     "get_metadata",
