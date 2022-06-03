@@ -241,6 +241,14 @@ py_test(
 )
 
 py_test(
+    name = "test_warnings",
+    size = "medium",
+    srcs = ["tests/test_warnings.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_W"],
+)
+
+py_test(
     name = "test_sample",
     size = "large",
     srcs = ["tests/test_sample.py"],
