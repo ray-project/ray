@@ -34,6 +34,11 @@ parser.add_argument(
     help="The deep learning framework to use.",
 )
 parser.add_argument(
+    "--num-runs",
+    default=3,
+    help="Number of times we try each algorithm to make sure things work.",
+)
+parser.add_argument(
     "--yaml-dir",
     type=str,
     required=True,
@@ -118,7 +123,7 @@ if __name__ == "__main__":
         # Try running each test 3 times and make sure it reaches the given
         # reward.
         passed = False
-        for i in range(3):
+        for i in range(args.num_runs):
             # Try starting a new ray cluster.
             try:
                 ray.init(num_cpus=args.num_cpus, local_mode=args.local_mode)
