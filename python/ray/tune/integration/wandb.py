@@ -20,7 +20,7 @@ import yaml
 try:
     import wandb
 except ImportError:
-    logger.error("pip install 'wandb' to use WandbLogger/WandbTrainableMixin.")
+    logger.error("pip install 'wandb' to use WandbLoggerCallback/WandbTrainableMixin.")
     wandb = None
 
 WANDB_ENV_VAR = "WANDB_API_KEY"
