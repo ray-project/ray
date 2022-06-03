@@ -163,176 +163,163 @@ These batches are wrapped up together in a ``MultiAgentBatch``,
 serving as a container for the individual agents' sample batches.
 
 
-Execution Plans
----------------
+Training Iteration Functions
+----------------------------
 
 .. TODO all four execution plan snippets below must be tested
 
-Execution plans let you easily express the execution of an RL algorithm as a sequence of steps that
+The training iteration function lets you easily express the execution of an RL algorithm as a sequence of steps that
 occur either sequentially in the learner, or in parallel across many actors.
-Under the hood, RLlib *translates* these plans into ``ray.get()`` and ``ray.wait()`` operations over Ray actors,
-so you easily write high-performance algorithms without needing to manage individual low-level Ray actor calls.
 
-Execution plans represent the **dataflow of the RL training job**. For example, the A2C algorithm can be thought
+They represent the **dataflow of the RL training job**. For example, the policy gradient algorithms can be thought
 of a sequence of repeating steps, or *dataflow*, of:
 
- 1. ``ParallelRollouts``: Generate experiences from many envs in parallel using rollout workers.
- 2. ``ConcatBatches``: The experiences are concatenated into one batch for training.
- 3. ``TrainOneStep``: Take a gradient step with respect to the policy loss, and update the worker weights.
-
-In code, this dataflow can be expressed as the following execution plan, which is a static method that can be overridden in your custom Trainer sub-classes to define new algorithms.
-It takes in a ``WorkerSet`` and config, and returns an iterator over training results:
+ 1. Generating experiences from many envs in parallel using rollout workers.
+ 2. Update our policy using the experiences generated in the previous step.
+ 3. Update the weights of our rollout workers using the updated policy.
 
 .. code-block:: python
 
     @staticmethod
-    def execution_plan(workers: WorkerSet, config: TrainerConfigDict):
-        # type: LocalIterator[SampleBatchType]
-        rollouts = ParallelRollouts(workers, mode="bulk_sync")
+    def training_iteration(self) -> ResultDict:
+        # type: SampleBatchType
+        train_batch = synchronous_parallel_sample(
+                        worker_set=self.workers,
+                        max_env_steps=self.config["train_batch_size"]
+                    )
 
-        # type: LocalIterator[(SampleBatchType, List[LearnerStatsDict])]
-        train_op = rollouts \
-            .combine(ConcatBatches(
-                min_batch_size=config["train_batch_size"])) \
-            .for_each(TrainOneStep(workers))
+        # type: ResultDict
+        train_results = train_one_step(self, train_batch)
 
-        # type: LocalIterator[ResultDict]
-        return StandardMetricsReporting(train_op, workers, config)
+        # Update worker weights with the weights from the trained
+        # policy on the local worker.
+        self.workers.sync_weights()
 
+        return train_results
 
-As you can see, each step returns an *iterator* over objects (if you're unfamiliar with distributed iterators, see Ray's `parallel iterators implementation <https://github.com/ray-project/ray/blob/master/python/ray/util/iter.py>`__).
-The reason it is a ``LocalIterator`` is that, though it is based on a parallel computation, the iterator has been turned into one that can be consumed locally in sequence by the program.
-A couple other points to note:
+As you can see each call to ``training_iteration`` does one sampling and training update. A dictionary is a returned that contains the results of the training update.
+ Its generally recommended that the dictionary map keys of type ``str`` to values that are of type ``float`` or to dictionaries of the same form, allowing for a nested structure.
 
- - The reason the plan returns an iterator over training results, is that ``trainer.train()`` is pulling results from this iterator to return as the result of the train call.
- - The rollout workers have been already created ahead of time in the ``WorkerSet``, so the execution plan function is only defining a sequence of operations over the results of the rollouts.
-
-These iterators represent the infinite stream of data items that can be produced from the dataflow.
-Each operator (e.g., ``ConcatBatches``, ``TrainOneStep``), executes an operation over each item and returns a transformed item (e.g., concatenated batches, learner stats from training). Finally, some operators such as TrainOneStep have the *side-effect* of updating the rollout worker weights (that's why ``TrainOneStep`` takes the list of worker actors ``workers`` as an argument).
-
-Understanding and Debugging Execution Plans
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Execution plans are based on Ray `parallel iterators <https://github.com/ray-project/ray/blob/master/python/ray/util/iter.py>`__ and can be inspected similarly. For example, suppose you wanted to print out the intermediate data items during training. This can be done by inserting a print function into the dataflow, e.g., for A2C:
-
-.. code-block:: python
-
-    def debug_print(item):
-        print("I saw", type(item))
-        return item
-
-    train_op = rollouts \
-        .combine(ConcatBatches(
-            min_batch_size=config["train_batch_size"])) \
-        .for_each(debug_print) \
-        .for_each(TrainOneStep(workers))
-
-You'll see output like this on the console:
-
-.. code-block:: bash
-
-    (pid=6555) I saw <class 'ray.rllib.policy.sample_batch.SampleBatch'>
-    (pid=6555) I saw <class 'ray.rllib.policy.sample_batch.SampleBatch'>
-    (pid=6555) I saw <class 'ray.rllib.policy.sample_batch.SampleBatch'>
-    (pid=6555) I saw <class 'ray.rllib.policy.sample_batch.SampleBatch'>
-
-It is important to understand that the iterators of an execution plan are evaluated *lazily*. This means that no computation happens until the `trainer <#trainers>`__ tries to read the next item from the iterator (i.e., get the next training result for a ``Trainer.train()`` call).
-
-Execution Plan Concepts
+Training Iteration Function Utilities
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-RLlib provides a library of operators `(GitHub link) <https://github.com/ray-project/ray/tree/master/rllib/execution>`__ that can be used in execution plans.
-You can of course write your own operators (which are just normal Python functions).
-As a reminder, operators are simply functions (or stateful function objects) that can be chained on the iterator (e.g., the ``debug_print`` operator above).
-A few categories of operators are summarized below:
+RLlib provides a collection of utilities that abstract away common tasks in RL training.
 
-**Rollout ops** (`rollout_ops.py <https://github.com/ray-project/ray/blob/master/rllib/execution/rollout_ops.py>`__):
-These are functions for generating and working with experiences, including ``ParallelRollouts`` (for generating experiences synchronously or asynchronously), ``ConcatBatches`` (for combining batches together), ``SelectExperiences`` (for selecting relevant experiences in a multi-agent setting), and ``AsyncGradients`` (for computing gradients over new experiences on the fly, asynchronously, as in A3C).
+**Sample Batches** (`sample_batch.py <https://github.com/ray-project/ray/blob/master/rllib/policy/sample_batch.py>`__):
+``SampleBatch`` and `MultiAgentBatch` are the two datatypes that we use for containing timesteps in RLlib. All of our
+RLlib abstractions (policies, replay buffers, etc.) operate using these types.
+
+**Rollout Workers** (`rollout_worker.py <https://github.com/ray-project/ray/blob/master/rllib/evaluation/rollout_worker.py>`__):
+Rollout workers are an abstraction that wrap a policy (or policies in the case of multi-agent) and an environment.
+From a high-level, we can use rollout workers to collect experiences from the environment by calling
+their ``sample`` function and we can train their policies by calling their ``learn_on_batch`` function.
+By default in RLlib we create a set of workers that can be used for sampling and training. We create a ``WorkerSet``
+object inside of ``setup`` which is called when an RLlib algorithm is created. The ``WorkerSet`` has a ``local_worker``
+and ``remote_workers`` if ``num_workers > 0`` in the experiment config. In RLlib we use typically use ``local_worker``
+for training and ``remote_workers`` for sampling.
+
 
 **Train ops** (`train_ops.py <https://github.com/ray-project/ray/blob/master/rllib/execution/train_ops.py>`__):
-These are functions that improve the policy and update workers. The most basic operator, ``TrainOneStep``, take in as input a batch of experiences and emit metrics as output.
-Important operators here include ``TrainOneStep``, ``TrainTFMultiGPU`` (for multi-GPU optimization), ``ComputeGradients`` (to compute gradients without updating the policy), and ``ApplyGradients`` (to apply computed gradients to a policy).
+These are functions that improve the policy and update workers. The most basic operator, ``train_one_step``, take in as input a batch of experiences and emit metrics as output.
+For training with gpus, use ``multi_gpu_train_one_step``. These functions use the ``learn_on_batch`` function of rollout workers to complete the training update.
 
-**Replay ops** (`replay_ops.py <https://github.com/ray-project/ray/blob/master/rllib/execution/replay_ops.py>`__):
-The main operator provided here is ``StoreToReplayBuffer``, which can save experiences batches to either a local replay buffer or a set of distributed replay actors.
-It has a counterpart, ``Replay``, that produces a new stream of experiences replayed from one of the aforementioned replay buffers.
-Algorithms that use ``StoreToReplayBuffer`` and ``Replay`` are necessarily composed of *multiple sub-dataflows* (different iterators), that are combined with *concurrency ops*.
+**Replay Buffers**:
+RLlib provides `a collection <https://github.com/ray-project/ray/tree/master/rllib/utils/replay_buffers>`__ of replay buffers that can be used for storing and sampling experiences.
 
-**Concurrency ops** (`concurrency_ops.py <https://github.com/ray-project/ray/blob/master/rllib/execution/concurrency_ops.py>`__):
-The main operator provided here is ``Concurrently``, which composes multiple iterators (dataflows) into a single dataflow by executing them in an interleaved fashion.
-The output can be defined to be the mixture of the two dataflows, or filtered to that of one of the sub-dataflows. It has two modes:
+**Concurrency ops**:
+RLlib provides a collection of concurrency ops that can be asynchronous and synchronous operations in the training loop.
+``AsyncRequestsManager`` is used for launching and managing asynchronous requests on actors. Currently in RLlib it is
+used for asynchronous sampling on rollout workers and asynchronously adding to and sampling from replay buffer actors.
+``synchronous_parallel_sample`` has a more narrow but common ussage of synchronously sampling from a set of rollout workers.
 
-    - ``round_robin``: Alternate taking items from each input dataflow.
-      This ensures a fixed ratio of computations between, e.g., experience generation and experience replay.
-      The ratio can be adjusted by setting ``round_robin_weights``.
-    - ``async``: Execute each input dataflow as fast as possible without blocking.
-      You might want to use this when, e.g., you want replay to proceed as fast as possible irregardless of how fast experiences are being generated.
-
-**Metric ops** (`metric_ops.py <https://github.com/ray-project/ray/blob/master/rllib/execution/metric_ops.py>`__):
-Finally, we provide a ``StandardMetricsReporting`` operator that collects training metrics from the rollout workers in a unified fashion, and returns a stream of training result dicts.
-Execution plans should always end with this operator.
-This metrics op also reports various internal performance metrics stored by other operators in the shared metrics context accessible via ``_get_shared_metrics()``.
 
 Examples
 ~~~~~~~~
 
-.. dropdown::  **Example: Asynchrony**
+.. dropdown::  **Example: Synchronous Policy-Gradients**
 
-    Suppose we wanted to make the above A2C example asynchronous (i.e., A3C). We would switch the synchronous ``ParallelRollouts`` operator with ``AsyncGradients``, and use ``ApplyGradients`` to apply gradient updates as fast as they are collected. The ``AsyncGradients`` operator is going to execute rollouts in parallel, compute the policy gradient over the new batches (of size ``rollout_fragment_length``) on the remote workers, and then return a stream of the computed gradients:
-
-    .. code-block:: python
-
-        def execution_plan(workers: WorkerSet, config: TrainerConfigDict):
-            # type: LocalIterator[(ModelGradients, int)]
-            grads = AsyncGradients(workers)
-
-            # type: LocalIterator[_]
-            train_op = grads.for_each(ApplyGradients(workers, update_all=False))
-
-            # type: LocalIterator[ResultDict]
-            return StandardMetricsReporting(train_op, workers, config)
-
-    See also the `actual A3C implementation <https://github.com/ray-project/ray/blob/master/rllib/agents/a3c/a3c.py>`__.
-
-.. dropdown:: **Example: Replay**
-
-    Let's try adding a replay buffer to A2C. This can be done as follows by inserting store / replay ops and using ``Concurrently`` to compose them together:
+    This is what the Vanilla Policy Gradients algorithm looks like:
 
     .. code-block:: python
 
-        def execution_plan(workers: WorkerSet, config: TrainerConfigDict):
-            # Construct a replay buffer.
-            replay_buffer = LocalReplayBuffer(...)
+            def training_iteration(self) -> ResultDict:
+                # Collect SampleBatches from sample workers until we have a full batch.
+                if self._by_agent_steps:
+                    train_batch = synchronous_parallel_sample(
+                        worker_set=self.workers,
+                        max_agent_steps=self.config["train_batch_size"]
+                    )
+                else:
+                    train_batch = synchronous_parallel_sample(
+                        worker_set=self.workers,
+                        max_env_steps=self.config["train_batch_size"]
+                    )
+                train_batch = train_batch.as_multi_agent()
+                self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
+                self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
 
-            # type: LocalIterator[_]
-            store_op = ParallelRollouts(workers, mode="bulk_sync") \
-                .for_each(StoreToReplayBuffer(local_buffer=replay_buffer))
+                # Use simple optimizer (only for non-gpu cases; all other
+                # cases should use the multi-GPU optimizer, even if only using 1 GPU).
+                if self.config.get("simple_optimizer") is True:
+                    train_results = train_one_step(self, train_batch)
+                else:
+                    train_results = multi_gpu_train_one_step(self, train_batch)
 
-            # type: LocalIterator[(SampleBatchType, List[LearnerStatsDict])]
-            replay_op = Replay(local_buffer=replay_buffer) \
-                .for_each(TrainOneStep(workers))
+                # Update weights and global_vars - after learning on the local worker
+                # - on all remote workers.
+                global_vars = {
+                    "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
+                }
+                with self._timers[WORKER_UPDATE_TIMER]:
+                    self.workers.sync_weights(global_vars=global_vars)
 
-            # type: LocalIterator[(SampleBatchType, List[LearnerStatsDict])]
-            train_op = Concurrently(
-                [store_op, replay_op], mode="round_robin", output_indexes=[1])
+                return train_results
 
-            # type: LocalIterator[ResultDict]
-            return StandardMetricsReporting(train_op, workers, config)
+.. dropdown:: **Asynchronous Policy-Gradients**
 
+    A3C consists of an asynchronous sampling and training operation on rollout workers:
 
-    Note that here we set ``output_indexes=[1]`` for the ``Concurrently`` operator, which makes it only return results from the replay op. See also the `DQN implementation of replay <https://github.com/ray-project/ray/blob/master/rllib/algorithms/dqn/dqn.py>`__ for a complete example including the implementation of options such as *training intensity*.
+    .. code-block:: python
 
+            def training_iteration(self) -> ResultDict:
+                # Shortcut.
+                local_worker = self.workers.local_worker()
 
-.. dropdown:: **Example: Multi-agent**
+                # Define the function executed in parallel by all RolloutWorkers to collect
+                # samples + compute and return gradients (and other information).
 
-    One of the primary motivations behind execution plans, beyond their conciseness, is to enable complex multi-agent training workflows to be easily composed.
-    For example, suppose one wanted to, in a multi-agent environment, concurrently train one set of agents with ``DQN``, and another set with ``PPO``.
-    This requires stitching together two entirely different distributed dataflows. Fortunately, as we've seen earlier, this is quite simple with the ``Concurrently`` operator.
+                def sample_and_compute_grads(worker: RolloutWorker) -> Dict[str, Any]:
+                    """Call sample() and compute_gradients() remotely on workers."""
+                    samples = worker.sample()
+                    grads, infos = worker.compute_gradients(samples)
+                    return {
+                        "grads": grads,
+                        "infos": infos,
+                        "agent_steps": samples.agent_steps(),
+                        "env_steps": samples.env_steps(),
+                    }
 
-    Check out the `PPO + DQN multi-agent workflow example <https://github.com/ray-project/ray/blob/master/rllib/examples/two_trainer_workflow.py>`__ for more details.
-    One line to pay particular attention to in this example is the use of ``LocalIterator.duplicate()`` to clone the iterator of experiences into two separate iterators,
-    which are filtered via ``SelectExperiences`` and then consumed by PPO and DQN sub-dataflows respectively.
+                # self._worker_manager is of type `AsyncRequestsManager`.
+                # call_on_all_available submits the remote function
+                # `sample_and_compute_grads`
+                # to all workers that haven't hit the max in flight requests limit.
+                self._worker_manager.call_on_all_available(sample_and_compute_grads)
+                async_results = self._worker_manager.get_ready()
 
+                learner_info_builder = LearnerInfoBuilder()
+                for worker, results in async_results.items():
+                    for result in results:
+
+                        # Update the local worker's policy with the gradients computed by
+                        # the remote workers.
+                        local_worker.apply_gradients(result["grads"])
+                        learner_info_builder.add_learn_on_batch_results_multi_agent(
+                            result["infos"]
+                        )
+                    # broadcast the new weights on the local worker to all remote workers.
+                    weights = local_worker.get_weights(local_worker.get_policies_to_train())
+                    worker.set_weights.remote(weights, global_vars)
+                return learner_info_builder.finalize()
 
 
 .. include:: /_includes/rllib/announcement_bottom.rst

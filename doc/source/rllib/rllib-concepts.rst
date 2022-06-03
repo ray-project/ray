@@ -230,76 +230,60 @@ First, check out the `PPO trainer definition <https://github.com/ray-project/ray
 
         @staticmethod
         @override(Trainer)
-        def execution_plan(workers, config, **kwargs):
+        def training_iteration(workers, config, **kwargs):
             ...
 
-Besides some boilerplate for defining the PPO configuration and some warnings, the most important method to take note of is the ``execution_plan``.
+Besides some boilerplate for defining the PPO configuration and some warnings, the most important method to take note of is the ``training_iteration``.
 
-The trainer's `execution plan <#execution-plans>`__ defines the distributed training workflow.
+The trainer's `training iteration function <#training-iteration>`__ defines the distributed training workflow.
 Depending on the ``simple_optimizer`` trainer config,
-PPO can switch between a simple synchronous plan, or a multi-GPU plan that implements minibatch SGD (the default):
+PPO can switch between a simple synchronous optimizer, or a multi-GPU plan that implements minibatch SGD (the default):
 
 .. code-block:: python
 
-    def execution_plan(workers: WorkerSet, config: TrainerConfigDict):
-        rollouts = ParallelRollouts(workers, mode="bulk_sync")
-
-        # Collect large batches of relevant experiences & standardize.
-        rollouts = rollouts.for_each(
-            SelectExperiences(workers.trainable_policies()))
-        rollouts = rollouts.combine(
-            ConcatBatches(min_batch_size=config["train_batch_size"]))
-        rollouts = rollouts.for_each(StandardizeFields(["advantages"]))
-
-        if config["simple_optimizer"]:
-            train_op = rollouts.for_each(
-                TrainOneStep(
-                    workers,
-                    num_sgd_iter=config["num_sgd_iter"],
-                    sgd_minibatch_size=config["sgd_minibatch_size"]))
+        def training_iteration(self) -> ResultDict:
+        # Collect SampleBatches from sample workers until we have a full batch.
+        if self._by_agent_steps:
+            train_batch = synchronous_parallel_sample(
+                worker_set=self.workers, max_agent_steps=self.config["train_batch_size"]
+            )
         else:
-            train_op = rollouts.for_each(
-                TrainTFMultiGPU(
-                    workers,
-                    sgd_minibatch_size=config["sgd_minibatch_size"],
-                    num_sgd_iter=config["num_sgd_iter"],
-                    num_gpus=config["num_gpus"],
-                    rollout_fragment_length=config["rollout_fragment_length"],
-                    num_envs_per_worker=config["num_envs_per_worker"],
-                    train_batch_size=config["train_batch_size"],
-                    shuffle_sequences=config["shuffle_sequences"],
-                    _fake_gpus=config["_fake_gpus"]))
+            train_batch = synchronous_parallel_sample(
+                worker_set=self.workers, max_env_steps=self.config["train_batch_size"]
+            )
+        train_batch = train_batch.as_multi_agent()
+        self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
+        self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
 
-        # Update KL after each round of training.
-        train_op = train_op.for_each(lambda t: t[1]).for_each(UpdateKL(workers))
+        # Standardize advantages
+        train_batch = standardize_fields(train_batch, ["advantages"])
+        # Train
+        if self.config["simple_optimizer"]:
+            train_results = train_one_step(self, train_batch)
+        else:
+            train_results = multi_gpu_train_one_step(self, train_batch)
 
-        return StandardMetricsReporting(train_op, workers, config) \
-            .for_each(lambda result: warn_about_bad_reward_scales(config, result))
+        global_vars = {
+            "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
+        }
 
-Suppose we want to customize PPO to use an asynchronous-gradient optimization strategy similar to A3C. To do that, we could swap out its execution plan to that of A3C's:
+        # Update weights - after learning on the local worker - on all remote
+        # workers.
+        if self.workers.remote_workers():
+            with self._timers[WORKER_UPDATE_TIMER]:
+                self.workers.sync_weights(global_vars=global_vars)
 
-.. code-block:: python
+        # For each policy: update KL scale and warn about possible issues
+        for policy_id, policy_info in train_results.items():
+            # Update KL loss with dynamic scaling
+            # for each (possibly multiagent) policy we are training
+            kl_divergence = policy_info[LEARNER_STATS_KEY].get("kl")
+            self.get_policy(policy_id).update_kl(kl_divergence)
 
-    from ray.rllib.agents.ppo import PPOTrainer
-    from ray.rllib.execution.rollout_ops import AsyncGradients
-    from ray.rllib.execution.train_ops import ApplyGradients
-    from ray.rllib.execution.metric_ops import StandardMetricsReporting
+        # Update global vars on local worker as well.
+        self.workers.local_worker().set_global_vars(global_vars)
 
-    def a3c_execution_plan(workers, config):
-        # For A3C, compute policy gradients remotely on the rollout workers.
-        grads = AsyncGradients(workers)
-
-        # Apply the gradients as they arrive. We set update_all to False so that
-        # only the worker sending the gradient is updated with new weights.
-        train_op = grads.for_each(ApplyGradients(workers, update_all=False))
-
-        return StandardMetricsReporting(train_op, workers, config)
-
-    CustomTrainer = PPOTrainer.with_updates(
-        execution_plan=a3c_execution_plan)
-
-
-The ``with_updates`` method that we use here is also available for Torch and TF policies built from templates.
+        return train_results
 
 Now let's look at each PPO policy definition:
 
