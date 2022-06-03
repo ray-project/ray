@@ -5,18 +5,18 @@ try:
 except ImportError:
     pyarrow = None
 
-try:
-    import polars as pl
-except ImportError:
-    pl = None
-
 
 if TYPE_CHECKING:
     from ray.data.impl.sort import SortKeyT
 
+pl = None
+
 
 def check_polars_installed():
-    if pl is None:
+    try:
+        global pl
+        import polars as pl
+    except ImportError:
         raise ImportError(
             "polars not installed. Install with `pip install polars` or set "
             "`DatasetContext.use_polars = False` to fall back to pyarrow"
