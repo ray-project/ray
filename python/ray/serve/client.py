@@ -425,8 +425,8 @@ class ServeControllerClient:
                 "You are retrieving an async handle outside an asyncio loop. "
                 "You should make sure Deployment.get_handle is called inside a "
                 "running event loop. Or call Deployment.get_handle(.., sync=True) "
-                "to create sync handle. Learn more at https://docs.ray.io/en/latest/serve/"
-                "handle-guide.html#sync-and-async-handles"
+                "to create sync handle. Learn more at https://docs.ray.io/en/latest/"
+                "serve/handle-guide.html#sync-and-async-handles"
             )
 
         if sync:
