@@ -189,13 +189,13 @@ class DatasetPipeline(Generic[T]):
                 yield block
                 if len(latest_blocks) == latest_blocks.maxlen:
                     block_ref = latest_blocks.popleft()
-                    # Eagerly clear the object to reduce the memory footprint, as
-                    # we don't need to wait the delay of Python GC.
+                    # Eagerly clear the object before Python GC kicks in, which may 
+                    # have certain delay, to reduce the memory footprint.
                     # Notes:
-                    # - We cannot make this optimization if it's eager dataset, since
-                    #   this destructs the dataset.
+                    # - We cannot make this optimization if it's eager dataset, as
+                    #   this will destruct the dataset.
                     # - We can only clear the block if it has passed the prefetch
-                    #   window, i.e. the block is consdered already consumed.
+                    #   window, i.e. the block is already consumed.
                     if ds._lazy:
                         ray.internal.internal_api.free(block_ref)
                 latest_blocks.append(block)
