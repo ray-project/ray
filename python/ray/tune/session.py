@@ -118,7 +118,15 @@ def tune_task_and_actor_launch_hook(
     _checked_resources.add(key)
 
     # Check if the request can be fulfilled by the current placement group.
-    if _valid_resource_shape(resources, cur_pg.bundle_specs[1:]):
+    pgf = get_trial_resources()
+
+    if pgf.head_bundle_is_empty:
+        available_bundles = cur_pg.bundle_specs[0:]
+    else:
+        available_bundles = cur_pg.bundle_specs[1:]
+
+    # Check if the request can be fulfilled by the current placement group.
+    if _valid_resource_shape(resources, available_bundles):
         return
 
     if fn.class_name:
