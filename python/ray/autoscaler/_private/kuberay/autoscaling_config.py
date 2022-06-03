@@ -58,7 +58,8 @@ class AutoscalingConfigProducer:
         result = requests.get(
             self._ray_cr_url, headers=self._headers, verify=self._verify
         )
-        assert result.status_code == 200
+        if not result.status_code == 200:
+            result.raise_for_status()
         ray_cr = result.json()
         return ray_cr
 
