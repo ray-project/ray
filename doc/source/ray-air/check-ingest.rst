@@ -111,10 +111,11 @@ Streaming Ingest
 AIR also supports streaming ingest via the DatasetPipeline feature. Streaming ingest is preferable when you are using large datasets
 that don't fit into memory, and prefer to read *windows* of data from storage to minimize the active memory required for data ingest.
 
-To enable streaming ingest, set ``use_stream_api = True``. By default, this will configure streaming ingest with a window
+To enable streaming ingest, set ``use_stream_api=True`` in the dataset config. By default, this will configure streaming ingest with a window
 size of 1GiB, which means AIR will load ~1 GiB of data at a time from the datasource.
 Performance can be increased with larger window sizes, which can be adjusted using the ``stream_window_size`` config.
-A reasonable stream window size is something like 20% of available object store memory.
+A reasonable stream window size is something like 20% of available object store memory. Note that the data may be larger
+once deserialized in memory, or if individual files are larger than the window size.
 If the window size is set to -1, then an infinite window size (equivalent to bulk loading) will be used.
 
 .. warning::
