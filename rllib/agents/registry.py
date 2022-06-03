@@ -194,9 +194,7 @@ def _import_td3():
 ALGORITHMS = {
     "A2C": _import_a2c,
     "A3C": _import_a3c,
-    "AlphaStar": _import_alpha_star,
     "AlphaZero": _import_alpha_zero,
-    "APPO": _import_appo,
     "APEX": _import_apex,
     "APEX_DDPG": _import_apex_ddpg,
     "ARS": _import_ars,
@@ -210,6 +208,8 @@ ALGORITHMS = {
     "DQN": _import_dqn,
     "Dreamer": _import_dreamer,
     "IMPALA": _import_impala,
+    "APPO": _import_appo,
+    "AlphaStar": _import_alpha_star,
     "MADDPG": _import_maddpg,
     "MAML": _import_maml,
     "MARWIL": _import_marwil,

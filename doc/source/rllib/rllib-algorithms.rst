@@ -17,13 +17,15 @@ Algorithm                      Frameworks Discrete Actions              Continuo
 ============================== ========== ============================= ================== =========== ============================================================= ===============
 `A2C`_                         tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   A2C: tf + torch
 `A3C`_                         tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   No
+`AlphaZero`_                   torch      **Yes** `+parametric`_        No                 No                                                                        No
+`APPO`_                        tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   tf + torch
 `ARS`_                         tf + torch **Yes**                       **Yes**            No                                                                        No
 `Bandits`_ (`TS`_ & `LinUCB`_) torch      **Yes** `+parametric`_        No                 **Yes**                                                                   No
 `BC`_                          tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_                                                       torch
 `CQL`_                         tf + torch No                            **Yes**            No                                                                        tf + torch
-`ES`_                          tf + torch **Yes**                       **Yes**            No                                                                        No
-`DDPG`_, `TD3`_                tf + torch No                            **Yes**            **Yes**                                                                   torch
+`DDPG`_                        tf + torch No                            **Yes**            **Yes**                                                                   torch
 `APEX-DDPG`_                   tf + torch No                            **Yes**            **Yes**                                                                   torch
+`ES`_                          tf + torch **Yes**                       **Yes**            No                                                                        No
 `Dreamer`_                     torch      No                            **Yes**            No          `+RNN`_                                                       torch
 `DQN`_, `Rainbow`_             tf + torch **Yes** `+parametric`_        No                 **Yes**                                                                   tf + torch
 `APEX-DQN`_                    tf + torch **Yes** `+parametric`_        No                 **Yes**                                                                   torch
@@ -32,11 +34,11 @@ Algorithm                      Frameworks Discrete Actions              Continuo
 `MARWIL`_                      tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_                                                       torch
 `MBMPO`_                       torch      No                            **Yes**            No                                                                        torch
 `PG`_                          tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   tf + torch
-`PPO`_, `APPO`_                tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   tf + torch
+`PPO`_                         tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   tf + torch
 `R2D2`_                        tf + torch **Yes** `+parametric`_        No                 **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+autoreg`_                  torch
 `SAC`_                         tf + torch **Yes**                       **Yes**            **Yes**                                                                   torch
 `SlateQ`_                      tf + torch **Yes** (multi-discr. slates) No                 No                                                                        torch
-`AlphaZero`_                   torch      **Yes** `+parametric`_        No                 No                                                                        No
+`TD3`_                         tf + torch No                            **Yes**            **Yes**                                                                   torch
 ============================== ========== ============================= ================== =========== ============================================================= ===============
 
 Multi-Agent only Methods
@@ -68,7 +70,6 @@ Algorithm                        Frameworks Discrete Actions        Continuous A
 .. _`+parametric`: rllib-models.html#variable-length-parametric-action-spaces
 .. _`Rainbow`: rllib-algorithms.html#dqn
 .. _`+RNN`: rllib-models.html#rnns
-.. _`TD3`: rllib-algorithms.html#ddpg
 .. _`+Attention`: rllib-models.html#attention
 .. _`TS`: rllib-algorithms.html#lints
 .. _`LinUCB`: rllib-algorithms.html#lin-ucb
