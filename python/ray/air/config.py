@@ -11,7 +11,7 @@ from typing import (
     Union,
 )
 
-from ray.ml.constants import WILDCARD_KEY
+from ray.air.constants import WILDCARD_KEY
 from ray.tune.syncer import SyncConfig
 from ray.tune.utils.log import Verbosity
 from ray.util import PublicAPI

@@ -90,8 +90,8 @@ trainer.fit()
 
 # __config_1__
 import ray
-from ray.ml.train.data_parallel_trainer import DataParallelTrainer
-from ray.ml.config import DatasetConfig
+from ray.air.train.data_parallel_trainer import DataParallelTrainer
+from ray.air.config import DatasetConfig
 
 train_ds = ray.data.range_tensor(1000)
 valid_ds = ray.data.range_tensor(100)
@@ -118,8 +118,8 @@ print(my_trainer.get_dataset_config())
 
 # __config_2__
 import ray
-from ray.ml.train.data_parallel_trainer import DataParallelTrainer
-from ray.ml.config import DatasetConfig
+from ray.air.train.data_parallel_trainer import DataParallelTrainer
+from ray.air.config import DatasetConfig
 
 train_ds = ray.data.range_tensor(1000)
 side_ds = ray.data.range_tensor(10)
