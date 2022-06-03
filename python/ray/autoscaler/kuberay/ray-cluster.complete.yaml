@@ -53,9 +53,6 @@ spec:
         annotations:
           key: value
       spec:
-        # This is needed to give the autoscaler side car permissions to query and update
-        # definitions in the Kubernetes API server (see kuberay-autoscaler-rbac.yaml)
-        serviceAccountName: autoscaler-sa
         containers:
         # The Ray head pod
         - name: ray-head
