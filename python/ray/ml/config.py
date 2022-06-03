@@ -154,15 +154,16 @@ class DatasetConfig:
     # True by default for all datasets.
     transform: Optional[bool] = None
 
-    # Whether the dataset can be streamed into memory using pipelined reads.
+    # Whether the dataset should be streamed into memory using pipelined reads.
     # When enabled, get_dataset_shard() returns DatasetPipeline instead of Dataset.
-    # Note that streaming isn't enabled unless you set stream_window_size too.
+    # The amount of memory to use is controlled by `stream_window_size`.
     # False by default for all datasets.
     use_stream_api: Optional[bool] = None
 
-    # Enable streaming ingest and configure the streaming window size in bytes.
-    # A typical value is something like 20% of object store memory. Should be >1GiB at
-    # min. This requires `use_stream_api = True` to have an effect.
+    # Configure the streaming window size in bytes. A typical value is something like
+    # 20% of object store memory. If set to -1, then an infinite window size will be
+    # used (similar to bulk ingest). This only has an effect if use_stream_api is set.
+    # Set to 1.0 GiB by default.
     stream_window_size: Optional[float] = None
 
     # Whether to enable global shuffle (per pipeline window in streaming mode). Note
@@ -183,7 +184,7 @@ class DatasetConfig:
             use_stream_api=self.use_stream_api or False,
             stream_window_size=self.stream_window_size
             if self.stream_window_size is not None
-            else -1,
+            else 1024 * 1024 * 1024,
             global_shuffle=self.global_shuffle or False,
             transform=self.transform if self.transform is not None else True,
             _noncustomizable_fields=self._noncustomizable_fields,
@@ -225,12 +226,6 @@ class DatasetConfig:
         fittable = set()
         result = {k: v.fill_defaults() for k, v in config.items()}
         for k, v in result.items():
-            if v.stream_window_size > 0:
-                if not v.use_stream_api:
-                    raise ValueError(
-                        "`stream_window_size` cannot be set unless "
-                        "`use_stream_api=True`"
-                    )
             if v.fit:
                 fittable.add(k)
                 if not v.transform:
