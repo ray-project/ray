@@ -164,7 +164,7 @@ Common Parameters
     objects, which have the advantage of being type safe, allowing users to set different config settings within
     meaningful sub-categories (e.g. ``my_config.training(lr=0.0003)``), and offer the ability to
     construct a Trainer instance from these config objects (via their ``build()`` method).
-    So far, this is only supported for some Trainer classes, such as :py:class:`~ray.rllib.algorithms.ppo.ppo.PPO`,
+    So far, this is only supported for some Trainer classes, such as :py:class:`~ray.rllib.agents.ppo.ppo.PPOTrainer`,
     but we are rolling this out right now across all RLlib.
 
 The following is a list of the common algorithm hyper-parameters:
@@ -709,14 +709,14 @@ Here is an example of the basic usage (for a more complete example, see `custom_
 .. code-block:: python
 
     import ray
-    import ray.rllib.algorithms.ppo as ppo
+    import ray.rllib.agents.ppo as ppo
     from ray.tune.logger import pretty_print
 
     ray.init()
     config = ppo.DEFAULT_CONFIG.copy()
     config["num_gpus"] = 0
     config["num_workers"] = 1
-    trainer = ppo.PPO(config=config, env="CartPole-v0")
+    trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
 
     # Can optionally call trainer.restore(path) to load a checkpoint.
 
@@ -787,7 +787,7 @@ It also simplifies saving the trained agent. For example:
     # tune.run() allows setting a custom log directory (other than ``~/ray-results``)
     # and automatically saving the trained agent
     analysis = ray.tune.run(
-        ppo.PPO,
+        ppo.PPOTrainer,
         config=config,
         local_dir=log_dir,
         stop=stop_criteria,
@@ -811,7 +811,7 @@ Loading and restoring a trained agent from a checkpoint is simple:
 
 .. code-block:: python
 
-    agent = ppo.PPO(config=config, env=env_class)
+    agent = ppo.PPOTrainer(config=config, env=env_class)
     agent.restore(checkpoint_path)
 
 
@@ -1344,10 +1344,10 @@ customizations to your training loop.
 
     import ray
     from ray import tune
-    from ray.rllib.algorithms.ppo import PPO
+    from ray.rllib.agents.ppo import PPOTrainer
 
     def train(config, reporter):
-        trainer = PPO(config=config, env=YourEnv)
+        trainer = PPOTrainer(config=config, env=YourEnv)
         while True:
             result = trainer.train()
             reporter(**result)

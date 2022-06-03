@@ -595,7 +595,7 @@ provider:
         ray_usage_lib._recorded_library_usages.clear()
         if os.environ.get("RAY_MINIMAL") != "1":
             from ray import tune  # noqa: F401
-            from ray.rllib.algorithms.ppo import PPO  # noqa: F401
+            from ray.rllib.agents.ppo import PPOTrainer  # noqa: F401
             from ray import train  # noqa: F401
 
         ray.init(address=cluster.address)

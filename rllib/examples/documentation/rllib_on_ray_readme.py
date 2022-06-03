@@ -1,6 +1,6 @@
 # __quick_start_begin__
 import gym
-from ray.rllib.algorithms.ppo import PPO
+from ray.rllib.agents.ppo import PPOTrainer
 
 
 # Define your problem using python and openAI's gym API:
@@ -49,7 +49,7 @@ class SimpleCorridor(gym.Env):
 
 
 # Create an RLlib Trainer instance.
-trainer = PPO(
+trainer = PPOTrainer(
     config={
         # Env class to use (here: our gym.Env sub-class from above).
         "env": SimpleCorridor,
