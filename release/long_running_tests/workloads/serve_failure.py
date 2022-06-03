@@ -100,7 +100,13 @@ class RandomTest:
     def create_deployment(self):
         if len(self.deployments) == self.max_deployments:
             deployment_to_delete = self.deployments.pop()
-            serve.get_deployment(deployment_to_delete).delete()
+            try:
+                serve.get_deployment(deployment_to_delete).delete()
+            except Exception:
+                # Sometimes it is bad luck, the controller keeps getting killed.
+                # let's try one more time before we fail the test.
+                time.sleep(10)
+                serve.get_deployment(deployment_to_delete).delete()
 
         new_name = "".join([random.choice(string.ascii_letters) for _ in range(10)])
 
