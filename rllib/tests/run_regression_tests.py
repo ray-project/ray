@@ -35,6 +35,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--num-runs",
+    type=int,
     default=3,
     help="Number of times we try each algorithm to make sure things work.",
 )
