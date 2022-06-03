@@ -204,6 +204,21 @@ def kubectl_exec(
     return out
 
 
+def kubectl_logs(
+    pod: str,
+    namespace: str,
+    container: Optional[str] = None,
+) -> str:
+    """Wrapper for kubectl logs.
+
+    Returns the logs as a string.
+    """
+    container_option = ["-c", container] if container else []
+    kubectl_logs_command = ["kubectl", "logs", pod] + container_option
+    out = subprocess.check_output(kubectl_logs_command).decode().strip()
+    return out
+
+
 def kubectl_exec_python_script(
     script_name: str,
     pod: str,

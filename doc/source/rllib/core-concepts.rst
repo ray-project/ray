@@ -292,7 +292,7 @@ Examples
             # type: LocalIterator[ResultDict]
             return StandardMetricsReporting(train_op, workers, config)
 
-    See also the `actual A3C implementation <https://github.com/ray-project/ray/blob/master/rllib/agents/a3c/a3c.py>`__.
+    See also the `actual A3C implementation <https://github.com/ray-project/ray/blob/master/rllib/algorithms/a3c/a3c.py>`__.
 
 .. dropdown:: **Example: Replay**
 

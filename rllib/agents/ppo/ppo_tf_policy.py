@@ -29,6 +29,7 @@ from ray.rllib.utils.typing import (
     LocalOptimizer,
     ModelGradients,
     TensorType,
+    TFPolicyV2Type,
     TrainerConfigDict,
 )
 
@@ -40,7 +41,7 @@ logger = logging.getLogger(__name__)
 def validate_config(config: TrainerConfigDict) -> None:
     """Executed before Policy is "initialized" (at beginning of constructor).
     Args:
-        config (TrainerConfigDict): The Policy's config.
+        config: The Policy's config.
     """
     # If vf_share_layers is True, inform about the need to tune vf_loss_coeff.
     if config.get("model", {}).get("vf_share_layers") is True:
@@ -52,7 +53,7 @@ def validate_config(config: TrainerConfigDict) -> None:
 
 # We need this builder function because we want to share the same
 # custom logics between TF1 dynamic and TF2 eager policies.
-def get_ppo_tf_policy(base: type) -> type:
+def get_ppo_tf_policy(base: TFPolicyV2Type) -> TFPolicyV2Type:
     """Construct a PPOTFPolicy inheriting either dynamic or eager base policies.
 
     Args:

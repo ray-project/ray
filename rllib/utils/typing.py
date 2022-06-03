@@ -6,13 +6,16 @@ from typing import (
     List,
     Optional,
     Tuple,
-    Union,
+    Type,
     TypeVar,
     TYPE_CHECKING,
+    Union,
 )
 
 if TYPE_CHECKING:
     from ray.rllib.env.env_context import EnvContext
+    from ray.rllib.policy.dynamic_tf_policy_v2 import DynamicTFPolicyV2
+    from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
     from ray.rllib.policy.policy import PolicySpec
     from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
     from ray.rllib.policy.view_requirement import ViewRequirement
@@ -79,6 +82,9 @@ MultiAgentPolicyConfigDict = Dict[PolicyID, "PolicySpec"]
 # State dict of a Policy, mapping strings (e.g. "weights") to some state
 # data (TensorStructType).
 PolicyState = Dict[str, TensorStructType]
+
+# Any tf Policy type (static-graph or eager Policy).
+TFPolicyV2Type = Type[Union["DynamicTFPolicyV2", "EagerTFPolicyV2"]]
 
 # Represents an episode id.
 EpisodeID = int
