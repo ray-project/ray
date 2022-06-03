@@ -90,8 +90,8 @@ Here are some examples of configuring Dataset ingest options and what they do:
         :end-before: __config_2_end__
 
 
-Bulk vs Streaming Ingest
-------------------------
+Bulk vs Streaming Reads
+-----------------------
 
 Bulk Ingest
 ~~~~~~~~~~~
