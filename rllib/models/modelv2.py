@@ -283,8 +283,8 @@ class ModelV2:
             h5_file: The h5 file name to import weights from.
 
         Example:
-            >>> from ray.rllib.agents.ppo import PPOTrainer
-            >>> trainer = PPOTrainer(...)  # doctest: +SKIP
+            >>> from ray.rllib.algorithms.ppo import PPO
+            >>> trainer = PPO(...)  # doctest: +SKIP
             >>> trainer.import_policy_model_from_h5("/tmp/weights.h5") # doctest: +SKIP
             >>> for _ in range(10): # doctest: +SKIP
             >>>     trainer.train() # doctest: +SKIP

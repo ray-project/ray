@@ -20,12 +20,12 @@ import os
 
 import ray
 from ray import tune
-from ray.rllib.agents.ppo.ppo import PPOTrainer
-from ray.rllib.agents.ppo.ppo_tf_policy import (
-    PPOStaticGraphTFPolicy,
-    PPOEagerTFPolicy,
+from ray.rllib.algorithms.ppo.ppo import PPO
+from ray.rllib.algorithms.ppo.ppo_tf_policy import (
+    PPOTF1Policy,
+    PPOTF2Policy,
 )
-from ray.rllib.agents.ppo.ppo_torch_policy import PPOTorchPolicy
+from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
 from ray.rllib.evaluation.postprocessing import compute_advantages, Postprocessing
 from ray.rllib.examples.env.two_step_game import TwoStepGame
 from ray.rllib.examples.models.centralized_critic_models import (
@@ -209,8 +209,8 @@ def get_ccppo_policy(base):
     return CCPPOTFPolicy
 
 
-CCPPOStaticGraphTFPolicy = get_ccppo_policy(PPOStaticGraphTFPolicy)
-CCPPOEagerTFPolicy = get_ccppo_policy(PPOEagerTFPolicy)
+CCPPOStaticGraphTFPolicy = get_ccppo_policy(PPOTF1Policy)
+CCPPOEagerTFPolicy = get_ccppo_policy(PPOTF2Policy)
 
 
 class CCPPOTorchPolicy(CentralizedValueMixin, PPOTorchPolicy):
@@ -231,8 +231,8 @@ class CCPPOTorchPolicy(CentralizedValueMixin, PPOTorchPolicy):
         )
 
 
-class CCTrainer(PPOTrainer):
-    @override(PPOTrainer)
+class CCTrainer(PPO):
+    @override(PPO)
     def get_default_policy_class(self, config):
         if config["framework"] == "torch":
             return CCPPOTorchPolicy
