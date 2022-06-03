@@ -228,7 +228,8 @@ class DatasetConfig:
             if v.stream_window_size > 0:
                 if not v.use_stream_api:
                     raise ValueError(
-                        "`stream_window_size` cannot be set unless `use_stream_api=True`"
+                        "`stream_window_size` cannot be set unless "
+                        "`use_stream_api=True`"
                     )
             if v.fit:
                 fittable.add(k)
