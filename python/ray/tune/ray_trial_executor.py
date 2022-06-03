@@ -33,7 +33,6 @@ from ray.tune.result import TRIAL_INFO, STDOUT_FILE, STDERR_FILE
 from ray.tune.utils.placement_groups import _PlacementGroupManager, get_tune_pg_prefix
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.trial import Trial, _TuneCheckpoint, _Location, _TrialInfo
-from ray.tune.trial_executor import TrialExecutor
 from ray.tune.utils import warn_if_slow
 from ray.tune.utils.resource_updater import _ResourceUpdater
 from ray.util import log_once
@@ -193,7 +192,7 @@ class _ExecutorEvent:
 
 
 @DeveloperAPI
-class RayTrialExecutor(TrialExecutor):
+class RayTrialExecutor:
     """An implementation of TrialExecutor based on Ray."""
 
     def __init__(
@@ -202,7 +201,9 @@ class RayTrialExecutor(TrialExecutor):
         result_buffer_length: Optional[int] = None,
         refresh_period: Optional[float] = None,
     ):
-        super(RayTrialExecutor, self).__init__()
+        self._cached_trial_state = {}
+        self._trials_to_cache = set()
+
         # future --> (type, trial/pg)
         self._futures = {}
 
@@ -247,6 +248,37 @@ class RayTrialExecutor(TrialExecutor):
         else:
             self._cached_actor_pg = deque(maxlen=max_pending)
         self._pg_manager.set_max_staging(max_pending)
+
+    def set_status(self, trial: Trial, status: str) -> None:
+        """Sets status and checkpoints metadata if needed.
+
+        Only checkpoints metadata if trial status is a terminal condition.
+        PENDING, PAUSED, and RUNNING switches have checkpoints taken care of
+        in the TrialRunner.
+
+        Args:
+            trial: Trial to checkpoint.
+            status: Status to set trial to.
+        """
+        if trial.status == status:
+            logger.debug("Trial %s: Status %s unchanged.", trial, trial.status)
+        else:
+            logger.debug(
+                "Trial %s: Changing status from %s to %s.", trial, trial.status, status
+            )
+        trial.set_status(status)
+        if status in [Trial.TERMINATED, Trial.ERROR]:
+            self._trials_to_cache.add(trial)
+
+    def mark_trial_to_checkpoint(self, trial: Trial) -> None:
+        self._trials_to_cache.add(trial)
+
+    def get_checkpoints(self) -> Dict[str, str]:
+        """Returns a copy of mapping of the trial ID to pickled metadata."""
+        for trial in self._trials_to_cache:
+            self._cached_trial_state[trial.trial_id] = trial.get_json_state()
+        self._trials_to_cache.clear()
+        return self._cached_trial_state
 
     def _stage_and_update_status(self, trials: Iterable[Trial]):
         """Check and update statuses of scheduled placement groups.
@@ -566,6 +598,21 @@ class RayTrialExecutor(TrialExecutor):
     def continue_training(self, trial: Trial) -> None:
         """Continues the training of this trial."""
         self._train(trial)
+
+    def pause_trial(self, trial: Trial) -> None:
+        """Pauses the trial.
+
+        We want to release resources (specifically GPUs) when pausing an
+        experiment. This results in PAUSED state that similar to TERMINATED.
+        """
+        assert trial.status == Trial.RUNNING, trial.status
+        try:
+            self.save(trial, _TuneCheckpoint.MEMORY)
+            self.stop_trial(trial)
+            self.set_status(trial, Trial.PAUSED)
+        except Exception:
+            logger.exception("Error pausing runner.")
+            self.set_status(trial, Trial.ERROR)
 
     def reset_trial(
         self,
