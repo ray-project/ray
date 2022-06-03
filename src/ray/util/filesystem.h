@@ -66,13 +66,22 @@ std::string JoinPaths(std::string base, const Paths &...components) {
 }
 
 /// Monitor the filesystem capacity ray is using.
-/// This class is not thread safe.
+/// This class is thread safe.
 class FileSystemMonitor {
  public:
+  /// Constructor.
+  ///
+  /// \param path path of the file system to monitor the usage.
+  /// \param capacity_threshold a value between 0-1 indicates the capacity limit.
+  /// \param monitor_interval_ms control the frequency to check the disk usage.
   FileSystemMonitor(const std::string &path,
                     double capacity_threshold,
-                    int64_t monitor_interval_ms);
+                    int64_t monitor_interval_ms = 0);
+
+  /// return the disk usage.
   std::optional<std::filesystem::space_info> Space();
+
+  /// returns true if the disk usage is over the capacity threshold.
   bool OverCapacity();
 
  private:
