@@ -189,7 +189,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
             ],
             key=lambda x: x[1],
         )[0]
-        assert best_checkpoint == expected_checkpoint_no_nan
+        assert best_checkpoint._local_path == expected_checkpoint_no_nan
 
     def testGetLastCheckpoint(self):
         # one more experiment with 2 iterations
@@ -206,7 +206,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         )
 
         # check if it's loaded correctly
-        last_checkpoint = new_ea.get_last_checkpoint().local_path
+        last_checkpoint = new_ea.get_last_checkpoint()._local_path
         assert self.test_path in last_checkpoint
         assert "checkpoint_000002" in last_checkpoint
 
