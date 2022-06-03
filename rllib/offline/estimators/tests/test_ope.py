@@ -40,6 +40,7 @@ class TestOPE(unittest.TestCase):
 
         config = (
             DQNConfig()
+            .rollouts(num_rollout_workers=2)
             .environment(env=env_name)
             .training(gamma=gamma)
             .exploration(
@@ -132,7 +133,7 @@ class TestOPE(unittest.TestCase):
         print("stddev: ", std_ret)
 
     def test_offline_evaluation_input(self):
-        # Test that we can use input_=some_dataset on eval workers
+        # Test that we can use input_=some_dataset and OPE in evaluation_config
         rllib_dir = Path(__file__).parent.parent.parent.parent
         print("rllib dir={}".format(rllib_dir))
         data_file = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
@@ -144,6 +145,7 @@ class TestOPE(unittest.TestCase):
 
         config = (
             DQNConfig()
+            .rollouts(num_rollout_workers=2)
             .training(gamma=gamma)
             .environment(env=env_name)
             .offline_data(
@@ -162,35 +164,27 @@ class TestOPE(unittest.TestCase):
             )
             .evaluation(
                 evaluation_interval = 1,
-                evaluation_num_workers = 0,
+                evaluation_num_workers = 1,
                 evaluation_config={
-                    "input": data_file,
-                    # "off_policy_estimation_methods": {
-                    #     "simulation": {"type": "simulation"},
-                    #     "wis" : {"type" : WeightedImportanceSampling},
-                    # },
+                    "input": os.path.join(rllib_dir, "tests/data/cartpole/small.json"),
+                    "off_policy_estimation_methods": {
+                        "simulation": {"type": "simulation"},
+                        "wis" : {"type" : WeightedImportanceSampling},
+                    },
                 }
             )
             .framework("torch")
             .rollouts(batch_mode="complete_episodes")
         )
 
-        # Train DQN for evaluation policy
         analysis = tune.run(
             "DQN",
             config=config.to_dict(),
             stop={"timesteps_total": train_steps},
             verbose=3,
         )
-        breakpoint()
-
-    def test_offline_both_inputs(self):
-        # Should probably just error out
-        pass
-
-    def test_ope_on_eval_only(self):
-        # Move ope to eval workers only, raise warning ope is specified in training
-        pass
+        print("Training", analysis.best_result["off_policy_estimator"])
+        print("Evaluation", analysis.best_result["evaluation"]["off_policy_estimator"])
 
     def test_ope_simple_replaybuffer(self):
         # Move estimator.process calls out of worker.sample and make it take in a
