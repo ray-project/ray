@@ -1,3 +1,5 @@
+from typing import List, Callable, Any
+
 import ray
 from ray.util.annotations import PublicAPI
 
@@ -7,7 +9,7 @@ class ActorPool:
     """Utility class to operate on a fixed pool of actors.
 
     Arguments:
-        actors (list): List of Ray actor handles to use in this pool.
+        actors: List of Ray actor handles to use in this pool.
 
     Examples:
         >>> import ray
@@ -22,7 +24,7 @@ class ActorPool:
         [2, 4, 6, 8]
     """
 
-    def __init__(self, actors):
+    def __init__(self, actors: list):
         # actors to be used
         self._idle_actors = list(actors)
 
@@ -41,7 +43,7 @@ class ActorPool:
         # next work depending when actors free
         self._pending_submits = []
 
-    def map(self, fn, values):
+    def map(self, fn: Callable[[Any], Any], values: List[Any]):
         """Apply the given function in parallel over the actors and values.
 
         This returns an ordered iterator that will return results of the map
@@ -49,10 +51,10 @@ class ActorPool:
         the computation to finish.
 
         Arguments:
-            fn (func): Function that takes (actor, value) as argument and
+            fn: Function that takes (actor, value) as argument and
                 returns an ObjectRef computing the result over the value. The
                 actor will be considered busy until the ObjectRef completes.
-            values (list): List of values that fn(actor, value) should be
+            values: List of values that fn(actor, value) should be
                 applied to.
 
         Returns:
@@ -78,7 +80,7 @@ class ActorPool:
         while self.has_next():
             yield self.get_next()
 
-    def map_unordered(self, fn, values):
+    def map_unordered(self, fn: Callable[[Any], Any], values: List[Any]):
         """Similar to map(), but returning an unordered iterator.
 
         This returns an unordered iterator that will return results of the map
@@ -86,10 +88,10 @@ class ActorPool:
         take longer to compute than others.
 
         Arguments:
-            fn (func): Function that takes (actor, value) as argument and
+            fn: Function that takes (actor, value) as argument and
                 returns an ObjectRef computing the result over the value. The
                 actor will be considered busy until the ObjectRef completes.
-            values (list): List of values that fn(actor, value) should be
+            values: List of values that fn(actor, value) should be
                 applied to.
 
         Returns:
@@ -123,10 +125,10 @@ class ActorPool:
         get_next() / get_next_unordered().
 
         Arguments:
-            fn (func): Function that takes (actor, value) as argument and
+            fn: Function that takes (actor, value) as argument and
                 returns an ObjectRef computing the result over the value. The
                 actor will be considered busy until the ObjectRef completes.
-            value (object): Value to compute a result for.
+            value: Value to compute a result for.
 
         Examples:
             >>> from ray.util.actor_pool import ActorPool
