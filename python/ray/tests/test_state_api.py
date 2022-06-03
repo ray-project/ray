@@ -48,6 +48,7 @@ from ray.dashboard.state_aggregator import (
     StateAPIManager,
     GCS_QUERY_FAILURE_WARNING,
     NODE_QUERY_FAILURE_WARNING,
+    _convert_filters_type,
 )
 from ray.experimental.state.api import (
     list_actors,
@@ -80,7 +81,6 @@ from ray.experimental.state.state_cli import (
     list_state_cli_group,
     get_state_api_output_to_print,
     AvailableFormat,
-    _convert_filters_type,
 )
 from ray.runtime_env import RuntimeEnv
 from ray._private.test_utils import wait_for_condition
@@ -1375,7 +1375,6 @@ def test_filter(shutdown_only):
         result = list_objects(
             filters=[("pid", pid), ("reference_type", "LOCAL_REFERENCE")]
         )
-        print(result)
         return len(result) == 1
 
     wait_for_condition(verify)

@@ -2,7 +2,6 @@ import click
 import json
 import yaml
 
-from dataclasses import fields
 from enum import Enum, unique
 from typing import Union, List, Tuple
 
@@ -22,18 +21,6 @@ from ray.experimental.state.api import (
     list_tasks,
     list_objects,
     list_runtime_envs,
-)
-from ray.experimental.state.common import (
-    SupportedFilterType,
-    StateSchema,
-    JobState,
-    ActorState,
-    PlacementGroupState,
-    WorkerState,
-    TaskState,
-    ObjectState,
-    RuntimeEnvState,
-    NodeState,
 )
 
 
@@ -81,62 +68,6 @@ def _should_explain(format: AvailableFormat):
     # If the format is json or yaml, it should not print stats because
     # users don't want additional strings.
     return format == AvailableFormat.DEFAULT or format == AvailableFormat.TABLE
-
-
-def _convert_filters_type(
-    filter: List[Tuple[str, str]], schema: StateSchema
-) -> List[Tuple[str, SupportedFilterType]]:
-    """Convert the given filter's type to SupportedFilterType.
-
-    This method is necessary because click can only accept a single type
-    for its tuple (which is string in this case).
-
-    Args:
-        filter: A list of filter which is a tuple of (key, val).
-        schema: The state schema. It is used to infer the type of the column for filter.
-
-    Returns:
-        A new list of filters with correctly types that match the schema.
-    """
-    new_filter = []
-    schema = {field.name: field.type for field in fields(schema)}
-
-    for col, val in filter:
-        if col in schema:
-            column_type = schema[col]
-            if column_type is int:
-                try:
-                    val = int(val)
-                except ValueError:
-                    raise ValueError(
-                        f"Invalid filter `--filter {col} {val}` for a int type "
-                        "column. Please provide an integer filter "
-                        f"`--filter {col} [int]`"
-                    )
-            elif column_type is float:
-                try:
-                    val = float(val)
-                except ValueError:
-                    raise ValueError(
-                        f"Invalid filter `--filter {col} {val}` for a float "
-                        "type column. Please provide an integer filter "
-                        f"`--filter {col} [float]`"
-                    )
-            elif column_type is bool:
-                # Without this, "False" will become True.
-                if val == "False" or val == "false" or val == "0":
-                    val = False
-                elif val == "True" or val == "true" or val == "1":
-                    val = True
-                else:
-                    raise ValueError(
-                        f"Invalid filter `--filter {col} {val}` for a boolean "
-                        "type column. Please provide "
-                        f"`--filter {col} [True|true|1]` for True or "
-                        f"`--filter {col} [False|false|0]` for False."
-                    )
-        new_filter.append((col, val))
-    return new_filter
 
 
 @click.group("list")
@@ -194,7 +125,7 @@ def actors(ctx, format: str, filter: List[Tuple[str, str]]):
         get_state_api_output_to_print(
             list_actors(
                 api_server_url=url,
-                filters=_convert_filters_type(filter, ActorState),
+                filters=filter,
                 _explain=_should_explain(format),
             ),
             format=format,
@@ -213,7 +144,7 @@ def placement_groups(ctx, format: str, filter: List[Tuple[str, str]]):
         get_state_api_output_to_print(
             list_placement_groups(
                 api_server_url=url,
-                filters=_convert_filters_type(filter, PlacementGroupState),
+                filters=filter,
                 _explain=_should_explain(format),
             ),
             format=format,
@@ -232,7 +163,7 @@ def nodes(ctx, format: str, filter: List[Tuple[str, str]]):
         get_state_api_output_to_print(
             list_nodes(
                 api_server_url=url,
-                filters=_convert_filters_type(filter, NodeState),
+                filters=filter,
                 _explain=_should_explain(format),
             ),
             format=format,
@@ -251,7 +182,7 @@ def jobs(ctx, format: str, filter: List[Tuple[str, str]]):
         get_state_api_output_to_print(
             list_jobs(
                 api_server_url=url,
-                filters=_convert_filters_type(filter, JobState),
+                filters=filter,
                 _explain=_should_explain(format),
             ),
             format=format,
@@ -270,7 +201,7 @@ def workers(ctx, format: str, filter: List[Tuple[str, str]]):
         get_state_api_output_to_print(
             list_workers(
                 api_server_url=url,
-                filters=_convert_filters_type(filter, WorkerState),
+                filters=filter,
                 _explain=_should_explain(format),
             ),
             format=format,
@@ -289,7 +220,7 @@ def tasks(ctx, format: str, filter: List[Tuple[str, str]]):
         get_state_api_output_to_print(
             list_tasks(
                 api_server_url=url,
-                filters=_convert_filters_type(filter, TaskState),
+                filters=filter,
                 _explain=_should_explain(format),
             ),
             format=format,
@@ -308,7 +239,7 @@ def objects(ctx, format: str, filter: List[Tuple[str, str]]):
         get_state_api_output_to_print(
             list_objects(
                 api_server_url=url,
-                filters=_convert_filters_type(filter, ObjectState),
+                filters=filter,
                 _explain=_should_explain(format),
             ),
             format=format,
@@ -327,7 +258,7 @@ def runtime_envs(ctx, format: str, filter: List[Tuple[str, str]]):
         get_state_api_output_to_print(
             list_runtime_envs(
                 api_server_url=url,
-                filters=_convert_filters_type(filter, RuntimeEnvState),
+                filters=filter,
                 _explain=_should_explain(format),
             ),
             format=format,

@@ -1,8 +1,6 @@
 import requests
 import warnings
-import urllib
 
-from dataclasses import fields
 from typing import List, Tuple
 
 import ray
@@ -41,13 +39,20 @@ def _list(
 
     # We don't use `asdict` to avoid deepcopy.
     # https://docs.python.org/3/library/dataclasses.html#dataclasses.asdict
-    options_dict = {
-        field.name: getattr(options, field.name) for field in fields(options)
+    params = {
+        "limit": options.limit,
+        "timeout": options.timeout,
+        "filter_keys": [],
+        "filter_values": [],
     }
+    for filter in options.filters:
+        filter_k, filter_val = filter
+        params["filter_keys"].append(filter_k)
+        params["filter_values"].append(filter_val)
     r = requests.request(
         "GET",
-        f"{api_server_url}/api/v0/{resource_name}"
-        f"?{urllib.parse.urlencode(options_dict)}",
+        f"{api_server_url}/api/v0/{resource_name}",
+        params=params,
         headers={"Content-Type": "application/json"},
         json=None,
         timeout=options.timeout,

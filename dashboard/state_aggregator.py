@@ -1,6 +1,7 @@
 import asyncio
 import logging
 
+from dataclasses import fields
 from itertools import islice
 from typing import List, Tuple
 
@@ -49,6 +50,62 @@ NODE_QUERY_FAILURE_WARNING = (
 )
 
 
+def _convert_filters_type(
+    filter: List[Tuple[str, str]], schema: StateSchema
+) -> List[Tuple[str, SupportedFilterType]]:
+    """Convert the given filter's type to SupportedFilterType.
+
+    This method is necessary because click can only accept a single type
+    for its tuple (which is string in this case).
+
+    Args:
+        filter: A list of filter which is a tuple of (key, val).
+        schema: The state schema. It is used to infer the type of the column for filter.
+
+    Returns:
+        A new list of filters with correctly types that match the schema.
+    """
+    new_filter = []
+    schema = {field.name: field.type for field in fields(schema)}
+
+    for col, val in filter:
+        if col in schema:
+            column_type = schema[col]
+            if column_type is int:
+                try:
+                    val = int(val)
+                except ValueError:
+                    raise ValueError(
+                        f"Invalid filter `--filter {col} {val}` for a int type "
+                        "column. Please provide an integer filter "
+                        f"`--filter {col} [int]`"
+                    )
+            elif column_type is float:
+                try:
+                    val = float(val)
+                except ValueError:
+                    raise ValueError(
+                        f"Invalid filter `--filter {col} {val}` for a float "
+                        "type column. Please provide an integer filter "
+                        f"`--filter {col} [float]`"
+                    )
+            elif column_type is bool:
+                # Without this, "False" will become True.
+                if val == "False" or val == "false" or val == "0":
+                    val = False
+                elif val == "True" or val == "true" or val == "1":
+                    val = True
+                else:
+                    raise ValueError(
+                        f"Invalid filter `--filter {col} {val}` for a boolean "
+                        "type column. Please provide "
+                        f"`--filter {col} [True|true|1]` for True or "
+                        f"`--filter {col} [False|false|0]` for False."
+                    )
+        new_filter.append((col, val))
+    return new_filter
+
+
 # TODO(sang): Move the class to state/state_manager.py.
 # TODO(sang): Remove *State and replaces with Pydantic or protobuf.
 # (depending on API interface standardization).
@@ -82,10 +139,10 @@ class StateAPIManager:
             A list of filtered state data in dictionary. Each state data's
             unncessary columns are filtered by the given state_dataclass schema.
         """
+        filters = _convert_filters_type(filters, state_dataclass)
         result = []
         for datum in data:
             match = True
-            logger.info(filters)
             for filter_column, filter_value in filters:
                 filterable_columns = state_dataclass.filterable_columns()
                 if filter_column not in filterable_columns:
