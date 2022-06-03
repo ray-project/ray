@@ -179,7 +179,6 @@ class Trainer(Trainable):
         "extra_python_environs_for_worker",
         "input_config",
         "output_config",
-        "off_policy_estimation_methods",
     ]
 
     # List of top level keys with value=dict, for which we always override the
@@ -188,6 +187,9 @@ class Trainer(Trainable):
         "exploration_config",
         "replay_buffer_config",
     ]
+
+    # List of keys that are always fully overridden if present in any dict or sub-dict
+    _override_all_key_list = ["off_policy_estimation_methods"]
 
     @PublicAPI
     def __init__(
@@ -1747,6 +1749,7 @@ class Trainer(Trainable):
             _allow_unknown_configs,
             cls._allow_unknown_subkeys,
             cls._override_all_subkeys_if_type_changes,
+            cls._override_all_key_list,
         )
 
     @staticmethod

@@ -248,7 +248,7 @@ class RolloutWorker(ParallelIteratorWorker):
         input_creator: Callable[
             [IOContext], InputReader
         ] = lambda ioctx: ioctx.default_sampler_input(),
-        off_policy_estimation_methods: Dict[str, Dict] = frozenset({}),
+        off_policy_estimation_methods: Optional[Dict] = None,
         output_creator: Callable[
             [IOContext], OutputWriter
         ] = lambda ioctx: NoopOutput(),
@@ -728,6 +728,7 @@ class RolloutWorker(ParallelIteratorWorker):
             "dm": DirectMethod,
             "dr": DoublyRobust,
         }
+        off_policy_estimation_methods = off_policy_estimation_methods or {}
         for name, method_config in off_policy_estimation_methods.items():
             method_type = method_config.pop("type")
             if method_type in ope_types:
