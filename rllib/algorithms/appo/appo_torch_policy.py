@@ -11,12 +11,12 @@ import logging
 from typing import Any, Dict, List, Optional, Type, Union
 
 import ray
-import ray.rllib.agents.impala.vtrace_torch as vtrace
-from ray.rllib.agents.impala.vtrace_torch_policy import (
+from ray.rllib.algorithms.appo.appo_tf_policy import make_appo_model
+import ray.rllib.algorithms.impala.vtrace_torch as vtrace
+from ray.rllib.algorithms.impala.impala_torch_policy import (
     make_time_major,
     VTraceOptimizer,
 )
-from ray.rllib.agents.ppo.appo_tf_policy import make_appo_model
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import (
     compute_gae_for_sample_batch,
@@ -65,10 +65,10 @@ class APPOTorchPolicy(
     TargetNetworkMixin,
     TorchPolicyV2,
 ):
-    """PyTorch policy class used with APPOTrainer."""
+    """PyTorch policy class used with APPO."""
 
     def __init__(self, observation_space, action_space, config):
-        config = dict(ray.rllib.agents.ppo.appo.DEFAULT_CONFIG, **config)
+        config = dict(ray.rllib.algorithms.appo.appo.APPOConfig().to_dict(), **config)
 
         # Although this is a no-op, we call __init__ here to make it clear
         # that base.__init__ will use the make_model() call.
