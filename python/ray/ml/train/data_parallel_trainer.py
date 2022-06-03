@@ -235,7 +235,7 @@ class DataParallelTrainer(Trainer):
     ]
 
     _dataset_config = {
-        TRAIN_DATASET_KEY: DatasetConfig(fit=True, split=True, streamable=True),
+        TRAIN_DATASET_KEY: DatasetConfig(fit=True, split=True, use_stream_api=True),
         WILDCARD_KEY: DatasetConfig(),
     }
 

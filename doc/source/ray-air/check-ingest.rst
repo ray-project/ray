@@ -112,20 +112,24 @@ AIR also supports streaming ingest via the DatasetPipeline feature. Streaming in
 that don't fit into memory, and prefer to read *windows* of data repeatedly from storage to minimize the active memory required
 for data ingest.
 
-To configure streaming ingest, the ``streamable`` and ``stream_window_size`` options must be set for the dataset to stream. Note that
-``streamable=True`` is set by default for the "train" dataset.
+To configure streaming ingest, the ``use_stream_api`` and ``stream_window_size`` options must be set for the dataset to stream. Note that
+``use_stream_api=True`` is set by default for the "train" dataset.
+
+.. warning::
+
+    In AIR alpha, streaming ingest does not apply to the preprocessors, which will still be fit in bulk.
 
 Using `train.get_dataset_shard()`
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The `get_dataset_shard` method can return either a ``Dataset`` or ``DatasetPipeline``, depending on whether the ``streamable``
+The `get_dataset_shard` method can return either a ``Dataset`` or ``DatasetPipeline``, depending on whether the ``use_stream_api``
 option is set. The former is a finite set of records, and the latter represents an infinite stream of records. By default,
-AIR sets ``streamable=True`` for the "train" Dataset, which means that a ``DatasetPipeline`` is returned. Note that actual
+AIR sets ``use_stream_api=True`` for the "train" Dataset, which means that a ``DatasetPipeline`` is returned. Note that actual
 streaming ingest is **NOT** enabled unless ``stream_window_size`` is also set. See the following examples for clarification:
 
-.. tabbed:: Bulk Ingest (streamable=True)
+.. tabbed:: Bulk Ingest (use_stream_api=True)
 
-    This example shows bulk ingest with streamable=True, which is the default configuration for the "train" dataset.
+    This example shows bulk ingest with ``use_stream_api=True``, which is the default configuration for the "train" dataset.
     Data is bulk loaded, but made accessible via a ``DatasetPipeline`` wrapper that loops over
     the data blocks indefinitely.
 
@@ -134,14 +138,14 @@ streaming ingest is **NOT** enabled unless ``stream_window_size`` is also set. S
         :start-after: __config_3__
         :end-before: __config_3_end__
 
-.. tabbed:: Bulk Ingest (streamable=False)
+.. tabbed:: Bulk Ingest (use_stream_api=False)
 
-    This example shows bulk ingest with streamable=False. Data is bulk loaded and made available
+    This example shows bulk ingest with use_stream_api=False. Data is bulk loaded and made available
     directly via a ``Dataset`` object that can be looped over manually.
 
     .. warning::
 
-        Avoid setting ``streamable=False`` unless you really need direct access to the underlying Dataset object.
+        Avoid setting ``use_stream_api=False`` unless you really need direct access to the underlying Dataset object.
         Using this option makes it harder to switch between bulk and streaming ingest modes without code changes.
 
     .. literalinclude:: doc_code/air_ingest.py

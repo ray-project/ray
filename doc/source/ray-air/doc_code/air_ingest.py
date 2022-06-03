@@ -170,7 +170,7 @@ my_trainer = DataParallelTrainer(
     dataset_config={
         # Loads all 1000 records into memory in bulk, but wraps it in
         # a DatasetPipeline that loops over these records.
-        "train": DatasetConfig(streamable=True),
+        "train": DatasetConfig(use_stream_api=True),
     },
 )
 my_trainer.fit()
@@ -205,7 +205,7 @@ my_trainer = DataParallelTrainer(
     },
     dataset_config={
         # Loads all 1000 records into memory in bulk.
-        "train": DatasetConfig(streamable=False),
+        "train": DatasetConfig(use_stream_api=False),
     },
 )
 my_trainer.fit()
@@ -241,7 +241,7 @@ my_trainer = DataParallelTrainer(
     dataset_config={
         # Stream in 200 bytes of data at a time. This is really tiny since the
         # dataset is synthetic and has only 1000 records.
-        "train": DatasetConfig(streamable=True, stream_window_size=200),
+        "train": DatasetConfig(use_stream_api=True, stream_window_size=200),
     },
 )
 my_trainer.fit()

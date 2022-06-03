@@ -240,12 +240,12 @@ class HuggingFaceTrainer(TorchTrainer):
     _dataset_config = {
         "train": DatasetConfig(
             required=True,
-            streamable=False,
-            _noncustomizable_fields=["streamable"],
+            use_stream_api=False,
+            _noncustomizable_fields=["use_stream_api"],
         ),
         "evaluation": DatasetConfig(
-            streamable=False,
-            _noncustomizable_fields=["streamable"],
+            use_stream_api=False,
+            _noncustomizable_fields=["use_stream_api"],
         ),
     }
 

@@ -158,11 +158,11 @@ class DatasetConfig:
     # When enabled, get_dataset_shard() returns DatasetPipeline instead of Dataset.
     # Note that streaming isn't enabled unless you set stream_window_size too.
     # False by default for all datasets.
-    streamable: Optional[bool] = None
+    use_stream_api: Optional[bool] = None
 
     # Enable streaming ingest and configure the streaming window size in bytes.
     # A typical value is something like 20% of object store memory. Should be >1GiB at
-    # min. This requires `streamable = True` to have an effect.
+    # min. This requires `use_stream_api = True` to have an effect.
     stream_window_size: Optional[float] = None
 
     # Whether to enable global shuffle (per pipeline window in streaming mode). Note
@@ -180,7 +180,7 @@ class DatasetConfig:
             fit=self.fit or False,
             split=self.split or False,
             required=self.required or False,
-            streamable=self.streamable or False,
+            use_stream_api=self.use_stream_api or False,
             stream_window_size=self.stream_window_size
             if self.stream_window_size is not None
             else -1,
@@ -226,9 +226,9 @@ class DatasetConfig:
         result = {k: v.fill_defaults() for k, v in config.items()}
         for k, v in result.items():
             if v.stream_window_size > 0:
-                if not v.streamable:
+                if not v.use_stream_api:
                     raise ValueError(
-                        "`stream_window_size` cannot be set unless `streamable=True`"
+                        "`stream_window_size` cannot be set unless `use_stream_api=True`"
                     )
             if v.fit:
                 fittable.add(k)
@@ -272,9 +272,9 @@ class DatasetConfig:
             split=self.split if other.split is None else other.split,
             required=self.required if other.required is None else other.required,
             transform=self.transform if other.transform is None else other.transform,
-            streamable=self.streamable
-            if other.streamable is None
-            else other.streamable,
+            use_stream_api=self.use_stream_api
+            if other.use_stream_api is None
+            else other.use_stream_api,
             stream_window_size=self.stream_window_size
             if other.stream_window_size is None
             else other.stream_window_size,

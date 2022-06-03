@@ -73,7 +73,7 @@ class _DataParallelIngestSpec:
         for key, dataset in self.preprocessed_datasets.items():
             config = self._config(key)
 
-            if config.streamable:
+            if config.use_stream_api:
                 if config.stream_window_size > 0:
                     dataset = dataset.window(bytes_per_window=config.stream_window_size)
                 else:

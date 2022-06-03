@@ -140,7 +140,7 @@ def test_error(ray_start_4_cpus):
         )
 
 
-def test_streamable_config(ray_start_4_cpus):
+def test_use_stream_api_config(ray_start_4_cpus):
     ds = ray.data.range(10)
 
     # Single worker basic case.
@@ -148,7 +148,7 @@ def test_streamable_config(ray_start_4_cpus):
         1,
         False,
         {"train": 10, "test": 10},
-        dataset_config={"train": DatasetConfig(streamable=True)},
+        dataset_config={"train": DatasetConfig(use_stream_api=True)},
         datasets={"train": ds, "test": ds},
     )
     test.fit()
@@ -158,7 +158,7 @@ def test_streamable_config(ray_start_4_cpus):
         2,
         False,
         {"train": 5, "test": 10},
-        dataset_config={"train": DatasetConfig(streamable=True)},
+        dataset_config={"train": DatasetConfig(use_stream_api=True)},
         datasets={"train": ds, "test": ds},
     )
     test.fit()
