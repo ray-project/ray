@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 
 class A3CConfig(TrainerConfig):
-    """Defines a configuration class from which a A3C Trainer can be built.
+    """Defines a PPOTrainer configuration class from which a PPOTrainer can be built.
 
     Example:
         >>> from ray import tune
