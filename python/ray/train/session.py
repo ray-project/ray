@@ -287,6 +287,7 @@ def get_dataset_shard(
     it to the appropriate framework-specific Dataset.
 
     .. code-block:: python
+
         import ray
         from ray import train
 
@@ -302,6 +303,7 @@ def get_dataset_shard(
 
         trainer = Trainer(backend="torch")
         trainer.start()
+
         # Trainer will automatically handle sharding.
         train_model = trainer.run(train_func, dataset=dataset)
         trainer.shutdown()
