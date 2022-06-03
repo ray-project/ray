@@ -120,8 +120,8 @@ If the window size is not set, then an infinite window size (equivalent to bulk 
 
     In AIR alpha, streaming ingest does not apply to the preprocessors, which will still be fit in bulk.
 
-Using `train.get_dataset_shard()`
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Reading Data
+~~~~~~~~~~~~
 
 The `get_dataset_shard` method can return either a ``Dataset`` or ``DatasetPipeline``, depending on whether the ``use_stream_api``
 option is set. The former is a finite set of records, and the latter represents an infinite stream of records.
