@@ -4,7 +4,6 @@ import numpy as np
 from typing import Dict, List, Type, Union
 
 import ray
-import ray.rllib.algorithms.impala.vtrace_torch as vtrace
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
@@ -83,6 +82,7 @@ class VTraceLoss:
             valid_mask: A bool tensor of valid RNN input elements (#2992).
             config: Trainer config dict.
         """
+        import ray.rllib.algorithms.impala.vtrace_torch as vtrace
 
         if valid_mask is None:
             valid_mask = torch.ones_like(actions_logp)
