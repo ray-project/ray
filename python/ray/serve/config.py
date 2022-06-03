@@ -318,6 +318,8 @@ class ReplicaConfig:
             init_args = ()
         if init_kwargs is None:
             init_kwargs = {}
+        if ray_actor_options is None:
+            ray_actor_options = {}
         if deployment_def_name is None:
             if isinstance(deployment_def, str):
                 deployment_def_name = deployment_def
