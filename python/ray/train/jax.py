@@ -10,8 +10,6 @@ from ray.train.utils import get_address_and_port
 from ray.train.worker_group import WorkerGroup
 from ray.util import PublicAPI
 
-import jax
-
 logger = logging.getLogger(__name__)
 
 
@@ -36,11 +34,18 @@ def setup_jax_environment(master_addr_with_port: str, num_workers: int, index: i
     """
     use_gpu = len(ray.get_gpu_ids())
     if use_gpu: 
+        import jax
         jax.distributed.initialize(master_addr_with_port, num_workers, index)
     # TODO
     # cpu parallel: https://github.com/google/jax/issues/1408
     # os.environ["XLA_FLAGS"] = "--xla_force_host_platform_device_count=200"
 
+
+def release_tpu_lock():
+    # see https://github.com/google/jax/issues/10192
+    import subprocess
+    subprocess.run("sudo lsof -w /dev/accel0", shell=True)
+    subprocess.run("sudo rm -f /tmp/libtpu_lockfile", shell=True)
 
 
 class JaxBackend(Backend):
@@ -61,3 +66,20 @@ class JaxBackend(Backend):
                 )
             )
         ray.get(setup_futures)
+
+        # case-insensitivize dict
+        additional_resources_per_worker = worker_group.additional_resources_per_worker
+        additional_resources_per_worker_lower = dict((k.lower(),v) for k,v in additional_resources_per_worker.items())
+        use_tpu = additional_resources_per_worker_lower.pop("tpu", False)
+        # Get setup tasks in order to throw errors on failure.
+        
+        if use_tpu: 
+            # TODO: maybe throw exception or unsafe flag here
+            setup_futures = []
+            for i in range(len(worker_group)):
+                setup_futures.append(
+                    worker_group.execute_single_async(
+                        i, release_tpu_lock
+                    )
+                )
+            ray.get(setup_futures)
