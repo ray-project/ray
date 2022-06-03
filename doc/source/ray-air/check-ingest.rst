@@ -113,7 +113,8 @@ that don't fit into memory, and prefer to read *windows* of data repeatedly from
 for data ingest.
 
 To configure streaming ingest, the ``use_stream_api`` and ``stream_window_size`` options must be set for the dataset to stream. Note that
-``use_stream_api=True`` is set by default for the "train" dataset.
+``use_stream_api=True`` is set by default for the "train" dataset. A reasonable stream window size is something like 20% of object store
+memory in the cluster and should be at least 1GiB. If the window size is not set, then an infinite window size (bulk loading) will be used.
 
 .. warning::
 
@@ -124,13 +125,14 @@ Using `train.get_dataset_shard()`
 
 The `get_dataset_shard` method can return either a ``Dataset`` or ``DatasetPipeline``, depending on whether the ``use_stream_api``
 option is set. The former is a finite set of records, and the latter represents an infinite stream of records. By default,
-AIR sets ``use_stream_api=True`` for the "train" Dataset, which means that a ``DatasetPipeline`` is returned. Note that actual
-streaming ingest is **NOT** enabled unless ``stream_window_size`` is also set. See the following examples for clarification:
+AIR sets ``use_stream_api=True`` for the "train" Dataset, which means that a ``DatasetPipeline`` is returned.
+See the following examples for clarification:
 
 .. tabbed:: Bulk Ingest (use_stream_api=True)
 
     This example shows bulk ingest with ``use_stream_api=True``, which is the default configuration for the "train" dataset.
-    Data is bulk loaded, but made accessible via a ``DatasetPipeline`` wrapper that loops over
+    The stream window size is not set and defaults to infinite (equivalent to bulk loading).
+    Hence data is bulk loaded, but made accessible via a ``DatasetPipeline`` wrapper that loops over
     the data blocks indefinitely.
 
     .. literalinclude:: doc_code/air_ingest.py
