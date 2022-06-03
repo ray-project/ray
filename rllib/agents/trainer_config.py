@@ -884,7 +884,9 @@ class TrainerConfig:
             else:
                 self.evaluation_config = evaluation_config
         if off_policy_estimation_methods is not None:
-            self.off_policy_estimation_methods = off_policy_estimation_methods
+            self.evaluation_config[
+                "off_policy_estimation_methods"
+            ] = off_policy_estimation_methods
         if custom_evaluation_function is not None:
             self.custom_evaluation_function = custom_evaluation_function
         if always_attach_evaluation_results:

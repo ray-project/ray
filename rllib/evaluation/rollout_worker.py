@@ -345,8 +345,8 @@ class RolloutWorker(ParallelIteratorWorker):
                 DefaultCallbacks for training/policy/rollout-worker callbacks.
             input_creator: Function that returns an InputReader object for
                 loading previous generated experiences.
-            off_policy_estimation_methods: A dict that specifies how to evaluate the 
-                current policy. This only has an effect when reading offline 
+            off_policy_estimation_methods: A dict that specifies how to evaluate the
+                current policy. This only has an effect when reading offline
                 experiences ("input" is not "sampler"). The inputs are as follows:
                 {ope_name: {"type": ope_type, args}}. where `ope_name` is an arbitrary
                 string under which the metrics for this OPE estimator are saved,

@@ -182,7 +182,7 @@ class TestOPE(unittest.TestCase):
         result = list(analysis.results.values())[0]
         print("Training", result["off_policy_estimator"])
         print("Evaluation", result["evaluation"]["off_policy_estimator"])
-        assert not result["off_policy_estimator"] # Should be None or {}
+        assert not result["off_policy_estimator"]  # Should be None or {}
 
     def test_ope_simple_replaybuffer(self):
         # Move estimator.process calls out of worker.sample and make it take in a
