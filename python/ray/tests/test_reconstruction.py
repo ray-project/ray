@@ -268,12 +268,12 @@ def test_basic_reconstruction_actor_task(ray_start_cluster, reconstruction_enabl
     cluster.add_node(num_cpus=1, resources={"node2": 1}, object_store_memory=10 ** 8)
     cluster.wait_for_nodes()
 
-    # Set max retries to 1 because Ray fails actor tasks if the actor is
-    # restarting when the task is submitted.
+    # Always set max retries to -1 because Ray fails actor tasks if the actor
+    # is restarting when the task is submitted.
     # See #22818 for details.
     @ray.remote(
         max_restarts=-1,
-        max_task_retries=-1 if reconstruction_enabled else -1,
+        max_task_retries=-1,
         resources={"node1": 1},
         num_cpus=0,
     )
