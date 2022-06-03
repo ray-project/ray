@@ -153,13 +153,17 @@ METRICS_GAUGES = {
     "raylet_cpu": Gauge(
         "raylet_cpu", "CPU usage of the raylet on a node.", "percentage", ["ip", "pid"]
     ),
-    "raylet_mem": Gauge(
-        "raylet_mem",
-        "Memory usage of the Raylet on the node. mem_type includes uss (memory "
-        "released to the system if the raylet dies) and rss_other (uss + rss_other = "
-        "rss) on Linux, and just Raylet's rss on other platforms.",
+    "raylet_mem_rss": Gauge(
+        "raylet_mem_rss",
+        "RSS usage of the Raylet on the node.",
         "MB",
-        ["ip", "pid", "mem_type"],
+        ["ip", "pid"],
+    ),
+    "raylet_mem_uss": Gauge(
+        "raylet_mem_uss",
+        "USS usage of the Raylet on the node. Only available on Linux",
+        "MB",
+        ["ip", "pid"],
     ),
     "workers_cpu": Gauge(
         "workers_cpu",
@@ -169,13 +173,13 @@ METRICS_GAUGES = {
     ),
     "workers_mem_rss": Gauge(
         "workers_mem_rss",
-        "Memory usage of all workers' RSS on the node.",
+        "RSS usage of all workers on the node.",
         "MB",
         ["ip"],
     ),
     "workers_mem_uss": Gauge(
         "workers_mem_uss",
-        "Memory usage of all workers' USS on the node. Only available on Linux",
+        "USS usage of all workers on the node. Only available on Linux",
         "MB",
         ["ip"],
     ),
@@ -685,33 +689,22 @@ class ReporterAgent(
             )
 
             # -- raylet mem --
+            raylet_rss = float(raylet_stats["memory_info"].rss) / 1.0e6
+            records_reported.append(
+                Record(
+                    gauge=METRICS_GAUGES["raylet_mem_rss"],
+                    value=raylet_rss,
+                    tags={"ip": ip, "pid": raylet_pid},
+                )
+            )
             raylet_mem_full_info = raylet_stats.get("memory_full_info")
             if raylet_mem_full_info is not None:
                 raylet_uss = float(raylet_mem_full_info.uss) / 1.0e6
                 records_reported.append(
                     Record(
-                        gauge=METRICS_GAUGES["raylet_mem"],
+                        gauge=METRICS_GAUGES["raylet_mem_uss"],
                         value=raylet_uss,
-                        tags={"ip": ip, "pid": raylet_pid, "mem_type": "uss"},
-                    )
-                )
-                raylet_rss_other = (
-                    float(raylet_stats["memory_info"].rss) / 1.0e6 - raylet_uss
-                )
-                records_reported.append(
-                    Record(
-                        gauge=METRICS_GAUGES["raylet_mem"],
-                        value=raylet_rss_other,
-                        tags={"ip": ip, "pid": raylet_pid, "mem_type": "rss_other"},
-                    )
-                )
-            else:
-                raylet_rss = float(raylet_stats["memory_info"].rss) / 1.0e6
-                records_reported.append(
-                    Record(
-                        gauge=METRICS_GAUGES["raylet_mem"],
-                        value=raylet_rss,
-                        tags={"ip": ip, "pid": raylet_pid, "mem_type": "rss"},
+                        tags={"ip": ip, "pid": raylet_pid},
                     )
                 )
 

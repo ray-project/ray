@@ -124,7 +124,10 @@ def test_prometheus_physical_stats_record(enable_test_module, shutdown_only):
                 "ray_node_mem_available" in metric_names,
                 "ray_node_mem_total" in metric_names,
                 "ray_raylet_cpu" in metric_names,
-                "ray_raylet_mem" in metric_names,
+                "ray_raylet_mem_rss" in metric_names,
+                "ray_raylet_mem_uss" in metric_names
+                if sys.platform == "linux"
+                else True,
                 "ray_node_disk_io_read" in metric_names,
                 "ray_node_disk_io_write" in metric_names,
                 "ray_node_disk_io_read_count" in metric_names,
