@@ -3549,7 +3549,7 @@ def test_random_sample(ray_start_regular_shared):
     ds = ray.data.range(10, parallelism=2)
     ensure_sample_size_close(ds)
 
-    ds = ray.data.range_arrow(10, parallelism=2)
+    ds = ray.data.range_table(10, parallelism=2)
     ensure_sample_size_close(ds)
 
     ds = ray.data.range_tensor(5, parallelism=2, shape=(2, 2))
