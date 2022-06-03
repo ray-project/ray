@@ -3,8 +3,8 @@ import os
 from typing import Any, Callable, Dict, Optional, Type, Union
 
 import ray.cloudpickle as pickle
-from ray.ml.config import RunConfig
-from ray.ml.trainer import Trainer
+from ray.air.config import RunConfig
+from ray.air.trainer import Trainer
 from ray.tune import Experiment, TuneError, ExperimentAnalysis
 from ray.tune.impl.utils import execute_dataset
 from ray.tune.result_grid import ResultGrid
@@ -44,7 +44,7 @@ class TunerInternal:
             Refer to ray.tune.tune_config.TuneConfig for more info.
         run_config: Runtime configuration that is specific to individual trials.
             If passed, this will overwrite the run config passed to the Trainer,
-            if applicable. Refer to ray.ml.config.RunConfig for more info.
+            if applicable. Refer to ray.air.config.RunConfig for more info.
     """
 
     def __init__(
