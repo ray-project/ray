@@ -12,7 +12,7 @@ from ray.actor import ActorHandle
 from ray.rllib.algorithms.alpha_star.distributed_learners import DistributedLearners
 from ray.rllib.algorithms.alpha_star.league_builder import AlphaStarLeagueBuilder
 from ray.rllib.agents.trainer import Trainer
-import ray.rllib.algorithms.appo.appo as appo
+import ray.rllib.agents.ppo.appo as appo
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.execution.parallel_requests import (
     AsyncRequestsManager,
@@ -232,12 +232,12 @@ class AlphaStarConfig(appo.APPOConfig):
         return self
 
 
-class AlphaStarTrainer(appo.APPO):
-    _allow_unknown_subkeys = appo.APPO._allow_unknown_subkeys + [
+class AlphaStarTrainer(appo.APPOTrainer):
+    _allow_unknown_subkeys = appo.APPOTrainer._allow_unknown_subkeys + [
         "league_builder_config",
     ]
     _override_all_subkeys_if_type_changes = (
-        appo.APPO._override_all_subkeys_if_type_changes
+        appo.APPOTrainer._override_all_subkeys_if_type_changes
         + [
             "league_builder_config",
         ]
@@ -310,11 +310,11 @@ class AlphaStarTrainer(appo.APPO):
         )
 
     @classmethod
-    @override(appo.APPO)
+    @override(appo.APPOTrainer)
     def get_default_config(cls) -> TrainerConfigDict:
         return AlphaStarConfig().to_dict()
 
-    @override(appo.APPO)
+    @override(appo.APPOTrainer)
     def validate_config(self, config: TrainerConfigDict):
         # Create the LeagueBuilder object, allowing it to build the multiagent
         # config as well.
@@ -323,7 +323,7 @@ class AlphaStarTrainer(appo.APPO):
         )
         super().validate_config(config)
 
-    @override(appo.APPO)
+    @override(appo.APPOTrainer)
     def setup(self, config: PartialTrainerConfigDict):
         # Call super's setup to validate config, create RolloutWorkers
         # (train and eval), etc..
@@ -604,7 +604,7 @@ class AlphaStarTrainer(appo.APPO):
 
         return train_results
 
-    @override(appo.APPO)
+    @override(appo.APPOTrainer)
     def __getstate__(self) -> dict:
         state = super().__getstate__()
         state.update(
@@ -614,7 +614,7 @@ class AlphaStarTrainer(appo.APPO):
         )
         return state
 
-    @override(appo.APPO)
+    @override(appo.APPOTrainer)
     def __setstate__(self, state: dict) -> None:
         state_copy = state.copy()
         self.league_builder.__setstate__(state.pop("league_builder", {}))

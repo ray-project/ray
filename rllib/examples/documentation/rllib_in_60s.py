@@ -1,6 +1,6 @@
 # __rllib-in-60s-begin__
 # Import the RL algorithm (Trainer) we would like to use.
-from ray.rllib.algorithms.ppo import PPO
+from ray.rllib.agents.ppo import PPOTrainer
 
 # Configure the algorithm.
 config = {
@@ -28,7 +28,7 @@ config = {
 }
 
 # Create our RLlib Trainer.
-trainer = PPO(config=config)
+trainer = PPOTrainer(config=config)
 
 # Run it for n training iterations. A training iteration includes
 # parallel sample collection by the environment workers as well as

@@ -8,7 +8,6 @@ import shutil
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 from ray.tune import trial_runner
-from ray.tune import trial_executor
 from ray.tune.error import TuneError
 from ray.tune.result import DEFAULT_METRIC, TRAINING_ITERATION
 from ray.tune.suggest import SearchGenerator
@@ -597,7 +596,7 @@ class PopulationBasedTraining(FIFOScheduler):
 
     def _exploit(
         self,
-        trial_executor: "trial_executor.TrialExecutor",
+        trial_executor: "trial_runner.RayTrialExecutor",
         trial: Trial,
         trial_to_clone: Trial,
     ):

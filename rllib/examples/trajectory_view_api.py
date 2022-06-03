@@ -2,7 +2,7 @@ import argparse
 import numpy as np
 
 import ray
-from ray.rllib.algorithms.ppo import PPO
+from ray.rllib.agents.ppo import PPOTrainer
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
 from ray.rllib.examples.models.trajectory_view_utilizing_models import (
     FrameStackingCartPoleModel,
@@ -94,7 +94,7 @@ if __name__ == "__main__":
     )
 
     checkpoint_path = checkpoints[0][0]
-    trainer = PPO(config)
+    trainer = PPOTrainer(config)
     trainer.restore(checkpoint_path)
 
     # Inference loop.
