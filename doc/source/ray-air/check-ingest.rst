@@ -143,7 +143,7 @@ See the following examples for clarification:
 
     This example shows enabling streaming ingest for the "train" dataset with a *N-byte* window.
     This means that AIR will only load *N* bytes of data from the datasource at a time (the data
-    may be larger once deserialized in memory).
+    may be larger once deserialized in memory or if individual files are larger than the window).
 
     .. literalinclude:: doc_code/air_ingest.py
         :language: python
