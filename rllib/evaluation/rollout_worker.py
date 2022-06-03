@@ -362,7 +362,7 @@ class RolloutWorker(ParallelIteratorWorker):
                     "ray.rllib.offline.estimators::ImportanceSampling"
                 You can also add additional config arguments to be passed to the
                 OffPolicyEstimator e.g.
-                of_policy_estimation_methods = {
+                off_policy_estimation_methods = {
                     "dr_qreg": {"type": DoublyRobust, "q_model_type": "qreg"},
                     "dm_64": {"type": DirectMethod, "batch_size": 64},
                 }
