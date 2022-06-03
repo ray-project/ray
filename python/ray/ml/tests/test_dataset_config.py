@@ -188,7 +188,7 @@ def test_fit_transform_config(ray_start_4_cpus):
     test = TestBasic(
         1,
         True,
-        {"train": 5, "test": 5},
+        {"train": 5, "test": 10},
         dataset_config={"test": DatasetConfig(transform=False)},
         datasets={"train": ds, "test": ds},
         preprocessor=prep,
