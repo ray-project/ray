@@ -123,16 +123,14 @@ If the window size is not set, then an infinite window size (equivalent to bulk 
 Reading Data
 ~~~~~~~~~~~~
 
-The `get_dataset_shard` method returns a reader object that is either a ``Dataset`` or ``DatasetPipeline``, depending on whether the ``use_stream_api``
+The ``get_dataset_shard`` method returns a reader object that is either a ``Dataset`` or ``DatasetPipeline``, depending on whether the ``use_stream_api``
 option is set. The former is a finite set of records, and the latter represents an infinite stream of records.
 See the following examples for clarification:
 
 .. tabbed:: Bulk Ingest
 
-    This example shows bulk ingest with use_stream_api=False. Data is bulk loaded and made available
+    This example shows bulk ingest (the default). Data is bulk loaded and made available
     directly via a ``Dataset`` object that can be looped over manually.
-
-    This is the default ingest mode.
 
     .. literalinclude:: doc_code/air_ingest.py
         :language: python
@@ -141,8 +139,8 @@ See the following examples for clarification:
 
 .. tabbed:: Streaming Ingest
 
-    This example shows enabling streaming ingest (with a 1GiB window) for the "train" dataset.
-    This means that AIR will only load 1GiB of files from storage at a time (note that the data
+    This example shows enabling streaming ingest for the "train" dataset with a *N-byte* window.
+    This means that AIR will only load *N* bytes of data from the datasource at a time (the data
     may be larger once deserialized in memory).
 
     .. literalinclude:: doc_code/air_ingest.py

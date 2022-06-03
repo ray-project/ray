@@ -192,6 +192,9 @@ def train_loop_per_worker():
     print(data_shard.stats())
 
 
+# Set N = 200 bytes for this toy example. Typically, you'd set N >= 1GiB.
+N = 200
+
 my_trainer = DataParallelTrainer(
     train_loop_per_worker,
     scaling_config={"num_workers": 1},
@@ -199,10 +202,7 @@ my_trainer = DataParallelTrainer(
         "train": ray.data.range_tensor(1000),
     },
     dataset_config={
-        # Stream in 200 bytes of data at a time. This is really tiny since the
-        # dataset is synthetic and has only 1000 records. Typically, you'd set
-        # a stream window size of at least 1GiB.
-        "train": DatasetConfig(use_stream_api=True, stream_window_size=200),
+        "train": DatasetConfig(use_stream_api=True, stream_window_size=N),
     },
 )
 my_trainer.fit()
