@@ -37,8 +37,11 @@ class _DataParallelIngestSpec:
         """
         if prep:
             ds_to_fit = None
-            for k, v in self.dataset_config.items():
-                if v.fit:
+            for k, conf in self.dataset_config.items():
+                if k not in datasets:
+                    assert not conf.required, "Missing dataset post-validation"
+                    continue
+                if conf.fit:
                     ds_to_fit = datasets[k]
             if ds_to_fit:
                 prep.fit(ds_to_fit)

@@ -111,6 +111,17 @@ def test_error(ray_start_4_cpus):
             1, True, {"train": 10, "test": 10}, dataset_config={}, datasets={"test": ds}
         )
 
+    # Missing optional dataset is OK.
+    test = TestBasic(
+        1,
+        True,
+        {"train": 10},
+        dataset_config={},
+        datasets={"train": ds},
+        preprocessor=BatchMapper(lambda x: x),
+    )
+    test.fit()
+
     # Extra dataset.
     with pytest.raises(ValueError):
         TestBasic(
