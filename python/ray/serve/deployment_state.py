@@ -18,6 +18,7 @@ from ray.exceptions import RayActorError, RayError
 from ray.util.placement_group import PlacementGroup
 from ray import cloudpickle
 
+from ray.serve.autoscaling_metrics import InMemoryMetricsStore
 from ray.serve.common import (
     DeploymentInfo,
     DeploymentStatus,
@@ -947,6 +948,12 @@ class DeploymentState:
         )
         self._deleting = False
 
+    def is_autoscalable(self) -> bool:
+        return self._target_info.autoscaling_policy is not None
+
+    def get_autoscale_metric_lookback_period(self):
+        return self._target_info.autoscaling_policy.config.look_back_period_s
+
     def get_target_state_checkpoint_data(self):
         """
         Return deployment's target state submitted by user's deployment call.
@@ -1101,11 +1108,22 @@ class DeploymentState:
 
         return True
 
-    def autoscale(self, num_replicas):
+    def autoscale(self, current_num_ongoing_requests, current_handle_queued_queries):
+
         if self._deleting:
             return
+
+        # decide num replicas
+        decision_num_replicas = self._target_info.autoscaling_policy.get_decision_num_replicas(
+            curr_target_num_replicas=self._target_info.deployment_config.num_replicas,
+            current_num_ongoing_requests=current_num_ongoing_requests,
+            current_handle_queued_queries=current_handle_queued_queries,
+        )
+        if decision_num_replicas == self._target_info.deployment_config.num_replicas:
+            return
+
         new_config = copy(self._target_info)
-        new_config.deployment_config.num_replicas = num_replicas
+        new_config.deployment_config.num_replicas = decision_num_replicas
         # Reset constructor retry counter.
         self._replica_constructor_retry_counter = 0
         self._set_deployment_goal(new_config, True)
@@ -1584,8 +1602,18 @@ class DeploymentStateManager:
 
         self._recover_from_checkpoint(all_current_actor_names)
 
-    def autoscale(self, deployment_name, num_replicas):
-        self._deployment_states[deployment_name].autoscale(num_replicas)
+        # TODO(simon): move autoscaling related stuff into a manager.
+        self.autoscaling_metrics_store = InMemoryMetricsStore()
+        self.handle_metrics_store = InMemoryMetricsStore()
+
+    def record_autoscaling_metrics(self, data: Dict[str, float], send_timestamp: float):
+        self.autoscaling_metrics_store.add_metrics_point(data, send_timestamp)
+
+    def record_handle_metrics(self, data: Dict[str, float], send_timestamp: float):
+        self.handle_metrics_store.add_metrics_point(data, send_timestamp)
+
+    # def autoscale(self, deployment_name, num_replicas):
+    #    self._deployment_states[deployment_name].autoscale(num_replicas)
 
     def _map_actor_names_to_deployment(
         self, all_current_actor_names: List[str]
@@ -1752,10 +1780,50 @@ class DeploymentStateManager:
         if deployment_name in self._deployment_states:
             self._deployment_states[deployment_name].delete()
 
+    def get_replica_ongoing_request_metrics(
+        self, deployment_name: str, look_back_period_s
+    ):
+
+        replicas = self._deployment_states[deployment_name]._replicas
+        running_replicas = replicas.get([ReplicaState.RUNNING])
+
+        current_num_ongoing_requests = []
+        for replica in running_replicas:
+            replica_tag = replica.replica_tag
+            num_ongoing_requests = self.autoscaling_metrics_store.window_average(
+                replica_tag,
+                time.time() - look_back_period_s,
+            )
+            if num_ongoing_requests is not None:
+                current_num_ongoing_requests.append(num_ongoing_requests)
+        return current_num_ongoing_requests
+
+    def get_handle_queueing_metrics(self, deployment_name: str, look_back_period_s):
+        current_handle_queued_queries = self.handle_metrics_store.max(
+            deployment_name,
+            time.time() - look_back_period_s,
+        )
+
+        if current_handle_queued_queries is None:
+            current_handle_queued_queries = 0
+        return current_handle_queued_queries
+
     def update(self):
         """Updates the state of all deployments to match their goal state."""
         deleted_tags = []
         for deployment_name, deployment_state in self._deployment_states.items():
+            if deployment_state.is_autoscalable():
+                current_num_ongoing_requests = self.get_replica_ongoing_request_metrics(
+                    deployment_name,
+                    deployment_state.get_autoscale_metric_lookback_period(),
+                )
+                current_handle_queued_queries = self.get_handle_queueing_metrics(
+                    deployment_name,
+                    deployment_state.get_autoscale_metric_lookback_period(),
+                )
+                deployment_state.autoscale(
+                    current_num_ongoing_requests, current_handle_queued_queries
+                )
             deleted = deployment_state.update()
             if deleted:
                 deleted_tags.append(deployment_name)
