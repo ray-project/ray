@@ -123,7 +123,7 @@ If the window size is not set, then an infinite window size (equivalent to bulk 
 Reading Data
 ~~~~~~~~~~~~
 
-The `get_dataset_shard` method can return either a ``Dataset`` or ``DatasetPipeline``, depending on whether the ``use_stream_api``
+The `get_dataset_shard` method returns a reader object that is either a ``Dataset`` or ``DatasetPipeline``, depending on whether the ``use_stream_api``
 option is set. The former is a finite set of records, and the latter represents an infinite stream of records.
 See the following examples for clarification:
 
