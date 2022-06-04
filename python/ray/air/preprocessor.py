@@ -11,6 +11,13 @@ from ray.data import Dataset
 from ray.air.predictor import DataBatchType
 
 
+@DeveloperAPI
+class PreprocessorNotFittedException(RuntimeError):
+    """Error raised when the preprocessor needs to be fitted first."""
+
+    pass
+
+
 @PublicAPI(stability="alpha")
 class Preprocessor(abc.ABC):
     """Implements an ML preprocessing operation.
@@ -173,10 +180,3 @@ class Preprocessor(abc.ABC):
 
     def _transform_pandas(self, df: "pd.DataFrame") -> "pd.DataFrame":
         raise NotImplementedError()
-
-
-@DeveloperAPI
-class PreprocessorNotFittedException(RuntimeError):
-    """Error raised when the preprocessor needs to be fitted first."""
-
-    pass

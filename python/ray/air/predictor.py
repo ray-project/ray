@@ -11,6 +11,13 @@ if TYPE_CHECKING:
 DataBatchType = Union["pd.DataFrame", "np.ndarray"]
 
 
+@DeveloperAPI
+class PredictorNotSerializableException(RuntimeError):
+    """Error raised when trying to serialize a Predictor instance."""
+
+    pass
+
+
 @PublicAPI
 class Predictor(abc.ABC):
     """Predictors load models from checkpoints to perform inference."""
@@ -47,10 +54,3 @@ class Predictor(abc.ABC):
             "to serialize a checkpoint and initialize the Predictor with "
             "Predictor.from_checkpoint."
         )
-
-
-@DeveloperAPI
-class PredictorNotSerializableException(RuntimeError):
-    """Error raised when trying to serialize a Predictor instance."""
-
-    pass

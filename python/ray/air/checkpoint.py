@@ -29,7 +29,7 @@ _CHECKPOINT_DIR_PREFIX = "checkpoint_tmp_"
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI
+@PublicAPI(stability="alpha")
 class Checkpoint:
     """Ray ML Checkpoint.
 
