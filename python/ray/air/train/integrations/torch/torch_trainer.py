@@ -7,7 +7,7 @@ from ray.air.train.data_parallel_trainer import DataParallelTrainer, _load_check
 from ray.air.config import ScalingConfig, RunConfig, DatasetConfig
 from ray.air.preprocessor import Preprocessor
 from ray.air.checkpoint import Checkpoint
-from ray.air.utils.torch_utils import load_torch_model
+from ray.air.internal.torch_utils import load_torch_model
 from ray.util import PublicAPI
 
 

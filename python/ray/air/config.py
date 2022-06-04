@@ -14,7 +14,7 @@ from typing import (
 from ray.air.constants import WILDCARD_KEY
 from ray.tune.syncer import SyncConfig
 from ray.tune.utils.log import Verbosity
-from ray.util import PublicAPI
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.data import Dataset
@@ -26,6 +26,7 @@ ScalingConfig = Dict[str, Any]
 
 
 @dataclass
+@PublicAPI(stability="alpha")
 class ScalingConfigDataClass:
     """Configuration for scaling training.
 
