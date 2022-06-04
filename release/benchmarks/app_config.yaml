@@ -1,4 +1,4 @@
-base_image: "anyscale/ray-ml:nightly-py37-gpu"
+base_image: "anyscale/ray-ml:1.12.1-py37-gpu"
 env_vars: {}
 
 python:
