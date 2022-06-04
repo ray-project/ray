@@ -588,7 +588,9 @@ def test_log_get(ray_start_cluster):
 
     def verify():
         # By default, node id should be configured to the head node.
-        for log in get_log(node_id=head_node["node_id"], filename="raylet.out", lines=10):
+        for log in get_log(
+            node_id=head_node["node_id"], filename="raylet.out", lines=10
+        ):
             # + 1 since the last line is just empty.
             assert len(log.split("\n")) == 11
         return True

@@ -241,7 +241,8 @@ class StateHead(dashboard_utils.DashboardHeadModule):
             logger.exception(e)
             error_msg = (
                 f"{ERROR_HASH_CODE}"
-                f"::Closing HTTP stream due to internal server error.\n{e}")
+                f"::Closing HTTP stream due to internal server error.\n{e}"
+            )
             await response.write(error_msg.encode())
             await response.write_eof()
             return response
