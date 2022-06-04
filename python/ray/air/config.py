@@ -160,7 +160,7 @@ class DatasetConfig:
     # False by default for all datasets.
     use_stream_api: Optional[bool] = None
 
-    # Configure the streaming window size in bytes. A typical value is something like
+    # Configure the streaming window size in bytes. A good value is something like
     # 20% of object store memory. If set to -1, then an infinite window size will be
     # used (similar to bulk ingest). This only has an effect if use_stream_api is set.
     # Set to 1.0 GiB by default.
