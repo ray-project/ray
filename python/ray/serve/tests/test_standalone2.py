@@ -256,14 +256,22 @@ def test_controller_deserialization_deployment_def(start_and_shutdown_ray_cli_fu
 
     # Start Serve controller in a directory without access to the graph code
     ray.init(
-        address="auto", namespace="serve", runtime_env={"working_dir": "storage_tests"}
+        address="auto",
+        namespace="serve",
+        runtime_env={
+            "working_dir": os.path.join(os.path.dirname(__file__), "storage_tests")
+        },
     )
     serve.start(detached=True)
     serve.context._global_client = None
     ray.shutdown()
 
     # Run the task in a directory with access to the graph code
-    ray.init(address="auto", runtime_env={"working_dir": "."}, namespace="serve")
+    ray.init(
+        address="auto",
+        namespace="serve",
+        runtime_env={"working_dir": os.path.dirname(__file__)},
+    )
     ray.get(run_graph.remote())
     wait_for_condition(
         lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
@@ -277,6 +285,7 @@ def test_controller_deserialization_deployment_def(start_and_shutdown_ray_cli_fu
 def test_controller_deserialization_args_and_kwargs():
     """Ensures init_args and init_kwargs stay serialized in controller."""
 
+    ray.init()
     client = serve.start()
 
     class PidBasedString(str):
@@ -313,6 +322,7 @@ def test_controller_deserialization_args_and_kwargs():
     assert requests.get("http://localhost:8000/Echo").text == "hello world!"
 
     serve.shutdown()
+    ray.shutdown()
 
 
 @pytest.mark.usefixtures("start_and_shutdown_ray_cli_class")
