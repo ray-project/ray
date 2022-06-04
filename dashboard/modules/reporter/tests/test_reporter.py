@@ -124,7 +124,7 @@ def test_prometheus_physical_stats_record(enable_test_module, shutdown_only):
                 "ray_node_mem_available" in metric_names,
                 "ray_node_mem_total" in metric_names,
                 "ray_raylet_cpu" in metric_names,
-                "ray_raylet_mem_rss" in metric_names,
+                "ray_raylet_mem" in metric_names,
                 "ray_raylet_mem_uss" in metric_names
                 if sys.platform == "linux"
                 else True,
@@ -182,7 +182,7 @@ def test_prometheus_export_worker_and_memory_stats(enable_test_module, shutdown_
 
     def test_worker_stats():
         _, metric_names, metric_samples = fetch_prometheus(prom_addresses)
-        expected_metrics = ["ray_workers_cpu", "ray_workers_mem_rss"]
+        expected_metrics = ["ray_workers_cpu", "ray_workers_mem"]
         if sys.platform == "linux":
             expected_metrics.append("ray_workers_mem_uss")
         for metric in expected_metrics:

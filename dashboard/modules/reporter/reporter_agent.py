@@ -153,8 +153,8 @@ METRICS_GAUGES = {
     "raylet_cpu": Gauge(
         "raylet_cpu", "CPU usage of the raylet on a node.", "percentage", ["ip", "pid"]
     ),
-    "raylet_mem_rss": Gauge(
-        "raylet_mem_rss",
+    "raylet_mem": Gauge(
+        "raylet_mem",
         "RSS usage of the Raylet on the node.",
         "MB",
         ["ip", "pid"],
@@ -171,8 +171,8 @@ METRICS_GAUGES = {
         "percentage",
         ["ip"],
     ),
-    "workers_mem_rss": Gauge(
-        "workers_mem_rss",
+    "workers_mem": Gauge(
+        "workers_mem",
         "RSS usage of all workers on the node.",
         "MB",
         ["ip"],
@@ -692,7 +692,7 @@ class ReporterAgent(
             raylet_rss = float(raylet_stats["memory_info"].rss) / 1.0e6
             records_reported.append(
                 Record(
-                    gauge=METRICS_GAUGES["raylet_mem_rss"],
+                    gauge=METRICS_GAUGES["raylet_mem"],
                     value=raylet_rss,
                     tags={"ip": ip, "pid": raylet_pid},
                 )
@@ -730,7 +730,7 @@ class ReporterAgent(
 
             records_reported.append(
                 Record(
-                    gauge=METRICS_GAUGES["workers_mem_rss"],
+                    gauge=METRICS_GAUGES["workers_mem"],
                     value=total_workers_rss,
                     tags={"ip": ip},
                 )
