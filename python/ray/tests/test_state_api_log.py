@@ -57,6 +57,7 @@ def generate_actor_data(id, node_id, worker_id):
 # Unit Tests (Log Agent)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_logs_tail():
     """
     Unit test for tail
