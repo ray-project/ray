@@ -35,10 +35,10 @@ Want to build Ray from source or with docker? Need more details?
 Check out our detailed [installation guide](installation.rst).
 
 
-## Ray ML Quick Start
+## Ray AI Runtime Quick Start
 
 Ray has a rich ecosystem of libraries and frameworks built on top of it. 
-Simply click on the dropdowns below to see examples of our most popular libraries. 
+Simply click on the dropdowns below to see examples of our most popular libraries.
 
 `````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Data: Creating and Transforming Datasets
 :animate: fade-in-slide-down
