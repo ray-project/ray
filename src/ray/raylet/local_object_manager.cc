@@ -301,11 +301,13 @@ void LocalObjectManager::SpillObjectsInternal(
         rpc::SpillObjectsRequest request;
         std::vector<ObjectID> requested_objects_to_spill;
         for (const auto &object_id : objects_to_spill) {
-          RAY_CHECK(objects_pending_spill_.count(object_id));
+          auto it = objects_pending_spill_.find(object_id);
+          RAY_CHECK(it != objects_pending_spill_.end());
           auto freed_it = local_objects_.find(object_id);
           // If the object hasn't already been freed, spill it.
           if (freed_it == local_objects_.end() || freed_it->second.second) {
-            objects_pending_spill_.erase(object_id);
+            num_bytes_pending_spill_ -= it->second->GetSize();
+            objects_pending_spill_.erase(it);
           } else {
             auto ref = request.add_object_refs_to_spill();
             ref->set_object_id(object_id.Binary());
@@ -333,9 +335,16 @@ void LocalObjectManager::SpillObjectsInternal(
                 const auto &object_id = requested_objects_to_spill[i];
                 auto it = objects_pending_spill_.find(object_id);
                 RAY_CHECK(it != objects_pending_spill_.end());
-                pinned_objects_size_ += it->second->GetSize();
                 num_bytes_pending_spill_ -= it->second->GetSize();
-                pinned_objects_.emplace(object_id, std::move(it->second));
+
+                auto freed_it = local_objects_.find(object_id);
+                // If the object hasn't already been freed, move it back to the
+                // pinned objects.
+                if (freed_it != local_objects_.end() && !freed_it->second.second) {
+                  pinned_objects_size_ += it->second->GetSize();
+                  pinned_objects_.emplace(object_id, std::move(it->second));
+                }
+
                 objects_pending_spill_.erase(it);
               }
 
@@ -350,6 +359,10 @@ void LocalObjectManager::SpillObjectsInternal(
               }
             });
       });
+
+  if (spilled_object_pending_delete_.size() >= free_objects_batch_size_) {
+    ProcessSpilledObjectsDeleteQueue(free_objects_batch_size_);
+  }
 }
 
 void LocalObjectManager::OnObjectSpilled(const std::vector<ObjectID> &object_ids,
@@ -604,6 +617,7 @@ std::string LocalObjectManager::DebugString() const {
   result << "- num bytes pending spill: " << num_bytes_pending_spill_ << "\n";
   result << "- cumulative spill requests: " << spilled_objects_total_ << "\n";
   result << "- cumulative restore requests: " << restored_objects_total_ << "\n";
+  result << "- spilled objects pending delete: " << spilled_object_pending_delete_.size() << "\n";
   return result.str();
 }
 
