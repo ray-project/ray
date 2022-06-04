@@ -120,8 +120,7 @@ class WorkerSet:
         # A ray.remote RolloutWorker cls that can join a collective group, but
         # also pinned at driver node as a local worker.
         # self._remote_args["resources"][get_current_node_resource_key()] = 0.001
-        self._local_worker_cls = RolloutWorker.as_remote(**self._remote_args).remote
-        self._iteration = 0
+        # self._local_worker_cls = RolloutWorker.as_remote(**self._remote_args).remote
         self._logdir = logdir
 
         if _setup:
@@ -233,7 +232,7 @@ class WorkerSet:
     #     )
     #     return init_results
 
-    def sync_weights_broadcast(self, local_worker_rank: int):
+    def sync_weights_collective(self, global_vars: Optional[Dict[str, TensorType]] = None):
         # tensor_key_list = []
         # tensor_list = []
         # for key in weights['default_policy'].keys():
@@ -241,14 +240,10 @@ class WorkerSet:
         #     tensor_key_list.append(key)
         #     tensor_list.append(tensor)
         # Broadcast to collective group buffers from worker 0
-        print(f">>>> Warm up collective group for later broadcast")
+        print(f"\n\n >>>> Syncing weights with collective group ... \n\n")
         start = time.time()
-        ray.get(self.local_worker().broadcast.remote(group_name="device_mesh", src_rank=local_worker_rank))
-        print(f">>>> Time spent on warming up default_policy/fc_2/kernel buffer: {(time.time() - start)*1000}ms")
-        print(f">>>> Broadcast to collective group buffers from worker 0")
-        start = time.time()
-        ray.get(self.local_worker().broadcast.remote(group_name="device_mesh", src_rank=local_worker_rank))
-
+        self.local_worker().broadcast(group_name="device_mesh", src_rank=0)
+        print(f">>>> Time spent on broadcasting: {(time.time() - start)*1000}ms")
 
     def sync_weights(
         self,
@@ -272,11 +267,6 @@ class WorkerSet:
                 "arg in `sync_weights()`!"
             )
 
-
-        # if self._iteration == 0:
-        # First iteration just use object store to setup buffers at same
-        # dimension across all workers
-        # Only sync if we have remote workers or `from_worker` is provided.
         weights = None
         if self.remote_workers() or from_worker is not None:
             weights = (from_worker or self.local_worker()).get_weights(policies)
@@ -332,9 +322,6 @@ class WorkerSet:
         #     # global_vars.
         #     elif self.local_worker() is not None and global_vars is not None:
         #         self.local_worker().set_global_vars(global_vars)
-
-
-        self._iteration += 1
 
     def add_workers(self, num_workers: int, validate: bool = False) -> None:
         """Creates and adds a number of remote workers to this worker set.

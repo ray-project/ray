@@ -17,6 +17,8 @@ TRAINING_ITERATION_TIMER = "training_iteration"
 APPLY_GRADS_TIMER = "apply_grad"
 COMPUTE_GRADS_TIMER = "compute_grads"
 SYNCH_WORKER_WEIGHTS_TIMER = "synch_weights"
+SYNCH_WORKER_WEIGHTS_COLLECTIVE_TIMER = "synch_weights_collective"
+
 GRAD_WAIT_TIMER = "grad_wait"
 SAMPLE_TIMER = "sample"
 LEARN_ON_BATCH_TIMER = "learn"

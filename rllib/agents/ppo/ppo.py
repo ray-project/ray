@@ -33,6 +33,8 @@ from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
+    SYNCH_WORKER_WEIGHTS_COLLECTIVE_TIMER,
+    SYNCH_WORKER_WEIGHTS_TIMER,
     WORKER_UPDATE_TIMER,
 )
 import ray.util.collective as collective
@@ -408,11 +410,16 @@ class PPOTrainer(Trainer):
             "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
         }
 
+        print(f">>>>> Iteration: {self.iteration}")
         # Update weights - after learning on the local worker - on all remote
         # workers.
         if self.workers.remote_workers():
-            with self._timers[WORKER_UPDATE_TIMER]:
-                self.workers.sync_weights(global_vars=global_vars)
+            if self.iteration == 0:
+                with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+                    self.workers.sync_weights(global_vars=global_vars)
+            else:
+                with self._timers[SYNCH_WORKER_WEIGHTS_COLLECTIVE_TIMER]:
+                    self.workers.sync_weights_collective(global_vars=global_vars)
 
         # For each policy: update KL scale and warn about possible issues
         for policy_id, policy_info in train_results.items():

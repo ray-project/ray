@@ -1616,11 +1616,11 @@ class RolloutWorker(ParallelIteratorWorker):
         for key in weights['default_policy'].keys():
             tensor = weights['default_policy'][key]
             self.buffer_key_list.append(key)
-            self.buffer_list.append(tensor)
+            self.buffer_list.append(cp.asarray(tensor))
 
     def buffer_list_to_policy_map(self):
         for buffer_key, buffer_tensor in zip(self.buffer_key_list, self.buffer_list):
-            self.policy_map['default_policy'][buffer_key] = buffer_tensor
+            self.policy_map['default_policy'][buffer_key] = cp.asnumpy(buffer_tensor)
 
     @DeveloperAPI
     def get_weights(

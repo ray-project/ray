@@ -44,7 +44,6 @@ trainer_actor = ray.remote(PPOTrainer).options(num_gpus=1).remote(config=config)
 # loss calculation on the collected batch and a model update.
 print(ray.get(trainer_actor.train.remote()))
 remote_workers = ray.get(trainer_actor.get_remote_workers.remote())
-
 all_workers = [trainer_actor] + remote_workers
 print(f">>>> Creating collective group for {all_workers}")
 init_results = ray.get(
@@ -53,6 +52,7 @@ init_results = ray.get(
         for i, worker in enumerate(all_workers)
     ]
 )
+
 for _ in range(2):
     print(ray.get(trainer_actor.train.remote()))
 

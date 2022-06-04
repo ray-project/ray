@@ -46,7 +46,6 @@ from ray.rllib.evaluation.metrics import (
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer
-from ray.rllib.execution.common import WORKER_UPDATE_TIMER
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
@@ -81,6 +80,8 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_TRAINED,
     NUM_AGENT_STEPS_TRAINED,
+    SYNCH_WORKER_WEIGHTS_TIMER,
+    SYNCH_WORKER_WEIGHTS_COLLECTIVE_TIMER
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.pre_checks.multi_agent import check_multi_agent
@@ -945,10 +946,12 @@ class Trainer(Trainable):
         global_vars = {
             "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
         }
-        with self._timers[WORKER_UPDATE_TIMER]:
+
+        with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
             self.workers.sync_weights(global_vars=global_vars)
 
         return train_results
+
 
     @staticmethod
     def execution_plan(workers, config, **kwargs):
