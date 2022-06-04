@@ -19,7 +19,7 @@ from ray import train
 from ray import tune
 from ray.util import PublicAPI, get_node_ip_address
 from ray.air.checkpoint import Checkpoint
-from ray.air.config import RunConfig, ScalingConfig
+from ray.air.config import RunConfig, ScalingConfig, DatasetConfig
 from ray.air.constants import EVALUATION_DATASET_KEY, TRAIN_DATASET_KEY
 from ray.air.preprocessor import Preprocessor
 from ray.air.train.integrations.torch import TorchTrainer
@@ -228,6 +228,7 @@ class HuggingFaceTrainer(TorchTrainer):
             None, use the default configuration. This replaces the ``backend_config``
             arg of ``DataParallelTrainer``. Same as in ``TorchTrainer``.
         scaling_config: Configuration for how to scale data parallel training.
+        dataset_config: Configuration for dataset ingest.
         run_config: Configuration for the execution of the training run.
         preprocessor: A ray.air.preprocessor.Preprocessor to preprocess the
             provided datasets.
@@ -235,6 +236,18 @@ class HuggingFaceTrainer(TorchTrainer):
     """
 
     _checkpoint_manager_cls = _DataParallelSyncingCheckpointManager
+
+    _dataset_config = {
+        "train": DatasetConfig(
+            required=True,
+            streamable=False,
+            _noncustomizable_fields=["streamable"],
+        ),
+        "evaluation": DatasetConfig(
+            streamable=False,
+            _noncustomizable_fields=["streamable"],
+        ),
+    }
 
     def __init__(
         self,
@@ -246,6 +259,7 @@ class HuggingFaceTrainer(TorchTrainer):
         trainer_init_config: Optional[Dict] = None,
         torch_config: Optional[TorchConfig] = None,
         scaling_config: Optional[ScalingConfig] = None,
+        dataset_config: Optional[Dict[str, DatasetConfig]] = None,
         run_config: Optional[RunConfig] = None,
         preprocessor: Optional[Preprocessor] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
@@ -276,6 +290,7 @@ class HuggingFaceTrainer(TorchTrainer):
             train_loop_config=trainer_init_config,
             torch_config=torch_config,
             scaling_config=scaling_config,
+            dataset_config=dataset_config,
             run_config=run_config,
             datasets=datasets,
             preprocessor=preprocessor,
