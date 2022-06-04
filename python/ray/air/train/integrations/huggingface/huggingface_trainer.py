@@ -302,11 +302,6 @@ class HuggingFaceTrainer(TorchTrainer):
 
     def _validate_attributes(self):
         for key, conf in self._dataset_config.items():
-            if key not in (TRAIN_DATASET_KEY, EVALUATION_DATASET_KEY):
-                raise KeyError(
-                    f"Only '{TRAIN_DATASET_KEY}' and '{EVALUATION_DATASET_KEY}' "
-                    f"keys can be configured in `dataset_config`, got '{key}'."
-                )
             if conf.use_stream_api:
                 raise ValueError(
                     "HuggingFaceTrainer does not support `use_stream_api`."
