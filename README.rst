@@ -179,7 +179,7 @@ It offers high scalability and unified APIs for a
 .. code-block:: python
 
     import gym
-    from ray.rllib.agents.ppo import PPOTrainer
+    from ray.rllib.algorithms.ppo import PPO
 
 
     # Define your problem using python and openAI's gym API:
@@ -229,7 +229,7 @@ It offers high scalability and unified APIs for a
 
 
     # Create an RLlib Trainer instance.
-    trainer = PPOTrainer(
+    trainer = PPO(
         config={
             # Env class to use (here: our gym.Env sub-class from above).
             "env": SimpleCorridor,

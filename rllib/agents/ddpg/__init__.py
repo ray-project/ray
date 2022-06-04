@@ -1,6 +1,10 @@
-from ray.rllib.algorithms.ddpg.apex import ApexDDPGTrainer
-from ray.rllib.algorithms.ddpg.ddpg import DDPGConfig, DDPGTrainer, DEFAULT_CONFIG
-from ray.rllib.algorithms.ddpg.td3 import TD3Trainer
+from ray.rllib.algorithms.apex_ddpg.apex_ddpg import ApexDDPG as ApexDDPGTrainer
+from ray.rllib.algorithms.ddpg.ddpg import (
+    DDPGConfig,
+    DDPG as DDPGTrainer,
+    DEFAULT_CONFIG,
+)
+from ray.rllib.algorithms.td3.td3 import TD3 as TD3Trainer
 
 
 __all__ = [

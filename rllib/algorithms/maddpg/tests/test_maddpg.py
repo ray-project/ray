@@ -20,7 +20,7 @@ class TestMADDPG(unittest.TestCase):
         ray.shutdown()
 
     def test_maddpg_compilation(self):
-        """Test whether an MADDPGTrainer can be built with all frameworks."""
+        """Test whether MADDPG can be built with all frameworks."""
         config = (
             maddpg.MADDPGConfig()
             .environment(
