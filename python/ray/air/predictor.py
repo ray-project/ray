@@ -52,4 +52,5 @@ class Predictor(abc.ABC):
 @DeveloperAPI
 class PredictorNotSerializableException(RuntimeError):
     """Error raised when trying to serialize a Predictor instance."""
+
     pass

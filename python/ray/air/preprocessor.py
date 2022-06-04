@@ -178,4 +178,5 @@ class Preprocessor(abc.ABC):
 @DeveloperAPI
 class PreprocessorNotFittedException(RuntimeError):
     """Error raised when the preprocessor needs to be fitted first."""
+
     pass
