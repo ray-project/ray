@@ -1,7 +1,7 @@
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import RunConfig, ScalingConfig, DatasetConfig
 from ray.air.preprocessor import Preprocessor
-from ray.air._internal.datasets import train_test_split
+from ray.air.util.datasets import train_test_split
 
 __all__ = [
     "Checkpoint",

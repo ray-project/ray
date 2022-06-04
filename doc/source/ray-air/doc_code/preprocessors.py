@@ -67,7 +67,7 @@ result = trainer.fit()
 
 
 # __checkpoint_start__
-from ray.air.utils.checkpointing import load_preprocessor_from_dir
+from ray.air._internal.checkpointing import load_preprocessor_from_dir
 
 checkpoint = result.checkpoint
 with checkpoint.as_directory() as checkpoint_path:
