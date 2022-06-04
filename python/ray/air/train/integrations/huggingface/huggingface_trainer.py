@@ -238,8 +238,8 @@ class HuggingFaceTrainer(TorchTrainer):
     _checkpoint_manager_cls = _DataParallelSyncingCheckpointManager
 
     _dataset_config = {
-        "train": DatasetConfig(required=True),
-        "evaluation": DatasetConfig(),
+        "train": DatasetConfig(fit=True, split=False, required=True),
+        "evaluation": DatasetConfig(split=False),
     }
 
     def __init__(

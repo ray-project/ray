@@ -236,7 +236,7 @@ class DataParallelTrainer(Trainer):
 
     _dataset_config = {
         TRAIN_DATASET_KEY: DatasetConfig(fit=True, split=True),
-        WILDCARD_KEY: DatasetConfig(),
+        WILDCARD_KEY: DatasetConfig(split=False),
     }
 
     def __init__(
