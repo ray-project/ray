@@ -169,6 +169,8 @@ class DatasetPipeline(Generic[T]):
         Returns:
             An iterator over record batches.
         """
+        if self._executed[0]:
+            raise RuntimeError("Pipeline cannot be read multiple times.")
         time_start = time.perf_counter()
         if self._first_dataset is None:
             self._peek()
