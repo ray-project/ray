@@ -35,7 +35,7 @@ Want to build Ray from source or with docker? Need more details?
 Check out our detailed [installation guide](installation.rst).
 
 
-## Ray AI Runtime Quick Start
+## Ray Libraries Quick Start
 
 Ray has a rich ecosystem of libraries and frameworks built on top of it. 
 Simply click on the dropdowns below to see examples of our most popular libraries.
