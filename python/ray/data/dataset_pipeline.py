@@ -170,35 +170,25 @@ class DatasetPipeline(Generic[T]):
             An iterator over record batches.
         """
         time_start = time.perf_counter()
+        if self._first_dataset is None:
+            self._peek()
+        is_lazy = self._first_dataset._lazy
         yield from batch_blocks(
-            self._iter_blocks(prefetch_blocks),
+            self._iter_blocks(),
             self._stats,
             prefetch_blocks=prefetch_blocks,
+            clear_block_after_read=is_lazy,
             batch_size=batch_size,
             batch_format=batch_format,
             drop_last=drop_last,
         )
         self._stats.iter_total_s.add(time.perf_counter() - time_start)
 
-    def _iter_blocks(self, prefetch_blocks: int = 0) -> Iterator[Block]:
+    def _iter_blocks(self) -> Iterator[Block]:
         ds_wait_start = time.perf_counter()
-        latest_blocks = collections.deque(maxlen=prefetch_blocks + 1)
         for ds in self.iter_datasets():
             self._stats.iter_ds_wait_s.add(time.perf_counter() - ds_wait_start)
-            for block in ds._plan.execute().iter_blocks():
-                yield block
-                if len(latest_blocks) == latest_blocks.maxlen:
-                    block_ref = latest_blocks.popleft()
-                    # Eagerly clear the object before Python GC kicks in, which may 
-                    # have certain delay, to reduce the memory footprint.
-                    # Notes:
-                    # - We cannot make this optimization if it's eager dataset, as
-                    #   this will destruct the dataset.
-                    # - We can only clear the block if it has passed the prefetch
-                    #   window, i.e. the block is already consumed.
-                    if ds._lazy:
-                        ray.internal.internal_api.free(block_ref)
-                latest_blocks.append(block)
+            yield from ds._plan.execute().iter_blocks()
             ds_wait_start = time.perf_counter()
 
     def split(
