@@ -88,6 +88,11 @@ class _DataParallelSyncingCheckpointManager(_DataParallelCheckpointManager):
                 f.write(str(self._latest_checkpoint_id))
 
 
+def _huggingface_config_validator(config: DatasetConfig):
+    if config.use_stream_api:
+        raise ValueError("HuggingFaceTrainer does not support use_stream_api.")
+
+
 @PublicAPI(stability="alpha")
 class HuggingFaceTrainer(TorchTrainer):
     """A Trainer for data parallel HuggingFace Transformers on PyTorch training.
@@ -241,11 +246,11 @@ class HuggingFaceTrainer(TorchTrainer):
         "train": DatasetConfig(
             required=True,
             use_stream_api=False,
-            _noncustomizable_fields=["use_stream_api"],
+            _validator=_huggingface_config_validator,
         ),
         "evaluation": DatasetConfig(
             use_stream_api=False,
-            _noncustomizable_fields=["use_stream_api"],
+            _validator=_huggingface_config_validator,
         ),
     }
 

@@ -5,7 +5,6 @@ from typing import (
     Callable,
     Dict,
     List,
-    Tuple,
     Mapping,
     Optional,
     Union,
@@ -172,8 +171,9 @@ class DatasetConfig:
     # False by default for all datasets.
     global_shuffle: Optional[bool] = None
 
-    # List of fields that the user cannot override in ``dataset_config``.
-    _noncustomizable_fields: Tuple[str] = ()
+    # Validator function for the final config, which should raise ValueError if the
+    # config cannot be validated.
+    _validator: Optional[Callable[["DatasetConfig"], None]] = None
 
     def fill_defaults(self) -> "DatasetConfig":
         """Return a copy of this config with all default values filled in."""
@@ -187,7 +187,7 @@ class DatasetConfig:
             else 1024 * 1024 * 1024,
             global_shuffle=self.global_shuffle or False,
             transform=self.transform if self.transform is not None else True,
-            _noncustomizable_fields=self._noncustomizable_fields,
+            _validator=self._validator,
         )
 
     @staticmethod
@@ -197,7 +197,7 @@ class DatasetConfig:
         """Merge two given DatasetConfigs, the second taking precedence.
 
         Raises:
-            ValueError if any noncustomizable fields were specified to be updated.
+            ValueError if validation fails on the merged configs.
         """
         has_wildcard = WILDCARD_KEY in a
         result = a.copy()
@@ -255,15 +255,9 @@ class DatasetConfig:
         """Merge the given DatasetConfig into this one.
 
         Raises:
-            ValueError if any noncustomizable fields were specified to be updated.
+            ValueError if validation fails on the merged config.
         """
-        for field in self._noncustomizable_fields:
-            if getattr(other, field) is not None:
-                raise ValueError(
-                    f"Cannot override noncustomizable field `{field}` in the "
-                    "dataset config."
-                )
-        return DatasetConfig(
+        new_config = DatasetConfig(
             fit=self.fit if other.fit is None else other.fit,
             split=self.split if other.split is None else other.split,
             required=self.required if other.required is None else other.required,
@@ -277,8 +271,11 @@ class DatasetConfig:
             global_shuffle=self.global_shuffle
             if other.global_shuffle is None
             else other.global_shuffle,
-            _noncustomizable_fields=self._noncustomizable_fields,
+            _validator=self._validator,
         )
+        if self._validator:
+            self._validator(new_config)
+        return new_config
 
 
 @PublicAPI(stability="alpha")

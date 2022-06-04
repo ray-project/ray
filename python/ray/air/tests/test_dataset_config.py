@@ -18,11 +18,16 @@ def ray_start_4_cpus():
     ray.shutdown()
 
 
+def require_split(config):
+    if not config.split:
+        raise ValueError("Does not support split=False")
+
+
 class TestBasic(DataParallelTrainer):
     _dataset_config = {
         "train": DatasetConfig(split=True, required=True),
         "test": DatasetConfig(),
-        "baz": DatasetConfig(split=True, _noncustomizable_fields=["split"]),
+        "baz": DatasetConfig(split=True, _validator=require_split),
     }
 
     def __init__(
@@ -54,7 +59,7 @@ class TestBasic(DataParallelTrainer):
 class TestWildcard(TestBasic):
     _dataset_config = {
         "train": DatasetConfig(split=True, required=True),
-        "*": DatasetConfig(split=True, _noncustomizable_fields=["split"]),
+        "*": DatasetConfig(split=True, _validator=require_split),
     }
 
 
