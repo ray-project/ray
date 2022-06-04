@@ -295,9 +295,9 @@ def test_controller_deserialization_args_and_kwargs():
 
         return deserializer
 
-    # PidBasedString.__reduce__ = generate_pid_based_deserializer(
-    #     ray.get(client._controller.get_pid.remote()), PidBasedString.__reduce__
-    # )
+    PidBasedString.__reduce__ = generate_pid_based_deserializer(
+        ray.get(client._controller.get_pid.remote()), PidBasedString.__reduce__
+    )
 
     @serve.deployment
     class Echo:
@@ -305,11 +305,10 @@ def test_controller_deserialization_args_and_kwargs():
             self.arg_str = arg_str
             self.kwarg_str = kwarg_str
 
-        def __call___(self, request):
+        def __call__(self, request):
             return self.arg_str + self.kwarg_str
 
-    # Echo.deploy(PidBasedString("hello "), kwarg_str=PidBasedString("world!"))
-    Echo.deploy("hello ", kwarg_str="world!")
+    Echo.deploy(PidBasedString("hello "), kwarg_str=PidBasedString("world!"))
 
     assert requests.get("http://localhost:8000/Echo").text == "hello world!"
 
