@@ -12,7 +12,7 @@ from typing import Any, Dict, Iterator, Optional, Tuple, Union
 
 import ray
 from ray import cloudpickle as pickle
-from ray.air.internal.remote_storage import (
+from ray.air._internal.remote_storage import (
     download_from_uri,
     fs_hint,
     is_non_local_path_uri,

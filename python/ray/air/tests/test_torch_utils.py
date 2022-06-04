@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import torch
 
-from ray.air.internal.torch_utils import (
+from ray.air._internal.torch_utils import (
     convert_pandas_to_torch_tensor,
     load_torch_model,
 )
