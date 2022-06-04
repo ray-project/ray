@@ -457,10 +457,13 @@ def test_controller_recover_and_delete():
 
     # All replicas should be removed once the controller revives
     wait_for_condition(
-        lambda: len(ray.util.list_named_actors(all_namespaces=True))
-        == len(actors) - 50,
-        timeout=50,
+        lambda: len(ray.util.list_named_actors(all_namespaces=True)) == len(actors) - 50
     )
+
+    # The deployment should be deleted, meaning its state should not be stored
+    # in the DeploymentStateManager. This can be checked by attempting to
+    # retrieve the deployment's status through the controller.
+    assert client.get_serve_status().get_deployment_status("f") is None
 
     serve.shutdown()
     ray.shutdown()
