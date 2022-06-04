@@ -4,6 +4,7 @@ import logging
 import importlib.util
 import os
 import numpy as np
+import cupy as cp
 from types import FunctionType
 from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
@@ -206,7 +207,7 @@ class WorkerSet:
 
         # self.create_collective_group()
 
-    def local_worker(self) -> ActorHandle:
+    def local_worker(self) -> RolloutWorker:
         """Returns the local rollout worker."""
         return self._local_worker
 
@@ -232,6 +233,10 @@ class WorkerSet:
     #     )
     #     return init_results
 
+    # @ray.remote
+    # def broadcast_task():
+    #     return self.local_worker().broadcast(group_name="device_mesh", src_rank=0)
+
     def sync_weights_collective(self, global_vars: Optional[Dict[str, TensorType]] = None):
         # tensor_key_list = []
         # tensor_list = []
@@ -242,7 +247,22 @@ class WorkerSet:
         # Broadcast to collective group buffers from worker 0
         print(f"\n\n >>>> Syncing weights with collective group ... \n\n")
         start = time.time()
-        self.local_worker().broadcast(group_name="device_mesh", src_rank=0)
+        cp.cuda.Device(0).synchronize()
+        local_worker_rank = collective.get_rank(group_name="device_mesh")
+        print(f">>>> local_worker_rank from worker_set: {local_worker_rank}")
+
+        # self.local_worker().broadcast(group_name="device_mesh", src_rank=0)
+        self_actor = ray.get_runtime_context().current_actor
+        ray.get(
+            [
+                self_actor.broadcast.remote(group_name="device_mesh", src_rank=0),
+                self.remote_workers()[0].broadcast.remote(group_name="device_mesh", src_rank=0),
+                self.remote_workers()[1].broadcast.remote(group_name="device_mesh", src_rank=0),
+                self.remote_workers()[2].broadcast.remote(group_name="device_mesh", src_rank=0)
+            ]
+        )
+
+        cp.cuda.Device(0).synchronize()
         print(f">>>> Time spent on broadcasting: {(time.time() - start)*1000}ms")
 
     def sync_weights(

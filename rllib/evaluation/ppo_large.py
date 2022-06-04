@@ -3,6 +3,10 @@ import ray
 from ray.rllib.agents.ppo import PPOTrainer
 import ray.util.collective as collective
 from ray.util.collective.types import Backend
+import cupy as cp
+
+# ray.init(address="auto")
+
 # ray.init(address="auto", log_to_driver=True)
 # Configure the algorithm.
 config = {
@@ -52,6 +56,17 @@ init_results = ray.get(
         for i, worker in enumerate(all_workers)
     ]
 )
+print(init_results)
+init_buffers = ray.get(
+    [
+        worker.init_buffers.remote() for _, worker in enumerate(all_workers)
+    ]
+)
+cp.cuda.Device(0).synchronize()
+cp.cuda.Stream.null.synchronize()
+
+
+
 
 for _ in range(2):
     print(ray.get(trainer_actor.train.remote()))

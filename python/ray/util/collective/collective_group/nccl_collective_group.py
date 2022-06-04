@@ -252,11 +252,16 @@ class NCCLGroup(BaseGroup):
         Returns:
             None
         """
+        # logger.info(f">>>>>> Calling broadcast with tensors {tensors}")
         root_rank = (
             len(tensors) * broadcast_options.root_rank + broadcast_options.root_tensor
         )
 
         def collective_fn(input_tensor, output_tensor, comm, stream):
+            logger.info(f">>>>>> input_tensor: {input_tensor}")
+            logger.info(f">>>>>> output_tensor: {output_tensor}")
+            logger.info(f">>>>>> comm: {comm}")
+            logger.info(f">>>>>> stream: {stream}")
             comm.broadcast(
                 nccl_util.get_tensor_ptr(input_tensor),
                 nccl_util.get_tensor_ptr(output_tensor),
@@ -425,7 +430,9 @@ class NCCLGroup(BaseGroup):
 
         group_key = self._generate_group_key(comm_key)
         if self.rank == 0:
+            logger.info(f">>>> self.rank: {self.rank}")
             nccl_uid = self._generate_nccl_uid(group_key)
+            logger.info(f">>>> nccl_uid: {nccl_uid}")
         else:
             rendezvous = Rendezvous(group_key)
             rendezvous.meet()
@@ -596,22 +603,31 @@ class NCCLGroup(BaseGroup):
         Returns:
             None
         """
+        logger.info(f">>>>> Calling _collective with collective_fn: {collective_fn}")
         _check_gpu_tensors(input_tensors)
         _check_gpu_tensors(output_tensors)
+        logger.info(f">>>>> _collective - input_tensors: {input_tensors[0].shape}")
+        logger.info(f">>>>> _collective - output_tensors: {output_tensors[0].shape}")
 
         devices = nccl_util.get_tensor_device_list(input_tensors)
+        logger.info(f">>>>> _collective - devices: {devices}")
         key = _get_comm_key_from_devices(devices)
+        logger.info(f">>>>> _collective - key: {key}")
         comms = self._get_nccl_collective_communicator(key, devices)
+        logger.info(f">>>>> _collective - comms: {comms}")
         streams = self._dev_streams_map[key]
+        logger.info(f">>>>> _collective - streams: {streams}")
         events = self._dev_event_map[key]
+        logger.info(f">>>>> _collective - events: {events}")
+        logger.info(f">>>>> _collective - step 1)")
 
         # TODO(Hao): sync streams and events
         self._sync_streams(devices, events, streams)
-
+        logger.info(f">>>>> _collective - step 2)")
         # Make the collective call
         if preprocess_fn:
             preprocess_fn(streams)
-
+        logger.info(f">>>>> _collective - step 3)")
         nccl_util.groupStart()
         # TODO(Fu): how to recordStreams as there are no library functions
         # We also need to make sure input tensors are not freed before their
@@ -621,8 +637,10 @@ class NCCLGroup(BaseGroup):
         # when GC attempts to free the input tensor, and delays GC until that
         # event is done.
         for i, tensor in enumerate(input_tensors):
+            logger.info(f">>>>> _collective - step 4, index {i})")
             collective_fn(tensor, output_tensors[i], comms[i], streams[i])
         nccl_util.groupEnd()
+        logger.info(f">>>>> _collective - step 5)")
         if postprocess_fn:
             postprocess_fn(streams)
 

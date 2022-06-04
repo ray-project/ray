@@ -39,6 +39,7 @@ from ray.rllib.utils.metrics import (
 )
 import ray.util.collective as collective
 from ray.util.collective.types import Backend
+import cupy as cp
 
 logger = logging.getLogger(__name__)
 
@@ -380,6 +381,13 @@ class PPOTrainer(Trainer):
             from ray.rllib.agents.ppo.ppo_tf_policy import PPOEagerTFPolicy
 
             return PPOEagerTFPolicy
+
+    def init_buffers(self):
+        self.workers.local_worker().init_buffers()
+
+    def broadcast(self, src_rank=0, group_name="default"):
+        local_worker = self.workers.local_worker()
+        collective.broadcast(local_worker.buffer, src_rank, group_name)
 
     @ExperimentalAPI
     def training_iteration(self) -> ResultDict:

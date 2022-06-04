@@ -7,6 +7,7 @@ import gym
 import logging
 import math
 import numpy as np
+import cupy as cp
 import os
 from packaging import version
 import pickle
@@ -81,7 +82,6 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_TRAINED,
     NUM_AGENT_STEPS_TRAINED,
     SYNCH_WORKER_WEIGHTS_TIMER,
-    SYNCH_WORKER_WEIGHTS_COLLECTIVE_TIMER
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.pre_checks.multi_agent import check_multi_agent
@@ -511,6 +511,7 @@ class Trainer(Trainable):
 
         # Run any callbacks after trainer initialization is done.
         self.callbacks.on_trainer_init(trainer=self)
+        # self.init_buffers()
 
     # TODO: Deprecated: In your sub-classes of Trainer, override `setup()`
     #  directly and call super().setup() from within it if you would like the
@@ -524,6 +525,12 @@ class Trainer(Trainable):
         print(">>>> Init group for trainer called")
         collective.init_collective_group(world_size, rank, backend, group_name)
         return True
+
+    # def init_buffers(self):
+    #     self.buffer_key_list = ["default"] * 12
+    #     self.buffer_list = [cp.ones([500, 500], dtype=cp.float32)] * 12
+    #     self.buffer = cp.ones([500,500], dtype=cp.float32)
+    #     cp.cuda.Stream.null.synchronize()
 
     def get_remote_workers(self):
         return self.workers.remote_workers()

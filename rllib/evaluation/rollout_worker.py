@@ -381,8 +381,6 @@ class RolloutWorker(ParallelIteratorWorker):
             disable_env_checking: If True, disables the env checking module that
                 validates the properties of the passed environment.
         """
-        self.buffer_key_list = [None] * 12
-        self.buffer_list = [None] * 12
         # Deprecated args.
         if policy is not None:
             deprecation_warning("policy", "policy_spec", error=False)
@@ -1574,6 +1572,16 @@ class RolloutWorker(ParallelIteratorWorker):
             else:
                 self.policy_map[pid].set_state(state)
 
+    def init_buffers(self):
+        self.buffer_key_list = ["default"] * 12
+        self.buffer_list = [cp.ones([500, 500], dtype=cp.float32)] * 12
+        self.buffer = cp.ones([500,500], dtype=cp.float32)
+        cp.cuda.Stream.null.synchronize()
+        print(f">>>> Finished init buffers for worker at rank {collective.get_rank(group_name='device_mesh')}")
+
+    def get_buffers(self):
+        return self.buffer_key_list, self.buffer_list, self.buffer
+
     def init_group(self, world_size, rank, backend=Backend.NCCL, group_name="default"):
         collective.init_collective_group(world_size, rank, backend, group_name)
         return True
@@ -1588,17 +1596,23 @@ class RolloutWorker(ParallelIteratorWorker):
     #     collective.recv(self.policy_map_buffer, src_rank, group_name)
 
     def broadcast(self, group_name="default", src_rank=0):
+        local_worker_rank = collective.get_rank(group_name="device_mesh")
+        print(f">>>> local_worker_rank from rollout_worker: {local_worker_rank}")
+        print(f">>>>> collective group size: {collective.get_collective_group_size('device_mesh')}")
+
         print(f">>>> Putting current policy map to buffer_list")
-        self.policy_map_to_buffer_list()
+        # self.policy_map_to_buffer_list()
         print(f">>>> Broadcasting ... len: buffer_key_list: {len(self.buffer_key_list)}, len: buffer_list: {len(self.buffer_list)}")
         print(f">>>> group_name: {group_name}, src_rank: {src_rank}")
+        collective.broadcast(self.buffer, src_rank, group_name)
         # nccl_util.groupStart()
-        for i in range(len(self.buffer_list)):
-            print(f">>>> Broadcasting tensor of type {type(self.buffer_list[i])}, shape: {self.buffer_list[i].shape}")
-            collective.broadcast(self.buffer_list[i], src_rank, group_name)
+        # for i in range(len(self.buffer_list)):
+            # print(f">>>> Broadcasting tensor of type {type(self.buffer_list[i])}, shape: {self.buffer_list[i].shape}")
+            # collective.broadcast(self.buffer_list[i], src_rank, group_name)
         # nccl_util.groupEnd()
+
         print(f">>>> Putting current buffer_list to policy map")
-        self.buffer_list_to_policy_map()
+        # self.buffer_list_to_policy_map()
 
     # def set_buffer_key_list(self, buffer_key_list: List[str]):
     #     self.buffer_key_list = buffer_key_list
@@ -1610,15 +1624,19 @@ class RolloutWorker(ParallelIteratorWorker):
         """Given a policy map, convert into list of tensor buffers with out
         nesting
         """
-        self.buffer_key_list = []
-        self.buffer_list = []
+
         weights = self.get_weights()
         for key in weights['default_policy'].keys():
             tensor = weights['default_policy'][key]
             self.buffer_key_list.append(key)
             self.buffer_list.append(cp.asarray(tensor))
+        # TODO (jiaodong): Generalize this to support multiple buffers
+        # self.buffer = self.buffer_list[0]
 
     def buffer_list_to_policy_map(self):
+        # TODO (jiaodong): Generalize this to support multiple buffers
+        # self.buffer_list[0] = self.buffer
+
         for buffer_key, buffer_tensor in zip(self.buffer_key_list, self.buffer_list):
             self.policy_map['default_policy'][buffer_key] = cp.asnumpy(buffer_tensor)
 
