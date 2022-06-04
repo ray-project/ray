@@ -122,120 +122,120 @@ class RemoteFunction(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
         pass
 
     @overload
-    def remote(self) -> ObjectRef[R]:
+    def remote(self) -> "ObjectRef[R]":
         ...
 
     @overload
-    def remote(self, arg0: Union[T0, ObjectRef[T0]]) -> ObjectRef[R]:
-        ...
-
-    @overload
-    def remote(
-        self, arg0: Union[T0, ObjectRef[T0]], arg1: Union[T1, ObjectRef[T1]]
-    ) -> ObjectRef[R]:
+    def remote(self, arg0: "Union[T0, ObjectRef[T0]]") -> "ObjectRef[R]":
         ...
 
     @overload
     def remote(
-        self,
-        arg0: Union[T0, ObjectRef[T0]],
-        arg1: Union[T1, ObjectRef[T1]],
-        arg2: Union[T2, ObjectRef[T2]],
-    ) -> ObjectRef[R]:
+        self, arg0: "Union[T0, ObjectRef[T0]]", arg1: "Union[T1, ObjectRef[T1]]"
+    ) -> "ObjectRef[R]":
         ...
 
     @overload
     def remote(
         self,
-        arg0: Union[T0, ObjectRef[T0]],
-        arg1: Union[T1, ObjectRef[T1]],
-        arg2: Union[T2, ObjectRef[T2]],
-        arg3: Union[T3, ObjectRef[T3]],
-    ) -> ObjectRef[R]:
+        arg0: "Union[T0, ObjectRef[T0]]",
+        arg1: "Union[T1, ObjectRef[T1]]",
+        arg2: "Union[T2, ObjectRef[T2]]",
+    ) -> "ObjectRef[R]":
         ...
 
     @overload
     def remote(
         self,
-        arg0: Union[T0, ObjectRef[T0]],
-        arg1: Union[T1, ObjectRef[T1]],
-        arg2: Union[T2, ObjectRef[T2]],
-        arg3: Union[T3, ObjectRef[T3]],
-        arg4: Union[T4, ObjectRef[T4]],
-    ) -> ObjectRef[R]:
+        arg0: "Union[T0, ObjectRef[T0]]",
+        arg1: "Union[T1, ObjectRef[T1]]",
+        arg2: "Union[T2, ObjectRef[T2]]",
+        arg3: "Union[T3, ObjectRef[T3]]",
+    ) -> "ObjectRef[R]":
         ...
 
     @overload
     def remote(
         self,
-        arg0: Union[T0, ObjectRef[T0]],
-        arg1: Union[T1, ObjectRef[T1]],
-        arg2: Union[T2, ObjectRef[T2]],
-        arg3: Union[T3, ObjectRef[T3]],
-        arg4: Union[T4, ObjectRef[T4]],
-        arg5: Union[T5, ObjectRef[T5]],
-    ) -> ObjectRef[R]:
+        arg0: "Union[T0, ObjectRef[T0]]",
+        arg1: "Union[T1, ObjectRef[T1]]",
+        arg2: "Union[T2, ObjectRef[T2]]",
+        arg3: "Union[T3, ObjectRef[T3]]",
+        arg4: "Union[T4, ObjectRef[T4]]",
+    ) -> "ObjectRef[R]":
         ...
 
     @overload
     def remote(
         self,
-        arg0: Union[T0, ObjectRef[T0]],
-        arg1: Union[T1, ObjectRef[T1]],
-        arg2: Union[T2, ObjectRef[T2]],
-        arg3: Union[T3, ObjectRef[T3]],
-        arg4: Union[T4, ObjectRef[T4]],
-        arg5: Union[T5, ObjectRef[T5]],
-        arg6: Union[T6, ObjectRef[T6]],
-    ) -> ObjectRef[R]:
+        arg0: "Union[T0, ObjectRef[T0]]",
+        arg1: "Union[T1, ObjectRef[T1]]",
+        arg2: "Union[T2, ObjectRef[T2]]",
+        arg3: "Union[T3, ObjectRef[T3]]",
+        arg4: "Union[T4, ObjectRef[T4]]",
+        arg5: "Union[T5, ObjectRef[T5]]",
+    ) -> "ObjectRef[R]":
         ...
 
     @overload
     def remote(
         self,
-        arg0: Union[T0, ObjectRef[T0]],
-        arg1: Union[T1, ObjectRef[T1]],
-        arg2: Union[T2, ObjectRef[T2]],
-        arg3: Union[T3, ObjectRef[T3]],
-        arg4: Union[T4, ObjectRef[T4]],
-        arg5: Union[T5, ObjectRef[T5]],
-        arg6: Union[T6, ObjectRef[T6]],
-        arg7: Union[T7, ObjectRef[T7]],
-    ) -> ObjectRef[R]:
+        arg0: "Union[T0, ObjectRef[T0]]",
+        arg1: "Union[T1, ObjectRef[T1]]",
+        arg2: "Union[T2, ObjectRef[T2]]",
+        arg3: "Union[T3, ObjectRef[T3]]",
+        arg4: "Union[T4, ObjectRef[T4]]",
+        arg5: "Union[T5, ObjectRef[T5]]",
+        arg6: "Union[T6, ObjectRef[T6]]",
+    ) -> "ObjectRef[R]":
         ...
 
     @overload
     def remote(
         self,
-        arg0: Union[T0, ObjectRef[T0]],
-        arg1: Union[T1, ObjectRef[T1]],
-        arg2: Union[T2, ObjectRef[T2]],
-        arg3: Union[T3, ObjectRef[T3]],
-        arg4: Union[T4, ObjectRef[T4]],
-        arg5: Union[T5, ObjectRef[T5]],
-        arg6: Union[T6, ObjectRef[T6]],
-        arg7: Union[T7, ObjectRef[T7]],
-        arg8: Union[T8, ObjectRef[T8]],
-    ) -> ObjectRef[R]:
+        arg0: "Union[T0, ObjectRef[T0]]",
+        arg1: "Union[T1, ObjectRef[T1]]",
+        arg2: "Union[T2, ObjectRef[T2]]",
+        arg3: "Union[T3, ObjectRef[T3]]",
+        arg4: "Union[T4, ObjectRef[T4]]",
+        arg5: "Union[T5, ObjectRef[T5]]",
+        arg6: "Union[T6, ObjectRef[T6]]",
+        arg7: "Union[T7, ObjectRef[T7]]",
+    ) -> "ObjectRef[R]":
         ...
 
     @overload
     def remote(
         self,
-        arg0: Union[T0, ObjectRef[T0]],
-        arg1: Union[T1, ObjectRef[T1]],
-        arg2: Union[T2, ObjectRef[T2]],
-        arg3: Union[T3, ObjectRef[T3]],
-        arg4: Union[T4, ObjectRef[T4]],
-        arg5: Union[T5, ObjectRef[T5]],
-        arg6: Union[T6, ObjectRef[T6]],
-        arg7: Union[T7, ObjectRef[T7]],
-        arg8: Union[T8, ObjectRef[T8]],
-        arg9: Union[T9, ObjectRef[T9]],
-    ) -> ObjectRef[R]:
+        arg0: "Union[T0, ObjectRef[T0]]",
+        arg1: "Union[T1, ObjectRef[T1]]",
+        arg2: "Union[T2, ObjectRef[T2]]",
+        arg3: "Union[T3, ObjectRef[T3]]",
+        arg4: "Union[T4, ObjectRef[T4]]",
+        arg5: "Union[T5, ObjectRef[T5]]",
+        arg6: "Union[T6, ObjectRef[T6]]",
+        arg7: "Union[T7, ObjectRef[T7]]",
+        arg8: "Union[T8, ObjectRef[T8]]",
+    ) -> "ObjectRef[R]":
         ...
 
-    def remote(self, *args, **kwargs) -> ObjectRef[R]:
+    @overload
+    def remote(
+        self,
+        arg0: "Union[T0, ObjectRef[T0]]",
+        arg1: "Union[T1, ObjectRef[T1]]",
+        arg2: "Union[T2, ObjectRef[T2]]",
+        arg3: "Union[T3, ObjectRef[T3]]",
+        arg4: "Union[T4, ObjectRef[T4]]",
+        arg5: "Union[T5, ObjectRef[T5]]",
+        arg6: "Union[T6, ObjectRef[T6]]",
+        arg7: "Union[T7, ObjectRef[T7]]",
+        arg8: "Union[T8, ObjectRef[T8]]",
+        arg9: "Union[T9, ObjectRef[T9]]",
+    ) -> "ObjectRef[R]":
+        ...
+
+    def remote(self, *args, **kwargs) -> "ObjectRef[R]":
         ...
 
 
@@ -1922,20 +1922,20 @@ blocking_get_inside_async_warned = False
 
 @overload
 def get(
-    object_refs: Sequence[ObjectRef[Any]], *, timeout: Optional[float] = None
+    object_refs: "Sequence[ObjectRef[Any]]", *, timeout: Optional[float] = None
 ) -> List[Any]:
     ...
 
 
 @overload
 def get(
-    object_refs: Sequence[ObjectRef[R]], *, timeout: Optional[float] = None
+    object_refs: "Sequence[ObjectRef[R]]", *, timeout: Optional[float] = None
 ) -> List[R]:
     ...
 
 
 @overload
-def get(object_refs: ObjectRef[R], *, timeout: Optional[float] = None) -> R:
+def get(object_refs: "ObjectRef[R]", *, timeout: Optional[float] = None) -> R:
     ...
 
 
