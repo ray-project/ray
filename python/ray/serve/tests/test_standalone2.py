@@ -429,6 +429,43 @@ class TestDeployApp:
         )
 
 
+def test_controller_recover_and_delete():
+    """Ensure that in-progress deletion can finish even after controller dies."""
+
+    ray.init()
+    client = serve.start()
+
+    @serve.deployment(
+        num_replicas=50,
+        ray_actor_options={"num_cpus": 0.001},
+    )
+    def f():
+        pass
+
+    f.deploy()
+
+    actors = ray.util.list_named_actors(all_namespaces=True)
+    client.delete_deployments(["f"], blocking=False)
+
+    wait_for_condition(
+        lambda: len(ray.util.list_named_actors(all_namespaces=True)) < len(actors)
+    )
+    ray.kill(client._controller, no_restart=False)
+
+    # There should still be replicas remaining
+    assert len(ray.util.list_named_actors(all_namespaces=True)) > 2
+
+    # All replicas should be removed once the controller revives
+    wait_for_condition(
+        lambda: len(ray.util.list_named_actors(all_namespaces=True))
+        == len(actors) - 50,
+        timeout=50,
+    )
+
+    serve.shutdown()
+    ray.shutdown()
+
+
 def test_shutdown_remote(start_and_shutdown_ray_cli_function):
     """Check that serve.shutdown() works on a remote Ray cluster."""
 
