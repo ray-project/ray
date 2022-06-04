@@ -1095,7 +1095,7 @@ The following are example excerpts from different Trainers' configs
     "explore": True,
 
     # 3) Example exploration_config usages:
-    # a) DQN: see rllib/agents/dqn/dqn.py
+    # a) DQN: see rllib/algorithms/dqn/dqn.py
     "explore": True,
     "exploration_config": {
        # Exploration sub-class by name or full path to module+class

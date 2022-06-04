@@ -14,7 +14,7 @@ import random
 
 import ray
 from ray import tune
-from ray.rllib.algorithms.pg import PGTrainer, PGTFPolicy, PGTorchPolicy
+from ray.rllib.algorithms.pg import PG, PGTFPolicy, PGTorchPolicy
 from ray.rllib.agents.registry import get_trainer_class
 from ray.rllib.env import PettingZooEnv
 from ray.rllib.examples.policy.rock_paper_scissors_dummies import (
@@ -167,7 +167,7 @@ def run_with_custom_entropy_loss(args, stop):
     policy_cls = PGTorchPolicy if args.framework == "torch" else PGTFPolicy
     EntropyPolicy = policy_cls.with_updates(loss_fn=entropy_policy_gradient_loss)
 
-    class EntropyLossPG(PGTrainer):
+    class EntropyLossPG(PG):
         def get_default_policy_class(self, config):
             return EntropyPolicy
 

@@ -22,6 +22,10 @@ from ray._private import ray_option_utils
 logger = logging.getLogger(__name__)
 
 
+# Hook to call with (fn, resources, strategy) on each local task submission.
+_task_launch_hook = None
+
+
 class RemoteFunction:
     """A remote function.
 
@@ -286,6 +290,9 @@ class RemoteFunction:
                 is_job_runtime_env=False,
                 serialize=True,
             )
+
+        if _task_launch_hook:
+            _task_launch_hook(self._function_descriptor, resources, scheduling_strategy)
 
         def invocation(args, kwargs):
             if self._is_cross_language:

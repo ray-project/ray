@@ -7,8 +7,8 @@ import requests
 from requests.adapters import HTTPAdapter, Retry
 
 from ray._private.test_utils import wait_for_condition
-from ray.ml.checkpoint import Checkpoint
-from ray.ml.predictor import DataBatchType, Predictor
+from ray.air.checkpoint import Checkpoint
+from ray.air.predictor import DataBatchType, Predictor
 from ray.serve.model_wrappers import ModelWrapperDeployment
 from ray.serve.pipeline.api import build
 from ray.serve.dag import InputNode

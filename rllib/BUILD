@@ -145,9 +145,9 @@ py_test(
 #    size = "large",
 #    srcs = ["tests/run_regression_tests.py"],
 #    data = [
-#        "tuned_examples/dqn/cartpole-apex.yaml",
+#        "tuned_examples/apex_dqn/cartpole-apex.yaml",
 #    ],
-#    args = ["--yaml-dir=tuned_examples/dqn", "--num-cpus=6"]
+#    args = ["--yaml-dir=tuned_examples/apex_dqn", "--num-cpus=6"]
 # )
 
 # Once APEX supports multi-GPU.
@@ -157,8 +157,8 @@ py_test(
 #    tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
 #    size = "large",
 #    srcs = ["tests/run_regression_tests.py"],
-#    data = ["tuned_examples/dqn/cartpole-apex-fake-gpus.yaml"],
-#    args = ["--yaml-dir=tuned_examples/dqn"]
+#    data = ["tuned_examples/apex_dqn/cartpole-apex-fake-gpus.yaml"],
+#    args = ["--yaml-dir=tuned_examples/apex_dqn"]
 # )
 
 # APPO
@@ -334,9 +334,9 @@ py_test(
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = [
-        "tuned_examples/dqn/cartpole-simpleq.yaml",
+        "tuned_examples/simple_q/cartpole-simpleq.yaml",
     ],
-    args = ["--yaml-dir=tuned_examples/dqn"]
+    args = ["--yaml-dir=tuned_examples/simple_q"]
 )
 
 py_test(
@@ -345,8 +345,8 @@ py_test(
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/dqn/cartpole-simpleq-fake-gpus.yaml"],
-    args = ["--yaml-dir=tuned_examples/dqn"]
+    data = ["tuned_examples/simple_q/cartpole-simpleq-fake-gpus.yaml"],
+    args = ["--yaml-dir=tuned_examples/simple_q"]
 )
 
 # ES
@@ -535,8 +535,8 @@ py_test(
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/dqn/stateless-cartpole-r2d2.yaml"],
-    args = ["--yaml-dir=tuned_examples/dqn"]
+    data = ["tuned_examples/r2d2/stateless-cartpole-r2d2.yaml"],
+    args = ["--yaml-dir=tuned_examples/r2d2"]
 )
 
 py_test(
@@ -545,8 +545,8 @@ py_test(
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "fake_gpus"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/dqn/stateless-cartpole-r2d2-fake-gpus.yaml"],
-    args = ["--yaml-dir=tuned_examples/dqn"]
+    data = ["tuned_examples/r2d2/stateless-cartpole-r2d2-fake-gpus.yaml"],
+    args = ["--yaml-dir=tuned_examples/r2d2"]
 )
 
 # SAC
@@ -635,7 +635,7 @@ py_test(
 
 # --------------------------------------------------------------------
 # Agents (Compilation, Losses, simple agent functionality tests)
-# rllib/agents/
+# rllib/algorithms/
 #
 # Tag: algorithms_dir
 # --------------------------------------------------------------------
@@ -709,7 +709,7 @@ py_test(
     name = "test_apex_dqn",
     tags = ["team:ml", "algorithms_dir"],
     size = "large",
-    srcs = ["agents/dqn/tests/test_apex_dqn.py"]
+    srcs = ["algorithms/apex_dqn/tests/test_apex_dqn.py"]
 )
 
 # APEX-DDPG
@@ -717,7 +717,7 @@ py_test(
     name = "test_apex_ddpg",
     tags = ["team:ml", "algorithms_dir"],
     size = "medium",
-    srcs = ["algorithms/ddpg/tests/test_apex_ddpg.py"]
+    srcs = ["algorithms/apex_ddpg/tests/test_apex_ddpg.py"]
 )
 
 # APPO
@@ -742,6 +742,16 @@ py_test(
     tags = ["team:ml", "algorithms_dir"],
     size = "medium",
     srcs = ["algorithms/bandit/tests/test_bandits.py"],
+)
+
+# BC
+py_test(
+    name = "test_bc",
+    tags = ["team:ml", "algorithms_dir"],
+    size = "large",
+    # Include the json data file.
+    data = ["tests/data/cartpole/large.json"],
+    srcs = ["algorithms/bc/tests/test_bc.py"]
 )
 
 # CQL
@@ -816,16 +826,6 @@ py_test(
     srcs = ["algorithms/marwil/tests/test_marwil.py"]
 )
 
-# BC (sub-type of MARWIL)
-py_test(
-    name = "test_bc",
-    tags = ["team:ml", "algorithms_dir"],
-    size = "large",
-    # Include the json data file.
-    data = ["tests/data/cartpole/large.json"],
-    srcs = ["algorithms/marwil/tests/test_bc.py"]
-)
-
 # MADDPG
 py_test(
     name = "test_maddpg",
@@ -879,7 +879,7 @@ py_test(
     name = "test_r2d2",
     tags = ["team:ml", "algorithms_dir"],
     size = "large",
-    srcs = ["agents/dqn/tests/test_r2d2.py"]
+    srcs = ["algorithms/r2d2/tests/test_r2d2.py"]
 )
 
 # RNNSAC
@@ -903,7 +903,7 @@ py_test(
     name = "test_simple_q",
     tags = ["team:ml", "algorithms_dir"],
     size = "medium",
-    srcs = ["algorithms/dqn/tests/test_simple_q.py"]
+    srcs = ["algorithms/simple_q/tests/test_simple_q.py"]
 )
 
 # SlateQ
@@ -919,7 +919,7 @@ py_test(
     name = "test_td3",
     tags = ["team:ml", "algorithms_dir"],
     size = "large",
-    srcs = ["algorithms/ddpg/tests/test_td3.py"]
+    srcs = ["algorithms/td3/tests/test_td3.py"]
 )
 
 # --------------------------------------------------------------------

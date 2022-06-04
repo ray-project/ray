@@ -17,13 +17,15 @@ Algorithm                      Frameworks Discrete Actions              Continuo
 ============================== ========== ============================= ================== =========== ============================================================= ===============
 `A2C`_                         tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   A2C: tf + torch
 `A3C`_                         tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   No
+`AlphaZero`_                   torch      **Yes** `+parametric`_        No                 No                                                                        No
+`APPO`_                        tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   tf + torch
 `ARS`_                         tf + torch **Yes**                       **Yes**            No                                                                        No
 `Bandits`_ (`TS`_ & `LinUCB`_) torch      **Yes** `+parametric`_        No                 **Yes**                                                                   No
 `BC`_                          tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_                                                       torch
 `CQL`_                         tf + torch No                            **Yes**            No                                                                        tf + torch
-`ES`_                          tf + torch **Yes**                       **Yes**            No                                                                        No
-`DDPG`_, `TD3`_                tf + torch No                            **Yes**            **Yes**                                                                   torch
+`DDPG`_                        tf + torch No                            **Yes**            **Yes**                                                                   torch
 `APEX-DDPG`_                   tf + torch No                            **Yes**            **Yes**                                                                   torch
+`ES`_                          tf + torch **Yes**                       **Yes**            No                                                                        No
 `Dreamer`_                     torch      No                            **Yes**            No          `+RNN`_                                                       torch
 `DQN`_, `Rainbow`_             tf + torch **Yes** `+parametric`_        No                 **Yes**                                                                   tf + torch
 `APEX-DQN`_                    tf + torch **Yes** `+parametric`_        No                 **Yes**                                                                   torch
@@ -32,11 +34,11 @@ Algorithm                      Frameworks Discrete Actions              Continuo
 `MARWIL`_                      tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_                                                       torch
 `MBMPO`_                       torch      No                            **Yes**            No                                                                        torch
 `PG`_                          tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   tf + torch
-`PPO`_, `APPO`_                tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   tf + torch
+`PPO`_                         tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   tf + torch
 `R2D2`_                        tf + torch **Yes** `+parametric`_        No                 **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+autoreg`_                  torch
 `SAC`_                         tf + torch **Yes**                       **Yes**            **Yes**                                                                   torch
 `SlateQ`_                      tf + torch **Yes** (multi-discr. slates) No                 No                                                                        torch
-`AlphaZero`_                   torch      **Yes** `+parametric`_        No                 No                                                                        No
+`TD3`_                         tf + torch No                            **Yes**            **Yes**                                                                   torch
 ============================== ========== ============================= ================== =========== ============================================================= ===============
 
 Multi-Agent only Methods
@@ -68,7 +70,6 @@ Algorithm                        Frameworks Discrete Actions        Continuous A
 .. _`+parametric`: rllib-models.html#variable-length-parametric-action-spaces
 .. _`Rainbow`: rllib-algorithms.html#dqn
 .. _`+RNN`: rllib-models.html#rnns
-.. _`TD3`: rllib-algorithms.html#ddpg
 .. _`+Attention`: rllib-models.html#attention
 .. _`TS`: rllib-algorithms.html#lints
 .. _`LinUCB`: rllib-algorithms.html#lin-ucb
@@ -82,14 +83,14 @@ Distributed Prioritized Experience Replay (Ape-X)
 -------------------------------------------------
 |pytorch| |tensorflow|
 `[paper] <https://arxiv.org/abs/1803.00933>`__
-`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/dqn/apex.py>`__
-Ape-X variations of DQN and DDPG (`APEX_DQN <https://github.com/ray-project/ray/blob/master/rllib/agents/dqn/apex.py>`__, `APEX_DDPG <https://github.com/ray-project/ray/blob/master/rllib/algorithms/ddpg/apex.py>`__) use a single GPU learner and many CPU workers for experience collection. Experience collection can scale to hundreds of CPU workers due to the distributed prioritization of experience prior to storage in replay buffers.
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/apex_dqn/apex_dqn.py>`__
+Ape-X variations of DQN and DDPG (`APEX_DQN <https://github.com/ray-project/ray/blob/master/rllib/algorithms/apex_dqn/apex_dqn.py>`__, `APEX_DDPG <https://github.com/ray-project/ray/blob/master/rllib/algorithms/apex_ddpg/apex_ddpg.py>`__) use a single GPU learner and many CPU workers for experience collection. Experience collection can scale to hundreds of CPU workers due to the distributed prioritization of experience prior to storage in replay buffers.
 
 .. figure:: images/apex-arch.svg
 
     Ape-X architecture
 
-Tuned examples: `PongNoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dqn/pong-apex.yaml>`__, `Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ddpg/pendulum-apex-ddpg.yaml>`__, `MountainCarContinuous-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ddpg/mountaincarcontinuous-apex-ddpg.yaml>`__, `{BeamRider,Breakout,Qbert,SpaceInvaders}NoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dqn/atari-apex.yaml>`__.
+Tuned examples: `PongNoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/apex_dqn/pong-apex-dqn.yaml>`__, `Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/apex_ddpg/pendulum-apex-ddpg.yaml>`__, `MountainCarContinuous-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/apex_ddpg/mountaincarcontinuous-apex-ddpg.yaml>`__, `{BeamRider,Breakout,Qbert,SpaceInvaders}NoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/apex_dqn/atari-apex-dqn.yaml>`__.
 
 **Atari results @10M steps**: `more details <https://github.com/ray-project/rl-experiments>`__
 
@@ -119,7 +120,7 @@ SpaceInvaders  646                               ~300
 
 **Ape-X specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/agents/dqn/apex.py
+.. literalinclude:: ../../../rllib/algorithms/apex_dqn/apex_dqn.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -292,17 +293,19 @@ Tuned examples: `PongDeterministic-v4 <https://github.com/ray-project/ray/blob/m
 
 .. _ddpg:
 
-Deep Deterministic Policy Gradients (DDPG, TD3)
------------------------------------------------
+Deep Deterministic Policy Gradients (DDPG)
+------------------------------------------
 |pytorch| |tensorflow|
-`[paper] <https://arxiv.org/abs/1509.02971>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/ddpg/ddpg.py>`__
-DDPG is implemented similarly to DQN (below). The algorithm can be scaled by increasing the number of workers or using Ape-X. The improvements from `TD3 <https://spinningup.openai.com/en/latest/algorithms/td3.html>`__ are available as ``TD3``.
+`[paper] <https://arxiv.org/abs/1509.02971>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/ddpg/ddpg.py>`__
+DDPG is implemented similarly to DQN (below). The algorithm can be scaled by increasing the number of workers or using Ape-X.
+The improvements from `TD3 <https://spinningup.openai.com/en/latest/algorithms/td3.html>`__ are available as ``TD3``.
 
 .. figure:: images/dqn-arch.svg
 
     DDPG architecture (same as DQN)
 
-Tuned examples: `Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ddpg/pendulum-ddpg.yaml>`__, `MountainCarContinuous-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ddpg/mountaincarcontinuous-ddpg.yaml>`__, `HalfCheetah-v2 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ddpg/halfcheetah-ddpg.yaml>`__, `TD3 Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ddpg/pendulum-td3.yaml>`__, `TD3 InvertedPendulum-v2 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ddpg/invertedpendulum-td3.yaml>`__, `TD3 Mujoco suite (Ant-v2, HalfCheetah-v2, Hopper-v2, Walker2d-v2) <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ddpg/mujoco-td3.yaml>`__.
+Tuned examples: `Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ddpg/pendulum-ddpg.yaml>`__, `MountainCarContinuous-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ddpg/mountaincarcontinuous-ddpg.yaml>`__, `HalfCheetah-v2 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ddpg/halfcheetah-ddpg.yaml>`__.
 
 **DDPG-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
@@ -310,6 +313,26 @@ Tuned examples: `Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rll
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
+
+
+.. _td3:
+
+Twin Delayed DDPG (TD3)
+-----------------------
+|pytorch| |tensorflow|
+`[paper] <https://arxiv.org/abs/1509.02971>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/td3/td3.py>`__
+TD3 represents an improvement over DDPG. Its implementation is available in RLlib as `TD3 <https://spinningup.openai.com/en/latest/algorithms/td3.html>`__.
+
+Tuned examples: `TD3 Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/td3/pendulum-td3.yaml>`__, `TD3 InvertedPendulum-v2 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/td3/invertedpendulum-td3.yaml>`__, `TD3 Mujoco suite (Ant-v2, HalfCheetah-v2, Hopper-v2, Walker2d-v2) <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/td3/mujoco-td3.yaml>`__.
+
+**TD3-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+
+.. literalinclude:: ../../../rllib/algorithms/td3/td3.py
+   :language: python
+   :start-after: __sphinx_doc_begin__
+   :end-before: __sphinx_doc_end__
+
 
 .. _dqn:
 
@@ -362,10 +385,10 @@ SpaceInvaders  650                       1001                           1025    
 Recurrent Replay Distributed DQN (R2D2)
 ---------------------------------------
 |pytorch| |tensorflow|
-`[paper] <https://openreview.net/pdf?id=r1lyTjAqYX>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/dqn/r2d2.py>`__
+`[paper] <https://openreview.net/pdf?id=r1lyTjAqYX>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/r2d2/r2d2.py>`__
 R2D2 can be scaled by increasing the number of workers. All of the DQN improvements evaluated in `Rainbow <https://arxiv.org/abs/1710.02298>`__ are available, though not all are enabled by default.
 
-Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dqn/stateless-cartpole-r2d2.yaml>`__
+Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/r2d2/stateless-cartpole-r2d2.yaml>`__
 
 
 .. _pg:
@@ -683,18 +706,18 @@ Behavior Cloning (BC; derived from MARWIL implementation)
 ---------------------------------------------------------
 |pytorch| |tensorflow|
 `[paper] <http://papers.nips.cc/paper/7866-exponentially-weighted-imitation-learning-for-batched-historical-data>`__
-`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/marwil/bc.py>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/bc/bc.py>`__
 
 Our behavioral cloning implementation is directly derived from our `MARWIL`_ implementation,
 with the only difference being the ``beta`` parameter force-set to 0.0. This makes
 BC try to match the behavior policy, which generated the offline data, disregarding any resulting rewards.
 BC requires the `offline datasets API <rllib-offline.html>`__ to be used.
 
-Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/marwil/cartpole-bc.yaml>`__
+Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/bc/cartpole-bc.yaml>`__
 
 **BC-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/algorithms/marwil/bc.py
+.. literalinclude:: ../../../rllib/algorithms/bc/bc.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -724,8 +747,8 @@ named after the exploration strategies that they employ:
 
 .. _lin-ucb:
 
-Linear Upper Confidence Bound (BanditLinUCBTrainer)
----------------------------------------------------
+Linear Upper Confidence Bound (BanditLinUCB)
+--------------------------------------------
 |pytorch|
 `[paper] <http://rob.schapire.net/papers/www10.pdf>`__ `[implementation]
 <https://github.com/ray-project/ray/blob/master/rllib/algorithms/bandit/bandit.py>`__
@@ -751,8 +774,8 @@ Tuned examples:
 
 .. _lints:
 
-Linear Thompson Sampling (BanditLinTSTrainer)
----------------------------------------------
+Linear Thompson Sampling (BanditLinTS)
+--------------------------------------
 |pytorch|
 `[paper] <http://proceedings.mlr.press/v28/agrawal13.pdf>`__
 `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/bandit/bandit.py>`__
