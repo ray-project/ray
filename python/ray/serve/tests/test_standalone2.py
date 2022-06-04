@@ -235,13 +235,6 @@ def test_get_serve_status(shutdown_ray):
 def test_no_controller_deserialization(start_and_shutdown_ray_cli_function):
     """Ensure controller doesn't deserialize deployment_def or init_args/kwargs."""
 
-    runtime_env = {
-        "working_dir": (
-            "https://github.com/shrekris-anyscale/test_dag/archive/"
-            "1037818961158ccc754684fbf8b86cc2fe9ca040.zip"
-        )
-    }
-
     @ray.remote
     def run_graph():
         """Deploys a Serve application to the controller's Ray cluster."""
@@ -261,10 +254,15 @@ def test_no_controller_deserialization(start_and_shutdown_ray_cli_function):
         serve.start(detached=True, _override_controller_namespace="serve")
         serve.run(graph)
 
-    ray.init(address="auto", namespace="serve")
+    # Start Serve controller in a directory without access to the graph code
+    ray.init(
+        address="auto", namespace="serve", runtime_env={"working_dir": "storage_tests"}
+    )
     serve.start(detached=True)
     serve.context._global_client = None
     ray.shutdown()
+
+    # Run the task in a directory with access to the graph code
     ray.init(address="auto", runtime_env={"working_dir": "."}, namespace="serve")
     ray.get(run_graph.remote())
     wait_for_condition(
