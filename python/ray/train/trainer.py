@@ -557,6 +557,7 @@ class Trainer:
             self._num_workers,
             self._use_gpu,
             self._resources_per_worker,
+            self.logdir
         )
 
     def to_worker_group(self, train_cls: Type, *args, **kwargs) -> "TrainWorkerGroup":
@@ -858,7 +859,7 @@ class TrainingIterator:
 
 
 def _create_tune_trainable(
-    train_func, dataset, backend_config, num_workers, use_gpu, resources_per_worker
+    train_func, dataset, backend_config, num_workers, use_gpu, resources_per_worker, logdir
 ):
     """Creates a Tune Trainable class for Train training.
 
@@ -872,6 +873,7 @@ def _create_tune_trainable(
             num_workers=num_workers,
             use_gpu=use_gpu,
             resources_per_worker=resources_per_worker,
+            logdir=logdir
         )
 
         trainer.start()
