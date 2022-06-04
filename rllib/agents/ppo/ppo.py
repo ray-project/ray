@@ -35,6 +35,8 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED,
     WORKER_UPDATE_TIMER,
 )
+import ray.util.collective as collective
+from ray.util.collective.types import Backend
 
 logger = logging.getLogger(__name__)
 

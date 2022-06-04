@@ -28,6 +28,9 @@ from typing import (
 
 import ray
 from ray.actor import ActorHandle
+import ray.util.collective as collective
+from ray.util.collective.types import Backend
+
 from ray.exceptions import RayActorError, RayError
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.agents.trainer_config import TrainerConfig
@@ -515,6 +518,14 @@ class Trainer(Trainable):
     #  simply do not call super().setup() from your overridden method.
     def _init(self, config: TrainerConfigDict, env_creator: EnvCreator) -> None:
         raise NotImplementedError
+
+    def init_group(self, world_size, rank, backend=Backend.NCCL, group_name="default"):
+        print(">>>> Init group for trainer called")
+        collective.init_collective_group(world_size, rank, backend, group_name)
+        return True
+
+    def get_remote_workers(self):
+        return self.workers.remote_workers()
 
     @OverrideToImplementCustomLogic
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
