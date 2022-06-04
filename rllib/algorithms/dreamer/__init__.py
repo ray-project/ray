@@ -1,11 +1,11 @@
 from ray.rllib.algorithms.dreamer.dreamer import (
-    DREAMERConfig,
-    DREAMERTrainer,
+    Dreamer,
+    DreamerConfig,
     DEFAULT_CONFIG,
 )
 
 __all__ = [
-    "DREAMERConfig",
-    "DREAMERTrainer",
+    "Dreamer",
+    "DreamerConfig",
     "DEFAULT_CONFIG",
 ]
