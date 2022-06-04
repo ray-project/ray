@@ -145,18 +145,18 @@ class DatasetConfig:
     split: Optional[bool] = None
 
     # Whether to raise an error if the Dataset isn't provided by the user.
-    # True by default for the "train" dataset only.
+    # False by default.
     required: Optional[bool] = None
 
     # Whether to transform the dataset with the fitted preprocessor. This must be
     # enabled at least for the dataset that is fit.
-    # True by default for all datasets.
+    # True by default.
     transform: Optional[bool] = None
 
     # Whether the dataset should be streamed into memory using pipelined reads.
     # When enabled, get_dataset_shard() returns DatasetPipeline instead of Dataset.
     # The amount of memory to use is controlled by `stream_window_size`.
-    # False by default for all datasets.
+    # False by default.
     use_stream_api: Optional[bool] = None
 
     # Configure the streaming window size in bytes. A good value is something like
@@ -168,7 +168,7 @@ class DatasetConfig:
     # Whether to enable global shuffle (per pipeline window in streaming mode). Note
     # that this is an expensive all-to-all operation, and most likely you want to use
     # local shuffle instead.
-    # False by default for all datasets.
+    # False by default.
     global_shuffle: Optional[bool] = None
 
     def fill_defaults(self) -> "DatasetConfig":
