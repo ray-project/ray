@@ -1,4 +1,3 @@
-import collections
 import inspect
 import itertools
 import logging
