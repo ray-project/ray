@@ -1,4 +1,5 @@
 import pytest
+import random
 from typing import Optional
 
 import ray
@@ -203,6 +204,111 @@ def test_fit_transform_config(ray_start_4_cpus):
         dataset_config={"test": DatasetConfig(transform=False)},
         datasets={"train": ds, "test": ds},
         preprocessor=prep,
+    )
+    test.fit()
+
+
+class TestStream(DataParallelTrainer):
+    _dataset_config = {
+        "train": DatasetConfig(split=True, required=True, use_stream_api=True),
+    }
+
+    def __init__(self, check_results_fn, **kwargs):
+        def train_loop_per_worker():
+            data_shard = train.get_dataset_shard("train")
+            assert isinstance(data_shard, DatasetPipeline), data_shard
+            results = []
+            for epoch in data_shard.iter_epochs(2):
+                results.append(epoch.take())
+            check_results_fn(data_shard, results)
+
+        super().__init__(
+            train_loop_per_worker=train_loop_per_worker,
+            scaling_config={"num_workers": 1},
+            **kwargs,
+        )
+
+
+def test_stream_inf_window_cache_prep(ray_start_4_cpus):
+    def checker(shard, results):
+        results = [sorted(r) for r in results]
+        assert len(results[0]) == 5, results
+        assert results[0] == results[1], results
+        stats = shard.stats()
+        assert str(shard) == "DatasetPipeline(num_windows=inf, num_stages=1)", shard
+        assert "Stage 1 read->map_batches: 5/5 blocks executed " in stats, stats
+
+    def rand(x):
+        return [random.random() for _ in range(len(x))]
+
+    prep = BatchMapper(rand)
+    ds = ray.data.range(5)
+    test = TestStream(
+        checker,
+        preprocessor=prep,
+        datasets={"train": ds},
+        dataset_config={"train": DatasetConfig(stream_window_size=-1)},
+    )
+    test.fit()
+
+
+def test_stream_finite_window_nocache_prep(ray_start_4_cpus):
+    def rand(x):
+        return [random.random() for _ in range(len(x))]
+
+    prep = BatchMapper(rand)
+    ds = ray.data.range(5)
+
+    # Test the default 1GiB window size.
+    def checker(shard, results):
+        results = [sorted(r) for r in results]
+        assert int(results[0][0]) != results[0][0]
+        assert len(results[0]) == 5, results
+        assert results[0] != results[1], results
+        stats = shard.stats()
+        assert str(shard) == "DatasetPipeline(num_windows=inf, num_stages=1)", shard
+        assert "Stage 1 read->map_batches: 5/5 blocks executed " in stats, stats
+
+    test = TestStream(
+        checker,
+        preprocessor=prep,
+        datasets={"train": ds},
+        dataset_config={"train": DatasetConfig()},
+    )
+    test.fit()
+
+    # Test a smaller window size.
+    def checker(shard, results):
+        results = [sorted(r) for r in results]
+        assert int(results[0][0]) != results[0][0]
+        assert len(results[0]) == 5, results
+        assert results[0] != results[1], results
+        stats = shard.stats()
+        assert str(shard) == "DatasetPipeline(num_windows=inf, num_stages=1)", shard
+        assert "Stage 1 read->map_batches: 1/1 blocks executed " in stats, stats
+
+    test = TestStream(
+        checker,
+        preprocessor=prep,
+        datasets={"train": ds},
+        dataset_config={"train": DatasetConfig(stream_window_size=10)},
+    )
+    test.fit()
+
+
+def test_global_shuffle(ray_start_4_cpus):
+    def checker(shard, results):
+        assert len(results[0]) == 5, results
+        assert results[0] != results[1], results
+        stats = shard.stats()
+        assert str(shard) == "DatasetPipeline(num_windows=inf, num_stages=1)", shard
+        assert "Stage 1 read->random_shuffle" in stats, stats
+
+    ds = ray.data.range(5)
+    test = TestStream(
+        checker,
+        datasets={"train": ds},
+        dataset_config={"train": DatasetConfig(global_shuffle=True)},
     )
     test.fit()
 

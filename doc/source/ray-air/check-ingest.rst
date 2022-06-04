@@ -120,7 +120,9 @@ If the window size is set to -1, then an infinite window size (equivalent to bul
 
 .. warning::
 
-    In AIR alpha, streaming ingest does not apply to the preprocessors, which will still be fit in bulk.
+    In AIR alpha, streaming ingest only applies to preprocessor transform, not preprocessor fitting.
+    This means that the preprocessor will be initially fit in bulk, after which data will be transformed
+    as it is loaded in a streaming manner.
 
 Reading Data
 ~~~~~~~~~~~~
