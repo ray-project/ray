@@ -22,7 +22,7 @@ import pandas
 import numpy as np
 from numpy.testing import assert_array_equal
 import ray
-from ray.tests.conftest import start_cluster
+from ray.tests.conftest import start_cluster  # noqa F401
 
 modin_compatible_version = sys.version_info >= (3, 7, 0)
 modin_installed = True
@@ -46,7 +46,7 @@ if not skip:
 # Module scoped fixture. Will first run all tests without ray
 # client, then rerun all tests with a single ray client session.
 @pytest.fixture(autouse=True)
-def run_ray_client(start_cluster):
+def run_ray_client(start_cluster):  # noqa F811
     ray.init(start_cluster[1])
     yield
 
