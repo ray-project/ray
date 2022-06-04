@@ -67,11 +67,14 @@ result = trainer.fit()
 
 
 # __checkpoint_start__
-from ray.air._internal.checkpointing import load_preprocessor_from_dir
+import ray.cloudpickle as cpickle
+from ray.air.constants import PREPROCESSOR_KEY
 
 checkpoint = result.checkpoint
 with checkpoint.as_directory() as checkpoint_path:
-    preprocessor = load_preprocessor_from_dir(checkpoint_path)
+    path = os.path.join(checkpoint_path, PREPROCESSOR_KEY)
+    with open(preprocessor_path, "rb") as f:
+        preprocessor = cpickle.load(f)
     print(preprocessor)
 # MixMaxScaler(columns=['x'], stats={'min(x)': 0, 'max(x)': 30})
 # __checkpoint_end__
