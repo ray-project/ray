@@ -448,6 +448,7 @@ def test_logs_list(ray_start_with_dashboard):
     wait_for_condition(verify_worker_logs)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_logs_stream_and_tail(ray_start_with_dashboard):
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
     webui_url = ray_start_with_dashboard["webui_url"]
