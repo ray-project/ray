@@ -18,16 +18,11 @@ def ray_start_4_cpus():
     ray.shutdown()
 
 
-def require_split(config):
-    if not config.split:
-        raise ValueError("Does not support split=False")
-
-
 class TestBasic(DataParallelTrainer):
     _dataset_config = {
         "train": DatasetConfig(split=True, required=True),
         "test": DatasetConfig(),
-        "baz": DatasetConfig(split=True, _validator=require_split),
+        "baz": DatasetConfig(split=True),
     }
 
     def __init__(
@@ -59,7 +54,7 @@ class TestBasic(DataParallelTrainer):
 class TestWildcard(TestBasic):
     _dataset_config = {
         "train": DatasetConfig(split=True, required=True),
-        "*": DatasetConfig(split=True, _validator=require_split),
+        "*": DatasetConfig(split=True),
     }
 
 
@@ -136,24 +131,6 @@ def test_error(ray_start_4_cpus):
             {"train": 10, "test": 10},
             dataset_config={},
             datasets={"train": ds, "blah": ds},
-        )
-
-    # Noncustomizable field.
-    with pytest.raises(ValueError):
-        TestBasic(
-            1,
-            True,
-            {"train": 10, "test": 10},
-            dataset_config={"baz": DatasetConfig(split=False)},
-            datasets={"train": ds, "baz": ds},
-        )
-    with pytest.raises(ValueError):
-        TestWildcard(
-            1,
-            True,
-            {"train": 10, "test": 10},
-            dataset_config={"baz": DatasetConfig(split=False)},
-            datasets={"train": ds, "baz": ds},
         )
 
 

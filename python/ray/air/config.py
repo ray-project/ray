@@ -171,10 +171,6 @@ class DatasetConfig:
     # False by default for all datasets.
     global_shuffle: Optional[bool] = None
 
-    # Validator function for the final config, which should raise ValueError if the
-    # config cannot be validated.
-    _validator: Optional[Callable[["DatasetConfig"], None]] = None
-
     def fill_defaults(self) -> "DatasetConfig":
         """Return a copy of this config with all default values filled in."""
         return DatasetConfig(
@@ -187,7 +183,6 @@ class DatasetConfig:
             else 1024 * 1024 * 1024,
             global_shuffle=self.global_shuffle or False,
             transform=self.transform if self.transform is not None else True,
-            _validator=self._validator,
         )
 
     @staticmethod
@@ -252,11 +247,7 @@ class DatasetConfig:
         return result
 
     def _merge(self, other: "DatasetConfig") -> "DatasetConfig":
-        """Merge the given DatasetConfig into this one.
-
-        Raises:
-            ValueError if validation fails on the merged config.
-        """
+        """Merge the given DatasetConfig into this one."""
         new_config = DatasetConfig(
             fit=self.fit if other.fit is None else other.fit,
             split=self.split if other.split is None else other.split,
@@ -271,10 +262,7 @@ class DatasetConfig:
             global_shuffle=self.global_shuffle
             if other.global_shuffle is None
             else other.global_shuffle,
-            _validator=self._validator,
         )
-        if self._validator:
-            self._validator(new_config)
         return new_config
 
 

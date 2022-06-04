@@ -88,11 +88,6 @@ class _DataParallelSyncingCheckpointManager(_DataParallelCheckpointManager):
                 f.write(str(self._latest_checkpoint_id))
 
 
-def _huggingface_config_validator(config: DatasetConfig):
-    if config.use_stream_api:
-        raise ValueError("HuggingFaceTrainer does not support use_stream_api.")
-
-
 @PublicAPI(stability="alpha")
 class HuggingFaceTrainer(TorchTrainer):
     """A Trainer for data parallel HuggingFace Transformers on PyTorch training.
@@ -243,15 +238,8 @@ class HuggingFaceTrainer(TorchTrainer):
     _checkpoint_manager_cls = _DataParallelSyncingCheckpointManager
 
     _dataset_config = {
-        "train": DatasetConfig(
-            required=True,
-            use_stream_api=False,
-            _validator=_huggingface_config_validator,
-        ),
-        "evaluation": DatasetConfig(
-            use_stream_api=False,
-            _validator=_huggingface_config_validator,
-        ),
+        "train": DatasetConfig(required=True),
+        "evaluation": DatasetConfig(),
     }
 
     def __init__(
@@ -313,20 +301,16 @@ class HuggingFaceTrainer(TorchTrainer):
             )
 
     def _validate_attributes(self):
-        # exceptions first
-        if TRAIN_DATASET_KEY not in self.datasets:
-            raise KeyError(
-                f"'{TRAIN_DATASET_KEY}' key must be preset in `datasets`. "
-                f"Got {list(self.datasets.keys())}"
-            )
-        if not all(
-            key in (TRAIN_DATASET_KEY, EVALUATION_DATASET_KEY) for key in self.datasets
-        ):
-            raise KeyError(
-                f"Only '{TRAIN_DATASET_KEY}' and '{EVALUATION_DATASET_KEY}' "
-                "keys can be preset in `datasets`. "
-                f"Got {list(self.datasets.keys())}"
-            )
+        for key, conf in self._dataset_config.items():
+            if key not in (TRAIN_DATASET_KEY, EVALUATION_DATASET_KEY):
+                raise KeyError(
+                    f"Only '{TRAIN_DATASET_KEY}' and '{EVALUATION_DATASET_KEY}' "
+                    f"keys can be configured in `dataset_config`, got '{key}'."
+                )
+            if conf.use_stream_api:
+                raise ValueError(
+                    "HuggingFaceTrainer does not support `use_stream_api`."
+                )
         gpus_per_worker = self.scaling_config.get("num_gpus_per_worker", 0)
         if gpus_per_worker > 1:
             raise ValueError(
