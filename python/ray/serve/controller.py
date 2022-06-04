@@ -139,6 +139,9 @@ class ServeController:
         """No-op to check if this controller is alive."""
         return
 
+    def get_pid(self) -> int:
+        return os.getpid()
+
     def record_autoscaling_metrics(self, data: Dict[str, float], send_timestamp: float):
         self.autoscaling_metrics_store.add_metrics_point(data, send_timestamp)
 

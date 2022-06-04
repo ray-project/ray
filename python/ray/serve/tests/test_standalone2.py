@@ -232,7 +232,7 @@ def test_get_serve_status(shutdown_ray):
     ray.shutdown()
 
 
-def test_no_controller_deserialization(start_and_shutdown_ray_cli_function):
+def test_controller_deserialization_deployment_def(start_and_shutdown_ray_cli_function):
     """Ensure controller doesn't deserialize deployment_def or init_args/kwargs."""
 
     @ray.remote
@@ -272,6 +272,48 @@ def test_no_controller_deserialization(start_and_shutdown_ray_cli_function):
 
     serve.shutdown()
     ray.shutdown()
+
+
+def test_controller_deserialization_args_and_kwargs():
+    """Ensures init_args and init_kwargs stay serialized in controller."""
+
+    client = serve.start()
+
+    class PidBasedString(str):
+        pass
+
+    def generate_pid_based_deserializer(pid, raw_deserializer):
+        def deserializer(*args):
+            """Cannot be deserialized by the process with specified pid."""
+
+            import os
+
+            if os.getpid() == pid:
+                raise RuntimeError("Cannot be deserialized by this process!")
+            else:
+                return raw_deserializer(*args)
+
+        return deserializer
+
+    # PidBasedString.__reduce__ = generate_pid_based_deserializer(
+    #     ray.get(client._controller.get_pid.remote()), PidBasedString.__reduce__
+    # )
+
+    @serve.deployment
+    class Echo:
+        def __init__(self, arg_str, kwarg_str="failed"):
+            self.arg_str = arg_str
+            self.kwarg_str = kwarg_str
+
+        def __call___(self, request):
+            return self.arg_str + self.kwarg_str
+
+    # Echo.deploy(PidBasedString("hello "), kwarg_str=PidBasedString("world!"))
+    Echo.deploy("hello ", kwarg_str="world!")
+
+    assert requests.get("http://localhost:8000/Echo").text == "hello world!"
+
+    serve.shutdown()
 
 
 @pytest.mark.usefixtures("start_and_shutdown_ray_cli_class")
