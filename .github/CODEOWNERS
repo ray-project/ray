@@ -72,16 +72,16 @@
 /doc/source/rllib/ @sven1977 @gjoliver @avnishn @arturniederfahrenhorst @smorad @maxpumperla @kouroshhakha @krfricke
 
 # Tune (docs)
-/doc/source/tune @richardliaw @krfricke @xwjiang @amogkam @matthewdeng @Yard1 @maxpumperla
+/doc/source/tune/ @richardliaw @krfricke @xwjiang2010 @amogkam @matthewdeng @Yard1 @maxpumperla
 
 # Train (docs)
-/doc/source/train @richardliaw @krfricke @xwjiang @amogkam @matthewdeng @Yard1 @maxpumperla
+/doc/source/train/ @richardliaw @krfricke @xwjiang2010 @amogkam @matthewdeng @Yard1 @maxpumperla
 
 # Serve (docs)
-/doc/source/serve @edoakes @simon-mo @jiaodong
+/doc/source/serve/ @edoakes @simon-mo @jiaodong
 
 # AIR (docs)
-/doc/source/air @richardliaw @gjoliver @krfricke @xwjiang @amogkam @matthewdeng @Yard1 @maxpumperla
+/doc/source/air/ @richardliaw @gjoliver @krfricke @xwjiang2010 @amogkam @matthewdeng @Yard1 @maxpumperla
 
 # ML Docker Dependencies
 /python/requirements/ml/requirements_dl.txt @amogkam @sven1977 @richardliaw @matthewdeng
