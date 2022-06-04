@@ -1,7 +1,7 @@
 from typing import Type, Optional
 
 from ray.rllib.algorithms.sac import (
-    SACTrainer,
+    SAC,
     SACConfig,
 )
 from ray.rllib.algorithms.sac.rnnsac_torch_policy import RNNSACTorchPolicy
@@ -25,7 +25,7 @@ class RNNSACConfig(SACConfig):
     """
 
     def __init__(self, trainer_class=None):
-        super().__init__(trainer_class=trainer_class or RNNSACTrainer)
+        super().__init__(trainer_class=trainer_class or RNNSAC)
         # fmt: off
         # __sphinx_doc_begin__
         self.batch_mode = "complete_episodes"
@@ -82,13 +82,13 @@ class RNNSACConfig(SACConfig):
         return self
 
 
-class RNNSACTrainer(SACTrainer):
+class RNNSAC(SAC):
     @classmethod
-    @override(SACTrainer)
+    @override(SAC)
     def get_default_config(cls) -> TrainerConfigDict:
         return RNNSACConfig().to_dict()
 
-    @override(SACTrainer)
+    @override(SAC)
     def validate_config(self, config: TrainerConfigDict) -> None:
         # Call super's validation method.
         super().validate_config(config)
@@ -116,11 +116,9 @@ class RNNSACTrainer(SACTrainer):
         ] = replay_sequence_length
 
         if config["framework"] != "torch":
-            raise ValueError(
-                "Only `framework=torch` supported so far for RNNSACTrainer!"
-            )
+            raise ValueError("Only `framework=torch` supported so far for RNNSAC!")
 
-    @override(SACTrainer)
+    @override(SAC)
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         return RNNSACTorchPolicy
 

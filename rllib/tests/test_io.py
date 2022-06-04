@@ -15,7 +15,7 @@ from ray.tune.registry import (
     registry_get_input,
     registry_contains_input,
 )
-from ray.rllib.algorithms.pg import PGTrainer
+from ray.rllib.algorithms.pg import PG
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.offline import (
     IOContext,
@@ -52,7 +52,7 @@ class AgentIOTest(unittest.TestCase):
         ray.shutdown()
 
     def write_outputs(self, output, fw, output_config=None):
-        agent = PGTrainer(
+        agent = PG(
             env="CartPole-v0",
             config={
                 "output": output + (fw if output != "logdir" else ""),
@@ -94,7 +94,7 @@ class AgentIOTest(unittest.TestCase):
         for fw in framework_iterator(frameworks=("torch", "tf")):
             self.write_outputs(self.test_dir, fw)
             print("WROTE TO: ", self.test_dir)
-            agent = PGTrainer(
+            agent = PG(
                 env="CartPole-v0",
                 config={
                     "input": self.test_dir + fw,
@@ -137,7 +137,7 @@ class AgentIOTest(unittest.TestCase):
                     for data in out:
                         f.write(json.dumps(data))
 
-            agent = PGTrainer(
+            agent = PG(
                 env="CartPole-v0",
                 config={
                     "input": self.test_dir + fw,
@@ -154,7 +154,7 @@ class AgentIOTest(unittest.TestCase):
     def test_agent_input_eval_sim(self):
         for fw in framework_iterator():
             self.write_outputs(self.test_dir, fw)
-            agent = PGTrainer(
+            agent = PG(
                 env="CartPole-v0",
                 config={
                     "input": self.test_dir + fw,
@@ -172,7 +172,7 @@ class AgentIOTest(unittest.TestCase):
     def test_agent_input_list(self):
         for fw in framework_iterator(frameworks=("torch", "tf")):
             self.write_outputs(self.test_dir, fw)
-            agent = PGTrainer(
+            agent = PG(
                 env="CartPole-v0",
                 config={
                     "input": glob.glob(self.test_dir + fw + "/*.json"),
@@ -188,7 +188,7 @@ class AgentIOTest(unittest.TestCase):
     def test_agent_input_dict(self):
         for fw in framework_iterator():
             self.write_outputs(self.test_dir, fw)
-            agent = PGTrainer(
+            agent = PG(
                 env="CartPole-v0",
                 config={
                     "input": {
@@ -209,7 +209,7 @@ class AgentIOTest(unittest.TestCase):
         )
 
         for fw in framework_iterator():
-            pg = PGTrainer(
+            pg = PG(
                 env="multi_agent_cartpole",
                 config={
                     "num_workers": 0,
@@ -229,7 +229,7 @@ class AgentIOTest(unittest.TestCase):
             self.assertEqual(len(os.listdir(self.test_dir)), 1)
 
             pg.stop()
-            pg = PGTrainer(
+            pg = PG(
                 env="multi_agent_cartpole",
                 config={
                     "num_workers": 0,
@@ -271,7 +271,7 @@ class AgentIOTest(unittest.TestCase):
         for input_procedure in test_input_procedure:
             for fw in framework_iterator(frameworks=("torch", "tf")):
                 self.write_outputs(self.test_dir, fw)
-                agent = PGTrainer(
+                agent = PG(
                     env="CartPole-v0",
                     config={
                         "input": input_procedure,
