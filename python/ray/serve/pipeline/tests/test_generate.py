@@ -7,6 +7,7 @@ from ray.serve.handle import RayServeLazySyncHandle
 from ray.serve.pipeline.generate import (
     transform_ray_dag_to_serve_dag,
     extract_deployments_from_serve_dag,
+    transform_serve_dag_to_serve_executor_dag,
     get_pipeline_input_node,
 )
 from ray.serve.pipeline.tests.resources.test_modules import (
@@ -123,12 +124,15 @@ def test_func_class_with_class_method_dag(serve_instance):
             lambda node: transform_ray_dag_to_serve_dag(node, node_name_generator)
         )
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
+    serve_executor_root_dag = serve_root_dag.apply_recursive(
+        transform_serve_dag_to_serve_executor_dag
+    )
     assert len(deployments) == 2
     for deployment in deployments:
         deployment.deploy()
 
     assert ray.get(ray_dag.execute(1, 2, 3)) == 8
-    assert ray.get(serve_root_dag.execute(1, 2, 3)) == 8
+    assert ray.get(serve_executor_root_dag.execute(1, 2, 3)) == 8
 
 
 def test_multi_instantiation_class_deployment_in_init_args(serve_instance):

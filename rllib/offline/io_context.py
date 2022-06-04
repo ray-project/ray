@@ -30,7 +30,7 @@ class IOContext:
         Args:
             log_dir: The logging directory to read from/write to.
             config: The Trainer's main config dict.
-            worker_index (int): When there are multiple workers created, this
+            worker_index: When there are multiple workers created, this
                 uniquely identifies the current worker. 0 for the local
                 worker, >0 for any of the remote workers.
             worker: The RolloutWorker object reference.

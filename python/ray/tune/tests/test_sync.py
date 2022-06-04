@@ -51,28 +51,6 @@ class TestSyncFunctionality(unittest.TestCase):
         ray.shutdown()
         _register_all()  # re-register the evicted objects
 
-    def testSyncConfigDeprecation(self):
-        with self.assertRaisesRegex(DeprecationWarning, expected_regex="sync_period"):
-            tune.SyncConfig(node_sync_period=4, cloud_sync_period=8)
-
-        with self.assertRaisesRegex(DeprecationWarning, expected_regex="sync_period"):
-            tune.SyncConfig(node_sync_period=4)
-
-        with self.assertRaisesRegex(DeprecationWarning, expected_regex="sync_period"):
-            tune.SyncConfig(cloud_sync_period=8)
-
-        with self.assertRaisesRegex(DeprecationWarning, expected_regex="syncer"):
-            tune.SyncConfig(sync_to_driver="a", sync_to_cloud="b", upload_dir=None)
-
-        with self.assertRaisesRegex(DeprecationWarning, expected_regex="syncer"):
-            tune.SyncConfig(sync_to_driver="a", sync_to_cloud="b", upload_dir="c")
-
-        with self.assertRaisesRegex(DeprecationWarning, expected_regex="syncer"):
-            tune.SyncConfig(sync_to_cloud="b", upload_dir=None)
-
-        with self.assertRaisesRegex(DeprecationWarning, expected_regex="syncer"):
-            tune.SyncConfig(sync_to_driver="a", upload_dir="c")
-
     @patch("ray.tune.sync_client.S3_PREFIX", "test")
     def testCloudProperString(self):
         with self.assertRaises(ValueError):

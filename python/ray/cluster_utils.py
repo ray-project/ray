@@ -95,22 +95,22 @@ class AutoscalingCluster:
 class Cluster:
     def __init__(
         self,
-        initialize_head=False,
-        connect=False,
-        head_node_args=None,
-        shutdown_at_exit=True,
+        initialize_head: bool = False,
+        connect: bool = False,
+        head_node_args: dict = None,
+        shutdown_at_exit: bool = True,
     ):
         """Initializes all services of a Ray cluster.
 
         Args:
-            initialize_head (bool): Automatically start a Ray cluster
+            initialize_head: Automatically start a Ray cluster
                 by initializing the head node. Defaults to False.
-            connect (bool): If `initialize_head=True` and `connect=True`,
+            connect: If `initialize_head=True` and `connect=True`,
                 ray.init will be called with the address of this cluster
                 passed in.
-            head_node_args (dict): Arguments to be passed into
+            head_node_args: Arguments to be passed into
                 `start_ray_head` via `self.add_node`.
-            shutdown_at_exit (bool): If True, registers an exit hook
+            shutdown_at_exit: If True, registers an exit hook
                 for shutting down all started processes.
         """
         if cluster_not_supported:
@@ -158,7 +158,7 @@ class Cluster:
         logger.info(output_info)
         self.connected = True
 
-    def add_node(self, wait=True, **node_args):
+    def add_node(self, wait: bool = True, **node_args):
         """Adds a node to the local Ray Cluster.
 
         All nodes are by default started with the following settings:
@@ -167,7 +167,7 @@ class Cluster:
             object_store_memory=150 * 1024 * 1024  # 150 MiB
 
         Args:
-            wait (bool): Whether to wait until the node is alive.
+            wait: Whether to wait until the node is alive.
             node_args: Keyword arguments used in `start_ray_head` and
                 `start_ray_node`. Overrides defaults.
 
@@ -231,7 +231,7 @@ class Cluster:
         """Kills all processes associated with worker node.
 
         Args:
-            node (Node): Worker node of which all associated processes
+            node: Worker node of which all associated processes
                 will be removed.
         """
         global_node = ray.worker._global_node
@@ -265,7 +265,7 @@ class Cluster:
             not node.any_processes_alive()
         ), "There are zombie processes left over after killing."
 
-    def _wait_for_node(self, node, timeout=30):
+    def _wait_for_node(self, node, timeout: float = 30):
         """Wait until this node has appeared in the client table.
 
         Args:
@@ -285,7 +285,7 @@ class Cluster:
             timeout,
         )
 
-    def wait_for_nodes(self, timeout=30):
+    def wait_for_nodes(self, timeout: float = 30):
         """Waits for correct number of nodes to be registered.
 
         This will wait until the number of live nodes in the client table
@@ -295,7 +295,7 @@ class Cluster:
         raise an exception.
 
         Args:
-            timeout (float): The number of seconds to wait for nodes to join
+            timeout: The number of seconds to wait for nodes to join
                 before failing.
 
         Raises:

@@ -61,10 +61,10 @@ def build_sac_model(
     """Constructs the necessary ModelV2 for the Policy and returns it.
 
     Args:
-        policy (Policy): The TFPolicy that will use the models.
+        policy: The TFPolicy that will use the models.
         obs_space (gym.spaces.Space): The observation space.
         action_space (gym.spaces.Space): The action space.
-        config (TrainerConfigDict): The SAC trainer's config dict.
+        config: The SAC trainer's config dict.
 
     Returns:
         ModelV2: The ModelV2 to be used by the Policy. Note: An additional
@@ -139,9 +139,9 @@ def postprocess_trajectory(
     New columns can be added to sample_batch and existing ones may be altered.
 
     Args:
-        policy (Policy): The Policy used to generate the trajectory
+        policy: The Policy used to generate the trajectory
             (`sample_batch`)
-        sample_batch (SampleBatch): The SampleBatch to postprocess.
+        sample_batch: The SampleBatch to postprocess.
         other_agent_batches (Optional[Dict[AgentID, SampleBatch]]): Optional
             dict of AgentIDs mapping to other agents' trajectory data (from the
             same episode). NOTE: The other agents use the same policy.
@@ -160,9 +160,9 @@ def _get_dist_class(
     """Helper function to return a dist class based on config and action space.
 
     Args:
-        policy (Policy): The policy for which to return the action
+        policy: The policy for which to return the action
             dist class.
-        config (TrainerConfigDict): The Trainer's config dict.
+        config: The Trainer's config dict.
         action_space (gym.spaces.Space): The action space used.
 
     Returns:
@@ -204,14 +204,14 @@ def get_distribution_inputs_and_class(
     will be made on it to generate actions.
 
     Args:
-        policy (Policy): The Policy being queried for actions and calling this
+        policy: The Policy being queried for actions and calling this
             function.
-        model (SACTFModel): The SAC specific Model to use to generate the
+        model: The SAC specific Model to use to generate the
             distribution inputs (see sac_tf|torch_model.py). Must support the
             `get_action_model_outputs` method.
-        obs_batch (TensorType): The observations to be used as inputs to the
+        obs_batch: The observations to be used as inputs to the
             model.
-        explore (bool): Whether to activate exploration or not.
+        explore: Whether to activate exploration or not.
 
     Returns:
         Tuple[TensorType, Type[TFActionDistribution], List[TensorType]]: The
@@ -242,10 +242,10 @@ def sac_actor_critic_loss(
     """Constructs the loss for the Soft Actor Critic.
 
     Args:
-        policy (Policy): The Policy to calculate the loss for.
+        policy: The Policy to calculate the loss for.
         model (ModelV2): The Model to calculate the loss for.
         dist_class (Type[ActionDistribution]: The action distr. class.
-        train_batch (SampleBatch): The training data.
+        train_batch: The training data.
 
     Returns:
         Union[TensorType, List[TensorType]]: A single loss tensor or a list
@@ -447,11 +447,11 @@ def compute_and_clip_gradients(
     generate a GradientTape object for gradient recording.
 
     Args:
-        policy (Policy): The Policy object that generated the loss tensor and
+        policy: The Policy object that generated the loss tensor and
             that holds the given local optimizer.
-        optimizer (LocalOptimizer): The tf (local) optimizer object to
+        optimizer: The tf (local) optimizer object to
             calculate the gradients with.
-        loss (TensorType): The loss tensor for which gradients should be
+        loss: The loss tensor for which gradients should be
             calculated.
 
     Returns:
@@ -540,11 +540,11 @@ def apply_gradients(
     losses and optimizers (stored in policy).
 
     Args:
-        policy (Policy): The Policy object whose Model(s) the given gradients
+        policy: The Policy object whose Model(s) the given gradients
             should be applied to.
-        optimizer (LocalOptimizer): The tf (local) optimizer object through
+        optimizer: The tf (local) optimizer object through
             which to apply the gradients.
-        grads_and_vars (ModelGradients): The list of grad_and_var tuples to
+        grads_and_vars: The list of grad_and_var tuples to
             apply via the given optimizer.
 
     Returns:
@@ -582,8 +582,8 @@ def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
     """Stats function for SAC. Returns a dict with important loss stats.
 
     Args:
-        policy (Policy): The Policy to generate stats for.
-        train_batch (SampleBatch): The SampleBatch (already) used for training.
+        policy: The Policy to generate stats for.
+        train_batch: The SampleBatch (already) used for training.
 
     Returns:
         Dict[str, TensorType]: The stats dict.
@@ -662,10 +662,10 @@ def setup_early_mixins(
     Adds the necessary optimizers to the given Policy.
 
     Args:
-        policy (Policy): The Policy object.
+        policy: The Policy object.
         obs_space (gym.spaces.Space): The Policy's observation space.
         action_space (gym.spaces.Space): The Policy's action space.
-        config (TrainerConfigDict): The Policy's config.
+        config: The Policy's config.
     """
     ActorCriticOptimizerMixin.__init__(policy, config)
 
@@ -685,10 +685,10 @@ def setup_mid_mixins(
     is used).
 
     Args:
-        policy (Policy): The Policy object.
+        policy: The Policy object.
         obs_space (gym.spaces.Space): The Policy's observation space.
         action_space (gym.spaces.Space): The Policy's action space.
-        config (TrainerConfigDict): The Policy's config.
+        config: The Policy's config.
     """
     ComputeTDErrorMixin.__init__(policy, sac_actor_critic_loss)
 
@@ -706,10 +706,10 @@ def setup_late_mixins(
     respective "main" Q-metworks, based on tau (smooth, partial updating).
 
     Args:
-        policy (Policy): The Policy object.
+        policy: The Policy object.
         obs_space (gym.spaces.Space): The Policy's observation space.
         action_space (gym.spaces.Space): The Policy's action space.
-        config (TrainerConfigDict): The Policy's config.
+        config: The Policy's config.
     """
     TargetNetworkMixin.__init__(policy, config)
 
@@ -723,11 +723,11 @@ def validate_spaces(
     """Validates the observation- and action spaces used for the Policy.
 
     Args:
-        policy (Policy): The policy, whose spaces are being validated.
+        policy: The policy, whose spaces are being validated.
         observation_space (gym.spaces.Space): The observation space to
             validate.
         action_space (gym.spaces.Space): The action space to validate.
-        config (TrainerConfigDict): The Policy's config dict.
+        config: The Policy's config dict.
 
     Raises:
         UnsupportedSpaceException: If one of the spaces is not supported.

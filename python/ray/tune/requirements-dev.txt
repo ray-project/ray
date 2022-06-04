@@ -7,3 +7,4 @@ requests
 tabulate
 tensorflow
 black==21.12b0
+yq
