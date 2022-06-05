@@ -14,15 +14,12 @@ from ray._private.test_utils import (
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
-<<<<<<< HEAD
 # Task status.
 WAITING_FOR_DEPENDENCIES = "WAITING_FOR_DEPENDENCIES"
 SCHEDULED = "SCHEDULED"
 FINISHED = "FINISHED"
 WAITING_FOR_EXECUTION = "WAITING_FOR_EXECUTION"
 
-=======
->>>>>>> master
 
 def test_cached_object(ray_start_cluster):
     config = {

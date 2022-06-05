@@ -534,14 +534,11 @@ enum TaskStatus {
   WAITING_FOR_EXECUTION = 5;
   // The task that is running.
   RUNNING = 6;
-<<<<<<< HEAD
 }
 
 message DetailedSchedulingState {
   bytes task_id = 1;
   string scheduling_state = 2;
-=======
->>>>>>> master
 }
 
 // Debug info for a referenced object.

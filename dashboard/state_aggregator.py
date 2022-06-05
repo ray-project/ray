@@ -292,16 +292,6 @@ class StateAPIManager:
             return_exceptions=True,
         )
 
-<<<<<<< HEAD
-        running_task_id = set()
-        for reply in replies:
-            for task_id in reply.running_task_ids:
-                running_task_id.add(binary_to_hex(task_id))
-
-        result = []
-        for reply in replies:
-            logger.info(reply)
-=======
         unresponsive_nodes = 0
         running_task_id = set()
         successful_replies = []
@@ -333,7 +323,6 @@ class StateAPIManager:
         result = []
         for reply in successful_replies:
             assert not isinstance(reply, Exception)
->>>>>>> master
             tasks = reply.owned_task_info_entries
             for task in tasks:
                 data = self._message_to_dict(

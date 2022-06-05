@@ -300,13 +300,8 @@ message GetTasksInfoReply {
   // A list of task that's currently running.
   // All tasks must be treated as TaskStatus::RUNNING
   // from the caller side.
-<<<<<<< HEAD
-  repeated bytes running_task_ids = 3;
-  repeated DetailedSchedulingState detailed_scheduling_states = 4;
-=======
   repeated bytes running_task_ids = 2;
->>>>>>> master
-}
+  repeated DetailedSchedulingState detailed_scheduling_states = 4;
 
 message GetObjectsInfoRequest {}
 

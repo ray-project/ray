@@ -1084,11 +1084,7 @@ def test_list_tasks(shutdown_only):
     def verify():
         tasks = list(list_tasks().values())
         correct_num_tasks = len(tasks) == 5
-<<<<<<< HEAD
-        running = len(
-=======
         waiting_for_execution = len(
->>>>>>> master
             list(
                 filter(
                     lambda task: task["scheduling_state"] == "WAITING_FOR_EXECUTION",
@@ -1120,10 +1116,6 @@ def test_list_tasks(shutdown_only):
             correct_num_tasks
             and running == 2
             and waiting_for_dep == 1
-<<<<<<< HEAD
-            and scheduled == 2
-        )
-=======
             and waiting_for_execution == 0
             and scheduled == 2
         )
@@ -1185,7 +1177,6 @@ def test_list_actor_tasks(shutdown_only):
             and waiting_for_execution == 9
             and scheduled == 0
         )
->>>>>>> master
 
     wait_for_condition(verify)
     print(list_tasks())
