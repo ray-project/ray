@@ -15,7 +15,7 @@ Framework-specific Examples
 
 Tabular Data
 ------------
-- :doc:`Tabular Data Training with Keras </ray-air/examples/tfx_tabular_train_to_serve>`: How to use Ray AIR to train a Keras model on tabular data and serve it.
+- :doc:`/ray-air/examples/tfx_tabular_train_to_serve`: How to use Ray AIR to train a Keras model on tabular data and serve it.
 
 Text/NLP
 --------

@@ -25,7 +25,6 @@ parts:
       sections:
         - file: ray-air/examples/torch_image_example
         - file: ray-air/examples/tfx_tabular_train_to_serve
-          title: "Tabular Data Training and Serving with Keras"
         - file: ray-air/examples/huggingface_text_classification
           title: "Fine-tune a 🤗 Transformers model"
         - file: ray-air/examples/sklearn_example
