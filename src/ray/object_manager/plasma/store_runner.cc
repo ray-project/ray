@@ -91,7 +91,7 @@ void PlasmaStoreRunner::Start(ray::SpillObjectsCallback spill_objects_callback,
     allocator_ = std::make_unique<PlasmaAllocator>(
         plasma_directory_, fallback_directory_, hugepages_enabled_, system_memory_);
     fs_monitor_ = std::make_unique<ray::FileSystemMonitor>(
-        fallback_directory_,
+        {fallback_directory_},
         RayConfig::instance().local_fs_capacity_threshold(),
         RayConfig::instance().local_fs_monitor_interval_ms());
     store_.reset(new PlasmaStore(main_service_,

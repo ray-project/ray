@@ -488,7 +488,7 @@ RAY_CONFIG(bool, is_external_storage_type_fs, true)
 RAY_CONFIG(float, local_fs_capacity_threshold, 0.9);
 
 /// Control the frequency of checking the disk usage.
-RAY_CONFIG(int64_t, local_fs_monitor_interval_ms, 1000);
+RAY_CONFIG(uint64_t, local_fs_monitor_interval_ms, 1000);
 
 /* Configuration parameters for locality-aware scheduling. */
 /// Whether to enable locality-aware leasing. If enabled, then Ray will consider task
