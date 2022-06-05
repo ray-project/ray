@@ -424,16 +424,6 @@ class KubeRayAutoscalingTest(unittest.TestCase):
             ]
         )
 
-        logger.info("Deleting autoscaler RBAC.")
-        subprocess.check_call(
-            [
-                "kubectl",
-                "delete",
-                "-f",
-                "ray/python/ray/autoscaler/kuberay/kuberay-autoscaler-rbac.yaml",
-            ]
-        )
-
         logger.info("Double-checking no pods left over.")
         wait_for_pods(goal_num_pods=0, namespace=RAY_CLUSTER_NAMESPACE)
         wait_for_pods(goal_num_pods=0, namespace="ray-system")
