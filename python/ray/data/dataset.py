@@ -2369,7 +2369,7 @@ class Dataset(Generic[T]):
         import torch
 
         from ray.data.impl.torch_iterable_dataset import TorchIterableDataset
-        from ray.air._internals.torch_utils import convert_pandas_to_torch_tensor
+        from ray.air._internal.torch_utils import convert_pandas_to_torch_tensor
 
         # If an empty collection is passed in, treat it the same as None
         if not feature_columns:
