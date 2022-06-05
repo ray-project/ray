@@ -153,22 +153,6 @@ def run_with_custom_entropy_loss(args, stop):
 
     This performs about the same as the default loss does."""
 
-    def entropy_policy_gradient_loss(policy, model, dist_class, train_batch):
-        logits, _ = model(train_batch)
-        action_dist = dist_class(logits, model)
-        if args.framework == "torch":
-            # Required by PGTorchPolicy's stats fn.
-            model.tower_stats["policy_loss"] = torch.tensor([0.0])
-            policy.policy_loss = torch.mean(
-                -0.1 * action_dist.entropy()
-                - (action_dist.logp(train_batch["actions"]) * train_batch["advantages"])
-            )
-        else:
-            policy.policy_loss = -0.1 * action_dist.entropy() - tf.reduce_mean(
-                action_dist.logp(train_batch["actions"]) * train_batch["advantages"]
-            )
-        return policy.policy_loss
-
     policy_cls = {
         "torch": PGTorchPolicy,
         "tf": PGStaticGraphTFPolicy,
@@ -176,11 +160,29 @@ def run_with_custom_entropy_loss(args, stop):
         "tfe": PGEagerTFPolicy,
     }[args.framework]
 
-    entropyPolicy = policy_cls.with_updates(loss_fn=entropy_policy_gradient_loss)
+    class EntropyPolicy(policy_cls):
+        def loss_fn(policy, model, dist_class, train_batch):
+            logits, _ = model(train_batch)
+            action_dist = dist_class(logits, model)
+            if args.framework == "torch":
+                # Required by PGTorchPolicy's stats fn.
+                model.tower_stats["policy_loss"] = torch.tensor([0.0])
+                policy.policy_loss = torch.mean(
+                    -0.1 * action_dist.entropy()
+                    - (
+                        action_dist.logp(train_batch["actions"])
+                        * train_batch["advantages"]
+                    )
+                )
+            else:
+                policy.policy_loss = -0.1 * action_dist.entropy() - tf.reduce_mean(
+                    action_dist.logp(train_batch["actions"]) * train_batch["advantages"]
+                )
+            return policy.policy_loss
 
     class EntropyLossPG(PG):
         def get_default_policy_class(self, config):
-            return entropyPolicy
+            return EntropyPolicy
 
     run_heuristic_vs_learned(args, use_lstm=True, trainer=EntropyLossPG)
 
