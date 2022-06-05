@@ -41,7 +41,7 @@ config = {
 # tune.run(PPOTrainer, config=config)
 # Create our RLlib Trainer.
 # trainer = PPOTrainer(config=config)
-trainer_actor = ray.remote(PPOTrainer).options(num_gpus=1).remote(config=config)
+trainer_actor = ray.remote(PPOTrainer).options(num_gpus=1, max_concurrency=10).remote(config=config)
 # print(f">>>>>>> {trainer_actor}")
 
 # Run it for n training iterations. A training iteration includes
