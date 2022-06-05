@@ -17,12 +17,18 @@ from ray.rllib.algorithms.dqn.dqn import DQNConfig
 # __sphinx_doc_replay_buffer_type_specification__begin__
 config = DQNConfig().training(replay_buffer_config={"type": ReplayBuffer}).to_dict()
 
-another_config = DQNConfig().training(replay_buffer_config={"type": "ReplayBuffer"}).to_dict()
+another_config = (
+    DQNConfig().training(replay_buffer_config={"type": "ReplayBuffer"}).to_dict()
+)
 
 
-yet_another_config = DQNConfig().training(
-    replay_buffer_config={"type": "ray.rllib.utils.replay_buffers.ReplayBuffer"}
-).to_dict()
+yet_another_config = (
+    DQNConfig()
+    .training(
+        replay_buffer_config={"type": "ray.rllib.utils.replay_buffers.ReplayBuffer"}
+    )
+    .to_dict()
+)
 
 validate_buffer_config(config)
 validate_buffer_config(another_config)
@@ -68,10 +74,16 @@ class LessSampledReplayBuffer(ReplayBuffer):
         return sample
 
 
-config["replay_buffer_config"]["type"] = LessSampledReplayBuffer
+config = (
+    DQNConfig()
+    .training(replay_buffer_config={"type": LessSampledReplayBuffer})
+    .environment(env="CartPole-v0")
+)
 
 tune.run(
-    "SimpleQ", config=config, stop={"episode_reward_mean": 70, "training_iteration": 15}
+    "DQN",
+    config=config.to_dict(),
+    stop={"episode_reward_mean": 70, "training_iteration": 15},
 )
 # __sphinx_doc_replay_buffer_own_buffer__end__
 
