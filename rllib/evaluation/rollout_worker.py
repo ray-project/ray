@@ -1574,8 +1574,8 @@ class RolloutWorker(ParallelIteratorWorker):
 
     def init_buffers(self):
         self.buffer_key_list = ["default"] * 12
-        self.buffer_list = [cp.ones([500, 500], dtype=cp.float32)] * 12
-        self.buffer = cp.ones([500,500], dtype=cp.float32)
+        self.buffer_list = [cp.ones([1, 1], dtype=cp.float32)] * 12
+        self.buffer = cp.ones([1,1], dtype=cp.float32)
         cp.cuda.Stream.null.synchronize()
         print(f">>>> Finished init buffers for worker at rank {collective.get_rank(group_name='device_mesh')}")
 
@@ -1595,20 +1595,19 @@ class RolloutWorker(ParallelIteratorWorker):
     # def do_recv(self, group_name="default", src_rank=0):
     #     collective.recv(self.policy_map_buffer, src_rank, group_name)
 
-    def broadcast(self, group_name="default", src_rank=0):
+    def broadcast(self, src_rank=0, group_name="default"):
         local_worker_rank = collective.get_rank(group_name="device_mesh")
         print(f">>>> local_worker_rank from rollout_worker: {local_worker_rank}")
         # print(f">>>>> collective group size: {collective.get_collective_group_size('device_mesh')}")
 
-        # print(f">>>> Putting current policy map to buffer_list")
-        # self.policy_map_to_buffer_list()
-        # print(f">>>> Broadcasting ... len: buffer_key_list: {len(self.buffer_key_list)}, len: buffer_list: {len(self.buffer_list)}")
+        print(f">>>> Broadcasting ... len: buffer_key_list: {len(self.buffer_key_list)}, len: buffer_list: {len(self.buffer_list)}")
         print(f">>>> group_name: {group_name}, src_rank: {src_rank}")
-        collective.broadcast(self.buffer, src_rank, group_name)
+        # collective.broadcast(self.buffer, src_rank, group_name)
+        # TODO (jiaodong): Enable groupStart/End and see perf diff
         # nccl_util.groupStart()
-        # for i in range(len(self.buffer_list)):
-            # print(f">>>> Broadcasting tensor of type {type(self.buffer_list[i])}, shape: {self.buffer_list[i].shape}")
-            # collective.broadcast(self.buffer_list[i], src_rank, group_name)
+        for i in range(len(self.buffer_list)):
+            print(f">>>> Broadcasting tensor of type {type(self.buffer_list[i])}, shape: {self.buffer_list[i].shape}")
+            collective.broadcast(self.buffer_list[i], src_rank, group_name)
         # nccl_util.groupEnd()
 
         # print(f">>>> Putting current buffer_list to policy map")
@@ -1625,7 +1624,9 @@ class RolloutWorker(ParallelIteratorWorker):
         """Given a policy map, convert into list of tensor buffers with out
         nesting
         """
-
+        print(f">>>> Putting current policy map to buffer_list")
+        self.buffer_key_list = []
+        self.buffer_list = []
         weights = self.get_weights()
         for key in weights['default_policy'].keys():
             tensor = weights['default_policy'][key]

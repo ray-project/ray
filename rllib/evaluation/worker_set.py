@@ -253,13 +253,18 @@ class WorkerSet:
 
         # self.local_worker().broadcast(group_name="device_mesh", src_rank=0)
         self_actor = ray.get_runtime_context().current_actor
-        print(f">>>>> All actors invovled: {[self_actor, *self.remote_workers()]}")
+        all_workers = [self_actor, *self.remote_workers()]
         ray.get(
             [
-                self_actor.broadcast.remote(group_name="device_mesh", src_rank=0),
-                self.remote_workers()[0].broadcast.remote(group_name="device_mesh", src_rank=0),
-                self.remote_workers()[1].broadcast.remote(group_name="device_mesh", src_rank=0),
-                self.remote_workers()[2].broadcast.remote(group_name="device_mesh", src_rank=0)
+                w.policy_map_to_buffer_list.remote() for w in all_workers
+            ]
+        )
+        ray.get(
+            [
+                self_actor.broadcast.remote(src_rank=local_worker_rank, group_name="device_mesh"),
+                self.remote_workers()[0].broadcast.remote(src_rank=local_worker_rank, group_name="device_mesh"),
+                self.remote_workers()[1].broadcast.remote(src_rank=local_worker_rank, group_name="device_mesh"),
+                self.remote_workers()[2].broadcast.remote(src_rank=local_worker_rank, group_name="device_mesh")
             ]
         )
 

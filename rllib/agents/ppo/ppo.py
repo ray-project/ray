@@ -386,9 +386,12 @@ class PPOTrainer(Trainer):
         self.workers.local_worker().init_buffers()
 
     def broadcast(self, src_rank=0, group_name="default"):
-        local_worker = self.workers.local_worker()
-        collective.broadcast(local_worker.buffer, src_rank, group_name)
-        return True
+        # collective.broadcast(local_worker.buffer, src_rank, group_name)
+        # return True
+        return self.workers.local_worker().broadcast(src_rank=src_rank, group_name=group_name)
+
+    def policy_map_to_buffer_list(self):
+        return self.workers.local_worker().policy_map_to_buffer_list()
 
     @ExperimentalAPI
     def training_iteration(self) -> ResultDict:
