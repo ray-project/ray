@@ -848,7 +848,7 @@ def init(
     job_config: "ray.job_config.JobConfig" = None,
     configure_logging: bool = True,
     logging_level: int = ray_constants.LOGGER_LEVEL,
-    logging_format: str = ray_constants.LOGGER_FORMAT,
+    logging_format: Optional[str] = None,
     log_to_driver: bool = True,
     namespace: Optional[str] = None,
     runtime_env: Optional[Union[Dict[str, Any], "RuntimeEnv"]] = None,  # noqa: F821
@@ -1015,6 +1015,9 @@ def init(
         "_tracing_startup_hook", None)
     _node_name: str = kwargs.pop(
         "_node_name", None)
+
+    if not logging_format:
+        logging_format = ray_constants.LOGGER_FORMAT
 
     # If available, use RAY_ADDRESS to override if the address was left
     # unspecified, or set to "auto" in the call to init
