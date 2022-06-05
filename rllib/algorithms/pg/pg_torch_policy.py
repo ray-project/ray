@@ -12,6 +12,7 @@ from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.algorithms.pg.utils import post_process_advantages
+from ray.rllib.algorithms.ppo.ppo_tf_policy import validate_config
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.models.modelv2 import ModelV2
@@ -56,8 +57,8 @@ class PGTorchPolicy(TorchPolicyV2):
         L = -E[ log(pi(a|s)) * A]
 
         Args:
-            model (ModelV2): The Model to calculate the loss for.
-            dist_class (Type[ActionDistribution]: The action distr. class.
+            model: The Model to calculate the loss for.
+            dist_class: The action distr. class.
             train_batch: The training data.
 
         Returns:

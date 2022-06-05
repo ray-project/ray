@@ -83,8 +83,8 @@ def get_pg_tf_policy(base: TFPolicyV2Type) -> TFPolicyV2Type:
             L = -E[ log(pi(a|s)) * A]
 
             Args:
-                model (ModelV2): The Model to calculate the loss for.
-                dist_class (Type[ActionDistribution]: The action distr. class.
+                model: The Model to calculate the loss for.
+                dist_class: The action distr. class.
                 train_batch: The training data.
 
             Returns:
