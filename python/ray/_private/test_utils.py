@@ -432,12 +432,12 @@ def wait_for_stdout(strings_to_match: List[str], timeout_s: int):
                 success = True
                 return out
             finally:
+                sys.stdout = sys.__stdout__
                 if success:
                     print("Confirmed expected function stdout. Stdout follows:")
                 else:
                     print("Did not confirm expected function stdout. Stdout follows:")
                 print(out_stream.getvalue())
-                sys.stdout = sys.__stdout__
                 out_stream.close()
 
         return decorated_func
