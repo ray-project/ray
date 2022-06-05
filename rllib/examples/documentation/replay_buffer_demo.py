@@ -11,26 +11,18 @@ from ray.rllib.utils.typing import SampleBatchType
 from ray.rllib.utils.replay_buffers.utils import validate_buffer_config
 from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.algorithms.dqn.dqn import DQNConfig
 
 
 # __sphinx_doc_replay_buffer_type_specification__begin__
-config = {
-    "env": "CartPole-v1",
-    # Specify buffer via class. This is the recommended way to specify a custom buffer.
-    "replay_buffer_config": {"type": ReplayBuffer},
-}
+config = DQNConfig().training(replay_buffer_config={"type": ReplayBuffer})
 
-another_config = {
-    "env": "CartPole-v1",
-    # Specify buffer type name like it can be found in RLlib's buffer module.
-    "replay_buffer_config": {"type": "ReplayBuffer"},
-}
+another_config = DQNConfig().training(replay_buffer_config={"type": "ReplayBuffer"})
 
-yet_another_config = {
-    "env": "CartPole-v1",
-    # Specify buffer by python module and class.
-    "replay_buffer_config": {"type": "ray.rllib.utils.replay_buffers.ReplayBuffer"},  #
-}
+
+yet_another_config = DQNConfig().training(
+    replay_buffer_config={"type": "ray.rllib.utils.replay_buffers.ReplayBuffer"}
+)
 
 validate_buffer_config(config)
 validate_buffer_config(another_config)

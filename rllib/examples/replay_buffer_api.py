@@ -14,6 +14,7 @@ import ray
 from ray import tune
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check_learning_achieved
+from ray.rllib.agents.dqn.r2d2 import R2D2Config
 
 tf1, tf, tfv = try_import_tf()
 
@@ -41,17 +42,13 @@ if __name__ == "__main__":
 
     ray.init(num_cpus=args.num_cpus or None)
 
-    config = {
-        "env": "CartPole-v0",
-        "model": {
-            "use_lstm": True,
-            "lstm_cell_size": 64,
-            "max_seq_len": 20,
-        },
-        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "framework": args.framework,
-    }
+    config = (
+        R2D2Config()
+        .environment(env="CartPole-v0")
+        .training(model=dict(use_lstm=True, lstm_cell_size=64, max_seq_len=20))
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        .framework(framework=args.framework)
+    )
 
     stop_config = {
         "episode_reward_mean": args.stop_reward,
@@ -62,7 +59,7 @@ if __name__ == "__main__":
     # This is where we add prioritized experiences replay
     # The training iteration function that is shared by DQN and R2D2 already
     # includes a priority update step.
-    config["replay_buffer_config"] = {
+    replay_buffer_config = {
         "type": "MultiAgentPrioritizedReplayBuffer",
         # Although not necessary, we can modify the default constructor args of
         # the replay buffer here
@@ -70,7 +67,9 @@ if __name__ == "__main__":
         "replay_burn_in": 20,
     }
 
-    results = tune.run("R2D2", config=config, stop=stop_config)
+    config.training(replay_buffer_config=replay_buffer_config)
+
+    results = tune.run("R2D2", config=config.to_dict(), stop=stop_config)
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)
