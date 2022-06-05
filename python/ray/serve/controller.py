@@ -421,7 +421,7 @@ class ServeController:
     def deploy_app(
         self,
         import_path: str,
-        runtime_env: str,
+        runtime_env: Dict,
         deployment_override_options: List[Dict],
     ) -> None:
         """Kicks off a task that deploys a Serve application.
@@ -444,7 +444,7 @@ class ServeController:
 
         self.config_deployment_request_ref = run_graph.options(
             runtime_env=runtime_env
-        ).remote(import_path, deployment_override_options)
+        ).remote(import_path, runtime_env, deployment_override_options)
 
         self.deployment_timestamp = time.time()
 
@@ -568,7 +568,9 @@ class ServeController:
 
 
 @ray.remote(max_calls=1)
-def run_graph(import_path: str, deployment_override_options: List[Dict]):
+def run_graph(
+    import_path: str, runtime_env: dict, deployment_override_options: List[Dict]
+):
     """Deploys a Serve application to the controller's Ray cluster."""
     from ray import serve
     from ray.serve.api import build
@@ -580,6 +582,15 @@ def run_graph(import_path: str, deployment_override_options: List[Dict]):
     # Override options for each deployment
     for options_dict in deployment_override_options:
         name = options_dict["name"]
+
+        if options_dict.get("ray_actor_options") is None:
+            options_dict["ray_actor_options"] = {"runtime_env": {}}
+        elif options_dict.get("ray_actor_options").get("runtime_env") is None:
+            options_dict.get("ray_actor_options")["runtime_env"] = {}
+        options_dict["ray_actor_options"]["runtime_env"] = (
+            options_dict.get("ray_actor_options").get("runtime_env").update(runtime_env)
+        )
+
         app.deployments[name].set_options(**options_dict)
 
     # Run the graph locally on the cluster
