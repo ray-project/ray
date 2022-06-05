@@ -708,7 +708,6 @@ def test_reconstruction_stress_spill(ray_start_cluster):
             i += 1
 
 
-<<<<<<< HEAD
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
 def test_nondeterministic_output(ray_start_cluster, reconstruction_enabled):
@@ -1109,8 +1108,6 @@ def test_memory_util(ray_start_cluster):
     wait_for_condition(lambda: stats() == (0, 0, 2))
 
 
-=======
->>>>>>> master
 if __name__ == "__main__":
     import pytest
 
