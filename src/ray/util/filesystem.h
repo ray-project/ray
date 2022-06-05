@@ -14,15 +14,10 @@
 
 #pragma once
 
-#include <gtest/gtest_prod.h>
-
 #include <filesystem>
 #include <optional>
 #include <string>
 #include <utility>
-
-#include "absl/base/thread_annotations.h"
-#include "absl/synchronization/mutex.h"
 
 // Filesystem and path manipulation APIs.
 // (NTFS stream & attribute paths are not supported.)
@@ -65,39 +60,4 @@ std::string JoinPaths(std::string base, const Paths &...components) {
   return base;
 }
 
-/// Monitor the filesystem capacity ray is using.
-/// This class is thread safe.
-class FileSystemMonitor {
- public:
-  /// Constructor.
-  ///
-  /// \param path path of the file system to monitor the usage.
-  /// \param capacity_threshold a value between 0-1 indicates the capacity limit.
-  /// \param monitor_interval_ms control the frequency to check the disk usage.
-  FileSystemMonitor(const std::string &path,
-                    double capacity_threshold,
-                    int64_t monitor_interval_ms = 0);
-
-  /// return the disk usage.
-  std::optional<std::filesystem::space_info> Space();
-
-  /// returns true if the disk usage is over the capacity threshold.
-  bool OverCapacity();
-
- private:
-  // For testing purpose.
-  bool OverCapacityImpl(const std::optional<std::filesystem::space_info> &info) const;
-
-  std::optional<std::filesystem::space_info> SpaceImpl() const;
-
- private:
-  FRIEND_TEST(FileSystemTest, TestOverCapacity);
-  const std::string ray_file_path_;
-  const double capacity_threshold_;
-  const int64_t monitor_interval_ms_;
-
-  mutable absl::Mutex mutex_;
-  std::optional<std::filesystem::space_info> last_check_result_ GUARDED_BY(mutex_);
-  std::chrono::time_point<std::chrono::steady_clock> last_check_time_ GUARDED_BY(mutex_);
-};
 }  // namespace ray
