@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, Extra, root_validator, validator
+from pydantic import BaseModel, Field, Extra, validator
 from typing import Union, Tuple, List, Dict
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve.common import (

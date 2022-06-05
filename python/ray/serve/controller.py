@@ -1,6 +1,5 @@
 import asyncio
 from collections import defaultdict
-from copy import copy
 import json
 import logging
 import traceback
@@ -14,7 +13,6 @@ from ray.actor import ActorHandle
 from ray._private.utils import import_attr
 from ray.exceptions import RayTaskError
 
-from ray.serve.autoscaling_metrics import InMemoryMetricsStore
 from ray.serve.autoscaling_policy import BasicAutoscalingPolicy
 from ray.serve.common import (
     DeploymentInfo,

@@ -1050,6 +1050,8 @@ class DeploymentState:
             deployment_info (Optional[DeploymentInfo]): Contains deployment and
                 replica config, if passed in as None, we're marking
                 target deployment as shutting down.
+            version_preserve: keep the same version explicilty. When it is set
+                to True, self._target_version will not be changed.
         """
 
         if deployment_info is not None:
@@ -1108,13 +1110,28 @@ class DeploymentState:
 
         return True
 
-    def autoscale(self, current_num_ongoing_requests, current_handle_queued_queries):
+    def autoscale(
+        self,
+        current_num_ongoing_requests: List[float],
+        current_handle_queued_queries: int,
+    ):
+        """
+        Autoscale the deployment based on metrics
+
+        Args:
+            current_num_ongoing_requests: a list of number of running requests of all
+                replicas in the deployment
+            current_handle_queued_queries: The number of handle queued queries,
+                if there are multiple handles, the max number of queries at
+                a single handle should be passed in
+        """
 
         if self._deleting:
             return
 
+        autoscaling_policy = self._target_info.autoscaling_policy
         # decide num replicas
-        decision_num_replicas = self._target_info.autoscaling_policy.get_decision_num_replicas(
+        decision_num_replicas = autoscaling_policy.get_decision_num_replicas(
             curr_target_num_replicas=self._target_info.deployment_config.num_replicas,
             current_num_ongoing_requests=current_num_ongoing_requests,
             current_handle_queued_queries=current_handle_queued_queries,

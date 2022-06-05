@@ -8,7 +8,7 @@ from ray import serve
 from ray.serve.drivers import DAGDriver
 from ray.experimental.dag.input_node import InputNode
 from ray.serve.deployment_state import ReplicaState
-from ray._private.test_utils import SignalActor, wait_for_condition
+from ray._private.test_utils import wait_for_condition
 
 
 def get_num_running_replicas(controller, deployment_name):

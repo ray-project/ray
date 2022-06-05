@@ -20,7 +20,6 @@ from ray.serve.schema import (
     serve_status_to_schema,
 )
 from ray.util.accelerators.accelerators import NVIDIA_TESLA_V100, NVIDIA_TESLA_P4
-from ray.serve.config import AutoscalingConfig
 from ray.serve.deployment import (
     deployment_to_schema,
     schema_to_deployment,
