@@ -1,6 +1,5 @@
 #include "ray/object_manager/plasma/store_runner.h"
 
-#include <boost/algorithm/string.hpp>
 #ifndef _WIN32
 #include <fcntl.h>
 #include <sys/statvfs.h>
@@ -92,10 +91,9 @@ void PlasmaStoreRunner::Start(ray::SpillObjectsCallback spill_objects_callback,
     allocator_ = std::make_unique<PlasmaAllocator>(
         plasma_directory_, fallback_directory_, hugepages_enabled_, system_memory_);
     std::vector<std::string> local_spilling_paths;
-    if (!RayConfig::instance().local_spilling_paths().empty()) {
-      boost::split(local_spilling_paths,
-                   RayConfig::instance().local_spilling_paths(),
-                   boost::is_any_of(","));
+    if (RayConfig::instance().is_external_storage_type_fs()) {
+      local_spilling_paths =
+          ray::ParseSpillingPaths(RayConfig::instance().object_spilling_config());
     }
     local_spilling_paths.push_back(fallback_directory_);
     fs_monitor_ = std::make_unique<ray::FileSystemMonitor>(

@@ -103,6 +103,75 @@ TEST(FileSystemTest, TestOverCapacity) {
       {std::filesystem::space_info{/* capacity */ 0, /* free */ 0, /* available */ 0}}));
 }
 
+TEST(FileSystemTest, ParseLocalSpillingPaths) {
+  {
+    std::vector<std::string> expected{"/tmp/spill", "/tmp/spill_1"};
+    auto parsed = ParseSpillingPaths(
+        "{"
+        "  \"type\": \"filesystem\","
+        "  \"params\": {"
+        "    \"directory_path\": ["
+        "      \"/tmp/spill\","
+        "      \"/tmp/spill_1\""
+        "     ]"
+        "  }"
+        "}");
+    ASSERT_EQ(expected, parsed);
+  }
+
+  {
+    std::vector<std::string> expected{"/tmp/spill"};
+    auto parsed = ParseSpillingPaths(
+        "{"
+        "  \"type\": \"filesystem\","
+        "  \"params\": {"
+        "    \"directory_path\": \"/tmp/spill\""
+        "  }"
+        "}");
+    ASSERT_EQ(expected, parsed);
+  }
+
+  {
+    std::vector<std::string> expected{};
+    auto parsed = ParseSpillingPaths(
+        "{"
+        "  \"type\": \"filesystem\","
+        "    \"params\": {"
+        "    \"directory_1path\": \"/tmp/spill\""
+        "  }"
+        "}");
+    ASSERT_EQ(expected, parsed);
+  }
+
+  {
+    std::vector<std::string> expected{};
+    auto parsed = ParseSpillingPaths(
+        "{"
+        "  \"type\": \"filesystem\","
+        "    \"params\": {"
+        "    \"directory_path\": 3"
+        "  }"
+        "}");
+    ASSERT_EQ(expected, parsed);
+  }
+
+  {
+    std::vector<std::string> expected{"/tmp/spill", "/tmp/spill_1"};
+    auto parsed = ParseSpillingPaths(
+        "{"
+        "  \"type\": \"filesystem\","
+        "  \"params\": {"
+        "    \"directory_path\": ["
+        "      \"/tmp/spill\","
+        "      2,"
+        "      \"/tmp/spill_1\""
+        "    ]"
+        "  }"
+        "}");
+    ASSERT_EQ(expected, parsed);
+  }
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {

@@ -60,4 +60,5 @@ std::string JoinPaths(std::string base, const Paths &...components) {
   return base;
 }
 
+std::vector<std::string> GetLocalSpillingPaths();
 }  // namespace ray

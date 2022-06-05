@@ -1489,24 +1489,6 @@ class Node:
         ] = is_external_storage_type_fs
         self._config["is_external_storage_type_fs"] = is_external_storage_type_fs
 
-        if is_external_storage_type_fs:
-            directory_paths = []
-            try:
-                directory_path = deserialized_config["params"]["directory_path"]
-                if type(directory_path) == list:
-                    directory_paths = directory_path
-                else:
-                    directory_paths.append(directory_path)
-            except KeyError:
-                logger.warning(
-                    f"Failed to read spilling path from {deserialized_config}"
-                )
-            local_spilling_paths = ",".join(directory_path)
-            self._ray_params._system_config[
-                "local_spilling_paths"
-            ] = local_spilling_paths
-            self._config["local_spilling_paths"] = local_spilling_paths
-
         # Validate external storage usage.
         from ray import external_storage
 
