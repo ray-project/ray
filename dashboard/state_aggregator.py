@@ -1,8 +1,9 @@
 import asyncio
 import logging
 
+from dataclasses import fields
 from itertools import islice
-from typing import List
+from typing import List, Tuple
 
 from ray.core.generated.common_pb2 import TaskStatus
 import ray.dashboard.utils as dashboard_utils
@@ -10,6 +11,8 @@ import ray.dashboard.memory_utils as memory_utils
 
 from ray.experimental.state.common import (
     filter_fields,
+    StateSchema,
+    SupportedFilterType,
     ActorState,
     PlacementGroupState,
     NodeState,
@@ -47,6 +50,65 @@ NODE_QUERY_FAILURE_WARNING = (
 )
 
 
+def _convert_filters_type(
+    filter: List[Tuple[str, SupportedFilterType]], schema: StateSchema
+) -> List[Tuple[str, SupportedFilterType]]:
+    """Convert the given filter's type to SupportedFilterType.
+
+    This method is necessary because click can only accept a single type
+    for its tuple (which is string in this case).
+
+    Args:
+        filter: A list of filter which is a tuple of (key, val).
+        schema: The state schema. It is used to infer the type of the column for filter.
+
+    Returns:
+        A new list of filters with correctly types that match the schema.
+    """
+    new_filter = []
+    schema = {field.name: field.type for field in fields(schema)}
+
+    for col, val in filter:
+        if col in schema:
+            column_type = schema[col]
+            if isinstance(val, column_type):
+                # Do nothing.
+                pass
+            elif column_type is int:
+                try:
+                    val = int(val)
+                except ValueError:
+                    raise ValueError(
+                        f"Invalid filter `--filter {col} {val}` for a int type "
+                        "column. Please provide an integer filter "
+                        f"`--filter {col} [int]`"
+                    )
+            elif column_type is float:
+                try:
+                    val = float(val)
+                except ValueError:
+                    raise ValueError(
+                        f"Invalid filter `--filter {col} {val}` for a float "
+                        "type column. Please provide an integer filter "
+                        f"`--filter {col} [float]`"
+                    )
+            elif column_type is bool:
+                # Without this, "False" will become True.
+                if val == "False" or val == "false" or val == "0":
+                    val = False
+                elif val == "True" or val == "true" or val == "1":
+                    val = True
+                else:
+                    raise ValueError(
+                        f"Invalid filter `--filter {col} {val}` for a boolean "
+                        "type column. Please provide "
+                        f"`--filter {col} [True|true|1]` for True or "
+                        f"`--filter {col} [False|false|0]` for False."
+                    )
+        new_filter.append((col, val))
+    return new_filter
+
+
 # TODO(sang): Move the class to state/state_manager.py.
 # TODO(sang): Remove *State and replaces with Pydantic or protobuf.
 # (depending on API interface standardization).
@@ -61,6 +123,44 @@ class StateAPIManager:
     @property
     def data_source_client(self):
         return self._client
+
+    def _filter(
+        self,
+        data: List[dict],
+        filters: List[Tuple[str, SupportedFilterType]],
+        state_dataclass: StateSchema,
+    ) -> List[dict]:
+        """Return the filtered data given filters.
+
+        Args:
+            data: A list of state data.
+            filters: A list of KV tuple to filter data (key, val). The data is filtered
+                if data[key] != val.
+            state_dataclass: The state schema.
+
+        Returns:
+            A list of filtered state data in dictionary. Each state data's
+            unncessary columns are filtered by the given state_dataclass schema.
+        """
+        filters = _convert_filters_type(filters, state_dataclass)
+        result = []
+        for datum in data:
+            match = True
+            for filter_column, filter_value in filters:
+                filterable_columns = state_dataclass.filterable_columns()
+                if filter_column not in filterable_columns:
+                    raise ValueError(
+                        f"The given filter column {filter_column} is not supported. "
+                        f"Supported filter columns: {filterable_columns}"
+                    )
+
+                if datum[filter_column] != filter_value:
+                    match = False
+                    break
+
+            if match:
+                result.append(filter_fields(datum, state_dataclass))
+        return result
 
     async def list_actors(self, *, option: ListApiOptions) -> ListApiResponse:
         """List all actor information from the cluster.
@@ -78,9 +178,9 @@ class StateAPIManager:
         result = []
         for message in reply.actor_table_data:
             data = self._message_to_dict(message=message, fields_to_decode=["actor_id"])
-            data = filter_fields(data, ActorState)
             result.append(data)
 
+        result = self._filter(result, option.filters, ActorState)
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["actor_id"])
         return ListApiResponse(
@@ -108,9 +208,9 @@ class StateAPIManager:
                 message=message,
                 fields_to_decode=["placement_group_id"],
             )
-            data = filter_fields(data, PlacementGroupState)
             result.append(data)
 
+        result = self._filter(result, option.filters, PlacementGroupState)
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["placement_group_id"])
         return ListApiResponse(
@@ -132,9 +232,9 @@ class StateAPIManager:
         result = []
         for message in reply.node_info_list:
             data = self._message_to_dict(message=message, fields_to_decode=["node_id"])
-            data = filter_fields(data, NodeState)
             result.append(data)
 
+        result = self._filter(result, option.filters, NodeState)
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["node_id"])
         return ListApiResponse(
@@ -159,9 +259,9 @@ class StateAPIManager:
                 message=message, fields_to_decode=["worker_id"]
             )
             data["worker_id"] = data["worker_address"]["worker_id"]
-            data = filter_fields(data, WorkerState)
             result.append(data)
 
+        result = self._filter(result, option.filters, WorkerState)
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["worker_id"])
         return ListApiResponse(
@@ -244,9 +344,9 @@ class StateAPIManager:
                     data["scheduling_state"] = TaskStatus.DESCRIPTOR.values_by_number[
                         TaskStatus.RUNNING
                     ].name
-                data = filter_fields(data, TaskState)
                 result.append(data)
 
+        result = self._filter(result, option.filters, TaskState)
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["task_id"])
         return ListApiResponse(
@@ -315,9 +415,9 @@ class StateAPIManager:
             # TODO(sang): Refactor `construct_memory_table`.
             data["object_id"] = data["object_ref"]
             del data["object_ref"]
-            data = filter_fields(data, ObjectState)
             result.append(data)
 
+        result = self._filter(result, option.filters, ObjectState)
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["object_id"])
         return ListApiResponse(
@@ -361,7 +461,6 @@ class StateAPIManager:
                     data["runtime_env"]
                 ).to_dict()
                 data["node_id"] = node_id
-                data = filter_fields(data, RuntimeEnvState)
                 result.append(data)
 
         partial_failure_warning = None
@@ -377,6 +476,8 @@ class StateAPIManager:
             partial_failure_warning = (
                 f"The returned data may contain incomplete result. {warning_msg}"
             )
+
+        result = self._filter(result, option.filters, RuntimeEnvState)
 
         # Sort to make the output deterministic.
         def sort_func(entry):

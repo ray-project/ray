@@ -27,11 +27,11 @@ from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
 
 
 class MARWILConfig(TrainerConfig):
-    """Defines a configuration class from which a MARWILTrainer can be built.
+    """Defines a configuration class from which a MARWIL Trainer can be built.
 
 
     Example:
-        >>> from ray.rllib.agents.marwil import MARWILConfig
+        >>> from ray.rllib.algorithms.marwil import MARWILConfig
         >>> # Run this from the ray directory root.
         >>> config = MARWILConfig().training(beta=1.0, lr=0.00001, gamma=0.99)\
         ...             .offline_data(input_=["./rllib/tests/data/cartpole/large.json"])
@@ -41,7 +41,7 @@ class MARWILConfig(TrainerConfig):
         >>> trainer.train()
 
     Example:
-        >>> from ray.rllib.agents.marwil import MARWILConfig
+        >>> from ray.rllib.algorithms.marwil import MARWILConfig
         >>> from ray import tune
         >>> config = MARWILConfig()
         >>> # Print out some default values.
@@ -63,7 +63,7 @@ class MARWILConfig(TrainerConfig):
 
     def __init__(self, trainer_class=None):
         """Initializes a MARWILConfig instance."""
-        super().__init__(trainer_class=trainer_class or MARWILTrainer)
+        super().__init__(trainer_class=trainer_class or MARWIL)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -206,7 +206,7 @@ class MARWILConfig(TrainerConfig):
         return self
 
 
-class MARWILTrainer(Trainer):
+class MARWIL(Trainer):
     @classmethod
     @override(Trainer)
     def get_default_config(cls) -> TrainerConfigDict:
@@ -241,14 +241,14 @@ class MARWILTrainer(Trainer):
             return MARWILTorchPolicy
         elif config["framework"] == "tf":
             from ray.rllib.algorithms.marwil.marwil_tf_policy import (
-                MARWILStaticGraphTFPolicy,
+                MARWILTF1Policy,
             )
 
-            return MARWILStaticGraphTFPolicy
+            return MARWILTF1Policy
         else:
-            from ray.rllib.algorithms.marwil.marwil_tf_policy import MARWILEagerTFPolicy
+            from ray.rllib.algorithms.marwil.marwil_tf_policy import MARWILTF2Policy
 
-            return MARWILEagerTFPolicy
+            return MARWILTF2Policy
 
     @override(Trainer)
     def training_iteration(self) -> ResultDict:
@@ -293,14 +293,14 @@ class MARWILTrainer(Trainer):
         return train_results
 
 
-# Deprecated: Use ray.rllib.agents.marwil.MARWILConfig instead!
+# Deprecated: Use ray.rllib.algorithms.marwil.MARWILConfig instead!
 class _deprecated_default_config(dict):
     def __init__(self):
         super().__init__(MARWILConfig().to_dict())
 
     @Deprecated(
-        old="ray.rllib.agents.marwil.marwil.DEFAULT_CONFIG",
-        new="ray.rllib.agents.marwil.marwil.MARWILConfig(...)",
+        old="ray.rllib.agents.marwil.marwil::DEFAULT_CONFIG",
+        new="ray.rllib.algorithms.marwil.marwil::MARWILConfig(...)",
         error=False,
     )
     def __getitem__(self, item):
