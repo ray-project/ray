@@ -36,7 +36,7 @@ parts:
         - file: ray-air/examples/rl_offline_example
     - file: ray-air/package-ref
 
-  - caption: Ray Libraries
+  - caption: AIR Libraries
     chapters:
       - file: data/dataset
         title: Ray Data
@@ -203,7 +203,7 @@ parts:
           - file: workflows/package-ref
 
       - file: ray-more-libs/index
-        title: More Ray ML Libraries
+        title: More Libraries
         sections:
           - file: ray-more-libs/joblib
           - file: ray-more-libs/lightgbm-ray
