@@ -2,13 +2,11 @@ import gym
 import numpy as np
 import unittest
 
-from ray.rllib.connectors.agent import (
-    AgentConnectorPipeline,
-    ClipRewardConnector,
-    EnvToPerAgentDataConnector,
-    FlattenDataConnector,
-    ObsPreprocessorConnector,
-)
+from ray.rllib.connectors.agent.clip_reward import ClipRewardAgentConnector
+from ray.rllib.connectors.agent.env_to_agent import EnvToAgentDataConnector
+from ray.rllib.connectors.agent.lambdas import FlattenDataAgentConnector
+from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
+from ray.rllib.connectors.agent.pipeline import AgentConnectorPipeline
 from ray.rllib.connectors.connector import (
     ConnectorContext,
     get_connector,
@@ -23,12 +21,12 @@ from ray.rllib.utils.typing import (
 class TestAgentConnector(unittest.TestCase):
     def test_connector_pipeline(self):
         ctx = ConnectorContext()
-        connectors = [ClipRewardConnector(ctx, False, 1.0)]
+        connectors = [ClipRewardAgentConnector(ctx, False, 1.0)]
         pipeline = AgentConnectorPipeline(ctx, connectors)
         name, params = pipeline.to_config()
         restored = get_connector(ctx, name, params)
         self.assertTrue(isinstance(restored, AgentConnectorPipeline))
-        self.assertTrue(isinstance(restored.connectors[0], ClipRewardConnector))
+        self.assertTrue(isinstance(restored.connectors[0], ClipRewardAgentConnector))
 
     def test_env_to_per_agent_data_connector(self):
         vrs = {
@@ -40,11 +38,11 @@ class TestAgentConnector(unittest.TestCase):
         }
         ctx = ConnectorContext(view_requirements=vrs)
 
-        c = EnvToPerAgentDataConnector(ctx)
+        c = EnvToAgentDataConnector(ctx)
 
         name, params = c.to_config()
         restored = get_connector(ctx, name, params)
-        self.assertTrue(isinstance(restored, EnvToPerAgentDataConnector))
+        self.assertTrue(isinstance(restored, EnvToAgentDataConnector))
 
         d = AgentConnectorDataType(
             0,
@@ -126,14 +124,14 @@ class TestAgentConnector(unittest.TestCase):
     def test_clip_reward_connector(self):
         ctx = ConnectorContext()
 
-        c = ClipRewardConnector(ctx, limit=2.0)
+        c = ClipRewardAgentConnector(ctx, limit=2.0)
         name, params = c.to_config()
 
-        self.assertEqual(name, "ClipRewardConnector")
+        self.assertEqual(name, "ClipRewardAgentConnector")
         self.assertAlmostEqual(params["limit"], 2.0)
 
         restored = get_connector(ctx, name, params)
-        self.assertTrue(isinstance(restored, ClipRewardConnector))
+        self.assertTrue(isinstance(restored, ClipRewardAgentConnector))
 
         d = AgentConnectorDataType(
             0,
@@ -150,11 +148,11 @@ class TestAgentConnector(unittest.TestCase):
     def test_flatten_data_connector(self):
         ctx = ConnectorContext()
 
-        c = FlattenDataConnector(ctx)
+        c = FlattenDataAgentConnector(ctx)
 
         name, params = c.to_config()
         restored = get_connector(ctx, name, params)
-        self.assertTrue(isinstance(restored, FlattenDataConnector))
+        self.assertTrue(isinstance(restored, FlattenDataAgentConnector))
 
         d = AgentConnectorDataType(
             0,

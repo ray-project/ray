@@ -2,13 +2,13 @@ import gym
 import numpy as np
 import unittest
 
-from ray.rllib.connectors.action import (
-    ActionConnectorPipeline,
-    ClipActionsConnector,
+from ray.rllib.connectors.action.clip import ClipActionsConnector
+from ray.rllib.connectors.action.lambdas import (
     ConvertToNumpyConnector,
-    NormalizeActionsConnector,
     UnbatchActionsConnector,
 )
+from ray.rllib.connectors.action.normalize import NormalizeActionsConnector
+from ray.rllib.connectors.action.pipeline import ActionConnectorPipeline
 from ray.rllib.connectors.connector import (
     ConnectorContext,
     get_connector,

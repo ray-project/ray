@@ -13,7 +13,6 @@ from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.typing import (
     ActionConnectorDataType,
     AgentConnectorDataType,
-    PolicyOutputType,
     TensorType,
     TrainerConfigDict,
 )
