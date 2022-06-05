@@ -483,6 +483,10 @@ RAY_CONFIG(int64_t, oom_grace_period_s, 2)
 /// This is configured based on object_spilling_config.
 RAY_CONFIG(bool, is_external_storage_type_fs, true)
 
+/// Directories used for local file system spilling, separated by comma.
+/// This is configured based on object_spilling_config.
+RAY_CONFIG(std::string, local_spilling_paths, "")
+
 /// Control the capacity threshold for ray local file system (for object store).
 /// Once we are over the capacity, all subsequent object creation will fail.
 RAY_CONFIG(float, local_fs_capacity_threshold, 0.9);
