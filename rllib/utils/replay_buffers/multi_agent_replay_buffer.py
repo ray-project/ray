@@ -68,7 +68,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         num_shards: int = 1,
         learning_starts: int = 1000,
         replay_mode: str = "independent",
-        replay_sequence_override: bool = None,
+        replay_sequence_override: bool = True,
         replay_sequence_length: int = 1,
         replay_burn_in: int = 0,
         replay_zero_init_states: bool = True,
