@@ -15,7 +15,7 @@ import random
 import ray
 from ray import tune
 from ray.rllib.algorithms.pg import (
-    PGTrainer,
+    PG,
     PGEagerTFPolicy,
     PGStaticGraphTFPolicy,
     PGTorchPolicy,
@@ -178,7 +178,7 @@ def run_with_custom_entropy_loss(args, stop):
 
     entropyPolicy = policy_cls.with_updates(loss_fn=entropy_policy_gradient_loss)
 
-    class EntropyLossPG(PGTrainer):
+    class EntropyLossPG(PG):
         def get_default_policy_class(self, config):
             return entropyPolicy
 

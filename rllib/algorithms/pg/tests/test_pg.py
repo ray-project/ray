@@ -29,7 +29,7 @@ class TestPG(unittest.TestCase):
         ray.shutdown()
 
     def test_pg_compilation(self):
-        """Test whether a PGTrainer can be built with all frameworks."""
+        """Test whether PG can be built with all frameworks."""
         config = pg.PGConfig()
         # Test with filter to see whether they work w/o preprocessing.
         config.rollouts(

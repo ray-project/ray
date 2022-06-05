@@ -9,7 +9,7 @@ from ray.rllib.utils.typing import TrainerConfigDict
 
 
 class PGConfig(TrainerConfig):
-    """Defines a PGTrainer configuration class from which a PGTrainer can be built.
+    """Defines a configuration class from which a PG Trainer can be built.
 
     Example:
         >>> from ray.rllib.algorithms.pg import PGConfig
@@ -41,7 +41,7 @@ class PGConfig(TrainerConfig):
 
     def __init__(self):
         """Initializes a PGConfig instance."""
-        super().__init__(trainer_class=PGTrainer)
+        super().__init__(trainer_class=PG)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -53,7 +53,7 @@ class PGConfig(TrainerConfig):
         # fmt: on
 
 
-class PGTrainer(Trainer):
+class PG(Trainer):
     """Policy Gradient (PG) Trainer.
 
     Defines the distributed Trainer class for policy gradients.
@@ -96,7 +96,7 @@ class _deprecated_default_config(dict):
 
     @Deprecated(
         old="ray.rllib.algorithms.pg.default_config::DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.pg.pg.PGConfig(...)",
+        new="ray.rllib.algorithms.pg.pg::PGConfig(...)",
         error=False,
     )
     def __getitem__(self, item):

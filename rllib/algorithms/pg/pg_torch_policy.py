@@ -8,7 +8,6 @@ import ray
 
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.utils.typing import AgentID
-from ray.rllib.agents.ppo.ppo_tf_policy import validate_config
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.numpy import convert_to_numpy
@@ -32,7 +31,6 @@ class PGTorchPolicy(TorchPolicyV2):
     def __init__(self, observation_space, action_space, config):
 
         config = dict(ray.rllib.algorithms.pg.PGConfig().to_dict(), **config)
-        validate_config(config)
 
         TorchPolicyV2.__init__(
             self,
@@ -60,7 +58,7 @@ class PGTorchPolicy(TorchPolicyV2):
         Args:
             model (ModelV2): The Model to calculate the loss for.
             dist_class (Type[ActionDistribution]: The action distr. class.
-            train_batch (SampleBatch): The training data.
+            train_batch: The training data.
 
         Returns:
             Union[TensorType, List[TensorType]]: A single loss tensor or a list
@@ -90,8 +88,8 @@ class PGTorchPolicy(TorchPolicyV2):
         """Returns the calculated loss in a stats dict.
 
         Args:
-            policy (Policy): The Policy object.
-            train_batch (SampleBatch): The data used for training.
+            policy: The Policy object.
+            train_batch: The data used for training.
 
         Returns:
             Dict[str, TensorType]: The stats dict.

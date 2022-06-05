@@ -386,7 +386,7 @@ class Policy(metaclass=ABCMeta):
             kwargs: Forward compatibility placeholder
 
         Returns:
-            actions (TensorType): Batch of output actions, with shape like
+            actions: Batch of output actions, with shape like
                 [BATCH_SIZE, ACTION_SHAPE].
             state_outs (List[TensorType]): List of RNN state output
                 batches, if any, each with shape [BATCH_SIZE, STATE_SIZE].
@@ -791,7 +791,7 @@ class Policy(metaclass=ABCMeta):
         """Imports Policy from local file.
 
         Args:
-            import_file (str): Local readable file.
+            import_file: Local readable file.
         """
         raise NotImplementedError
 
@@ -899,7 +899,7 @@ class Policy(metaclass=ABCMeta):
         necessary for these computations (to save data storage and transfer).
 
         Args:
-            auto_remove_unneeded_view_reqs (bool): Whether to automatically
+            auto_remove_unneeded_view_reqs: Whether to automatically
                 remove those ViewRequirements records from
                 self.view_requirements that are not needed.
             stats_fn (Optional[Callable[[Policy, SampleBatch], Dict[str,
@@ -1069,7 +1069,7 @@ class Policy(metaclass=ABCMeta):
         """Creates a numpy dummy batch based on the Policy's view requirements.
 
         Args:
-            batch_size (int): The size of the batch to create.
+            batch_size: The size of the batch to create.
 
         Returns:
             Dict[str, TensorType]: The dummy batch containing all zero values.
