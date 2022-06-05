@@ -47,7 +47,7 @@ trainer_actor = ray.remote(PPOTrainer).options(num_gpus=1, max_concurrency=10).r
 # Run it for n training iterations. A training iteration includes
 # parallel sample collection by the environment workers as well as
 # loss calculation on the collected batch and a model update.
-print(ray.get(trainer_actor.train.remote()))
+# print(ray.get(trainer_actor.train.remote()))
 remote_workers = ray.get(trainer_actor.get_remote_workers.remote())
 all_workers = [trainer_actor] + remote_workers
 print(f">>>> Creating collective group for {all_workers}")
@@ -76,7 +76,7 @@ cp.cuda.Stream.null.synchronize()
 # )
 # print(f">>>>> results: {results}")
 
-for _ in range(2):
+for _ in range(3):
     print(ray.get(trainer_actor.train.remote()))
 
 # Evaluate the trained Trainer (and render each timestep to the shell's

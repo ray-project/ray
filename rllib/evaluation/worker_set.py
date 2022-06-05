@@ -246,8 +246,7 @@ class WorkerSet:
         #     tensor_list.append(tensor)
         # Broadcast to collective group buffers from worker 0
         print(f"\n\n >>>> Syncing weights with collective group ... \n\n")
-        start = time.time()
-        cp.cuda.Device(0).synchronize()
+
         local_worker_rank = collective.get_rank(group_name="device_mesh")
         print(f">>>> local_worker_rank from worker_set: {local_worker_rank}")
 
@@ -259,6 +258,7 @@ class WorkerSet:
                 w.policy_map_to_buffer_list.remote() for w in all_workers
             ]
         )
+        start = time.time()
         ray.get(
             [
                 self_actor.broadcast.remote(src_rank=local_worker_rank, group_name="device_mesh"),
@@ -267,9 +267,7 @@ class WorkerSet:
                 self.remote_workers()[2].broadcast.remote(src_rank=local_worker_rank, group_name="device_mesh")
             ]
         )
-
-        cp.cuda.Device(0).synchronize()
-        print(f">>>> Time spent on broadcasting: {(time.time() - start)*1000}ms")
+        print(f">>>> \n\n Time spent on broadcasting: {(time.time() - start)*1000}ms \n\n")
 
     def sync_weights(
         self,
