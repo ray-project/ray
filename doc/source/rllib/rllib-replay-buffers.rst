@@ -8,18 +8,18 @@ Quick Intro to Replay Buffers in RL
 =====================================
 
 When we talk about replay buffers in reinforcement learning, we generally mean a buffer that stores and replays experiences collected from interactions of our agent(s) with the environment.
-In python, a simple buffer can be implemented by a list to which elements are added and sampled from.
+In python, a simple buffer can be implemented by a list to which elements are added and later sampled from.
 Such buffers are used mostly in off-policy learning algorithms. This makes sense intuitively because these algorithms can learn from
-experiences that are stored in the buffer but where produced by a previous version of the policy (or even a completely different policy).
+experiences that are stored in the buffer, but where produced by a previous version of the policy (or even a completely different "behavior policy").
 
 Sampling Strategy
 -----------------
 
-When sampling from a replay buffer, we choose which experiences to train our agent with. A straightforward strategy to choose these
-samples that has proven effective for many algorithms is uniform sampling. That is, choosing a random item from the buffer each time we sample.
-A strategy that has proven better in many cases is `Prioritized Experiences Replay (PER) <https://arxiv.org/abs/1511.05952>`__.
-In PER, single items in the buffer are assigned a priority which denotes their significance, or in simple terms, how much we expect
-to learn from these items. As a consequence, experiences with a higher priority are made more likely to be sampled.
+When sampling from a replay buffer, we choose which experiences to train our agent with. A straightforward strategy that has proven effective for many algorithms is to pick these
+samples uniformly at random.
+A more advanced strategy (proven better in many cases) is `Prioritized Experiences Replay (PER) <https://arxiv.org/abs/1511.05952>`__.
+In PER, single items in the buffer are assigned a (scalar) priority value, which denotes their significance, or in simpler terms, how much we expect
+to learn from these items. Experiences with a higher priority are more likely to be sampled.
 
 Eviction Strategy
 -----------------
