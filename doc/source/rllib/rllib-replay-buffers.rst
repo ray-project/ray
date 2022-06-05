@@ -1,4 +1,4 @@
-.. _replay-buffer-api-reference-docs:
+.. _replay-buffer-reference-docs:
 
 ##############
 Replay Buffers
@@ -33,7 +33,7 @@ make the learning process more on-policy. An exception from this strategy is mad
 Replay Buffers in RLlib
 =======================
 
-RLlib comes with a set of extendable replay buffers built in.
+RLlib comes with a set of extendable replay buffers built in. All the of them support the two basic methods ``add()`` and ``sample()``.
 We provide a base :py:class:`~ray.rllib.utils.replay_buffers.replay_buffer.ReplayBuffer` class from which you can build your own buffer.
 In most algorithms, we require :py:class:`~ray.rllib.utils.replay_buffers.multi_agent_replay_buffer.MultiAgentReplayBuffer`\s.
 This is because we want them to generalize to the the multi-agent case. Therefore, these buffer's ``add()`` and ``sample()`` methods require a ``policy_id`` to handle experiences per policy.
@@ -52,7 +52,7 @@ The highlighted lines focus on the PER configuration.
     :animate: fade-in-slide-down
 
     .. literalinclude:: ../../../rllib/examples/replay_buffer_api.py
-        :emphasize-lines: 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77
+        :emphasize-lines: 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70
         :language: python
         :start-after: __sphinx_doc_replay_buffer_api_example_script_begin__
         :end-before: __sphinx_doc_replay_buffer_api_example_script_end__
@@ -72,7 +72,8 @@ Here are three ways of specifying a type:
         :start-after: __sphinx_doc_replay_buffer_type_specification__begin__
         :end-before: __sphinx_doc_replay_buffer_type_specification__end__
 
-Apart from specifying a type, other parameters in that config are:
+Apart from the ``type``, you can also specify the ``capacity`` and  other parameters.
+These parameters are mostly constructor arguments for the buffer. The following categories exist:
 
 #. Parameters that define how algorithms interact with replay buffers.
     e.g. ``worker_side_prioritization`` to decide where to compute priorities
@@ -92,6 +93,7 @@ ReplayBuffer Base Class
 
 The base :py:class:`~ray.rllib.utils.replay_buffers.replay_buffer.ReplayBuffer` class only supports storing and replaying
 experiences in different :py:class:`~ray.rllib.utils.replay_buffers.replay_buffer.StorageUnit`\s.
+You can add data to the buffer's storage with the ``add()`` method and replay it with the ``sample()`` method.
 Advanced buffer types add functionality while trying to retain compatibility through inheritance.
 The following is an example of the most basic scheme of interaction with a :py:class:`~ray.rllib.utils.replay_buffers.replay_buffer.ReplayBuffer`.
 
@@ -113,7 +115,7 @@ Here is an example of how to implement your own toy example of a ReplayBuffer cl
     :end-before: __sphinx_doc_replay_buffer_own_buffer__end__
 
 For a full implementation, you should consider other methods like ``get_state()`` and ``set_state()``.
-A more extensive example is `our implementation <https://github.com/ray-project/ray/blob/master/rllib/utils/replay_buffers/reservoir_buffer.py>`__ of `reservoir sampling <https://www.cs.umd.edu/~samir/498/vitter.pdf>`__, the :py:class:`~ray.rllib.utils.replay_buffers.reservoir_replay_buffer.ReservoirBuffer`.
+A more extensive example is `our implementation <https://github.com/ray-project/ray/blob/master/rllib/utils/replay_buffers/reservoir_buffer.py>`__ of `reservoir sampling <https://www.cs.umd.edu/~samir/498/vitter.pdf>`__, the :py:class:`~ray.rllib.utils.replay_buffers.reservoir_replay_buffer.ReservoirReplayBuffer`.
 
 
 Advanced Usage

@@ -156,9 +156,9 @@ parts:
               - file: rllib/rllib-models
               - file: rllib/rllib-concepts
               - file: rllib/rllib-sample-collection
+              - file: rllib/rllib-replay-buffers
               - file: rllib/rllib-offline
               - file: rllib/rllib-dev
-              - file: rllib/rllib-replay-buffers
           - file: rllib/rllib-examples
           - file: rllib/package_ref/index
 

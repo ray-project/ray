@@ -1,9 +1,9 @@
-.. _replay-buffer-reference-docs:
+.. _replay-buffer-api-reference-docs:
 
 ReplayBuffer API
 ================
 
-These classes don't take into account the separation of experiences from different policies, which we use in multi-agent settings.
+The following classes don't take into account the separation of experiences from different policies, multi-agent replay buffers will be explained further below.
 
 ray.rllib.utils.replay_buffers.replay_buffer
 ---------------------------------------------
@@ -33,7 +33,9 @@ ray.rllib.utils.replay_buffers.reservoir_replay_buffer
 MultiAgentReplayBuffer classes
 ==============================
 
-These classes use the above, "single-agent", buffers as underlying buffers to facilitate splitting up experiences between policies.
+The following classes use the above, "single-agent", buffers as underlying buffers to facilitate splitting up experiences between the different agents' policies.
+In multi-agent RL, more than one agent exists in the environment and not all of these agents may utilize the same policy (mapping M agents to N policies, where M <= N).
+This leads to the need for MultiAgentReplayBuffers that store the experiences of different policies separately.
 
 ray.rllib.utils.replay_buffers.multi_agent_replay_buffer
 --------------------------------------------------------
