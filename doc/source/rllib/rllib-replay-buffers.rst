@@ -133,7 +133,7 @@ Here is a full example of how to modify the storage_unit and interact with a cus
     :start-after: __sphinx_doc_replay_buffer_advanced_usage_storage_unit__begin__
     :end-before: __sphinx_doc_replay_buffer_advanced_usage_storage_unit__end__
 
-As noted above, Rllib's :py:class:`~ray.rllib.utils.replay_buffers.multi_agent_replay_buffer.MultiAgentReplayBuffer`\s
+As noted above, RLlib's :py:class:`~ray.rllib.utils.replay_buffers.multi_agent_replay_buffer.MultiAgentReplayBuffer`\s
 support modification of underlying replay buffers. Under the hood, the :py:class:`~ray.rllib.utils.replay_buffers.multi_agent_replay_buffer.MultiAgentReplayBuffer`
 stores experiences per policy in separate underlying replay buffers. You can modify their behaviour by specifying an underlying ``replay_buffer_config`` that works
 the same way as the parent's config.
