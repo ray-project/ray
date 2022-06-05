@@ -1612,8 +1612,8 @@ class DeploymentStateManager:
     def record_handle_metrics(self, data: Dict[str, float], send_timestamp: float):
         self.handle_metrics_store.add_metrics_point(data, send_timestamp)
 
-    # def autoscale(self, deployment_name, num_replicas):
-    #    self._deployment_states[deployment_name].autoscale(num_replicas)
+    def get_autoscaling_metrics(self):
+        return self.autoscaling_metrics_store.data
 
     def _map_actor_names_to_deployment(
         self, all_current_actor_names: List[str]
