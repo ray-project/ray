@@ -150,18 +150,19 @@ SampleBatchType = Union["SampleBatch", "MultiAgentBatch"]
 # (possibly nested) dict|tuple of gym.space.Spaces.
 SpaceStruct = Union[gym.spaces.Space, dict, tuple]
 
-# A batch of RNN states with dimensions [state_index, batch, state_object].
-StateBatch = List[List[Any]]
+# A list of batches of RNN states.
+# Each item in this list has dimension [B, S] (S=state vector size)
+StateBatches = List[List[Any]]
 
 # Format of data output from policy forward pass.
-PolicyOutputType = Tuple[TensorStructType, StateBatch, Dict]
+PolicyOutputType = Tuple[TensorStructType, StateBatches, Dict]
 
-# Data type that is feeded into and yielded from agent connectors.
+# Data type that is fed into and yielded from agent connectors.
 AgentConnectorDataType = NamedTuple("AgentConnectorDataType", [
     ("env_id", str), ("agent_id", str), ("data", Any)
 ])
 
-# Data type that is feeded into and yielded from agent connectors.
+# Data type that is fed into and yielded from agent connectors.
 ActionConnectorDataType = NamedTuple("ActionConnectorDataType", [
     ("env_id", str), ("agent_id", str), ("output", PolicyOutputType)
 ])

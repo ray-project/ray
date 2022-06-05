@@ -11,7 +11,7 @@ from ray.rllib.utils.spaces.space_utils import unbatch
 from ray.rllib.utils.typing import (
     ActionConnectorDataType,
     PolicyOutputType,
-    StateBatch,
+    StateBatches,
     TensorStructType,
 )
 
@@ -19,7 +19,7 @@ from ray.rllib.utils.typing import (
 @DeveloperAPI
 def register_lambda_action_connector(
     name: str,
-    fn: Callable[[TensorStructType, StateBatch, Dict], PolicyOutputType]
+    fn: Callable[[TensorStructType, StateBatches, Dict], PolicyOutputType]
 ) -> Type[ActionConnector]:
     """A util to register any function transforming PolicyOutputType as an ActionConnector.
 

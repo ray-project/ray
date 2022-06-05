@@ -124,7 +124,70 @@ class Connector(abc.ABC):
 
 @DeveloperAPI
 class AgentConnector(Connector):
-    """Connector connecting user environments to RLlib policies."""
+    """Connector connecting user environments to RLlib policies.
+    
+    An agent connector transforms a single piece of data in AgentConnectorDataType
+    format into a list of data in the same AgentConnectorDataTypes format.
+    The API is designed so multi-agent observations can be broken and emitted as
+    multiple single agent observations.
+
+    AgentConnectorDataTypes can be used to specify arbitrary type of env data,
+
+    Example:
+    .. code-block:: python
+        # A dict of multi-agent data from one env step() call.
+        ac = AgentConnectorDataType(
+            env_id="env_1",
+            agent_id=None,
+            data={
+                "agent_1": np.array(...),
+                "agent_2": np.array(...),
+            }
+        )
+
+    Example:
+    .. code-block:: python
+        # Single agent data ready to be preprocessed.
+        ac = AgentConnectorDataType(
+            env_id="env_1",
+            agent_id="agent_1",
+            data=np.array(...)
+        )
+
+    We can adapt a simple stateless function into an agent connector by using
+    register_lambda_agent_connector:
+    .. code-block:: python
+        TimesTwoAgentConnector = register_lambda_agent_connector(
+            "TimesTwoAgentConnector", lambda data: data * 2
+        )
+
+    More complicated agent connectors can be implemented by extending this
+    AgentConnector class:
+
+    Example:
+    .. code-block:: python
+        class FrameSkippingAgentConnector(AgentConnector):
+            def __init__(self, n):
+                self._n = n
+                self._frame_count = default_dict(str, default_dict(str, int))
+
+            def reset(self, env_id: str):
+                del self._frame_count[env_id]
+
+            def __call__(
+                self, ac_data: AgentConnectorDataType
+            ) -> List[AgentConnectorDataType]:
+                assert ac_data.env_id and ac_data.agent_id, (
+                    "Frame skipping works per agent")
+
+                count = self._frame_count[ac_data.env_id][ac_data.agent_id]
+                self._frame_count[ac_data.env_id][ac_data.agent_id] = count + 1
+
+                return [ac_data] if count % self._n == 0 else []
+
+    As shown, an agent connector may choose to emit an empty list to stop input
+    observations from being prosessed further.
+    """
 
     def reset(self, env_id: str):
         """Reset connector state for a specific environment.
@@ -170,6 +233,28 @@ class AgentConnector(Connector):
 
 @DeveloperAPI
 class ActionConnector(Connector):
+    """Action connector connects policy outputs including actions,
+    to user environments. 
+
+    An action connector transforms a single piece of policy output in
+    ActionConnectorDataType format, which is basically PolicyOutputType
+    plus env and agent IDs.
+
+    Any functions that operates directly on PolicyOutputType can be
+    easily adpated into an ActionConnector by using register_lambda_action_connector.
+
+    Example:
+    .. code-block:: python
+        ZeroActionConnector = register_lambda_action_connector(
+            "ZeroActionsConnector",
+            lambda actions, states, fetches: (
+                np.zeros_like(actions), states, fetches
+            )
+        )
+
+    More complicated action connectors can also be implemented by sub-classing
+    this ActionConnector class.
+    """
     def __call__(self, ac_data: ActionConnectorDataType) -> ActionConnectorDataType:
         """Transform policy output before they are sent to a user environment.
 
