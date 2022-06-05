@@ -25,7 +25,7 @@ PullManager::PullManager(
     const std::function<bool(const ObjectID &)> object_is_local,
     const std::function<void(const ObjectID &, const NodeID &)> send_pull_request,
     const std::function<void(const ObjectID &)> cancel_pull_request,
-    const std::function<void(const ObjectID &)> fail_pull_request,
+    const std::function<void(const ObjectID &, rpc::ErrorType)> fail_pull_request,
     const RestoreSpilledObjectCallback restore_spilled_object,
     const std::function<double()> get_time_seconds,
     int pull_timeout_ms,
@@ -495,7 +495,7 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
         RayConfig::instance().fetch_fail_timeout_milliseconds() / 1e3;
   } else if (get_time_seconds_() > request.expiration_time_seconds) {
     // Object has no locations and is not being reconstructed by its owner.
-    fail_pull_request_(object_id);
+    fail_pull_request_(object_id, rpc::ErrorType::OBJECT_FETCH_TIMED_OUT);
     request.expiration_time_seconds = 0;
   }
 }
@@ -780,6 +780,11 @@ std::string PullManager::DebugString() const {
     }
   }
   return result.str();
+}
+
+void PullManager::SetOutOfDisk(const ObjectID &object_id) {
+  RAY_LOG(DEBUG) << "Pull of object failed due to out of disk: " << object_id;
+  fail_pull_request_(object_id, rpc::ErrorType::OBJECT_FETCH_OUT_OF_DISK);
 }
 
 }  // namespace ray

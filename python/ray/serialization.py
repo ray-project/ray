@@ -21,6 +21,7 @@ from ray.exceptions import (
     ObjectReconstructionFailedError,
     ObjectReconstructionFailedMaxAttemptsExceededError,
     ObjectReconstructionFailedLineageEvictedError,
+    OutOfDiskError,
     RaySystemError,
     RuntimeEnvSetupError,
     TaskPlacementGroupRemoved,
@@ -272,6 +273,10 @@ class SerializationContext:
                 )
             elif error_type == ErrorType.Value("OBJECT_FETCH_TIMED_OUT"):
                 return ObjectFetchTimedOutError(
+                    object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
+                )
+            elif error_type == ErrorType.Value("OBJECT_FETCH_OUT_OF_DISK"):
+                return OutOfDiskError(
                     object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
                 )
             elif error_type == ErrorType.Value("OBJECT_DELETED"):

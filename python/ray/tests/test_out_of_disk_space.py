@@ -112,8 +112,8 @@ def test_task_args(shutdown_only):
         print(obj)
 
     ref = foo.options(resources={"sufficient_memory": 1}).remote()
-    # with pytest.raises(ray.exceptions.RayTaskError):
-    ray.get(bar.options(resources={"out_of_memory": 1}).remote(ref))
+    with pytest.raises(ray.exceptions.RayTaskError):
+        ray.get(bar.options(resources={"out_of_memory": 1}).remote(ref))
 
 
 if __name__ == "__main__":
