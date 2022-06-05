@@ -116,5 +116,57 @@ def test_task_args(shutdown_only):
         ray.get(bar.options(resources={"out_of_memory": 1}).remote(ref))
 
 
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not targeting Windows")
+def test_actor(shutdown_only):
+    cluster = Cluster()
+    cluster.add_node(
+        num_cpus=1,
+        object_store_memory=80 * 1024 * 1024,
+        _system_config={
+            "local_fs_capacity_threshold": 0,
+        },
+        resources={"out_of_memory": 1},
+    )
+    cluster.add_node(
+        num_cpus=1,
+        object_store_memory=200 * 1024 * 1024,
+        resources={"sufficient_memory": 1},
+    )
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    @ray.remote
+    def foo():
+        return np.random.rand(20 * 1024 * 1024)  # 160 MB data
+
+    @ray.remote
+    class Actor:
+        def __init__(self, obj):
+            self._obj = obj
+
+        def foo(self):
+            print(self._obj)
+
+        def args_ood(self, obj):
+            print(obj)
+
+        def return_ood(self):
+            return np.random.rand(20 * 1024 * 1024)
+
+    ref = foo.options(resources={"sufficient_memory": 1}).remote()
+    with pytest.raises(ray.exceptions.RayActorError):
+        a = Actor.options(resources={"out_of_memory": 0.001}).remote(ref)
+        ray.get(a.foo.remote())
+
+    a = Actor.options(resources={"out_of_memory": 1}).remote(1)
+    ray.get(a.foo.remote())
+    with pytest.raises(ray.exceptions.RayTaskError):
+        ray.get(a.args_ood.remote(ref))
+
+    ray.get(a.foo.remote())
+    with pytest.raises(ray.exceptions.RayTaskError):
+        ray.get(a.return_ood.remote())
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
