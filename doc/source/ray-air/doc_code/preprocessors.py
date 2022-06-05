@@ -67,6 +67,7 @@ result = trainer.fit()
 
 
 # __checkpoint_start__
+import os
 import ray.cloudpickle as cpickle
 from ray.air.constants import PREPROCESSOR_KEY
 
