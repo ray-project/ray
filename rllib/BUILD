@@ -3116,7 +3116,7 @@ py_test(
 py_test(
     name = "examples/documentation/replay_buffer_demo",
     main = "examples/documentation/replay_buffer_demo.py",
-    tags = ["team:ml", "documentation"],
+    tags = ["team:ml", "documentation", "no_main"],
     size = "medium",
     srcs = ["examples/documentation/replay_buffer_demo.py"],
 )

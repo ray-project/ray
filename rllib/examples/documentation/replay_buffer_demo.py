@@ -15,14 +15,14 @@ from ray.rllib.algorithms.dqn.dqn import DQNConfig
 
 
 # __sphinx_doc_replay_buffer_type_specification__begin__
-config = DQNConfig().training(replay_buffer_config={"type": ReplayBuffer})
+config = DQNConfig().training(replay_buffer_config={"type": ReplayBuffer}).to_dict()
 
-another_config = DQNConfig().training(replay_buffer_config={"type": "ReplayBuffer"})
+another_config = DQNConfig().training(replay_buffer_config={"type": "ReplayBuffer"}).to_dict()
 
 
 yet_another_config = DQNConfig().training(
     replay_buffer_config={"type": "ray.rllib.utils.replay_buffers.ReplayBuffer"}
-)
+).to_dict()
 
 validate_buffer_config(config)
 validate_buffer_config(another_config)

@@ -14,7 +14,7 @@ import ray
 from ray import tune
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check_learning_achieved
-from ray.rllib.agents.dqn.r2d2 import R2D2Config
+from ray.rllib.algorithms.r2d2 import R2D2Config
 
 tf1, tf, tfv = try_import_tf()
 
