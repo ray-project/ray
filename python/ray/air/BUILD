@@ -14,8 +14,8 @@ py_test(
 py_test(
     name = "check_ingest",
     size = "large",
-    main = "utils/check_ingest.py",
-    srcs = ["utils/check_ingest.py"],
+    main = "util/check_ingest.py",
+    srcs = ["util/check_ingest.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
