@@ -83,8 +83,8 @@ def create_gloo_context(rank, world_size):
     """Create a GLOO context using GLOO APIs.
 
     Args:
-        rank (int): the rank of this process.
-        world_size (int): the number of processes of this collective group.
+        rank: the rank of this process.
+        world_size: the number of processes of this collective group.
 
     Returns:
         context (pygloo.Context): a GLOO context.
@@ -97,7 +97,7 @@ def get_gloo_reduce_op(reduce_op):
     """Map the reduce op to GLOO reduce op type.
 
     Args:
-        reduce_op (ReduceOp): ReduceOp Enum (SUM/PRODUCT/MIN/MAX).
+        reduce_op: ReduceOp Enum (SUM/PRODUCT/MIN/MAX).
 
     Returns:
         (pygloo.ReduceOp): the mapped GLOO reduce op.

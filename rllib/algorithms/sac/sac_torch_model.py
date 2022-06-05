@@ -53,13 +53,13 @@ class SACTorchModel(TorchModelV2, nn.Module):
         """Initializes a SACTorchModel instance.
         7
                 Args:
-                    policy_model_config (ModelConfigDict): The config dict for the
+                    policy_model_config: The config dict for the
                         policy network.
-                    q_model_config (ModelConfigDict): The config dict for the
+                    q_model_config: The config dict for the
                         Q-network(s) (2 if twin_q=True).
-                    twin_q (bool): Build twin Q networks (Q-net and target) for more
+                    twin_q: Build twin Q networks (Q-net and target) for more
                         stable Q-learning.
-                    initial_alpha (float): The initial value for the to-be-optimized
+                    initial_alpha: The initial value for the to-be-optimized
                         alpha parameter (default: 1.0).
                     target_entropy (Optional[float]): A target entropy value for
                         the to-be-optimized alpha parameter. If None, will use the
@@ -208,7 +208,7 @@ class SACTorchModel(TorchModelV2, nn.Module):
         Q(s) -> [Q-values for all actions] for the discrete case.
 
         Args:
-            model_out (TensorType): Feature outputs from the model layers
+            model_out: Feature outputs from the model layers
                 (result of doing `self.__call__(obs)`).
             actions (Optional[TensorType]): Continuous action batch to return
                 Q-values for. Shape: [BATCH_SIZE, action_dim]. If None
@@ -227,7 +227,7 @@ class SACTorchModel(TorchModelV2, nn.Module):
         This implements the twin Q(s, a).
 
         Args:
-            model_out (TensorType): Feature outputs from the model layers
+            model_out: Feature outputs from the model layers
                 (result of doing `self.__call__(obs)`).
             actions (Optional[Tensor]): Actions to return the Q-values for.
                 Shape: [BATCH_SIZE, action_dim]. If None (discrete action
@@ -279,10 +279,10 @@ class SACTorchModel(TorchModelV2, nn.Module):
         distribution.
 
         Args:
-            model_out (TensorType): Feature outputs from the model layers
+            model_out: Feature outputs from the model layers
                 (result of doing `model(obs)`).
             state_in List(TensorType): State input for recurrent cells
-            seq_lens (TensorType): Sequence lengths of input- and state
+            seq_lens: Sequence lengths of input- and state
                 sequences
 
         Returns:

@@ -406,7 +406,7 @@ class Curiosity(Exploration):
         Args:
             layer_dims (Tuple[int]): Tuple of layer dims, including the input
                 dimension.
-            activation (str): An activation specifier string (e.g. "relu").
+            activation: An activation specifier string (e.g. "relu").
 
         Examples:
             If layer_dims is [4,8,6] we'll have a two layer net: 4->8 (8 nodes)

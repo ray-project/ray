@@ -255,7 +255,7 @@ class MultiAgentPrioritizedReplayBuffer(
         """Returns the stats of this buffer and all underlying buffers.
 
         Args:
-            debug (bool): If True, stats of underlying replay buffers will
+            debug: If True, stats of underlying replay buffers will
             be fetched with debug=True.
 
         Returns:

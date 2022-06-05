@@ -45,7 +45,7 @@ class Node:
     and it also controls the temp file policy.
 
     Attributes:
-        all_processes (dict): A mapping from process type (str) to a list of
+        all_processes: A mapping from process type (str) to a list of
             ProcessInfo objects. All lists have length one except for the Redis
             server list, which has multiple.
     """
@@ -53,24 +53,23 @@ class Node:
     def __init__(
         self,
         ray_params,
-        head=False,
-        shutdown_at_exit=True,
-        spawn_reaper=True,
-        connect_only=False,
+        head: bool = False,
+        shutdown_at_exit: bool = True,
+        spawn_reaper: bool = True,
+        connect_only: bool = False,
     ):
         """Start a node.
 
         Args:
-            ray_params (ray.params.RayParams): The parameters to use to
-                configure the node.
-            head (bool): True if this is the head node, which means it will
+            ray_params: The RayParams to use to configure the node.
+            head: True if this is the head node, which means it will
                 start additional processes like the Redis servers, monitor
                 processes, and web UI.
-            shutdown_at_exit (bool): If true, spawned processes will be cleaned
+            shutdown_at_exit: If true, spawned processes will be cleaned
                 up if this process exits normally.
-            spawn_reaper (bool): If true, spawns a process that will clean up
+            spawn_reaper: If true, spawns a process that will clean up
                 other spawned processes if this process dies unexpectedly.
-            connect_only (bool): If true, connect to the node without starting
+            connect_only: If true, connect to the node without starting
                 new processes.
         """
         if shutdown_at_exit:
@@ -84,7 +83,7 @@ class Node:
         self.kernel_fate_share = bool(
             spawn_reaper and ray._private.utils.detect_fate_sharing_support()
         )
-        self.all_processes = {}
+        self.all_processes: dict = {}
         self.removal_lock = threading.Lock()
 
         # Set up external Redis when `RAY_REDIS_ADDRESS` is specified.
@@ -624,12 +623,14 @@ class Node:
         """Get the path of the sockets directory."""
         return self._sockets_dir
 
-    def _make_inc_temp(self, suffix="", prefix="", directory_name=None):
+    def _make_inc_temp(
+        self, suffix: str = "", prefix: str = "", directory_name: Optional[str] = None
+    ):
         """Return an incremental temporary file name. The file is not created.
 
         Args:
-            suffix (str): The suffix of the temp file.
-            prefix (str): The prefix of the temp file.
+            suffix: The suffix of the temp file.
+            prefix: The prefix of the temp file.
             directory_name (str) : The base directory of the temp file.
 
         Returns:
@@ -670,14 +671,14 @@ class Node:
             )
         return redirect_output
 
-    def get_log_file_handles(self, name, unique=False):
+    def get_log_file_handles(self, name: str, unique: bool = False):
         """Open log files with partially randomized filenames, returning the
         file handles. If output redirection has been disabled, no files will
         be opened and `(None, None)` will be returned.
 
         Args:
-            name (str): descriptive string for this log file.
-            unique (bool): if true, a counter will be attached to `name` to
+            name: descriptive string for this log file.
+            unique: if true, a counter will be attached to `name` to
                 ensure the returned filename is not already used.
 
         Returns:
@@ -690,12 +691,12 @@ class Node:
         log_stdout, log_stderr = self._get_log_file_names(name, unique=unique)
         return open_log(log_stdout), open_log(log_stderr)
 
-    def _get_log_file_names(self, name, unique=False):
+    def _get_log_file_names(self, name: str, unique: bool = False):
         """Generate partially randomized filenames for log files.
 
         Args:
-            name (str): descriptive string for this log file.
-            unique (bool): if true, a counter will be attached to `name` to
+            name: descriptive string for this log file.
+            unique: if true, a counter will be attached to `name` to
                 ensure the returned filename is not already used.
 
         Returns:
@@ -744,7 +745,7 @@ class Node:
         s.close()
         return port
 
-    def _prepare_socket_file(self, socket_path, default_prefix):
+    def _prepare_socket_file(self, socket_path: str, default_prefix: str):
         """Prepare the socket file for raylet and plasma.
 
         This method helps to prepare a socket file.
@@ -753,7 +754,7 @@ class Node:
            first worker on the node).
 
         Args:
-            socket_path (string): the socket file to prepare.
+            socket_path: the socket file to prepare.
         """
         result = socket_path
         is_mac = sys.platform.startswith("darwin")
@@ -787,12 +788,12 @@ class Node:
         port isn't already cached, an unused port is generated and cached.
 
         Args:
-            port_name (str): the name of the port, e.g. metrics_export_port
+            port_name: the name of the port, e.g. metrics_export_port
             default_port (Optional[int]): The port to return and cache if no
             port has already been cached for the given port_name.  If None, an
             unused port is generated and cached.
         Returns:
-            port (int): the port number.
+            port: the port number.
         """
         file_path = os.path.join(self.get_session_dir_path(), "ports_by_node.json")
 
@@ -888,11 +889,11 @@ class Node:
             process_info,
         ]
 
-    def start_dashboard(self, require_dashboard):
+    def start_dashboard(self, require_dashboard: bool):
         """Start the dashboard.
 
         Args:
-            require_dashboard (bool): If true, this will raise an exception
+            require_dashboard: If true, this will raise an exception
                 if we fail to start the dashboard. Otherwise it will print
                 a warning if we fail to start the dashboard.
         """
@@ -955,17 +956,17 @@ class Node:
 
     def start_raylet(
         self,
-        plasma_directory,
-        object_store_memory,
-        use_valgrind=False,
-        use_profiler=False,
+        plasma_directory: str,
+        object_store_memory: int,
+        use_valgrind: bool = False,
+        use_profiler: bool = False,
     ):
         """Start the raylet.
 
         Args:
-            use_valgrind (bool): True if we should start the process in
+            use_valgrind: True if we should start the process in
                 valgrind.
-            use_profiler (bool): True if we should start the process in the
+            use_profiler: True if we should start the process in the
                 valgrind profiler.
         """
         stdout_file, stderr_file = self.get_log_file_handles("raylet", unique=True)
@@ -1146,7 +1147,11 @@ class Node:
             self.start_log_monitor()
 
     def _kill_process_type(
-        self, process_type, allow_graceful=False, check_alive=True, wait=False
+        self,
+        process_type,
+        allow_graceful: bool = False,
+        check_alive: bool = True,
+        wait: bool = False,
     ):
         """Kill a process of a given type.
 
@@ -1158,12 +1163,12 @@ class Node:
 
         Args:
             process_type: The type of the process to kill.
-            allow_graceful (bool): Send a SIGTERM first and give the process
+            allow_graceful: Send a SIGTERM first and give the process
                 time to exit gracefully. If that doesn't work, then use
                 SIGKILL. We usually want to do this outside of tests.
-            check_alive (bool): If true, then we expect the process to be alive
+            check_alive: If true, then we expect the process to be alive
                 and will raise an exception if the process is already dead.
-            wait (bool): If true, then this method will not return until the
+            wait: If true, then this method will not return until the
                 process in question has exited.
 
         Raises:
@@ -1245,76 +1250,77 @@ class Node:
 
         del self.all_processes[process_type]
 
-    def kill_redis(self, check_alive=True):
+    def kill_redis(self, check_alive: bool = True):
         """Kill the Redis servers.
 
         Args:
-            check_alive (bool): Raise an exception if any of the processes
+            check_alive: Raise an exception if any of the processes
                 were already dead.
         """
         self._kill_process_type(
             ray_constants.PROCESS_TYPE_REDIS_SERVER, check_alive=check_alive
         )
 
-    def kill_raylet(self, check_alive=True):
+    def kill_raylet(self, check_alive: bool = True):
         """Kill the raylet.
 
         Args:
-            check_alive (bool): Raise an exception if the process was already
+            check_alive: Raise an exception if the process was already
                 dead.
         """
         self._kill_process_type(
             ray_constants.PROCESS_TYPE_RAYLET, check_alive=check_alive
         )
 
-    def kill_log_monitor(self, check_alive=True):
+    def kill_log_monitor(self, check_alive: bool = True):
         """Kill the log monitor.
 
         Args:
-            check_alive (bool): Raise an exception if the process was already
+            check_alive: Raise an exception if the process was already
                 dead.
         """
         self._kill_process_type(
             ray_constants.PROCESS_TYPE_LOG_MONITOR, check_alive=check_alive
         )
 
-    def kill_reporter(self, check_alive=True):
+    def kill_reporter(self, check_alive: bool = True):
         """Kill the reporter.
 
         Args:
-            check_alive (bool): Raise an exception if the process was already
+            check_alive: Raise an exception if the process was already
                 dead.
         """
         self._kill_process_type(
             ray_constants.PROCESS_TYPE_REPORTER, check_alive=check_alive
         )
 
-    def kill_dashboard(self, check_alive=True):
+    def kill_dashboard(self, check_alive: bool = True):
         """Kill the dashboard.
 
         Args:
-            check_alive (bool): Raise an exception if the process was already
+            check_alive: Raise an exception if the process was already
                 dead.
         """
         self._kill_process_type(
             ray_constants.PROCESS_TYPE_DASHBOARD, check_alive=check_alive
         )
 
-    def kill_monitor(self, check_alive=True):
+    def kill_monitor(self, check_alive: bool = True):
         """Kill the monitor.
 
         Args:
-            check_alive (bool): Raise an exception if the process was already
+            check_alive: Raise an exception if the process was already
                 dead.
         """
         self._kill_process_type(
             ray_constants.PROCESS_TYPE_MONITOR, check_alive=check_alive
         )
 
-    def kill_gcs_server(self, check_alive=True):
+    def kill_gcs_server(self, check_alive: bool = True):
         """Kill the gcs server.
+
         Args:
-            check_alive (bool): Raise an exception if the process was already
+            check_alive: Raise an exception if the process was already
                 dead.
         """
         self._kill_process_type(
@@ -1324,11 +1330,11 @@ class Node:
         self._gcs_address = None
         self._gcs_client = None
 
-    def kill_reaper(self, check_alive=True):
+    def kill_reaper(self, check_alive: bool = True):
         """Kill the reaper process.
 
         Args:
-            check_alive (bool): Raise an exception if the process was already
+            check_alive: Raise an exception if the process was already
                 dead.
         """
         self._kill_process_type(
@@ -1342,9 +1348,9 @@ class Node:
         kill, wait, ... instead of kill, kill, ..., wait, wait, ...
 
         Args:
-            check_alive (bool): Raise an exception if any of the processes were
+            check_alive: Raise an exception if any of the processes were
                 already dead.
-            wait (bool): If true, then this method will not return until the
+            wait: If true, then this method will not return until the
                 process in question has exited.
         """
         # Kill the raylet first. This is important for suppressing errors at

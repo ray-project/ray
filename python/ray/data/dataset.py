@@ -1090,7 +1090,7 @@ class Dataset(Generic[T]):
 
         A common use case for this would be splitting the dataset into train
         and test sets (equivalent to eg. scikit-learn's ``train_test_split``).
-        See also :func:`ray.ml.train_test_split` for a higher level abstraction.
+        See also :func:`ray.air.train_test_split` for a higher level abstraction.
 
         The indices to split at will be calculated in such a way so that all splits
         always contains at least one element. If that is not possible,
@@ -1113,7 +1113,7 @@ class Dataset(Generic[T]):
         Time complexity: O(num splits)
 
         See also: ``Dataset.split``, ``Dataset.split_at_indices``,
-        :func:`ray.ml.train_test_split`
+        :func:`ray.air.train_test_split`
 
         Args:
             proportions: List of proportions to split the dataset according to.
@@ -2369,7 +2369,7 @@ class Dataset(Generic[T]):
         import torch
 
         from ray.data.impl.torch_iterable_dataset import TorchIterableDataset
-        from ray.ml.utils.torch_utils import convert_pandas_to_torch_tensor
+        from ray.air.utils.torch_utils import convert_pandas_to_torch_tensor
 
         # If an empty collection is passed in, treat it the same as None
         if not feature_columns:
@@ -3054,28 +3054,17 @@ class Dataset(Generic[T]):
             )
         return pipe
 
-    def fully_executed(self, preserve_original: bool = True) -> "Dataset[T]":
+    def fully_executed(self) -> "Dataset[T]":
         """Force full evaluation of the blocks of this dataset.
 
         This can be used to read all blocks into memory. By default, Datasets
         doesn't read blocks from the datasource until the first transform.
 
-        Args:
-            preserve_original: Whether the original unexecuted dataset should be
-                preserved. If False, this function will mutate the original dataset,
-                which can more efficiently reclaim memory.
-
         Returns:
             A Dataset with all blocks fully materialized in memory.
         """
-        if preserve_original:
-            plan = self._plan.deep_copy(preserve_uuid=True)
-            ds = Dataset(plan, self._epoch, self._lazy)
-            ds._set_uuid(self._get_uuid())
-        else:
-            ds = self
-        ds._plan.execute(force_read=True)
-        return ds
+        self._plan.execute(force_read=True)
+        return self
 
     def is_fully_executed(self) -> bool:
         """Returns whether this Dataset has been fully executed.

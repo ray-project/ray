@@ -47,7 +47,7 @@ class TestCallbacks(unittest.TestCase):
             config = dict(base_config, callbacks=callbacks)
 
             for _ in framework_iterator(config, frameworks=("tf", "torch")):
-                trainer = dqn.DQNTrainer(config=config)
+                trainer = dqn.DQN(config=config)
                 # Fake the counter on the local worker (doesn't have an env) and
                 # set it to -1 so the below `foreach_worker()` won't fail.
                 trainer.workers.local_worker().sum_sub_env_vector_indices = -1
@@ -84,7 +84,7 @@ class TestCallbacks(unittest.TestCase):
             config = dict(base_config, callbacks=callbacks)
 
             for _ in framework_iterator(config, frameworks=("tf", "torch")):
-                trainer = dqn.DQNTrainer(config=config)
+                trainer = dqn.DQN(config=config)
                 # Fake the counter on the local worker (doesn't have an env) and
                 # set it to -1 so the below `foreach_worker()` won't fail.
                 trainer.workers.local_worker().sum_sub_env_vector_indices = -1
