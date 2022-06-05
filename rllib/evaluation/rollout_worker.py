@@ -1598,11 +1598,11 @@ class RolloutWorker(ParallelIteratorWorker):
     def broadcast(self, group_name="default", src_rank=0):
         local_worker_rank = collective.get_rank(group_name="device_mesh")
         print(f">>>> local_worker_rank from rollout_worker: {local_worker_rank}")
-        print(f">>>>> collective group size: {collective.get_collective_group_size('device_mesh')}")
+        # print(f">>>>> collective group size: {collective.get_collective_group_size('device_mesh')}")
 
-        print(f">>>> Putting current policy map to buffer_list")
+        # print(f">>>> Putting current policy map to buffer_list")
         # self.policy_map_to_buffer_list()
-        print(f">>>> Broadcasting ... len: buffer_key_list: {len(self.buffer_key_list)}, len: buffer_list: {len(self.buffer_list)}")
+        # print(f">>>> Broadcasting ... len: buffer_key_list: {len(self.buffer_key_list)}, len: buffer_list: {len(self.buffer_list)}")
         print(f">>>> group_name: {group_name}, src_rank: {src_rank}")
         collective.broadcast(self.buffer, src_rank, group_name)
         # nccl_util.groupStart()
@@ -1611,8 +1611,9 @@ class RolloutWorker(ParallelIteratorWorker):
             # collective.broadcast(self.buffer_list[i], src_rank, group_name)
         # nccl_util.groupEnd()
 
-        print(f">>>> Putting current buffer_list to policy map")
+        # print(f">>>> Putting current buffer_list to policy map")
         # self.buffer_list_to_policy_map()
+        return True
 
     # def set_buffer_key_list(self, buffer_key_list: List[str]):
     #     self.buffer_key_list = buffer_key_list

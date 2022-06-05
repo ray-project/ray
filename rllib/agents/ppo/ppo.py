@@ -388,6 +388,7 @@ class PPOTrainer(Trainer):
     def broadcast(self, src_rank=0, group_name="default"):
         local_worker = self.workers.local_worker()
         collective.broadcast(local_worker.buffer, src_rank, group_name)
+        return True
 
     @ExperimentalAPI
     def training_iteration(self) -> ResultDict:

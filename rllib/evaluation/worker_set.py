@@ -253,6 +253,7 @@ class WorkerSet:
 
         # self.local_worker().broadcast(group_name="device_mesh", src_rank=0)
         self_actor = ray.get_runtime_context().current_actor
+        print(f">>>>> All actors invovled: {[self_actor, *self.remote_workers()]}")
         ray.get(
             [
                 self_actor.broadcast.remote(group_name="device_mesh", src_rank=0),

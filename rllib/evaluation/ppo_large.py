@@ -18,6 +18,7 @@ config = {
     # Change this to "framework: torch", if you are using PyTorch.
     # Also, use "framework: tf2" for tf2.x eager execution.
     "framework": "torch",
+    "train_batch_size": 128,
     # Tweak the default model provided automatically by RLlib,
     # given the environment's observation- and action spaces.
     "model": {
@@ -64,9 +65,16 @@ init_buffers = ray.get(
 )
 cp.cuda.Device(0).synchronize()
 cp.cuda.Stream.null.synchronize()
-
-
-
+# print(f">>>>> Broadcasting for the first time in main loop...")
+# results = ray.get(
+#     [
+#         trainer_actor.broadcast.remote(group_name="device_mesh", src_rank=0),
+#         remote_workers[0].broadcast.remote(group_name="device_mesh", src_rank=0),
+#         remote_workers[1].broadcast.remote(group_name="device_mesh", src_rank=0),
+#         remote_workers[2].broadcast.remote(group_name="device_mesh", src_rank=0)
+#     ]
+# )
+# print(f">>>>> results: {results}")
 
 for _ in range(2):
     print(ray.get(trainer_actor.train.remote()))
