@@ -5,7 +5,7 @@ aws:
     BlockDeviceMappings:
         - DeviceName: /dev/sda1
           Ebs:
-            VolumeSize: 5000
+            VolumeSize: 10000
     TagSpecifications:
         - ResourceType: "instance"
           Tags:
@@ -25,3 +25,4 @@ worker_node_types:
       min_workers: 99
       max_workers: 99
       use_spot: false
+      resources: {"cpu": 8}
