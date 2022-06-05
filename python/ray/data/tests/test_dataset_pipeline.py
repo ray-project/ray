@@ -484,25 +484,25 @@ def test_iter_batches_no_spilling_for_window(shutdown_only):
     # The size of dataset is 500*(80*80*4)*8B, about 100MB.
     ds = ray.data.range_tensor(500, shape=(80, 80, 4), parallelism=100)
 
-    pipe = ds.window(blocks_per_window=2)
+    pipe = ds.window(blocks_per_window=20).repeat(10)
     for batch in pipe.iter_batches():
         pass
     meminfo = memory_summary(ctx.address_info["address"], stats_only=True)
     assert "Spilled" not in meminfo, meminfo
 
-    pipe = ds.window(blocks_per_window=2)
+    pipe = ds.window(blocks_per_window=20).repeat(10)
     for batch in pipe.iter_batches(prefetch_blocks=5):
         pass
     meminfo = memory_summary(ctx.address_info["address"], stats_only=True)
     assert "Spilled" not in meminfo, meminfo
 
-    pipe = ds.map_batches(lambda x: x).window(blocks_per_window=2)
+    pipe = ds.map_batches(lambda x: x).window(blocks_per_window=20).repeat(10)
     for batch in pipe.iter_batches():
         pass
     meminfo = memory_summary(ctx.address_info["address"], stats_only=True)
     assert "Spilled" not in meminfo, meminfo
 
-    pipe = ds.map_batches(lambda x: x).window(blocks_per_window=2)
+    pipe = ds.map_batches(lambda x: x).window(blocks_per_window=20).repeat(10)
     for batch in pipe.iter_batches(prefetch_blocks=5):
         pass
     meminfo = memory_summary(ctx.address_info["address"], stats_only=True)
