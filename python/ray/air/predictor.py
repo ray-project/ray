@@ -2,7 +2,7 @@ import abc
 from typing import Union, TYPE_CHECKING
 
 from ray.air.checkpoint import Checkpoint
-from ray.util.annotations import PublicAPI, DeveloperAPI
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     import numpy as np
@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 DataBatchType = Union["pd.DataFrame", "np.ndarray"]
 
 
-@DeveloperAPI
+@PublicAPI(stability="alpha")
 class PredictorNotSerializableException(RuntimeError):
     """Error raised when trying to serialize a Predictor instance."""
 

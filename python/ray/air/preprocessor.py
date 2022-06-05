@@ -2,7 +2,7 @@ import abc
 import warnings
 from enum import Enum
 from typing import Optional, TYPE_CHECKING
-from ray.util.annotations import PublicAPI, DeveloperAPI
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -11,7 +11,7 @@ from ray.data import Dataset
 from ray.air.predictor import DataBatchType
 
 
-@DeveloperAPI
+@PublicAPI(stability="alpha")
 class PreprocessorNotFittedException(RuntimeError):
     """Error raised when the preprocessor needs to be fitted first."""
 
