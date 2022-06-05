@@ -2409,7 +2409,8 @@ def remote(
     ...
 
 
-# Pass on typing actors for now. The following makes it so no type errors are generated for actors.
+# Pass on typing actors for now. The following makes it so no type errors
+# are generated for actors.
 @overload
 def remote(t: type) -> Any:
     ...

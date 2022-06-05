@@ -1,5 +1,5 @@
 from ray.rllib.algorithms.maddpg.maddpg import (
-    MADDPGTrainer,
+    MADDPG as MADDPGTrainer,
     MADDPGTFPolicy,
     DEFAULT_CONFIG,
 )

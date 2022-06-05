@@ -602,7 +602,7 @@ pid_t GetPID() {
 bool IsParentProcessAlive() { return GetParentPID() != 1; }
 
 bool IsProcessAlive(pid_t pid) {
-#ifdef _WIN32
+#if defined _WIN32
   if (HANDLE handle =
           OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, static_cast<DWORD>(pid))) {
     DWORD exit_code;
