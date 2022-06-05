@@ -8,6 +8,7 @@ import numpy as np
 import ray
 from ray.data.context import DatasetContext
 from ray.data.dataset_pipeline import DatasetPipeline
+from ray.internal.internal_api import memory_summary
 
 from ray.tests.conftest import *  # noqa
 
@@ -443,6 +444,69 @@ def test_count_sum_on_infinite_pipeline(ray_start_regular_shared):
 
     pipe = ds.repeat(3)
     assert 9 == pipe.sum()
+
+
+def test_iter_batches_no_spilling_for_repeat(shutdown_only):
+    # The object store is about 300MB.
+    ctx = ray.init(num_cpus=1, object_store_memory=300e6)
+    # The size of dataset is 500*(80*80*4)*8B, about 100MB.
+    ds = ray.data.range_tensor(500, shape=(80, 80, 4), parallelism=100)
+
+    # Repeating the 100MB dataset 10 times should not explode object store.
+    pipe = ds.repeat(10)
+    for batch in pipe.iter_batches():
+        pass
+    meminfo = memory_summary(ctx.address_info["address"], stats_only=True)
+    assert "Spilled" not in meminfo, meminfo
+
+    pipe = ds.repeat(10)
+    for batch in pipe.iter_batches(prefetch_blocks=5):
+        pass
+    meminfo = memory_summary(ctx.address_info["address"], stats_only=True)
+    assert "Spilled" not in meminfo, meminfo
+
+    pipe = ds.map_batches(lambda x: x).repeat(10)
+    for batch in pipe.iter_batches():
+        pass
+    meminfo = memory_summary(ctx.address_info["address"], stats_only=True)
+    assert "Spilled" not in meminfo, meminfo
+
+    pipe = ds.map_batches(lambda x: x).repeat(10)
+    for batch in pipe.iter_batches(prefetch_blocks=5):
+        pass
+    meminfo = memory_summary(ctx.address_info["address"], stats_only=True)
+    assert "Spilled" not in meminfo, meminfo
+
+
+def test_iter_batches_no_spilling_for_window(shutdown_only):
+    # The object store is about 300MB.
+    ctx = ray.init(num_cpus=1, object_store_memory=300e6)
+    # The size of dataset is 500*(80*80*4)*8B, about 100MB.
+    ds = ray.data.range_tensor(500, shape=(80, 80, 4), parallelism=100)
+
+    pipe = ds.window(blocks_per_window=2)
+    for batch in pipe.iter_batches():
+        pass
+    meminfo = memory_summary(ctx.address_info["address"], stats_only=True)
+    assert "Spilled" not in meminfo, meminfo
+
+    pipe = ds.window(blocks_per_window=2)
+    for batch in pipe.iter_batches(prefetch_blocks=5):
+        pass
+    meminfo = memory_summary(ctx.address_info["address"], stats_only=True)
+    assert "Spilled" not in meminfo, meminfo
+
+    pipe = ds.map_batches(lambda x: x).window(blocks_per_window=2)
+    for batch in pipe.iter_batches():
+        pass
+    meminfo = memory_summary(ctx.address_info["address"], stats_only=True)
+    assert "Spilled" not in meminfo, meminfo
+
+    pipe = ds.map_batches(lambda x: x).window(blocks_per_window=2)
+    for batch in pipe.iter_batches(prefetch_blocks=5):
+        pass
+    meminfo = memory_summary(ctx.address_info["address"], stats_only=True)
+    assert "Spilled" not in meminfo, meminfo
 
 
 if __name__ == "__main__":

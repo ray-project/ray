@@ -31,6 +31,7 @@ from ray.data.extensions.tensor_extension import (
 )
 import ray.data.tests.util as util
 from ray.data.tests.conftest import *  # noqa
+from ray.internal.internal_api import memory_summary
 
 
 def maybe_pipeline(ds, enabled):
@@ -1561,6 +1562,26 @@ def test_iter_batches_basic(ray_start_regular_shared):
     for batch, df in zip(batches, dfs):
         assert isinstance(batch, pd.DataFrame)
         assert batch.equals(df)
+
+
+def test_iter_batches_no_spilling(shutdown_only):
+    # The object store is about 300MB.
+    ctx = ray.init(num_cpus=1, object_store_memory=300e6)
+    # The size of dataset is 500*(80*80*4)*8B, about 100MB.
+    ds = ray.data.range_tensor(500, shape=(80, 80, 4), parallelism=50)
+
+    for _ in range(10):
+        for batch in ds.iter_batches():
+            pass
+    meminfo = memory_summary(ctx.address_info["address"], stats_only=True)
+    assert "Spilled" not in meminfo, meminfo
+
+    ds1 = ds.map_batches(lambda x: x)
+    for _ in range(10):
+        for batch in ds1.iter_batches():
+            pass
+    meminfo = memory_summary(ctx.address_info["address"], stats_only=True)
+    assert "Spilled" not in meminfo, meminfo
 
 
 def test_iter_batches_grid(ray_start_regular_shared):
