@@ -36,7 +36,7 @@ def build_slateq_model(
         policy: The policy, which will use the model for optimization.
         obs_space: The policy's observation space.
         action_space: The policy's action space.
-        config: The Trainer's config dict.
+        config: The Algorithm's config dict.
 
     Returns:
         The slate-Q specific Q-model instance.

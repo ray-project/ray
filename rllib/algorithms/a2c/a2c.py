@@ -2,7 +2,7 @@ import logging
 import math
 from typing import Optional
 
-from ray.rllib.agents.trainer import Trainer
+from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.a3c.a3c import A3CConfig, A3C
 from ray.rllib.execution.common import (
     STEPS_TRAINED_COUNTER,
@@ -39,7 +39,7 @@ class A2CConfig(A3CConfig):
         ...     .resources(num_gpus=0)\
         ...     .rollouts(num_rollout_workers=2)
         >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> # Build a Algorithm object from the config and run 1 training iteration.
         >>> trainer = config.build(env="CartPole-v1")
         >>> trainer.train()
 
@@ -62,7 +62,7 @@ class A2CConfig(A3CConfig):
 
     def __init__(self):
         """Initializes a A2CConfig instance."""
-        super().__init__(trainer_class=A2C)
+        super().__init__(algo_class=A2C)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -93,7 +93,7 @@ class A2CConfig(A3CConfig):
                 memory. To enable, set this to a value less than the train batch size.
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
@@ -130,7 +130,7 @@ class A2C(A3C):
                     "Otherwise, microbatches of desired size won't be achievable."
                 )
 
-    @override(Trainer)
+    @override(Algorithm)
     def setup(self, config: PartialTrainerConfigDict):
         super().setup(config)
 
@@ -146,11 +146,11 @@ class A2C(A3C):
 
     @override(A3C)
     def training_iteration(self) -> ResultDict:
-        # W/o microbatching: Identical to Trainer's default implementation.
-        # Only difference to a default Trainer being the value function loss term
+        # W/o microbatching: Identical to Algorithm's default implementation.
+        # Only difference to a default Algorithm being the value function loss term
         # and its value computations alongside each action.
         if self.config["microbatch_size"] is None:
-            return Trainer.training_iteration(self)
+            return Algorithm.training_iteration(self)
 
         # In microbatch mode, we want to compute gradients on experience
         # microbatches, average a number of these microbatches, and then

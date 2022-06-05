@@ -9,8 +9,8 @@ config["exploration_config"] = {"type": "RE3"}
 """
 from functools import partial
 import ray
-from ray.rllib.agents import sac
-from ray.rllib.agents.callbacks import MultiCallbacks, RE3UpdateCallbacks
+from ray.rllib.algorithms import sac
+from ray.rllib.algorithms.callbacks import MultiCallbacks, RE3UpdateCallbacks
 
 if __name__ == "__main__":
     ray.init()

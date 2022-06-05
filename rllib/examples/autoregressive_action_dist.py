@@ -40,7 +40,7 @@ import os
 
 import ray
 from ray import tune
-from ray.rllib.agents import ppo
+from ray.rllib.algorithms import ppo
 from ray.rllib.examples.env.correlated_actions_env import CorrelatedActionsEnv
 from ray.rllib.examples.models.autoregressive_action_model import (
     AutoregressiveActionModel,

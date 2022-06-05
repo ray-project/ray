@@ -1,7 +1,7 @@
 from typing import Type
 
-from ray.rllib.agents.trainer import Trainer
-from ray.rllib.agents.trainer_config import TrainerConfig
+from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.pg.pg_tf_policy import PGTFPolicy
 from ray.rllib.algorithms.pg.pg_torch_policy import PGTorchPolicy
 from ray.rllib.policy.policy import Policy
@@ -10,7 +10,7 @@ from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.typing import TrainerConfigDict
 
 
-class PGConfig(TrainerConfig):
+class PGConfig(AlgorithmConfig):
     """Defines a configuration class from which a PG Trainer can be built.
 
     Example:
@@ -43,11 +43,11 @@ class PGConfig(TrainerConfig):
 
     def __init__(self):
         """Initializes a PGConfig instance."""
-        super().__init__(trainer_class=PG)
+        super().__init__(algo_class=PG)
 
         # fmt: off
         # __sphinx_doc_begin__
-        # Override some of TrainerConfig's default values with PG-specific values.
+        # Override some of AlgorithmConfig's default values with PG-specific values.
         self.num_workers = 0
         self.lr = 0.0004
         self._disable_preprocessor_api = True
@@ -55,7 +55,7 @@ class PGConfig(TrainerConfig):
         # fmt: on
 
 
-class PG(Trainer):
+class PG(Algorithm):
     """Policy Gradient (PG) Trainer.
 
     Defines the distributed Trainer class for policy gradients.
@@ -71,11 +71,11 @@ class PG(Trainer):
     """
 
     @classmethod
-    @override(Trainer)
+    @override(Algorithm)
     def get_default_config(cls) -> TrainerConfigDict:
         return PGConfig().to_dict()
 
-    @override(Trainer)
+    @override(Algorithm)
     def get_default_policy_class(self, config) -> Type[Policy]:
         return PGTorchPolicy if config.get("framework") == "torch" else PGTFPolicy
 

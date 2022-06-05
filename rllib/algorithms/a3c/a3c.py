@@ -2,8 +2,8 @@ import logging
 from typing import Any, Dict, List, Optional, Type, Union
 
 from ray.actor import ActorHandle
-from ray.rllib.agents.trainer import Trainer
-from ray.rllib.agents.trainer_config import TrainerConfig
+from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.execution.parallel_requests import (
     AsyncRequestsManager,
@@ -30,8 +30,8 @@ from ray.rllib.utils.typing import (
 logger = logging.getLogger(__name__)
 
 
-class A3CConfig(TrainerConfig):
-    """Defines a configuration class from which a A3C Trainer can be built.
+class A3CConfig(AlgorithmConfig):
+    """Defines a configuration class from which a A3C Algorithm can be built.
 
     Example:
         >>> from ray import tune
@@ -39,7 +39,7 @@ class A3CConfig(TrainerConfig):
         ...     .resources(num_gpus=0)\
         ...     .rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> # Build a Algorithm object from the config and run 1 training iteration.
         >>> trainer = config.build(env="CartPole-v1")
         >>> trainer.train()
 
@@ -60,9 +60,9 @@ class A3CConfig(TrainerConfig):
         ... )
     """
 
-    def __init__(self, trainer_class=None):
+    def __init__(self, algo_class=None):
         """Initializes a A3CConfig instance."""
-        super().__init__(trainer_class=trainer_class or A3C)
+        super().__init__(algo_class=algo_class or A3C)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -78,7 +78,7 @@ class A3CConfig(TrainerConfig):
         self.entropy_coeff_schedule = None
         self.sample_async = True
 
-        # Override some of TrainerConfig's default values with PPO-specific values.
+        # Override some of AlgorithmConfig's default values with PPO-specific values.
         self.rollout_fragment_length = 10
         self.lr = 0.0001
         # Min time (in seconds) per reporting.
@@ -89,7 +89,7 @@ class A3CConfig(TrainerConfig):
         # __sphinx_doc_end__
         # fmt: on
 
-    @override(TrainerConfig)
+    @override(AlgorithmConfig)
     def training(
         self,
         *,
@@ -125,7 +125,7 @@ class A3CConfig(TrainerConfig):
                 to async buffering of batches.
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
@@ -152,20 +152,20 @@ class A3CConfig(TrainerConfig):
         return self
 
 
-class A3C(Trainer):
+class A3C(Algorithm):
     @classmethod
-    @override(Trainer)
+    @override(Algorithm)
     def get_default_config(cls) -> TrainerConfigDict:
         return A3CConfig().to_dict()
 
-    @override(Trainer)
+    @override(Algorithm)
     def setup(self, config: PartialTrainerConfigDict):
         super().setup(config)
         self._worker_manager = AsyncRequestsManager(
             self.workers.remote_workers(), max_remote_requests_in_flight_per_worker=1
         )
 
-    @override(Trainer)
+    @override(Algorithm)
     def validate_config(self, config: TrainerConfigDict) -> None:
         # Call super's validation method.
         super().validate_config(config)
@@ -175,7 +175,7 @@ class A3C(Trainer):
         if config["num_workers"] <= 0 and config["sample_async"]:
             raise ValueError("`num_workers` for A3C must be >= 1!")
 
-    @override(Trainer)
+    @override(Algorithm)
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.a3c.a3c_torch_policy import A3CTorchPolicy
@@ -256,7 +256,7 @@ class A3C(Trainer):
 
         return learner_info_builder.finalize()
 
-    @override(Trainer)
+    @override(Algorithm)
     def on_worker_failures(
         self, removed_workers: List[ActorHandle], new_workers: List[ActorHandle]
     ):

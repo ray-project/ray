@@ -160,7 +160,7 @@ Common Parameters
 ~~~~~~~~~~~~~~~~~
 
 .. tip::
-    Plain python config dicts will soon be replaced by :py:class:`~ray.rllib.agents.trainer_config.TrainerConfig`
+    Plain python config dicts will soon be replaced by :py:class:`~ray.rllib.algorithms.trainer_config.TrainerConfig`
     objects, which have the advantage of being type safe, allowing users to set different config settings within
     meaningful sub-categories (e.g. ``my_config.training(lr=0.0003)``), and offer the ability to
     construct a Trainer instance from these config objects (via their ``build()`` method).
@@ -999,7 +999,7 @@ You can provide callbacks to be called at points during policy evaluation. These
 
 User-defined state can be stored for the `episode <https://github.com/ray-project/ray/blob/master/rllib/evaluation/episode.py>`__ in the ``episode.user_data`` dict, and custom scalar metrics reported by saving values to the ``episode.custom_metrics`` dict. These custom metrics will be aggregated and reported as part of training results. For a full example, see `custom_metrics_and_callbacks.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_metrics_and_callbacks.py>`__.
 
-.. autoclass:: ray.rllib.agents.callbacks.DefaultCallbacks
+.. autoclass:: ray.rllib.algorithms.callbacks.DefaultCallbacks
     :members:
 
 
@@ -1008,7 +1008,7 @@ Chaining Callbacks
 
 Use the ``MultiCallbacks`` class to chaim multiple callbacks together.
 
-.. autoclass:: ray.rllib.agents.callbacks.MultiCallbacks
+.. autoclass:: ray.rllib.algorithms.callbacks.MultiCallbacks
 
 
 Visualizing Custom Metrics

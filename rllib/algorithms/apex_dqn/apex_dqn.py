@@ -21,7 +21,7 @@ from typing import Dict, List, Type, Optional, Callable
 import ray
 from ray.actor import ActorHandle
 from ray.rllib import Policy
-from ray.rllib.agents import Trainer
+from ray.rllib.algorithms import Algorithm
 from ray.rllib.algorithms.dqn.dqn import DQN, DQNConfig
 from ray.rllib.algorithms.dqn.learner_thread import LearnerThread
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -58,7 +58,7 @@ from ray.util.ml_utils.dict import merge_dicts
 
 
 class ApexDQNConfig(DQNConfig):
-    """Defines a configuration class from which an ApexDQN Trainer can be built.
+    """Defines a configuration class from which an ApexDQN Algorithm can be built.
 
     Example:
         >>> from ray.rllib.algorithms.apex_dqn.apex_dqn import ApexDQNConfig
@@ -121,9 +121,9 @@ class ApexDQNConfig(DQNConfig):
         >>>       .exploration(exploration_config=explore_config)
     """
 
-    def __init__(self, trainer_class=None):
+    def __init__(self, algo_class=None):
         """Initializes a ApexConfig instance."""
-        super().__init__(trainer_class=trainer_class or ApexDQN)
+        super().__init__(algo_class=algo_class or ApexDQN)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -642,7 +642,7 @@ class ApexDQN(DQN):
                 STEPS_TRAINED_COUNTER
             ]
 
-    @override(Trainer)
+    @override(Algorithm)
     def on_worker_failures(
         self, removed_workers: List[ActorHandle], new_workers: List[ActorHandle]
     ):
@@ -655,7 +655,7 @@ class ApexDQN(DQN):
         self._sampling_actor_manager.remove_workers(removed_workers)
         self._sampling_actor_manager.add_workers(new_workers)
 
-    @override(Trainer)
+    @override(Algorithm)
     def _compile_step_results(self, *, step_ctx, step_attempt_results=None):
         result = super()._compile_step_results(
             step_ctx=step_ctx, step_attempt_results=step_attempt_results

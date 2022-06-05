@@ -10,7 +10,7 @@ from typing import (
     Union,
 )
 
-from ray.rllib.agents.callbacks import DefaultCallbacks
+from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
 from ray.rllib.evaluation.collectors.simple_list_collector import SimpleListCollector
@@ -27,17 +27,17 @@ from ray.rllib.utils.typing import (
 from ray.tune.logger import Logger
 
 if TYPE_CHECKING:
-    from ray.rllib.agents.trainer import Trainer
+    from ray.rllib.algorithms.algorithm import Algorithm
 
 
-class TrainerConfig:
-    """A RLlib TrainerConfig builds an RLlib trainer from a given configuration.
+class AlgorithmConfig:
+    """A RLlib AlgorithmConfig builds an RLlib Algorithm from a given configuration.
 
     Example:
-        >>> from ray.rllib.agents.callbacks import MemoryTrackingCallbacks
+        >>> from ray.rllib.algorithms.callbacks import MemoryTrackingCallbacks
         >>> # Construct a generic config object, specifying values within different
         >>> # sub-categories, e.g. "training".
-        >>> config = TrainerConfig().training(gamma=0.9, lr=0.01)
+        >>> config = AlgorithmConfig().training(gamma=0.9, lr=0.01)
         ...              .environment(env="CartPole-v1")
         ...              .resources(num_gpus=0)
         ...              .rollouts(num_rollout_workers=4)
@@ -48,19 +48,19 @@ class TrainerConfig:
     Example:
         >>> from ray import tune
         >>> # In combination with a tune.grid_search:
-        >>> config = TrainerConfig()
+        >>> config = AlgorithmConfig()
         >>> config.training(lr=tune.grid_search([0.01, 0.001]))
         >>> # Use `to_dict()` method to get the legacy plain python config dict
         >>> # for usage with `tune.run()`.
         >>> tune.run("[registered trainer class]", config=config.to_dict())
     """
 
-    def __init__(self, trainer_class=None):
+    def __init__(self,algo_class=None):
         # Define all settings and their default values.
 
-        # Define the default RLlib Trainer class that this TrainerConfig will be
+        # Define the default RLlib Trainer class that this AlgorithmConfig will be
         # applied to.
-        self.trainer_class = trainer_class
+        self.algo_class = algo_class
 
         # `self.python_environment()`
         self.extra_python_environs_for_driver = {}
@@ -242,7 +242,7 @@ class TrainerConfig:
             use cases, e.g. w/ `tune.run()`.
         """
         config = copy.deepcopy(vars(self))
-        config.pop("trainer_class")
+        config.pop("algo_class")
 
         # Worst naming convention ever: NEVER EVER use reserved key-words...
         if "lambda_" in config:
@@ -281,8 +281,8 @@ class TrainerConfig:
         self,
         env: Optional[Union[str, EnvType]] = None,
         logger_creator: Optional[Callable[[], Logger]] = None,
-    ) -> "Trainer":
-        """Builds a Trainer from the TrainerConfig.
+    ) -> "Algorithm":
+        """Builds an Algorithm from the AlgorithmConfig.
 
         Args:
             env: Name of the environment to use (e.g. a gym-registered str),
@@ -294,7 +294,7 @@ class TrainerConfig:
                 object. If unspecified, a default logger is created.
 
         Returns:
-            A ray.rllib.agents.trainer.Trainer object.
+            A ray.rllib.algorithms.algorithm.Algorithm object.
         """
         if env is not None:
             self.env = env
@@ -303,7 +303,7 @@ class TrainerConfig:
         if logger_creator is not None:
             self.logger_creator = logger_creator
 
-        return self.trainer_class(
+        return self.algo_class(
             config=self.to_dict(),
             env=self.env,
             logger_creator=self.logger_creator,
@@ -314,17 +314,17 @@ class TrainerConfig:
         *,
         extra_python_environs_for_driver: Optional[dict] = None,
         extra_python_environs_for_worker: Optional[dict] = None,
-    ) -> "TrainerConfig":
+    ) -> "AlgorithmConfig":
         """Sets the config's python environment settings.
 
         Args:
             extra_python_environs_for_driver: Any extra python env vars to set in the
-                trainer process, e.g., {"OMP_NUM_THREADS": "16"}.
+                algorithm's process, e.g., {"OMP_NUM_THREADS": "16"}.
             extra_python_environs_for_worker: The extra python environments need to set
                 for worker processes.
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         if extra_python_environs_for_driver is not None:
             self.extra_python_environs_for_driver = extra_python_environs_for_driver
@@ -342,12 +342,12 @@ class TrainerConfig:
         num_cpus_for_local_worker: Optional[int] = None,
         custom_resources_per_worker: Optional[dict] = None,
         placement_strategy: Optional[str] = None,
-    ) -> "TrainerConfig":
-        """Specifies resources allocated for a Trainer and its ray actors/workers.
+    ) -> "AlgorithmConfig":
+        """Specifies resources allocated for an Algorithm and its ray actors/workers.
 
         Args:
-            num_gpus: Number of GPUs to allocate to the trainer process.
-                Note that not all algorithms can take advantage of trainer GPUs.
+            num_gpus: Number of GPUs to allocate to the algorithm process.
+                Note that not all algorithms can take advantage of GPUs.
                 Support for multi-GPU is currently only available for
                 tf-[PPO/IMPALA/DQN/PG]. This can be fractional (e.g., 0.3 GPUs).
             _fake_gpus: Set to True for debugging (multi-)?GPU funcitonality on a
@@ -361,15 +361,15 @@ class TrainerConfig:
                 unusually expensive.
             custom_resources_per_worker: Any custom Ray resources to allocate per
                 worker.
-            num_cpus_for_local_worker: Number of CPUs to allocate for the trainer.
+            num_cpus_for_local_worker: Number of CPUs to allocate for the algorithm.
                 Note: this only takes effect when running in Tune. Otherwise,
-                the trainer runs in the main program (driver).
+                the algorithm runs in the main program (driver).
             custom_resources_per_worker: Any custom Ray resources to allocate per
                 worker.
             placement_strategy: The strategy for the placement group factory returned by
-                `Trainer.default_resource_request()`. A PlacementGroup defines, which
+                `Algorithm.default_resource_request()`. A PlacementGroup defines, which
                 devices (resources) should always be co-located on the same node.
-                For example, a Trainer with 2 rollout workers, running with
+                For example, an Algorithm with 2 rollout workers, running with
                 num_gpus=1 will request a placement group with the bundles:
                 [{"gpu": 1, "cpu": 1}, {"cpu": 1}, {"cpu": 1}], where the first bundle
                 is for the driver and the other 2 bundles are for the two workers.
@@ -382,7 +382,7 @@ class TrainerConfig:
                 "STRICT_SPREAD": Packs bundles across distinct nodes.
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         if num_gpus is not None:
             self.num_gpus = num_gpus
@@ -409,7 +409,7 @@ class TrainerConfig:
         eager_max_retraces: Optional[int] = None,
         tf_session_args: Optional[Dict[str, Any]] = None,
         local_tf_session_args: Optional[Dict[str, Any]] = None,
-    ) -> "TrainerConfig":
+    ) -> "AlgorithmConfig":
         """Sets the config's DL framework settings.
 
         Args:
@@ -431,7 +431,7 @@ class TrainerConfig:
                 worker
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         if framework is not None:
             self.framework_str = framework
@@ -459,7 +459,7 @@ class TrainerConfig:
         normalize_actions: Optional[bool] = None,
         clip_actions: Optional[bool] = None,
         disable_env_checking: Optional[bool] = None,
-    ) -> "TrainerConfig":
+    ) -> "AlgorithmConfig":
         """Sets the config's RL-environment settings.
 
         Args:
@@ -472,8 +472,8 @@ class TrainerConfig:
             env_config: Arguments dict passed to the env creator as an EnvContext
                 object (which is a dict plus the properties: num_workers, worker_index,
                 vector_index, and remote).
-            observation_space: The observation space for the Policies of this Trainer.
-            action_space: The action space for the Policies of this Trainer.
+            observation_space: The observation space for the Policies of this Algorithm.
+            action_space: The action space for the Policies of this Algorithm.
             env_task_fn: A callable taking the last train results, the base env and the
                 env context as args and returning a new task to set the env to.
                 The env must be a `TaskSettableEnv` sub-class for this to work.
@@ -501,7 +501,7 @@ class TrainerConfig:
             disable_env_checking: If True, disable the environment pre-checking module.
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         if env is not None:
             self.env = env
@@ -550,13 +550,14 @@ class TrainerConfig:
         observation_filter: Optional[str] = None,
         synchronize_filter: Optional[bool] = None,
         compress_observations: Optional[bool] = None,
-    ) -> "TrainerConfig":
+    ) -> "AlgorithmConfig":
         """Sets the rollout worker configuration.
 
         Args:
             num_rollout_workers: Number of rollout worker actors to create for
                 parallel sampling. Setting this to 0 will force rollouts to be done in
-                the local worker (driver process or the Trainer actor when using Tune).
+                the local worker (driver process or the Algorithm's actor when using
+                Tune).
             num_envs_per_worker: Number of environments to evaluate vector-wise per
                 worker. This enables model inference batching, which can improve
                 performance for inference bottlenecked workloads.
@@ -625,7 +626,7 @@ class TrainerConfig:
                 the RolloutWorker crashing.
             num_consecutive_worker_failures_tolerance: The number of consecutive times
                 a rollout worker (or evaluation worker) failure is tolerated before
-                finally crashing the Trainer. Only useful if either
+                finally crashing the Algorithm. Only useful if either
                 `ignore_worker_failures` or `recreate_failed_workers` is True.
                 Note that for `restart_failed_sub_environments` and sub-environment
                 failures, the worker itself is NOT affected and won't throw any errors
@@ -658,7 +659,7 @@ class TrainerConfig:
                 in the SampleBatches collected during rollouts.
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         if num_rollout_workers is not None:
             self.num_workers = num_rollout_workers
@@ -716,7 +717,7 @@ class TrainerConfig:
         train_batch_size: Optional[int] = None,
         model: Optional[dict] = None,
         optimizer: Optional[dict] = None,
-    ) -> "TrainerConfig":
+    ) -> "AlgorithmConfig":
         """Sets the training related configuration.
 
         Args:
@@ -728,7 +729,7 @@ class TrainerConfig:
             optimizer: Arguments to pass to the policy optimizer.
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         if gamma is not None:
             self.gamma = gamma
@@ -743,7 +744,7 @@ class TrainerConfig:
 
         return self
 
-    def callbacks(self, callbacks_class) -> "TrainerConfig":
+    def callbacks(self, callbacks_class) -> "AlgorithmConfig":
         """Sets the callbacks configuration.
 
         Args:
@@ -753,7 +754,7 @@ class TrainerConfig:
                 `examples/custom_metrics_and_callbacks.py` for more usage information.
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         self.callbacks_class = callbacks_class
 
@@ -764,7 +765,7 @@ class TrainerConfig:
         *,
         explore: Optional[bool] = None,
         exploration_config: Optional[dict] = None,
-    ) -> "TrainerConfig":
+    ) -> "AlgorithmConfig":
         """Sets the config's exploration settings.
 
         Args:
@@ -774,7 +775,7 @@ class TrainerConfig:
             exploration_config: A dict specifying the Exploration object's config.
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         if explore is not None:
             self.explore = explore
@@ -800,12 +801,12 @@ class TrainerConfig:
         evaluation_duration_unit: Optional[str] = None,
         evaluation_parallel_to_training: Optional[bool] = None,
         evaluation_config: Optional[
-            Union["TrainerConfig", PartialTrainerConfigDict]
+            Union["AlgorithmConfig", PartialTrainerConfigDict]
         ] = None,
         evaluation_num_workers: Optional[int] = None,
         custom_evaluation_function: Optional[Callable] = None,
         always_attach_evaluation_results: Optional[bool] = None,
-    ) -> "TrainerConfig":
+    ) -> "AlgorithmConfig":
         """Sets the config's evaluation settings.
 
         Args:
@@ -827,9 +828,9 @@ class TrainerConfig:
             evaluation_duration_unit: The unit, with which to count the evaluation
                 duration. Either "episodes" (default) or "timesteps".
             evaluation_parallel_to_training: Whether to run evaluation in parallel to
-                a Trainer.train() call using threading. Default=False.
+                a Algorithm.train() call using threading. Default=False.
                 E.g. evaluation_interval=2 -> For every other training iteration,
-                the Trainer.train() and Trainer.evaluate() calls run in parallel.
+                the Algorithm.train() and Algorithm.evaluate() calls run in parallel.
                 Note: This is experimental. Possible pitfalls could be race conditions
                 for weight synching at the beginning of the evaluation loop.
             evaluation_config: Typical usage is to pass extra args to evaluation env
@@ -839,14 +840,14 @@ class TrainerConfig:
                 will result in the evaluation workers not using this optimal policy!
             evaluation_num_workers: Number of parallel workers to use for evaluation.
                 Note that this is set to zero by default, which means evaluation will
-                be run in the trainer process (only if evaluation_interval is not None).
+                be run in the algorithm process (only if evaluation_interval is not None).
                 If you increase this, it will increase the Ray resource usage of the
-                trainer since evaluation workers are created separately from rollout
+                algorithm since evaluation workers are created separately from rollout
                 workers (used to sample data for training).
             custom_evaluation_function: Customize the evaluation method. This must be a
-                function of signature (trainer: Trainer, eval_workers: WorkerSet) ->
-                metrics: dict. See the Trainer.evaluate() method to see the default
-                implementation. The Trainer guarantees all eval workers have the latest
+                function of signature (algo: Algorithm, eval_workers: WorkerSet) ->
+                metrics: dict. See the Algorithm.evaluate() method to see the default
+                implementation. The Algorithm guarantees all eval workers have the latest
                 policy state before this function is called.
             always_attach_evaluation_results: Make sure the latest available evaluation
                 results are always attached to a step result dict. This may be useful
@@ -854,7 +855,7 @@ class TrainerConfig:
                 all the time.
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         if evaluation_interval is not None:
             self.evaluation_interval = evaluation_interval
@@ -865,8 +866,8 @@ class TrainerConfig:
         if evaluation_parallel_to_training is not None:
             self.evaluation_parallel_to_training = evaluation_parallel_to_training
         if evaluation_config is not None:
-            # Convert another TrainerConfig into dict.
-            if isinstance(evaluation_config, TrainerConfig):
+            # Convert another AlgorithmConfig into dict.
+            if isinstance(evaluation_config, AlgorithmConfig):
                 self.evaluation_config = evaluation_config.to_dict()
             else:
                 self.evaluation_config = evaluation_config
@@ -893,7 +894,7 @@ class TrainerConfig:
         output_config=None,
         output_compress_columns=None,
         output_max_file_size=None,
-    ) -> "TrainerConfig":
+    ) -> "AlgorithmConfig":
         """Sets the config's offline data settings.
 
         TODO(jungong, sven): we can potentially unify all input types
@@ -962,7 +963,7 @@ class TrainerConfig:
                 new file.
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         if input_ is not None:
             self.input_ = input_
@@ -1007,7 +1008,7 @@ class TrainerConfig:
         observation_fn=None,
         replay_mode=None,
         count_steps_by=None,
-    ) -> "TrainerConfig":
+    ) -> "AlgorithmConfig":
         """Sets the config's multi-agent settings.
 
         Args:
@@ -1045,7 +1046,7 @@ class TrainerConfig:
                 "agent_steps": Count each individual agent step as one step.
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         if policies is not None:
             self.policies = policies
@@ -1075,7 +1076,7 @@ class TrainerConfig:
         min_time_s_per_reporting: Optional[int] = None,
         min_train_timesteps_per_reporting: Optional[int] = None,
         min_sample_timesteps_per_reporting: Optional[int] = None,
-    ) -> "TrainerConfig":
+    ) -> "AlgorithmConfig":
         """Sets the config's reporting settings.
 
         Args:
@@ -1091,21 +1092,21 @@ class TrainerConfig:
                 time has been consumed. Set to None or 0 for no minimum time.
             min_train_timesteps_per_reporting: Minimum training timesteps to accumulate
                 within a single `train()` call. This value does not affect learning,
-                only the number of times `Trainer.step_attempt()` is called by
+                only the number of times `Algorithm.step_attempt()` is called by
                 `Trauber.train()`. If - after one `step_attempt()`, the training
                 timestep count has not been reached, will perform n more
                 `step_attempt()` calls until the minimum timesteps have been executed.
                 Set to 0 for no minimum timesteps.
             min_sample_timesteps_per_reporting: Minimum env sampling timesteps to
                 accumulate within a single `train()` call. This value does not affect
-                learning, only the number of times `Trainer.step_attempt()` is called by
-                `Trauber.train()`. If - after one `step_attempt()`, the env sampling
-                timestep count has not been reached, will perform n more
+                learning, only the number of times `Algorithm.step_attempt()` is
+                called by `Trauber.train()`. If - after one `step_attempt()`, the
+                env sampling timestep count has not been reached, will perform n more
                 `step_attempt()` calls until the minimum timesteps have been executed.
                 Set to 0 for no minimum timesteps.
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         if keep_per_episode_custom_metrics is not None:
             self.keep_per_episode_custom_metrics = keep_per_episode_custom_metrics
@@ -1133,7 +1134,7 @@ class TrainerConfig:
         log_sys_usage: Optional[bool] = None,
         fake_sampler: Optional[bool] = None,
         seed: Optional[int] = None,
-    ) -> "TrainerConfig":
+    ) -> "AlgorithmConfig":
         """Sets the config's debugging settings.
 
         Args:
@@ -1155,7 +1156,7 @@ class TrainerConfig:
                 identical results. This makes experiments reproducible.
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         if logger_creator is not None:
             self.logger_creator = logger_creator
@@ -1179,7 +1180,7 @@ class TrainerConfig:
         _disable_preprocessor_api=None,
         _disable_action_flattening=None,
         _disable_execution_plan_api=None,
-    ) -> "TrainerConfig":
+    ) -> "AlgorithmConfig":
         """Sets the config's experimental settings.
 
         Args:
@@ -1202,11 +1203,11 @@ class TrainerConfig:
                 - Algorithms reading from offline files (incl. action information).
             _disable_execution_plan_api: Experimental flag.
                 If True, the execution plan API will not be used. Instead,
-                a Trainer's `training_iteration` method will be called as-is each
+                a Algorithm's `training_iteration` method will be called as-is each
                 training iteration.
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         if _tf_policy_handles_more_than_one_loss is not None:
             self._tf_policy_handles_more_than_one_loss = (

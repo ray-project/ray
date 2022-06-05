@@ -3,16 +3,16 @@ import pickle
 import numpy as np
 
 from ray.tune import result as tune_result
-from ray.rllib.agents.trainer import Trainer, with_common_config
+from ray.rllib.algorithms.algorithm import Algorithm, with_common_config
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TrainerConfigDict
 
 
-class _MockTrainer(Trainer):
+class _MockTrainer(Algorithm):
     """Mock trainer for use in tests"""
 
     @classmethod
-    @override(Trainer)
+    @override(Algorithm)
     def get_default_config(cls) -> TrainerConfigDict:
         return with_common_config(
             {
@@ -29,7 +29,7 @@ class _MockTrainer(Trainer):
     def default_resource_request(cls, config):
         return None
 
-    @override(Trainer)
+    @override(Algorithm)
     def setup(self, config):
         # Setup our config: Merge the user-supplied config (which could
         # be a partial config dict with the class' default).
@@ -45,7 +45,7 @@ class _MockTrainer(Trainer):
         self.info = None
         self.restored = False
 
-    @override(Trainer)
+    @override(Algorithm)
     def step(self):
         if (
             self.config["mock_error"]
@@ -61,14 +61,14 @@ class _MockTrainer(Trainer):
                 result.update({tune_result.SHOULD_CHECKPOINT: True})
         return result
 
-    @override(Trainer)
+    @override(Algorithm)
     def save_checkpoint(self, checkpoint_dir):
         path = os.path.join(checkpoint_dir, "mock_agent.pkl")
         with open(path, "wb") as f:
             pickle.dump(self.info, f)
         return path
 
-    @override(Trainer)
+    @override(Algorithm)
     def load_checkpoint(self, checkpoint_path):
         with open(checkpoint_path, "rb") as f:
             info = pickle.load(f)
@@ -76,7 +76,7 @@ class _MockTrainer(Trainer):
         self.restored = True
 
     @staticmethod
-    @override(Trainer)
+    @override(Algorithm)
     def _get_env_id_and_creator(env_specifier, config):
         # No env to register.
         return None, None
@@ -95,7 +95,7 @@ class _SigmoidFakeData(_MockTrainer):
     This can be helpful for evaluating early stopping algorithms."""
 
     @classmethod
-    @override(Trainer)
+    @override(Algorithm)
     def get_default_config(cls) -> TrainerConfigDict:
         return with_common_config(
             {
@@ -123,7 +123,7 @@ class _SigmoidFakeData(_MockTrainer):
 
 class _ParameterTuningTrainer(_MockTrainer):
     @classmethod
-    @override(Trainer)
+    @override(Algorithm)
     def get_default_config(cls) -> TrainerConfigDict:
         return with_common_config(
             {
@@ -149,7 +149,7 @@ class _ParameterTuningTrainer(_MockTrainer):
 def _trainer_import_failed(trace):
     """Returns dummy agent class for if PyTorch etc. is not installed."""
 
-    class _TrainerImportFailed(Trainer):
+    class _TrainerImportFailed(Algorithm):
         _name = "TrainerImportFailed"
 
         def setup(self, config):

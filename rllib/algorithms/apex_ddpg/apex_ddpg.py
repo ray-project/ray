@@ -1,7 +1,7 @@
 from typing import List, Optional
 
 from ray.actor import ActorHandle
-from ray.rllib.agents import Trainer
+from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.apex_dqn.apex_dqn import ApexDQN
 from ray.rllib.algorithms.ddpg.ddpg import DDPG, DDPGConfig
 from ray.rllib.evaluation.worker_set import WorkerSet
@@ -44,9 +44,9 @@ class ApexDDPGConfig(DDPGConfig):
         ... )
     """
 
-    def __init__(self, trainer_class=None):
+    def __init__(self, algo_class=None):
         """Initializes an ApexDDPGConfig instance."""
-        super().__init__(trainer_class=trainer_class or ApexDDPG)
+        super().__init__(algo_class=algo_class or ApexDDPG)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -186,7 +186,7 @@ class ApexDDPG(DDPG, ApexDQN):
         """Use APEX-DQN's training iteration function."""
         return ApexDQN.training_iteration(self)
 
-    @override(Trainer)
+    @override(Algorithm)
     def on_worker_failures(
         self, removed_workers: List[ActorHandle], new_workers: List[ActorHandle]
     ):

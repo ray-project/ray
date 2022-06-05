@@ -9,11 +9,11 @@ def _import_random_agent():
 
 def _import_alphazero():
     from ray.rllib.algorithms.alpha_zero.alpha_zero import (
-        AlphaZeroTrainer,
+        AlphaZero,
         DEFAULT_CONFIG,
     )
 
-    return AlphaZeroTrainer, DEFAULT_CONFIG
+    return AlphaZero, DEFAULT_CONFIG
 
 
 def _import_maddpg():

@@ -11,7 +11,7 @@ from ray.air.preprocessor import Preprocessor
 from ray.air.checkpoint import Checkpoint
 from ray.air.train.integrations.rl import RLTrainer
 
-from ray.rllib.agents import Trainer
+from ray.rllib.algorithms import Trainer
 from ray.rllib.policy import Policy
 from ray.tune.utils.trainable import TrainableUtil
 

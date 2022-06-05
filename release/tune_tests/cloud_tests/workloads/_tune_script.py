@@ -7,7 +7,7 @@ import time
 
 import ray
 from ray import tune
-from ray.rllib.agents import DefaultCallbacks
+from ray.rllib.algorithms import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPO
 
 

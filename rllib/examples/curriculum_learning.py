@@ -66,7 +66,7 @@ def curriculum_fn(
     """Function returning a possibly new task to set `task_settable_env` to.
 
     Args:
-        train_results: The train results returned by Trainer.train().
+        train_results: The train results returned by Algorithm.train().
         task_settable_env: A single TaskSettableEnv object
             used inside any worker and at any vector position. Use `env_ctx`
             to get the worker_index, vector_index, and num_workers.

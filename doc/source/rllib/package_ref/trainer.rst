@@ -1,12 +1,12 @@
 .. _trainer-reference-docs:
 
-Trainer API
-===========
+Algorithm API
+=============
 
-The :py:class:`~ray.rllib.agents.trainer.Trainer` class is the highest-level API in RLlib.
+The :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` class is the highest-level API in RLlib.
 It allows you to train and evaluate policies, save an experiment's progress and restore from
 a prior saved experiment when continuing an RL run.
-:py:class:`~ray.rllib.agents.trainer.Trainer` is a sub-class
+:py:class:`~ray.rllib.algorithms.algorithm.Algorithm` is a sub-class
 of :py:class:`~ray.tune.Trainable`
 and thus fully supports distributed hyperparameter tuning for RL.
 
@@ -31,26 +31,26 @@ Building Custom Trainer Classes
     As of Ray >= 1.9, it is no longer recommended to use the `build_trainer()` utility
     function for creating custom Trainer sub-classes.
     Instead, follow the simple guidelines here for directly sub-classing from
-    :py:class:`~ray.rllib.agents.trainer.Trainer`.
+    :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`.
 
 In order to create a custom Trainer, sub-class the
-:py:class:`~ray.rllib.agents.trainer.Trainer` class
+:py:class:`~ray.rllib.algorithms.algorithm.Algorithm` class
 and override one or more of its methods. Those are in particular:
 
-* :py:meth:`~ray.rllib.agents.trainer.Trainer.get_default_config`
-* :py:meth:`~ray.rllib.agents.trainer.Trainer.validate_config`
-* :py:meth:`~ray.rllib.agents.trainer.Trainer.get_default_policy_class`
-* :py:meth:`~ray.rllib.agents.trainer.Trainer.setup`
-* :py:meth:`~ray.rllib.agents.trainer.Trainer.step_attempt`
-* :py:meth:`~ray.rllib.agents.trainer.Trainer.execution_plan`
+* :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.get_default_config`
+* :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.validate_config`
+* :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.get_default_policy_class`
+* :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.setup`
+* :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.step_attempt`
+* :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.execution_plan`
 
 `See here for an example on how to override Trainer <https://github.com/ray-project/ray/blob/master/rllib/algorithms/pg/pg.py>`_.
 
 
-Trainer base class (ray.rllib.agents.trainer.Trainer)
------------------------------------------------------
+Trainer base class (ray.rllib.algorithms.algorithm.Algorithm)
+-------------------------------------------------------------
 
-.. autoclass:: ray.rllib.agents.trainer.Trainer
+.. autoclass:: ray.rllib.algorithms.trainer.Trainer
     :special-members: __init__
     :members:
 

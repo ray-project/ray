@@ -52,8 +52,8 @@ class CQLConfig(SACConfig):
         >>> trainer.train()
     """
 
-    def __init__(self, trainer_class=None):
-        super().__init__(trainer_class=trainer_class or CQL)
+    def __init__(self, algo_class=None):
+        super().__init__(algo_class=algo_class or CQL)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -99,7 +99,7 @@ class CQLConfig(SACConfig):
             min_q_weight: in Q weight multiplier.
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)

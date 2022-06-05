@@ -3,9 +3,9 @@ import numpy as np
 import random
 from typing import Optional
 
-from ray.rllib.agents.trainer_config import TrainerConfig
+from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.dreamer.dreamer_torch_policy import DreamerTorchPolicy
-from ray.rllib.agents.trainer import Trainer
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, _get_shared_metrics
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.evaluation.metrics import collect_metrics
@@ -27,8 +27,8 @@ from ray.rllib.utils.typing import (
 logger = logging.getLogger(__name__)
 
 
-class DreamerConfig(TrainerConfig):
-    """Defines a configuration class from which a Dreamer Trainer can be built.
+class DreamerConfig(AlgorithmConfig):
+    """Defines a configuration class from which a Dreamer Algorithm can be built.
 
     Example:
         >>> from ray.rllib.algorithms.dreamer import DreamerConfig
@@ -36,7 +36,7 @@ class DreamerConfig(TrainerConfig):
         ...     .resources(num_gpus=0)\
         ...     .rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> # Build a Algorithm object from the config and run 1 training iteration.
         >>> trainer = config.build(env="CartPole-v1")
         >>> trainer.train()
 
@@ -61,7 +61,7 @@ class DreamerConfig(TrainerConfig):
 
     def __init__(self):
         """Initializes a PPOConfig instance."""
-        super().__init__(trainer_class=Dreamer)
+        super().__init__(algo_class=Dreamer)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -92,7 +92,7 @@ class DreamerConfig(TrainerConfig):
             "action_init_std": 5.0,
         }
 
-        # Override some of TrainerConfig's default values with PPO-specific values.
+        # Override some of AlgorithmConfig's default values with PPO-specific values.
         # .rollouts()
         self.num_workers = 0
         self.num_envs_per_worker = 1
@@ -112,7 +112,7 @@ class DreamerConfig(TrainerConfig):
         # __sphinx_doc_end__
         # fmt: on
 
-    @override(TrainerConfig)
+    @override(AlgorithmConfig)
     def training(
         self,
         *,
@@ -293,13 +293,13 @@ class DreamerIteration:
         return _postprocess_gif(gif=gif)
 
 
-class Dreamer(Trainer):
+class Dreamer(Algorithm):
     @classmethod
-    @override(Trainer)
+    @override(Algorithm)
     def get_default_config(cls) -> TrainerConfigDict:
         return DreamerConfig().to_dict()
 
-    @override(Trainer)
+    @override(Algorithm)
     def validate_config(self, config: TrainerConfigDict) -> None:
         # Call super's validation method.
         super().validate_config(config)
@@ -323,11 +323,11 @@ class Dreamer(Trainer):
         if config["action_repeat"] > 1:
             config["horizon"] = config["horizon"] / config["action_repeat"]
 
-    @override(Trainer)
+    @override(Algorithm)
     def get_default_policy_class(self, config: TrainerConfigDict):
         return DreamerTorchPolicy
 
-    @override(Trainer)
+    @override(Algorithm)
     def setup(self, config: PartialTrainerConfigDict):
         super().setup(config)
         # `training_iteration` implementation: Setup buffer in `setup`, not
@@ -344,7 +344,7 @@ class Dreamer(Trainer):
                 self.local_replay_buffer.add(samples)
 
     @staticmethod
-    @override(Trainer)
+    @override(Algorithm)
     def execution_plan(workers, config, **kwargs):
         assert (
             len(kwargs) == 0
@@ -376,7 +376,7 @@ class Dreamer(Trainer):
         )
         return rollouts
 
-    @override(Trainer)
+    @override(Algorithm)
     def training_iteration(self) -> ResultDict:
         local_worker = self.workers.local_worker()
 

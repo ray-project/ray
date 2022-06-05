@@ -11,7 +11,7 @@ import os
 
 import ray
 from ray import tune
-from ray.rllib.agents.registry import get_trainer_class
+from ray.rllib.algorithms.registry import get_trainer_class
 
 parser = argparse.ArgumentParser()
 parser.add_argument(

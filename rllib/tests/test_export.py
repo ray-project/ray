@@ -5,7 +5,7 @@ import shutil
 import unittest
 
 import ray
-from ray.rllib.agents.registry import get_trainer_class
+from ray.rllib.algorithms.registry import get_trainer_class
 from ray.rllib.utils.framework import try_import_tf
 from ray.tune.trial import ExportFormat
 

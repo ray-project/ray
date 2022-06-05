@@ -53,11 +53,11 @@ class TestEnvsThatCrash(unittest.TestCase):
                 },
             )
         )
-        # Pre-checking disables, so building the Trainer is save.
+        # Pre-checking disables, so building the Algorithm is save.
         trainer = config.build()
         # Expect EnvError due to the sub-env(s) crashing on the different workers
         # and `ignore_worker_failures=False` (so the original EnvError should
-        # just be bubbled up by RLlib Trainer and tune.Trainable during the `step()`
+        # just be bubbled up by RLlib Algorithm and tune.Trainable during the `step()`
         # call).
         self.assertRaisesRegex(
             EnvError, "Simulated env crash!", lambda: trainer.train()
@@ -85,7 +85,7 @@ class TestEnvsThatCrash(unittest.TestCase):
                 },
             )
         )
-        # Pre-checking disables, so building the Trainer is save.
+        # Pre-checking disables, so building the Algorithm is save.
         trainer = config.build()
         # Expect some errors being logged here, but in general, should continue
         # as we ignore worker failures.
@@ -118,7 +118,7 @@ class TestEnvsThatCrash(unittest.TestCase):
                 },
             )
         )
-        # Pre-checking disables, so building the Trainer is save.
+        # Pre-checking disables, so building the Algorithm is save.
         trainer = config.build()
         # Try to re-create for infinite amount of times.
         # The worker recreation/ignore tolerance used to be hard-coded to 3, but this
@@ -156,7 +156,7 @@ class TestEnvsThatCrash(unittest.TestCase):
                 },
             )
         )
-        # Pre-checking disables, so building the Trainer is save.
+        # Pre-checking disables, so building the Algorithm is save.
         trainer = config.build()
         # Try to re-create the sub-env for infinite amount of times.
         # The worker recreation/ignore tolerance used to be hard-coded to 3, but this

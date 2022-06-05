@@ -23,7 +23,7 @@ from ray.tune.callback import _CallbackMeta
 import psutil
 
 if TYPE_CHECKING:
-    from ray.rllib.agents.trainer import Trainer
+    from ray.rllib.algorithms.algorithm import Algorithm
     from ray.rllib.evaluation import RolloutWorker
 
 
@@ -35,14 +35,14 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
 
     By default, all of these callbacks are no-ops. To configure custom training
     callbacks, subclass DefaultCallbacks and then set
-    {"callbacks": YourCallbacksClass} in the trainer config.
+    {"callbacks": YourCallbacksClass} in the algo config.
     """
 
     def __init__(self, legacy_callbacks_dict: Dict[str, callable] = None):
         if legacy_callbacks_dict:
             deprecation_warning(
                 "callbacks dict interface",
-                "a class extending rllib.agents.callbacks.DefaultCallbacks",
+                "a class extending rllib.algorithms.callbacks.DefaultCallbacks",
             )
         self.legacy_callbacks = legacy_callbacks_dict or {}
 
@@ -59,7 +59,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         This method gets called after each sub-environment (usually a
         gym.Env) has been created, validated (RLlib built-in validation
         + possible custom validation function implemented by overriding
-        `Trainer.validate_env()`), wrapped (e.g. video-wrapper), and seeded.
+        `Algorithm.validate_env()`), wrapped (e.g. video-wrapper), and seeded.
 
         Args:
             worker: Reference to the current rollout worker.
@@ -74,16 +74,16 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
     def on_trainer_init(
         self,
         *,
-        trainer: "Trainer",
+        trainer: "Algorithm",
         **kwargs,
     ) -> None:
-        """Callback run when a new trainer instance has finished setup.
+        """Callback run when a new algorithm instance has finished setup.
 
-        This method gets called at the end of Trainer.setup() after all
+        This method gets called at the end of Algorithm.setup() after all
         the initialization is done, and before actually training starts.
 
         Args:
-            trainer: Reference to the trainer instance.
+            algorithm: Reference to the trainer instance.
             kwargs: Forward compatibility placeholder.
         """
         pass

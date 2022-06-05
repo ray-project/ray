@@ -19,7 +19,7 @@ from ray.air.constants import (
     TRAIN_DATASET_KEY,
     WILDCARD_KEY,
 )
-from ray.air.trainer import Trainer
+from ray.air.algorithm import Algorithm
 from ray.air.config import ScalingConfig, RunConfig, DatasetConfig
 from ray.air.trainer import GenDataset
 from ray.air.preprocessor import Preprocessor

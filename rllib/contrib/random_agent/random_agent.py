@@ -1,28 +1,28 @@
 import numpy as np
 
-from ray.rllib.agents.trainer import Trainer, with_common_config
+from ray.rllib.algorithms.algorithm import Algorithm, with_common_config
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TrainerConfigDict
 
 
 # fmt: off
 # __sphinx_doc_begin__
-class RandomAgent(Trainer):
+class RandomAgent(Algorithm):
     """Trainer that produces random actions and never learns."""
 
     @classmethod
-    @override(Trainer)
+    @override(Algorithm)
     def get_default_config(cls) -> TrainerConfigDict:
         return with_common_config({
             "rollouts_per_iteration": 10,
             "framework": "tf",  # not used
         })
 
-    @override(Trainer)
+    @override(Algorithm)
     def _init(self, config, env_creator):
         self.env = env_creator(config["env_config"])
 
-    @override(Trainer)
+    @override(Algorithm)
     def step(self):
         rewards = []
         steps = 0

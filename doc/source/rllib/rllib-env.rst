@@ -21,7 +21,7 @@ You can pass either a string name or a Python class to specify an environment. B
 .. code-block:: python
 
     import gym, ray
-    from ray.rllib.agents import ppo
+    from ray.rllib.algorithms import ppo
 
     class MyEnv(gym.Env):
         def __init__(self, env_config):

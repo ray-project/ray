@@ -12,7 +12,7 @@ and the README for how to run with the multi-agent particle envs.
 import logging
 from typing import List, Optional, Type
 
-from ray.rllib.agents.trainer_config import TrainerConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.dqn.dqn import DQN
 from ray.rllib.algorithms.maddpg.maddpg_tf_policy import MADDPGTFPolicy
 from ray.rllib.policy.policy import Policy
@@ -25,8 +25,8 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-class MADDPGConfig(TrainerConfig):
-    """Defines a configuration class from which a MADDPG Trainer can be built.
+class MADDPGConfig(AlgorithmConfig):
+    """Defines a configuration class from which a MADDPG Algorithm can be built.
 
     Example:
         >>> from ray.rllib.algorithms.maddpg.maddpg import MADDPGConfig
@@ -61,9 +61,9 @@ class MADDPGConfig(TrainerConfig):
         >>> )
     """
 
-    def __init__(self, trainer_class=None):
+    def __init__(self, algo_class=None):
         """Initializes a DQNConfig instance."""
-        super().__init__(trainer_class=trainer_class or MADDPG)
+        super().__init__(algo_class=algo_class or MADDPG)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -97,7 +97,7 @@ class MADDPGConfig(TrainerConfig):
         self.actor_feature_reg = 0.001
         self.grad_norm_clipping = 0.5
 
-        # Changes to Trainer's default:
+        # Changes to Algorithm's default:
         self.rollout_fragment_length = 100
         self.train_batch_size = 1024
         self.num_workers = 1
@@ -105,7 +105,7 @@ class MADDPGConfig(TrainerConfig):
         # fmt: on
         # __sphinx_doc_end__
 
-    @override(TrainerConfig)
+    @override(AlgorithmConfig)
     def training(
         self,
         *,
@@ -201,7 +201,7 @@ class MADDPGConfig(TrainerConfig):
                 value.
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
 
         # Pass kwargs onto super's `training()` method.

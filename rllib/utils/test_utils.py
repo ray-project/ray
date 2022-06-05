@@ -17,7 +17,7 @@ from ray.rllib.utils.typing import PartialTrainerConfigDict
 from ray.tune import CLIReporter, run_experiments
 
 if TYPE_CHECKING:
-    from ray.rllib.agents.trainer_config import TrainerConfig
+    from ray.rllib.algorithms.algorithm_config import TrainerConfig
 
 jax, _ = try_import_jax()
 tf1, tf, tfv = try_import_tf()
@@ -286,7 +286,7 @@ def check_compute_single_action(
     """Tests different combinations of args for trainer.compute_single_action.
 
     Args:
-        trainer: The Trainer object to test.
+        trainer: The Algorithm object to test.
         include_state: Whether to include the initial state of the Policy's
             Model in the `compute_single_action` call.
         include_prev_action_reward: Whether to include the prev-action and
@@ -401,7 +401,7 @@ def check_compute_single_action(
         if clip is None:
             clip = what.config["clip_actions"]
 
-        # Test whether unsquash/clipping works on the Trainer's
+        # Test whether unsquash/clipping works on the Algorithm's
         # compute_single_action method: Both flags should force the action
         # to be within the space's bounds.
         if method_to_test == "single" and what == trainer:
@@ -426,7 +426,7 @@ def check_compute_single_action(
                     "for that!"
                 )
 
-    # Loop through: Policy vs Trainer; Different API methods to calculate
+    # Loop through: Policy vs Algorithm; Different API methods to calculate
     # actions; unsquash option; clip option; full fetch or not.
     for what in [pol, trainer]:
         if what is trainer:
@@ -492,7 +492,7 @@ def check_learning_achieved(tune_results, min_reward, evaluation=False):
 
 
 def check_train_results(train_results):
-    """Checks proper structure of a Trainer.train() returned dict.
+    """Checks proper structure of a Algorithm.train() returned dict.
 
     Args:
         train_results: The train results dict to check.

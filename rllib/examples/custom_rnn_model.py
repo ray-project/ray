@@ -85,7 +85,7 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    # To run the Trainer without tune.run, using our RNN model and
+    # To run the Algorithm without tune.run, using our RNN model and
     # manual state-in handling, do the following:
 
     # Example (use `config` from the above code):

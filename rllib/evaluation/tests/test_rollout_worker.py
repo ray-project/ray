@@ -181,7 +181,7 @@ class TestRolloutWorker(unittest.TestCase):
     def test_no_step_on_init(self):
         register_env("fail", lambda _: FailOnStepEnv())
         for fw in framework_iterator():
-            # We expect this to fail already on Trainer init due
+            # We expect this to fail already on Algorithm init due
             # to the env sanity check right after env creation (inside
             # RolloutWorker).
             self.assertRaises(
@@ -472,7 +472,7 @@ class TestRolloutWorker(unittest.TestCase):
         self.assertEqual(sum(samples["dones"]), 3)
         ev.stop()
 
-        # A gym env's max_episode_steps is smaller than Trainer's horizon.
+        # A gym env's max_episode_steps is smaller than Algorithm's horizon.
         ev = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v0"),
             policy_spec=MockPolicy,

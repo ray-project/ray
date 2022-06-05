@@ -110,7 +110,7 @@ Finding Memory Leaks In Workers
 
 Keeping the memory usage of long running workers stable can be challenging. The ``MemoryTrackingCallbacks`` class can be used to track memory usage of workers.
 
-.. autoclass:: ray.rllib.agents.callbacks.MemoryTrackingCallbacks
+.. autoclass:: ray.rllib.algorithms.callbacks.MemoryTrackingCallbacks
 
 The objects with the top 20 memory usage in the workers will be added as custom metrics. These can then be monitored using tensorboard or other metrics integrations like Weights and Biases: 
 

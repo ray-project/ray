@@ -152,7 +152,7 @@ We can create a `Trainer <#trainers>`__ and try running this policy on a toy env
 
     import ray
     from ray import tune
-    from ray.rllib.agents.trainer import Trainer
+    from ray.rllib.algorithms.algorithm import Algorithm
 
     class MyTrainer(Trainer):
         def get_default_policy_class(self, config):

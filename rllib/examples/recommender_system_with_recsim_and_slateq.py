@@ -14,8 +14,8 @@ from scipy.stats import sem
 
 import ray
 from ray import tune
-from ray.rllib.agents import slateq
-from ray.rllib.agents import dqn
+from ray.rllib.algorithms import slateq
+from ray.rllib.algorithms import dqn
 from ray.rllib.examples.env.recommender_system_envs_with_recsim import (
     InterestEvolutionRecSimEnv,
     InterestExplorationRecSimEnv,

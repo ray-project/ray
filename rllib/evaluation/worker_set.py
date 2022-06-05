@@ -85,7 +85,7 @@ class WorkerSet:
         """
 
         if not trainer_config:
-            from ray.rllib.agents.trainer import COMMON_CONFIG
+            from ray.rllib.algorithms.algorithm import COMMON_CONFIG
 
             trainer_config = COMMON_CONFIG
 

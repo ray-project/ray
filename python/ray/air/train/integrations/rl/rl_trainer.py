@@ -11,7 +11,7 @@ from ray.air.utils.checkpointing import (
     load_preprocessor_from_dir,
     save_preprocessor_to_dir,
 )
-from ray.rllib.agents.trainer import Trainer as RLlibTrainer
+from ray.rllib.algorithms.algorithm import Algorithm as RLlibTrainer
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.typing import PartialTrainerConfigDict, EnvType
 from ray.tune import Trainable, PlacementGroupFactory
@@ -85,7 +85,7 @@ class RLTrainer(Trainer):
             import ray
             from ray.air.config import RunConfig
             from ray.air.train.integrations.rl import RLTrainer
-            from ray.rllib.agents.marwil.bc import BCTrainer
+            from ray.rllib.algorithms.marwil.bc import BCTrainer
 
             dataset = ray.data.read_json(
                 "/tmp/data-dir", parallelism=2, ray_remote_args={"num_cpus": 1}

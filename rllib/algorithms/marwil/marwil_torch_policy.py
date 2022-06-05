@@ -18,7 +18,7 @@ torch, _ = try_import_torch()
 
 
 class MARWILTorchPolicy(ValueNetworkMixin, PostprocessAdvantages, TorchPolicyV2):
-    """PyTorch policy class used with MarwilTrainer."""
+    """PyTorch policy class used with Marwil."""
 
     def __init__(self, observation_space, action_space, config):
         config = dict(

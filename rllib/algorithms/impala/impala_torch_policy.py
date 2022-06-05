@@ -80,7 +80,7 @@ class VTraceLoss:
             bootstrap_value: A float32 tensor of shape [B].
             dist_class: action distribution class for logits.
             valid_mask: A bool tensor of valid RNN input elements (#2992).
-            config: Trainer config dict.
+            config: Algorithm config dict.
         """
         import ray.rllib.algorithms.impala.vtrace_torch as vtrace
 

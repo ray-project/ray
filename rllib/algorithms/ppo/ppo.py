@@ -13,8 +13,8 @@ import logging
 from typing import List, Optional, Type, Union
 
 from ray.util.debug import log_once
-from ray.rllib.agents.trainer import Trainer
-from ray.rllib.agents.trainer_config import TrainerConfig
+from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.execution.rollout_ops import (
     standardize_fields,
 )
@@ -39,7 +39,7 @@ from ray.rllib.utils.metrics import (
 logger = logging.getLogger(__name__)
 
 
-class PPOConfig(TrainerConfig):
+class PPOConfig(AlgorithmConfig):
     """Defines a configuration class from which a PPO Trainer can be built.
 
     Example:
@@ -71,9 +71,9 @@ class PPOConfig(TrainerConfig):
         ... )
     """
 
-    def __init__(self, trainer_class=None):
+    def __init__(self, algo_class=None):
         """Initializes a PPOConfig instance."""
-        super().__init__(trainer_class=trainer_class or PPO)
+        super().__init__(algo_class=algo_class or PPO)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -94,7 +94,7 @@ class PPOConfig(TrainerConfig):
         self.grad_clip = None
         self.kl_target = 0.01
 
-        # Override some of TrainerConfig's default values with PPO-specific values.
+        # Override some of AlgorithmConfig's default values with PPO-specific values.
         self.rollout_fragment_length = 200
         self.train_batch_size = 4000
         self.lr = 5e-5
@@ -102,7 +102,7 @@ class PPOConfig(TrainerConfig):
         # __sphinx_doc_end__
         # fmt: on
 
-    @override(TrainerConfig)
+    @override(AlgorithmConfig)
     def training(
         self,
         *,
@@ -154,7 +154,7 @@ class PPOConfig(TrainerConfig):
             kl_target: Target value for KL divergence.
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
@@ -267,15 +267,15 @@ def warn_about_bad_reward_scales(config, result):
     return result
 
 
-class PPO(Trainer):
-    # TODO: Change the return value of this method to return a TrainerConfig object
+class PPO(Algorithm):
+    # TODO: Change the return value of this method to return a AlgorithmConfig object
     #  instead.
     @classmethod
-    @override(Trainer)
+    @override(Algorithm)
     def get_default_config(cls) -> TrainerConfigDict:
         return PPOConfig().to_dict()
 
-    @override(Trainer)
+    @override(Algorithm)
     def validate_config(self, config: TrainerConfigDict) -> None:
         """Validates the Trainer's config dict.
 
@@ -362,7 +362,7 @@ class PPO(Trainer):
                 "simple_optimizer=True if this doesn't work for you."
             )
 
-    @override(Trainer)
+    @override(Algorithm)
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy

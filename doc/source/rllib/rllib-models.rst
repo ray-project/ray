@@ -270,7 +270,7 @@ Once implemented, your PyTorch model can then be registered and used in place of
     import torch.nn as nn
 
     import ray
-    from ray.rllib.agents import ppo
+    from ray.rllib.algorithms import ppo
     from ray.rllib.models import ModelCatalog
     from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 

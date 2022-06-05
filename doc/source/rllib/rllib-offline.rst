@@ -234,7 +234,7 @@ Input API
 You can configure experience input for an agent using the following options:
 
 .. tip::
-    Plain python config dicts will soon be replaced by :py:class:`~ray.rllib.agents.trainer_config.TrainerConfig`
+    Plain python config dicts will soon be replaced by :py:class:`~ray.rllib.algorithms.trainer_config.TrainerConfig`
     objects, which have the advantage of being type safe, allowing users to set different config settings within
     meaningful sub-categories (e.g. ``my_config.offline_data(input_=[xyz])``), and offer the ability to
     construct a Trainer instance from these config objects (via their ``.build()`` method).
@@ -331,7 +331,7 @@ Output API
 You can configure experience output for an agent using the following options:
 
 .. tip::
-    Plain python config dicts will soon be replaced by :py:class:`~ray.rllib.agents.trainer_config.TrainerConfig`
+    Plain python config dicts will soon be replaced by :py:class:`~ray.rllib.algorithms.trainer_config.TrainerConfig`
     objects, which have the advantage of being type safe, allowing users to set different config settings within
     meaningful sub-categories (e.g. ``my_config.offline_data(input_=[xyz])``), and offer the ability to
     construct a Trainer instance from these config objects (via their ``.build()`` method).

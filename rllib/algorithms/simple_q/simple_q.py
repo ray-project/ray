@@ -5,17 +5,17 @@ Simple Q-Learning
 This module provides a basic implementation of the DQN algorithm without any
 optimizations.
 
-This file defines the distributed Trainer class for the Simple Q algorithm.
+This file defines the distributed Algorithm class for the Simple Q algorithm.
 See `simple_q_[tf|torch]_policy.py` for the definition of the policy loss.
 """
 
 import logging
 from typing import List, Optional, Type, Union
 
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.simple_q.simple_q_tf_policy import SimpleQTFPolicy
 from ray.rllib.algorithms.simple_q.simple_q_torch_policy import SimpleQTorchPolicy
-from ray.rllib.agents.trainer import Trainer
-from ray.rllib.agents.trainer_config import TrainerConfig
+from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.utils.metrics import SYNCH_WORKER_WEIGHTS_TIMER
 from ray.rllib.utils.replay_buffers.utils import (
     validate_buffer_config,
@@ -47,8 +47,8 @@ from ray.rllib.utils.typing import (
 logger = logging.getLogger(__name__)
 
 
-class SimpleQConfig(TrainerConfig):
-    """Defines a configuration class from which a SimpleQ Trainer can be built.
+class SimpleQConfig(AlgorithmConfig):
+    """Defines a configuration class from which a SimpleQ Algorithm can be built.
 
     Example:
         >>> from ray.rllib.algorithms.simple_q import SimpleQConfig
@@ -102,9 +102,9 @@ class SimpleQConfig(TrainerConfig):
         >>>                         .exploration(exploration_config=explore_config)
     """
 
-    def __init__(self, trainer_class=None):
+    def __init__(self, algo_class=None):
         """Initializes a SimpleQConfig instance."""
-        super().__init__(trainer_class=trainer_class or SimpleQ)
+        super().__init__(algo_class=algo_class or SimpleQ)
 
         # Simple Q specific
         # fmt: off
@@ -126,7 +126,7 @@ class SimpleQConfig(TrainerConfig):
         # __sphinx_doc_end__
         # fmt: on
 
-        # Overrides of TrainerConfig defaults
+        # Overrides of AlgorithmConfig defaults
         # `rollouts()`
         self.num_workers = 0
         self.rollout_fragment_length = 4
@@ -161,7 +161,7 @@ class SimpleQConfig(TrainerConfig):
         self.prioritized_replay_beta = DEPRECATED_VALUE
         self.prioritized_replay_eps = DEPRECATED_VALUE
 
-    @override(TrainerConfig)
+    @override(AlgorithmConfig)
     def training(
         self,
         *,
@@ -228,7 +228,7 @@ class SimpleQConfig(TrainerConfig):
             grad_clip: If not None, clip gradients during optimization at this value.
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
@@ -258,13 +258,13 @@ class SimpleQConfig(TrainerConfig):
         return self
 
 
-class SimpleQ(Trainer):
+class SimpleQ(Algorithm):
     @classmethod
-    @override(Trainer)
+    @override(Algorithm)
     def get_default_config(cls) -> TrainerConfigDict:
         return SimpleQConfig().to_dict()
 
-    @override(Trainer)
+    @override(Algorithm)
     def validate_config(self, config: TrainerConfigDict) -> None:
         """Validates the Trainer's config dict.
 
@@ -301,7 +301,7 @@ class SimpleQ(Trainer):
                 "`simple_optimizer=True` if this doesn't work for you."
             )
 
-    @override(Trainer)
+    @override(Algorithm)
     def get_default_policy_class(
         self, config: TrainerConfigDict
     ) -> Optional[Type[Policy]]:
@@ -311,7 +311,7 @@ class SimpleQ(Trainer):
             return SimpleQTFPolicy
 
     @ExperimentalAPI
-    @override(Trainer)
+    @override(Algorithm)
     def training_iteration(self) -> ResultDict:
         """Simple Q training iteration function.
 

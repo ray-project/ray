@@ -25,7 +25,7 @@ class PolicyMap(dict):
 
     Thereby, keeps n policies in memory and - when capacity is reached -
     writes the least recently used to disk. This allows adding 100s of
-    policies to a Trainer for league-based setups w/o running out of memory.
+    policies to a Algorithm for league-based setups w/o running out of memory.
     """
 
     def __init__(
@@ -50,7 +50,7 @@ class PolicyMap(dict):
                 when needed.
             path: The path to store the policy pickle files to. Files
                 will have the name: [policy_id].[worker idx].policy.pkl.
-            policy_config: The Trainer's base config dict.
+            policy_config: The Algorithm's base config dict.
             session_creator: An optional
                 tf1.Session creation callable.
             seed: An optional seed (used to seed tf policies).

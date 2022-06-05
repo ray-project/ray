@@ -12,20 +12,20 @@ from ray.rllib.utils.deprecation import DEPRECATED_VALUE, Deprecated
 
 
 class RNNSACConfig(SACConfig):
-    """Defines a configuration class from which an RNNSACTrainer can be built.
+    """Defines a configuration class from which an RNNSAC can be built.
 
     Example:
         >>> config = RNNSACConfig().training(gamma=0.9, lr=0.01)\
         ...     .resources(num_gpus=0)\
         ...     .rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> # Build a Algorithm object from the config and run 1 training iteration.
         >>> trainer = config.build(env="CartPole-v1")
         >>> trainer.train()
     """
 
-    def __init__(self, trainer_class=None):
-        super().__init__(trainer_class=trainer_class or RNNSAC)
+    def __init__(self, algo_class=None):
+        super().__init__(algo_class=algo_class or RNNSAC)
         # fmt: off
         # __sphinx_doc_begin__
         self.batch_mode = "complete_episodes"
@@ -73,7 +73,7 @@ class RNNSACConfig(SACConfig):
                 state outputs of the immediately preceding sequence).
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         super().training(**kwargs)
         if zero_init_states is not None:

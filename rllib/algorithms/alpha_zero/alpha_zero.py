@@ -1,9 +1,9 @@
 import logging
 from typing import List, Optional, Type, Union
 
-from ray.rllib.agents.callbacks import DefaultCallbacks
-from ray.rllib.agents.trainer import Trainer
-from ray.rllib.agents.trainer_config import TrainerConfig
+from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.replay_ops import (
     SimpleReplayBuffer,
@@ -63,8 +63,8 @@ class AlphaZeroDefaultCallbacks(DefaultCallbacks):
         episode.user_data["initial_state"] = state
 
 
-class AlphaZeroConfig(TrainerConfig):
-    """Defines a configuration class from which an AlphaZero Trainer can be built.
+class AlphaZeroConfig(AlgorithmConfig):
+    """Defines a configuration class from which an AlphaZero Algorithm can be built.
 
     Example:
         >>> from ray.rllib.algorithms.alpha_zero import AlphaZeroConfig
@@ -72,7 +72,7 @@ class AlphaZeroConfig(TrainerConfig):
         ...             .resources(num_gpus=0)\
         ...             .rollouts(num_workers=4)
         >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> # Build a Algorithm object from the config and run 1 training iteration.
         >>> trainer = config.build(env="CartPole-v1")
         >>> trainer.train()
 
@@ -95,9 +95,9 @@ class AlphaZeroConfig(TrainerConfig):
         ... )
     """
 
-    def __init__(self, trainer_class=None):
+    def __init__(self, algo_class=None):
         """Initializes a PPOConfig instance."""
-        super().__init__(trainer_class=trainer_class or AlphaZero)
+        super().__init__(algo_class=algo_class or AlphaZero)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -134,7 +134,7 @@ class AlphaZeroConfig(TrainerConfig):
             "num_init_rewards": 100,
         }
 
-        # Override some of TrainerConfig's default values with AlphaZero-specific
+        # Override some of AlgorithmConfig's default values with AlphaZero-specific
         # values.
         self.framework_str = "torch"
         self.callbacks_class = AlphaZeroDefaultCallbacks
@@ -154,7 +154,7 @@ class AlphaZeroConfig(TrainerConfig):
 
         self.buffer_size = DEPRECATED_VALUE
 
-    @override(TrainerConfig)
+    @override(AlgorithmConfig)
     def training(
         self,
         *,
@@ -220,7 +220,7 @@ class AlphaZeroConfig(TrainerConfig):
                 from: https://arxiv.org/pdf/1807.01672.pdf
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
@@ -271,7 +271,7 @@ class AlphaZeroPolicyWrapperClass(AlphaZeroPolicy):
         model = ModelCatalog.get_model_v2(
             obs_space, action_space, action_space.n, config["model"], "torch"
         )
-        _, env_creator = Trainer._get_env_id_and_creator(config["env"], config)
+        _, env_creator = Algorithm._get_env_id_and_creator(config["env"], config)
         if config["ranked_rewards"]["enable"]:
             # if r2 is enabled, tne env is wrapped to include a rewards buffer
             # used to normalize rewards
@@ -302,9 +302,9 @@ class AlphaZeroPolicyWrapperClass(AlphaZeroPolicy):
         )
 
 
-class AlphaZero(Trainer):
+class AlphaZero(Algorithm):
     @classmethod
-    @override(Trainer)
+    @override(Algorithm)
     def get_default_config(cls) -> TrainerConfigDict:
         return AlphaZeroConfig().to_dict()
 
@@ -314,11 +314,11 @@ class AlphaZero(Trainer):
         super().validate_config(config)
         validate_buffer_config(config)
 
-    @override(Trainer)
+    @override(Algorithm)
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         return AlphaZeroPolicyWrapperClass
 
-    @override(Trainer)
+    @override(Algorithm)
     def training_iteration(self) -> ResultDict:
         """TODO:
 
@@ -374,7 +374,7 @@ class AlphaZero(Trainer):
         return train_results
 
     @staticmethod
-    @override(Trainer)
+    @override(Algorithm)
     def execution_plan(
         workers: WorkerSet, config: TrainerConfigDict, **kwargs
     ) -> LocalIterator[dict]:

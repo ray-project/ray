@@ -41,7 +41,7 @@ def build_slateq_model_and_distribution(
         policy: The policy, which will use the model for optimization.
         obs_space: The policy's observation space.
         action_space: The policy's action space.
-        config: The Trainer's config dict.
+        config: The Algorithm's config dict.
 
     Returns:
         Tuple consisting of 1) Q-model and 2) an action distribution class.

@@ -7,7 +7,7 @@ import unittest
 
 import ray
 from ray import tune
-from ray.rllib.agents.callbacks import DefaultCallbacks
+from ray.rllib.algorithms.callbacks import DefaultCallbacks
 import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.utils.test_utils import check_learning_achieved, framework_iterator
 from ray.rllib.utils.numpy import one_hot

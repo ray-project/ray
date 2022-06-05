@@ -232,7 +232,7 @@ def get_tf_eager_cls_if_necessary(
     Args:
         orig_cls: The original TFPolicy class to get the corresponding tf-eager
             class for.
-        config: The Trainer config dict.
+        config: The Algorithm config dict.
 
     Returns:
         The tf eager policy class corresponding to the given TFPolicy class.

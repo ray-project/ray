@@ -60,7 +60,7 @@ class QMixConfig(SimpleQConfig):
 
     def __init__(self):
         """Initializes a PPOConfig instance."""
-        super().__init__(trainer_class=QMix)
+        super().__init__(algo_class=QMix)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -72,7 +72,7 @@ class QMixConfig(SimpleQConfig):
         self.optim_eps = 0.00001
         self.grad_norm_clipping = 10
 
-        # Override some of TrainerConfig's default values with QMix-specific values.
+        # Override some of AlgorithmConfig's default values with QMix-specific values.
         # .training()
         self.lr = 0.0005
         self.train_batch_size = 32
@@ -166,7 +166,7 @@ class QMixConfig(SimpleQConfig):
                 this value.
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)

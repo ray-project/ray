@@ -38,8 +38,8 @@ class BCConfig(MARWILConfig):
         ... )
     """
 
-    def __init__(self, trainer_class=None):
-        super().__init__(trainer_class=trainer_class or BC)
+    def __init__(self, algo_class=None):
+        super().__init__(algo_class=algo_class or BC)
 
         # fmt: off
         # __sphinx_doc_begin__

@@ -2,7 +2,7 @@
 Deep Q-Networks (DQN, Rainbow, Parametric DQN)
 ==============================================
 
-This file defines the distributed Trainer class for the Deep Q-Networks
+This file defines the distributed Algorithm class for the Deep Q-Networks
 algorithm. See `dqn_[tf|torch]_policy.py` for the definition of the policies.
 
 Detailed documentation:
@@ -54,7 +54,7 @@ logger = logging.getLogger(__name__)
 
 
 class DQNConfig(SimpleQConfig):
-    """Defines a configuration class from which a DQN Trainer can be built.
+    """Defines a configuration class from which a DQN Algorithm can be built.
 
     Example:
         >>> from ray.rllib.algorithms.dqn.dqn import DQNConfig
@@ -116,9 +116,9 @@ class DQNConfig(SimpleQConfig):
         >>>       .exploration(exploration_config=explore_config)
     """
 
-    def __init__(self, trainer_class=None):
+    def __init__(self, algo_class=None):
         """Initializes a DQNConfig instance."""
-        super().__init__(trainer_class=trainer_class or DQN)
+        super().__init__(algo_class=algo_class or DQN)
 
         # DQN specific config settings.
         # fmt: off
@@ -249,7 +249,7 @@ class DQNConfig(SimpleQConfig):
                 zero, there is still a chance of drawing the sample.
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)

@@ -5,7 +5,7 @@ import ray
 import numpy as np
 
 from ray.rllib import Policy
-from ray.rllib.agents.trainer import Trainer
+from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.examples.env.parametric_actions_cartpole import ParametricActionsCartPole
 from ray.rllib.models.modelv2 import restore_original_dimensions
@@ -58,7 +58,7 @@ class RandomParametricPolicy(Policy, ABC):
         pass
 
 
-class RandomParametricTrainer(Trainer):
+class RandomParametricTrainer(Algorithm):
     """Trainer with Policy and config defined above and overriding `training_iteration`.
 
     Overrides the `training_iteration` method, which only runs a (dummy)
@@ -68,7 +68,7 @@ class RandomParametricTrainer(Trainer):
     def get_default_policy_class(self, config):
         return RandomParametricPolicy
 
-    @override(Trainer)
+    @override(Algorithm)
     def training_iteration(self) -> ResultDict:
         # Perform rollouts (only for collecting metrics later).
         synchronous_parallel_sample(worker_set=self.workers)

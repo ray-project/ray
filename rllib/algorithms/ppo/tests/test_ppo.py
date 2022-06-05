@@ -2,7 +2,7 @@ import numpy as np
 import unittest
 
 import ray
-from ray.rllib.agents.callbacks import DefaultCallbacks
+from ray.rllib.algorithms.callbacks import DefaultCallbacks
 import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF2Policy
 from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
@@ -264,7 +264,7 @@ class TestPPO(unittest.TestCase):
         ppo_config = ppo.DEFAULT_CONFIG
         # Expect warning.
         print(f"Accessing learning-rate from legacy config dict: {ppo_config['lr']}")
-        # Build Trainer.
+        # Build Algorithm.
         ppo_trainer = ppo.PPO(config=ppo_config, env="CartPole-v1")
         print(ppo_trainer.train())
 

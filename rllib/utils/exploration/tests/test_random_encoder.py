@@ -5,7 +5,7 @@ import pytest
 import ray
 import ray.rllib.algorithms.ppo as ppo
 import ray.rllib.algorithms.sac as sac
-from ray.rllib.agents.callbacks import RE3UpdateCallbacks
+from ray.rllib.algorithms.callbacks import RE3UpdateCallbacks
 
 
 class TestRE3(unittest.TestCase):

@@ -74,7 +74,7 @@ from ray.util.iter import ParallelIteratorWorker
 if TYPE_CHECKING:
     from ray.rllib.evaluation.episode import Episode
     from ray.rllib.evaluation.observation_function import ObservationFunction
-    from ray.rllib.agents.callbacks import DefaultCallbacks  # noqa
+    from ray.rllib.algorithms.callbacks import DefaultCallbacks  # noqa
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -439,7 +439,7 @@ class RolloutWorker(ParallelIteratorWorker):
         if callbacks:
             self.callbacks: "DefaultCallbacks" = callbacks()
         else:
-            from ray.rllib.agents.callbacks import DefaultCallbacks  # noqa
+            from ray.rllib.algorithms.callbacks import DefaultCallbacks  # noqa
 
             self.callbacks: DefaultCallbacks = DefaultCallbacks()
         self.worker_index: int = worker_index

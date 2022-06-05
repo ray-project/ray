@@ -5,7 +5,7 @@ from numpy import float32
 import ray
 from ray.tune.registry import register_env
 from ray.rllib.env import PettingZooEnv
-from ray.rllib.agents.registry import get_trainer_class
+from ray.rllib.algorithms.registry import get_trainer_class
 
 from pettingzoo.butterfly import pistonball_v6
 from pettingzoo.mpe import simple_spread_v2

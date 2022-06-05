@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 class R2D2Config(DQNConfig):
-    """Defines a configuration class from which a R2D2 Trainer can be built.
+    """Defines a configuration class from which a R2D2 Algorithm can be built.
 
     Example:
         >>> from ray.rllib.algorithms.r2d2.r2d2 import R2D2Config
@@ -74,9 +74,9 @@ class R2D2Config(DQNConfig):
         >>>       .exploration(exploration_config=explore_config)
     """
 
-    def __init__(self, trainer_class=None):
+    def __init__(self, algo_class=None):
         """Initializes a ApexConfig instance."""
-        super().__init__(trainer_class=trainer_class or R2D2)
+        super().__init__(algo_class=algo_class or R2D2)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -155,7 +155,7 @@ class R2D2Config(DQNConfig):
                 used if `use_h_function`=True.
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
@@ -175,7 +175,7 @@ class R2D2Config(DQNConfig):
 class R2D2(DQN):
     """Recurrent Experience Replay in Distrib. Reinforcement Learning (R2D2).
 
-    Trainer defining the distributed R2D2 algorithm.
+    Algorithm defining the distributed R2D2 algorithm.
     See `r2d2_[tf|torch]_policy.py` for the definition of the policies.
 
     [1] Recurrent Experience Replay in Distributed Reinforcement Learning -

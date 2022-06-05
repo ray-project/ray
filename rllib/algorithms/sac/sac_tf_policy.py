@@ -162,7 +162,7 @@ def _get_dist_class(
     Args:
         policy: The policy for which to return the action
             dist class.
-        config: The Trainer's config dict.
+        config: The Algorithm's config dict.
         action_space (gym.spaces.Space): The action space used.
 
     Returns:

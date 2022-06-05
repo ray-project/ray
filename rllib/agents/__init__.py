@@ -1,16 +1,8 @@
-from ray.rllib.agents.callbacks import (
-    DefaultCallbacks,
-    MemoryTrackingCallbacks,
-    MultiCallbacks,
-)
-from ray.rllib.agents.trainer import Trainer, with_common_config
-from ray.rllib.agents.trainer_config import TrainerConfig
+from ray.rllib.algorithms.algorithm import Algorithm, with_common_config
+
+Trainer = Algorithm
 
 __all__ = [
-    "DefaultCallbacks",
-    "MemoryTrackingCallbacks",
-    "MultiCallbacks",
     "Trainer",
-    "TrainerConfig",
     "with_common_config",
 ]

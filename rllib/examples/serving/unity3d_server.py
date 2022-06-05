@@ -31,7 +31,7 @@ import argparse
 import os
 
 import ray
-from ray.rllib.agents.registry import get_trainer_class
+from ray.rllib.algorithms.registry import get_trainer_class
 from ray.rllib.env.policy_server_input import PolicyServerInput
 from ray.rllib.env.wrappers.unity3d_env import Unity3DEnv
 
