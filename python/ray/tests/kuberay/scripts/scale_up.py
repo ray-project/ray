@@ -10,7 +10,8 @@ def main():
     Wait 15 sec for autoscaler scale-up event to get emitted to stdout.
 
     The autoscaler update interval is 5 sec, so it should be enough to wait 5 seconds.
-    Extra ten seconds added to the timeout as a generous buffer against flakiness.
+    An extra ten seconds are added to the timeout as a generous buffer against
+    flakiness.
     """
     ray.autoscaler.sdk.request_resources(num_cpus=2)
 

@@ -425,7 +425,7 @@ def wait_for_stdout(strings_to_match: List[str], timeout_s: int):
                     lambda: all(
                         string in out_stream.getvalue() for string in strings_to_match
                     ),
-                    timeout_ms=timeout_s * 1000,
+                    timeout=timeout_s,
                     retry_interval_ms=1000,
                 )
                 # out_stream has the expected strings
