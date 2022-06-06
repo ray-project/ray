@@ -1,4 +1,5 @@
 import sys
+import time
 import pytest
 
 from python.ray.serve import constants as serve_constants
@@ -8,7 +9,7 @@ from ray import serve
 from ray.serve.drivers import DAGDriver
 from ray.experimental.dag.input_node import InputNode
 from ray.serve.deployment_state import ReplicaState
-from ray._private.test_utils import wait_for_condition
+from ray._private.test_utils import SignalActor, wait_for_condition
 
 
 def get_num_running_replicas(controller, deployment_name):
@@ -55,6 +56,7 @@ def test_autoscaling_0_replica(serve_instance):
 def test_autoscaling_with_chain_nodes(min_replicas, serve_instance):
 
     serve_constants.HANDLE_METRIC_PUSH_INTERVAL_S = 1
+    signal = SignalActor.remote()
 
     autoscaling_config = {
         "metrics_interval_s": 0.1,
@@ -74,6 +76,7 @@ def test_autoscaling_with_chain_nodes(min_replicas, serve_instance):
             self.weight = weight
 
         def forward(self, input):
+            ray.get(signal.wait.remote())
             return input + self.weight
 
     @serve.deployment(
@@ -100,24 +103,40 @@ def test_autoscaling_with_chain_nodes(min_replicas, serve_instance):
         ).bind(output2)
 
     dag_handle = serve.run(serve_dag)
-
-    dag_handle.predict.remote(0)
     controller = serve_instance._controller
 
+    # upscaling
+    [dag_handle.predict.remote(0) for _ in range(10)]
     wait_for_condition(
         lambda: get_num_running_replicas(controller, DAGDriver.name) >= 1
+    )
+    [dag_handle.predict.remote(0) for _ in range(10)]
+    wait_for_condition(
+        lambda: get_num_running_replicas(controller, DAGDriver.name) >= 2
     )
     wait_for_condition(
         lambda: get_num_running_replicas(controller, Model1.name) >= 1, timeout=40
     )
+    wait_for_condition(
+        lambda: get_num_running_replicas(controller, Model1.name) >= 2, timeout=40
+    )
+    signal.send.remote()
+    wait_for_condition(
+        lambda: get_num_running_replicas(controller, Model2.name) >= 1, timeout=40
+    )
 
+    # downscaling
+    wait_for_condition(
+        lambda: get_num_running_replicas(controller, DAGDriver.name) == min_replicas,
+        timeout=60,
+    )
     wait_for_condition(
         lambda: get_num_running_replicas(controller, Model1.name) == min_replicas,
-        timeout=300,
+        timeout=60,
     )
     wait_for_condition(
         lambda: get_num_running_replicas(controller, Model2.name) == min_replicas,
-        timeout=300,
+        timeout=60,
     )
 
 
