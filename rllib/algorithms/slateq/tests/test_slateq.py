@@ -22,7 +22,7 @@ class TestSlateQ(unittest.TestCase):
         ray.shutdown()
 
     def test_slateq_compilation(self):
-        """Test whether a SlateQTrainer can be built with both frameworks."""
+        """Test whether SlateQ can be built with both frameworks."""
         config = (
             slateq.SlateQConfig()
             .environment(env=InterestEvolutionRecSimEnv)

@@ -30,7 +30,7 @@ class TestRE3(unittest.TestCase):
             beta_schedule = "constant"
         elif rl_algorithm == "SAC":
             config = sac.SACConfig().to_dict()
-            trainer_cls = sac.SACTrainer
+            trainer_cls = sac.SAC
             beta_schedule = "linear_decay"
 
         class RE3Callbacks(RE3UpdateCallbacks, config["callbacks"]):

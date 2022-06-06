@@ -375,13 +375,13 @@ In PPO we run ``setup_mixins`` before the loss function is called (i.e., ``befor
 
 **Example 2: Deep Q Networks**
 
-Let's look at how to implement a different family of policies, by looking at the `SimpleQ policy definition <https://github.com/ray-project/ray/blob/master/rllib/algorithms/dqn/simple_q_tf_policy.py>`__:
+Let's look at how to implement a different family of policies, by looking at the `SimpleQ policy definition <https://github.com/ray-project/ray/blob/master/rllib/algorithms/simple_q/simple_q_tf_policy.py>`__:
 
 .. code-block:: python
 
     SimpleQPolicy = build_tf_policy(
         name="SimpleQPolicy",
-        get_default_config=lambda: ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG,
+        get_default_config=lambda: ray.rllib.algorithms.dqn.dqn.DEFAULT_CONFIG,
         make_model=build_q_models,
         action_sampler_fn=build_action_sampler,
         loss_fn=build_q_losses,

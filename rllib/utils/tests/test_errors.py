@@ -46,7 +46,7 @@ class TestErrors(unittest.TestCase):
             self.assertRaisesRegex(
                 EnvError,
                 f"The env string you provided \\('{env}'\\) is",
-                lambda: pg.PGTrainer(config=config, env=env),
+                lambda: pg.PG(config=config, env=env),
             )
 
         # Malformed gym env string (must have v\d at end).
@@ -55,7 +55,7 @@ class TestErrors(unittest.TestCase):
             self.assertRaisesRegex(
                 EnvError,
                 f"The env string you provided \\('{env}'\\) is",
-                lambda: pg.PGTrainer(config=config, env=env),
+                lambda: pg.PG(config=config, env=env),
             )
 
         # Non-existing class in a full-class-path.
@@ -64,7 +64,7 @@ class TestErrors(unittest.TestCase):
             self.assertRaisesRegex(
                 EnvError,
                 f"The env string you provided \\('{env}'\\) is",
-                lambda: pg.PGTrainer(config=config, env=env),
+                lambda: pg.PG(config=config, env=env),
             )
 
         # Non-existing module inside a full-class-path.
@@ -73,7 +73,7 @@ class TestErrors(unittest.TestCase):
             self.assertRaisesRegex(
                 EnvError,
                 f"The env string you provided \\('{env}'\\) is",
-                lambda: pg.PGTrainer(config=config, env=env),
+                lambda: pg.PG(config=config, env=env),
             )
 
 

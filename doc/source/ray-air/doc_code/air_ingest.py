@@ -2,7 +2,7 @@
 
 # __shared_dataset_start__
 import ray
-from ray.ml.utils.check_ingest import DummyTrainer
+from ray.air.utils.check_ingest import DummyTrainer
 from ray.tune.tuner import Tuner, TuneConfig
 
 ray.init(num_cpus=5)
@@ -26,7 +26,7 @@ ray.shutdown()
 # __indep_dataset_start__
 import ray
 from ray import tune
-from ray.ml.utils.check_ingest import DummyTrainer
+from ray.air.utils.check_ingest import DummyTrainer
 from ray.tune.tuner import Tuner, TuneConfig
 
 ray.init(num_cpus=5)
@@ -60,8 +60,8 @@ tuner.fit()
 
 # __check_ingest_1__
 import ray
-from ray.ml.preprocessors import Chain, BatchMapper
-from ray.ml.utils.check_ingest import DummyTrainer
+from ray.air.preprocessors import Chain, BatchMapper
+from ray.air.utils.check_ingest import DummyTrainer
 
 # Generate a synthetic dataset of ~10GiB of float64 data. The dataset is sharded
 # into 100 blocks (parallelism=100).
@@ -87,3 +87,55 @@ trainer = DummyTrainer(
 )
 trainer.fit()
 # __check_ingest_2_end__
+
+# __config_1__
+import ray
+from ray.air.train.data_parallel_trainer import DataParallelTrainer
+from ray.air.config import DatasetConfig
+
+train_ds = ray.data.range_tensor(1000)
+valid_ds = ray.data.range_tensor(100)
+test_ds = ray.data.range_tensor(100)
+
+my_trainer = DataParallelTrainer(
+    lambda: None,  # No-op training loop.
+    scaling_config={"num_workers": 2},
+    datasets={
+        "train": train_ds,
+        "valid": valid_ds,
+        "test": test_ds,
+    },
+    dataset_config={
+        "valid": DatasetConfig(split=True),
+        "test": DatasetConfig(split=True),
+    },
+)
+print(my_trainer.get_dataset_config())
+# -> {'train': DatasetConfig(fit=True, split=True, ...),
+#     'valid': DatasetConfig(fit=False, split=True, ...),
+#     'test': DatasetConfig(fit=False, split=True, ...), ...}
+# __config_1_end__
+
+# __config_2__
+import ray
+from ray.air.train.data_parallel_trainer import DataParallelTrainer
+from ray.air.config import DatasetConfig
+
+train_ds = ray.data.range_tensor(1000)
+side_ds = ray.data.range_tensor(10)
+
+my_trainer = DataParallelTrainer(
+    lambda: None,  # No-op training loop.
+    scaling_config={"num_workers": 2},
+    datasets={
+        "train": train_ds,
+        "side": side_ds,
+    },
+    dataset_config={
+        "side": DatasetConfig(transform=False),
+    },
+)
+print(my_trainer.get_dataset_config())
+# -> {'train': DatasetConfig(fit=True, split=True, ...),
+#     'side': DatasetConfig(fit=False, split=False, transform=False, ...), ...}
+# __config_2_end__

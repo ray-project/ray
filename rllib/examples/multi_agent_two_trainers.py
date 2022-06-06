@@ -13,7 +13,7 @@ import gym
 import os
 
 import ray
-from ray.rllib.algorithms.dqn import DQNTrainer, DQNTFPolicy, DQNTorchPolicy
+from ray.rllib.algorithms.dqn import DQN, DQNTFPolicy, DQNTorchPolicy
 from ray.rllib.algorithms.ppo import (
     PPO,
     PPOTF1Policy,
@@ -122,7 +122,7 @@ if __name__ == "__main__":
         },
     )
 
-    dqn_trainer = DQNTrainer(
+    dqn_trainer = DQN(
         env="multi_agent_cartpole",
         config={
             "multiagent": {

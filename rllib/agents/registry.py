@@ -20,25 +20,25 @@ def _import_a3c():
 def _import_alpha_star():
     import ray.rllib.algorithms.alpha_star as alpha_star
 
-    return alpha_star.AlphaStarTrainer, alpha_star.AlphaStarConfig().to_dict()
+    return alpha_star.AlphaStar, alpha_star.AlphaStarConfig().to_dict()
 
 
 def _import_alpha_zero():
     import ray.rllib.algorithms.alpha_zero as alpha_zero
 
-    return alpha_zero.AlphaZeroTrainer, alpha_zero.AlphaZeroConfig().to_dict()
+    return alpha_zero.AlphaZero, alpha_zero.AlphaZeroConfig().to_dict()
 
 
 def _import_apex():
-    from ray.rllib.agents import dqn
+    import ray.rllib.algorithms.apex_dqn as apex_dqn
 
-    return dqn.ApexTrainer, dqn.apex.ApexConfig().to_dict()
+    return apex_dqn.ApexDQN, apex_dqn.ApexDQNConfig().to_dict()
 
 
 def _import_apex_ddpg():
-    from ray.rllib.algorithms import ddpg
+    import ray.rllib.algorithms.apex_ddpg as apex_ddpg
 
-    return ddpg.ApexDDPGTrainer, ddpg.apex.ApexDDPGConfig().to_dict()
+    return apex_ddpg.ApexDDPG, apex_ddpg.ApexDDPGConfig().to_dict()
 
 
 def _import_appo():
@@ -48,39 +48,39 @@ def _import_appo():
 
 
 def _import_ars():
-    from ray.rllib.algorithms import ars
+    import ray.rllib.algorithms.ars as ars
 
-    return ars.ARSTrainer, ars.ARSConfig().to_dict()
+    return ars.ARS, ars.ARSConfig().to_dict()
 
 
 def _import_bandit_lints():
-    from ray.rllib.algorithms.bandit.bandit import BanditLinTSTrainer
+    from ray.rllib.algorithms.bandit.bandit import BanditLinTS
 
-    return BanditLinTSTrainer, BanditLinTSTrainer.get_default_config()
+    return BanditLinTS, BanditLinTS.get_default_config()
 
 
 def _import_bandit_linucb():
-    from ray.rllib.algorithms.bandit.bandit import BanditLinUCBTrainer
+    from ray.rllib.algorithms.bandit.bandit import BanditLinUCB
 
-    return BanditLinUCBTrainer, BanditLinUCBTrainer.get_default_config()
+    return BanditLinUCB, BanditLinUCB.get_default_config()
 
 
 def _import_bc():
-    from ray.rllib.algorithms import marwil
+    import ray.rllib.algorithms.bc as bc
 
-    return marwil.BCTrainer, marwil.BCConfig().to_dict()
+    return bc.BC, bc.BCConfig().to_dict()
 
 
 def _import_cql():
-    from ray.rllib.algorithms import cql
+    import ray.rllib.algorithms.cql as cql
 
-    return cql.CQLTrainer, cql.CQLConfig().to_dict()
+    return cql.CQL, cql.CQLConfig().to_dict()
 
 
 def _import_ddpg():
-    from ray.rllib.algorithms import ddpg
+    import ray.rllib.algorithms.ddpg as ddpg
 
-    return ddpg.DDPGTrainer, ddpg.DDPGConfig().to_dict()
+    return ddpg.DDPG, ddpg.DDPGConfig().to_dict()
 
 
 def _import_ddppo():
@@ -90,21 +90,21 @@ def _import_ddppo():
 
 
 def _import_dqn():
-    from ray.rllib.algorithms import dqn
+    import ray.rllib.algorithms.dqn as dqn
 
-    return dqn.DQNTrainer, dqn.DQNConfig().to_dict()
+    return dqn.DQN, dqn.DQNConfig().to_dict()
 
 
 def _import_dreamer():
     from ray.rllib.algorithms import dreamer
 
-    return dreamer.DREAMERTrainer, dreamer.DREAMERConfig().to_dict()
+    return dreamer.Dreamer, dreamer.DreamerConfig().to_dict()
 
 
 def _import_es():
-    from ray.rllib.algorithms import es
+    import ray.rllib.algorithms.es as es
 
-    return es.ESTrainer, es.ESConfig().to_dict()
+    return es.ES, es.ESConfig().to_dict()
 
 
 def _import_impala():
@@ -116,31 +116,31 @@ def _import_impala():
 def _import_maddpg():
     import ray.rllib.algorithms.maddpg as maddpg
 
-    return maddpg.MADDPGTrainer, maddpg.MADDPGConfig().to_dict()
+    return maddpg.MADDPG, maddpg.MADDPGConfig().to_dict()
 
 
 def _import_maml():
-    from ray.rllib.algorithms import maml
+    import ray.rllib.algorithms.maml as maml
 
-    return maml.MAMLTrainer, maml.MAMLConfig().to_dict()
+    return maml.MAML, maml.MAMLConfig().to_dict()
 
 
 def _import_marwil():
-    from ray.rllib.algorithms import marwil
+    import ray.rllib.algorithms.marwil as marwil
 
-    return marwil.MARWILTrainer, marwil.MARWILConfig().to_dict()
+    return marwil.MARWIL, marwil.MARWILConfig().to_dict()
 
 
 def _import_mbmpo():
-    from ray.rllib.algorithms import mbmpo
+    import ray.rllib.algorithms.mbmpo as mbmpo
 
-    return mbmpo.MBMPOTrainer, mbmpo.MBMPOConfig().to_dict()
+    return mbmpo.MBMPO, mbmpo.MBMPOConfig().to_dict()
 
 
 def _import_pg():
-    from ray.rllib.algorithms import pg
+    import ray.rllib.algorithms.pg as pg
 
-    return pg.PGTrainer, pg.PGConfig().to_dict()
+    return pg.PG, pg.PGConfig().to_dict()
 
 
 def _import_ppo():
@@ -150,53 +150,51 @@ def _import_ppo():
 
 
 def _import_qmix():
-    from ray.rllib.algorithms import qmix
+    import ray.rllib.algorithms.qmix as qmix
 
-    return qmix.QMixTrainer, qmix.QMixConfig().to_dict()
+    return qmix.QMix, qmix.QMixConfig().to_dict()
 
 
 def _import_r2d2():
-    from ray.rllib.agents import dqn
+    import ray.rllib.algorithms.r2d2 as r2d2
 
-    return dqn.R2D2Trainer, dqn.R2D2Config().to_dict()
+    return r2d2.R2D2, r2d2.R2D2Config().to_dict()
 
 
 def _import_sac():
-    from ray.rllib.algorithms import sac
+    import ray.rllib.algorithms.sac as sac
 
-    return sac.SACTrainer, sac.SACConfig().to_dict()
+    return sac.SAC, sac.SACConfig().to_dict()
 
 
 def _import_rnnsac():
     from ray.rllib.algorithms import sac
 
-    return sac.RNNSACTrainer, sac.RNNSACConfig().to_dict()
+    return sac.RNNSAC, sac.RNNSACConfig().to_dict()
 
 
 def _import_simple_q():
-    from ray.rllib.algorithms import dqn
+    import ray.rllib.algorithms.simple_q as simple_q
 
-    return dqn.SimpleQTrainer, dqn.simple_q.SimpleQConfig().to_dict()
+    return simple_q.SimpleQ, simple_q.SimpleQConfig().to_dict()
 
 
 def _import_slate_q():
-    from ray.rllib.algorithms import slateq
+    import ray.rllib.algorithms.slateq as slateq
 
-    return slateq.SlateQTrainer, slateq.SlateQConfig().to_dict()
+    return slateq.SlateQ, slateq.SlateQConfig().to_dict()
 
 
 def _import_td3():
-    from ray.rllib.algorithms import ddpg
+    import ray.rllib.algorithms.td3 as td3
 
-    return ddpg.TD3Trainer, ddpg.td3.TD3Config().to_dict()
+    return td3.TD3, td3.TD3Config().to_dict()
 
 
 ALGORITHMS = {
     "A2C": _import_a2c,
     "A3C": _import_a3c,
-    "AlphaStar": _import_alpha_star,
     "AlphaZero": _import_alpha_zero,
-    "APPO": _import_appo,
     "APEX": _import_apex,
     "APEX_DDPG": _import_apex_ddpg,
     "ARS": _import_ars,
@@ -208,8 +206,10 @@ ALGORITHMS = {
     "DDPG": _import_ddpg,
     "DDPPO": _import_ddppo,
     "DQN": _import_dqn,
-    "DREAMER": _import_dreamer,
+    "Dreamer": _import_dreamer,
     "IMPALA": _import_impala,
+    "APPO": _import_appo,
+    "AlphaStar": _import_alpha_star,
     "MADDPG": _import_maddpg,
     "MAML": _import_maml,
     "MARWIL": _import_marwil,
