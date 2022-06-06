@@ -40,7 +40,7 @@ if __name__ == "__main__":
     }
 
     num_iterations = 2000
-    trainer = sac.SACTrainer(config=config)
+    trainer = sac.SAC(config=config)
     for i in range(num_iterations):
         result = trainer.train()
         print(result)

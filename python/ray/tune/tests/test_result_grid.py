@@ -3,7 +3,7 @@ import os
 import pytest
 
 from ray import tune
-from ray.ml.checkpoint import Checkpoint
+from ray.air.checkpoint import Checkpoint
 from ray.tune.result_grid import ResultGrid
 
 
