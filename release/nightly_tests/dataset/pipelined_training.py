@@ -250,6 +250,7 @@ def create_dataset(
                 return lambda: ray.data.read_parquet(list(split))
 
         pipe = DatasetPipeline.from_iterable(Windower())
+        pipe = pipe.repartition(num_blocks=2000)
         split_indices = [
             i * num_rows // num_windows // num_workers for i in range(1, num_workers)
         ]
@@ -260,6 +261,7 @@ def create_dataset(
         if num_windows > 1:
             window_size = max(ds.num_blocks() // num_windows, 1)
             ds = ds.window(blocks_per_window=window_size)
+        ds = ds.repartition(num_blocks=2000)
         pipe = ds.repeat(epochs)
         pipe = pipe.random_shuffle_each_window()
         pipe_shards = pipe.split(num_workers, equal=True)
