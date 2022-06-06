@@ -37,7 +37,11 @@ class PlacementGroup:
     def empty() -> "PlacementGroup":
         return PlacementGroup(PlacementGroupID.nil())
 
-    def __init__(self, id: "ray._raylet.PlacementGroupID", bundle_cache: Optional[List[Dict]] = None):
+    def __init__(
+        self,
+        id: "ray._raylet.PlacementGroupID",
+        bundle_cache: Optional[List[Dict]] = None,
+    ):
         self.id = id
         self.bundle_cache = bundle_cache
 
