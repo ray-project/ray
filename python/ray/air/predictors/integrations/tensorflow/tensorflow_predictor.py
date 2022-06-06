@@ -57,7 +57,7 @@ class TensorflowPredictor(Predictor):
             preprocessor=preprocessor,
         )
 
-    def predict_pandas(self, data: pd.DataFrame, **kwargs) -> pd.DataFrame:
+    def _predict_pandas(self, data: pd.DataFrame, **kwargs) -> pd.DataFrame:
         pass
 
     def predict(

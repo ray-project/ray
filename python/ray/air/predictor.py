@@ -70,7 +70,7 @@ class Predictor(abc.ABC):
 
     @DeveloperAPI
     @abc.abstractmethod
-    def predict_pandas(self, data: pd.DataFrame, **kwargs) -> pd.DataFrame:
+    def _predict_pandas(self, data: pd.DataFrame, **kwargs) -> pd.DataFrame:
         """Perform inference on a Pandas DataFrame.
 
         All predictors are expected to implement this method.

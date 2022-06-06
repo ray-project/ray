@@ -79,7 +79,7 @@ class TorchPredictor(Predictor):
             )
         return features_tensor
 
-    def predict_pandas(self, data: pd.DataFrame, **kwargs) -> pd.DataFrame:
+    def _predict_pandas(self, data: pd.DataFrame, **kwargs) -> pd.DataFrame:
         pass
 
     def _predict(self, tensor: torch.Tensor) -> pd.DataFrame:
