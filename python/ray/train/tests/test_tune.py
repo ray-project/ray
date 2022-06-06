@@ -14,6 +14,9 @@ from ray.train.examples.tensorflow_mnist_example import (
 from ray.train.examples.train_fashion_mnist_example import (
     train_func as fashion_mnist_train_func,
 )
+from ray.train.examples.jax_mnist_example import (
+    train_func as jax_mnist_train_func,
+)
 from ray.train.worker_group import WorkerGroup
 
 
@@ -95,6 +98,29 @@ def tune_tensorflow_mnist(num_workers, use_gpu, num_samples):
 def test_tune_tensorflow_mnist(ray_start_8_cpus):
     tune_tensorflow_mnist(num_workers=2, use_gpu=False, num_samples=2)
 
+
+def tune_jax_mnist(num_workers, use_gpu, num_samples):
+    epochs = 2
+    trainer = Trainer("jax", num_workers=num_workers, use_gpu=use_gpu)
+    MnistTrainable = trainer.to_tune_trainable(jax_mnist_train_func)
+
+    analysis = tune.run(
+        MnistTrainable,
+        num_samples=num_samples,
+        config={
+            "learning_rate": tune.loguniform(1e-4, 1e-1),
+            "batch_size": tune.choice([32, 64, 128]),
+            "num_epochs": epochs,
+        },
+    )
+
+    # Check that loss decreases in each trial.
+    for path, df in analysis.trial_dataframes.items():
+        assert df.loc[1, "loss"] < df.loc[0, "loss"]
+
+
+def test_tune_jax_mnist(ray_start_8_cpus):
+    tune_jax_mnist(num_workers=2, use_gpu=False, num_samples=2)
 
 def test_tune_error(ray_start_2_cpus):
     def train_func(config):
