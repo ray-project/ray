@@ -19,12 +19,11 @@
 #include <filesystem>
 #include <optional>
 #include <string>
-#include <vector>
 #include <utility>
+#include <vector>
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
-
 
 namespace ray {
 /// Monitor the filesystem capacity ray is using.
@@ -51,7 +50,8 @@ class FileSystemMonitor {
  private:
   bool CheckIfAnyPathOverCapacity() const;
   // For testing purpose.
-  bool OverCapacityImpl(const std::string& path, const std::optional<std::filesystem::space_info> &info) const;
+  bool OverCapacityImpl(const std::string &path,
+                        const std::optional<std::filesystem::space_info> &info) const;
 
  private:
   FRIEND_TEST(FileSystemTest, TestOverCapacity);
@@ -63,6 +63,5 @@ class FileSystemMonitor {
   PeriodicalRunner runner_;
 };
 
-
-std::vector<std::string> ParseSpillingPaths(const std::string& spilling_config);
+std::vector<std::string> ParseSpillingPaths(const std::string &spilling_config);
 }  // namespace ray

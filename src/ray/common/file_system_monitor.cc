@@ -13,12 +13,11 @@
 // limitations under the License.
 
 #include "ray/common/file_system_monitor.h"
-#include "ray/util/logging.h"
 
 #include "nlohmann/json.hpp"
+#include "ray/util/logging.h"
 
 using json = nlohmann::json;
-
 
 namespace ray {
 
@@ -39,7 +38,6 @@ FileSystemMonitor::FileSystemMonitor(std::vector<std::string> paths,
                             monitor_interval_ms,
                             "FileSystemMonitor.CheckIfAnyPathOverCapacity");
 }
-
 
 FileSystemMonitor::~FileSystemMonitor() {
   io_context_.stop();
@@ -70,13 +68,13 @@ bool FileSystemMonitor::CheckIfAnyPathOverCapacity() const {
   if (capacity_threshold_ == 0) {
     return true;
   }
-  
+
   if (capacity_threshold_ >= 1) {
     return false;
   }
 
   for (auto &path : paths_) {
-    if(OverCapacityImpl(path, Space(path))) {
+    if (OverCapacityImpl(path, Space(path))) {
       return true;
     }
   }
@@ -84,7 +82,8 @@ bool FileSystemMonitor::CheckIfAnyPathOverCapacity() const {
 }
 
 bool FileSystemMonitor::OverCapacityImpl(
-    const std::string& path, const std::optional<std::filesystem::space_info> &space_info) const {
+    const std::string &path,
+    const std::optional<std::filesystem::space_info> &space_info) const {
   if (!space_info.has_value()) {
     return false;
   }
@@ -103,7 +102,7 @@ bool FileSystemMonitor::OverCapacityImpl(
   return true;
 }
 
-std::vector<std::string> ParseSpillingPaths(const std::string& spilling_config) {
+std::vector<std::string> ParseSpillingPaths(const std::string &spilling_config) {
   std::vector<std::string> spilling_paths;
 
   try {
@@ -124,8 +123,7 @@ std::vector<std::string> ParseSpillingPaths(const std::string& spilling_config) 
     }
   } catch (json::exception &ex) {
     RAY_LOG(ERROR) << "Failed to load spilling config: " << ex.what()
-                   << " The config string is: "
-                   << spilling_config;
+                   << " The config string is: " << spilling_config;
   }
   return spilling_paths;
 }
