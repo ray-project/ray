@@ -463,8 +463,8 @@ class Trial:
             )
         if log_once("logdir_setter"):
             logger.warning(
-                f"Deprecated. In future versions only the relative logdir "
-                f"will be used and calling logdir will raise an error."
+                "Deprecated. In future versions only the relative logdir "
+                "will be used and calling logdir will raise an error."
             )
         self.relative_logdir = relative_logdir
 
@@ -843,7 +843,8 @@ class Trial:
         if state["status"] == Trial.RUNNING:
             state["status"] = Trial.PENDING
         for key in self._nonjson_fields:
-            state[key] = cloudpickle.loads(hex_to_binary(state[key]))
+            if key in state:
+                state[key] = cloudpickle.loads(hex_to_binary(state[key]))
 
         # Ensure that stub doesn't get overriden
         stub = state.pop("stub", True)
