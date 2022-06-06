@@ -50,7 +50,7 @@ from ray.tune.utils.util import (
     get_checkpoint_from_remote_node,
     delete_external_checkpoint,
 )
-from ray.util.annotations import Deprecated, PublicAPI
+from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
 
@@ -520,11 +520,11 @@ class Trainable:
         `REMOTE_CHECKPOINT_BUCKET/exp/MyTrainable_abc`
 
         Args:
-            checkpoint_path (str): Path to restore checkpoint from. If this
+            checkpoint_path: Path to restore checkpoint from. If this
                 path does not exist on the local node, it will be fetched
                 from external (cloud) storage if available, or restored
                 from a remote node.
-            checkpoint_node_ip (Optional[str]): If given, try to restore
+            checkpoint_node_ip: If given, try to restore
                 checkpoint from this node if it doesn't exist locally or
                 on cloud storage.
 
@@ -1045,17 +1045,3 @@ class Trainable:
 
     def _implements_method(self, key):
         return hasattr(self, key) and callable(getattr(self, key))
-
-
-@Deprecated
-class DistributedTrainable(Trainable):
-    """Common Trainable class for distributed training."""
-
-    def __init__(self, *args, **kwargs):
-        raise DeprecationWarning(
-            "Ray Tune's `DistributedTrainableCreator` has been deprecated as of Ray "
-            "2.0, and will be replaced by Ray AI Runtime (Ray AIR). Ray AIR ("
-            "https://docs.ray.io/en/latest/ray-air/getting-started.html) will "
-            "provide greater functionality than `DistributedTrainableCreator`, "
-            "and with a more flexible and easy-to-use API.",
-        )

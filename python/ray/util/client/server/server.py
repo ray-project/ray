@@ -103,7 +103,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         """Construct a raylet service
 
         Args:
-           ray_connect_handler (Callable): Function to connect to ray cluster
+           ray_connect_handler: Function to connect to ray cluster
         """
         # Stores client_id -> (ref_id -> ObjectRef)
         self.object_refs: Dict[str, Dict[bytes, ray.ObjectRef]] = defaultdict(dict)
@@ -236,7 +236,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 ctx.capture_client_tasks = (
                     rtc.should_capture_child_tasks_in_placement_group
                 )
-                ctx.runtime_env = rtc.get_runtime_env_string()
+                ctx.runtime_env = rtc._get_runtime_env_string()
             resp.runtime_context.CopyFrom(ctx)
         else:
             with disable_client_hook():

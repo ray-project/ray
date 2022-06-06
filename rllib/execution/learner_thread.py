@@ -4,7 +4,7 @@ import threading
 from typing import Dict, Optional
 
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
-from ray.rllib.execution.buffers.minibatch_buffer import MinibatchBuffer
+from ray.rllib.execution.minibatch_buffer import MinibatchBuffer
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder, LEARNER_INFO
 from ray.rllib.utils.timer import TimerStat
@@ -34,14 +34,14 @@ class LearnerThread(threading.Thread):
         """Initialize the learner thread.
 
         Args:
-            local_worker (RolloutWorker): process local rollout worker holding
+            local_worker: process local rollout worker holding
                 policies this thread will call learn_on_batch() on
-            minibatch_buffer_size (int): max number of train batches to store
+            minibatch_buffer_size: max number of train batches to store
                 in the minibatching buffer
-            num_sgd_iter (int): number of passes to learn on per train batch
-            learner_queue_size (int): max size of queue of inbound
+            num_sgd_iter: number of passes to learn on per train batch
+            learner_queue_size: max size of queue of inbound
                 train batches to this thread
-            learner_queue_timeout (int): raise an exception if the queue has
+            learner_queue_timeout: raise an exception if the queue has
                 been empty for this long in seconds
         """
         threading.Thread.__init__(self)
@@ -93,7 +93,8 @@ class LearnerThread(threading.Thread):
             self.weights_updated = True
 
         self.num_steps += 1
-        self.outqueue.put((batch.count, self.learner_info))
+        # Put tuple: env-steps, agent-steps, and learner info into the queue.
+        self.outqueue.put((batch.count, batch.agent_steps(), self.learner_info))
         self.learner_queue_size.push(self.inqueue.qsize())
 
     def add_learner_metrics(self, result: Dict, overwrite_learner_info=True) -> Dict:

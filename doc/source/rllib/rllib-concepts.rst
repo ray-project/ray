@@ -9,8 +9,8 @@ This page describes the internal concepts used to implement algorithms in RLlib.
 You might find this useful if modifying or adding new algorithms to RLlib.
 
 Policy classes encapsulate the core numerical components of RL algorithms.
-This typically includes the policy model that determines actions to take, a trajectory postprocessor for experiences, and a loss function to improve the policy given postprocessed experiences.
-For a simple example, see the policy gradients `policy definition <https://github.com/ray-project/ray/blob/master/rllib/agents/pg/pg_tf_policy.py>`__.
+This typically includes the policy model that determines actions to take, a trajectory postprocessor for experiences, and a loss function to improve the policy given post-processed experiences.
+For a simple example, see the policy gradients `policy definition <https://github.com/ray-project/ray/blob/master/rllib/algorithms/pg/pg_tf_policy.py>`__.
 
 Most interaction with deep learning frameworks is isolated to the `Policy interface <https://github.com/ray-project/ray/blob/master/rllib/policy/policy.py>`__, allowing RLlib to support multiple frameworks.
 To simplify the definition of policies, RLlib includes `Tensorflow <#building-policies-in-tensorflow>`__ and `PyTorch-specific <#building-policies-in-pytorch>`__ templates.
@@ -375,7 +375,7 @@ In PPO we run ``setup_mixins`` before the loss function is called (i.e., ``befor
 
 **Example 2: Deep Q Networks**
 
-Let's look at how to implement a different family of policies, by looking at the `SimpleQ policy definition <https://github.com/ray-project/ray/blob/master/rllib/agents/dqn/simple_q_tf_policy.py>`__:
+Let's look at how to implement a different family of policies, by looking at the `SimpleQ policy definition <https://github.com/ray-project/ray/blob/master/rllib/algorithms/dqn/simple_q_tf_policy.py>`__:
 
 .. code-block:: python
 
@@ -482,13 +482,13 @@ Defining a policy in PyTorch is quite similar to that for TensorFlow (and the pr
         name="MyTorchPolicy",
         loss_fn=policy_gradient_loss)
 
-Now, building on the TF examples above, let's look at how the `A3C torch policy <https://github.com/ray-project/ray/blob/master/rllib/agents/a3c/a3c_torch_policy.py>`__ is defined:
+Now, building on the TF examples above, let's look at how the `A3C torch policy <https://github.com/ray-project/ray/blob/master/rllib/algorithms/a3c/a3c_torch_policy.py>`__ is defined:
 
 .. code-block:: python
 
     A3CTorchPolicy = build_torch_policy(
         name="A3CTorchPolicy",
-        get_default_config=lambda: ray.rllib.agents.a3c.a3c.DEFAULT_CONFIG,
+        get_default_config=lambda: ray.rllib.algorithms.a3c.a3c.DEFAULT_CONFIG,
         loss_fn=actor_critic_loss,
         stats_fn=loss_and_entropy_stats,
         postprocess_fn=add_advantages,
@@ -551,7 +551,7 @@ Now, building on the TF examples above, let's look at how the `A3C torch policy 
                 _, _, vf, _ = self.model({"obs": obs}, [])
                 return vf.detach().cpu().numpy().squeeze()
 
-You can find the full policy definition in `a3c_torch_policy.py <https://github.com/ray-project/ray/blob/master/rllib/agents/a3c/a3c_torch_policy.py>`__.
+You can find the full policy definition in `a3c_torch_policy.py <https://github.com/ray-project/ray/blob/master/rllib/algorithms/a3c/a3c_torch_policy.py>`__.
 
 In summary, the main differences between the PyTorch and TensorFlow policy builder functions is that the TF loss and stats functions are built symbolically when the policy is initialized, whereas for PyTorch (or TensorFlow Eager) these functions are called imperatively each time they are used.
 

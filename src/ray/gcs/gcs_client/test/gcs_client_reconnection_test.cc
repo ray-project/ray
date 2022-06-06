@@ -28,6 +28,7 @@
 
 using namespace std::chrono_literals;
 using namespace ray;
+using namespace std::chrono;
 
 class GcsClientReconnectionTest : public ::testing::Test {
  public:
@@ -47,7 +48,7 @@ class GcsClientReconnectionTest : public ::testing::Test {
     });
 
     // Wait until server starts listening.
-    while (!gcs_server_->IsStarted()) {
+    while (!gcs_server_->IsStarted() || !CheckHealth()) {
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
   }
@@ -61,6 +62,25 @@ class GcsClientReconnectionTest : public ::testing::Test {
     server_io_service_thread_->join();
     gcs_server_->Stop();
     gcs_server_.reset();
+  }
+
+  bool CheckHealth() {
+    auto channel =
+        grpc::CreateChannel(absl::StrCat("127.0.0.1:", config_.grpc_server_port),
+                            grpc::InsecureChannelCredentials());
+    std::unique_ptr<rpc::HeartbeatInfoGcsService::Stub> stub =
+        rpc::HeartbeatInfoGcsService::NewStub(std::move(channel));
+    grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() + 1s);
+    const rpc::CheckAliveRequest request;
+    rpc::CheckAliveReply reply;
+    auto status = stub->CheckAlive(&context, request, &reply);
+    if (!status.ok()) {
+      RAY_LOG(WARNING) << "Unable to reach GCS: " << status.error_code() << " "
+                       << status.error_message();
+      return false;
+    }
+    return true;
   }
 
   gcs::GcsClient *CreateGCSClient() {
@@ -89,14 +109,14 @@ class GcsClientReconnectionTest : public ::testing::Test {
     gcs_client_.reset();
   }
 
-  bool WaitUntil(std::function<bool()> predicate, std::chrono::duration<int64_t> time_s) {
-    using namespace std::chrono;
+  bool WaitUntil(std::function<bool()> predicate, std::chrono::nanoseconds timeout) {
+    RAY_LOG(INFO) << "Waiting for " << timeout.count();
     auto start = steady_clock::now();
-    while (steady_clock::now() - start <= time_s) {
+    while (steady_clock::now() - start <= timeout) {
       if (predicate()) {
         return true;
       }
-      std::this_thread::sleep_for(10ms);
+      std::this_thread::sleep_for(100ms);
     }
     return false;
   }
@@ -199,7 +219,8 @@ TEST_F(GcsClientReconnectionTest, ReconnectionBackoff) {
 {
   "gcs_rpc_server_reconnect_timeout_s": 60,
   "gcs_storage": "redis",
-  "gcs_grpc_initial_reconnect_backoff_ms": 5000
+  "gcs_grpc_initial_reconnect_backoff_ms": 2000,
+  "gcs_grpc_max_reconnect_backoff_ms": 2000
 }
   )");
   StartGCS();
@@ -228,15 +249,19 @@ TEST_F(GcsClientReconnectionTest, ReconnectionBackoff) {
       },
       1s));
 
+  auto now = std::chrono::steady_clock::now();
   StartGCS();
 
   // For 2s, there is no reconnection
+  auto remaining = 1s - (std::chrono::steady_clock::now() - now);
+  remaining = remaining < 0s ? 0s : remaining;
+
   ASSERT_FALSE(WaitUntil(
       [channel]() {
         auto status = channel->GetState(false);
         return status != GRPC_CHANNEL_TRANSIENT_FAILURE;
       },
-      2s));
+      remaining));
 
   // Then there is reconnection
   ASSERT_TRUE(WaitUntil(
@@ -244,7 +269,7 @@ TEST_F(GcsClientReconnectionTest, ReconnectionBackoff) {
         auto status = channel->GetState(false);
         return status != GRPC_CHANNEL_TRANSIENT_FAILURE;
       },
-      5s));
+      4s));
 
   // Eventually it should be ready.
   ASSERT_FALSE(WaitUntil(
@@ -298,7 +323,7 @@ TEST_F(GcsClientReconnectionTest, QueueingAndBlocking) {
 
   // Resume GCS server and it should unblock
   StartGCS();
-  ASSERT_EQ(std::future_status::ready, f3.wait_for(2s));
+  ASSERT_EQ(std::future_status::ready, f3.wait_for(5s));
 }
 
 int main(int argc, char **argv) {

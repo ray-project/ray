@@ -1,5 +1,8 @@
+import os
 import urllib.parse
 from typing import Optional, Tuple
+
+from ray.util.ml_utils.filelock import TempFileLock
 
 try:
     import fsspec
@@ -11,7 +14,7 @@ try:
     import pyarrow
     import pyarrow.fs
 
-    # Todo(krfricke): Remove this once gcsfs > 2022.3.0 is released
+    # TODO(krfricke): Remove this once gcsfs > 2022.3.0 is released
     # (and make sure to pin)
     class _CustomGCSHandler(pyarrow.fs.FSSpecHandler):
         """Custom FSSpecHandler that avoids a bug in gcsfs <= 2022.3.0."""
@@ -145,7 +148,7 @@ def delete_at_uri(uri: str):
         logger.warning(f"Caught exception when clearing URI `{uri}`: {e}")
 
 
-def download_from_uri(uri: str, local_path: str):
+def download_from_uri(uri: str, local_path: str, filelock: bool = True):
     _assert_pyarrow_installed()
 
     fs, bucket_path = get_fs_and_path(uri)
@@ -156,7 +159,11 @@ def download_from_uri(uri: str, local_path: str):
             f"Hint: {fs_hint(uri)}"
         )
 
-    pyarrow.fs.copy_files(bucket_path, local_path, source_filesystem=fs)
+    if filelock:
+        with TempFileLock(f"{os.path.normpath(local_path)}.lock"):
+            pyarrow.fs.copy_files(bucket_path, local_path, source_filesystem=fs)
+    else:
+        pyarrow.fs.copy_files(bucket_path, local_path, source_filesystem=fs)
 
 
 def upload_to_uri(local_path: str, uri: str):

@@ -196,7 +196,9 @@ class DataParallelTrainer(Trainer):
             def __init__(self, train_loop_per_worker, my_backend_config:
                 MyBackendConfig, **kwargs):
 
-                super().__init__(train_loop_per_worker, my_backend_config, **kwargs)
+                super().__init__(
+                    train_loop_per_worker,
+                    backend_config=my_backend_config, **kwargs)
 
     Args:
         train_loop_per_worker: The training function to execute.
@@ -222,18 +224,19 @@ class DataParallelTrainer(Trainer):
         TuneCheckpointManager
     ] = _DataParallelCheckpointManager
 
-    _scaling_config_allowed_keys = [
+    _scaling_config_allowed_keys = Trainer._scaling_config_allowed_keys + [
         "num_workers",
         "num_cpus_per_worker",
         "num_gpus_per_worker",
+        "resources_per_worker",
         "additional_resources_per_worker",
         "use_gpu",
     ]
 
     def __init__(
         self,
-        *,
         train_loop_per_worker: Union[Callable[[], None], Callable[[Dict], None]],
+        *,
         train_loop_config: Optional[Dict] = None,
         backend_config: Optional[BackendConfig] = None,
         scaling_config: Optional[ScalingConfig] = None,

@@ -53,12 +53,14 @@ class PlacementGroup:
         It is compatible to ray.get and ray.wait.
 
         Example:
-        >>> import ray
-        >>> from ray.util.placement_group import PlacementGroup
-        >>> pg = PlacementGroup([{"CPU": 1}]) # doctest: +SKIP
-        >>> ray.get(pg.ready()) # doctest: +SKIP
-        >>> pg = PlacementGroup([{"CPU": 1}]) # doctest: +SKIP
-        >>> ray.wait([pg.ready()], timeout=0) # doctest: +SKIP
+
+            >>> import ray
+            >>> from ray.util.placement_group import PlacementGroup
+            >>> pg = PlacementGroup([{"CPU": 1}]) # doctest: +SKIP
+            >>> ray.get(pg.ready()) # doctest: +SKIP
+            >>> pg = PlacementGroup([{"CPU": 1}]) # doctest: +SKIP
+            >>> ray.wait([pg.ready()], timeout=0) # doctest: +SKIP
+
         """
         self._fill_bundle_cache_if_needed()
 
@@ -193,7 +195,7 @@ def remove_placement_group(placement_group: PlacementGroup) -> None:
     """Asynchronously remove placement group.
 
     Args:
-        placement_group (PlacementGroup): The placement group to delete.
+        placement_group: The placement group to delete.
     """
     assert placement_group is not None
     worker = ray.worker.global_worker
@@ -232,7 +234,7 @@ def placement_group_table(placement_group: PlacementGroup = None) -> dict:
     """Get the state of the placement group from GCS.
 
     Args:
-        placement_group (PlacementGroup): placement group to see
+        placement_group: placement group to see
             states.
     """
     worker = ray.worker.global_worker

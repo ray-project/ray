@@ -1,8 +1,10 @@
+from contextlib import contextmanager
 import sys
 import os
 import subprocess
 from tempfile import NamedTemporaryFile
 import requests
+from typing import Dict
 
 import pytest
 from ray.cluster_utils import AutoscalingCluster
@@ -12,6 +14,9 @@ import ray
 import ray.state
 from ray import serve
 from ray.serve.context import get_global_client
+from ray.serve.schema import ServeApplicationSchema
+from ray.serve.client import ServeControllerClient
+from ray.serve.common import ApplicationStatus
 from ray._private.test_utils import wait_for_condition
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 
@@ -25,11 +30,23 @@ def shutdown_ray():
         ray.shutdown()
 
 
-@pytest.fixture
+@contextmanager
 def start_and_shutdown_ray_cli():
     subprocess.check_output(["ray", "start", "--head"])
     yield
     subprocess.check_output(["ray", "stop", "--force"])
+
+
+@pytest.fixture(scope="function")
+def start_and_shutdown_ray_cli_function():
+    with start_and_shutdown_ray_cli():
+        yield
+
+
+@pytest.fixture(scope="class")
+def start_and_shutdown_ray_cli_class():
+    with start_and_shutdown_ray_cli():
+        yield
 
 
 def test_standalone_actor_outside_serve():
@@ -195,7 +212,224 @@ def test_refresh_controller_after_death(shutdown_ray, detached):
     ray.shutdown()
 
 
-def test_shutdown_remote(start_and_shutdown_ray_cli):
+def test_get_serve_status(shutdown_ray):
+
+    ray.init()
+    client = serve.start()
+
+    @serve.deployment
+    def f(*args):
+        return "Hello world"
+
+    f.deploy()
+
+    status_info_1 = client.get_serve_status()
+    assert status_info_1.app_status.status == "RUNNING"
+    assert status_info_1.deployment_statuses[0].name == "f"
+    assert status_info_1.deployment_statuses[0].status in {"UPDATING", "HEALTHY"}
+
+    serve.shutdown()
+    ray.shutdown()
+
+
+@pytest.mark.usefixtures("start_and_shutdown_ray_cli_class")
+class TestDeployApp:
+    @pytest.fixture()
+    def client(self):
+        ray.init(address="auto", namespace="serve")
+        client = serve.start(detached=True)
+        yield client
+        serve.shutdown()
+        ray.shutdown()
+
+    def get_test_config(self) -> Dict:
+        return {"import_path": "ray.serve.tests.test_config_files.pizza.serve_dag"}
+
+    def test_deploy_app_basic(self, client: ServeControllerClient):
+
+        config = ServeApplicationSchema.parse_obj(self.get_test_config())
+        client.deploy_app(config)
+
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
+            == "4 pizzas please!"
+        )
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/", json=["MUL", 3]).json()
+            == "9 pizzas please!"
+        )
+
+    def test_deploy_app_with_overriden_config(self, client: ServeControllerClient):
+
+        config = self.get_test_config()
+        config["deployments"] = [
+            {
+                "name": "Multiplier",
+                "user_config": {
+                    "factor": 4,
+                },
+            },
+            {
+                "name": "Adder",
+                "user_config": {
+                    "increment": 5,
+                },
+            },
+        ]
+
+        client.deploy_app(ServeApplicationSchema.parse_obj(config))
+
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/", json=["ADD", 0]).json()
+            == "5 pizzas please!"
+        )
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/", json=["MUL", 2]).json()
+            == "8 pizzas please!"
+        )
+
+    def test_deploy_app_update_config(self, client: ServeControllerClient):
+        config = ServeApplicationSchema.parse_obj(self.get_test_config())
+        client.deploy_app(config)
+
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
+            == "4 pizzas please!"
+        )
+
+        config = self.get_test_config()
+        config["deployments"] = [
+            {
+                "name": "Adder",
+                "user_config": {
+                    "increment": -1,
+                },
+            },
+        ]
+
+        client.deploy_app(ServeApplicationSchema.parse_obj(config))
+
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
+            == "1 pizzas please!"
+        )
+
+    def test_deploy_app_update_num_replicas(self, client: ServeControllerClient):
+        config = ServeApplicationSchema.parse_obj(self.get_test_config())
+        client.deploy_app(config)
+
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
+            == "4 pizzas please!"
+        )
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/", json=["MUL", 3]).json()
+            == "9 pizzas please!"
+        )
+
+        actors = ray.util.list_named_actors(all_namespaces=True)
+
+        config = self.get_test_config()
+        config["deployments"] = [
+            {
+                "name": "Adder",
+                "num_replicas": 2,
+                "user_config": {
+                    "increment": 0,
+                },
+                "ray_actor_options": {"num_cpus": 0.1},
+            },
+            {
+                "name": "Multiplier",
+                "num_replicas": 3,
+                "user_config": {
+                    "factor": 0,
+                },
+                "ray_actor_options": {"num_cpus": 0.1},
+            },
+        ]
+
+        client.deploy_app(ServeApplicationSchema.parse_obj(config))
+
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
+            == "2 pizzas please!"
+        )
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/", json=["MUL", 3]).json()
+            == "0 pizzas please!"
+        )
+
+        wait_for_condition(
+            lambda: client.get_serve_status().app_status.status
+            == ApplicationStatus.RUNNING,
+            timeout=15,
+        )
+
+        updated_actors = ray.util.list_named_actors(all_namespaces=True)
+        assert len(updated_actors) == len(actors) + 3
+
+    def test_deploy_app_update_timestamp(self, client: ServeControllerClient):
+        assert client.get_serve_status().app_status.deployment_timestamp == 0
+
+        config = ServeApplicationSchema.parse_obj(self.get_test_config())
+        client.deploy_app(config)
+
+        wait_for_condition(
+            lambda: client.get_serve_status().app_status.deployment_timestamp > 0
+        )
+
+        first_deploy_time = client.get_serve_status().app_status.deployment_timestamp
+
+        config = self.get_test_config()
+        config["deployments"] = [
+            {
+                "name": "Adder",
+                "num_replicas": 2,
+            },
+        ]
+        client.deploy_app(ServeApplicationSchema.parse_obj(config))
+
+        wait_for_condition(
+            lambda: client.get_serve_status().app_status.deployment_timestamp
+            > first_deploy_time
+        )
+        assert client.get_serve_status().app_status.status in {
+            ApplicationStatus.DEPLOYING,
+            ApplicationStatus.RUNNING,
+        }
+
+    def test_deploy_app_overwrite_apps(self, client: ServeControllerClient):
+        """Check that overwriting a live app with a new one works."""
+
+        # Launch first graph. Its driver's route_prefix should be "/".
+        test_config_1 = ServeApplicationSchema.parse_obj(
+            {
+                "import_path": "ray.serve.tests.test_config_files.world.DagNode",
+            }
+        )
+        client.deploy_app(test_config_1)
+
+        wait_for_condition(
+            lambda: requests.get("http://localhost:8000/").text == "wonderful world"
+        )
+
+        # Launch second graph. Its driver's route_prefix should also be "/".
+        # "/" should lead to the new driver.
+        test_config_2 = ServeApplicationSchema.parse_obj(
+            {
+                "import_path": "ray.serve.tests.test_config_files.pizza.serve_dag",
+            }
+        )
+        client.deploy_app(test_config_2)
+
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
+            == "4 pizzas please!"
+        )
+
+
+def test_shutdown_remote(start_and_shutdown_ray_cli_function):
     """Check that serve.shutdown() works on a remote Ray cluster."""
 
     deploy_serve_script = (
@@ -262,8 +496,7 @@ def test_autoscaler_shutdown_node_http_everynode(
         idle_timeout_minutes=0.05,
     )
     cluster.start()
-    # Somehow Ray can't find active cluster after start, adding a retry here.
-    wait_for_condition(lambda: ray.init(address="auto"))
+    ray.init(address="auto")
 
     serve.start(http_options={"location": "EveryNode"})
 

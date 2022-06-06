@@ -24,12 +24,12 @@ class TestDDPPO(unittest.TestCase):
 
     def test_ddppo_compilation(self):
         """Test whether a DDPPOTrainer can be built with both frameworks."""
-        config = ppo.ddppo.DEFAULT_CONFIG.copy()
-        config["num_gpus_per_worker"] = 0
+        config = ppo.DDPPOConfig().resources(num_gpus_per_worker=0)
+
         num_iterations = 2
 
         for _ in framework_iterator(config, frameworks="torch"):
-            trainer = ppo.ddppo.DDPPOTrainer(config=config, env="CartPole-v0")
+            trainer = config.build(env="CartPole-v0")
             for i in range(num_iterations):
                 results = trainer.train()
                 check_train_results(results)
@@ -44,13 +44,15 @@ class TestDDPPO(unittest.TestCase):
 
     def test_ddppo_schedule(self):
         """Test whether lr_schedule will anneal lr to 0"""
-        config = ppo.ddppo.DEFAULT_CONFIG.copy()
-        config["num_gpus_per_worker"] = 0
-        config["lr_schedule"] = [[0, config["lr"]], [1000, 0.0]]
+        config = ppo.DDPPOConfig()
+        config.resources(num_gpus_per_worker=0)
+        config.training(lr_schedule=[[0, config.lr], [1000, 0.0]])
+
         num_iterations = 10
 
         for _ in framework_iterator(config, "torch"):
-            trainer = ppo.ddppo.DDPPOTrainer(config=config, env="CartPole-v0")
+            trainer = config.build(env="CartPole-v0")
+            lr = -100.0
             for _ in range(num_iterations):
                 result = trainer.train()
                 if result["info"][LEARNER_INFO]:
@@ -62,15 +64,14 @@ class TestDDPPO(unittest.TestCase):
 
     def test_validate_config(self):
         """Test if DDPPO will raise errors after invalid configs are passed."""
-        config = ppo.ddppo.DEFAULT_CONFIG.copy()
-        config["kl_coeff"] = 1.0
+        config = ppo.DDPPOConfig().training(kl_coeff=1.0)
         msg = "DDPPO doesn't support KL penalties like PPO-1"
         with pytest.raises(ValueError, match=msg):
-            ppo.ddppo.DDPPOTrainer(config=config, env="CartPole-v0")
-        config["kl_coeff"] = 0.0
-        config["kl_target"] = 1.0
+            config.build(env="CartPole-v0")
+        config.kl_coeff = 0.0
+        config.kl_target = 1.0
         with pytest.raises(ValueError, match=msg):
-            ppo.ddppo.DDPPOTrainer(config=config, env="CartPole-v0")
+            config.build(env="CartPole-v0")
 
 
 if __name__ == "__main__":

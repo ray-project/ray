@@ -1,11 +1,12 @@
 from ray.rllib.utils.deprecation import Deprecated
+from ray.util.annotations import _mark_annotated
 
 
 def override(cls):
     """Decorator for documenting method overrides.
 
     Args:
-        cls (type): The superclass that provides the overridden method. If this
+        cls: The superclass that provides the overridden method. If this
             cls does not actually have the method, an error is raised.
 
     Examples:
@@ -50,6 +51,7 @@ def PublicAPI(obj):
         ...     ... # doctest: +SKIP
     """
 
+    _mark_annotated(obj)
     return obj
 
 
@@ -74,6 +76,7 @@ def DeveloperAPI(obj):
         ...     ... # doctest: +SKIP
     """
 
+    _mark_annotated(obj)
     return obj
 
 
@@ -100,6 +103,7 @@ def ExperimentalAPI(obj):
         ...         ... # doctest: +SKIP
     """
 
+    _mark_annotated(obj)
     return obj
 
 
@@ -118,6 +122,7 @@ def OverrideToImplementCustomLogic(obj):
         ...     # ... w/o calling the corresponding `super().loss()` method.
         ...     ... # doctest: +SKIP
     """
+    obj.__is_overriden__ = False
     return obj
 
 
@@ -140,7 +145,16 @@ def OverrideToImplementCustomLogic_CallToSuperRecommended(obj):
         ...     super().setup(config) # doctest: +SKIP
         ...     # ... or here (after having called super()'s setup method.
     """
+    obj.__is_overriden__ = False
     return obj
+
+
+def is_overridden(obj):
+    """Check whether a function has been overridden.
+    Note, this only works for API calls decorated with OverrideToImplementCustomLogic
+    or OverrideToImplementCustomLogic_CallToSuperRecommended.
+    """
+    return getattr(obj, "__is_overriden__", True)
 
 
 # Backward compatibility.

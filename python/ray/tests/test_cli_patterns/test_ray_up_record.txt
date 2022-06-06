@@ -58,7 +58,7 @@
 .+\.py.*Running `echo init`
 .+\.py.*Full command is `ssh.+`
 .+\.py.*NodeUpdater: i-.+: Initialization commands succeeded \[LogTimer=.+\]
-.+\.py.*\[5/7\] Initalizing command runner
+.+\.py.*\[5/7\] Initializing command runner
 .+\.py.*\[6/7\] Running setup commands
 .+\.py.*\(0/4\) echo a
 .+\.py.*Running `echo a`

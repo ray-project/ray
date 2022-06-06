@@ -55,15 +55,15 @@
 # ==== Libraries and frameworks ====
 
 # Ray data.
-/python/ray/data/ @ericl @scv119 @clarkzinzow @jjyao
-/doc/source/data/ @ericl @scv119 @clarkzinzow @jjyao
+/python/ray/data/ @ericl @scv119 @clarkzinzow @jjyao @jianoaix
+/doc/source/data/ @ericl @scv119 @clarkzinzow @jjyao @jianoaix @maxpumperla
 
 # Ray workflows.
 /python/ray/workflow/ @ericl @iycheng @stephanie-wang @suquark
-/doc/source/workflows/ @ericl @iycheng @stephanie-wang @suquark
+/doc/source/workflows/ @ericl @iycheng @stephanie-wang @suquark @maxpumperla
 
 # RLlib.
-/rllib/ @sven1977 @gjoliver @avnishn @arturniederfahrenhorst @smorad @maxpumperla @kouroshhakha
+/rllib/ @sven1977 @gjoliver @avnishn @arturniederfahrenhorst @smorad @maxpumperla @kouroshhakha @krfricke
 
 # ML Docker Dependencies
 /python/requirements/ml/requirements_dl.txt @amogkam @sven1977 @richardliaw @matthewdeng
@@ -90,5 +90,7 @@
 
 # Buildkite pipeline management
 .buildkite/hooks @simon-mo @krfricke
+
+/release/ray_release @krfricke @rkooo567 @simon-mo
 
 /.github/ISSUE_TEMPLATE/ @ericl @stephanie-wang @scv119 @pcmoritz

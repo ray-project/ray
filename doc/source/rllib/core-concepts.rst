@@ -292,7 +292,7 @@ Examples
             # type: LocalIterator[ResultDict]
             return StandardMetricsReporting(train_op, workers, config)
 
-    See also the `actual A3C implementation <https://github.com/ray-project/ray/blob/master/rllib/agents/a3c/a3c.py>`__.
+    See also the `actual A3C implementation <https://github.com/ray-project/ray/blob/master/rllib/algorithms/a3c/a3c.py>`__.
 
 .. dropdown:: **Example: Replay**
 
@@ -320,7 +320,7 @@ Examples
             return StandardMetricsReporting(train_op, workers, config)
 
 
-    Note that here we set ``output_indexes=[1]`` for the ``Concurrently`` operator, which makes it only return results from the replay op. See also the `DQN implementation of replay <https://github.com/ray-project/ray/blob/master/rllib/agents/dqn/dqn.py>`__ for a complete example including the implementation of options such as *training intensity*.
+    Note that here we set ``output_indexes=[1]`` for the ``Concurrently`` operator, which makes it only return results from the replay op. See also the `DQN implementation of replay <https://github.com/ray-project/ray/blob/master/rllib/algorithms/dqn/dqn.py>`__ for a complete example including the implementation of options such as *training intensity*.
 
 
 .. dropdown:: **Example: Multi-agent**

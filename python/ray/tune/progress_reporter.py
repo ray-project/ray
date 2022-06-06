@@ -27,7 +27,7 @@ from ray.tune.result import (
     TIMESTEPS_TOTAL,
     AUTO_RESULT_KEYS,
 )
-from ray.tune.trial import DEBUG_PRINT_INTERVAL, Trial, Location
+from ray.tune.trial import DEBUG_PRINT_INTERVAL, Trial, _Location
 from ray.tune.utils import unflattened_lookup
 from ray.tune.utils.log import Verbosity, has_verbosity
 
@@ -546,12 +546,12 @@ class JupyterNotebookReporter(TuneReporterBase, RemoteReporterMixin):
             self.display(progress_str)
 
     def display(self, string: str) -> None:
-        from IPython.core.display import display, HTML
+        from IPython.display import display, HTML, clear_output
 
         if not self._display_handle:
-            self._display_handle = display(
-                HTML(string), display_id=True, clear=self._overwrite
-            )
+            if self._overwrite:
+                clear_output(wait=True)
+            self._display_handle = display(HTML(string), display_id=True)
         else:
             self._display_handle.update(HTML(string))
 
@@ -1021,12 +1021,12 @@ def _fair_filter_trials(
     return filtered_trials
 
 
-def _get_trial_location(trial: Trial, result: dict) -> Location:
+def _get_trial_location(trial: Trial, result: dict) -> _Location:
     # we get the location from the result, as the one in trial will be
     # reset when trial terminates
     node_ip, pid = result.get(NODE_IP, None), result.get(PID, None)
     if node_ip and pid:
-        location = Location(node_ip, pid)
+        location = _Location(node_ip, pid)
     else:
         # fallback to trial location if there hasn't been a report yet
         location = trial.location

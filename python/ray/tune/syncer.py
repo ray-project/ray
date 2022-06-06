@@ -1,5 +1,4 @@
 from typing import (
-    Any,
     Callable,
     Dict,
     List,
@@ -37,7 +36,7 @@ from ray.tune.sync_client import (
     SyncClient,
     RemoteTaskClient,
 )
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import PublicAPI, DeveloperAPI
 
 if TYPE_CHECKING:
     from ray.tune.trial import Trial
@@ -79,55 +78,6 @@ def set_sync_periods(sync_config: "SyncConfig"):
     """Sets sync period from config."""
     global SYNC_PERIOD
     SYNC_PERIOD = int(sync_config.sync_period)
-
-
-def validate_sync_config(sync_config: "SyncConfig"):
-    if sync_config.node_sync_period >= 0 or sync_config.cloud_sync_period >= 0:
-        # Until fully deprecated, try to consolidate
-        if sync_config.node_sync_period >= 0 and sync_config.cloud_sync_period >= 0:
-            sync_period = min(
-                sync_config.node_sync_period, sync_config.cloud_sync_period
-            )
-        else:
-            sync_period = max(
-                sync_config.node_sync_period, sync_config.cloud_sync_period
-            )
-
-        sync_config.sync_period = sync_period
-        sync_config.node_sync_period = -1
-        sync_config.cloud_sync_period = -1
-
-        # Deprecated: Remove in Ray > 1.13
-        raise DeprecationWarning(
-            "The `node_sync_period` and "
-            "`cloud_sync_period` properties of `tune.SyncConfig` are "
-            "deprecated. Pass the `sync_period` property instead. "
-            "\nFor now, the lower of the two values (if provided) will "
-            f"be used as the sync_period. This value is: {sync_period}"
-        )
-
-    if sync_config.sync_to_cloud or sync_config.sync_to_driver:
-        if bool(sync_config.upload_dir):
-            syncer = sync_config.sync_to_cloud
-            help = "set"
-        else:
-            syncer = sync_config.sync_to_driver
-            help = "not set"
-
-        sync_config.syncer = syncer
-        sync_config.sync_to_cloud = None
-        sync_config.sync_to_driver = None
-
-        # Deprecated: Remove in Ray > 1.13
-        raise DeprecationWarning(
-            "The `sync_to_cloud` and `sync_to_driver` properties of "
-            "`tune.SyncConfig` are deprecated. Pass the `syncer` property "
-            "instead. Presence of an `upload_dir` decides if checkpoints "
-            "are synced to cloud or not. Syncing to driver is "
-            "automatically disabled if an `upload_dir` is given."
-            f"\nFor now, as the upload dir is {help}, the respective "
-            f"syncer is used. This value is: {syncer}"
-        )
 
 
 def get_rsync_template_if_available(options: str = ""):
@@ -197,17 +147,8 @@ class SyncConfig:
     sync_on_checkpoint: bool = True
     sync_period: int = 300
 
-    # Deprecated arguments
-    # Deprecated: Remove in Ray > 1.13
-    sync_to_cloud: Any = None
-    sync_to_driver: Any = None
-    node_sync_period: int = -1
-    cloud_sync_period: int = -1
 
-    def __post_init__(self):
-        validate_sync_config(self)
-
-
+@DeveloperAPI
 class Syncer:
     def __init__(self, local_dir: str, remote_dir: str, sync_client: SyncClient = NOOP):
         """Syncs between two directories with the sync_function.
@@ -321,6 +262,7 @@ class Syncer:
         return self._remote_dir
 
 
+@DeveloperAPI
 class CloudSyncer(Syncer):
     """Syncer for syncing files to/from the cloud."""
 
@@ -336,6 +278,7 @@ class CloudSyncer(Syncer):
         )
 
 
+@DeveloperAPI
 class NodeSyncer(Syncer):
     """Syncer for syncing files to/from a remote dir to a local dir."""
 
@@ -407,6 +350,7 @@ class NodeSyncer(Syncer):
         return "{}@{}:{}/".format(ssh_user, self.worker_ip, self._remote_dir)
 
 
+@DeveloperAPI
 def get_cloud_syncer(
     local_dir: str,
     remote_dir: Optional[str] = None,
@@ -460,6 +404,7 @@ def get_cloud_syncer(
     return _syncers[key]
 
 
+@DeveloperAPI
 def get_node_syncer(
     local_dir: str,
     remote_dir: Optional[str] = None,
@@ -507,6 +452,7 @@ def get_node_syncer(
     return _syncers[key]
 
 
+@DeveloperAPI
 class SyncerCallback(Callback):
     def __init__(self, sync_function: Optional[Union[bool, Callable]]):
         self._sync_function = sync_function

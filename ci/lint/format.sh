@@ -32,6 +32,20 @@ check_python_command_exist() {
     fi
 }
 
+check_docstyle() {
+    echo "Checking docstyle..."
+    violations=$(git ls-files | grep '.py$' | xargs grep -E '^[ a-z_]+ \([a-zA-Z]+\): ' || true)
+    if [[ -n "$violations" ]]; then
+        echo
+        echo "=== Found Ray docstyle violations ==="
+        echo "$violations"
+        echo
+        echo "Per the Google pydoc style, omit types from pydoc args as they are redundant: https://docs.ray.io/en/latest/ray-contribute/getting-involved.html#code-style "
+        exit 1
+    fi
+    return 0
+}
+
 check_python_command_exist black
 check_python_command_exist flake8
 check_python_command_exist mypy
@@ -42,8 +56,17 @@ builtin cd "$(dirname "${BASH_SOURCE:-$0}")"
 ROOT="$(git rev-parse --show-toplevel)"
 builtin cd "$ROOT" || exit 1
 
+# NOTE(edoakes): black version differs based on installation method:
+#   Option 1) 'black, 21.12b0 (compiled: no)'
+#   Option 2) 'black, version 21.12b0'
+BLACK_VERSION_STR=$(black --version)
+if [[ "$BLACK_VERSION_STR" == *"compiled"* ]]
+then
+    BLACK_VERSION=$(echo "$BLACK_VERSION_STR" | awk '{print $2}')
+else
+    BLACK_VERSION=$(echo "$BLACK_VERSION_STR" | awk '{print $3}')
+fi
 FLAKE8_VERSION=$(flake8 --version | head -n 1 | awk '{print $1}')
-BLACK_VERSION=$(black --version | awk '{print $2}')
 MYPY_VERSION=$(mypy --version | awk '{print $2}')
 GOOGLE_JAVA_FORMAT_JAR=/tmp/google-java-format-1.7-all-deps.jar
 
@@ -112,6 +135,7 @@ MYPY_FILES=(
     # in the CI. Type check once we get serious about type checking:
     #'ray_operator/operator.py'
     'ray_operator/operator_utils.py'
+    '_private/gcs_utils.py'
 )
 
 BLACK_EXCLUDES=(
@@ -336,6 +360,8 @@ else
     # Format only the files that changed in last commit.
     format_changed
 fi
+
+check_docstyle
 
 # Ensure import ordering
 # Make sure that for every import psutil; import setproctitle

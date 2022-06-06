@@ -27,6 +27,7 @@
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_resource_report_poller.h"
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
+#include "ray/gcs/gcs_server/runtime_env_handler.h"
 #include "ray/gcs/gcs_server/stats_handler_impl.h"
 #include "ray/gcs/gcs_server/store_client_kv.h"
 #include "ray/gcs/store_client/observable_store_client.h"
@@ -90,7 +91,6 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
           rpc::ChannelType::GCS_ACTOR_CHANNEL,
           rpc::ChannelType::GCS_JOB_CHANNEL,
           rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
-          rpc::ChannelType::GCS_NODE_RESOURCE_CHANNEL,
           rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL,
           rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
           rpc::ChannelType::RAY_LOG_CHANNEL,
@@ -148,7 +148,7 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init Pub/Sub handler
   InitPubSubHandler();
 
-  // Init RuntimeENv manager
+  // Init RuntimeEnv manager
   InitRuntimeEnvManager();
 
   // Init gcs job manager.
@@ -254,12 +254,13 @@ void GcsServer::InitGcsHeartbeatManager(const GcsInitData &gcs_init_data) {
 }
 
 void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
-  RAY_CHECK(gcs_table_storage_ && cluster_resource_scheduler_);
+  RAY_CHECK(gcs_table_storage_ && cluster_resource_scheduler_ && cluster_task_manager_);
   gcs_resource_manager_ = std::make_shared<GcsResourceManager>(
       main_service_,
       gcs_table_storage_,
       cluster_resource_scheduler_->GetClusterResourceManager(),
-      scheduling::NodeID(local_node_id_.Binary()));
+      local_node_id_,
+      cluster_task_manager_);
 
   // Initialize by gcs tables data.
   gcs_resource_manager_->Initialize(gcs_init_data);
@@ -325,7 +326,7 @@ void GcsServer::InitClusterTaskManager() {
       /*announce_infeasible_task=*/
       nullptr,
       /*local_task_manager=*/
-      nullptr);
+      std::make_shared<NoopLocalTaskManager>());
 }
 
 void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
@@ -549,34 +550,38 @@ void GcsServer::InitPubSubHandler() {
 void GcsServer::InitRuntimeEnvManager() {
   runtime_env_manager_ = std::make_unique<RuntimeEnvManager>(
       /*deleter=*/[this](const std::string &plugin_uri, auto callback) {
-        // A valid runtime env URI is of the form "plugin|protocol://hash".
-        std::string plugin_sep = "|";
+        // A valid runtime env URI is of the form "protocol://hash".
         std::string protocol_sep = "://";
-        auto plugin_end_pos = plugin_uri.find(plugin_sep);
         auto protocol_end_pos = plugin_uri.find(protocol_sep);
-        if (protocol_end_pos == std::string::npos ||
-            plugin_end_pos == std::string::npos) {
+        if (protocol_end_pos == std::string::npos) {
           RAY_LOG(ERROR) << "Plugin URI must be of form "
-                         << "<plugin>|<protocol>://<hash>, got " << plugin_uri;
+                         << "<protocol>://<hash>, got " << plugin_uri;
           callback(false);
         } else {
-          auto protocol_pos = plugin_end_pos + plugin_sep.size();
-          int protocol_len = protocol_end_pos - protocol_pos;
-          auto protocol = plugin_uri.substr(protocol_pos, protocol_len);
+          auto protocol = plugin_uri.substr(0, protocol_end_pos);
           if (protocol != "gcs") {
             // Some URIs do not correspond to files in the GCS.  Skip deletion for
             // these.
             callback(true);
           } else {
-            auto uri = plugin_uri.substr(protocol_pos);
             this->kv_manager_->GetInstance().Del(
                 "" /* namespace */,
-                uri /* key */,
+                plugin_uri /* key */,
                 false /* del_by_prefix*/,
                 [callback = std::move(callback)](int64_t) { callback(false); });
           }
         }
       });
+  runtime_env_handler_ = std::make_unique<RuntimeEnvHandler>(
+      main_service_,
+      *runtime_env_manager_, /*delay_executor=*/
+      [this](std::function<void()> task, uint32_t delay_ms) {
+        return execute_after(main_service_, task, delay_ms);
+      });
+  runtime_env_service_ =
+      std::make_unique<rpc::RuntimeEnvGrpcService>(main_service_, *runtime_env_handler_);
+  // Register service.
+  rpc_server_.RegisterService(*runtime_env_service_);
 }
 
 void GcsServer::InitGcsWorkerManager() {
@@ -643,6 +648,7 @@ void GcsServer::InstallEventListeners() {
                                          worker_id,
                                          worker_ip,
                                          worker_failure_data->exit_type(),
+                                         worker_failure_data->exit_detail(),
                                          creation_task_exception);
       });
 
