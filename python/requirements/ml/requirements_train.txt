@@ -14,3 +14,7 @@ transformers==4.19.1; python_version > '3.6'
 accelerate==0.5.1
 datasets==2.0.0
 sentencepiece==0.1.96
+
+# Dependencies for the Jax trainer 
+# `python/ray/train/examples/jax_mnist_example.py`
+tensorflow_datasets==4.5.2
