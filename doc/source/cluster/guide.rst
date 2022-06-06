@@ -71,15 +71,23 @@ How does it work?
 The Ray Cluster Launcher will automatically enable a load-based autoscaler. The
 autoscaler resource demand scheduler will look at the pending tasks, actors,
 and placement groups resource demands from the cluster, and try to add the
-minimum list of nodes that can fulfill these demands. When worker nodes are
-idle for more than :ref:`idle_timeout_minutes
-<cluster-configuration-idle-timeout-minutes>`, they will be removed (the head
-node is never removed unless the cluster is torn down).
-
-Autoscaler uses a simple binpacking algorithm to binpack the user demands into
+minimum list of nodes that can fulfill these demands. Autoscaler uses a simple 
+binpacking algorithm to binpack the user demands into
 the available cluster resources. The remaining unfulfilled demands are placed
 on the smallest list of nodes that satisfies the demand while maximizing
 utilization (starting from the smallest node).
+
+**Downcaling**: When worker nodes are
+idle (without active Tasks or Actors running on it) 
+for more than :ref:`idle_timeout_minutes
+<cluster-configuration-idle-timeout-minutes>`, they are subject to
+removal from the cluster. But there are two important additional conditions
+to note: 
+
+* The head node is never removed unless the cluster is torn down.
+* If the Ray Object Store is used, and a Worker node still holds objects (including spilled objects on disk), it won't be removed.
+
+
 
 **Here is "A Glimpse into the Ray Autoscaler" and how to debug/monitor your cluster:**
 

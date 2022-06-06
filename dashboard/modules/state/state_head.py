@@ -35,10 +35,14 @@ class StateHead(dashboard_utils.DashboardHeadModule):
     def _options_from_req(self, req) -> ListApiOptions:
         """Obtain `ListApiOptions` from the aiohttp request."""
         limit = int(req.query.get("limit"))
-        # Only apply 80% of the timeout so that
-        # the API will reply before client times out if query to the source fails.
         timeout = int(req.query.get("timeout"))
-        return ListApiOptions(limit=limit, timeout=timeout)
+        filter_keys = req.query.getall("filter_keys", [])
+        filter_values = req.query.getall("filter_values", [])
+        assert len(filter_keys) == len(filter_values)
+        filters = []
+        for key, val in zip(filter_keys, filter_values):
+            filters.append((key, val))
+        return ListApiOptions(limit=limit, timeout=timeout, filters=filters)
 
     def _reply(self, success: bool, error_message: str, result: dict, **kwargs):
         """Reply to the client."""
