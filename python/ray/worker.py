@@ -2037,7 +2037,7 @@ def get(
 @client_mode_hook(auto_init=True)
 def put(
     value: Any, *, _owner: Optional["ray.actor.ActorHandle"] = None
-) -> ray.ObjectRef:
+) -> "ray.ObjectRef":
     """Store an object in the object store.
 
     The object may not be evicted while a reference to the returned ID exists.
@@ -2089,12 +2089,12 @@ blocking_wait_inside_async_warned = False
 @PublicAPI
 @client_mode_hook(auto_init=True)
 def wait(
-    object_refs: List[ray.ObjectRef],
+    object_refs: List["ray.ObjectRef"],
     *,
     num_returns: int = 1,
     timeout: Optional[float] = None,
     fetch_local: bool = True,
-) -> Tuple[List[ray.ObjectRef], List[ray.ObjectRef]]:
+) -> Tuple[List["ray.ObjectRef"], List["ray.ObjectRef"]]:
     """Return a list of IDs that are ready and a list of IDs that are not.
 
     If timeout is set, the function returns either when the requested number of
@@ -2266,7 +2266,7 @@ def kill(actor: "ray.actor.ActorHandle", *, no_restart: bool = True):
 
 @PublicAPI
 @client_mode_hook(auto_init=True)
-def cancel(object_ref: ray.ObjectRef, *, force: bool = False, recursive: bool = True):
+def cancel(object_ref: "ray.ObjectRef", *, force: bool = False, recursive: bool = True):
     """Cancels a task according to the following conditions.
 
     If the specified task is pending execution, it will not be executed. If
