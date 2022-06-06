@@ -137,7 +137,17 @@ def resume(workflow_id: str) -> ray.ObjectRef:
         An object reference that can be used to retrieve the workflow result.
     """
     _ensure_workflow_initialized()
-    return execution.resume(workflow_id)
+    if ray._private.client_mode_hook.is_client_mode_enabled:
+
+        @ray.remote
+        def client_mode_resume(workflow_id):
+            from ray.workflow.execution import resume
+
+            return resume(workflow_id)
+
+        return ray.get(client_mode_resume.remote(workflow_id))
+    else:
+        return execution.resume(workflow_id)
 
 
 @PublicAPI(stability="beta")
@@ -164,7 +174,17 @@ def get_output(workflow_id: str, *, name: Optional[str] = None) -> ray.ObjectRef
         An object reference that can be used to retrieve the workflow result.
     """
     _ensure_workflow_initialized()
-    return execution.get_output(workflow_id, name)
+    if ray._private.client_mode_hook.is_client_mode_enabled:
+
+        @ray.remote
+        def client_mode_get_output(workflow_id, name):
+            from ray.workflow.execution import get_output
+
+            return get_output(workflow_id, name)
+
+        return ray.get(client_mode_get_output.remote(workflow_id, name))
+    else:
+        return execution.get_output(workflow_id, name)
 
 
 @PublicAPI(stability="beta")
@@ -220,7 +240,17 @@ def list_all(
         raise TypeError(
             "status_filter must be WorkflowStatus or a set of WorkflowStatus."
         )
-    return execution.list_all(status_filter)
+    if ray._private.client_mode_hook.is_client_mode_enabled:
+
+        @ray.remote
+        def client_mode_list_all(status_filter):
+            from ray.workflow.execution import list_all
+
+            return list_all(status_filter)
+
+        return ray.get(client_mode_list_all.remote(status_filter))
+    else:
+        return execution.list_all(status_filter)
 
 
 @PublicAPI(stability="beta")
@@ -250,7 +280,17 @@ def resume_all(include_failed: bool = False) -> Dict[str, ray.ObjectRef]:
         A list of (workflow_id, returned_obj_ref) resumed.
     """
     _ensure_workflow_initialized()
-    return execution.resume_all(include_failed)
+    if ray._private.client_mode_hook.is_client_mode_enabled:
+
+        @ray.remote
+        def client_mode_resume_all(include_failed):
+            from ray.workflow.execution import resume_all
+
+            return resume_all(include_failed)
+
+        return ray.get(client_mode_resume_all.remote(include_failed))
+    else:
+        return execution.resume_all(include_failed)
 
 
 @PublicAPI(stability="beta")
@@ -273,7 +313,17 @@ def get_status(workflow_id: str) -> WorkflowStatus:
     _ensure_workflow_initialized()
     if not isinstance(workflow_id, str):
         raise TypeError("workflow_id has to be a string type.")
-    return execution.get_status(workflow_id)
+    if ray._private.client_mode_hook.is_client_mode_enabled:
+
+        @ray.remote
+        def client_mode_get_status(workflow_id):
+            from ray.workflow.execution import get_status
+
+            return get_status(workflow_id)
+
+        return ray.get(client_mode_get_status.remote(workflow_id))
+    else:
+        return execution.get_status(workflow_id)
 
 
 @PublicAPI(stability="beta")
@@ -367,7 +417,17 @@ def get_metadata(workflow_id: str, name: Optional[str] = None) -> Dict[str, Any]
         ValueError: if given workflow or workflow step does not exist.
     """
     _ensure_workflow_initialized()
-    return execution.get_metadata(workflow_id, name)
+    if ray._private.client_mode_hook.is_client_mode_enabled:
+
+        @ray.remote
+        def client_mode_get_metadata(workflow_id, name):
+            from ray.workflow.execution import get_metadata
+
+            return get_metadata(workflow_id, name)
+
+        return ray.get(client_mode_get_metadata.remote(workflow_id, name))
+    else:
+        return execution.get_metadata(workflow_id, name)
 
 
 @PublicAPI(stability="beta")
@@ -394,7 +454,17 @@ def cancel(workflow_id: str) -> None:
     _ensure_workflow_initialized()
     if not isinstance(workflow_id, str):
         raise TypeError("workflow_id has to be a string type.")
-    return execution.cancel(workflow_id)
+    if ray._private.client_mode_hook.is_client_mode_enabled:
+
+        @ray.remote
+        def client_mode_cancel(workflow_id):
+            from ray.workflow.execution import cancel
+
+            return cancel(workflow_id)
+
+        return ray.get(client_mode_cancel.remote(workflow_id))
+    else:
+        return execution.cancel(workflow_id)
 
 
 @PublicAPI(stability="beta")
@@ -423,15 +493,17 @@ def delete(workflow_id: str) -> None:
     """
 
     _ensure_workflow_initialized()
-    try:
-        status = get_status(workflow_id)
-        if status == WorkflowStatus.RUNNING:
-            raise WorkflowRunningError("DELETE", workflow_id)
-    except ValueError:
-        raise WorkflowNotFoundError(workflow_id)
+    if ray._private.client_mode_hook.is_client_mode_enabled:
 
-    wf_storage = get_workflow_storage(workflow_id)
-    wf_storage.delete_workflow()
+        @ray.remote
+        def client_mode_delete(workflow_id):
+            from ray.workflow.execution import delete
+
+            return delete(workflow_id)
+
+        return ray.get(client_mode_delete.remote(workflow_id))
+    else:
+        return execution.delete(workflow_id)
 
 
 WaitResult = Tuple[List[Any], List[Workflow]]

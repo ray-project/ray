@@ -14,6 +14,7 @@ from ray.workflow.common import (
     WorkflowNotFoundError,
     validate_user_metadata,
     asyncio_run,
+    WorkflowRunningError,
 )
 from ray.workflow.step_executor import commit_step
 from ray.workflow.workflow_access import (
@@ -226,3 +227,15 @@ def resume_all(with_failed: bool) -> List[Tuple[str, ray.ObjectRef]]:
 
     ret = asyncio_run(asyncio.gather(*[_resume_one(wid) for (wid, _) in all_failed]))
     return [(wid, obj) for (wid, obj) in ret if obj is not None]
+
+
+def delete(workflow_id: str) -> None:
+    try:
+        status = get_status(workflow_id)
+        if status == WorkflowStatus.RUNNING:
+            raise WorkflowRunningError("DELETE", workflow_id)
+    except ValueError:
+        raise WorkflowNotFoundError(workflow_id)
+
+    wf_storage = workflow_storage.get_workflow_storage(workflow_id)
+    wf_storage.delete_workflow()
