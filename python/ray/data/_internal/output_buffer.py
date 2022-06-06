@@ -1,6 +1,6 @@
 from typing import Callable, Any, Optional
 
-from ray.data.block import Block, BlockAccessor
+from ray.data.block import Block, DataBatch, BlockAccessor
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 
 
@@ -43,6 +43,11 @@ class BlockOutputBuffer(object):
         """Add a single item to this output buffer."""
         assert not self._finalized
         self._buffer.add(item)
+
+    def add_batch(self, batch: DataBatch) -> None:
+        """Add a data batch to this output buffer."""
+        assert not self._finalized
+        self._buffer.add_batch(batch)
 
     def add_block(self, block: Block) -> None:
         """Add a data block to this output buffer."""
