@@ -17,21 +17,13 @@
 #include "ray/common/ray_object.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
+#include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray {
 namespace raylet {
 
 namespace internal {
-
-enum class WorkStatus {
-  /// Waiting to be scheduled.
-  WAITING,
-  /// Waiting for a worker to start.
-  WAITING_FOR_WORKER,
-  /// Queued task has been cancelled.
-  CANCELLED,
-};
 
 /// This enum represents the cause of why work hasn't been scheduled yet.
 enum class UnscheduledWorkCause {
@@ -51,6 +43,8 @@ enum class UnscheduledWorkCause {
   WORKER_NOT_FOUND_RATE_LIMITED,
 };
 
+std::string UnscheduledWorkCauseToString(UnscheduledWorkCause cause);
+
 /// Work represents all the information needed to make a scheduling decision.
 /// This includes the task, the information we need to communicate to
 /// dispatch/spillback and the callback to trigger it.
@@ -67,7 +61,7 @@ class Work {
        bool is_selected_based_on_locality,
        rpc::RequestWorkerLeaseReply *reply,
        std::function<void(void)> callback,
-       WorkStatus status = WorkStatus::WAITING)
+       rpc::SchedulingState status = rpc::SchedulingState::WAITING)
       : task(task),
         grant_or_reject(grant_or_reject),
         is_selected_based_on_locality(is_selected_based_on_locality),
@@ -81,17 +75,19 @@ class Work {
 
   /// Set the state as waiting with the cause.
   void SetStateWaiting(const UnscheduledWorkCause &cause) {
-    status_ = WorkStatus::WAITING;
+    status_ = rpc::SchedulingState::WAITING;
     unscheduled_work_cause_ = cause;
   }
 
+  void SetStateInfeasible() { status_ = rpc::SchedulingState::INFEASIBLE; }
+
   /// Set the state as waiting for workers, meaning it is waiting for workers to start.
-  void SetStateWaitingForWorker() { status_ = WorkStatus::WAITING_FOR_WORKER; }
+  void SetStateWaitingForWorker() { status_ = rpc::SchedulingState::WAITING_FOR_WORKERS; }
 
   /// Set the state as cancelled, meaning this task has to be unqueued from the node.
-  void SetStateCancelled() { status_ = WorkStatus::CANCELLED; }
+  void SetStateCancelled() { status_ = rpc::SchedulingState::CANCELLED; }
 
-  WorkStatus GetState() const { return status_; }
+  rpc::SchedulingState GetState() const { return status_; }
 
   UnscheduledWorkCause GetUnscheduledCause() const { return unscheduled_work_cause_; }
 
@@ -100,7 +96,7 @@ class Work {
   }
 
  private:
-  WorkStatus status_ = WorkStatus::WAITING;
+  rpc::SchedulingState status_;
   UnscheduledWorkCause unscheduled_work_cause_ =
       UnscheduledWorkCause::WAITING_FOR_RESOURCE_ACQUISITION;
 };

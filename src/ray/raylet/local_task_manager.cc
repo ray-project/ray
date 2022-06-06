@@ -126,7 +126,7 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
       const auto &task = work->task;
       const auto spec = task.GetTaskSpecification();
       TaskID task_id = spec.TaskId();
-      if (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER) {
+      if (work->GetState() == rpc::SchedulingState::WAITING_FOR_WORKERS) {
         work_it++;
         continue;
       }
@@ -134,7 +134,7 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
       // Check if the scheduling class is at capacity now.
       if (sched_cls_cap_enabled_ &&
           sched_cls_info.running_tasks.size() >= sched_cls_info.capacity &&
-          work->GetState() == internal::WorkStatus::WAITING) {
+          work->GetState() == rpc::SchedulingState::WAITING) {
         RAY_LOG(DEBUG) << "Hit cap! time=" << get_time_ms_()
                        << " next update time=" << sched_cls_info.next_update_time;
         if (get_time_ms_() < sched_cls_info.next_update_time) {
@@ -396,7 +396,7 @@ bool LocalTaskManager::PoppedWorkerHandler(
     const std::string &runtime_env_setup_error_message) {
   const auto &reply = work->reply;
   const auto &callback = work->callback;
-  bool canceled = work->GetState() == internal::WorkStatus::CANCELLED;
+  bool canceled = work->GetState() == rpc::SchedulingState::CANCELLED;
   const auto &task = work->task;
   const auto &spec = task.GetTaskSpecification();
   bool dispatched = false;
@@ -718,6 +718,7 @@ namespace {
 void ReplyCancelled(std::shared_ptr<internal::Work> &work,
                     rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
                     const std::string &scheduling_failure_message) {
+  RAY_CHECK(work->GetState() == rpc::SchedulingState::CANCELLED);
   auto reply = work->reply;
   auto callback = work->callback;
   reply->set_canceled(true);
@@ -739,7 +740,7 @@ bool LocalTaskManager::CancelTask(
       if (task.GetTaskSpecification().TaskId() == task_id) {
         RAY_LOG(DEBUG) << "Canceling task " << task_id << " from dispatch queue.";
         ReplyCancelled(*work_it, failure_type, scheduling_failure_message);
-        if ((*work_it)->GetState() == internal::WorkStatus::WAITING_FOR_WORKER) {
+        if ((*work_it)->GetState() == rpc::SchedulingState::WAITING_FOR_WORKERS) {
           // We've already acquired resources so we need to release them.
           cluster_resource_scheduler_->GetLocalResourceManager().ReleaseWorkerResources(
               (*work_it)->allocated_instances);
@@ -794,7 +795,7 @@ bool LocalTaskManager::AnyPendingTasksForResourceAcquisition(
 
       // If the work is not in the waiting state, it will be scheduled soon or won't be
       // scheduled. Consider as non-pending.
-      if (work.GetState() != internal::WorkStatus::WAITING) {
+      if (work.GetState() != rpc::SchedulingState::WAITING) {
         continue;
       }
 
@@ -922,26 +923,33 @@ int64_t LocalTaskManager::TotalBacklogSize(SchedulingClass scheduling_class) {
   return sum;
 }
 
-void LocalTaskManager::FillTaskInformation(rpc::GetNodeStatsReply *reply) const {
+void LocalTaskManager::FillTaskInformation(rpc::GetTasksInfoReply *reply) const {
   auto update_node_state_reply = [&](const auto &shape_it) {
     auto &work_queue = shape_it.second;
     for (const auto &work_it : work_queue) {
-      const auto &work = *work_it;
       const auto &task = work_it->task;
       const auto &spec = task.GetTaskSpecification();
-      auto state = reply->add_detailed_scheduling_states();
-      state->set_task_id(spec.TaskId().Binary());
-      state->set_scheduling_state(
-          internal::UnscheduledWorkCauseToString(work.GetUnscheduledCause()));
+      auto state = reply->add_scheduling_information();
+      // Currently, task_id == lease_id because this task id is not always
+      // the same as the owner side task id.
+      // TODO(sang): Refactor it.
+      state->set_lease_id(spec.TaskId().Binary());
+      state->set_scheduling_state(work_it->GetState());
+      state->set_scheduling_detail(
+          internal::UnscheduledWorkCauseToString(work_it->GetUnscheduledCause()));
     }
   };
 
   auto update_node_state_reply_for_waiting_tasks = [&](const auto &work) {
     const auto &task = work->task;
     const auto &spec = task.GetTaskSpecification();
-    auto state = reply->add_detailed_scheduling_states();
-    state->set_task_id(spec.TaskId().Binary());
-    state->set_scheduling_state(
+    auto state = reply->add_scheduling_information();
+    // Currently, task_id == lease_id because this task id is not always
+    // the same as the owner side task id.
+    // TODO(sang): Refactor it.
+    state->set_lease_id(spec.TaskId().Binary());
+    state->set_scheduling_state(work->GetState());
+    state->set_scheduling_detail(
         internal::UnscheduledWorkCauseToString(work->GetUnscheduledCause()));
   };
 

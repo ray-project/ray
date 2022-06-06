@@ -329,7 +329,7 @@ message TaskInfoEntry {
   Language language = 3;
   // Function descriptor of this task uniquely describe the function to execute.
   string func_or_class_name = 4;
-  TaskStatus scheduling_state = 5;
+  TaskStatus state = 5;
   // ID of the job that this task belongs to.
   bytes job_id = 6;
   // Task ID of the task.
@@ -340,6 +340,12 @@ message TaskInfoEntry {
   map<string, double> required_resources = 13;
   // Runtime environment for this task.
   RuntimeEnvInfo runtime_env_info = 23;
+  // The lease ID of the task. Lease ID is set when the task
+  // sends a lease request to a scheduler.
+  optional bytes lease_id = 24;
+  // The task type fo this entry.
+  TaskType task_type = 25;
+
 }
 
 message Bundle {
@@ -536,9 +542,33 @@ enum TaskStatus {
   RUNNING = 6;
 }
 
-message DetailedSchedulingState {
-  bytes task_id = 1;
-  string scheduling_state = 2;
+enum SchedulingState {
+  // TODO(sang): Support more fine-grained states. E.g., split WAITING into
+  // WAITING_FOR_RESOURCES and WAITING_FOR_OBJECTS_LOCAL.
+  // Waiting to be scheduled.
+  WAITING = 0;
+  // Waiting for ray worker process to start.
+  WAITING_FOR_WORKERS = 1;
+  // Scheduling has been cancelled.
+  CANCELLED = 2;
+  // Scheduling is infeasible.
+  INFEASIBLE = 3;
+}
+
+message SchedulingInformation {
+  // The lease id of this scheduling request.
+  // Lease id is set at the client side. For tasks,
+  // lease id is a randomly assigned id. For actor scheduling,
+  // lease id is equivalent to the task id of the actor creation request.
+  // Actor tasks are not scheduled by a scheduler.
+  bytes lease_id = 1;
+  // The scheduling state.
+  SchedulingState scheduling_state = 2;
+  // Details regarding why the scheduling request hasn't been completed yet.
+  // TODO(sang): This information is ambiguous now because it contains both
+  // the last failure information and current failure information.
+  // Rewrite it as a part of scheduling state observability improvement.
+  string scheduling_detail = 3;
 }
 
 // Debug info for a referenced object.

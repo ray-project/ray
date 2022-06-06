@@ -62,6 +62,10 @@ class TaskFinisherInterface {
       rpc::ErrorType error_type,
       const rpc::RayErrorInfo *ray_error_info = nullptr) = 0;
 
+  virtual void MarkTaskLeasing(const TaskID &task_id, const TaskID &lease_id) = 0;
+
+  virtual void CompleteTaskLeasing(const TaskID &task_id) = 0;
+
   virtual absl::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const = 0;
 
   virtual ~TaskFinisherInterface() {}
@@ -262,6 +266,18 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[in] task_id The task that is will be running.
   void MarkTaskWaitingForExecution(const TaskID &task_id) override;
 
+  /// Record that the given task sends a lease request to a scheduler with a given lease
+  /// ID.
+  ///
+  /// \param[in] task_id The task that sends a lease request.
+  /// \param[in] lease_id The lease ID for the scheduling request to a scheduler.
+  void MarkTaskLeasing(const TaskID &task_id, const TaskID &lease_id) override;
+
+  /// Record that the given task lease request is completed.
+  ///
+  /// \param[in] task_id The task that finishes a lease request.
+  void CompleteTaskLeasing(const TaskID &task_id) override;
+
   /// Add debug information about the current task status for the ObjectRefs
   /// included in the given stats.
   ///
@@ -325,6 +341,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     // lineage. We cache this because the task spec protobuf can mutate
     // out-of-band.
     int64_t lineage_footprint_bytes = 0;
+    // The lease ID to lease a worker from a scheduler.
+    TaskID lease_id = TaskID::Nil();
   };
 
   /// Remove a lineage reference to this object ID. This should be called

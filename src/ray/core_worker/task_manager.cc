@@ -663,6 +663,28 @@ void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id) {
   it->second.status = rpc::TaskStatus::WAITING_FOR_EXECUTION;
 }
 
+void TaskManager::MarkTaskLeasing(const TaskID &task_id, const TaskID &lease_id) {
+  absl::MutexLock lock(&mu_);
+  auto it = submissible_tasks_.find(task_id);
+  if (it == submissible_tasks_.end()) {
+    return;
+  }
+  RAY_CHECK(it->second.status == rpc::TaskStatus::SCHEDULED);
+  RAY_CHECK(it->second.lease_id == TaskID::Nil());
+  it->second.lease_id = lease_id;
+}
+
+void TaskManager::CompleteTaskLeasing(const TaskID &task_id) {
+  absl::MutexLock lock(&mu_);
+  auto it = submissible_tasks_.find(task_id);
+  if (it == submissible_tasks_.end()) {
+    return;
+  }
+  RAY_CHECK(it->second.status == rpc::TaskStatus::SCHEDULED);
+  RAY_CHECK(it->second.lease_id != TaskID::Nil());
+  it->second.lease_id = TaskID::Nil();
+}
+
 void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply) const {
   absl::MutexLock lock(&mu_);
   for (const auto &task_it : submissible_tasks_) {
@@ -683,14 +705,18 @@ void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply) const {
     entry->set_name(task_spec.GetName());
     entry->set_language(task_spec.GetLanguage());
     entry->set_func_or_class_name(task_spec.FunctionDescriptor()->CallString());
-    entry->set_scheduling_state(task_state);
+    entry->set_state(task_state);
     entry->set_job_id(task_spec.JobId().Binary());
     entry->set_task_id(task_spec.TaskId().Binary());
     entry->set_parent_task_id(task_spec.ParentTaskId().Binary());
+    if (task_entry.lease_id != TaskID::Nil()) {
+      entry->set_lease_id(task_entry.lease_id.Binary());
+    }
     const auto &resources_map = task_spec.GetRequiredResources().GetResourceMap();
     entry->mutable_required_resources()->insert(resources_map.begin(),
                                                 resources_map.end());
     entry->mutable_runtime_env_info()->CopyFrom(task_spec.RuntimeEnvInfo());
+    entry->set_task_type(task_spec.GetTaskType());
   }
 }
 

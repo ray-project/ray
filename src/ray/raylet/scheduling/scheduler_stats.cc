@@ -63,9 +63,9 @@ void SchedulerStats::ComputeStats() {
     const auto &work_queue = pair.second;
     for (auto work_it = work_queue.begin(); work_it != work_queue.end();) {
       const auto &work = *work_it++;
-      if (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER) {
+      if (work->GetState() == rpc::SchedulingState::WAITING_FOR_WORKERS) {
         num_tasks_waiting_for_workers += 1;
-      } else if (work->GetState() == internal::WorkStatus::CANCELLED) {
+      } else if (work->GetState() == rpc::SchedulingState::CANCELLED) {
         num_cancelled_tasks += 1;
       } else if (work->GetUnscheduledCause() ==
                  internal::UnscheduledWorkCause::WAITING_FOR_RESOURCE_ACQUISITION) {

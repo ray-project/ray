@@ -70,6 +70,7 @@ class ILocalTaskManager {
   virtual size_t GetNumTaskSpilled() const = 0;
   virtual size_t GetNumWaitingTaskSpilled() const = 0;
   virtual size_t GetNumUnschedulableTaskSpilled() const = 0;
+  virtual void FillTaskInformation(rpc::GetTasksInfoReply *reply) const = 0;
 };
 
 /// A noop local task manager. It is a no-op class. We need this because there's no
@@ -132,6 +133,7 @@ class NoopLocalTaskManager : public ILocalTaskManager {
   size_t GetNumTaskSpilled() const override { return 0; }
   size_t GetNumWaitingTaskSpilled() const override { return 0; }
   size_t GetNumUnschedulableTaskSpilled() const override { return 0; }
+  void FillTaskInformation(rpc::GetTasksInfoReply *reply) const override {}
 };
 
 }  // namespace raylet

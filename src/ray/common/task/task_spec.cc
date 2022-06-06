@@ -299,6 +299,8 @@ std::string TaskSpecification::GetDebuggerBreakpoint() const {
 
 int64_t TaskSpecification::GetDepth() const { return message_->depth(); }
 
+const rpc::TaskType TaskSpecification::GetTaskType() const { return message_->type(); }
+
 bool TaskSpecification::IsDriverTask() const {
   return message_->type() == TaskType::DRIVER_TASK;
 }

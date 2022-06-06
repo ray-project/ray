@@ -94,17 +94,15 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// resource_load and resource_load_by_shape.
   ///
   /// \param[out] data: Output parameter. `resource_load` and `resource_load_by_shape` are
-  /// the only
-  ///                   fields used.
+  /// the only fields used.
   /// \param[in] last_reported_resources: The last reported resources. Used to check
-  /// whether
-  ///                                     resources have been changed.
+  /// whether resources have been changed.
   void FillResourceUsage(
       rpc::ResourcesData &data,
       const std::shared_ptr<NodeResources> &last_reported_resources = nullptr) override;
 
   /// SANG-TODO
-  void FillTaskInformation(rpc::GetNodeStatsReply *reply) const override;
+  void FillTaskInformation(rpc::GetTasksInfoReply *reply) const override;
 
   /// Return if any tasks are pending resource acquisition.
   ///

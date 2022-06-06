@@ -5,7 +5,7 @@ from dataclasses import fields
 from itertools import islice
 from typing import List, Tuple
 
-from ray.core.generated.common_pb2 import TaskStatus
+from ray.core.generated.common_pb2 import TaskStatus, TaskType
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.memory_utils as memory_utils
 
@@ -154,7 +154,7 @@ class StateAPIManager:
                         f"Supported filter columns: {filterable_columns}"
                     )
 
-                if datum[filter_column] != filter_value:
+                if filter_column not in datum or (datum[filter_column] != filter_value):
                     match = False
                     break
 
@@ -283,6 +283,7 @@ class StateAPIManager:
             {task_id -> task_data_in_dict}
             task_data_in_dict's schema is in TaskState
         """
+        # Get all task information from the cluster.
         raylet_ids = self._client.get_all_registered_raylet_ids()
         replies = await asyncio.gather(
             *[
@@ -292,9 +293,14 @@ class StateAPIManager:
             return_exceptions=True,
         )
 
+        # Find failed RPCs.
         unresponsive_nodes = 0
         running_task_id = set()
         successful_replies = []
+        # lease_id -> scheduling information.
+        # It is used to find a matching scheudling information
+        # for each task later.
+        scheduling_info_map = {}
         for reply in replies:
             if isinstance(reply, DataSourceUnavailable):
                 unresponsive_nodes += 1
@@ -303,9 +309,17 @@ class StateAPIManager:
                 raise reply
 
             successful_replies.append(reply)
+            for scheduling_info in reply.scheduling_information:
+                scheduling_info = self._message_to_dict(
+                    message=scheduling_info,
+                    fields_to_decode=["lease_id"],
+                )
+                assert scheduling_info["lease_id"] not in scheduling_info_map
+                scheduling_info_map[scheduling_info["lease_id"]] = scheduling_info
             for task_id in reply.running_task_ids:
                 running_task_id.add(binary_to_hex(task_id))
 
+        # Handle partial failures.
         partial_failure_warning = None
         if len(raylet_ids) > 0 and unresponsive_nodes > 0:
             warning_msg = NODE_QUERY_FAILURE_WARNING.format(
@@ -320,6 +334,7 @@ class StateAPIManager:
                 f"The returned data may contain incomplete result. {warning_msg}"
             )
 
+        # Build the state.
         result = []
         for reply in successful_replies:
             assert not isinstance(reply, Exception)
@@ -327,15 +342,51 @@ class StateAPIManager:
             for task in tasks:
                 data = self._message_to_dict(
                     message=task,
-                    fields_to_decode=["task_id"],
+                    fields_to_decode=["task_id", "lease_id"],
                 )
+
+                # Find a matching running task. Running task information is
+                # not available from the owned entries, so we should find a matching
+                # entry.
                 if data["task_id"] in running_task_id:
-                    data["scheduling_state"] = TaskStatus.DESCRIPTOR.values_by_number[
+                    data["state"] = TaskStatus.DESCRIPTOR.values_by_number[
                         TaskStatus.RUNNING
                     ].name
+
+                # Calculate the scheduling state by finding a matching lease id.
+                # Note that task's lease id is embeded into the data whereas
+                # the actor's lease id == actor creation task id.
+                lease_id = None
+                task_type = data["task_type"]
+
+                if (
+                    task_type
+                    == TaskType.DESCRIPTOR.values_by_number[
+                        TaskType.ACTOR_CREATION_TASK
+                    ].name
+                ):
+                    lease_id = data["task_id"]
+                elif (
+                    "lease_id" in data
+                    and task_type
+                    == TaskType.DESCRIPTOR.values_by_number[TaskType.NORMAL_TASK].name
+                ):
+                    lease_id = data["lease_id"]
+
+                if lease_id:
+                    if lease_id in scheduling_info_map:
+                        data["scheduling_state"] = scheduling_info_map[lease_id][
+                            "scheduling_state"
+                        ]
+                        data["scheduling_detail"] = scheduling_info_map[lease_id][
+                            "scheduling_detail"
+                        ]
+
                 result.append(data)
 
+        # Filter
         result = self._filter(result, option.filters, TaskState)
+
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["task_id"])
         return ListApiResponse(

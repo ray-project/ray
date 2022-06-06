@@ -25,6 +25,8 @@ from ray.core.generated.common_pb2 import (
     TaskInfoEntry,
     CoreWorkerStats,
     ObjectRefInfo,
+    SchedulingInformation,
+    SchedulingState,
 )
 from ray.core.generated.node_manager_pb2 import GetTasksInfoReply, GetNodeStatsReply
 from ray.core.generated.gcs_pb2 import (
@@ -84,6 +86,7 @@ from ray.experimental.state.state_cli import (
     get_state_api_output_to_print,
     AvailableFormat,
 )
+from ray._raylet import TaskID
 from ray.runtime_env import RuntimeEnv
 from ray._private.test_utils import wait_for_condition
 from ray.job_submission import JobSubmissionClient
@@ -158,7 +161,8 @@ def generate_task_data(id, name):
                 task_id=id,
                 name=name,
                 func_or_class_name="class",
-                scheduling_state=TaskStatus.SCHEDULED,
+                state=TaskStatus.SCHEDULED,
+                lease_id=TaskID.nil().binary(),
             )
         ]
     )
@@ -493,6 +497,82 @@ async def test_api_manager_list_tasks(state_api_manager):
     ]
     with pytest.raises(DataSourceUnavailable):
         result = await state_api_manager.list_tasks(option=create_api_options(limit=1))
+
+
+@pytest.mark.skipif(
+    sys.version_info <= (3, 7, 0),
+    reason=("Not passing in CI although it works locally. Will handle it later."),
+)
+@pytest.mark.asyncio
+async def test_api_manager_list_tasks_scheduling_state(state_api_manager):
+    data_source_client = state_api_manager.data_source_client
+    data_source_client.get_all_registered_raylet_ids = MagicMock()
+    data_source_client.get_all_registered_raylet_ids.return_value = ["1", "2"]
+
+    actor_task_id = TaskID(b"1" * 24)
+    normal_task_id = TaskID(b"2" * 24)
+    running_normal_task_id = TaskID(b"3" * 24)
+    lease_id = TaskID(b"4" * 24)
+    data_source_client.get_task_info = AsyncMock()
+    data_source_client.get_task_info.side_effect = [
+        GetTasksInfoReply(
+            owned_task_info_entries=[
+                # Actor creation task scheduling.
+                TaskInfoEntry(
+                    task_id=actor_task_id.binary(),
+                    func_or_class_name="class",
+                    state=TaskStatus.SCHEDULED,
+                    lease_id=actor_task_id.binary(),
+                ),
+                # Normal task scheduling.
+                TaskInfoEntry(
+                    task_id=normal_task_id.binary(),
+                    func_or_class_name="f",
+                    state=TaskStatus.SCHEDULED,
+                    lease_id=lease_id.binary(),
+                ),
+                # Running normal task.
+                TaskInfoEntry(
+                    task_id=running_normal_task_id.binary(),
+                    func_or_class_name="g",
+                    state=TaskStatus.WAITING_FOR_EXECUTION,
+                ),
+            ],
+        ),
+        GetTasksInfoReply(
+            owned_task_info_entries=[],
+            running_task_ids=[running_normal_task_id.binary()],
+            scheduling_information=[
+                SchedulingInformation(
+                    lease_id=lease_id.binary(),
+                    scheduling_state=SchedulingState.WAITING_FOR_WORKERS,
+                    scheduling_detail="detail1",
+                ),
+                SchedulingInformation(
+                    lease_id=actor_task_id.binary(),
+                    scheduling_state=SchedulingState.INFEASIBLE,
+                    scheduling_detail="detail2",
+                ),
+            ],
+        ),
+    ]
+    result = await state_api_manager.list_tasks(option=create_api_options())
+    data = result.result
+    assert len(data) == 3
+    actor_data = data[actor_task_id.hex()]
+    assert actor_data["state"] == "SCHEDULED"
+    assert actor_data["scheduling_state"] == "INFEASIBLE"
+    assert actor_data["scheduling_detail"] == "detail2"
+
+    task_data = data[normal_task_id.hex()]
+    assert task_data["state"] == "SCHEDULED"
+    assert task_data["scheduling_state"] == "WAITING_FOR_WORKERS"
+    assert task_data["scheduling_detail"] == "detail1"
+
+    running_task_data = data[running_normal_task_id.hex()]
+    assert running_task_data["state"] == "RUNNING"
+    assert "scheduling_state" not in running_task_data
+    assert "scheduling_detail" not in running_task_data
 
 
 @pytest.mark.skipif(
@@ -1087,18 +1167,16 @@ def test_list_tasks(shutdown_only):
         waiting_for_execution = len(
             list(
                 filter(
-                    lambda task: task["scheduling_state"] == "WAITING_FOR_EXECUTION",
+                    lambda task: task["state"] == "WAITING_FOR_EXECUTION",
                     tasks,
                 )
             )
         )
-        scheduled = len(
-            list(filter(lambda task: task["scheduling_state"] == "SCHEDULED", tasks))
-        )
+        scheduled = len(list(filter(lambda task: task["state"] == "SCHEDULED", tasks)))
         waiting_for_dep = len(
             list(
                 filter(
-                    lambda task: task["scheduling_state"] == "WAITING_FOR_DEPENDENCIES",
+                    lambda task: task["state"] == "WAITING_FOR_DEPENDENCIES",
                     tasks,
                 )
             )
@@ -1106,7 +1184,7 @@ def test_list_tasks(shutdown_only):
         running = len(
             list(
                 filter(
-                    lambda task: task["scheduling_state"] == "RUNNING",
+                    lambda task: task["state"] == "RUNNING",
                     tasks,
                 )
             )
@@ -1145,18 +1223,16 @@ def test_list_actor_tasks(shutdown_only):
         waiting_for_execution = len(
             list(
                 filter(
-                    lambda task: task["scheduling_state"] == "WAITING_FOR_EXECUTION",
+                    lambda task: task["state"] == "WAITING_FOR_EXECUTION",
                     tasks,
                 )
             )
         )
-        scheduled = len(
-            list(filter(lambda task: task["scheduling_state"] == "SCHEDULED", tasks))
-        )
+        scheduled = len(list(filter(lambda task: task["state"] == "SCHEDULED", tasks)))
         waiting_for_dep = len(
             list(
                 filter(
-                    lambda task: task["scheduling_state"] == "WAITING_FOR_DEPENDENCIES",
+                    lambda task: task["state"] == "WAITING_FOR_DEPENDENCIES",
                     tasks,
                 )
             )
@@ -1164,7 +1240,7 @@ def test_list_actor_tasks(shutdown_only):
         running = len(
             list(
                 filter(
-                    lambda task: task["scheduling_state"] == "RUNNING",
+                    lambda task: task["state"] == "RUNNING",
                     tasks,
                 )
             )
@@ -1431,6 +1507,50 @@ def test_filter(shutdown_only):
     assert result.exit_code == 0
     assert dead_actor_id in result.output
     assert alive_actor_id not in result.output
+
+
+def test_scheduling_state_task(shutdown_only):
+    ray.init()
+
+    @ray.remote(num_gpus=1)
+    def f():
+        pass
+
+    a = f.remote()  # noqa
+
+    def verify():
+        task = list(list_tasks().values())[0]
+        assert task["scheduling_state"] == "INFEASIBLE"
+        assert "Task is queued" in task["scheduling_detail"]
+        assert "lease_id" not in task
+        return True
+
+    wait_for_condition(verify)
+
+
+def test_scheduling_state_actor(monkeypatch, ray_start_cluster):
+    cluster = ray_start_cluster
+    with monkeypatch.context() as m:
+        # defer for 10s for the second node.
+        m.setenv(
+            "RAY_testing_asio_delay_us",
+            "InternalKVGcsService.grpc_server.InternalKVPut=1000000:1000000",
+        )
+        cluster.add_node(_system_config={"worker_register_timeout_seconds": 8})
+        ray.init(address=cluster.address)
+
+        @ray.remote
+        class Actor:
+            pass
+
+        a = Actor.remote() # noqa
+
+        def verify():
+            task = list(list_tasks().values())[0]
+            assert task["scheduling_state"] == "WAITING_FOR_WORKERS"
+            return True
+
+        wait_for_condition(verify)
 
 
 if __name__ == "__main__":

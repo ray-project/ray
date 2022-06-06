@@ -342,7 +342,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
     }
   }
 
-  int NumTasksToDispatchWithStatus(internal::WorkStatus status) {
+  int NumTasksToDispatchWithStatus(rpc::SchedulingState status) {
     int count = 0;
     for (const auto &pair : local_task_manager_->tasks_to_dispatch_) {
       for (const auto &work : pair.second) {
@@ -943,13 +943,13 @@ TEST_F(ClusterTaskManagerTest, NotOKPopWorkerTest) {
     *callback_called_ptr = true;
   };
   task_manager_.QueueAndScheduleTask(task1, false, false, &reply, callback);
-  ASSERT_EQ(NumTasksToDispatchWithStatus(internal::WorkStatus::WAITING_FOR_WORKER), 1);
-  ASSERT_EQ(NumTasksToDispatchWithStatus(internal::WorkStatus::WAITING), 0);
+  ASSERT_EQ(NumTasksToDispatchWithStatus(rpc::SchedulingState::WAITING_FOR_WORKER), 1);
+  ASSERT_EQ(NumTasksToDispatchWithStatus(rpc::SchedulingState::WAITING), 0);
   ASSERT_EQ(NumRunningTasks(), 1);
   pool_.TriggerCallbacksWithNotOKStatus(PopWorkerStatus::TooManyStartingWorkerProcesses);
   ASSERT_FALSE(callback_called);
-  ASSERT_EQ(NumTasksToDispatchWithStatus(internal::WorkStatus::WAITING_FOR_WORKER), 0);
-  ASSERT_EQ(NumTasksToDispatchWithStatus(internal::WorkStatus::WAITING), 1);
+  ASSERT_EQ(NumTasksToDispatchWithStatus(rpc::SchedulingState::WAITING_FOR_WORKER), 0);
+  ASSERT_EQ(NumTasksToDispatchWithStatus(rpc::SchedulingState::WAITING), 1);
   ASSERT_EQ(NumRunningTasks(), 0);
   ASSERT_TRUE(task_manager_.CancelTask(task1.GetTaskSpecification().TaskId()));
 
@@ -957,16 +957,16 @@ TEST_F(ClusterTaskManagerTest, NotOKPopWorkerTest) {
   reply.Clear();
   RayTask task2 = CreateTask({{ray::kCPU_ResourceLabel, 1}});
   task_manager_.QueueAndScheduleTask(task2, false, false, &reply, callback);
-  ASSERT_EQ(NumTasksToDispatchWithStatus(internal::WorkStatus::WAITING_FOR_WORKER), 1);
-  ASSERT_EQ(NumTasksToDispatchWithStatus(internal::WorkStatus::WAITING), 0);
+  ASSERT_EQ(NumTasksToDispatchWithStatus(rpc::SchedulingState::WAITING_FOR_WORKER), 1);
+  ASSERT_EQ(NumTasksToDispatchWithStatus(rpc::SchedulingState::WAITING), 0);
   ASSERT_EQ(NumRunningTasks(), 1);
   // The task should be cancelled.
   const auto runtime_env_error_msg = "Runtime env error message";
   pool_.TriggerCallbacksWithNotOKStatus(PopWorkerStatus::RuntimeEnvCreationFailed,
                                         runtime_env_error_msg);
   ASSERT_TRUE(callback_called);
-  ASSERT_EQ(NumTasksToDispatchWithStatus(internal::WorkStatus::WAITING_FOR_WORKER), 0);
-  ASSERT_EQ(NumTasksToDispatchWithStatus(internal::WorkStatus::WAITING), 0);
+  ASSERT_EQ(NumTasksToDispatchWithStatus(rpc::SchedulingState::WAITING_FOR_WORKER), 0);
+  ASSERT_EQ(NumTasksToDispatchWithStatus(rpc::SchedulingState::WAITING), 0);
   ASSERT_EQ(NumRunningTasks(), 0);
   ASSERT_TRUE(reply.canceled());
   ASSERT_EQ(reply.scheduling_failure_message(), runtime_env_error_msg);
@@ -1720,7 +1720,7 @@ TEST_F(ClusterTaskManagerTest, TestSpillWaitingTasks) {
   }
   ASSERT_EQ(num_callbacks, 0);
   // Local resources could only dispatch one task.
-  ASSERT_EQ(NumTasksToDispatchWithStatus(internal::WorkStatus::WAITING_FOR_WORKER), 1);
+  ASSERT_EQ(NumTasksToDispatchWithStatus(rpc::SchedulingState::WAITING_FOR_WORKER), 1);
 
   auto remote_node_id = NodeID::FromRandom();
   AddNode(remote_node_id, 16);

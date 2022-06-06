@@ -179,18 +179,20 @@ class WorkerState(StateSchema):
 class TaskState(StateSchema):
     task_id: str
     name: str
-    scheduling_state: str
-    type: str
+    state: str
     language: str
     func_or_class_name: str
     required_resources: dict
     runtime_env_info: str
+    scheduling_state: str
+    scheduling_detail: str
 
     @classmethod
     def filterable_columns(cls) -> Set[str]:
         return {
             "task_id",
             "name",
+            "state",
             "scheduling_state",
         }
 

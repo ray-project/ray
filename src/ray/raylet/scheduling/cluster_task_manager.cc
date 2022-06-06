@@ -57,7 +57,7 @@ void ClusterTaskManager::QueueAndScheduleTask(
   // If the scheduling class is infeasible, just add the work to the infeasible queue
   // directly.
   if (infeasible_tasks_.count(scheduling_class) > 0) {
-    work->SetStateWaiting(internal::UnscheduledWorkCause::INFEASIBLE);
+    work->SetStateInfeasible();
     infeasible_tasks_[scheduling_class].push_back(work);
   } else {
     tasks_to_schedule_[scheduling_class].push_back(work);
@@ -66,9 +66,10 @@ void ClusterTaskManager::QueueAndScheduleTask(
 }
 
 namespace {
-void ReplyCancelled(const internal::Work &work,
+void ReplyCancelled(internal::Work &work,
                     rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
                     const std::string &scheduling_failure_message) {
+  work.SetStateCancelled();
   auto reply = work.reply;
   auto callback = work.callback;
   reply->set_canceled(true);
@@ -144,7 +145,7 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
       }
 
       // TODO(sang): Use a shared pointer deque to reduce copy overhead.
-      work->SetStateWaiting(internal::UnscheduledWorkCause::INFEASIBLE);
+      work->SetStateInfeasible();
       infeasible_tasks_[shapes_it->first] = shapes_it->second;
       tasks_to_schedule_.erase(shapes_it++);
     } else if (work_queue.empty()) {
@@ -248,16 +249,20 @@ void ClusterTaskManager::FillResourceUsage(
   scheduler_resource_reporter_.FillResourceUsage(data, last_reported_resources);
 }
 
-void ClusterTaskManager::FillTaskInformation(rpc::GetNodeStatsReply *reply) const {
+void ClusterTaskManager::FillTaskInformation(rpc::GetTasksInfoReply *reply) const {
   auto update_node_state_reply = [&](const auto &shape_it) {
     auto &work_queue = shape_it.second;
     for (const auto &work_it : work_queue) {
-      const auto &task = work_it->task;
-      const auto &spec = task.GetTaskSpecification();
-      auto state = reply->add_detailed_scheduling_states();
-      state->set_task_id(spec.TaskId().Binary());
-      state->set_scheduling_state(
-          internal::UnscheduledWorkCauseToString(work_it->GetUnscheduledCause()));
+      const auto &work = *work_it;
+      const auto &spec = work_it->task.GetTaskSpecification();
+      auto state = reply->add_scheduling_information();
+      // Currently, task_id == lease_id because this task id is not always
+      // the same as the owner side task id.
+      // TODO(sang): Refactor it.
+      state->set_lease_id(spec.TaskId().Binary());
+      state->set_scheduling_state(work.GetState());
+      state->set_scheduling_detail(
+          internal::UnscheduledWorkCauseToString(work.GetUnscheduledCause()));
     }
   };
 
@@ -284,7 +289,7 @@ bool ClusterTaskManager::AnyPendingTasksForResourceAcquisition(
 
       // If the work is not in the waiting state, it will be scheduled soon or won't be
       // scheduled. Consider as non-pending.
-      if (work.GetState() != internal::WorkStatus::WAITING) {
+      if (work.GetState() != rpc::SchedulingState::WAITING) {
         continue;
       }
 
