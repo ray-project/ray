@@ -26,9 +26,9 @@ def setup_jax_environment(master_addr_with_port: str, num_workers: int, index: i
     to set up the distributed connections currently!
 
     Args:
-        master_addr_with_port (str): The master work's address plus the port.
-        num_workers (int): Total number of all the workers.
-        index (int): Index (i.e. world rank) of the current worker.
+        master_addr_with_port: The master work's address plus the port.
+        num_workers: Total number of all the workers.
+        index: Index (i.e. world rank) of the current worker.
     """
     use_gpu = len(ray.get_gpu_ids())
     if use_gpu:
