@@ -7,7 +7,7 @@ from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader, DistributedSampler
 import torchvision
 
-import jax 
+import jax
 import numpy as np
 
 import ray
@@ -69,13 +69,12 @@ def test_torch_get_device(ray_start_4_cpus_2_gpus, num_gpus_per_worker):
 
 def test_jax_get_device(ray_start_4_cpus_2_gpus):
     def _train_fn(x):
-        return jax.lax.psum(x, 'i')
+        return jax.lax.psum(x, "i")
 
     def train_fn():
         """Creates a barrier across all hosts/devices."""
-        return jax.pmap(_train_fn, 'i')(
-            np.ones(jax.local_device_count()))
-        
+        return jax.pmap(_train_fn, "i")(np.ones(jax.local_device_count()))
+
     num_gpus_per_worker = 1
     trainer = Trainer(
         "jax",
@@ -87,6 +86,7 @@ def test_jax_get_device(ray_start_4_cpus_2_gpus):
     devices = trainer.run(train_fn)
     assert devices == [2, 2]
     trainer.shutdown()
+
 
 def test_torch_prepare_model(ray_start_4_cpus_2_gpus):
     """Tests if ``prepare_model`` correctly wraps in DDP."""

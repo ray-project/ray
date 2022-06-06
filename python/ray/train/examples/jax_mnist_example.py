@@ -4,22 +4,17 @@ import time
 from typing import Dict
 
 import einops
-import jax
-import jax.numpy as jnp
 import numpy as np
 import optax
 import ray.train as train
 import tensorflow_datasets as tfds
-from flax import jax_utils
-from flax import linen as nn
-from flax.training import train_state
-from flax.training.common_utils import shard
-from jax import lax
 from ray.train.callbacks import JsonLoggerCallback
 from ray.train.trainer import Trainer
 
 
 def get_datasets():
+    import jax
+
     """Load MNIST train and test datasets into memory."""
     # shard the dataset
     def shard_fn(x):
@@ -59,6 +54,13 @@ def get_datasets():
 
 
 def train_func(config: Dict):
+    import jax
+    import jax.numpy as jnp
+    from flax import jax_utils
+    from flax import linen as nn
+    from flax.training import train_state
+    from flax.training.common_utils import shard
+    from jax import lax
 
     # NOTE: the flax nn module has to define inside
     # otherwise, the error message `ValueError: parent must be None, Module or Scope`
