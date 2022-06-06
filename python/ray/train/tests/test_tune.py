@@ -99,9 +99,9 @@ def test_tune_tensorflow_mnist(ray_start_8_cpus):
     tune_tensorflow_mnist(num_workers=2, use_gpu=False, num_samples=2)
 
 
-def tune_jax_mnist(num_workers, use_gpu, num_samples):
+def tune_jax_mnist(num_workers, use_gpu, num_samples, num_gpus_per_worker):
     epochs = 2
-    trainer = Trainer("jax", num_workers=num_workers, use_gpu=use_gpu)
+    trainer = Trainer("jax", num_workers=num_workers, use_gpu=use_gpu, resources_per_worker={'GPU': num_gpus_per_worker})
     MnistTrainable = trainer.to_tune_trainable(jax_mnist_train_func)
 
     analysis = tune.run(
@@ -120,7 +120,7 @@ def tune_jax_mnist(num_workers, use_gpu, num_samples):
 
 
 def test_tune_jax_mnist(ray_start_8_cpus):
-    tune_jax_mnist(num_workers=2, use_gpu=False, num_samples=2)
+    tune_jax_mnist(num_workers=2, use_gpu=False, num_samples=2, num_gpus_per_worker=0)
 
 
 def test_tune_error(ray_start_2_cpus):
