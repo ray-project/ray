@@ -5,6 +5,7 @@ from pathlib import Path
 
 
 def check_file(file_contents: str) -> bool:
+    """Check file for the snippet"""
     return bool(re.search(r"^if __name__ == \"__main__\":", file_contents, re.M))
 
 
@@ -13,11 +14,56 @@ def parse_json(data: str) -> dict:
 
 
 def treat_path(path: str) -> Path:
+    """Treat bazel paths to filesystem paths"""
     path = path[2:].replace(":", "/")
     return Path(path)
 
 
 def get_paths_from_parsed_data(parsed_data: dict) -> list:
+    # Example JSON input:
+    # "rule": [
+    #     {
+    #       "@class": "py_test",
+    #       "@location": "/home/ubuntu/ray/python/ray/tests/BUILD:345:8",
+    #       "@name": "//python/ray/tests:test_tracing",
+    #       "string": [
+    #         {
+    #           "@name": "name",
+    #           "@value": "test_tracing"
+    #         },
+    #       ],
+    #       "list": [
+    #         {
+    #           "@name": "srcs",
+    #           "label": [
+    #             {
+    #               "@value": "//python/ray/tests:aws/conftest.py"
+    #             },
+    #             {
+    #               "@value": "//python/ray/tests:conftest.py"
+    #             },
+    #             {
+    #               "@value": "//python/ray/tests:test_tracing.py"
+    #             }
+    #           ]
+    #         }
+    #       ],
+    #       ... other fields ...
+    #       "label": {
+    #         "@name": "main",
+    #         "@value": "//python/ray/tests:test_runtime_env_working_dir_remote_uri.py"
+    #       },
+    #       ... other fields ...
+    #     }
+    # ]
+    #
+    # We want to get the location of the actual test file.
+    # This can be, in order of priority:
+    #   1. Specified as the "main" label
+    #   2. Specified as the ONLY "srcs" label
+    #   3. Specified as the "srcs" label matching the "name" of the test
+    # https://docs.bazel.build/versions/main/be/python.html#py_test
+
     paths = []
     for rule in parsed_data["query"]["rule"]:
         name = rule["@name"]

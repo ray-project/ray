@@ -526,6 +526,10 @@ lint_bazel_pytest() {
   pip install yq
   cd "${WORKSPACE_DIR}"
   for team in "team:ml" "team:serve"; do
+    # this does the following:
+    # - find all py_test rules in bazel that have the specified team tag EXCEPT ones with "no_main" tag and outputs them as xml
+    # - converts the xml to json
+    # - feeds the json into pytest_checker.py
     bazel query "kind(py_test.*, tests(python/...) intersect attr(tags, \"\b$team\b\", python/...) except attr(tags, \"\bno_main\b\", python/...))" --output xml | xq | python scripts/pytest_checker.py
   done
 }
