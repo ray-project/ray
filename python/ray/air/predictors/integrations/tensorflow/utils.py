@@ -2,9 +2,9 @@ from typing import Optional
 
 from tensorflow import keras
 
-from ray.ml.checkpoint import Checkpoint
-from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY
-from ray.ml.preprocessor import Preprocessor
+from ray.air.checkpoint import Checkpoint
+from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY
+from ray.air.preprocessor import Preprocessor
 
 
 def to_air_checkpoint(
