@@ -12,4 +12,5 @@ This section covers extended topics on how to use Ray.
     namespaces
     cross-language
     using-ray-with-jupyter
+    ray-dag
     advanced
