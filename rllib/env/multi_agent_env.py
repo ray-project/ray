@@ -114,14 +114,11 @@ class MultiAgentEnv(gym.Env):
         raise NotImplementedError
 
     @ExperimentalAPI
-    def observation_space_contains(
-        self, x: MultiAgentDict, allow_partial_multi_agent_obs=False
-    ) -> bool:
+    def observation_space_contains(self, x: MultiAgentDict) -> bool:
         """Checks if the observation space contains the given key.
 
         Args:
             x: Observations to check.
-            allow_partial_multi_agent_obs: Whether to allow partial observations.
 
         Returns:
             True if the observation space contains the given all observations
@@ -135,15 +132,20 @@ class MultiAgentEnv(gym.Env):
                 self._check_if_space_maps_agent_id_to_sub_space()
             )
         if self._spaces_in_preferred_format:
-            if allow_partial_multi_agent_obs:
-                # If we allow partial observations, only check whether observations of
-                # agents present in x are contained
-                return any(
-                    self.observation_space[key].contains(agent_obs)
-                    for key, agent_obs in x.items()
-                )
-            else:
-                return self.observation_space.contains(x)
+            for key, agent_obs in x.items():
+                if not self.observation_space[key].contains(agent_obs):
+                    return False
+            if not all(k in self.observation_space for k in x):
+                if log_once("possibly_bad_multi_agent_dict_missing_agent_observations"):
+                    logger.warning(
+                        f"You environment returns observations that that are "
+                        f"MultiAgentDicts with incomplete information. "
+                        f"Meaning that they only contain information on a subset of"
+                        f" participating agents. Ignore this warning if this is "
+                        f"intended, for example if your environment is turn-based "
+                        f"simulation."
+                    )
+            return True
 
         logger.warning("observation_space_contains() has not been implemented")
         return True
@@ -457,15 +459,10 @@ def make_multi_agent(
             return all(self.action_space.contains(val) for val in x.values())
 
         @override(MultiAgentEnv)
-        def observation_space_contains(
-            self, x: MultiAgentDict, allow_partial_multi_agent_obs=False
-        ) -> bool:
+        def observation_space_contains(self, x: MultiAgentDict) -> bool:
             if not isinstance(x, dict):
                 return False
-            if allow_partial_multi_agent_obs:
-                return any(self.observation_space.contains(val) for val in x.values())
-            else:
-                return all(self.observation_space.contains(val) for val in x.values())
+            return all(self.observation_space.contains(val) for val in x.values())
 
         @override(MultiAgentEnv)
         def reset(self):
