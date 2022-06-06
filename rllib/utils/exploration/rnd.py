@@ -121,7 +121,7 @@ class RND(Exploration):
                 "RND exploration currently does not support parallelism."
                 " `num_workers` must be 0!"
             )
-            
+
         self.embed_dim = embed_dim
         # In case no configuration is passed in, use the Policy's model config.
         # it has the same input dimensions as needed for the distill network.
@@ -207,7 +207,9 @@ class RND(Exploration):
         if self.framework == "torch":
             # We do not train the target network.
             distill_params = list(self._distill_predictor_net.parameters())
-            self.model._distill_predictor_net = self._distill_predictor_net.to(self.device)
+            self.model._distill_predictor_net = self._distill_predictor_net.to(
+                self.device
+            )
             self._optimizer = torch.optim.Adam(
                 distill_params,
                 lr=self.lr,
@@ -232,7 +234,6 @@ class RND(Exploration):
 
         return optimizers
 
-
     @override(Exploration)
     def postprocess_trajectory(self, policy, sample_batch, tf_sess=None):
         """Calculates phi values for the novelty and intrinsic reward.
@@ -246,14 +247,12 @@ class RND(Exploration):
             self._postprocess_torch(policy, sample_batch)
 
     @override(Exploration)
-    def get_state(self, sess: Optional["tf.Session"]=None):
+    def get_state(self, sess: Optional["tf.Session"] = None):
         """Returns the main variables of RND.
 
         This can be used for metrics. See the `RNDMetricsCallbacks`.
         """
-        return (
-            self._intrinsic_reward_np,
-        )
+        return (self._intrinsic_reward_np,)
 
     def _postprocess_tf(self, policy, sample_batch, tf_sess):
         """Calculates the intrinsic reward and updates the parameters."""
@@ -322,14 +321,12 @@ class RND(Exploration):
         # Push observations through the distillation networks.
         phi, _ = self.model._distill_predictor_net(
             {
-                SampleBatch.OBS:
-                    torch.from_numpy(sample_batch[SampleBatch.OBS]),                                    
+                SampleBatch.OBS: torch.from_numpy(sample_batch[SampleBatch.OBS]),
             }
         )
         phi_target, _ = self._distill_target_net(
             {
-                SampleBatch.OBS:
-                    torch.from_numpy(sample_batch[SampleBatch.OBS]),               
+                SampleBatch.OBS: torch.from_numpy(sample_batch[SampleBatch.OBS]),
             }
         )
         # Avoid dividing by zero in the gradient by adding a small epsilon.

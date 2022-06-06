@@ -17,13 +17,14 @@ class RNDMetricsCallbacks(DefaultCallbacks):
     The metrics should help users to monitor the exploration of
     the environment. The metric tracked is:
 
-    intrinsic_reward: The intrinsic reward in RND is the 
-        distillation error. This error decreases over the run of 
-        an experiment for already explored states. A low metric 
-        indicates that the agent visits states where it has already 
-        been or states that are very similar to states it visited 
+    intrinsic_reward: The intrinsic reward in RND is the
+        distillation error. This error decreases over the run of
+        an experiment for already explored states. A low metric
+        indicates that the agent visits states where it has already
+        been or states that are very similar to states it visited
         before. If the states ae truly novel this metric increases.
     """
+
     def __init__(self):
         super().__init__()
 
@@ -84,7 +85,8 @@ class RNDMetricsCallbacks(DefaultCallbacks):
         episode.hist_data["rnd/intrinsic_reward"] = episode.user_data[
             "intrinsic_reward"
         ]
-    
+
+
 class NovelDMetricsCallbacks(RNDMetricsCallbacks):
     """Collects metrics for NovelD exploration.
 

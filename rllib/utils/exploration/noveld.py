@@ -16,7 +16,7 @@ from ray.rllib.utils.typing import FromConfigSpec, ModelConfigDict
 
 if TYPE_CHECKING:
     from ray.rllib.policy import Policy
-    
+
 logger = logging.getLogger(__name__)
 
 tf1, tf, tfv = try_import_tf()
@@ -24,9 +24,9 @@ torch, nn = try_import_torch()
 F = None
 if nn is not None:
     F = nn.functional
-    
+
+
 class NovelD(RND):
-    
     def __init__(
         self,
         action_space: Space,
@@ -100,9 +100,9 @@ class NovelD(RND):
         """
 
         super().__init__(
-            action_space=action_space, 
-            framework=framework, 
-            model=model, 
+            action_space=action_space,
+            framework=framework,
+            model=model,
             embed_dim=embed_dim,
             distill_net_config=distill_net_config,
             lr=lr,
@@ -110,7 +110,7 @@ class NovelD(RND):
             normalize=normalize,
             random_timesteps=random_timesteps,
             sub_exploration=sub_exploration,
-            **kwargs
+            **kwargs,
         )
 
         # Try to import xxhash.
@@ -144,18 +144,18 @@ class NovelD(RND):
     @override(RND)
     def get_exploration_optimizer(self, optimizers):
         """Prepares the optimizer for the distillation network.
-        
-        Also adds a placeholder for the next observations in case 
+
+        Also adds a placeholder for the next observations in case
         a static graph is used in TensorFlow (i.e. `tf`)
         """
         optimizers = super().get_exploration_optimizer(optimizers)
         if self.framework == "tf":
             # For NovelD also the next observations are needed.
             self._next_obs_ph = get_placeholder(
-                        space=self.model.obs_space, name="_noveld_next_obs"
+                space=self.model.obs_space, name="_noveld_next_obs"
             )
         return optimizers
-    
+
     @override(RND)
     def on_episode_start(
         self,
@@ -176,11 +176,11 @@ class NovelD(RND):
         # Also reset the metrics.
         self._state_counts_total = 0
         self._state_counts_avg = 0.0
-        
+
     @override(RND)
-    def get_state(self, sess: Optional["tf.Session"]=None):
+    def get_state(self, sess: Optional["tf.Session"] = None):
         """Returns the main variables of NovelD.
-        
+
         This can be used for metrics. See the `NovelDMetricsCallbacks.
         """
         return (
@@ -190,11 +190,11 @@ class NovelD(RND):
             self._state_counts_total,
             self._state_counts_avg,
         )
-        
+
     @override(RND)
     def _postprocess_tf(self, policy, sample_batch, tf_sess):
         """Calculates the intrinsic reward and updates the parameters."""
-        
+
         self._update_state_counts(sample_batch[SampleBatch.NEXT_OBS])
         # tf1 static-graph: Perform session call on our loss and update ops.
         if self.framework == "tf":
@@ -208,43 +208,39 @@ class NovelD(RND):
         # stepping on the fly.
         else:
             self._novelty_next_np, _ = self._postprocess_helper_tf(
-                    sample_batch[SampleBatch.NEXT_OBS]
-                )
-            self._novelty_next_np = tf.stop_gradient(self._novelty_next_np) 
-        
+                sample_batch[SampleBatch.NEXT_OBS]
+            )
+            self._novelty_next_np = tf.stop_gradient(self._novelty_next_np)
+
         return super()._postprocess_tf(
-            policy=policy, 
-            sample_batch=sample_batch, 
-            tf_sess=tf_sess
+            policy=policy, sample_batch=sample_batch, tf_sess=tf_sess
         )
-        
+
     @override(RND)
     def _postprocess_torch(self, policy, sample_batch):
         """Calculates the intrinsic reward and updates the parameters."""
         # Push observations through the distillation networks.
         phi_next, _ = self.model._distill_predictor_net(
             {
-                SampleBatch.OBS:
-                    torch.from_numpy(sample_batch[SampleBatch.NEXT_OBS]),                                    
+                SampleBatch.OBS: torch.from_numpy(sample_batch[SampleBatch.NEXT_OBS]),
             }
         )
         phi_target_next, _ = self._distill_target_net(
             {
-                SampleBatch.OBS:
-                    torch.from_numpy(sample_batch[SampleBatch.NEXT_OBS]),               
+                SampleBatch.OBS: torch.from_numpy(sample_batch[SampleBatch.NEXT_OBS]),
             }
         )
         # Avoid dividing by zero in the gradient by adding a small epsilon.
         novelty_next = torch.norm(phi_next - phi_target_next + 1e-12, dim=1)
         self._novelty_next_np = novelty_next.detach().cpu().numpy()
-        
+
         # Call the super class to train the predictor network and compute
         # the intrinsic reward.
         return super()._postprocess_torch(
             policy,
             sample_batch,
         )
-        
+
     @override(RND)
     def _compute_intrinsic_reward(self, sample_batch):
         """Computes the intrinsic reward."""
@@ -252,7 +248,7 @@ class NovelD(RND):
         self._intrinsic_reward_np = np.maximum(
             self._novelty_next_np - self.alpha * self._novelty_np, self.beta
         ) * (state_counts == 1)
-        
+
     def _defaulthash_state(
         self,
         obs,
@@ -306,8 +302,3 @@ class NovelD(RND):
         """
         states_hashes = [self._hash_state(single_obs) for single_obs in obs]
         return np.array([self._state_counts[hash] for hash in states_hashes])
-        
-
-        
-    
-    
