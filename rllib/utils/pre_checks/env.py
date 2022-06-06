@@ -60,7 +60,8 @@ def check_env(env: EnvType) -> None:
             ),
         ):
             raise ValueError(
-                "Env must of one of the following supported types: BaseEnv, gym.Env, "
+                "Env must be of one of the following supported types: BaseEnv, "
+                "gym.Env, "
                 "MultiAgentEnv, VectorEnv, RemoteBaseEnv, ExternalMultiAgentEnv, "
                 f"ExternalEnv, but instead is of type {type(env)}."
             )

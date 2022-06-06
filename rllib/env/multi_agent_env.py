@@ -136,8 +136,8 @@ class MultiAgentEnv(gym.Env):
             )
         if self._spaces_in_preferred_format:
             if allow_partial_multi_agent_obs:
-                # If we allow partial observations, only check if observations of
-                # agents present in x fit
+                # If we allow partial observations, only check whether observations of
+                # agents present in x are contained
                 return any(
                     self.observation_space[key].contains(agent_obs)
                     for key, agent_obs in x.items()
