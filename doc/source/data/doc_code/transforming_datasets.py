@@ -171,6 +171,6 @@ predicted = ds.map_batches(predict_iris)
 
 # Batch inference processing with Ray actors. Autoscale the actors between 3 and 10.
 predicted = ds.map_batches(
-    IrisInferModel, compute=ActorPoolStrategy(3, 10), batch_size=256)
+    IrisInferModel, compute=ActorPoolStrategy(3, 10), batch_size=10)
 # __dataset_compute_strategy_end__
 # fmt: on
