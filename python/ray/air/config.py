@@ -5,16 +5,19 @@ from typing import (
     Callable,
     Dict,
     List,
+    Tuple,
     Mapping,
     Optional,
     Union,
 )
 
+from ray.air.constants import WILDCARD_KEY
 from ray.tune.syncer import SyncConfig
 from ray.tune.utils.log import Verbosity
 from ray.util import PublicAPI
 
 if TYPE_CHECKING:
+    from ray.data import Dataset
     from ray.tune.callback import Callback
     from ray.tune.stopper import Stopper
     from ray.tune.trainable import PlacementGroupFactory
@@ -114,6 +117,148 @@ class ScalingConfigDataClass:
         ]
         bundles = trainer_bundle + worker_bundles
         return PlacementGroupFactory(bundles, strategy=self.placement_strategy)
+
+
+@dataclass
+@PublicAPI(stability="alpha")
+class DatasetConfig:
+    """Configuration for ingest of a single Dataset.
+
+    These configs define how the Dataset should be read into the DataParallelTrainer.
+    It configures the preprocessing, splitting, and ingest strategy per-dataset.
+
+    DataParallelTrainers declare default DatasetConfigs for each dataset passed in the
+    ``datasets`` argument. Users have the opportunity to selectively override these
+    configs by passing the ``dataset_config`` argument. Trainers can also define user
+    customizable values (e.g., XGBoostTrainer doesn't support streaming ingest).
+    """
+
+    # TODO(ekl) could we unify DataParallelTrainer and Trainer so the same data ingest
+    # strategy applies to all Trainers?
+
+    # Whether to fit preprocessors on this dataset. This can be set on at most one
+    # dataset at a time.
+    # True by default for the "train" dataset only.
+    fit: Optional[bool] = None
+
+    # Whether the dataset should be split across multiple workers.
+    # True by default for the "train" dataset only.
+    split: Optional[bool] = None
+
+    # Whether to raise an error if the Dataset isn't provided by the user.
+    # True by default for the "train" dataset only.
+    required: Optional[bool] = None
+
+    # Whether the dataset can be streamed into memory using pipelined reads.
+    # When enabled, get_dataset_shard() returns DatasetPipeline instead of Dataset.
+    # Note that streaming isn't enabled unless you set stream_window_size too.
+    # False by default for all datasets.
+    streamable: Optional[bool] = None
+
+    # Whether to transform the dataset with the fitted preprocessor. This must be
+    # enabled at least for the dataset that is fit.
+    # True by default for all datasets.
+    transform: Optional[bool] = None
+
+    # List of fields that the user cannot override in ``dataset_config``.
+    _noncustomizable_fields: Tuple[str] = ()
+
+    # TODO: add stream_window_size, global/local shuffle options
+
+    def fill_defaults(self) -> "DatasetConfig":
+        """Return a copy of this config with all default values filled in."""
+        return DatasetConfig(
+            fit=self.fit or False,
+            split=self.split or False,
+            required=self.required or False,
+            streamable=self.streamable or False,
+            transform=self.transform if self.transform is not None else True,
+            _noncustomizable_fields=self._noncustomizable_fields,
+        )
+
+    @staticmethod
+    def merge(
+        a: Dict[str, "DatasetConfig"], b: Optional[Dict[str, "DatasetConfig"]]
+    ) -> Dict[str, "DatasetConfig"]:
+        """Merge two given DatasetConfigs, the second taking precedence.
+
+        Raises:
+            ValueError if any noncustomizable fields were specified to be updated.
+        """
+        has_wildcard = WILDCARD_KEY in a
+        result = a.copy()
+        if b is None:
+            return result
+        for key in b:
+            if key in a:
+                result[key] = a[key]._merge(b[key])
+            elif has_wildcard:
+                result[key] = a[WILDCARD_KEY]._merge(b[key])
+            else:
+                raise ValueError(
+                    f"Invalid dataset config `{key}`. It must be one of `{list(a)}`."
+                )
+        return result
+
+    @staticmethod
+    def validated(
+        config: Dict[str, "DatasetConfig"], datasets: Dict[str, "Dataset"]
+    ) -> Dict[str, "DatasetConfig"]:
+        """Validate the given config and datasets are usable.
+
+        Returns dict of validated configs with defaults filled out.
+        """
+        has_wildcard = WILDCARD_KEY in config
+        fittable = set()
+        result = {k: v.fill_defaults() for k, v in config.items()}
+        for k, v in result.items():
+            if v.fit:
+                fittable.add(k)
+                if not v.transform:
+                    raise ValueError(
+                        f"Error configuring dataset `{k}`: cannot specify both "
+                        "fit=True and transform=False."
+                    )
+            if v.required:
+                if k not in datasets:
+                    raise ValueError(
+                        f"The required dataset `{k}` was not found in {datasets}."
+                    )
+        if len(fittable) > 1:
+            raise ValueError(
+                f"More than one dataset was specified to be fit: {fittable}"
+            )
+        if not has_wildcard:
+            for k, v in datasets.items():
+                if k not in result:
+                    raise ValueError(
+                        f"An unexpected dataset `{k}` was given. The list of expected "
+                        f"datasets is `{list(result)}`."
+                    )
+        return result
+
+    def _merge(self, other: "DatasetConfig") -> "DatasetConfig":
+        """Merge the given DatasetConfig into this one.
+
+        Raises:
+            ValueError if any noncustomizable fields were specified to be updated.
+        """
+        for field in self._noncustomizable_fields:
+            if getattr(other, field) is not None:
+                raise ValueError(
+                    f"Cannot override noncustomizable field `{field}` in the "
+                    "dataset config."
+                )
+        return DatasetConfig(
+            fit=self.fit if other.fit is None else other.fit,
+            split=self.split if other.split is None else other.split,
+            required=self.required if other.required is None else other.required,
+            streamable=self.streamable
+            if other.streamable is None
+            else other.streamable,
+            transform=self.transform if other.transform is None else other.transform,
+            _noncustomizable_fields=self._noncustomizable_fields,
+        )
 
 
 @PublicAPI(stability="alpha")
