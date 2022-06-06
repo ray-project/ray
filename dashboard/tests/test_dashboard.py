@@ -22,6 +22,8 @@ from ray._private.test_utils import (
     wait_until_server_available,
     run_string_as_driver,
     wait_until_succeeded_without_exception,
+    init_error_pubsub,
+    get_error_message,
 )
 from ray.ray_constants import DEBUG_AUTOSCALING_STATUS_LEGACY, DEBUG_AUTOSCALING_ERROR
 from ray.dashboard import dashboard
@@ -142,6 +144,7 @@ def test_raylet_and_agent_share_fate(shutdown_only):
     """Test raylet and agent share fate."""
 
     ray.init(include_dashboard=True)
+    p = init_error_pubsub()
 
     all_processes = ray.worker._global_node.all_processes
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
@@ -154,9 +157,13 @@ def test_raylet_and_agent_share_fate(shutdown_only):
     check_agent_register(raylet_proc, agent_pid)
 
     # The agent should be dead if raylet exits.
-    raylet_proc.kill()
+    raylet_proc.terminate()
     raylet_proc.wait()
     agent_proc.wait(5)
+
+    # No error should be reported for graceful termination.
+    errors = get_error_message(p, 1, ray_constants.RAYLET_DIED_ERROR)
+    assert len(errors) == 0, errors
 
     ray.shutdown()
 
@@ -174,6 +181,36 @@ def test_raylet_and_agent_share_fate(shutdown_only):
     agent_proc.kill()
     agent_proc.wait()
     raylet_proc.wait(5)
+
+
+def test_agent_report_unexpected_raylet_death(shutdown_only):
+    """Test agent reports Raylet death if it is not SIGTERM."""
+
+    ray.init(include_dashboard=True)
+    p = init_error_pubsub()
+
+    all_processes = ray.worker._global_node.all_processes
+    raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
+    raylet_proc = psutil.Process(raylet_proc_info.process.pid)
+
+    wait_for_condition(lambda: search_agent(raylet_proc.children()))
+    agent_proc = search_agent(raylet_proc.children())
+    agent_pid = agent_proc.pid
+
+    check_agent_register(raylet_proc, agent_pid)
+
+    # The agent should be dead if raylet exits.
+    raylet_proc.kill()
+    raylet_proc.wait()
+    agent_proc.wait(5)
+
+    errors = get_error_message(p, 1, ray_constants.RAYLET_DIED_ERROR)
+    assert len(errors) == 1, errors
+    assert errors[0].type == ray_constants.RAYLET_DIED_ERROR
+    assert (
+        "Termination is unexpected. Last 20 lines of the Raylet logs"
+        in errors[0].error_message
+    ), errors[0].error_message
 
 
 @pytest.mark.parametrize(
