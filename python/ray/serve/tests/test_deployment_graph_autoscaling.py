@@ -1,5 +1,4 @@
 import sys
-import time
 import pytest
 
 from python.ray.serve import constants as serve_constants
