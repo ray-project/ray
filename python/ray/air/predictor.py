@@ -40,7 +40,7 @@ class Predictor(abc.ABC):
           :ref:`Checkpoint <air-checkpoint-ref>`, the preprocessor will be used to
           transform the DataFrame.
         - The transformed DataFrame will be passed to the model for inference (via the
-          ``predictor.predict_pandas`` method).
+          ``predictor._predict_pandas`` method).
         - The predictions will be outputted by ``predict`` in the same type as the
           original input.
 
@@ -49,7 +49,7 @@ class Predictor(abc.ABC):
     To implement a new Predictor for your particular framework, you should subclass
     the base ``Predictor`` and implement the following two methods:
 
-        1. ``predict_pandas``: Given a pandas.DataFrame input, return a
+        1. ``_predict_pandas``: Given a pandas.DataFrame input, return a
            pandas.DataFrame containing predictions.
         2. ``from_checkpoint``: Logic for creating a Predictor from an
            :ref:`AIR Checkpoint <air-checkpoint-ref>`.
@@ -94,7 +94,7 @@ class Predictor(abc.ABC):
         Args:
             data: A batch of input data of type ``DataBatchType``
             kwargs: Arguments specific to predictor implementations. These are passed
-                directly to predict_pandas.
+                directly to ``_predict_pandas``.
 
         Returns:
             DataBatchType: Prediction result.
@@ -103,19 +103,19 @@ class Predictor(abc.ABC):
         pass
 
         # TODO(amogkam): Implement below code.
-        # data_df = self._convert_to_pandas(data)
+        # data_df = self._convert_batch_type_to_pandas(data)
         #
         # if hasattr(self, "preprocessor") and self.preprocessor:
         #     data_df = self.preprocessor.transform_batch(data_df)
         #
-        # predictions_df = self.predict_pandas(data_df)
-        # return self._convert_from_pandas(predictions_df, type=type(data))
+        # predictions_df = self._predict_pandas(data_df)
+        # return self._convert_pandas_to_batch_type(predictions_df, type=type(data))
 
-    def _convert_to_pandas(self, data: DataBatchType) -> pd.DataFrame:
+    def _convert_batch_type_to_pandas(self, data: DataBatchType) -> pd.DataFrame:
         """Convert the provided data to a Pandas DataFrame."""
         pass
 
-    def _convert_from_pandas(
+    def _convert_pandas_to_batch_type(
         self, data: pd.DataFrame, type: Type[DataBatchType]
     ) -> DataBatchType:
         """Convert the provided Pandas dataframe to the provided ``type``."""
