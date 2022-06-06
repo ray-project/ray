@@ -138,12 +138,12 @@ class MultiAgentEnv(gym.Env):
             if not all(k in self.observation_space for k in x):
                 if log_once("possibly_bad_multi_agent_dict_missing_agent_observations"):
                     logger.warning(
-                        f"You environment returns observations that that are "
-                        f"MultiAgentDicts with incomplete information. "
-                        f"Meaning that they only contain information on a subset of"
-                        f" participating agents. Ignore this warning if this is "
-                        f"intended, for example if your environment is a turn-based "
-                        f"simulation."
+                        "You environment returns observations that that are "
+                        "MultiAgentDicts with incomplete information. "
+                        "Meaning that they only contain information on a subset of"
+                        " participating agents. Ignore this warning if this is "
+                        "intended, for example if your environment is a turn-based "
+                        "simulation."
                     )
             return True
 
