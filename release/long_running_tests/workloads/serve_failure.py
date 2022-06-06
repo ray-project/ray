@@ -28,7 +28,7 @@ RAY_UNIT_TEST = "RAY_UNIT_TEST" in os.environ
 
 
 def call_func_and_retry_on_exception(f, delay=10, retry=1):
-    def inner(self):
+    def inner(self, retry=retry):
         while True:
             try:
                 return f(self)
