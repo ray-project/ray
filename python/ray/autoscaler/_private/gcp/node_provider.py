@@ -177,10 +177,7 @@ class GCPNodeProvider(NodeProvider):
             resource = self.resources[node_type]
 
             results = resource.create_instances(base_config, labels, count)  # type: List[Tuple[dict, str]] 
-            instance_dict: Dict[str, dict] = {}
-            for result, instance_id in results:
-                instance_dict[instance_id] = result
-            return instance_dict
+            return {instance_id: result for result, instance_id in results}
 
     @_retry
     def terminate_node(self, node_id: str):
