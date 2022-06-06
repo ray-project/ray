@@ -3,11 +3,11 @@ stateless-cartpole-r2d2:
     run: R2D2
     stop:
         episode_reward_mean: 100
-        timesteps_total: 50000
+        timesteps_total: 500000
     config:
         # Works for both torch and tf.
         framework: tf
-        num_workers: 4
+        num_workers: 0
         # R2D2 settings.
         replay_buffer_config:
           type: MultiAgentReplayBuffer
