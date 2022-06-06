@@ -68,22 +68,22 @@ from ray.data.datasource.file_based_datasource import (
 from ray.data.row import TableRow
 from ray.data.aggregate import AggregateFn, Sum, Max, Min, Mean, Std
 from ray.data.random_access_dataset import RandomAccessDataset
-from ray.data.impl.remote_fn import cached_remote_fn
-from ray.data.impl.block_batching import batch_blocks, BatchType
-from ray.data.impl.plan import ExecutionPlan, OneToOneStage, AllToAllStage
-from ray.data.impl.stats import DatasetStats
-from ray.data.impl.compute import cache_wrapper, CallableClass, ComputeStrategy
-from ray.data.impl.output_buffer import BlockOutputBuffer
-from ray.data.impl.progress_bar import ProgressBar
-from ray.data.impl.shuffle_and_partition import (
+from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data._internal.block_batching import batch_blocks, BatchType
+from ray.data._internal.plan import ExecutionPlan, OneToOneStage, AllToAllStage
+from ray.data._internal.stats import DatasetStats
+from ray.data._internal.compute import cache_wrapper, CallableClass, ComputeStrategy
+from ray.data._internal.output_buffer import BlockOutputBuffer
+from ray.data._internal.progress_bar import ProgressBar
+from ray.data._internal.shuffle_and_partition import (
     SimpleShufflePartitionOp,
     PushBasedShufflePartitionOp,
 )
-from ray.data.impl.fast_repartition import fast_repartition
-from ray.data.impl.sort import sort_impl
-from ray.data.impl.block_list import BlockList
-from ray.data.impl.lazy_block_list import LazyBlockList
-from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.fast_repartition import fast_repartition
+from ray.data._internal.sort import sort_impl
+from ray.data._internal.block_list import BlockList
+from ray.data._internal.lazy_block_list import LazyBlockList
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray._private.usage import usage_lib
 
 logger = logging.getLogger(__name__)
@@ -211,7 +211,7 @@ class Dataset(Generic[T]):
             >>> # Apply the transform in parallel on GPUs. Since
             >>> # compute=ActorPoolStrategy(2, 8) the transform will be applied on an
             >>> # autoscaling pool of 2-8 Ray actors, each allocated 1 GPU by Ray.
-            >>> from ray.data.impl.compute import ActorPoolStrategy
+            >>> from ray.data._internal.compute import ActorPoolStrategy
             >>> ds.map(CachedModel, # doctest: +SKIP
             ...        compute=ActorPoolStrategy(2, 8),
             ...        num_gpus=1)
@@ -279,7 +279,7 @@ class Dataset(Generic[T]):
             >>> # Apply the transform in parallel on GPUs. Since
             >>> # compute=ActorPoolStrategy(2, 8) the transform will be applied on an
             >>> # autoscaling pool of 2-8 Ray actors, each allocated 1 GPU by Ray.
-            >>> from ray.data.impl.compute import ActorPoolStrategy
+            >>> from ray.data._internal.compute import ActorPoolStrategy
             >>> ds.map_batches( # doctest: +SKIP
             ...     CachedModel, # doctest: +SKIP
             ...     batch_size=256, # doctest: +SKIP
@@ -2368,7 +2368,7 @@ class Dataset(Generic[T]):
         """
         import torch
 
-        from ray.data.impl.torch_iterable_dataset import TorchIterableDataset
+        from ray.data._internal.torch_iterable_dataset import TorchIterableDataset
         from ray.air.utils.torch_utils import convert_pandas_to_torch_tensor
 
         # If an empty collection is passed in, treat it the same as None
@@ -2529,31 +2529,12 @@ class Dataset(Generic[T]):
         except ImportError:
             raise ValueError("tensorflow must be installed!")
 
+        from ray.air.utils.tensorflow_utils import convert_pandas_to_tf_tensor
+
         # `output_signature` can be a tuple but not a list. See
         # https://stackoverflow.com/questions/59092423/what-is-a-nested-structure-in-tensorflow.
         if isinstance(output_signature, list):
             output_signature = tuple(output_signature)
-
-        def get_df_values(df: "pandas.DataFrame") -> np.ndarray:
-            # TODO(Clark): Support unsqueezing column dimension API, similar to
-            # to_torch().
-            try:
-                values = df.values
-            except ValueError as e:
-                import pandas as pd
-
-                # Pandas DataFrame.values doesn't support extension arrays in all
-                # supported Pandas versions, so we check to see if this DataFrame
-                # contains any extensions arrays and do a manual conversion if so.
-                # See https://github.com/pandas-dev/pandas/pull/43160.
-                if any(
-                    isinstance(dtype, pd.api.extensions.ExtensionDtype)
-                    for dtype in df.dtypes
-                ):
-                    values = np.stack([col.to_numpy() for _, col in df.items()], axis=1)
-                else:
-                    raise e from None
-            return values
 
         def make_generator():
             for batch in self.iter_batches(
@@ -2563,17 +2544,21 @@ class Dataset(Generic[T]):
                 drop_last=drop_last,
             ):
                 if label_column:
-                    targets = batch.pop(label_column).values
+                    targets = convert_pandas_to_tf_tensor(batch[[label_column]])
+                    assert targets.ndim == 2
+                    targets = tf.squeeze(targets, axis=1)
+                    batch.pop(label_column)
 
                 features = None
                 if feature_columns is None:
-                    features = get_df_values(batch)
+                    features = convert_pandas_to_tf_tensor(batch)
                 elif isinstance(feature_columns, list):
                     if all(isinstance(column, str) for column in feature_columns):
-                        features = get_df_values(batch[feature_columns])
+                        features = convert_pandas_to_tf_tensor(batch[feature_columns])
                     elif all(isinstance(columns, list) for columns in feature_columns):
                         features = tuple(
-                            get_df_values(batch[columns]) for columns in feature_columns
+                            convert_pandas_to_tf_tensor(batch[columns])
+                            for columns in feature_columns
                         )
                     else:
                         raise ValueError(
@@ -2582,7 +2567,7 @@ class Dataset(Generic[T]):
                         )
                 elif isinstance(feature_columns, dict):
                     features = {
-                        key: get_df_values(batch[columns])
+                        key: convert_pandas_to_tf_tensor(batch[columns])
                         for key, columns in feature_columns.items()
                     }
                 else:
@@ -2652,7 +2637,7 @@ class Dataset(Generic[T]):
         import pyarrow as pa
         from mars.dataframe.datasource.read_raydataset import DataFrameReadRayDataset
         from mars.dataframe.utils import parse_index
-        from ray.data.impl.pandas_block import PandasBlockSchema
+        from ray.data._internal.pandas_block import PandasBlockSchema
 
         refs = self.to_pandas_refs()
         # remove this when https://github.com/mars-project/mars/issues/2945 got fixed
@@ -2856,7 +2841,7 @@ class Dataset(Generic[T]):
                 to repeat indefinitely.
         """
         from ray.data.dataset_pipeline import DatasetPipeline
-        from ray.data.impl.plan import _rewrite_read_stage
+        from ray.data._internal.plan import _rewrite_read_stage
 
         ctx = DatasetContext.get_current()
         if self._plan.is_read_stage() and ctx.optimize_fuse_read_stages:
@@ -2969,7 +2954,7 @@ class Dataset(Generic[T]):
                 exclusive with ``blocks_per_window``.
         """
         from ray.data.dataset_pipeline import DatasetPipeline
-        from ray.data.impl.plan import _rewrite_read_stage
+        from ray.data._internal.plan import _rewrite_read_stage
 
         if blocks_per_window is not None and bytes_per_window is not None:
             raise ValueError("Only one windowing scheme can be specified.")
@@ -3317,7 +3302,7 @@ class Dataset(Generic[T]):
                 return "arrow"
         except ModuleNotFoundError:
             pass
-        from ray.data.impl.pandas_block import PandasBlockSchema
+        from ray.data._internal.pandas_block import PandasBlockSchema
 
         if isinstance(schema, PandasBlockSchema):
             return "pandas"
