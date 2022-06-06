@@ -14,7 +14,8 @@ def main():
 
     The worker idle timeout is set to 10 seconds and the autoscaler's update interval is
     5 seconds, so it should be enough to wait 15 seconds.
-    An extra ten seconds are added to the timeout as a generous buffer against flakiness.
+    An extra ten seconds are added to the timeout as a generous buffer against
+    flakiness.
     """
     # Remove resource demands
     ray.autoscaler.sdk.request_resources(num_cpus=0)

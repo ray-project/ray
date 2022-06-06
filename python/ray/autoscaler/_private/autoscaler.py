@@ -456,6 +456,12 @@ class StandardAutoscaler:
             node_ip = self.provider.internal_ip(node_id)
             if node_ip in last_used and last_used[node_ip] < horizon:
                 self.schedule_node_termination(node_id, "idle", logger.info)
+                # Get the local time of the node's last use as a string.
+                formatted_last_used_time = time.asctime(
+                    time.localtime(last_used[node_id])
+                )
+                logger.info(f"Node last used: {formatted_last_used_time}.")
+                # Note that the current time will appear in the log prefix.
             elif not self.launch_config_ok(node_id):
                 self.schedule_node_termination(node_id, "outdated", logger.info)
             else:
