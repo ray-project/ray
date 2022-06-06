@@ -4,13 +4,88 @@ from typing import Dict, TYPE_CHECKING
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.evaluation.episode import Episode
+from ray.rllib.utils.annotations import override
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation import RolloutWorker
     from ray.rllib.policy import Policy
 
 
-class NovelDMetricsCallbacks(DefaultCallbacks):
+class RNDMetricsCallbacks(DefaultCallbacks):
+    """Collects metrics for RND exploration.
+
+    The metrics should help users to monitor the exploration of
+    the environment. The metric tracked is:
+
+    intrinsic_reward: The intrinsic reward in RND is the 
+        distillation error. This error decreases over the run of 
+        an experiment for already explored states. A low metric 
+        indicates that the agent visits states where it has already 
+        been or states that are very similar to states it visited 
+        before. If the states ae truly novel this metric increases.
+    """
+    def __init__(self):
+        super().__init__()
+
+    def on_episode_start(
+        self,
+        *,
+        worker: "RolloutWorker",
+        base_env: BaseEnv,
+        policies: Dict[str, "Policy"],
+        episode: Episode,
+        env_index: int,
+        **kwargs,
+    ):
+        assert episode.length == 0, (
+            "ERROR: `on_episode_start()` callback should be called right "
+            "after `env.reset()`."
+        )
+
+        episode.user_data["intrinsic_reward"] = []
+
+    def on_episode_step(
+        self,
+        *,
+        worker: "RolloutWorker",
+        base_env: BaseEnv,
+        policies: Dict[str, "Policy"],
+        episode: Episode,
+        env_index: int,
+        **kwargs,
+    ):
+        assert episode.length > 0, (
+            "ERROR: `on_episode_step()` callback should not be called right "
+            "after `env.reset()`."
+        )
+
+        # Get the actual state values of the NovelD exploration.
+        intrinsic_reward = policies["default_policy"].get_exploration_state()
+
+        # Average over batch.
+        episode.user_data["intrinsic_reward"].append(np.mean(intrinsic_reward))
+
+    def on_episode_end(
+        self,
+        *,
+        worker: "RolloutWorker",
+        base_env: BaseEnv,
+        policies: Dict[str, "Policy"],
+        episode: Episode,
+        env_index: int,
+        **kwargs,
+    ):
+        # Average over episode.
+        episode.custom_metrics["rnd/intrinsic_reward"] = np.mean(
+            episode.user_data["intrinsic_reward"]
+        )
+
+        # Show also histograms of episodic intrinsic rewards.
+        episode.hist_data["rnd/intrinsic_reward"] = episode.user_data[
+            "intrinsic_reward"
+        ]
+    
+class NovelDMetricsCallbacks(RNDMetricsCallbacks):
     """Collects metrics for NovelD exploration.
 
     The metrics should help users to monitor the exploration of
@@ -49,6 +124,7 @@ class NovelDMetricsCallbacks(DefaultCallbacks):
     def __init__(self):
         super().__init__()
 
+    @override(RNDMetricsCallbacks)
     def on_episode_start(
         self,
         *,
@@ -64,12 +140,20 @@ class NovelDMetricsCallbacks(DefaultCallbacks):
             "after `env.reset()`."
         )
 
-        episode.user_data["intrinsic_reward"] = []
+        super().on_episode_start(
+            worker=worker,
+            base_env=base_env,
+            policies=policies,
+            episode=episode,
+            env_index=env_index,
+            **kwargs,
+        )
         episode.user_data["novelty"] = []
         episode.user_data["novelty_next"] = []
         episode.user_data["state_counts_total"] = []
         episode.user_data["state_counts_avg"] = []
 
+    @override(RNDMetricsCallbacks)
     def on_episode_step(
         self,
         *,
@@ -102,6 +186,7 @@ class NovelDMetricsCallbacks(DefaultCallbacks):
         episode.user_data["state_counts_total"].append(state_counts_total)
         episode.user_data["state_counts_avg"].append(state_counts_avg)
 
+    @override(RNDMetricsCallbacks)
     def on_episode_end(
         self,
         *,
