@@ -278,7 +278,7 @@ py_test(
     name = "test_logs",
     size = "small",
     srcs = serve_tests_srcs,
-    tags = ["exclusive", "team:serve"],
+    tags = ["exclusive", "team:serve", "no_main"],
     deps = [":serve_lib"],
 )
 
@@ -335,7 +335,7 @@ py_test(
     name = "test_model_wrappers",
     size = "small",
     srcs = serve_tests_srcs,
-    tags = ["exclusive", "team:serve"],
+    tags = ["exclusive", "team:serve", "no_main"],
     deps = [":serve_lib"],
 )
 

@@ -41,3 +41,9 @@ def test_image_to_ndarray():
     image = Image.fromarray(arr).convert("RGB")
     image.save(buffer, format="png")
     np.testing.assert_almost_equal(image_to_ndarray(buffer.getvalue()), arr)
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", "-s", __file__]))
