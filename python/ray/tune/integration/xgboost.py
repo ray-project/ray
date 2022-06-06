@@ -25,6 +25,17 @@ class TuneCallback(TrainingCallback):
         )
 
     def after_iteration(self, model: Booster, epoch: int, evals_log: Dict):
+        if not tune.is_session_enabled():
+            raise RuntimeError(
+                "No Tune session identified. Make sure you are running "
+                "XGBoost training inside a Tune run. "
+                "If you are using the xgboost-ray library, use the "
+                "callbacks in the ``xgboost_ray.tune`` package "
+                "instead of these ones."
+            )
+        return self._handle(model, epoch, evals_log)
+
+    def _handle(self, model: Booster, epoch: int, evals_log: Dict):
         raise NotImplementedError
 
 
@@ -105,7 +116,7 @@ class TuneReportCallback(TuneCallback):
 
         return report_dict
 
-    def after_iteration(self, model: Booster, epoch: int, evals_log: Dict):
+    def _handle(self, model: Booster, epoch: int, evals_log: Dict):
 
         report_dict = self._get_report_dict(evals_log)
         tune.report(**report_dict)
@@ -139,7 +150,7 @@ class _TuneCheckpointCallback(TuneCallback):
         with tune.checkpoint_dir(step=epoch) as checkpoint_dir:
             model.save_model(os.path.join(checkpoint_dir, filename))
 
-    def after_iteration(self, model: Booster, epoch: int, evals_log: Dict):
+    def _handle(self, model: Booster, epoch: int, evals_log: Dict):
         self._create_checkpoint(model, epoch, self._filename, self._frequency)
 
 
@@ -205,6 +216,6 @@ class TuneReportCheckpointCallback(TuneCallback):
         self._checkpoint = self._checkpoint_callback_cls(filename, frequency)
         self._report = self._report_callbacks_cls(metrics, results_postprocessing_fn)
 
-    def after_iteration(self, model: Booster, epoch: int, evals_log: Dict):
+    def _handle(self, model: Booster, epoch: int, evals_log: Dict):
         self._checkpoint.after_iteration(model, epoch, evals_log)
         self._report.after_iteration(model, epoch, evals_log)

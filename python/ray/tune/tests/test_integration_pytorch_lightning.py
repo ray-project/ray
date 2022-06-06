@@ -69,6 +69,17 @@ class PyTorchLightningIntegrationTest(unittest.TestCase):
     def tearDown(self):
         pass
 
+    def testFailsOutsideTune(self):
+        def train():
+            module = _MockModule(10.0, 20.0)
+            trainer = pl.Trainer(
+                max_epochs=1, callbacks=[TuneReportCallback(on="validation_end")]
+            )
+            trainer.fit(module)
+
+        with self.assertRaises(RuntimeError):
+            train()
+
     def testReportCallbackUnnamed(self):
         def train(config):
             module = _MockModule(10.0, 20.0)

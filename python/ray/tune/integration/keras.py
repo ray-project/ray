@@ -42,72 +42,84 @@ class TuneCallback(Callback):
             )
         self._on = on
 
+    def _handle_with_tune_check(self, logs: Dict, when: str):
+        if not tune.is_session_enabled():
+            raise RuntimeError(
+                "No Tune session identified. Make sure you are running "
+                "Keras training inside a Tune run. "
+                "If you are using the Ray Train library for "
+                "distributed training, "
+                "these callbacks will not work, and you should instead "
+                "manually call ``train.report()``."
+            )
+        return self._handle(logs, when)
+
     def _handle(self, logs: Dict, when: str):
         raise NotImplementedError
 
     def on_batch_begin(self, batch, logs=None):
         if "batch_begin" in self._on:
-            self._handle(logs, "batch_begin")
+            self._handle_with_tune_check(logs, "batch_begin")
 
     def on_batch_end(self, batch, logs=None):
         if "batch_end" in self._on:
-            self._handle(logs, "batch_end")
+            self._handle_with_tune_check(logs, "batch_end")
 
     def on_epoch_begin(self, epoch, logs=None):
         if "epoch_begin" in self._on:
-            self._handle(logs, "epoch_begin")
+            self._handle_with_tune_check(logs, "epoch_begin")
 
     def on_epoch_end(self, epoch, logs=None):
         if "epoch_end" in self._on:
-            self._handle(logs, "epoch_end")
+            self._handle_with_tune_check(logs, "epoch_end")
 
     def on_train_batch_begin(self, batch, logs=None):
         if "train_batch_begin" in self._on:
-            self._handle(logs, "train_batch_begin")
+            self._handle_with_tune_check(logs, "train_batch_begin")
 
     def on_train_batch_end(self, batch, logs=None):
         if "train_batch_end" in self._on:
-            self._handle(logs, "train_batch_end")
+            self._handle_with_tune_check(logs, "train_batch_end")
 
     def on_test_batch_begin(self, batch, logs=None):
         if "test_batch_begin" in self._on:
-            self._handle(logs, "test_batch_begin")
+            self._handle_with_tune_check(logs, "test_batch_begin")
 
     def on_test_batch_end(self, batch, logs=None):
         if "test_batch_end" in self._on:
-            self._handle(logs, "test_batch_end")
+            self._handle_with_tune_check(logs, "test_batch_end")
 
     def on_predict_batch_begin(self, batch, logs=None):
         if "predict_batch_begin" in self._on:
-            self._handle(logs, "predict_batch_begin")
+            self._handle_with_tune_check(logs, "predict_batch_begin")
 
     def on_predict_batch_end(self, batch, logs=None):
         if "predict_batch_end" in self._on:
-            self._handle(logs, "predict_batch_end")
+            self._handle_with_tune_check(logs, "predict_batch_end")
 
     def on_train_begin(self, logs=None):
         if "train_begin" in self._on:
-            self._handle(logs, "train_begin")
+            self._handle_with_tune_check(logs, "train_begin")
 
     def on_train_end(self, logs=None):
         if "train_end" in self._on:
-            self._handle(logs, "train_end")
+            self._handle_with_tune_check(logs, "train_end")
 
     def on_test_begin(self, logs=None):
         if "test_begin" in self._on:
-            self._handle(logs, "test_begin")
+            self._handle_with_tune_check(logs, "test_begin")
 
     def on_test_end(self, logs=None):
         if "test_end" in self._on:
-            self._handle(logs, "test_end")
+            self._handle_with_tune_check(logs, "test_end")
 
     def on_predict_begin(self, logs=None):
         if "predict_begin" in self._on:
-            self._handle(logs, "predict_begin")
+            self._handle_with_tune_check(logs, "predict_begin")
 
     def on_predict_end(self, logs=None):
         if "predict_end" in self._on:
-            self._handle(logs, "predict_end")
+            self._handle_with_tune_check(logs, "predict_end")
 
 
 class TuneReportCallback(TuneCallback):

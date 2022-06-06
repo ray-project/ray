@@ -47,46 +47,59 @@ class TuneCallback(Callback):
             )
         self._on = on
 
+    def _handle_with_tune_check(
+        self, trainer: Trainer, pl_module: Optional[LightningModule]
+    ):
+        if not tune.is_session_enabled():
+            raise RuntimeError(
+                "No Tune session identified. Make sure you are running "
+                "PyTorch Lightning training inside a Tune run. "
+                "If you are using the Ray Lightning library, use the "
+                "callbacks in the ``ray_lightning.tune`` package "
+                "instead of these ones."
+            )
+        return self._handle(trainer, pl_module)
+
     def _handle(self, trainer: Trainer, pl_module: Optional[LightningModule]):
         raise NotImplementedError
 
     def on_init_start(self, trainer: Trainer):
         if "init_start" in self._on:
-            self._handle(trainer, None)
+            self._handle_with_tune_check(trainer, None)
 
     def on_init_end(self, trainer: Trainer):
         if "init_end" in self._on:
-            self._handle(trainer, None)
+            self._handle_with_tune_check(trainer, None)
 
     def on_fit_start(
         self, trainer: Trainer, pl_module: Optional[LightningModule] = None
     ):
         if "fit_start" in self._on:
-            self._handle(trainer, None)
+            self._handle_with_tune_check(trainer, None)
 
     def on_fit_end(self, trainer: Trainer, pl_module: Optional[LightningModule] = None):
         if "fit_end" in self._on:
-            self._handle(trainer, None)
+            self._handle_with_tune_check(trainer, None)
 
     def on_sanity_check_start(self, trainer: Trainer, pl_module: LightningModule):
         if "sanity_check_start" in self._on:
-            self._handle(trainer, pl_module)
+            self._handle_with_tune_check(trainer, pl_module)
 
     def on_sanity_check_end(self, trainer: Trainer, pl_module: LightningModule):
         if "sanity_check_end" in self._on:
-            self._handle(trainer, pl_module)
+            self._handle_with_tune_check(trainer, pl_module)
 
     def on_epoch_start(self, trainer: Trainer, pl_module: LightningModule):
         if "epoch_start" in self._on:
-            self._handle(trainer, pl_module)
+            self._handle_with_tune_check(trainer, pl_module)
 
     def on_epoch_end(self, trainer: Trainer, pl_module: LightningModule):
         if "epoch_end" in self._on:
-            self._handle(trainer, pl_module)
+            self._handle_with_tune_check(trainer, pl_module)
 
     def on_batch_start(self, trainer: Trainer, pl_module: LightningModule):
         if "batch_start" in self._on:
-            self._handle(trainer, pl_module)
+            self._handle_with_tune_check(trainer, pl_module)
 
     def on_validation_batch_start(
         self,
@@ -97,7 +110,7 @@ class TuneCallback(Callback):
         dataloader_idx,
     ):
         if "validation_batch_start" in self._on:
-            self._handle(trainer, pl_module)
+            self._handle_with_tune_check(trainer, pl_module)
 
     def on_validation_batch_end(
         self,
@@ -109,7 +122,7 @@ class TuneCallback(Callback):
         dataloader_idx,
     ):
         if "validation_batch_end" in self._on:
-            self._handle(trainer, pl_module)
+            self._handle_with_tune_check(trainer, pl_module)
 
     def on_test_batch_start(
         self,
@@ -120,7 +133,7 @@ class TuneCallback(Callback):
         dataloader_idx,
     ):
         if "test_batch_start" in self._on:
-            self._handle(trainer, pl_module)
+            self._handle_with_tune_check(trainer, pl_module)
 
     def on_test_batch_end(
         self,
@@ -132,39 +145,39 @@ class TuneCallback(Callback):
         dataloader_idx,
     ):
         if "test_batch_end" in self._on:
-            self._handle(trainer, pl_module)
+            self._handle_with_tune_check(trainer, pl_module)
 
     def on_batch_end(self, trainer: Trainer, pl_module: LightningModule):
         if "batch_end" in self._on:
-            self._handle(trainer, pl_module)
+            self._handle_with_tune_check(trainer, pl_module)
 
     def on_train_start(self, trainer: Trainer, pl_module: LightningModule):
         if "train_start" in self._on:
-            self._handle(trainer, pl_module)
+            self._handle_with_tune_check(trainer, pl_module)
 
     def on_train_end(self, trainer: Trainer, pl_module: LightningModule):
         if "train_end" in self._on:
-            self._handle(trainer, pl_module)
+            self._handle_with_tune_check(trainer, pl_module)
 
     def on_validation_start(self, trainer: Trainer, pl_module: LightningModule):
         if "validation_start" in self._on:
-            self._handle(trainer, pl_module)
+            self._handle_with_tune_check(trainer, pl_module)
 
     def on_validation_end(self, trainer: Trainer, pl_module: LightningModule):
         if "validation_end" in self._on:
-            self._handle(trainer, pl_module)
+            self._handle_with_tune_check(trainer, pl_module)
 
     def on_test_start(self, trainer: Trainer, pl_module: LightningModule):
         if "test_start" in self._on:
-            self._handle(trainer, pl_module)
+            self._handle_with_tune_check(trainer, pl_module)
 
     def on_test_end(self, trainer: Trainer, pl_module: LightningModule):
         if "test_end" in self._on:
-            self._handle(trainer, pl_module)
+            self._handle_with_tune_check(trainer, pl_module)
 
     def on_keyboard_interrupt(self, trainer: Trainer, pl_module: LightningModule):
         if "keyboard_interrupt" in self._on:
-            self._handle(trainer, pl_module)
+            self._handle_with_tune_check(trainer, pl_module)
 
 
 class TuneReportCallback(TuneCallback):

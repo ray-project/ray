@@ -11,7 +11,19 @@ from lightgbm.basic import Booster
 class TuneCallback:
     """Base class for Tune's LightGBM callbacks."""
 
-    pass
+    def _handle(self, env: CallbackEnv) -> None:
+        raise NotImplementedError
+
+    def __call__(self, env: CallbackEnv) -> None:
+        if not tune.is_session_enabled():
+            raise RuntimeError(
+                "No Tune session identified. Make sure you are running "
+                "LightGBM training inside a Tune run. "
+                "If you are using the lightgbm-ray library, use the "
+                "callbacks in the ``lightgbm_ray.tune`` package "
+                "instead of these ones."
+            )
+        return self._handle(env)
 
 
 class TuneReportCallback(TuneCallback):
@@ -98,7 +110,7 @@ class TuneReportCallback(TuneCallback):
                 eval_result[data_name][eval_name + "-stdv"] = stdv
         return eval_result
 
-    def __call__(self, env: CallbackEnv) -> None:
+    def _handle(self, env: CallbackEnv) -> None:
         eval_result = self._get_eval_result(env)
         report_dict = self._get_report_dict(eval_result)
         tune.report(**report_dict)
@@ -134,7 +146,7 @@ class _TuneCheckpointCallback(TuneCallback):
         with tune.checkpoint_dir(step=epoch) as checkpoint_dir:
             model.save_model(os.path.join(checkpoint_dir, filename))
 
-    def __call__(self, env: CallbackEnv) -> None:
+    def _handle(self, env: CallbackEnv) -> None:
         self._create_checkpoint(
             env.model, env.iteration, self._filename, self._frequency
         )
@@ -206,6 +218,6 @@ class TuneReportCheckpointCallback(TuneCallback):
         self._checkpoint = self._checkpoint_callback_cls(filename, frequency)
         self._report = self._report_callback_cls(metrics, results_postprocessing_fn)
 
-    def __call__(self, env: CallbackEnv) -> None:
+    def _handle(self, env: CallbackEnv) -> None:
         self._checkpoint(env)
         self._report(env)
