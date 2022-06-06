@@ -35,8 +35,8 @@ class TestCRR(unittest.TestCase):
 
         config = (
             CRRConfig()
-            .environment(env='Pendulum-v1', clip_actions=True)
-            .framework('torch')
+            .environment(env="Pendulum-v1", clip_actions=True)
+            .framework("torch")
             .offline_data(input_=[data_file], actions_in_input_normalized=True)
             .training(
                 twin_q=True,
@@ -44,13 +44,13 @@ class TestCRR(unittest.TestCase):
                 replay_buffer_config={
                     "type": MultiAgentReplayBuffer,
                     "learning_starts": 0,
-                    "capacity": 100000
+                    "capacity": 100000,
                 },
-                weight_type='bin',
-                advantage_type='mean',
+                weight_type="bin",
+                advantage_type="mean",
                 n_action_sample=4,
                 target_update_grad_intervals=10000,
-                tau=1.0
+                tau=1.0,
             )
             .evaluation(
                 evaluation_interval=2,

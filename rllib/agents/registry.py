@@ -82,10 +82,12 @@ def _import_cql():
 
     return cql.CQLTrainer, cql.DEFAULT_CONFIG
 
+
 def _import_crr():
     from ray.rllib.algorithms import crr
 
     return crr.CRR, crr.CRRConfig
+
 
 def _import_ddpg():
     from ray.rllib.algorithms import ddpg

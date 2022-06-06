@@ -1,8 +1,8 @@
 import logging
 import numpy as np
 from typing import Type, List, Optional
-
 import tree
+
 from ray.rllib.agents.trainer import Trainer, TrainerConfig
 from ray.rllib.execution.train_ops import (
     multi_gpu_train_one_step,
@@ -14,22 +14,17 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
-    NUM_AGENT_STEPS_TRAINED,
-    NUM_ENV_STEPS_TRAINED,
     NUM_TARGET_UPDATES,
     TARGET_NET_UPDATE_TIMER,
-    SYNCH_WORKER_WEIGHTS_TIMER,
 )
-from ray.rllib.utils.replay_buffers.utils import update_priorities_in_replay_buffer
 from ray.rllib.utils.typing import (
+    PartialTrainerConfigDict,
     ResultDict,
     TrainerConfigDict,
-    PartialTrainerConfigDict,
 )
 
 logger = logging.getLogger(__name__)
 
-import time
 
 class CRRConfig(TrainerConfig):
     def __init__(self, trainer_class=None):
@@ -38,10 +33,10 @@ class CRRConfig(TrainerConfig):
         # fmt: off
         # __sphinx_doc_begin__
         # CRR-specific settings.
-        self.weight_type = 'bin'
+        self.weight_type = "bin"
         self.temperature = 1.0
         self.max_weight = 20.0
-        self.advantage_type = 'mean'
+        self.advantage_type = "mean"
         self.n_action_sample = 4
         self.twin_q = True
         self.target_update_grad_intervals = 100
@@ -66,8 +61,7 @@ class CRRConfig(TrainerConfig):
         # fmt: on
 
         # overriding the trainer config default
-        self.num_workers = 0 # offline RL does not need rollout workers
-
+        self.num_workers = 0  # offline RL does not need rollout workers
 
     def training(
         self,
@@ -88,30 +82,27 @@ class CRRConfig(TrainerConfig):
         **kwargs,
     ) -> "CRRConfig":
 
-        # TODO: complete the documentation
         """
         === CRR configs
 
         Args:
-            weight_type (str): weight type to use `bin` | `exp`
-            temperature (float): the exponent temperature used in exp weight type
-            max_weight (float): the max weight limit for exp weight type
-            advantage_type (str):
-                the way we reduce q values to v_t values `max` | `mean`
-            n_action_sample (int): the number of actions to sample for v_t estimation
-            twin_q (bool): if True, uses pessimistic q estimation
-            target_update_grad_intervals (int): The frequency at which we update the
-            target copy of the model in terms of the number of gradient updates applied
-            to the main model.
-            replay_buffer_config (dict[str, Any]):
-            actor_hiddens
-            actor_hidden_activation
-            critic_hiddens
-            critic_hidden_activation
-            tau (float):
-                Polyak averaging coefficient
-                (making it 1 is reduces it to a hard update)
-            **kwargs:
+            weight_type: weight type to use `bin` | `exp`.
+            temperature: the exponent temperature used in exp weight type.
+            max_weight: the max weight limit for exp weight type.
+            advantage_type: The way we reduce q values to v_t values `max` | `mean`.
+            n_action_sample: the number of actions to sample for v_t estimation.
+            twin_q: if True, uses pessimistic q estimation.
+            target_update_grad_intervals: The frequency at which we update the
+                target copy of the model in terms of the number of gradient updates
+                applied to the main model.
+            replay_buffer_config: The config dictionary for replay buffer.
+            actor_hiddens: The number of hidden units in the actor's fc network.
+            actor_hidden_activation: The activation used in the actor's fc network.
+            critic_hiddens: The number of hidden units in the critic's fc network.
+            critic_hidden_activation: The activation used in the critic's fc network.
+            tau: Polyak averaging coefficient
+                (making it 1 is reduces it to a hard update).
+            **kwargs: forward compatibility kwargs
 
         Returns:
             This updated CRRConfig object.
@@ -147,12 +138,15 @@ class CRRConfig(TrainerConfig):
 
         return self
 
-NUM_GRADIENT_UPDATES = 'num_grad_updates'
+
+NUM_GRADIENT_UPDATES = "num_grad_updates"
+
 
 class CRR(Trainer):
 
     # TODO: we have a circular dependency for get
     #  default config. config -> Trainer -> config
+    #  defining Config class in the same file for now as a workaround.
 
     def setup(self, config: PartialTrainerConfigDict):
         super().setup(config)
@@ -211,7 +205,7 @@ class CRR(Trainer):
 
             return CRRTorchPolicy
         else:
-            raise ValueError("Other frameworks are not supported yet!")
+            raise ValueError("Non-torch frameworks are not supported yet!")
 
     @override(Trainer)
     def training_iteration(self) -> ResultDict:
@@ -237,30 +231,16 @@ class CRR(Trainer):
             else:
                 train_results = multi_gpu_train_one_step(self, train_batch)
 
-            # Update target network every `target_network_update_freq` training steps.
-            # cur_ts = self._counters[
-            #     NUM_AGENT_STEPS_TRAINED if self._by_agent_steps else NUM_ENV_STEPS_TRAINED
-            # ]
-            # last_update = self._counters[LAST_TARGET_UPDATE_TS]
-            # if cur_ts - last_update >= self.config["target_network_update_freq"]:
-            #     with self._timers[TARGET_NET_UPDATE_TIMER]:
-            #         to_update = self.workers.local_worker().get_policies_to_train()
-            #         self.workers.local_worker().foreach_policy_to_train(
-            #             lambda p, pid: pid in to_update and p.update_target()
-            #         )
-            #     self._counters[NUM_TARGET_UPDATES] += 1
-            #     self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
-
             # update target every few gradient updates
             cur_ts = self._counters[NUM_GRADIENT_UPDATES]
             last_update = self._counters[LAST_TARGET_UPDATE_TS]
 
-            if cur_ts - last_update >= self.config['target_update_grad_intervals']:
+            if cur_ts - last_update >= self.config["target_update_grad_intervals"]:
                 with self._timers[TARGET_NET_UPDATE_TIMER]:
-                        to_update = self.workers.local_worker().get_policies_to_train()
-                        self.workers.local_worker().foreach_policy_to_train(
-                            lambda p, pid: pid in to_update and p.update_target()
-                        )
+                    to_update = self.workers.local_worker().get_policies_to_train()
+                    self.workers.local_worker().foreach_policy_to_train(
+                        lambda p, pid: pid in to_update and p.update_target()
+                    )
                 self._counters[NUM_TARGET_UPDATES] += 1
                 self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
 
@@ -269,8 +249,7 @@ class CRR(Trainer):
             results.append(train_results)
 
         summary = tree.map_structure_with_path(
-            lambda path, *v: float(np.mean(v)),
-            *results
+            lambda path, *v: float(np.mean(v)), *results
         )
 
         return summary

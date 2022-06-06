@@ -1,5 +1,6 @@
-from typing import Optional, List
 import logging
+from typing import Optional, List
+
 from ray.rllib.algorithms.crr import CRR
 from ray.rllib.agents.trainer_config import TrainerConfig
 
@@ -13,15 +14,15 @@ class CRRConfig(TrainerConfig):
         # fmt: off
         # __sphinx_doc_begin__
         # CRR-specific settings.
-        self.weight_type = 'bin'
+        self.weight_type = "bin"
         self.temperature = 1.0
         self.max_weight = 20.0
-        self.advantage_type = 'mean'
+        self.advantage_type = "mean"
         self.n_action_sample = 4
         self.twin_q = True
-        self.target_network_update_freq = 100
+        self.target_update_grad_intervals = 100
         self.replay_buffer_config = {
-            "type": "MultiAgentReplayBuffer",
+            "type": "ReplayBuffer",
             "capacity": 50000,
             # How many steps of the model to sample before learning starts.
             "learning_starts": 1000,
@@ -37,9 +38,11 @@ class CRRConfig(TrainerConfig):
         self.critic_lr = 3e-4
         self.actor_lr = 3e-4
         self.tau = 5e-3
-
         # __sphinx_doc_end__
         # fmt: on
+
+        # overriding the trainer config default
+        self.num_workers = 0  # offline RL does not need rollout workers
 
     def training(
         self,
@@ -50,7 +53,7 @@ class CRRConfig(TrainerConfig):
         advantage_type: Optional[str] = None,
         n_action_sample: Optional[int] = None,
         twin_q: Optional[bool] = None,
-        target_network_update_freq: Optional[int] = None,
+        target_update_grad_intervals: Optional[int] = None,
         replay_buffer_config: Optional[dict] = None,
         actor_hiddens: Optional[List[int]] = None,
         actor_hidden_activation: Optional[str] = None,
@@ -60,28 +63,27 @@ class CRRConfig(TrainerConfig):
         **kwargs,
     ) -> "CRRConfig":
 
-        # TODO: complete the documentation
         """
         === CRR configs
 
         Args:
-            weight_type (str): weight type to use `bin` | `exp`
-            temperature (float): the exponent temperature used in exp weight type
-            max_weight (float): the max weight limit for exp weight type
-            advantage_type (str):
-                the way we reduce q values to v_t values `max` | `mean`
-            n_action_sample (int): the number of actions to sample for v_t estimation
-            twin_q (bool): if True, uses pessimistic q estimation
-            target_network_update_freq (int):
-            replay_buffer_config (dict[str, Any]):
-            actor_hiddens
-            actor_hidden_activation
-            critic_hiddens
-            critic_hidden_activation
-            tau (float):
-                Polyak averaging coefficient
-                (making it 1 is reduces it to a hard update)
-            **kwargs:
+            weight_type: weight type to use `bin` | `exp`.
+            temperature: the exponent temperature used in exp weight type.
+            max_weight: the max weight limit for exp weight type.
+            advantage_type: The way we reduce q values to v_t values `max` | `mean`.
+            n_action_sample: the number of actions to sample for v_t estimation.
+            twin_q: if True, uses pessimistic q estimation.
+            target_update_grad_intervals: The frequency at which we update the
+                target copy of the model in terms of the number of gradient updates
+                applied to the main model.
+            replay_buffer_config: The config dictionary for replay buffer.
+            actor_hiddens: The number of hidden units in the actor's fc network.
+            actor_hidden_activation: The activation used in the actor's fc network.
+            critic_hiddens: The number of hidden units in the critic's fc network.
+            critic_hidden_activation: The activation used in the critic's fc network.
+            tau: Polyak averaging coefficient
+                (making it 1 is reduces it to a hard update).
+            **kwargs: forward compatibility kwargs
 
         Returns:
             This updated CRRConfig object.
@@ -100,8 +102,8 @@ class CRRConfig(TrainerConfig):
             self.n_action_sample = n_action_sample
         if twin_q is not None:
             self.twin_q = twin_q
-        if target_network_update_freq is not None:
-            self.target_network_update_freq = target_network_update_freq
+        if target_update_grad_intervals is not None:
+            self.target_update_grad_intervals = target_update_grad_intervals
         if replay_buffer_config is not None:
             self.replay_buffer_config = replay_buffer_config
         if actor_hiddens is not None:

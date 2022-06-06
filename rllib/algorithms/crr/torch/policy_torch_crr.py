@@ -79,7 +79,6 @@ class CRRTorchPolicy(TorchPolicyV2, TargetNetworkMixin):
 
         return dist_input, dist_class, []
 
-
     def make_model(self) -> ModelV2:
         # copying ddpg build model to here to be explicit
         model_config = self.config["model"]
@@ -129,13 +128,17 @@ class CRRTorchPolicy(TorchPolicyV2, TargetNetworkMixin):
 
         # Set epsilons to match tf.keras.optimizers.Adam's epsilon default.
         actor_optimizer = torch.optim.Adam(
-            params=self.model.policy_variables(), lr=self.config["actor_lr"],
-            betas=(0.9, 0.999), eps=1e-8,
+            params=self.model.policy_variables(),
+            lr=self.config["actor_lr"],
+            betas=(0.9, 0.999),
+            eps=1e-8,
         )
 
         critic_optimizer = torch.optim.Adam(
-            params=self.model.q_variables(), lr=self.config["critic_lr"],
-            betas=(0.9, 0.999), eps=1e-8,
+            params=self.model.q_variables(),
+            lr=self.config["critic_lr"],
+            betas=(0.9, 0.999),
+            eps=1e-8,
         )
 
         # Return them in the same order as the respective loss terms are returned.
@@ -160,8 +163,8 @@ class CRRTorchPolicy(TorchPolicyV2, TargetNetworkMixin):
         # standard critic update with pessimistic Q-learning (e.g. DQN)
         critic_loss = self._compute_critic_loss(model, dist_class, train_batch)
 
-        self.log('loss_actor', actor_loss)
-        self.log('loss_critic', critic_loss)
+        self.log("loss_actor", actor_loss)
+        self.log("loss_critic", critic_loss)
 
         return actor_loss, critic_loss
 
@@ -184,7 +187,6 @@ class CRRTorchPolicy(TorchPolicyV2, TargetNetworkMixin):
             for k in self.model.tower_stats
         }
         return stats_dict
-
 
     def _get_q_value(
         self, model: ModelV2, model_out: TensorType, actions: TensorType
@@ -222,9 +224,7 @@ class CRRTorchPolicy(TorchPolicyV2, TargetNetworkMixin):
             flat_actions = policy_actions.reshape(-1, *self.action_space.shape)
 
         # compute the logp of the actions in the dataset (for computing actor's loss)
-        action_logp = pi_s_t.dist.log_prob(
-            train_batch[SampleBatch.ACTIONS]
-        )
+        action_logp = pi_s_t.dist.log_prob(train_batch[SampleBatch.ACTIONS])
 
         # fix the shape if it's not canonical (i.e. shape[-1] != 1)
         if len(action_logp.shape) <= 1:
@@ -260,16 +260,16 @@ class CRRTorchPolicy(TorchPolicyV2, TargetNetworkMixin):
         train_batch["advantages"] = adv_t
 
         # logging
-        self.log('q_batch_avg', q_t.mean())
-        self.log('q_batch_max', q_t.max())
-        self.log('q_batch_min', q_t.min())
-        self.log('v_batch_avg', v_t.mean())
-        self.log('v_batch_max', v_t.max())
-        self.log('v_batch_min', v_t.min())
-        self.log('adv_batch_avg', adv_t.mean())
-        self.log('adv_batch_max', adv_t.max())
-        self.log('adv_batch_min', adv_t.min())
-        self.log('reward_batch_avg', train_batch[SampleBatch.REWARDS].mean())
+        self.log("q_batch_avg", q_t.mean())
+        self.log("q_batch_max", q_t.max())
+        self.log("q_batch_min", q_t.min())
+        self.log("v_batch_avg", v_t.mean())
+        self.log("v_batch_max", v_t.max())
+        self.log("v_batch_min", v_t.min())
+        self.log("adv_batch_avg", adv_t.mean())
+        self.log("adv_batch_max", adv_t.max())
+        self.log("adv_batch_min", adv_t.min())
+        self.log("reward_batch_avg", train_batch[SampleBatch.REWARDS].mean())
 
     def _compute_action_weights_and_logps(
         self,
@@ -297,9 +297,9 @@ class CRRTorchPolicy(TorchPolicyV2, TargetNetworkMixin):
         train_batch["action_weights"] = weights
 
         # logging
-        self.log('weights_avg', weights.mean())
-        self.log('weights_max', weights.max())
-        self.log('weights_min', weights.min())
+        self.log("weights_avg", weights.mean())
+        self.log("weights_max", weights.max())
+        self.log("weights_min", weights.min())
 
     def _compute_actor_loss(
         self,
@@ -308,8 +308,7 @@ class CRRTorchPolicy(TorchPolicyV2, TargetNetworkMixin):
         train_batch: SampleBatch,
     ) -> Union[TensorType, List[TensorType]]:
         loss = -(
-            train_batch["action_weights"] *
-            train_batch[SampleBatch.ACTION_LOGP]
+            train_batch["action_weights"] * train_batch[SampleBatch.ACTION_LOGP]
         ).mean(0)
         return loss
 
@@ -358,9 +357,9 @@ class CRRTorchPolicy(TorchPolicyV2, TargetNetworkMixin):
         # compute the predicted output
         model = cast(CRRModel, model)
         model_out_t, _ = model({SampleBatch.OBS: train_batch[SampleBatch.OBS]})
-        q1 = model.get_q_values(
-            model_out_t, train_batch[SampleBatch.ACTIONS]
-        ).squeeze(-1)
+        q1 = model.get_q_values(model_out_t, train_batch[SampleBatch.ACTIONS]).squeeze(
+            -1
+        )
         q2 = model.get_twin_q_values(
             model_out_t, train_batch[SampleBatch.ACTIONS]
         ).squeeze(-1)
@@ -372,11 +371,11 @@ class CRRTorchPolicy(TorchPolicyV2, TargetNetworkMixin):
         loss = loss.mean(0)
 
         # logging
-        self.log('loss_q1', loss_q1.mean())
-        self.log('loss_q2', loss_q2.mean())
-        self.log('targets_avg', target.mean())
-        self.log('targets_max', target.max())
-        self.log('targets_min', target.min())
+        self.log("loss_q1", loss_q1.mean())
+        self.log("loss_q2", loss_q2.mean())
+        self.log("targets_avg", target.mean())
+        self.log("targets_max", target.max())
+        self.log("targets_min", target.min())
 
         return loss
 
