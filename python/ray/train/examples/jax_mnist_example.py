@@ -14,12 +14,11 @@ from ray.train.trainer import Trainer
 
 def get_datasets():
     import jax
-
     """Load MNIST train and test datasets into memory."""
     # shard the dataset
     def shard_fn(x):
-        return einops.rearrange(x, "(d l) ... -> d l ...", d=jax.device_count())[
-            jax.host_id()
+        return einops.rearrange(x, "(d l) ... -> d l ...", d=jax.process_count())[
+            jax.process_index()
         ]
 
     # Hide any GPUs from TensorFlow. Otherwise TF might reserve memory and make
@@ -181,8 +180,8 @@ def train_func(config: Dict):
     return acc_results
 
 
-def train_mnist(num_workers=4, use_gpu=True):
-    trainer = Trainer(backend="jax", num_workers=num_workers, use_gpu=use_gpu)
+def train_mnist(num_workers=4, use_gpu=True, num_gpu_per_worker=1):
+    trainer = Trainer(backend="jax", num_workers=num_workers, use_gpu=use_gpu, resources_per_worker={'GPU': num_gpu_per_worker})
 
     trainer.start()
     result = trainer.run(
@@ -215,10 +214,17 @@ if __name__ == "__main__":
     parser.add_argument(
         "--use-gpu", action="store_true", default=True, help="Enables GPU training"
     )
+    parser.add_argument(
+        "--num-gpu-per-worker",
+        "-ngpu",
+        type=int,
+        default=1,
+        help="Sets the number of gpus on each node for training.",
+    )
 
     args, _ = parser.parse_known_args()
 
     import ray
 
     ray.init(address=args.address)
-    train_mnist(num_workers=args.num_workers, use_gpu=args.use_gpu)
+    train_mnist(num_workers=args.num_workers, use_gpu=args.use_gpu, num_gpu_per_worker=args.num_gpu_per_worker))
