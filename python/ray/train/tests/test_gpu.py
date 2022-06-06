@@ -368,8 +368,13 @@ def test_horovod_torch_mnist_gpu(ray_start_4_cpus_2_gpus):
 def test_jax_mnist_gpu(ray_start_4_cpus_2_gpus):
     num_workers = 1
     num_epochs = 2
-    num_gpus_per_worker=2
-    trainer = Trainer("jax", num_workers, use_gpu=True, resources_per_worker={"GPU": num_gpus_per_worker})
+    num_gpus_per_worker = 2
+    trainer = Trainer(
+        "jax",
+        num_workers,
+        use_gpu=True,
+        resources_per_worker={"GPU": num_gpus_per_worker},
+    )
     trainer.start()
     results = trainer.run(
         jax_mnist_train_func, config={"num_epochs": num_epochs, "lr": 1e-3}
@@ -391,7 +396,9 @@ def test_tune_tensorflow_mnist_gpu(ray_start_4_cpus_2_gpus):
 
 
 def test_tune_jax_mnist_gpu(ray_start_4_cpus_2_gpus):
-    tune_tensorflow_mnist(num_workers=1, use_gpu=True, num_samples=1, num_gpus_per_worker=2)
+    tune_jax_mnist(
+        num_workers=1, use_gpu=True, num_samples=1, num_gpus_per_worker=2
+    )
 
 
 def test_train_linear_dataset_gpu(ray_start_4_cpus_2_gpus):
