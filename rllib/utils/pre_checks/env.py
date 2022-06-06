@@ -229,19 +229,26 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
 
     reset_obs = env.reset()
     sampled_obs = env.observation_space_sample()
-    _check_if_element_multi_agent_dict(env, reset_obs, "reset()")
-    _check_if_element_multi_agent_dict(
-        env, sampled_obs, "env.observation_space_sample()"
+    # If any of the following two checks contains only partial information on an
+    # agent, we warn user and keep going
+    allow_partial_multi_agent_obs = _check_if_element_multi_agent_dict(
+        env, reset_obs, "reset()"
+    )
+    allow_partial_multi_agent_obs = (
+        allow_partial_multi_agent_obs
+        or _check_if_element_multi_agent_dict(
+            env, sampled_obs, "env.observation_space_sample()"
+        )
     )
 
     try:
-        env.observation_space_contains(reset_obs)
+        env.observation_space_contains(reset_obs, allow_partial_multi_agent_obs)
     except Exception as e:
         raise ValueError(
             "Your observation_space_contains function has some error "
         ) from e
 
-    if not env.observation_space_contains(reset_obs):
+    if not env.observation_space_contains(reset_obs, allow_partial_multi_agent_obs):
         error = (
             _not_contained_error("env.reset", "observation")
             + f"\n\n reset_obs: {reset_obs}\n\n env.observation_space_sample():"
@@ -249,7 +256,7 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
         )
         raise ValueError(error)
 
-    if not env.observation_space_contains(sampled_obs):
+    if not env.observation_space_contains(sampled_obs, allow_partial_multi_agent_obs):
         error = (
             _not_contained_error("observation_space_sample", "observation")
             + f"\n\n env.observation_space_sample():"
@@ -258,7 +265,12 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
         raise ValueError(error)
 
     sampled_action = env.action_space_sample()
-    _check_if_element_multi_agent_dict(env, sampled_action, "action_space_sample")
+    allow_partial_multi_agent_obs = (
+        allow_partial_multi_agent_obs
+        or _check_if_element_multi_agent_dict(
+            env, sampled_action, "action_space_sample"
+        )
+    )
     try:
         env.action_space_contains(sampled_action)
     except Exception as e:
@@ -272,16 +284,28 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
         raise ValueError(error)
 
     next_obs, reward, done, info = env.step(sampled_action)
-    _check_if_element_multi_agent_dict(env, next_obs, "step, next_obs")
-    _check_if_element_multi_agent_dict(env, reward, "step, reward")
-    _check_if_element_multi_agent_dict(env, done, "step, done")
-    _check_if_element_multi_agent_dict(env, info, "step, info")
+    allow_partial_multi_agent_obs = (
+        allow_partial_multi_agent_obs
+        or _check_if_element_multi_agent_dict(env, next_obs, "step, next_obs")
+    )
+    allow_partial_multi_agent_obs = (
+        allow_partial_multi_agent_obs
+        or _check_if_element_multi_agent_dict(env, reward, "step, reward")
+    )
+    allow_partial_multi_agent_obs = (
+        allow_partial_multi_agent_obs
+        or _check_if_element_multi_agent_dict(env, done, "step, done")
+    )
+    allow_partial_multi_agent_obs = (
+        allow_partial_multi_agent_obs
+        or _check_if_element_multi_agent_dict(env, info, "step, info")
+    )
     _check_reward(
         {"dummy_env_id": reward}, base_env=True, agent_ids=env.get_agent_ids()
     )
     _check_done({"dummy_env_id": done}, base_env=True, agent_ids=env.get_agent_ids())
     _check_info({"dummy_env_id": info}, base_env=True, agent_ids=env.get_agent_ids())
-    if not env.observation_space_contains(next_obs):
+    if not env.observation_space_contains(next_obs, allow_partial_multi_agent_obs):
         error = (
             _not_contained_error("env.step(sampled_action)", "observation")
             + f":\n\n next_obs: {next_obs} \n\n sampled_obs: {sampled_obs}"
@@ -482,6 +506,7 @@ def _check_if_multi_env_dict(env, element, function_string):
 
 
 def _check_if_element_multi_agent_dict(env, element, function_string, base_env=False):
+    """Checks whether an element is a valid"""
     if not isinstance(element, dict):
         if base_env:
             error = (
@@ -499,17 +524,7 @@ def _check_if_element_multi_agent_dict(env, element, function_string, base_env=F
     agent_ids: Set = copy(env.get_agent_ids())
     agent_ids.add("__all__")
 
-    if not all(k in agent_ids for k in element):
-        if any(k in agent_ids for k in element):
-            logger.warning(
-                f"The element returned by {function_string} contains values "
-                f"that are MultiAgentDicts with incomplete information. "
-                f"Meaning that they only contain information on a subset of"
-                f" participating agents. Ignore this warning if this is "
-                f"intended, for example if your environment is turn-based "
-                f"simulation."
-            )
-            return
+    if not any(k in agent_ids for k in element):
         if base_env:
             error = (
                 f"The element returned by {function_string} has agent_ids"
@@ -529,3 +544,16 @@ def _check_if_element_multi_agent_dict(env, element, function_string, base_env=F
                 f"ids of agents supported by your env."
             )
         raise ValueError(error)
+    else:
+        if all(k in element for k in agent_ids):
+            return False
+        else:
+            logger.warning(
+                f"The element returned by {function_string} contains values "
+                f"that are MultiAgentDicts with incomplete information. "
+                f"Meaning that they only contain information on a subset of"
+                f" participating agents. Ignore this warning if this is "
+                f"intended, for example if your environment is turn-based "
+                f"simulation."
+            )
+        return True

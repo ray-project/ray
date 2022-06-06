@@ -114,11 +114,14 @@ class MultiAgentEnv(gym.Env):
         raise NotImplementedError
 
     @ExperimentalAPI
-    def observation_space_contains(self, x: MultiAgentDict) -> bool:
+    def observation_space_contains(
+        self, x: MultiAgentDict, allow_partial_multi_agent_obs=False
+    ) -> bool:
         """Checks if the observation space contains the given key.
 
         Args:
             x: Observations to check.
+            allow_partial_multi_agent_obs: Whether to allow partial observations.
 
         Returns:
             True if the observation space contains the given all observations
@@ -132,7 +135,15 @@ class MultiAgentEnv(gym.Env):
                 self._check_if_space_maps_agent_id_to_sub_space()
             )
         if self._spaces_in_preferred_format:
-            return self.observation_space.contains(x)
+            if allow_partial_multi_agent_obs:
+                # If we allow partial observations, only check if observations of
+                # agents present in x fit
+                return any(
+                    self.observation_space[key].contains(agent_obs)
+                    for key, agent_obs in x.items()
+                )
+            else:
+                return self.observation_space.contains(x)
 
         logger.warning("observation_space_contains() has not been implemented")
         return True
@@ -446,10 +457,15 @@ def make_multi_agent(
             return all(self.action_space.contains(val) for val in x.values())
 
         @override(MultiAgentEnv)
-        def observation_space_contains(self, x: MultiAgentDict) -> bool:
+        def observation_space_contains(
+            self, x: MultiAgentDict, allow_partial_multi_agent_obs=False
+        ) -> bool:
             if not isinstance(x, dict):
                 return False
-            return all(self.observation_space.contains(val) for val in x.values())
+            if allow_partial_multi_agent_obs:
+                return any(self.observation_space.contains(val) for val in x.values())
+            else:
+                return all(self.observation_space.contains(val) for val in x.values())
 
         @override(MultiAgentEnv)
         def reset(self):
