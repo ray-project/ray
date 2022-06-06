@@ -54,14 +54,14 @@ from ray.data.datasource.file_based_datasource import (
     _wrap_arrow_serialization_workaround,
     _unwrap_arrow_serialization_workaround,
 )
-from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
-from ray.data.impl.arrow_block import ArrowRow
-from ray.data.impl.block_list import BlockList
-from ray.data.impl.lazy_block_list import LazyBlockList
-from ray.data.impl.plan import ExecutionPlan
-from ray.data.impl.remote_fn import cached_remote_fn
-from ray.data.impl.stats import DatasetStats
-from ray.data.impl.util import _lazy_import_pyarrow_dataset
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.arrow_block import ArrowRow
+from ray.data._internal.block_list import BlockList
+from ray.data._internal.lazy_block_list import LazyBlockList
+from ray.data._internal.plan import ExecutionPlan
+from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data._internal.stats import DatasetStats
+from ray.data._internal.util import _lazy_import_pyarrow_dataset
 
 T = TypeVar("T")
 

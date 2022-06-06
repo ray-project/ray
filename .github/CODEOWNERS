@@ -4,6 +4,11 @@
 # It uses the same pattern rule for gitignore file,
 # see https://git-scm.com/docs/gitignore#_pattern_format.
 
+
+# ==== Documentation ====
+
+/doc/ @maxpumperla @pcmoritz @richardliaw @edoakes @simon-mo
+
 # ==== Ray core ====
 
 # API compatibility
@@ -64,6 +69,22 @@
 
 # RLlib.
 /rllib/ @sven1977 @gjoliver @avnishn @arturniederfahrenhorst @smorad @maxpumperla @kouroshhakha @krfricke
+/doc/source/rllib/ @sven1977 @gjoliver @avnishn @arturniederfahrenhorst @smorad @maxpumperla @kouroshhakha @krfricke
+
+# Cluster (docs)
+/doc/source/cluster/ @wuisawesome @DmitriGekhtman @maxpumperla
+
+# Tune (docs)
+/doc/source/tune/ @richardliaw @krfricke @xwjiang2010 @amogkam @matthewdeng @Yard1 @maxpumperla
+
+# Train (docs)
+/doc/source/train/ @richardliaw @krfricke @xwjiang2010 @amogkam @matthewdeng @Yard1 @maxpumperla
+
+# Serve (docs)
+/doc/source/serve/ @edoakes @simon-mo @jiaodong
+
+# AIR (docs)
+/doc/source/air/ @richardliaw @gjoliver @krfricke @xwjiang2010 @amogkam @matthewdeng @Yard1 @maxpumperla
 
 # ML Docker Dependencies
 /python/requirements/ml/requirements_dl.txt @amogkam @sven1977 @richardliaw @matthewdeng
@@ -77,9 +98,6 @@
 /python/ray/_private/usage/ @ericl @richardliaw @rkooo567 @jjyao
 /dashboard/modules/usage_stats/ @ericl @richardliaw @rkooo567 @jjyao
 
-# ==== Documentation ====
-
-/doc/ @maxpumperla @pcmoritz @richardliaw @edoakes @simon-mo
 
 # ==== Build and CI ====
 

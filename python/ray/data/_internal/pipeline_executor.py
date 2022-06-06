@@ -6,8 +6,8 @@ import logging
 import ray
 from ray.data.context import DatasetContext
 from ray.data.dataset import Dataset, T
-from ray.data.impl.progress_bar import ProgressBar
-from ray.data.impl import progress_bar
+from ray.data._internal.progress_bar import ProgressBar
+from ray.data._internal import progress_bar
 
 logger = logging.getLogger(__name__)
 
