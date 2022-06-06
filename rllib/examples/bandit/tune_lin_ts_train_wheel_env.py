@@ -10,7 +10,7 @@ import time
 
 import ray
 from ray import tune
-from ray.rllib.algorithms.bandit.bandit import BanditLinTSTrainer
+from ray.rllib.algorithms.bandit.bandit import BanditLinTS
 from ray.rllib.examples.env.bandit_envs_discrete import WheelBanditEnv
 
 
@@ -85,7 +85,7 @@ if __name__ == "__main__":
 
     # Restore trainer from checkpoint
     trial = analysis.trials[0]
-    trainer = BanditLinTSTrainer(config=config)
+    trainer = BanditLinTS(config=config)
     trainer.restore(trial.checkpoint.dir_or_data)
 
     # Get model to plot arm weights distribution

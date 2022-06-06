@@ -1,4 +1,4 @@
-from ray.rllib.algorithms.pg.pg import DEFAULT_CONFIG, PGConfig, PGTrainer
+from ray.rllib.algorithms.pg.pg import DEFAULT_CONFIG, PGConfig, PG as PGTrainer
 from ray.rllib.algorithms.pg.pg_tf_policy import pg_tf_loss, PGTFPolicy
 from ray.rllib.algorithms.pg.pg_torch_policy import pg_torch_loss, PGTorchPolicy
 from ray.rllib.algorithms.pg.utils import post_process_advantages

@@ -3,7 +3,7 @@ import argparse
 
 import ray
 from ray import tune
-from ray.rllib.agents import ppo
+import ray.rllib.algorithms.ppo as ppo
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--train-iterations", type=int, default=10)
@@ -11,7 +11,7 @@ parser.add_argument("--train-iterations", type=int, default=10)
 
 def experiment(config):
     iterations = config.pop("train-iterations")
-    train_agent = ppo.PPOTrainer(config=config, env="CartPole-v0")
+    train_agent = ppo.PPO(config=config, env="CartPole-v0")
     checkpoint = None
     train_results = {}
 
@@ -25,7 +25,7 @@ def experiment(config):
 
     # Manual Eval
     config["num_workers"] = 0
-    eval_agent = ppo.PPOTrainer(config=config, env="CartPole-v0")
+    eval_agent = ppo.PPO(config=config, env="CartPole-v0")
     eval_agent.restore(checkpoint)
     env = eval_agent.workers.local_worker().env
 
@@ -53,5 +53,5 @@ if __name__ == "__main__":
     tune.run(
         experiment,
         config=config,
-        resources_per_trial=ppo.PPOTrainer.default_resource_request(config),
+        resources_per_trial=ppo.PPO.default_resource_request(config),
     )

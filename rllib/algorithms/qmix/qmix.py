@@ -1,6 +1,6 @@
 from typing import Optional, Type
 
-from ray.rllib.algorithms.dqn.simple_q import SimpleQConfig, SimpleQTrainer
+from ray.rllib.algorithms.simple_q.simple_q import SimpleQ, SimpleQConfig
 from ray.rllib.algorithms.qmix.qmix_policy import QMixTorchPolicy
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
@@ -25,7 +25,7 @@ from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 
 class QMixConfig(SimpleQConfig):
-    """Defines a configuration class from which a QMixTrainer can be built.
+    """Defines a configuration class from which a QMix Trainer can be built.
 
     Example:
         >>> from ray.rllib.examples.env.two_step_game import TwoStepGame
@@ -60,7 +60,7 @@ class QMixConfig(SimpleQConfig):
 
     def __init__(self):
         """Initializes a PPOConfig instance."""
-        super().__init__(trainer_class=QMixTrainer)
+        super().__init__(trainer_class=QMix)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -191,25 +191,25 @@ class QMixConfig(SimpleQConfig):
         return self
 
 
-class QMixTrainer(SimpleQTrainer):
+class QMix(SimpleQ):
     @classmethod
-    @override(SimpleQTrainer)
+    @override(SimpleQ)
     def get_default_config(cls) -> TrainerConfigDict:
         return QMixConfig().to_dict()
 
-    @override(SimpleQTrainer)
+    @override(SimpleQ)
     def validate_config(self, config: TrainerConfigDict) -> None:
         # Call super's validation method.
         super().validate_config(config)
 
         if config["framework"] != "torch":
-            raise ValueError("Only `framework=torch` supported so far for QMixTrainer!")
+            raise ValueError("Only `framework=torch` supported so far for QMix!")
 
-    @override(SimpleQTrainer)
+    @override(SimpleQ)
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         return QMixTorchPolicy
 
-    @override(SimpleQTrainer)
+    @override(SimpleQ)
     def training_iteration(self) -> ResultDict:
         """QMIX training iteration function.
 

@@ -1,4 +1,4 @@
-"""Example on how to use a CQLTrainer to learn from an offline json file.
+"""Example on how to use CQL to learn from an offline json file.
 
 Important node: Make sure that your offline data file contains only
 a single timestep per line to mimic the way SAC pulls samples from
@@ -83,7 +83,7 @@ if __name__ == "__main__":
     min_reward = -300
 
     # Test for torch framework (tf not implemented yet).
-    trainer = cql.CQLTrainer(config=config)
+    trainer = cql.CQL(config=config)
     learnt = False
     for i in range(num_iterations):
         print(f"Iter {i}")
@@ -96,7 +96,7 @@ if __name__ == "__main__":
                 break
     if not learnt:
         raise ValueError(
-            "CQLTrainer did not reach {} reward from expert "
+            "CQL did not reach {} reward from expert "
             "offline data!".format(min_reward)
         )
 

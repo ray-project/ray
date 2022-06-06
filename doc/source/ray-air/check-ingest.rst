@@ -17,6 +17,8 @@ which are not possible in less general ML data preprocessing libraries.
 Ingest Basics
 -------------
 
+.. _ingest_basics:
+
 The following figure illustrates a simple Ray AIR training job that (1) loads parquet data from S3, (2) applies a simple
 user-defined function to preprocess batches of data, and (3) runs an AIR Trainer with the given dataset and preprocessor.
 
@@ -32,7 +34,7 @@ that you pass to the Trainer. Dataset blocks that don't fit into memory will be 
 the dataset initially, typically only the first block and block metadata is read into memory. The rest of the blocks are
 not loaded until ``fit`` is called.
 
-**Preprocessing**: Next, if a preprocessor is defined, AIR will ``fit`` the preprocessor (e.g., for stateful preprocessors) on the
+**Preprocessing**: Next, if a preprocessor is defined, AIR will by default ``fit`` the preprocessor (e.g., compute statistics) on the
 ``"train"`` dataset, and then ``transform`` all given datasets with the fitted preprocessor. This is done by calling ``prep.fit_transform()``
 on the train dataset passed to the Trainer, followed by ``prep.transform()`` on remaining datasets. Preprocessors use Dataset APIs to execute
 preprocessing in a parallelized way across the cluster. Both read and preprocessing stages use Ray tasks under the hood.
@@ -61,6 +63,51 @@ This section is a placeholder.
 
 AIR will support streamed ingest and enable it by default by Beta. Streamed ingest is preferable when you are using large
 datasets that don't fit into memory, and also don't need advanced training quality features such as global random shuffle.
+
+Configuring Ingest Per-Dataset
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+It is common to customize processing per-dataset. For example, you may want to enable sharding
+on a validation dataset, disable preprocessing of an auxiliary dataset, or adjust ingest strategy per dataset.
+
+Each DataParallelTrainer has a default per-dataset config given by a ``Trainer._dataset_config`` class field. It is a mapping
+from dataset names to ``DatasetConfig`` objects, and implements the default behavior described in :ref:`Ingest Basics <ingest_basics>`:
+
+.. code:: python
+
+    # The default DataParallelTrainer dataset config, which is inherited
+    # by sub-classes such as TorchTrainer, HorovodTrainer, etc.
+    _dataset_config = {
+        # Fit preprocessors on the train dataset only. Split the dataset
+        # across workers if scaling_config["num_workers"] > 1.
+        "train": DatasetConfig(fit=True, split=True),
+        # For all other datasets, use the defaults (don't fit, don't split).
+        # The datasets will be transformed by the fitted preprocessor.
+        "*": DatasetConfig(),
+    }
+
+These configs can be overriden via the ``dataset_config`` kwarg, which is recursively merged with the Trainer defaults.
+Here are some examples of configuring Dataset ingest options and what they do:
+
+.. tabbed:: Split All
+
+    This example shows overriding the split config for the "valid" and "test" datasets. This means that
+    both the valid and test datasets here will be ``.split()`` across the training workers.
+
+    .. literalinclude:: doc_code/air_ingest.py
+        :language: python
+        :start-after: __config_1__
+        :end-before: __config_1_end__
+
+.. tabbed:: Disable Transform
+
+    This example shows overriding the transform config for the "side" dataset. This means that
+    the original dataset will be returned by ``.get_dataset_shard("side")``.
+
+    .. literalinclude:: doc_code/air_ingest.py
+        :language: python
+        :start-after: __config_2__
+        :end-before: __config_2_end__
 
 Ingest and Ray Tune
 -------------------

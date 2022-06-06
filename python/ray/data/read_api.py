@@ -248,7 +248,7 @@ def read_datasource(
         )
 
     if len(read_tasks) < parallelism and (
-        len(read_tasks) < ray.available_resources().get("CPU", parallelism) // 2
+        len(read_tasks) < ray.available_resources().get("CPU", 1) // 2
     ):
         logger.warning(
             "The number of blocks in this dataset ({}) limits its parallelism to {} "
