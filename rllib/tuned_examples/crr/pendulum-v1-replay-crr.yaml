@@ -1,11 +1,15 @@
 pendulum_replay_crr:
     env: 'Pendulum-v1'
     run: CRR
+    stop:
+      episode_reward_mean: -250
+      timesteps_total: 500
     config:
         input:
           - 'tests/data/pendulum/pendulum_replay_v1.1.0.json'
         framework: torch
         gamma: 0.99
+        train_batch_size: 1024
         critic_hidden_activation: 'relu'
         critic_hiddens: [256, 256]
         critic_lr: 0.0003
@@ -37,4 +41,3 @@ pendulum_replay_crr:
         advantage_type: max
         max_weight: 20.0
         n_action_sample: 4
-        num_gpus: 0.25

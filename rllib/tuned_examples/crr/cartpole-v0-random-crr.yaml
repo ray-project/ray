@@ -1,12 +1,15 @@
 cartpole_random_crr:
     env: 'CartPole-v0'
     run: CRR
+    stop:
+      episode_reward_mean: 150.0
+      timesteps_total: 500
     config:
         input:
           - 'tests/data/cartpole/cartpole_random_v1.1.0.json'
         framework: torch
         gamma: 0.99
-        train_batch_size: 4096
+        train_batch_size: 1024
         critic_hidden_activation: 'relu'
         critic_hiddens: [256, 256]
         critic_lr: 0.0003
@@ -17,8 +20,8 @@ cartpole_random_crr:
         clip_actions: True
         # Q function update setting
         twin_q: True
-        target_update_grad_intervals: 10000
-        tau: 1.0
+        target_update_grad_intervals: 100
+        tau: 0.01
         # evaluation
         evaluation_config:
             explore: False
@@ -38,4 +41,3 @@ cartpole_random_crr:
         advantage_type: max
         max_weight: 20.0
         n_action_sample: 4
-        num_gpus: 0.25

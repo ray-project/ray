@@ -1,11 +1,15 @@
 cartpole_replay_crr:
     env: 'CartPole-v0'
     run: CRR
+    stop:
+      episode_reward_mean: 150.0
+      timesteps_total: 500
     config:
         input:
           - 'tests/data/cartpole/cartpole_replay_v1.1.0.json'
         framework: torch
         gamma: 0.99
+        train_batch_size: 1024
         critic_hidden_activation: 'relu'
         critic_hiddens: [256, 256]
         critic_lr: 0.0003
@@ -37,4 +41,3 @@ cartpole_replay_crr:
         advantage_type: max
         max_weight: 20.0
         n_action_sample: 4
-        num_gpus: 0.25
