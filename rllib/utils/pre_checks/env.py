@@ -501,16 +501,6 @@ def _check_if_element_multi_agent_dict(env, element, function_string, base_env=F
     agent_ids.add("__all__")
 
     if not all(k in agent_ids for k in element):
-        if any(k in agent_ids for k in element):
-            logger.warning(
-                f"The element returned by {function_string} contains values "
-                f"that are MultiAgentDicts with incomplete information. "
-                f"Meaning that they only contain information on a subset of"
-                f" participating agents. Ignore this warning if this is "
-                f"intended, for example if your environment is turn-based "
-                f"simulation."
-            )
-            return
         if base_env:
             error = (
                 f"The element returned by {function_string} has agent_ids"
