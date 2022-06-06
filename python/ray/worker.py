@@ -992,29 +992,27 @@ def init(
 
     # Parse the hidden options:
     _enable_object_reconstruction: bool = kwargs.pop(
-        "_enable_object_reconstruction", False)
-    _redis_max_memory: Optional[int] = kwargs.pop(
-        "_redis_max_memory", None)
-    _plasma_directory: Optional[str] = kwargs.pop(
-        "_plasma_directory", None)
+        "_enable_object_reconstruction", False
+    )
+    _redis_max_memory: Optional[int] = kwargs.pop("_redis_max_memory", None)
+    _plasma_directory: Optional[str] = kwargs.pop("_plasma_directory", None)
     _node_ip_address: str = kwargs.pop(
-        "_node_ip_address", ray_constants.NODE_DEFAULT_IP)
+        "_node_ip_address", ray_constants.NODE_DEFAULT_IP
+    )
     _driver_object_store_memory: Optional[int] = kwargs.pop(
-        "_driver_object_store_memory", None)
-    _memory: Optional[int] = kwargs.pop(
-        "_memory", None)
+        "_driver_object_store_memory", None
+    )
+    _memory: Optional[int] = kwargs.pop("_memory", None)
     _redis_password: str = kwargs.pop(
-        "_redis_password", ray_constants.REDIS_DEFAULT_PASSWORD)
-    _temp_dir: Optional[str] = kwargs.pop(
-        "_temp_dir", None)
-    _metrics_export_port: Optional[int] = kwargs.pop(
-        "_metrics_export_port", None)
-    _system_config: Optional[Dict[str, str]] = kwargs.pop(
-        "_system_config", None)
+        "_redis_password", ray_constants.REDIS_DEFAULT_PASSWORD
+    )
+    _temp_dir: Optional[str] = kwargs.pop("_temp_dir", None)
+    _metrics_export_port: Optional[int] = kwargs.pop("_metrics_export_port", None)
+    _system_config: Optional[Dict[str, str]] = kwargs.pop("_system_config", None)
     _tracing_startup_hook: Optional[Callable] = kwargs.pop(
-        "_tracing_startup_hook", None)
-    _node_name: str = kwargs.pop(
-        "_node_name", None)
+        "_tracing_startup_hook", None
+    )
+    _node_name: str = kwargs.pop("_node_name", None)
 
     if not logging_format:
         logging_format = ray_constants.LOGGER_FORMAT
