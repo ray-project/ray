@@ -90,14 +90,14 @@ trainer.fit()
 
 # __config_1__
 import ray
-from ray.air.train.data_parallel_trainer import DataParallelTrainer
+from ray.air.train.integrations.torch import TorchTrainer
 from ray.air.config import DatasetConfig
 
 train_ds = ray.data.range_tensor(1000)
 valid_ds = ray.data.range_tensor(100)
 test_ds = ray.data.range_tensor(100)
 
-my_trainer = DataParallelTrainer(
+my_trainer = TorchTrainer(
     lambda: None,  # No-op training loop.
     scaling_config={"num_workers": 2},
     datasets={
@@ -118,13 +118,13 @@ print(my_trainer.get_dataset_config())
 
 # __config_2__
 import ray
-from ray.air.train.data_parallel_trainer import DataParallelTrainer
+from ray.air.train.integrations.torch import TorchTrainer
 from ray.air.config import DatasetConfig
 
 train_ds = ray.data.range_tensor(1000)
 side_ds = ray.data.range_tensor(10)
 
-my_trainer = DataParallelTrainer(
+my_trainer = TorchTrainer(
     lambda: None,  # No-op training loop.
     scaling_config={"num_workers": 2},
     datasets={
@@ -144,7 +144,7 @@ print(my_trainer.get_dataset_config())
 import ray
 from ray import train
 from ray.data import Dataset
-from ray.air.train.data_parallel_trainer import DataParallelTrainer
+from ray.air.train.integrations.torch import TorchTrainer
 from ray.air.config import DatasetConfig
 
 
@@ -161,7 +161,7 @@ def train_loop_per_worker():
     print(data_shard.stats())
 
 
-my_trainer = DataParallelTrainer(
+my_trainer = TorchTrainer(
     train_loop_per_worker,
     scaling_config={"num_workers": 1},
     datasets={
@@ -175,7 +175,7 @@ my_trainer.fit()
 import ray
 from ray import train
 from ray.data import DatasetPipeline
-from ray.air.train.data_parallel_trainer import DataParallelTrainer
+from ray.air.train.integrations.torch import TorchTrainer
 from ray.air.config import DatasetConfig
 
 
@@ -195,7 +195,7 @@ def train_loop_per_worker():
 # Set N = 200 bytes for this toy example. Typically, you'd set N >= 1GiB.
 N = 200
 
-my_trainer = DataParallelTrainer(
+my_trainer = TorchTrainer(
     train_loop_per_worker,
     scaling_config={"num_workers": 1},
     datasets={
