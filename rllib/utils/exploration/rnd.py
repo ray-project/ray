@@ -33,23 +33,15 @@ class RND(Exploration):
     Burda, Edwards, Storkey & Klimov (2018).
     7th International Conference on Learning Representations (ICLR 2019)
 
-    Estimates the novelty of a state by a distilled network approach.
-    The states novelty thereby increases at the boundary between explored
-    and unexplored states. It compares the prior state novelty with the
-    actual state novelty.
-
-    The novelty difference (hence NovelD) between the prior and actual
-    state is considered as intrinsic reward and added to the environment's
-    extrinsic reward for policy optimization. By this, NovelD focuses on
-    exploring the boundary.
+    Computes an exploration bonus of a state by a distilled network approach
+    This exploration bonus (also called novelty) defines the intrinsic reward
+    in this exploration module and is added to the extrinsic reward.
 
     Novelty is actually a very general approach and any novelty measure
     could be used. Here the distillation error is used.
 
-    NovelD has been shown to work well in both, deterministic and stochastic
-    environments and also to avoid procrastination. If an environment contains
-    some state stochasticity like in the `noisy-TV` problem NovelD still shows
-    good performance in contrast to curiosity-based exploration.
+    RND has been shown to work well in both, deterministic and stochastic
+    environments and to resolve the hard-exploration problem.
     """
 
     def __init__(
@@ -70,9 +62,7 @@ class RND(Exploration):
         """Initializes an RND exploration scheme.
 
         Args:
-            action_space: The action space of the environment. At
-                present NovelD exploration works only with
-                (Multi)Discrete action spaces.
+            action_space: The action space of the environment.
             framework: The ml framework used to train the model.
                 Can be either one of ["tf", "tf2", "torch"].
                 tf: TensorFlow (static-graph); tf2: TensorFlow 2.x
@@ -238,7 +228,7 @@ class RND(Exploration):
     def postprocess_trajectory(self, policy, sample_batch, tf_sess=None):
         """Calculates phi values for the novelty and intrinsic reward.
 
-        Also calculates distillation loss and updates the noveld
+        Also calculates distillation loss and updates the RND
         module on the provided batch using the optimizer.
         """
         if self.framework != "torch":

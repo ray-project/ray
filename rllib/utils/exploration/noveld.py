@@ -27,6 +27,37 @@ if nn is not None:
 
 
 class NovelD(RND):
+    """Implements NovelD exploration criterion.
+
+    Implementation of:
+    [1] NovelD: A simple yet Effective Exploration Criterion.
+    Zhang, Xu, Wang, Wu, Kreutzer, Gonzales & Tian (2021).
+    NeurIPS Proceedings 2021
+
+    which is based on Random Network Distillation proposed in
+    [2] Exploration By Random Network Distillation.
+    Burda, Edwards, Storkey & Klimov (2018).
+    7th International Conference on Learning Representations (ICLR 2019)
+
+    Estimates the novelty of a state by a distilled network approach.
+    The states novelty thereby increases at the boundary between explored
+    and unexplored states. It compares the prior state novelty with the
+    actual state novelty.
+
+    The novelty difference (hence NovelD) between the prior and actual
+    state is considered as intrinsic reward and added to the environment's
+    extrinsic reward for policy optimization. By this, NovelD focuses on
+    exploring the boundary.
+
+    Novelty is actually a very general approach and any novelty measure
+    could be used. Here the distillation error is used.
+
+    NovelD has been shown to work well in both, deterministic and stochastic
+    environments and also to avoid procrastination. If an environment contains
+    some state stochasticity like in the `noisy-TV` problem NovelD still shows
+    good performance in contrast to curiosity-based exploration.
+    """
+
     def __init__(
         self,
         action_space: Space,
@@ -47,9 +78,7 @@ class NovelD(RND):
         """Initializes a NovelD exploration scheme.
 
         Args:
-            action_space: The action space of the environment. At
-                present NovelD exploration works only with
-                (Multi)Discrete action spaces.
+            action_space: The action space of the environment.
             framework: The ml framework used to train the model.
                 Can be either one of ["tf", "tf2", "torch"].
                 tf: TensorFlow (static-graph); tf2: TensorFlow 2.x
