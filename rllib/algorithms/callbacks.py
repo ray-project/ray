@@ -276,7 +276,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
 
         pass
 
-    def on_train_result(self, *, trainer: "Trainer", result: dict, **kwargs) -> None:
+    def on_train_result(self, *, trainer: "Algorithm", result: dict, **kwargs) -> None:
         """Called at the end of Trainable.train().
 
         Args:
@@ -384,7 +384,7 @@ class MultiCallbacks(DefaultCallbacks):
 
         return self
 
-    def on_trainer_init(self, *, trainer: "Trainer", **kwargs) -> None:
+    def on_trainer_init(self, *, trainer: "Algorithm", **kwargs) -> None:
         for callback in self._callback_list:
             callback.on_trainer_init(trainer=trainer, **kwargs)
 

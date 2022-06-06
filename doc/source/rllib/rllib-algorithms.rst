@@ -207,7 +207,7 @@ Decentralized Distributed Proximal Policy Optimization (DD-PPO)
 |pytorch|
 `[paper] <https://arxiv.org/abs/1911.00357>`__
 `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/ddppo/ddppo.py>`__
-Unlike APPO or PPO, with DD-PPO policy improvement is no longer done centralized in the trainer process. Instead, gradients are computed remotely on each rollout worker and all-reduced at each mini-batch using `torch distributed <https://pytorch.org/docs/stable/distributed.html>`__. This allows each worker's GPU to be used both for sampling and for training.
+Unlike APPO or PPO, with DD-PPO policy improvement is no longer done centralized in the algorithm process. Instead, gradients are computed remotely on each rollout worker and all-reduced at each mini-batch using `torch distributed <https://pytorch.org/docs/stable/distributed.html>`__. This allows each worker's GPU to be used both for sampling and for training.
 
 .. tip::
 
@@ -895,7 +895,7 @@ Tuned examples:
 
 **Activating Curiosity**
 The curiosity plugin can be easily activated by specifying it as the Exploration class to-be-used
-in the main Trainer config. Most of its parameters usually do not have to be specified
+in the main Algorithm config. Most of its parameters usually do not have to be specified
 as the module uses the values from the paper by default. For example:
 
 .. code-block:: python
@@ -933,7 +933,7 @@ In such environments, agents have to navigate (and change the underlying state o
 For example, the task could be to find a key in some room, pick it up, find a matching door (matching the color of the key), and eventually unlock this door with the key to reach a goal state,
 all the while not seeing any rewards.
 Such problems are impossible to solve with standard RL exploration methods like epsilon-greedy or stochastic sampling.
-The Curiosity module - when configured as the Exploration class to use via the Trainer's config (see above on how to do this) - automatically adds three simple models to the Policy's ``self.model``:
+The Curiosity module - when configured as the Exploration class to use via the Algorithm's config (see above on how to do this) - automatically adds three simple models to the Policy's ``self.model``:
 a) a latent space learning ("feature") model, taking an environment observation and outputting a latent vector, which represents this observation and
 b) a "forward" model, predicting the next latent vector, given the current observation vector and an action to take next.
 c) a so-called "inverse" net, only used to train the "feature" net. The inverse net tries to predict the action taken between two latent vectors (obs and next obs).
@@ -963,7 +963,7 @@ Examples:
 
 **Activating RE3**
 The RE3 plugin can be easily activated by specifying it as the Exploration class to-be-used
-in the main Trainer config and inheriting the `RE3UpdateCallbacks` as shown in this `example <https://github.com/ray-project/ray/blob/c9c3f0745a9291a4de0872bdfa69e4ffdfac3657/rllib/utils/exploration/tests/test_random_encoder.py#L35>`__. Most of its parameters usually do not have to be specified as the module uses the values from the paper by default. For example:
+in the main Algorithm config and inheriting the `RE3UpdateCallbacks` as shown in this `example <https://github.com/ray-project/ray/blob/c9c3f0745a9291a4de0872bdfa69e4ffdfac3657/rllib/utils/exploration/tests/test_random_encoder.py#L35>`__. Most of its parameters usually do not have to be specified as the module uses the values from the paper by default. For example:
 
 .. code-block:: python
 

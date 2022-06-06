@@ -1,4 +1,4 @@
-.. _trainer-reference-docs:
+.. algorithm-reference-docs:
 
 Algorithm API
 =============
@@ -14,7 +14,7 @@ and thus fully supports distributed hyperparameter tuning for RL.
 .. figure:: ../images/trainer_class_overview.svg
     :align: left
 
-    **A typical RLlib Trainer object:** The components sitting inside a Trainer are
+    **A typical RLlib Algorithm object:** The components sitting inside an Algorithm are
     normally N :py:class:`~ray.rllib.evaluation.worker_set.WorkerSet`s
     (each consisting of one local :py:class:`~ray.rllib.evaluation.RolloutWorker`
     and zero or more \@ray.remote
@@ -24,16 +24,16 @@ and thus fully supports distributed hyperparameter tuning for RL.
     RLlib :py:class:`~ray.rllib.env.base_env.BaseEnv` per worker.
 
 
-Building Custom Trainer Classes
--------------------------------
+Building Custom Algorithm Classes
+---------------------------------
 
 .. warning::
     As of Ray >= 1.9, it is no longer recommended to use the `build_trainer()` utility
-    function for creating custom Trainer sub-classes.
+    function for creating custom Algorithm sub-classes.
     Instead, follow the simple guidelines here for directly sub-classing from
     :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`.
 
-In order to create a custom Trainer, sub-class the
+In order to create a custom Algorithm, sub-class the
 :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` class
 and override one or more of its methods. Those are in particular:
 
@@ -41,16 +41,15 @@ and override one or more of its methods. Those are in particular:
 * :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.validate_config`
 * :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.get_default_policy_class`
 * :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.setup`
-* :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.step_attempt`
-* :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.execution_plan`
+* :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.training_iteration`
 
-`See here for an example on how to override Trainer <https://github.com/ray-project/ray/blob/master/rllib/algorithms/pg/pg.py>`_.
+`See here for an example on how to override Algorithm <https://github.com/ray-project/ray/blob/master/rllib/algorithms/pg/pg.py>`_.
 
 
-Trainer base class (ray.rllib.algorithms.algorithm.Algorithm)
--------------------------------------------------------------
+Algorithm base class (ray.rllib.algorithms.algorithm.Algorithm)
+---------------------------------------------------------------
 
-.. autoclass:: ray.rllib.algorithms.trainer.Trainer
+.. autoclass:: ray.rllib.algorithms.algorithm.Algorithm
     :special-members: __init__
     :members:
 

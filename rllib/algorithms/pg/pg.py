@@ -11,13 +11,13 @@ from ray.rllib.utils.typing import TrainerConfigDict
 
 
 class PGConfig(AlgorithmConfig):
-    """Defines a configuration class from which a PG Trainer can be built.
+    """Defines a configuration class from which a PG Algorithm can be built.
 
     Example:
         >>> from ray.rllib.algorithms.pg import PGConfig
         >>> config = PGConfig().training(lr=0.01).resources(num_gpus=1)
         >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> # Build a Algorithm object from the config and run 1 training iteration.
         >>> trainer = config.build(env="CartPole-v1")
         >>> trainer.train()
 

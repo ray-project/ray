@@ -11,7 +11,7 @@ A mapping function is used by episode objects to map AgentIDs produced by the en
 
 It is possible to add and remove policies to/from the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`'s workers at any given time
 (even within an ongoing episode) as well as to change the policy mapping function.
-See the Trainer's methods: :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.add_policy`,
+See the Algorithm's methods: :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.add_policy`,
 :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.remove_policy`, and
 :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.change_policy_mapping_fn` for more details.
 

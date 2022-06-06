@@ -15,7 +15,7 @@ which sit inside a :py:class:`~ray.rllib.evaluation.worker_set.WorkerSet`
     :width: 600
     :align: left
 
-    **A typical RLlib WorkerSet setup inside an RLlib Trainer:** Each :py:class:`~ray.rllib.evaluation.worker_set.WorkerSet` contains
+    **A typical RLlib WorkerSet setup inside an RLlib Algorithm:** Each :py:class:`~ray.rllib.evaluation.worker_set.WorkerSet` contains
     exactly one local :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker` object and n ray remote
     :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker` (ray actors).
     The workers contain a policy map (with one or more policies), and - in case a simulator

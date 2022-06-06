@@ -2,7 +2,7 @@
 Proximal Policy Optimization (PPO)
 ==================================
 
-This file defines the distributed Trainer class for proximal policy
+This file defines the distributed Algorithm class for proximal policy
 optimization.
 See `ppo_[tf|torch]_policy.py` for the definition of the policy loss.
 
@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 
 class PPOConfig(AlgorithmConfig):
-    """Defines a configuration class from which a PPO Trainer can be built.
+    """Defines a configuration class from which a PPO Algorithm can be built.
 
     Example:
         >>> from ray.rllib.algorithms.ppo import PPOConfig
@@ -48,7 +48,7 @@ class PPOConfig(AlgorithmConfig):
         ...             .resources(num_gpus=0)\
         ...             .rollouts(num_workers=4)
         >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> # Build a Algorithm object from the config and run 1 training iteration.
         >>> trainer = config.build(env="CartPole-v1")
         >>> trainer.train()
 
@@ -277,10 +277,10 @@ class PPO(Algorithm):
 
     @override(Algorithm)
     def validate_config(self, config: TrainerConfigDict) -> None:
-        """Validates the Trainer's config dict.
+        """Validates the Algorithm's config dict.
 
         Args:
-            config: The Trainer's config to check.
+            config: The Algorithm's config to check.
 
         Raises:
             ValueError: In case something is wrong with the config.
