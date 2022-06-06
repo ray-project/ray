@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 
-DataBatchType = Union[np.ndarray, pd.DataFrame, pa.ArrowTable, Dict[str, np.ndarray]]
+DataBatchType = Union[np.ndarray, pd.DataFrame, pa.Table, Dict[str, np.ndarray]]
 
 
 @PublicAPI(stability="alpha")
