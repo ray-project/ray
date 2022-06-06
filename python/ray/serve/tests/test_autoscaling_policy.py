@@ -203,6 +203,9 @@ def test_e2e_basic_scale_up_down(min_replicas, serve_instance):
     handle = A.get_handle()
     [handle.remote() for _ in range(100)]
 
+    # When scaling from 0, the running replicas will need two steps to reach
+    # 2 replicas, so waiting two times
+    wait_for_condition(lambda: get_num_running_replicas(controller, A) >= 1)
     wait_for_condition(lambda: get_num_running_replicas(controller, A) >= 2)
     signal.send.remote()
 
