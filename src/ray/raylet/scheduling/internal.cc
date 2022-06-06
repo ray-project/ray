@@ -24,15 +24,21 @@ std::string UnscheduledWorkCauseToString(UnscheduledWorkCause cause) {
   case UnscheduledWorkCause::WAITING_FOR_RESOURCE_ACQUISITION:
     return "Task is queued. Task is waiting to be scheduled.";
   case UnscheduledWorkCause::WAITING_FOR_AVAILABLE_PLASMA_MEMORY:
-    return "There's not enough memory to schedule this task. Task will be scheduled when the local object store memory is availabale.";
+    return "There's not enough memory to schedule this task. Task will be scheduled when "
+           "the local object store memory is availabale.";
   case UnscheduledWorkCause::WAITING_FOR_RESOURCES_AVAILABLE:
-    return "There's no available resources for this task across the cluster. Task will be scheduled once there are available resources from the cluster.";
+    return "There's no available resources for this task across the cluster. Task will "
+           "be scheduled once there are available resources from the cluster.";
   case UnscheduledWorkCause::WORKER_NOT_FOUND_JOB_CONFIG_NOT_EXIST:
-    return "Failed to start a worker for the task because the corresponding job configuration wasn't found. It is usually due to a network related issue.";
+    return "Failed to start a worker for the task because the corresponding job "
+           "configuration wasn't found. It is usually due to a network related issue.";
   case UnscheduledWorkCause::WORKER_NOT_FOUND_REGISTRATION_TIMEOUT:
-    return "Failed to start a worker for the task because the worker wasn't registered to raylet within the timeout. It is usually due to high pressure on GCS, slow network, or worker initialization failure.";
+    return "Failed to start a worker for the task because the worker wasn't registered "
+           "to raylet within the timeout. It is usually due to high pressure on GCS, "
+           "slow network, or worker initialization failure.";
   case UnscheduledWorkCause::WORKER_NOT_FOUND_RATE_LIMITED:
-    return "Failed to start a worker for the task because there are too many worker creation requests.";
+    return "Failed to start a worker for the task because there are too many worker "
+           "creation requests.";
   default:
     RAY_LOG(FATAL) << "Unreachable";
   }
@@ -42,4 +48,4 @@ std::string UnscheduledWorkCauseToString(UnscheduledWorkCause cause) {
 
 }  // namespace raylet
 
-}  // namespace ray 
+}  // namespace ray

@@ -1543,7 +1543,7 @@ def test_scheduling_state_actor(monkeypatch, ray_start_cluster):
         class Actor:
             pass
 
-        a = Actor.remote() # noqa
+        a = Actor.remote()  # noqa
 
         def verify():
             task = list(list_tasks().values())[0]
