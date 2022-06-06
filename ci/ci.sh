@@ -525,8 +525,9 @@ lint_bazel() {
 lint_bazel_pytest() {
   pip install yq
   cd "${WORKSPACE_DIR}"
-  bazel query 'kind(py_test.*, tests(python/...) intersect attr(tags, "\bteam:ml\b", python/...) except attr(tags, "\bno_main\b", python/...))' --output xml | xq | python scripts/pytest_checker.py
-  bazel query 'kind(py_test.*, tests(python/...) intersect attr(tags, "\bteam:serve\b", python/...) except attr(tags, "\bno_main\b", python/...))' --output xml | xq | python scripts/pytest_checker.py
+  for team in "team:ml" "team:serve"; do
+    bazel query "kind(py_test.*, tests(python/...) intersect attr(tags, \"\b$team\b\", python/...) except attr(tags, \"\bno_main\b\", python/...))" --output xml | xq | python scripts/pytest_checker.py
+  done
 }
 
 lint_web() {
