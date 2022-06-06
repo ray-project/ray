@@ -6,8 +6,9 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 
-DataBatchType = Union[np.ndarray, pd.DataFrame, Dict[str, np.ndarray]]
+DataBatchType = Union[np.ndarray, pd.DataFrame, pa.ArrowTable, Dict[str, np.ndarray]]
 
 
 @PublicAPI(stability="alpha")
@@ -77,7 +78,6 @@ class Predictor(abc.ABC):
         Args:
             data: A pandas DataFrame to perform predictions on.
             kwargs: Arguments specific to the predictor implementation.
-
 
         Returns:
             A pandas DataFrame containing the prediction result.
