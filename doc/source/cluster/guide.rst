@@ -9,7 +9,7 @@ This page provides an overview of how to deploy a multi-node Ray cluster, includ
 
 * Launch the cluster.
 * Set up the autoscaler.
-* Deploy a Ray application
+* Deploy a Ray application.
 * Monitor a multi-node cluster.
 * Best practices for setting up large Ray clusters.
 
