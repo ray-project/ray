@@ -1,7 +1,7 @@
 .. _air-api-ref:
 
-AIR API
-=======
+Ray AIR API
+===========
 
 .. contents::
     :local:
@@ -43,6 +43,10 @@ Trainer
     :show-inheritance:
 
 .. automodule:: ray.air.train.integrations.torch
+    :members:
+    :show-inheritance:
+
+.. automodule:: ray.air.train.integrations.horovod
     :members:
     :show-inheritance:
 
