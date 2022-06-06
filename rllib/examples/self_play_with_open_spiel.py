@@ -28,7 +28,7 @@ import sys
 import ray
 from ray import tune
 from ray.rllib.agents.callbacks import DefaultCallbacks
-from ray.rllib.agents.ppo import PPOTrainer
+from ray.rllib.algorithms.ppo import PPO
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
 from ray.rllib.policy.policy import PolicySpec
@@ -242,7 +242,7 @@ if __name__ == "__main__":
     # human on command line.
     if args.num_episodes_human_play > 0:
         num_episodes = 0
-        trainer = PPOTrainer(config=dict(config, **{"explore": False}))
+        trainer = PPO(config=dict(config, **{"explore": False}))
         if args.from_checkpoint:
             trainer.restore(args.from_checkpoint)
         else:

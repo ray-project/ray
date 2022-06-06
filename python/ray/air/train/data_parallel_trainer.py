@@ -5,33 +5,32 @@ from typing import (
     Any,
     Callable,
     Dict,
-    List,
     Optional,
     Tuple,
     Union,
     Type,
-    TYPE_CHECKING,
 )
 
 import ray
 from ray import tune
-from ray.actor import ActorHandle
-from ray.air.constants import MODEL_KEY, TRAIN_DATASET_KEY, PREPROCESSOR_KEY
+from ray.air.constants import (
+    MODEL_KEY,
+    PREPROCESSOR_KEY,
+    TRAIN_DATASET_KEY,
+    WILDCARD_KEY,
+)
 from ray.air.trainer import Trainer
-from ray.air.config import ScalingConfig, RunConfig
+from ray.air.config import ScalingConfig, RunConfig, DatasetConfig
 from ray.air.trainer import GenDataset
 from ray.air.preprocessor import Preprocessor
 from ray.air.checkpoint import Checkpoint
+from ray.air.train.data_parallel_ingest import _DataParallelIngestSpec
 from ray.train import BackendConfig, TrainingIterator
 from ray.train.backend import BackendExecutor
 from ray.train._checkpoint import TuneCheckpointManager
-from ray.train.impl.dataset_spec import _RayDatasetSpec
 from ray.train.utils import construct_train_func
 from ray.util.annotations import DeveloperAPI
 from ray.util.ml_utils.checkpoint_manager import CheckpointStrategy, _TrackedCheckpoint
-
-if TYPE_CHECKING:
-    from ray.data import Dataset
 
 logger = logging.getLogger(__name__)
 
@@ -208,6 +207,8 @@ class DataParallelTrainer(Trainer):
             Tensorflow, Horovod) on each worker to enable distributed
             communication. If no Backend should be set up, then set this to None.
         scaling_config: Configuration for how to scale data parallel training.
+        dataset_config: Configuration for dataset ingest. This is merged with the
+            default dataset config for the given trainer (`cls._dataset_config`).
         run_config: Configuration for the execution of the training run.
         datasets: Any Ray Datasets to use for training. Use
             the key "train" to denote which dataset is the training
@@ -232,6 +233,13 @@ class DataParallelTrainer(Trainer):
         "use_gpu",
     ]
 
+    _dataset_config = {
+        # TODO(ekl) set streamable=True by default. This will flip the default value
+        # of get_dataset_shard() to DatasetPipeline for DataParallelTrainers.
+        TRAIN_DATASET_KEY: DatasetConfig(fit=True, split=True),
+        WILDCARD_KEY: DatasetConfig(),
+    }
+
     def __init__(
         self,
         train_loop_per_worker: Union[Callable[[], None], Callable[[Dict], None]],
@@ -239,6 +247,7 @@ class DataParallelTrainer(Trainer):
         train_loop_config: Optional[Dict] = None,
         backend_config: Optional[BackendConfig] = None,
         scaling_config: Optional[ScalingConfig] = None,
+        dataset_config: Optional[Dict[str, DatasetConfig]] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
         preprocessor: Optional[Preprocessor] = None,
@@ -247,13 +256,19 @@ class DataParallelTrainer(Trainer):
         if not ray.is_initialized():
             ray.init()
 
-        self.train_loop_per_worker = train_loop_per_worker
-        self.train_loop_config = train_loop_config
+        self._train_loop_per_worker = train_loop_per_worker
+        self._train_loop_config = train_loop_config
 
         backend_config = (
             backend_config if backend_config is not None else BackendConfig()
         )
-        self.backend_config = backend_config
+        self._backend_config = backend_config
+        self._dataset_config = DatasetConfig.validated(
+            DatasetConfig.merge(self._dataset_config, dataset_config), datasets
+        )
+        self._ingest_spec = _DataParallelIngestSpec(
+            dataset_config=self._dataset_config,
+        )
 
         super(DataParallelTrainer, self).__init__(
             scaling_config=scaling_config,
@@ -287,7 +302,14 @@ class DataParallelTrainer(Trainer):
             )
 
         self._validate_train_loop_per_worker(
-            self.train_loop_per_worker, "train_loop_per_worker"
+            self._train_loop_per_worker, "train_loop_per_worker"
+        )
+
+    def preprocess_datasets(self) -> None:
+        # Evaluate all datasets.
+        self.datasets = {k: d() if callable(d) else d for k, d in self.datasets.items()}
+        self.datasets = self._ingest_spec.preprocess_datasets(
+            self.preprocessor, self.datasets
         )
 
     def _validate_train_loop_per_worker(
@@ -306,8 +328,8 @@ class DataParallelTrainer(Trainer):
         )
 
         train_loop_per_worker = construct_train_func(
-            self.train_loop_per_worker,
-            self.train_loop_config,
+            self._train_loop_per_worker,
+            self._train_loop_config,
             fn_arg_name="train_loop_per_worker",
         )
 
@@ -316,7 +338,7 @@ class DataParallelTrainer(Trainer):
         )
 
         backend_executor = BackendExecutor(
-            backend_config=self.backend_config,
+            backend_config=self._backend_config,
             num_workers=scaling_config_dataclass.num_workers,
             num_cpus_per_worker=scaling_config_dataclass.num_cpus_per_worker,
             num_gpus_per_worker=scaling_config_dataclass.num_gpus_per_worker,
@@ -336,17 +358,13 @@ class DataParallelTrainer(Trainer):
         else:
             resume_checkpoint_dict = None
 
-        dataset_spec = _RayDatasetSpec(
-            dataset_or_dict=self.datasets, dataset_split_fn=_default_dataset_split_fn
-        )
-
         # TODO(amog): Have TrainingIterator also accept a checkpoint ObjectRef instead
         #  of just a Dict.
         training_iterator = TrainingIterator(
             backend_executor=backend_executor,
-            backend_config=self.backend_config,
+            backend_config=self._backend_config,
             train_func=train_loop_per_worker,
-            dataset_spec=dataset_spec,
+            dataset_spec=self._ingest_spec,
             checkpoint_manager=checkpoint_manager,
             checkpoint=resume_checkpoint_dict,
             checkpoint_strategy=None,
@@ -360,6 +378,14 @@ class DataParallelTrainer(Trainer):
 
         # Shutdown workers.
         backend_executor.shutdown()
+
+    def get_dataset_config(self) -> Dict[str, DatasetConfig]:
+        """Return a copy of this Trainer's final dataset configs.
+
+        Returns:
+            The merged default + user-supplied dataset config.
+        """
+        return self._dataset_config.copy()
 
 
 def _load_checkpoint(
@@ -388,39 +414,3 @@ def _load_checkpoint(
         )
     model = checkpoint_dict[MODEL_KEY]
     return model, preprocessor
-
-
-def _default_dataset_split_fn(
-    dataset_dict: Dict[str, "Dataset"], training_worker_handles: List[ActorHandle]
-) -> List[Dict[str, "Dataset"]]:
-    """Defines splitting logic of Datasets passed into ``DataParallelTrainer``.
-
-    By default only training dataset will be split. All other datasets will not be
-    split and passed through directly to the training workers. This is because
-    validation implementation is often done on just the rank 0 worker.
-
-    Args:
-        dataset_dict: A dictionary of Datasets.
-        training_worker_handles: The actor handles of the training workers to use for
-            locality hints.
-
-    Returns:
-        A list of dataset dictionaries for each training worker.
-    """
-    dataset_dict_splits = [{} for _ in range(len(training_worker_handles))]
-
-    for key, dataset in dataset_dict.items():
-        if key == TRAIN_DATASET_KEY:
-            dataset_splits = dataset.split(
-                len(training_worker_handles),
-                equal=True,
-                locality_hints=training_worker_handles,
-            )
-        else:
-            # Only shard the training dataset.
-            dataset_splits = [dataset] * len(training_worker_handles)
-
-        for i in range(len(dataset_splits)):
-            dataset_dict_splits[i][key] = dataset_splits[i]
-
-    return dataset_dict_splits
