@@ -17,10 +17,10 @@ if TYPE_CHECKING:
 import ray
 from ray.data.context import DatasetContext
 from ray.data.block import Block
-from ray.data.impl.block_list import BlockList
-from ray.data.impl.compute import get_compute
-from ray.data.impl.stats import DatasetStats
-from ray.data.impl.lazy_block_list import LazyBlockList
+from ray.data._internal.block_list import BlockList
+from ray.data._internal.compute import get_compute
+from ray.data._internal.stats import DatasetStats
+from ray.data._internal.lazy_block_list import LazyBlockList
 
 # Scheduling strategy can be inherited from prev stage if not specified.
 INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]

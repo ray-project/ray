@@ -298,6 +298,14 @@ py_test(
 )
 
 py_test(
+    name = "test_tensorflow_utils",
+    size = "small",
+    srcs = ["tests/test_tensorflow_utils.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
     name = "test_torch_predictor",
     size = "small",
     srcs = ["tests/test_torch_predictor.py"],
