@@ -39,6 +39,10 @@ from ray.core.generated.gcs_service_pb2 import (
     GetAllNodeInfoReply,
     GetAllWorkerInfoReply,
 )
+from ray.core.generated.reporter_pb2 import (
+    ListLogsReply,
+    StreamLogReply,
+)
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvState as RuntimeEnvStateProto,
 )
@@ -74,9 +78,7 @@ from ray.experimental.state.common import (
     DEFAULT_LIMIT,
 )
 from ray.experimental.state.exception import DataSourceUnavailable, RayStateApiException
-from ray.experimental.state.state_manager import (
-    StateDataSourceClient,
-)
+from ray.experimental.state.state_manager import StateDataSourceClient, IdToIpMap
 from ray.experimental.state.state_cli import (
     list_state_cli_group,
     get_state_api_output_to_print,
@@ -207,6 +209,22 @@ def create_api_options(
     return ListApiOptions(
         limit=limit, timeout=timeout, filters=filters, _server_timeout_multiplier=1.0
     )
+
+
+def test_id_to_ip_map():
+    node_id_1 = "1"
+    node_ip_1 = "ip_1"
+    node_id_2 = "2"
+    node_ip_2 = "ip_2"
+    m = IdToIpMap()
+    m.put(node_id_1, node_ip_1)
+    assert m.get_ip(node_ip_2) is None
+    assert m.get_node_id(node_id_2) is None
+    assert m.get_ip(node_id_1) == node_ip_1
+    assert m.get_node_id(node_ip_1) == node_id_1
+    m.pop(node_id_1)
+    assert m.get_ip(node_id_1) is None
+    assert m.get_node_id(node_id_1) is None
 
 
 @pytest.mark.asyncio
@@ -819,6 +837,28 @@ async def test_state_data_source_client(ray_start_cluster):
         client.register_agent_client(node_id, ip, port)
         result = await client.get_runtime_envs_info(node_id)
         assert isinstance(result, GetRuntimeEnvsInfoReply)
+
+    """
+    Test logs
+    """
+    with pytest.raises(ValueError):
+        result = await client.list_logs("1234", "*")
+    with pytest.raises(ValueError):
+        result = await client.stream_log("1234", "raylet.out", True, 100, 1, 5)
+
+    wait_for_condition(lambda: len(ray.nodes()) == 2)
+    # The node information should've been registered in the previous section.
+    for node in ray.nodes():
+        node_id = node["NodeID"]
+        result = await client.list_logs(node_id, timeout=30, glob_filter="*")
+        assert isinstance(result, ListLogsReply)
+
+        stream = await client.stream_log(node_id, "raylet.out", False, 10, 1, 5)
+        async for logs in stream:
+            log_lines = len(logs.data.decode().split("\n"))
+            assert isinstance(logs, StreamLogReply)
+            assert log_lines >= 10
+            assert log_lines <= 11
 
     """
     Test the exception is raised when the RPC error occurs.
