@@ -7,9 +7,12 @@ import tempfile
 import unittest
 
 import ray
-from ray.rllib.agents.ppo import ppo
 from ray import tune
 from ray.tune.trial import Trial
+
+
+def train(config):
+    tune.report(metric1=2, metric2=3)
 
 
 class TrialRelativeLogdirTest(unittest.TestCase):
@@ -17,7 +20,11 @@ class TrialRelativeLogdirTest(unittest.TestCase):
         # Make the data frame equality assertion available
         # via `assertEqual`.
         self.addTypeEqualityFunc(pd.DataFrame, self.assertDataFrameEqual)
+        if ray.is_initialized:
+            ray.shutdown()
         ray.init(num_cpus=1, num_gpus=0)
+
+        tune.register_trainable("rel_logdir", train)
 
     def tearDown(self):
         ray.shutdown()
@@ -31,16 +38,11 @@ class TrialRelativeLogdirTest(unittest.TestCase):
 
     def testDotsInLogdir(self):
         """This should result in errors as dots in paths are not allowed."""
-        config = ppo.DEFAULT_CONFIG.copy()
-        config["num_workers"] = 0
-        config["num_envs_per_worker"] = 1
-        config["env"] = "CartPole-v0"
-
         local_dir_path = Path("/tmp/test_rel_dots")
         local_dir = str(local_dir_path)
         if local_dir_path.exists():
             local_dir = tempfile.mkdtemp(prefix=str(local_dir_path) + "_")
-        trial = Trial(trainable_name="PPO", local_dir=local_dir)
+        trial = Trial(trainable_name="rel_logdir", local_dir=local_dir)
 
         with self.assertRaises(ValueError):
             trial.logdir = "/tmp/test_rel/../dots"
@@ -58,18 +60,13 @@ class TrialRelativeLogdirTest(unittest.TestCase):
         because training in the cloud usually requests such
         relocations.
         """
-        config = ppo.DEFAULT_CONFIG.copy()
-        config["num_workers"] = 0
-        config["num_envs_per_worker"] = 1
-        config["env"] = "CartPole-v0"
-
         local_dir_path = Path("/tmp/test_rel")
         if local_dir_path.exists():
             local_dir = tempfile.mkdtemp(prefix=str(local_dir_path) + "_")
         else:
             local_dir = str(local_dir_path)
 
-        tune.run("PPO", config=config, stop={"episodes_total": 5}, local_dir=local_dir)
+        tune.run("rel_logdir", config={"a": tune.randint(0, 10)}, local_dir=local_dir)
 
         # Copy the folder
         local_dir_moved = local_dir + "_moved"
@@ -91,7 +88,7 @@ class TrialRelativeLogdirTest(unittest.TestCase):
         # Check, if the two configs are equal.
         self.assertDictEqual(config, config_moved)
 
-        metric = "episode_reward_mean"
+        metric = "metric1"
         mode = "max"
         analysis_df = analysis.dataframe(metric, mode)
         analysis_moved_df = analysis_moved.dataframe(metric, mode)
@@ -119,11 +116,6 @@ class TrialRelativeLogdirTest(unittest.TestCase):
         path to the `ExperimentAnalysis` class or relocate the
         folder out of the nested structure.
         """
-        config = ppo.DEFAULT_CONFIG.copy()
-        config["num_workers"] = 0
-        config["num_envs_per_worker"] = 1
-        config["env"] = "CartPole-v0"
-
         local_dir_path = Path("/tmp/test_rel")
         if local_dir_path.exists():
             local_dir = tempfile.mkdtemp(prefix=str(local_dir_path) + "_")
@@ -131,9 +123,8 @@ class TrialRelativeLogdirTest(unittest.TestCase):
             local_dir = str(local_dir_path)
 
         tune.run(
-            "PPO",
-            config=config,
-            stop={"episodes_total": 5},
+            "rel_logdir",
+            config={"a": tune.randint(0, 10)},
             local_dir=local_dir,
             # Create a nested experiment directory.
             name="exp_dir/deep_exp_dir",
@@ -163,7 +154,7 @@ class TrialRelativeLogdirTest(unittest.TestCase):
         # Check, if the two configs are equal.
         self.assertDictEqual(config, config_moved)
 
-        metric = "episode_reward_mean"
+        metric = "metric1"
         mode = "max"
         analysis_df = analysis.dataframe(metric, mode)
         analysis_moved_df = analysis_moved.dataframe(metric, mode)
@@ -192,18 +183,17 @@ class TrialRelativeLogdirTest(unittest.TestCase):
         state provided to the `ExperimentAnalysis` constructor will
         be considered.
         """
-        config = ppo.DEFAULT_CONFIG.copy()
-        config["num_workers"] = 0
-        config["num_envs_per_worker"] = 1
-        config["env"] = "CartPole-v0"
-
         local_dir_path = Path("/tmp/test_rel")
         if local_dir_path.exists():
             local_dir = tempfile.mkdtemp(prefix=str(local_dir_path) + "_")
         else:
             local_dir = str(local_dir_path)
 
-        tune.run("PPO", config=config, stop={"episodes_total": 5}, local_dir=local_dir)
+        tune.run(
+            "rel_logdir",
+            config={"a": tune.randint(0, 10)},
+            local_dir=local_dir,
+        )
 
         # Copy the folder.
         local_dir_moved = local_dir + "_moved"
@@ -211,8 +201,8 @@ class TrialRelativeLogdirTest(unittest.TestCase):
 
         # Load the experiment states directly by providing
         # JSON files.
-        checkpoint_dir = Path(local_dir).joinpath("PPO")
-        checkpoint_dir_moved = Path(local_dir_moved).joinpath("PPO")
+        checkpoint_dir = Path(local_dir).joinpath("rel_logdir")
+        checkpoint_dir_moved = Path(local_dir_moved).joinpath("rel_logdir")
         experiment_state = [
             f
             for f in checkpoint_dir.iterdir()
@@ -240,7 +230,7 @@ class TrialRelativeLogdirTest(unittest.TestCase):
         # Check, if the two configs are equal.
         self.assertDictEqual(config, config_moved)
 
-        metric = "episode_reward_mean"
+        metric = "metric1"
         mode = "max"
         analysis_df = analysis.dataframe(metric, mode)
         analysis_moved_df = analysis_moved.dataframe(metric, mode)
