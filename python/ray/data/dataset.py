@@ -101,20 +101,56 @@ TensorflowFeatureTypeSpec = Union[
 
 @PublicAPI
 class Dataset(Generic[T]):
-    """Implements a distributed Arrow dataset.
+    """A Dataset is a distributed data collection for data loading and processing.
 
-    Datasets are implemented as a list of ``ObjectRef[Block]``. The block
-    also determines the unit of parallelism. The default block type is the
-    ``pyarrow.Table``. Arrow-incompatible objects are held in ``list`` blocks.
+    Datasets are implemented as a list of ``ObjectRef[Block]``, where each block
+    holds an ordered collection of items, representing a shard of the overall
+    data collection. The block can be either a ``pyarrow.Table``, or Python list.
+    The block also determines the unit of parallelism.
+
+    Datasets can be created in multiple ways: from synthetic data via ``range_*()``
+    APIs, from existing memory data via ``from_*()`` APIs, or from external storage
+    systems such as local disk, S3, HDFS etc. via the ``read_*()`` APIs. The
+    (potentially processed) Dataset can be saved back to external storage systems via
+    the ``write_*()`` APIs.
+
+    Examples:
+        >>> import ray
+        >>> # Create dataset from synthetic data.
+        >>> ds = ray.data.range(1000) # doctest: +SKIP
+        >>> # Create dataset from in-memory data.
+        >>> ds = ray.data.from_items( # doctest: +SKIP
+        ...     [{"col1": i, "col2": i * 2} for i in range(1000)])
+        >>> # Create dataset from external storage system.
+        >>> ds = ray.data.read_parquet("s3://bucket/path") # doctest: +SKIP
+        >>> # Save dataset back to external storage system.
+        >>> ds.write_csv("s3//bucket/output") # doctest: +SKIP
+
+    Datasets supports parallel processing at scale: transformations such as
+    :py:meth:`.map_batches()`, aggregations such as
+    :py:meth:`.min()`/:py:meth:`.max()`/:py:meth:`.mean()`, grouping via
+    :py:meth:`.groupby()`, shuffling operations such as :py:meth:`.sort()`,
+    :py:meth:`.random_shuffle()`, and :py:meth:`.repartition()`.
+
+    Examples:
+        >>> import ray
+        >>> ds = ray.data.range(1000) # doctest: +SKIP
+        >>> # Transform in parallel with map_batches().
+        >>> ds.map_batches(lambda batch: [v * 2 for v in batch]) # doctest: +SKIP
+        >>> # Compute max.
+        >>> ds.max() # doctest: +SKIP
+        >>> # Group the data.
+        >>> ds.groupby(lambda x: x % 3).count() # doctest: +SKIP
+        >>> # Shuffle this dataset randomly.
+        >>> ds.random_shuffle() # doctest: +SKIP
+        >>> # Sort it back in order.
+        >>> ds.sort() # doctest: +SKIP
 
     Since Datasets are just lists of Ray object refs, they can be passed
-    between Ray tasks and actors just like any other object. Datasets support
+    between Ray tasks and actors without incurring a copy. Datasets support
     conversion to/from several more featureful dataframe libraries
     (e.g., Spark, Dask, Modin, MARS), and are also compatible with distributed
     TensorFlow / PyTorch.
-
-    Dataset supports parallel transformations such as .map(), .map_batches(),
-    and simple repartition, but currently not aggregations and joins.
     """
 
     def __init__(
@@ -250,6 +286,16 @@ class Dataset(Generic[T]):
             ...     compute=ActorPoolStrategy(2, 8), # doctest: +SKIP
             ...     num_gpus=1) # doctest: +SKIP
 
+            You can use ``map_batches`` to efficiently filter records.
+
+            >>> import ray
+            >>> ds = ray.data.range(10000)  # doctest: +SKIP
+            >>> ds.count()  # doctest: +SKIP
+            10000
+            >>> ds = ds.map_batches(lambda batch: [x for x in batch if x % 2 == 0])  # doctest: +SKIP  # noqa: #501
+            >>> ds.count()  # doctest: +SKIP
+            5000
+
         Time complexity: O(dataset size / parallelism)
 
         Args:
@@ -344,8 +390,6 @@ class Dataset(Generic[T]):
         This is only supported for datasets convertible to pandas format.
         A function generating the new column values given the batch in pandas
         format must be specified.
-
-        This is a convenience wrapper over ``.map_batches()``.
 
         Examples:
             >>> import ray
@@ -688,8 +732,8 @@ class Dataset(Generic[T]):
                 number of records. This may drop records if they cannot be
                 divided equally among the splits.
             locality_hints: A list of Ray actor handles of size ``n``. The
-                system will try to co-locate the blocks of the ith dataset
-                with the ith actor to maximize data locality.
+                system will try to co-locate the blocks of the i-th dataset
+                with the i-th actor to maximize data locality.
 
         Returns:
             A list of ``n`` disjoint dataset splits.
@@ -1046,7 +1090,7 @@ class Dataset(Generic[T]):
 
         A common use case for this would be splitting the dataset into train
         and test sets (equivalent to eg. scikit-learn's ``train_test_split``).
-        See also :func:`ray.ml.train_test_split` for a higher level abstraction.
+        See also :func:`ray.air.train_test_split` for a higher level abstraction.
 
         The indices to split at will be calculated in such a way so that all splits
         always contains at least one element. If that is not possible,
@@ -1069,7 +1113,7 @@ class Dataset(Generic[T]):
         Time complexity: O(num splits)
 
         See also: ``Dataset.split``, ``Dataset.split_at_indices``,
-        :func:`ray.ml.train_test_split`
+        :func:`ray.air.train_test_split`
 
         Args:
             proportions: List of proportions to split the dataset according to.
@@ -2285,38 +2329,36 @@ class Dataset(Generic[T]):
         Time complexity: O(1)
 
         Args:
-            label_column (Optional[str]): The name of the column used as the
+            label_column: The name of the column used as the
                 label (second element of the output list). Can be None for
                 prediction, in which case the second element of returned
                 tuple will also be None.
-            feature_columns (Union[None, List[str], List[List[str]], \
-Dict[str, List[str]]]): The names of the columns
+            feature_columns: The names of the columns
                 to use as the features. Can be a list of lists or
                 a dict of string-list pairs for multi-tensor output.
                 If None, then use all columns except the label column as
                 the features.
-            label_column_dtype (Optional[torch.dtype]): The torch dtype to
+            label_column_dtype: The torch dtype to
                 use for the label column. If None, then automatically infer
                 the dtype.
-            feature_column_dtypes (Union[None, torch.dtype, List[torch.dtype],\
- Dict[str, torch.dtype]]): The dtypes to use for the feature
+            feature_column_dtypes: The dtypes to use for the feature
                 tensors. This should match the format of ``feature_columns``,
                 or be a single dtype, in which case it will be applied to
                 all tensors. If None, then automatically infer the dtype.
-            batch_size (int): How many samples per batch to yield at a time.
+            batch_size: How many samples per batch to yield at a time.
                 Defaults to 1.
-            prefetch_blocks (int): The number of blocks to prefetch ahead of
+            prefetch_blocks: The number of blocks to prefetch ahead of
                 the current block during the scan.
-            drop_last (bool): Set to True to drop the last incomplete batch,
+            drop_last: Set to True to drop the last incomplete batch,
                 if the dataset size is not divisible by the batch size. If
                 False and the size of dataset is not divisible by the batch
                 size, then the last batch will be smaller. Defaults to False.
-            unsqueeze_label_tensor (bool): If set to True, the label tensor
+            unsqueeze_label_tensor: If set to True, the label tensor
                 will be unsqueezed (reshaped to (N, 1)). Otherwise, it will
                 be left as is, that is (N, ). In general, regression loss
                 functions expect an unsqueezed tensor, while classification
                 loss functions expect a squeezed one. Defaults to True.
-            unsqueeze_feature_tensors (bool): If set to True, the features tensors
+            unsqueeze_feature_tensors: If set to True, the features tensors
                 will be unsqueezed (reshaped to (N, 1)) before being concatenated into
                 the final features tensor. Otherwise, they will be left as is, that is
                 (N, ). Defaults to True.
@@ -2327,7 +2369,7 @@ Dict[str, List[str]]]): The names of the columns
         import torch
 
         from ray.data.impl.torch_iterable_dataset import TorchIterableDataset
-        from ray.ml.utils.torch_utils import convert_pandas_to_torch_tensor
+        from ray.air.utils.torch_utils import convert_pandas_to_torch_tensor
 
         # If an empty collection is passed in, treat it the same as None
         if not feature_columns:
@@ -2456,24 +2498,22 @@ Dict[str, List[str]]]): The names of the columns
         Time complexity: O(1)
 
         Args:
-            output_signature (Union[TensorflowFeatureTypeSpec, \
-Tuple[TensorflowFeatureTypeSpec, "tf.TypeSpec"]]): If ``label_column`` is specified,
+            output_signature: If ``label_column`` is specified,
                 a two-element tuple containing a ``FeatureTypeSpec`` and
                 ``tf.TypeSpec`` object corresponding to (features, label). Otherwise, a
                 single ``TensorflowFeatureTypeSpec`` corresponding to features tensor.
                 A ``TensorflowFeatureTypeSpec`` is a ``tf.TypeSpec``,
                 ``List["tf.TypeSpec"]``, or ``Dict[str, "tf.TypeSpec"]``.
-            label_column (Optional[str]): The name of the column used as the label
+            label_column: The name of the column used as the label
                 (second element of the output tuple). If not specified, output
                 will be just one tensor instead of a tuple.
-            feature_columns (Optional[Union[List[str], List[List[str]], Dict[str, \
-List[str]]]): The names of the columns to use as the features. Can be a list of lists
-                or a dict of string-list pairs for multi-tensor output. If None, then
-                use all columns except the label columns as the features.
+            feature_columns: The names of the columns to use as the features. Can be a
+                list of lists or a dict of string-list pairs for multi-tensor output.
+                If None, then use all columns except the label columns as the features.
             prefetch_blocks: The number of blocks to prefetch ahead of the
                 current block during the scan.
             batch_size: Record batch size. Defaults to 1.
-            drop_last (bool): Set to True to drop the last incomplete batch,
+            drop_last: Set to True to drop the last incomplete batch,
                 if the dataset size is not divisible by the batch size. If
                 False and the size of dataset is not divisible by the batch
                 size, then the last batch will be smaller. Defaults to False.
@@ -2489,31 +2529,12 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
         except ImportError:
             raise ValueError("tensorflow must be installed!")
 
+        from ray.air.utils.tensorflow_utils import convert_pandas_to_tf_tensor
+
         # `output_signature` can be a tuple but not a list. See
         # https://stackoverflow.com/questions/59092423/what-is-a-nested-structure-in-tensorflow.
         if isinstance(output_signature, list):
             output_signature = tuple(output_signature)
-
-        def get_df_values(df: "pandas.DataFrame") -> np.ndarray:
-            # TODO(Clark): Support unsqueezing column dimension API, similar to
-            # to_torch().
-            try:
-                values = df.values
-            except ValueError as e:
-                import pandas as pd
-
-                # Pandas DataFrame.values doesn't support extension arrays in all
-                # supported Pandas versions, so we check to see if this DataFrame
-                # contains any extensions arrays and do a manual conversion if so.
-                # See https://github.com/pandas-dev/pandas/pull/43160.
-                if any(
-                    isinstance(dtype, pd.api.extensions.ExtensionDtype)
-                    for dtype in df.dtypes
-                ):
-                    values = np.stack([col.to_numpy() for _, col in df.items()], axis=1)
-                else:
-                    raise e from None
-            return values
 
         def make_generator():
             for batch in self.iter_batches(
@@ -2523,17 +2544,21 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
                 drop_last=drop_last,
             ):
                 if label_column:
-                    targets = batch.pop(label_column).values
+                    targets = convert_pandas_to_tf_tensor(batch[[label_column]])
+                    assert targets.ndim == 2
+                    targets = tf.squeeze(targets, axis=1)
+                    batch.pop(label_column)
 
                 features = None
                 if feature_columns is None:
-                    features = get_df_values(batch)
+                    features = convert_pandas_to_tf_tensor(batch)
                 elif isinstance(feature_columns, list):
                     if all(isinstance(column, str) for column in feature_columns):
-                        features = get_df_values(batch[feature_columns])
+                        features = convert_pandas_to_tf_tensor(batch[feature_columns])
                     elif all(isinstance(columns, list) for columns in feature_columns):
                         features = tuple(
-                            get_df_values(batch[columns]) for columns in feature_columns
+                            convert_pandas_to_tf_tensor(batch[columns])
+                            for columns in feature_columns
                         )
                     else:
                         raise ValueError(
@@ -2542,7 +2567,7 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
                         )
                 elif isinstance(feature_columns, dict):
                     features = {
-                        key: get_df_values(batch[columns])
+                        key: convert_pandas_to_tf_tensor(batch[columns])
                         for key, columns in feature_columns.items()
                     }
                 else:
@@ -3014,28 +3039,17 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
             )
         return pipe
 
-    def fully_executed(self, preserve_original: bool = True) -> "Dataset[T]":
+    def fully_executed(self) -> "Dataset[T]":
         """Force full evaluation of the blocks of this dataset.
 
         This can be used to read all blocks into memory. By default, Datasets
         doesn't read blocks from the datasource until the first transform.
 
-        Args:
-            preserve_original: Whether the original unexecuted dataset should be
-                preserved. If False, this function will mutate the original dataset,
-                which can more efficiently reclaim memory.
-
         Returns:
             A Dataset with all blocks fully materialized in memory.
         """
-        if preserve_original:
-            plan = self._plan.deep_copy(preserve_uuid=True)
-            ds = Dataset(plan, self._epoch, self._lazy)
-            ds._set_uuid(self._get_uuid())
-        else:
-            ds = self
-        ds._plan.execute(force_read=True)
-        return ds
+        self._plan.execute(force_read=True)
+        return self
 
     def is_fully_executed(self) -> bool:
         """Returns whether this Dataset has been fully executed.
@@ -3149,8 +3163,8 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
             context._unregister_cloudpickle_reducer(ray.remote_function.RemoteFunction)
         return serialized
 
-    @DeveloperAPI
     @staticmethod
+    @DeveloperAPI
     def deserialize_lineage(serialized_ds: bytes) -> "Dataset":
         """
         Deserialize the provided lineage-serialized Dataset.

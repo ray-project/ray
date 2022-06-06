@@ -5,12 +5,10 @@ from supersuit import normalize_obs_v0, dtype_v0, color_reduction_v0
 import unittest
 
 import ray
-from ray.rllib.agents.pg import pg
+from ray.rllib.algorithms.pg import pg
 from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
-from ray.rllib.examples.env.random_env import RandomEnv, RandomMultiAgentEnv
-from ray.rllib.examples.remote_base_env_with_custom_api import (
-    NonVectorizedEnvToBeVectorizedIntoRemoteBaseEnv,
-)
+
+# from ray.rllib.examples.env.random_env import RandomEnv
 from ray import tune
 
 
@@ -44,28 +42,30 @@ class TestRemoteWorkerEnvSetting(unittest.TestCase):
 
         # Simple string env definition (gym.make(...)).
         config["env"] = "CartPole-v0"
-        trainer = pg.PGTrainer(config=config)
+        trainer = pg.PG(config=config)
         print(trainer.train())
         trainer.stop()
 
         # Using tune.register.
         config["env"] = "cartpole"
-        trainer = pg.PGTrainer(config=config)
+        trainer = pg.PG(config=config)
         print(trainer.train())
         trainer.stop()
 
         # Using class directly.
-        config["env"] = RandomEnv
-        trainer = pg.PGTrainer(config=config)
-        print(trainer.train())
-        trainer.stop()
+        # This doesn't work anymore as of gym==0.23
+        # config["env"] = RandomEnv
+        # trainer = pg.PG(config=config)
+        # print(trainer.train())
+        # trainer.stop()
 
         # Using class directly: Sub-class of gym.Env,
         # which implements its own API.
-        config["env"] = NonVectorizedEnvToBeVectorizedIntoRemoteBaseEnv
-        trainer = pg.PGTrainer(config=config)
-        print(trainer.train())
-        trainer.stop()
+        # This doesn't work anymore as of gym==0.23
+        # config["env"] = NonVectorizedEnvToBeVectorizedIntoRemoteBaseEnv
+        # trainer = pg.PG(config=config)
+        # print(trainer.train())
+        # trainer.stop()
 
     def test_remote_worker_env_multi_agent(self):
         config = pg.DEFAULT_CONFIG.copy()
@@ -74,21 +74,22 @@ class TestRemoteWorkerEnvSetting(unittest.TestCase):
 
         # Full classpath provided.
         config["env"] = "ray.rllib.examples.env.random_env.RandomMultiAgentEnv"
-        trainer = pg.PGTrainer(config=config)
+        trainer = pg.PG(config=config)
         print(trainer.train())
         trainer.stop()
 
         # Using tune.register.
         config["env"] = "pistonball"
-        trainer = pg.PGTrainer(config=config)
+        trainer = pg.PG(config=config)
         print(trainer.train())
         trainer.stop()
 
         # Using class directly.
-        config["env"] = RandomMultiAgentEnv
-        trainer = pg.PGTrainer(config=config)
-        print(trainer.train())
-        trainer.stop()
+        # This doesn't work anymore as of gym==0.23.
+        # config["env"] = RandomMultiAgentEnv
+        # trainer = pg.PG(config=config)
+        # print(trainer.train())
+        # trainer.stop()
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 import unittest
 
-from ray.rllib.agents.pg import PGTrainer
+from ray.rllib.algorithms.pg import PG
 
 
 class TestCheckMultiAgent(unittest.TestCase):
@@ -15,7 +15,7 @@ class TestCheckMultiAgent(unittest.TestCase):
         self.assertRaisesRegex(
             KeyError,
             "You have invalid keys in your",
-            lambda: PGTrainer(config, env="CartPole-v0"),
+            lambda: PG(config, env="CartPole-v0"),
         )
 
     def test_multi_agent_dict_bad_policy_ids(self):
@@ -28,7 +28,7 @@ class TestCheckMultiAgent(unittest.TestCase):
         self.assertRaisesRegex(
             KeyError,
             "Policy IDs must always be of type",
-            lambda: PGTrainer(config, env="CartPole-v0"),
+            lambda: PG(config, env="CartPole-v0"),
         )
 
     def test_multi_agent_dict_invalid_sub_values(self):
@@ -36,14 +36,14 @@ class TestCheckMultiAgent(unittest.TestCase):
         self.assertRaisesRegex(
             ValueError,
             "config.multiagent.count_steps_by must be",
-            lambda: PGTrainer(config, env="CartPole-v0"),
+            lambda: PG(config, env="CartPole-v0"),
         )
 
         config = {"multiagent": {"replay_mode": "invalid_value"}}
         self.assertRaisesRegex(
             ValueError,
             "config.multiagent.replay_mode must be",
-            lambda: PGTrainer(config, env="CartPole-v0"),
+            lambda: PG(config, env="CartPole-v0"),
         )
 
 

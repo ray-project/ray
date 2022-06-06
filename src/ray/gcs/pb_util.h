@@ -108,6 +108,8 @@ inline std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
     int32_t port,
     int64_t timestamp,
     rpc::WorkerExitType disconnect_type,
+    const std::string &disconnect_detail,
+    int pid,
     const rpc::RayException *creation_task_exception = nullptr) {
   auto worker_failure_info_ptr = std::make_shared<ray::rpc::WorkerTableData>();
   worker_failure_info_ptr->mutable_worker_address()->set_raylet_id(raylet_id.Binary());
@@ -116,6 +118,8 @@ inline std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
   worker_failure_info_ptr->mutable_worker_address()->set_port(port);
   worker_failure_info_ptr->set_timestamp(timestamp);
   worker_failure_info_ptr->set_exit_type(disconnect_type);
+  worker_failure_info_ptr->set_exit_detail(disconnect_detail);
+  worker_failure_info_ptr->set_pid(pid);
   if (creation_task_exception != nullptr) {
     // this pointer will be freed by protobuf internal codes
     auto copied_data = new rpc::RayException(*creation_task_exception);
@@ -183,6 +187,21 @@ inline rpc::RayErrorInfo GetErrorInfoFromActorDeathCause(
     RAY_CHECK(death_cause.context_case() == ContextCase::CONTEXT_NOT_SET);
   }
   return error_info;
+}
+
+/// Generate object error type from ActorDeathCause.
+inline std::string GenErrorMessageFromDeathCause(
+    const rpc::ActorDeathCause &death_cause) {
+  if (death_cause.context_case() == ContextCase::kCreationTaskFailureContext) {
+    return death_cause.creation_task_failure_context().formatted_exception_string();
+  } else if (death_cause.context_case() == ContextCase::kRuntimeEnvFailedContext) {
+    return death_cause.runtime_env_failed_context().error_message();
+  } else if (death_cause.context_case() == ContextCase::kActorUnschedulableContext) {
+    return death_cause.actor_unschedulable_context().error_message();
+  } else {
+    RAY_CHECK(death_cause.context_case() == ContextCase::kActorDiedErrorContext);
+    return death_cause.actor_died_error_context().error_message();
+  }
 }
 
 }  // namespace gcs

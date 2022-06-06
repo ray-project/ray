@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
 import ray
 from ray.types import ObjectRef
-from ray.util.annotations import PublicAPI, DeveloperAPI
+from ray.util.annotations import PublicAPI, DeveloperAPI, Deprecated
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -159,6 +159,7 @@ def range_table(n: int, *, parallelism: int = 200) -> Dataset[ArrowRow]:
     )
 
 
+@Deprecated
 def range_arrow(*args, **kwargs):
     raise DeprecationWarning("range_arrow() is deprecated, use range_table() instead.")
 
@@ -247,7 +248,7 @@ def read_datasource(
         )
 
     if len(read_tasks) < parallelism and (
-        len(read_tasks) < ray.available_resources().get("CPU", parallelism) // 2
+        len(read_tasks) < ray.available_resources().get("CPU", 1) // 2
     ):
         logger.warning(
             "The number of blocks in this dataset ({}) limits its parallelism to {} "

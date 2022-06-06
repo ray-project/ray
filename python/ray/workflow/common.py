@@ -140,6 +140,8 @@ class WorkflowStaticRef:
 @PublicAPI(stability="beta")
 @unique
 class WorkflowStatus(str, Enum):
+    # No status is set for this workflow.
+    NONE = "NONE"
     # There is at least a remote task running in ray cluster
     RUNNING = "RUNNING"
     # It got canceled and can't be resumed later.
@@ -159,8 +161,6 @@ class StepType(str, Enum):
     """All step types."""
 
     FUNCTION = "FUNCTION"
-    ACTOR_METHOD = "ACTOR_METHOD"
-    READONLY_ACTOR_METHOD = "READONLY_ACTOR_METHOD"
     WAIT = "WAIT"
 
 
@@ -317,9 +317,7 @@ class WorkflowExecutionResult:
     """Dataclass for holding workflow execution result."""
 
     # Part of result to persist in a storage and pass to the next step.
-    persisted_output: "WorkflowStaticRef"
-    # Part of result to return to the user but does not require persistence.
-    volatile_output: "WorkflowStaticRef"
+    output: "WorkflowStaticRef"
 
 
 @dataclass

@@ -213,11 +213,13 @@ def get_runtime_context():
     """Get the runtime context of the current driver/worker.
 
     Example:
-    >>> import ray
-    >>> # Get the job id.
-    >>> ray.get_runtime_context().job_id # doctest: +SKIP
-    >>> # Get all the metadata.
-    >>> ray.get_runtime_context().get() # doctest: +SKIP
+
+        >>> import ray
+        >>> # Get the job id.
+        >>> ray.get_runtime_context().job_id # doctest: +SKIP
+        >>> # Get all the metadata.
+        >>> ray.get_runtime_context().get() # doctest: +SKIP
+
     """
     global _runtime_context
     if _runtime_context is None:

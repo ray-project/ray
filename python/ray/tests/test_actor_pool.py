@@ -1,3 +1,4 @@
+import asyncio
 import sys
 import time
 import pytest
@@ -101,11 +102,15 @@ def test_map_unordered(init):
 
 
 def test_map_gh23107(init):
+    sleep_time = 40
+
     # Reference - https://github.com/ray-project/ray/issues/23107
     @ray.remote
     class DummyActor:
         async def identity(self, s):
-            return s
+            if s == 6:
+                await asyncio.sleep(sleep_time)
+            return s, time.time()
 
     def func(a, v):
         return a.identity.remote(v)
@@ -114,13 +119,21 @@ def test_map_gh23107(init):
 
     pool_map = ActorPool([DummyActor.remote() for i in range(2)])
     pool_map.submit(func, 6)
+    start_time = time.time()
     gen = pool_map.map(func, map_values)
-    assert list(gen) == [1, 2, 3, 4, 5]
+    assert all(elem[0] in [1, 2, 3, 4, 5] for elem in list(gen))
+    assert all(
+        abs(elem[1] - start_time) < sleep_time in [1, 2, 3, 4, 5] for elem in list(gen)
+    )
 
     pool_map_unordered = ActorPool([DummyActor.remote() for i in range(2)])
     pool_map_unordered.submit(func, 6)
-    gen = pool_map_unordered.map(func, map_values)
-    assert all(elem in [1, 2, 3, 4, 5] for elem in list(gen))
+    start_time = time.time()
+    gen = pool_map_unordered.map_unordered(func, map_values)
+    assert all(elem[0] in [1, 2, 3, 4, 5] for elem in list(gen))
+    assert all(
+        abs(elem[1] - start_time) < sleep_time in [1, 2, 3, 4, 5] for elem in list(gen)
+    )
 
 
 def test_get_next_timeout(init):
@@ -219,7 +232,7 @@ def test_push(init):
         def double(self, x):
             return 2 * x
 
-    a1, a2 = MyActor.remote(), MyActor.remote()
+    a1, a2, a3 = MyActor.remote(), MyActor.remote(), MyActor.remote()
     pool = ActorPool([a1])
 
     pool.submit(lambda a, v: a.double.remote(v), 1)
@@ -228,6 +241,14 @@ def test_push(init):
         pool.push(a1)
     pool.push(a2)
     assert pool.has_free()  # a2 is available
+
+    pool.submit(lambda a, v: a.double.remote(v), 1)
+    pool.submit(lambda a, v: a.double.remote(v), 1)
+    assert pool.has_free() is False
+    assert len(pool._pending_submits) == 1
+    pool.push(a3)
+    assert pool.has_free() is False  # a3 is used for pending submit
+    assert len(pool._pending_submits) == 0
 
 
 if __name__ == "__main__":

@@ -66,7 +66,7 @@ def is_using_login_shells():
     return _config["use_login_shells"]
 
 
-def set_using_login_shells(val):
+def set_using_login_shells(val: bool):
     """Choose between login and non-interactive shells.
 
     Non-interactive shells have the benefit of receiving less output from
@@ -81,7 +81,7 @@ def set_using_login_shells(val):
     and non-robust tool to work.
 
     Args:
-        val (bool): If true, login shells will be used to run all commands.
+        val: If true, login shells will be used to run all commands.
     """
     _config["use_login_shells"] = val
 
@@ -90,7 +90,7 @@ def _with_environment_variables(cmd: str, environment_variables: Dict[str, objec
     """Prepend environment variables to a shell command.
 
     Args:
-        cmd (str): The base command.
+        cmd: The base command.
         environment_variables (Dict[str, object]): The set of environment
             variables. If an environment variable value is a dict, it will
             automatically be converted to a one line yaml string.
@@ -443,8 +443,8 @@ class SSHCommandRunner(CommandRunnerInterface):
                 Full command to run. Should include SSH options and other
                 processing that we do.
             with_output (bool):
-                If `with_output` is `True`, command stdout and stderr
-                will be captured and returned.
+                If `with_output` is `True`, command stdout will be captured and
+                returned.
             exit_on_fail (bool):
                 If `exit_on_fail` is `True`, the process will exit
                 if the command fails (exits with a code other than 0).
@@ -465,10 +465,8 @@ class SSHCommandRunner(CommandRunnerInterface):
                     silent=silent,
                     use_login_shells=is_using_login_shells(),
                 )
-            if with_output:
-                return self.process_runner.check_output(final_cmd)
             else:
-                return self.process_runner.check_call(final_cmd)
+                return self.process_runner.check_output(final_cmd)
         except subprocess.CalledProcessError as e:
             joined_cmd = " ".join(final_cmd)
             if not is_using_login_shells():
@@ -488,6 +486,11 @@ class SSHCommandRunner(CommandRunnerInterface):
                 if is_output_redirected():
                     fail_msg += " See above for the output from the failure."
                 raise click.ClickException(fail_msg) from None
+        finally:
+            # Do our best to flush output to terminal.
+            # See https://github.com/ray-project/ray/pull/19473.
+            sys.stdout.flush()
+            sys.stderr.flush()
 
     def run(
         self,

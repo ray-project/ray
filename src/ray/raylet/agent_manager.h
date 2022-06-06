@@ -35,7 +35,7 @@ typedef std::function<std::shared_ptr<rpc::RuntimeEnvAgentClientInterface>(
     const std::string &ip_address, int port)>
     RuntimeEnvAgentClientFactoryFn;
 
-/// Callback that's callaed after runtime env is created.
+/// Callback that's called after runtime env is created.
 /// \param[in] successful Whether or not the creation was successful.
 /// \param[in] serialized_runtime_env_context Serialized context.
 /// \param[in] setup_error_message The error message if runtime env creation fails.
@@ -93,12 +93,12 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
 
  private:
   Options options_;
-  pid_t agent_pid_ = 0;
-  int agent_port_ = 0;
+  pid_t reported_agent_id_ = 0;
+  int reported_agent_port_ = 0;
   /// Whether or not we intend to start the agent.  This is false if we
   /// are missing Ray Dashboard dependencies, for example.
   bool should_start_agent_ = true;
-  std::string agent_ip_address_;
+  std::string reported_agent_ip_address_;
   DelayExecutorFn delay_executor_;
   RuntimeEnvAgentClientFactoryFn runtime_env_agent_client_factory_;
   std::shared_ptr<rpc::RuntimeEnvAgentClientInterface> runtime_env_agent_client_;

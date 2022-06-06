@@ -23,7 +23,7 @@ def set_output_redirected(val: bool):
     The default is to log to a file.
 
     Args:
-        val (bool): If true, subprocess output will be redirected to
+        val: If true, subprocess output will be redirected to
                     a temporary file.
     """
     global _redirect_output
@@ -40,7 +40,7 @@ def set_allow_interactive(val: bool):
     The default is to pipe stdin and close it immediately.
 
     Args:
-        val (bool): If true, stdin will be passed to commands.
+        val: If true, stdin will be passed to commands.
     """
     global _allow_interactive
     _allow_interactive = val
@@ -323,9 +323,9 @@ def run_cmd_redirected(
     Args:
         cmd (List[str]): Command to run.
         process_runner: Process runner used for executing commands.
-        silent (bool): If true, the command output will be silenced completely
+        silent: If true, the command output will be silenced completely
                        (redirected to /dev/null), unless verbose logging
-                       is enabled. Use this for runnign utility commands like
+                       is enabled. Use this for running utility commands like
                        rsync.
     """
     if silent and cli_logger.verbosity < 1:

@@ -25,14 +25,14 @@ Trainers also implement the :ref:`Tune Trainable API <tune-60-seconds>` for easy
 
 You have three ways to interact with a trainer. You can use the basic Python API or the command line to train it, or you
 can use Ray Tune to tune hyperparameters of your reinforcement learning algorithm.
-The following example shows three equivalent ways of interacting with the ``PPOTrainer``,
+The following example shows three equivalent ways of interacting with the ``PPO`` Trainer,
 which implements the proximal policy optimization algorithm in RLlib.
 
 .. tabbed:: Basic RLlib Trainer
 
     .. code-block:: python
 
-        trainer = PPOTrainer(env="CartPole-v0", config={"train_batch_size": 4000})
+        trainer = PPO(env="CartPole-v0", config={"train_batch_size": 4000})
         while True:
             print(trainer.train())
 
@@ -47,7 +47,7 @@ which implements the proximal policy optimization algorithm in RLlib.
     .. code-block:: python
 
         from ray import tune
-        tune.run(PPOTrainer, config={"env": "CartPole-v0", "train_batch_size": 4000})
+        tune.run(PPO, config={"env": "CartPole-v0", "train_batch_size": 4000})
 
 
 
@@ -292,7 +292,7 @@ Examples
             # type: LocalIterator[ResultDict]
             return StandardMetricsReporting(train_op, workers, config)
 
-    See also the `actual A3C implementation <https://github.com/ray-project/ray/blob/master/rllib/agents/a3c/a3c.py>`__.
+    See also the `actual A3C implementation <https://github.com/ray-project/ray/blob/master/rllib/algorithms/a3c/a3c.py>`__.
 
 .. dropdown:: **Example: Replay**
 
@@ -320,7 +320,7 @@ Examples
             return StandardMetricsReporting(train_op, workers, config)
 
 
-    Note that here we set ``output_indexes=[1]`` for the ``Concurrently`` operator, which makes it only return results from the replay op. See also the `DQN implementation of replay <https://github.com/ray-project/ray/blob/master/rllib/agents/dqn/dqn.py>`__ for a complete example including the implementation of options such as *training intensity*.
+    Note that here we set ``output_indexes=[1]`` for the ``Concurrently`` operator, which makes it only return results from the replay op. See also the `DQN implementation of replay <https://github.com/ray-project/ray/blob/master/rllib/algorithms/dqn/dqn.py>`__ for a complete example including the implementation of options such as *training intensity*.
 
 
 .. dropdown:: **Example: Multi-agent**

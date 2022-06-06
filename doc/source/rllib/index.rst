@@ -126,13 +126,13 @@ click on the dropdowns below:
 
     *  Model-based / Meta-learning / Offline
 
-       -  |pytorch| :ref:`Single-Player AlphaZero (contrib/AlphaZero) <alphazero>`
+       -  |pytorch| :ref:`Single-Player AlphaZero (AlphaZero) <alphazero>`
 
        -  |pytorch| |tensorflow| :ref:`Model-Agnostic Meta-Learning (MAML) <maml>`
 
        -  |pytorch| :ref:`Model-Based Meta-Policy-Optimization (MBMPO) <mbmpo>`
 
-       -  |pytorch| :ref:`Dreamer (DREAMER) <dreamer>`
+       -  |pytorch| :ref:`Dreamer <dreamer>`
 
        -  |pytorch| :ref:`Conservative Q-Learning (CQL) <cql>`
 
@@ -147,8 +147,8 @@ click on the dropdowns below:
 
     *  Contextual bandits
 
-       -  |pytorch| :ref:`Linear Upper Confidence Bound (contrib/LinUCB) <lin-ucb>`
-       -  |pytorch| :ref:`Linear Thompson Sampling (contrib/LinTS) <lints>`
+       -  |pytorch| :ref:`Linear Upper Confidence Bound (LinUCB) <lin-ucb>`
+       -  |pytorch| :ref:`Linear Thompson Sampling (LinTS) <lints>`
 
     *  Exploration-based plug-ins (can be combined with any algo)
 

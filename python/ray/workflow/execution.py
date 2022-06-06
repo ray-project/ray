@@ -10,7 +10,6 @@ from ray.workflow import workflow_storage
 from ray.workflow.common import (
     Workflow,
     WorkflowStatus,
-    WorkflowMetaData,
     StepType,
     WorkflowNotFoundError,
     validate_user_metadata,
@@ -81,10 +80,7 @@ def run(
         result: "WorkflowExecutionResult" = ray.get(
             workflow_manager.run_or_resume.remote(job_id, workflow_id, ignore_existing)
         )
-        if not is_growing:
-            return flatten_workflow_output(workflow_id, result.persisted_output)
-        else:
-            return flatten_workflow_output(workflow_id, result.volatile_output)
+        return flatten_workflow_output(workflow_id, result.output)
 
 
 # TODO(suquark): support recovery with ObjectRef inputs.
@@ -103,7 +99,7 @@ def resume(workflow_id: str) -> ray.ObjectRef:
         )
     )
     logger.info(f"Workflow job {workflow_id} resumed.")
-    return flatten_workflow_output(workflow_id, result.persisted_output)
+    return flatten_workflow_output(workflow_id, result.output)
 
 
 def get_output(workflow_id: str, name: Optional[str]) -> ray.ObjectRef:
@@ -128,10 +124,15 @@ def get_output(workflow_id: str, name: Optional[str]) -> ray.ObjectRef:
 def cancel(workflow_id: str) -> None:
     try:
         workflow_manager = get_management_actor()
-        ray.get(workflow_manager.cancel_workflow.remote(workflow_id))
     except ValueError:
         wf_store = workflow_storage.get_workflow_storage(workflow_id)
-        wf_store.save_workflow_meta(WorkflowMetaData(WorkflowStatus.CANCELED))
+        # TODO(suquark): Here we update workflow status "offline", so it is likely
+        # thread-safe because there is no workflow management actor updating the
+        # workflow concurrently. But we should be careful if we are going to
+        # update more workflow status offline in the future.
+        wf_store.update_workflow_status(WorkflowStatus.CANCELED)
+        return
+    ray.get(workflow_manager.cancel_workflow.remote(workflow_id))
 
 
 def get_status(workflow_id: str) -> Optional[WorkflowStatus]:
@@ -143,12 +144,12 @@ def get_status(workflow_id: str) -> Optional[WorkflowStatus]:
     if running:
         return WorkflowStatus.RUNNING
     store = workflow_storage.get_workflow_storage(workflow_id)
-    meta = store.load_workflow_meta()
-    if meta is None:
+    status = store.load_workflow_status()
+    if status == WorkflowStatus.NONE:
         raise WorkflowNotFoundError(workflow_id)
-    if meta.status == WorkflowStatus.RUNNING:
+    if status == WorkflowStatus.RUNNING:
         return WorkflowStatus.RESUMABLE
-    return meta.status
+    return status
 
 
 def get_metadata(workflow_id: str, name: Optional[str]) -> Dict[str, Any]:
@@ -178,10 +179,24 @@ def list_all(status_filter: Set[WorkflowStatus]) -> List[Tuple[str, WorkflowStat
     runnings = set(runnings)
     # Here we don't have workflow id, so use empty one instead
     store = workflow_storage.get_workflow_storage("")
+
+    exclude_running = False
+    if (
+        WorkflowStatus.RESUMABLE in status_filter
+        and WorkflowStatus.RUNNING not in status_filter
+    ):
+        # Here we have to add "RUNNING" to the status filter, because some "RESUMABLE"
+        # workflows are converted from "RUNNING" workflows below.
+        exclude_running = True
+        status_filter.add(WorkflowStatus.RUNNING)
+    status_from_storage = store.list_workflow(status_filter)
     ret = []
-    for (k, s) in store.list_workflow():
-        if s == WorkflowStatus.RUNNING and k not in runnings:
-            s = WorkflowStatus.RESUMABLE
+    for (k, s) in status_from_storage:
+        if s == WorkflowStatus.RUNNING:
+            if k not in runnings:
+                s = WorkflowStatus.RESUMABLE
+            elif exclude_running:
+                continue
         if s in status_filter:
             ret.append((k, s))
     return ret
@@ -203,7 +218,7 @@ def resume_all(with_failed: bool) -> List[Tuple[str, ray.ObjectRef]]:
             result: "WorkflowExecutionResult" = (
                 await workflow_manager.run_or_resume.remote(job_id, wid)
             )
-            obj = flatten_workflow_output(wid, result.persisted_output)
+            obj = flatten_workflow_output(wid, result.output)
             return wid, obj
         except Exception:
             logger.error(f"Failed to resume workflow {wid}")
