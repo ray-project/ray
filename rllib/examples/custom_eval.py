@@ -105,11 +105,11 @@ def custom_eval_function(trainer, eval_workers):
     """Example of a custom evaluation function.
 
     Args:
-        trainer (Trainer): trainer class to evaluate.
-        eval_workers (WorkerSet): evaluation workers.
+        trainer: trainer class to evaluate.
+        eval_workers: evaluation workers.
 
     Returns:
-        metrics (dict): evaluation metrics dict.
+        metrics: evaluation metrics dict.
     """
 
     # We configured 2 eval workers in the training config.

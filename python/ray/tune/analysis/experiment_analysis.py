@@ -1,15 +1,13 @@
 import json
 import logging
 import os
-import warnings
 import traceback
 from numbers import Number
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from ray.ml.checkpoint import Checkpoint
+from ray.air.checkpoint import Checkpoint
 from ray.tune.cloud import TrialCheckpoint
-from ray.util.debug import log_once
 from ray.tune.syncer import SyncConfig
 from ray.tune.utils import flatten_dict
 from ray.tune.utils.serialization import TuneFunctionDecoder
@@ -39,7 +37,7 @@ from ray.tune.trial_runner import (
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.utils.util import unflattened_lookup
 
-from ray.util.annotations import PublicAPI, Deprecated
+from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
 
@@ -53,17 +51,17 @@ class ExperimentAnalysis:
     To use this class, the experiment must be executed with the JsonLogger.
 
     Parameters:
-        experiment_checkpoint_path (str): Path to a json file or directory
+        experiment_checkpoint_path: Path to a json file or directory
             representing an experiment state, or a directory containing
             multiple experiment states (a run's ``local_dir``).
             Corresponds to Experiment.local_dir/Experiment.name/
             experiment_state.json
-        trials (list|None): List of trials that can be accessed via
+        trials: List of trials that can be accessed via
             `analysis.trials`.
-        default_metric (str): Default metric for comparing results. Can be
+        default_metric: Default metric for comparing results. Can be
             overwritten with the ``metric`` parameter in the respective
             functions.
-        default_mode (str): Default mode for comparing results. Has to be one
+        default_mode: Default mode for comparing results. Has to be one
             of [min, max]. Can be overwritten with the ``mode`` parameter
             in the respective functions.
 
@@ -221,7 +219,7 @@ class ExperimentAnalysis:
         `get_best_checkpoint(trial, metric, mode)` instead.
 
         Returns:
-            :class:`Checkpoint <ray.ml.Checkpoint>` object.
+            :class:`Checkpoint <ray.air.Checkpoint>` object.
         """
         if not self.default_metric or not self.default_mode:
             raise ValueError(
@@ -299,16 +297,7 @@ class ExperimentAnalysis:
         return self.best_trial.last_result
 
     def _delimiter(self):
-        # Deprecate: 1.9  (default should become `/`)
-        delimiter = os.environ.get("TUNE_RESULT_DELIM", ".")
-        if delimiter == "." and log_once("delimiter_deprecation"):
-            warnings.warn(
-                "Dataframes will use '/' instead of '.' to delimit "
-                "nested result keys in future versions of Ray. For forward "
-                "compatibility, set the environment variable "
-                "TUNE_RESULT_DELIM='/'"
-            )
-        return delimiter
+        return os.environ.get("TUNE_RESULT_DELIM", "/")
 
     @property
     def best_result_df(self) -> DataFrame:
@@ -445,7 +434,7 @@ class ExperimentAnalysis:
             mode: One of [min, max]. Defaults to ``self.default_mode``.
 
         Returns:
-            :class:`Checkpoint <ray.ml.Checkpoint>` object.
+            :class:`Checkpoint <ray.air.Checkpoint>` object.
         """
         metric = metric or self.default_metric or TRAINING_ITERATION
         mode = self._validate_mode(mode)
@@ -739,7 +728,7 @@ class ExperimentAnalysis:
         """Overrides the existing file type.
 
         Args:
-            file_type (str): Read results from json or csv files. Has to be one
+            file_type: Read results from json or csv files. Has to be one
                 of [None, json, csv]. Defaults to csv.
         """
         self._file_type = self._validate_filetype(file_type)
@@ -865,13 +854,3 @@ class ExperimentAnalysis:
 
         state["trials"] = [make_stub_if_needed(t) for t in state["trials"]]
         return state
-
-
-# Deprecated: Remove in Ray > 1.13
-@Deprecated
-class Analysis(ExperimentAnalysis):
-    def __init__(self, *args, **kwargs):
-        raise DeprecationWarning(
-            "The `Analysis` class is being "
-            "deprecated. Please use `ExperimentAnalysis` instead."
-        )
