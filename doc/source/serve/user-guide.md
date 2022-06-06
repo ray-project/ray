@@ -13,4 +13,4 @@ you will learn
 - [Using Deployment Graph](deployment-graph)
 - [Deploying Ray Serve](deploying-serve)
 - [Debugging/Monitoring](monitoring)
-- [Performance Tunning](performance)
+- [Performance Tuning](performance)
