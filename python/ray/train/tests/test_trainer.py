@@ -653,6 +653,50 @@ def test_torch_auto_unwrap(ray_start_2_cpus):
     trainer.shutdown()
 
 
+def test_torch_amp(ray_start_2_cpus):
+    def train_fn():
+        train.torch.accelerate(amp=True)
+        model = torch.nn.Linear(1, 1)
+        model = train.torch.prepare_model(model)
+
+        # Make sure model is serializable even with amp enabled.
+        return model.module
+
+    num_workers = 2
+    trainer = Trainer("torch", num_workers)
+    trainer.start()
+
+    trainer.run(train_fn)
+    trainer.shutdown()
+
+
+def test_torch_amp_with_custom_get_state(ray_start_2_cpus):
+    """Tests amp with a model that has a custom __getstate__ method defined.
+
+    See https://discuss.ray.io/t/ray-train-hangs-for-long-time/6333/7
+    """
+
+    def train_fn():
+        train.torch.accelerate(amp=True)
+
+        class CustomLinear(torch.nn.Linear):
+            def __getstate__(self):
+                return self.__dict__.copy()
+
+        model = CustomLinear(1, 1)
+        model = train.torch.prepare_model(model)
+
+        # Make sure model is serializable even with amp enabled.
+        return model.module
+
+    num_workers = 2
+    trainer = Trainer("torch", num_workers)
+    trainer.start()
+
+    trainer.run(train_fn)
+    trainer.shutdown()
+
+
 def test_horovod_simple(ray_start_2_cpus):
     def simple_fn():
         hvd_torch.init()

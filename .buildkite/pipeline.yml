@@ -193,7 +193,7 @@
     - bazel test --config=ci --config=ubsan $(./ci/run/bazel_export_options)
       --build_tests_only
       --jobs=2
-      -- //:all -//:core_worker_test -//:logging_test
+      -- //:all -//:core_worker_test -//:logging_test -//:ray_syncer_test
 
 - label: ":cpp: Tests (TSAN)"
   conditions: [ "RAY_CI_CORE_CPP_AFFECTED" ]
@@ -301,8 +301,16 @@
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - bash ./ci/ci.sh prepare_docker
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --test_tag_filters=client_tests,small_size_python_tests
+      -- python/ray/tests/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options)
+      --test_tag_filters=ray_ha
+      --test_env=DOCKER_HOST=tcp://docker:2376
+      --test_env=DOCKER_TLS_VERIFY=1
+      --test_env=DOCKER_CERT_PATH=/certs/client
+      --test_env=DOCKER_TLS_CERTDIR=/certs
       -- python/ray/tests/...
 - label: ":python: (Large)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]

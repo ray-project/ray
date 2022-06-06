@@ -16,7 +16,20 @@ import warnings
 from abc import ABCMeta, abstractmethod
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Generic,
+    Iterator,
+    List,
+    Optional,
+    Sequence,
+    Tuple,
+    TypeVar,
+    Union,
+    overload,
+)
 
 # Ray modules
 import ray.cloudpickle as pickle
@@ -89,6 +102,143 @@ RESTORE_WORKER_MODE = 4
 logger = logging.getLogger(__name__)
 
 
+T0 = TypeVar("T0")
+T1 = TypeVar("T1")
+T2 = TypeVar("T2")
+T3 = TypeVar("T3")
+T4 = TypeVar("T4")
+T5 = TypeVar("T5")
+T6 = TypeVar("T6")
+T7 = TypeVar("T7")
+T8 = TypeVar("T8")
+T9 = TypeVar("T9")
+R = TypeVar("R")
+
+
+class RemoteFunction(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
+    def __init__(
+        self, function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8, T9], R]
+    ) -> None:
+        pass
+
+    @overload
+    def remote(self) -> "ObjectRef[R]":
+        ...
+
+    @overload
+    def remote(self, __arg0: "Union[T0, ObjectRef[T0]]") -> "ObjectRef[R]":
+        ...
+
+    @overload
+    def remote(
+        self, __arg0: "Union[T0, ObjectRef[T0]]", __arg1: "Union[T1, ObjectRef[T1]]"
+    ) -> "ObjectRef[R]":
+        ...
+
+    @overload
+    def remote(
+        self,
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
+        __arg2: "Union[T2, ObjectRef[T2]]",
+    ) -> "ObjectRef[R]":
+        ...
+
+    @overload
+    def remote(
+        self,
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
+        __arg2: "Union[T2, ObjectRef[T2]]",
+        __arg3: "Union[T3, ObjectRef[T3]]",
+    ) -> "ObjectRef[R]":
+        ...
+
+    @overload
+    def remote(
+        self,
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
+        __arg2: "Union[T2, ObjectRef[T2]]",
+        __arg3: "Union[T3, ObjectRef[T3]]",
+        __arg4: "Union[T4, ObjectRef[T4]]",
+    ) -> "ObjectRef[R]":
+        ...
+
+    @overload
+    def remote(
+        self,
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
+        __arg2: "Union[T2, ObjectRef[T2]]",
+        __arg3: "Union[T3, ObjectRef[T3]]",
+        __arg4: "Union[T4, ObjectRef[T4]]",
+        __arg5: "Union[T5, ObjectRef[T5]]",
+    ) -> "ObjectRef[R]":
+        ...
+
+    @overload
+    def remote(
+        self,
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
+        __arg2: "Union[T2, ObjectRef[T2]]",
+        __arg3: "Union[T3, ObjectRef[T3]]",
+        __arg4: "Union[T4, ObjectRef[T4]]",
+        __arg5: "Union[T5, ObjectRef[T5]]",
+        __arg6: "Union[T6, ObjectRef[T6]]",
+    ) -> "ObjectRef[R]":
+        ...
+
+    @overload
+    def remote(
+        self,
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
+        __arg2: "Union[T2, ObjectRef[T2]]",
+        __arg3: "Union[T3, ObjectRef[T3]]",
+        __arg4: "Union[T4, ObjectRef[T4]]",
+        __arg5: "Union[T5, ObjectRef[T5]]",
+        __arg6: "Union[T6, ObjectRef[T6]]",
+        __arg7: "Union[T7, ObjectRef[T7]]",
+    ) -> "ObjectRef[R]":
+        ...
+
+    @overload
+    def remote(
+        self,
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
+        __arg2: "Union[T2, ObjectRef[T2]]",
+        __arg3: "Union[T3, ObjectRef[T3]]",
+        __arg4: "Union[T4, ObjectRef[T4]]",
+        __arg5: "Union[T5, ObjectRef[T5]]",
+        __arg6: "Union[T6, ObjectRef[T6]]",
+        __arg7: "Union[T7, ObjectRef[T7]]",
+        __arg8: "Union[T8, ObjectRef[T8]]",
+    ) -> "ObjectRef[R]":
+        ...
+
+    @overload
+    def remote(
+        self,
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
+        __arg2: "Union[T2, ObjectRef[T2]]",
+        __arg3: "Union[T3, ObjectRef[T3]]",
+        __arg4: "Union[T4, ObjectRef[T4]]",
+        __arg5: "Union[T5, ObjectRef[T5]]",
+        __arg6: "Union[T6, ObjectRef[T6]]",
+        __arg7: "Union[T7, ObjectRef[T7]]",
+        __arg8: "Union[T8, ObjectRef[T8]]",
+        __arg9: "Union[T9, ObjectRef[T9]]",
+    ) -> "ObjectRef[R]":
+        ...
+
+    def remote(self, *args, **kwargs) -> "ObjectRef[R]":
+        ...
+
+
 # Visible for testing.
 def _unhandled_error_handler(e: Exception):
     logger.error(
@@ -107,7 +257,7 @@ class Worker:
         node (ray.node.Node): The node this worker is attached to.
         mode: The mode of the worker. One of SCRIPT_MODE, LOCAL_MODE, and
             WORKER_MODE.
-        cached_functions_to_run (List): A list of functions to run on all of
+        cached_functions_to_run: A list of functions to run on all of
             the workers that should be exported as soon as connect is called.
     """
 
@@ -115,7 +265,7 @@ class Worker:
         """Initialize a Worker object."""
         self.node = None
         self.mode = None
-        self.cached_functions_to_run = []
+        self.cached_functions_to_run: list = []
         self.actors = {}
         # When the worker is constructed. Record the original value of the
         # CUDA_VISIBLE_DEVICES environment variable.
@@ -277,7 +427,7 @@ class Worker:
 
         Args:
             value: The value to put in the object store.
-            object_ref (ObjectRef): The object ref of the value to be
+            object_ref: The object ref of the value to be
                 put. If None, one will be generated.
             owner_address: The serialized address of object's owner.
 
@@ -335,7 +485,7 @@ class Worker:
             context = self.get_serialization_context()
             return context.deserialize_objects(data_metadata_pairs, object_refs)
 
-    def get_objects(self, object_refs, timeout=None):
+    def get_objects(self, object_refs: list, timeout: Optional[float] = None):
         """Get the values in the object store associated with the IDs.
 
         Return the values from the local object store for object_refs. This
@@ -343,9 +493,9 @@ class Worker:
         the local object store.
 
         Args:
-            object_refs (List[object_ref.ObjectRef]): A list of the object refs
+            object_refs: A list of the object refs
                 whose values should be retrieved.
-            timeout (float): timeout (float): The maximum amount of time in
+            timeout: The maximum amount of time in
                 seconds to wait before returning.
         Returns:
             list: List of deserialized objects
@@ -379,7 +529,7 @@ class Worker:
             debugger_breakpoint,
         )
 
-    def run_function_on_all_workers(self, function):
+    def run_function_on_all_workers(self, function: callable):
         """Run arbitrary code on all of the workers.
 
         This function will first be run on the driver, and then it will be
@@ -388,7 +538,7 @@ class Worker:
         then cache the function and export it later.
 
         Args:
-            function (Callable): The function to run on all of the workers. It
+            function: The function to run on all of the workers. It
                 takes only one argument, a worker info dict. If it returns
                 anything, its return values will not be used.
         """
@@ -754,7 +904,7 @@ def init(
     cluster with ray.init() or ray.init(address="auto").
 
     Args:
-        address (str): The address of the Ray cluster to connect to. If
+        address: The address of the Ray cluster to connect to. If
             this address is not provided, then this command will start Redis,
             a raylet, a plasma store, a plasma manager, and some workers.
             It will also kill these processes when Python exits. If the driver
@@ -767,16 +917,16 @@ def init(
             cluster. For example, passing in the address
             "ray://123.45.67.89:50005" will connect to the cluster at the
             given address.
-        num_cpus (int): Number of CPUs the user wishes to assign to each
+        num_cpus: Number of CPUs the user wishes to assign to each
             raylet. By default, this is set based on virtual cores.
-        num_gpus (int): Number of GPUs the user wishes to assign to each
+        num_gpus: Number of GPUs the user wishes to assign to each
             raylet. By default, this is set based on detected GPUs.
         resources: A dictionary mapping the names of custom resources to the
             quantities for them available.
         object_store_memory: The amount of memory (in bytes) to start the
             object store with. By default, this is automatically set based on
             available system memory.
-        local_mode (bool): If true, the code will be executed serially. This
+        local_mode: If true, the code will be executed serially. This
             is useful for debugging.
         ignore_reinit_error: If true, Ray suppresses errors from calling
             ray.init() a second time. Ray won't be restarted.
@@ -810,7 +960,7 @@ def init(
             This storage path must be accessible by all nodes of the cluster, otherwise
             an error will be raised. This option can also be specified as the
             RAY_STORAGE env var.
-        _enable_object_reconstruction (bool): If True, when an object stored in
+        _enable_object_reconstruction: If True, when an object stored in
             the distributed plasma store is lost due to node failure, Ray will
             attempt to reconstruct the object by re-executing the task that
             created the object. Arguments to the task will be recursively
@@ -818,26 +968,26 @@ def init(
             thrown.
         _redis_max_memory: Redis max memory.
         _plasma_directory: Override the plasma mmap file directory.
-        _node_ip_address (str): The IP address of the node that we are on.
-        _driver_object_store_memory (int): Deprecated.
+        _node_ip_address: The IP address of the node that we are on.
+        _driver_object_store_memory: Deprecated.
         _memory: Amount of reservable memory resource to create.
-        _redis_password (str): Prevents external clients without the password
+        _redis_password: Prevents external clients without the password
             from connecting to Redis if provided.
-        _temp_dir (str): If provided, specifies the root temporary
+        _temp_dir: If provided, specifies the root temporary
             directory for the Ray process. Defaults to an OS-specific
             conventional location, e.g., "/tmp/ray".
         _metrics_export_port(int): Port number Ray exposes system metrics
             through a Prometheus endpoint. It is currently under active
             development, and the API is subject to change.
-        _system_config (dict): Configuration for overriding
+        _system_config: Configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
-        _tracing_startup_hook (str): If provided, turns on and sets up tracing
+        _tracing_startup_hook: If provided, turns on and sets up tracing
             for Ray. Must be the name of a function that takes no arguments and
             sets up a Tracer Provider, Remote Span Processors, and
             (optional) additional instruments. See more at
             docs.ray.io/tracing.html. It is currently under active development,
             and the API is subject to change.
-        _node_name (str): User-provided node name or identifier. Defaults to
+        _node_name: User-provided node name or identifier. Defaults to
             the node IP address.
 
     Returns:
@@ -1157,7 +1307,7 @@ def shutdown(_exiting_interpreter: bool = False):
     will need to reload the module.
 
     Args:
-        _exiting_interpreter (bool): True if this is called by the atexit hook
+        _exiting_interpreter: True if this is called by the atexit hook
             and false otherwise. If we are exiting the interpreter, we will
             wait a little while to print any extra error messages.
     """
@@ -1432,32 +1582,32 @@ def is_initialized() -> bool:
 def connect(
     node,
     mode=WORKER_MODE,
-    log_to_driver=False,
+    log_to_driver: bool = False,
     worker=global_worker,
-    driver_object_store_memory=None,
+    driver_object_store_memory: Optional[int] = None,
     job_id=None,
-    namespace=None,
+    namespace: Optional[str] = None,
     job_config=None,
-    runtime_env_hash=0,
-    startup_token=0,
-    ray_debugger_external=False,
+    runtime_env_hash: int = 0,
+    startup_token: int = 0,
+    ray_debugger_external: bool = False,
 ):
     """Connect this worker to the raylet, to Plasma, and to GCS.
 
     Args:
         node (ray.node.Node): The node to connect.
         mode: The mode of the worker. One of SCRIPT_MODE, WORKER_MODE, and LOCAL_MODE.
-        log_to_driver (bool): If true, then output from all of the worker
+        log_to_driver: If true, then output from all of the worker
             processes on all nodes will be directed to the driver.
         worker: The ray.Worker instance.
         driver_object_store_memory: Deprecated.
         job_id: The ID of job. If it's None, then we will generate one.
-        namespace (str): Namespace to use.
+        namespace: Namespace to use.
         job_config (ray.job_config.JobConfig): The job configuration.
-        runtime_env_hash (int): The hash of the runtime env for this worker.
-        startup_token (int): The startup token of the process assigned to
+        runtime_env_hash: The hash of the runtime env for this worker.
+        startup_token: The startup token of the process assigned to
             it during startup as a command line argument.
-        ray_debugger_external (bool): If True, make the debugger external to the
+        ray_debugger_external: If True, make the debugger external to the
             node this worker is running on.
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
@@ -1747,11 +1897,11 @@ def show_in_dashboard(message: str, key: str = "", dtype: str = "text"):
     computation.
 
     Args:
-        message (str): Message to be displayed.
-        key (str): The key name for the message. Multiple message under
+        message: Message to be displayed.
+        key: The key name for the message. Multiple message under
             different keys will be displayed at the same time. Messages
             under the same key will be overridden.
-        dtype (str): The type of message for rendering. One of the
+        dtype: The type of message for rendering. One of the
             following: text, html.
     """
     worker = global_worker
@@ -1770,10 +1920,29 @@ def show_in_dashboard(message: str, key: str = "", dtype: str = "text"):
 blocking_get_inside_async_warned = False
 
 
+@overload
+def get(
+    object_refs: "Sequence[ObjectRef[Any]]", *, timeout: Optional[float] = None
+) -> List[Any]:
+    ...
+
+
+@overload
+def get(
+    object_refs: "Sequence[ObjectRef[R]]", *, timeout: Optional[float] = None
+) -> List[R]:
+    ...
+
+
+@overload
+def get(object_refs: "ObjectRef[R]", *, timeout: Optional[float] = None) -> R:
+    ...
+
+
 @PublicAPI
 @client_mode_hook(auto_init=True)
 def get(
-    object_refs: Union[ray.ObjectRef, List[ray.ObjectRef]],
+    object_refs: Union[ray.ObjectRef, Sequence[ray.ObjectRef]],
     *,
     timeout: Optional[float] = None,
 ) -> Union[Any, List[Any]]:
@@ -1948,12 +2117,12 @@ def wait(
     ``await asyncio.wait(object_refs)``.
 
     Args:
-        object_refs (List[ObjectRef]): List of object refs for objects that may
+        object_refs: List of object refs for objects that may
             or may not be ready. Note that these IDs must be unique.
-        num_returns (int): The number of object refs that should be returned.
-        timeout (float): The maximum amount of time in seconds to wait before
+        num_returns: The number of object refs that should be returned.
+        timeout: The maximum amount of time in seconds to wait before
             returning.
-        fetch_local (bool): If True, wait for the object to be downloaded onto
+        fetch_local: If True, wait for the object to be downloaded onto
             the local node before returning it as ready. If False, ray.wait()
             will not trigger fetching of objects to the local node and will
             return immediately once the object is available anywhere in the
@@ -2082,8 +2251,8 @@ def kill(actor: "ray.actor.ActorHandle", *, no_restart: bool = True):
     ray.get_actor will fail.
 
     Args:
-        actor (ActorHandle): Handle to the actor to kill.
-        no_restart (bool): Whether or not this actor should be restarted if
+        actor: Handle to the actor to kill.
+        no_restart: Whether or not this actor should be restarted if
             it's a restartable actor.
     """
     worker = global_worker
@@ -2113,11 +2282,11 @@ def cancel(object_ref: ray.ObjectRef, *, force: bool = False, recursive: bool = 
     WorkerCrashedError if ``force=True``.
 
     Args:
-        object_ref (ObjectRef): ObjectRef returned by the task
+        object_ref: ObjectRef returned by the task
             that should be canceled.
-        force (boolean): Whether to force-kill a running task by killing
+        force: Whether to force-kill a running task by killing
             the worker that is running the task.
-        recursive (boolean): Whether to try to cancel tasks submitted by the
+        recursive: Whether to try to cancel tasks submitted by the
             task specified.
     Raises:
         TypeError: This is also raised for actor tasks.
@@ -2161,6 +2330,90 @@ def _make_remote(function_or_class, options):
     raise TypeError(
         "The @ray.remote decorator must be applied to either a function or a class."
     )
+
+
+@overload
+def remote(
+    function: Callable[[], R]
+) -> RemoteFunction[R, None, None, None, None, None, None, None, None, None, None]:
+    ...
+
+
+@overload
+def remote(
+    function: Callable[[T0], R]
+) -> RemoteFunction[R, T0, None, None, None, None, None, None, None, None, None]:
+    ...
+
+
+@overload
+def remote(
+    function: Callable[[T0, T1], R]
+) -> RemoteFunction[R, T0, T1, None, None, None, None, None, None, None, None]:
+    ...
+
+
+@overload
+def remote(
+    function: Callable[[T0, T1, T2], R]
+) -> RemoteFunction[R, T0, T1, T2, None, None, None, None, None, None, None]:
+    ...
+
+
+@overload
+def remote(
+    function: Callable[[T0, T1, T2, T3], R]
+) -> RemoteFunction[R, T0, T1, T2, T3, None, None, None, None, None, None]:
+    ...
+
+
+@overload
+def remote(
+    function: Callable[[T0, T1, T2, T3, T4], R]
+) -> RemoteFunction[R, T0, T1, T2, T3, T4, None, None, None, None, None]:
+    ...
+
+
+@overload
+def remote(
+    function: Callable[[T0, T1, T2, T3, T4, T5], R]
+) -> RemoteFunction[R, T0, T1, T2, T3, T4, T5, None, None, None, None]:
+    ...
+
+
+@overload
+def remote(
+    function: Callable[[T0, T1, T2, T3, T4, T5, T6], R]
+) -> RemoteFunction[R, T0, T1, T2, T3, T4, T5, T6, None, None, None]:
+    ...
+
+
+@overload
+def remote(
+    function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7], R]
+) -> RemoteFunction[R, T0, T1, T2, T3, T4, T5, T6, T7, None, None]:
+    ...
+
+
+@overload
+def remote(
+    function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8], R]
+) -> RemoteFunction[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, None]:
+    ...
+
+
+@overload
+def remote(
+    function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8, T9], R]
+) -> RemoteFunction[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]:
+    ...
+
+
+# Pass on typing actors for now. The following makes it so no type errors
+# are generated for actors.
+@overload
+def remote(t: type) -> Any:
+    ...
 
 
 @PublicAPI
@@ -2217,12 +2470,12 @@ def remote(*args, **kwargs):
     also call ``ray.kill(actor)``.
 
     Args:
-        num_returns (int): This is only for *remote functions*. It specifies
+        num_returns: This is only for *remote functions*. It specifies
             the number of object refs returned by
             the remote function invocation.
-        num_cpus (float): The quantity of CPU cores to reserve
+        num_cpus: The quantity of CPU cores to reserve
             for this task or for the lifetime of the actor.
-        num_gpus (float): The quantity of GPUs to reserve
+        num_gpus: The quantity of GPUs to reserve
             for this task or for the lifetime of the actor.
         resources (Dict[str, float]): The quantity of various custom resources
             to reserve for this task or for the lifetime of the actor.
@@ -2230,22 +2483,22 @@ def remote(*args, **kwargs):
         accelerator_type: If specified, requires that the task or actor run
             on a node with the specified type of accelerator.
             See `ray.accelerators` for accelerator types.
-        memory (float): The heap memory request for this task/actor.
-        object_store_memory (int): The object store memory request for this task/actor.
-        max_calls (int): Only for *remote functions*. This specifies the
+        memory: The heap memory request for this task/actor.
+        object_store_memory: The object store memory request for this task/actor.
+        max_calls: Only for *remote functions*. This specifies the
             maximum number of times that a given worker can execute
             the given remote function before it must exit
             (this can be used to address memory leaks in third-party
             libraries or to reclaim resources that cannot easily be
             released, e.g., GPU memory that was acquired by TensorFlow).
             By default this is infinite.
-        max_restarts (int): Only for *actors*. This specifies the maximum
+        max_restarts: Only for *actors*. This specifies the maximum
             number of times that the actor should be restarted when it dies
             unexpectedly. The minimum valid value is 0 (default),
             which indicates that the actor doesn't need to be restarted.
             A value of -1 indicates that an actor should be restarted
             indefinitely.
-        max_task_retries (int): Only for *actors*. How many times to
+        max_task_retries: Only for *actors*. How many times to
             retry an actor task if the task fails due to a system error,
             e.g., the actor has died. If set to -1, the system will
             retry the failed task until the task succeeds, or the actor
@@ -2254,7 +2507,7 @@ def remote(*args, **kwargs):
             task will throw a `RayActorError` exception upon :obj:`ray.get`.
             Note that Python exceptions are not considered system errors
             and will not trigger retries.
-        max_retries (int): Only for *remote functions*. This specifies
+        max_retries: Only for *remote functions*. This specifies
             the maximum number of times that the remote function
             should be rerun when the worker process executing it
             crashes unexpectedly. The minimum valid value is 0,
@@ -2264,10 +2517,10 @@ def remote(*args, **kwargs):
             this actor or task and its children. See
             :ref:`runtime-environments` for detailed documentation. This API is
             in beta and may change before becoming stable.
-        retry_exceptions (bool): Only for *remote functions*. This specifies
+        retry_exceptions: Only for *remote functions*. This specifies
             whether application-level errors should be retried
             up to max_retries times.
-        scheduling_strategy (SchedulingStrategyT): Strategy about how to
+        scheduling_strategy: Strategy about how to
             schedule a remote function or actor. Possible values are
             None: ray will figure out the scheduling strategy to use, it
             will either be the PlacementGroupSchedulingStrategy using parent's
