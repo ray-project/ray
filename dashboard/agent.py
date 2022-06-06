@@ -19,6 +19,7 @@ import ray.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
 from ray._private.gcs_utils import GcsClient
+from ray._private.gcs_pubsub import GcsPublisher, GcsAioPublisher
 from ray.core.generated import agent_manager_pb2
 from ray.core.generated import agent_manager_pb2_grpc
 from ray._private.ray_logging import setup_component_logger
@@ -36,7 +37,7 @@ logger = logging.getLogger(__name__)
 aiogrpc.init_grpc_aio()
 
 
-class DashboardAgent(object):
+class DashboardAgent:
     def __init__(
         self,
         node_ip_address,
@@ -117,6 +118,10 @@ class DashboardAgent(object):
         # be configured to communicate with the dashboard in a head node.
         self.http_server = None
 
+        # Used by the agent and sub-modules.
+        self.gcs_client = GcsClient(address=self.gcs_address)
+        self.publisher = GcsAioPublisher(address=self.gcs_address)
+
     async def _configure_http_server(self, modules):
         from ray.dashboard.http_server_agent import HttpServerAgent
 
@@ -152,7 +157,42 @@ class DashboardAgent(object):
                 while True:
                     parent = curr_proc.parent()
                     if parent is None or parent.pid == 1 or self.ppid != parent.pid:
-                        logger.error("Raylet is dead, exiting.")
+                        log_path = "/tmp/ray/session_latest/logs/raylet.out"
+                        error = False
+                        msg = f"Raylet is terminated: ip={self.ip}, id={self.node_id}. "
+                        try:
+                            with open(log_path, "r") as f:
+                                raylet_logs = f.readlines()
+                                if any(
+                                    "Raylet received SIGTERM" in line
+                                    for line in raylet_logs
+                                ):
+                                    msg += "Termination is graceful."
+                                    logger.info(msg)
+                                else:
+                                    msg += (
+                                        "Termination is unexpected. Possible reasons "
+                                        "include: (1) SIGKILL by the user or system "
+                                        "OOM killer, (2) Invalid memory access from "
+                                        "Raylet causing SIGSEGV or SIGBUS, "
+                                        "(3) Other termination signals. "
+                                        "Last 20 lines of the Raylet logs:\n"
+                                    )
+                                    msg += "    " + "    ".join(raylet_logs[-20:])
+                                    error = True
+                        except Exception as e:
+                            msg += f"Raylet log not found at {log_path}: {e}!"
+                            error = True
+                        if error:
+                            logger.error(msg)
+                            # TODO: switch to async if necessary.
+                            ray._private.utils.publish_error_to_driver(
+                                ray_constants.RAYLET_DIED_ERROR,
+                                msg,
+                                gcs_publisher=GcsPublisher(address=self.gcs_address),
+                            )
+                        else:
+                            logger.info(msg)
                         sys.exit(0)
                     await asyncio.sleep(
                         dashboard_consts.DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_SECONDS
@@ -168,7 +208,6 @@ class DashboardAgent(object):
         if self.server:
             await self.server.start()
 
-        self.gcs_client = GcsClient(address=self.gcs_address)
         modules = self._load_modules()
 
         # Setup http server if necessary.
