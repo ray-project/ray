@@ -56,8 +56,8 @@ class Predictor(abc.ABC):
     """
 
     @classmethod
-    @abc.abstractmethod
     @PublicAPI(stability="alpha")
+    @abc.abstractmethod
     def from_checkpoint(cls, checkpoint: Checkpoint, **kwargs) -> "Predictor":
         """Create a specific predictor from a checkpoint.
 
