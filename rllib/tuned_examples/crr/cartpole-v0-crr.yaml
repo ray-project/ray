@@ -1,27 +1,27 @@
-cartpole_replay_crr:
+cartpole_crr:
     env: 'CartPole-v0'
     run: CRR
     stop:
-      episode_reward_mean: 150.0
-      timesteps_total: 500
+      evaluation/episode_reward_mean: 200
+      training_iteration: 100
     config:
         input:
-          - 'tests/data/cartpole/cartpole_replay_v1.1.0.json'
+          - 'tests/data/cartpole/large.json'
         framework: torch
         gamma: 0.99
-        train_batch_size: 1024
-        critic_hidden_activation: 'relu'
-        critic_hiddens: [256, 256]
+        train_batch_size: 2048
+        critic_hidden_activation: 'tanh'
+        critic_hiddens: [128, 128, 128]
         critic_lr: 0.0003
-        actor_hidden_activation: 'relu'
-        actor_hiddens: [256, 256]
+        actor_hidden_activation: 'tanh'
+        actor_hiddens: [128, 128, 128]
         actor_lr: 0.0003
         actions_in_input_normalized: True
         clip_actions: True
         # Q function update setting
         twin_q: True
-        target_update_grad_intervals: 100
-        tau: 0.01
+        target_update_grad_intervals: 1
+        tau: 0.0005
         # evaluation
         evaluation_config:
             explore: False

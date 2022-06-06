@@ -1,9 +1,9 @@
-pendulum_replay_crr:
+pendulum_crr:
     env: 'Pendulum-v1'
     run: CRR
     stop:
-      episode_reward_mean: -250
-      timesteps_total: 500
+      evaluation/episode_reward_mean: -200
+      training_iteration: 500
     config:
         input:
           - 'tests/data/pendulum/pendulum_replay_v1.1.0.json'
@@ -20,8 +20,8 @@ pendulum_replay_crr:
         clip_actions: True
         # Q function update setting
         twin_q: True
-        target_update_grad_intervals: 10000
-        tau: 1.0
+        target_update_grad_intervals: 1
+        tau: 0.0001
         # evaluation
         evaluation_config:
             explore: False
