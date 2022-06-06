@@ -218,7 +218,10 @@ class TestOPE(unittest.TestCase):
                 evaluation_interval=1,
                 evaluation_num_workers=1,
                 evaluation_config={
-                    "input": os.path.join(rllib_dir, "tests/data/cartpole/small.json"),
+                    "input": {
+                        "sampler": 0.5,
+                        os.path.join(rllib_dir, "tests/data/cartpole/small.json"): 0.5,
+                    },
                 },
                 off_policy_estimation_methods={
                     "is": {"type": ImportanceSampling},

@@ -626,11 +626,6 @@ class WorkerSet:
                 compress_columns=config["output_compress_columns"],
             )
 
-        if config["input"] == "sampler":
-            off_policy_estimation_methods = {}
-        else:
-            off_policy_estimation_methods = config["off_policy_estimation_methods"]
-
         # Assert everything is correct in "multiagent" config dict (if given).
         ma_policies = config["multiagent"]["policies"]
         if ma_policies:
@@ -682,7 +677,7 @@ class WorkerSet:
             log_level=config["log_level"],
             callbacks=config["callbacks"],
             input_creator=input_creator,
-            off_policy_estimation_methods=off_policy_estimation_methods,
+            off_policy_estimation_methods=config["off_policy_estimation_methods"],
             output_creator=output_creator,
             remote_worker_envs=config["remote_worker_envs"],
             remote_env_batch_wait_ms=config["remote_env_batch_wait_ms"],
