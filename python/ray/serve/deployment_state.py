@@ -951,7 +951,12 @@ class DeploymentState:
         Return deployment's target state submitted by user's deployment call.
         Should be persisted and outlive current ray cluster.
         """
-        return (self._target_info, self._target_replicas, self._target_version)
+        return (
+            self._target_info,
+            self._target_replicas,
+            self._target_version,
+            self._deleting,
+        )
 
     def get_checkpoint_data(self):
         return self.get_target_state_checkpoint_data()
@@ -964,6 +969,7 @@ class DeploymentState:
             self._target_info,
             self._target_replicas,
             self._target_version,
+            self._deleting,
         ) = target_state_checkpoint
 
     def recover_current_state_from_replica_actor_names(
