@@ -260,6 +260,9 @@ texinfo_documents = [
 # Python methods should be presented in source code order
 autodoc_member_order = "bysource"
 
+# Better typehint formatting (see custom.css)
+autodoc_typehints = "signature"
+
 
 # Add a render priority for doctest
 nb_render_priority = {
