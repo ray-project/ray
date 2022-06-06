@@ -15,6 +15,7 @@ from ray import tune
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.rllib.algorithms.r2d2 import R2D2Config
+from ray.rllib.utils.replay_buffers.replay_buffer import StorageUnit
 
 tf1, tf, tfv = try_import_tf()
 
@@ -40,7 +41,7 @@ parser.add_argument(
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    ray.init(num_cpus=args.num_cpus or None)
+    ray.init(num_cpus=args.num_cpus or None, local_mode=True)
 
     config = (
         R2D2Config()
@@ -64,6 +65,7 @@ if __name__ == "__main__":
         # Although not necessary, we can modify the default constructor args of
         # the replay buffer here
         "prioritized_replay_alpha": 0.5,
+        "storage_unit": StorageUnit.SEQUENCES,
         "replay_burn_in": 20,
     }
 
