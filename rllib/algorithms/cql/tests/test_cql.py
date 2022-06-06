@@ -26,7 +26,7 @@ class TestCQL(unittest.TestCase):
         ray.shutdown()
 
     def test_cql_compilation(self):
-        """Test whether a CQLTrainer can be built with all frameworks."""
+        """Test whether CQL can be built with all frameworks."""
 
         # Learns from a historic-data file.
         # To generate this data, first run:

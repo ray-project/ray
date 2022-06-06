@@ -143,10 +143,10 @@ class RolloutWorker(ParallelIteratorWorker):
         >>> # Create a rollout worker and using it to collect experiences.
         >>> import gym
         >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-        >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTFPolicy
+        >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGStaticGraphTFPolicy
         >>> worker = RolloutWorker( # doctest: +SKIP
         ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
-        ...   policy_spec=PGTFPolicy) # doctest: +SKIP
+        ...   policy_spec=PGStaticGraphTFPolicy) # doctest: +SKIP
         >>> print(worker.sample()) # doctest: +SKIP
         SampleBatch({
             "obs": [[...]], "actions": [[...]], "rewards": [[...]],
@@ -350,17 +350,14 @@ class RolloutWorker(ParallelIteratorWorker):
                 experiences ("input" is not "sampler"). The inputs are as follows:
                 {ope_name: {"type": ope_type, args}}. where `ope_name` is an arbitrary
                 string under which the metrics for this OPE estimator are saved,
-                and `ope_type` can be:
-                    - Any subclass of OffPolicyEstimator, e.g.
-                    ray.rllib.offline.estimators::ImportanceSampling
-                    or your own custom subclass.
-                    - A class path string, e.g.
-                    "ray.rllib.offline.estimators::ImportanceSampling"
+                and `ope_type` can be any subclass of OffPolicyEstimator, e.g.
+                ray.rllib.offline.estimators::ImportanceSampling
+                or your own custom subclass.
                 You can also add additional config arguments to be passed to the
                 OffPolicyEstimator e.g.
                 off_policy_estimation_methods = {
-                    "dr_qreg": {"type": DoublyRobust, "q_model_type": "qreg"},
-                    "dm_64": {"type": DirectMethod, "batch_size": 64},
+                "dr_qreg": {"type": DoublyRobust, "q_model_type": "qreg"},
+                "dm_64": {"type": DirectMethod, "batch_size": 64},
                 }
                 See ray/rllib/offline/estimators for more information.
             output_creator: Function that returns an OutputWriter object for
@@ -824,10 +821,10 @@ class RolloutWorker(ParallelIteratorWorker):
         Examples:
             >>> import gym
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTFPolicy
+            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGStaticGraphTFPolicy
             >>> worker = RolloutWorker( # doctest: +SKIP
             ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
-            ...   policy_spec=PGTFPolicy) # doctest: +SKIP
+            ...   policy_spec=PGStaticGraphTFPolicy) # doctest: +SKIP
             >>> print(worker.sample()) # doctest: +SKIP
             SampleBatch({"obs": [...], "action": [...], ...})
         """
@@ -907,7 +904,7 @@ class RolloutWorker(ParallelIteratorWorker):
         Examples:
             >>> import gym
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTFPolicy
+            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGStaticGraphTFPolicy
             >>> worker = RolloutWorker( # doctest: +SKIP
             ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
             ...   policy_spec=PGTFPolicy) # doctest: +SKIP
@@ -933,10 +930,10 @@ class RolloutWorker(ParallelIteratorWorker):
         Examples:
             >>> import gym
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTFPolicy
+            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGStaticGraphTFPolicy
             >>> worker = RolloutWorker( # doctest: +SKIP
             ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
-            ...   policy_spec=PGTFPolicy) # doctest: +SKIP
+            ...   policy_spec=PGStaticGraphTFPolicy) # doctest: +SKIP
             >>> batch = worker.sample() # doctest: +SKIP
             >>> info = worker.learn_on_batch(samples) # doctest: +SKIP
         """
@@ -1050,10 +1047,10 @@ class RolloutWorker(ParallelIteratorWorker):
         Examples:
             >>> import gym
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTFPolicy
+            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGStaticGraphTFPolicy
             >>> worker = RolloutWorker( # doctest: +SKIP
             ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
-            ...   policy_spec=PGTFPolicy) # doctest: +SKIP
+            ...   policy_spec=PGStaticGraphTFPolicy) # doctest: +SKIP
             >>> batch = worker.sample() # doctest: +SKIP
             >>> grads, info = worker.compute_gradients(samples) # doctest: +SKIP
         """
@@ -1119,10 +1116,10 @@ class RolloutWorker(ParallelIteratorWorker):
         Examples:
             >>> import gym
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTFPolicy
+            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGStaticGraphTFPolicy
             >>> worker = RolloutWorker( # doctest: +SKIP
             ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
-            ...   policy_spec=PGTFPolicy) # doctest: +SKIP
+            ...   policy_spec=PGStaticGraphTFPolicy) # doctest: +SKIP
             >>> samples = worker.sample() # doctest: +SKIP
             >>> grads, info = worker.compute_gradients(samples) # doctest: +SKIP
             >>> worker.apply_gradients(grads) # doctest: +SKIP

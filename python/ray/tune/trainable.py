@@ -14,7 +14,7 @@ import uuid
 
 import ray
 import ray.cloudpickle as pickle
-from ray.ml.checkpoint import Checkpoint
+from ray.air.checkpoint import Checkpoint
 from ray.tune.cloud import TrialCheckpoint
 from ray.tune.logger import Logger
 from ray.tune.resources import Resources

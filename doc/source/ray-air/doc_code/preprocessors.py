@@ -4,7 +4,7 @@
 # __preprocessor_setup_start__
 import pandas as pd
 import ray
-from ray.ml.preprocessors import MinMaxScaler
+from ray.air.preprocessors import MinMaxScaler
 
 # Generate two simple datasets.
 dataset = ray.data.range_table(8)
@@ -47,8 +47,8 @@ print(batch_transformed)
 # __trainer_start__
 import ray
 
-from ray.ml.train.integrations.xgboost import XGBoostTrainer
-from ray.ml.preprocessors import MinMaxScaler
+from ray.air.train.integrations.xgboost import XGBoostTrainer
+from ray.air.preprocessors import MinMaxScaler
 
 train_dataset = ray.data.from_items([{"x": x, "y": 2 * x} for x in range(0, 32, 3)])
 valid_dataset = ray.data.from_items([{"x": x, "y": 2 * x} for x in range(1, 32, 3)])
@@ -67,7 +67,7 @@ result = trainer.fit()
 
 
 # __checkpoint_start__
-from ray.ml.utils.checkpointing import load_preprocessor_from_dir
+from ray.air.utils.checkpointing import load_preprocessor_from_dir
 
 checkpoint = result.checkpoint
 with checkpoint.as_directory() as checkpoint_path:
@@ -78,8 +78,8 @@ with checkpoint.as_directory() as checkpoint_path:
 
 
 # __predictor_start__
-from ray.ml.batch_predictor import BatchPredictor
-from ray.ml.predictors.integrations.xgboost import XGBoostPredictor
+from ray.air.batch_predictor import BatchPredictor
+from ray.air.predictors.integrations.xgboost import XGBoostPredictor
 
 test_dataset = ray.data.from_items([{"x": x} for x in range(2, 32, 3)])
 
@@ -102,7 +102,7 @@ print(predicted_labels.to_pandas())
 
 # __chain_start__
 import ray
-from ray.ml.preprocessors import Chain, MinMaxScaler, SimpleImputer
+from ray.air.preprocessors import Chain, MinMaxScaler, SimpleImputer
 
 # Generate one simple dataset.
 dataset = ray.data.from_items(
@@ -121,7 +121,7 @@ print(dataset_transformed.take())
 
 # __custom_stateless_start__
 import ray
-from ray.ml.preprocessors import BatchMapper
+from ray.air.preprocessors import BatchMapper
 
 # Generate a simple dataset.
 dataset = ray.data.range_table(4)
