@@ -848,24 +848,11 @@ def init(
     job_config: "ray.job_config.JobConfig" = None,
     configure_logging: bool = True,
     logging_level: int = ray_constants.LOGGER_LEVEL,
-    logging_format: str = ray_constants.LOGGER_FORMAT,
+    logging_format: Optional[str] = None,
     log_to_driver: bool = True,
     namespace: Optional[str] = None,
     runtime_env: Optional[Union[Dict[str, Any], "RuntimeEnv"]] = None,  # noqa: F821
     storage: Optional[str] = None,
-    # The following are unstable parameters and their use is discouraged.
-    _enable_object_reconstruction: bool = False,
-    _redis_max_memory: Optional[int] = None,
-    _plasma_directory: Optional[str] = None,
-    _node_ip_address: str = ray_constants.NODE_DEFAULT_IP,
-    _driver_object_store_memory: Optional[int] = None,
-    _memory: Optional[int] = None,
-    _redis_password: str = ray_constants.REDIS_DEFAULT_PASSWORD,
-    _temp_dir: Optional[str] = None,
-    _metrics_export_port: Optional[int] = None,
-    _system_config: Optional[Dict[str, str]] = None,
-    _tracing_startup_hook: Optional[Callable] = None,
-    _node_name: str = None,
     **kwargs,
 ) -> BaseContext:
     """
@@ -1002,6 +989,33 @@ def init(
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
+
+    # Parse the hidden options:
+    _enable_object_reconstruction: bool = kwargs.pop(
+        "_enable_object_reconstruction", False
+    )
+    _redis_max_memory: Optional[int] = kwargs.pop("_redis_max_memory", None)
+    _plasma_directory: Optional[str] = kwargs.pop("_plasma_directory", None)
+    _node_ip_address: str = kwargs.pop(
+        "_node_ip_address", ray_constants.NODE_DEFAULT_IP
+    )
+    _driver_object_store_memory: Optional[int] = kwargs.pop(
+        "_driver_object_store_memory", None
+    )
+    _memory: Optional[int] = kwargs.pop("_memory", None)
+    _redis_password: str = kwargs.pop(
+        "_redis_password", ray_constants.REDIS_DEFAULT_PASSWORD
+    )
+    _temp_dir: Optional[str] = kwargs.pop("_temp_dir", None)
+    _metrics_export_port: Optional[int] = kwargs.pop("_metrics_export_port", None)
+    _system_config: Optional[Dict[str, str]] = kwargs.pop("_system_config", None)
+    _tracing_startup_hook: Optional[Callable] = kwargs.pop(
+        "_tracing_startup_hook", None
+    )
+    _node_name: str = kwargs.pop("_node_name", None)
+
+    if not logging_format:
+        logging_format = ray_constants.LOGGER_FORMAT
 
     # If available, use RAY_ADDRESS to override if the address was left
     # unspecified, or set to "auto" in the call to init
