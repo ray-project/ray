@@ -1757,6 +1757,13 @@ py_test(
 )
 
 py_test(
+    name = "tests/test_custom_resource",
+    tags = ["team:ml", "tests_dir", "tests_dir_C"],
+    size = "medium",
+    srcs = ["tests/test_custom_resource.py"]
+)
+
+py_test(
     name = "tests/test_dependency_tf",
     tags = ["team:ml", "tests_dir", "tests_dir_D"],
     size = "small",

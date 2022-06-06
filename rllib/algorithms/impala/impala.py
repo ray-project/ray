@@ -714,6 +714,7 @@ class Impala(Trainer):
                     # RolloutWorkers.
                     "CPU": cf["num_cpus_per_worker"],
                     "GPU": cf["num_gpus_per_worker"],
+                    **cf["custom_resources_per_worker"],
                 }
                 for _ in range(cf["num_workers"])
             ]
@@ -728,6 +729,10 @@ class Impala(Trainer):
                         ),
                         "GPU": eval_config.get(
                             "num_gpus_per_worker", cf["num_gpus_per_worker"]
+                        ),
+                        **eval_config.get(
+                            "custom_resources_per_worker",
+                            cf["custom_resources_per_worker"],
                         ),
                     }
                     for _ in range(cf["evaluation_num_workers"])

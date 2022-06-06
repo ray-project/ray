@@ -1535,45 +1535,46 @@ class Trainer(Trainable):
         cf = dict(cls.get_default_config(), **config)
         eval_cf = cf["evaluation_config"]
 
-        # TODO(ekl): add custom resources here once tune supports them
+        local_worker = {
+            "CPU": cf["num_cpus_for_driver"],
+            "GPU": 0 if cf["_fake_gpus"] else cf["num_gpus"],
+        }
+        rollout_workers = [
+            {
+                "CPU": cf["num_cpus_per_worker"],
+                "GPU": cf["num_gpus_per_worker"],
+                **cf["custom_resources_per_worker"],
+            }
+            for _ in range(cf["num_workers"])
+        ]
+
+        bundles = [local_worker] + rollout_workers
+
+        if cf["evaluation_interval"]:
+            # Evaluation workers.
+            # Note: The local eval worker is located on the driver CPU.
+            bundles += [
+                {
+                    "CPU": eval_cf.get(
+                        "num_cpus_per_worker", cf["num_cpus_per_worker"]
+                    ),
+                    "GPU": eval_cf.get(
+                        "num_gpus_per_worker", cf["num_gpus_per_worker"]
+                    ),
+                    **eval_cf.get(
+                        "custom_resources_per_worker", cf["custom_resources_per_worker"]
+                    ),
+                }
+                for _ in range(cf["evaluation_num_workers"])
+            ]
+
+        # In case our I/O reader/writer requires conmpute resources.
+        bundles += get_offline_io_resource_bundles(cf)
+
         # Return PlacementGroupFactory containing all needed resources
         # (already properly defined as device bundles).
         return PlacementGroupFactory(
-            bundles=[
-                {
-                    # Local worker.
-                    "CPU": cf["num_cpus_for_driver"],
-                    "GPU": 0 if cf["_fake_gpus"] else cf["num_gpus"],
-                }
-            ]
-            + [
-                {
-                    # RolloutWorkers.
-                    "CPU": cf["num_cpus_per_worker"],
-                    "GPU": cf["num_gpus_per_worker"],
-                }
-                for _ in range(cf["num_workers"])
-            ]
-            + (
-                [
-                    {
-                        # Evaluation workers.
-                        # Note: The local eval worker is located on the driver CPU.
-                        "CPU": eval_cf.get(
-                            "num_cpus_per_worker", cf["num_cpus_per_worker"]
-                        ),
-                        "GPU": eval_cf.get(
-                            "num_gpus_per_worker", cf["num_gpus_per_worker"]
-                        ),
-                    }
-                    for _ in range(cf["evaluation_num_workers"])
-                ]
-                if cf["evaluation_interval"]
-                else []
-            )
-            +
-            # In case our I/O reader/writer requires conmpute resources.
-            get_offline_io_resource_bundles(cf),
+            bundles=bundles,
             strategy=config.get("placement_strategy", "PACK"),
         )
 
