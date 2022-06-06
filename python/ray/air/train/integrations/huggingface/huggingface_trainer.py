@@ -20,7 +20,11 @@ from ray import train
 from ray.util import PublicAPI, get_node_ip_address
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import RunConfig, ScalingConfig, DatasetConfig
-from ray.air.constants import EVALUATION_DATASET_KEY, TRAIN_DATASET_KEY
+from ray.air.constants import (
+    EVALUATION_DATASET_KEY,
+    TRAIN_DATASET_KEY,
+    PREPROCESSOR_KEY,
+)
 from ray.air.preprocessor import Preprocessor
 from ray.air.train.integrations.torch import TorchTrainer
 from ray.air.trainer import GenDataset
