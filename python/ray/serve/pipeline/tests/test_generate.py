@@ -2,7 +2,7 @@ import pytest
 
 import ray
 from ray import serve
-from ray.experimental.dag import InputNode
+from ray.dag import InputNode
 from ray.serve.handle import RayServeLazySyncHandle
 from ray.serve.pipeline.generate import (
     transform_ray_dag_to_serve_dag,
@@ -23,7 +23,7 @@ from ray.serve.pipeline.tests.resources.test_dags import (
     get_multi_instantiation_class_nested_deployment_arg_dag,
     get_simple_func_dag,
 )
-from ray.experimental.dag.utils import DAGNodeNameGenerator
+from ray.dag.utils import DAGNodeNameGenerator
 
 
 def _validate_consistent_python_output(

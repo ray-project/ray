@@ -7,7 +7,7 @@ from ray.remote_function import RemoteFunction
 from ray.workflow.storage import Storage
 from ray.workflow.common import WorkflowStatus
 
-from ray.experimental.dag import DAGNode
+from ray.dag import DAGNode
 
 T0 = TypeVar("T0")
 T1 = TypeVar("T1")

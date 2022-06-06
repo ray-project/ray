@@ -167,7 +167,7 @@ class RemoteFunction:
 
                 For ray DAG building. Implementation and interface subject to changes.
                 """
-                from ray.experimental.dag.function_node import FunctionNode
+                from ray.dag.function_node import FunctionNode
 
                 return FunctionNode(func_cls._function, args, kwargs, updated_options)
 
@@ -341,6 +341,6 @@ class RemoteFunction:
         For ray DAG building. Implementation and interface subject to changes.
         """
 
-        from ray.experimental.dag.function_node import FunctionNode
+        from ray.dag.function_node import FunctionNode
 
         return FunctionNode(self._function, args, kwargs, self._default_options)

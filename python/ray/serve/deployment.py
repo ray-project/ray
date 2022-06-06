@@ -10,8 +10,8 @@ from typing import (
 )
 
 from ray.serve.context import get_global_client
-from ray.experimental.dag.class_node import ClassNode
-from ray.experimental.dag.function_node import FunctionNode
+from ray.dag.class_node import ClassNode
+from ray.dag.function_node import FunctionNode
 from ray.serve.config import (
     AutoscalingConfig,
     DeploymentConfig,

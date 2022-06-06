@@ -16,7 +16,7 @@ else:
 from typing import List, Dict, Any, TypeVar, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ray.experimental.dag.dag_node import DAGNode
+    from ray.dag.dag_node import DAGNode
 
 T = TypeVar("T")
 
@@ -43,9 +43,9 @@ class _PyObjScanner(ray.cloudpickle.CloudPickler):
         self._uuid = uuid.uuid4().hex
         _PyObjScanner._instances[self._uuid] = self
         # Register pickler override for DAGNode types.
-        from ray.experimental.dag.function_node import FunctionNode
-        from ray.experimental.dag.class_node import ClassNode, ClassMethodNode
-        from ray.experimental.dag.input_node import InputNode, InputAttributeNode
+        from ray.dag.function_node import FunctionNode
+        from ray.dag.class_node import ClassNode, ClassMethodNode
+        from ray.dag.input_node import InputNode, InputAttributeNode
         from ray.serve.pipeline.deployment_node import DeploymentNode
         from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
         from ray.serve.pipeline.deployment_function_node import DeploymentFunctionNode

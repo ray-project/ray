@@ -1,9 +1,9 @@
-from ray.experimental.dag import DAGNode
+from ray.dag import DAGNode
 
 import os
 import tempfile
 
-from ray.experimental.dag.utils import DAGNodeNameGenerator
+from ray.dag.utils import DAGNodeNameGenerator
 
 
 def check_pydot_and_graphviz():

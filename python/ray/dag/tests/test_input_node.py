@@ -4,7 +4,7 @@ request, for all DAGNode types.
 """
 
 import pytest
-from ray.experimental.dag.input_node import InputNode
+from ray.dag.input_node import InputNode
 from typing import Any, TypeVar
 
 import ray

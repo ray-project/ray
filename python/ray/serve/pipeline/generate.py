@@ -2,15 +2,15 @@ import json
 from typing import List
 from collections import OrderedDict
 
-from ray.experimental.dag import (
+from ray.dag import (
     DAGNode,
     ClassNode,
     ClassMethodNode,
     PARENT_CLASS_NODE_KEY,
 )
-from ray.experimental.dag.function_node import FunctionNode
-from ray.experimental.dag.input_node import InputNode
-from ray.experimental.dag.utils import DAGNodeNameGenerator
+from ray.dag.function_node import FunctionNode
+from ray.dag.input_node import InputNode
+from ray.dag.utils import DAGNodeNameGenerator
 from ray.serve.deployment import Deployment
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode

@@ -4,7 +4,7 @@ from ray.serve.pipeline.tests.resources.test_modules import (
     combine,
     NESTED_HANDLE_KEY,
 )
-from ray.experimental.dag.input_node import InputNode
+from ray.dag.input_node import InputNode
 
 
 def get_simple_func_dag():

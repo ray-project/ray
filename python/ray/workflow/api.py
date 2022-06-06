@@ -3,8 +3,8 @@ from typing import Dict, Set, List, Tuple, Union, Optional, Any
 import time
 
 import ray
-from ray.experimental.dag import DAGNode
-from ray.experimental.dag.input_node import DAGInputData
+from ray.dag import DAGNode
+from ray.dag.input_node import DAGInputData
 from ray.remote_function import RemoteFunction
 
 from ray.workflow import execution

@@ -1,4 +1,4 @@
-from ray.experimental.dag import DAGNode
+from ray.dag import DAGNode
 
 
 def get_indentation(num_spaces=4):

@@ -3,7 +3,7 @@ from importlib import import_module
 
 import json
 
-from ray.experimental.dag import (
+from ray.dag import (
     DAGNode,
     ClassNode,
     FunctionNode,

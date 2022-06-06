@@ -1,17 +1,17 @@
-from ray.experimental.dag.dag_node import DAGNode
-from ray.experimental.dag.function_node import FunctionNode
-from ray.experimental.dag.class_node import ClassNode, ClassMethodNode
-from ray.experimental.dag.input_node import (
+from ray.dag.dag_node import DAGNode
+from ray.dag.function_node import FunctionNode
+from ray.dag.class_node import ClassNode, ClassMethodNode
+from ray.dag.input_node import (
     InputNode,
     InputAttributeNode,
     DAGInputData,
 )
-from ray.experimental.dag.constants import (
+from ray.dag.constants import (
     PARENT_CLASS_NODE_KEY,
     PREV_CLASS_METHOD_CALL_KEY,
     DAGNODE_TYPE_KEY,
 )
-from ray.experimental.dag.vis_utils import plot
+from ray.dag.vis_utils import plot
 
 __all__ = [
     "ClassNode",

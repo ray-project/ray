@@ -1,8 +1,8 @@
 from typing import Any, Dict, List, Union
 
-from ray.experimental.dag import DAGNode
-from ray.experimental.dag.format_utils import get_dag_node_str
-from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
+from ray.dag import DAGNode
+from ray.dag.format_utils import get_dag_node_str
+from ray.dag.constants import DAGNODE_TYPE_KEY
 
 IN_CONTEXT_MANAGER = "__in_context_manager__"
 

@@ -1,6 +1,6 @@
 from typing import List
 
-from ray.experimental.dag.dag_node import DAGNode
+from ray.dag.dag_node import DAGNode
 from ray.serve.pipeline.generate import (
     transform_ray_dag_to_serve_dag,
     extract_deployments_from_serve_dag,
@@ -9,7 +9,7 @@ from ray.serve.pipeline.generate import (
     generate_executor_dag_driver_deployment,
 )
 from ray.serve.deployment import Deployment
-from ray.experimental.dag.utils import DAGNodeNameGenerator
+from ray.dag.utils import DAGNodeNameGenerator
 
 
 def build(ray_dag_root_node: DAGNode) -> List[Deployment]:

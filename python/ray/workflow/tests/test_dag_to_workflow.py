@@ -4,7 +4,7 @@ import pytest
 
 import ray
 from ray import workflow
-from ray.experimental.dag import InputNode
+from ray.dag import InputNode
 
 
 def test_dag_to_workflow_execution(workflow_start_regular_shared):
