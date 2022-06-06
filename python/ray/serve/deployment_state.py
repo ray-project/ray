@@ -286,8 +286,9 @@ class ActorReplicaWrapper:
         init_args = (
             self.deployment_name,
             self.replica_tag,
-            deployment_info.replica_config.init_args,
-            deployment_info.replica_config.init_kwargs,
+            deployment_info.replica_config.serialized_deployment_def,
+            deployment_info.replica_config.serialized_init_args,
+            deployment_info.replica_config.serialized_init_kwargs,
             deployment_info.deployment_config.to_proto_bytes(),
             version,
             self._controller_name,
@@ -309,7 +310,7 @@ class ActorReplicaWrapper:
                 # String replicaTag,
                 self.replica_tag,
                 # String deploymentDef
-                deployment_info.replica_config.func_or_class_name,
+                deployment_info.replica_config.deployment_def_name,
                 # byte[] initArgsbytes
                 msgpack_serialize(deployment_info.replica_config.init_args),
                 # byte[] deploymentConfigBytes,
