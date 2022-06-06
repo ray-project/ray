@@ -98,7 +98,7 @@ class JaxBackend(Backend):
 
         # case-insensitivize dict
         additional_resources_per_worker = worker_group.additional_resources_per_worker
-        if additional_resources_per_worker: 
+        if additional_resources_per_worker:
             additional_resources_per_worker_lower = {
                 k.lower(): v for k, v in additional_resources_per_worker.items()
             }
