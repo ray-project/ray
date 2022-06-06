@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING, Dict, Tuple, Type, Any, Optional
 import warnings
 
 from ray.air.trainer import GenDataset
-from ray.air.config import ScalingConfig, RunConfig, ScalingConfigDataClass
+from ray.air.config import ScalingConfig, RunConfig
 from ray.air.preprocessor import Preprocessor
 from ray.air.utils.checkpointing import save_preprocessor_to_dir
 from ray.tune.utils.trainable import TrainableUtil
@@ -22,7 +22,7 @@ def _convert_scaling_config_to_ray_params(
     default_ray_params: Optional[Dict[str, Any]] = None,
 ) -> "xgboost_ray.RayParams":
     default_ray_params = default_ray_params or {}
-    scaling_config_dataclass = ScalingConfigDataClass(**scaling_config)
+    scaling_config_dataclass = ScalingConfig(**scaling_config)
     resources_per_worker = scaling_config_dataclass.additional_resources_per_worker
     num_workers = scaling_config_dataclass.num_workers
     cpus_per_worker = scaling_config_dataclass.num_cpus_per_worker

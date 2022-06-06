@@ -10,7 +10,6 @@ from ray.air.constants import TRAIN_DATASET_KEY
 from ray.air.config import (
     RunConfig,
     ScalingConfig,
-    ScalingConfigDataClass,
 )
 from ray.air.preprocessor import Preprocessor
 from ray.air.result import Result
@@ -221,14 +220,14 @@ class Trainer(abc.ABC):
 
     @classmethod
     def _validate_and_get_scaling_config_data_class(
-        cls, dataclass_or_dict: Union[ScalingConfigDataClass, Dict[str, Any]]
-    ) -> ScalingConfigDataClass:
+        cls, dataclass_or_dict: Union[ScalingConfig, Dict[str, Any]]
+    ) -> ScalingConfig:
         """Return scaling config dataclass after validating updated keys."""
         if isinstance(dataclass_or_dict, dict):
             ensure_only_allowed_dict_keys_set(
                 dataclass_or_dict, cls._scaling_config_allowed_keys
             )
-            scaling_config_dataclass = ScalingConfigDataClass(**dataclass_or_dict)
+            scaling_config_dataclass = ScalingConfig(**dataclass_or_dict)
 
             return scaling_config_dataclass
 

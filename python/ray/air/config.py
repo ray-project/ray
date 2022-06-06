@@ -22,11 +22,8 @@ if TYPE_CHECKING:
     from ray.tune.stopper import Stopper
     from ray.tune.trainable import PlacementGroupFactory
 
-ScalingConfig = Dict[str, Any]
-
-
 @dataclass
-class ScalingConfigDataClass:
+class ScalingConfig:
     """Configuration for scaling training.
 
     This is the schema for the scaling_config dict, and after beta, this will be the
