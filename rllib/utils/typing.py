@@ -13,6 +13,8 @@ from typing import (
     Union,
 )
 
+from ray.rllib.utils.annotations import DeveloperAPI
+
 if TYPE_CHECKING:
     from ray.rllib.env.env_context import EnvContext
     from ray.rllib.policy.dynamic_tf_policy_v2 import DynamicTFPolicyV2
@@ -158,20 +160,26 @@ StateBatches = List[List[Any]]
 PolicyOutputType = Tuple[TensorStructType, StateBatches, Dict]
 
 # Data type that is fed into and yielded from agent connectors.
-AgentConnectorDataType = NamedTuple(
-    "AgentConnectorDataType", [("env_id", str), ("agent_id", str), ("data", Any)]
+AgentConnectorDataType = DeveloperAPI(  # API stability declaration.
+    NamedTuple(
+        "AgentConnectorDataType", [("env_id", str), ("agent_id", str), ("data", Any)]
+    )
 )
 
 # Data type that is fed into and yielded from agent connectors.
-ActionConnectorDataType = NamedTuple(
-    "ActionConnectorDataType",
-    [("env_id", str), ("agent_id", str), ("output", PolicyOutputType)],
+ActionConnectorDataType = DeveloperAPI(  # API stability declaration.
+    NamedTuple(
+        "ActionConnectorDataType",
+        [("env_id", str), ("agent_id", str), ("output", PolicyOutputType)],
+    )
 )
 
 # Final output data type of agent connectors.
-AgentConnectorsOutput = NamedTuple(
-    "AgentConnectorsOut",
-    [("for_training", Dict[str, TensorStructType]), ("for_action", "SampleBatch")],
+AgentConnectorsOutput = DeveloperAPI(  # API stability declaration.
+    NamedTuple(
+        "AgentConnectorsOut",
+        [("for_training", Dict[str, TensorStructType]), ("for_action", "SampleBatch")],
+    )
 )
 
 # Generic type var.
