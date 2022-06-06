@@ -21,12 +21,12 @@ from typing import List, Any, Callable, TypeVar, Tuple, Union
 import numpy as np
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockMetadata, BlockAccessor, BlockExecStats
-from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
-from ray.data.impl.block_list import BlockList
-from ray.data.impl.progress_bar import ProgressBar
-from ray.data.impl.remote_fn import cached_remote_fn
-from ray.data.impl.shuffle import ShuffleOp, SimpleShufflePlan
-from ray.data.impl.push_based_shuffle import PushBasedShufflePlan
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.block_list import BlockList
+from ray.data._internal.progress_bar import ProgressBar
+from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data._internal.shuffle import ShuffleOp, SimpleShufflePlan
+from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
 from ray.data.context import DatasetContext
 
 T = TypeVar("T")
