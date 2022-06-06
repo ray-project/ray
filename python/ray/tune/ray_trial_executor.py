@@ -608,7 +608,7 @@ class RayTrialExecutor:
         """
         assert trial.status == Trial.RUNNING, trial.status
         try:
-            self.save(trial, _TuneCheckpoint.MEMORY)
+            self.save(trial, CheckpointStorage.MEMORY)
             self.stop_trial(trial)
             self.set_status(trial, Trial.PAUSED)
         except Exception:
@@ -724,7 +724,7 @@ class RayTrialExecutor:
     def save(
         self,
         trial: Trial,
-        storage: str = CheckpointStorage.PERSISTENT,
+        storage: CheckpointStorage = CheckpointStorage.PERSISTENT,
         result: Optional[Dict] = None,
     ) -> _TrackedCheckpoint:
         """Saves the trial's state to a checkpoint asynchronously.

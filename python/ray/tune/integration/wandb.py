@@ -425,7 +425,7 @@ class WandbLoggerCallback(LoggerCallback):
     def log_trial_save(self, trial: "Trial"):
         if self.save_checkpoints and trial.checkpoint:
             self._trial_queues[trial].put(
-                (_QueueItem.CHECKPOINT, trial.checkpoint.value)
+                (_QueueItem.CHECKPOINT, trial.checkpoint.dir_or_data)
             )
 
     def log_trial_end(self, trial: "Trial", failed: bool = False):
