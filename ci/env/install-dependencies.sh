@@ -350,6 +350,13 @@ install_dependencies() {
     fi
   fi
 
+  # Additional default doc testing dependencies.
+  if [ "${DOC_TESTING-}" = 1 ]; then
+    # For Ray Core and Ray Serve DAG visualization docs test
+    sudo apt-get install -y graphviz
+    pip install -U pydot  # For DAG visualization
+  fi
+
   # Additional RLlib test dependencies.
   if [ "${RLLIB_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
     pip install -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_rllib.txt

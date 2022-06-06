@@ -3,7 +3,7 @@ import sys
 import pytest
 import yaml
 
-from typing import List
+from typing import List, Tuple
 from dataclasses import fields
 
 from unittest.mock import MagicMock
@@ -39,6 +39,10 @@ from ray.core.generated.gcs_service_pb2 import (
     GetAllNodeInfoReply,
     GetAllWorkerInfoReply,
 )
+from ray.core.generated.reporter_pb2 import (
+    ListLogsReply,
+    StreamLogReply,
+)
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvState as RuntimeEnvStateProto,
 )
@@ -48,6 +52,7 @@ from ray.dashboard.state_aggregator import (
     StateAPIManager,
     GCS_QUERY_FAILURE_WARNING,
     NODE_QUERY_FAILURE_WARNING,
+    _convert_filters_type,
 )
 from ray.experimental.state.api import (
     list_actors,
@@ -60,6 +65,7 @@ from ray.experimental.state.api import (
     list_runtime_envs,
 )
 from ray.experimental.state.common import (
+    SupportedFilterType,
     ActorState,
     PlacementGroupState,
     NodeState,
@@ -72,9 +78,7 @@ from ray.experimental.state.common import (
     DEFAULT_LIMIT,
 )
 from ray.experimental.state.exception import DataSourceUnavailable, RayStateApiException
-from ray.experimental.state.state_manager import (
-    StateDataSourceClient,
-)
+from ray.experimental.state.state_manager import StateDataSourceClient, IdToIpMap
 from ray.experimental.state.state_cli import (
     list_state_cli_group,
     get_state_api_output_to_print,
@@ -105,10 +109,10 @@ def verify_schema(state, result_dict: dict):
         assert k in state_fields_columns
 
 
-def generate_actor_data(id):
+def generate_actor_data(id, state=ActorTableData.ActorState.ALIVE):
     return ActorTableData(
         actor_id=id,
-        state=ActorTableData.ActorState.ALIVE,
+        state=state,
         name="abc",
         pid=1234,
         class_name="class",
@@ -135,7 +139,7 @@ def generate_node_data(id):
     )
 
 
-def generate_worker_data(id):
+def generate_worker_data(id, pid=1234):
     return WorkerTableData(
         worker_address=Address(
             raylet_id=id, ip_address="127.0.0.1", port=124, worker_id=id
@@ -143,6 +147,7 @@ def generate_worker_data(id):
         is_alive=True,
         timestamp=1234,
         worker_type=WorkerType.WORKER,
+        pid=pid,
     )
 
 
@@ -180,13 +185,13 @@ def generate_object_info(obj_id):
     )
 
 
-def generate_runtime_env_info(runtime_env, creation_time=None):
+def generate_runtime_env_info(runtime_env, creation_time=None, success=True):
     return GetRuntimeEnvsInfoReply(
         runtime_env_states=[
             RuntimeEnvStateProto(
                 runtime_env=runtime_env.serialize(),
                 ref_cnt=1,
-                success=True,
+                success=success,
                 error=None,
                 creation_time_ms=creation_time,
             )
@@ -194,8 +199,32 @@ def generate_runtime_env_info(runtime_env, creation_time=None):
     )
 
 
-def list_api_options(timeout: int = DEFAULT_RPC_TIMEOUT, limit: int = DEFAULT_LIMIT):
-    return ListApiOptions(limit=limit, timeout=timeout, _server_timeout_multiplier=1.0)
+def create_api_options(
+    timeout: int = DEFAULT_RPC_TIMEOUT,
+    limit: int = DEFAULT_LIMIT,
+    filters: List[Tuple[str, SupportedFilterType]] = None,
+):
+    if not filters:
+        filters = []
+    return ListApiOptions(
+        limit=limit, timeout=timeout, filters=filters, _server_timeout_multiplier=1.0
+    )
+
+
+def test_id_to_ip_map():
+    node_id_1 = "1"
+    node_ip_1 = "ip_1"
+    node_id_2 = "2"
+    node_ip_2 = "ip_2"
+    m = IdToIpMap()
+    m.put(node_id_1, node_ip_1)
+    assert m.get_ip(node_ip_2) is None
+    assert m.get_node_id(node_id_2) is None
+    assert m.get_ip(node_id_1) == node_ip_1
+    assert m.get_node_id(node_ip_1) == node_id_1
+    m.pop(node_id_1)
+    assert m.get_ip(node_id_1) is None
+    assert m.get_node_id(node_id_1) is None
 
 
 @pytest.mark.asyncio
@@ -203,9 +232,12 @@ async def test_api_manager_list_actors(state_api_manager):
     data_source_client = state_api_manager.data_source_client
     actor_id = b"1234"
     data_source_client.get_all_actor_info.return_value = GetAllActorInfoReply(
-        actor_table_data=[generate_actor_data(actor_id), generate_actor_data(b"12345")]
+        actor_table_data=[
+            generate_actor_data(actor_id),
+            generate_actor_data(b"12345", state=ActorTableData.ActorState.DEAD),
+        ]
     )
-    result = await state_api_manager.list_actors(option=list_api_options())
+    result = await state_api_manager.list_actors(option=create_api_options())
     data = result.result
     actor_data = list(data.values())[0]
     verify_schema(ActorState, actor_data)
@@ -214,16 +246,29 @@ async def test_api_manager_list_actors(state_api_manager):
     Test limit
     """
     assert len(data) == 2
-    result = await state_api_manager.list_actors(option=list_api_options(limit=1))
+    result = await state_api_manager.list_actors(option=create_api_options(limit=1))
     data = result.result
     assert len(data) == 1
+
+    """
+    Test filters
+    """
+    # If the column is not supported for filtering, it should raise an exception.
+    with pytest.raises(ValueError):
+        result = await state_api_manager.list_actors(
+            option=create_api_options(filters=[("stat", "DEAD")])
+        )
+    result = await state_api_manager.list_actors(
+        option=create_api_options(filters=[("state", "DEAD")])
+    )
+    assert len(result.result) == 1
 
     """
     Test error handling
     """
     data_source_client.get_all_actor_info.side_effect = DataSourceUnavailable()
     with pytest.raises(DataSourceUnavailable) as exc_info:
-        result = await state_api_manager.list_actors(option=list_api_options(limit=1))
+        result = await state_api_manager.list_actors(option=create_api_options(limit=1))
     assert exc_info.value.args[0] == GCS_QUERY_FAILURE_WARNING
 
 
@@ -239,7 +284,7 @@ async def test_api_manager_list_pgs(state_api_manager):
             ]
         )
     )
-    result = await state_api_manager.list_placement_groups(option=list_api_options())
+    result = await state_api_manager.list_placement_groups(option=create_api_options())
     data = result.result
     data = list(data.values())[0]
     verify_schema(PlacementGroupState, data)
@@ -249,10 +294,23 @@ async def test_api_manager_list_pgs(state_api_manager):
     """
     assert len(result.result) == 2
     result = await state_api_manager.list_placement_groups(
-        option=list_api_options(limit=1)
+        option=create_api_options(limit=1)
     )
     data = result.result
     assert len(data) == 1
+
+    """
+    Test filters
+    """
+    # If the column is not supported for filtering, it should raise an exception.
+    with pytest.raises(ValueError):
+        result = await state_api_manager.list_placement_groups(
+            option=create_api_options(filters=[("stat", "DEAD")])
+        )
+    result = await state_api_manager.list_placement_groups(
+        option=create_api_options(filters=[("placement_group_id", bytearray(id).hex())])
+    )
+    assert len(result.result) == 1
 
     """
     Test error handling
@@ -262,7 +320,7 @@ async def test_api_manager_list_pgs(state_api_manager):
     )
     with pytest.raises(DataSourceUnavailable) as exc_info:
         result = await state_api_manager.list_placement_groups(
-            option=list_api_options(limit=1)
+            option=create_api_options(limit=1)
         )
     assert exc_info.value.args[0] == GCS_QUERY_FAILURE_WARNING
 
@@ -274,7 +332,7 @@ async def test_api_manager_list_nodes(state_api_manager):
     data_source_client.get_all_node_info.return_value = GetAllNodeInfoReply(
         node_info_list=[generate_node_data(id), generate_node_data(b"12345")]
     )
-    result = await state_api_manager.list_nodes(option=list_api_options())
+    result = await state_api_manager.list_nodes(option=create_api_options())
     data = result.result
     data = list(data.values())[0]
     verify_schema(NodeState, data)
@@ -283,16 +341,29 @@ async def test_api_manager_list_nodes(state_api_manager):
     Test limit
     """
     assert len(result.result) == 2
-    result = await state_api_manager.list_nodes(option=list_api_options(limit=1))
+    result = await state_api_manager.list_nodes(option=create_api_options(limit=1))
     data = result.result
     assert len(data) == 1
+
+    """
+    Test filters
+    """
+    # If the column is not supported for filtering, it should raise an exception.
+    with pytest.raises(ValueError):
+        result = await state_api_manager.list_nodes(
+            option=create_api_options(filters=[("stat", "DEAD")])
+        )
+    result = await state_api_manager.list_nodes(
+        option=create_api_options(filters=[("node_id", bytearray(id).hex())])
+    )
+    assert len(result.result) == 1
 
     """
     Test error handling
     """
     data_source_client.get_all_node_info.side_effect = DataSourceUnavailable()
     with pytest.raises(DataSourceUnavailable) as exc_info:
-        result = await state_api_manager.list_nodes(option=list_api_options(limit=1))
+        result = await state_api_manager.list_nodes(option=create_api_options(limit=1))
     assert exc_info.value.args[0] == GCS_QUERY_FAILURE_WARNING
 
 
@@ -302,11 +373,11 @@ async def test_api_manager_list_workers(state_api_manager):
     id = b"1234"
     data_source_client.get_all_worker_info.return_value = GetAllWorkerInfoReply(
         worker_table_data=[
-            generate_worker_data(id),
-            generate_worker_data(b"12345"),
+            generate_worker_data(id, pid=1),
+            generate_worker_data(b"12345", pid=2),
         ]
     )
-    result = await state_api_manager.list_workers(option=list_api_options())
+    result = await state_api_manager.list_workers(option=create_api_options())
     data = result.result
     data = list(data.values())[0]
     verify_schema(WorkerState, data)
@@ -315,16 +386,36 @@ async def test_api_manager_list_workers(state_api_manager):
     Test limit
     """
     assert len(result.result) == 2
-    result = await state_api_manager.list_workers(option=list_api_options(limit=1))
+    result = await state_api_manager.list_workers(option=create_api_options(limit=1))
     data = result.result
     assert len(data) == 1
+
+    """
+    Test filters
+    """
+    # If the column is not supported for filtering, it should raise an exception.
+    with pytest.raises(ValueError):
+        result = await state_api_manager.list_workers(
+            option=create_api_options(filters=[("stat", "DEAD")])
+        )
+    result = await state_api_manager.list_workers(
+        option=create_api_options(filters=[("worker_id", bytearray(id).hex())])
+    )
+    assert len(result.result) == 1
+    # Make sure it works with int type.
+    result = await state_api_manager.list_workers(
+        option=create_api_options(filters=[("pid", 2)])
+    )
+    assert len(result.result) == 1
 
     """
     Test error handling
     """
     data_source_client.get_all_worker_info.side_effect = DataSourceUnavailable()
     with pytest.raises(DataSourceUnavailable) as exc_info:
-        result = await state_api_manager.list_workers(option=list_api_options(limit=1))
+        result = await state_api_manager.list_workers(
+            option=create_api_options(limit=1)
+        )
     assert exc_info.value.args[0] == GCS_QUERY_FAILURE_WARNING
 
 
@@ -341,11 +432,12 @@ async def test_api_manager_list_tasks(state_api_manager):
     first_task_name = "1"
     second_task_name = "2"
     data_source_client.get_task_info = AsyncMock()
+    id = b"1234"
     data_source_client.get_task_info.side_effect = [
-        generate_task_data(b"1234", first_task_name),
+        generate_task_data(id, first_task_name),
         generate_task_data(b"2345", second_task_name),
     ]
-    result = await state_api_manager.list_tasks(option=list_api_options())
+    result = await state_api_manager.list_tasks(option=create_api_options())
     data_source_client.get_task_info.assert_any_await("1", timeout=DEFAULT_RPC_TIMEOUT)
     data_source_client.get_task_info.assert_any_await("2", timeout=DEFAULT_RPC_TIMEOUT)
     data = result.result
@@ -358,12 +450,24 @@ async def test_api_manager_list_tasks(state_api_manager):
     Test limit
     """
     data_source_client.get_task_info.side_effect = [
-        generate_task_data(b"1234", first_task_name),
+        generate_task_data(id, first_task_name),
         generate_task_data(b"2345", second_task_name),
     ]
-    result = await state_api_manager.list_tasks(option=list_api_options(limit=1))
+    result = await state_api_manager.list_tasks(option=create_api_options(limit=1))
     data = result.result
     assert len(data) == 1
+
+    """
+    Test filters
+    """
+    data_source_client.get_task_info.side_effect = [
+        generate_task_data(id, first_task_name),
+        generate_task_data(b"2345", second_task_name),
+    ]
+    result = await state_api_manager.list_tasks(
+        option=create_api_options(filters=[("task_id", bytearray(id).hex())])
+    )
+    assert len(result.result) == 1
 
     """
     Test error handling
@@ -372,7 +476,7 @@ async def test_api_manager_list_tasks(state_api_manager):
         DataSourceUnavailable(),
         generate_task_data(b"2345", second_task_name),
     ]
-    result = await state_api_manager.list_tasks(option=list_api_options(limit=1))
+    result = await state_api_manager.list_tasks(option=create_api_options(limit=1))
     # Make sure warnings are returned.
     warning = result.partial_failure_warning
     assert (
@@ -388,7 +492,7 @@ async def test_api_manager_list_tasks(state_api_manager):
         DataSourceUnavailable(),
     ]
     with pytest.raises(DataSourceUnavailable):
-        result = await state_api_manager.list_tasks(option=list_api_options(limit=1))
+        result = await state_api_manager.list_tasks(option=create_api_options(limit=1))
 
 
 @pytest.mark.skipif(
@@ -408,7 +512,7 @@ async def test_api_manager_list_objects(state_api_manager):
         GetNodeStatsReply(core_workers_stats=[generate_object_info(obj_1_id)]),
         GetNodeStatsReply(core_workers_stats=[generate_object_info(obj_2_id)]),
     ]
-    result = await state_api_manager.list_objects(option=list_api_options())
+    result = await state_api_manager.list_objects(option=create_api_options())
     data = result.result
     data_source_client.get_object_info.assert_any_await(
         "1", timeout=DEFAULT_RPC_TIMEOUT
@@ -428,9 +532,21 @@ async def test_api_manager_list_objects(state_api_manager):
         GetNodeStatsReply(core_workers_stats=[generate_object_info(obj_1_id)]),
         GetNodeStatsReply(core_workers_stats=[generate_object_info(obj_2_id)]),
     ]
-    result = await state_api_manager.list_objects(option=list_api_options(limit=1))
+    result = await state_api_manager.list_objects(option=create_api_options(limit=1))
     data = result.result
     assert len(data) == 1
+
+    """
+    Test filters
+    """
+    data_source_client.get_object_info.side_effect = [
+        GetNodeStatsReply(core_workers_stats=[generate_object_info(obj_1_id)]),
+        GetNodeStatsReply(core_workers_stats=[generate_object_info(obj_2_id)]),
+    ]
+    result = await state_api_manager.list_objects(
+        option=create_api_options(filters=[("object_id", bytearray(obj_1_id).hex())])
+    )
+    assert len(result.result) == 1
 
     """
     Test error handling
@@ -439,7 +555,7 @@ async def test_api_manager_list_objects(state_api_manager):
         DataSourceUnavailable(),
         GetNodeStatsReply(core_workers_stats=[generate_object_info(obj_2_id)]),
     ]
-    result = await state_api_manager.list_objects(option=list_api_options(limit=1))
+    result = await state_api_manager.list_objects(option=create_api_options(limit=1))
     # Make sure warnings are returned.
     warning = result.partial_failure_warning
     assert (
@@ -455,7 +571,9 @@ async def test_api_manager_list_objects(state_api_manager):
         DataSourceUnavailable(),
     ]
     with pytest.raises(DataSourceUnavailable):
-        result = await state_api_manager.list_objects(option=list_api_options(limit=1))
+        result = await state_api_manager.list_objects(
+            option=create_api_options(limit=1)
+        )
 
 
 @pytest.mark.skipif(
@@ -476,7 +594,8 @@ async def test_api_manager_list_runtime_envs(state_api_manager):
         ),
         generate_runtime_env_info(RuntimeEnv(**{"pip": ["ray"]}), creation_time=10),
     ]
-    result = await state_api_manager.list_runtime_envs(option=list_api_options())
+    result = await state_api_manager.list_runtime_envs(option=create_api_options())
+    print(result)
     data = result.result
     data_source_client.get_runtime_envs_info.assert_any_await(
         "1", timeout=DEFAULT_RPC_TIMEOUT
@@ -507,9 +626,26 @@ async def test_api_manager_list_runtime_envs(state_api_manager):
         ),
         generate_runtime_env_info(RuntimeEnv(**{"pip": ["ray"]})),
     ]
-    result = await state_api_manager.list_runtime_envs(option=list_api_options(limit=1))
+    result = await state_api_manager.list_runtime_envs(
+        option=create_api_options(limit=1)
+    )
     data = result.result
     assert len(data) == 1
+
+    """
+    Test filters
+    """
+    data_source_client.get_runtime_envs_info.side_effect = [
+        generate_runtime_env_info(RuntimeEnv(**{"pip": ["requests"]}), success=True),
+        generate_runtime_env_info(
+            RuntimeEnv(**{"pip": ["tensorflow"]}), creation_time=15, success=True
+        ),
+        generate_runtime_env_info(RuntimeEnv(**{"pip": ["ray"]}), success=False),
+    ]
+    result = await state_api_manager.list_runtime_envs(
+        option=create_api_options(filters=[("success", False)])
+    )
+    assert len(result.result) == 1
 
     """
     Test error handling
@@ -519,10 +655,11 @@ async def test_api_manager_list_runtime_envs(state_api_manager):
         generate_runtime_env_info(RuntimeEnv(**{"pip": ["ray"]})),
         generate_runtime_env_info(RuntimeEnv(**{"pip": ["ray"]})),
     ]
-    result = await state_api_manager.list_runtime_envs(option=list_api_options(limit=1))
+    result = await state_api_manager.list_runtime_envs(
+        option=create_api_options(limit=1)
+    )
     # Make sure warnings are returned.
     warning = result.partial_failure_warning
-    print(warning)
     assert (
         NODE_QUERY_FAILURE_WARNING.format(
             type="agent", total=3, network_failures=1, log_command="dashboard_agent.log"
@@ -538,8 +675,47 @@ async def test_api_manager_list_runtime_envs(state_api_manager):
     ]
     with pytest.raises(DataSourceUnavailable):
         result = await state_api_manager.list_runtime_envs(
-            option=list_api_options(limit=1)
+            option=create_api_options(limit=1)
         )
+
+
+def test_type_conversion():
+    # Test string
+    r = _convert_filters_type([("actor_id", "123")], ActorState)
+    assert r[0][1] == "123"
+    r = _convert_filters_type([("actor_id", "abcd")], ActorState)
+    assert r[0][1] == "abcd"
+    r = _convert_filters_type([("actor_id", "True")], ActorState)
+    assert r[0][1] == "True"
+
+    # Test boolean
+    r = _convert_filters_type([("success", "1")], RuntimeEnvState)
+    assert r[0][1]
+    r = _convert_filters_type([("success", "True")], RuntimeEnvState)
+    assert r[0][1]
+    r = _convert_filters_type([("success", "true")], RuntimeEnvState)
+    assert r[0][1]
+    with pytest.raises(ValueError):
+        r = _convert_filters_type([("success", "random_string")], RuntimeEnvState)
+    r = _convert_filters_type([("success", "false")], RuntimeEnvState)
+    assert r[0][1] is False
+    r = _convert_filters_type([("success", "False")], RuntimeEnvState)
+    assert r[0][1] is False
+    r = _convert_filters_type([("success", "0")], RuntimeEnvState)
+    assert r[0][1] is False
+
+    # Test int
+    r = _convert_filters_type([("pid", "0")], ObjectState)
+    assert r[0][1] == 0
+    r = _convert_filters_type([("pid", "123")], ObjectState)
+    assert r[0][1] == 123
+    # Only integer can be provided.
+    with pytest.raises(ValueError):
+        r = _convert_filters_type([("pid", "123.3")], ObjectState)
+    with pytest.raises(ValueError):
+        r = _convert_filters_type([("pid", "abc")], ObjectState)
+
+    # currently, there's no schema that has float column.
 
 
 """
@@ -661,6 +837,28 @@ async def test_state_data_source_client(ray_start_cluster):
         client.register_agent_client(node_id, ip, port)
         result = await client.get_runtime_envs_info(node_id)
         assert isinstance(result, GetRuntimeEnvsInfoReply)
+
+    """
+    Test logs
+    """
+    with pytest.raises(ValueError):
+        result = await client.list_logs("1234", "*")
+    with pytest.raises(ValueError):
+        result = await client.stream_log("1234", "raylet.out", True, 100, 1, 5)
+
+    wait_for_condition(lambda: len(ray.nodes()) == 2)
+    # The node information should've been registered in the previous section.
+    for node in ray.nodes():
+        node_id = node["NodeID"]
+        result = await client.list_logs(node_id, timeout=30, glob_filter="*")
+        assert isinstance(result, ListLogsReply)
+
+        stream = await client.stream_log(node_id, "raylet.out", False, 10, 1, 5)
+        async for logs in stream:
+            log_lines = len(logs.data.decode().split("\n"))
+            assert isinstance(logs, StreamLogReply)
+            assert log_lines >= 10
+            assert log_lines <= 11
 
     """
     Test the exception is raised when the RPC error occurs.
@@ -1154,7 +1352,7 @@ async def test_cli_format_print(state_api_manager):
     data_source_client.get_all_actor_info.return_value = GetAllActorInfoReply(
         actor_table_data=[generate_actor_data(actor_id), generate_actor_data(b"12345")]
     )
-    result = await state_api_manager.list_actors(option=list_api_options())
+    result = await state_api_manager.list_actors(option=create_api_options())
     result = result.result
     # If the format is not yaml, it will raise an exception.
     yaml.load(
@@ -1169,6 +1367,70 @@ async def test_cli_format_print(state_api_manager):
         get_state_api_output_to_print(result, format="random_format")
     with pytest.raises(NotImplementedError):
         get_state_api_output_to_print(result, format=AvailableFormat.TABLE)
+
+
+def test_filter(shutdown_only):
+    ray.init()
+
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            self.obj = None
+
+        def ready(self):
+            pass
+
+        def put(self):
+            self.obj = ray.put(123)
+
+        def getpid(self):
+            import os
+
+            return os.getpid()
+
+    """
+    Test basic case.
+    """
+    a = Actor.remote()
+    b = Actor.remote()
+
+    ray.get([a.ready.remote(), b.ready.remote()])
+    ray.kill(b)
+
+    def verify():
+        result = list_actors(filters=[("state", "DEAD")])
+        return len(result) == 1
+
+    wait_for_condition(verify)
+
+    """
+    Test filter with different types (integer).
+    """
+    obj_1 = ray.put(123)  # noqa
+    ray.get(a.put.remote())
+    pid = ray.get(a.getpid.remote())
+
+    def verify():
+        # There's only 1 object.
+        result = list_objects(
+            filters=[("pid", pid), ("reference_type", "LOCAL_REFERENCE")]
+        )
+        return len(result) == 1
+
+    wait_for_condition(verify)
+
+    """
+    Test CLI
+    """
+    dead_actor_id = list(list_actors(filters=[("state", "DEAD")]))[0]
+    alive_actor_id = list(list_actors(filters=[("state", "ALIVE")]))[0]
+    runner = CliRunner()
+    result = runner.invoke(
+        list_state_cli_group, ["actors", "--filter", "state", "DEAD"]
+    )
+    assert result.exit_code == 0
+    assert dead_actor_id in result.output
+    assert alive_actor_id not in result.output
 
 
 if __name__ == "__main__":
