@@ -132,10 +132,10 @@ def get_filter_config(shape):
             "No default configuration for obs shape {}".format(shape)
             + ", you must specify `conv_filters` manually as a model option. "
             "Default configurations are only available for inputs of the following "
-              "shapes: [42, 42, K], [84, 84, K], [10, 10, K], [240, 320, K] and "
-              " [480, 640, K]. You may "
-              "alternatively "
-              "want "
+            "shapes: [42, 42, K], [84, 84, K], [10, 10, K], [240, 320, K] and "
+            " [480, 640, K]. You may "
+            "alternatively "
+            "want "
             "to use a custom model or preprocessor."
         )
 
