@@ -144,7 +144,9 @@ class ReplayBuffer(ParallelIteratorWorker):
         warn_replay_capacity(item=batch, num_items=self.capacity / batch.count)
 
         if self._storage_unit == StorageUnit.TIMESTEPS:
-            self._add_single_batch(batch, **kwargs)
+            timeslices = batch.timeslices(1)
+            for t in timeslices:
+                self._add_single_batch(t, **kwargs)
 
         elif self._storage_unit == StorageUnit.SEQUENCES:
             timestep_count = 0
@@ -170,6 +172,7 @@ class ReplayBuffer(ParallelIteratorWorker):
                             "to be added to it. Some samples may be "
                             "dropped."
                         )
+
         elif self._storage_unit == StorageUnit.FRAGMENTS:
             self._add_single_batch(batch, **kwargs)
 

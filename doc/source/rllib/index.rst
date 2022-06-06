@@ -132,7 +132,7 @@ click on the dropdowns below:
 
        -  |pytorch| :ref:`Model-Based Meta-Policy-Optimization (MBMPO) <mbmpo>`
 
-       -  |pytorch| :ref:`Dreamer (DREAMER) <dreamer>`
+       -  |pytorch| :ref:`Dreamer <dreamer>`
 
        -  |pytorch| :ref:`Conservative Q-Learning (CQL) <cql>`
 

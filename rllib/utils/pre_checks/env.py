@@ -418,7 +418,7 @@ def _check_done(done, base_env=False, agent_ids=None):
                         f"env.get_agent_ids() are: {agent_ids}"
                     )
                     raise ValueError(error)
-    elif not isinstance(done, (bool, np.bool, np.bool_)):
+    elif not isinstance(done, (bool, np.bool_)):
         error = (
             "Your step function must return a done that is a boolean. But instead "
             f"was a {type(done)}"
