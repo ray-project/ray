@@ -843,12 +843,15 @@ class _MockTrial(Trial):
         self._default_result_or_future = None
 
     def on_checkpoint(self, checkpoint):
-        self.restored_checkpoint = checkpoint.dir_or_data
+        if checkpoint.storage_mode == CheckpointStorage.MEMORY:
+            self.restored_checkpoint = checkpoint.dir_or_data["data"]
+        else:
+            self.restored_checkpoint = checkpoint.dir_or_data
 
     @property
     def checkpoint(self):
         return _TrackedCheckpoint(
-            dir_or_data=self.trainable_name,
+            dir_or_data={"data": self.trainable_name},
             storage_mode=CheckpointStorage.MEMORY,
             metrics=None,
         )

@@ -441,7 +441,7 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
             @property
             def checkpoint(self):
                 return _TrackedCheckpoint(
-                    dir_or_data="None",
+                    dir_or_data={"data": "None"},
                     storage_mode=CheckpointStorage.MEMORY,
                     metrics={},
                 )
