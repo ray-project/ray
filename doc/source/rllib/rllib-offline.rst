@@ -76,7 +76,7 @@ This example plot shows the Q-value metric in addition to importance sampling (I
 
 .. code-block:: python
 
-    trainer = DQNTrainer(...)
+    trainer = DQN(...)
     ...  # train policy offline
 
     from ray.rllib.offline.json_reader import JsonReader
@@ -106,7 +106,12 @@ This `runnable example <https://github.com/ray-project/ray/blob/master/rllib/exa
 On-policy algorithms and experience postprocessing
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-RLlib assumes that input batches are of `postprocessed experiences <https://github.com/ray-project/ray/blob/cf21c634a390745ba6f8916b1f34f7b0453bc7dd/rllib/policy/policy.py#L376>`__. This isn't typically critical for off-policy algorithms (e.g., DQN's `post-processing <https://github.com/ray-project/ray/blob/cf21c634a390745ba6f8916b1f34f7b0453bc7dd/rllib/agents/dqn/dqn_tf_policy.py#L387>`__ is only needed if ``n_step > 1`` or ``replay_buffer_config.worker_side_prioritization: True``). For off-policy algorithms, you can also safely set the ``postprocess_inputs: True`` config to auto-postprocess data.
+RLlib assumes that input batches are of
+`postprocessed experiences <https://github.com/ray-project/ray/blob/master/rllib/policy/policy.py#L434>`__.
+This isn't typically critical for off-policy algorithms
+(e.g., DQN's `post-processing <https://github.com/ray-project/ray/blob/master/rllib/algorithms/dqn/dqn_tf_policy.py#L434>`__
+is only needed if ``n_step > 1`` or ``replay_buffer_config.worker_side_prioritization: True``).
+For off-policy algorithms, you can also safely set the ``postprocess_inputs: True`` config to auto-postprocess data.
 
 However, for on-policy algorithms like PPO, you'll need to pass in the extra values added during policy evaluation and postprocessing to ``batch_builder.add_values()``, e.g., ``logits``, ``vf_preds``, ``value_target``, and ``advantages`` for PPO. This is needed since the calculation of these values depends on the parameters of the *behaviour* policy, which RLlib does not have access to in the offline setting (in online training, these values are automatically added during policy evaluation).
 
