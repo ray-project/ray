@@ -396,9 +396,7 @@ def test_tune_tensorflow_mnist_gpu(ray_start_4_cpus_2_gpus):
 
 
 def test_tune_jax_mnist_gpu(ray_start_4_cpus_2_gpus):
-    tune_jax_mnist(
-        num_workers=1, use_gpu=True, num_samples=1, num_gpus_per_worker=2
-    )
+    tune_jax_mnist(num_workers=1, use_gpu=True, num_samples=1, num_gpus_per_worker=2)
 
 
 def test_train_linear_dataset_gpu(ray_start_4_cpus_2_gpus):
