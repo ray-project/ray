@@ -1,7 +1,8 @@
-.. _use_pretrained_model:
+.. _use-pretrained-model:
 
 Use pretrained model
 ========================
+
 Ray Air moves end to end machine learning workloads seamlessly through the construct of ``Checkpoint``. ``Checkpoint``
 is the output of training and tuning as well as the input to downstream inference tasks.
 

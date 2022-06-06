@@ -4,7 +4,10 @@
 import ray
 import tensorflow as tf
 from ray.air.batch_predictor import BatchPredictor
-from ray.air.predictors.integrations.tensorflow import to_air_checkpoint, TensorflowPredictor
+from ray.air.predictors.integrations.tensorflow import (
+    to_air_checkpoint,
+    TensorflowPredictor,
+)
 
 
 # to simulate having a pretrained model.
@@ -20,7 +23,9 @@ def build_model() -> tf.keras.Model:
 
 model = build_model()
 checkpoint = to_air_checkpoint(model)
-batch_predictor = BatchPredictor(checkpoint, TensorflowPredictor, model_definition=build_model)
+batch_predictor = BatchPredictor(
+    checkpoint, TensorflowPredictor, model_definition=build_model
+)
 predict_dataset = ray.data.range(3)
 predictions = batch_predictor.predict(predict_dataset)
 

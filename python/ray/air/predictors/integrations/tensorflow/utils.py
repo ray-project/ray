@@ -16,7 +16,7 @@ def to_air_checkpoint(
         model: A pretrained model.
         preprocessor: A fitted preprocessor. The preprocessing logic will
             be applied to serve/inference.
-        """
+    """
     checkpoint = Checkpoint.from_dict(
         {PREPROCESSOR_KEY: preprocessor, MODEL_KEY: model.get_weights()}
     )
