@@ -118,9 +118,25 @@ You can also change the partitioning of a Dataset using :meth:`ds.random_shuffle
 
 ..
   https://docs.google.com/drawings/d/132jhE3KXZsf29ho1yUdPrCHB9uheHBWHJhDQMXqIVPA/edit
+  
+Fault tolerance
+===============
 
+Datasets relies on :ref:`task-based fault tolerance <task-fault-tolerance>` in Ray core. Specifically, a ``Dataset`` will be automatically recovered by Ray in case of failures. This works through **lineage reconstruction**: a Dataset is a collection of Ray objects stored in shared memory, and if any of these objects are lost, then Ray will recreate them by re-executing the task(s) that created them.
+
+There are a few cases that are not currently supported:
+1. If the original creator of the ``Dataset`` dies. This is because the creator stores the metadata for the :ref:`objects <object-fault-tolerance>` that comprise the ``Dataset``.
+2. For a :meth:`DatasetPipeline.split() <ray.data.DatasetPipeline.split>`, we do not support recovery for a consumer failure. When there are multiple consumers, they must all read the split pipeline in lockstep. To recover from this case, the pipeline and all consumers must be restarted together.
+3. The ``compute=actors`` option for transformations.
+
+Execution and Memory Management
+===============================
+
+See :ref:`Execution and Memory Management <data_advanced>` for more details about how Datasets manages memory and optimizations such as lazy vs eager execution.
+
+-------------------------
 Resource Allocation Model
-=========================
+-------------------------
 
 Unlike other libraries in Ray's ML ecosystem, such as Tune and Train, Datasets does not
 natively use placement groups to allocate resources for Datasets workloads (tasks and
@@ -136,17 +152,38 @@ scheduled within a placement group by specifying a placement group as the global
 scheduling strategy for all Datasets tasks/actors, using the global
 :class:`DatasetContext <ray.data.DatasetContext>`.
 
-.. note::
+Example: Datasets in Tune
+=========================
 
-  This is an experimental feature subject to change as we work to improve our
-  resource allocation model for Datasets.
+.. _datasets_tune:
 
-.. literalinclude:: ./doc_code/key_concepts.py
-  :language: python
-  :start-after: __resource_allocation_begin__
-  :end-before: __resource_allocation_end__
+Here's an example of how you can configure Datasets to run within Tune trials, which
+is the typical case of when you'd encounter placement groups with Datasets. Two
+scenarios are shown: running outside the trial group, and running within the trial placement group.
 
-Execution and Memory Management
-===============================
+.. tabbed:: Outside Trial Placement Group
 
-See :ref:`Execution and Memory Management <data_advanced>` for more details about how Datasets manages memory and optimizations such as lazy vs eager execution.
+    By default, Dataset tasks escape the trial placement group. This means they will use
+    spare cluster resources for execution, which can be problematic since the availability
+    of such resources is not guaranteed.
+
+    .. literalinclude:: ./doc_code/key_concepts.py
+      :language: python
+      :start-after: __resource_allocation_1_begin__
+      :end-before: __resource_allocation_1_end__
+
+.. tabbed:: Inside Trial Placement Group
+
+    Datasets can be configured to use resources within the trial's placement group. This
+    requires you to explicitly reserve resource bundles in the placement group for
+    use by Datasets.
+
+    .. literalinclude:: ./doc_code/key_concepts.py
+      :language: python
+      :start-after: __resource_allocation_2_begin__
+      :end-before: __resource_allocation_2_end__
+
+    .. note::
+
+      This is an experimental feature subject to change as we work to improve our
+      resource allocation model for Datasets.

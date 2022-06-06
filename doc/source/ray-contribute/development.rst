@@ -70,7 +70,7 @@ Prepare the Python environment
 .. tip::
 
   To setup an isolated Anaconda environment, see :ref:`ray_anaconda`.
-  
+
 You will probably want to have some type of Python virtual environment. For example you could use Python's integrated ``venv`` module to create one:
 
 .. code-block:: shell
@@ -144,7 +144,7 @@ To build Ray on Ubuntu, run the following commands:
 
   sudo apt-get update
   sudo apt-get install -y build-essential curl unzip psmisc
-  
+
   # Install Bazel.
   ci/env/install-bazel.sh
 
@@ -218,7 +218,7 @@ directory will take effect without reinstalling the package.
 
 .. warning:: if you run ``python setup.py install``, files will be copied from the Ray directory to a directory of Python packages (``/lib/python3.6/site-packages/ray``). This means that changes you make to files in the Ray directory will not have any effect.
 
-.. tip:: 
+.. tip::
 
   If your machine is running out of memory during the build or the build is causing other programs to crash, try adding the following line to ``~/.bazelrc``:
 
@@ -244,7 +244,7 @@ The following links were correct during the writing of this section. In case the
 You can also use the included script to install Bazel:
 
 .. code-block:: bash
-  
+
   # Install Bazel.
   ray/ci/env/install-bazel.sh
   # (Windows users: please manually place Bazel in your PATH, and point
@@ -287,7 +287,7 @@ Environment variables that influence builds
 
 You can tweak the build with the following environment variables (when running ``pip install -e .`` or ``python setup.py install``):
 
-- ``BUILD_JAVA``: If set and equal to ``1``, extra build steps will be executed
+- ``RAY_INSTALL_JAVA``: If set and equal to ``1``, extra build steps will be executed
   to build java portions of the codebase
 - ``RAY_INSTALL_CPP``: If set and equal to ``1``, ``ray-cpp`` will be installed
 - ``RAY_DISABLE_EXTRA_CPP``: If set and equal to ``1``, a regular (non -
