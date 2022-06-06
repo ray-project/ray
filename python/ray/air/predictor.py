@@ -70,6 +70,30 @@ class Predictor(abc.ABC):
         """
         raise NotImplementedError
 
+    @PublicAPI(stability="alpha")
+    def predict(self, data: DataBatchType, **kwargs) -> DataBatchType:
+        """Perform inference on a batch of data.
+
+        Args:
+            data: A batch of input data of type ``DataBatchType``.
+            kwargs: Arguments specific to predictor implementations. These are passed
+            directly to ``_predict_pandas``.
+
+        Returns:
+            DataBatchType: Prediction result.
+        """
+
+        pass
+
+        # TODO(amogkam): Implement below code.
+        # data_df = _convert_batch_type_to_pandas(data)
+        #
+        # if hasattr(self, "preprocessor") and self.preprocessor:
+        #     data_df = self.preprocessor.transform_batch(data_df)
+        #
+        # predictions_df = self._predict_pandas(data_df)
+        # return _convert_pandas_to_batch_type(predictions_df, type=type(data))
+
     @DeveloperAPI
     @abc.abstractmethod
     def _predict_pandas(self, data: pd.DataFrame, **kwargs) -> pd.DataFrame:
@@ -87,44 +111,22 @@ class Predictor(abc.ABC):
         """
         raise NotImplementedError
 
-    @PublicAPI(stability="alpha")
-    def predict(self, data: DataBatchType, **kwargs) -> DataBatchType:
-        """Perform inference on a batch of data.
-
-        Args:
-            data: A batch of input data of type ``DataBatchType``.
-            kwargs: Arguments specific to predictor implementations. These are passed
-            directly to ``_predict_pandas``.
-
-        Returns:
-            DataBatchType: Prediction result.
-        """
-
-        pass
-
-        # TODO(amogkam): Implement below code.
-        # data_df = self._convert_batch_type_to_pandas(data)
-        #
-        # if hasattr(self, "preprocessor") and self.preprocessor:
-        #     data_df = self.preprocessor.transform_batch(data_df)
-        #
-        # predictions_df = self._predict_pandas(data_df)
-        # return self._convert_pandas_to_batch_type(predictions_df, type=type(data))
-
-    def _convert_batch_type_to_pandas(self, data: DataBatchType) -> pd.DataFrame:
-        """Convert the provided data to a Pandas DataFrame."""
-        pass
-
-    def _convert_pandas_to_batch_type(
-        self, data: pd.DataFrame, type: Type[DataBatchType]
-    ) -> DataBatchType:
-        """Convert the provided Pandas dataframe to the provided ``type``."""
-
-        pass
-
     def __reduce__(self):
         raise PredictorNotSerializableException(
             "Predictor instances are not serializable. Instead, you may want "
             "to serialize a checkpoint and initialize the Predictor with "
             "Predictor.from_checkpoint."
         )
+
+
+def _convert_batch_type_to_pandas(data: DataBatchType) -> pd.DataFrame:
+    """Convert the provided data to a Pandas DataFrame."""
+    pass
+
+
+def _convert_pandas_to_batch_type(
+    data: pd.DataFrame, type: Type[DataBatchType]
+) -> DataBatchType:
+    """Convert the provided Pandas dataframe to the provided ``type``."""
+
+    pass
