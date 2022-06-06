@@ -77,39 +77,45 @@ class ReplayBuffer(ParallelIteratorWorker):
     they might not implement all storage_units.
 
     Examples:
-        >>> from ray.rllib.utils.replay_buffers import ReplayBuffer, StorageUnit
-        >>> from ray.rllib.policy.sample_batch import SampleBatch
+        >>> from ray.rllib.utils.replay_buffers import ReplayBuffer, # doctest: +SKIP
+        ...                         StorageUnit # doctest: +SKIP
+        >>> from ray.rllib.policy.sample_batch import SampleBatch # doctest: +SKIP
         >>> # Store any batch as a whole
-        >>> buffer = ReplayBuffer(capacity=10, storage_unit=StorageUnit.FRAGMENTS)
-        >>> buffer.add(SampleBatch({"a": [1], "b": [2, 3, 4]}))
-        >>> print(buffer.sample(1))
+        >>> buffer = ReplayBuffer(capacity=10,
+        ...                         storage_unit=StorageUnit.FRAGMENTS) # doctest: +SKIP
+        >>> buffer.add(SampleBatch({"a": [1], "b": [2, 3, 4]})) # doctest: +SKIP
+        >>> print(buffer.sample(1)) # doctest: +SKIP
         >>> # SampleBatch(1: ['a', 'b'])
         >>> # Store only complete episodes
-        >>> buffer = ReplayBuffer(capacity=10, storage_unit=StorageUnit.EPISODES)
-        >>> buffer.add(SampleBatch({"c": [1, 2, 3, 4],
+        >>> buffer = ReplayBuffer(capacity=10,
+        ...                         storage_unit=StorageUnit.EPISODES) # doctest: +SKIP
+        >>> buffer.add(SampleBatch({"c": [1, 2, 3, 4], # doctest: +SKIP
         ...                        SampleBatch.T: [0, 1, 0, 1],
         ...                        SampleBatch.DONES: [False, True, False, True],
-        ...                        SampleBatch.EPS_ID: [0, 0, 1, 1]}))
-        >>> eps_n = buffer.sample(1)
-        >>> print(eps_n[SampleBatch.EPS_ID])
+        ...                        SampleBatch.EPS_ID: [0, 0, 1, 1]})) # doctest: +SKIP
+        >>> eps_n = buffer.sample(1) # doctest: +SKIP
+        >>> print(eps_n[SampleBatch.EPS_ID]) # doctest: +SKIP
         >>> # [1 1]
         >>> # Store single timesteps
-        >>> buffer = ReplayBuffer(capacity=2, storage_unit=StorageUnit.TIMESTEPS)
-        >>> buffer.add(SampleBatch({"a": [1, 2], SampleBatch.T: [0, 1]}))
-        >>> t_n = buffer.sample(1)
-        >>> print(t_n["a"])
+        >>> buffer = ReplayBuffer(capacity=2,  # doctest: +SKIP
+        ...                         storage_unit=StorageUnit.TIMESTEPS) # doctest: +SKIP
+        >>> buffer.add(SampleBatch({"a": [1, 2],
+        ...                         SampleBatch.T: [0, 1]})) # doctest: +SKIP
+        >>> t_n = buffer.sample(1) # doctest: +SKIP
+        >>> print(t_n["a"]) # doctest: +SKIP
         >>> # [2]
-        >>> buffer.add(SampleBatch({"a": [3], SampleBatch.T: [2]}))
-        >>> print(buffer._eviction_started)
+        >>> buffer.add(SampleBatch({"a": [3], SampleBatch.T: [2]})) # doctest: +SKIP
+        >>> print(buffer._eviction_started) # doctest: +SKIP
         >>> # True
-        >>> t_n = buffer.sample(1)
-        >>> print(t_n["a"])
-        >>> [3]
-        >>> buffer = ReplayBuffer(capacity=10, storage_unit=StorageUnit.SEQUENCES)
-        >>> buffer.add(SampleBatch({"c": [1, 2, 3],
-        ...                        SampleBatch.SEQ_LENS: [1, 2]}))
-        >>> seq_n = buffer.sample(1)
-        >>> print(seq_n["c"])
+        >>> t_n = buffer.sample(1) # doctest: +SKIP
+        >>> print(t_n["a"]) # doctest: +SKIP
+        >>> # [3] # doctest: +SKIP
+        >>> buffer = ReplayBuffer(capacity=10, # doctest: +SKIP
+        ...                         storage_unit=StorageUnit.SEQUENCES) # doctest: +SKIP
+        >>> buffer.add(SampleBatch({"c": [1, 2, 3], # doctest: +SKIP
+        ...                        SampleBatch.SEQ_LENS: [1, 2]})) # doctest: +SKIP
+        >>> seq_n = buffer.sample(1) # doctest: +SKIP
+        >>> print(seq_n["c"]) # doctest: +SKIP
         >>> # [1]
     """
 

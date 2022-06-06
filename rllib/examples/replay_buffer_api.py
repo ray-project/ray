@@ -29,13 +29,13 @@ parser.add_argument(
     help="The DL framework specifier.",
 )
 parser.add_argument(
-    "--stop-iters", type=int, default=200, help="Number of iterations to train."
+    "--stop-iters", type=int, default=50, help="Number of iterations to train."
 )
 parser.add_argument(
     "--stop-timesteps", type=int, default=100000, help="Number of timesteps to train."
 )
 parser.add_argument(
-    "--stop-reward", type=float, default=150.0, help="Reward at which we stop training."
+    "--stop-reward", type=float, default=100.0, help="Reward at which we stop training."
 )
 
 if __name__ == "__main__":
@@ -67,6 +67,7 @@ if __name__ == "__main__":
         "prioritized_replay_alpha": 0.5,
         "storage_unit": StorageUnit.SEQUENCES,
         "replay_burn_in": 20,
+        "zero_init_states": True,
     }
 
     config.training(replay_buffer_config=replay_buffer_config)

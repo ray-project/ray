@@ -83,15 +83,15 @@ config = (
 tune.run(
     "DQN",
     config=config.to_dict(),
-    stop={"episode_reward_mean": 70, "training_iteration": 15},
+    stop={"training_iteration": 1},
 )
 # __sphinx_doc_replay_buffer_own_buffer__end__
 
 # __sphinx_doc_replay_buffer_advanced_usage_storage_unit__begin__
 # This line will make our buffer store only complete episodes found in a batch
-config["replay_buffer_config"]["storage_unit"] = StorageUnit.EPISODES
+config.training(replay_buffer_config={"storage_unit": StorageUnit.EPISODES})
 
-less_sampled_buffer = LessSampledReplayBuffer(**config["replay_buffer_config"])
+less_sampled_buffer = LessSampledReplayBuffer(**config.replay_buffer_config)
 
 # Gather some random experiences
 env = RandomEnv()
@@ -131,6 +131,6 @@ config = {
 }
 
 tune.run(
-    "DQN", config=config, stop={"episode_reward_mean": 70, "training_iteration": 15}
+    "DQN", config=config, stop={"episode_reward_mean": 50, "training_iteration": 10}
 )
 # __sphinx_doc_replay_buffer_advanced_usage_underlying_buffers__end__
