@@ -22,6 +22,9 @@ from ray.train.examples.tensorflow_mnist_example import (
 from ray.train.examples.train_fashion_mnist_example import (
     train_func as fashion_mnist_train_func,
 )
+from ray.train.examples.jax_mnist_example import (
+    train_func as jax_mnist_train_func,
+)
 from ray.train.examples.train_linear_example import LinearDataset
 from test_tune import torch_fashion_mnist, tune_tensorflow_mnist
 
@@ -78,7 +81,7 @@ def test_jax_get_device(ray_start_4_cpus_2_gpus):
     num_gpus_per_worker = 1
     trainer = Trainer(
         "jax",
-        num_workers=4,
+        num_workers=2,
         use_gpu=True,
         resources_per_worker={"GPU": num_gpus_per_worker},
     )
@@ -362,12 +365,32 @@ def test_horovod_torch_mnist_gpu(ray_start_4_cpus_2_gpus):
         assert worker_result[num_epochs - 1] < worker_result[0]
 
 
+def test_jax_mnist_gpu(ray_start_4_cpus_2_gpus):
+    num_workers = 2
+    num_epochs = 2
+    trainer = Trainer("jax", num_workers, use_gpu=True)
+    trainer.start()
+    results = trainer.run(
+        jax_mnist_train_func, config={"num_epochs": num_epochs, "lr": 1e-3}
+    )
+    trainer.shutdown()
+
+    assert len(results) == num_workers
+    for worker_result in results:
+        assert len(worker_result) == num_epochs
+        assert worker_result[num_epochs - 1] < worker_result[0]
+
+
 def test_tune_fashion_mnist_gpu(ray_start_4_cpus_2_gpus):
     torch_fashion_mnist(num_workers=2, use_gpu=True, num_samples=1)
 
 
 def test_tune_tensorflow_mnist_gpu(ray_start_4_cpus_2_gpus):
     tune_tensorflow_mnist(num_workers=2, use_gpu=True, num_samples=1)
+
+
+# def test_tune_jax_mnist_gpu(ray_start_4_cpus_2_gpus):
+#     tune_tensorflow_mnist(num_workers=2, use_gpu=True, num_samples=1)
 
 
 def test_train_linear_dataset_gpu(ray_start_4_cpus_2_gpus):

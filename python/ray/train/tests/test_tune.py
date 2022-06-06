@@ -122,6 +122,7 @@ def tune_jax_mnist(num_workers, use_gpu, num_samples):
 def test_tune_jax_mnist(ray_start_8_cpus):
     tune_jax_mnist(num_workers=2, use_gpu=False, num_samples=2)
 
+
 def test_tune_error(ray_start_2_cpus):
     def train_func(config):
         raise RuntimeError("Error in training function!")
