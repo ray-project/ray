@@ -176,7 +176,7 @@ class GCPNodeProvider(NodeProvider):
             node_type = get_node_type(base_config)
             resource = self.resources[node_type]
 
-            results = resource.create_instances(base_config, labels, count)
+            results = resource.create_instances(base_config, labels, count)  # type: List[Tuple[dict, str]] 
             instance_dict: Dict[str, dict] = {}
             for result, instance_id in results:
                 instance_dict[instance_id] = result
