@@ -92,9 +92,9 @@ class Predictor(abc.ABC):
         """Perform inference on a batch of data.
 
         Args:
-            data: A batch of input data of type ``DataBatchType``
+            data: A batch of input data of type ``DataBatchType``.
             kwargs: Arguments specific to predictor implementations. These are passed
-                directly to ``_predict_pandas``.
+            directly to ``_predict_pandas``.
 
         Returns:
             DataBatchType: Prediction result.
