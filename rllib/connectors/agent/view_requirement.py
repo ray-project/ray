@@ -131,4 +131,6 @@ class ViewRequirementAgentConnector(AgentConnector):
         return ViewRequirementAgentConnector(ctx)
 
 
-register_connector(ViewRequirementAgentConnector.__name__, ViewRequirementAgentConnector)
+register_connector(
+    ViewRequirementAgentConnector.__name__, ViewRequirementAgentConnector
+)

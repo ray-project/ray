@@ -158,19 +158,21 @@ StateBatches = List[List[Any]]
 PolicyOutputType = Tuple[TensorStructType, StateBatches, Dict]
 
 # Data type that is fed into and yielded from agent connectors.
-AgentConnectorDataType = NamedTuple("AgentConnectorDataType", [
-    ("env_id", str), ("agent_id", str), ("data", Any)
-])
+AgentConnectorDataType = NamedTuple(
+    "AgentConnectorDataType", [("env_id", str), ("agent_id", str), ("data", Any)]
+)
 
 # Data type that is fed into and yielded from agent connectors.
-ActionConnectorDataType = NamedTuple("ActionConnectorDataType", [
-    ("env_id", str), ("agent_id", str), ("output", PolicyOutputType)
-])
+ActionConnectorDataType = NamedTuple(
+    "ActionConnectorDataType",
+    [("env_id", str), ("agent_id", str), ("output", PolicyOutputType)],
+)
 
 # Final output data type of agent connectors.
-AgentConnectorsOutput = NamedTuple("AgentConnectorsOut", [
-    ("for_training", Dict[str, TensorStructType]), ("for_action", "SampleBatch")
-])
+AgentConnectorsOutput = NamedTuple(
+    "AgentConnectorsOut",
+    [("for_training", Dict[str, TensorStructType]), ("for_action", "SampleBatch")],
+)
 
 # Generic type var.
 T = TypeVar("T")

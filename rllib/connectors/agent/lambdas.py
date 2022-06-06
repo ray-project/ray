@@ -31,8 +31,11 @@ def register_lambda_agent_connector(
     Returns:
         A new AgentConnector class that transforms data using fn.
     """
+
     class LambdaAgentConnector(AgentConnector):
-        def __call__(self, ac_data: AgentConnectorDataType) -> List[AgentConnectorDataType]:
+        def __call__(
+            self, ac_data: AgentConnectorDataType
+        ) -> List[AgentConnectorDataType]:
             d = ac_data.data
             return [AgentConnectorDataType(ac_data.env_id, ac_data.agent_id, fn(d))]
 
@@ -59,9 +62,7 @@ def flatten_data(data: Dict[str, TensorStructType]):
 
     flattened = {}
     for k, v in data.items():
-        if k in [SampleBatch.INFOS, SampleBatch.ACTIONS] or k.startswith(
-            "state_out_"
-        ):
+        if k in [SampleBatch.INFOS, SampleBatch.ACTIONS] or k.startswith("state_out_"):
             # Do not flatten infos, actions, and state_out_ columns.
             flattened[k] = v
             continue
@@ -70,7 +71,7 @@ def flatten_data(data: Dict[str, TensorStructType]):
             flattened[k] = None
             continue
         flattened[k] = np.array(tree.flatten(v))
-    
+
     return flattened
 
 

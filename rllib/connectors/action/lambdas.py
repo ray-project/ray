@@ -18,8 +18,7 @@ from ray.rllib.utils.typing import (
 
 @DeveloperAPI
 def register_lambda_action_connector(
-    name: str,
-    fn: Callable[[TensorStructType, StateBatches, Dict], PolicyOutputType]
+    name: str, fn: Callable[[TensorStructType, StateBatches, Dict], PolicyOutputType]
 ) -> Type[ActionConnector]:
     """A util to register any function transforming PolicyOutputType as an ActionConnector.
 
@@ -33,6 +32,7 @@ def register_lambda_action_connector(
     Returns:
         A new ActionConnector class that transforms PolicyOutputType using fn.
     """
+
     class LambdaActionConnector(ActionConnector):
         def __call__(self, ac_data: ActionConnectorDataType) -> ActionConnectorDataType:
             assert isinstance(
@@ -65,15 +65,15 @@ def register_lambda_action_connector(
 ConvertToNumpyConnector = register_lambda_action_connector(
     "ConvertToNumpyConnector",
     lambda actions, states, fetches: (
-        convert_to_numpy(actions), convert_to_numpy(states), fetches
-    )
+        convert_to_numpy(actions),
+        convert_to_numpy(states),
+        fetches,
+    ),
 )
 
 
 # Split action-component batches into single action rows.
 UnbatchActionsConnector = register_lambda_action_connector(
     "UnbatchActionsConnector",
-    lambda actions, states, fetches: (
-        unbatch(actions), states, fetches
-    )
+    lambda actions, states, fetches: (unbatch(actions), states, fetches),
 )

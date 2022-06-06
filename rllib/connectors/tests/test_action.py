@@ -60,14 +60,16 @@ class TestActionConnector(unittest.TestCase):
         self.assertTrue(isinstance(restored, UnbatchActionsConnector))
 
         ac_data = ActionConnectorDataType(
-            0, 1, (
+            0,
+            1,
+            (
                 {
                     "a": np.array([1, 2, 3]),
-                    "b": (np.array([4, 5, 6]), np.array([7, 8, 9]))
+                    "b": (np.array([4, 5, 6]), np.array([7, 8, 9])),
                 },
                 [],
                 {},
-            )
+            ),
         )
 
         unbatched = c(ac_data)

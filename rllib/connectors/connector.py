@@ -125,7 +125,7 @@ class Connector(abc.ABC):
 @DeveloperAPI
 class AgentConnector(Connector):
     """Connector connecting user environments to RLlib policies.
-    
+
     An agent connector transforms a single piece of data in AgentConnectorDataType
     format into a list of data in the same AgentConnectorDataTypes format.
     The API is designed so multi-agent observations can be broken and emitted as
@@ -234,7 +234,7 @@ class AgentConnector(Connector):
 @DeveloperAPI
 class ActionConnector(Connector):
     """Action connector connects policy outputs including actions,
-    to user environments. 
+    to user environments.
 
     An action connector transforms a single piece of policy output in
     ActionConnectorDataType format, which is basically PolicyOutputType
@@ -255,6 +255,7 @@ class ActionConnector(Connector):
     More complicated action connectors can also be implemented by sub-classing
     this ActionConnector class.
     """
+
     def __call__(self, ac_data: ActionConnectorDataType) -> ActionConnectorDataType:
         """Transform policy output before they are sent to a user environment.
 

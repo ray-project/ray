@@ -39,7 +39,10 @@ class ClipRewardAgentConnector(AgentConnector):
         return [ac_data]
 
     def to_config(self):
-        return ClipRewardAgentConnector.__name__, {"sign": self.sign, "limit": self.limit}
+        return ClipRewardAgentConnector.__name__, {
+            "sign": self.sign,
+            "limit": self.limit,
+        }
 
     @staticmethod
     def from_config(ctx: ConnectorContext, params: List[Any]):
