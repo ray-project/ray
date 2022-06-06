@@ -53,7 +53,7 @@ class CreateRequestQueueTest : public ::testing::Test {
   CreateRequestQueueTest()
       : oom_grace_period_s_(1),
         current_time_ns_(0),
-        monitor_("/", 1),
+        monitor_({"/"}, 1),
         queue_(
             monitor_,
             /*oom_grace_period_s=*/oom_grace_period_s_,
@@ -184,7 +184,7 @@ TEST_F(CreateRequestQueueTest, TestFallbackAllocator) {
 TEST(CreateRequestQueueParameterTest, TestOomInfiniteRetry) {
   int num_global_gc_ = 0;
   int64_t current_time_ns;
-  ray::FileSystemMonitor monitor{"/", 1};
+  ray::FileSystemMonitor monitor{{"/"}, 1};
   CreateRequestQueue queue(
       monitor,
       /*oom_grace_period_s=*/100,
@@ -218,7 +218,7 @@ TEST(CreateRequestQueueParameterTest, TestOomInfiniteRetry) {
 }
 
 TEST_F(CreateRequestQueueTest, TestTransientOom) {
-  ray::FileSystemMonitor monitor{"/", 1};
+  ray::FileSystemMonitor monitor{{"/"}, 1};
   CreateRequestQueue queue(
       monitor,
       /*oom_grace_period_s=*/oom_grace_period_s_,
@@ -378,7 +378,7 @@ TEST_F(CreateRequestQueueTest, TestTransientOomThenOom) {
 
 TEST(CreateRequestQueueParameterTest, TestNoEvictIfFull) {
   int64_t current_time_ns = 0;
-  ray::FileSystemMonitor monitor{"/", 1};
+  ray::FileSystemMonitor monitor{{"/"}, 1};
   CreateRequestQueue queue(
       monitor,
       /*oom_grace_period_s=*/1,
