@@ -9,6 +9,8 @@ Ray AIR API
 Components
 ----------
 
+.. _air-preprocessor-ref:
+
 Preprocessors
 ~~~~~~~~~~~~~
 
@@ -128,9 +130,16 @@ Serving
 Outputs
 ~~~~~~~
 
+.. _air-checkpoint-ref:
+
+Checkpoint
+##########
+
 .. automodule:: ray.air.checkpoint
     :members:
 
+Result
+######
 
 .. automodule:: ray.air.result
     :members:
