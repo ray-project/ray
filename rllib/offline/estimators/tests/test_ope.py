@@ -16,9 +16,15 @@ import gym
 
 
 class TestOPE(unittest.TestCase):
+    def setUp(self):
+        ray.init(num_cpus=4)
+
+    def tearDown(self):
+        ray.shutdown()
+
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=4)
+        ray.init(ignore_reinit_error=True)
         rllib_dir = Path(__file__).parent.parent.parent.parent
         print("rllib dir={}".format(rllib_dir))
         data_file = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
@@ -87,6 +93,7 @@ class TestOPE(unittest.TestCase):
 
         # Optional configs for the model-based estimators
         cls.model_config = {"k": 2, "n_iters": 10}
+        ray.shutdown()
 
     @classmethod
     def tearDownClass(cls):
