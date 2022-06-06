@@ -43,7 +43,7 @@ class ArrowTensorType(pa.PyExtensionType):
         Returns:
             An instance of pd.api.extensions.ExtensionDtype.
         """
-        from ray.util.data.extensions.pandas import TensorDtype
+        from ray.air.utils.tensor_extensions.pandas import TensorDtype
 
         return TensorDtype()
 
