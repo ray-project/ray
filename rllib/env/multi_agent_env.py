@@ -142,7 +142,7 @@ class MultiAgentEnv(gym.Env):
                         f"MultiAgentDicts with incomplete information. "
                         f"Meaning that they only contain information on a subset of"
                         f" participating agents. Ignore this warning if this is "
-                        f"intended, for example if your environment is turn-based "
+                        f"intended, for example if your environment is a turn-based "
                         f"simulation."
                     )
             return True
