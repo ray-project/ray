@@ -2529,7 +2529,7 @@ class Dataset(Generic[T]):
         except ImportError:
             raise ValueError("tensorflow must be installed!")
 
-        from ray.air.utils.tensorflow_utils import convert_pandas_to_tf_tensor
+        from ray.air._internal.tensorflow_utils import convert_pandas_to_tf_tensor
 
         # `output_signature` can be a tuple but not a list. See
         # https://stackoverflow.com/questions/59092423/what-is-a-nested-structure-in-tensorflow.
