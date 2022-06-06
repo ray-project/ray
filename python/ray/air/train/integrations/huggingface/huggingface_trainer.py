@@ -244,10 +244,10 @@ class HuggingFaceTrainer(TorchTrainer):
 
     def __init__(
         self,
-        *,
         trainer_init_per_worker: Callable[
             [TorchDataset, Optional[TorchDataset], Any], transformers.trainer.Trainer
         ],
+        *,
         datasets: Dict[str, GenDataset],
         trainer_init_config: Optional[Dict] = None,
         torch_config: Optional[TorchConfig] = None,
