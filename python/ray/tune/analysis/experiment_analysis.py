@@ -179,7 +179,7 @@ class ExperimentAnalysis:
                 # `experiment_name1/experiment_name2/experiment_state.json`.
                 experiment_checkpoint_path = str(experiment_checkpoint_path)
                 raise ValueError(
-                    "The directory `{experiment_checkpoint_path}` does not "
+                    f"The directory `{experiment_checkpoint_path}` does not "
                     "contain a Ray Tune experiment checkpoint."
                 )
         elif not experiment_checkpoint_path.is_file():
