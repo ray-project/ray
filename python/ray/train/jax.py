@@ -98,20 +98,21 @@ class JaxBackend(Backend):
 
         # case-insensitivize dict
         additional_resources_per_worker = worker_group.additional_resources_per_worker
-        additional_resources_per_worker_lower = {
-            k.lower(): v for k, v in additional_resources_per_worker.items()
-        }
-        use_tpu = additional_resources_per_worker_lower.pop("tpu", False)
-        # Get setup tasks in order to throw errors on failure.
+        if additional_resources_per_worker: 
+            additional_resources_per_worker_lower = {
+                k.lower(): v for k, v in additional_resources_per_worker.items()
+            }
+            use_tpu = additional_resources_per_worker_lower.pop("tpu", False)
+            # Get setup tasks in order to throw errors on failure.
 
-        if use_tpu:
-            RAY_TPU_DEV = bool(os.environ.get("RAY_TPU_DEV"))
+            if use_tpu:
+                RAY_TPU_DEV = bool(os.environ.get("RAY_TPU_DEV"))
 
-            setup_futures = []
-            for i in range(len(worker_group)):
-                setup_futures.append(
-                    worker_group.execute_single_async(
-                        i, release_tpu_lock, RAY_TPU_DEV=RAY_TPU_DEV
+                setup_futures = []
+                for i in range(len(worker_group)):
+                    setup_futures.append(
+                        worker_group.execute_single_async(
+                            i, release_tpu_lock, RAY_TPU_DEV=RAY_TPU_DEV
+                        )
                     )
-                )
-            ray.get(setup_futures)
+                ray.get(setup_futures)
