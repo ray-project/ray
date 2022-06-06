@@ -159,6 +159,7 @@ def test_memory_release_lazy(shutdown_only):
     assert "Spilled" not in meminfo, meminfo
 
 
+@pytest.mark.skip(reason="Flaky, see https://github.com/ray-project/ray/issues/24757")
 def test_memory_release_lazy_shuffle(shutdown_only):
     # TODO(ekl) why is this flaky? Due to eviction delay?
     error = None
