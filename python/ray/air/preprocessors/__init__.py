@@ -16,6 +16,7 @@ from ray.air.preprocessors.scaler import (
     MaxAbsScaler,
     RobustScaler,
 )
+from ray.air.preprocessors.stateful_preprocessor import StatefulPreprocessor
 from ray.air.preprocessors.tokenizer import Tokenizer
 from ray.air.preprocessors.transformer import PowerTransformer
 from ray.air.preprocessors.vectorizer import CountVectorizer, HashingVectorizer
@@ -38,5 +39,6 @@ __all__ = [
     "RobustScaler",
     "SimpleImputer",
     "StandardScaler",
+    "StatefulPreprocessor",
     "Tokenizer",
 ]
