@@ -64,6 +64,7 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
         checkpoint_data = {
             "checkpoints": [
                 {
+                    "trial_id": "abcd1234",
                     "status": Trial.TERMINATED,
                     "trainable_name": "MockTrainable",
                     "local_dir": self.test_dir,
@@ -87,6 +88,7 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
             "checkpoints": [
                 json.dumps(
                     {
+                        "trial_id": "abcd1234",
                         "status": Trial.TERMINATED,
                         "trainable_name": "MockTrainable",
                         "local_dir": self.test_dir,
