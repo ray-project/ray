@@ -95,7 +95,6 @@ class Predictor(abc.ABC):
         # return _convert_pandas_to_batch_type(predictions_df, type=type(data))
 
     @DeveloperAPI
-    @abc.abstractmethod
     def _predict_pandas(self, data: pd.DataFrame, **kwargs) -> pd.DataFrame:
         """Perform inference on a Pandas DataFrame.
 

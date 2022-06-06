@@ -99,9 +99,6 @@ class HuggingFacePredictor(Predictor):
             columns = columns[0]
         return columns
 
-    def _predict_pandas(self, data: pd.DataFrame, **kwargs) -> pd.DataFrame:
-        pass
-
     def predict(
         self,
         data: DataBatchType,

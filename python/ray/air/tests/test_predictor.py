@@ -20,9 +20,6 @@ class DummyPredictor(Predictor):
         checkpoint_data = checkpoint.to_dict()
         return DummyPredictor(**checkpoint_data)
 
-    def _predict_pandas(self, data, **kwargs):
-        pass
-
     def predict(self, data: DataBatchType, **kwargs) -> DataBatchType:
         return data * self.factor
 
