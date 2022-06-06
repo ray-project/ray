@@ -7,7 +7,7 @@ from ray.ml.predictor import Predictor, DataBatchType
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY
-
+from ray.ml.utils.tensorflow_utils import convert_pandas_to_tf_tensor
 
 class TensorflowPredictor(Predictor):
     """A predictor for TensorFlow models.
@@ -140,11 +140,9 @@ class TensorflowPredictor(Predictor):
         if isinstance(data, pd.DataFrame):
             if feature_columns:
                 data = data[feature_columns]
-            data = data.values
+            tensor = convert_pandas_to_tf_tensor(data, dtype=dtype)
         else:
-            data = data[:, feature_columns]
-
-        tensor = tf.convert_to_tensor(data, dtype=dtype)
+            tensor = tf.convert_to_tensor(data, dtype=dtype)
 
         # TensorFlow model objects cannot be pickled, therefore we use
         # a callable that returns the model and initialize it here,
