@@ -42,20 +42,20 @@ class TestRemoteWorkerEnvSetting(unittest.TestCase):
 
         # Simple string env definition (gym.make(...)).
         config["env"] = "CartPole-v0"
-        trainer = pg.PGTrainer(config=config)
+        trainer = pg.PG(config=config)
         print(trainer.train())
         trainer.stop()
 
         # Using tune.register.
         config["env"] = "cartpole"
-        trainer = pg.PGTrainer(config=config)
+        trainer = pg.PG(config=config)
         print(trainer.train())
         trainer.stop()
 
         # Using class directly.
         # This doesn't work anymore as of gym==0.23
         # config["env"] = RandomEnv
-        # trainer = pg.PGTrainer(config=config)
+        # trainer = pg.PG(config=config)
         # print(trainer.train())
         # trainer.stop()
 
@@ -63,7 +63,7 @@ class TestRemoteWorkerEnvSetting(unittest.TestCase):
         # which implements its own API.
         # This doesn't work anymore as of gym==0.23
         # config["env"] = NonVectorizedEnvToBeVectorizedIntoRemoteBaseEnv
-        # trainer = pg.PGTrainer(config=config)
+        # trainer = pg.PG(config=config)
         # print(trainer.train())
         # trainer.stop()
 
@@ -74,20 +74,20 @@ class TestRemoteWorkerEnvSetting(unittest.TestCase):
 
         # Full classpath provided.
         config["env"] = "ray.rllib.examples.env.random_env.RandomMultiAgentEnv"
-        trainer = pg.PGTrainer(config=config)
+        trainer = pg.PG(config=config)
         print(trainer.train())
         trainer.stop()
 
         # Using tune.register.
         config["env"] = "pistonball"
-        trainer = pg.PGTrainer(config=config)
+        trainer = pg.PG(config=config)
         print(trainer.train())
         trainer.stop()
 
         # Using class directly.
         # This doesn't work anymore as of gym==0.23.
         # config["env"] = RandomMultiAgentEnv
-        # trainer = pg.PGTrainer(config=config)
+        # trainer = pg.PG(config=config)
         # print(trainer.train())
         # trainer.stop()
 

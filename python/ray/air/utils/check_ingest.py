@@ -7,6 +7,7 @@ from typing import Optional
 import ray
 from ray import train
 from ray.air.preprocessors import Chain, BatchMapper
+from ray.air.config import DatasetConfig
 from ray.air.train.data_parallel_trainer import DataParallelTrainer
 
 
@@ -124,8 +125,10 @@ if __name__ == "__main__":
         preprocessor=preprocessor,
         runtime_seconds=30,  # Stop after this amount or time or 1 epoch is read.
         prefetch_blocks=1,  # Number of blocks to prefetch when reading data.
+        dataset_config={"valid": DatasetConfig(transform=False)},
         batch_size=None,
     )
+    print("Dataset config", trainer.get_dataset_config())
     trainer.fit()
 
     # Print memory stats (you can also use "ray memory --stats-only" to monitor this
