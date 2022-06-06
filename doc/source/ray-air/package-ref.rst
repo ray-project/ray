@@ -46,7 +46,7 @@ Trainer
     :members:
     :show-inheritance:
 
-.. automodule:: ray.ml.train.integrations.horovod
+.. automodule:: ray.air.train.integrations.horovod
     :members:
     :show-inheritance:
 
