@@ -1,7 +1,6 @@
 from typing import Dict, Union, List, Optional
 
 import ray
-from ray._raylet import ObjectRef
 from ray._raylet import PlacementGroupID
 from ray._private.utils import hex_to_binary
 from ray.util.annotations import PublicAPI, DeveloperAPI
