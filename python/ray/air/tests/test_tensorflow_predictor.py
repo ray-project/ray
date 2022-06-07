@@ -101,7 +101,7 @@ def test_predict_dataframe_with_feature_columns():
 def test_tensorflow_predictor_no_training():
     model = build_model()
     checkpoint = to_air_checkpoint(model)
-    batch_predictor = BatchPredictor(
+    batch_predictor = BatchPredictor.from_checkpoint(
         checkpoint, TensorflowPredictor, model_definition=build_model
     )
     predict_dataset = ray.data.range(3)
