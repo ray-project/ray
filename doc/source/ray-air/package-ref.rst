@@ -29,7 +29,7 @@ Preprocessors
 Trainer
 ~~~~~~~
 
-.. autoclass:: ray.train.trainer.Trainer
+.. autoclass:: ray.train.trainer.BaseTrainer
     :members:
 
 .. automodule:: ray.train.xgboost

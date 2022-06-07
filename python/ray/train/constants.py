@@ -79,4 +79,3 @@ PYTORCH_PROFILER_KEY = "_train_torch_profiler"
 # By default these will be filtered out from ``train.report()``.
 # See ``TrainingCallback._preprocess_results`` for more details.
 ALL_RESERVED_KEYS = {PYTORCH_PROFILER_KEY}
-

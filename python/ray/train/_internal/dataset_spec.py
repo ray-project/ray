@@ -95,6 +95,7 @@ class RayDatasetSpec:
                 )
             return splits
 
+
 class DataParallelIngestSpec:
     """Implements the execution of DatasetConfig preprocessing and ingest."""
 

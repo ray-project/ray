@@ -20,7 +20,7 @@ DEFAULT_BLACKLIST = [
     "smart_open",
     "torch",
     "tensorflow",
-    "jax"
+    "jax",
 ]
 
 

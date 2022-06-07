@@ -13,10 +13,7 @@ from typing import (
 
 import ray
 from ray import tune
-from ray.air.constants import (
-    MODEL_KEY,
-    PREPROCESSOR_KEY
-)
+from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY
 from ray.train.constants import (
     TRAIN_DATASET_KEY,
     WILDCARD_KEY,

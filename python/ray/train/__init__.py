@@ -33,5 +33,5 @@ __all__ = [
     "world_rank",
     "world_size",
     "BaseTrainer",
-    "TRAIN_DATASET_KEY"
+    "TRAIN_DATASET_KEY",
 ]
