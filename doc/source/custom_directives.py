@@ -179,7 +179,6 @@ def mock_modules():
         sys.modules[mod_name] = mock_module
 
     sys.modules["ray._raylet"].ObjectRef = make_typing_mock("ray", "ObjectRef")
-    sys.modules["ray._raylet"].PlacementGroupID = make_typing_mock("ray", "PlacementGroupID")
 
     sys.modules["tensorflow"].VERSION = "9.9.9"
 
