@@ -49,11 +49,11 @@ def test_from_checkpoint():
 
 
 @mock.patch(
-    "ray.air.utils.data_batch_conversion_utils.convert_batch_type_to_pandas",
+    "ray.air.predictor.convert_batch_type_to_pandas",
     return_value=mock.DEFAULT,
 )
 @mock.patch(
-    "ray.air.utils.data_batch_conversion_utils.convert_pandas_to_batch_type",
+    "ray.air.predictor.convert_pandas_to_batch_type",
     return_value=mock.DEFAULT,
 )
 def test_predict(convert_from_pandas_mock, convert_to_pandas_mock):
@@ -68,6 +68,18 @@ def test_predict(convert_from_pandas_mock, convert_to_pandas_mock):
     # Ensure the proper conversion functions are called.
     convert_to_pandas_mock.assert_called_once()
     convert_from_pandas_mock.assert_called_once()
+
+
+@mock.patch.object(DummyPredictor, "_predict_pandas", return_value=mock.DEFAULT)
+def test_kwargs(predict_pandas_mock):
+    checkpoint = Checkpoint.from_dict({"factor": 2.0})
+    predictor = DummyPredictor.from_checkpoint(checkpoint)
+
+    input = pd.DataFrame({"x": [1, 2, 3]})
+    predictor.predict(input, extra_arg=1)
+
+    assert "extra_arg" in predict_pandas_mock.call_args.kwargs
+    assert predict_pandas_mock.call_args.kwargs["extra_arg"] == 1
 
 
 if __name__ == "__main__":

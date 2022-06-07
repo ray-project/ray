@@ -85,7 +85,7 @@ class Predictor(abc.ABC):
         if hasattr(self, "preprocessor") and self.preprocessor:
             data_df = self.preprocessor.transform_batch(data_df)
 
-        predictions_df = self._predict_pandas(data_df)
+        predictions_df = self._predict_pandas(data_df, **kwargs)
         return convert_pandas_to_batch_type(predictions_df, type=type(data))
 
     @DeveloperAPI
