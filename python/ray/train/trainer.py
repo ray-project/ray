@@ -23,7 +23,6 @@ from ray.train.utils import (
     ActorWrapper,
 )
 from ray.train._checkpoint import (
-    CheckpointStrategy,
     TuneCheckpointManager,
     CheckpointManager,
     load_checkpoint_from_path,
@@ -42,6 +41,7 @@ from ray.train.utils import construct_path
 from ray.train.worker_group import WorkerGroup
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
+from ray.util.ml_utils.checkpoint_manager import CheckpointStrategy
 
 if TUNE_INSTALLED:
     from ray import tune

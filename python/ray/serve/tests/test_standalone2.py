@@ -232,6 +232,99 @@ def test_get_serve_status(shutdown_ray):
     ray.shutdown()
 
 
+def test_controller_deserialization_deployment_def(start_and_shutdown_ray_cli_function):
+    """Ensure controller doesn't deserialize deployment_def or init_args/kwargs."""
+
+    @ray.remote
+    def run_graph():
+        """Deploys a Serve application to the controller's Ray cluster."""
+        from ray import serve
+        from ray.serve.api import build
+        from ray._private.utils import import_attr
+
+        # Import and build the graph
+        graph = import_attr("test_config_files.pizza.serve_dag")
+        app = build(graph)
+
+        # Override options for each deployment
+        for name in app.deployments:
+            app.deployments[name].set_options(ray_actor_options={"num_cpus": 0.1})
+
+        # Run the graph locally on the cluster
+        serve.start(detached=True, _override_controller_namespace="serve")
+        serve.run(graph)
+
+    # Start Serve controller in a directory without access to the graph code
+    ray.init(
+        address="auto",
+        namespace="serve",
+        runtime_env={
+            "working_dir": os.path.join(os.path.dirname(__file__), "storage_tests")
+        },
+    )
+    serve.start(detached=True)
+    serve.context._global_client = None
+    ray.shutdown()
+
+    # Run the task in a directory with access to the graph code
+    ray.init(
+        address="auto",
+        namespace="serve",
+        runtime_env={"working_dir": os.path.dirname(__file__)},
+    )
+    ray.get(run_graph.remote())
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
+        == "4 pizzas please!"
+    )
+
+    serve.shutdown()
+    ray.shutdown()
+
+
+def test_controller_deserialization_args_and_kwargs():
+    """Ensures init_args and init_kwargs stay serialized in controller."""
+
+    ray.init()
+    client = serve.start()
+
+    class PidBasedString(str):
+        pass
+
+    def generate_pid_based_deserializer(pid, raw_deserializer):
+        def deserializer(*args):
+            """Cannot be deserialized by the process with specified pid."""
+
+            import os
+
+            if os.getpid() == pid:
+                raise RuntimeError("Cannot be deserialized by this process!")
+            else:
+                return raw_deserializer(*args)
+
+        return deserializer
+
+    PidBasedString.__reduce__ = generate_pid_based_deserializer(
+        ray.get(client._controller.get_pid.remote()), PidBasedString.__reduce__
+    )
+
+    @serve.deployment
+    class Echo:
+        def __init__(self, arg_str, kwarg_str="failed"):
+            self.arg_str = arg_str
+            self.kwarg_str = kwarg_str
+
+        def __call__(self, request):
+            return self.arg_str + self.kwarg_str
+
+    Echo.deploy(PidBasedString("hello "), kwarg_str=PidBasedString("world!"))
+
+    assert requests.get("http://localhost:8000/Echo").text == "hello world!"
+
+    serve.shutdown()
+    ray.shutdown()
+
+
 @pytest.mark.usefixtures("start_and_shutdown_ray_cli_class")
 class TestDeployApp:
     @pytest.fixture()
@@ -427,6 +520,46 @@ class TestDeployApp:
             lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
             == "4 pizzas please!"
         )
+
+
+def test_controller_recover_and_delete():
+    """Ensure that in-progress deletion can finish even after controller dies."""
+
+    ray.init()
+    client = serve.start()
+
+    @serve.deployment(
+        num_replicas=50,
+        ray_actor_options={"num_cpus": 0.001},
+    )
+    def f():
+        pass
+
+    f.deploy()
+
+    actors = ray.util.list_named_actors(all_namespaces=True)
+    client.delete_deployments(["f"], blocking=False)
+
+    wait_for_condition(
+        lambda: len(ray.util.list_named_actors(all_namespaces=True)) < len(actors)
+    )
+    ray.kill(client._controller, no_restart=False)
+
+    # There should still be replicas remaining
+    assert len(ray.util.list_named_actors(all_namespaces=True)) > 2
+
+    # All replicas should be removed once the controller revives
+    wait_for_condition(
+        lambda: len(ray.util.list_named_actors(all_namespaces=True)) == len(actors) - 50
+    )
+
+    # The deployment should be deleted, meaning its state should not be stored
+    # in the DeploymentStateManager. This can be checked by attempting to
+    # retrieve the deployment's status through the controller.
+    assert client.get_serve_status().get_deployment_status("f") is None
+
+    serve.shutdown()
+    ray.shutdown()
 
 
 def test_shutdown_remote(start_and_shutdown_ray_cli_function):

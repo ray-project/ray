@@ -13,8 +13,8 @@ from ray.actor import ActorHandle
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DatasetContext
-from ray.data.impl.batcher import Batcher
-from ray.data.impl.stats import DatasetStats, DatasetPipelineStats
+from ray.data._internal.batcher import Batcher
+from ray.data._internal.stats import DatasetStats, DatasetPipelineStats
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 # An output type of iter_batches() determined by the batch_format parameter.
