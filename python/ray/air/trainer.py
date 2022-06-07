@@ -225,13 +225,8 @@ class Trainer(abc.ABC):
     ) -> ScalingConfigDataClass:
         """Return scaling config dataclass after validating updated keys."""
         if isinstance(dataclass_or_dict, dict):
-            ensure_only_allowed_dict_keys_set(
-                dataclass_or_dict, cls._scaling_config_allowed_keys
-            )
-            scaling_config_dataclass = ScalingConfigDataClass(**dataclass_or_dict)
-
-            return scaling_config_dataclass
-
+            dataclass_or_dict = ScalingConfigDataClass(**dataclass_or_dict)
+            
         ensure_only_allowed_dataclass_keys_updated(
             dataclass=dataclass_or_dict,
             allowed_keys=cls._scaling_config_allowed_keys,
