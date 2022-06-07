@@ -155,7 +155,12 @@ def test_put_get_success(ray_start_stop):
 
 def test_put_new_rest_api(ray_start_stop):
     config = {
-        "import_path": "ray.serve.tests.test_config_files.pizza.serve_dag",
+        "import_path": "conditional_dag.serve_dag",
+        "runtime_env": {
+            "working_dir": (
+                "https://github.com/shrekris-anyscale/test_dag/archive/HEAD.zip"
+            )
+        },
         "deployments": [
             {
                 "name": "Multiplier",
