@@ -55,7 +55,7 @@ def release_tpu_lock(try_remove_tpulib_lock: bool = False):
     To enable this hook, set ``RAY_TPU_DEV=1`` env var.
 
     Args:
-        try_remove_tpulib_lock (bool): whether to release the tpulib lock file.
+        try_remove_tpulib_lock: whether to release the tpulib lock file.
             If set to True, the lock file will be removed. Otherwise,
             the user might manually release the tpu_lock or add the
             environment variable to release the lock file.
