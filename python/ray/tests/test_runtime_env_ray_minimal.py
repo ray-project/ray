@@ -80,28 +80,6 @@ def test_ray_init(shutdown_only, capsys):
 
     assert ray.get(f.remote()) == 1
 
-
-@pytest.mark.skipif(sys.platform != "win32", reason="Windows-specific test")
-def test_exec_worker_parse_correct(shutdown_only):
-    runtime_env_ctx = RuntimeEnvContext()
-    ret = runtime_env_ctx._fix_windows_args(
-        ["C:\Program Files", "some", "other", "arguments"]
-    )
-    assert ret == [
-        '"C:\Program Files"',
-        "some",
-        "other",
-        "arguments",
-    ]
-    args = ["C:\Program Files", "some", "other", "arguments"]
-    # ensure no re-quoting occurs
-    for _ in range(3):
-        args = runtime_env_ctx._fix_windows_args(args)
-        subprocess.check_call(
-            [sys.executable, "-c", f"import os; os.listdir({args[0]})"]
-        )
-
-
 @pytest.mark.skipif(
     sys.platform == "win32", reason="runtime_env unsupported on Windows."
 )

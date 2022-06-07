@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import subprocess
 import sys
 from typing import Any, Dict, List, Optional
 
@@ -42,33 +43,10 @@ class RuntimeEnvContext:
     def deserialize(json_string):
         return RuntimeEnvContext(**json.loads(json_string))
 
-    @staticmethod
-    def _fix_windows_args(passthrough_args: List[str]) -> List[str]:
-        """
-        Fixes arguments on Windows if the argument is a path with a space
-
-        Note that the function only works if the file path actually exists.
-
-        Args:
-            passthrough_args: the passthrough arguments
-
-        Returns:
-            Fixed passthrough arguments
-        """
-        for i, arg in enumerate(passthrough_args):
-            if os.path.exists(arg):
-                passthrough_args[
-                    i
-                ] = f'"{arg}"'  # Some arguments may be files, which may contain spaces
-        return passthrough_args
-
     def exec_worker(self, passthrough_args: List[str], language: Language):
         os.environ.update(self.env_vars)
 
-        if language == Language.PYTHON and sys.platform == "win32":
-            executable = f'"{self.py_executable}"'  # Path may contain spaces
-            passthrough_args = self._fix_windows_args(passthrough_args)
-        elif language == Language.PYTHON:
+        if language == Language.PYTHON:
             executable = f"exec {self.py_executable}"
         elif language == Language.JAVA:
             executable = "java"
@@ -90,7 +68,7 @@ class RuntimeEnvContext:
         command_str = " && ".join(self.command_prefix + [exec_command])
         logger.debug(f"Exec'ing worker with command: {command_str}")
         if sys.platform == "win32":
-            os.system(command_str)
+            subprocess.check_call([executable, *passthrough_args])
         else:
             # PyCharm will monkey patch the os.execvp at
             # .pycharm_helpers/pydev/_pydev_bundle/pydev_monkey.py
