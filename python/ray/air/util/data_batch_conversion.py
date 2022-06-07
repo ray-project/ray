@@ -77,7 +77,21 @@ def convert_pandas_to_batch_type(
         # If just a single column, return as a single tensor.
         if len(data.columns) == 1:
             return data.iloc[:, 0].to_numpy()
-        return data.to_numpy()
+
+        try:
+            return data.to_numpy()
+        except ValueError as e:
+            # Pandas DataFrame.values doesn't support extension arrays in all
+            # supported Pandas versions, so we check to see if this DataFrame
+            # contains any extensions arrays and do a manual conversion if so.
+            # See https://github.com/pandas-dev/pandas/pull/43160.
+            if any(
+                isinstance(dtype, pd.api.extensions.ExtensionDtype)
+                for dtype in data.dtypes
+            ):
+                return np.stack([col.to_numpy() for _, col in data.items()], axis=1)
+            else:
+                raise e from None
 
     elif type == dict:
         output_dict = {}
