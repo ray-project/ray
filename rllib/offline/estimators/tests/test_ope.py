@@ -1,6 +1,5 @@
 import unittest
 import ray
-from ray import tune
 from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.offline.estimators import (
     ImportanceSampling,
@@ -44,8 +43,9 @@ def train_test_split(
     if k < 1:
         train_episodes = episodes[: int(n_episodes * k)]
         eval_episodes = episodes[int(n_episodes * k) :]
-        yield SampleBatch.concat(eval_episodes), SampleBatch.concat(train_episodes)
-        breakpoint()
+        yield SampleBatch.concat_samples(eval_episodes), SampleBatch.concat_samples(
+            train_episodes
+        )
         return
     n_fold = n_episodes // k
     for i in range(k):
@@ -55,20 +55,16 @@ def train_test_split(
         else:
             # Append remaining episodes onto the last eval_episodes
             eval_episodes = episodes[i * n_fold :]
-        yield SampleBatch.concat(eval_episodes), SampleBatch.concat(train_episodes)
+        yield SampleBatch.concat_samples(eval_episodes), SampleBatch.concat_samples(
+            train_episodes
+        )
     return
 
 
 class TestOPE(unittest.TestCase):
-    def setUp(self):
-        ray.init(num_cpus=4)
-
-    def tearDown(self):
-        ray.shutdown()
-
     @classmethod
     def setUpClass(cls):
-        ray.init(ignore_reinit_error=True)
+        ray.init(num_cpus=4)
         rllib_dir = Path(__file__).parent.parent.parent.parent
         print("rllib dir={}".format(rllib_dir))
         data_file = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
@@ -76,7 +72,7 @@ class TestOPE(unittest.TestCase):
 
         env_name = "CartPole-v0"
         cls.gamma = 0.99
-        train_steps = 20000
+        train_steps = 200000
         n_batches = 20  # Approx. equal to n_episodes
         n_eval_episodes = 100
 
@@ -94,15 +90,13 @@ class TestOPE(unittest.TestCase):
             )
             .framework("torch")
         )
-        cls.trainer = config.build()
 
-        # Train DQN for evaluation policy
-        tune.run(
-            "DQN",
-            config=config.to_dict(),
-            stop={"timesteps_total": train_steps},
-            verbose=3,
-        )
+        cls.trainer = config.build()
+        ts = 0
+        while ts < train_steps:
+            results = cls.trainer.train()
+            ts = results["timesteps_total"]
+        print(results["episode_reward_mean"])
 
         # Read n_batches of data
         reader = JsonReader(data_file)
@@ -135,9 +129,8 @@ class TestOPE(unittest.TestCase):
         cls.std_ret["simulation"] = np.std(mc_ret)
 
         # Optional configs for the model-based estimators
-        cls.k = 2
+        cls.k = 5
         cls.model_config = {"n_iters": 10}
-        ray.shutdown()
 
     @classmethod
     def tearDownClass(cls):
@@ -180,9 +173,7 @@ class TestOPE(unittest.TestCase):
             q_model_type="qreg",
             **self.model_config,
         )
-        for eval_batch, train_batch in train_test_split(
-            self.batch, self.model_config["k"]
-        ):
+        for eval_batch, train_batch in train_test_split(self.batch, self.k):
             estimator.process(eval_batch, train_batch)
         estimates = estimator.get_metrics()
         assert len(estimates) == self.n_episodes
@@ -198,9 +189,7 @@ class TestOPE(unittest.TestCase):
             q_model_type="fqe",
             **self.model_config,
         )
-        for eval_batch, train_batch in train_test_split(
-            self.batch, self.model_config["k"]
-        ):
+        for eval_batch, train_batch in train_test_split(self.batch, self.k):
             estimator.process(eval_batch, train_batch)
         estimates = estimator.get_metrics()
         assert len(estimates) == self.n_episodes
@@ -232,9 +221,7 @@ class TestOPE(unittest.TestCase):
             q_model_type="fqe",
             **self.model_config,
         )
-        for eval_batch, train_batch in train_test_split(
-            self.batch, self.model_config["k"]
-        ):
+        for eval_batch, train_batch in train_test_split(self.batch, self.k):
             estimator.process(eval_batch, train_batch)
         estimates = estimator.get_metrics()
         assert len(estimates) == self.n_episodes
@@ -285,16 +272,16 @@ class TestOPE(unittest.TestCase):
             .rollouts(batch_mode="complete_episodes")
         )
 
-        analysis = tune.run(
-            "DQN",
-            config=config.to_dict(),
-            stop={"timesteps_total": train_steps},
-            verbose=3,
-        )
-        result = list(analysis.results.values())[0]
-        print("Training", result["off_policy_estimator"])
-        print("Evaluation", result["evaluation"]["off_policy_estimator"])
-        assert not result["off_policy_estimator"]  # Should be None or {}
+        trainer = config.build()
+
+        ts = 0
+        while ts < train_steps:
+            results = trainer.train()
+            ts = results["timesteps_total"]
+        print(ts, results["episode_reward_mean"])
+        print("Training", results["off_policy_estimator"])
+        print("Evaluation", results["evaluation"]["off_policy_estimator"])
+        assert not results["off_policy_estimator"]  # Should be None or {}
 
     def test_5_fold_cv_local_eval_worker(self):
         # 5-fold cv, local eval worker
