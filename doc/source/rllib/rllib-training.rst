@@ -581,7 +581,7 @@ The following is a list of the common algorithm hyper-parameters:
         "wis": {
             "type": WeightedImportanceSampling,
         }
-    }
+    },
     # Whether to run postprocess_trajectory() on the trajectory fragments from
     # offline inputs. Note that postprocessing will be done using the *current*
     # policy, not the *behavior* policy, which is typically undesirable for

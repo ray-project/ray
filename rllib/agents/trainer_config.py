@@ -779,6 +779,8 @@ class TrainerConfig:
         if explore is not None:
             self.explore = explore
         if exploration_config is not None:
+            # Override entire `exploration_config` if `type` key changes.
+            # Update, if `type` key remains the same or is not specified.
             new_exploration_config = deep_update(
                 {"exploration_config": self.exploration_config},
                 {"exploration_config": exploration_config},

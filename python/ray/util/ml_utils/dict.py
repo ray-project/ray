@@ -38,14 +38,14 @@ def deep_update(
         original: Dictionary with default values.
         new_dict: Dictionary with values to be updated
         new_keys_allowed: Whether new keys are allowed.
-        allow_new_subkey_list (Optional[List[str]]): List of keys that
+        allow_new_subkey_list: List of keys that
             correspond to dict values where new subkeys can be introduced.
             This is only at the top level.
-        override_all_if_type_changes(Optional[List[str]]): List of top level
+        override_all_if_type_changes: List of top level
             keys with value=dict, for which we always simply override the
             entire value (dict), iff the "type" key in that value dict changes.
-        override_all_key_list (Optional[List[str]]): List of top level keys
-        for which we override the entire value if the key is in the new_dict.
+        override_all_key_list: List of top level keys
+            for which we override the entire value if the key is in the new_dict.
     """
     allow_new_subkey_list = allow_new_subkey_list or []
     override_all_if_type_changes = override_all_if_type_changes or []

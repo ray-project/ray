@@ -248,7 +248,7 @@ class RolloutWorker(ParallelIteratorWorker):
         input_creator: Callable[
             [IOContext], InputReader
         ] = lambda ioctx: ioctx.default_sampler_input(),
-        off_policy_estimation_methods: Optional[Dict] = None,
+        off_policy_estimation_methods: Optional[Dict[str, Dict]] = None,
         output_creator: Callable[
             [IOContext], OutputWriter
         ] = lambda ioctx: NoopOutput(),
@@ -741,6 +741,8 @@ class RolloutWorker(ParallelIteratorWorker):
                     "will discard all sampler outputs and keep only metrics."
                 )
                 sample_async = True
+            # TODO: Allow for this to be a full classpath string as well, then construct
+            #  this with our `from_config` util.
             elif isinstance(method_type, type) and issubclass(
                 method_type, OffPolicyEstimator
             ):
