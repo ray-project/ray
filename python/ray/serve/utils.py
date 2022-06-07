@@ -1,6 +1,7 @@
 from functools import wraps
 import importlib
 from itertools import groupby
+import inspect
 import pickle
 import random
 import string
@@ -27,6 +28,11 @@ from ray.serve.http_util import build_starlette_request, HTTPRequestWrapper
 from ray.serve.constants import (
     HTTP_PROXY_TIMEOUT,
 )
+
+try:
+    import pandas as pd
+except ImportError:
+    pd = None
 
 ACTOR_FAILURE_RETRY_TIMEOUT_S = 60
 
@@ -70,12 +76,20 @@ class _ServeCustomEncoders:
         assert isinstance(obj, Exception)
         return str(obj)
 
+    @staticmethod
+    def encode_pandas_dataframe(obj):
+        assert isinstance(obj, pd.DataFrame)
+        return obj.to_dict(orient="records")
+
 
 serve_encoders = {
     np.ndarray: _ServeCustomEncoders.encode_np_array,
     np.generic: _ServeCustomEncoders.encode_np_scaler,
     Exception: _ServeCustomEncoders.encode_exception,
 }
+
+if pd is not None:
+    serve_encoders[pd.DataFrame] = _ServeCustomEncoders.encode_pandas_dataframe
 
 
 def install_serve_encoders_to_fastapi():
@@ -392,8 +406,7 @@ def require_packages(packages: List[str]):
     """
 
     def decorator(func):
-        @wraps(func)
-        def wrapped(*args, **kwargs):
+        def check_import_once():
             if not hasattr(func, "_require_packages_checked"):
                 missing_packages = []
                 for package in packages:
@@ -409,7 +422,23 @@ def require_packages(packages: List[str]):
                         "`runtime_env`."
                     )
                 setattr(func, "_require_packages_checked", True)
-            return func(*args, **kwargs)
+
+        if inspect.iscoroutinefunction(func):
+
+            @wraps(func)
+            async def wrapped(*args, **kwargs):
+                check_import_once()
+                return await func(*args, **kwargs)
+
+        elif inspect.isfunction(func):
+
+            @wraps(func)
+            def wrapped(*args, **kwargs):
+                check_import_once()
+                return func(*args, **kwargs)
+
+        else:
+            raise ValueError("Decorator expect callable functions.")
 
         return wrapped
 

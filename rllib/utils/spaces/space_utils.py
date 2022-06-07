@@ -182,7 +182,10 @@ def unbatch(batches_struct):
     """Converts input from (nested) struct of batches to batch of structs.
 
     Input: Struct of different batches (each batch has size=3):
-        {"a": [1, 2, 3], "b": ([4, 5, 6], [7.0, 8.0, 9.0])}
+        {
+            "a": np.array([1, 2, 3]),
+            "b": (np.array([4, 5, 6]), np.array([7.0, 8.0, 9.0]))
+        }
     Output: Batch (list) of structs (each of these structs representing a
         single action):
         [
