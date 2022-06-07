@@ -39,5 +39,3 @@ Advanced
 --------
 
 - :doc:`/ray-air/examples/torch_incremental_learning`: Incrementally train and deploy a PyTorch CV model
-
-
