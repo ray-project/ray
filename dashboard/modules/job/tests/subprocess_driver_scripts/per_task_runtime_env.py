@@ -15,7 +15,10 @@ def run():
 
     driver_working_dir = ray.get_runtime_context().runtime_env.working_dir()
     task_working_dir = ray.get(get_task_working_dir.remote())
-    assert driver_working_dir == task_working_dir, (driver_working_dir, task_working_dir)
+    assert driver_working_dir == task_working_dir, (
+        driver_working_dir,
+        task_working_dir,
+    )
 
 
 if __name__ == "__main__":

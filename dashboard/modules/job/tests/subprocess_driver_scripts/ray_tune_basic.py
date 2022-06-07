@@ -6,8 +6,9 @@ from jobs with an empty working_dir, this test will fail.  See #25484"""
 from ray_tune_dependency import foo
 from ray import tune
 
+
 def objective(*args):
     foo()
 
-tune.run(objective)
 
+tune.run(objective)
