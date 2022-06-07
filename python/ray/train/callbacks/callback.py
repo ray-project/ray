@@ -1,25 +1,16 @@
 import abc
 from typing import List, Dict
 
-from ray.train.callbacks.results_preprocessors import (
+from ray.train._internal.results_preprocessors import (
     ResultsPreprocessor,
     ExcludedKeysResultsPreprocessor,
     SequentialResultsPreprocessor,
 )
 from ray.train.constants import ALL_RESERVED_KEYS
-from ray.util.annotations import Deprecated
-
-_deprecation_msg = (
-    "`ray.train.callbacks` will be deprecated in Ray "
-    "2.0, and will be replaced by Ray AI Runtime (Ray AIR). Ray AIR "
-    "callbacks (https://docs.ray.io/en/latest/ray-air/getting-started.html) "
-    "will provide greater functionality and a unified API "
-    "compared to `ray.train.callbacks`. "
-    "This class will be removed in the future."
-)
+from ray.util.annotations import DeveloperAPI
 
 
-@Deprecated
+@DeveloperAPI
 class TrainingCallback(abc.ABC):
     """Abstract Train callback class."""
 

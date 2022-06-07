@@ -14,7 +14,7 @@ from ray.train.examples.tensorflow_mnist_example import (
 from ray.train.examples.train_fashion_mnist_example import (
     train_func as fashion_mnist_train_func,
 )
-from ray.train.worker_group import WorkerGroup
+from ray.train._internal.worker_group import WorkerGroup
 
 
 @pytest.fixture

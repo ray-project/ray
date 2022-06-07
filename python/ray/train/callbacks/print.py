@@ -1,11 +1,11 @@
 import json
 from typing import Dict, List
-import warnings
 
 from ray.train.callbacks import TrainingCallback
-from ray.train.callbacks.callback import _deprecation_msg
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="beta")
 class PrintCallback(TrainingCallback):
     """A callback that prints training results to STDOUT.
 
@@ -53,12 +53,6 @@ class PrintCallback(TrainingCallback):
             }
         ]
     """
-
-    def __init__(self) -> None:
-        warnings.warn(
-            _deprecation_msg,
-            DeprecationWarning,
-        )
 
     def handle_result(self, results: List[Dict], **info):
         """Prints results to STDOUT.

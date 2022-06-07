@@ -1,4 +1,4 @@
-from ray.train.callbacks.results_preprocessors.aggregate.aggregate_preprocessor import (
+from ray.train._internal.results_preprocessors.aggregate.aggregate_preprocessor import (
     AverageResultsPreprocessor,
     MaxResultsPreprocessor,
     WeightedAverageResultsPreprocessor,

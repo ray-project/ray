@@ -39,11 +39,9 @@ from ray.train.constants import (
 # Ray Train should be usable even if Tune is not installed.
 from ray.train.utils import construct_path
 from ray.train.worker_group import WorkerGroup
-from ray.util.annotations import Deprecated, DeveloperAPI
+from ray.util import PublicAPI
+from ray.util.annotations import DeveloperAPI
 from ray.util.ml_utils.checkpoint_manager import CheckpointStrategy
-
-# NEW API
-from ray.train.base_trainer import BaseTrainer, GenDataset, TrainingFailedError
 
 if TUNE_INSTALLED:
     from ray import tune
@@ -97,7 +95,7 @@ def get_backend_config_cls(backend_name) -> type:
     return config_cls
 
 
-@Deprecated
+@PublicAPI(stability="beta")
 class Trainer:
     """A class for enabling seamless distributed deep learning.
 
@@ -143,13 +141,12 @@ class Trainer:
         max_retries: int = 3,
     ):
         warnings.warn(
-            "The `ray.train.Trainer` API has been deprecated in Ray "
-            "2.0, and is replaced by Ray AI Runtime (Ray AIR). Ray AIR ("
+            "The `ray.train.Trainer` API will be deprecated in Ray "
+            "2.0, and will be replaced by Ray AI Runtime (Ray AIR). Ray AIR ("
             "https://docs.ray.io/en/latest/ray-air/getting-started.html) will "
             "provide greater functionality than `ray.train.Trainer`, "
-            "and with a more flexible and easy-to-use API. "
-            "This class will be removed in the future.",
-            DeprecationWarning,
+            "and with a more flexible and easy-to-use API.",
+            PendingDeprecationWarning,
             stacklevel=2,
         )
 
@@ -914,13 +911,3 @@ def _create_tune_trainable(
             return PlacementGroupFactory(bundles, strategy="PACK")
 
     return TrainTrainable
-
-
-__all__ = [
-    "Trainer",
-    "TrainWorkerGroup",
-    "TrainingIterator",
-    "BaseTrainer",
-    "GenDataset",
-    "TrainingFailedError",
-]

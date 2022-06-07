@@ -1,13 +1,13 @@
-from ray.train.callbacks.results_preprocessors.index import IndexedResultsPreprocessor
-from ray.train.callbacks.results_preprocessors.keys import (
+from ray.train._internal.results_preprocessors.index import IndexedResultsPreprocessor
+from ray.train._internal.results_preprocessors.keys import (
     ExcludedKeysResultsPreprocessor,
 )
-from ray.train.callbacks.results_preprocessors.aggregate import (
+from ray.train._internal.results_preprocessors.aggregate import (
     AverageResultsPreprocessor,
     MaxResultsPreprocessor,
     WeightedAverageResultsPreprocessor,
 )
-from ray.train.callbacks.results_preprocessors.preprocessor import (
+from ray.train._internal.results_preprocessors.preprocessor import (
     SequentialResultsPreprocessor,
     ResultsPreprocessor,
 )

@@ -1,22 +1,20 @@
 import logging
 from typing import Dict, List, Optional
 
-from ray.util.annotations import DeveloperAPI
-from ray.train.callbacks.results_preprocessors.preprocessor import ResultsPreprocessor
-from ray.train.callbacks.results_preprocessors.aggregate.aggregate_fn import (
+from ray.train._internal.results_preprocessors.preprocessor import ResultsPreprocessor
+from ray.train._internal.results_preprocessors.aggregate.aggregate_fn import (
     AggregateFn,
     Average,
     Max,
     WeightedAverage,
 )
-from ray.train.callbacks.results_preprocessors.aggregate.aggregate_utils import (
+from ray.train._internal.results_preprocessors.aggregate.aggregate_utils import (
     _get_metrics_from_results,
 )
 
 logger = logging.getLogger(__name__)
 
 
-@DeveloperAPI
 class AggregateResultsPreprocessor(ResultsPreprocessor):
     """A preprocessor that aggregates training metrics from all workers.
 

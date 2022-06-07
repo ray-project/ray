@@ -1,17 +1,22 @@
-from ray.train.torch.impl import (
-    TorchConfig,
+try:
+    import torch  # noqa: F401
+except ModuleNotFoundError:
+    raise ModuleNotFoundError(
+        "PyTorch isn't installed. To install PyTorch, run 'pip install torch'"
+    )
+
+from ray.train.torch.config import TorchConfig
+from ray.train.torch.train_loop_utils import (
     get_device,
     prepare_model,
     prepare_data_loader,
-    accelerate,
     prepare_optimizer,
     backward,
     enable_reproducibility,
     TorchWorkerProfiler,
 )
-
-# NEW API
 from ray.train.torch.torch_trainer import TorchTrainer, load_checkpoint
+
 
 __all__ = [
     "TorchTrainer",
@@ -19,9 +24,8 @@ __all__ = [
     "TorchConfig",
     "get_device",
     "prepare_model",
-    "prepare_data_loader",
-    "accelerate",
     "prepare_optimizer",
+    "prepare_data_loader",
     "backward",
     "enable_reproducibility",
     "TorchWorkerProfiler",
