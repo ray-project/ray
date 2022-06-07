@@ -50,7 +50,7 @@ def release_tpu_lock(RAY_TPU_DEV: bool = False):
     # see https://github.com/google/jax/issues/10192
 
 
-    To enable this hook, set RAY_TPU_DEV=1.
+    To enable this hook, set ``RAY_TPU_DEV=1`` env var.
 
     Args:
         RAY_TPU_DEV (bool): whether to release the tpulib lock file.
