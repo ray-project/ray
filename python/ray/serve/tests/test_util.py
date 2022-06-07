@@ -251,6 +251,57 @@ class TestOverrideRuntimeEnvsExceptEnvVars:
             "excludes": ["my_file.txt"],
         }
 
+    def test_inheritance_regression(self):
+        """Check if the general Ray runtime_env inheritance behavior matches.
+
+        override_runtime_envs_except_env_vars should match the general Ray
+        runtime_env inheritance behavior. This test checks if that behavior
+        has changed, which would indicate a regression in
+        override_runtime_envs_except_env_vars. If the runtime_env inheritance
+        behavior changes, override_runtime_envs_except_env_vars should also
+        change to match.
+        """
+
+        with ray.init(
+            runtime_env={
+                "py_modules": [
+                    "https://github.com/ray-project/test_dag/archive/"
+                    "cc246509ba3c9371f8450f74fdc18018428630bd.zip"
+                ],
+                "env_vars": {"var1": "hello"},
+            }
+        ):
+
+            @ray.remote
+            def check_module():
+                # Check that Ray job's py_module loaded correctly
+                from conditional_dag import serve_dag  # noqa: F401
+
+                return os.getenv("var1")
+
+            assert ray.get(check_module.remote()) == "hello"
+
+            @ray.remote(
+                runtime_env={
+                    "py_modules": [
+                        "https://github.com/ray-project/test_deploy_group/archive/"
+                        "67971777e225600720f91f618cdfe71fc47f60ee.zip"
+                    ],
+                    "env_vars": {"var2": "world"},
+                }
+            )
+            def test_task():
+                with pytest.raises(ImportError):
+                    # Check that Ray job's py_module was overwritten
+                    from conditional_dag import serve_dag  # noqa: F401
+
+                from test_env.shallow_import import ShallowClass
+
+                if ShallowClass()() == "Hello shallow world!":
+                    return os.getenv("var1") + " " + os.getenv("var2")
+
+            assert ray.get(test_task.remote()) == "hello world"
+
 
 if __name__ == "__main__":
     import sys
