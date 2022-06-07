@@ -1,11 +1,13 @@
-from ray.air.constants import TENSOR_COLUMN_NAME
-from ray.air.utils.data_batch_conversion_utils import convert_batch_type_to_pandas
-from ray.air.utils.data_batch_conversion_utils import convert_pandas_to_batch_type
-from ray.air.utils.tensor_extensions.pandas import TensorArray
+import pytest
 
 import pandas as pd
 import numpy as np
 import pyarrow as pa
+
+from ray.air.constants import TENSOR_COLUMN_NAME
+from ray.air.utils.data_batch_conversion_utils import convert_batch_type_to_pandas
+from ray.air.utils.data_batch_conversion_utils import convert_pandas_to_batch_type
+from ray.air.utils.tensor_extensions.pandas import TensorArray
 
 
 def test_pandas_pandas():
@@ -86,3 +88,9 @@ def test_arrow_to_pandas():
     assert expected_output.equals(actual_output)
 
     assert convert_pandas_to_batch_type(actual_output, type=pa.Table).equals(input_data)
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-sv", __file__]))

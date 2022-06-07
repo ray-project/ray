@@ -78,8 +78,9 @@ def test_kwargs(predict_pandas_mock):
     input = pd.DataFrame({"x": [1, 2, 3]})
     predictor.predict(input, extra_arg=1)
 
-    assert "extra_arg" in predict_pandas_mock.call_args.kwargs
-    assert predict_pandas_mock.call_args.kwargs["extra_arg"] == 1
+    # Second element in call_args is the kwargs.
+    assert "extra_arg" in predict_pandas_mock.call_args[1]
+    assert predict_pandas_mock.call_args[1]["extra_arg"] == 1
 
 
 if __name__ == "__main__":
