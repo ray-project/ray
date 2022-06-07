@@ -6,7 +6,7 @@ from sklearn.base import BaseEstimator
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import MODEL_KEY
 from ray.air.preprocessor import Preprocessor
-from ray.air.utils.checkpointing import (
+from ray.air._internal.checkpointing import (
     save_preprocessor_to_dir,
 )
 import ray.cloudpickle as cpickle
