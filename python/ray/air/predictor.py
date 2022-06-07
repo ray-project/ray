@@ -1,25 +1,14 @@
 import abc
 
+import pandas as pd
+
 from ray.air.data_batch_type import DataBatchType
 from ray.air.checkpoint import Checkpoint
-from ray.air.utils.data_batch_conversion_utils import (
+from ray.air.util.data_batch_conversion import (
     convert_batch_type_to_pandas,
     convert_pandas_to_batch_type,
 )
 from ray.util.annotations import DeveloperAPI, PublicAPI
-
-<<<<<<< HEAD
-import pandas as pd
-=======
-if TYPE_CHECKING:
-    import numpy as np
-    import pandas as pd
-    import pyarrow
-
-DataBatchType = Union[
-    "np.ndarray", "pd.DataFrame", "pyarrow.Table", Dict[str, "np.ndarray"]
-]
->>>>>>> e0a63f770f9afd6eda2d4da9bf508067429585ae
 
 
 @PublicAPI(stability="alpha")
@@ -121,19 +110,3 @@ class Predictor(abc.ABC):
             "to serialize a checkpoint and initialize the Predictor with "
             "Predictor.from_checkpoint."
         )
-<<<<<<< HEAD
-=======
-
-
-def _convert_batch_type_to_pandas(data: DataBatchType) -> "pd.DataFrame":
-    """Convert the provided data to a Pandas DataFrame."""
-    pass
-
-
-def _convert_pandas_to_batch_type(
-    data: "pd.DataFrame", type: Type[DataBatchType]
-) -> DataBatchType:
-    """Convert the provided Pandas dataframe to the provided ``type``."""
-
-    pass
->>>>>>> e0a63f770f9afd6eda2d4da9bf508067429585ae

@@ -5,9 +5,10 @@ import numpy as np
 import pyarrow as pa
 
 from ray.air.constants import TENSOR_COLUMN_NAME
-from ray.air.utils.data_batch_conversion_utils import convert_batch_type_to_pandas
-from ray.air.utils.data_batch_conversion_utils import convert_pandas_to_batch_type
-from ray.air.utils.tensor_extensions.pandas import TensorArray
+from ray.air.util.data_batch_conversion import convert_batch_type_to_pandas
+from ray.air.util.data_batch_conversion import convert_pandas_to_batch_type
+from ray.air.util.tensor_extensions.pandas import TensorArray
+from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
 
 
 def test_pandas_pandas():
@@ -54,6 +55,12 @@ def test_numpy_object_pandas():
     )
 
 
+def test_dict_fail():
+    input_data = {"x": "y"}
+    with pytest.raises(ValueError):
+        convert_batch_type_to_pandas(input_data)
+
+
 def test_dict_pandas():
     input_data = {"x": np.array([1, 2, 3])}
     expected_output = pd.DataFrame({"x": TensorArray(input_data["x"])})
@@ -79,9 +86,22 @@ def test_dict_multi_dim_to_pandas():
         assert np.array_equal(v, input_data[k])
 
 
-def test_arrow_to_pandas():
+def test_arrow_pandas():
     df = pd.DataFrame({"x": [1, 2, 3]})
     input_data = pa.Table.from_pandas(df)
+    expected_output = df
+    actual_output = convert_batch_type_to_pandas(input_data)
+    assert expected_output.equals(actual_output)
+
+    assert convert_pandas_to_batch_type(actual_output, type=pa.Table).equals(input_data)
+
+
+def test_arrow_tensor_pandas():
+    np_array = np.array([1, 2, 3])
+    df = pd.DataFrame({"x": TensorArray(np_array)})
+    input_data = pa.Table.from_arrays(
+        [ArrowTensorArray.from_numpy(np_array)], names=["x"]
+    )
     expected_output = df
     actual_output = convert_batch_type_to_pandas(input_data)
     assert expected_output.equals(actual_output)

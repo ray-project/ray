@@ -24,7 +24,7 @@ def convert_batch_type_to_pandas(data: DataBatchType) -> pd.DataFrame:
         A pandas Dataframe representation of the input data.
 
     """
-    from ray.air.utils.tensor_extensions.pandas import TensorArray
+    from ray.air.util.tensor_extensions.pandas import TensorArray
 
     if isinstance(data, pd.DataFrame):
         return data
@@ -38,6 +38,12 @@ def convert_batch_type_to_pandas(data: DataBatchType) -> pd.DataFrame:
     elif isinstance(data, dict):
         tensor_dict = {}
         for k, v in data.items():
+            if not isinstance(v, np.ndarray):
+                raise ValueError(
+                    "All values in the provided dict must be of type "
+                    f"np.ndarray. Found type {type(v)} for key {k} "
+                    f"instead."
+                )
             # Convert numpy arrays to TensorArray.
             tensor_dict[k] = TensorArray(v)
         return pd.DataFrame(tensor_dict)
