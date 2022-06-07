@@ -9,7 +9,7 @@ import unittest
 
 import ray
 from ray.rllib.algorithms.a2c import A2C
-from ray.rllib.algorithms.pg import PGTrainer
+from ray.rllib.algorithms.pg import PG
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.metrics import collect_metrics
@@ -186,7 +186,7 @@ class TestRolloutWorker(unittest.TestCase):
             # RolloutWorker).
             self.assertRaises(
                 Exception,
-                lambda: PGTrainer(
+                lambda: PG(
                     env="fail",
                     config={
                         "num_workers": 2,
@@ -198,7 +198,7 @@ class TestRolloutWorker(unittest.TestCase):
     def test_callbacks(self):
         for fw in framework_iterator(frameworks=("torch", "tf")):
             counts = Counter()
-            pg = PGTrainer(
+            pg = PG(
                 env="CartPole-v0",
                 config={
                     "num_workers": 0,
@@ -224,7 +224,7 @@ class TestRolloutWorker(unittest.TestCase):
     def test_query_evaluators(self):
         register_env("test", lambda _: gym.make("CartPole-v0"))
         for fw in framework_iterator(frameworks=("torch", "tf")):
-            pg = PGTrainer(
+            pg = PG(
                 env="test",
                 config={
                     "num_workers": 2,

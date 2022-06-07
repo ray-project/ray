@@ -34,7 +34,7 @@ class TestDDPG(unittest.TestCase):
         ray.shutdown()
 
     def test_ddpg_compilation(self):
-        """Test whether a DDPGTrainer can be built with both frameworks."""
+        """Test whether DDPG can be built with both frameworks."""
         config = ddpg.DDPGConfig()
         config.seed = 42
         config.num_workers = 0
@@ -102,7 +102,7 @@ class TestDDPG(unittest.TestCase):
                 }
             )
 
-            trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v1")
+            trainer = ddpg.DDPG(config=config, env="Pendulum-v1")
             # ts=0 (get a deterministic action as per explore=False).
             deterministic_action = trainer.compute_single_action(obs, explore=False)
             check(trainer.get_policy().global_timestep, 1)

@@ -32,7 +32,7 @@ from ray.data.datasource import (
     SimpleTorchDatasource,
     WriteResult,
 )
-from ray.data.impl.arrow_block import ArrowRow
+from ray.data._internal.arrow_block import ArrowRow
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
 from ray.data.datasource.parquet_datasource import PARALLELIZE_META_FETCH_THRESHOLD
 from ray.data.tests.conftest import *  # noqa
