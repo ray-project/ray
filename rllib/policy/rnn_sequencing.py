@@ -430,7 +430,7 @@ def timeslice_along_seq_lens_with_overlap(
         seq_lens = [zero_pad_max_seq_len] * num_seq_lens + (
             [last_seq_len] if last_seq_len else []
         )
-   
+
     assert (
         seq_lens is not None and len(seq_lens) > 0
     ), "Cannot timeslice along `seq_lens` when `seq_lens` is empty or None!"
