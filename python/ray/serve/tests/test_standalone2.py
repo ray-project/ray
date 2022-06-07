@@ -521,6 +521,41 @@ class TestDeployApp:
             == "4 pizzas please!"
         )
 
+    def test_deploy_app_runtime_env(self, client: ServeControllerClient):
+        config_template = {
+            "import_path": "conditional_dag.serve_dag",
+            "runtime_env": {
+                "working_dir": (
+                    "https://github.com/shrekris-anyscale/test_dag/archive/HEAD.zip"
+                )
+            },
+        }
+
+        config1 = ServeApplicationSchema.parse_obj(config_template)
+        client.deploy_app(config1)
+
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
+            == "0 pizzas please!"
+        )
+
+        # Override the configuration
+        config_template["deployments"] = [
+            {
+                "name": "Adder",
+                "ray_actor_options": {
+                    "runtime_env": {"env_vars": {"override_increment": "1"}}
+                },
+            }
+        ]
+        config2 = ServeApplicationSchema.parse_obj(config_template)
+        client.deploy_app(config2)
+
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
+            == "3 pizzas please!"
+        )
+
 
 def test_controller_recover_and_delete():
     """Ensure that in-progress deletion can finish even after controller dies."""
