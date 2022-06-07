@@ -2,6 +2,10 @@ import abc
 
 from ray.air.data_batch_type import DataBatchType
 from ray.air.checkpoint import Checkpoint
+from ray.air.utils.data_batch_conversion_utils import (
+    convert_batch_type_to_pandas,
+    convert_pandas_to_batch_type,
+)
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 import pandas as pd
@@ -76,11 +80,6 @@ class Predictor(abc.ABC):
         Returns:
             DataBatchType: Prediction result.
         """
-        from ray.air.utils.data_batch_conversion_utils import (
-            convert_batch_type_to_pandas,
-            convert_pandas_to_batch_type,
-        )
-
         data_df = convert_batch_type_to_pandas(data)
 
         if hasattr(self, "preprocessor") and self.preprocessor:
