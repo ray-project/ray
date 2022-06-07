@@ -503,8 +503,8 @@ class Algorithm(Trainable):
                 logdir=self.logdir,
             )
 
-        # Run any callbacks after trainer initialization is done.
-        self.callbacks.on_trainer_init(trainer=self)
+        # Run `on_algorithm_init` callback after initialization is done.
+        self.callbacks.on_algorithm_init(algorithm=self)
 
     # TODO: Deprecated: In your sub-classes of Trainer, override `setup()`
     #  directly and call super().setup() from within it if you would like the
@@ -1504,7 +1504,8 @@ class Algorithm(Trainable):
     def log_result(self, result: ResultDict) -> None:
         # Log after the callback is invoked, so that the user has a chance
         # to mutate the result.
-        self.callbacks.on_train_result(trainer=self, result=result)
+        # TODO: Remove `trainer` arg at some point to fully deprecate the old term.
+        self.callbacks.on_train_result(algorithm=self, result=result, trainer=self)
         # Then log according to Trainable's logging logic.
         Trainable.log_result(self, result)
 

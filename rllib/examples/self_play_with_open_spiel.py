@@ -106,7 +106,7 @@ class SelfPlayCallback(DefaultCallbacks):
         # 2=2nd main policy snapshot, etc..
         self.current_opponent = 0
 
-    def on_train_result(self, *, trainer, result, **kwargs):
+    def on_train_result(self, *, algorithm, result, **kwargs):
         # Get the win rate for the train batch.
         # Note that normally, one should set up a proper evaluation config,
         # such that evaluation always happens on the already updated policy,
@@ -120,7 +120,7 @@ class SelfPlayCallback(DefaultCallbacks):
                 won += 1
         win_rate = won / len(main_rew)
         result["win_rate"] = win_rate
-        print(f"Iter={algo.iteration} win-rate={win_rate} -> ", end="")
+        print(f"Iter={algorithm.iteration} win-rate={win_rate} -> ", end="")
         # If win rate is good -> Snapshot current policy and play against
         # it next, keeping the snapshot fixed and only improving the "main"
         # policy.
@@ -144,20 +144,20 @@ class SelfPlayCallback(DefaultCallbacks):
                     )
                 )
 
-            new_policy = algo.add_policy(
+            new_policy = algorithm.add_policy(
                 policy_id=new_pol_id,
-                policy_cls=type(algo.get_policy("main")),
+                policy_cls=type(algorithm.get_policy("main")),
                 policy_mapping_fn=policy_mapping_fn,
             )
 
             # Set the weights of the new policy to the main policy.
             # We'll keep training the main policy, whereas `new_pol_id` will
             # remain fixed.
-            main_state = algo.get_policy("main").get_state()
+            main_state = algorithm.get_policy("main").get_state()
             new_policy.set_state(main_state)
             # We need to sync the just copied local weights (from main policy)
             # to all the remote workers as well.
-            algo.workers.sync_weights()
+            algorithm.workers.sync_weights()
         else:
             print("not good enough; will keep learning ...")
 

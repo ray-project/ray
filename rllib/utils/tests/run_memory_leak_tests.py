@@ -25,7 +25,6 @@ import yaml
 import ray
 from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.rllib.utils.debug.memory import check_memory_leaks
-from ray.rllib import register_algorithms
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -120,7 +119,6 @@ if __name__ == "__main__":
                 leaking = False
         finally:
             ray.shutdown()
-            _register_all()
 
         if not leaking:
             print("Memory leak test PASSED")

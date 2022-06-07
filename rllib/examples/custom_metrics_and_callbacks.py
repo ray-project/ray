@@ -101,10 +101,10 @@ class MyCallbacks(DefaultCallbacks):
     def on_sample_end(self, *, worker: RolloutWorker, samples: SampleBatch, **kwargs):
         print("returned sample batch of size {}".format(samples.count))
 
-    def on_train_result(self, *, trainer, result: dict, **kwargs):
+    def on_train_result(self, *, algorithm, result: dict, **kwargs):
         print(
             "Algorithm.train() result: {} -> {} episodes".format(
-                trainer, result["episodes_this_iter"]
+                algorithm, result["episodes_this_iter"]
             )
         )
         # you can mutate the result dict to add new fields to return

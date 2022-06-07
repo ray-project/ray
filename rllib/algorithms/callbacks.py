@@ -9,8 +9,8 @@ from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import Postprocessing
-from ray.rllib.utils.annotations import PublicAPI
-from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
+from ray.rllib.utils.annotations import is_overridden, PublicAPI
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.exploration.random_encoder import (
     _MovingMeanStd,
     compute_states_entropy,
@@ -45,6 +45,12 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                 "a class extending rllib.algorithms.callbacks.DefaultCallbacks",
             )
         self.legacy_callbacks = legacy_callbacks_dict or {}
+        if is_overridden("on_trainer_init"):
+            deprecation_warning(
+                old="on_trainer_init(trainer, **kwargs)",
+                new="on_algorithm_init(algorithm, **kwargs)",
+                error=True,
+            )
 
     def on_sub_environment_created(
         self,
@@ -276,27 +282,27 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
 
         pass
 
-    def on_train_result(self, *, trainer: "Algorithm", result: dict, **kwargs) -> None:
+    def on_train_result(
+        self, *, algorithm: Algorithm = None, result: dict, trainer=None, **kwargs
+    ) -> None:
         """Called at the end of Trainable.train().
 
         Args:
-            trainer: Current trainer instance.
+            algorithm: Current trainer instance.
             result: Dict of results returned from trainer.train() call.
                 You can mutate this object to add additional metrics.
             kwargs: Forward compatibility placeholder.
         """
+        if trainer is not None:
+            algorithm = trainer
 
         if self.legacy_callbacks.get("on_train_result"):
             self.legacy_callbacks["on_train_result"](
                 {
-                    "trainer": trainer,
+                    "trainer": algorithm,
                     "result": result,
                 }
             )
-
-    @Deprecated(new="on_algorithm_init(algorithm, **kwargs)", error=False)
-    def on_trainer_init(self, *, trainer, **kwargs):
-        return self.on_algorithm_init(algorithm=trainer, **kwargs)
 
 
 class MemoryTrackingCallbacks(DefaultCallbacks):
@@ -506,14 +512,17 @@ class MultiCallbacks(DefaultCallbacks):
                 policy=policy, train_batch=train_batch, result=result, **kwargs
             )
 
-    def on_train_result(self, *, trainer, result: dict, **kwargs) -> None:
-        for callback in self._callback_list:
-            callback.on_train_result(trainer=trainer, result=result, **kwargs)
+    def on_train_result(
+        self, *, algorithm=None, result: dict, trainer=None, **kwargs
+    ) -> None:
+        if trainer is not None:
+            algorithm = trainer
 
-    @Deprecated(new="on_algorithm_init(algorithm, **kwargs)", error=False)
-    def on_trainer_init(self, *, trainer, **kwargs):
         for callback in self._callback_list:
-            callback.on_algorithm_init(algorithm=trainer, **kwargs)
+            # TODO: Remove `trainer` arg at some point to fully deprecate the old term.
+            callback.on_train_result(
+                algorithm=algorithm, result=result, trainer=algorithm, **kwargs
+            )
 
 
 # This Callback is used by the RE3 exploration strategy.
@@ -572,8 +581,15 @@ class RE3UpdateCallbacks(DefaultCallbacks):
                 train_batch[Postprocessing.VALUE_TARGETS] + states_entropy
             )
 
-    def on_train_result(self, *, trainer, result: dict, **kwargs) -> None:
+    def on_train_result(
+        self, *, result: dict, algorithm=None, trainer=None, **kwargs
+    ) -> None:
+        if trainer is not None:
+            algorithm = trainer
         # TODO(gjoliver): Remove explicit _step tracking and pass
         # trainer._iteration as a parameter to on_learn_on_batch() call.
         RE3UpdateCallbacks._step = result["training_iteration"]
-        super().on_train_result(trainer=trainer, result=result, **kwargs)
+        # TODO: Remove `trainer` arg at some point to fully deprecate the old term.
+        super().on_train_result(
+            algorithm=algorithm, result=result, trainer=algorithm, **kwargs
+        )
