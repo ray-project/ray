@@ -1,6 +1,8 @@
 import logging
 from dataclasses import dataclass
 import os
+import warnings
+import subprocess
 
 import ray
 from ray.train.backend import BackendConfig, Backend
@@ -42,7 +44,7 @@ def setup_jax_environment(master_addr_with_port: str, num_workers: int, index: i
     # os.environ["XLA_FLAGS"] = "--xla_force_host_platform_device_count=200"
 
 
-def release_tpu_lock(RAY_TPU_DEV: bool = False):
+def release_tpu_lock(try_remove_tpulib_lock: bool = False):
     """release the tpulib lock file when using tpu for training.
 
     The jax process is unable to use tpu and fall back to cpu
@@ -53,25 +55,23 @@ def release_tpu_lock(RAY_TPU_DEV: bool = False):
     To enable this hook, set ``RAY_TPU_DEV=1`` env var.
 
     Args:
-        RAY_TPU_DEV (bool): whether to release the tpulib lock file.
+        try_remove_tpulib_lock (bool): whether to release the tpulib lock file.
             If set to True, the lock file will be removed. Otherwise,
             the user might manually release the tpu_lock or add the
             environment variable to release the lock file.
     """
-    if RAY_TPU_DEV:
-        import subprocess
+    if try_remove_tpulib_lock:
 
         subprocess.run("sudo lsof -w /dev/accel0", shell=True)
         subprocess.run("sudo rm -f /tmp/libtpu_lockfile", shell=True)
     else:
         if os.path.isfile("/tmp/libtpu_lockfile"):
-            import warnings
 
             warnings.warn(
-                "The tpulib lock file is still there, you might"
-                "be unable to use the tpu for training. please "
+                "The tpulib lock file exists, and you might"
+                "be unable to use the tpu for training. Please "
                 "remove it (`/tmp/libtpu_lockfile`) manually or "
-                "set `RAY_TPU_DEV=1` to release it."
+                "set ``RAY_TPU_DEV=1`` to release it."
             )
 
 
@@ -106,13 +106,15 @@ class JaxBackend(Backend):
             # Get setup tasks in order to throw errors on failure.
 
             if use_tpu:
-                RAY_TPU_DEV = bool(os.environ.get("RAY_TPU_DEV"))
+                try_remove_tpulib_lock = bool(os.environ.get("RAY_TPU_DEV"))
 
                 setup_futures = []
                 for i in range(len(worker_group)):
                     setup_futures.append(
                         worker_group.execute_single_async(
-                            i, release_tpu_lock, RAY_TPU_DEV=RAY_TPU_DEV
+                            i,
+                            release_tpu_lock,
+                            try_remove_tpulib_lock=try_remove_tpulib_lock,
                         )
                     )
                 ray.get(setup_futures)
