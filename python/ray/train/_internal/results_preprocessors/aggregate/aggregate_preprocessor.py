@@ -1,22 +1,20 @@
 import logging
 from typing import Dict, List, Optional
 
-from ray.util.annotations import DeveloperAPI
-from ray.train.callbacks.results_preprocessors.preprocessor import ResultsPreprocessor
-from ray.train.callbacks.results_preprocessors.aggregate.aggregate_fn import (
+from ray.train._internal.results_preprocessors.preprocessor import ResultsPreprocessor
+from ray.train._internal.results_preprocessors.aggregate.aggregate_fn import (
     AggregateFn,
     Average,
     Max,
     WeightedAverage,
 )
-from ray.train.callbacks.results_preprocessors.aggregate.aggregate_utils import (
+from ray.train._internal.results_preprocessors.aggregate.aggregate_utils import (
     _get_metrics_from_results,
 )
 
 logger = logging.getLogger(__name__)
 
 
-@DeveloperAPI
 class AggregateResultsPreprocessor(ResultsPreprocessor):
     """A preprocessor that aggregates training metrics from all workers.
 
@@ -78,7 +76,6 @@ class AggregateResultsPreprocessor(ResultsPreprocessor):
 
         return results
 
-
 class AverageResultsPreprocessor(AggregateResultsPreprocessor):
     """A preprocessor that averages results with equal weight.
 
@@ -101,7 +98,6 @@ class AverageResultsPreprocessor(AggregateResultsPreprocessor):
     def __init__(self, keys: Optional[List[str]] = None):
         super().__init__(Average(), keys)
 
-
 class MaxResultsPreprocessor(AggregateResultsPreprocessor):
     """A preprocessor that computes maximum values of specified keys.
 
@@ -123,7 +119,6 @@ class MaxResultsPreprocessor(AggregateResultsPreprocessor):
 
     def __init__(self, keys: Optional[List[str]] = None):
         super().__init__(Max(), keys)
-
 
 class WeightedAverageResultsPreprocessor(AggregateResultsPreprocessor):
     """A preprocessor that performs weighted average over metrics.

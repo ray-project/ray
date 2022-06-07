@@ -1,14 +1,15 @@
 import abc
 from typing import List, Dict
 
-from ray.train.callbacks.results_preprocessors import (
+from ray.train._internal.results_preprocessors import (
     ResultsPreprocessor,
     ExcludedKeysResultsPreprocessor,
     SequentialResultsPreprocessor,
 )
 from ray.train.constants import ALL_RESERVED_KEYS
+from ray.util.annotations import DeveloperAPI
 
-
+@DeveloperAPI
 class TrainingCallback(abc.ABC):
     """Abstract Train callback class."""
 

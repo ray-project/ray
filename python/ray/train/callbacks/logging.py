@@ -8,11 +8,11 @@ from typing import List, Optional, Dict, Set, Tuple, Union
 import numpy as np
 
 from ray.train.callbacks import TrainingCallback
-from ray.train.callbacks.results_preprocessors import (
+from ray.train._internal.results_preprocessors import (
     IndexedResultsPreprocessor,
     ExcludedKeysResultsPreprocessor,
 )
-from ray.train.callbacks.results_preprocessors.preprocessor import (
+from ray.train._internal.results_preprocessors.preprocessor import (
     SequentialResultsPreprocessor,
 )
 from ray.train.constants import (
@@ -27,11 +27,12 @@ from ray.util.debug import log_once
 from ray.util.ml_utils.dict import flatten_dict
 from ray.util.ml_utils.json import SafeFallbackEncoder
 from ray.util.ml_utils.mlflow import MLflowLoggerUtil
+from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
 
 
-class TrainCallbackLogdirManager:
+class _TrainCallbackLogdirManager:
     """Sets up a logging directory for a callback.
 
     The path of the ``logdir`` can be set during initialization. Otherwise, the
@@ -90,7 +91,7 @@ class TrainCallbackLogdirManager:
             return self._default_logdir
         raise RuntimeError("Logdir must be set in init or setup_logdir.")
 
-
+@PublicAPI(stability="beta")
 class JsonLoggerCallback(TrainingCallback):
     """Logs Train results in json format.
 
@@ -112,7 +113,7 @@ class JsonLoggerCallback(TrainingCallback):
         workers_to_log: Optional[Union[int, List[int]]] = 0,
     ):
         self._filename = filename
-        self._logdir_manager = TrainCallbackLogdirManager(logdir=logdir)
+        self._logdir_manager = _TrainCallbackLogdirManager(logdir=logdir)
         self.results_preprocessor = IndexedResultsPreprocessor(indices=workers_to_log)
 
     def start_training(self, logdir: str, **info):
@@ -138,7 +139,7 @@ class JsonLoggerCallback(TrainingCallback):
         filename = self._filename or JsonLoggerCallback._default_filename
         return self.logdir.joinpath(filename)
 
-
+@PublicAPI(stability="beta")
 class MLflowLoggerCallback(TrainingCallback):
     """MLflow Logger to automatically log Train results and config to MLflow.
 
@@ -189,7 +190,7 @@ class MLflowLoggerCallback(TrainingCallback):
         logdir: Optional[str] = None,
         worker_to_log: int = 0,
     ):
-        self._logdir_manager = TrainCallbackLogdirManager(logdir=logdir)
+        self._logdir_manager = _TrainCallbackLogdirManager(logdir=logdir)
         self.results_preprocessor = IndexedResultsPreprocessor(indices=worker_to_log)
 
         self.tracking_uri = tracking_uri
@@ -235,7 +236,7 @@ class MLflowLoggerCallback(TrainingCallback):
     def logdir(self) -> Path:
         return self._logdir_manager.logdir_path
 
-
+@PublicAPI(stability="beta")
 class TBXLoggerCallback(TrainingCallback):
     """Logs Train results in TensorboardX format.
 
@@ -257,7 +258,7 @@ class TBXLoggerCallback(TrainingCallback):
     IGNORE_KEYS: Set[str] = {PID, TIMESTAMP, TIME_TOTAL_S}
 
     def __init__(self, logdir: Optional[str] = None, worker_to_log: int = 0) -> None:
-        self._logdir_manager = TrainCallbackLogdirManager(logdir=logdir)
+        self._logdir_manager = _TrainCallbackLogdirManager(logdir=logdir)
 
         results_preprocessors = [
             IndexedResultsPreprocessor(indices=worker_to_log),

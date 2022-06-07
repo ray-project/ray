@@ -88,8 +88,8 @@ if __name__ == "__main__":
 
     verify(ray.rllib, set(), ok, output)
     verify(ray.air, set(), ok, output)
+    verify(ray.train, set(), ok, output)
     # TODO(ekl) enable it for all modules.
-    #    verify(ray.train, set(), ok, output)
     #    verify(ray.serve, set(), ok, output)
     #    verify(ray.tune, set(), ok, output)
     #    verify(ray, set(), ok, output)

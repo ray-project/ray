@@ -1,10 +1,9 @@
 from typing import List, Dict, Optional, Iterable
 
-from ray.train.callbacks.results_preprocessors.preprocessor import ResultsPreprocessor
-from ray.util.annotations import DeveloperAPI
+from ray.train._internal.results_preprocessors.preprocessor import \
+    ResultsPreprocessor
 
 
-@DeveloperAPI
 class ExcludedKeysResultsPreprocessor(ResultsPreprocessor):
     """Preprocesses each result dictionary by excluding specified keys.
 

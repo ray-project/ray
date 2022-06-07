@@ -3,15 +3,16 @@ from pathlib import Path
 from typing import List, Dict, Optional, Union
 
 from ray.train.callbacks import TrainingCallback
-from ray.train.callbacks.logging import TrainCallbackLogdirManager
-from ray.train.callbacks.results_preprocessors import IndexedResultsPreprocessor
+from ray.train.callbacks.logging import _TrainCallbackLogdirManager
+from ray.train._internal.results_preprocessors import IndexedResultsPreprocessor
 from ray.train.constants import PYTORCH_PROFILER_KEY
+from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
 
 DRIVER_TRACE_DIR_NAME = "pytorch_profiler"
 
-
+@PublicAPI(stability="beta")
 class TorchTensorboardProfilerCallback(TrainingCallback):
     """Synchronizes PyTorch Profiler traces onto disk.
 
@@ -36,7 +37,7 @@ class TorchTensorboardProfilerCallback(TrainingCallback):
     ) -> None:
         super().__init__()
         self._logdir = logdir
-        self._logdir_manager = TrainCallbackLogdirManager(logdir=logdir)
+        self._logdir_manager = _TrainCallbackLogdirManager(logdir=logdir)
         self.results_preprocessor = IndexedResultsPreprocessor(indices=workers_to_log)
 
     def start_training(self, logdir: str, **info):

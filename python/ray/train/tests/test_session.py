@@ -3,7 +3,7 @@ import time
 import pytest
 
 import ray
-from ray.train.accelerator import Accelerator
+from ray.train._internal.accelerator import Accelerator
 from ray.train.constants import SESSION_MISUSE_LOG_ONCE_KEY
 from ray.train.session import (
     init_session,

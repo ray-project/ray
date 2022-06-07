@@ -7,13 +7,13 @@ import pytest
 import ray
 import ray.train as train
 from ray.cluster_utils import Cluster
-from ray.train.backend import (
-    Backend,
+from ray.train.backend import Backend, BackendConfig
+from ray.train._internal.backend_executor import (
+    BackendExecutor,
     InactiveWorkerGroupError,
     TrainBackendError,
     TrainingWorkerError,
 )
-from ray.train.backend import BackendConfig, BackendExecutor
 from ray.train.impl.dataset_spec import _RayDatasetSpec
 from ray.train.tensorflow import TensorflowConfig
 from ray.train.torch import TorchConfig
@@ -21,7 +21,7 @@ from ray.train.constants import (
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
 )
-from ray.train.worker_group import WorkerGroup
+from ray.train._internal.worker_group import WorkerGroup
 from ray.util.placement_group import get_current_placement_group
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure

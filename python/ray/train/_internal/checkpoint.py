@@ -9,8 +9,8 @@ from ray.train.constants import (
     TUNE_CHECKPOINT_ID,
     TUNE_INSTALLED,
 )
-from ray.train.session import TrainingResult
-from ray.train.utils import construct_path
+from ray.train._internal.session import TrainingResult
+from ray.train._internal.utils import construct_path
 from ray.util.ml_utils.checkpoint_manager import (
     _CheckpointManager as CommonCheckpointManager,
     _TrackedCheckpoint,

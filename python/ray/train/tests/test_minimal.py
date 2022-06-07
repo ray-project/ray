@@ -7,7 +7,7 @@ import ray.train as train
 from ray.train import Trainer
 from ray.train.backend import BackendConfig, Backend
 from ray.train.callbacks import TrainingCallback
-from ray.train.worker_group import WorkerGroup
+from ray.train._internal.worker_group import WorkerGroup
 
 
 @pytest.fixture

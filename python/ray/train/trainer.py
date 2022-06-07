@@ -10,19 +10,21 @@ import ray
 from ray.actor import ActorHandle
 from ray.train.backend import (
     BackendConfig,
+)
+from ray.train.callbacks.callback import TrainingCallback
+from ray.train.impl.dataset_spec import RayDataset, _RayDatasetSpec
+from ray.train._internal.session import TrainingResultType
+from ray.train._internal.utils import (
+    construct_train_func,
+    ActorWrapper,
+)
+from ray.train._internal.backend_executor import (
     BackendExecutor,
     InactiveWorkerGroupError,
     TrainBackendError,
     TrainingWorkerError,
 )
-from ray.train.callbacks.callback import TrainingCallback
-from ray.train.impl.dataset_spec import RayDataset, _RayDatasetSpec
-from ray.train.session import TrainingResultType
-from ray.train.utils import (
-    construct_train_func,
-    ActorWrapper,
-)
-from ray.train._checkpoint import (
+from ray.train._internal.checkpoint import (
     TuneCheckpointManager,
     CheckpointManager,
     load_checkpoint_from_path,
@@ -37,8 +39,8 @@ from ray.train.constants import (
 )
 
 # Ray Train should be usable even if Tune is not installed.
-from ray.train.utils import construct_path
-from ray.train.worker_group import WorkerGroup
+from ray.train._internal.utils import construct_path
+from ray.train._internal.worker_group import WorkerGroup
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
 from ray.util.ml_utils.checkpoint_manager import CheckpointStrategy
@@ -79,7 +81,7 @@ BACKEND_ENV_VARS = {
 
 # Import backend configurations dynamically since not all subdependencies
 # may be installed.
-def get_backend_config_cls(backend_name) -> type:
+def _get_backend_config_cls(backend_name) -> type:
     if backend_name not in BACKEND_NAME_TO_CONFIG_CLS_NAME:
         raise ValueError(
             f"Invalid backend: {backend_name}. "
@@ -269,7 +271,7 @@ class Trainer:
         if isinstance(backend, BackendConfig):
             return backend
         elif isinstance(backend, str):
-            return get_backend_config_cls(backend)()
+            return _get_backend_config_cls(backend)()
         else:
             raise TypeError(f"Invalid type for backend: {type(backend)}.")
 

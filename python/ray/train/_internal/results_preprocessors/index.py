@@ -1,10 +1,9 @@
 from typing import List, Dict, Iterable, Union, Optional
 
-from ray.train.callbacks.results_preprocessors.preprocessor import ResultsPreprocessor
-from ray.util.annotations import DeveloperAPI
+from ray.train._internal.results_preprocessors.preprocessor import \
+    ResultsPreprocessor
 
 
-@DeveloperAPI
 class IndexedResultsPreprocessor(ResultsPreprocessor):
     """Preprocesses results by filtering by index.
 
