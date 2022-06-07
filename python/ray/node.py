@@ -1446,7 +1446,7 @@ class Node:
         This will also fill up the default setting for object spilling
         if not specified.
         """
-        object_spilling_config = self._config.get("object_spilling_config", {})
+        object_spilling_config = self._config.get("object_spilling_config", "")
         automatic_spilling_enabled = self._config.get(
             "automatic_object_spilling_enabled", True
         )
@@ -1454,6 +1454,8 @@ class Node:
             return
 
         # If the config is not specified, we fill up the default.
+        if not object_spilling_config:
+            object_spilling_config = os.environ.get("RAY_object_spilling_config", "")
         if not object_spilling_config:
             object_spilling_config = json.dumps(
                 {"type": "filesystem", "params": {"directory_path": self._session_dir}}
