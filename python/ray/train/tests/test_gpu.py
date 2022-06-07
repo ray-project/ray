@@ -377,7 +377,13 @@ def test_jax_mnist_gpu(ray_start_4_cpus_2_gpus):
     )
     trainer.start()
     results = trainer.run(
-        jax_mnist_train_func, config={"num_epochs": num_epochs, "learning_rate": 1e-3,  "momentum": 0.9, "batch_size": 8192}
+        jax_mnist_train_func,
+        config={
+            "num_epochs": num_epochs,
+            "learning_rate": 1e-3,
+            "momentum": 0.9,
+            "batch_size": 8192,
+        },
     )
     trainer.shutdown()
 

@@ -116,7 +116,7 @@ def tune_jax_mnist(num_workers, use_gpu, num_samples, num_gpus_per_worker):
             "learning_rate": tune.loguniform(1e-4, 1e-1),
             "batch_size": tune.choice([32, 64, 128]),
             "num_epochs": epochs,
-            "momentum": 0.9
+            "momentum": 0.9,
         },
     )
 

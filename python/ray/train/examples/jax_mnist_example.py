@@ -14,6 +14,7 @@ from ray.train.trainer import Trainer
 
 def get_datasets():
     import jax
+
     """Load MNIST train and test datasets into memory."""
     # shard the dataset
     def shard_fn(x):
@@ -181,7 +182,12 @@ def train_func(config: Dict):
 
 
 def train_mnist(num_workers=4, use_gpu=True, num_gpu_per_worker=1):
-    trainer = Trainer(backend="jax", num_workers=num_workers, use_gpu=use_gpu, resources_per_worker={'GPU': num_gpu_per_worker})
+    trainer = Trainer(
+        backend="jax",
+        num_workers=num_workers,
+        use_gpu=use_gpu,
+        resources_per_worker={"GPU": num_gpu_per_worker},
+    )
 
     trainer.start()
     result = trainer.run(
@@ -227,4 +233,8 @@ if __name__ == "__main__":
     import ray
 
     ray.init(address=args.address)
-    train_mnist(num_workers=args.num_workers, use_gpu=args.use_gpu, num_gpu_per_worker=args.num_gpu_per_worker)
+    train_mnist(
+        num_workers=args.num_workers,
+        use_gpu=args.use_gpu,
+        num_gpu_per_worker=args.num_gpu_per_worker,
+    )
