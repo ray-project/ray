@@ -171,14 +171,11 @@ class DatasetPipeline(Generic[T]):
         if self._executed[0]:
             raise RuntimeError("Pipeline cannot be read multiple times.")
         time_start = time.perf_counter()
-        if self._first_dataset is None:
-            self._peek()
-        is_lazy = self._first_dataset._lazy
         yield from batch_blocks(
             self._iter_blocks(),
             self._stats,
             prefetch_blocks=prefetch_blocks,
-            clear_block_after_read=is_lazy,
+            clear_block_after_read=(len(self._stages) > 0),
             batch_size=batch_size,
             batch_format=batch_format,
             drop_last=drop_last,

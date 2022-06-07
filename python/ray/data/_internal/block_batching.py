@@ -42,6 +42,11 @@ def batch_blocks(
     Args:
         prefetch_blocks: The number of blocks to prefetch ahead of the
             current block during the scan.
+        clear_block_after_read: Whether to clear the block from object store
+            manually (i.e. without waiting for Python's automatic GC) after it
+            is read. Doing so will reclaim memory faster and hence reduce the
+            memory footprint. However, the caller has to ensure the safety, i.e.
+            the block will never be accessed again.
         batch_size: Record batch size, or None to let the system pick.
         batch_format: The format in which to return each batch.
             Specify "native" to use the current block format (promoting
@@ -131,6 +136,11 @@ def _sliding_window(iterable: Iterable, n: int, clear_block_after_read: bool = F
         iterable: The iterable on which the sliding window will be
             created.
         n: The width of the sliding window.
+        clear_block_after_read: Whether to clear the leftmost block
+            from object store manually (i.e. without waiting for Python's
+            automatic GC) when it's out of the sliding window (i.e. been
+            consumed), so as to reclaim memory faster. The caller has to
+            ensure safety, i.e. the block will never be accessed again.
 
     Returns:
         An iterator of n-width windows over iterable.

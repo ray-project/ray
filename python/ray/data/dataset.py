@@ -2986,9 +2986,7 @@ class Dataset(Generic[T]):
 
                 def gen():
                     ds = Dataset(
-                        ExecutionPlan(blocks, outer_stats),
-                        self._epoch,
-                        lazy=(read_stage is not None),
+                        ExecutionPlan(blocks, outer_stats), self._epoch, lazy=True,
                     )
                     return ds
 
