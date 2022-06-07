@@ -184,7 +184,7 @@ def run_with_custom_entropy_loss(args, stop):
         def get_default_policy_class(self, config):
             return EntropyPolicy
 
-    run_heuristic_vs_learned(args, use_lstm=True, trainer=EntropyLossPG)
+    run_heuristic_vs_learned(args, use_lstm=True, algorithm=EntropyLossPG)
 
 
 if __name__ == "__main__":
