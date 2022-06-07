@@ -1572,15 +1572,15 @@ class RolloutWorker(ParallelIteratorWorker):
             else:
                 self.policy_map[pid].set_state(state)
 
-    def init_buffers(self):
-        self.buffer_key_list = ["default"] * 12
-        self.buffer_list = [cp.ones([1, 1], dtype=cp.float32)] * 12
-        self.buffer = cp.ones([1,1], dtype=cp.float32)
-        cp.cuda.Stream.null.synchronize()
-        print(f">>>> Finished init buffers for worker at rank {collective.get_rank(group_name='device_mesh')}")
+    # def init_buffers(self):
+    #     self.buffer_key_list = ["default"] * 12
+    #     self.buffer_list = [cp.ones([1, 1], dtype=cp.float32)] * 12
+    #     self.buffer = cp.ones([1,1], dtype=cp.float32)
+    #     cp.cuda.Stream.null.synchronize()
+    #     print(f">>>> Finished init buffers for worker at rank {collective.get_rank(group_name='device_mesh')}")
 
-    def get_buffers(self):
-        return self.buffer_key_list, self.buffer_list, self.buffer
+    # def get_buffers(self):
+    #     return self.buffer_key_list, self.buffer_list, self.buffer
 
     def init_group(self, world_size, rank, backend=Backend.NCCL, group_name="default"):
         collective.init_collective_group(world_size, rank, backend, group_name)
@@ -1596,51 +1596,30 @@ class RolloutWorker(ParallelIteratorWorker):
     #     collective.recv(self.policy_map_buffer, src_rank, group_name)
 
     def broadcast(self, src_rank=0, group_name="default"):
-        local_worker_rank = collective.get_rank(group_name="device_mesh")
-        print(f">>>> local_worker_rank from rollout_worker: {local_worker_rank}")
-        # print(f">>>>> collective group size: {collective.get_collective_group_size('device_mesh')}")
-
-        print(f">>>> Broadcasting ... len: buffer_key_list: {len(self.buffer_key_list)}, len: buffer_list: {len(self.buffer_list)}")
-        print(f">>>> group_name: {group_name}, src_rank: {src_rank}")
-        # collective.broadcast(self.buffer, src_rank, group_name)
-        # TODO (jiaodong): Enable groupStart/End and see perf diff
+        # TODO (jiaodong): See if groupStart/End improves perf
         # nccl_util.groupStart()
-        for i in range(len(self.buffer_list)):
-            print(f">>>> Broadcasting tensor of type {type(self.buffer_list[i])}, shape: {self.buffer_list[i].shape}")
-            collective.broadcast(self.buffer_list[i], src_rank, group_name)
+        for key in self.weights_buffer.keys():
+            print(f">>>> Broadcasting {key}, shape: {self.weights_buffer[key].shape}")
+            collective.broadcast(self.weights_buffer[key], src_rank, group_name)
         # nccl_util.groupEnd()
-
-        # print(f">>>> Putting current buffer_list to policy map")
-        # self.buffer_list_to_policy_map()
         return True
 
-    # def set_buffer_key_list(self, buffer_key_list: List[str]):
-    #     self.buffer_key_list = buffer_key_list
-
-    # def set_buffer_list(self, buffer_list: List[cp.ndarray]):
-    #     self.buffer_list = buffer_list
 
     def policy_map_to_buffer_list(self):
         """Given a policy map, convert into list of tensor buffers with out
         nesting
         """
-        print(f">>>> Putting current policy map to buffer_list")
-        self.buffer_key_list = []
-        self.buffer_list = []
-        weights = self.get_weights()
-        for key in weights['default_policy'].keys():
-            tensor = weights['default_policy'][key]
-            self.buffer_key_list.append(key)
-            self.buffer_list.append(cp.asarray(tensor))
-        # TODO (jiaodong): Generalize this to support multiple buffers
-        # self.buffer = self.buffer_list[0]
+        self.weights_buffer = self.policy_map['default_policy'].get_weights()
+        for key in self.weights_buffer.keys():
+            tensor = self.weights_buffer[key]
+            self.weights_buffer[key] = cp.asarray(tensor)
 
     def buffer_list_to_policy_map(self):
-        # TODO (jiaodong): Generalize this to support multiple buffers
-        # self.buffer_list[0] = self.buffer
+        for key in self.weights_buffer.keys():
+            tensor = self.weights_buffer[key]
+            self.weights_buffer[key] = cp.asnumpy(tensor)
 
-        for buffer_key, buffer_tensor in zip(self.buffer_key_list, self.buffer_list):
-            self.policy_map['default_policy'][buffer_key] = cp.asnumpy(buffer_tensor)
+        self.policy_map['default_policy'].set_weights(self.weights_buffer)
 
     @DeveloperAPI
     def get_weights(
@@ -1865,15 +1844,15 @@ class RolloutWorker(ParallelIteratorWorker):
             session_creator=session_creator,
             seed=seed,
         )
-        self.policy_map_buffer = PolicyMap(
-            worker_index=self.worker_index,
-            num_workers=self.num_workers,
-            capacity=ma_config.get("policy_map_capacity"),
-            path=ma_config.get("policy_map_cache"),
-            policy_config=policy_config,
-            session_creator=session_creator,
-            seed=seed,
-        )
+        # self.policy_map_buffer = PolicyMap(
+        #     worker_index=self.worker_index,
+        #     num_workers=self.num_workers,
+        #     capacity=ma_config.get("policy_map_capacity"),
+        #     path=ma_config.get("policy_map_cache"),
+        #     policy_config=policy_config,
+        #     session_creator=session_creator,
+        #     seed=seed,
+        # )
         # If our preprocessors dict does not exist yet, create it here.
         self.preprocessors = self.preprocessors or {}
 

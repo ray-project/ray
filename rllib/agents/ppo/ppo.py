@@ -382,8 +382,8 @@ class PPOTrainer(Trainer):
 
             return PPOEagerTFPolicy
 
-    def init_buffers(self):
-        self.workers.local_worker().init_buffers()
+    # def init_buffers(self):
+    #     self.workers.local_worker().init_buffers()
 
     def broadcast(self, src_rank=0, group_name="default"):
         # collective.broadcast(local_worker.buffer, src_rank, group_name)
@@ -392,6 +392,9 @@ class PPOTrainer(Trainer):
 
     def policy_map_to_buffer_list(self):
         return self.workers.local_worker().policy_map_to_buffer_list()
+
+    def buffer_list_to_policy_map(self):
+        return self.workers.local_worker().buffer_list_to_policy_map()
 
     @ExperimentalAPI
     def training_iteration(self) -> ResultDict:

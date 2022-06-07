@@ -22,7 +22,7 @@ config = {
     # Tweak the default model provided automatically by RLlib,
     # given the environment's observation- and action spaces.
     "model": {
-        "fcnet_hiddens": [500, 500],
+        "fcnet_hiddens": [5000, 5000],
         "fcnet_activation": "relu",
     },
     # Set up a separate evaluation worker set for the
@@ -58,13 +58,13 @@ init_results = ray.get(
     ]
 )
 print(init_results)
-init_buffers = ray.get(
-    [
-        worker.init_buffers.remote() for _, worker in enumerate(all_workers)
-    ]
-)
-cp.cuda.Device(0).synchronize()
-cp.cuda.Stream.null.synchronize()
+# init_buffers = ray.get(
+#     [
+#         worker.init_buffers.remote() for _, worker in enumerate(all_workers)
+#     ]
+# )
+# cp.cuda.Device(0).synchronize()
+# cp.cuda.Stream.null.synchronize()
 # print(f">>>>> Broadcasting for the first time in main loop...")
 # results = ray.get(
 #     [

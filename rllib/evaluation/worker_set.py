@@ -253,11 +253,13 @@ class WorkerSet:
         # self.local_worker().broadcast(group_name="device_mesh", src_rank=0)
         self_actor = ray.get_runtime_context().current_actor
         all_workers = [self_actor, *self.remote_workers()]
+        start = time.time()
         ray.get(
             [
                 w.policy_map_to_buffer_list.remote() for w in all_workers
             ]
         )
+        print(f">>>> \n\n Time spent on policy_map_to_buffer_list: {(time.time() - start)*1000}ms \n\n")
         start = time.time()
         ray.get(
             [
@@ -268,6 +270,13 @@ class WorkerSet:
             ]
         )
         print(f">>>> \n\n Time spent on broadcasting: {(time.time() - start)*1000}ms \n\n")
+        start = time.time()
+        ray.get(
+            [
+                w.buffer_list_to_policy_map.remote() for w in self.remote_workers()
+            ]
+        )
+        print(f">>>> \n\n Time spent on buffer_list_to_policy_map: {(time.time() - start)*1000}ms \n\n")
 
     def sync_weights(
         self,
