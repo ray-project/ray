@@ -15,3 +15,6 @@ WILDCARD_KEY = "*"
 # Only used in trainers which do not support multiple
 # evaluation datasets.
 EVALUATION_DATASET_KEY = "evaluation"
+
+# Name to use for the column when representing tensors in table format.
+TENSOR_COLUMN_NAME = "__value__"

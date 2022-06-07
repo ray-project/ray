@@ -162,6 +162,14 @@ py_test(
 )
 
 py_test(
+    name = "test_batch_predictor",
+    size = "small",
+    srcs = ["tests/test_batch_predictor.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
     name = "test_batchpredictor_runtime",
     size = "medium",
     srcs = ["tests/test_batchpredictor_runtime.py"],

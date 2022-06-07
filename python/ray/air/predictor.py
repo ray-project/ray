@@ -1,5 +1,5 @@
 import abc
-from typing import Dict, Type, Union, TYPE_CHECKING
+from typing import Dict, Union, TYPE_CHECKING
 
 from ray.air.checkpoint import Checkpoint
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -82,17 +82,18 @@ class Predictor(abc.ABC):
         Returns:
             DataBatchType: Prediction result.
         """
+        from ray.air.utils.data_batch_conversion_utils import (
+            convert_batch_type_to_pandas,
+            convert_pandas_to_batch_type,
+        )
 
-        pass
+        data_df = convert_batch_type_to_pandas(data)
 
-        # TODO(amogkam): Implement below code.
-        # data_df = _convert_batch_type_to_pandas(data)
-        #
-        # if hasattr(self, "preprocessor") and self.preprocessor:
-        #     data_df = self.preprocessor.transform_batch(data_df)
-        #
-        # predictions_df = self._predict_pandas(data_df)
-        # return _convert_pandas_to_batch_type(predictions_df, type=type(data))
+        if hasattr(self, "preprocessor") and self.preprocessor:
+            data_df = self.preprocessor.transform_batch(data_df)
+
+        predictions_df = self._predict_pandas(data_df)
+        return convert_pandas_to_batch_type(predictions_df, type=type(data))
 
     @DeveloperAPI
     def _predict_pandas(self, data: pd.DataFrame, **kwargs) -> pd.DataFrame:
@@ -116,16 +117,3 @@ class Predictor(abc.ABC):
             "to serialize a checkpoint and initialize the Predictor with "
             "Predictor.from_checkpoint."
         )
-
-
-def _convert_batch_type_to_pandas(data: DataBatchType) -> pd.DataFrame:
-    """Convert the provided data to a Pandas DataFrame."""
-    pass
-
-
-def _convert_pandas_to_batch_type(
-    data: pd.DataFrame, type: Type[DataBatchType]
-) -> DataBatchType:
-    """Convert the provided Pandas dataframe to the provided ``type``."""
-
-    pass
