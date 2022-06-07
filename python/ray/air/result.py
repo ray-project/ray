@@ -2,9 +2,11 @@ from typing import Any, Dict, Optional
 from dataclasses import dataclass
 
 from ray.air.checkpoint import Checkpoint
+from ray.util.annotations import PublicAPI
 
 
 @dataclass
+@PublicAPI(stability="alpha")
 class Result:
     """The final result of a ML training run or a Tune trial.
 

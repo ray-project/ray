@@ -2,6 +2,8 @@
 
 # Key Concepts
 
+(serve-key-concepts-deployment)=
+
 ## Deployment
 
 Deployments are the central concept in Ray Serve.

@@ -17,17 +17,17 @@ from typing import (
 import ray
 from ray.data.context import DatasetContext
 from ray.data.dataset import Dataset, T, U
-from ray.data.impl.pipeline_executor import (
+from ray.data._internal.pipeline_executor import (
     PipelineExecutor,
     PipelineSplitExecutorCoordinator,
 )
 from ray.data.block import Block
 from ray.data.row import TableRow
-from ray.data.impl import progress_bar
-from ray.data.impl.block_batching import batch_blocks, BatchType
-from ray.data.impl.block_list import BlockList
-from ray.data.impl.plan import ExecutionPlan
-from ray.data.impl.stats import DatasetPipelineStats, DatasetStats
+from ray.data._internal import progress_bar
+from ray.data._internal.block_batching import batch_blocks, BatchType
+from ray.data._internal.block_list import BlockList
+from ray.data._internal.plan import ExecutionPlan
+from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
 from ray.util.annotations import PublicAPI, DeveloperAPI
 
 if TYPE_CHECKING:
