@@ -198,7 +198,7 @@ def train_mnist(num_workers=4, use_gpu=True, use_tpu=True, num_gpu_per_worker=1)
     if use_tpu: 
         scaling_config = dict(num_workers=num_workers, use_gpu=False, resources_per_worker={'TPU': 1}, placement_strategy='STRICT_SPREAD')
         
-    from ray.ml.train.integrations.jax import JaxTrainer
+    from ray.air.train.integrations.jax import JaxTrainer
 
     trainer = JaxTrainer(
         train_loop_per_worker=train_func,
