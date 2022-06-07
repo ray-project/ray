@@ -227,10 +227,9 @@ class DataParallelTrainer(Trainer):
 
     _scaling_config_allowed_keys = Trainer._scaling_config_allowed_keys + [
         "num_workers",
-        "num_cpus_per_worker",
-        "num_gpus_per_worker",
-        "additional_resources_per_worker",
+        "resources_per_worker",
         "use_gpu",
+        "placement_strategy",
     ]
 
     _dataset_config = {
