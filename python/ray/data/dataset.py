@@ -65,7 +65,7 @@ from ray.data.datasource.file_based_datasource import (
     _unwrap_arrow_serialization_workaround,
 )
 from ray.data.row import TableRow
-from ray.data.aggregate import AggregateFn, Sum, Max, Min, Mean, Std
+from ray.data.aggregate import AggregateFn, Max, Min, Mean, Std
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.batcher import Batcher
 from ray.data.impl.plan import ExecutionPlan, OneToOneStage, AllToAllStage
@@ -89,7 +89,6 @@ PREFETCHER_ACTOR_NAMESPACE = "ray.dataset"
 
 # Whether we have warned of Datasets containing multiple epochs of data.
 _epoch_warned = False
-
 
 
 @PublicAPI(stability="beta")
