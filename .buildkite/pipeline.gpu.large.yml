@@ -2,7 +2,7 @@
   conditions: ["RAY_CI_TRAIN_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - PYTHON=3.7 TRAIN_TESTING=1 TUNE_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
+    - PYTHON=3.7 DATA_PROCESSING_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
     # Because Python version changed, we need to re-install Ray here
     - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/ci.sh build
     - pip install -Ur ./python/requirements_ml_docker.txt

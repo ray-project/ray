@@ -17,7 +17,7 @@ from ray.train.huggingface import HuggingFaceTrainer
 from ray.air.predictors.integrations.huggingface import HuggingFacePredictor
 from ray.air.batch_predictor import BatchPredictor
 
-from ray.air.tests._huggingface_data import train_data, validation_data
+from ray.train.tests._huggingface_data import train_data, validation_data
 
 # 16 first rows of tokenized wikitext-2-raw-v1 training & validation
 train_df = pd.read_json(train_data)
