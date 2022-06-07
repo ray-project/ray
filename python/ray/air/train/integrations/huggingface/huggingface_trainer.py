@@ -57,6 +57,9 @@ from ray.tune.utils.file_transfer import delete_on_node, sync_dir_between_nodes
 # TODO(ml-team): Make dir syncing checkpoint logic generic.
 
 
+# The checkpoint is turned into a dict with node ip & path
+# in HuggingFaceTrainer.as_trainable
+# TODO(team-ml): Refactor checkpoint management along with Tune.
 class _SyncedTrackedCheckpoint(_TrackedCheckpoint):
     def commit(self, path: Optional[Path] = None) -> None:
         if (
