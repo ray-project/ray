@@ -4,6 +4,7 @@ import gym
 import logging
 import math
 import numpy as np
+import cupy as cp
 import os
 import threading
 import time
@@ -873,7 +874,8 @@ class TorchPolicyV2(Policy):
     @override(Policy)
     @DeveloperAPI
     def get_weights(self) -> ModelWeights:
-        return {k: v.cpu().detach().numpy() for k, v in self.model.state_dict().items()}
+        # return {k: v.cpu().detach().numpy() for k, v in self.model.state_dict().items()}
+        return {k: cp.asarray(v) for k, v in self.model.state_dict().items()}
 
     @override(Policy)
     @DeveloperAPI

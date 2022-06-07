@@ -1610,14 +1610,14 @@ class RolloutWorker(ParallelIteratorWorker):
         nesting
         """
         self.weights_buffer = self.policy_map['default_policy'].get_weights()
-        for key in self.weights_buffer.keys():
-            tensor = self.weights_buffer[key]
-            self.weights_buffer[key] = cp.asarray(tensor)
+        # for key in self.weights_buffer.keys():
+        #     tensor = self.weights_buffer[key]
+            # self.weights_buffer[key] = cp.asarray(tensor)
 
     def buffer_list_to_policy_map(self):
-        for key in self.weights_buffer.keys():
-            tensor = self.weights_buffer[key]
-            self.weights_buffer[key] = cp.asnumpy(tensor)
+        # for key in self.weights_buffer.keys():
+        #     tensor = self.weights_buffer[key]
+        #     self.weights_buffer[key] = cp.asnumpy(tensor)
 
         self.policy_map['default_policy'].set_weights(self.weights_buffer)
 
