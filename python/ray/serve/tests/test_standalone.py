@@ -694,7 +694,7 @@ def test_serve_start_different_http_checkpoint_options_warning(caplog):
 
     for test_config, msg in zip([[test_ckpt], ["host", "port"]], warning_msg):
         for test_msg in test_config:
-            if "Autoscaling metrics pusher thread" in test_msg:
+            if "Autoscaling metrics pusher thread" in msg:
                 continue
             assert test_msg in msg
 

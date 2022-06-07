@@ -15,9 +15,9 @@ from ray.data.block import (
     MaybeBlockPartition,
 )
 from ray.data.context import DatasetContext
-from ray.data.impl.arrow_block import ArrowRow
-from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
-from ray.data.impl.util import _check_pyarrow_version
+from ray.data._internal.arrow_block import ArrowRow
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.util import _check_pyarrow_version
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 WriteResult = Any

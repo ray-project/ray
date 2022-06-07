@@ -165,7 +165,7 @@ Then in a new shell, you can run a job using the CLI:
 
   $ export RAY_ADDRESS="http://127.0.0.1:8265"
 
-  $ ray job submit --runtime-env-json='{"working_dir": "./", "pip": ["requests==2.26.0"]}' -- "python script.py"
+  $ ray job submit --runtime-env-json='{"working_dir": "./", "pip": ["requests==2.26.0"]}' -- python script.py
   2021-12-01 23:04:52,672 INFO cli.py:25 -- Creating JobSubmissionClient at address: http://127.0.0.1:8265
   2021-12-01 23:04:52,809 INFO sdk.py:144 -- Uploading package gcs://_ray_pkg_bbcc8ca7e83b4dc0.zip.
   2021-12-01 23:04:52,810 INFO packaging.py:352 -- Creating a file package for local directory './'.
