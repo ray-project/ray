@@ -9,8 +9,10 @@ import uuid
 from functools import partial
 from numbers import Number
 
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Dict, Optional
 
+from ray.air.checkpoint import Checkpoint
+from ray.air.session import Session
 from ray.util.annotations import DeveloperAPI
 from six.moves import queue
 
@@ -122,17 +124,7 @@ class FuncCheckpointUtil:
         return perm_checkpoint_dir
 
 
-class _StatusReporter:
-    """Object passed into your function that you can report status through.
-
-    Example:
-        >>> from ray.tune.function_runner import _StatusReporter
-        >>> reporter = _StatusReporter(...) # doctest: +SKIP
-        >>> def trainable_function(config, reporter): # doctest: +SKIP
-        >>>     assert isinstance(reporter, _StatusReporter) # doctest: +SKIP
-        >>>     reporter(timesteps_this_iter=1) # doctest: +SKIP
-    """
-
+class TuneSession(Session):
     def __init__(
         self,
         result_queue,
@@ -153,6 +145,7 @@ class _StatusReporter:
         self._last_checkpoint = None
         self._fresh_checkpoint = False
         self._trial_resources = trial_resources
+        self._epoch = 0
 
     def reset(self, trial_name=None, trial_id=None, logdir=None, trial_resources=None):
         self._trial_name = trial_name
@@ -161,6 +154,10 @@ class _StatusReporter:
         self._last_checkpoint = None
         self._fresh_checkpoint = False
         self._trial_resources = trial_resources
+        # Also used as a marker of whether new `report()` API is being used,
+        # in which case, `_epoch` will be incremented from 0 every time `report`
+        # is called.
+        self._epoch = None
 
     def __call__(self, _metric=None, **kwargs):
         """Report updated training status.
@@ -170,21 +167,13 @@ class _StatusReporter:
         Args:
             kwargs: Latest training result status.
 
-        Example:
-            >>> from ray.tune.function_runner import _StatusReporter
-            >>> reporter = _StatusReporter(...) # doctest: +SKIP
-            >>> reporter(mean_accuracy=1, training_iteration=4) # doctest: +SKIP
-            >>> reporter( # doctest: +SKIP
-            ...     mean_accuracy=1, training_iteration=4, done=True
-            ... )
-
         Raises:
             StopIteration: A StopIteration exception is raised if the trial has
                 been signaled to stop.
         """
 
         assert self._last_report_time is not None, (
-            "StatusReporter._start() must be called before the first "
+            "TuneSession._start() must be called before the first "
             "report __call__ is made to ensure correct runtime metrics."
         )
 
@@ -244,6 +233,17 @@ class _StatusReporter:
 
     def _start(self):
         self._last_report_time = time.time()
+
+    def report(self, metrics: Dict, checkpoint: Optional[Checkpoint] = None) -> None:
+        # TODO(xwjiang): Tons of optimizations.
+        if not self._epoch:
+            self._epoch = 0
+        if checkpoint:
+            checkpoint_dir = self.make_checkpoint_dir(step=self._epoch)
+            self.set_checkpoint(checkpoint_dir)
+            checkpoint.to_directory(checkpoint_dir)
+        self.__call__(**metrics)
+        self._epoch += 1
 
     @property
     def logdir(self):
@@ -326,7 +326,7 @@ class FunctionRunner(Trainable):
         # reporting to block until finished.
         self._error_queue = queue.Queue(1)
 
-        self._status_reporter = _StatusReporter(
+        self._tune_session = TuneSession(
             self._results_queue,
             self._continue_semaphore,
             self._end_event,
@@ -337,7 +337,7 @@ class FunctionRunner(Trainable):
         )
         self._last_result = {}
 
-        session.init(self._status_reporter)
+        session.init(self._tune_session)
         self._runner = None
         self._restore_tmpdir = None
         self.temp_checkpoint_dir = None
@@ -351,14 +351,14 @@ class FunctionRunner(Trainable):
         def entrypoint():
             return self._trainable_func(
                 self.config,
-                self._status_reporter,
-                self._status_reporter.get_checkpoint(),
+                self._tune_session,
+                self._tune_session.get_checkpoint(),
             )
 
         # the runner thread is not started until the first call to _train
         self._runner = _RunnerThread(entrypoint, self._error_queue)
         # if not alive, try to start
-        self._status_reporter._start()
+        self._tune_session._start()
         try:
             self._runner.start()
         except RuntimeError:
@@ -436,7 +436,7 @@ class FunctionRunner(Trainable):
             result = new_result
 
         self._last_result = result
-        if self._status_reporter.has_new_checkpoint():
+        if self._tune_session.has_new_checkpoint():
             result[SHOULD_CHECKPOINT] = True
         return result
 
@@ -447,7 +447,7 @@ class FunctionRunner(Trainable):
         if tmp_checkpoint_dir:
             raise ValueError("Checkpoint dir should not be used with function API.")
 
-        checkpoint = self._status_reporter.get_checkpoint()
+        checkpoint = self._tune_session.get_checkpoint()
         state = self.get_state()
 
         if not checkpoint:
@@ -511,7 +511,7 @@ class FunctionRunner(Trainable):
         # By informing that this checkpoint is not new,
         # we will not return the checkpoint path
         # as a new checkpoint.
-        self._status_reporter.set_checkpoint(checkpoint, is_new=False)
+        self._tune_session.set_checkpoint(checkpoint, is_new=False)
 
     def restore_from_object(self, obj):
         self.temp_checkpoint_dir = FuncCheckpointUtil.mk_temp_checkpoint_dir(
@@ -562,7 +562,7 @@ class FunctionRunner(Trainable):
         self._runner = None
         self._last_result = {}
 
-        self._status_reporter.reset(
+        self._tune_session.reset(
             trial_name=self.trial_name,
             trial_id=self.trial_id,
             logdir=self.logdir,

@@ -11,6 +11,8 @@ from typing import Optional, Dict, Type, Union
 import warnings
 
 import ray
+from ray.air.checkpoint import Checkpoint
+from ray.air.session import Session
 from ray.data import Dataset, DatasetPipeline
 from ray.train.accelerator import Accelerator
 from ray.train.constants import (
@@ -41,7 +43,7 @@ class TrainingResult:
     data: Dict
 
 
-class Session:
+class TrainSession(Session):
     """Holds information for training on each worker."""
 
     def __init__(
@@ -186,7 +188,7 @@ class Session:
         result.update(auto_filled_metrics)
         return result
 
-    def report(self, **kwargs):
+    def _report_legacy(self, **kwargs):
         """Adds kwargs to the queue to be consumed by main thread."""
         if self.ignore_report:
             return
@@ -236,6 +238,13 @@ class Session:
         # checkpoint has been processed.
         self.continue_lock.acquire()
 
+    def report(self, metrics: Dict, checkpoint: Optional[Checkpoint] = None) -> None:
+        # TODO(xwjiang): tons of optimizations.
+        if checkpoint:
+            checkpoint_dict = checkpoint.to_dict()
+            self.checkpoint(**checkpoint_dict)
+        self._report_legacy(**metrics)
+
 
 _session = None
 
@@ -263,10 +272,10 @@ def init_session(*args, **kwargs) -> None:
             "A Train session is already in use. Do not call "
             "`init_session()` manually."
         )
-    _session = Session(*args, **kwargs)
+    _session = TrainSession(*args, **kwargs)
 
 
-def get_session() -> Optional[Session]:
+def get_session() -> Optional[TrainSession]:
     global _session
     return _session
 
@@ -367,7 +376,7 @@ def report(**kwargs) -> None:
     if session is None:
         _warn_session_misuse(report.__name__)
         return
-    session.report(**kwargs)
+    session._report_legacy(**kwargs)
 
 
 @PublicAPI(stability="beta")

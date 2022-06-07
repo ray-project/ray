@@ -183,6 +183,9 @@ def report(_metric=None, **kwargs):
     """
     _session = get_session()
     if _session:
+        assert (
+            not _session._epoch
+        ), "Please do not mix `tune.report` with `session.report`."
         return _session(_metric, **kwargs)
 
 
@@ -242,6 +245,9 @@ def checkpoint_dir(step: int):
         raise ValueError("checkpoint_dir(step) must be provided - got None.")
 
     if _session:
+        assert (
+            not _session._epoch
+        ), "Please do not mix `with tune.checkpoint_dir` with `session.report`."
         _checkpoint_dir = _session.make_checkpoint_dir(step=step)
     else:
         _checkpoint_dir = os.path.abspath("./")
