@@ -330,7 +330,7 @@ def merge_runtime_envs(parent_env: Dict, child_env: Dict) -> Dict:
         parent_env: The environment to inherit settings from.
         child_env: The environment with override settings.
 
-    Returns: A dictionary containing the merged runtime_env settings.
+    Returns: A new dictionary containing the merged runtime_env settings.
 
     Raises:
         TypeError: If a dictionary is not passed in for parent_env or child_env.
