@@ -1,5 +1,4 @@
 from typing import Callable, Optional, Dict, Tuple, Union, Any
-import jax
 
 from ray.train.jax import JaxConfig
 from ray.air.trainer import GenDataset
@@ -8,7 +7,6 @@ from ray.air.config import ScalingConfig, RunConfig
 from ray.air.preprocessor import Preprocessor
 from ray.air.checkpoint import Checkpoint
 from ray.util import PublicAPI
-# from ray.air.utils.jax_utils import load_jax_model
 
 
 @PublicAPI(stability="alpha")
@@ -211,5 +209,4 @@ def load_checkpoint(
     from flax.training import checkpoints
     saved_model, preprocessor = _load_checkpoint(checkpoint, "JaxTrainer")
     state = checkpoints.restore_checkpoint(ckpt_dir=checkpoint, target=None)
-    # (saved_model=saved_model, model_definition=model)
     return state, preprocessor

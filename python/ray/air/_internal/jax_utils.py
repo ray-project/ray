@@ -1,4 +1,6 @@
-from typing import Optional, Union, List, Dict, Any
+from typing import Optional, Union, List, Dict, Any, TYPE_CHECKING
+if TYPE_CHECKING:
+    import jax
 
 import pandas as pd
 
@@ -6,9 +8,9 @@ import pandas as pd
 def convert_pandas_to_jax_tensor(
     data_batch: pd.DataFrame,
     columns: Optional[Union[List[str], List[List[str]]]] = None,
-    column_dtypes: Optional[Union[Any, List[Any]]] = None,
+    column_dtypes: Optional[Union["jax.dtype", List["jax.dtype"]]] = None,
     unsqueeze: bool = True,
-) -> Union[Any, List[Any]]:
+) -> Union["jax.dtype", List["jax.dtype"]]:
     """Converts a Pandas dataframe to a jax Tensor or list of jax Tensors.
 
     The format of the return type will match the format of ``columns``. If a
@@ -43,14 +45,6 @@ def convert_pandas_to_jax_tensor(
     import jax.numpy as jnp
 
     multi_input = columns and (isinstance(columns[0], (list, tuple)))
-
-    # ignore the type for now!
-    # if not multi_input and column_dtypes and type(column_dtypes) != jax.dtype:
-    #     raise TypeError(
-    #         "If `columns` is a list of strings, "
-    #         "`column_dtypes` must be None or a single `jax.dtype`."
-    #         f"Got {type(column_dtypes)} instead."
-    #     )
 
     columns = columns if columns else []
 
@@ -102,33 +96,3 @@ def convert_pandas_to_jax_tensor(
         ]
     else:
         return get_tensor_for_columns(columns=columns, dtype=column_dtypes)
-
-
-# def load_jax_model(
-#     saved_model: Union[jax.nn.Module, Dict],
-#     model_definition: Optional[jax.nn.Module] = None,
-# ) -> jax.nn.Module:
-#     """Loads a jax model from the provided ``saved_model``.
-
-#     If ``saved_model`` is a jax Module, then return it directly. If ``saved_model`` is
-#     a jax state dict, then load it in the ``model_definition`` and return the loaded
-#     model.
-#     """
-#     if isinstance(saved_model, jax.nn.Module):
-#         return saved_model
-#     elif isinstance(saved_model, dict):
-#         if not model_definition:
-#             raise ValueError(
-#                 "Attempting to load jax model from a "
-#                 "state_dict, but no `model_definition` was "
-#                 "provided."
-#             )
-#         model_definition.load_state_dict(saved_model)
-#         return model_definition
-#     else:
-#         raise ValueError(
-#             f"Saved model is of type {type(saved_model)}. "
-#             f"The model saved in the checkpoint is expected "
-#             f"to be of type `jax.nn.Module`, or a model "
-#             f"state dict of type dict."
-#         )

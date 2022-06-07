@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     import torch
     import tensorflow as tf
     import torch.utils.data
+    import jax
     from ray.data.dataset_pipeline import DatasetPipeline
     from ray.data.grouped_dataset import GroupedDataset
 
@@ -2463,7 +2464,7 @@ class Dataset(Generic[T]):
         drop_last: bool = False,
         unsqueeze_label_tensor: bool = True,
         unsqueeze_feature_tensors: bool = True,
-    ) -> "jax.utils.data.IterableDataset":
+    ) -> "ray.data._internal.jax_iterable_dataset.JaxIterableDataset":
         """Return a jax IterableDataset over this dataset.
 
         This is only supported for datasets convertible to Arrow records.
@@ -2546,8 +2547,8 @@ Dict[str, List[str]]]): The names of the columns
         """
         import jax
 
-        from ray.data.impl.jax_iterable_dataset import JaxIterableDataset
-        from ray.ml.utils.jax_utils import convert_pandas_to_jax_tensor
+        from ray.data._internal.jax_iterable_dataset import JaxIterableDataset
+        from ray.air._internal.jax_utils import convert_pandas_to_jax_tensor
 
         # If an empty collection is passed in, treat it the same as None
         if not feature_columns:
