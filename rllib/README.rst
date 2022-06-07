@@ -11,7 +11,7 @@ connected simulators, RLlib offers simple solutions for your decision making nee
 
 You **don't need** to be an **RL expert** to use RLlib, nor do you need to learn Ray or any
 other of its libraries! If you either have your problem coded (in python) as an
-`RL environment <https://medium.com/distributed-computing-with-ray/anatomy-of-a-custom-environment-for-rllib-327157f269e5>`_
+`RL environment <https://docs.ray.io/en/master/rllib/rllib-env.html>`_
 or own lots of pre-recorded, historic behavioral data to learn from, you will be
 up and running in only a few days.
 

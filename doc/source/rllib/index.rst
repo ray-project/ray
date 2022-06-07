@@ -20,7 +20,7 @@ making needs.
 
 You **don't need** to be an **RL expert** to use RLlib, nor do you need to learn Ray or any
 other of its libraries! If you either have your problem coded (in python) as an
-`RL environment <https://medium.com/distributed-computing-with-ray/anatomy-of-a-custom-environment-for-rllib-327157f269e5>`_
+`RL environment <https://docs.ray.io/en/master/rllib/rllib-env.html>`_
 or own lots of pre-recorded, historic behavioral data to learn from, you will be
 up and running in only a few days.
 
@@ -86,8 +86,19 @@ Click on the images below to see an example script for each of the listed featur
 
 .. include:: feature_overview.rst
 
-If you want to get a quick preview of which **algorithms** and **environments** RLlib supports,
+If you want to get a quick preview of **key concepts** and which **algorithms** and **environments** RLlib supports,
 click on the dropdowns below:
+
+.. dropdown:: **RLlib Key Concepts**
+    :animate: fade-in-slide-down
+
+    *  `RLlib Environments <core-concepts.html#environments>`__
+    *  `RLlib Trainers <core-concepts.html#trainers>`__
+    *  `RLlib Policies <core-concepts.html#policies>`__
+    *  `RLlib Policy evaluation <core-concepts.html#policy_eval>`__
+    *  `RLlib Sample batches <core-concepts.html#sample_batches>`__
+    *  `RLlib Execution plans <core-concepts.html#execution_plans>`__
+
 
 .. dropdown:: **RLlib Algorithms**
     :animate: fade-in-slide-down
@@ -102,21 +113,49 @@ click on the dropdowns below:
 
        -  |pytorch| :ref:`Decentralized Distributed Proximal Policy Optimization (DD-PPO) <ddppo>`
 
-    *  Gradient-based
+    *  Offline
 
-       -  |pytorch| |tensorflow| :ref:`Advantage Actor-Critic (A2C, A3C) <a3c>`
+        -  |pytorch| |tensorflow| :ref:`Behavior Cloning (BC; derived from MARWIL implementation) <bc>`
 
-       -  |pytorch| |tensorflow| :ref:`Deep Deterministic Policy Gradients (DDPG, TD3) <ddpg>`
+        -  |pytorch| |tensorflow| :ref:`Conservative Q-Learning (CQL) <cql>`
+
+        -  |pytorch| |tensorflow| :ref:`Importance Sampling and Weighted Importance Sampling (OPE) <is>`
+
+        -  |pytorch| |tensorflow| :ref:`Monotonic Advantage Re-Weighted Imitation Learning (MARWIL) <marwil>`
+ 
+    *  Model-free On-policy RL (for Games)
+
+        -  |pytorch| |tensorflow| :ref:`Synchronous Proximal Policy Optimization (APPO) <appo>`
+
+        -  |pytorch| |tensorflow| :ref:`Decentralized Distributed Proximal Policy Optimization (DD-PPO) <ddppo>`
+
+        -  |pytorch| |tensorflow| :ref:`Proximal Policy Optimization (PPO) <ppo>`
+
+        -  |pytorch| |tensorflow| :ref:`Importance Weighted Actor-Learner Architecture (IMPALA) <impala>`
+
+        -  |pytorch| |tensorflow| :ref:`Advantage Actor-Critic (A2C, A3C) <a3c>`
+
+        -  |pytorch| |tensorflow| :ref:`Vanilla Policy Gradient (PG) <pg>`
+
+        -  |pytorch| |tensorflow| :ref:`Model-agnostic Meta-Learning (contrib/MAML) <maml>`
+
+    *  Model-free Off-policy RL
+
+       -  |pytorch| |tensorflow| :ref:`Distributed Prioritized Experience Replay (Ape-X DQN, Ape-X DDPG) <apex>`
+
+       -  |pytorch| |tensorflow| :ref:`Recurrent Replay Distributed DQN (R2D2) <r2d2>`
 
        -  |pytorch| |tensorflow| :ref:`Deep Q Networks (DQN, Rainbow, Parametric DQN) <dqn>`
 
-       -  |pytorch| |tensorflow| :ref:`Policy Gradients <pg>`
-
-       -  |pytorch| |tensorflow| :ref:`Proximal Policy Optimization (PPO) <ppo>`
+       -  |pytorch| |tensorflow| :ref:`Deep Deterministic Policy Gradients (DDPG, TD3) <ddpg>`
 
        -  |pytorch| |tensorflow| :ref:`Soft Actor Critic (SAC) <sac>`
 
-       -  |pytorch| :ref:`Slate Q-Learning (SlateQ) <slateq>`
+    *  Model-based RL
+
+       -  |pytorch| |tensorflow| :ref:`Image-only Dreamer (contrib/Dreamer) <dreamer>`
+
+       -  |pytorch| |tensorflow| :ref:`Model-Based Meta-Policy-Optimization (MB-MPO) <mbmpo>`
 
     *  Derivative-free
 
@@ -136,23 +175,35 @@ click on the dropdowns below:
 
        -  |pytorch| :ref:`Conservative Q-Learning (CQL) <cql>`
 
-    *  Multi-agent
+    * RL for recommender systems: 
 
-       -  |pytorch| :ref:`QMIX Monotonic Value Factorisation (QMIX, VDN, IQN) <qmix>`
-       -  |tensorflow| :ref:`Multi-Agent Deep Deterministic Policy Gradient (MADDPG) <maddpg>`
+       -  |pytorch| :ref:`SlateQ <slateq>`
 
-    *  Offline
-
-       -  |pytorch| |tensorflow| :ref:`Advantage Re-Weighted Imitation Learning (MARWIL) <marwil>`
-
-    *  Contextual bandits
+    *  Bandits
 
        -  |pytorch| :ref:`Linear Upper Confidence Bound (LinUCB) <lin-ucb>`
+
        -  |pytorch| :ref:`Linear Thompson Sampling (LinTS) <lints>`
+    
+    *  Multi-agent
+
+       -  |pytorch| :ref:`Single-Player Alpha Zero (AlphaZero) <alphazero>`
+
+       -  |pytorch| :ref:`Parameter Sharing <parameter>`
+
+       -  |pytorch| :ref:`QMIX Monotonic Value Factorisation (QMIX, VDN, IQN) <qmix>`
+
+       -  |tensorflow| :ref:`Multi-Agent Deep Deterministic Policy Gradient (MADDPG) <maddpg>`
+
+       -  |tensorflow| :ref:`Shared Critic Methods <sc>`
 
     *  Exploration-based plug-ins (can be combined with any algo)
 
        -  |pytorch| :ref:`Curiosity (ICM: Intrinsic Curiosity Module) <curiosity>`
+
+       -  |pytorch| :ref:`Random encoders (contrib/RE3) <re3>`
+       
+       -  |pytorch| :ref:`Fully Independent Learning <fil>`
 
 
 .. dropdown:: **RLlib Environments**
@@ -205,4 +256,3 @@ RL (MARL) becomes an easy-to-use low-level primitive for our users.
     :class: inline-figure
     :width: 16
 
-.. include:: /_includes/rllib/announcement_bottom.rst
