@@ -41,7 +41,6 @@ class MockReplicaActorWrapper:
         controller_name: str,
         replica_tag: ReplicaTag,
         deployment_name: str,
-        _override_controller_namespace: Optional[str] = None,
     ):
         self._actor_name = actor_name
         self._replica_tag = replica_tag
