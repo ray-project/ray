@@ -34,5 +34,4 @@ eval "${WORKSPACE_DIR}/ci/ci.sh build"
 # Install test requirements
 python -m pip install -U \
   pytest==5.4.3 \
-  numpy \
-  pandas
+  numpy
