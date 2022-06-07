@@ -35,6 +35,7 @@ class EndpointState:
         return self
 
     async def shutdown(self):
+        # **Thread-safety needs to be taken care of.**
         await self._kv_store.delete(CHECKPOINT_KEY)
 
     async def _checkpoint(self):
@@ -60,6 +61,8 @@ class EndpointState:
         This method is idempotent - if the endpoint already exists it will be
         updated to match the given parameters. Calling this twice with the same
         arguments is a no-op.
+
+        **Thread-safety needs to be taken care of**
         """
 
         if self._endpoints.get(endpoint) == endpoint_info:
@@ -96,6 +99,8 @@ class EndpointState:
     async def delete_endpoint(self, endpoint: EndpointTag) -> None:
         # This method must be idempotent. We should validate that the
         # specified endpoint exists on the client.
+        #
+        # **Thread-safety needs to be taken care of**
         if endpoint not in self._endpoints:
             return
 
