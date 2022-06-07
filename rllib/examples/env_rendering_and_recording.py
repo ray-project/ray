@@ -65,7 +65,7 @@ class CustomRenderedEnv(gym.Env):
         even when "render_env" is True in the RLlib config.
 
         Args:
-            mode (str): One of "rgb", "human", or "ascii". See gym.Env for
+            mode: One of "rgb", "human", or "ascii". See gym.Env for
                 more information.
 
         Returns:

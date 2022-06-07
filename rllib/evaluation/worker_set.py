@@ -342,7 +342,8 @@ class WorkerSet:
     def stop(self) -> None:
         """Calls `stop` on all rollout workers (including the local one)."""
         try:
-            self.local_worker().stop()
+            if self.local_worker():
+                self.local_worker().stop()
             tids = [w.stop.remote() for w in self.remote_workers()]
             ray.get(tids)
         except Exception:
@@ -626,7 +627,7 @@ class WorkerSet:
             )
 
         if config["input"] == "sampler":
-            off_policy_estimation_methods = []
+            off_policy_estimation_methods = {}
         else:
             off_policy_estimation_methods = config["off_policy_estimation_methods"]
 

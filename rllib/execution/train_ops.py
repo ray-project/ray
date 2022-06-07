@@ -423,8 +423,8 @@ class ApplyGradients:
         """Creates an ApplyGradients instance.
 
         Args:
-            workers (WorkerSet): workers to apply gradients to.
-            update_all (bool): If true, updates all workers. Otherwise, only
+            workers: workers to apply gradients to.
+            update_all: If true, updates all workers. Otherwise, only
                 update the worker that produced the sample batch we are
                 currently processing (i.e., A3C style).
         """
