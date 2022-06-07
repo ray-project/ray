@@ -1,7 +1,7 @@
 from typing import Callable, Optional, Dict, Tuple, Type, Union
 import tensorflow as tf
 
-from ray.train.tensorflow.impl import TensorflowConfig
+from ray.train.tensorflow import TensorflowConfig
 from ray.train.trainer import GenDataset
 from ray.train.data_parallel_trainer import DataParallelTrainer, _load_checkpoint
 from ray.air.config import ScalingConfig, RunConfig, DatasetConfig

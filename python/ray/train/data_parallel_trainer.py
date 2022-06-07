@@ -13,9 +13,11 @@ from typing import (
 
 import ray
 from ray import tune
-from ray.train.constants import (
+from ray.air.constants import (
     MODEL_KEY,
-    PREPROCESSOR_KEY,
+    PREPROCESSOR_KEY
+)
+from ray.train.constants import (
     TRAIN_DATASET_KEY,
     WILDCARD_KEY,
 )
@@ -24,11 +26,11 @@ from ray.air.config import ScalingConfig, RunConfig, DatasetConfig
 from ray.train.trainer import GenDataset
 from ray.air.preprocessor import Preprocessor
 from ray.air.checkpoint import Checkpoint
-from ray.train.data_parallel_ingest import _DataParallelIngestSpec
+from ray.train._internal.dataset_spec import DataParallelIngestSpec
 from ray.train import BackendConfig, TrainingIterator
 from ray.train._internal.backend_executor import BackendExecutor
 from ray.train._internal.checkpoint import TuneCheckpointManager
-from ray.train.utils import construct_train_func
+from ray.train._internal.utils import construct_train_func
 from ray.util.annotations import DeveloperAPI
 from ray.util.ml_utils.checkpoint_manager import CheckpointStrategy, _TrackedCheckpoint
 
@@ -265,7 +267,7 @@ class DataParallelTrainer(BaseTrainer):
         self._dataset_config = DatasetConfig.validated(
             DatasetConfig.merge(self._dataset_config, dataset_config), datasets
         )
-        self._ingest_spec = _DataParallelIngestSpec(
+        self._ingest_spec = DataParallelIngestSpec(
             dataset_config=self._dataset_config,
         )
 
