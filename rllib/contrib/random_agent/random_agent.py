@@ -2,7 +2,7 @@ import numpy as np
 
 from ray.rllib.algorithms.algorithm import Algorithm, with_common_config
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.typing import AlgorithmConfigDict
 
 
 # fmt: off
@@ -12,7 +12,7 @@ class RandomAgent(Algorithm):
 
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> TrainerConfigDict:
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return with_common_config({
             "rollouts_per_iteration": 10,
             "framework": "tf",  # not used

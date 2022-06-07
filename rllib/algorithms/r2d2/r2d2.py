@@ -7,7 +7,7 @@ from ray.rllib.algorithms.r2d2.r2d2_torch_policy import R2D2TorchPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
-from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.typing import AlgorithmConfigDict
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 logger = logging.getLogger(__name__)
@@ -189,18 +189,18 @@ class R2D2(DQN):
 
     @classmethod
     @override(DQN)
-    def get_default_config(cls) -> TrainerConfigDict:
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return R2D2Config().to_dict()
 
     @override(DQN)
-    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
+    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             return R2D2TorchPolicy
         else:
             return R2D2TFPolicy
 
     @override(DQN)
-    def validate_config(self, config: TrainerConfigDict) -> None:
+    def validate_config(self, config: AlgorithmConfigDict) -> None:
         """Checks and updates the config based on settings.
 
         Rewrites rollout_fragment_length to take into account burn-in and

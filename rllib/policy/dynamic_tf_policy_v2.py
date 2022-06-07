@@ -31,7 +31,7 @@ from ray.rllib.utils.typing import (
     LocalOptimizer,
     ModelGradients,
     TensorType,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
 )
 
 if TYPE_CHECKING:
@@ -54,7 +54,7 @@ class DynamicTFPolicyV2(TFPolicy):
         self,
         obs_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
-        config: TrainerConfigDict,
+        config: AlgorithmConfigDict,
         *,
         existing_inputs: Optional[Dict[str, "tf1.placeholder"]] = None,
         existing_model: Optional[ModelV2] = None,
@@ -143,7 +143,7 @@ class DynamicTFPolicyV2(TFPolicy):
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic
-    def get_default_config(self) -> TrainerConfigDict:
+    def get_default_config(self) -> AlgorithmConfigDict:
         return {}
 
     @DeveloperAPI
@@ -152,7 +152,7 @@ class DynamicTFPolicyV2(TFPolicy):
         self,
         obs_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
-        config: TrainerConfigDict,
+        config: AlgorithmConfigDict,
     ):
         return {}
 

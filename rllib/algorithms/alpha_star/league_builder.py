@@ -10,14 +10,14 @@ from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.utils.numpy import softmax
-from ray.rllib.utils.typing import PolicyID, TrainerConfigDict, ResultDict
+from ray.rllib.utils.typing import PolicyID, AlgorithmConfigDict, ResultDict
 
 logger = logging.getLogger(__name__)
 
 
 @ExperimentalAPI
 class LeagueBuilder(metaclass=ABCMeta):
-    def __init__(self, trainer: Algorithm, trainer_config: TrainerConfigDict):
+    def __init__(self, trainer: Algorithm, trainer_config: AlgorithmConfigDict):
         """Initializes a LeagueBuilder instance.
 
         Args:
@@ -68,7 +68,7 @@ class AlphaStarLeagueBuilder(LeagueBuilder):
     def __init__(
         self,
         trainer: Algorithm,
-        trainer_config: TrainerConfigDict,
+        trainer_config: AlgorithmConfigDict,
         num_random_policies: int = 2,
         num_learning_league_exploiters: int = 4,
         num_learning_main_exploiters: int = 4,

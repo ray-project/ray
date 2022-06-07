@@ -20,7 +20,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated, DEPRECATED_VALUE
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.sgd import standardized
-from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.typing import AlgorithmConfigDict
 from ray.util.iter import from_actors, LocalIterator
 
 logger = logging.getLogger(__name__)
@@ -255,11 +255,11 @@ def inner_adaptation(workers, samples):
 class MAML(Algorithm):
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> TrainerConfigDict:
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return MAMLConfig().to_dict()
 
     @override(Algorithm)
-    def validate_config(self, config: TrainerConfigDict) -> None:
+    def validate_config(self, config: AlgorithmConfigDict) -> None:
         # Call super's validation method.
         super().validate_config(config)
 
@@ -282,7 +282,7 @@ class MAML(Algorithm):
             )
 
     @override(Algorithm)
-    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
+    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.maml.maml_torch_policy import MAMLTorchPolicy
 
@@ -299,7 +299,7 @@ class MAML(Algorithm):
     @staticmethod
     @override(Algorithm)
     def execution_plan(
-        workers: WorkerSet, config: TrainerConfigDict, **kwargs
+        workers: WorkerSet, config: AlgorithmConfigDict, **kwargs
     ) -> LocalIterator[dict]:
         assert (
             len(kwargs) == 0

@@ -18,9 +18,9 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.typing import (
-    PartialTrainerConfigDict,
+    PartialAlgorithmConfigDict,
     SampleBatchType,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
     ResultDict,
 )
 
@@ -296,11 +296,11 @@ class DreamerIteration:
 class Dreamer(Algorithm):
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> TrainerConfigDict:
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return DreamerConfig().to_dict()
 
     @override(Algorithm)
-    def validate_config(self, config: TrainerConfigDict) -> None:
+    def validate_config(self, config: AlgorithmConfigDict) -> None:
         # Call super's validation method.
         super().validate_config(config)
 
@@ -324,11 +324,11 @@ class Dreamer(Algorithm):
             config["horizon"] = config["horizon"] / config["action_repeat"]
 
     @override(Algorithm)
-    def get_default_policy_class(self, config: TrainerConfigDict):
+    def get_default_policy_class(self, config: AlgorithmConfigDict):
         return DreamerTorchPolicy
 
     @override(Algorithm)
-    def setup(self, config: PartialTrainerConfigDict):
+    def setup(self, config: PartialAlgorithmConfigDict):
         super().setup(config)
         # `training_iteration` implementation: Setup buffer in `setup`, not
         # in `execution_plan` (deprecated).

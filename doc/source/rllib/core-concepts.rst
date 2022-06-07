@@ -187,7 +187,7 @@ It takes in a ``WorkerSet`` and config, and returns an iterator over training re
 .. code-block:: python
 
     @staticmethod
-    def execution_plan(workers: WorkerSet, config: TrainerConfigDict):
+    def execution_plan(workers: WorkerSet, config: AlgorithmConfigDict):
         # type: LocalIterator[SampleBatchType]
         rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
@@ -284,7 +284,7 @@ Examples
 
     .. code-block:: python
 
-        def execution_plan(workers: WorkerSet, config: TrainerConfigDict):
+        def execution_plan(workers: WorkerSet, config: AlgorithmConfigDict):
             # type: LocalIterator[(ModelGradients, int)]
             grads = AsyncGradients(workers)
 
@@ -302,7 +302,7 @@ Examples
 
     .. code-block:: python
 
-        def execution_plan(workers: WorkerSet, config: TrainerConfigDict):
+        def execution_plan(workers: WorkerSet, config: AlgorithmConfigDict):
             # Construct a replay buffer.
             replay_buffer = LocalReplayBuffer(...)
 

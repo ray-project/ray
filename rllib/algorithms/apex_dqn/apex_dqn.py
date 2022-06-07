@@ -48,9 +48,9 @@ from ray.rllib.utils.metrics import (
     TARGET_NET_UPDATE_TIMER,
 )
 from ray.rllib.utils.typing import (
-    TrainerConfigDict,
+    AlgorithmConfigDict,
     ResultDict,
-    PartialTrainerConfigDict,
+    PartialAlgorithmConfigDict,
 )
 from ray.tune.trainable import Trainable
 from ray.tune.utils.placement_groups import PlacementGroupFactory
@@ -352,7 +352,7 @@ class ApexDQNConfig(DQNConfig):
 
 class ApexDQN(DQN):
     @override(Trainable)
-    def setup(self, config: PartialTrainerConfigDict):
+    def setup(self, config: PartialAlgorithmConfigDict):
         super().setup(config)
 
         # Shortcut: If execution_plan, thread and buffer will be created in there.
@@ -424,7 +424,7 @@ class ApexDQN(DQN):
 
     @classmethod
     @override(DQN)
-    def get_default_config(cls) -> TrainerConfigDict:
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return ApexDQNConfig().to_dict()
 
     @override(DQN)

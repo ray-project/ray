@@ -14,7 +14,7 @@ from ray.rllib.utils.typing import (
     LocalOptimizer,
     ModelGradients,
     TensorType,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
 )
 
 logger = logging.getLogger(__name__)
@@ -288,7 +288,7 @@ class TargetNetworkMixin:
         self,
         obs_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
-        config: TrainerConfigDict,
+        config: AlgorithmConfigDict,
     ):
         @make_tf_callable(self.get_session())
         def do_update():

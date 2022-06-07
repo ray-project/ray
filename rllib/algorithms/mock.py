@@ -5,7 +5,7 @@ import numpy as np
 from ray.tune import result as tune_result
 from ray.rllib.algorithms.algorithm import Algorithm, with_common_config
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.typing import AlgorithmConfigDict
 
 
 class _MockTrainer(Algorithm):
@@ -13,7 +13,7 @@ class _MockTrainer(Algorithm):
 
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> TrainerConfigDict:
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return with_common_config(
             {
                 "mock_error": False,
@@ -96,7 +96,7 @@ class _SigmoidFakeData(_MockTrainer):
 
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> TrainerConfigDict:
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return with_common_config(
             {
                 "width": 100,
@@ -124,7 +124,7 @@ class _SigmoidFakeData(_MockTrainer):
 class _ParameterTuningTrainer(_MockTrainer):
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> TrainerConfigDict:
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return with_common_config(
             {
                 "reward_amt": 10,

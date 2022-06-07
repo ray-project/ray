@@ -35,14 +35,14 @@ TensorStructType = Union[TensorType, dict, tuple]
 TensorShape = Union[Tuple[int], List[int]]
 
 # Represents a fully filled out config of a Algorithm class.
-# Note: Policy config dicts are usually the same as TrainerConfigDict, but
+# Note: Policy config dicts are usually the same as AlgorithmConfigDict, but
 # parts of it may sometimes be altered in e.g. a multi-agent setup,
 # where we have >1 Policies in the same Algorithm.
-TrainerConfigDict = dict
+AlgorithmConfigDict = dict
 
 # An algorithm config dict that only has overrides. It needs to be combined with
 # the default algorithm config to be used.
-PartialTrainerConfigDict = dict
+PartialAlgorithmConfigDict = dict
 
 # Represents the model config sub-dict of the algo config that is passed to
 # the model catalog.

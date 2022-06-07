@@ -39,9 +39,9 @@ from ray.rllib.utils.metrics import (
 
 # from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 from ray.rllib.utils.typing import (
-    PartialTrainerConfigDict,
+    PartialAlgorithmConfigDict,
     ResultDict,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
     SampleBatchType,
     T,
 )
@@ -450,12 +450,12 @@ class Impala(Algorithm):
 
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> TrainerConfigDict:
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return ImpalaConfig().to_dict()
 
     @override(Algorithm)
     def get_default_policy_class(
-        self, config: PartialTrainerConfigDict
+        self, config: PartialAlgorithmConfigDict
     ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             if config["vtrace"]:
@@ -538,7 +538,7 @@ class Impala(Algorithm):
                 config["_tf_policy_handles_more_than_one_loss"] = True
 
     @override(Algorithm)
-    def setup(self, config: PartialTrainerConfigDict):
+    def setup(self, config: PartialAlgorithmConfigDict):
         super().setup(config)
 
         if self.config["_disable_execution_plan_api"]:
@@ -916,7 +916,7 @@ class Impala(Algorithm):
 class AggregatorWorker:
     """A worker for doing tree aggregation of collected episodes"""
 
-    def __init__(self, config: TrainerConfigDict):
+    def __init__(self, config: AlgorithmConfigDict):
         self.config = config
         self._mixin_buffer = MixInMultiAgentReplayBuffer(
             capacity=(

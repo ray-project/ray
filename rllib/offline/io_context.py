@@ -2,7 +2,7 @@ import os
 from typing import Optional, TYPE_CHECKING
 
 from ray.rllib.utils.annotations import PublicAPI
-from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.typing import AlgorithmConfigDict
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation.sampler import SamplerInput
@@ -21,7 +21,7 @@ class IOContext:
     def __init__(
         self,
         log_dir: Optional[str] = None,
-        config: Optional[TrainerConfigDict] = None,
+        config: Optional[AlgorithmConfigDict] = None,
         worker_index: int = 0,
         worker: Optional["RolloutWorker"] = None,
     ):

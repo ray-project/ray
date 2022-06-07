@@ -217,11 +217,11 @@ First, check out the `PPO definition <https://github.com/ray-project/ray/blob/ma
     class PPO(Algorithm):
         @classmethod
         @override(Algorithm)
-        def get_default_config(cls) -> TrainerConfigDict:
+        def get_default_config(cls) -> AlgorithmConfigDict:
             return DEFAULT_CONFIG
 
         @override(Algorithm)
-        def validate_config(self, config: TrainerConfigDict) -> None:
+        def validate_config(self, config: AlgorithmConfigDict) -> None:
             ...
 
         @override(Algorithm)
@@ -240,7 +240,7 @@ PPO can switch between a simple synchronous plan, or a multi-GPU plan that imple
 
 .. code-block:: python
 
-    def execution_plan(workers: WorkerSet, config: TrainerConfigDict):
+    def execution_plan(workers: WorkerSet, config: AlgorithmConfigDict):
         rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
         # Collect large batches of relevant experiences & standardize.

@@ -11,7 +11,7 @@ import os
 import ray
 from ray import tune
 from ray.rllib.agents import with_common_config
-from ray.rllib.algorithms.algorithm import Trainer
+from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.dqn.dqn import DEFAULT_CONFIG as DQN_CONFIG
 from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.algorithms.dqn.dqn_torch_policy import DQNTorchPolicy
@@ -35,7 +35,7 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.sgd import standardized
 from ray.rllib.utils.test_utils import check_learning_achieved
-from ray.rllib.utils.typing import ResultDict, TrainerConfigDict
+from ray.rllib.utils.typing import ResultDict, AlgorithmConfigDict
 from ray.tune.registry import register_env
 
 parser = argparse.ArgumentParser()
@@ -68,7 +68,7 @@ parser.add_argument(
 class MyTrainer(Algorithm):
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> TrainerConfigDict:
+    def get_default_config(cls) -> AlgorithmConfigDict:
         # Run this Trainer with new `training_iteration` API and set some PPO-specific
         # parameters.
         return with_common_config(

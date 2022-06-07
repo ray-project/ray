@@ -22,9 +22,9 @@ from ray.rllib.utils.metrics import (
     WORKER_UPDATE_TIMER,
 )
 from ray.rllib.utils.typing import (
-    PartialTrainerConfigDict,
+    PartialAlgorithmConfigDict,
     ResultDict,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
 )
 
 logger = logging.getLogger(__name__)
@@ -107,11 +107,11 @@ class A2CConfig(A3CConfig):
 class A2C(A3C):
     @classmethod
     @override(A3C)
-    def get_default_config(cls) -> TrainerConfigDict:
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return A2CConfig().to_dict()
 
     @override(A3C)
-    def validate_config(self, config: TrainerConfigDict) -> None:
+    def validate_config(self, config: AlgorithmConfigDict) -> None:
         # Call super's validation method.
         super().validate_config(config)
 
@@ -131,7 +131,7 @@ class A2C(A3C):
                 )
 
     @override(Algorithm)
-    def setup(self, config: PartialTrainerConfigDict):
+    def setup(self, config: PartialAlgorithmConfigDict):
         super().setup(config)
 
         # Create a microbatch variable for collecting gradients on microbatches'.

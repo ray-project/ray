@@ -6,7 +6,7 @@ from ray.rllib.algorithms.simple_q.simple_q import SimpleQ, SimpleQConfig
 from ray.rllib.algorithms.ddpg.ddpg_tf_policy import DDPGTFPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.typing import AlgorithmConfigDict
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.deprecation import Deprecated
 
@@ -257,11 +257,11 @@ class DDPG(SimpleQ):
     @classmethod
     @override(SimpleQ)
     # TODO make this return a AlgorithmConfig
-    def get_default_config(cls) -> TrainerConfigDict:
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return DDPGConfig().to_dict()
 
     @override(SimpleQ)
-    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
+    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.ddpg.ddpg_torch_policy import DDPGTorchPolicy
 
@@ -270,7 +270,7 @@ class DDPG(SimpleQ):
             return DDPGTFPolicy
 
     @override(SimpleQ)
-    def validate_config(self, config: TrainerConfigDict) -> None:
+    def validate_config(self, config: AlgorithmConfigDict) -> None:
 
         # Call super's validation method.
         super().validate_config(config)

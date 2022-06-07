@@ -36,10 +36,10 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import (
-    PartialTrainerConfigDict,
+    PartialAlgorithmConfigDict,
     PolicyID,
     PolicyState,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
     ResultDict,
 )
 from ray.tune.utils.placement_groups import PlacementGroupFactory
@@ -311,11 +311,11 @@ class AlphaStar(appo.APPO):
 
     @classmethod
     @override(appo.APPO)
-    def get_default_config(cls) -> TrainerConfigDict:
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return AlphaStarConfig().to_dict()
 
     @override(appo.APPO)
-    def validate_config(self, config: TrainerConfigDict):
+    def validate_config(self, config: AlgorithmConfigDict):
         # Create the LeagueBuilder object, allowing it to build the multiagent
         # config as well.
         self.league_builder = from_config(
@@ -324,7 +324,7 @@ class AlphaStar(appo.APPO):
         super().validate_config(config)
 
     @override(appo.APPO)
-    def setup(self, config: PartialTrainerConfigDict):
+    def setup(self, config: PartialAlgorithmConfigDict):
         # Call super's setup to validate config, create RolloutWorkers
         # (train and eval), etc..
         num_gpus_saved = config["num_gpus"]
@@ -503,7 +503,7 @@ class AlphaStar(appo.APPO):
         *,
         observation_space: Optional[gym.spaces.Space] = None,
         action_space: Optional[gym.spaces.Space] = None,
-        config: Optional[PartialTrainerConfigDict] = None,
+        config: Optional[PartialAlgorithmConfigDict] = None,
         policy_state: Optional[PolicyState] = None,
         **kwargs,
     ) -> Policy:

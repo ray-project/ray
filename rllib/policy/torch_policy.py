@@ -44,7 +44,7 @@ from ray.rllib.utils.typing import (
     ModelWeights,
     TensorType,
     TensorStructType,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
 )
 
 if TYPE_CHECKING:
@@ -64,7 +64,7 @@ class TorchPolicy(Policy):
         self,
         observation_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
-        config: TrainerConfigDict,
+        config: AlgorithmConfigDict,
         *,
         model: Optional[TorchModelV2] = None,
         loss: Optional[

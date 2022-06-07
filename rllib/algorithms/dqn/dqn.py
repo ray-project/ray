@@ -32,7 +32,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.replay_buffers.utils import update_priorities_in_replay_buffer
 from ray.rllib.utils.typing import (
     ResultDict,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
 )
 from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED,
@@ -282,7 +282,7 @@ class DQNConfig(SimpleQConfig):
         return self
 
 
-def calculate_rr_weights(config: TrainerConfigDict) -> List[float]:
+def calculate_rr_weights(config: AlgorithmConfigDict) -> List[float]:
     """Calculate the round robin weights for the rollout and train steps"""
     if not config["training_intensity"]:
         return [1, 1]
@@ -312,11 +312,11 @@ def calculate_rr_weights(config: TrainerConfigDict) -> List[float]:
 class DQN(SimpleQ):
     @classmethod
     @override(SimpleQ)
-    def get_default_config(cls) -> TrainerConfigDict:
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return DEFAULT_CONFIG
 
     @override(SimpleQ)
-    def validate_config(self, config: TrainerConfigDict) -> None:
+    def validate_config(self, config: AlgorithmConfigDict) -> None:
         # Call super's validation method.
         super().validate_config(config)
 
@@ -326,7 +326,7 @@ class DQN(SimpleQ):
 
     @override(SimpleQ)
     def get_default_policy_class(
-        self, config: TrainerConfigDict
+        self, config: AlgorithmConfigDict
     ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             return DQNTorchPolicy

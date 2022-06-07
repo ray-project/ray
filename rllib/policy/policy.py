@@ -52,7 +52,7 @@ from ray.rllib.utils.typing import (
     T,
     TensorType,
     TensorStructType,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
 )
 
 tf1, tf, tfv = try_import_tf()
@@ -125,7 +125,7 @@ class Policy(metaclass=ABCMeta):
         self,
         observation_space: gym.Space,
         action_space: gym.Space,
-        config: TrainerConfigDict,
+        config: AlgorithmConfigDict,
     ):
         """Initializes a Policy instance.
 
@@ -143,7 +143,7 @@ class Policy(metaclass=ABCMeta):
         self.observation_space_struct = get_base_struct_from_space(observation_space)
         self.action_space_struct = get_base_struct_from_space(action_space)
 
-        self.config: TrainerConfigDict = config
+        self.config: AlgorithmConfigDict = config
         self.framework = self.config.get("framework")
         # Create the callbacks object to use for handling custom callbacks.
         if self.config.get("callbacks"):

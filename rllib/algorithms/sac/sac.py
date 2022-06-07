@@ -12,7 +12,7 @@ from ray.rllib.utils.deprecation import (
     Deprecated,
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
-from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.typing import AlgorithmConfigDict
 
 tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()
@@ -288,11 +288,11 @@ class SAC(DQN):
 
     @classmethod
     @override(DQN)
-    def get_default_config(cls) -> TrainerConfigDict:
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return SACConfig().to_dict()
 
     @override(DQN)
-    def validate_config(self, config: TrainerConfigDict) -> None:
+    def validate_config(self, config: AlgorithmConfigDict) -> None:
         # Call super's validation method.
         super().validate_config(config)
 
@@ -329,7 +329,7 @@ class SAC(DQN):
             try_import_tfp(error=True)
 
     @override(DQN)
-    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
+    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.sac.sac_torch_policy import SACTorchPolicy
 

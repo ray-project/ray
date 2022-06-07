@@ -42,9 +42,9 @@ from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.typing import (
     EnvType,
-    PartialTrainerConfigDict,
+    PartialAlgorithmConfigDict,
     ResultDict,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
 )
 from ray.tune.logger import Logger
 
@@ -160,7 +160,7 @@ class DDPPOConfig(PPOConfig):
 class DDPPO(PPO):
     def __init__(
         self,
-        config: Optional[PartialTrainerConfigDict] = None,
+        config: Optional[PartialAlgorithmConfigDict] = None,
         env: Optional[Union[str, EnvType]] = None,
         logger_creator: Optional[Callable[[], Logger]] = None,
         remote_checkpoint_dir: Optional[str] = None,
@@ -196,7 +196,7 @@ class DDPPO(PPO):
 
     @classmethod
     @override(PPO)
-    def get_default_config(cls) -> TrainerConfigDict:
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return DDPPOConfig().to_dict()
 
     @override(PPO)
@@ -251,7 +251,7 @@ class DDPPO(PPO):
             raise ValueError("DDPPO doesn't support KL penalties like PPO-1")
 
     @override(PPO)
-    def setup(self, config: PartialTrainerConfigDict):
+    def setup(self, config: PartialAlgorithmConfigDict):
         super().setup(config)
 
         # Initialize torch process group for

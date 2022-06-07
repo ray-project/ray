@@ -37,7 +37,7 @@ from ray.rllib.utils.metrics import (
     SYNCH_WORKER_WEIGHTS_TIMER,
 )
 from ray.rllib.utils.replay_buffers.utils import validate_buffer_config
-from ray.rllib.utils.typing import ResultDict, TrainerConfigDict
+from ray.rllib.utils.typing import ResultDict, AlgorithmConfigDict
 from ray.util.iter import LocalIterator
 
 from ray.rllib.algorithms.alpha_zero.alpha_zero_policy import AlphaZeroPolicy
@@ -305,17 +305,17 @@ class AlphaZeroPolicyWrapperClass(AlphaZeroPolicy):
 class AlphaZero(Algorithm):
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> TrainerConfigDict:
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return AlphaZeroConfig().to_dict()
 
-    def validate_config(self, config: TrainerConfigDict) -> None:
+    def validate_config(self, config: AlgorithmConfigDict) -> None:
         """Checks and updates the config based on settings."""
         # Call super's validation method.
         super().validate_config(config)
         validate_buffer_config(config)
 
     @override(Algorithm)
-    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
+    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
         return AlphaZeroPolicyWrapperClass
 
     @override(Algorithm)
@@ -376,7 +376,7 @@ class AlphaZero(Algorithm):
     @staticmethod
     @override(Algorithm)
     def execution_plan(
-        workers: WorkerSet, config: TrainerConfigDict, **kwargs
+        workers: WorkerSet, config: AlgorithmConfigDict, **kwargs
     ) -> LocalIterator[dict]:
         assert (
             len(kwargs) == 0

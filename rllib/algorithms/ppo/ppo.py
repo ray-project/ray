@@ -28,7 +28,7 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
-from ray.rllib.utils.typing import TrainerConfigDict, ResultDict
+from ray.rllib.utils.typing import AlgorithmConfigDict, ResultDict
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
@@ -272,11 +272,11 @@ class PPO(Algorithm):
     #  instead.
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> TrainerConfigDict:
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return PPOConfig().to_dict()
 
     @override(Algorithm)
-    def validate_config(self, config: TrainerConfigDict) -> None:
+    def validate_config(self, config: AlgorithmConfigDict) -> None:
         """Validates the Algorithm's config dict.
 
         Args:
@@ -363,7 +363,7 @@ class PPO(Algorithm):
             )
 
     @override(Algorithm)
-    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
+    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
 

@@ -24,9 +24,9 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import (
-    PartialTrainerConfigDict,
+    PartialAlgorithmConfigDict,
     ResultDict,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
 )
 
 logger = logging.getLogger(__name__)
@@ -238,12 +238,12 @@ class APPO(Impala):
 
     @classmethod
     @override(Impala)
-    def get_default_config(cls) -> TrainerConfigDict:
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return APPOConfig().to_dict()
 
     @override(Impala)
     def get_default_policy_class(
-        self, config: PartialTrainerConfigDict
+        self, config: PartialAlgorithmConfigDict
     ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.appo.appo_torch_policy import APPOTorchPolicy

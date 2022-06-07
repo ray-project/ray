@@ -3,7 +3,7 @@ import os
 
 import ray
 from ray import tune
-from ray.rllib.algorithms.trainer import Algorithm
+from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
 

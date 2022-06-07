@@ -23,8 +23,8 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 from ray.rllib.utils.typing import (
     ResultDict,
-    TrainerConfigDict,
-    PartialTrainerConfigDict,
+    AlgorithmConfigDict,
+    PartialAlgorithmConfigDict,
 )
 
 logger = logging.getLogger(__name__)
@@ -155,18 +155,18 @@ class A3CConfig(AlgorithmConfig):
 class A3C(Algorithm):
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> TrainerConfigDict:
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return A3CConfig().to_dict()
 
     @override(Algorithm)
-    def setup(self, config: PartialTrainerConfigDict):
+    def setup(self, config: PartialAlgorithmConfigDict):
         super().setup(config)
         self._worker_manager = AsyncRequestsManager(
             self.workers.remote_workers(), max_remote_requests_in_flight_per_worker=1
         )
 
     @override(Algorithm)
-    def validate_config(self, config: TrainerConfigDict) -> None:
+    def validate_config(self, config: AlgorithmConfigDict) -> None:
         # Call super's validation method.
         super().validate_config(config)
 
@@ -176,7 +176,7 @@ class A3C(Algorithm):
             raise ValueError("`num_workers` for A3C must be >= 1!")
 
     @override(Algorithm)
-    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
+    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.a3c.a3c_torch_policy import A3CTorchPolicy
 

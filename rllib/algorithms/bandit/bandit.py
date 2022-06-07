@@ -7,7 +7,7 @@ from ray.rllib.algorithms.bandit.bandit_tf_policy import BanditTFPolicy
 from ray.rllib.algorithms.bandit.bandit_torch_policy import BanditTorchPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.typing import AlgorithmConfigDict
 from ray.rllib.utils.deprecation import Deprecated
 
 logger = logging.getLogger(__name__)
@@ -93,7 +93,7 @@ class BanditLinTS(Algorithm):
         return BanditLinTSConfig().to_dict()
 
     @override(Algorithm)
-    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
+    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             return BanditTorchPolicy
         elif config["framework"] == "tf2":
@@ -109,7 +109,7 @@ class BanditLinUCB(Algorithm):
         return BanditLinUCBConfig().to_dict()
 
     @override(Algorithm)
-    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
+    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             return BanditTorchPolicy
         elif config["framework"] == "tf2":

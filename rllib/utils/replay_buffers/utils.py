@@ -14,7 +14,7 @@ from ray.rllib.utils.replay_buffers import (
     MultiAgentReplayBuffer,
 )
 from ray.rllib.policy.sample_batch import MultiAgentBatch
-from ray.rllib.utils.typing import ResultDict, SampleBatchType, TrainerConfigDict
+from ray.rllib.utils.typing import ResultDict, SampleBatchType, AlgorithmConfigDict
 from ray.util import log_once
 
 logger = logging.getLogger(__name__)
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 def update_priorities_in_replay_buffer(
     replay_buffer: ReplayBuffer,
-    config: TrainerConfigDict,
+    config: AlgorithmConfigDict,
     train_batch: SampleBatchType,
     train_results: ResultDict,
 ) -> None:

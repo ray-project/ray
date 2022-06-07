@@ -24,7 +24,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_TRAINED,
 )
 from ray.rllib.utils.torch_utils import set_torch_seed
-from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.typing import AlgorithmConfigDict
 
 logger = logging.getLogger(__name__)
 
@@ -324,11 +324,11 @@ class ES(Algorithm):
 
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> TrainerConfigDict:
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return ESConfig().to_dict()
 
     @override(Algorithm)
-    def validate_config(self, config: TrainerConfigDict) -> None:
+    def validate_config(self, config: AlgorithmConfigDict) -> None:
         # Call super's validation method.
         super().validate_config(config)
 

@@ -20,9 +20,9 @@ from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.typing import (
     EnvConfigDict,
     EnvType,
-    PartialTrainerConfigDict,
+    PartialAlgorithmConfigDict,
     ResultDict,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
 )
 from ray.tune.logger import Logger
 
@@ -234,11 +234,11 @@ class AlgorithmConfig:
         self.prioritized_replay_eps = DEPRECATED_VALUE
         self.input_evaluation = DEPRECATED_VALUE
 
-    def to_dict(self) -> TrainerConfigDict:
+    def to_dict(self) -> AlgorithmConfigDict:
         """Converts all settings into a legacy config dict for backward compatibility.
 
         Returns:
-            A complete TrainerConfigDict, usable in backward-compatible Tune/RLlib
+            A complete AlgorithmConfigDict, usable in backward-compatible Tune/RLlib
             use cases, e.g. w/ `tune.run()`.
         """
         config = copy.deepcopy(vars(self))
@@ -801,7 +801,7 @@ class AlgorithmConfig:
         evaluation_duration_unit: Optional[str] = None,
         evaluation_parallel_to_training: Optional[bool] = None,
         evaluation_config: Optional[
-            Union["AlgorithmConfig", PartialTrainerConfigDict]
+            Union["AlgorithmConfig", PartialAlgorithmConfigDict]
         ] = None,
         evaluation_num_workers: Optional[int] = None,
         custom_evaluation_function: Optional[Callable] = None,

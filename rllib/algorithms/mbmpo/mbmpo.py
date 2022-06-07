@@ -29,7 +29,7 @@ from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.sgd import standardized
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
-from ray.rllib.utils.typing import EnvType, TrainerConfigDict
+from ray.rllib.utils.typing import EnvType, AlgorithmConfigDict
 from ray.util.iter import from_actors, LocalIterator
 
 logger = logging.getLogger(__name__)
@@ -422,7 +422,7 @@ def sync_stats(workers: WorkerSet) -> None:
             e.foreach_policy.remote(set_func, normalizations=normalization_dict)
 
 
-def post_process_samples(samples, config: TrainerConfigDict):
+def post_process_samples(samples, config: AlgorithmConfigDict):
     # Instead of using NN for value function, we use regression
     split_lst = []
     for sample in samples:
@@ -459,11 +459,11 @@ class MBMPO(Algorithm):
 
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> TrainerConfigDict:
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return DEFAULT_CONFIG
 
     @override(Algorithm)
-    def validate_config(self, config: TrainerConfigDict) -> None:
+    def validate_config(self, config: AlgorithmConfigDict) -> None:
         # Call super's validation method.
         super().validate_config(config)
 
@@ -492,7 +492,7 @@ class MBMPO(Algorithm):
             )
 
     @override(Algorithm)
-    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
+    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
         from ray.rllib.algorithms.mbmpo.mbmpo_torch_policy import MBMPOTorchPolicy
 
         return MBMPOTorchPolicy
@@ -500,7 +500,7 @@ class MBMPO(Algorithm):
     @staticmethod
     @override(Algorithm)
     def execution_plan(
-        workers: WorkerSet, config: TrainerConfigDict, **kwargs
+        workers: WorkerSet, config: AlgorithmConfigDict, **kwargs
     ) -> LocalIterator[dict]:
         assert (
             len(kwargs) == 0

@@ -88,14 +88,14 @@ from ray.rllib.utils.typing import (
     EnvInfoDict,
     EnvType,
     EpisodeID,
-    PartialTrainerConfigDict,
+    PartialAlgorithmConfigDict,
     PolicyID,
     PolicyState,
     ResultDict,
     SampleBatchType,
     TensorStructType,
     TensorType,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
 )
 from ray.tune.logger import Logger, UnifiedLogger
 from ray.tune.registry import ENV_CREATOR, _global_registry
@@ -113,7 +113,7 @@ logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
-def with_common_config(extra_config: PartialTrainerConfigDict) -> TrainerConfigDict:
+def with_common_config(extra_config: PartialAlgorithmConfigDict) -> AlgorithmConfigDict:
     """Returns the given config dict merged with common agent confs.
 
     Args:
@@ -122,7 +122,7 @@ def with_common_config(extra_config: PartialTrainerConfigDict) -> TrainerConfigD
             as plain python dict.
 
     Returns:
-        TrainerConfigDict: The merged config dict resulting from AlgorithmConfig()
+        AlgorithmConfigDict: The merged config dict resulting from AlgorithmConfig()
             plus `extra_config`.
     """
     return Algorithm.merge_trainer_configs(
@@ -190,7 +190,7 @@ class Algorithm(Trainable):
     @PublicAPI
     def __init__(
         self,
-        config: Optional[Union[PartialTrainerConfigDict, AlgorithmConfig]] = None,
+        config: Optional[Union[PartialAlgorithmConfigDict, AlgorithmConfig]] = None,
         env: Optional[Union[str, EnvType]] = None,
         logger_creator: Optional[Callable[[], Logger]] = None,
         remote_checkpoint_dir: Optional[str] = None,
@@ -290,12 +290,12 @@ class Algorithm(Trainable):
 
     @OverrideToImplementCustomLogic
     @classmethod
-    def get_default_config(cls) -> TrainerConfigDict:
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return AlgorithmConfig().to_dict()
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     @override(Trainable)
-    def setup(self, config: PartialTrainerConfigDict):
+    def setup(self, config: PartialAlgorithmConfigDict):
 
         # Setup our config: Merge the user-supplied config (which could
         # be a partial config dict with the class' default).
@@ -511,11 +511,11 @@ class Algorithm(Trainable):
     #  default setup behavior plus some own setup logic.
     #  If you don't need the env/workers/config/etc.. setup for you by super,
     #  simply do not call super().setup() from your overridden method.
-    def _init(self, config: TrainerConfigDict, env_creator: EnvCreator) -> None:
+    def _init(self, config: AlgorithmConfigDict, env_creator: EnvCreator) -> None:
         raise NotImplementedError
 
     @OverrideToImplementCustomLogic
-    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
+    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
         """Returns a default Policy class to use, given a config.
 
         This class will be used inside RolloutWorkers' PolicyMaps in case
@@ -1291,7 +1291,7 @@ class Algorithm(Trainable):
         *,
         observation_space: Optional[gym.spaces.Space] = None,
         action_space: Optional[gym.spaces.Space] = None,
-        config: Optional[PartialTrainerConfigDict] = None,
+        config: Optional[PartialAlgorithmConfigDict] = None,
         policy_state: Optional[PolicyState] = None,
         policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID], PolicyID]] = None,
         policies_to_train: Optional[
@@ -1520,7 +1520,7 @@ class Algorithm(Trainable):
     @classmethod
     @override(Trainable)
     def default_resource_request(
-        cls, config: PartialTrainerConfigDict
+        cls, config: PartialAlgorithmConfigDict
     ) -> Union[Resources, PlacementGroupFactory]:
 
         # Default logic for RLlib algorithms (Trainers):
@@ -1582,7 +1582,7 @@ class Algorithm(Trainable):
 
     @staticmethod
     def _get_env_id_and_creator(
-        env_specifier: Union[str, EnvType, None], config: PartialTrainerConfigDict
+        env_specifier: Union[str, EnvType, None], config: PartialAlgorithmConfigDict
     ) -> Tuple[Optional[str], EnvCreator]:
         """Returns env_id and creator callable given original env id from config.
 
@@ -1697,7 +1697,7 @@ class Algorithm(Trainable):
 
     @classmethod
     @override(Trainable)
-    def resource_help(cls, config: TrainerConfigDict) -> str:
+    def resource_help(cls, config: AlgorithmConfigDict) -> str:
         return (
             "\n\nYou can adjust the resource requests of RLlib agents by "
             "setting `num_workers`, `num_gpus`, and other configs. See "
@@ -1708,10 +1708,10 @@ class Algorithm(Trainable):
     @classmethod
     def merge_trainer_configs(
         cls,
-        config1: TrainerConfigDict,
-        config2: PartialTrainerConfigDict,
+        config1: AlgorithmConfigDict,
+        config2: PartialAlgorithmConfigDict,
         _allow_unknown_configs: Optional[bool] = None,
-    ) -> TrainerConfigDict:
+    ) -> AlgorithmConfigDict:
         """Merges a complete Trainer config with a partial override dict.
 
         Respects nested structures within the config dicts. The values in the
@@ -1748,7 +1748,7 @@ class Algorithm(Trainable):
         )
 
     @staticmethod
-    def validate_framework(config: PartialTrainerConfigDict) -> None:
+    def validate_framework(config: PartialAlgorithmConfigDict) -> None:
         """Validates the config dictionary wrt the framework settings.
 
         Args:
@@ -1826,7 +1826,7 @@ class Algorithm(Trainable):
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     @DeveloperAPI
-    def validate_config(self, config: TrainerConfigDict) -> None:
+    def validate_config(self, config: AlgorithmConfigDict) -> None:
         """Validates a given config dict for this Trainer.
 
         Users should override this method to implement custom validation
@@ -2219,7 +2219,7 @@ class Algorithm(Trainable):
 
     @DeveloperAPI
     def _create_local_replay_buffer_if_necessary(
-        self, config: PartialTrainerConfigDict
+        self, config: PartialAlgorithmConfigDict
     ) -> Optional[MultiAgentReplayBuffer]:
         """Create a MultiAgentReplayBuffer instance if necessary.
 
@@ -2422,7 +2422,7 @@ class Algorithm(Trainable):
         env_creator: EnvCreator,
         validate_env: Optional[Callable[[EnvType, EnvContext], None]],
         policy_class: Type[Policy],
-        config: TrainerConfigDict,
+        config: AlgorithmConfigDict,
         num_workers: int,
         local_worker: bool = True,
     ) -> WorkerSet:
@@ -2449,4 +2449,4 @@ class Algorithm(Trainable):
 
 # TODO: Create a dict that throw a deprecation warning once we have fully moved
 #  to AlgorithmConfig() objects (some algos still missing).
-COMMON_CONFIG: TrainerConfigDict = AlgorithmConfig(Algorithm).to_dict()
+COMMON_CONFIG: AlgorithmConfigDict = AlgorithmConfig(Algorithm).to_dict()

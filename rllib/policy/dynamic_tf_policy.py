@@ -24,7 +24,7 @@ from ray.rllib.utils.typing import (
     LocalOptimizer,
     ModelGradients,
     TensorType,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
 )
 
 tf1, tf, tfv = try_import_tf()
@@ -49,7 +49,7 @@ class DynamicTFPolicy(TFPolicy):
         self,
         obs_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
-        config: TrainerConfigDict,
+        config: AlgorithmConfigDict,
         loss_fn: Callable[
             [Policy, ModelV2, Type[TFActionDistribution], SampleBatch], TensorType
         ],
@@ -62,12 +62,12 @@ class DynamicTFPolicy(TFPolicy):
         ] = None,
         before_loss_init: Optional[
             Callable[
-                [Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict], None
+                [Policy, gym.spaces.Space, gym.spaces.Space, AlgorithmConfigDict], None
             ]
         ] = None,
         make_model: Optional[
             Callable[
-                [Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict], ModelV2
+                [Policy, gym.spaces.Space, gym.spaces.Space, AlgorithmConfigDict], ModelV2
             ]
         ] = None,
         action_sampler_fn: Optional[

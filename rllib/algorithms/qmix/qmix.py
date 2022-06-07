@@ -20,7 +20,7 @@ from ray.rllib.utils.metrics import (
     SYNCH_WORKER_WEIGHTS_TIMER,
 )
 from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
-from ray.rllib.utils.typing import ResultDict, TrainerConfigDict
+from ray.rllib.utils.typing import ResultDict, AlgorithmConfigDict
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 
@@ -194,11 +194,11 @@ class QMixConfig(SimpleQConfig):
 class QMix(SimpleQ):
     @classmethod
     @override(SimpleQ)
-    def get_default_config(cls) -> TrainerConfigDict:
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return QMixConfig().to_dict()
 
     @override(SimpleQ)
-    def validate_config(self, config: TrainerConfigDict) -> None:
+    def validate_config(self, config: AlgorithmConfigDict) -> None:
         # Call super's validation method.
         super().validate_config(config)
 
@@ -206,7 +206,7 @@ class QMix(SimpleQ):
             raise ValueError("Only `framework=torch` supported so far for QMix!")
 
     @override(SimpleQ)
-    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
+    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
         return QMixTorchPolicy
 
     @override(SimpleQ)

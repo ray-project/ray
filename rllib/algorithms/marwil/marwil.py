@@ -21,7 +21,7 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.typing import (
     ResultDict,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
 )
 from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
 
@@ -209,11 +209,11 @@ class MARWILConfig(AlgorithmConfig):
 class MARWIL(Algorithm):
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> TrainerConfigDict:
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return MARWILConfig().to_dict()
 
     @override(Algorithm)
-    def validate_config(self, config: TrainerConfigDict) -> None:
+    def validate_config(self, config: AlgorithmConfigDict) -> None:
         # Call super's validation method.
         super().validate_config(config)
 
@@ -232,7 +232,7 @@ class MARWIL(Algorithm):
             )
 
     @override(Algorithm)
-    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
+    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.marwil.marwil_torch_policy import (
                 MARWILTorchPolicy,

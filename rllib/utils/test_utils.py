@@ -13,11 +13,11 @@ import yaml
 import ray
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED, NUM_ENV_STEPS_TRAINED
-from ray.rllib.utils.typing import PartialTrainerConfigDict
+from ray.rllib.utils.typing import PartialAlgorithmConfigDict
 from ray.tune import CLIReporter, run_experiments
 
 if TYPE_CHECKING:
-    from ray.rllib.algorithms.algorithm_config import TrainerConfig
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 jax, _ = try_import_jax()
 tf1, tf, tfv = try_import_tf()
@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 
 def framework_iterator(
-    config: Optional[Union["TrainerConfig", PartialTrainerConfigDict]] = None,
+    config: Optional[Union["AlgorithmConfig", PartialAlgorithmConfigDict]] = None,
     frameworks: Sequence[str] = ("tf2", "tf", "tfe", "torch"),
     session: bool = False,
     with_eager_tracing: bool = False,
@@ -46,7 +46,7 @@ def framework_iterator(
     as the correct eager/non-eager contexts for tfe/tf.
 
     Args:
-        config: An optional config dict or TrainerConfig object. This will be modified
+        config: An optional config dict or AlgorithmConfig object. This will be modified
             (value for "framework" changed) depending on the iteration.
         frameworks: A list/tuple of the frameworks to be tested.
             Allowed are: "tf2", "tf", "tfe", "torch", and None.

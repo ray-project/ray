@@ -17,7 +17,7 @@ from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import huber_loss
-from ray.rllib.utils.typing import TensorType, TrainerConfigDict
+from ray.rllib.utils.typing import TensorType, AlgorithmConfigDict
 
 tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
@@ -30,7 +30,7 @@ def build_q_models(
     policy: Policy,
     obs_space: gym.spaces.Space,
     action_space: gym.spaces.Space,
-    config: TrainerConfigDict,
+    config: AlgorithmConfigDict,
 ) -> ModelV2:
     """Build q_model and target_model for Simple Q learning
 
@@ -40,7 +40,7 @@ def build_q_models(
         policy: The Policy, which will use the model for optimization.
         obs_space (gym.spaces.Space): The policy's observation space.
         action_space (gym.spaces.Space): The policy's action space.
-        config (TrainerConfigDict):
+        config (AlgorithmConfigDict):
 
     Returns:
         ModelV2: The Model for the Policy to use.
@@ -170,7 +170,7 @@ def setup_late_mixins(
     policy: Policy,
     obs_space: gym.spaces.Space,
     action_space: gym.spaces.Space,
-    config: TrainerConfigDict,
+    config: AlgorithmConfigDict,
 ) -> None:
     """Call all mixin classes' constructors before SimpleQTFPolicy initialization.
 

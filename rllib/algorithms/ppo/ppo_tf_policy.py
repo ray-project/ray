@@ -27,7 +27,7 @@ from ray.rllib.utils.tf_utils import explained_variance
 from ray.rllib.utils.typing import (
     TensorType,
     TFPolicyV2Type,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
 )
 
 tf1, tf, tfv = try_import_tf()
@@ -35,7 +35,7 @@ tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
-def validate_config(config: TrainerConfigDict) -> None:
+def validate_config(config: AlgorithmConfigDict) -> None:
     """Executed before Policy is "initialized" (at beginning of constructor).
     Args:
         config: The Policy's config.

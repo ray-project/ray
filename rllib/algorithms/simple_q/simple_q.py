@@ -41,7 +41,7 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.typing import (
     ResultDict,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
 )
 
 logger = logging.getLogger(__name__)
@@ -261,11 +261,11 @@ class SimpleQConfig(AlgorithmConfig):
 class SimpleQ(Algorithm):
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> TrainerConfigDict:
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return SimpleQConfig().to_dict()
 
     @override(Algorithm)
-    def validate_config(self, config: TrainerConfigDict) -> None:
+    def validate_config(self, config: AlgorithmConfigDict) -> None:
         """Validates the Trainer's config dict.
 
         Args:
@@ -303,7 +303,7 @@ class SimpleQ(Algorithm):
 
     @override(Algorithm)
     def get_default_policy_class(
-        self, config: TrainerConfigDict
+        self, config: AlgorithmConfigDict
     ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             return SimpleQTorchPolicy

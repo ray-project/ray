@@ -34,7 +34,7 @@ from ray.rllib.utils.typing import (
     PolicyID,
     SampleBatchType,
     TensorType,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
 )
 from ray.tune.registry import registry_contains_input, registry_get_input
 
@@ -59,7 +59,7 @@ class WorkerSet:
         env_creator: Optional[EnvCreator] = None,
         validate_env: Optional[Callable[[EnvType], None]] = None,
         policy_class: Optional[Type[Policy]] = None,
-        trainer_config: Optional[TrainerConfigDict] = None,
+        trainer_config: Optional[AlgorithmConfigDict] = None,
         num_workers: int = 0,
         local_worker: bool = True,
         logdir: Optional[str] = None,
@@ -537,7 +537,7 @@ class WorkerSet:
         worker_index: int,
         num_workers: int,
         recreated_worker: bool = False,
-        config: TrainerConfigDict,
+        config: AlgorithmConfigDict,
         spaces: Optional[
             Dict[PolicyID, Tuple[gym.spaces.Space, gym.spaces.Space]]
         ] = None,
