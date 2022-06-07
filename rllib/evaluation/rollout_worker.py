@@ -1688,7 +1688,7 @@ class RolloutWorker(ParallelIteratorWorker):
             self.policy_map[pid].set_weights(w)
         if global_vars:
             self.set_global_vars(global_vars)
-        print(f">>> Set weights on worker {self.worker_index} took: {(time.time() - start)*1000}ms")
+        print(f">>>> [ObjectStore] Set weights on worker {self.worker_index} took: {(time.time() - start)*1000}ms")
 
     @DeveloperAPI
     def get_global_vars(self) -> dict:

@@ -307,7 +307,7 @@ class WorkerSet:
             # ref to synch to all workers.
             start = time.time()
             weights_ref = ray.put(weights)
-            print(f">>> Put weights to object store took: {(time.time() - start)*1000}ms")
+            print(f">>>> [ObjectStore] Put weights took: {(time.time() - start)*1000}ms")
             # Sync to all remote workers in this WorkerSet.
             for to_worker in self.remote_workers():
                 to_worker.set_weights.remote(weights_ref, global_vars=global_vars)

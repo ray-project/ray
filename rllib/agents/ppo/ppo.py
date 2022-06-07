@@ -429,10 +429,8 @@ class PPOTrainer(Trainer):
         # Update weights - after learning on the local worker - on all remote
         # workers.
         if self.workers.remote_workers():
-            # if self.iteration == 0:
-            #     with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-            #         self.workers.sync_weights(global_vars=global_vars)
-            # else:
+            # with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+            #     self.workers.sync_weights(global_vars=global_vars)
             with self._timers[SYNCH_WORKER_WEIGHTS_COLLECTIVE_TIMER]:
                 self.workers.sync_weights_collective(global_vars=global_vars)
 
