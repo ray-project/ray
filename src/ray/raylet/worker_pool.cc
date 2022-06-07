@@ -845,6 +845,24 @@ void WorkerPool::PopRestoreWorker(
   PopIOWorkerInternal(rpc::WorkerType::RESTORE_WORKER, callback);
 }
 
+void WorkerPool::PushDumpCheckpointWorker(const std::shared_ptr<WorkerInterface> &worker) {
+  PushIOWorkerInternal(worker, rpc::WorkerType::DUMP_CHECKPOINT_WORKER);
+}
+
+void WorkerPool::PopDumpCheckpointWorker(
+    std::function<void(std::shared_ptr<WorkerInterface>)> callback) {
+  PopIOWorkerInternal(rpc::WorkerType::DUMP_CHECKPOINT_WORKER, callback);
+}
+
+void WorkerPool::PushLoadCheckpointWorker(const std::shared_ptr<WorkerInterface> &worker) {
+  PushIOWorkerInternal(worker, rpc::WorkerType::LOAD_CHECKPOINT_WORKER);
+}
+
+void WorkerPool::PopLoadCheckpointWorker(
+    std::function<void(std::shared_ptr<WorkerInterface>)> callback) {
+  PopIOWorkerInternal(rpc::WorkerType::LOAD_CHECKPOINT_WORKER, callback);
+}
+
 void WorkerPool::PushIOWorkerInternal(const std::shared_ptr<WorkerInterface> &worker,
                                       const rpc::WorkerType &worker_type) {
   RAY_CHECK(IsIOWorkerType(worker->GetWorkerType()));
@@ -1424,7 +1442,9 @@ inline WorkerPool::State &WorkerPool::GetStateForLanguage(const Language &langua
 
 inline bool WorkerPool::IsIOWorkerType(const rpc::WorkerType &worker_type) {
   return worker_type == rpc::WorkerType::SPILL_WORKER ||
-         worker_type == rpc::WorkerType::RESTORE_WORKER;
+         worker_type == rpc::WorkerType::RESTORE_WORKER ||
+         worker_type == rpc::WorkerType::DUMP_CHECKPOINT_WORKER ||
+         worker_type == rpc::WorkerType::LOAD_CHECKPOINT_WORKER;
 }
 
 std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetWorkersRunningTasksForJob(

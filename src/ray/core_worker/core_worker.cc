@@ -256,7 +256,9 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       options_.check_signals,
       /*warmup=*/
       (options_.worker_type != WorkerType::SPILL_WORKER &&
-       options_.worker_type != WorkerType::RESTORE_WORKER),
+       options_.worker_type != WorkerType::RESTORE_WORKER &&
+       options_.worker_type != WorkerType::DUMP_CHECKPOINT_WORKER &&
+       options_.worker_type != WorkerType::LOAD_CHECKPOINT_WORKER),
       /*get_current_call_site=*/boost::bind(&CoreWorker::CurrentCallSite, this)));
   memory_store_.reset(new CoreWorkerMemoryStore(
       reference_counter_,

@@ -1979,6 +1979,9 @@ void NodeManager::MarkObjectsAsFailed(
     ObjectID object_id = ObjectID::FromBinary(ref.object_id());
     RAY_LOG(DEBUG) << "Mark the object id " << object_id << " as failed due to "
                    << error_type;
+    if (error_type == rpc::ErrorType::OWNER_DIED) {
+      RAY_LOG(INFO) << "-------------- owner died.";
+    }
     std::shared_ptr<Buffer> data;
     Status status;
     status = store_client_.TryCreateImmediately(

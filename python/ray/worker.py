@@ -82,6 +82,8 @@ WORKER_MODE = 1
 LOCAL_MODE = 2
 SPILL_WORKER_MODE = 3
 RESTORE_WORKER_MODE = 4
+DUMP_CHECKPOINT_WORKER_MODE = 5
+LOAD_CHECKPOINT_WORKER_MODE = 6
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -1486,7 +1488,13 @@ def connect(
     )
 
     # Initialize some fields.
-    if mode in (WORKER_MODE, RESTORE_WORKER_MODE, SPILL_WORKER_MODE):
+    if mode in (
+        WORKER_MODE,
+        RESTORE_WORKER_MODE,
+        SPILL_WORKER_MODE,
+        DUMP_CHECKPOINT_WORKER_MODE,
+        LOAD_CHECKPOINT_WORKER_MODE,
+    ):
         # We should not specify the job_id if it's `WORKER_MODE`.
         assert job_id is None
         job_id = JobID.nil()
@@ -1501,6 +1509,10 @@ def connect(
             process_name = ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER_IDLE
         elif mode is RESTORE_WORKER_MODE:
             process_name = ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER_IDLE
+        elif mode is DUMP_CHECKPOINT_WORKER_MODE:
+            process_name = ray_constants.WORKER_PROCESS_TYPE_DUMP_CHECKPOINT_WORKER_IDLE
+        elif mode is LOAD_CHECKPOINT_WORKER_MODE:
+            process_name = ray_constants.WORKER_PROCESS_TYPE_LOAD_CHECKPOINT_WORKER_IDLE
         setproctitle.setproctitle(process_name)
 
     if not isinstance(job_id, JobID):
@@ -1615,7 +1627,12 @@ def connect(
         )
 
     # Start the import thread
-    if mode not in (RESTORE_WORKER_MODE, SPILL_WORKER_MODE):
+    if mode not in (
+        RESTORE_WORKER_MODE,
+        SPILL_WORKER_MODE,
+        DUMP_CHECKPOINT_WORKER_MODE,
+        LOAD_CHECKPOINT_WORKER_MODE,
+    ):
         worker.import_thread = import_thread.ImportThread(
             worker, mode, worker.threads_stopped
         )

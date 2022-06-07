@@ -35,6 +35,8 @@ enum WorkerType {
   // IO worker types.
   SPILL_WORKER = 2;
   RESTORE_WORKER = 3;
+  DUMP_CHECKPOINT_WORKER = 4;
+  LOAD_CHECKPOINT_WORKER = 5;
 }
 
 // Type of a task.

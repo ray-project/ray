@@ -111,6 +111,13 @@ parser.add_argument(
     help="The configuration of object spilling. Only used by I/O workers.",
 )
 parser.add_argument(
+    "--object-checkpoint-donfig",
+    required=False,
+    type=str,
+    default="",
+    help="The configuration of object checkpoint. Only used by I/O workers.",
+)
+parser.add_argument(
     "--logging-rotate-bytes",
     required=False,
     type=int,
@@ -161,6 +168,10 @@ if __name__ == "__main__":
         mode = ray.SPILL_WORKER_MODE
     elif args.worker_type == "RESTORE_WORKER":
         mode = ray.RESTORE_WORKER_MODE
+    elif args.worker_type == "DUMP_CHECKPOINT_WORKER":
+        mode = ray.DUMP_CHECKPOINT_WORKER_MODE
+    elif args.worker_type == "LOAD_CHECKPOINT_WORKER":
+        mode = ray.LOAD_CHECKPOINT_WORKER_MODE
     else:
         raise ValueError("Unknown worker type: " + args.worker_type)
 
@@ -207,6 +218,21 @@ if __name__ == "__main__":
             object_spilling_config, node.session_name
         )
 
+    # Initialize dump/load checkpoint worker
+    if mode == ray.DUMP_CHECKPOINT_WORKER_MODE or mode == ray.LOAD_CHECKPOINT_WORKER_MODE:
+        from ray import external_storage
+        from ray.internal import storage
+
+        storage._init_storage(args.storage, is_head=False)
+        if args.object_checkpoint_config:
+            object_checkpoint_config = base64.b64decode(args.object_checkpoint_config)
+            object_checkpoint_config = json.loads(object_checkpoint_config)
+        else:
+            object_checkpoint_config = {}
+        external_storage.setup_external_storage(
+            object_checkpoint_config, node.session_name
+        )
+
     ray.worker._global_node = node
     ray.worker.connect(
         node,
@@ -236,7 +262,12 @@ if __name__ == "__main__":
 
     if mode == ray.WORKER_MODE:
         ray.worker.global_worker.main_loop()
-    elif mode in [ray.RESTORE_WORKER_MODE, ray.SPILL_WORKER_MODE]:
+    elif mode in [
+        ray.RESTORE_WORKER_MODE,
+        ray.SPILL_WORKER_MODE,
+        ray.DUMP_CHECKPOINT_WORKER_MODE,
+        ray.LOAD_CHECKPOINT_WORKER_MODE,
+    ]:
         # It is handled by another thread in the C++ core worker.
         # We just need to keep the worker alive.
         while True:

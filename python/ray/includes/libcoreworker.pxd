@@ -306,6 +306,11 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         (int64_t(
             const c_vector[CObjectReference] &,
             const c_vector[c_string] &) nogil) restore_spilled_objects
+        (c_vector[c_string](
+            const c_vector[CObjectReference] &) nogil) dump_checkpoint_objects
+        (int64_t(
+            const c_vector[CObjectReference] &,
+            const c_vector[c_string] &) nogil) load_checkpoint_objects
         (void(
             const c_vector[c_string]&,
             CWorkerType) nogil) delete_spilled_objects

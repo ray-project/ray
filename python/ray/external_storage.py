@@ -665,6 +665,7 @@ def spill_objects(object_refs, owner_addresses):
     """
     return _external_storage.spill_objects(object_refs, owner_addresses)
 
+dump_checkpoint_objects = spill_objects
 
 def restore_spilled_objects(
     object_refs: List[ObjectRef], url_with_offset_list: List[str]
@@ -677,6 +678,7 @@ def restore_spilled_objects(
     """
     return _external_storage.restore_spilled_objects(object_refs, url_with_offset_list)
 
+load_checkpoint_objects = restore_spilled_objects
 
 def delete_spilled_objects(urls: List[str]):
     """Delete objects that are spilled to the external storage.

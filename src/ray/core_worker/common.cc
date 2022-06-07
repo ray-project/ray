@@ -27,6 +27,10 @@ std::string WorkerTypeString(WorkerType type) {
     return "spill_worker";
   } else if (type == WorkerType::RESTORE_WORKER) {
     return "restore_worker";
+  } else if (type == WorkerType::DUMP_CHECKPOINT_WORKER) {
+    return "dump_checkpoint_worker";
+  } else if (type == WorkerType::LOAD_CHECKPOINT_WORKER) {
+    return "load_checkpoint_worker";
   }
   RAY_CHECK(false);
   return "";

@@ -82,6 +82,8 @@ from ray.includes.common cimport (
     WORKER_TYPE_DRIVER,
     WORKER_TYPE_SPILL_WORKER,
     WORKER_TYPE_RESTORE_WORKER,
+    WORKER_TYPE_DUMP_CHECKPOINT_WORKER,
+    WORKER_TYPE_LOAD_CHECKPOINT_WORKER,
     PLACEMENT_STRATEGY_PACK,
     PLACEMENT_STRATEGY_SPREAD,
     PLACEMENT_STRATEGY_STRICT_PACK,
@@ -948,6 +950,74 @@ cdef int64_t restore_spilled_objects_handler(
     return bytes_restored
 
 
+cdef c_vector[c_string] dump_checkpoint_objects_handler(
+        const c_vector[CObjectReference]& object_refs_to_dump_checkpoint) nogil:
+    cdef:
+        c_vector[c_string] return_urls
+        c_vector[c_string] owner_addresses
+
+    with gil:
+        object_refs = VectorToObjectRefs(
+                object_refs_to_dump_checkpoint,
+                skip_adding_local_ref=False)
+        for i in range(object_refs_to_dump_checkpoint.size()):
+            owner_addresses.push_back(
+                    object_refs_to_dump_checkpoint[i].owner_address()
+                    .SerializeAsString())
+        try:
+            with ray.worker._changeproctitle(
+                    ray_constants.WORKER_PROCESS_TYPE_DUMP_CHECKPOINT_WORKER,
+                    ray_constants.WORKER_PROCESS_TYPE_DUMP_CHECKPOINT_WORKER_IDLE):
+                urls = external_storage.dump_checkpoint_objects(
+                    object_refs, owner_addresses)
+            for url in urls:
+                return_urls.push_back(url)
+        except Exception as err:
+            exception_str = (
+                "An unexpected internal error occurred while the IO worker "
+                "was dumpong checkpoint of objects: {}".format(err))
+            logger.exception(exception_str)
+            ray._private.utils.push_error_to_driver(
+                ray.worker.global_worker,
+                "dump_checkpoint_objects_error",
+                traceback.format_exc() + exception_str,
+                job_id=None)
+        return return_urls
+
+
+cdef int64_t load_checkpoint_objects_handler(
+        const c_vector[CObjectReference]& object_refs_to_load_checkpoint,
+        const c_vector[c_string]& object_urls) nogil:
+    cdef:
+        int64_t bytes_restored = 0
+    with gil:
+        urls = []
+        size = object_urls.size()
+        for i in range(size):
+            urls.append(object_urls[i])
+        object_refs = VectorToObjectRefs(
+                object_refs_to_load_checkpoint,
+                skip_adding_local_ref=False)
+        try:
+            with ray.worker._changeproctitle(
+                    ray_constants.WORKER_PROCESS_TYPE_LOAD_CHECKPOINT_WORKER,
+                    ray_constants.WORKER_PROCESS_TYPE_LOAD_CHECKPOINT_WORKER_IDLE):
+                bytes_restored = external_storage.load_checkpoint_objects(
+                    object_refs, urls)
+        except Exception:
+            exception_str = (
+                "An unexpected internal error occurred while the IO worker "
+                "was loading checkpoint of objects.")
+            logger.exception(exception_str)
+            if os.getenv("RAY_BACKEND_LOG_LEVEL") == "debug":
+                ray._private.utils.push_error_to_driver(
+                    ray.worker.global_worker,
+                    "load_checkpoint_objects_error",
+                    traceback.format_exc() + exception_str,
+                    job_id=None)
+    return bytes_restored
+
+
 cdef void delete_spilled_objects_handler(
         const c_vector[c_string]& object_urls,
         CWorkerType worker_type) nogil:
@@ -1091,6 +1161,12 @@ cdef class CoreWorker:
         elif worker_type == ray.RESTORE_WORKER_MODE:
             self.is_driver = False
             options.worker_type = WORKER_TYPE_RESTORE_WORKER
+        elif worker_type == ray.DUMP_CHECKPOINT_WORKER:
+            self.is_driver = False
+            options.worker_type = WORKER_TYPE_DUMP_CHECKPOINT_WORKER
+        elif worker_type == ray.LOAD_CHECKPOINT_WORKER:
+            self.is_driver = False
+            options.worker_type = WORKER_TYPE_LOAD_CHECKPOINT_WORKER
         else:
             raise ValueError(f"Unknown worker type: {worker_type}")
         options.language = LANGUAGE_PYTHON
@@ -1114,6 +1190,8 @@ cdef class CoreWorker:
         options.gc_collect = gc_collect
         options.spill_objects = spill_objects_handler
         options.restore_spilled_objects = restore_spilled_objects_handler
+        options.dump_checkpoint_objects = dump_checkpoint_objects_handler
+        options.load_checkpoint_objects = load_checkpoint_objects_handler
         options.delete_spilled_objects = delete_spilled_objects_handler
         options.unhandled_exception_handler = unhandled_exception_handler
         options.get_lang_stack = get_py_stack

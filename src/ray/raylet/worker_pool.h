@@ -140,6 +140,16 @@ class IOWorkerPoolInterface {
   virtual void PopDeleteWorker(
       std::function<void(std::shared_ptr<WorkerInterface>)> callback) = 0;
 
+  virtual void PushDumpCheckpointWorker(const std::shared_ptr<WorkerInterface> &worker) = 0;
+
+  virtual void PopDumpCheckpointWorker(
+      std::function<void(std::shared_ptr<WorkerInterface>)> callback) = 0;
+
+  virtual void PushLoadCheckpointWorker(const std::shared_ptr<WorkerInterface> &worker) = 0;
+
+  virtual void PopLoadCheckpointWorker(
+      std::function<void(std::shared_ptr<WorkerInterface>)> callback) = 0;
+
   virtual ~IOWorkerPoolInterface(){};
 };
 
@@ -330,6 +340,16 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// and pop them out.
   void PopDeleteWorker(std::function<void(std::shared_ptr<WorkerInterface>)> callback);
 
+  void PushDumpCheckpointWorker(const std::shared_ptr<WorkerInterface> &worker);
+
+  void PopDumpCheckpointWorker(
+      std::function<void(std::shared_ptr<WorkerInterface>)> callback);
+
+  void PushLoadCheckpointWorker(const std::shared_ptr<WorkerInterface> &worker);
+
+  void PopLoadCheckpointWorker(
+      std::function<void(std::shared_ptr<WorkerInterface>)> callback);
+
   /// See interface.
   void PushWorker(const std::shared_ptr<WorkerInterface> &worker);
 
@@ -509,6 +529,10 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     IOWorkerState spill_io_worker_state;
     // States for io workers used for restoring objects.
     IOWorkerState restore_io_worker_state;
+
+    IOWorkerState dump_checkpoint_worker_state;
+
+    IOWorkerState load_checkpoint_worker_state;
     /// All workers that have registered and are still connected, including both
     /// idle and executing.
     std::unordered_set<std::shared_ptr<WorkerInterface>> registered_workers;

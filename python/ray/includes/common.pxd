@@ -198,6 +198,8 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CWorkerType WORKER_TYPE_DRIVER "ray::core::WorkerType::DRIVER"
     cdef CWorkerType WORKER_TYPE_SPILL_WORKER "ray::core::WorkerType::SPILL_WORKER"  # noqa: E501
     cdef CWorkerType WORKER_TYPE_RESTORE_WORKER "ray::core::WorkerType::RESTORE_WORKER"  # noqa: E501
+    cdef CWorkerType WORKER_TYPE_DUMP_CHECKPOINT_WORKER "ray::core::WorkerType::DUMP_CHECKPOINT_WORKER" # noqa: E501
+    cdef CWorkerType WORKER_TYPE_LOAD_CHECKPOINT_WORKER "ray::core::WorkerType::LOAD_CHECKPOINT_WORKER" # noqa: E501
     cdef CWorkerType WORKER_TYPE_UTIL_WORKER "ray::core::WorkerType::UTIL_WORKER"  # noqa: E501
 
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
