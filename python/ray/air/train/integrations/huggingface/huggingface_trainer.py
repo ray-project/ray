@@ -11,16 +11,20 @@ import torch
 import transformers
 import transformers.modeling_utils
 import transformers.trainer
+from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from transformers.trainer import WEIGHTS_NAME, TRAINING_ARGS_NAME
 import transformers.training_args
 from torch.utils.data import Dataset as TorchDataset
 
 from ray import train
-from ray import tune
 from ray.util import PublicAPI, get_node_ip_address
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import RunConfig, ScalingConfig, DatasetConfig
-from ray.air.constants import EVALUATION_DATASET_KEY, TRAIN_DATASET_KEY
+from ray.air.constants import (
+    EVALUATION_DATASET_KEY,
+    TRAIN_DATASET_KEY,
+    PREPROCESSOR_KEY,
+)
 from ray.air.preprocessor import Preprocessor
 from ray.air.train.integrations.torch import TorchTrainer
 from ray.air.trainer import GenDataset
@@ -56,36 +60,54 @@ from ray.tune.utils.file_transfer import delete_on_node, sync_dir_between_nodes
 # The checkpoint is turned into a dict with node ip & path
 # in HuggingFaceTrainer.as_trainable
 # TODO(team-ml): Refactor checkpoint management along with Tune.
-class _DataParallelSyncingCheckpointManager(_DataParallelCheckpointManager):
-    """As _DataParallelCheckpointManager, but syncs the dir instead of serializing."""
+class _SyncedTrackedCheckpoint(_TrackedCheckpoint):
+    def commit(self, path: Optional[Path] = None) -> None:
+        if (
+            self.storage_mode == CheckpointStorage.MEMORY
+            or not path
+            or not isinstance(self.dir_or_data, dict)
+        ):
+            return
 
-    def write_checkpoint(self, checkpoint: Dict):
-        # If inside a Tune Trainable, then checkpoint with Tune.
-        with tune.checkpoint_dir(step=self._latest_checkpoint_id) as checkpoint_dir:
-            source_ip = checkpoint[NODE_IP_KEY]
-            source_path = checkpoint[CHECKPOINT_PATH_ON_NODE_KEY]
-            target_ip = get_node_ip_address()
-            if source_ip == target_ip:
-                # Move contents of source_path, but not source_path
-                # itself. shutil.move is already recursive.
-                for path in Path(source_path).iterdir():
-                    shutil.move(str(path.absolute()), checkpoint_dir)
-                shutil.rmtree(source_path, ignore_errors=True)
-            else:
-                sync_dir_between_nodes(
-                    source_ip=source_ip,
-                    source_path=source_path,
-                    target_ip=target_ip,
-                    target_path=checkpoint_dir,
-                    return_futures=False,
-                    max_size_bytes=None,
-                )
-                delete_on_node(node_ip=source_ip, path=source_path)
-            checkpoint_dir = Path(checkpoint_dir)
-            save_preprocessor_to_dir(self.preprocessor, checkpoint_dir)
-            # add tune checkpoint id
-            with open(checkpoint_dir.joinpath(TUNE_CHECKPOINT_ID), "w") as f:
-                f.write(str(self._latest_checkpoint_id))
+        source_ip = self.dir_or_data[NODE_IP_KEY]
+        source_path = self.dir_or_data[CHECKPOINT_PATH_ON_NODE_KEY]
+        target_ip = get_node_ip_address()
+
+        if source_ip == target_ip:
+            # Move contents of source_path, but not source_path
+            # itself. shutil.move is already recursive.
+            for inner in Path(source_path).iterdir():
+                shutil.move(str(inner.absolute()), str(path))
+            shutil.rmtree(source_path, ignore_errors=True)
+        else:
+            sync_dir_between_nodes(
+                source_ip=source_ip,
+                source_path=source_path,
+                target_ip=target_ip,
+                target_path=str(path),
+                return_futures=False,
+                max_size_bytes=None,
+            )
+            delete_on_node(node_ip=source_ip, path=source_path)
+        save_preprocessor_to_dir(self.dir_or_data.pop(PREPROCESSOR_KEY, None), path)
+        # add tune checkpoint id
+        with open(path.joinpath(TUNE_CHECKPOINT_ID), "w") as f:
+            f.write(str(self.id))
+
+
+class _DataParallelSyncingCheckpointManager(_DataParallelCheckpointManager):
+    def _process_persistent_checkpoint(self, checkpoint: _TrackedCheckpoint):
+        sync_checkpoint = _SyncedTrackedCheckpoint(
+            dir_or_data=checkpoint.dir_or_data,
+            storage_mode=checkpoint.storage_mode,
+            checkpoint_id=checkpoint.id,
+            metrics=checkpoint.metrics,
+            node_ip=checkpoint.node_ip,
+        )
+
+        super(
+            _DataParallelSyncingCheckpointManager, self
+        )._process_persistent_checkpoint(checkpoint=sync_checkpoint)
 
 
 @PublicAPI(stability="alpha")
@@ -327,7 +349,7 @@ class HuggingFaceTrainer(TorchTrainer):
     ) -> Checkpoint:
         """Replace the directory checkpoint with a node ip & path dict checkpoint.
 
-        This dict checkpoint will be used used to sync the directory.
+        This dict checkpoint will be used to sync the directory.
         If we were to use a directory checkpoint directly, it would get deepcopied &
         serialized unnecessarily."""
         with checkpoint.as_directory() as checkpoint_path:
