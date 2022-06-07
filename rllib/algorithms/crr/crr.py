@@ -201,7 +201,7 @@ class CRR(Trainer):
     @override(Trainer)
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
-            from ray.rllib.algorithms.crr.torch.policy_torch_crr import CRRTorchPolicy
+            from ray.rllib.algorithms.crr.torch import CRRTorchPolicy
 
             return CRRTorchPolicy
         else:
