@@ -82,7 +82,7 @@ class Predictor(abc.ABC):
         """
         data_df = convert_batch_type_to_pandas(data)
 
-        if hasattr(self, "preprocessor") and self.preprocessor:
+        if getattr(self, "preprocessor", None):
             data_df = self.preprocessor.transform_batch(data_df)
 
         predictions_df = self._predict_pandas(data_df, **kwargs)
