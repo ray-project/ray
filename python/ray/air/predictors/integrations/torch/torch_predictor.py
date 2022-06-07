@@ -8,7 +8,7 @@ from ray.air.predictor import Predictor, DataBatchType
 from ray.air.preprocessor import Preprocessor
 from ray.air.checkpoint import Checkpoint
 from ray.air.train.integrations.torch import load_checkpoint
-from ray.air.utils.torch_utils import convert_pandas_to_torch_tensor
+from ray.air._internal.torch_utils import convert_pandas_to_torch_tensor
 
 
 class TorchPredictor(Predictor):
