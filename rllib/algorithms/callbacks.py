@@ -9,8 +9,12 @@ from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import Postprocessing
-from ray.rllib.utils.annotations import is_overridden, PublicAPI
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.annotations import (
+    is_overridden,
+    OverrideToImplementCustomLogic,
+    PublicAPI,
+)
+from ray.rllib.utils.deprecation import deprecation_warning, Deprecated
 from ray.rllib.utils.exploration.random_encoder import (
     _MovingMeanStd,
     compute_states_entropy,
@@ -45,7 +49,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                 "a class extending rllib.algorithms.callbacks.DefaultCallbacks",
             )
         self.legacy_callbacks = legacy_callbacks_dict or {}
-        if is_overridden("on_trainer_init"):
+        if is_overridden(self.on_trainer_init):
             deprecation_warning(
                 old="on_trainer_init(trainer, **kwargs)",
                 new="on_algorithm_init(algorithm, **kwargs)",
@@ -308,6 +312,11 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                     "result": result,
                 }
             )
+
+    @OverrideToImplementCustomLogic
+    @Deprecated(error=True)
+    def on_trainer_init(self, *args, **kwargs):
+        raise DeprecationWarning
 
 
 class MemoryTrackingCallbacks(DefaultCallbacks):
