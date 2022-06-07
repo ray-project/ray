@@ -335,7 +335,7 @@ py_test(
     name = "test_model_wrappers",
     size = "small",
     srcs = serve_tests_srcs,
-    tags = ["exclusive", "team:serve", "no_main"],
+    tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
 
