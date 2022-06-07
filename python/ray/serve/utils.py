@@ -328,7 +328,7 @@ def parse_import_path(import_path: str):
     return ".".join(nodes[:-1]), nodes[-1]
 
 
-def merge_runtime_envs(parent_env: Dict, child_env: Dict) -> Dict:
+def override_runtime_envs_except_env_vars(parent_env: Dict, child_env: Dict) -> Dict:
     """Creates a runtime_env dict by merging a parent and child environment.
 
     This method is not destructive. It leaves the parent and child envs

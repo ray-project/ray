@@ -14,7 +14,7 @@ from ray.serve.utils import (
     serve_encoders,
     get_deployment_import_path,
     node_id_to_ip_addr,
-    merge_runtime_envs,
+    override_runtime_envs_except_env_vars,
 )
 
 
@@ -143,26 +143,26 @@ class TestGetDeploymentImportPath:
             subprocess.check_output(["python", full_fname])
 
 
-class TestMergeRuntimeEnvs:
+class TestOverrideRuntimeEnvsExceptEnvVars:
     def test_merge_empty(self):
-        assert {"env_vars": {}} == merge_runtime_envs({}, {})
+        assert {"env_vars": {}} == override_runtime_envs_except_env_vars({}, {})
 
     def test_merge_empty_parent(self):
         child = {"env_vars": {"test1": "test_val"}, "working_dir": "."}
-        assert child == merge_runtime_envs({}, child)
+        assert child == override_runtime_envs_except_env_vars({}, child)
 
     def test_merge_empty_child(self):
         parent = {"env_vars": {"test1": "test_val"}, "working_dir": "."}
-        assert parent == merge_runtime_envs(parent, {})
+        assert parent == override_runtime_envs_except_env_vars(parent, {})
 
     @pytest.mark.parametrize("invalid_env", [None, 0, "runtime_env", set()])
     def test_invalid_type(self, invalid_env):
         with pytest.raises(TypeError):
-            merge_runtime_envs(invalid_env, {})
+            override_runtime_envs_except_env_vars(invalid_env, {})
         with pytest.raises(TypeError):
-            merge_runtime_envs({}, invalid_env)
+            override_runtime_envs_except_env_vars({}, invalid_env)
         with pytest.raises(TypeError):
-            merge_runtime_envs(invalid_env, invalid_env)
+            override_runtime_envs_except_env_vars(invalid_env, invalid_env)
 
     def test_basic_merge(self):
         parent = {
@@ -182,7 +182,7 @@ class TestMergeRuntimeEnvs:
         }
         original_child = child.copy()
 
-        merged = merge_runtime_envs(parent, child)
+        merged = override_runtime_envs_except_env_vars(parent, child)
 
         assert original_parent == parent
         assert original_child == child
@@ -195,7 +195,7 @@ class TestMergeRuntimeEnvs:
         }
 
     def test_merge_deep_copy(self):
-        """Check that merge_runtime_envs actually deep copies the env values."""
+        """Check that the env values are actually deep-copied."""
 
         parent_env_vars = {"parent": "pval"}
         child_env_vars = {"child": "cval"}
@@ -205,7 +205,7 @@ class TestMergeRuntimeEnvs:
         original_parent = parent.copy()
         original_child = child.copy()
 
-        merged = merge_runtime_envs(parent, child)
+        merged = override_runtime_envs_except_env_vars(parent, child)
         assert merged["env_vars"] == {"parent": "pval", "child": "cval"}
         assert original_parent == parent
         assert original_child == child
@@ -216,9 +216,15 @@ class TestMergeRuntimeEnvs:
         non_empty = {"env_vars": {"test": "val", "trial": "val2"}}
         empty = {}
 
-        assert env_vars == merge_runtime_envs(non_empty, empty)["env_vars"]
-        assert env_vars == merge_runtime_envs(empty, non_empty)["env_vars"]
-        assert {} == merge_runtime_envs(empty, empty)["env_vars"]
+        assert (
+            env_vars
+            == override_runtime_envs_except_env_vars(non_empty, empty)["env_vars"]
+        )
+        assert (
+            env_vars
+            == override_runtime_envs_except_env_vars(empty, non_empty)["env_vars"]
+        )
+        assert {} == override_runtime_envs_except_env_vars(empty, empty)["env_vars"]
 
     def test_merge_env_vars(self):
         parent = {
@@ -236,7 +242,7 @@ class TestMergeRuntimeEnvs:
             "pip": ["numpy"],
         }
 
-        merged = merge_runtime_envs(parent, child)
+        merged = override_runtime_envs_except_env_vars(parent, child)
         assert merged == {
             "py_modules": [],
             "working_dir": "s3://path/test1.zip",

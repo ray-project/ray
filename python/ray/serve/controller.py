@@ -39,7 +39,7 @@ from ray.serve.logging_utils import configure_component_logger
 from ray.serve.long_poll import LongPollHost
 from ray.serve.storage.checkpoint_path import make_kv_store
 from ray.serve.storage.kv_store import RayInternalKVStore
-from ray.serve.utils import merge_runtime_envs
+from ray.serve.utils import override_runtime_envs_except_env_vars
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -596,7 +596,7 @@ def run_graph(
             ray_actor_options = app.deployments[name].ray_actor_options or {}
 
         deployment_env = ray_actor_options.get("runtime_env", {})
-        merged_env = merge_runtime_envs(graph_env, deployment_env)
+        merged_env = override_runtime_envs_except_env_vars(graph_env, deployment_env)
 
         ray_actor_options.update({"runtime_env": merged_env})
         options["ray_actor_options"] = ray_actor_options
