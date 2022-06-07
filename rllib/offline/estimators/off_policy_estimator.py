@@ -98,7 +98,7 @@ class OffPolicyEstimator:
         if isinstance(batch, MultiAgentBatch):
             raise ValueError(
                 "Off-Policy Estimation is not implemented for multi-agent batches. "
-                "You can set `off_policy_estimation_methods: {}` to resolve this."
+                "You can set `off_policy_estimation_methods: \{\}` to resolve this."
             )
 
         if "action_prob" not in batch:
@@ -107,7 +107,7 @@ class OffPolicyEstimator:
                 "include action probabilities (i.e., the policy is stochastic "
                 "and emits the 'action_prob' key). For DQN this means using "
                 "`exploration_config: {type: 'SoftQ'}`. You can also set "
-                "`off_policy_estimation_methods: {}` to disable estimation."
+                "`off_policy_estimation_methods: \{\}` to disable estimation."
             )
 
     @DeveloperAPI

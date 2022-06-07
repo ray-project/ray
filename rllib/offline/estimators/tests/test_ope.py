@@ -96,7 +96,8 @@ class TestOPE(unittest.TestCase):
         while ts < train_steps:
             results = cls.trainer.train()
             ts = results["timesteps_total"]
-        print(results["episode_reward_mean"])
+        print("total_time_s", results["total_time_s"])
+        print("episode_reward_mean", results["episode_reward_mean"])
 
         # Read n_batches of data
         reader = JsonReader(data_file)
@@ -278,7 +279,8 @@ class TestOPE(unittest.TestCase):
         while ts < train_steps:
             results = trainer.train()
             ts = results["timesteps_total"]
-        print(ts, results["episode_reward_mean"])
+        print("total_time_s", results["total_time_s"])
+        print("episode_reward_mean", results["episode_reward_mean"])
         print("Training", results["off_policy_estimator"])
         print("Evaluation", results["evaluation"]["off_policy_estimator"])
         assert not results["off_policy_estimator"]  # Should be None or {}

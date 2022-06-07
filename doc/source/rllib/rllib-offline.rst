@@ -283,8 +283,12 @@ You can configure experience input for an agent using the following options:
     #    ray.rllib.offline.estimators.is::ImportanceSampling or your own custom
     #    subclass.
     "off_policy_estimation_methods": {
-        ImportanceSampling: None,
-        WeightedImportanceSampling: None,
+        "is": {
+            "type": ImportanceSampling,
+        },
+        "wis": {
+            "type": WeightedImportanceSampling,
+        }
     },
     # Whether to run postprocess_trajectory() on the trajectory fragments from
     # offline inputs. Note that postprocessing will be done using the *current*

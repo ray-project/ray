@@ -66,9 +66,6 @@ class CQLConfig(SACConfig):
         self.min_q_weight = 5.0
 
         # Changes to Trainer's/SACConfig's default:
-        # .offline_data()
-        self.off_policy_estimation_methods = {}
-
         # .reporting()
         self.min_sample_timesteps_per_reporting = 0
         self.min_train_timesteps_per_reporting = 100
