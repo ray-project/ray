@@ -347,15 +347,18 @@ def merge_runtime_envs(parent_env: Dict, child_env: Dict) -> Dict:
             "child_env must be a dictionary."
         )
 
-    parent_copy = copy.deepcopy(parent_env)
-    child_copy = copy.deepcopy(child_env)
+    defaults = copy.deepcopy(parent_env)
+    overrides = copy.deepcopy(child_env)
 
-    env_vars = parent_env.get("env_vars", {}).update(child_env.get("env_vars", {}))
+    default_env_vars = defaults.get("env_vars", {})
+    override_env_vars = overrides.get("env_vars", {})
 
-    merged_env = parent_copy.update(child_copy)
-    merged_env["env_vars"] = env_vars
+    defaults.update(overrides)
+    default_env_vars.update(override_env_vars)
 
-    return merged_env
+    defaults["env_vars"] = default_env_vars
+
+    return defaults
 
 
 class JavaActorHandleProxy:

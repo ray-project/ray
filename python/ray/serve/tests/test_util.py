@@ -145,7 +145,7 @@ class TestGetDeploymentImportPath:
 
 class TestMergeRuntimeEnvs:
     def test_merge_empty(self):
-        assert {} == merge_runtime_envs({}, {})
+        assert {"env_vars": {}} == merge_runtime_envs({}, {})
 
     def test_merge_empty_parent(self):
         child = {"env_vars": {"test1": "test_val"}, "working_dir": "."}
@@ -203,7 +203,7 @@ class TestMergeRuntimeEnvs:
         parent = {"env_vars": parent_env_vars}
         child = {"env_vars": child_env_vars}
         original_parent = parent.copy()
-        original_child = parent.copy()
+        original_child = child.copy()
 
         merged = merge_runtime_envs(parent, child)
         assert merged["env_vars"] == {"parent": "pval", "child": "cval"}
@@ -242,6 +242,7 @@ class TestMergeRuntimeEnvs:
             "working_dir": "s3://path/test1.zip",
             "env_vars": {"parent": "pval", "child": "cval", "override": "new"},
             "pip": ["numpy"],
+            "excludes": ["my_file.txt"],
         }
 
 
