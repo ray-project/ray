@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import io
 import logging
 import logging.handlers
 import os
@@ -26,6 +27,14 @@ from ray._private.ray_logging import setup_component_logger
 
 # Import psutil after ray so the packaged version is used.
 import psutil
+
+# Publishes at most this number of lines of Raylet logs, when the Raylet dies
+# unexpectedly.
+_RAYLET_LOG_MAX_PUBLISH_LINES = 20
+
+# Reads at most this amount of Raylet logs from the tail, for publishing and
+# checking if the Raylet was terminated gracefully.
+_RAYLET_LOG_MAX_TAIL_SIZE = 1 * 1024 ** 2
 
 try:
     create_task = asyncio.create_task
@@ -157,12 +166,20 @@ class DashboardAgent:
                 while True:
                     parent = curr_proc.parent()
                     if parent is None or parent.pid == 1 or self.ppid != parent.pid:
-                        log_path = "/tmp/ray/session_latest/logs/raylet.out"
+                        log_path = os.path.join(self.log_dir, "raylet.out")
                         error = False
                         msg = f"Raylet is terminated: ip={self.ip}, id={self.node_id}. "
                         try:
-                            with open(log_path, "r") as f:
+                            with open(log_path, "r", encoding="utf-8") as f:
+                                # Seek to _RAYLET_LOG_MAX_TAIL_SIZE from the end if the
+                                # file is larger than that.
+                                f.seek(0, io.SEEK_END)
+                                pos = max(0, f.tell() - _RAYLET_LOG_MAX_TAIL_SIZE)
+                                f.seek(pos, io.SEEK_SET)
+                                # Read remaining logs by lines.
                                 raylet_logs = f.readlines()
+                                # Assume the SIGTERM message must exist within the last
+                                # _RAYLET_LOG_MAX_TAIL_SIZE of the log file.
                                 if any(
                                     "Raylet received SIGTERM" in line
                                     for line in raylet_logs
@@ -176,12 +193,16 @@ class DashboardAgent:
                                         "OOM killer, (2) Invalid memory access from "
                                         "Raylet causing SIGSEGV or SIGBUS, "
                                         "(3) Other termination signals. "
-                                        "Last 20 lines of the Raylet logs:\n"
+                                        f"Last {_RAYLET_LOG_MAX_PUBLISH_LINES} lines "
+                                        "of the Raylet logs:\n"
                                     )
-                                    msg += "    " + "    ".join(raylet_logs[-20:])
+                                    msg += "    " + "    ".join(
+                                        raylet_logs[-_RAYLET_LOG_MAX_PUBLISH_LINES:]
+                                    )
                                     error = True
                         except Exception as e:
-                            msg += f"Raylet log not found at {log_path}: {e}!"
+                            msg += f"Failed to read Raylet logs at {log_path}: {e}!"
+                            logger.exception()
                             error = True
                         if error:
                             logger.error(msg)
