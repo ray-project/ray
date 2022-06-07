@@ -885,7 +885,7 @@ class RolloutWorker(ParallelIteratorWorker):
         # Do off-policy estimation, if needed.
         if self.reward_estimators:
             for estimator in self.reward_estimators:
-                estimator.process(batch.split_by_episode())
+                estimator.process(batch)
 
         if log_once("sample_end"):
             logger.info("Completed sample batch:\n\n{}\n".format(summarize(batch)))

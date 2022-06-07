@@ -82,7 +82,7 @@ class TestOPE(unittest.TestCase):
 
         config = (
             DQNConfig()
-            .rollouts(num_rollout_workers=2, batch_mode="complete_episodes")
+            .rollouts(num_rollout_workers=3, batch_mode="complete_episodes")
             .environment(env=env_name)
             .training(gamma=cls.gamma)
             .exploration(
@@ -137,6 +137,7 @@ class TestOPE(unittest.TestCase):
         # Optional configs for the model-based estimators
         cls.k = 2
         cls.model_config = {"n_iters": 10}
+        ray.shutdown()
 
     @classmethod
     def tearDownClass(cls):

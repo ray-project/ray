@@ -9,8 +9,9 @@ This page provides an overview of how to deploy a multi-node Ray cluster, includ
 
 * Launch the cluster.
 * Set up the autoscaler.
+* Deploy a Ray application.
 * Monitor a multi-node cluster.
-* Best practices for setting up a Ray cluster.
+* Best practices for setting up large Ray clusters.
 
 Launching a Ray cluster
 -----------------------
@@ -77,7 +78,7 @@ the available cluster resources. The remaining unfulfilled demands are placed
 on the smallest list of nodes that satisfies the demand while maximizing
 utilization (starting from the smallest node).
 
-**Downcaling**: When worker nodes are
+**Downscaling**: When worker nodes are
 idle (without active Tasks or Actors running on it) 
 for more than :ref:`idle_timeout_minutes
 <cluster-configuration-idle-timeout-minutes>`, they are subject to

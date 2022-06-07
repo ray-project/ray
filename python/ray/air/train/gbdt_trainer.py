@@ -4,7 +4,7 @@ import warnings
 from ray.air.trainer import GenDataset
 from ray.air.config import ScalingConfig, RunConfig, ScalingConfigDataClass
 from ray.air.preprocessor import Preprocessor
-from ray.air.utils.checkpointing import save_preprocessor_to_dir
+from ray.air._internal.checkpointing import save_preprocessor_to_dir
 from ray.tune.utils.trainable import TrainableUtil
 from ray.util.annotations import DeveloperAPI
 from ray.air.trainer import Trainer

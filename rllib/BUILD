@@ -1293,6 +1293,34 @@ py_test(
 )
 
 # --------------------------------------------------------------------
+# Connector tests
+# rllib/connector/
+#
+# Tag: connector
+# --------------------------------------------------------------------
+
+py_test(
+    name = "test_connector",
+    tags = ["team:ml", "connector"],
+    size = "small",
+    srcs = ["connectors/tests/test_connector.py"]
+)
+
+py_test(
+    name = "test_action",
+    tags = ["team:ml", "connector"],
+    size = "small",
+    srcs = ["connectors/tests/test_action.py"]
+)
+
+py_test(
+    name = "test_agent",
+    tags = ["team:ml", "connector"],
+    size = "small",
+    srcs = ["connectors/tests/test_agent.py"]
+)
+
+# --------------------------------------------------------------------
 # Env tests
 # rllib/env/
 #
@@ -1769,6 +1797,13 @@ py_test(
     size = "large",
     srcs = ["tests/test_checkpoint_restore.py"],
     args = ["TestCheckpointRestoreEvolutionAlgos"]
+)
+
+py_test(
+    name = "tests/test_custom_resource",
+    tags = ["team:ml", "tests_dir", "tests_dir_C"],
+    size = "medium",
+    srcs = ["tests/test_custom_resource.py"]
 )
 
 py_test(

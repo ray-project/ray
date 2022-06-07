@@ -20,6 +20,7 @@ class _DataParallelIngestSpec:
         """
         self.dataset_config = dataset_config
         self.preprocessed_datasets: Optional[Dict[str, "Dataset"]] = None
+        self.preprocessor: Optional[Preprocessor] = None
 
     def preprocess_datasets(
         self, prep: Preprocessor, datasets: Dict[str, "Dataset"]
@@ -48,13 +49,20 @@ class _DataParallelIngestSpec:
             new_datasets = {}
 
             for key, dataset in datasets.items():
-                if self._config(key).transform:
-                    new_datasets[key] = prep.transform(dataset)
+                conf = self._config(key)
+                if conf.transform:
+                    if conf.use_stream_api and conf.stream_window_size > 0:
+                        # In windowed mode, preprocessor is applied in streaming way.
+                        new_datasets[key] = dataset
+                    else:
+                        # Window size of infinity is treated same as bulk mode.
+                        new_datasets[key] = prep.transform(dataset)
                 else:
                     new_datasets[key] = dataset
         else:
             new_datasets = datasets
         self.preprocessed_datasets = new_datasets
+        self.preprocessor = prep
         return new_datasets
 
     def get_dataset_shards(
@@ -76,8 +84,22 @@ class _DataParallelIngestSpec:
         for key, dataset in self.preprocessed_datasets.items():
             config = self._config(key)
 
-            if config.streamable:
-                dataset = dataset.repeat()
+            if config.use_stream_api:
+                if config.stream_window_size > 0:
+                    dataset = dataset.window(
+                        bytes_per_window=config.stream_window_size
+                    ).repeat()
+                    # In windowed mode, we re-apply the preprocessor on each iteration.
+                    if self.preprocessor:
+                        prep = self.preprocessor.transform_batch
+                        dataset = dataset.map_batches(prep, batch_format="pandas")
+                else:
+                    # If the window size is infinity, the preprocessor is cached and
+                    # we don't need to re-apply it each time.
+                    dataset = dataset.repeat()
+
+            if config.global_shuffle:
+                dataset = dataset.random_shuffle_each_window()
 
             if config.split:
                 dataset_splits = dataset.split(
