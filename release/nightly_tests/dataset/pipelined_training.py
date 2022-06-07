@@ -261,7 +261,9 @@ def create_dataset(
         if num_windows > 1:
             window_size = max(ds.num_blocks() // num_windows, 1)
             ds = ds.window(blocks_per_window=window_size)
+        print("start repartition")
         ds = ds.repartition(num_blocks=2000)
+        print("repartition done")
         pipe = ds.repeat(epochs)
         pipe = pipe.random_shuffle_each_window()
         pipe_shards = pipe.split(num_workers, equal=True)

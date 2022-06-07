@@ -17,8 +17,8 @@ head_node_type:
 worker_node_types:
     - name: memory_node
       instance_type: m5.4xlarge
-      min_workers: 40
-      max_workers: 40
+      min_workers: 20
+      max_workers: 20
       use_spot: false
     - name: gpu_node
       instance_type: m5.4xlarge

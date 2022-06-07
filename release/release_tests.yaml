@@ -3334,7 +3334,7 @@
       --debug
 
     wait_for_nodes:
-      num_nodes: 41
+      num_nodes: 21
 
     type: sdk_command
     file_manager: sdk
