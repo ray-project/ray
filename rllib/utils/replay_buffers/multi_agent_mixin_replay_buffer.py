@@ -187,14 +187,14 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
         # here already to properly keep track of self.last_added_batches
         # underlying buffers should not split up the batch any further
         with self.add_batch_timer:
-            if self._storage_unit == StorageUnit.TIMESTEPS:
+            if self.storage_unit == StorageUnit.TIMESTEPS:
                 for policy_id, sample_batch in batch.policy_batches.items():
                     timeslices = sample_batch.timeslices(1)
                     for time_slice in timeslices:
                         self.replay_buffers[policy_id].add(time_slice, **kwargs)
                         self.last_added_batches[policy_id].append(time_slice)
 
-            elif self._storage_unit == StorageUnit.SEQUENCES:
+            elif self.storage_unit == StorageUnit.SEQUENCES:
                 for policy_id, sample_batch in batch.policy_batches.items():
                     timeslices = timeslice_along_seq_lens_with_overlap(
                         sample_batch=sample_batch,
@@ -209,7 +209,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
                         self.replay_buffers[policy_id].add(slice, **kwargs)
                         self.last_added_batches[policy_id].append(slice)
 
-            elif self._storage_unit == StorageUnit.EPISODES:
+            elif self.storage_unit == StorageUnit.EPISODES:
                 for policy_id, sample_batch in batch.policy_batches.items():
                     for eps in sample_batch.split_by_episode():
                         # Only add full episodes to the buffer
@@ -227,7 +227,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
                                     "to be added to it. Some samples may be "
                                     "dropped."
                                 )
-            elif self._storage_unit == StorageUnit.FRAGMENTS:
+            elif self.storage_unit == StorageUnit.FRAGMENTS:
                 for policy_id, sample_batch in batch.policy_batches.items():
                     self.replay_buffers[policy_id].add(sample_batch, **kwargs)
                     self.last_added_batches[policy_id].append(sample_batch)

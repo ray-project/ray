@@ -137,13 +137,13 @@ class ReplayBuffer(ParallelIteratorWorker):
         """
 
         if storage_unit in ["timesteps", StorageUnit.TIMESTEPS]:
-            self._storage_unit = StorageUnit.TIMESTEPS
+            self.storage_unit = StorageUnit.TIMESTEPS
         elif storage_unit in ["sequences", StorageUnit.SEQUENCES]:
-            self._storage_unit = StorageUnit.SEQUENCES
+            self.storage_unit = StorageUnit.SEQUENCES
         elif storage_unit in ["episodes", StorageUnit.EPISODES]:
-            self._storage_unit = StorageUnit.EPISODES
+            self.storage_unit = StorageUnit.EPISODES
         elif storage_unit in ["fragments", StorageUnit.FRAGMENTS]:
-            self._storage_unit = StorageUnit.FRAGMENTS
+            self.storage_unit = StorageUnit.FRAGMENTS
         else:
             raise ValueError(
                 "storage_unit must be either 'timesteps', 'sequences' or 'episodes' "
@@ -205,12 +205,12 @@ class ReplayBuffer(ParallelIteratorWorker):
 
         warn_replay_capacity(item=batch, num_items=self.capacity / batch.count)
 
-        if self._storage_unit == StorageUnit.TIMESTEPS:
+        if self.storage_unit == StorageUnit.TIMESTEPS:
             timeslices = batch.timeslices(1)
             for t in timeslices:
                 self._add_single_batch(t, **kwargs)
 
-        elif self._storage_unit == StorageUnit.SEQUENCES:
+        elif self.storage_unit == StorageUnit.SEQUENCES:
             timestep_count = 0
             for seq_len in batch.get(SampleBatch.SEQ_LENS):
                 start_seq = timestep_count
@@ -218,7 +218,7 @@ class ReplayBuffer(ParallelIteratorWorker):
                 self._add_single_batch(batch[start_seq:end_seq], **kwargs)
                 timestep_count = end_seq
 
-        elif self._storage_unit == StorageUnit.EPISODES:
+        elif self.storage_unit == StorageUnit.EPISODES:
             for eps in batch.split_by_episode():
                 if (
                     eps.get(SampleBatch.T)[0] == 0
@@ -235,7 +235,7 @@ class ReplayBuffer(ParallelIteratorWorker):
                             "dropped."
                         )
 
-        elif self._storage_unit == StorageUnit.FRAGMENTS:
+        elif self.storage_unit == StorageUnit.FRAGMENTS:
             self._add_single_batch(batch, **kwargs)
 
     @DeveloperAPI

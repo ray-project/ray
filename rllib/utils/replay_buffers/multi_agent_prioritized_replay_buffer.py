@@ -162,9 +162,9 @@ class MultiAgentPrioritizedReplayBuffer(
         # For the storage unit `timesteps`, the underlying buffer will
         # simply store the samples how they arrive. For sequences and
         # episodes, the underlying buffer may split them itself.
-        if self._storage_unit is StorageUnit.TIMESTEPS:
+        if self.storage_unit is StorageUnit.TIMESTEPS:
             timeslices = batch.timeslices(1)
-        elif self._storage_unit is StorageUnit.SEQUENCES:
+        elif self.storage_unit is StorageUnit.SEQUENCES:
             timeslices = timeslice_along_seq_lens_with_overlap(
                 sample_batch=batch,
                 seq_lens=batch.get(SampleBatch.SEQ_LENS)
@@ -174,7 +174,7 @@ class MultiAgentPrioritizedReplayBuffer(
                 pre_overlap=self.replay_burn_in,
                 zero_init_states=self.replay_zero_init_states,
             )
-        elif self._storage_unit == StorageUnit.EPISODES:
+        elif self.storage_unit == StorageUnit.EPISODES:
             timeslices = []
             for eps in batch.split_by_episode():
                 if (
@@ -191,10 +191,10 @@ class MultiAgentPrioritizedReplayBuffer(
                             "to be added to it. Some samples may be "
                             "dropped."
                         )
-        elif self._storage_unit == StorageUnit.FRAGMENTS:
+        elif self.storage_unit == StorageUnit.FRAGMENTS:
             timeslices = [batch]
         else:
-            raise ValueError("Unknown `storage_unit={}`".format(self._storage_unit))
+            raise ValueError("Unknown `storage_unit={}`".format(self.storage_unit))
 
         for slice in timeslices:
             # If SampleBatch has prio-replay weights, average

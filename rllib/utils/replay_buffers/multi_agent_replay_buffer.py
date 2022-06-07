@@ -130,7 +130,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
 
         if (
             replay_sequence_length > 1
-            and self._storage_unit is not StorageUnit.SEQUENCES
+            and self.storage_unit is not StorageUnit.SEQUENCES
         ):
             logger.warning(
                 "MultiAgentReplayBuffer configured with "
@@ -141,7 +141,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
             )
             self.replay_sequence_length = 1
 
-        if replay_sequence_length == 1 and self._storage_unit is StorageUnit.SEQUENCES:
+        if replay_sequence_length == 1 and self.storage_unit is StorageUnit.SEQUENCES:
             logger.warning(
                 "MultiAgentReplayBuffer configured with "
                 "`replay_sequence_length={}`, but `storage_unit={}`. "
@@ -152,7 +152,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
 
         if replay_mode in ["lockstep", ReplayMode.LOCKSTEP]:
             self.replay_mode = ReplayMode.LOCKSTEP
-            if self._storage_unit in [StorageUnit.EPISODES, StorageUnit.SEQUENCES]:
+            if self.storage_unit in [StorageUnit.EPISODES, StorageUnit.SEQUENCES]:
                 raise ValueError(
                     "MultiAgentReplayBuffer does not support "
                     "lockstep mode with storage unit `episodes`"
@@ -262,9 +262,9 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         # For the storage unit `timesteps`, the underlying buffer will
         # simply store the samples how they arrive. For sequences and
         # episodes, the underlying buffer may split them itself.
-        if self._storage_unit is StorageUnit.TIMESTEPS:
+        if self.storage_unit is StorageUnit.TIMESTEPS:
             timeslices = batch.timeslices(1)
-        elif self._storage_unit is StorageUnit.SEQUENCES:
+        elif self.storage_unit is StorageUnit.SEQUENCES:
             timeslices = timeslice_along_seq_lens_with_overlap(
                 sample_batch=batch,
                 seq_lens=batch.get(SampleBatch.SEQ_LENS)
@@ -274,7 +274,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
                 pre_overlap=self.replay_burn_in,
                 zero_init_states=self.replay_zero_init_states,
             )
-        elif self._storage_unit == StorageUnit.EPISODES:
+        elif self.storage_unit == StorageUnit.EPISODES:
             timeslices = []
             for eps in batch.split_by_episode():
                 if (
@@ -291,10 +291,10 @@ class MultiAgentReplayBuffer(ReplayBuffer):
                             "to be added to it. Some samples may be "
                             "dropped."
                         )
-        elif self._storage_unit == StorageUnit.FRAGMENTS:
+        elif self.storage_unit == StorageUnit.FRAGMENTS:
             timeslices = [batch]
         else:
-            raise ValueError("Unknown `storage_unit={}`".format(self._storage_unit))
+            raise ValueError("Unknown `storage_unit={}`".format(self.storage_unit))
 
         for slice in timeslices:
             self.replay_buffers[policy_id].add(slice, **kwargs)
