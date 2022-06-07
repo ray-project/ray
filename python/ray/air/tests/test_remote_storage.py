@@ -79,7 +79,7 @@ def test_upload_exclude_files(temp_data_dirs):
 def test_upload_exclude_dirs(temp_data_dirs):
     tmp_source, tmp_target = temp_data_dirs
 
-    upload_to_uri(tmp_source, "memory:///target/dir3", exclude=["*_exclude/"])
+    upload_to_uri(tmp_source, "memory:///target/dir3", exclude=["*_exclude/*"])
     download_from_uri("memory:///target/dir3", tmp_target)
 
     assert_file(True, tmp_target, "level0.txt")
@@ -96,7 +96,7 @@ def test_upload_exclude_multi(temp_data_dirs):
     tmp_source, tmp_target = temp_data_dirs
 
     upload_to_uri(
-        tmp_source, "memory:///target/dir4", exclude=["*_exclude.txt", "*_exclude/"]
+        tmp_source, "memory:///target/dir4", exclude=["*_exclude.txt", "*_exclude/*"]
     )
     download_from_uri("memory:///target/dir4", tmp_target)
 

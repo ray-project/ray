@@ -1,7 +1,7 @@
+import fnmatch
 import os
-import re
 import urllib.parse
-from typing import Optional, Tuple, List
+from typing import List, Optional, Tuple
 
 from ray.util.ml_utils.filelock import TempFileLock
 
@@ -193,14 +193,9 @@ def upload_to_uri(
 def _upload_to_uri_with_exclude(
     local_path: str, fs: pyarrow.fs, bucket_path: str, exclude: Optional[List[str]]
 ) -> None:
-    def _to_regex(pattern: str) -> str:
-        return f"({pattern.replace('*', '.*')})"
-
-    exclude_regexes = [_to_regex(excl) for excl in exclude]
-
     def _should_exclude(candidate: str) -> bool:
-        for excl_re in exclude_regexes:
-            if re.match(excl_re, candidate):
+        for excl in exclude:
+            if fnmatch.fnmatch(candidate, excl):
                 return True
         return False
 
