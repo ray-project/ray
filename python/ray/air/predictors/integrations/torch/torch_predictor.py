@@ -8,6 +8,7 @@ from ray.air.predictor import Predictor, DataBatchType
 from ray.air.preprocessor import Preprocessor
 from ray.air.checkpoint import Checkpoint
 from ray.air.train.integrations.torch import load_checkpoint
+from ray.air.utils.data_batch_conversion_utils import convert_pandas_to_batch_type
 from ray.air.utils.torch_utils import convert_pandas_to_torch_tensor
 
 
@@ -78,6 +79,10 @@ class TorchPredictor(Predictor):
                 unsqueeze=unsqueeze,
             )
         return features_tensor
+
+    def _predict_pandas(self, data: pd.DataFrame, **kwargs) -> pd.DataFrame:
+        array_dict = convert_pandas_to_batch_type(data, type=dict)
+
 
     def _predict(self, tensor: torch.Tensor) -> pd.DataFrame:
         """Handle actual prediction."""
