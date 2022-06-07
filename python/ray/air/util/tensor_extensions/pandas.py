@@ -1090,7 +1090,7 @@ class TensorArray(pd.api.extensions.ExtensionArray, TensorOpsMixin):
         https://pandas.pydata.org/pandas-docs/stable/development/extending.html#compatibility-with-apache-arrow
         for more information.
         """
-        from ray.air.utils.tensor_extensions.arrow import ArrowTensorArray
+        from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
 
         return ArrowTensorArray.from_numpy(self._tensor)
 

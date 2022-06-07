@@ -65,6 +65,15 @@ AIR Feature Guides
     :img-top: /ray-overview/images/ray_svg_logo.svg
 
     +++
+    .. link-button:: /ray-air/examples/serving_guide
+        :type: ref
+        :text: How to configure AIR ModelWrapper for HTTP input or batching?
+        :classes: btn-link btn-block stretched-link
+
+    ---
+    :img-top: /ray-overview/images/ray_svg_logo.svg
+
+    +++
     .. link-button:: air-deployment
         :type: ref
         :text: How to deploy Ray AIR?
