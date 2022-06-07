@@ -10,7 +10,7 @@ import ray
 from ray.types import ObjectRef
 from ray.data.block import T, BlockAccessor
 from ray.data.context import DatasetContext, DEFAULT_SCHEDULING_STRATEGY
-from ray.data.impl.remote_fn import cached_remote_fn
+from ray.data._internal.remote_fn import cached_remote_fn
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -225,7 +225,9 @@ class _RandomAccessWorker:
             col = block[self.key_field]
             indices = np.searchsorted(col, keys)
             acc = BlockAccessor.for_block(block)
-            result = [acc._get_row(i, copy=True) for i in indices]
+            result = [
+                acc._create_table_row(acc.slice(i, i + 1, copy=True)) for i in indices
+            ]
             # assert result == [self._get(i, k) for i, k in zip(block_indices, keys)]
         else:
             result = [self._get(i, k) for i, k in zip(block_indices, keys)]
@@ -254,7 +256,7 @@ class _RandomAccessWorker:
         if i is None:
             return None
         acc = BlockAccessor.for_block(block)
-        return acc._get_row(i, copy=True)
+        return acc._create_table_row(acc.slice(i, i + 1, copy=True))
 
 
 def _binary_search_find(column, x):

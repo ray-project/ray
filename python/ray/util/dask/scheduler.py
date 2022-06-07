@@ -1,6 +1,7 @@
 import atexit
 import threading
 from collections import defaultdict
+from collections import OrderedDict
 from dataclasses import dataclass
 from multiprocessing.pool import ThreadPool
 from typing import Optional
@@ -104,7 +105,7 @@ def ray_dask_get(dsk, keys, **kwargs):
         )
 
     Args:
-        dsk (Dict): Dask graph, represented as a task DAG dictionary.
+        dsk: Dask graph, represented as a task DAG dictionary.
         keys (List[str]): List of Dask graph keys whose values we wish to
             compute and return.
         ray_callbacks (Optional[list[callable]]): Dask-Ray callbacks.
@@ -222,8 +223,8 @@ def _apply_async_wrapper(apply_async, real_func, *extra_args, **extra_kwargs):
     `real_func`'s call.
 
     Args:
-        apply_async (callable): The pool function to be wrapped.
-        real_func (callable): The real function that we wish the pool apply
+        apply_async: The pool function to be wrapped.
+        real_func: The real function that we wish the pool apply
             function to execute.
         *extra_args: Extra positional arguments to pass to the `real_func`.
         **extra_kwargs: Extra keyword arguments to pass to the `real_func`.
@@ -265,18 +266,18 @@ def _rayify_task_wrapper(
     calls `_rayify_task` on the task instead of `_execute_task`.
 
     Args:
-        key (str): The Dask graph key whose corresponding task we wish to
+        key: The Dask graph key whose corresponding task we wish to
             execute.
         task_info: The task to execute and its dependencies.
-        dumps (callable): A result serializing function.
-        loads (callable): A task_info deserializing function.
-        get_id (callable): An ID generating function.
-        pack_exception (callable): An exception serializing function.
-        ray_presubmit_cbs (callable): Pre-task submission callbacks.
-        ray_postsubmit_cbs (callable): Post-task submission callbacks.
-        ray_pretask_cbs (callable): Pre-task execution callbacks.
-        ray_posttask_cbs (callable): Post-task execution callbacks.
-        scoped_ray_remote_args (dict): Ray task options for each key.
+        dumps: A result serializing function.
+        loads: A task_info deserializing function.
+        get_id: An ID generating function.
+        pack_exception: An exception serializing function.
+        ray_presubmit_cbs: Pre-task submission callbacks.
+        ray_postsubmit_cbs: Post-task submission callbacks.
+        ray_pretask_cbs: Pre-task execution callbacks.
+        ray_posttask_cbs: Post-task execution callbacks.
+        scoped_ray_remote_args: Ray task options for each key.
 
     Returns:
         A 3-tuple of the task's key, a literal or a Ray object reference for a
@@ -317,15 +318,15 @@ def _rayify_task(
     Rayifies the given task, submitting it as a Ray task to the Ray cluster.
 
     Args:
-        task (tuple): A Dask graph value, being either a literal, dependency
+        task: A Dask graph value, being either a literal, dependency
             key, Dask task, or a list thereof.
-        key (str): The Dask graph key for the given task.
-        deps (dict): The dependencies of this task.
-        ray_presubmit_cbs (callable): Pre-task submission callbacks.
-        ray_postsubmit_cbs (callable): Post-task submission callbacks.
-        ray_pretask_cbs (callable): Pre-task execution callbacks.
-        ray_posttask_cbs (callable): Post-task execution callbacks.
-        ray_remote_args (dict): Ray task options.
+        key: The Dask graph key for the given task.
+        deps: The dependencies of this task.
+        ray_presubmit_cbs: Pre-task submission callbacks.
+        ray_postsubmit_cbs: Post-task submission callbacks.
+        ray_pretask_cbs: Pre-task execution callbacks.
+        ray_posttask_cbs: Post-task execution callbacks.
+        ray_remote_args: Ray task options.
 
     Returns:
         A literal, a Ray object reference representing a submitted task, or a
@@ -406,12 +407,12 @@ def dask_task_wrapper(func, repack, key, ray_pretask_cbs, ray_posttask_cbs, *arg
     arguments to the provide Dask task function, `func`.
 
     Args:
-        func (callable): The Dask task function to execute.
-        repack (callable): A function that repackages the provided args into
+        func: The Dask task function to execute.
+        repack: A function that repackages the provided args into
             the original (possibly nested) Python objects.
-        key (str): The Dask key for this task.
-        ray_pretask_cbs (callable): Pre-task execution callbacks.
-        ray_posttask_cbs (callable): Post-task execution callback.
+        key: The Dask key for this task.
+        ray_pretask_cbs: Pre-task execution callbacks.
+        ray_posttask_cbs: Post-task execution callback.
         *args (ObjectRef): Ray object references representing the Dask task's
             arguments.
 
@@ -528,7 +529,7 @@ def ray_dask_get_sync(dsk, keys, **kwargs):
         )
 
     Args:
-        dsk (Dict): Dask graph, represented as a task DAG dictionary.
+        dsk: Dask graph, represented as a task DAG dictionary.
         keys (List[str]): List of Dask graph keys whose values we wish to
             compute and return.
 
@@ -590,7 +591,10 @@ class MultipleReturnFunc:
     num_returns: int
 
     def __call__(self, *args, **kwargs):
-        return self.func(*args, **kwargs)
+        returns = self.func(*args, **kwargs)
+        if isinstance(returns, dict) or isinstance(returns, OrderedDict):
+            returns = [returns[k] for k in range(len(returns))]
+        return returns
 
 
 def multiple_return_get(multiple_returns, idx):

@@ -122,7 +122,8 @@ class NoargDriver:
         return await self.dag.remote()
 
 
-@pytest.mark.parametrize("use_build", [False, True])
+# TODO(Shreyas): Enable use_build once serve.build() PR is out.
+@pytest.mark.parametrize("use_build", [False])
 def test_single_func_no_input(serve_instance, use_build):
     dag = fn_hello.bind()
     serve_dag = NoargDriver.bind(dag)
@@ -156,16 +157,23 @@ def test_chained_function(serve_instance, use_build):
     def func_2(input):
         return input * 2
 
+    @serve.deployment
+    def func_3(input):
+        return input * 3
+
     with InputNode() as dag_input:
         output_1 = func_1.bind(dag_input)
         output_2 = func_2.bind(dag_input)
-        serve_dag = combine.bind(output_1, output_2)
+        output_3 = func_3.bind(output_2)
+        ray_dag = combine.bind(output_1, output_2, kwargs_output=output_3)
     with pytest.raises(ValueError, match="Please provide a driver class"):
-        _ = serve.run(serve_dag)
+        _ = serve.run(ray_dag)
 
-    handle = serve.run(DAGDriver.bind(serve_dag, http_adapter=json_resolver))
-    assert ray.get(handle.predict.remote(2)) == 6  # 2 + 2*2
-    assert requests.post("http://127.0.0.1:8000/", json=2).json() == 6
+    serve_dag = DAGDriver.bind(ray_dag, http_adapter=json_resolver)
+
+    handle = serve.run(serve_dag)
+    assert ray.get(handle.predict.remote(2)) == 18  # 2 + 2*2 + (2*2) * 3
+    assert requests.post("http://127.0.0.1:8000/", json=2).json() == 18
 
 
 @pytest.mark.parametrize("use_build", [False, True])
@@ -255,7 +263,8 @@ class Echo:
         return self._s
 
 
-@pytest.mark.parametrize("use_build", [False, True])
+# TODO(Shreyas): Enable use_build once serve.build() PR is out.
+@pytest.mark.parametrize("use_build", [False])
 def test_single_node_deploy_success(serve_instance, use_build):
     m1 = Adder.bind(1)
     handle = serve.run(maybe_build(m1, use_build))
@@ -318,9 +327,9 @@ class DictParent:
         return await self._d[key].remote()
 
 
-@pytest.mark.parametrize("use_build", [False, True])
+# TODO(Shreyas): Enable use_build once serve.build() PR is out.
+@pytest.mark.parametrize("use_build", [False])
 def test_passing_handle_in_obj(serve_instance, use_build):
-
     child1 = Echo.bind("ed")
     child2 = Echo.bind("simon")
     parent = maybe_build(
@@ -359,9 +368,9 @@ class GrandParent:
         return "ok"
 
 
-@pytest.mark.parametrize("use_build", [False, True])
+# TODO(Shreyas): Enable use_build once serve.build() PR is out.
+@pytest.mark.parametrize("use_build", [False])
 def test_pass_handle_to_multiple(serve_instance, use_build):
-
     child = Child.bind()
     parent = Parent.bind(child)
     grandparent = maybe_build(GrandParent.bind(child, parent), use_build)

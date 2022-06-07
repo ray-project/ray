@@ -241,6 +241,14 @@ py_test(
 )
 
 py_test(
+    name = "test_warnings",
+    size = "medium",
+    srcs = ["tests/test_warnings.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_W"],
+)
+
+py_test(
     name = "test_sample",
     size = "large",
     srcs = ["tests/test_sample.py"],
@@ -284,6 +292,14 @@ py_test(
     name = "test_trainable_util",
     size = "small",
     srcs = ["tests/test_trainable_util.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_T"],
+)
+
+py_test(
+    name = "test_trial_relative_logdir",
+    size = "medium",
+    srcs = ["tests/test_trial_relative_logdir.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "tests_dir_T"],
 )
@@ -408,16 +424,6 @@ py_test(
     tags = ["team:ml", "exclusive", "tests_dir_U"],
 )
 
-py_test_module_list(
-  files = [
-      "tests/test_trial_executor_inheritance.py",
-  ],
-  size = "large",
-  extra_srcs = [],
-  tags = ["exclusive", "manual", "team:ml"],
-  deps = ["//:tune_lib"],
-)
-
 # --------------------------------------------------------------------
 # Tests from the python/ray/tune/tests directory.
 # Covers all remaining tests that do not start with `test_`.
@@ -428,7 +434,7 @@ py_test(
     size = "small",
     srcs = ["tests/example.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
+    tags = ["team:ml", "exclusive", "example", "no_main"],
 )
 
 py_test(
@@ -445,7 +451,7 @@ py_test(
     size = "medium",
     srcs = ["tests/tutorial.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
+    tags = ["team:ml", "exclusive", "example", "no_main"],
 )
 
 # --------------------------------------------------------------------
@@ -531,16 +537,6 @@ py_test(
     tags = ["team:ml", "exclusive", "example"],
     args = ["--smoke-test"]
 )
-
-# Does not work without awscli tool installed. Check if can be mocked.
-# py_test(
-#     name = "durable_trainable_example",
-#     size = "medium",
-#     srcs = ["examples/durable_trainable_example.py"],
-#     deps = [":tune_lib"],
-#     tags = ["team:ml", "exclusive", "example"],
-#     args = ["--local", "--mock-storage"]
-# )
 
 py_test(
     name = "genetic_example",

@@ -73,7 +73,7 @@ class TestSAC(unittest.TestCase):
         ray.shutdown()
 
     def test_sac_compilation(self):
-        """Tests whether an SACTrainer can be built with all frameworks."""
+        """Tests whether SAC can be built with all frameworks."""
         config = (
             sac.SACConfig()
             .training(
@@ -148,7 +148,7 @@ class TestSAC(unittest.TestCase):
                 # this is framework agnostic).
                 if fw == "tf" and env == "CartPole-v0":
                     checkpoint = trainer.save()
-                    new_trainer = sac.SACTrainer(config, env=env)
+                    new_trainer = sac.SAC(config, env=env)
                     new_trainer.restore(checkpoint)
                     # Get some data from the buffer and compare.
                     data = trainer.local_replay_buffer.replay_buffers[
@@ -228,7 +228,7 @@ class TestSAC(unittest.TestCase):
         }
 
         env = SimpleEnv
-        batch_size = 100
+        batch_size = 64
         obs_size = (batch_size, 1)
         actions = np.random.random(size=(batch_size, 2))
 

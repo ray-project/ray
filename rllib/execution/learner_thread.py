@@ -34,14 +34,14 @@ class LearnerThread(threading.Thread):
         """Initialize the learner thread.
 
         Args:
-            local_worker (RolloutWorker): process local rollout worker holding
+            local_worker: process local rollout worker holding
                 policies this thread will call learn_on_batch() on
-            minibatch_buffer_size (int): max number of train batches to store
+            minibatch_buffer_size: max number of train batches to store
                 in the minibatching buffer
-            num_sgd_iter (int): number of passes to learn on per train batch
-            learner_queue_size (int): max size of queue of inbound
+            num_sgd_iter: number of passes to learn on per train batch
+            learner_queue_size: max size of queue of inbound
                 train batches to this thread
-            learner_queue_timeout (int): raise an exception if the queue has
+            learner_queue_timeout: raise an exception if the queue has
                 been empty for this long in seconds
         """
         threading.Thread.__init__(self)

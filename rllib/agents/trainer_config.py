@@ -15,11 +15,8 @@ from ray.rllib.env.env_context import EnvContext
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
 from ray.rllib.evaluation.collectors.simple_list_collector import SimpleListCollector
 from ray.rllib.models import MODEL_DEFAULTS
-from ray.rllib.offline.estimators.importance_sampling import ImportanceSampling
-from ray.rllib.offline.estimators.weighted_importance_sampling import (
-    WeightedImportanceSampling,
-)
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils import deep_update, merge_dicts
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.typing import (
     EnvConfigDict,
     EnvType,
@@ -123,8 +120,11 @@ class TrainerConfig:
         self.batch_mode = "truncate_episodes"
         self.remote_worker_envs = False
         self.remote_env_batch_wait_ms = 0
+        self.validate_workers_after_construction = True
         self.ignore_worker_failures = False
         self.recreate_failed_workers = False
+        self.restart_failed_sub_environments = False
+        self.num_consecutive_worker_failures_tolerance = 100
         self.horizon = None
         self.soft_horizon = False
         self.no_done_at_end = False
@@ -169,10 +169,7 @@ class TrainerConfig:
         self.input_ = "sampler"
         self.input_config = {}
         self.actions_in_input_normalized = False
-        self.input_evaluation = [
-            ImportanceSampling,
-            WeightedImportanceSampling,
-        ]
+        self.off_policy_estimation_methods = {}
         self.postprocess_inputs = False
         self.shuffle_buffer_size = 0
         self.output = None
@@ -238,7 +235,7 @@ class TrainerConfig:
         self.min_time_s_per_reporting = DEPRECATED_VALUE
         self.min_train_timesteps_per_reporting = DEPRECATED_VALUE
         self.min_sample_timesteps_per_reporting = DEPRECATED_VALUE
-
+        self.input_evaluation = DEPRECATED_VALUE
 
     def to_dict(self) -> TrainerConfigDict:
         """Converts all settings into a legacy config dict for backward compatibility.
@@ -544,8 +541,11 @@ class TrainerConfig:
         batch_mode: Optional[str] = None,
         remote_worker_envs: Optional[bool] = None,
         remote_env_batch_wait_ms: Optional[float] = None,
+        validate_workers_after_construction: Optional[bool] = None,
         ignore_worker_failures: Optional[bool] = None,
         recreate_failed_workers: Optional[bool] = None,
+        restart_failed_sub_environments: Optional[bool] = None,
+        num_consecutive_worker_failures_tolerance: Optional[int] = None,
         horizon: Optional[int] = None,
         soft_horizon: Optional[bool] = None,
         no_done_at_end: Optional[bool] = None,
@@ -610,6 +610,8 @@ class TrainerConfig:
                 polling environments. 0 (continue when at least one env is ready) is
                 a reasonable default, but optimal value could be obtained by measuring
                 your environment step / reset and model inference perf.
+            validate_workers_after_construction: Whether to validate that each created
+                remote worker is healthy after its construction process.
             ignore_worker_failures: Whether to attempt to continue training if a worker
                 crashes. The number of currently healthy workers is reported as the
                 "num_healthy_workers" metric.
@@ -619,6 +621,18 @@ class TrainerConfig:
                 `self.recreated_worker=True` property value. It will have the same
                 `worker_index` as the original one. If True, the
                 `ignore_worker_failures` setting will be ignored.
+            restart_failed_sub_environments: If True and any sub-environment (within
+                a vectorized env) throws any error during env stepping, the
+                Sampler will try to restart the faulty sub-environment. This is done
+                without disturbing the other (still intact) sub-environment and without
+                the RolloutWorker crashing.
+            num_consecutive_worker_failures_tolerance: The number of consecutive times
+                a rollout worker (or evaluation worker) failure is tolerated before
+                finally crashing the Trainer. Only useful if either
+                `ignore_worker_failures` or `recreate_failed_workers` is True.
+                Note that for `restart_failed_sub_environments` and sub-environment
+                failures, the worker itself is NOT affected and won't throw any errors
+                as the flawed sub-environment is silently restarted under the hood.
             horizon: Number of steps after which the episode is forced to terminate.
                 Defaults to `env.spec.max_episode_steps` (if present) for Gym envs.
             soft_horizon: Calculate rewards but don't reset the environment when the
@@ -667,10 +681,20 @@ class TrainerConfig:
             self.remote_worker_envs = remote_worker_envs
         if remote_env_batch_wait_ms is not None:
             self.remote_env_batch_wait_ms = remote_env_batch_wait_ms
+        if validate_workers_after_construction is not None:
+            self.validate_workers_after_construction = (
+                validate_workers_after_construction
+            )
         if ignore_worker_failures is not None:
             self.ignore_worker_failures = ignore_worker_failures
         if recreate_failed_workers is not None:
             self.recreate_failed_workers = recreate_failed_workers
+        if restart_failed_sub_environments is not None:
+            self.restart_failed_sub_environments = restart_failed_sub_environments
+        if num_consecutive_worker_failures_tolerance is not None:
+            self.num_consecutive_worker_failures_tolerance = (
+                num_consecutive_worker_failures_tolerance
+            )
         if horizon is not None:
             self.horizon = horizon
         if soft_horizon is not None:
@@ -718,7 +742,7 @@ class TrainerConfig:
         if model is not None:
             self.model = model
         if optimizer is not None:
-            self.optimizer = optimizer
+            self.optimizer = merge_dicts(self.optimizer, optimizer)
 
         return self
 
@@ -758,7 +782,16 @@ class TrainerConfig:
         if explore is not None:
             self.explore = explore
         if exploration_config is not None:
-            self.exploration_config = exploration_config
+            # Override entire `exploration_config` if `type` key changes.
+            # Update, if `type` key remains the same or is not specified.
+            new_exploration_config = deep_update(
+                {"exploration_config": self.exploration_config},
+                {"exploration_config": exploration_config},
+                False,
+                ["exploration_config"],
+                ["exploration_config"],
+            )
+            self.exploration_config = new_exploration_config["exploration_config"]
 
         return self
 
@@ -856,6 +889,7 @@ class TrainerConfig:
         input_config=None,
         actions_in_input_normalized=None,
         input_evaluation=None,
+        off_policy_estimation_methods=None,
         postprocess_inputs=None,
         shuffle_buffer_size=None,
         output=None,
@@ -900,15 +934,23 @@ class TrainerConfig:
                 are already normalized (between -1.0 and 1.0). This is usually the case
                 when the offline file has been generated by another RLlib algorithm
                 (e.g. PPO or SAC), while "normalize_actions" was set to True.
-            input_evaluation: Specify how to evaluate the current policy.
+            input_evaluation: DEPRECATED: Use `off_policy_estimation_methods` instead!
+            off_policy_estimation_methods: Specify how to evaluate the current policy,
+                along with any optional config parameters.
                 This only has an effect when reading offline experiences
                 ("input" is not "sampler").
-                Available options:
-                - "simulation": Run the environment in the background, but use
-                this data for evaluation only and not for learning.
-                - Any subclass of OffPolicyEstimator, e.g.
-                ray.rllib.offline.estimators.is::ImportanceSampling or your own custom
-                subclass.
+                Available keys:
+                - {ope_method_name: {"type": ope_type, ...}} where `ope_method_name`
+                is a user-defined string to save the OPE results under, and
+                `ope_type` can be:
+                    - "simulation": Run the environment in the background, but use
+                    this data for evaluation only and not for learning.
+                    - Any subclass of OffPolicyEstimator, e.g.
+                    ray.rllib.offline.estimators.is::ImportanceSampling
+                    or your own custom subclass.
+                You can also add additional config arguments to be passed to the
+                OffPolicyEstimator in the dict, e.g.
+                {"qreg_dr": {"type": DoublyRobust, "q_model_type": "qreg", "k": 5}}
             postprocess_inputs: Whether to run postprocess_trajectory() on the
                 trajectory fragments from offline inputs. Note that postprocessing will
                 be done using the *current* policy, not the *behavior* policy, which
@@ -939,7 +981,32 @@ class TrainerConfig:
         if actions_in_input_normalized is not None:
             self.actions_in_input_normalized = actions_in_input_normalized
         if input_evaluation is not None:
-            self.input_evaluation = input_evaluation
+            deprecation_warning(
+                old="offline_data(input_evaluation={})".format(input_evaluation),
+                new="offline_data(off_policy_estimation_methods={})".format(
+                    input_evaluation
+                ),
+                error=True,
+            )
+        if isinstance(off_policy_estimation_methods, list) or isinstance(
+            off_policy_estimation_methods, tuple
+        ):
+            ope_dict = {
+                str(ope): {"type": ope} for ope in off_policy_estimation_methods
+            }
+            deprecation_warning(
+                old="offline_data(off_policy_estimation_methods={}".format(
+                    off_policy_estimation_methods
+                ),
+                new="offline_data(off_policy_estimation_methods={}".format(
+                    ope_dict,
+                ),
+                error=False,
+            )
+            off_policy_estimation_methods = ope_dict
+        if off_policy_estimation_methods is not None:
+            self.off_policy_estimation_methods = off_policy_estimation_methods
+
         if postprocess_inputs is not None:
             self.postprocess_inputs = postprocess_inputs
         if shuffle_buffer_size is not None:
@@ -1056,7 +1123,7 @@ class TrainerConfig:
                 only the number of times `Trainer.training_loop()` is called by
                 `Trainer.train()`. If - after one such step attempt, the training
                 timestep count has not been reached, will perform n more
-                `training_loop()` calls until the minimum timesteps have been
+                `training_step()` calls until the minimum timesteps have been
                 executed. Set to 0 or None for no minimum timesteps.
             min_sample_timesteps_per_iteration: Minimum env sampling timesteps to
                 accumulate within a single `train()` call. This value does not affect

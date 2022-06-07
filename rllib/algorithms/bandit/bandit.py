@@ -16,14 +16,12 @@ logger = logging.getLogger(__name__)
 class BanditConfig(TrainerConfig):
     """Defines a contextual bandit configuration class from which
     a contexual bandit algorithm can be built. Note this config is shared
-    between BanditLinUCBTrainer and BanditLinTSTrainer. You likely
+    between BanditLinUCB and BanditLinTS. You likely
     want to use the child classes BanditLinTSConfig or BanditLinUCBConfig
     instead.
     """
 
-    def __init__(
-        self, trainer_class: Union["BanditLinTSTrainer", "BanditLinUCBTrainer"] = None
-    ):
+    def __init__(self, trainer_class: Union["BanditLinTS", "BanditLinUCB"] = None):
         super().__init__(trainer_class=trainer_class)
         # fmt: off
         # __sphinx_doc_begin__
@@ -54,7 +52,7 @@ class BanditLinTSConfig(BanditConfig):
     """
 
     def __init__(self):
-        super().__init__(trainer_class=BanditLinTSTrainer)
+        super().__init__(trainer_class=BanditLinTS)
         # fmt: off
         # __sphinx_doc_begin__
         # Override some of TrainerConfig's default values with bandit-specific values.
@@ -77,7 +75,7 @@ class BanditLinUCBConfig(BanditConfig):
     """
 
     def __init__(self):
-        super().__init__(trainer_class=BanditLinUCBTrainer)
+        super().__init__(trainer_class=BanditLinUCB)
         # fmt: off
         # __sphinx_doc_begin__
         # Override some of TrainerConfig's default values with bandit-specific values.
@@ -86,7 +84,7 @@ class BanditLinUCBConfig(BanditConfig):
         # fmt: on
 
 
-class BanditLinTSTrainer(Trainer):
+class BanditLinTS(Trainer):
     """Bandit Trainer using ThompsonSampling exploration."""
 
     @classmethod
@@ -104,7 +102,7 @@ class BanditLinTSTrainer(Trainer):
             raise NotImplementedError("Only `framework=[torch|tf2]` supported!")
 
 
-class BanditLinUCBTrainer(Trainer):
+class BanditLinUCB(Trainer):
     @classmethod
     @override(Trainer)
     def get_default_config(cls) -> BanditLinUCBConfig:

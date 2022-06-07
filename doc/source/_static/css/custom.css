@@ -162,3 +162,9 @@ pre {
 .cell .cell_output pre .-Color-Yellow {
     color: #785840;
 }
+
+/* Newlines (\a) and spaces (\20) before each parameter */
+.sig-param::before {
+  content: "\a\20\20\20\20";
+  white-space: pre;
+}

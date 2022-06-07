@@ -1,24 +1,20 @@
-from ray.rllib.algorithms.marwil.bc import BCConfig, BCTrainer, BC_DEFAULT_CONFIG
 from ray.rllib.algorithms.marwil.marwil import (
     DEFAULT_CONFIG,
+    MARWIL,
     MARWILConfig,
-    MARWILTrainer,
 )
 from ray.rllib.algorithms.marwil.marwil_tf_policy import (
-    MARWILDynamicTFPolicy,
-    MARWILEagerTFPolicy,
+    MARWILTF1Policy,
+    MARWILTF2Policy,
 )
 from ray.rllib.algorithms.marwil.marwil_torch_policy import MARWILTorchPolicy
 
 __all__ = [
-    "BCConfig",
-    "BCTrainer",
+    "MARWIL",
     "MARWILConfig",
-    "MARWILDynamicTFPolicy",
-    "MARWILEagerTFPolicy",
+    "MARWILTF1Policy",
+    "MARWILTF2Policy",
     "MARWILTorchPolicy",
-    "MARWILTrainer",
     # Deprecated.
-    "BC_DEFAULT_CONFIG",
     "DEFAULT_CONFIG",
 ]
