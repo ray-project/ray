@@ -251,7 +251,7 @@ py_test(
     # Include an offline json data file as well.
     data = [
         "tuned_examples/crr/pendulum-v1-crr.yaml",
-        "tests/data/pendulum/pendulum_replay_v1.1.0.json",
+        "tests/data/pendulum/pendulum_replay_v1.1.0.zip",
     ],
     args = ["--yaml-dir=tuned_examples/crr"]
 )
