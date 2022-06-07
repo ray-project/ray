@@ -110,7 +110,6 @@ def create_replica_wrapper(name: str):
                 deployment_name,
                 replica_tag,
                 controller_name,
-                controller_namespace,
                 servable_object=None,
             )
 
@@ -142,7 +141,6 @@ def create_replica_wrapper(name: str):
                     deployment_name,
                     replica_tag,
                     controller_name,
-                    controller_namespace,
                     servable_object=_callable,
                 )
 

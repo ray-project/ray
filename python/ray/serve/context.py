@@ -10,9 +10,9 @@ from typing import Callable, Optional
 import ray
 from ray.exceptions import RayActorError
 from ray.serve.common import ReplicaTag
-from ray.serve.constants import SERVE_CONTROLLER_NAME
+from ray.serve.constants import SERVE_CONTROLLER_NAME, SERVE_NAMESPACE
 from ray.serve.exceptions import RayServeException
-from ray.serve.client import ServeControllerClient, get_controller_namespace
+from ray.serve.client import ServeControllerClient
 
 logger = logging.getLogger(__file__)
 
@@ -27,7 +27,6 @@ class ReplicaContext:
     deployment: str
     replica_tag: ReplicaTag
     _internal_controller_name: str
-    _internal_controller_namespace: str
     servable_object: Callable
 
 
@@ -74,12 +73,11 @@ def set_internal_replica_context(
     deployment: str,
     replica_tag: ReplicaTag,
     controller_name: str,
-    controller_namespace: str,
     servable_object: Callable,
 ):
     global _INTERNAL_REPLICA_CONTEXT
     _INTERNAL_REPLICA_CONTEXT = ReplicaContext(
-        deployment, replica_tag, controller_name, controller_namespace, servable_object
+        deployment, replica_tag, controller_name, servable_object
     )
 
 
@@ -113,16 +111,12 @@ def _connect(
     # ensure that the correct instance is connected to.
     if _INTERNAL_REPLICA_CONTEXT is None:
         controller_name = SERVE_CONTROLLER_NAME
-        controller_namespace = get_controller_namespace(
-            detached=True, _override_controller_namespace=_override_controller_namespace
-        )
     else:
         controller_name = _INTERNAL_REPLICA_CONTEXT._internal_controller_name
-        controller_namespace = _INTERNAL_REPLICA_CONTEXT._internal_controller_namespace
 
     # Try to get serve controller if it exists
     try:
-        controller = ray.get_actor(controller_name, namespace=controller_namespace)
+        controller = ray.get_actor(controller_name, namespace=SERVE_NAMESPACE)
     except ValueError:
         raise RayServeException(
             "There is no "
@@ -135,7 +129,7 @@ def _connect(
         controller,
         controller_name,
         detached=True,
-        _override_controller_namespace=_override_controller_namespace,
+        _override_controller_namespace=SERVE_NAMESPACE,
     )
     set_global_client(client)
     return client
