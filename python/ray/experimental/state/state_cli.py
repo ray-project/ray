@@ -1,4 +1,5 @@
 import click
+import logging
 import json
 import yaml
 
@@ -6,22 +7,27 @@ from enum import Enum, unique
 from typing import Union, List
 
 import ray
-
-import ray._private.services as services
 import ray.ray_constants as ray_constants
-from ray._private.gcs_utils import use_gcs_for_bootstrap
-from ray._private.gcs_utils import GcsClient
+import ray._private.services as services
 
 from ray.experimental.state.api import (
-    list_actors,
+    StateApiClient,
     list_nodes,
     list_jobs,
-    list_placement_groups,
     list_workers,
     list_tasks,
     list_objects,
     list_runtime_envs,
 )
+from ray.experimental.state.common import (
+    DEFAULT_LIMIT,
+    DEFAULT_RPC_TIMEOUT,
+    ListApiOptions,
+)
+from ray._private.gcs_utils import use_gcs_for_bootstrap
+from ray._private.gcs_utils import GcsClient
+
+logger = logging.getLogger(__name__)
 
 
 @unique
@@ -88,8 +94,18 @@ def list_state_cli_group(ctx):
         )
 
     assert use_gcs_for_bootstrap()
+    api_server_url = f"http://{api_server_url.decode()}"
+
+    # Create the State API server and put it into context
+    logger.info(f"Create StateApiClient at {api_server_url} with default options...")
+    client = StateApiClient(
+        options=ListApiOptions(limit=DEFAULT_LIMIT, timeout=DEFAULT_RPC_TIMEOUT),
+        api_server_url=api_server_url,
+    )
+
     ctx.ensure_object(dict)
-    ctx.obj["api_server_url"] = f"http://{api_server_url.decode()}"
+    ctx.obj["api_client"] = client
+    ctx.obj["api_server_url"] = api_server_url
 
 
 @list_state_cli_group.command()
@@ -98,12 +114,11 @@ def list_state_cli_group(ctx):
 )
 @click.pass_context
 def actors(ctx, format: str):
-    url = ctx.obj["api_server_url"]
+    client = ctx.obj["api_client"]
     format = AvailableFormat(format)
     print(
         get_state_api_output_to_print(
-            list_actors(api_server_url=url, _explain=_should_explain(format)),
-            format=format,
+            client.list_actors(_should_explain(format)), format=format
         )
     )
 
@@ -114,11 +129,11 @@ def actors(ctx, format: str):
 )
 @click.pass_context
 def placement_groups(ctx, format: str):
-    url = ctx.obj["api_server_url"]
+    client = ctx.obj["api_server"]
     format = AvailableFormat(format)
     print(
         get_state_api_output_to_print(
-            list_placement_groups(api_server_url=url, _explain=_should_explain(format)),
+            client.list_placement_groups(_explain=_should_explain(format)),
             format=format,
         )
     )

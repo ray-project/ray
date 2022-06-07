@@ -5,7 +5,7 @@ import json
 import yaml
 from pathlib import Path
 import tempfile
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union, Tuple
 from pkg_resources import packaging
 
 try:
@@ -233,6 +233,7 @@ class SubmissionClient:
         *,
         data: Optional[bytes] = None,
         json_data: Optional[dict] = None,
+        timeout: Optional[Union[float, Tuple]] = None,
     ) -> "requests.Response":
         url = self._address + endpoint
         logger.debug(f"Sending request to {url} with json data: {json_data or {}}.")
@@ -243,6 +244,7 @@ class SubmissionClient:
             data=data,
             json=json_data,
             headers=self._headers,
+            timeout=timeout,
         )
 
     def _package_exists(
