@@ -7,10 +7,8 @@ Key Concepts
 ============
 
 On this page, we'll cover the key concepts to help you understand how RLlib works and how to use it.
-In RLlib you create `environments`.  Within an envronment, you use `trainers` to train `algorithms`.
-These algorithms use `policies` to select actions from the environment for your agents.
-Given a policy, `evaluation` of a policy produces `sample batches` of experiences.
-You can also customize the `execution plans` of your RL experiments.
+In RLlib you create `environments` for the agent to interact with a modeled world.  Agents then use `trainers` to train `algorithms`.  These algorithms use `policies` to select actions from the environment for your agents.
+Given a policy, `evaluation` of a policy produces `sample batches` of experiences.  Vectorizing or parallelizing policy evaluation runtimes when multiple agents and/or policies is handled in RLlib by `rollout workers`.  You can also customize the `execution plans` of your RL experiments.
 
 .. _environments:
 
@@ -19,13 +17,11 @@ Environments
 
 Specifying a real world problem in RLlib begins with an environment.  In the simplest RL terms:  an agent interacts with an **environment** and receives a reward.  An environment in RL is the agent's world, it is a simulation of the problem being solved.
 
-An RLlib environment consists of: 1) all possible actions (action space),  2) a complete omniscient description of the environment, nothing hidden, at any particular time step (state space), 3)  an observation by the agent of certain parts of the state (observation space), and 4) reward, which is the only feedback the agent receives per action.  
+An RLlib environment consists of: 1) all possible actions (**action space**),  2) a complete omniscient description of the environment, nothing hidden, at any particular time step (**state space**), 3)  an observation by the agent of certain parts of the state (**observation space**), and 4) **reward**, which is the only feedback the agent receives per action.  
 
-The model that maximizes cumulative future expected reward is called a policy.  A policy is a function mapping the environment's state into an action to take, usually written π(s(t)).  Below is a diagram of the RL iterative learning process.
+The model that maximizes cumulative future expected reward is called a policy.  A policy is a function mapping the environment's state into an action to take, usually written **π** (s(t)).  Below is a diagram of the RL iterative learning process.
 
 .. image:: images/env_key_concept1.png
-
-<img src="images/env_key_concept1.png" alt="RL iterative learning process" width="50%"/>
 
 The RL simulation feedback loop repeatedly trains policies up to some specified end state (termination state or timesteps).  The end state is indicated in RLlib by a `done` flag.  The iterations of policy -> action -> reward -> next state -> train -> repeat, until the end state, is called an `episode` or in RLlib a `rollout`.
 
