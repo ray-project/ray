@@ -1,7 +1,7 @@
 from typing import Callable, Any, Optional
 
 from ray.data.block import Block, BlockAccessor
-from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 
 
 class BlockOutputBuffer(object):
@@ -16,7 +16,7 @@ class BlockOutputBuffer(object):
     then check ``has_next()`` one last time.
 
     Examples:
-        >>> from ray.data.impl.output_buffer import BlockOutputBuffer
+        >>> from ray.data._internal.output_buffer import BlockOutputBuffer
         >>> udf = ... # doctest: +SKIP
         >>> generator = ... # doctest: +SKIP
         >>> # Yield a stream of output blocks.

@@ -8,7 +8,7 @@ import numpy as np
 if TYPE_CHECKING:
     import pandas
     import pyarrow
-    from ray.data.impl.sort import SortKeyT
+    from ray.data._internal.sort import SortKeyT
 
 from ray.data.aggregate import AggregateFn
 from ray.data.block import (
@@ -22,8 +22,8 @@ from ray.data.block import (
     BlockExecStats,
     KeyFn,
 )
-from ray.data.impl.block_builder import BlockBuilder
-from ray.data.impl.size_estimator import SizeEstimator
+from ray.data._internal.block_builder import BlockBuilder
+from ray.data._internal.size_estimator import SizeEstimator
 
 
 class SimpleBlockBuilder(BlockBuilder[T]):

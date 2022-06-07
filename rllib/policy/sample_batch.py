@@ -11,6 +11,7 @@ from ray.rllib.utils.compression import pack, unpack, is_compressed
 from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import concat_aligned
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import PolicyID, TensorType, ViewRequirementsDict
 
 tf1, tf, tfv = try_import_tf()
@@ -703,7 +704,7 @@ class SampleBatch(dict):
             assert torch is not None
             for k, v in self.items():
                 if isinstance(v, np.ndarray) and v.dtype != object:
-                    self[k] = torch.from_numpy(v).to(device)
+                    self[k] = convert_to_torch_tensor(v, device)
         else:
             raise NotImplementedError
         return self

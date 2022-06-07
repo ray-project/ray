@@ -11,7 +11,7 @@ import ray
 from ray.tests.conftest import *  # noqa
 from ray.data.block import BlockAccessor
 from ray.data.tests.conftest import *  # noqa
-from ray.data.impl.push_based_shuffle import PushBasedShufflePlan
+from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
 
 
 @pytest.mark.parametrize("use_push_based_shuffle", [False, True])
@@ -154,7 +154,7 @@ def test_sort_arrow_with_empty_blocks(ray_start_regular, use_push_based_shuffle)
         ds = ray.data.range_table(10).filter(lambda r: r["value"] > 10)
         assert (
             len(
-                ray.data.impl.sort.sample_boundaries(
+                ray.data._internal.sort.sample_boundaries(
                     ds._plan.execute().get_blocks(), "value", 3
                 )
             )
