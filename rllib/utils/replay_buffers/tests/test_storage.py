@@ -3,8 +3,8 @@ import unittest
 import numpy as np
 
 from ray.rllib.policy.sample_batch import SampleBatch
-
 from ray.rllib.utils.replay_buffers.storage import InMemoryStorage, OnDiskStorage
+from ray.rllib.utils.test_utils import check
 
 
 class TestStorage(unittest.TestCase):
@@ -188,13 +188,7 @@ class TestStorage(unittest.TestCase):
         for b in m_storage:
             d_storage.add(b)
 
-        assert len(m_storage) == len(d_storage)
-        for i in range(len(m_storage)):
-            m_batch = m_storage[i]
-            d_batch = d_storage[i]
-            assert set(m_batch.keys()) == set(d_batch.keys())
-            for k in m_batch:
-                assert np.array_equal(m_batch[k], d_batch[k])
+        check(list(m_storage), list(d_storage))
 
         self._add_data_to_storage(m_storage, batch_size=15, num_batches=4)
         assert m_storage.eviction_started is False
@@ -205,18 +199,12 @@ class TestStorage(unittest.TestCase):
         assert m_storage.eviction_started is True
         d_storage.add(m_storage[len(m_storage) - 1])
 
-        assert len(m_storage) == len(d_storage)
         assert m_storage._offset_idx == d_storage._offset_idx
         assert m_storage._num_timesteps_added == d_storage._num_timesteps_added
         assert m_storage._num_timesteps == d_storage._num_timesteps
         assert m_storage.eviction_started == d_storage.eviction_started
         assert m_storage.size_bytes == d_storage.size_bytes
-        for i in range(len(m_storage)):
-            m_batch = m_storage[i]
-            d_batch = d_storage[i]
-            assert set(m_batch.keys()) == set(d_batch.keys())
-            for k in m_batch:
-                assert np.array_equal(m_batch[k], d_batch[k])
+        check(list(m_storage), list(d_storage))
 
     def test_allocation_plans(self):
         """Apply same operations to `InMemoryStorage` with `one-time`
@@ -230,13 +218,7 @@ class TestStorage(unittest.TestCase):
         for b in m_storage:
             d_storage.add(b)
 
-        assert len(m_storage) == len(d_storage)
-        for i in range(len(m_storage)):
-            m_batch = m_storage[i]
-            d_batch = d_storage[i]
-            assert set(m_batch.keys()) == set(d_batch.keys())
-            for k in m_batch:
-                assert np.array_equal(m_batch[k], d_batch[k])
+        check(list(m_storage), list(d_storage))
 
         self._add_data_to_storage(m_storage, batch_size=15, num_batches=4)
         assert m_storage.eviction_started is False
@@ -247,45 +229,53 @@ class TestStorage(unittest.TestCase):
         assert m_storage.eviction_started is True
         d_storage.add(m_storage[len(m_storage) - 1])
 
-        assert len(m_storage) == len(d_storage)
         assert m_storage._offset_idx == d_storage._offset_idx
         assert m_storage._num_timesteps_added == d_storage._num_timesteps_added
         assert m_storage._num_timesteps == d_storage._num_timesteps
         assert m_storage.eviction_started == d_storage.eviction_started
         assert m_storage.size_bytes == d_storage.size_bytes
-        for i in range(len(m_storage)):
-            m_batch = m_storage[i]
-            d_batch = d_storage[i]
-            assert set(m_batch.keys()) == set(d_batch.keys())
-            for k in m_batch:
-                assert np.array_equal(m_batch[k], d_batch[k])
+        check(list(m_storage), list(d_storage))
 
     def test_slicing(self):
         """Create slices of a storage."""
         storage = InMemoryStorage(100)
+        self._add_data_to_storage(storage, batch_size=10, num_batches=7)
 
-        self._add_data_to_storage(storage, batch_size=10, num_batches=3)
-        view = storage[:6]
+        # Create double view which contains storage / ring buffer twice
+        view = storage[:14]
         assert 2 * len(storage) == len(view)
 
-        view1 = view[:3]
-        view2 = view[3:]
-        assert len(view1) == len(view2)
-        for i in range(len(view1)):
-            batch1 = view1[i]
-            batch2 = view2[i]
-            assert set(batch1.keys()) == set(batch2.keys())
-            for k in batch1:
-                assert np.array_equal(batch1[k], batch2[k])
+        # Check if upper and lower part of double view are the same
+        # and equal to original storage
+        view1 = view[:7]
+        view2 = view[7:]
+        check(list(view1), list(view2))
+        check(list(view1), list(storage))
 
-        view = storage[::-1]
-        assert len(storage) == len(view)
-        for i in range(len(storage)):
-            batch1 = storage[i]
-            batch2 = view[len(view) - i - 1]
-            assert set(batch1.keys()) == set(batch2.keys())
-            for k in batch1:
-                assert np.array_equal(batch1[k], batch2[k])
+        # Create another double view in reverse order
+        view_r = storage[13::-1]
+        check(list(view_r), list(reversed(view)))
+
+        # Check if slicing behaves the same as list slicing
+        slices = [
+            (None, None, None),
+            (None, None, 1),
+            (None, None, -1),
+            (4, None, 1),
+            (None, 4, 1),
+            (4, None, -1),
+            (None, 4, -1),
+            (2, 5, 1),
+            (2, 5, -1),
+            (5, 2, 1),
+            (5, 2, -1),
+        ]
+        storage_list = list(storage)
+        for start, stop, step in slices:
+            sl = slice(start, stop, step)
+            storage_slice = storage[sl]
+            check(list(storage_slice), storage_list[sl])
+            check(list(storage_slice), storage_list[storage_slice.slice])
 
 
 if __name__ == "__main__":

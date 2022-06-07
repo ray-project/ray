@@ -186,12 +186,14 @@ class LocalStorage(Sized, Iterable):
     def __iter__(self) -> Iterator[SampleBatchType]:
         for i in range(len(self)):
             yield self[i]
-    
-    @overload
-    def __getitem__(self, key: int) -> SampleBatchType: ...
 
     @overload
-    def __getitem__(self, key: slice) -> "StorageView": ...
+    def __getitem__(self, key: int) -> SampleBatchType:
+        ...
+
+    @overload
+    def __getitem__(self, key: slice) -> "StorageView":
+        ...
 
     @ExperimentalAPI
     def __getitem__(self, key):
@@ -409,13 +411,17 @@ class StorageView(LocalStorage):
             storage_slice: Slice of the storage
         """
         self._storage = storage
-        start = storage_slice.start or 0
-        stop = storage_slice.stop or len(storage)
         step = storage_slice.step or 1
+        if step > 0:
+            start = storage_slice.start or 0
+            stop = storage_slice.stop or len(storage)
+        else:
+            start = storage_slice.start or (len(storage) - 1)
+            stop = storage_slice.stop or -(len(storage) + 1)
         self._slice = slice(start, stop, step)
-        self._idx_map = list(
-            range(self._slice.start, self._slice.stop, self._slice.step)
-        )
+        if step < 0 and storage_slice.stop is None:
+            stop += len(storage)
+        self._idx_map = list(range(start, stop, step))
 
     @ExperimentalAPI
     @property
