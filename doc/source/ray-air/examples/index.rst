@@ -39,3 +39,4 @@ Advanced
 --------
 
 - :doc:`/ray-air/examples/torch_incremental_learning`: Incrementally train and deploy a PyTorch CV model
+- :doc:`/ray-air/examples/feast_example`: Integrate with Feast feature store in both train and inference
