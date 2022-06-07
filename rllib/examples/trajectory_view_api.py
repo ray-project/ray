@@ -94,8 +94,8 @@ if __name__ == "__main__":
     )
 
     checkpoint_path = checkpoints[0][0]
-    trainer = PPO(config)
-    trainer.restore(checkpoint_path)
+    algo = PPO(config)
+    algo.restore(checkpoint_path)
 
     # Inference loop.
     env = StatelessCartPole()
@@ -110,7 +110,7 @@ if __name__ == "__main__":
         while not done:
             # Create a dummy action using the same observation n times,
             # as well as dummy prev-n-actions and prev-n-rewards.
-            action, state, logits = trainer.compute_single_action(
+            action, state, logits = algo.compute_single_action(
                 input_dict={
                     "obs": obs,
                     "prev_n_obs": np.stack([obs for _ in range(num_frames)]),

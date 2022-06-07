@@ -58,10 +58,10 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         config["rollout_fragment_length"] = 4
 
         for _ in framework_iterator(config):
-            trainer = dqn.DQN(
+            algo = dqn.DQN(
                 config, env="ray.rllib.examples.env.debug_counter_env.DebugCounterEnv"
             )
-            policy = trainer.get_policy()
+            policy = algo.get_policy()
             view_req_model = policy.model.view_requirements
             view_req_policy = policy.view_requirements
             assert len(view_req_model) == 1, view_req_model
@@ -84,7 +84,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                 else:
                     assert view_req_policy[key].data_col == SampleBatch.OBS
                     assert view_req_policy[key].shift == 1
-            rollout_worker = trainer.workers.local_worker()
+            rollout_worker = algo.workers.local_worker()
             sample_batch = rollout_worker.sample()
             expected_count = (
                 config["num_envs_per_worker"] * config["rollout_fragment_length"]
@@ -92,7 +92,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             assert sample_batch.count == expected_count
             for v in sample_batch.values():
                 assert len(v) == expected_count
-            trainer.stop()
+            algo.stop()
 
     def test_traj_view_lstm_prev_actions_and_rewards(self):
         """Tests, whether Policy/Model return correct LSTM ViewRequirements."""
@@ -104,8 +104,8 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         config["model"]["lstm_use_prev_reward"] = True
 
         for _ in framework_iterator(config):
-            trainer = ppo.PPO(config, env="CartPole-v0")
-            policy = trainer.get_policy()
+            algo = ppo.PPO(config, env="CartPole-v0")
+            policy = algo.get_policy()
             view_req_model = policy.model.view_requirements
             view_req_policy = policy.view_requirements
             # 7=obs, prev-a + r, 2x state-in, 2x state-out.
@@ -142,7 +142,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                 else:
                     assert view_req_policy[key].data_col == SampleBatch.OBS
                     assert view_req_policy[key].shift == 1
-            trainer.stop()
+            algo.stop()
 
     def test_traj_view_attention_net(self):
         config = ppo.DEFAULT_CONFIG.copy()

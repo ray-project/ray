@@ -16,7 +16,7 @@ Example usage for evaluate (aka: "rollout"):
 
 def cli():
     parser = argparse.ArgumentParser(
-        description="Train or evaluate an RLlib Trainer.",
+        description="Train or evaluate an RLlib Algorithm.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=EXAMPLE_USAGE,
     )

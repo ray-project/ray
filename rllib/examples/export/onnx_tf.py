@@ -5,7 +5,7 @@ import onnxruntime
 import os
 import shutil
 
-# Configure our PPO trainer
+# Configure our PPO.
 config = ppo.DEFAULT_CONFIG.copy()
 config["num_gpus"] = 0
 config["num_workers"] = 1
@@ -22,15 +22,15 @@ test_data = {
     "obs": np.random.uniform(0, 1.0, size=(10, 4)).astype(np.float32),
 }
 
-# Start Ray and initialize a PPO trainer
+# Start Ray and initialize a PPO Algorithm.
 ray.init()
-trainer = ppo.PPO(config=config, env="CartPole-v0")
+algo = ppo.PPO(config=config, env="CartPole-v0")
 
 # You could train the model here
-# trainer.train()
+# algo.train()
 
 # Let's run inference on the tensorflow model
-policy = trainer.get_policy()
+policy = algo.get_policy()
 result_tf, _ = policy.model(test_data)
 
 # Evaluate tensor to fetch numpy array
@@ -38,7 +38,7 @@ with policy._sess.as_default():
     result_tf = result_tf.eval()
 
 # This line will export the model to ONNX
-res = trainer.export_policy_model(outdir, onnx=11)
+res = algo.export_policy_model(outdir, onnx=11)
 
 # Import ONNX model
 exported_model_file = os.path.join(outdir, "saved_model.onnx")

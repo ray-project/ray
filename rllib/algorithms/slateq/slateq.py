@@ -2,7 +2,7 @@
 SlateQ (Reinforcement Learning for Recommendation)
 ==================================================
 
-This file defines the trainer class for the SlateQ algorithm from the
+This file defines the algorithm class for the SlateQ algorithm from the
 `"Reinforcement Learning for Slate-based Recommender Systems: A Tractable
 Decomposition and Practical Methodology" <https://arxiv.org/abs/1905.12767>`_
 paper.

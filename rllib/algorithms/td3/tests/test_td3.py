@@ -29,14 +29,14 @@ class TestTD3(unittest.TestCase):
 
         # Test against all frameworks.
         for _ in framework_iterator(config, with_eager_tracing=True):
-            trainer = config.build(env="Pendulum-v1")
+            algo = config.build(env="Pendulum-v1")
             num_iterations = 1
             for i in range(num_iterations):
-                results = trainer.train()
+                results = algo.train()
                 check_train_results(results)
                 print(results)
-            check_compute_single_action(trainer)
-            trainer.stop()
+            check_compute_single_action(algo)
+            algo.stop()
 
     def test_td3_exploration_and_with_random_prerun(self):
         """Tests TD3's Exploration (w/ random actions for n timesteps)."""
@@ -56,48 +56,48 @@ class TestTD3(unittest.TestCase):
         for _ in framework_iterator(config, with_eager_tracing=True):
             config.exploration(exploration_config=no_random_init)
             # Default GaussianNoise setup.
-            trainer = config.build()
+            algo = config.build()
             # Setting explore=False should always return the same action.
-            a_ = trainer.compute_single_action(obs, explore=False)
-            check(trainer.get_policy().global_timestep, 1)
+            a_ = algo.compute_single_action(obs, explore=False)
+            check(algo.get_policy().global_timestep, 1)
             for i in range(50):
-                a = trainer.compute_single_action(obs, explore=False)
-                check(trainer.get_policy().global_timestep, i + 2)
+                a = algo.compute_single_action(obs, explore=False)
+                check(algo.get_policy().global_timestep, i + 2)
                 check(a, a_)
             # explore=None (default: explore) should return different actions.
             actions = []
             for i in range(50):
-                actions.append(trainer.compute_single_action(obs))
-                check(trainer.get_policy().global_timestep, i + 52)
+                actions.append(algo.compute_single_action(obs))
+                check(algo.get_policy().global_timestep, i + 52)
             check(np.std(actions), 0.0, false=True)
-            trainer.stop()
+            algo.stop()
 
             # Check randomness at beginning.
             config.exploration(exploration_config=random_init)
-            trainer = config.build()
+            algo = config.build()
             # ts=0 (get a deterministic action as per explore=False).
-            deterministic_action = trainer.compute_single_action(obs, explore=False)
-            check(trainer.get_policy().global_timestep, 1)
+            deterministic_action = algo.compute_single_action(obs, explore=False)
+            check(algo.get_policy().global_timestep, 1)
             # ts=1-29 (in random window).
             random_a = []
             for i in range(1, 30):
-                random_a.append(trainer.compute_single_action(obs, explore=True))
-                check(trainer.get_policy().global_timestep, i + 1)
+                random_a.append(algo.compute_single_action(obs, explore=True))
+                check(algo.get_policy().global_timestep, i + 1)
                 check(random_a[-1], deterministic_action, false=True)
             self.assertTrue(np.std(random_a) > 0.3)
 
             # ts > 30 (a=deterministic_action + scale * N[0,1])
             for i in range(50):
-                a = trainer.compute_single_action(obs, explore=True)
-                check(trainer.get_policy().global_timestep, i + 31)
+                a = algo.compute_single_action(obs, explore=True)
+                check(algo.get_policy().global_timestep, i + 31)
                 check(a, deterministic_action, rtol=0.1)
 
             # ts >> 30 (BUT: explore=False -> expect deterministic action).
             for i in range(50):
-                a = trainer.compute_single_action(obs, explore=False)
-                check(trainer.get_policy().global_timestep, i + 81)
+                a = algo.compute_single_action(obs, explore=False)
+                check(algo.get_policy().global_timestep, i + 81)
                 check(a, deterministic_action)
-            trainer.stop()
+            algo.stop()
 
 
 if __name__ == "__main__":

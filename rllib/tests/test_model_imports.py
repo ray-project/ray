@@ -6,7 +6,7 @@ from pathlib import Path
 import unittest
 
 import ray
-from ray.rllib.algorithms.registry import get_trainer_class
+from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.tf.misc import normc_initializer
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2

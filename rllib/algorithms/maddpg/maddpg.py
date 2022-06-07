@@ -44,9 +44,9 @@ class MADDPGConfig(AlgorithmConfig):
         >>>       .resources(num_gpus=0)\
         >>>       .rollouts(num_rollout_workers=4)\
         >>>       .environment("CartPole-v1")
-        >>> trainer = config.build()
+        >>> algo = config.build()
         >>> while True:
-        >>>     trainer.train()
+        >>>     algo.train()
 
     Example:
         >>> from ray.rllib.algorithms.maddpg.maddpg import MADDPGConfig

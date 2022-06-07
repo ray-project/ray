@@ -9,12 +9,12 @@ parameters (SimpleCorridor corridor lengths).
 Sample output for `python custom_eval.py`
 ------------------------------------------------------------------------
 
-INFO trainer.py:623 -- Evaluating current policy for 10 episodes.
-INFO trainer.py:650 -- Running round 0 of parallel evaluation (2/10 episodes)
-INFO trainer.py:650 -- Running round 1 of parallel evaluation (4/10 episodes)
-INFO trainer.py:650 -- Running round 2 of parallel evaluation (6/10 episodes)
-INFO trainer.py:650 -- Running round 3 of parallel evaluation (8/10 episodes)
-INFO trainer.py:650 -- Running round 4 of parallel evaluation (10/10 episodes)
+INFO algorithm.py:623 -- Evaluating current policy for 10 episodes.
+INFO algorithm.py:650 -- Running round 0 of parallel evaluation (2/10 episodes)
+INFO algorithm.py:650 -- Running round 1 of parallel evaluation (4/10 episodes)
+INFO algorithm.py:650 -- Running round 2 of parallel evaluation (6/10 episodes)
+INFO algorithm.py:650 -- Running round 3 of parallel evaluation (8/10 episodes)
+INFO algorithm.py:650 -- Running round 4 of parallel evaluation (10/10 episodes)
 
 Result for PG_SimpleCorridor_2c6b27dc:
   ...
@@ -38,7 +38,7 @@ Result for PG_SimpleCorridor_2c6b27dc:
 Sample output for `python custom_eval.py --custom-eval`
 ------------------------------------------------------------------------
 
-INFO trainer.py:631 -- Running custom eval function <function ...>
+INFO algorithm.py:631 -- Running custom eval function <function ...>
 Update corridor length to 4
 Update corridor length to 7
 Custom evaluation round 1

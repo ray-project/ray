@@ -25,7 +25,7 @@ from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 
 class QMixConfig(SimpleQConfig):
-    """Defines a configuration class from which a QMix Trainer can be built.
+    """Defines a configuration class from which QMix can be built.
 
     Example:
         >>> from ray.rllib.examples.env.two_step_game import TwoStepGame
@@ -34,9 +34,9 @@ class QMixConfig(SimpleQConfig):
         ...             .resources(num_gpus=0)\
         ...             .rollouts(num_workers=4)
         >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run 1 training iteration.
-        >>> trainer = config.build(env=TwoStepGame)
-        >>> trainer.train()
+        >>> # Build an Algorithm object from the config and run 1 training iteration.
+        >>> algo = config.build(env=TwoStepGame)
+        >>> algo.train()
 
     Example:
         >>> from ray.rllib.examples.env.two_step_game import TwoStepGame

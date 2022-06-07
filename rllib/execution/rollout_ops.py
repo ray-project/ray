@@ -65,16 +65,16 @@ def synchronous_parallel_sample(
         rollout worker in the given `worker_set`).
 
     Examples:
-        >>> # Define an RLlib trainer.
-        >>> trainer = ... # doctest: +SKIP
+        >>> # Define an RLlib Algorithm.
+        >>> algorithm = ... # doctest: +SKIP
         >>> # 2 remote workers (num_workers=2):
-        >>> batches = synchronous_parallel_sample(trainer.workers) # doctest: +SKIP
+        >>> batches = synchronous_parallel_sample(algorithm.workers) # doctest: +SKIP
         >>> print(len(batches)) # doctest: +SKIP
         2
         >>> print(batches[0]) # doctest: +SKIP
         SampleBatch(16: ['obs', 'actions', 'rewards', 'dones'])
         >>> # 0 remote workers (num_workers=0): Using the local worker.
-        >>> batches = synchronous_parallel_sample(trainer.workers) # doctest: +SKIP
+        >>> batches = synchronous_parallel_sample(algorithm.workers) # doctest: +SKIP
         >>> print(len(batches)) # doctest: +SKIP
         1
     """

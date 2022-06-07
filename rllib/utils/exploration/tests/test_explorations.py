@@ -40,14 +40,14 @@ def do_test_explorations(
                 local_config["exploration_config"] = {"type": "Random"}
             print("exploration={}".format(exploration or "default"))
 
-            trainer = run(config=local_config, env=env)
+            algo = run(config=local_config, env=env)
 
             # Make sure all actions drawn are the same, given same
             # observations.
             actions = []
             for _ in range(25):
                 actions.append(
-                    trainer.compute_single_action(
+                    algo.compute_single_action(
                         observation=dummy_obs,
                         explore=False,
                         prev_action=prev_a,
@@ -61,7 +61,7 @@ def do_test_explorations(
             actions = []
             for _ in range(500):
                 actions.append(
-                    trainer.compute_single_action(
+                    algo.compute_single_action(
                         observation=dummy_obs,
                         explore=True,
                         prev_action=prev_a,

@@ -146,8 +146,8 @@ class _ParameterTuningTrainer(_MockTrainer):
         )
 
 
-def _trainer_import_failed(trace):
-    """Returns dummy agent class for if PyTorch etc. is not installed."""
+def _algorithm_import_failed(trace):
+    """Returns dummy Algorithm class for if PyTorch etc. is not installed."""
 
     class _TrainerImportFailed(Algorithm):
         _name = "TrainerImportFailed"

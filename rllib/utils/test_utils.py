@@ -281,12 +281,12 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
 
 
 def check_compute_single_action(
-    trainer, include_state=False, include_prev_action_reward=False
+    algorithm, include_state=False, include_prev_action_reward=False
 ):
-    """Tests different combinations of args for trainer.compute_single_action.
+    """Tests different combinations of args for algorithm.compute_single_action.
 
     Args:
-        trainer: The Algorithm object to test.
+        algorithm: The Algorithm object to test.
         include_state: Whether to include the initial state of the Policy's
             Model in the `compute_single_action` call.
         include_prev_action_reward: Whether to include the prev-action and
@@ -298,15 +298,15 @@ def check_compute_single_action(
     # Have to import this here to avoid circular dependency.
     from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 
-    # Some Trainers may not abide to the standard API.
+    # Some Algorithms may not abide to the standard API.
     pid = DEFAULT_POLICY_ID
     try:
         # Multi-agent: Pick any learnable policy (or DEFAULT_POLICY if it's the only
         # one).
-        pid = next(iter(trainer.workers.local_worker().get_policies_to_train()))
-        pol = trainer.get_policy(pid)
+        pid = next(iter(algorithm.workers.local_worker().get_policies_to_train()))
+        pol = algorithm.get_policy(pid)
     except AttributeError:
-        pol = trainer.policy
+        pol = algorithm.policy
     # Get the policy's model.
     model = pol.model
 
@@ -316,7 +316,7 @@ def check_compute_single_action(
         what, method_to_test, obs_space, full_fetch, explore, timestep, unsquash, clip
     ):
         call_kwargs = {}
-        if what is trainer:
+        if what is algorithm:
             call_kwargs["full_fetch"] = full_fetch
             call_kwargs["policy_id"] = pid
 
@@ -404,12 +404,12 @@ def check_compute_single_action(
         # Test whether unsquash/clipping works on the Algorithm's
         # compute_single_action method: Both flags should force the action
         # to be within the space's bounds.
-        if method_to_test == "single" and what == trainer:
+        if method_to_test == "single" and what == algorithm:
             if not action_space.contains(action) and (
                 clip or unsquash or not isinstance(action_space, Box)
             ):
                 raise ValueError(
-                    f"Returned action ({action}) of trainer/policy {what} "
+                    f"Returned action ({action}) of algorithm/policy {what} "
                     f"not in Env's action_space {action_space}"
                 )
             # We are operating in normalized space: Expect only smaller action
@@ -421,21 +421,21 @@ def check_compute_single_action(
                 and np.any(np.abs(action) > 15.0)
             ):
                 raise ValueError(
-                    f"Returned action ({action}) of trainer/policy {what} "
+                    f"Returned action ({action}) of algorithm/policy {what} "
                     "should be in normalized space, but seems too large/small "
                     "for that!"
                 )
 
     # Loop through: Policy vs Algorithm; Different API methods to calculate
     # actions; unsquash option; clip option; full fetch or not.
-    for what in [pol, trainer]:
-        if what is trainer:
+    for what in [pol, algorithm]:
+        if what is algorithm:
             # Get the obs-space from Workers.env (not Policy) due to possible
             # pre-processor up front.
-            worker_set = getattr(trainer, "workers", None)
+            worker_set = getattr(algorithm, "workers", None)
             assert worker_set
             if isinstance(worker_set, list):
-                obs_space = trainer.get_policy(pid).observation_space
+                obs_space = algorithm.get_policy(pid).observation_space
             else:
                 obs_space = worker_set.local_worker().for_policy(
                     lambda p: p.observation_space, policy_id=pid
@@ -446,7 +446,7 @@ def check_compute_single_action(
 
         for method_to_test in ["single"] + (["input_dict"] if what is pol else []):
             for explore in [True, False]:
-                for full_fetch in [False, True] if what is trainer else [False]:
+                for full_fetch in [False, True] if what is algorithm else [False]:
                     timestep = random.randint(0, 100000)
                     for unsquash in [True, False, None]:
                         for clip in [False] if unsquash else [True, False, None]:
@@ -640,7 +640,7 @@ def run_learning_tests_from_yaml(
                 # 0sec for each(!) experiment/trial.
                 # This is such that if there are many experiments/trials
                 # in a test (e.g. rllib_learning_test), each one can at least
-                # create its trainer and run a first iteration.
+                # create its Algorithm and run a first iteration.
                 e["stop"]["time_total_s"] = 0
             else:
                 check_eval = should_check_eval(e)
@@ -771,7 +771,7 @@ def run_learning_tests_from_yaml(
                     [t.last_result["time_total_s"] for t in trials_for_experiment]
                 )
 
-                # TODO(jungong) : track trainer and env throughput separately.
+                # TODO(jungong) : track training- and env throughput separately.
                 throughput = timesteps_total / (total_time_s or 1.0)
                 # TODO(jungong) : enable throughput check again after
                 #   TD3_HalfCheetahBulletEnv is fixed and verified.

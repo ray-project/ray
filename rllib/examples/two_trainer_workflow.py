@@ -175,7 +175,7 @@ if __name__ == "__main__":
     dqn_config = DQN_CONFIG
     del dqn_config["framework"]
 
-    # Note that since the trainer below does not include a default policy or
+    # Note that since the algorithm below does not include a default policy or
     # policy configs, we have to explicitly set it in the multiagent config:
     policies = {
         "ppo_policy": (

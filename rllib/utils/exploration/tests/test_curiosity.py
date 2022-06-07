@@ -180,16 +180,16 @@ class TestCuriosity(unittest.TestCase):
                     "type": "StochasticSampling",
                 },
             }
-            trainer = ppo.PPO(config=config)
+            algo = ppo.PPO(config=config)
             learnt = False
             for i in range(num_iterations):
-                result = trainer.train()
+                result = algo.train()
                 print(result)
                 if result["episode_reward_max"] > 0.0:
                     print("Reached goal after {} iters!".format(i))
                     learnt = True
                     break
-            trainer.stop()
+            algo.stop()
             self.assertTrue(learnt)
 
             # Disable this check for now. Add too much flakyness to test.
@@ -199,13 +199,13 @@ class TestCuriosity(unittest.TestCase):
             #    config["exploration_config"] = {
             #        "type": "StochasticSampling",
             #    }
-            #    trainer = ppo.PPO(config=config)
+            #    algo = ppo.PPO(config=config)
             #    rewards_wo = 0.0
             #    for _ in range(num_iterations):
-            #        result = trainer.train()
+            #        result = algo.train()
             #        rewards_wo += result["episode_reward_mean"]
             #        print(result)
-            #    trainer.stop()
+            #    algo.stop()
             #    self.assertTrue(rewards_wo == 0.0)
             #    print("Did not reach goal w/o curiosity!")
 
@@ -251,12 +251,12 @@ class TestCuriosity(unittest.TestCase):
         }
         for _ in framework_iterator(config, frameworks="torch"):
             # To replay:
-            # trainer = ppo.PPO(config=config)
-            # trainer.restore("[checkpoint file]")
+            # algo = ppo.PPO(config=config)
+            # algo.restore("[checkpoint file]")
             # env = env_maker(config["env_config"])
             # s = env.reset()
             # for _ in range(10000):
-            #     s, r, d, _ = env.step(trainer.compute_single_action(s))
+            #     s, r, d, _ = env.step(algo.compute_single_action(s))
             #     if d:
             #         s = env.reset()
             #     env.render()

@@ -125,7 +125,7 @@ class EntropyCoeffSchedule:
 class KLCoeffMixin:
     """Assigns the `update_kl()` and other KL-related methods to a TFPolicy.
 
-    This is used in Trainers to update the KL coefficient after each
+    This is used in Algorithms to update the KL coefficient after each
     learning step based on `config.kl_target` and the measured KL value
     (from the train_batch).
     """

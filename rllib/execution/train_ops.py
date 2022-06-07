@@ -36,28 +36,28 @@ logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
-def train_one_step(trainer, train_batch, policies_to_train=None) -> Dict:
+def train_one_step(algorithm, train_batch, policies_to_train=None) -> Dict:
     """Function that improves the all policies in `train_batch` on the local worker.
 
     Examples:
         >>> from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
-        >>> trainer = [...] # doctest: +SKIP
-        >>> train_batch = synchronous_parallel_sample(trainer.workers) # doctest: +SKIP
+        >>> algo = [...] # doctest: +SKIP
+        >>> train_batch = synchronous_parallel_sample(algorithm.workers) # doctest: +SKIP
         >>> # This trains the policy on one batch.
-        >>> results = train_one_step(trainer, train_batch)) # doctest: +SKIP
+        >>> results = train_one_step(algorithm, train_batch)) # doctest: +SKIP
         {"default_policy": ...}
 
     Updates the NUM_ENV_STEPS_TRAINED and NUM_AGENT_STEPS_TRAINED counters as well as
-    the LEARN_ON_BATCH_TIMER timer of the `trainer` object.
+    the LEARN_ON_BATCH_TIMER timer of the `algorithm` object.
     """
 
-    config = trainer.config
-    workers = trainer.workers
+    config = algorithm.config
+    workers = algorithm.workers
     local_worker = workers.local_worker()
     num_sgd_iter = config.get("num_sgd_iter", 1)
     sgd_minibatch_size = config.get("sgd_minibatch_size", 0)
 
-    learn_timer = trainer._timers[LEARN_ON_BATCH_TIMER]
+    learn_timer = algorithm._timers[LEARN_ON_BATCH_TIMER]
     with learn_timer:
         # Subsample minibatches (size=`sgd_minibatch_size`) from the
         # train batch and loop through train batch `num_sgd_iter` times.
@@ -79,14 +79,14 @@ def train_one_step(trainer, train_batch, policies_to_train=None) -> Dict:
             info = local_worker.learn_on_batch(train_batch)
 
     learn_timer.push_units_processed(train_batch.count)
-    trainer._counters[NUM_ENV_STEPS_TRAINED] += train_batch.count
-    trainer._counters[NUM_AGENT_STEPS_TRAINED] += train_batch.agent_steps()
+    algorithm._counters[NUM_ENV_STEPS_TRAINED] += train_batch.count
+    algorithm._counters[NUM_AGENT_STEPS_TRAINED] += train_batch.agent_steps()
 
     return info
 
 
 @DeveloperAPI
-def multi_gpu_train_one_step(trainer, train_batch) -> Dict:
+def multi_gpu_train_one_step(algorithm, train_batch) -> Dict:
     """Multi-GPU version of train_one_step.
 
     Uses the policies' `load_batch_into_buffer` and `learn_on_loaded_batch` methods
@@ -96,17 +96,17 @@ def multi_gpu_train_one_step(trainer, train_batch) -> Dict:
 
     Examples:
         >>> from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
-        >>> trainer = [...] # doctest: +SKIP
-        >>> train_batch = synchronous_parallel_sample(trainer.workers) # doctest: +SKIP
+        >>> algorithm = [...] # doctest: +SKIP
+        >>> train_batch = synchronous_parallel_sample(algorithm.workers) # doctest: +SKIP
         >>> # This trains the policy on one batch.
-        >>> results = multi_gpu_train_one_step(trainer, train_batch)) # doctest: +SKIP
+        >>> results = multi_gpu_train_one_step(algorithm, train_batch)) # doctest: +SKIP
         {"default_policy": ...}
 
     Updates the NUM_ENV_STEPS_TRAINED and NUM_AGENT_STEPS_TRAINED counters as well as
-    the LOAD_BATCH_TIMER and LEARN_ON_BATCH_TIMER timers of the `trainer` object.
+    the LOAD_BATCH_TIMER and LEARN_ON_BATCH_TIMER timers of the Algorithm instance.
     """
-    config = trainer.config
-    workers = trainer.workers
+    config = algorithm.config
+    workers = algorithm.workers
     local_worker = workers.local_worker()
     num_sgd_iter = config.get("num_sgd_iter", 1)
     sgd_minibatch_size = config.get("sgd_minibatch_size", config["train_batch_size"])
@@ -126,7 +126,7 @@ def multi_gpu_train_one_step(trainer, train_batch) -> Dict:
     train_batch = train_batch.as_multi_agent()
 
     # Load data into GPUs.
-    load_timer = trainer._timers[LOAD_BATCH_TIMER]
+    load_timer = algorithm._timers[LOAD_BATCH_TIMER]
     with load_timer:
         num_loaded_samples = {}
         for policy_id, batch in train_batch.policy_batches.items():
@@ -145,7 +145,7 @@ def multi_gpu_train_one_step(trainer, train_batch) -> Dict:
             ].load_batch_into_buffer(batch, buffer_index=0)
 
     # Execute minibatch SGD on loaded data.
-    learn_timer = trainer._timers[LEARN_ON_BATCH_TIMER]
+    learn_timer = algorithm._timers[LEARN_ON_BATCH_TIMER]
     with learn_timer:
         # Use LearnerInfoBuilder as a unified way to build the final
         # results dict from `learn_on_loaded_batch` call(s).
@@ -178,8 +178,8 @@ def multi_gpu_train_one_step(trainer, train_batch) -> Dict:
 
     # TODO: Move this into Trainer's `training_iteration` method for
     #  better transparency.
-    trainer._counters[NUM_ENV_STEPS_TRAINED] += train_batch.count
-    trainer._counters[NUM_AGENT_STEPS_TRAINED] += train_batch.agent_steps()
+    algorithm._counters[NUM_ENV_STEPS_TRAINED] += train_batch.count
+    algorithm._counters[NUM_AGENT_STEPS_TRAINED] += train_batch.agent_steps()
 
     return learner_info
 

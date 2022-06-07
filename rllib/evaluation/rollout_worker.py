@@ -329,7 +329,7 @@ class RolloutWorker(ParallelIteratorWorker):
             num_workers: For remote workers, how many workers altogether
                 have been created?
             recreated_worker: Whether this worker is a recreated one. Workers are
-                recreated by a Trainer (via WorkerSet) in case
+                recreated by an Algorithm (via WorkerSet) in case
                 `recreate_failed_workers=True` and one of the original workers (or an
                 already recreated one) has failed. They don't differ from original
                 workers other than the value of this flag (`self.recreated_worker`).

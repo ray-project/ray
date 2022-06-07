@@ -79,7 +79,7 @@ def get_cli_args():
 # as a PPO, but with the additional default_resource_request
 # override, telling tune that it's ok (not mandatory) to place our
 # n remote envs on a different node (each env using 1 CPU).
-class PPOTrainerRemoteInference(PPO):
+class PPORemoteInference(PPO):
     @classmethod
     @override(Algorithm)
     def default_resource_request(cls, config):
@@ -133,10 +133,10 @@ if __name__ == "__main__":
     # Run as manual training loop.
     if args.no_tune:
         # manual training loop using PPO and manually keeping track of state
-        trainer = PPOTrainerRemoteInference(config=config)
+        algo = PPORemoteInference(config=config)
         # run manual training loop and print results after each iteration
         for _ in range(args.stop_iters):
-            result = trainer.train()
+            result = algo.train()
             print(pretty_print(result))
             # Stop training if the target train steps or reward are reached.
             if (
@@ -154,7 +154,7 @@ if __name__ == "__main__":
         }
 
         results = tune.run(
-            PPOTrainerRemoteInference, config=config, stop=stop, verbose=1
+            PPORemoteInference, config=config, stop=stop, verbose=1
         )
 
         if args.as_test:

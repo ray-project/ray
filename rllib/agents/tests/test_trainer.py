@@ -19,7 +19,7 @@ from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.test_utils import check, framework_iterator
 
 
-class TestTrainer(unittest.TestCase):
+class TestAlgorithm(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         ray.init(num_cpus=6)
@@ -35,20 +35,20 @@ class TestTrainer(unittest.TestCase):
         """
         # Given:
         standard_config = copy.deepcopy(COMMON_CONFIG)
-        trainer = pg.PG(env="CartPole-v0", config=standard_config)
+        algo = pg.PG(env="CartPole-v0", config=standard_config)
 
         # When (we validate config 2 times).
         # Try deprecated `Trainer._validate_config()` method (static).
-        trainer._validate_config(standard_config, trainer)
+        algo._validate_config(standard_config, algo)
         config_v1 = copy.deepcopy(standard_config)
         # Try new method: `Trainer.validate_config()` (non-static).
-        trainer.validate_config(standard_config)
+        algo.validate_config(standard_config)
         config_v2 = copy.deepcopy(standard_config)
 
         # Make sure nothing changed.
         self.assertEqual(config_v1, config_v2)
 
-        trainer.stop()
+        algo.stop()
 
     def test_add_delete_policy(self):
         config = pg.DEFAULT_CONFIG.copy()
@@ -84,9 +84,9 @@ class TestTrainer(unittest.TestCase):
         )
 
         for _ in framework_iterator(config):
-            trainer = pg.PG(config=config)
-            pol0 = trainer.get_policy("p0")
-            r = trainer.train()
+            algo = pg.PG(config=config)
+            pol0 = algo.get_policy("p0")
+            r = algo.train()
             self.assertTrue("p0" in r["info"][LEARNER_INFO])
             for i in range(1, 3):
 
@@ -95,21 +95,21 @@ class TestTrainer(unittest.TestCase):
 
                 # Add a new policy.
                 pid = f"p{i}"
-                new_pol = trainer.add_policy(
+                new_pol = algo.add_policy(
                     pid,
-                    trainer.get_default_policy_class(config),
+                    algo.get_default_policy_class(config),
                     # Test changing the mapping fn.
                     policy_mapping_fn=new_mapping_fn,
                     # Change the list of policies to train.
                     policies_to_train=[f"p{i}", f"p{i-1}"],
                 )
-                pol_map = trainer.workers.local_worker().policy_map
+                pol_map = algo.workers.local_worker().policy_map
                 self.assertTrue(new_pol is not pol0)
                 for j in range(i + 1):
                     self.assertTrue(f"p{j}" in pol_map)
                 self.assertTrue(len(pol_map) == i + 1)
-                trainer.train()
-                checkpoint = trainer.save()
+                algo.train()
+                checkpoint = algo.save()
 
                 # Test restoring from the checkpoint (which has more policies
                 # than what's defined in the config dict).
@@ -124,7 +124,7 @@ class TestTrainer(unittest.TestCase):
                     all(test.evaluation_workers.foreach_worker(_has_policy))
                 )
 
-                # Make sure trainer can continue training the restored policy.
+                # Make sure algorithm can continue training the restored policy.
                 pol0 = test.get_policy("p0")
                 test.train()
                 # Test creating an action with the added (and restored) policy.
@@ -134,9 +134,9 @@ class TestTrainer(unittest.TestCase):
                 self.assertTrue(pol0.action_space.contains(a))
                 test.stop()
 
-            # Delete all added policies again from trainer.
+            # Delete all added policies again from Algorithm.
             for i in range(2, 0, -1):
-                trainer.remove_policy(
+                algo.remove_policy(
                     f"p{i}",
                     # Note that the complete signature of a policy_mapping_fn
                     # is: `agent_id, episode, worker, **kwargs`.
@@ -144,7 +144,7 @@ class TestTrainer(unittest.TestCase):
                     policies_to_train=[f"p{i - 1}"],
                 )
 
-            trainer.stop()
+            algo.stop()
 
     def test_evaluation_option(self):
         # Use a custom callback that asserts that we are running the
@@ -164,18 +164,18 @@ class TestTrainer(unittest.TestCase):
         )
 
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            trainer = config.build()
+            algo = config.build()
             # Given evaluation_interval=2, r0, r2, r4 should not contain
             # evaluation metrics, while r1, r3 should.
-            r0 = trainer.train()
+            r0 = algo.train()
             print(r0)
-            r1 = trainer.train()
+            r1 = algo.train()
             print(r1)
-            r2 = trainer.train()
+            r2 = algo.train()
             print(r2)
-            r3 = trainer.train()
+            r3 = algo.train()
             print(r3)
-            trainer.stop()
+            algo.stop()
 
             self.assertFalse("evaluation" in r0)
             self.assertTrue("evaluation" in r1)
@@ -202,13 +202,13 @@ class TestTrainer(unittest.TestCase):
             .callbacks(callbacks_class=AssertEvalCallback)
         )
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            trainer = config.build()
+            algo = config.build()
             # Should always see latest available eval results.
-            r0 = trainer.train()
-            r1 = trainer.train()
-            r2 = trainer.train()
-            r3 = trainer.train()
-            trainer.stop()
+            r0 = algo.train()
+            r1 = algo.train()
+            r2 = algo.train()
+            r3 = algo.train()
+            algo.stop()
 
             # Eval results are not available at step 0.
             # But step 3 should still have it, even though no eval was
@@ -228,26 +228,26 @@ class TestTrainer(unittest.TestCase):
         )
 
         for _ in framework_iterator(frameworks=("tf", "torch")):
-            # Setup trainer w/o evaluation worker set and still call
+            # Setup algorithm w/o evaluation worker set and still call
             # evaluate() -> Expect error.
-            trainer_wo_env_on_driver = config.build()
+            algo_wo_env_on_driver = config.build()
             self.assertRaisesRegex(
                 ValueError,
                 "Cannot evaluate w/o an evaluation worker set",
-                trainer_wo_env_on_driver.evaluate,
+                algo_wo_env_on_driver.evaluate,
             )
-            trainer_wo_env_on_driver.stop()
+            algo_wo_env_on_driver.stop()
 
             # Try again using `create_env_on_driver=True`.
             # This force-adds the env on the local-worker, so this Trainer
             # can `evaluate` even though it doesn't have an evaluation-worker
             # set.
             config.create_env_on_local_worker = True
-            trainer_w_env_on_driver = config.build()
-            results = trainer_w_env_on_driver.evaluate()
+            algo_w_env_on_driver = config.build()
+            results = algo_w_env_on_driver.evaluate()
             assert "evaluation" in results
             assert "episode_reward_mean" in results["evaluation"]
-            trainer_w_env_on_driver.stop()
+            algo_w_env_on_driver.stop()
             config.create_env_on_local_worker = False
 
     def test_space_inference_from_remote_workers(self):
@@ -264,20 +264,20 @@ class TestTrainer(unittest.TestCase):
         # No env on driver -> expect longer build time due to space
         # lookup from remote worker.
         t0 = time.time()
-        trainer = config.build()
+        algo = config.build()
         w_lookup = time.time() - t0
         print(f"No env on learner: {w_lookup}sec")
-        trainer.stop()
+        algo.stop()
 
         # Env on driver -> expect shorted build time due to no space
         # lookup required from remote worker.
         config.create_env_on_local_worker = True
         t0 = time.time()
-        trainer = config.build()
+        algo = config.build()
         wo_lookup = time.time() - t0
         print(f"Env on learner: {wo_lookup}sec")
         self.assertLess(wo_lookup, w_lookup)
-        trainer.stop()
+        algo.stop()
 
         # Spaces given -> expect shorter build time due to no space
         # lookup required from remote worker.
@@ -287,11 +287,11 @@ class TestTrainer(unittest.TestCase):
             action_space=env.action_space,
         )
         t0 = time.time()
-        trainer = config.build()
+        algo = config.build()
         wo_lookup = time.time() - t0
         print(f"Spaces given manually in config: {wo_lookup}sec")
         self.assertLess(wo_lookup, w_lookup)
-        trainer.stop()
+        algo.stop()
 
     def test_worker_validation_time(self):
         """Tests the time taken by `validate_workers_after_construction=True`."""
@@ -302,17 +302,17 @@ class TestTrainer(unittest.TestCase):
         # >> 1 workers.
         config.num_workers = 1
         t0 = time.time()
-        trainer = config.build()
+        algo = config.build()
         total_time_1 = time.time() - t0
         print(f"Validating w/ 1 worker: {total_time_1}sec")
-        trainer.stop()
+        algo.stop()
 
         config.num_workers = 5
         t0 = time.time()
-        trainer = config.build()
+        algo = config.build()
         total_time_5 = time.time() - t0
         print(f"Validating w/ 5 workers: {total_time_5}sec")
-        trainer.stop()
+        algo.stop()
 
         check(total_time_5 / total_time_1, 1.0, atol=1.0)
 
@@ -343,9 +343,9 @@ class TestTrainer(unittest.TestCase):
             .offline_data(input_=[input_file])
         )
 
-        bc_trainer = BC(config=offline_rl_config)
-        bc_trainer.train()
-        bc_trainer.stop()
+        bc = BC(config=offline_rl_config)
+        bc.train()
+        bc.stop()
 
 
 if __name__ == "__main__":

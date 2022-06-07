@@ -59,7 +59,7 @@ class RandomParametricPolicy(Policy, ABC):
 
 
 class RandomParametricTrainer(Algorithm):
-    """Trainer with Policy and config defined above and overriding `training_iteration`.
+    """Algo with Policy and config defined above and overriding `training_iteration`.
 
     Overrides the `training_iteration` method, which only runs a (dummy)
     rollout and performs no learning.
@@ -79,8 +79,8 @@ class RandomParametricTrainer(Algorithm):
 
 def main():
     register_env("pa_cartpole", lambda _: ParametricActionsCartPole(10))
-    trainer = RandomParametricTrainer(env="pa_cartpole")
-    result = trainer.train()
+    algo = RandomParametricTrainer(env="pa_cartpole")
+    result = algo.train()
     assert result["episode_reward_mean"] > 10, result
     print("Test: OK")
 

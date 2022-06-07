@@ -40,9 +40,9 @@ if __name__ == "__main__":
     }
 
     num_iterations = 2000
-    trainer = sac.SAC(config=config)
+    algo = sac.SAC(config=config)
     for i in range(num_iterations):
-        result = trainer.train()
+        result = algo.train()
         print(result)
-    trainer.stop()
+    algo.stop()
     ray.shutdown()

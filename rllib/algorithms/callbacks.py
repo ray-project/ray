@@ -10,7 +10,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.utils.annotations import PublicAPI
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.exploration.random_encoder import (
     _MovingMeanStd,
     compute_states_entropy,
@@ -71,10 +71,10 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         """
         pass
 
-    def on_trainer_init(
+    def on_algorithm_init(
         self,
         *,
-        trainer: "Algorithm",
+        algorithm: "Algorithm",
         **kwargs,
     ) -> None:
         """Callback run when a new algorithm instance has finished setup.
@@ -294,6 +294,10 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                 }
             )
 
+    @Deprecated(new="on_algorithm_init(algorithm, **kwargs)", error=False)
+    def on_trainer_init(self, *, trainer, **kwargs):
+        return self.on_algorithm_init(algorithm=trainer, **kwargs)
+
 
 class MemoryTrackingCallbacks(DefaultCallbacks):
     """MemoryTrackingCallbacks can be used to trace and track memory usage
@@ -384,9 +388,9 @@ class MultiCallbacks(DefaultCallbacks):
 
         return self
 
-    def on_trainer_init(self, *, trainer: "Algorithm", **kwargs) -> None:
+    def on_algorithm_init(self, *, algorithm: "Algorithm", **kwargs) -> None:
         for callback in self._callback_list:
-            callback.on_trainer_init(trainer=trainer, **kwargs)
+            callback.on_algorithm_init(algorithm=algorithm, **kwargs)
 
     def on_sub_environment_created(
         self,
@@ -505,6 +509,11 @@ class MultiCallbacks(DefaultCallbacks):
     def on_train_result(self, *, trainer, result: dict, **kwargs) -> None:
         for callback in self._callback_list:
             callback.on_train_result(trainer=trainer, result=result, **kwargs)
+
+    @Deprecated(new="on_algorithm_init(algorithm, **kwargs)", error=False)
+    def on_trainer_init(self, *, trainer, **kwargs):
+        for callback in self._callback_list:
+            callback.on_algorithm_init(algorithm=trainer, **kwargs)
 
 
 # This Callback is used by the RE3 exploration strategy.

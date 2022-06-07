@@ -48,8 +48,8 @@ class SimpleCorridor(gym.Env):
         return [self.cur_pos], reward, done, {}
 
 
-# Create an RLlib Trainer instance.
-trainer = PPO(
+# Create an RLlib Algorithm instance.
+algo = PPO(
     config={
         # Env class to use (here: our gym.Env sub-class from above).
         "env": SimpleCorridor,
@@ -68,7 +68,7 @@ trainer = PPO(
 # each move gives us -0.1 reward (except the last move at the end: +1.0),
 # we can expect to reach an optimal episode reward of -0.1*18 + 1.0 = -0.8
 for i in range(5):
-    results = trainer.train()
+    results = algo.train()
     print(f"Iter: {i}; avg. reward={results['episode_reward_mean']}")
 
 # Perform inference (action computations) based on given env observations.
@@ -84,7 +84,7 @@ total_reward = 0.0
 while not done:
     # Compute a single action, given the current observation
     # from the environment.
-    action = trainer.compute_single_action(obs)
+    action = algo.compute_single_action(obs)
     # Apply the computed action in the environment.
     obs, reward, done, info = env.step(action)
     # Sum up rewards for reporting purposes.

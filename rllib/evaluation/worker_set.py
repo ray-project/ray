@@ -72,10 +72,10 @@ class WorkerSet:
             validate_env: Optional callable to validate the generated
                 environment (only on worker=0).
             policy_class: An optional Policy class. If None, PolicySpecs can be
-                generated automatically by using the Trainer's default class
+                generated automatically by using the Algorithm's default class
                 of via a given multi-agent policy config dict.
             trainer_config: Optional dict that extends the common config of
-                the Trainer class.
+                the Algorithm class.
             num_workers: Number of remote rollout workers to create.
             local_worker: Whether to create a local (non @ray.remote) worker
                 in the returned set as well (default: True). If `num_workers`
@@ -265,7 +265,7 @@ class WorkerSet:
         # Validate here, whether all remote workers have been constructed properly
         # and are "up and running". If not, the following will throw a RayError
         # which needs to be handled by this WorkerSet's owner (usually
-        # a RLlib Trainer instance).
+        # a RLlib Algorithm instance).
         if validate:
             self.foreach_worker_with_index(
                 lambda w, i: w.policy_map and w.input_reader and w.output_writer

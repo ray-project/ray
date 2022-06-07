@@ -2,7 +2,7 @@ import argparse
 import os
 
 import ray
-from ray.rllib.algorithms.trainer import Algorithm
+from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.examples.policy.bare_metal_policy_with_custom_view_reqs import (
     BareMetalPolicyWithCustomViewReqs,
 )
@@ -77,6 +77,6 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    # Train the Trainer with our policy.
+    # Train the Algorithm with our policy.
     results = tune.run(BareMetalPolicyTrainer, config=config, stop=stop)
     print(results)

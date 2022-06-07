@@ -103,7 +103,7 @@ class MyCallbacks(DefaultCallbacks):
 
     def on_train_result(self, *, trainer, result: dict, **kwargs):
         print(
-            "trainer.train() result: {} -> {} episodes".format(
+            "Algorithm.train() result: {} -> {} episodes".format(
                 trainer, result["episodes_this_iter"]
             )
         )

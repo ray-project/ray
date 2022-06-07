@@ -8,7 +8,7 @@ from ray.rllib.utils.typing import TrainerConfigDict
 # fmt: off
 # __sphinx_doc_begin__
 class RandomAgent(Algorithm):
-    """Trainer that produces random actions and never learns."""
+    """Algo that produces random actions and never learns."""
 
     @classmethod
     @override(Algorithm)
@@ -47,8 +47,8 @@ class RandomAgent(Algorithm):
 
 
 if __name__ == "__main__":
-    trainer = RandomAgent(
+    algo = RandomAgent(
         env="CartPole-v0", config={"rollouts_per_iteration": 10})
-    result = trainer.train()
+    result = algo.train()
     assert result["episode_reward_mean"] > 10, result
     print("Test: OK")
