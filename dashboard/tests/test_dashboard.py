@@ -206,11 +206,10 @@ def test_agent_report_unexpected_raylet_death(shutdown_only):
 
     errors = get_error_message(p, 1, ray_constants.RAYLET_DIED_ERROR)
     assert len(errors) == 1, errors
-    assert errors[0].type == ray_constants.RAYLET_DIED_ERROR
-    assert (
-        "Termination is unexpected. Last 20 lines of the Raylet logs"
-        in errors[0].error_message
-    ), errors[0].error_message
+    err = errors[0]
+    assert err.type == ray_constants.RAYLET_DIED_ERROR
+    assert "Termination is unexpected." in err.error_message, err.error_message
+    assert "Raylet logs:" in err.error_message, err.error_message
 
 
 @pytest.mark.parametrize(
