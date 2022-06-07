@@ -3,8 +3,10 @@ from typing import Type, Optional, Dict, Any
 import ray
 from ray.air import Checkpoint
 from ray.air.predictor import Predictor
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 class BatchPredictor:
     """Batch predictor class.
 
