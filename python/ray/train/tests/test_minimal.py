@@ -87,8 +87,8 @@ def test_failure():
     with pytest.raises(ModuleNotFoundError):
         import horovod  # noqa: F401
 
-    with pytest.raises(ModuleNotFoundError):
-        from ray import tune  # noqa: F401
+    # with pytest.raises(ModuleNotFoundError):
+    #     from ray import tune  # noqa: F401
 
 
 if __name__ == "__main__":
