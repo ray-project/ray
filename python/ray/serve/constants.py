@@ -13,6 +13,9 @@ SERVE_CONTROLLER_NAME = "SERVE_CONTROLLER_ACTOR"
 #: Actor name used to register HTTP proxy actor
 SERVE_PROXY_NAME = "SERVE_PROXY_ACTOR"
 
+#: Ray namespace used for all Serve actors
+SERVE_NAMESPACE = "serve"
+
 #: HTTP Address
 DEFAULT_HTTP_ADDRESS = "http://127.0.0.1:8000"
 
