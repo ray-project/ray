@@ -2,7 +2,7 @@ import numpy as np
 import unittest
 
 import ray
-import ray.rllib.agents.pg as pg
+import ray.rllib.algorithms.pg as pg
 from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.utils.test_utils import check, framework_iterator
 
@@ -17,7 +17,7 @@ class TestTimeSteps(unittest.TestCase):
         ray.shutdown()
 
     def test_timesteps(self):
-        """Test whether a PGTrainer can be built with both frameworks."""
+        """Test whether PG can be built with both frameworks."""
         config = pg.DEFAULT_CONFIG.copy()
         config["num_workers"] = 0  # Run locally.
         config["model"]["fcnet_hiddens"] = [1]
@@ -27,7 +27,7 @@ class TestTimeSteps(unittest.TestCase):
         obs_batch = np.array([1])
 
         for _ in framework_iterator(config):
-            trainer = pg.PGTrainer(config=config, env=RandomEnv)
+            trainer = pg.PG(config=config, env=RandomEnv)
             policy = trainer.get_policy()
 
             for i in range(1, 21):

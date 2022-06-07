@@ -117,10 +117,10 @@ def create_searcher(
     This is useful for swapping between different search algorithms.
 
     Args:
-        search_alg (str): The search algorithm to use.
-        metric (str): The training result objective value attribute. Stopping
+        search_alg: The search algorithm to use.
+        metric: The training result objective value attribute. Stopping
             procedures will use this attribute.
-        mode (str): One of {min, max}. Determines whether objective is
+        mode: One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
         **kwargs: Additional parameters.
             These keyword arguments will be passed to the initialization

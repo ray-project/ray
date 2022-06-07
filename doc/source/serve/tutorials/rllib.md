@@ -21,29 +21,32 @@ In particular, we show:
 - How to parse the JSON request and evaluate the payload in RLlib.
 
 ```{margin}
-Check out the {doc}`../core-apis` page to learn more general information about Ray Serve.
+Check out the [Key Concepts](key-concepts) page to learn more general information about Ray Serve.
 ```
 
 We will train and checkpoint a simple PPO model with the `CartPole-v0` environment from `gym`.
 In this tutorial we simply write to local disk, but in production you might want to consider using a cloud
 storage solution like S3 or a shared file system.
 
-Let's get started by defining a `PPOTrainer` instance, training it for one iteration and then creating a checkpoint: 
+Let's get started by defining a `PPO` instance, training it for one iteration and then creating a checkpoint:
 
 ```{code-cell} python3
 :tags: [remove-output]
 
 import ray
-import ray.rllib.agents.ppo as ppo
+import ray.rllib.algorithms.ppo as ppo
 from ray import serve
 
 def train_ppo_model():
-    trainer = ppo.PPOTrainer(
-        config={"framework": "torch", "num_workers": 0},
-        env="CartPole-v0",
-    )
-    # Train for one iteration
+    # Configure our PPO algorithm.
+    config = ppo.PPOConfig()\
+        .framework("torch")\
+        .rollouts(num_rollout_workers=0)
+    # Create a `PPO` Trainer instance from the config.
+    trainer = config.build(env="CartPole-v0")
+    # Train for one iteration.
     trainer.train()
+    # Save state of the trained Trainer in a checkpoint.
     trainer.save("/tmp/rllib_checkpoint")
     return "/tmp/rllib_checkpoint/checkpoint_000001/checkpoint-1"
 
@@ -53,8 +56,8 @@ checkpoint_path = train_ppo_model()
 
 You create deployments with Ray Serve by using the `@serve.deployment` on a class that implements two methods:
 
-- The `__init__` call creates the deployment instance and loads your data once. 
-  In the below example we restore our `PPOTrainer` from the checkpoint we just created.
+- The `__init__` call creates the deployment instance and loads your data once.
+  In the below example we restore our `PPO` Trainer from the checkpoint we just created.
 - The `__call__` method will be invoked every request.
   For each incoming request, this method has access to a `request` object,
   which is a [Starlette Request](https://www.starlette.io/requests/).
@@ -72,13 +75,10 @@ from starlette.requests import Request
 @serve.deployment(route_prefix="/cartpole-ppo")
 class ServePPOModel:
     def __init__(self, checkpoint_path) -> None:
-        self.trainer = ppo.PPOTrainer(
-            config={
-                "framework": "torch",
-                "num_workers": 0,
-            },
-            env="CartPole-v0",
-        )
+        config = ppo.PPOConfig()\
+            .framework("torch")\
+            .rollouts(num_rollout_workers=0)
+        self.trainer = config.build(env="CartPole-v0")
         self.trainer.restore(checkpoint_path)
 
     async def __call__(self, request: Request):
@@ -91,7 +91,7 @@ class ServePPOModel:
 
 :::{tip}
 Although we used a single input and `trainer.compute_single_action(...)` here, you
-can process a batch of input using Ray Serve's {ref}`batching<serve-batching>` feature
+can process a batch of input using Ray Serve's [batching](serve-batching) feature
 and use `trainer.compute_actions(...)` to process a batch of inputs.
 :::
 

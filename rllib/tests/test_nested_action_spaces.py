@@ -6,8 +6,8 @@ import tree  # pip install dm_tree
 import unittest
 
 import ray
-from ray.rllib.agents.marwil import BCTrainer
-from ray.rllib.agents.pg import PGTrainer, DEFAULT_CONFIG
+from ray.rllib.algorithms.bc import BC
+from ray.rllib.algorithms.pg import PG, DEFAULT_CONFIG
 from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.offline.json_reader import JsonReader
 from ray.rllib.utils.test_utils import framework_iterator
@@ -69,7 +69,7 @@ class NestedActionSpacesTest(unittest.TestCase):
         config["output"] = tmp_dir
         # Switch off OPE as we don't write action-probs.
         # TODO: We should probably always write those if `output` is given.
-        config["input_evaluation"] = []
+        config["off_policy_estimation_methods"] = []
 
         # Pretend actions in offline files are already normalized.
         config["actions_in_input_normalized"] = True
@@ -79,11 +79,11 @@ class NestedActionSpacesTest(unittest.TestCase):
                 config["env_config"] = {
                     "action_space": action_space,
                 }
-                for flatten in [False, True]:
+                for flatten in [True, False]:
                     print(f"A={action_space} flatten={flatten}")
                     shutil.rmtree(config["output"])
                     config["_disable_action_flattening"] = not flatten
-                    trainer = PGTrainer(config)
+                    trainer = PG(config)
                     trainer.train()
                     trainer.stop()
 
@@ -108,8 +108,15 @@ class NestedActionSpacesTest(unittest.TestCase):
                     # BCTrainer, configured accordingly.
                     config["input"] = config["output"]
                     del config["output"]
-                    bc_trainer = BCTrainer(config=config)
+                    bc_trainer = BC(config=config)
                     bc_trainer.train()
                     bc_trainer.stop()
                     config["output"] = tmp_dir
                     config["input"] = "sampler"
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))

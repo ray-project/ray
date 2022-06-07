@@ -16,7 +16,11 @@ from ray._private.usage.usage_lib import ClusterConfigToReport
 from ray._private.usage.usage_lib import UsageStatsEnabledness
 from ray.autoscaler._private.cli_logger import cli_logger
 
-from ray._private.test_utils import wait_for_condition
+from ray._private.test_utils import (
+    format_web_url,
+    wait_for_condition,
+    wait_until_server_available,
+)
 
 schema = {
     "$schema": "http://json-schema.org/draft-07/schema#",
@@ -283,6 +287,30 @@ def test_usage_lib_cluster_metadata_generation(monkeypatch, ray_start_cluster):
         assert cluster_metadata == ray_usage_lib.get_cluster_metadata(
             ray.experimental.internal_kv.internal_kv_get_gcs_client(), num_retries=20
         )
+
+
+def test_usage_stats_enabled_endpoint(monkeypatch, ray_start_cluster):
+    if os.environ.get("RAY_MINIMAL") == "1":
+        # Doesn't work with minimal installation
+        # since we need http server.
+        return
+
+    import requests
+
+    with monkeypatch.context() as m:
+        m.setenv("RAY_USAGE_STATS_ENABLED", "0")
+        m.setenv("RAY_USAGE_STATS_PROMPT_ENABLED", "0")
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=0)
+        context = ray.init(address=cluster.address)
+        webui_url = context["webui_url"]
+        assert wait_until_server_available(webui_url)
+        webui_url = format_web_url(webui_url)
+        response = requests.get(f"{webui_url}/usage_stats_enabled")
+        assert response.status_code == 200
+        assert response.json()["result"] is True
+        assert response.json()["data"]["usageStatsEnabled"] is False
+        assert response.json()["data"]["usageStatsPromptEnabled"] is False
 
 
 def test_library_usages():
@@ -567,7 +595,7 @@ provider:
         ray_usage_lib._recorded_library_usages.clear()
         if os.environ.get("RAY_MINIMAL") != "1":
             from ray import tune  # noqa: F401
-            from ray.rllib.agents.ppo import PPOTrainer  # noqa: F401
+            from ray.rllib.algorithms.ppo import PPO  # noqa: F401
             from ray import train  # noqa: F401
 
         ray.init(address=cluster.address)

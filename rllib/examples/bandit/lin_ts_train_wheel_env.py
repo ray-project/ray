@@ -6,7 +6,7 @@ import argparse
 import numpy as np
 from matplotlib import pyplot as plt
 
-from ray.rllib.agents.bandit.bandit import BanditLinTSTrainer
+from ray.rllib.algorithms.bandit.bandit import BanditLinTS
 from ray.rllib.examples.env.bandit_envs_discrete import WheelBanditEnv
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 
@@ -47,7 +47,7 @@ if __name__ == "__main__":
         "framework": args.framework,
         "eager_tracing": (args.framework == "tf2"),
     }
-    trainer = BanditLinTSTrainer(env=WheelBanditEnv, config=config)
+    trainer = BanditLinTS(env=WheelBanditEnv, config=config)
 
     policy = trainer.get_policy()
     model = policy.model

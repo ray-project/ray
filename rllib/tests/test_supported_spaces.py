@@ -78,7 +78,9 @@ def check_support(alg, config, train=True, check_bounds=False, tfe=False):
         try:
             a = get_trainer_class(alg)(config=config, env=RandomEnv)
         except ray.exceptions.RayActorError as e:
-            if isinstance(e.args[2], UnsupportedSpaceException):
+            if len(e.args) >= 2 and isinstance(e.args[2], UnsupportedSpaceException):
+                stat = "unsupported"
+            elif isinstance(e.args[0].args[2], UnsupportedSpaceException):
                 stat = "unsupported"
             else:
                 raise
@@ -180,18 +182,27 @@ class TestSupportedSpacesOffPolicy(unittest.TestCase):
             {
                 "exploration_config": {"ou_base_scale": 100.0},
                 "min_sample_timesteps_per_reporting": 1,
-                "buffer_size": 1000,
+                "replay_buffer_config": {
+                    "capacity": 1000,
+                },
                 "use_state_preprocessor": True,
             },
             check_bounds=True,
         )
 
     def test_dqn(self):
-        config = {"min_sample_timesteps_per_reporting": 1, "buffer_size": 1000}
+        config = {
+            "min_sample_timesteps_per_reporting": 1,
+            "replay_buffer_config": {
+                "capacity": 1000,
+            },
+        }
         check_support("DQN", config, tfe=True)
 
     def test_sac(self):
-        check_support("SAC", {"buffer_size": 1000}, check_bounds=True)
+        check_support(
+            "SAC", {"replay_buffer_config": {"capacity": 1000}}, check_bounds=True
+        )
 
 
 class TestSupportedSpacesEvolutionAlgos(unittest.TestCase):

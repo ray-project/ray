@@ -14,7 +14,7 @@ import uuid
 
 import ray
 import ray.cloudpickle as pickle
-from ray.ml.checkpoint import Checkpoint
+from ray.air.checkpoint import Checkpoint
 from ray.tune.cloud import TrialCheckpoint
 from ray.tune.logger import Logger
 from ray.tune.resources import Resources
@@ -520,11 +520,11 @@ class Trainable:
         `REMOTE_CHECKPOINT_BUCKET/exp/MyTrainable_abc`
 
         Args:
-            checkpoint_path (str): Path to restore checkpoint from. If this
+            checkpoint_path: Path to restore checkpoint from. If this
                 path does not exist on the local node, it will be fetched
                 from external (cloud) storage if available, or restored
                 from a remote node.
-            checkpoint_node_ip (Optional[str]): If given, try to restore
+            checkpoint_node_ip: If given, try to restore
                 checkpoint from this node if it doesn't exist locally or
                 on cloud storage.
 
@@ -1045,23 +1045,3 @@ class Trainable:
 
     def _implements_method(self, key):
         return hasattr(self, key) and callable(getattr(self, key))
-
-
-@PublicAPI
-class DistributedTrainable(Trainable):
-    """Common Trainable class for distributed training."""
-
-    def build_config(self, config: Dict):
-        """Builds config for distributed training.
-
-        Builds a deep copy of the input config and populates it with
-        metadata from this Trainable.
-
-        Useful for passing this Trainable's configs to each distributed
-        Trainable instance.
-        """
-        new_config = copy.deepcopy(config)
-        new_config[TRIAL_INFO] = self._trial_info
-        new_config[STDOUT_FILE] = self._stdout_file
-        new_config[STDERR_FILE] = self._stderr_file
-        return new_config

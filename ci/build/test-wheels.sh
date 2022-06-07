@@ -6,7 +6,7 @@ set -e
 # Show explicitly which commands are currently running.
 set -x
 
-ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
+ROOT_DIR=$(cd "$(dirname "$0")/$(dirname "$(test -L "$0" && readlink "$0" || echo "/")")"; pwd)
 
 platform=""
 case "${OSTYPE}" in
@@ -76,7 +76,7 @@ if [[ "$platform" == "linux" ]]; then
     "$PYTHON_EXE" -u -c "import ray; print(ray.__commit__)" | grep "$TRAVIS_COMMIT" || (echo "ray.__commit__ not set properly!" && exit 1)
 
     # Install the dependencies to run the tests.
-    "$PIP_CMD" install -q aiohttp aiosignal frozenlist grpcio pytest==5.4.3 requests
+    "$PIP_CMD" install -q aiohttp aiosignal frozenlist grpcio pytest==5.4.3 requests proxy.py
 
     # Run a simple test script to make sure that the wheel works.
     for SCRIPT in "${TEST_SCRIPTS[@]}"; do
@@ -117,11 +117,11 @@ elif [[ "$platform" == "macosx" ]]; then
     "$PIP_CMD" install -q "$PYTHON_WHEEL"
 
     # Install the dependencies to run the tests.
-    "$PIP_CMD" install -q aiohttp aiosignal frozenlist grpcio pytest==5.4.3 requests
+    "$PIP_CMD" install -q aiohttp aiosignal frozenlist grpcio pytest==5.4.3 requests proxy.py
 
     # Run a simple test script to make sure that the wheel works.
     for SCRIPT in "${TEST_SCRIPTS[@]}"; do
-      retry "$PYTHON_EXE" "$SCRIPT"
+      PATH="$(dirname "$PYTHON_EXE"):$PATH" retry "$PYTHON_EXE" "$SCRIPT"
     done
   done
 elif [ "${platform}" = windows ]; then

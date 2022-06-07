@@ -5,7 +5,7 @@
 Environments
 ============
 
-RLlib works with several different types of environments, including `OpenAI Gym <https://gym.openai.com/>`__, user-defined, multi-agent, and also batched environments.
+RLlib works with several different types of environments, including `OpenAI Gym <https://www.gymlibrary.ml/>`__, user-defined, multi-agent, and also batched environments.
 
 .. tip::
 
@@ -16,7 +16,7 @@ RLlib works with several different types of environments, including `OpenAI Gym 
 Configuring Environments
 ------------------------
 
-You can pass either a string name or a Python class to specify an environment. By default, strings will be interpreted as a gym `environment name <https://gym.openai.com/envs>`__. Custom env classes passed directly to the trainer must take a single ``env_config`` parameter in their constructor:
+You can pass either a string name or a Python class to specify an environment. By default, strings will be interpreted as a gym `environment name <https://www.gymlibrary.ml/>`__. Custom env classes passed directly to the trainer must take a single ``env_config`` parameter in their constructor:
 
 .. code-block:: python
 
@@ -33,7 +33,7 @@ You can pass either a string name or a Python class to specify an environment. B
             return <obs>, <reward: float>, <done: bool>, <info: dict>
 
     ray.init()
-    trainer = ppo.PPOTrainer(env=MyEnv, config={
+    trainer = ppo.PPO(env=MyEnv, config={
         "env_config": {},  # config to pass to env class
     })
 
@@ -50,7 +50,7 @@ You can also register a custom env creator function with a string name. This fun
         return MyEnv(...)  # return an env instance
 
     register_env("my_env", env_creator)
-    trainer = ppo.PPOTrainer(env="my_env")
+    trainer = ppo.PPO(env="my_env")
 
 For a full runnable code example using the custom environment API, see `custom_env.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__.
 
@@ -521,7 +521,7 @@ You can configure any Trainer to launch a policy server with the following confi
         # Use the existing trainer process to run the server.
         "num_workers": 0,
         # Disable OPE, since the rollouts are coming from online clients.
-        "input_evaluation": [],
+        "off_policy_estimation_methods": [],
     }
 
 Clients can then connect in either *local* or *remote* inference mode. In local inference mode, copies of the policy are downloaded from the server and cached on the client for a configurable period of time. This allows actions to be computed by the client without requiring a network round trip each time. In remote inference mode, each computed action requires a network call to the server.

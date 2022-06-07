@@ -6,6 +6,7 @@ import warnings
 from typing import Dict, Optional, List, Union, Any, TYPE_CHECKING
 
 from ray.tune.suggest.util import set_search_properties_backwards_compatible
+from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
@@ -37,6 +38,7 @@ UNDEFINED_METRIC_MODE = str(
 )
 
 
+@DeveloperAPI
 class Searcher:
     """Abstract class for wrapping suggesting algorithms.
 
@@ -423,6 +425,7 @@ class Searcher:
         return self._mode
 
 
+@PublicAPI
 class ConcurrencyLimiter(Searcher):
     """A wrapper algorithm for limiting the number of concurrent trials.
 

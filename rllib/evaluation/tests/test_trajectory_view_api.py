@@ -6,8 +6,8 @@ import unittest
 
 import ray
 from ray.rllib.agents.callbacks import DefaultCallbacks
-import ray.rllib.agents.dqn as dqn
-import ray.rllib.agents.ppo as ppo
+import ray.rllib.algorithms.dqn as dqn
+import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.examples.env.debug_counter_env import MultiAgentDebugCounterEnv
 from ray.rllib.examples.env.multi_agent import MultiAgentPendulum
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -58,7 +58,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         config["rollout_fragment_length"] = 4
 
         for _ in framework_iterator(config):
-            trainer = dqn.DQNTrainer(
+            trainer = dqn.DQN(
                 config, env="ray.rllib.examples.env.debug_counter_env.DebugCounterEnv"
             )
             policy = trainer.get_policy()
@@ -104,7 +104,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         config["model"]["lstm_use_prev_reward"] = True
 
         for _ in framework_iterator(config):
-            trainer = ppo.PPOTrainer(config, env="CartPole-v0")
+            trainer = ppo.PPO(config, env="CartPole-v0")
             policy = trainer.get_policy()
             view_req_model = policy.model.view_requirements
             view_req_policy = policy.view_requirements
@@ -168,7 +168,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         config["env_config"] = {"config": {"start_at_t": 1}}  # first obs is [1.0]
 
         for _ in framework_iterator(config, frameworks="tf2"):
-            trainer = ppo.PPOTrainer(
+            trainer = ppo.PPO(
                 config,
                 env="ray.rllib.examples.env.debug_counter_env.DebugCounterEnv",
             )
@@ -322,7 +322,6 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         print(batch)
 
     def test_counting_by_agent_steps(self):
-        """Test whether a PPOTrainer can be built with all frameworks."""
         config = copy.deepcopy(ppo.DEFAULT_CONFIG)
 
         num_agents = 3
@@ -342,7 +341,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         config["env_config"] = {"num_agents": num_agents}
 
         num_iterations = 2
-        trainer = ppo.PPOTrainer(config=config)
+        trainer = ppo.PPO(config=config)
         results = None
         for i in range(num_iterations):
             results = trainer.train()

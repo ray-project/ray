@@ -116,7 +116,7 @@ def build_tf_policy(
     be created in make_model (if defined).
 
     Args:
-        name (str): Name of the policy (e.g., "PPOTFPolicy").
+        name: Name of the policy (e.g., "PPOTFPolicy").
         loss_fn (Callable[[
             Policy, ModelV2, Type[TFActionDistribution], SampleBatch],
             Union[TensorType, List[TensorType]]]): Callable for calculating a
@@ -370,7 +370,7 @@ def build_tf_policy(
         return build_tf_policy(**dict(original_kwargs, **overrides))
 
     def as_eager():
-        return eager_tf_policy.build_eager_tf_policy(**original_kwargs)
+        return eager_tf_policy._build_eager_tf_policy(**original_kwargs)
 
     policy_cls.with_updates = staticmethod(with_updates)
     policy_cls.as_eager = staticmethod(as_eager)

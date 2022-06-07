@@ -286,8 +286,9 @@ class ActorReplicaWrapper:
         init_args = (
             self.deployment_name,
             self.replica_tag,
-            deployment_info.replica_config.init_args,
-            deployment_info.replica_config.init_kwargs,
+            deployment_info.replica_config.serialized_deployment_def,
+            deployment_info.replica_config.serialized_init_args,
+            deployment_info.replica_config.serialized_init_kwargs,
             deployment_info.deployment_config.to_proto_bytes(),
             version,
             self._controller_name,
@@ -309,7 +310,7 @@ class ActorReplicaWrapper:
                 # String replicaTag,
                 self.replica_tag,
                 # String deploymentDef
-                deployment_info.replica_config.func_or_class_name,
+                deployment_info.replica_config.deployment_def_name,
                 # byte[] initArgsbytes
                 msgpack_serialize(deployment_info.replica_config.init_args),
                 # byte[] deploymentConfigBytes,
@@ -699,7 +700,7 @@ class DeploymentReplica(VersionedReplica):
         Should handle the case where the replica has already stopped.
 
         Returns:
-            status (ReplicaStartupStatus): Most recent state of replica by
+            status: Most recent state of replica by
                 querying actor obj ref
         """
         status, version = self._actor.check_ready()
@@ -780,8 +781,8 @@ class ReplicaStateContainer:
         """Add the provided replica under the provided state.
 
         Args:
-            state (ReplicaState): state to add the replica under.
-            replica (VersionedReplica): replica to add.
+            state: state to add the replica under.
+            replica: replica to add.
         """
         assert isinstance(state, ReplicaState)
         assert isinstance(replica, VersionedReplica)
@@ -796,7 +797,7 @@ class ReplicaStateContainer:
         in order of state as passed in.
 
         Args:
-            states (str): states to consider. If not specified, all replicas
+            states: states to consider. If not specified, all replicas
                 are considered.
         """
         if states is None:
@@ -821,13 +822,13 @@ class ReplicaStateContainer:
         in order of state as passed in.
 
         Args:
-            exclude_version (DeploymentVersion): if specified, replicas of the
+            exclude_version: if specified, replicas of the
                 provided version will *not* be removed.
-            states (str): states to consider. If not specified, all replicas
+            states: states to consider. If not specified, all replicas
                 are considered.
-            max_replicas (int): max number of replicas to return. If not
+            max_replicas: max number of replicas to return. If not
                 specified, will pop all replicas matching the criteria.
-            ranking_function (callable): optional function to sort the replicas
+            ranking_function: optional function to sort the replicas
                 within each state before they are truncated to max_replicas and
                 returned.
         """
@@ -871,7 +872,7 @@ class ReplicaStateContainer:
                 specified, all versions are considered.
             version(DeploymentVersion): version to filter to. If not specified,
                 all versions are considered.
-            states (str): states to consider. If not specified, all replicas
+            states: states to consider. If not specified, all replicas
                 are considered.
         """
         if states is None:
@@ -941,15 +942,21 @@ class DeploymentState:
         self._replica_constructor_retry_counter: int = 0
         self._replicas: ReplicaStateContainer = ReplicaStateContainer()
         self._curr_status_info: DeploymentStatusInfo = DeploymentStatusInfo(
-            DeploymentStatus.UPDATING
+            self._name, DeploymentStatus.UPDATING
         )
+        self._deleting = False
 
     def get_target_state_checkpoint_data(self):
         """
         Return deployment's target state submitted by user's deployment call.
         Should be persisted and outlive current ray cluster.
         """
-        return (self._target_info, self._target_replicas, self._target_version)
+        return (
+            self._target_info,
+            self._target_replicas,
+            self._target_version,
+            self._deleting,
+        )
 
     def get_checkpoint_data(self):
         return self.get_target_state_checkpoint_data()
@@ -962,6 +969,7 @@ class DeploymentState:
             self._target_info,
             self._target_replicas,
             self._target_version,
+            self._deleting,
         ) = target_state_checkpoint
 
     def recover_current_state_from_replica_actor_names(
@@ -1044,8 +1052,11 @@ class DeploymentState:
 
         else:
             self._target_replicas = 0
+            self._deleting = True
 
-        self._curr_status_info = DeploymentStatusInfo(DeploymentStatus.UPDATING)
+        self._curr_status_info = DeploymentStatusInfo(
+            self._name, DeploymentStatus.UPDATING
+        )
 
         version_str = (
             deployment_info if deployment_info is None else deployment_info.version
@@ -1306,6 +1317,7 @@ class DeploymentState:
                 self._replica_constructor_retry_counter = -1
             else:
                 self._curr_status_info = DeploymentStatusInfo(
+                    name=self._name,
                     status=DeploymentStatus.UNHEALTHY,
                     message=(
                         "The Deployment constructor failed "
@@ -1328,12 +1340,14 @@ class DeploymentState:
             == 0
         ):
             # Check for deleting.
-            if target_replica_count == 0 and all_running_replica_cnt == 0:
+            if self._deleting and all_running_replica_cnt == 0:
                 return True
 
             # Check for a non-zero number of deployments.
-            elif target_replica_count == running_at_target_version_replica_cnt:
-                self._curr_status_info = DeploymentStatusInfo(DeploymentStatus.HEALTHY)
+            if target_replica_count == running_at_target_version_replica_cnt:
+                self._curr_status_info = DeploymentStatusInfo(
+                    self._name, DeploymentStatus.HEALTHY
+                )
                 return False
 
         return False
@@ -1412,7 +1426,7 @@ class DeploymentState:
                 # recovered or a new deploy happens.
                 if replica.version == self._target_version:
                     self._curr_status_info: DeploymentStatusInfo = DeploymentStatusInfo(
-                        DeploymentStatus.UNHEALTHY
+                        self._name, DeploymentStatus.UNHEALTHY
                     )
 
         slow_start_replicas = []
@@ -1505,6 +1519,7 @@ class DeploymentState:
             deleted = self._check_curr_status()
         except Exception:
             self._curr_status_info = DeploymentStatusInfo(
+                name=self._name,
                 status=DeploymentStatus.UNHEALTHY,
                 message="Failed to update deployment:" f"\n{traceback.format_exc()}",
             )
@@ -1690,11 +1705,10 @@ class DeploymentStateManager:
         else:
             return None
 
-    def get_deployment_statuses(self) -> Dict[str, DeploymentStatusInfo]:
-        return {
-            name: state.curr_status_info
-            for name, state in self._deployment_states.items()
-        }
+    def get_deployment_statuses(self) -> List[DeploymentStatusInfo]:
+        return list(
+            map(lambda state: state.curr_status_info, self._deployment_states.values())
+        )
 
     def deploy(self, deployment_name: str, deployment_info: DeploymentInfo) -> bool:
         """Deploy the deployment.
