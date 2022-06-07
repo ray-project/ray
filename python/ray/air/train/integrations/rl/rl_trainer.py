@@ -11,7 +11,7 @@ from ray.air._internal.checkpointing import (
     load_preprocessor_from_dir,
     save_preprocessor_to_dir,
 )
-from ray.rllib.algorithms.algorithm import Algorithm as RLlibTrainer
+from ray.rllib.algorithms.algorithm import Algorithm as RLlibAlgo
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.typing import PartialAlgorithmConfigDict, EnvType
 from ray.tune import Trainable, PlacementGroupFactory
@@ -113,7 +113,7 @@ class RLTrainer(Trainer):
 
     def __init__(
         self,
-        algorithm: Union[str, Type[RLlibTrainer]],
+        algorithm: Union[str, Type[RLlibAlgo]],
         config: Optional[Dict[str, Any]] = None,
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
@@ -137,7 +137,7 @@ class RLTrainer(Trainer):
 
         if not isinstance(self._algorithm, str) and not (
             inspect.isclass(self._algorithm)
-            and issubclass(self._algorithm, RLlibTrainer)
+            and issubclass(self._algorithm, RLlibAlgo)
         ):
             raise ValueError(
                 f"`algorithm` should be either a string or a RLlib trainer class, "
