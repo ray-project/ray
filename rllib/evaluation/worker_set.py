@@ -245,12 +245,9 @@ class WorkerSet:
         #     tensor_key_list.append(key)
         #     tensor_list.append(tensor)
         # Broadcast to collective group buffers from worker 0
-        print(f"\n\n >>>> Syncing weights with collective group ... \n\n")
-
+        print(f"\n >>>> Syncing weights with collective group ... \n")
         local_worker_rank = collective.get_rank(group_name="device_mesh")
-        print(f">>>> local_worker_rank from worker_set: {local_worker_rank}")
-
-        # self.local_worker().broadcast(group_name="device_mesh", src_rank=0)
+        # print(f">>>> local_worker_rank from worker_set: {local_worker_rank}")
         self_actor = ray.get_runtime_context().current_actor
         all_workers = [self_actor, *self.remote_workers()]
         start = time.time()

@@ -1599,7 +1599,7 @@ class RolloutWorker(ParallelIteratorWorker):
         # TODO (jiaodong): See if groupStart/End improves perf
         # nccl_util.groupStart()
         for key in self.weights_buffer.keys():
-            print(f">>>> Broadcasting {key}, shape: {self.weights_buffer[key].shape}")
+            # print(f">>>> Broadcasting {key}, shape: {self.weights_buffer[key].shape}")
             collective.broadcast(self.weights_buffer[key], src_rank, group_name)
         # nccl_util.groupEnd()
         return True

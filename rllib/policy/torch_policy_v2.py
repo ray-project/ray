@@ -875,7 +875,8 @@ class TorchPolicyV2(Policy):
     @DeveloperAPI
     def get_weights(self) -> ModelWeights:
         # return {k: v.cpu().detach().numpy() for k, v in self.model.state_dict().items()}
-        return {k: cp.asarray(v) for k, v in self.model.state_dict().items()}
+        # return {k: cp.asarray(v) for k, v in self.model.state_dict().items()}
+        return {k: v for k, v in self.model.state_dict().items()}
 
     @override(Policy)
     @DeveloperAPI
