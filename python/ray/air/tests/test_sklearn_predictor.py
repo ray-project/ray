@@ -13,7 +13,7 @@ from ray.air.preprocessor import Preprocessor
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import MODEL_KEY
 from ray.air.batch_predictor import BatchPredictor
-from ray.air.utils.checkpointing import save_preprocessor_to_dir
+from ray.air._internal.checkpointing import save_preprocessor_to_dir
 
 
 @pytest.fixture

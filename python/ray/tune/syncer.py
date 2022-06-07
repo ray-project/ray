@@ -20,7 +20,7 @@ from shlex import quote
 
 import ray
 import yaml
-from ray.air.utils.remote_storage import get_fs_and_path, fs_hint
+from ray.air._internal.remote_storage import get_fs_and_path, fs_hint
 from ray.tune import TuneError
 from ray.tune.callback import Callback
 from ray.tune.checkpoint_manager import _TuneCheckpoint

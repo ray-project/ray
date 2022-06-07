@@ -7,7 +7,7 @@ import numpy as np
 import ray
 from ray.data.block import BlockMetadata
 from ray.data.context import DatasetContext
-from ray.data.impl.block_list import BlockList
+from ray.data._internal.block_list import BlockList
 
 
 def fmt(seconds: float) -> str:
