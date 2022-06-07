@@ -16,8 +16,8 @@ from shlex import quote
 import ray
 from ray.tune.error import TuneError
 from ray.tune.utils.file_transfer import sync_dir_between_nodes, delete_on_node
-from ray.util.annotations import PublicAPI
-from ray.ml.utils.remote_storage import (
+from ray.util.annotations import PublicAPI, DeveloperAPI
+from ray.air._internal.remote_storage import (
     S3_PREFIX,
     GS_PREFIX,
     HDFS_PREFIX,
@@ -186,6 +186,7 @@ def _is_legacy_sync_fn(func) -> bool:
         return True
 
 
+@DeveloperAPI
 class FunctionBasedClient(SyncClient):
     def __init__(self, sync_up_func, sync_down_func, delete_func=None):
         self.sync_up_func = sync_up_func
@@ -226,6 +227,7 @@ class FunctionBasedClient(SyncClient):
 NOOP = FunctionBasedClient(noop, noop)
 
 
+@DeveloperAPI
 class CommandBasedClient(SyncClient):
     """Syncs between two directories with the given command.
 
@@ -429,6 +431,7 @@ class CommandBasedClient(SyncClient):
                 )
 
 
+@DeveloperAPI
 class RemoteTaskClient(SyncClient):
     """Sync client that uses remote tasks to synchronize two directories.
 

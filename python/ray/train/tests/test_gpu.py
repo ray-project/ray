@@ -154,7 +154,7 @@ def test_enable_reproducibility(ray_start_4_cpus_2_gpus, use_gpu):
     assert result1 == result2
 
 
-def test_torch_amp(ray_start_4_cpus_2_gpus):
+def test_torch_amp_performance(ray_start_4_cpus_2_gpus):
     def train_func(config):
         train.torch.accelerate(amp=config["amp"])
 

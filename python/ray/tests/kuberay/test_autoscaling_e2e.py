@@ -17,6 +17,7 @@ from ray.tests.kuberay.utils import (
     ray_client_port_forward,
     ray_job_submit,
     kubectl_exec_python_script,
+    kubectl_logs,
     kubectl_patch,
     kubectl_delete,
     wait_for_pods,
@@ -207,6 +208,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         4. Scaling down by removing the resource request and reducing maxReplicas
         5. Autoscaler recognizes GPU annotations and Ray custom resources.
         6. Autoscaler and operator ignore pods marked for deletion.
+        7. Autoscaler logs work. Autoscaler events are piped to the driver.
 
         Items 1. and 2. protect the example in the documentation.
         Items 3. and 4. protect the autoscaler's ability to respond to Ray CR update.
@@ -263,12 +265,15 @@ class KubeRayAutoscalingTest(unittest.TestCase):
             container="ray-head",
             namespace="default",
         )
+        # Check that stdout autoscaler logging is working.
+        logs = kubectl_logs(head_pod, namespace="default", container="autoscaler")
+        assert "Adding 1 nodes of type small-group." in logs
         logger.info("Confirming number of workers.")
         wait_for_pods(goal_num_pods=2, namespace=RAY_CLUSTER_NAMESPACE)
 
         # Pods marked for deletion are ignored.
         logger.info(
-            "Confirming that operator and autoscaler ignore pods marked for"
+            "Confirming that the operator and autoscaler ignore pods marked for "
             "termination."
         )
         worker_pod = get_pod(

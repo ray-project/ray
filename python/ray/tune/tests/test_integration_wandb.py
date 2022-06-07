@@ -11,14 +11,13 @@ from ray.tune.function_runner import wrap_function
 from ray.tune.integration.wandb import (
     WandbLoggerCallback,
     _WandbLoggingProcess,
-    WandbLogger,
     WANDB_ENV_VAR,
     WandbTrainableMixin,
     wandb_mixin,
     _QueueItem,
 )
 from ray.tune.result import TRIAL_INFO
-from ray.tune.trial import TrialInfo
+from ray.tune.trial import _TrialInfo
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 
 
@@ -67,14 +66,6 @@ class WandbTestExperimentLogger(WandbLoggerCallback):
     @property
     def trial_processes(self):
         return self._trial_processes
-
-
-class WandbTestLogger(WandbLogger):
-    _experiment_logger_cls = WandbTestExperimentLogger
-
-    @property
-    def trial_process(self):
-        return self._trial_experiment_logger.trial_processes[self.trial]
 
 
 class _MockWandbAPI(object):
@@ -228,7 +219,7 @@ class WandbIntegrationTest(unittest.TestCase):
             PlacementGroupFactory([{"CPU": 1}]),
             "/tmp",
         )
-        trial_info = TrialInfo(trial)
+        trial_info = _TrialInfo(trial)
 
         config[TRIAL_INFO] = trial_info
 
@@ -290,7 +281,7 @@ class WandbIntegrationTest(unittest.TestCase):
             PlacementGroupFactory([{"CPU": 1}]),
             "/tmp",
         )
-        trial_info = TrialInfo(trial)
+        trial_info = _TrialInfo(trial)
 
         @wandb_mixin
         def train_fn(config):
@@ -351,12 +342,12 @@ class WandbIntegrationTest(unittest.TestCase):
         """Test compatibility with RLlib configuration dicts"""
         # Local import to avoid tune dependency on rllib
         try:
-            from ray.rllib.agents.ppo import PPOTrainer
+            from ray.rllib.algorithms.ppo import PPO
         except ImportError:
             self.skipTest("ray[rllib] not available")
             return
 
-        class WandbPPOTrainer(_MockWandbTrainableMixin, PPOTrainer):
+        class WandbPPOTrainer(_MockWandbTrainableMixin, PPO):
             pass
 
         config = {

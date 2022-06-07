@@ -1,6 +1,7 @@
 import gym
 from typing import Dict, List, Optional, Union
 
+from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.serialization import (
     gym_space_to_dict,
@@ -10,6 +11,7 @@ from ray.rllib.utils.serialization import (
 torch, _ = try_import_torch()
 
 
+@PublicAPI
 class ViewRequirement:
     """Single view requirement (for one column in an SampleBatch/input_dict).
 
@@ -62,10 +64,10 @@ class ViewRequirement:
                 used e.g. for the location of a requested inference dict within
                 the trajectory. Negative values refer to counting from the end
                 of a trajectory.
-            used_for_compute_actions (bool): Whether the data will be used for
+            used_for_compute_actions: Whether the data will be used for
                 creating input_dicts for `Policy.compute_actions()` calls (or
                 `Policy.compute_actions_from_input_dict()`).
-            used_for_training (bool): Whether the data will be used for
+            used_for_training: Whether the data will be used for
                 training. If False, the column will not be copied into the
                 final train batch.
         """

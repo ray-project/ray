@@ -1,14 +1,16 @@
-import higher
 import logging
 from typing import Dict, List, Type, Union
 
 import ray
-from ray.rllib.agents.ppo.ppo_tf_policy import validate_config
-from ray.rllib.evaluation.postprocessing import Postprocessing
+from ray.rllib.algorithms.ppo.ppo_tf_policy import validate_config
+from ray.rllib.evaluation.postprocessing import (
+    Postprocessing,
+    compute_gae_for_sample_batch,
+)
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_mixins import ComputeGAEMixIn, ValueNetworkMixin
+from ray.rllib.policy.torch_mixins import ValueNetworkMixin
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.numpy import convert_to_numpy
@@ -17,8 +19,18 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import TensorType
 
 torch, nn = try_import_torch()
-
 logger = logging.getLogger(__name__)
+
+try:
+    import higher
+except (ImportError, ModuleNotFoundError):
+    raise ImportError(
+        (
+            "The MAML and MB-MPO algorithms require the `higher` module to be "
+            "installed! However, there was no installation found. You can install it "
+            "via `pip install higher`."
+        )
+    )
 
 
 def PPOLoss(
@@ -284,12 +296,12 @@ class KLCoeffMixin:
         return self.kl_coeff_val
 
 
-class MAMLTorchPolicy(ComputeGAEMixIn, ValueNetworkMixin, KLCoeffMixin, TorchPolicyV2):
-    """PyTorch policy class used with MAMLTrainer."""
+class MAMLTorchPolicy(ValueNetworkMixin, KLCoeffMixin, TorchPolicyV2):
+    """PyTorch policy class used with MAML."""
 
     def __init__(self, observation_space, action_space, config):
         config = dict(ray.rllib.algorithms.maml.maml.DEFAULT_CONFIG, **config)
-        validate_config(self, observation_space, action_space, config)
+        validate_config(config)
 
         TorchPolicyV2.__init__(
             self,
@@ -299,7 +311,6 @@ class MAMLTorchPolicy(ComputeGAEMixIn, ValueNetworkMixin, KLCoeffMixin, TorchPol
             max_seq_len=config["model"]["max_seq_len"],
         )
 
-        ComputeGAEMixIn.__init__(self)
         KLCoeffMixin.__init__(self, config)
         ValueNetworkMixin.__init__(self, config)
 
@@ -418,7 +429,21 @@ class MAMLTorchPolicy(ComputeGAEMixIn, ValueNetworkMixin, KLCoeffMixin, TorchPol
                 }
             )
 
+    @override(TorchPolicyV2)
     def extra_grad_process(
         self, optimizer: "torch.optim.Optimizer", loss: TensorType
     ) -> Dict[str, TensorType]:
         return apply_grad_clipping(self, optimizer, loss)
+
+    @override(TorchPolicyV2)
+    def postprocess_trajectory(
+        self, sample_batch, other_agent_batches=None, episode=None
+    ):
+        # Do all post-processing always with no_grad().
+        # Not using this here will introduce a memory leak
+        # in torch (issue #6962).
+        # TODO: no_grad still necessary?
+        with torch.no_grad():
+            return compute_gae_for_sample_batch(
+                self, sample_batch, other_agent_batches, episode
+            )

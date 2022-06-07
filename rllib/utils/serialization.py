@@ -5,8 +5,14 @@ import numpy as np
 from typing import Dict
 import zlib
 
+from ray.rllib.utils.annotations import DeveloperAPI
 
-def serialize_ndarray(array: np.ndarray) -> str:
+
+# TODO(jungong) : We need to handle RLlib custom space types,
+# FlexDict, Repeated, and Simplex.
+
+
+def _serialize_ndarray(array: np.ndarray) -> str:
     """Pack numpy ndarray into Base64 encoded strings for serialization.
 
     This function uses numpy.save() instead of pickling to ensure
@@ -23,7 +29,7 @@ def serialize_ndarray(array: np.ndarray) -> str:
     return base64.b64encode(zlib.compress(buf.getvalue())).decode("ascii")
 
 
-def deserialize_ndarray(b64_string: str) -> np.ndarray:
+def _deserialize_ndarray(b64_string: str) -> np.ndarray:
     """Unpack b64 escaped string into numpy ndarray.
 
     This function assumes the unescaped bytes are of npy format.
@@ -37,6 +43,7 @@ def deserialize_ndarray(b64_string: str) -> np.ndarray:
     return np.load(io.BytesIO(zlib.decompress(base64.b64decode(b64_string))))
 
 
+@DeveloperAPI
 def gym_space_to_dict(space: gym.spaces.Space) -> Dict:
     """Serialize a gym Space into JSON-serializable dict.
 
@@ -50,8 +57,8 @@ def gym_space_to_dict(space: gym.spaces.Space) -> Dict:
     def _box(sp: gym.spaces.Box) -> Dict:
         return {
             "space": "box",
-            "low": serialize_ndarray(sp.low),
-            "high": serialize_ndarray(sp.high),
+            "low": _serialize_ndarray(sp.low),
+            "high": _serialize_ndarray(sp.high),
             "shape": sp._shape,  # shape is a tuple.
             "dtype": sp.dtype.str,
         }
@@ -69,7 +76,7 @@ def gym_space_to_dict(space: gym.spaces.Space) -> Dict:
     def _multi_discrete(sp: gym.spaces.MultiDiscrete) -> Dict:
         return {
             "space": "multi-discrete",
-            "nvec": serialize_ndarray(sp.nvec),
+            "nvec": _serialize_ndarray(sp.nvec),
             "dtype": sp.dtype.str,
         }
 
@@ -99,6 +106,7 @@ def gym_space_to_dict(space: gym.spaces.Space) -> Dict:
         raise ValueError("Unknown space type for serialization, ", type(space))
 
 
+@DeveloperAPI
 def gym_space_from_dict(d: Dict) -> gym.spaces.Space:
     """De-serialize a dict into gym Space.
 
@@ -119,8 +127,8 @@ def gym_space_from_dict(d: Dict) -> gym.spaces.Space:
     def _box(d: Dict) -> gym.spaces.Box:
         d.update(
             {
-                "low": deserialize_ndarray(d["low"]),
-                "high": deserialize_ndarray(d["high"]),
+                "low": _deserialize_ndarray(d["low"]),
+                "high": _deserialize_ndarray(d["high"]),
             }
         )
         return gym.spaces.Box(**__common(d))
@@ -131,7 +139,7 @@ def gym_space_from_dict(d: Dict) -> gym.spaces.Space:
     def _multi_discrete(d: Dict) -> gym.spaces.Discrete:
         d.update(
             {
-                "nvec": deserialize_ndarray(d["nvec"]),
+                "nvec": _deserialize_ndarray(d["nvec"]),
             }
         )
         return gym.spaces.MultiDiscrete(**__common(d))

@@ -11,17 +11,16 @@ import urllib
 from ray import logger
 from ray.tune import Trainable
 from ray.tune.function_runner import FunctionRunner
-from ray.tune.logger import LoggerCallback, Logger
+from ray.tune.logger import LoggerCallback
 from ray.tune.utils import flatten_dict
 from ray.tune.trial import Trial
 
 import yaml
-from ray.util.annotations import Deprecated
 
 try:
     import wandb
 except ImportError:
-    logger.error("pip install 'wandb' to use WandbLogger/WandbTrainableMixin.")
+    logger.error("pip install 'wandb' to use WandbLoggerCallback/WandbTrainableMixin.")
     wandb = None
 
 WANDB_ENV_VAR = "WANDB_API_KEY"
@@ -108,9 +107,9 @@ def wandb_mixin(func: Callable):
     are used to configure the ``WandbTrainableMixin`` itself:
 
     Args:
-        api_key_file (str): Path to file containing the Wandb API KEY. This
+        api_key_file: Path to file containing the Wandb API KEY. This
             file must be on all nodes if using the `wandb_mixin`.
-        api_key (str): Wandb API Key. Alternative to setting `api_key_file`.
+        api_key: Wandb API Key. Alternative to setting `api_key_file`.
 
     Wandb's ``group``, ``run_id`` and ``run_name`` are automatically selected
     by Tune, but can be overwritten by filling out the respective configuration
@@ -443,101 +442,6 @@ class WandbLoggerCallback(LoggerCallback):
                 del self._trial_queues[trial]
             self._trial_processes[trial].join(timeout=2)
             del self._trial_processes[trial]
-
-
-@Deprecated
-class WandbLogger(Logger):
-    """WandbLogger
-
-    .. warning::
-        This `Logger` class is deprecated. Use the `WandbLoggerCallback`
-        callback instead.
-
-    Weights and biases (https://www.wandb.ai/) is a tool for experiment
-    tracking, model optimization, and dataset versioning. This Ray Tune
-    ``Logger`` sends metrics to Wandb for automatic tracking and
-    visualization.
-
-    Wandb configuration is done by passing a ``wandb`` key to
-    the ``config`` parameter of ``tune.run()`` (see example below).
-
-    The ``wandb`` config key can be optionally included in the
-    ``logger_config`` subkey of ``config`` to be compatible with RLlib
-    trainables (see second example below).
-
-    The content of the ``wandb`` config entry is passed to ``wandb.init()``
-    as keyword arguments. The exception are the following settings, which
-    are used to configure the WandbLogger itself:
-
-    Args:
-        api_key_file (str): Path to file containing the Wandb API KEY. This
-            file only needs to be present on the node running the Tune script
-            if using the WandbLogger.
-        api_key (str): Wandb API Key. Alternative to setting ``api_key_file``.
-        excludes (list): List of metrics that should be excluded from
-            the log.
-        log_config (bool): Boolean indicating if the ``config`` parameter of
-            the ``results`` dict should be logged. This makes sense if
-            parameters will change during training, e.g. with
-            PopulationBasedTraining. Defaults to False.
-
-    Wandb's ``group``, ``run_id`` and ``run_name`` are automatically selected
-    by Tune, but can be overwritten by filling out the respective configuration
-    values.
-
-    Please see here for all other valid configuration settings:
-    https://docs.wandb.ai/library/init
-
-    Example:
-
-    .. code-block:: python
-
-        from ray.tune.integration.wandb import WandbLoggerCallback
-        tune.run(
-            train_fn,
-            config={
-                # define search space here
-                "parameter_1": tune.choice([1, 2, 3]),
-                "parameter_2": tune.choice([4, 5, 6]),
-                # wandb configuration
-                "wandb": {
-                    "project": "Optimization_Project",
-                    "api_key_file": "/path/to/file",
-                    "log_config": True
-                }
-            },
-            calllbacks=[WandbLoggerCallback])
-
-    Example for RLlib:
-
-    .. code-block :: python
-
-        from ray import tune
-        from ray.tune.integration.wandb import WandbLoggerCallback
-
-        tune.run(
-            "PPO",
-            config={
-                "env": "CartPole-v0",
-                "logger_config": {
-                    "wandb": {
-                        "project": "PPO",
-                        "api_key_file": "~/.wandb_api_key"
-                    }
-                }
-            },
-            callbacks=[WandbLoggerCallback])
-
-
-    """
-
-    _experiment_logger_cls = WandbLoggerCallback
-
-    def __init__(self, *args, **kwargs):
-        raise DeprecationWarning(
-            "This `Logger` class is deprecated. "
-            "Use the `WandbLoggerCallback` callback instead."
-        )
 
 
 class WandbTrainableMixin:

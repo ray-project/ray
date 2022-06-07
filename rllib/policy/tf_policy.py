@@ -23,7 +23,7 @@ from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.tf_utils import get_gpu_devices
-from ray.rllib.utils.tf_run_builder import TFRunBuilder
+from ray.rllib.utils.tf_run_builder import _TFRunBuilder
 from ray.rllib.utils.typing import (
     LocalOptimizer,
     ModelGradients,
@@ -317,7 +317,7 @@ class TFPolicy(Policy):
             # Deprecated dict input.
             input_dict["is_training"] = False
 
-        builder = TFRunBuilder(self.get_session(), "compute_actions_from_input_dict")
+        builder = _TFRunBuilder(self.get_session(), "compute_actions_from_input_dict")
         obs_batch = input_dict[SampleBatch.OBS]
         to_fetch = self._build_compute_actions(
             builder, input_dict=input_dict, explore=explore, timestep=timestep
@@ -354,7 +354,7 @@ class TFPolicy(Policy):
         explore = explore if explore is not None else self.config["explore"]
         timestep = timestep if timestep is not None else self.global_timestep
 
-        builder = TFRunBuilder(self.get_session(), "compute_actions")
+        builder = _TFRunBuilder(self.get_session(), "compute_actions")
 
         input_dict = {SampleBatch.OBS: obs_batch, "is_training": False}
         if state_batches:
@@ -402,7 +402,7 @@ class TFPolicy(Policy):
             explore=False, tf_sess=self.get_session()
         )
 
-        builder = TFRunBuilder(self.get_session(), "compute_log_likelihoods")
+        builder = _TFRunBuilder(self.get_session(), "compute_log_likelihoods")
 
         # Normalize actions if necessary.
         if actions_normalized is False and self.config["normalize_actions"]:
@@ -440,7 +440,7 @@ class TFPolicy(Policy):
         # Switch on is_training flag in our batch.
         postprocessed_batch.set_training(True)
 
-        builder = TFRunBuilder(self.get_session(), "learn_on_batch")
+        builder = _TFRunBuilder(self.get_session(), "learn_on_batch")
 
         # Callback handling.
         learn_stats = {}
@@ -466,7 +466,7 @@ class TFPolicy(Policy):
         assert self.loss_initialized()
         # Switch on is_training flag in our batch.
         postprocessed_batch.set_training(True)
-        builder = TFRunBuilder(self.get_session(), "compute_gradients")
+        builder = _TFRunBuilder(self.get_session(), "compute_gradients")
         fetches = self._build_compute_gradients(builder, postprocessed_batch)
         return builder.get(fetches)
 
@@ -474,7 +474,7 @@ class TFPolicy(Policy):
     @DeveloperAPI
     def apply_gradients(self, gradients: ModelGradients) -> None:
         assert self.loss_initialized()
-        builder = TFRunBuilder(self.get_session(), "apply_gradients")
+        builder = _TFRunBuilder(self.get_session(), "apply_gradients")
         fetches = self._build_apply_gradients(builder, gradients)
         builder.get(fetches)
 
@@ -643,7 +643,7 @@ class TFPolicy(Policy):
         requested, an error is raised.
 
         Args:
-            name (str): The name of the placeholder to return. One of
+            name: The name of the placeholder to return. One of
                 SampleBatch.CUR_OBS|PREV_ACTION/REWARD or a valid key from
                 `self._loss_input_dict`.
 
@@ -1172,8 +1172,8 @@ class TFPolicy(Policy):
         """Return a feed dict from a batch.
 
         Args:
-            train_batch (SampleBatch): batch of data to derive inputs from.
-            shuffle (bool): whether to shuffle batch sequences. Shuffle may
+            train_batch: batch of data to derive inputs from.
+            shuffle: whether to shuffle batch sequences. Shuffle may
                 be done in-place. This only makes sense if you're further
                 applying minibatch SGD after getting the outputs.
 

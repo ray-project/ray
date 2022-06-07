@@ -15,6 +15,7 @@ from ray.train.backend import BackendConfig, Backend, BackendExecutor
 from ray.train.constants import TRAIN_ENABLE_WORKER_SPREAD_ENV
 from ray.train.torch import TorchConfig
 from ray.train.tensorflow import TensorflowConfig
+
 from ray.train.horovod import HorovodConfig
 from ray.train.callbacks.callback import TrainingCallback
 from ray.train.worker_group import WorkerGroup
@@ -494,7 +495,7 @@ def test_persisted_checkpoint(ray_start_2_cpus, logdir):
     if logdir is not None:
         assert trainer.logdir == Path(logdir).expanduser().resolve()
     assert trainer.latest_checkpoint_dir.is_dir()
-    assert trainer.best_checkpoint_path.is_file()
+    assert trainer.best_checkpoint_path.is_dir()
     assert trainer.best_checkpoint_path.name == f"checkpoint_{2:06d}"
     assert trainer.best_checkpoint_path.parent.name == "checkpoints"
     assert trainer.best_checkpoint == trainer.latest_checkpoint
@@ -530,13 +531,13 @@ def test_persisted_checkpoint_strategy(ray_start_2_cpus):
     if logdir is not None:
         assert trainer.logdir == Path(logdir).expanduser().resolve()
     assert trainer.latest_checkpoint_dir.is_dir()
-    assert trainer.best_checkpoint_path.is_file()
+    assert trainer.best_checkpoint_path.is_dir()
     assert trainer.best_checkpoint_path.name == f"checkpoint_{2:06d}"
     assert trainer.latest_checkpoint["loss"] == 5
     assert trainer.best_checkpoint["loss"] == 3
 
     checkpoint_dir = trainer.latest_checkpoint_dir
-    file_names = [f.name for f in checkpoint_dir.iterdir()]
+    file_names = [f.name for f in checkpoint_dir.iterdir() if f.is_dir()]
     assert len(file_names) == 2
     assert f"checkpoint_{2:06d}" in file_names
     assert f"checkpoint_{3:06d}" not in file_names
@@ -650,6 +651,50 @@ def test_torch_auto_unwrap(ray_start_2_cpus):
         model, torch.nn.parallel.DistributedDataParallel
     )
 
+    trainer.shutdown()
+
+
+def test_torch_amp(ray_start_2_cpus):
+    def train_fn():
+        train.torch.accelerate(amp=True)
+        model = torch.nn.Linear(1, 1)
+        model = train.torch.prepare_model(model)
+
+        # Make sure model is serializable even with amp enabled.
+        return model.module
+
+    num_workers = 2
+    trainer = Trainer("torch", num_workers)
+    trainer.start()
+
+    trainer.run(train_fn)
+    trainer.shutdown()
+
+
+def test_torch_amp_with_custom_get_state(ray_start_2_cpus):
+    """Tests amp with a model that has a custom __getstate__ method defined.
+
+    See https://discuss.ray.io/t/ray-train-hangs-for-long-time/6333/7
+    """
+
+    def train_fn():
+        train.torch.accelerate(amp=True)
+
+        class CustomLinear(torch.nn.Linear):
+            def __getstate__(self):
+                return self.__dict__.copy()
+
+        model = CustomLinear(1, 1)
+        model = train.torch.prepare_model(model)
+
+        # Make sure model is serializable even with amp enabled.
+        return model.module
+
+    num_workers = 2
+    trainer = Trainer("torch", num_workers)
+    trainer.start()
+
+    trainer.run(train_fn)
     trainer.shutdown()
 
 
