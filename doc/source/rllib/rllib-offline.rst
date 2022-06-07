@@ -62,9 +62,6 @@ Then, we can tell DQN to train using these previously generated experiences with
         --env=CartPole-v0 \
         --config='{
             "input": "/tmp/cartpole-out",
-<<<<<<< HEAD
-            "off_policy_estimation_methods": {"is": None, "wis": None},
-=======
             "off_policy_estimation_methods": {
                 "is": {
                     "type": "ImportanceSampling",
@@ -73,7 +70,6 @@ Then, we can tell DQN to train using these previously generated experiences with
                     "type": "WeightedImportanceSampling",
                 }
             },
->>>>>>> 3876fcdbe80dca18138d0812c2d3aef0cea510b5
             "exploration_config": {
                 "type": "SoftQ",
                 "temperature": 1.0,
