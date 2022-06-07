@@ -1,4 +1,4 @@
-"""Example on how to use a CQLTrainer to learn from an offline json file.
+"""Example on how to use CQL to learn from an offline json file.
 
 Important node: Make sure that your offline data file contains only
 a single timestep per line to mimic the way SAC pulls samples from
@@ -83,7 +83,7 @@ if __name__ == "__main__":
     min_reward = -300
 
     # Test for torch framework (tf not implemented yet).
-    trainer = cql.CQLTrainer(config=config)
+    trainer = cql.CQL(config=config)
     learnt = False
     for i in range(num_iterations):
         print(f"Iter {i}")
@@ -96,7 +96,7 @@ if __name__ == "__main__":
                 break
     if not learnt:
         raise ValueError(
-            "CQLTrainer did not reach {} reward from expert "
+            "CQL did not reach {} reward from expert "
             "offline data!".format(min_reward)
         )
 
@@ -118,8 +118,10 @@ if __name__ == "__main__":
 
     # Example on how to do evaluation on the trained Trainer
     # using the data from our buffer.
-    # Get a sample (MultiAgentBatch -> SampleBatch).
-    batch = replay_buffer.replay().policy_batches["default_policy"]
+    # Get a sample (MultiAgentBatch).
+    multi_agent_batch = replay_buffer.sample(num_items=config["train_batch_size"])
+    # All experiences have been buffered for `default_policy`
+    batch = multi_agent_batch.policy_batches["default_policy"]
     obs = torch.from_numpy(batch["obs"])
     # Pass the observations through our model to get the
     # features, which then to pass through the Q-head.

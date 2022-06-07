@@ -14,6 +14,7 @@ from unittest.mock import MagicMock
 import ray
 from ray import tune
 from ray.tune import Trainable
+from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.schedulers import (
     FIFOScheduler,
@@ -25,11 +26,10 @@ from ray.tune.schedulers import (
     HyperBandForBOHB,
 )
 
-from ray.tune.schedulers.pbt import explore, PopulationBasedTrainingReplay
+from ray.tune.schedulers.pbt import _explore, PopulationBasedTrainingReplay
 from ray.tune.suggest._mock import _MockSearcher
 from ray.tune.suggest.suggestion import ConcurrencyLimiter
 from ray.tune.trial import Trial, _TuneCheckpoint
-from ray.tune.trial_executor import TrialExecutor
 from ray.tune.resources import Resources
 
 from ray.rllib import _register_all
@@ -235,7 +235,7 @@ class EarlyStoppingSuite(unittest.TestCase):
 
 
 # Only barebone impl for start/stop_trial. No internal state maintained.
-class _MockTrialExecutor(TrialExecutor):
+class _MockTrialExecutor(RayTrialExecutor):
     def start_trial(self, trial, checkpoint_obj=None, train=True):
         trial.logger_running = True
         trial.restored_checkpoint = checkpoint_obj.value
@@ -1164,38 +1164,38 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
         # Categorical case
         assertProduces(
-            lambda: explore({"v": 4}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x), {3, 8}
+            lambda: _explore({"v": 4}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x), {3, 8}
         )
         assertProduces(
-            lambda: explore({"v": 3}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x), {3, 4}
+            lambda: _explore({"v": 3}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x), {3, 4}
         )
         assertProduces(
-            lambda: explore({"v": 10}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x), {8, 10}
+            lambda: _explore({"v": 10}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x), {8, 10}
         )
         assertProduces(
-            lambda: explore({"v": 7}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x),
+            lambda: _explore({"v": 7}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x),
             {3, 4, 8, 10},
         )
         assertProduces(
-            lambda: explore({"v": 4}, {"v": [3, 4, 8, 10]}, 1.0, lambda x: x),
+            lambda: _explore({"v": 4}, {"v": [3, 4, 8, 10]}, 1.0, lambda x: x),
             {3, 4, 8, 10},
         )
 
         # Continuous case
         assertProduces(
-            lambda: explore(
+            lambda: _explore(
                 {"v": 100}, {"v": lambda: random.choice([10, 100])}, 0.0, lambda x: x
             ),
             {80, 120},
         )
         assertProduces(
-            lambda: explore(
+            lambda: _explore(
                 {"v": 100.0}, {"v": lambda: random.choice([10, 100])}, 0.0, lambda x: x
             ),
             {80.0, 120.0},
         )
         assertProduces(
-            lambda: explore(
+            lambda: _explore(
                 {"v": 100.0}, {"v": lambda: random.choice([10, 100])}, 1.0, lambda x: x
             ),
             {10.0, 100.0},
@@ -1224,7 +1224,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
         # Nested mutation and spec
         assertNestedProduces(
-            lambda: explore(
+            lambda: _explore(
                 {
                     "a": {"b": 4},
                     "1": {"2": {"3": 100}},
@@ -1246,7 +1246,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
         # Nested mutation and spec
         assertNestedProduces(
-            lambda: explore(
+            lambda: _explore(
                 {
                     "a": {"b": 4},
                     "1": {"2": {"3": 100}},

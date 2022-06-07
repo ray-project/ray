@@ -21,13 +21,14 @@ from ray.actor import ActorHandle
 from ray.serve.common import (
     DeploymentInfo,
     DeploymentStatus,
-    DeploymentStatusInfo,
+    StatusOverview,
 )
 from ray.serve.config import (
     DeploymentConfig,
     HTTPOptions,
     ReplicaConfig,
 )
+from ray.serve.schema import ServeApplicationSchema
 from ray.serve.constants import (
     MAX_CACHED_HANDLES,
     CLIENT_POLLING_INTERVAL_S,
@@ -38,7 +39,7 @@ from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import (
     DeploymentRoute,
     DeploymentRouteList,
-    DeploymentStatusInfoList,
+    StatusOverview as StatusOverviewProto,
 )
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 
@@ -120,6 +121,12 @@ class ServeControllerClient:
         Shuts down all processes and deletes all state associated with the
         instance.
         """
+
+        # Shut down handles
+        for k in list(self.handle_cache):
+            self.handle_cache[k].stop_metrics_pusher()
+            del self.handle_cache[k]
+
         if ray.is_initialized() and not self._shutdown:
             ray.get(self._controller.shutdown.remote())
             self._wait_for_deployments_shutdown()
@@ -155,16 +162,19 @@ class ServeControllerClient:
         """
         start = time.time()
         while time.time() - start < timeout_s:
-            statuses = self.get_deployment_statuses()
-            if len(statuses) == 0:
+            deployment_statuses = self.get_serve_status().deployment_statuses
+            if len(deployment_statuses) == 0:
                 break
             else:
                 logger.debug(
-                    f"Waiting for shutdown, {len(statuses)} deployments still alive."
+                    f"Waiting for shutdown, {len(deployment_statuses)} "
+                    "deployments still alive."
                 )
             time.sleep(CLIENT_POLLING_INTERVAL_S)
         else:
-            live_names = list(statuses.keys())
+            live_names = [
+                deployment_status.name for deployment_status in deployment_statuses
+            ]
             raise TimeoutError(
                 f"Shutdown didn't complete after {timeout_s}s. "
                 f"Deployments still alive: {live_names}."
@@ -180,25 +190,28 @@ class ServeControllerClient:
         """
         start = time.time()
         while time.time() - start < timeout_s or timeout_s < 0:
-            statuses = self.get_deployment_statuses()
-            try:
-                status = statuses[name]
-            except KeyError:
+
+            status = self.get_serve_status().get_deployment_status(name)
+
+            if status is None:
                 raise RuntimeError(
                     f"Waiting for deployment {name} to be HEALTHY, "
                     "but deployment doesn't exist."
-                ) from None
+                )
 
             if status.status == DeploymentStatus.HEALTHY:
                 break
             elif status.status == DeploymentStatus.UNHEALTHY:
-                raise RuntimeError(f"Deployment {name} is UNHEALTHY: {status.message}")
+                raise RuntimeError(
+                    f"Deployment {name} is UNHEALTHY: " f"{status.message}"
+                )
             else:
                 # Guard against new unhandled statuses being added.
                 assert status.status == DeploymentStatus.UPDATING
 
             logger.debug(
-                f"Waiting for {name} to be healthy, current status: {status.status}."
+                f"Waiting for {name} to be healthy, current status: "
+                f"{status.status}."
             )
             time.sleep(CLIENT_POLLING_INTERVAL_S)
         else:
@@ -213,14 +226,12 @@ class ServeControllerClient:
         """
         start = time.time()
         while time.time() - start < timeout_s:
-            statuses = self.get_deployment_statuses()
-            if name not in statuses:
+            curr_status = self.get_serve_status().get_deployment_status(name)
+            if curr_status is None:
                 break
-            else:
-                curr_status = statuses[name].status
-                logger.debug(
-                    f"Waiting for {name} to be deleted, current status: {curr_status}."
-                )
+            logger.debug(
+                f"Waiting for {name} to be deleted, current status: {curr_status}."
+            )
             time.sleep(CLIENT_POLLING_INTERVAL_S)
         else:
             raise TimeoutError(f"Deployment {name} wasn't deleted after {timeout_s}s.")
@@ -313,7 +324,17 @@ class ServeControllerClient:
             deployment_names_to_delete = all_deployments_names.difference(
                 new_deployments_names
             )
-            self.delete_deployments(deployment_names_to_delete)
+            self.delete_deployments(deployment_names_to_delete, blocking=_blocking)
+
+    @_ensure_connected
+    def deploy_app(self, config: ServeApplicationSchema) -> None:
+        ray.get(
+            self._controller.deploy_app.remote(
+                config.import_path,
+                config.runtime_env,
+                config.dict(by_alias=True, exclude_unset=True).get("deployments", []),
+            )
+        )
 
     @_ensure_connected
     def delete_deployments(self, names: Iterable[str], blocking: bool = True) -> None:
@@ -346,16 +367,11 @@ class ServeControllerClient:
         }
 
     @_ensure_connected
-    def get_deployment_statuses(self) -> Dict[str, DeploymentStatusInfo]:
-        proto = DeploymentStatusInfoList.FromString(
-            ray.get(self._controller.get_deployment_statuses.remote())
+    def get_serve_status(self) -> StatusOverview:
+        proto = StatusOverviewProto.FromString(
+            ray.get(self._controller.get_serve_status.remote())
         )
-        return {
-            deployment_status_info.name: DeploymentStatusInfo.from_proto(
-                deployment_status_info
-            )
-            for deployment_status_info in proto.deployment_status_infos
-        }
+        return StatusOverview.from_proto(proto)
 
     @_ensure_connected
     def get_handle(
@@ -368,10 +384,10 @@ class ServeControllerClient:
         """Retrieve RayServeHandle for service deployment to invoke it from Python.
 
         Args:
-            deployment_name (str): A registered service deployment.
-            missing_ok (bool): If true, then Serve won't check the deployment
+            deployment_name: A registered service deployment.
+            missing_ok: If true, then Serve won't check the deployment
                 is registered. False by default.
-            sync (bool): If true, then Serve will return a ServeHandle that
+            sync: If true, then Serve will return a ServeHandle that
                 works everywhere. Otherwise, Serve will return a ServeHandle
                 that's only usable in asyncio loop.
 
@@ -480,7 +496,7 @@ class ServeControllerClient:
         else:
             ray_actor_options["runtime_env"] = curr_job_env
 
-        replica_config = ReplicaConfig(
+        replica_config = ReplicaConfig.create(
             deployment_def,
             init_args=init_args,
             init_kwargs=init_kwargs,
@@ -555,7 +571,7 @@ def get_controller_namespace(
     """Gets the controller's namespace.
 
     Args:
-        detached (bool): Whether serve.start() was called with detached=True
+        detached: Whether serve.start() was called with detached=True
         _override_controller_namespace (Optional[str]): When set, this is the
             controller's namespace
     """

@@ -4,15 +4,13 @@ from gym.spaces import Box, Discrete
 import numpy as np
 import os
 import random
-import tempfile
 import time
 import unittest
 
 import ray
-from ray.rllib.algorithms.pg import PGTrainer
-from ray.rllib.agents.a3c import A2CTrainer
+from ray.rllib.algorithms.a2c import A2C
+from ray.rllib.algorithms.pg import PG
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
-from ray.rllib.env.utils import VideoMonitor
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.postprocessing import compute_advantages
@@ -145,7 +143,7 @@ class TestRolloutWorker(unittest.TestCase):
 
     def test_global_vars_update(self):
         for fw in framework_iterator(frameworks=("tf2", "tf")):
-            agent = A2CTrainer(
+            agent = A2C(
                 env="CartPole-v0",
                 config={
                     "num_workers": 1,
@@ -188,7 +186,7 @@ class TestRolloutWorker(unittest.TestCase):
             # RolloutWorker).
             self.assertRaises(
                 Exception,
-                lambda: PGTrainer(
+                lambda: PG(
                     env="fail",
                     config={
                         "num_workers": 2,
@@ -200,7 +198,7 @@ class TestRolloutWorker(unittest.TestCase):
     def test_callbacks(self):
         for fw in framework_iterator(frameworks=("torch", "tf")):
             counts = Counter()
-            pg = PGTrainer(
+            pg = PG(
                 env="CartPole-v0",
                 config={
                     "num_workers": 0,
@@ -226,7 +224,7 @@ class TestRolloutWorker(unittest.TestCase):
     def test_query_evaluators(self):
         register_env("test", lambda _: gym.make("CartPole-v0"))
         for fw in framework_iterator(frameworks=("torch", "tf")):
-            pg = PGTrainer(
+            pg = PG(
                 env="test",
                 config={
                     "num_workers": 2,
@@ -376,10 +374,8 @@ class TestRolloutWorker(unittest.TestCase):
 
                 curframe = inspect.currentframe()
                 called_from_check = any(
-                    [
-                        frame[3] == "check_gym_environments"
-                        for frame in inspect.getouterframes(curframe, 2)
-                    ]
+                    frame[3] == "check_gym_environments"
+                    for frame in inspect.getouterframes(curframe, 2)
                 )
                 # Check, whether the action is immutable.
                 if action.flags.writeable and not called_from_check:
@@ -825,15 +821,12 @@ class TestRolloutWorker(unittest.TestCase):
             policy_config={
                 "in_evaluation": False,
             },
-            record_env=tempfile.gettempdir(),
         )
         # Make sure we can properly sample from the wrapped env.
         ev.sample()
         # Make sure the resulting environment is indeed still an
-        # instance of MultiAgentEnv and VideoMonitor.
         self.assertTrue(isinstance(ev.env.unwrapped, MultiAgentEnv))
         self.assertTrue(isinstance(ev.env, gym.Env))
-        self.assertTrue(isinstance(ev.env, VideoMonitor))
         ev.stop()
 
     def test_no_training(self):

@@ -17,17 +17,17 @@ from typing import (
 import ray
 from ray.data.context import DatasetContext
 from ray.data.dataset import Dataset, T, U
-from ray.data.impl.pipeline_executor import (
+from ray.data._internal.pipeline_executor import (
     PipelineExecutor,
     PipelineSplitExecutorCoordinator,
 )
 from ray.data.block import Block
 from ray.data.row import TableRow
-from ray.data.impl import progress_bar
-from ray.data.impl.block_batching import batch_blocks, BatchType
-from ray.data.impl.block_list import BlockList
-from ray.data.impl.plan import ExecutionPlan
-from ray.data.impl.stats import DatasetPipelineStats, DatasetStats
+from ray.data._internal import progress_bar
+from ray.data._internal.block_batching import batch_blocks, BatchType
+from ray.data._internal.block_list import BlockList
+from ray.data._internal.plan import ExecutionPlan
+from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
 from ray.util.annotations import PublicAPI, DeveloperAPI
 
 if TYPE_CHECKING:
@@ -573,7 +573,7 @@ class DatasetPipeline(Generic[T]):
             print("=== Window {} ===".format(i))
             ds.show(limit_per_dataset)
 
-    def iter_epochs(self) -> Iterator["DatasetPipeline[T]"]:
+    def iter_epochs(self, max_epoch: int = -1) -> Iterator["DatasetPipeline[T]"]:
         """Split this pipeline up by epoch.
 
         This allows reading of data per-epoch for repeated Datasets, which is
@@ -581,6 +581,9 @@ class DatasetPipeline(Generic[T]):
         generates a pipeline with 500 rows total split across 50 epochs. This
         method allows iterating over the data individually per epoch
         (repetition) of the original data.
+
+        Args:
+            max_epoch: If greater than zero, stop after the given number of epochs.
 
         Examples:
             >>> import ray
@@ -637,15 +640,18 @@ class DatasetPipeline(Generic[T]):
                 return self
 
         class EpochDelimitedIterator:
-            def __init__(self, pipe):
+            def __init__(self, pipe, max_epoch):
                 self._iter = Peekable(pipe.iter_datasets())
                 self._cur_epoch = None
+                self._max_epoch = max_epoch
 
             def __next__(self) -> "DatasetPipeline[T]":
                 if self._cur_epoch is None:
                     self._cur_epoch = self._iter.peek()._get_epoch()
                 else:
                     self._cur_epoch += 1
+                if self._max_epoch > 0 and self._cur_epoch >= self._max_epoch:
+                    raise StopIteration
                 warned = False
                 while self._iter.peek()._get_epoch() < self._cur_epoch:
                     if not warned:
@@ -663,7 +669,7 @@ class DatasetPipeline(Generic[T]):
             def __iter__(self):
                 return self
 
-        return EpochDelimitedIterator(self)
+        return EpochDelimitedIterator(self, max_epoch)
 
     @DeveloperAPI
     def iter_datasets(self) -> Iterator[Dataset[T]]:

@@ -1,6 +1,6 @@
 import logging
 import platform
-from typing import Any, Dict, List, Optional, Callable
+from typing import Any, Dict, List, Optional, Callable, Union
 
 import numpy as np
 import random
@@ -11,7 +11,7 @@ import ray  # noqa F401
 import psutil  # noqa E402
 
 from ray.util.debug import log_once
-from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics.window_stat import WindowStat
 from ray.rllib.utils.typing import SampleBatchType, T
@@ -58,7 +58,10 @@ def warn_replay_capacity(*, item: SampleBatchType, num_items: int) -> None:
 @DeveloperAPI
 class ReplayBuffer(ParallelIteratorWorker):
     def __init__(
-        self, capacity: int = 10000, storage_unit: str = "timesteps", **kwargs
+        self,
+        capacity: int = 10000,
+        storage_unit: Union[str, StorageUnit] = "timesteps",
+        **kwargs,
     ):
         """Initializes a (FIFO) ReplayBuffer instance.
 
@@ -82,7 +85,7 @@ class ReplayBuffer(ParallelIteratorWorker):
         else:
             raise ValueError(
                 "storage_unit must be either 'timesteps', `sequences` or `episodes` "
-                "or `fragments`."
+                "or `fragments`, but is {}".format(storage_unit)
             )
 
         # The actual storage (list of SampleBatches or MultiAgentBatches).
@@ -119,12 +122,6 @@ class ReplayBuffer(ParallelIteratorWorker):
 
         self.batch_size = None
 
-        def gen_replay():
-            while True:
-                yield self.replay()
-
-        ParallelIteratorWorker.__init__(self, gen_replay, False)
-
     def __len__(self) -> int:
         """Returns the number of items currently stored in this buffer."""
         return len(self._storage)
@@ -141,21 +138,15 @@ class ReplayBuffer(ParallelIteratorWorker):
             batch: Batch to add to this buffer's storage.
             **kwargs: Forward compatibility kwargs.
         """
-        assert batch.count > 0, batch
+        if not batch.count > 0:
+            return
+
         warn_replay_capacity(item=batch, num_items=self.capacity / batch.count)
 
-        if (
-            type(batch) == MultiAgentBatch
-            and self._storage_unit != StorageUnit.TIMESTEPS
-        ):
-            raise ValueError(
-                "Can not add MultiAgentBatch to ReplayBuffer "
-                "with storage_unit {}"
-                "".format(str(self._storage_unit))
-            )
-
         if self._storage_unit == StorageUnit.TIMESTEPS:
-            self._add_single_batch(batch, **kwargs)
+            timeslices = batch.timeslices(1)
+            for t in timeslices:
+                self._add_single_batch(t, **kwargs)
 
         elif self._storage_unit == StorageUnit.SEQUENCES:
             timestep_count = 0
@@ -181,6 +172,7 @@ class ReplayBuffer(ParallelIteratorWorker):
                             "to be added to it. Some samples may be "
                             "dropped."
                         )
+
         elif self._storage_unit == StorageUnit.FRAGMENTS:
             self._add_single_batch(batch, **kwargs)
 
@@ -352,14 +344,34 @@ class ReplayBuffer(ParallelIteratorWorker):
         """
         return func(self, *_args, **kwargs)
 
-    @Deprecated(old="ReplayBuffer.add_batch()", new="RepayBuffer.add()", error=False)
+    @Deprecated(old="ReplayBuffer.add_batch()", new="ReplayBuffer.add()", error=False)
     def add_batch(self, *args, **kwargs):
         return self.add(*args, **kwargs)
 
     @Deprecated(
-        old="RepayBuffer.replay(num_items)",
-        new="RepayBuffer.sample(" "num_items)",
+        old="ReplayBuffer.replay(num_items)",
+        new="ReplayBuffer.sample(num_items)",
         error=False,
     )
     def replay(self, num_items):
         return self.sample(num_items)
+
+    @Deprecated(
+        help="ReplayBuffers could be iterated over by default before. "
+        "Making a buffer an iterator will soon "
+        "be deprecated altogether. Consider switching to the training "
+        "iteration API to resolve this.",
+        error=False,
+    )
+    def make_iterator(self, num_items_to_replay: int):
+        """Make this buffer a ParallelIteratorWorker to retain compatibility.
+
+        Execution plans have made heavy use of buffers as ParallelIteratorWorkers.
+        This method provides an easy way to support this for now.
+        """
+
+        def gen_replay():
+            while True:
+                yield self.sample(num_items_to_replay)
+
+        ParallelIteratorWorker.__init__(self, gen_replay, False)

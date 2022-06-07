@@ -6,203 +6,195 @@ from ray.rllib.contrib.registry import CONTRIBUTED_ALGORITHMS
 
 
 def _import_a2c():
-    from ray.rllib.agents import a3c
+    import ray.rllib.algorithms.a2c as a2c
 
-    return a3c.A2CTrainer, a3c.a2c.A2C_DEFAULT_CONFIG
+    return a2c.A2C, a2c.A2CConfig().to_dict()
 
 
 def _import_a3c():
-    from ray.rllib.agents import a3c
+    import ray.rllib.algorithms.a3c as a3c
 
-    return a3c.A3CTrainer, a3c.DEFAULT_CONFIG
+    return a3c.A3C, a3c.A3CConfig().to_dict()
 
 
 def _import_alpha_star():
-    from ray.rllib.algorithms.alpha_star.alpha_star import (
-        AlphaStarTrainer,
-        DEFAULT_CONFIG,
-    )
+    import ray.rllib.algorithms.alpha_star as alpha_star
 
-    return AlphaStarTrainer, DEFAULT_CONFIG
+    return alpha_star.AlphaStar, alpha_star.AlphaStarConfig().to_dict()
 
 
 def _import_alpha_zero():
-    from ray.rllib.algorithms.alpha_zero.alpha_zero import (
-        AlphaZeroTrainer,
-        DEFAULT_CONFIG,
-    )
+    import ray.rllib.algorithms.alpha_zero as alpha_zero
 
-    return AlphaZeroTrainer, DEFAULT_CONFIG
+    return alpha_zero.AlphaZero, alpha_zero.AlphaZeroConfig().to_dict()
 
 
 def _import_apex():
-    from ray.rllib.agents import dqn
+    import ray.rllib.algorithms.apex_dqn as apex_dqn
 
-    return dqn.ApexTrainer, dqn.apex.APEX_DEFAULT_CONFIG
+    return apex_dqn.ApexDQN, apex_dqn.ApexDQNConfig().to_dict()
 
 
 def _import_apex_ddpg():
-    from ray.rllib.algorithms import ddpg
+    import ray.rllib.algorithms.apex_ddpg as apex_ddpg
 
-    return ddpg.ApexDDPGTrainer, ddpg.apex.APEX_DDPG_DEFAULT_CONFIG
+    return apex_ddpg.ApexDDPG, apex_ddpg.ApexDDPGConfig().to_dict()
 
 
 def _import_appo():
-    from ray.rllib.agents import ppo
+    import ray.rllib.algorithms.appo as appo
 
-    return ppo.APPOTrainer, ppo.appo.DEFAULT_CONFIG
+    return appo.APPO, appo.APPOConfig().to_dict()
 
 
 def _import_ars():
-    from ray.rllib.algorithms import ars
+    import ray.rllib.algorithms.ars as ars
 
-    return ars.ARSTrainer, ars.DEFAULT_CONFIG
+    return ars.ARS, ars.ARSConfig().to_dict()
 
 
 def _import_bandit_lints():
-    from ray.rllib.algorithms.bandit.bandit import BanditLinTSTrainer
+    from ray.rllib.algorithms.bandit.bandit import BanditLinTS
 
-    return BanditLinTSTrainer, BanditLinTSTrainer.get_default_config()
+    return BanditLinTS, BanditLinTS.get_default_config()
 
 
 def _import_bandit_linucb():
-    from ray.rllib.algorithms.bandit.bandit import BanditLinUCBTrainer
+    from ray.rllib.algorithms.bandit.bandit import BanditLinUCB
 
-    return BanditLinUCBTrainer, BanditLinUCBTrainer.get_default_config()
+    return BanditLinUCB, BanditLinUCB.get_default_config()
 
 
 def _import_bc():
-    from ray.rllib.algorithms import marwil
+    import ray.rllib.algorithms.bc as bc
 
-    return marwil.BCTrainer, marwil.DEFAULT_CONFIG
+    return bc.BC, bc.BCConfig().to_dict()
 
 
 def _import_cql():
-    from ray.rllib.algorithms import cql
+    import ray.rllib.algorithms.cql as cql
 
-    return cql.CQLTrainer, cql.DEFAULT_CONFIG
+    return cql.CQL, cql.CQLConfig().to_dict()
 
 
 def _import_ddpg():
-    from ray.rllib.algorithms import ddpg
+    import ray.rllib.algorithms.ddpg as ddpg
 
-    return ddpg.DDPGTrainer, ddpg.DEFAULT_CONFIG
+    return ddpg.DDPG, ddpg.DDPGConfig().to_dict()
 
 
 def _import_ddppo():
-    from ray.rllib.agents import ppo
+    import ray.rllib.algorithms.ddppo as ddppo
 
-    return ppo.DDPPOTrainer, ppo.DEFAULT_CONFIG
+    return ddppo.DDPPO, ddppo.DDPPOConfig().to_dict()
 
 
 def _import_dqn():
-    from ray.rllib.algorithms import dqn
+    import ray.rllib.algorithms.dqn as dqn
 
-    return dqn.DQNTrainer, dqn.DEFAULT_CONFIG
+    return dqn.DQN, dqn.DQNConfig().to_dict()
 
 
 def _import_dreamer():
     from ray.rllib.algorithms import dreamer
 
-    return dreamer.DREAMERTrainer, dreamer.DEFAULT_CONFIG
+    return dreamer.Dreamer, dreamer.DreamerConfig().to_dict()
 
 
 def _import_es():
-    from ray.rllib.algorithms import es
+    import ray.rllib.algorithms.es as es
 
-    return es.ESTrainer, es.DEFAULT_CONFIG
+    return es.ES, es.ESConfig().to_dict()
 
 
 def _import_impala():
-    from ray.rllib.agents import impala
+    import ray.rllib.algorithms.impala as impala
 
-    return impala.ImpalaTrainer, impala.DEFAULT_CONFIG
+    return impala.Impala, impala.ImpalaConfig().to_dict()
 
 
 def _import_maddpg():
-    from ray.rllib.agents import maddpg
+    import ray.rllib.algorithms.maddpg as maddpg
 
-    return maddpg.MADDPGTrainer, maddpg.DEFAULT_CONFIG
+    return maddpg.MADDPG, maddpg.MADDPGConfig().to_dict()
 
 
 def _import_maml():
-    from ray.rllib.algorithms import maml
+    import ray.rllib.algorithms.maml as maml
 
-    return maml.MAMLTrainer, maml.DEFAULT_CONFIG
+    return maml.MAML, maml.MAMLConfig().to_dict()
 
 
 def _import_marwil():
-    from ray.rllib.algorithms import marwil
+    import ray.rllib.algorithms.marwil as marwil
 
-    return marwil.MARWILTrainer, marwil.DEFAULT_CONFIG
+    return marwil.MARWIL, marwil.MARWILConfig().to_dict()
 
 
 def _import_mbmpo():
-    from ray.rllib.algorithms import mbmpo
+    import ray.rllib.algorithms.mbmpo as mbmpo
 
-    return mbmpo.MBMPOTrainer, mbmpo.DEFAULT_CONFIG
+    return mbmpo.MBMPO, mbmpo.MBMPOConfig().to_dict()
 
 
 def _import_pg():
-    from ray.rllib.algorithms import pg
+    import ray.rllib.algorithms.pg as pg
 
-    return pg.PGTrainer, pg.DEFAULT_CONFIG
+    return pg.PG, pg.PGConfig().to_dict()
 
 
 def _import_ppo():
-    from ray.rllib.agents import ppo
+    import ray.rllib.algorithms.ppo as ppo
 
-    return ppo.PPOTrainer, ppo.DEFAULT_CONFIG
+    return ppo.PPO, ppo.PPOConfig().to_dict()
 
 
 def _import_qmix():
-    from ray.rllib.algorithms import qmix
+    import ray.rllib.algorithms.qmix as qmix
 
-    return qmix.QMixTrainer, qmix.DEFAULT_CONFIG
+    return qmix.QMix, qmix.QMixConfig().to_dict()
 
 
 def _import_r2d2():
-    from ray.rllib.agents import dqn
+    import ray.rllib.algorithms.r2d2 as r2d2
 
-    return dqn.R2D2Trainer, dqn.R2D2_DEFAULT_CONFIG
+    return r2d2.R2D2, r2d2.R2D2Config().to_dict()
 
 
 def _import_sac():
-    from ray.rllib.algorithms import sac
+    import ray.rllib.algorithms.sac as sac
 
-    return sac.SACTrainer, sac.DEFAULT_CONFIG
+    return sac.SAC, sac.SACConfig().to_dict()
 
 
 def _import_rnnsac():
     from ray.rllib.algorithms import sac
 
-    return sac.RNNSACTrainer, sac.RNNSAC_DEFAULT_CONFIG
+    return sac.RNNSAC, sac.RNNSACConfig().to_dict()
 
 
 def _import_simple_q():
-    from ray.rllib.algorithms import dqn
+    import ray.rllib.algorithms.simple_q as simple_q
 
-    return dqn.SimpleQTrainer, dqn.simple_q.DEFAULT_CONFIG
+    return simple_q.SimpleQ, simple_q.SimpleQConfig().to_dict()
 
 
 def _import_slate_q():
-    from ray.rllib.algorithms import slateq
+    import ray.rllib.algorithms.slateq as slateq
 
-    return slateq.SlateQTrainer, slateq.DEFAULT_CONFIG
+    return slateq.SlateQ, slateq.SlateQConfig().to_dict()
 
 
 def _import_td3():
-    from ray.rllib.algorithms import ddpg
+    import ray.rllib.algorithms.td3 as td3
 
-    return ddpg.TD3Trainer, ddpg.td3.TD3_DEFAULT_CONFIG
+    return td3.TD3, td3.TD3Config().to_dict()
 
 
 ALGORITHMS = {
     "A2C": _import_a2c,
     "A3C": _import_a3c,
-    "AlphaStar": _import_alpha_star,
     "AlphaZero": _import_alpha_zero,
-    "APPO": _import_appo,
     "APEX": _import_apex,
     "APEX_DDPG": _import_apex_ddpg,
     "ARS": _import_ars,
@@ -214,8 +206,10 @@ ALGORITHMS = {
     "DDPG": _import_ddpg,
     "DDPPO": _import_ddppo,
     "DQN": _import_dqn,
-    "DREAMER": _import_dreamer,
+    "Dreamer": _import_dreamer,
     "IMPALA": _import_impala,
+    "APPO": _import_appo,
+    "AlphaStar": _import_alpha_star,
     "MADDPG": _import_maddpg,
     "MAML": _import_maml,
     "MARWIL": _import_marwil,

@@ -84,15 +84,15 @@ class TrXLNet(RecurrentNetwork):
         """Initializes a TrXLNet object.
 
         Args:
-            num_transformer_units (int): The number of Transformer repeats to
+            num_transformer_units: The number of Transformer repeats to
                 use (denoted L in [2]).
-            attention_dim (int): The input and output dimensions of one
+            attention_dim: The input and output dimensions of one
                 Transformer unit.
-            num_heads (int): The number of attention heads to use in parallel.
+            num_heads: The number of attention heads to use in parallel.
                 Denoted as `H` in [3].
-            head_dim (int): The dimension of a single(!) attention head within
+            head_dim: The dimension of a single(!) attention head within
                 a multi-head attention unit. Denoted as `d` in [3].
-            position_wise_mlp_dim (int): The dimension of the hidden layer
+            position_wise_mlp_dim: The dimension of the hidden layer
                 within the position-wise MLP (after the multi-head attention
                 block within one Transformer unit). This is the size of the
                 first of the two layers within the PositionwiseFeedforward. The
@@ -207,29 +207,29 @@ class GTrXLNet(RecurrentNetwork):
         """Initializes a GTrXLNet instance.
 
         Args:
-            num_transformer_units (int): The number of Transformer repeats to
+            num_transformer_units: The number of Transformer repeats to
                 use (denoted L in [2]).
-            attention_dim (int): The input and output dimensions of one
+            attention_dim: The input and output dimensions of one
                 Transformer unit.
-            num_heads (int): The number of attention heads to use in parallel.
+            num_heads: The number of attention heads to use in parallel.
                 Denoted as `H` in [3].
-            memory_inference (int): The number of timesteps to concat (time
+            memory_inference: The number of timesteps to concat (time
                 axis) and feed into the next transformer unit as inference
                 input. The first transformer unit will receive this number of
                 past observations (plus the current one), instead.
-            memory_training (int): The number of timesteps to concat (time
+            memory_training: The number of timesteps to concat (time
                 axis) and feed into the next transformer unit as training
                 input (plus the actual input sequence of len=max_seq_len).
                 The first transformer unit will receive this number of
                 past observations (plus the input sequence), instead.
-            head_dim (int): The dimension of a single(!) attention head within
+            head_dim: The dimension of a single(!) attention head within
                 a multi-head attention unit. Denoted as `d` in [3].
-            position_wise_mlp_dim (int): The dimension of the hidden layer
+            position_wise_mlp_dim: The dimension of the hidden layer
                 within the position-wise MLP (after the multi-head attention
                 block within one Transformer unit). This is the size of the
                 first of the two layers within the PositionwiseFeedforward. The
                 second layer always has size=`attention_dim`.
-            init_gru_gate_bias (float): Initial bias values for the GRU gates
+            init_gru_gate_bias: Initial bias values for the GRU gates
                 (two GRUs per Transformer unit, one after the MHA, one after
                 the position-wise MLP).
         """
@@ -599,29 +599,29 @@ class Keras_GTrXLNet(tf.keras.Model if tf else object):
         """Initializes a GTrXLNet instance.
 
         Args:
-            num_transformer_units (int): The number of Transformer repeats to
+            num_transformer_units: The number of Transformer repeats to
                 use (denoted L in [2]).
-            attention_dim (int): The input and output dimensions of one
+            attention_dim: The input and output dimensions of one
                 Transformer unit.
-            num_heads (int): The number of attention heads to use in parallel.
+            num_heads: The number of attention heads to use in parallel.
                 Denoted as `H` in [3].
-            memory_inference (int): The number of timesteps to concat (time
+            memory_inference: The number of timesteps to concat (time
                 axis) and feed into the next transformer unit as inference
                 input. The first transformer unit will receive this number of
                 past observations (plus the current one), instead.
-            memory_training (int): The number of timesteps to concat (time
+            memory_training: The number of timesteps to concat (time
                 axis) and feed into the next transformer unit as training
                 input (plus the actual input sequence of len=max_seq_len).
                 The first transformer unit will receive this number of
                 past observations (plus the input sequence), instead.
-            head_dim (int): The dimension of a single(!) attention head within
+            head_dim: The dimension of a single(!) attention head within
                 a multi-head attention unit. Denoted as `d` in [3].
-            position_wise_mlp_dim (int): The dimension of the hidden layer
+            position_wise_mlp_dim: The dimension of the hidden layer
                 within the position-wise MLP (after the multi-head attention
                 block within one Transformer unit). This is the size of the
                 first of the two layers within the PositionwiseFeedforward. The
                 second layer always has size=`attention_dim`.
-            init_gru_gate_bias (float): Initial bias values for the GRU gates
+            init_gru_gate_bias: Initial bias values for the GRU gates
                 (two GRUs per Transformer unit, one after the MHA, one after
                 the position-wise MLP).
         """

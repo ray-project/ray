@@ -19,7 +19,7 @@ from pprint import pformat
 import ray
 from ray import tune
 
-from ray.rllib.agents.ppo import ppo
+from ray.rllib.algorithms.ppo import ppo
 from ray.rllib.examples.simulators.sumo import marlenvironment
 from ray.rllib.utils.test_utils import check_learning_achieved
 
@@ -78,7 +78,7 @@ if __name__ == "__main__":
     tune.register_env("sumo_test_env", marlenvironment.env_creator)
 
     # Algorithm.
-    policy_class = ppo.PPOTFPolicy
+    policy_class = ppo.PPOTF1Policy
     config = ppo.DEFAULT_CONFIG
     config["framework"] = "tf"
     config["gamma"] = 0.99

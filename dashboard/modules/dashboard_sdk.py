@@ -97,9 +97,9 @@ def get_job_submission_client_cluster_info(
     inserted.
 
     Args:
-        address (str): Address without the module prefix that is passed
+        address: Address without the module prefix that is passed
             to SubmissionClient.
-        create_cluster_if_needed (bool): Indicates whether the cluster
+        create_cluster_if_needed: Indicates whether the cluster
             of the address returned needs to be running. Ray doesn't
             start a cluster before interacting with jobs, but other
             implementations may do so.

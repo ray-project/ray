@@ -1,7 +1,7 @@
 from typing import Type, Optional
 
 from ray.rllib.algorithms.sac import (
-    SACTrainer,
+    SAC,
     SACConfig,
 )
 from ray.rllib.algorithms.sac.rnnsac_torch_policy import RNNSACTorchPolicy
@@ -25,18 +25,32 @@ class RNNSACConfig(SACConfig):
     """
 
     def __init__(self, trainer_class=None):
-        super().__init__(trainer_class=trainer_class or RNNSACTrainer)
+        super().__init__(trainer_class=trainer_class or RNNSAC)
         # fmt: off
         # __sphinx_doc_begin__
-        self.burn_in = DEPRECATED_VALUE
         self.batch_mode = "complete_episodes"
         self.zero_init_states = True
-        self.replay_buffer_config["replay_burn_in"] = 0
-        # Set automatically: The number of contiguous environment steps to
-        # replay at once. Will be calculated via
-        # model->max_seq_len + burn_in.
-        # Do not set this to any valid value!
-        self.replay_buffer_config["replay_sequence_length"] = -1
+        self.replay_buffer_config = {
+            # This algorithm learns on sequences. We therefore require the replay buffer
+            # to slice sampled batches into sequences before replay. How sequences
+            # are sliced depends on the parameters `replay_sequence_length`,
+            # `replay_burn_in`, and `replay_zero_init_states`.
+            "storage_unit": "sequences",
+            # If > 0, use the `burn_in` first steps of each replay-sampled sequence
+            # (starting either from all 0.0-values if `zero_init_state=True` or
+            # from the already stored values) to calculate an even more accurate
+            # initial states for the actual sequence (starting after this burn-in
+            # window). In the burn-in case, the actual length of the sequence
+            # used for loss calculation is `n - burn_in` time steps
+            # (n=LSTM’s/attention net’s max_seq_len).
+            "replay_burn_in": 0,
+            # Set automatically: The number of contiguous environment steps to
+            # replay at once. Will be calculated via
+            # model->max_seq_len + burn_in.
+            # Do not set this to any valid value!
+            "replay_sequence_length": -1,
+        },
+        self.burn_in = DEPRECATED_VALUE
 
         # fmt: on
         # __sphinx_doc_end__
@@ -68,13 +82,13 @@ class RNNSACConfig(SACConfig):
         return self
 
 
-class RNNSACTrainer(SACTrainer):
+class RNNSAC(SAC):
     @classmethod
-    @override(SACTrainer)
+    @override(SAC)
     def get_default_config(cls) -> TrainerConfigDict:
         return RNNSACConfig().to_dict()
 
-    @override(SACTrainer)
+    @override(SAC)
     def validate_config(self, config: TrainerConfigDict) -> None:
         # Call super's validation method.
         super().validate_config(config)
@@ -102,11 +116,9 @@ class RNNSACTrainer(SACTrainer):
         ] = replay_sequence_length
 
         if config["framework"] != "torch":
-            raise ValueError(
-                "Only `framework=torch` supported so far for RNNSACTrainer!"
-            )
+            raise ValueError("Only `framework=torch` supported so far for RNNSAC!")
 
-    @override(SACTrainer)
+    @override(SAC)
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         return RNNSACTorchPolicy
 

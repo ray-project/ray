@@ -57,7 +57,7 @@ class _EventSystem:
         """Stores callback handler for event.
 
         Args:
-            event (str): Event that callback should be called on. See
+            event: Event that callback should be called on. See
                 CreateClusterEvent for details on the events available to be
                 registered against.
             callback (Callable[[Dict], None]): Callable object that is invoked
@@ -79,7 +79,7 @@ class _EventSystem:
         """Executes all callbacks for event.
 
         Args:
-            event (str): Event that is invoked. See CreateClusterEvent
+            event: Event that is invoked. See CreateClusterEvent
                 for details on the available events.
             event_data (Dict[str, Any]): Argument that is passed to each
                 callable object stored for this particular event.
@@ -96,7 +96,7 @@ class _EventSystem:
         """Clears stored callable objects for event.
 
         Args:
-            event (str): Event that has callable objects stored in map.
+            event: Event that has callable objects stored in map.
                 See CreateClusterEvent for details on the available events.
         """
         if event in self.callback_map:

@@ -338,6 +338,42 @@ def test_core_worker_resubscription(tmp_path, ray_start_regular_with_external_re
     ray.get(r, timeout=5)
 
 
+@pytest.mark.parametrize(
+    "ray_start_regular_with_external_redis",
+    [
+        generate_system_config_map(
+            num_heartbeats_timeout=20, gcs_rpc_server_reconnect_timeout_s=60
+        )
+    ],
+    indirect=True,
+)
+def test_detached_actor_restarts(ray_start_regular_with_external_redis):
+    # Detached actors are owned by GCS. This test is to ensure detached actors
+    # can restart even GCS restarts.
+
+    @ray.remote
+    class A:
+        def ready(self):
+            import os
+
+            return os.getpid()
+
+    a = A.options(name="a", lifetime="detached", max_restarts=-1).remote()
+
+    pid = ray.get(a.ready.remote())
+    ray.worker._global_node.kill_gcs_server()
+    p = psutil.Process(pid)
+    p.kill()
+    ray.worker._global_node.start_gcs_server()
+
+    while True:
+        try:
+            assert ray.get(a.ready.remote()) != pid
+            break
+        except ray.exceptions.RayActorError:
+            continue
+
+
 @pytest.mark.parametrize("auto_reconnect", [True, False])
 def test_gcs_client_reconnect(ray_start_regular_with_external_redis, auto_reconnect):
     gcs_address = ray.worker.global_worker.gcs_client.address

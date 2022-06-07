@@ -5,13 +5,14 @@ from typing import Optional, Type
 from ray.rllib.algorithms.cql.cql_tf_policy import CQLTFPolicy
 from ray.rllib.algorithms.cql.cql_torch_policy import CQLTorchPolicy
 from ray.rllib.algorithms.sac.sac import (
-    SACTrainer,
+    SAC,
     SACConfig,
 )
 from ray.rllib.execution.train_ops import (
     multi_gpu_train_one_step,
     train_one_step,
 )
+from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
 from ray.rllib.offline.shuffled_input import ShuffledInput
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -39,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 
 class CQLConfig(SACConfig):
-    """Defines a configuration class from which a CQLTrainer can be built.
+    """Defines a configuration class from which a CQL Trainer can be built.
 
     Example:
         >>> config = CQLConfig().training(gamma=0.9, lr=0.01)\
@@ -52,7 +53,7 @@ class CQLConfig(SACConfig):
     """
 
     def __init__(self, trainer_class=None):
-        super().__init__(trainer_class=trainer_class or CQLTrainer)
+        super().__init__(trainer_class=trainer_class or CQL)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -66,7 +67,7 @@ class CQLConfig(SACConfig):
 
         # Changes to Trainer's/SACConfig's default:
         # .offline_data()
-        self.input_evaluation = []
+        self.off_policy_estimation_methods = {}
 
         # .reporting()
         self.min_sample_timesteps_per_reporting = 0
@@ -119,7 +120,7 @@ class CQLConfig(SACConfig):
         return self
 
 
-class CQLTrainer(SACTrainer):
+class CQL(SAC):
     """CQL (derived from SAC)."""
 
     def __init__(self, *args, **kwargs):
@@ -150,7 +151,7 @@ class CQLTrainer(SACTrainer):
                     )
                     batch[SampleBatch.DONES][-1] = True
                 self.local_replay_buffer.add_batch(batch)
-            print(
+            logger.info(
                 f"Loaded {num_batches} batches ({total_timesteps} ts) into the"
                 " replay buffer, which has capacity "
                 f"{self.local_replay_buffer.capacity}."
@@ -163,11 +164,11 @@ class CQLTrainer(SACTrainer):
             )
 
     @classmethod
-    @override(SACTrainer)
+    @override(SAC)
     def get_default_config(cls) -> TrainerConfigDict:
         return CQLConfig().to_dict()
 
-    @override(SACTrainer)
+    @override(SAC)
     def validate_config(self, config: TrainerConfigDict) -> None:
         # First check, whether old `timesteps_per_iteration` is used. If so
         # convert right away as for CQL, we must measure in training timesteps,
@@ -204,18 +205,22 @@ class CQLTrainer(SACTrainer):
             )
             try_import_tfp(error=True)
 
-    @override(SACTrainer)
+    @override(SAC)
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             return CQLTorchPolicy
         else:
             return CQLTFPolicy
 
-    @override(SACTrainer)
+    @override(SAC)
     def training_iteration(self) -> ResultDict:
 
         # Sample training batch from replay buffer.
-        train_batch = self.local_replay_buffer.sample(self.config["train_batch_size"])
+        train_batch = sample_min_n_steps_from_buffer(
+            self.local_replay_buffer,
+            self.config["train_batch_size"],
+            count_by_agent_steps=self._by_agent_steps,
+        )
 
         # Old-style replay buffers return None if learning has not started
         if not train_batch:
@@ -269,8 +274,8 @@ class _deprecated_default_config(dict):
         super().__init__(CQLConfig().to_dict())
 
     @Deprecated(
-        old="ray.rllib.algorithms.cql.cql.DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.cql.cql.CQLConfig(...)",
+        old="ray.rllib.algorithms.cql.cql::DEFAULT_CONFIG",
+        new="ray.rllib.algorithms.cql.cql::CQLConfig(...)",
         error=False,
     )
     def __getitem__(self, item):

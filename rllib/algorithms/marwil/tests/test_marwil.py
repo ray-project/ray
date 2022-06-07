@@ -5,7 +5,7 @@ import unittest
 
 import ray
 import ray.rllib.algorithms.marwil as marwil
-from ray.rllib.algorithms.marwil.marwil_tf_policy import MARWILEagerTFPolicy
+from ray.rllib.algorithms.marwil.marwil_tf_policy import MARWILTF2Policy
 from ray.rllib.algorithms.marwil.marwil_torch_policy import MARWILTorchPolicy
 from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.offline import JsonReader
@@ -63,7 +63,7 @@ class TestMARWIL(unittest.TestCase):
 
         # Test for all frameworks.
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            trainer = marwil.MARWILTrainer(config=config)
+            trainer = config.build()
             learnt = False
             for i in range(num_iterations):
                 results = trainer.train()
@@ -105,22 +105,29 @@ class TestMARWIL(unittest.TestCase):
         data_file = os.path.join(rllib_dir, "tests/data/pendulum/large.json")
         print("data_file={} exists={}".format(data_file, os.path.isfile(data_file)))
 
-        config = marwil.DEFAULT_CONFIG.copy()
-        config["num_workers"] = 1
-        config["evaluation_num_workers"] = 1
-        config["evaluation_interval"] = 3
-        config["evaluation_duration"] = 5
-        config["evaluation_parallel_to_training"] = True
-        # Evaluate on actual environment.
-        config["evaluation_config"] = {"input": "sampler"}
-        # Learn from offline data.
-        config["input"] = [data_file]
-        config["input_evaluation"] = []  # disable (data has no action-probs)
+        config = (
+            marwil.MARWILConfig()
+            .rollouts(num_rollout_workers=1)
+            .evaluation(
+                evaluation_num_workers=1,
+                evaluation_interval=3,
+                evaluation_duration=5,
+                evaluation_parallel_to_training=True,
+                # Evaluate on actual environment.
+                evaluation_config={"input": "sampler"},
+            )
+            .offline_data(
+                # Learn from offline data.
+                input_=[data_file],
+                off_policy_estimation_methods=[],
+            )
+        )
+
         num_iterations = 3
 
         # Test for all frameworks.
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            trainer = marwil.MARWILTrainer(config=config, env="Pendulum-v1")
+            trainer = config.build(env="Pendulum-v1")
             for i in range(num_iterations):
                 print(trainer.train())
             trainer.stop()
@@ -136,23 +143,25 @@ class TestMARWIL(unittest.TestCase):
         print("rllib dir={}".format(rllib_dir))
         data_file = os.path.join(rllib_dir, "tests/data/cartpole/small.json")
         print("data_file={} exists={}".format(data_file, os.path.isfile(data_file)))
-        config = marwil.DEFAULT_CONFIG.copy()
-        config["num_workers"] = 0  # Run locally.
-        # Learn from offline data.
-        config["input"] = [data_file]
+
+        config = (
+            marwil.MARWILConfig()
+            .rollouts(num_rollout_workers=0)
+            .offline_data(input_=[data_file])
+        )  # Learn from offline data.
 
         for fw, sess in framework_iterator(config, session=True):
             reader = JsonReader(inputs=[data_file])
             batch = reader.next()
 
-            trainer = marwil.MARWILTrainer(config=config, env="CartPole-v0")
+            trainer = config.build(env="CartPole-v0")
             policy = trainer.get_policy()
             model = policy.model
 
             # Calculate our own expected values (to then compare against the
             # agent's loss output).
             cummulative_rewards = compute_advantages(
-                batch, 0.0, config["gamma"], 1.0, False, False
+                batch, 0.0, config.gamma, 1.0, False, False
             )["advantages"]
             if fw == "torch":
                 cummulative_rewards = torch.tensor(cummulative_rewards)
@@ -170,7 +179,7 @@ class TestMARWIL(unittest.TestCase):
             adv_squared = np.mean(np.square(adv))
             c_2 = 100.0 + 1e-8 * (adv_squared - 100.0)
             c = np.sqrt(c_2)
-            exp_advs = np.exp(config["beta"] * (adv / c))
+            exp_advs = np.exp(config.beta * (adv / c))
             dist = policy.dist_class(model_out, model)
             logp = dist.logp(batch["actions"])
             if fw == "torch":
@@ -180,14 +189,14 @@ class TestMARWIL(unittest.TestCase):
             # Calculate all expected loss components.
             expected_vf_loss = 0.5 * adv_squared
             expected_pol_loss = -1.0 * np.mean(exp_advs * logp)
-            expected_loss = expected_pol_loss + config["vf_coeff"] * expected_vf_loss
+            expected_loss = expected_pol_loss + config.vf_coeff * expected_vf_loss
 
             # Calculate the algorithm's loss (to check against our own
             # calculation above).
             batch.set_get_interceptor(None)
             postprocessed_batch = policy.postprocess_trajectory(batch)
             loss_func = (
-                MARWILEagerTFPolicy.loss if fw != "torch" else MARWILTorchPolicy.loss
+                MARWILTF2Policy.loss if fw != "torch" else MARWILTorchPolicy.loss
             )
             if fw != "tf":
                 policy._lazy_tensor_dict(postprocessed_batch)
@@ -196,7 +205,13 @@ class TestMARWIL(unittest.TestCase):
                 )
             else:
                 loss_out, v_loss, p_loss = policy.get_session().run(
-                    [policy._loss, policy.loss.v_loss, policy.loss.p_loss],
+                    # policy._loss is create by TFPolicy, and is basically the
+                    # loss tensor of the static graph.
+                    [
+                        policy._loss,
+                        policy._marwil_loss.v_loss,
+                        policy._marwil_loss.p_loss,
+                    ],
                     feed_dict=policy._get_loss_inputs_dict(
                         postprocessed_batch, shuffle=False
                     ),
@@ -210,8 +225,8 @@ class TestMARWIL(unittest.TestCase):
                 check(v_loss, expected_vf_loss, decimals=4)
                 check(p_loss, expected_pol_loss, decimals=4)
             else:
-                check(policy.loss.v_loss, expected_vf_loss, decimals=4)
-                check(policy.loss.p_loss, expected_pol_loss, decimals=4)
+                check(policy._marwil_loss.v_loss, expected_vf_loss, decimals=4)
+                check(policy._marwil_loss.p_loss, expected_pol_loss, decimals=4)
             check(loss_out, expected_loss, decimals=3)
 
 
