@@ -91,6 +91,7 @@ class _TrainCallbackLogdirManager:
             return self._default_logdir
         raise RuntimeError("Logdir must be set in init or setup_logdir.")
 
+
 @PublicAPI(stability="beta")
 class JsonLoggerCallback(TrainingCallback):
     """Logs Train results in json format.
@@ -138,6 +139,7 @@ class JsonLoggerCallback(TrainingCallback):
     def log_path(self) -> Path:
         filename = self._filename or JsonLoggerCallback._default_filename
         return self.logdir.joinpath(filename)
+
 
 @PublicAPI(stability="beta")
 class MLflowLoggerCallback(TrainingCallback):
@@ -235,6 +237,7 @@ class MLflowLoggerCallback(TrainingCallback):
     @property
     def logdir(self) -> Path:
         return self._logdir_manager.logdir_path
+
 
 @PublicAPI(stability="beta")
 class TBXLoggerCallback(TrainingCallback):

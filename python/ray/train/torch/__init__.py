@@ -1,5 +1,5 @@
 try:
-    import torch
+    import torch  # noqa: F401
 except ModuleNotFoundError:
     raise ModuleNotFoundError(
         "PyTorch isn't installed. To install PyTorch, run 'pip install torch'"

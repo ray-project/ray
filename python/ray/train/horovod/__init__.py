@@ -1,5 +1,5 @@
 try:
-    import horovod
+    import horovod  # noqa: F401
 except ModuleNotFoundError:
     raise ModuleNotFoundError(
         "Horovod isn't installed. To install Horovod with PyTorch support, run 'pip "

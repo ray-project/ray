@@ -76,6 +76,7 @@ class AggregateResultsPreprocessor(ResultsPreprocessor):
 
         return results
 
+
 class AverageResultsPreprocessor(AggregateResultsPreprocessor):
     """A preprocessor that averages results with equal weight.
 
@@ -98,6 +99,7 @@ class AverageResultsPreprocessor(AggregateResultsPreprocessor):
     def __init__(self, keys: Optional[List[str]] = None):
         super().__init__(Average(), keys)
 
+
 class MaxResultsPreprocessor(AggregateResultsPreprocessor):
     """A preprocessor that computes maximum values of specified keys.
 
@@ -119,6 +121,7 @@ class MaxResultsPreprocessor(AggregateResultsPreprocessor):
 
     def __init__(self, keys: Optional[List[str]] = None):
         super().__init__(Max(), keys)
+
 
 class WeightedAverageResultsPreprocessor(AggregateResultsPreprocessor):
     """A preprocessor that performs weighted average over metrics.

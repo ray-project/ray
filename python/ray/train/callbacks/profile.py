@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 DRIVER_TRACE_DIR_NAME = "pytorch_profiler"
 
+
 @PublicAPI(stability="beta")
 class TorchTensorboardProfilerCallback(TrainingCallback):
     """Synchronizes PyTorch Profiler traces onto disk.

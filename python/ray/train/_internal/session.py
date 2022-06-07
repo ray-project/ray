@@ -25,6 +25,7 @@ from ray.train.constants import (
     RESULT_FETCH_TIMEOUT,
 )
 from ray.train._internal.utils import PropagatingThread
+from ray.train.error import SessionMisuseError
 
 
 class TrainingResultType(Enum):

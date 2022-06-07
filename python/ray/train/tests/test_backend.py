@@ -14,7 +14,7 @@ from ray.train._internal.backend_executor import (
     TrainBackendError,
     TrainingWorkerError,
 )
-from ray.train.impl.dataset_spec import _RayDatasetSpec
+from ray.train._internal.dataset_spec import RayDatasetSpec
 from ray.train.tensorflow import TensorflowConfig
 from ray.train.torch import TorchConfig
 from ray.train.constants import (
@@ -103,7 +103,7 @@ class TestBackend(Backend):
         pass
 
 
-EMPTY_RAY_DATASET_SPEC = _RayDatasetSpec(dataset_or_dict=None)
+EMPTY_RAY_DATASET_SPEC = RayDatasetSpec(dataset_or_dict=None)
 
 
 def test_start(ray_start_2_cpus):

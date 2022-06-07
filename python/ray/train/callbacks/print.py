@@ -4,6 +4,7 @@ from typing import Dict, List
 from ray.train.callbacks import TrainingCallback
 from ray.util.annotations import PublicAPI
 
+
 @PublicAPI(stability="beta")
 class PrintCallback(TrainingCallback):
     """A callback that prints training results to STDOUT.

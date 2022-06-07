@@ -18,7 +18,10 @@ from ray.train.callbacks import (
     TBXLoggerCallback,
     TorchTensorboardProfilerCallback,
 )
-from ray.train.callbacks.logging import MLflowLoggerCallback, _TrainCallbackLogdirManager
+from ray.train.callbacks.logging import (
+    MLflowLoggerCallback,
+    _TrainCallbackLogdirManager,
+)
 from ray.train.constants import (
     TRAINING_ITERATION,
     DETAILED_AUTOFILLED_KEYS,

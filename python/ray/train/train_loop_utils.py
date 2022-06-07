@@ -11,6 +11,7 @@ from ray.util import PublicAPI, log_once
 if TYPE_CHECKING:
     from ray.data import Dataset, DatasetPipeline
 
+
 def _warn_session_misuse(fn_name: str):
     """Logs warning message on provided fn being used outside of session.
 
@@ -25,6 +26,7 @@ def _warn_session_misuse(fn_name: str):
             "inside a training function that is executed by "
             "`Trainer.run`. Returning None."
         )
+
 
 @PublicAPI(stability="beta")
 def get_dataset_shard(
@@ -256,8 +258,3 @@ def world_size() -> int:
     if session is None:
         return 1
     return session.world_size
-
-
-@PublicAPI(stability="beta")
-class SessionMisuseError(Exception):
-    """Method or function was used outside of a session."""

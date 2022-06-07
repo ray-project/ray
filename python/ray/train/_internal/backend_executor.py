@@ -13,7 +13,7 @@ from ray.train.constants import (
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
 )
 from ray.train.backend import BackendConfig
-from ray.train.impl.dataset_spec import _RayDatasetSpec
+from ray.train._internal.dataset_spec import RayDatasetSpec
 from ray.train._internal.session import TrainingResult
 from ray.train._internal.session import init_session, get_session, shutdown_session
 from ray.train._internal.utils import check_for_failure
@@ -263,7 +263,7 @@ class BackendExecutor:
     def start_training(
         self,
         train_func: Callable[[], T],
-        dataset_spec: _RayDatasetSpec,
+        dataset_spec: RayDatasetSpec,
         checkpoint: Optional[Dict] = None,
     ) -> None:
         """Executes a training function on all workers in a separate thread.

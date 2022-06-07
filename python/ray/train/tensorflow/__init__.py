@@ -1,5 +1,5 @@
 try:
-    import tensorflow as tf
+    import tensorflow as tf  # noqa: F401
 except ModuleNotFoundError:
     raise ModuleNotFoundError(
         "TensorFlow isn't installed. To install TensorFlow, run 'pip install "

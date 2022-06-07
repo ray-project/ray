@@ -12,7 +12,7 @@ from ray.train.backend import (
     BackendConfig,
 )
 from ray.train.callbacks.callback import TrainingCallback
-from ray.train.impl.dataset_spec import RayDataset, _RayDatasetSpec
+from ray.train._internal.dataset_spec import RayDataset, RayDatasetSpec
 from ray.train._internal.session import TrainingResultType
 from ray.train._internal.utils import (
     construct_train_func,
@@ -346,7 +346,7 @@ class Trainer:
 
         train_func = construct_train_func(train_func, config)
 
-        dataset_spec = _RayDatasetSpec(dataset_or_dict=dataset)
+        dataset_spec = RayDatasetSpec(dataset_or_dict=dataset)
 
         try:
             iterator = TrainingIterator(
@@ -425,7 +425,7 @@ class Trainer:
 
         train_func = construct_train_func(train_func, config)
 
-        dataset_spec = _RayDatasetSpec(dataset_or_dict=dataset)
+        dataset_spec = RayDatasetSpec(dataset_or_dict=dataset)
 
         return TrainingIterator(
             backend_executor=self._backend_executor,
@@ -664,7 +664,7 @@ class TrainingIterator:
         backend_executor: Union[BackendExecutor, ActorWrapper],
         backend_config: BackendConfig,
         train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
-        dataset_spec: _RayDatasetSpec,
+        dataset_spec: RayDatasetSpec,
         checkpoint_manager: CheckpointManager,
         checkpoint: Optional[Union[Dict, str, Path]],
         checkpoint_strategy: Optional[CheckpointStrategy],
