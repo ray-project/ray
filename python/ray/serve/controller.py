@@ -81,7 +81,6 @@ class ServeController:
         http_config: HTTPOptions,
         checkpoint_path: str,
         detached: bool = False,
-        _override_controller_namespace: Optional[str] = None,
     ):
         configure_component_logger(
             component_name="controller", component_id=str(os.getpid())

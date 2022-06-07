@@ -166,7 +166,6 @@ def start(
         http_options,
         _checkpoint_path,
         detached=detached,
-        _override_controller_namespace=SERVE_NAMESPACE,
     )
 
     proxy_handles = ray.get(controller.get_http_proxies.remote())
