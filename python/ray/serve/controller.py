@@ -244,6 +244,7 @@ class ServeController:
             new_deployment_info = copy(deployment_info)
             new_deployment_info.deployment_config = new_deployment_config
 
+            assert self.write_lock.locked()
             await self.deployment_state_manager.deploy(
                 deployment_name, new_deployment_info
             )
@@ -253,12 +254,12 @@ class ServeController:
         # because an unhandled exception would cause the main control loop to
         # halt, which should *never* happen.
         while True:
-            try:
-                await self.autoscale()
-            except Exception:
-                logger.exception("Exception in autoscaling.")
-
             async with self.write_lock:
+                try:
+                    await self.autoscale()
+                except Exception:
+                    logger.exception("Exception in autoscaling.")
+
                 try:
                     self.http_state.update()
                 except Exception:
@@ -354,6 +355,23 @@ class ServeController:
         route_prefix: Optional[str],
         deployer_job_id: "ray._raylet.JobID",
     ) -> bool:
+        async with self.write_lock:
+            return await self._deploy(
+                name,
+                deployment_config_proto_bytes,
+                replica_config_proto_bytes,
+                route_prefix,
+                deployer_job_id,
+            )
+
+    async def _deploy(
+        self,
+        name: str,
+        deployment_config_proto_bytes: bytes,
+        replica_config_proto_bytes: bytes,
+        route_prefix: Optional[str],
+        deployer_job_id: "ray._raylet.JobID",
+    ) -> bool:
         if route_prefix is not None:
             assert route_prefix.startswith("/")
 
@@ -404,6 +422,7 @@ class ServeController:
         # the only change was num_replicas, the start_time_ms is refreshed.
         # Is this the desired behaviour?
 
+        assert self.write_lock.locked()
         updating = await self.deployment_state_manager.deploy(name, deployment_info)
 
         if route_prefix is not None:
@@ -421,10 +440,8 @@ class ServeController:
         dictionaries in the list. Effectively executes an atomic deploy on a
         group of deployments.
         """
-
-        return await asyncio.gather(
-            *[self.deploy(**args) for args in deployment_args_list]
-        )
+        async with self.write_lock:
+            return [await self._deploy(**args) for args in deployment_args_list]
 
     def deploy_app(
         self,
@@ -457,12 +474,18 @@ class ServeController:
         self.deployment_timestamp = time.time()
 
     async def delete_deployment(self, name: str):
-        await self.endpoint_state.delete_endpoint(name)
-        await self.deployment_state_manager.delete_deployment(name)
+        async with self.write_lock:
+            await self._delete_deployment(name)
 
     async def delete_deployments(self, names: Iterable[str]) -> None:
-        for name in names:
-            await self.delete_deployment(name)
+        async with self.write_lock:
+            for name in names:
+                await self._delete_deployment(name)
+
+    async def _delete_deployment(self, name: str):
+        assert self.write_lock.locked()
+        await self.endpoint_state.delete_endpoint(name)
+        await self.deployment_state_manager.delete_deployment(name)
 
     def get_deployment_info(self, name: str) -> bytes:
         """Get the current information about a deployment.

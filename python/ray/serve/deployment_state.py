@@ -1649,6 +1649,8 @@ class DeploymentStateManager:
 
         One can send multiple shutdown signals but won't effectively make any
         difference compare to calling it once.
+
+        Thread-safety needs to be taken care of.
         """
 
         for deployment_state in self._deployment_states.values():
@@ -1722,6 +1724,8 @@ class DeploymentStateManager:
         If the deployment already exists with the same version and config,
         this is a no-op and returns False.
 
+        Thread-safety needs to be taken care of.
+
         Returns:
             bool: Whether or not the deployment is being updated.
         """
@@ -1738,11 +1742,17 @@ class DeploymentStateManager:
     async def delete_deployment(self, deployment_name: str):
         # This method must be idempotent. We should validate that the
         # specified deployment exists on the client.
+        # Thread-safety needs to be taken care of.
+
         if deployment_name in self._deployment_states:
             await self._deployment_states[deployment_name].delete()
 
     def update(self):
-        """Updates the state of all deployments to match their goal state."""
+        """Updates the state of all deployments to match their goal state.
+
+        Thread-safety needs to be taken care of.
+        """
+
         deleted_tags = []
         for deployment_name, deployment_state in self._deployment_states.items():
             deleted = deployment_state.update()
