@@ -264,6 +264,7 @@ def create_dataset(
         print("start repartition")
         ds = ds.repartition(num_blocks=2000)
         print("repartition done")
+        print(f"total data size: {ds.size_bytes()}")
         pipe = ds.repeat(epochs)
         pipe = pipe.random_shuffle_each_window()
         pipe_shards = pipe.split(num_workers, equal=True)
