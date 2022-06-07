@@ -43,7 +43,6 @@ class HTTPState:
         self._controller_namespace = SERVE_NAMESPACE
         self._detached = detached
         self._config = config
-        self._override_controller_namespace = _override_controller_namespace
         self._proxy_actors: Dict[NodeId, ActorHandle] = dict()
         self._proxy_actor_names: Dict[NodeId, str] = dict()
 

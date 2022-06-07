@@ -108,7 +108,6 @@ class ServeController:
             controller_name,
             detached,
             http_config,
-            _override_controller_namespace=_override_controller_namespace,
         )
         self.endpoint_state = EndpointState(self.kv_store, self.long_poll_host)
         # Fetch all running actors in current cluster as source of current
