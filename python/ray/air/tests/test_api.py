@@ -5,7 +5,7 @@ from ray.air import Checkpoint
 from ray.air.config import ScalingConfigDataClass
 from ray.air.trainer import Trainer
 from ray.air.preprocessor import Preprocessor
-from ray.air.utils.config import (
+from ray.air._internal.config import (
     ensure_only_allowed_dataclass_keys_updated,
     ensure_only_allowed_dict_keys_set,
 )

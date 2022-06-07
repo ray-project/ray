@@ -18,10 +18,10 @@ from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.block import BlockAccessor
 from ray.data.context import DatasetContext
 from ray.data.row import TableRow
-from ray.data.impl.arrow_block import ArrowRow
-from ray.data.impl.block_builder import BlockBuilder
-from ray.data.impl.lazy_block_list import LazyBlockList
-from ray.data.impl.pandas_block import PandasRow
+from ray.data._internal.arrow_block import ArrowRow
+from ray.data._internal.block_builder import BlockBuilder
+from ray.data._internal.lazy_block_list import LazyBlockList
+from ray.data._internal.pandas_block import PandasRow
 from ray.data.aggregate import AggregateFn, Count, Sum, Min, Max, Mean, Std
 from ray.data.extensions.tensor_extension import (
     TensorArray,

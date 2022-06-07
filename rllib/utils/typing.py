@@ -4,6 +4,7 @@ from typing import (
     Callable,
     Dict,
     List,
+    NamedTuple,
     Optional,
     Tuple,
     Type,
@@ -11,6 +12,8 @@ from typing import (
     TYPE_CHECKING,
     Union,
 )
+
+from ray.rllib.utils.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     from ray.rllib.env.env_context import EnvContext
@@ -148,6 +151,36 @@ SampleBatchType = Union["SampleBatch", "MultiAgentBatch"]
 # A (possibly nested) space struct: Either a gym.spaces.Space or a
 # (possibly nested) dict|tuple of gym.space.Spaces.
 SpaceStruct = Union[gym.spaces.Space, dict, tuple]
+
+# A list of batches of RNN states.
+# Each item in this list has dimension [B, S] (S=state vector size)
+StateBatches = List[List[Any]]
+
+# Format of data output from policy forward pass.
+PolicyOutputType = Tuple[TensorStructType, StateBatches, Dict]
+
+# Data type that is fed into and yielded from agent connectors.
+AgentConnectorDataType = DeveloperAPI(  # API stability declaration.
+    NamedTuple(
+        "AgentConnectorDataType", [("env_id", str), ("agent_id", str), ("data", Any)]
+    )
+)
+
+# Data type that is fed into and yielded from agent connectors.
+ActionConnectorDataType = DeveloperAPI(  # API stability declaration.
+    NamedTuple(
+        "ActionConnectorDataType",
+        [("env_id", str), ("agent_id", str), ("output", PolicyOutputType)],
+    )
+)
+
+# Final output data type of agent connectors.
+AgentConnectorsOutput = DeveloperAPI(  # API stability declaration.
+    NamedTuple(
+        "AgentConnectorsOut",
+        [("for_training", Dict[str, TensorStructType]), ("for_action", "SampleBatch")],
+    )
+)
 
 # Generic type var.
 T = TypeVar("T")
