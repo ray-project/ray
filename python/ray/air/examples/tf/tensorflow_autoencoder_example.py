@@ -12,10 +12,10 @@ import ray.train as train
 import tensorflow as tf
 import tensorflow_datasets as tfds
 from ray.data.datasource import SimpleTensorFlowDatasource
-from ray.ml.batch_predictor import BatchPredictor
-from ray.ml.predictors.integrations.tensorflow import TensorflowPredictor
-from ray.ml.result import Result
-from ray.ml.train.integrations.tensorflow import TensorflowTrainer
+from ray.air.batch_predictor import BatchPredictor
+from ray.air.predictors.integrations.tensorflow import TensorflowPredictor
+from ray.air.result import Result
+from ray.air.train.integrations.tensorflow import TensorflowTrainer
 from ray.train.tensorflow import prepare_dataset_shard
 from tensorflow.keras.callbacks import Callback
 from tqdm import trange
