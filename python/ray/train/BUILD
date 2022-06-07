@@ -116,7 +116,7 @@ py_test(
     name = "test_base_trainer",
     size = "medium",
     srcs = ["tests/test_base_trainer.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "air"],
     deps = [":train_lib"]
 )
 
@@ -132,7 +132,7 @@ py_test(
     name = "test_data_parallel_trainer",
     size = "medium",
     srcs = ["tests/test_data_parallel_trainer.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "air"],
     deps = [":train_lib"]
 )
 
@@ -156,7 +156,7 @@ py_test(
     name = "test_horovod_trainer",
     size = "large",
     srcs = ["tests/test_horovod_trainer.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "air"],
     deps = [":train_lib"]
 )
 
@@ -164,7 +164,7 @@ py_test(
     name = "test_huggingface_trainer",
     size = "medium",
     srcs = ["tests/test_huggingface_trainer.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "air"],
     deps = [":train_lib"]
 )
 
@@ -172,7 +172,7 @@ py_test(
     name = "test_lightgbm_trainer",
     size = "medium",
     srcs = ["tests/test_lightgbm_trainer.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "air"],
     deps = [":train_lib"]
 )
 
@@ -204,7 +204,7 @@ py_test(
     name = "test_sklearn_trainer",
     size = "medium",
     srcs = ["tests/test_sklearn_trainer.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "air"],
     deps = [":train_lib"]
 )
 
@@ -220,7 +220,7 @@ py_test(
     name = "test_tensorflow_trainer",
     size = "medium",
     srcs = ["tests/test_tensorflow_trainer.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "air"],
     deps = [":train_lib"]
 )
 
@@ -228,7 +228,7 @@ py_test(
     name = "test_torch_trainer",
     size = "medium",
     srcs = ["tests/test_torch_trainer.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "air"],
     deps = [":train_lib"]
 )
 
@@ -260,7 +260,7 @@ py_test(
     name = "test_xgboost_trainer",
     size = "medium",
     srcs = ["tests/test_xgboost_trainer.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "air"],
     deps = [":train_lib"]
 )
 
