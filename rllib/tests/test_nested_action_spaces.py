@@ -69,7 +69,7 @@ class NestedActionSpacesTest(unittest.TestCase):
         config["output"] = tmp_dir
         # Switch off OPE as we don't write action-probs.
         # TODO: We should probably always write those if `output` is given.
-        config["off_policy_estimation_methods"] = []
+        config["off_policy_estimation_methods"] = {}
 
         # Pretend actions in offline files are already normalized.
         config["actions_in_input_normalized"] = True

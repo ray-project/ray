@@ -1,7 +1,9 @@
 from typing import Optional, Tuple, Union
 from ray.data import Dataset
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 def train_test_split(
     dataset: Dataset,
     test_size: Union[int, float],

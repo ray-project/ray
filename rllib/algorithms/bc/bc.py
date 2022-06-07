@@ -49,7 +49,7 @@ class BCConfig(MARWILConfig):
         # not important for behavioral cloning.
         self.postprocess_inputs = False
         # No reward estimation.
-        self.off_policy_estimation_methods = []
+        self.off_policy_estimation_methods = {}
         # __sphinx_doc_end__
         # fmt: on
 
