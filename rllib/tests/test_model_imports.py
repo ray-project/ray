@@ -144,7 +144,7 @@ def model_import_test(algo, config, env):
     rllib_dir = Path(__file__).parent.parent
     import_file = str(rllib_dir) + "/tests/data/model_weights/weights.h5"
 
-    agent_cls = get_trainer_class(algo)
+    agent_cls = get_algorithm_class(algo)
 
     for fw in framework_iterator(config, ["tf", "torch"]):
         config["model"]["custom_model"] = (

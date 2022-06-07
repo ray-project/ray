@@ -29,7 +29,7 @@ def _setup_logger():
 
 def _register_all():
     from ray.rllib.algorithms.algorithm import Algorithm
-    from ray.rllib.algorithms.registry import ALGORITHMS, get_trainer_class
+    from ray.rllib.algorithms.registry import ALGORITHMS, get_algorithm_class
     from ray.rllib.contrib.registry import CONTRIBUTED_ALGORITHMS
 
     for key in (
@@ -38,7 +38,7 @@ def _register_all():
         + ["__fake", "__sigmoid_fake_data", "__parameter_tuning"]
     ):
         logging.warning(key)
-        register_trainable(key, get_trainer_class(key))
+        register_trainable(key, get_algorithm_class(key))
 
     def _see_contrib(name):
         """Returns dummy agent class warning algo is in contrib/."""

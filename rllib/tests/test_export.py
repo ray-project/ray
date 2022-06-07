@@ -5,7 +5,7 @@ import shutil
 import unittest
 
 import ray
-from ray.rllib.algorithms.registry import get_trainer_class
+from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.rllib.utils.framework import try_import_tf
 from ray.tune.trial import ExportFormat
 
@@ -72,7 +72,7 @@ def export_test(alg_name, failures, framework="tf"):
             and os.path.exists(os.path.join(checkpoint_dir, "checkpoint"))
         )
 
-    cls = get_trainer_class(alg_name)
+    cls = get_algorithm_class(alg_name)
     config = CONFIGS[alg_name].copy()
     config["framework"] = framework
     if "DDPG" in alg_name or "SAC" in alg_name:

@@ -36,9 +36,9 @@ def check_support_multiagent(alg, config):
         if fw in ["tf2", "tfe"] and alg in ["A3C", "APEX", "APEX_DDPG", "IMPALA"]:
             continue
         if alg in ["DDPG", "APEX_DDPG", "SAC"]:
-            a = get_trainer_class(alg)(config=config, env="multi_agent_mountaincar")
+            a = get_algorithm_class(alg)(config=config, env="multi_agent_mountaincar")
         else:
-            a = get_trainer_class(alg)(config=config, env="multi_agent_cartpole")
+            a = get_algorithm_class(alg)(config=config, env="multi_agent_cartpole")
 
         results = a.train()
         check_train_results(results)
