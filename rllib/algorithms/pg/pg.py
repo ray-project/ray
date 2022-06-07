@@ -2,8 +2,6 @@ from typing import Type
 
 from ray.rllib.agents.trainer import Trainer
 from ray.rllib.agents.trainer_config import TrainerConfig
-from ray.rllib.algorithms.pg.pg_tf_policy import PGTFPolicy
-from ray.rllib.algorithms.pg.pg_torch_policy import PGTorchPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
@@ -11,7 +9,7 @@ from ray.rllib.utils.typing import TrainerConfigDict
 
 
 class PGConfig(TrainerConfig):
-    """Defines a PGTrainer configuration class from which a PGTrainer can be built.
+    """Defines a configuration class from which a PG Trainer can be built.
 
     Example:
         >>> from ray.rllib.algorithms.pg import PGConfig
@@ -43,7 +41,7 @@ class PGConfig(TrainerConfig):
 
     def __init__(self):
         """Initializes a PGConfig instance."""
-        super().__init__(trainer_class=PGTrainer)
+        super().__init__(trainer_class=PG)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -55,7 +53,7 @@ class PGConfig(TrainerConfig):
         # fmt: on
 
 
-class PGTrainer(Trainer):
+class PG(Trainer):
     """Policy Gradient (PG) Trainer.
 
     Defines the distributed Trainer class for policy gradients.
@@ -77,7 +75,18 @@ class PGTrainer(Trainer):
 
     @override(Trainer)
     def get_default_policy_class(self, config) -> Type[Policy]:
-        return PGTorchPolicy if config.get("framework") == "torch" else PGTFPolicy
+        if config["framework"] == "torch":
+            from ray.rllib.algorithms.pg.pg_torch_policy import PGTorchPolicy
+
+            return PGTorchPolicy
+        elif config["framework"] == "tf":
+            from ray.rllib.algorithms.pg.pg_tf_policy import PGStaticGraphTFPolicy
+
+            return PGStaticGraphTFPolicy
+        else:
+            from ray.rllib.algorithms.pg.pg_tf_policy import PGEagerTFPolicy
+
+            return PGEagerTFPolicy
 
 
 # Deprecated: Use ray.rllib.algorithms.pg.PGConfig instead!
@@ -87,7 +96,7 @@ class _deprecated_default_config(dict):
 
     @Deprecated(
         old="ray.rllib.algorithms.pg.default_config::DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.pg.pg.PGConfig(...)",
+        new="ray.rllib.algorithms.pg.pg::PGConfig(...)",
         error=False,
     )
     def __getitem__(self, item):

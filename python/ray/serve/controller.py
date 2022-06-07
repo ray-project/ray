@@ -139,6 +139,9 @@ class ServeController:
         """No-op to check if this controller is alive."""
         return
 
+    def get_pid(self) -> int:
+        return os.getpid()
+
     def record_autoscaling_metrics(self, data: Dict[str, float], send_timestamp: float):
         self.autoscaling_metrics_store.add_metrics_point(data, send_timestamp)
 
@@ -278,7 +281,7 @@ class ServeController:
             entry["name"] = deployment_name
             entry["namespace"] = ray.get_runtime_context().namespace
             entry["ray_job_id"] = deployment_info.deployer_job_id.hex()
-            entry["class_name"] = deployment_info.replica_config.func_or_class_name
+            entry["class_name"] = deployment_info.replica_config.deployment_def_name
             entry["version"] = deployment_info.version
             entry["http_route"] = route_prefix
             entry["start_time"] = deployment_info.start_time_ms
@@ -386,7 +389,6 @@ class ServeController:
 
         deployment_info = DeploymentInfo(
             actor_name=name,
-            serialized_deployment_def=replica_config.serialized_deployment_def,
             version=version,
             deployment_config=deployment_config,
             replica_config=replica_config,

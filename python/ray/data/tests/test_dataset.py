@@ -18,10 +18,10 @@ from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.block import BlockAccessor
 from ray.data.context import DatasetContext
 from ray.data.row import TableRow
-from ray.data.impl.arrow_block import ArrowRow
-from ray.data.impl.block_builder import BlockBuilder
-from ray.data.impl.lazy_block_list import LazyBlockList
-from ray.data.impl.pandas_block import PandasRow
+from ray.data._internal.arrow_block import ArrowRow
+from ray.data._internal.block_builder import BlockBuilder
+from ray.data._internal.lazy_block_list import LazyBlockList
+from ray.data._internal.pandas_block import PandasRow
 from ray.data.aggregate import AggregateFn, Count, Sum, Min, Max, Mean, Std
 from ray.data.extensions.tensor_extension import (
     TensorArray,
@@ -1125,7 +1125,7 @@ def test_tensors_in_tables_to_tf_mix(ray_start_regular_shared, pipelined):
         feature_columns=[["one"], ["two"]],
         output_signature=(
             (
-                tf.TensorSpec(shape=(None, 1, 2, 2, 2), dtype=tf.float32),
+                tf.TensorSpec(shape=(None, 2, 2, 2), dtype=tf.float32),
                 tf.TensorSpec(shape=(None, 1), dtype=tf.float32),
             ),
             tf.TensorSpec(shape=(None,), dtype=tf.float32),
@@ -1137,7 +1137,7 @@ def test_tensors_in_tables_to_tf_mix(ray_start_regular_shared, pipelined):
         col1.append(batch[0][0])
         col2.append(batch[0][1])
         labels.append(batch[1])
-    col1 = np.squeeze(np.concatenate(col1), axis=1)
+    col1 = np.concatenate(col1)
     col2 = np.squeeze(np.concatenate(col2), axis=1)
     labels = np.concatenate(labels)
     np.testing.assert_array_equal(col1, np.sort(df["one"].to_numpy()))

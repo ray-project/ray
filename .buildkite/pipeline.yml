@@ -193,7 +193,7 @@
     - bazel test --config=ci --config=ubsan $(./ci/run/bazel_export_options)
       --build_tests_only
       --jobs=2
-      -- //:all -//:core_worker_test -//:logging_test
+      -- //:all -//:core_worker_test -//:logging_test -//:ray_syncer_test
 
 - label: ":cpp: Tests (TSAN)"
   conditions: [ "RAY_CI_CORE_CPP_AFFECTED" ]
