@@ -5,10 +5,7 @@ from ray.air import Checkpoint
 from ray.air.config import ScalingConfigDataClass
 from ray.air.trainer import Trainer
 from ray.air.preprocessor import Preprocessor
-from ray.air._internal.config import (
-    ensure_only_allowed_dataclass_keys_updated,
-    ensure_only_allowed_dict_keys_set,
-)
+from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
 
 
 class DummyTrainer(Trainer):
@@ -65,29 +62,26 @@ def test_scaling_config_validate_config_valid_class():
     )
 
 
-def test_scaling_config_validate_config_valid_dict():
-    scaling_config = {"num_workers": 2}
-    ensure_only_allowed_dict_keys_set(scaling_config, ["num_workers"])
-
-
 def test_scaling_config_validate_config_prohibited_class():
     # Check for prohibited keys
     scaling_config = {"num_workers": 2}
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError) as exc_info:
         ensure_only_allowed_dataclass_keys_updated(
             ScalingConfigDataClass(**scaling_config),
             ["trainer_resources"],
         )
+    assert "trainer_resources" in str(exc_info.value)
 
 
-def test_scaling_config_validate_config_prohibited_dict():
-    # Check for prohibited keys
+def test_scaling_config_validate_config_bad_allowed_keys():
+    # Check for keys not present in dict
     scaling_config = {"num_workers": 2}
-    with pytest.raises(ValueError):
-        ensure_only_allowed_dict_keys_set(
-            scaling_config,
-            ["trainer_resources"],
+    with pytest.raises(ValueError) as exc_info:
+        ensure_only_allowed_dataclass_keys_updated(
+            ScalingConfigDataClass(**scaling_config),
+            ["BAD_KEY"],
         )
+    assert "BAD_KEY" in str(exc_info.value)
 
 
 def test_datasets():

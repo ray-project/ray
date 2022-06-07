@@ -2,28 +2,6 @@ import dataclasses
 from typing import Iterable
 
 
-def ensure_only_allowed_dict_keys_set(
-    data: dict,
-    allowed_keys: Iterable[str],
-):
-    """
-    Validate dict by raising an exception if any key not included in
-    ``allowed_keys`` is set.
-
-    Args:
-        data: Dict to check.
-        allowed_keys: Iterable of keys that can be contained in dict keys.
-    """
-    allowed_keys_set = set(allowed_keys)
-    bad_keys = [key for key in data.keys() if key not in allowed_keys_set]
-
-    if bad_keys:
-        raise ValueError(
-            f"Key(s) {bad_keys} are not allowed to be set in the current context. "
-            "Remove them from the dict."
-        )
-
-
 def ensure_only_allowed_dataclass_keys_updated(
     dataclass: dataclasses.dataclass,
     allowed_keys: Iterable[str],
@@ -40,6 +18,15 @@ def ensure_only_allowed_dataclass_keys_updated(
     default_data = dataclass.__class__()
 
     allowed_keys = set(allowed_keys)
+
+    keys_not_in_dict = [key for key in allowed_keys if key not in default_data.__dict__]
+    if keys_not_in_dict:
+        raise ValueError(
+            f"Key(s) {keys_not_in_dict} are not present in "
+            f"{dataclass.__class__.__name__}. "
+            "Remove them from `allowed_keys`. "
+            f"Valid keys: {list(default_data.__dict__.keys())}"
+        )
 
     # These keys should not have been updated in the `dataclass` object
     prohibited_keys = set(default_data.__dict__) - allowed_keys
