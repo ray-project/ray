@@ -12,8 +12,8 @@ computation graph.
 
      Ray DAG is designed to be developer facing API where recommended use cases
      are
-        - Locally iterate and test your application authored by higher level libraries.
-        - Build libraries on top of the Ray DAG APIs.
+     1) Locally iterate and test your application authored by higher level libraries.
+     2) Build libraries on top of the Ray DAG APIs.
      Please see `DAG Unification Design Doc <https://docs.google.com/document/d/16wRobgsfCvOXnsaQq9lwQMDnnFWzXaYicIQ6e65W5W0>`_ for details.
 
 
