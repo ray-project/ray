@@ -375,6 +375,9 @@ class KubeRayAutoscalingTest(unittest.TestCase):
             validate_replicas=True,
         )
         logger.info("Removing resource demands.")
+        import pdb
+
+        pdb.set_trace()
         kubectl_exec_python_script(
             script_name="scale_down.py",
             pod=head_pod,

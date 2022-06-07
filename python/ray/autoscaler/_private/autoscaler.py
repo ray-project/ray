@@ -458,7 +458,7 @@ class StandardAutoscaler:
                 self.schedule_node_termination(node_id, "idle", logger.info)
                 # Get the local time of the node's last use as a string.
                 formatted_last_used_time = time.asctime(
-                    time.localtime(last_used[node_id])
+                    time.localtime(last_used[node_ip])
                 )
                 logger.info(f"Node last used: {formatted_last_used_time}.")
                 # Note that the current time will appear in the log prefix.
