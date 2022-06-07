@@ -57,7 +57,7 @@ def get_global_client(
         logger.info("The cached controller has died. Reconnecting.")
         set_global_client(None)
 
-    return _connect(_override_controller_namespace=_override_controller_namespace)
+    return _connect()
 
 
 def set_global_client(client):
@@ -81,28 +81,25 @@ def set_internal_replica_context(
     )
 
 
-def _connect(
-    _override_controller_namespace: Optional[str] = None,
-) -> ServeControllerClient:
-    """Connect to an existing Serve instance on this Ray cluster.
+def _connect() -> ServeControllerClient:
+    """Connect to an existing Serve application on this Ray cluster.
 
-    If calling from the driver program, the Serve instance on this Ray cluster
+    If calling from the driver program, the Serve app on this Ray cluster
     must first have been initialized using `serve.start(detached=True)`.
 
     If called from within a replica, this will connect to the same Serve
-    instance that the replica is running in.
+    app that the replica is running in.
 
-    Args:
-        _override_controller_namespace (Optional[str]): The namespace to use
-            when looking for the controller. If None, Serve recalculates the
-            controller's namespace using get_controller_namespace().
+    Returns:
+        ServeControllerClient that encapsulates a Ray actor handle to the
+        existing Serve application's Serve Controller.
 
     Raises:
         RayServeException: if there is no Serve controller actor in the
             expected namespace.
     """
 
-    # Initialize ray if needed.
+    # Initialize Ray if needed.
     ray.worker.global_worker.filter_logs_by_job = False
     if not ray.is_initialized():
         ray.init(namespace="serve")
