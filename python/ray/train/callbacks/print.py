@@ -1,7 +1,8 @@
 import json
 from typing import Dict, List
+import warnings
 
-from ray.train.callbacks import TrainingCallback
+from ray.train.callbacks import TrainingCallback, _deprecation_msg
 
 
 class PrintCallback(TrainingCallback):
@@ -51,6 +52,12 @@ class PrintCallback(TrainingCallback):
             }
         ]
     """
+
+    def __init__(self) -> None:
+        warnings.warn(
+            _deprecation_msg,
+            DeprecationWarning,
+        )
 
     def handle_result(self, results: List[Dict], **info):
         """Prints results to STDOUT.

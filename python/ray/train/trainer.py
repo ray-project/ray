@@ -143,12 +143,13 @@ class Trainer:
         max_retries: int = 3,
     ):
         warnings.warn(
-            "The `ray.train.Trainer` API will be deprecated in Ray "
-            "2.0, and will be replaced by Ray AI Runtime (Ray AIR). Ray AIR ("
+            "The `ray.train.Trainer` API has been deprecated in Ray "
+            "2.0, and is replaced by Ray AI Runtime (Ray AIR). Ray AIR ("
             "https://docs.ray.io/en/latest/ray-air/getting-started.html) will "
             "provide greater functionality than `ray.train.Trainer`, "
-            "and with a more flexible and easy-to-use API.",
-            PendingDeprecationWarning,
+            "and with a more flexible and easy-to-use API. "
+            "This class will be removed in the future.",
+            DeprecationWarning,
             stacklevel=2,
         )
 
