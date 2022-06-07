@@ -12,7 +12,7 @@ import shutil
 from abc import abstractmethod
 from collections.abc import Sized, Iterable
 from enum import Enum, unique
-from typing import Optional, Dict, Any, Iterator, Union
+from typing import Optional, Dict, Any, Iterator, Union, overload
 from tempfile import NamedTemporaryFile
 
 from ray.rllib.utils.annotations import ExperimentalAPI, override
@@ -186,12 +186,15 @@ class LocalStorage(Sized, Iterable):
     def __iter__(self) -> Iterator[SampleBatchType]:
         for i in range(len(self)):
             yield self[i]
+    
+    @overload
+    def __getitem__(self, key: int) -> SampleBatchType: ...
+
+    @overload
+    def __getitem__(self, key: slice) -> "StorageView": ...
 
     @ExperimentalAPI
-    def __getitem__(
-        self,
-        key: Union[int, slice],
-    ) -> Union[SampleBatchType, "StorageView"]:
+    def __getitem__(self, key):
         if isinstance(key, int):
             i = key
             while i < 0:
@@ -412,7 +415,7 @@ class StorageView(LocalStorage):
         self._slice = slice(start, stop, step)
         self._idx_map = list(
             range(self._slice.start, self._slice.stop, self._slice.step)
-            )
+        )
 
     @ExperimentalAPI
     @property
@@ -483,10 +486,7 @@ class StorageView(LocalStorage):
 
     @ExperimentalAPI
     @override(LocalStorage)
-    def __getitem__(
-        self,
-        key: Union[int, slice],
-    ) -> Union[SampleBatchType, "StorageView"]:
+    def __getitem__(self, key):
         if isinstance(key, int):
             i = key
             while i < 0:
