@@ -13,7 +13,7 @@ from ray.air.utils.checkpointing import (
 )
 from ray.rllib.algorithms.algorithm import Algorithm as RLlibTrainer
 from ray.rllib.policy.policy import Policy
-from ray.rllib.utils.typing import PartialTrainerConfigDict, EnvType
+from ray.rllib.utils.typing import PartialAlgorithmConfigDict, EnvType
 from ray.tune import Trainable, PlacementGroupFactory
 from ray.tune.logger import Logger
 from ray.tune.registry import get_trainable_cls
@@ -200,7 +200,7 @@ class RLTrainer(Trainer):
         class AIRRLTrainer(rllib_trainer):
             def __init__(
                 self,
-                config: Optional[PartialTrainerConfigDict] = None,
+                config: Optional[PartialAlgorithmConfigDict] = None,
                 env: Optional[Union[str, EnvType]] = None,
                 logger_creator: Optional[Callable[[], Logger]] = None,
                 remote_checkpoint_dir: Optional[str] = None,
@@ -240,7 +240,7 @@ class RLTrainer(Trainer):
 
             @classmethod
             def default_resource_request(
-                cls, config: PartialTrainerConfigDict
+                cls, config: PartialAlgorithmConfigDict
             ) -> Union[Resources, PlacementGroupFactory]:
                 resolved_config = merge_dicts(base_config, config)
                 param_dict["config"] = resolved_config
