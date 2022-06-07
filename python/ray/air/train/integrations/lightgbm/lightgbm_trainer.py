@@ -4,7 +4,7 @@ import os
 from ray.air.checkpoint import Checkpoint
 from ray.air.preprocessor import Preprocessor
 from ray.air.train.gbdt_trainer import GBDTTrainer
-from ray.air.utils.checkpointing import load_preprocessor_from_dir
+from ray.air._internal.checkpointing import load_preprocessor_from_dir
 from ray.util.annotations import PublicAPI
 from ray.air.constants import MODEL_KEY
 

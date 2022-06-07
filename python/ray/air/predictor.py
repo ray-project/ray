@@ -20,7 +20,7 @@ class PredictorNotSerializableException(RuntimeError):
     pass
 
 
-@DeveloperAPI
+@PublicAPI(stability="alpha")
 class Predictor(abc.ABC):
     """Predictors load models from checkpoints to perform inference.
 

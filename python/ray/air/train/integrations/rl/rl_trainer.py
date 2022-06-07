@@ -7,7 +7,7 @@ from ray.air.checkpoint import Checkpoint
 from ray.air.config import ScalingConfig, RunConfig
 from ray.air.preprocessor import Preprocessor
 from ray.air.trainer import Trainer, GenDataset
-from ray.air.utils.checkpointing import (
+from ray.air._internal.checkpointing import (
     load_preprocessor_from_dir,
     save_preprocessor_to_dir,
 )

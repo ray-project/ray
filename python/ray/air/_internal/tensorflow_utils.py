@@ -26,7 +26,7 @@ def convert_pandas_to_tf_tensor(
 
     Examples:
         >>> import pandas as pd
-        >>> from ray.air.utils.tensorflow_utils improt convert_pandas_to_tf_tensor
+        >>> from ray.air._internal.tensorflow_utils improt convert_pandas_to_tf_tensor
         >>>
         >>> df = pd.DataFrame({"X1": [1, 2, 3], "X2": [4, 5, 6]})
         >>> convert_pandas_to_tf_tensor(df[["X1"]]).shape

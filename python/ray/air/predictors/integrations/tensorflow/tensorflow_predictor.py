@@ -7,7 +7,7 @@ from ray.air.predictor import Predictor, DataBatchType
 from ray.air.preprocessor import Preprocessor
 from ray.air.checkpoint import Checkpoint
 from ray.air.train.data_parallel_trainer import _load_checkpoint
-from ray.air.utils.tensorflow_utils import convert_pandas_to_tf_tensor
+from ray.air._internal.tensorflow_utils import convert_pandas_to_tf_tensor
 
 
 class TensorflowPredictor(Predictor):

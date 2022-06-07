@@ -11,7 +11,7 @@ from transformers.pipelines.table_question_answering import (
 from ray.air.predictor import DataBatchType, Predictor
 from ray.air.preprocessor import Preprocessor
 from ray.air.checkpoint import Checkpoint
-from ray.air.utils.checkpointing import load_preprocessor_from_dir
+from ray.air._internal.checkpointing import load_preprocessor_from_dir
 
 
 class HuggingFacePredictor(Predictor):

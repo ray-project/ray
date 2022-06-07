@@ -32,11 +32,11 @@ from ray.air.train.integrations.huggingface.huggingface_utils import (
     TrainReportCallback,
     wrap_transformers_trainer,
 )
-from ray.air.utils.checkpointing import (
+from ray.air._internal.checkpointing import (
     load_preprocessor_from_dir,
     save_preprocessor_to_dir,
 )
-from ray.air.utils.torch_utils import load_torch_model
+from ray.air._internal.torch_utils import load_torch_model
 from ray.train.constants import TUNE_CHECKPOINT_ID
 from ray.train.torch import TorchConfig
 from ray.tune.trainable import Trainable

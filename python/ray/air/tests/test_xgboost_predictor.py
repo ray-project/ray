@@ -7,7 +7,7 @@ import json
 
 import numpy as np
 import pandas as pd
-from ray.air.utils.checkpointing import save_preprocessor_to_dir
+from ray.air._internal.checkpointing import save_preprocessor_to_dir
 import xgboost as xgb
 import tempfile
 
