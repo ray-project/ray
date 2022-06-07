@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, List, Tuple
 from functools import wraps
 from threading import RLock
 import time
@@ -176,7 +176,9 @@ class GCPNodeProvider(NodeProvider):
             node_type = get_node_type(base_config)
             resource = self.resources[node_type]
 
-            results = resource.create_instances(base_config, labels, count)  # type: List[Tuple[dict, str]] 
+            results = resource.create_instances(
+                base_config, labels, count
+            )  # type: List[Tuple[dict, str]]
             return {instance_id: result for result, instance_id in results}
 
     @_retry
