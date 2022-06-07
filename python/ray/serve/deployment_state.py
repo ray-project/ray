@@ -617,7 +617,6 @@ class DeploymentReplica(VersionedReplica):
         replica_tag: ReplicaTag,
         deployment_name: str,
         version: DeploymentVersion,
-        _override_controller_namespace: Optional[str] = None,
     ):
         self._actor = ActorReplicaWrapper(
             f"{ReplicaName.prefix}{format_actor_name(replica_tag)}",
@@ -995,7 +994,6 @@ class DeploymentState:
                 replica_name.replica_tag,
                 replica_name.deployment_tag,
                 None,
-                _override_controller_namespace=self._override_controller_namespace,
             )
             new_deployment_replica.recover()
             self._replicas.add(ReplicaState.RECOVERING, new_deployment_replica)
@@ -1232,7 +1230,6 @@ class DeploymentState:
                     replica_name.replica_tag,
                     replica_name.deployment_tag,
                     self._target_version,
-                    _override_controller_namespace=self._override_controller_namespace,
                 )
                 new_deployment_replica.start(self._target_info, self._target_version)
 
