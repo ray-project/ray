@@ -1,12 +1,12 @@
 import ray
 
 from ray.data.block import BlockAccessor
-from ray.data.impl.block_list import BlockList
-from ray.data.impl.plan import ExecutionPlan
-from ray.data.impl.progress_bar import ProgressBar
-from ray.data.impl.remote_fn import cached_remote_fn
-from ray.data.impl.shuffle_and_partition import _ShufflePartitionOp
-from ray.data.impl.stats import DatasetStats
+from ray.data._internal.block_list import BlockList
+from ray.data._internal.plan import ExecutionPlan
+from ray.data._internal.progress_bar import ProgressBar
+from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data._internal.shuffle_and_partition import _ShufflePartitionOp
+from ray.data._internal.stats import DatasetStats
 
 
 def fast_repartition(blocks, num_blocks):
@@ -50,9 +50,9 @@ def fast_repartition(blocks, num_blocks):
 
     # Handle empty blocks.
     if len(new_blocks) < num_blocks:
-        from ray.data.impl.arrow_block import ArrowBlockBuilder
-        from ray.data.impl.pandas_block import PandasBlockBuilder
-        from ray.data.impl.simple_block import SimpleBlockBuilder
+        from ray.data._internal.arrow_block import ArrowBlockBuilder
+        from ray.data._internal.pandas_block import PandasBlockBuilder
+        from ray.data._internal.simple_block import SimpleBlockBuilder
 
         num_empties = num_blocks - len(new_blocks)
         if dataset_format == "arrow":

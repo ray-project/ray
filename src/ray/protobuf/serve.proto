@@ -154,10 +154,11 @@ message DeploymentVersion {
 }
 
 message ReplicaConfig {
-  bytes serialized_deployment_def = 1;
-  bytes init_args = 2;
-  bytes init_kwargs = 3;
-  string ray_actor_options = 4;
+  string deployment_def_name = 1;
+  bytes deployment_def = 2;
+  bytes init_args = 3;
+  bytes init_kwargs = 4;
+  string ray_actor_options = 5;
 }
 
 message DeploymentInfo {
@@ -166,9 +167,8 @@ message DeploymentInfo {
   ReplicaConfig replica_config = 3;
   int64 start_time_ms = 4;
   string actor_name = 5;
-  bytes serialized_deployment_def = 6;
-  string version = 7;
-  int64 end_time_ms = 8;
+  string version = 6;
+  int64 end_time_ms = 7;
 }
 
 // Wrap DeploymentInfo and route. The "" route value need to be convert to None/null.
