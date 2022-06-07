@@ -1,10 +1,9 @@
 import ray
 from ray import serve
-from ray.dag.input_node import InputNode
+from ray.serve.deployment_graph import InputNode
 
 
 ray.init()
-serve.start()
 
 
 @serve.deployment

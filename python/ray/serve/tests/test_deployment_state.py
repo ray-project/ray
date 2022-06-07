@@ -175,7 +175,7 @@ def deployment_info(
         deployment_config=DeploymentConfig(
             num_replicas=num_replicas, user_config=user_config, **config_opts
         ),
-        replica_config=ReplicaConfig(lambda x: x),
+        replica_config=ReplicaConfig.create(lambda x: x),
         deployer_job_id=ray.JobID.nil(),
     )
 
@@ -394,22 +394,16 @@ class TestReplicaStateContainer:
         assert not c.pop(
             exclude_version=DeploymentVersion("1"), states=[ReplicaState.STOPPING]
         )
-        assert (
-            c.pop(
-                exclude_version=DeploymentVersion("1"),
-                states=[ReplicaState.RUNNING],
-                max_replicas=1,
-            )
-            == [r3]
-        )
-        assert (
-            c.pop(
-                exclude_version=DeploymentVersion("1"),
-                states=[ReplicaState.RUNNING],
-                max_replicas=1,
-            )
-            == [r4]
-        )
+        assert c.pop(
+            exclude_version=DeploymentVersion("1"),
+            states=[ReplicaState.RUNNING],
+            max_replicas=1,
+        ) == [r3]
+        assert c.pop(
+            exclude_version=DeploymentVersion("1"),
+            states=[ReplicaState.RUNNING],
+            max_replicas=1,
+        ) == [r4]
         c.add(ReplicaState.RUNNING, r3)
         c.add(ReplicaState.RUNNING, r4)
         assert c.pop(
@@ -421,20 +415,14 @@ class TestReplicaStateContainer:
         c.add(ReplicaState.STARTING, r2)
         c.add(ReplicaState.RUNNING, r3)
         c.add(ReplicaState.RUNNING, r4)
-        assert (
-            c.pop(
-                exclude_version=DeploymentVersion("1"),
-                states=[ReplicaState.RUNNING, ReplicaState.STARTING],
-            )
-            == [r3, r4, r2]
-        )
-        assert (
-            c.pop(
-                exclude_version=DeploymentVersion("nonsense"),
-                states=[ReplicaState.STOPPING],
-            )
-            == [r1]
-        )
+        assert c.pop(
+            exclude_version=DeploymentVersion("1"),
+            states=[ReplicaState.RUNNING, ReplicaState.STARTING],
+        ) == [r3, r4, r2]
+        assert c.pop(
+            exclude_version=DeploymentVersion("nonsense"),
+            states=[ReplicaState.STOPPING],
+        ) == [r1]
 
 
 def check_counts(

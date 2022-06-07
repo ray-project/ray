@@ -12,7 +12,7 @@ from ray.data.block import (
     KeyFn,
     _validate_key_fn,
 )
-from ray.data.impl.null_aggregate import (
+from ray.data._internal.null_aggregate import (
     _null_wrap_init,
     _null_wrap_merge,
     _null_wrap_accumulate_block,
@@ -246,7 +246,7 @@ class Std(_AggregateOnKeyBase):
             # exact comparison tests to fail.
             mean = (mean_a * count_a + mean_b * count_b) / count
             # Update the sum of squared differences.
-            M2 = M2_a + M2_b + (delta ** 2) * count_a * count_b / count
+            M2 = M2_a + M2_b + (delta**2) * count_a * count_b / count
             return [M2, mean, count]
 
         null_merge = _null_wrap_merge(ignore_nulls, merge)
