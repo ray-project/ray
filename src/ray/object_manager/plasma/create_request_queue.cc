@@ -85,14 +85,6 @@ Status CreateRequestQueue::ProcessRequest(bool fallback_allocator,
   }
 }
 
-bool CreateRequestQueue::MayHandleOutOfDisk(std::unique_ptr<CreateRequest> &request) {
-  if (request->error == PlasmaError::OutOfMemory && fs_monitor_.OverCapacity()) {
-    request->error = PlasmaError::OutOfDisk;
-    return true;
-  }
-  return false;
-}
-
 Status CreateRequestQueue::ProcessRequests() {
   // Suppress OOM dump to once per grace period.
   bool logged_oom = false;
@@ -102,7 +94,10 @@ Status CreateRequestQueue::ProcessRequests() {
     auto status =
         ProcessRequest(/*fallback_allocator=*/false, *request_it, &spilling_required);
 
-    if (MayHandleOutOfDisk(*request_it)) {
+    // if allocation failed due to OOM, and fs_monitor_ indicates the local disk is full,
+    // we should failed the request with out of disk error
+    if ((*request_it)->error == PlasmaError::OutOfMemory && fs_monitor_.OverCapacity()) {
+      (*request_it)->error = PlasmaError::OutOfDisk;
       FinishRequest(request_it);
       continue;
     }

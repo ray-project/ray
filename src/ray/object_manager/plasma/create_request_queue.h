@@ -159,8 +159,6 @@ class CreateRequestQueue {
                         std::unique_ptr<CreateRequest> &request,
                         bool *spilling_required);
 
-  bool MayHandleOutOfDisk(std::unique_ptr<CreateRequest> &request);
-
   /// Finish a queued request and remove it from the queue.
   void FinishRequest(std::list<std::unique_ptr<CreateRequest>>::iterator request_it);
 
