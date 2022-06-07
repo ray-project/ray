@@ -5,7 +5,7 @@ import os
 
 from ray.tune.callback import Callback
 from ray.tune.progress_reporter import TrialProgressCallback
-from ray.tune.syncer import SyncConfig, detect_cluster_syncer
+from ray.tune.syncer import SyncConfig
 from ray.tune.logger import (
     CSVLoggerCallback,
     CSVLogger,
@@ -114,11 +114,9 @@ def create_default_callbacks(
         not has_syncer_callback
         and os.environ.get("TUNE_DISABLE_AUTO_CALLBACK_SYNCER", "0") != "1"
     ):
-
-        # Detect Docker and Kubernetes environments
-        _cluster_syncer = detect_cluster_syncer(sync_config)
-
-        syncer_callback = SyncerCallback(sync_function=_cluster_syncer)
+        syncer_callback = SyncerCallback(
+            enabled=bool(sync_config.syncer), sync_period=sync_config.sync_period
+        )
         callbacks.append(syncer_callback)
         syncer_index = len(callbacks) - 1
 

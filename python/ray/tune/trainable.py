@@ -39,7 +39,7 @@ from ray.tune.result import (
     STDOUT_FILE,
     STDERR_FILE,
 )
-from ray.tune.sync_client import get_sync_client, get_cloud_sync_client
+from ray.tune.syncer import Syncer
 from ray.tune.utils import UtilMonitor
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.tune.utils.trainable import TrainableUtil
@@ -91,14 +91,12 @@ class Trainable:
 
     """
 
-    _sync_function_tpl = None
-
     def __init__(
         self,
         config: Dict[str, Any] = None,
         logger_creator: Callable[[Dict[str, Any]], Logger] = None,
         remote_checkpoint_dir: Optional[str] = None,
-        sync_function_tpl: Optional[str] = None,
+        custom_syncer: Optional[Syncer] = None,
     ):
         """Initialize an Trainable.
 
@@ -116,8 +114,7 @@ class Trainable:
             remote_checkpoint_dir: Upload directory (S3 or GS path).
                 This is **per trial** directory,
                 which is different from **per checkpoint** directory.
-            sync_function_tpl: Sync function template to use. Defaults
-              to `cls._sync_function` (which defaults to `None`).
+            custom_syncer: Todo docstring
         """
 
         self._experiment_id = uuid.uuid4().hex
@@ -168,25 +165,12 @@ class Trainable:
         self._monitor = UtilMonitor(start=log_sys_usage)
 
         self.remote_checkpoint_dir = remote_checkpoint_dir
-        self.sync_function_tpl = sync_function_tpl or self._sync_function_tpl
+        self.custom_syncer = custom_syncer
         self.storage_client = None
-
-        if self.uses_cloud_checkpointing and self.sync_function_tpl:
-            # Keep this only for custom sync functions and
-            # backwards compatibility.
-            # Todo (krfricke): We should find a way to register custom
-            # syncers in Checkpoints rather than passing storage clients
-            self.storage_client = self._create_storage_client()
 
     @property
     def uses_cloud_checkpointing(self):
         return bool(self.remote_checkpoint_dir)
-
-    def _create_storage_client(self):
-        """Returns a storage client."""
-        return get_sync_client(self.sync_function_tpl) or get_cloud_sync_client(
-            self.remote_checkpoint_dir
-        )
 
     def _storage_path(self, local_path):
         """Converts a `local_path` to be based off of
@@ -466,12 +450,11 @@ class Trainable:
     def _maybe_save_to_cloud(self, checkpoint_dir: str):
         # Derived classes like the FunctionRunner might call this
         if self.uses_cloud_checkpointing:
-            if self.storage_client:
-                # Keep for backwards compatibility, remove after deprecation
-                self.storage_client.sync_up(
+            if self.custom_syncer:
+                self.custom_syncer.sync_up(
                     checkpoint_dir, self._storage_path(checkpoint_dir)
                 )
-                self.storage_client.wait_or_retry()
+                self.custom_syncer.wait_or_retry()
                 return
 
             checkpoint = Checkpoint.from_directory(checkpoint_dir)
