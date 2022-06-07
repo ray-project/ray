@@ -188,6 +188,18 @@ def test_put_new_rest_api(ray_start_stop):
         timeout=15,
     )
 
+    # Make Adder's ray_actor_options an empty dictionary.
+    config["deployments"][1]["ray_actor_options"] = {}
+
+    # Check that Adder's empty config ray_actor_options override its code options
+    put_response = requests.put(GET_OR_PUT_URL, json=config, timeout=30)
+    assert put_response.status_code == 200
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
+        == "4 pizzas please!",
+        timeout=15,
+    )
+
 
 def test_delete_success(ray_start_stop):
     ray_actor_options = {
