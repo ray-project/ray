@@ -86,8 +86,8 @@ def test_jax_get_device(ray_start_4_cpus_2_gpus):
         resources_per_worker={"GPU": num_gpus_per_worker},
     )
     trainer.start()
-    devices = trainer.run(train_fn)
-    assert devices == [2, 2]
+    devices = trainer.run(train_fn)[0]
+    assert devices[0] == 2 and devices[1] == 2 and len(devices) == 2
     trainer.shutdown()
 
 
@@ -377,14 +377,14 @@ def test_jax_mnist_gpu(ray_start_4_cpus_2_gpus):
     )
     trainer.start()
     results = trainer.run(
-        jax_mnist_train_func, config={"num_epochs": num_epochs, "lr": 1e-3}
+        jax_mnist_train_func, config={"num_epochs": num_epochs, "learning_rate": 1e-3,  "momentum": 0.9, "batch_size": 8192}
     )
     trainer.shutdown()
 
     assert len(results) == num_workers
     for worker_result in results:
         assert len(worker_result) == num_epochs
-        assert worker_result[num_epochs - 1] < worker_result[0]
+        assert worker_result[num_epochs - 1] > worker_result[0]
 
 
 def test_tune_fashion_mnist_gpu(ray_start_4_cpus_2_gpus):
