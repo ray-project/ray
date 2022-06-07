@@ -9,7 +9,7 @@ from sklearn.utils import shuffle
 from ray import tune
 from ray.data import from_pandas, read_datasource, Dataset, Datasource, ReadTask
 from ray.data.block import BlockMetadata
-from ray.air.config import RunConfig
+from ray.air.config import RunConfig, ScalingConfig
 from ray.air.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
 )
@@ -91,9 +91,9 @@ class TunerTest(unittest.TestCase):
         # prep_v1 = StandardScaler(["worst radius", "worst area"])
         # prep_v2 = StandardScaler(["worst concavity", "worst smoothness"])
         param_space = {
-            "scaling_config": {
-                "num_workers": tune.grid_search([1, 2]),
-            },
+            "scaling_config": ScalingConfig(
+                num_workers=tune.grid_search([1, 2])
+            ),
             # "preprocessor": tune.grid_search([prep_v1, prep_v2]),
             "datasets": {
                 "train": tune.grid_search(
