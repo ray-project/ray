@@ -192,11 +192,11 @@ def train_mnist(num_workers=4, use_gpu=True, use_tpu=True, num_gpu_per_worker=1)
             "num_epochs": 100,
         }
     
-    scaling_config = dict(num_workers=num_workers, use_gpu=use_gpu)
+    scaling_config = dict(num_workers=num_workers, use_gpu=use_gpu, placement_strategy='STRICT_SPREAD')
     if use_gpu: 
-        scaling_config = dict(num_workers=num_workers, use_gpu=use_gpu, resources_per_worker={'GPU': num_gpu_per_worker})
+        scaling_config = dict(num_workers=num_workers, use_gpu=use_gpu, resources_per_worker={'GPU': num_gpu_per_worker}, placement_strategy='STRICT_SPREAD')
     if use_tpu: 
-        scaling_config = dict(num_workers=num_workers, use_gpu=False, resources_per_worker={'TPU': 1})
+        scaling_config = dict(num_workers=num_workers, use_gpu=False, resources_per_worker={'TPU': 1}, placement_strategy='STRICT_SPREAD')
         
     from ray.ml.train.integrations.jax import JaxTrainer
 
