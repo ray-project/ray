@@ -2,13 +2,13 @@ from typing import Callable, Optional, Dict, Tuple, Union, Any
 import jax
 
 from ray.train.jax import JaxConfig
-from ray.ml.trainer import GenDataset
-from ray.ml.train.data_parallel_trainer import DataParallelTrainer, _load_checkpoint
-from ray.ml.config import ScalingConfig, RunConfig
-from ray.ml.preprocessor import Preprocessor
-from ray.ml.checkpoint import Checkpoint
+from ray.air.trainer import GenDataset
+from ray.air.train.data_parallel_trainer import DataParallelTrainer, _load_checkpoint
+from ray.air.config import ScalingConfig, RunConfig
+from ray.air.preprocessor import Preprocessor
+from ray.air.checkpoint import Checkpoint
 from ray.util import PublicAPI
-# from ray.ml.utils.jax_utils import load_jax_model
+# from ray.air.utils.jax_utils import load_jax_model
 
 
 @PublicAPI(stability="alpha")
@@ -99,7 +99,7 @@ class JaxTrainer(DataParallelTrainer):
 
             import ray
             from ray import train
-            from ray.ml.train.integrations.jax import JaxTrainer
+            from ray.air.train.integrations.jax import JaxTrainer
 
             input_size = 1
             layer_size = 15
@@ -160,7 +160,7 @@ class JaxTrainer(DataParallelTrainer):
             dataset. If a ``preprocessor`` is provided and has not already been fit,
             it will be fit on the training dataset. All datasets will be transformed
             by the ``preprocessor`` if one is provided.
-        preprocessor: A ``ray.ml.preprocessor.Preprocessor`` to preprocess the
+        preprocessor: A ``ray.air.preprocessor.Preprocessor`` to preprocess the
             provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
     """
