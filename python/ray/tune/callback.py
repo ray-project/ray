@@ -56,7 +56,13 @@ class _CallbackMeta(ABCMeta):
 
     @classmethod
     def need_override_by_subclass(mcs, attr_name: str, attr: Any) -> bool:
-        return ((attr_name.startswith("on_") and not attr_name.startswith("on_trainer_init")) or attr_name == "setup") and callable(attr)
+        return (
+            (
+                attr_name.startswith("on_")
+                and not attr_name.startswith("on_trainer_init")
+            )
+            or attr_name == "setup"
+        ) and callable(attr)
 
 
 @PublicAPI(stability="beta")

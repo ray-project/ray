@@ -5,7 +5,10 @@ from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.from_config import from_config
-from ray.rllib.utils.typing import MultiAgentPolicyConfigDict, PartialAlgorithmConfigDict
+from ray.rllib.utils.typing import (
+    MultiAgentPolicyConfigDict,
+    PartialAlgorithmConfigDict,
+)
 
 logger = logging.getLogger(__name__)
 

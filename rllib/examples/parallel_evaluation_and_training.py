@@ -86,7 +86,9 @@ class AssertEvalCallback(DefaultCallbacks):
                 # (each worker's `sample()` is at least called once).
                 else:
                     assert algorithm.config["evaluation_duration"] == "auto"
-                    assert num_episodes_done >= algorithm.config["evaluation_num_workers"]
+                    assert (
+                        num_episodes_done >= algorithm.config["evaluation_num_workers"]
+                    )
                 print(
                     "Number of run evaluation episodes: " f"{num_episodes_done} (ok)!"
                 )

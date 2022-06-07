@@ -10,7 +10,11 @@ from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import get_tf_eager_cls_if_necessary
 from ray.rllib.utils.threading import with_lock
-from ray.rllib.utils.typing import PartialAlgorithmConfigDict, PolicyID, AlgorithmConfigDict
+from ray.rllib.utils.typing import (
+    PartialAlgorithmConfigDict,
+    PolicyID,
+    AlgorithmConfigDict,
+)
 from ray.tune.utils.util import merge_dicts
 
 if TYPE_CHECKING:

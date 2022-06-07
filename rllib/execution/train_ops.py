@@ -42,9 +42,9 @@ def train_one_step(algorithm, train_batch, policies_to_train=None) -> Dict:
     Examples:
         >>> from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
         >>> algo = [...] # doctest: +SKIP
-        >>> train_batch = synchronous_parallel_sample(algorithm.workers) # doctest: +SKIP
+        >>> train_batch = synchronous_parallel_sample(algo.workers) # doctest: +SKIP
         >>> # This trains the policy on one batch.
-        >>> results = train_one_step(algorithm, train_batch)) # doctest: +SKIP
+        >>> results = train_one_step(algo, train_batch)) # doctest: +SKIP
         {"default_policy": ...}
 
     Updates the NUM_ENV_STEPS_TRAINED and NUM_AGENT_STEPS_TRAINED counters as well as
@@ -96,10 +96,10 @@ def multi_gpu_train_one_step(algorithm, train_batch) -> Dict:
 
     Examples:
         >>> from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
-        >>> algorithm = [...] # doctest: +SKIP
-        >>> train_batch = synchronous_parallel_sample(algorithm.workers) # doctest: +SKIP
+        >>> algo = [...] # doctest: +SKIP
+        >>> train_batch = synchronous_parallel_sample(algo.workers) # doctest: +SKIP
         >>> # This trains the policy on one batch.
-        >>> results = multi_gpu_train_one_step(algorithm, train_batch)) # doctest: +SKIP
+        >>> results = multi_gpu_train_one_step(algo, train_batch)) # doctest: +SKIP
         {"default_policy": ...}
 
     Updates the NUM_ENV_STEPS_TRAINED and NUM_AGENT_STEPS_TRAINED counters as well as

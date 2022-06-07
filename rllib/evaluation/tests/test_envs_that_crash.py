@@ -59,9 +59,7 @@ class TestEnvsThatCrash(unittest.TestCase):
         # and `ignore_worker_failures=False` (so the original EnvError should
         # just be bubbled up by RLlib Algorithm and tune.Trainable during the `step()`
         # call).
-        self.assertRaisesRegex(
-            EnvError, "Simulated env crash!", lambda: algo.train()
-        )
+        self.assertRaisesRegex(EnvError, "Simulated env crash!", lambda: algo.train())
 
     def test_crash_only_one_worker_during_sampling_but_ignore(self):
         """Expect some sub-envs to fail (and not recover), but ignore."""

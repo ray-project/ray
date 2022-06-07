@@ -119,7 +119,7 @@ if __name__ == "__main__":
             eps += 1
             print("Episode {}: {}".format(eps, ep_reward))
             ep_reward = 0
-            state = agent.get_policy().get_initial_state()
+            state = algo.get_policy().get_initial_state()
             prev_action = 0
             prev_reward = 0
             obs = env.reset()

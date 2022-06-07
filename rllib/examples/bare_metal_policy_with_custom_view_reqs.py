@@ -78,5 +78,5 @@ if __name__ == "__main__":
     }
 
     # Train the Algorithm with our policy.
-    results = tune.run(BareMetalPolicyTrainer, config=config, stop=stop)
+    results = tune.run(BareMetalPolicyAlgorithm, config=config, stop=stop)
     print(results)

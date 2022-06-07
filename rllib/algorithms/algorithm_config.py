@@ -55,7 +55,7 @@ class AlgorithmConfig:
         >>> tune.run("[registered trainer class]", config=config.to_dict())
     """
 
-    def __init__(self,algo_class=None):
+    def __init__(self, algo_class=None):
         # Define all settings and their default values.
 
         # Define the default RLlib Trainer class that this AlgorithmConfig will be
@@ -840,15 +840,15 @@ class AlgorithmConfig:
                 will result in the evaluation workers not using this optimal policy!
             evaluation_num_workers: Number of parallel workers to use for evaluation.
                 Note that this is set to zero by default, which means evaluation will
-                be run in the algorithm process (only if evaluation_interval is not None).
-                If you increase this, it will increase the Ray resource usage of the
-                algorithm since evaluation workers are created separately from rollout
-                workers (used to sample data for training).
+                be run in the algorithm process (only if evaluation_interval is not
+                None). If you increase this, it will increase the Ray resource usage of
+                the algorithm since evaluation workers are created separately from
+                rollout workers (used to sample data for training).
             custom_evaluation_function: Customize the evaluation method. This must be a
                 function of signature (algo: Algorithm, eval_workers: WorkerSet) ->
                 metrics: dict. See the Algorithm.evaluate() method to see the default
-                implementation. The Algorithm guarantees all eval workers have the latest
-                policy state before this function is called.
+                implementation. The Algorithm guarantees all eval workers have the
+                latest policy state before this function is called.
             always_attach_evaluation_results: Make sure the latest available evaluation
                 results are always attached to a step result dict. This may be useful
                 if Tune or some other meta controller needs access to evaluation metrics

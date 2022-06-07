@@ -67,7 +67,8 @@ class DynamicTFPolicy(TFPolicy):
         ] = None,
         make_model: Optional[
             Callable[
-                [Policy, gym.spaces.Space, gym.spaces.Space, AlgorithmConfigDict], ModelV2
+                [Policy, gym.spaces.Space, gym.spaces.Space, AlgorithmConfigDict],
+                ModelV2,
             ]
         ] = None,
         action_sampler_fn: Optional[

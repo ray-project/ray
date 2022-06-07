@@ -141,7 +141,6 @@ class AlphaStarConfig(appo.APPOConfig):
         # values.
         self.vtrace_drop_last_ts = False
         self.min_time_s_per_reporting = 2
-        self._disable_execution_plan_api = True
         # __sphinx_doc_end__
         # fmt: on
 
@@ -194,9 +193,9 @@ class AlphaStarConfig(appo.APPOConfig):
                 `ray.rllib.algorithms.alpha_star.league_builder::AlphaStarLeagueBuilder`
                 (used by default by this algo) as an example.
             max_num_policies_to_train: The maximum number of trainable policies for this
-                Algorithm. Each trainable policy will exist as a independent remote actor,
-                co-located with a replay buffer. This is besides its existence inside
-                the RolloutWorkers for training and evaluation. Set to None for
+                Algorithm. Each trainable policy will exist as a independent remote
+                actor, co-located with a replay buffer. This is besides its existence
+                inside the RolloutWorkers for training and evaluation. Set to None for
                 automatically inferring this value from the number of trainable
                 policies found in the `multiagent` config.
 

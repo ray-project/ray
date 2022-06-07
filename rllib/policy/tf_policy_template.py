@@ -70,7 +70,9 @@ def build_tf_policy(
         Callable[[Policy, gym.Space, gym.Space, AlgorithmConfigDict], None]
     ] = None,
     before_loss_init: Optional[
-        Callable[[Policy, gym.spaces.Space, gym.spaces.Space, AlgorithmConfigDict], None]
+        Callable[
+            [Policy, gym.spaces.Space, gym.spaces.Space, AlgorithmConfigDict], None
+        ]
     ] = None,
     after_init: Optional[
         Callable[[Policy, gym.Space, gym.Space, AlgorithmConfigDict], None]
