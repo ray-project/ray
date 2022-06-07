@@ -44,7 +44,7 @@ Result = namedtuple(
 
 
 class ARSConfig(TrainerConfig):
-    """Defines an ARSTrainer configuration class from which an ARSTrainer can be built.
+    """Defines a configuration class from which an ARS Trainer can be built.
 
     Example:
         >>> from ray.rllib.algorithms.ars import ARSConfig
@@ -77,7 +77,7 @@ class ARSConfig(TrainerConfig):
 
     def __init__(self):
         """Initializes a ARSConfig instance."""
-        super().__init__(trainer_class=ARSTrainer)
+        super().__init__(trainer_class=ARS)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -312,7 +312,7 @@ def get_policy_class(config):
     return policy_cls
 
 
-class ARSTrainer(Trainer):
+class ARS(Trainer):
     """Large-scale implementation of Augmented Random Search in Ray."""
 
     @classmethod

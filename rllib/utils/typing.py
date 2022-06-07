@@ -4,15 +4,21 @@ from typing import (
     Callable,
     Dict,
     List,
+    NamedTuple,
     Optional,
     Tuple,
-    Union,
+    Type,
     TypeVar,
     TYPE_CHECKING,
+    Union,
 )
+
+from ray.rllib.utils.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     from ray.rllib.env.env_context import EnvContext
+    from ray.rllib.policy.dynamic_tf_policy_v2 import DynamicTFPolicyV2
+    from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
     from ray.rllib.policy.policy import PolicySpec
     from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
     from ray.rllib.policy.view_requirement import ViewRequirement
@@ -80,6 +86,9 @@ MultiAgentPolicyConfigDict = Dict[PolicyID, "PolicySpec"]
 # data (TensorStructType).
 PolicyState = Dict[str, TensorStructType]
 
+# Any tf Policy type (static-graph or eager Policy).
+TFPolicyV2Type = Type[Union["DynamicTFPolicyV2", "EagerTFPolicyV2"]]
+
 # Represents an episode id.
 EpisodeID = int
 
@@ -142,6 +151,36 @@ SampleBatchType = Union["SampleBatch", "MultiAgentBatch"]
 # A (possibly nested) space struct: Either a gym.spaces.Space or a
 # (possibly nested) dict|tuple of gym.space.Spaces.
 SpaceStruct = Union[gym.spaces.Space, dict, tuple]
+
+# A list of batches of RNN states.
+# Each item in this list has dimension [B, S] (S=state vector size)
+StateBatches = List[List[Any]]
+
+# Format of data output from policy forward pass.
+PolicyOutputType = Tuple[TensorStructType, StateBatches, Dict]
+
+# Data type that is fed into and yielded from agent connectors.
+AgentConnectorDataType = DeveloperAPI(  # API stability declaration.
+    NamedTuple(
+        "AgentConnectorDataType", [("env_id", str), ("agent_id", str), ("data", Any)]
+    )
+)
+
+# Data type that is fed into and yielded from agent connectors.
+ActionConnectorDataType = DeveloperAPI(  # API stability declaration.
+    NamedTuple(
+        "ActionConnectorDataType",
+        [("env_id", str), ("agent_id", str), ("output", PolicyOutputType)],
+    )
+)
+
+# Final output data type of agent connectors.
+AgentConnectorsOutput = DeveloperAPI(  # API stability declaration.
+    NamedTuple(
+        "AgentConnectorsOut",
+        [("for_training", Dict[str, TensorStructType]), ("for_action", "SampleBatch")],
+    )
+)
 
 # Generic type var.
 T = TypeVar("T")
