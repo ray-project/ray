@@ -116,16 +116,17 @@ def tune_jax_mnist(num_workers, use_gpu, num_samples, num_gpus_per_worker):
             "learning_rate": tune.loguniform(1e-4, 1e-1),
             "batch_size": tune.choice([32, 64, 128]),
             "num_epochs": epochs,
+            "momentum": 0.9
         },
     )
 
     # Check that loss decreases in each trial.
     for path, df in analysis.trial_dataframes.items():
-        assert df.loc[1, "loss"] < df.loc[0, "loss"]
+        assert df.loc[1, "train_accuracy"] > df.loc[0, "train_accuracy"]
 
 
 def test_tune_jax_mnist(ray_start_8_cpus):
-    tune_jax_mnist(num_workers=2, use_gpu=False, num_samples=2, num_gpus_per_worker=0)
+    tune_jax_mnist(num_workers=1, use_gpu=False, num_samples=2, num_gpus_per_worker=0)
 
 
 def test_tune_error(ray_start_2_cpus):
