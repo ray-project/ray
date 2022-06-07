@@ -16,7 +16,7 @@ class TestBandits(unittest.TestCase):
         ray.shutdown()
 
     def test_bandit_lin_ts_compilation(self):
-        """Test whether a BanditLinTSTrainer can be built on all frameworks."""
+        """Test whether BanditLinTS can be built on all frameworks."""
         config = (
             bandit.BanditLinTSConfig()
             .environment(env=SimpleContextualBandit)
@@ -40,7 +40,7 @@ class TestBandits(unittest.TestCase):
                 trainer.stop()
 
     def test_bandit_lin_ucb_compilation(self):
-        """Test whether a BanditLinUCBTrainer can be built on all frameworks."""
+        """Test whether BanditLinUCB can be built on all frameworks."""
         config = (
             bandit.BanditLinUCBConfig()
             .environment(env=SimpleContextualBandit)

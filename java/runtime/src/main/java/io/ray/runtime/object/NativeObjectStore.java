@@ -5,7 +5,6 @@ import io.ray.api.Ray;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.BaseId;
 import io.ray.api.id.ObjectId;
-import io.ray.api.id.UniqueId;
 import io.ray.runtime.AbstractRayRuntime;
 import io.ray.runtime.context.WorkerContext;
 import io.ray.runtime.generated.Common.Address;
@@ -66,16 +65,16 @@ public class NativeObjectStore extends ObjectStore {
   }
 
   @Override
-  public void addLocalReference(UniqueId workerId, ObjectId objectId) {
-    nativeAddLocalReference(workerId.getBytes(), objectId.getBytes());
+  public void addLocalReference(ObjectId objectId) {
+    nativeAddLocalReference(objectId.getBytes());
   }
 
   @Override
-  public void removeLocalReference(UniqueId workerId, ObjectId objectId) {
+  public void removeLocalReference(ObjectId objectId) {
     Lock readLock = shutdownLock.readLock();
     readLock.lock();
     try {
-      nativeRemoveLocalReference(workerId.getBytes(), objectId.getBytes());
+      nativeRemoveLocalReference(objectId.getBytes());
     } finally {
       readLock.unlock();
     }
@@ -128,9 +127,9 @@ public class NativeObjectStore extends ObjectStore {
 
   private static native void nativeDelete(List<byte[]> objectIds, boolean localOnly);
 
-  private static native void nativeAddLocalReference(byte[] workerId, byte[] objectId);
+  private static native void nativeAddLocalReference(byte[] objectId);
 
-  private static native void nativeRemoveLocalReference(byte[] workerId, byte[] objectId);
+  private static native void nativeRemoveLocalReference(byte[] objectId);
 
   private static native Map<byte[], long[]> nativeGetAllReferenceCounts();
 

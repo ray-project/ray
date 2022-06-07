@@ -44,11 +44,11 @@ class TrainCallbackLogdirManager:
         logdir (Optional[str|Path]): The path of the logdir to use.
             If None is passed in, the logdir will use the ``default_logdir``
             when ``setup_logdir`` is called.
-        create_logdir (bool): Whether to create the logdir if it does not
+        create_logdir: Whether to create the logdir if it does not
             already exist.
 
     Attributes:
-        logdir_path (Path): The path of the logdir. The default logdir will
+        logdir_path: The path of the logdir. The default logdir will
             not be available until ``setup_logdir`` is called.
     """
 
@@ -167,14 +167,14 @@ class MLflowLoggerCallback(TrainingCallback):
             ``experiment_name`` must be passed in.
         tags (Optional[Dict]):  An optional dictionary of string keys and
             values to set as tags on the run
-        save_artifact (bool): If set to True, automatically save the entire
+        save_artifact: If set to True, automatically save the entire
             contents of the Train local_dir as an artifact to the
             corresponding run in MlFlow.
         logdir (Optional[str]): Path to directory where the results file
             should be. If None, will be set by the Trainer. If no tracking
             uri or registry uri are passed in, the logdir will be used for
             both.
-        worker_to_log (int): Worker index to log. By default, will log the
+        worker_to_log: Worker index to log. By default, will log the
             worker with index 0.
     """
 
@@ -242,7 +242,7 @@ class TBXLoggerCallback(TrainingCallback):
     Args:
         logdir (Optional[str]): Path to directory where the results file
             should be. If None, will be set by the Trainer.
-        worker_to_log (int): Worker index to log. By default, will log the
+        worker_to_log: Worker index to log. By default, will log the
             worker with index 0.
     """
 

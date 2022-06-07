@@ -19,7 +19,7 @@ class TestMAML(unittest.TestCase):
         ray.shutdown()
 
     def test_maml_compilation(self):
-        """Test whether a MAMLTrainer can be built with all frameworks."""
+        """Test whether MAML can be built with all frameworks."""
         config = maml.MAMLConfig().rollouts(num_rollout_workers=1, horizon=200)
 
         num_iterations = 1

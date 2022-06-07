@@ -15,9 +15,9 @@ from ray.data.block import (
     MaybeBlockPartition,
 )
 from ray.data.context import DatasetContext
-from ray.data.impl.arrow_block import ArrowRow
-from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
-from ray.data.impl.util import _check_pyarrow_version
+from ray.data._internal.arrow_block import ArrowRow
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.util import _check_pyarrow_version
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 WriteResult = Any
@@ -228,9 +228,13 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
                 schema = int
             else:
                 raise ValueError("Unsupported block type", block_format)
+            if block_format == "tensor":
+                element_size = np.product(tensor_shape)
+            else:
+                element_size = 1
             meta = BlockMetadata(
                 num_rows=count,
-                size_bytes=8 * count,
+                size_bytes=8 * count * element_size,
                 schema=schema,
                 input_files=None,
                 exec_stats=None,
