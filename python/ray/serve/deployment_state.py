@@ -1540,7 +1540,6 @@ class DeploymentStateManager:
         kv_store: KVStoreBase,
         long_poll_host: LongPollHost,
         all_current_actor_names: List[str],
-        _override_controller_namespace: Optional[str] = None,
     ):
 
         self._controller_name = controller_name

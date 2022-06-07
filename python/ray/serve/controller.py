@@ -120,7 +120,6 @@ class ServeController:
             self.kv_store,
             self.long_poll_host,
             all_current_actor_names,
-            _override_controller_namespace=_override_controller_namespace,
         )
 
         # Reference to Ray task executing most recent deployment request
