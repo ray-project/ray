@@ -143,7 +143,7 @@ class Node:
             ),
             setup_worker_path=os.path.join(
                 os.path.dirname(os.path.abspath(__file__)),
-                f"workers/{ray_constants.SETUP_WORKER_FILENAME}",
+                "workers", f"{ray_constants.SETUP_WORKER_FILENAME}",
             ),
         )
 

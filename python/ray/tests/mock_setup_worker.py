@@ -1,5 +1,6 @@
 import argparse
 import os
+import subprocess
 import sys
 
 parser = argparse.ArgumentParser(
@@ -37,10 +38,9 @@ parser.add_argument("--language", type=str, help="the language type of the worke
 
 args, remaining_args = parser.parse_known_args()
 
-py_executable: str = sys.executable
-command_str = " ".join([f"exec {py_executable}"] + remaining_args)
+command_args = [sys.executable] + remaining_args
 child_pid = os.fork()
 if child_pid == 0:
     # child process
-    os.execvp("bash", ["bash", "-c", command_str])
+    subprocess.run(command_args)
 os.waitpid(child_pid, 0)

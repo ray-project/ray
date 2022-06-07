@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import subprocess
 import sys
 from typing import Any, Dict, List, Optional
 
@@ -45,10 +46,8 @@ class RuntimeEnvContext:
     def exec_worker(self, passthrough_args: List[str], language: Language):
         os.environ.update(self.env_vars)
 
-        if language == Language.PYTHON and sys.platform == "win32":
-            executable = f'"{self.py_executable}"'  # Path may contain spaces
-        elif language == Language.PYTHON:
-            executable = f"exec {self.py_executable}"
+        if language == Language.PYTHON:
+            executable = self.py_executable
         elif language == Language.JAVA:
             executable = "java"
             ray_jars = os.path.join(get_ray_jars_dir(), "*")
@@ -65,15 +64,8 @@ class RuntimeEnvContext:
         else:
             executable = "exec "
 
-        exec_command = " ".join([f"{executable}"] + passthrough_args)
-        command_str = " && ".join(self.command_prefix + [exec_command])
-        logger.debug(f"Exec'ing worker with command: {command_str}")
-        if sys.platform == "win32":
-            os.system(command_str)
-        else:
-            # PyCharm will monkey patch the os.execvp at
-            # .pycharm_helpers/pydev/_pydev_bundle/pydev_monkey.py
-            # The monkey patched os.execvp function has a different
-            # signature. So, we use os.execvp("executable", args=[])
-            # instead of os.execvp(file="executable", args=[])
-            os.execvp("bash", args=["bash", "-c", command_str])
+        exec_command = [f"{executable}"] + passthrough_args
+        if self.command_prefix:
+            exec_command = self.command_prefix + ["&&"] + exec_command
+        logger.debug(f"subprocess.check_call({exec_command})")
+        subprocess.run(exec_command)
