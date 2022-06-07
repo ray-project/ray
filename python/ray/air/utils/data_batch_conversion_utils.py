@@ -33,7 +33,6 @@ def convert_batch_type_to_pandas(data: DataBatchType) -> pd.DataFrame:
         if data.dtype == object:
             return pd.DataFrame({TENSOR_COLUMN_NAME: list(data)})
         else:
-
             return pd.DataFrame({TENSOR_COLUMN_NAME: TensorArray(data)})
 
     elif isinstance(data, dict):
