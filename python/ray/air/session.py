@@ -28,14 +28,14 @@ class Session(abc.ABC):
 
         raise NotImplementedError
 
-    @abc.abstractmethod
-    def remote_checkpoint_dir(self) -> str:
-        """Get remote checkpoint dir to save to cloud.
-
-        This checkpoint dir is tracked by Ray Air so that the same
-        checkpoint dir is used for resuming training or tuning."""
-
-        raise NotImplementedError
+    # @abc.abstractmethod
+    # def remote_checkpoint_dir(self) -> str:
+    #     """Get remote checkpoint dir to save to cloud.
+    #
+    #     This checkpoint dir is tracked by Ray Air so that the same
+    #     checkpoint dir is used for resuming training or tuning."""
+    #
+    #     raise NotImplementedError
 
 
 def get_session() -> Optional[Session]:
