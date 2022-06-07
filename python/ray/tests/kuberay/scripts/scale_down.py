@@ -1,13 +1,10 @@
 import ray
 from ray._private import test_utils
 
-SCALE_DOWN_CPU = "Removing 1 nodes of type fake-gpu-group (idle)."
-SCALE_DOWN_GPU = "Removing 2 nodes of type small-group (idle)."
+SCALE_DOWN_GPU = "Removing 1 nodes of type fake-gpu-group (idle)."
 
 
-@test_utils.wait_for_stdout(
-    strings_to_match=[SCALE_DOWN_CPU, SCALE_DOWN_GPU], timeout_s=25
-)
+@test_utils.wait_for_stdout(strings_to_match=[SCALE_DOWN_GPU], timeout_s=25)
 def main():
     """Removes CPU request, removes GPU actor.
     Waits for autoscaler scale-down events to get emitted to stdout.
