@@ -164,14 +164,12 @@ def test_put_new_rest_api(ray_start_stop):
         "deployments": [
             {
                 "name": "Multiplier",
-                "user_config": {
-                    "factor": 1,
-                },
+                "user_config": {"factor": 1},
             },
             {
                 "name": "Adder",
-                "user_config": {
-                    "increment": 1,
+                "ray_actor_options": {
+                    "runtime_env": {"env_vars": {"override_increment": "1"}}
                 },
             },
         ],
@@ -182,12 +180,12 @@ def test_put_new_rest_api(ray_start_stop):
     wait_for_condition(
         lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
         == "3 pizzas please!",
-        timeout=30,
+        timeout=15,
     )
     wait_for_condition(
         lambda: requests.post("http://localhost:8000/", json=["MUL", 2]).json()
-        == "2 pizzas please!",
-        timeout=30,
+        == "-4 pizzas please!",
+        timeout=15,
     )
 
 

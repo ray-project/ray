@@ -587,12 +587,20 @@ def run_graph(
         name = options["name"]
 
         # Merge graph-level and deployment-level runtime_envs
-        if options.get("ray_actor_options") is None:
-            options["ray_actor_options"] = {"runtime_env": {}}
-        deployment_env = options["ray_actor_options"].get("runtime_env", {})
-        merged_env = merge_runtime_envs(graph_env, deployment_env)
-        options["ray_actor_options"].update({"runtime_env": merged_env})
+        ray_actor_options = options.get("ray_actor_options")
+        if ray_actor_options is None:
+            if app.deployments[name].ray_actor_options:
+                ray_actor_options = app.deployments[name].ray_actor_options
+            else:
+                ray_actor_options = {}
 
+        deployment_env = ray_actor_options.get("runtime_env", {})
+        merged_env = merge_runtime_envs(graph_env, deployment_env)
+
+        ray_actor_options.update({"runtime_env": merged_env})
+        options["ray_actor_options"] = ray_actor_options
+
+        # Update the deployment's options
         app.deployments[name].set_options(**options)
 
     # Run the graph locally on the cluster
