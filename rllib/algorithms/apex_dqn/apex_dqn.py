@@ -52,7 +52,6 @@ from ray.rllib.utils.typing import (
     ResultDict,
     PartialTrainerConfigDict,
 )
-from ray.tune.trainable import Trainable
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.util.ml_utils.dict import merge_dicts
 
@@ -351,7 +350,7 @@ class ApexDQNConfig(DQNConfig):
 
 
 class ApexDQN(DQN):
-    @override(Trainable)
+    @override(Trainer)
     def setup(self, config: PartialTrainerConfigDict):
         super().setup(config)
 
@@ -434,7 +433,7 @@ class ApexDQN(DQN):
         # Call DQN's validation method.
         super().validate_config(config)
 
-    @override(Trainable)
+    @override(DQN)
     def training_step(self) -> ResultDict:
         num_samples_ready_dict = self.get_samples_and_store_to_replay_buffers()
         worker_samples_collected = defaultdict(int)
@@ -680,7 +679,7 @@ class ApexDQN(DQN):
         return result
 
     @classmethod
-    @override(Trainable)
+    @override(Trainer)
     def default_resource_request(cls, config):
         cf = dict(cls.get_default_config(), **config)
 
