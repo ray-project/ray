@@ -140,7 +140,7 @@ print(dataset_transformed.take())
 from typing import Dict
 import ray
 from pandas import DataFrame
-from ray.air.preprocessors import StatefulPreprocessor
+from ray.air.preprocessors import CustomStatefulPreprocessor
 from ray.data import Dataset
 from ray.data.aggregate import Max
 
@@ -159,7 +159,7 @@ print(dataset.take())
 # [{'value': 0}, {'value': 1}, {'value': 2}, {'value': 3}]
 
 # Create a stateful preprocessor that finds the max value and scales each value by it.
-preprocessor = StatefulPreprocessor(get_max, scale_by_max)
+preprocessor = CustomStatefulPreprocessor(get_max, scale_by_max)
 dataset_transformed = preprocessor.fit_transform(dataset)
 print(dataset_transformed.take())
 # [{'value': 0}, {'value': 3}, {'value': 6}, {'value': 9}]

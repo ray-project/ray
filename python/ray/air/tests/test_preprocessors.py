@@ -18,7 +18,7 @@ from ray.air.preprocessors import (
     LabelEncoder,
     SimpleImputer,
     Chain,
-    StatefulPreprocessor,
+    CustomStatefulPreprocessor,
 )
 from ray.air.preprocessors.encoder import Categorizer, MultiHotEncoder
 from ray.air.preprocessors.hasher import FeatureHasher
@@ -1100,8 +1100,8 @@ def test_batch_mapper():
     assert out_df.equals(expected_df)
 
 
-def test_stateful_preprocessor():
-    """Tests basic StatefulPreprocessor functionality."""
+def test_custom_stateful_preprocessor():
+    """Tests basic CustomStatefulPreprocessor functionality."""
 
     items = [
         {"A": 1, "B": 10, "C": 1},
@@ -1123,7 +1123,7 @@ def test_stateful_preprocessor():
         df["B"] = df["B"] + max_a
         return df
 
-    preprocessor = StatefulPreprocessor(
+    preprocessor = CustomStatefulPreprocessor(
         get_max_a, subtract_max_a_from_a_and_add_max_a_to_b
     )
     preprocessor.fit(ds)

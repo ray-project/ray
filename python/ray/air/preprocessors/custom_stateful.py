@@ -7,24 +7,22 @@ if TYPE_CHECKING:
     import pandas
 
 
-class StatefulPreprocessor(Preprocessor):
-    """Implements a stateful preprocessor that fits on a Dataset.
+class CustomStatefulPreprocessor(Preprocessor):
+    """Implements a user-defined stateful preprocessor that fits on a Dataset.
 
     This is meant to be generic and can be used to perform arbitrary stateful
     preprocessing that cannot already be done through existing preprocessors.
     Logic must be defined to perform fitting on a Ray Dataset and transforming
-    Pandas DataFrames.
+    pandas DataFrames.
 
     Example:
 
     .. code-block:: python
 
-        from typing import Dict
-
         import pandas as pd
         import ray.data
         from pandas import DataFrame
-        from ray.air.preprocessors import StatefulPreprocessor
+        from ray.air.preprocessors import CustomStatefulPreprocessor
         from ray.data import Dataset
         from ray.data.aggregate import Max
 
@@ -44,7 +42,7 @@ class StatefulPreprocessor(Preprocessor):
             return max_a
 
 
-        def subtract_max_a_from_a_and_add_max_a_to_b(df: DataFrame, stats: Dict):
+        def subtract_max_a_from_a_and_add_max_a_to_b(df: DataFrame, stats: dict):
             # Subtract max A value from column A and subtract it from B.
             max_a = stats["max(A)"]
             df["A"] = df["A"] - max_a
@@ -52,7 +50,7 @@ class StatefulPreprocessor(Preprocessor):
             return df
 
 
-        preprocessor = StatefulPreprocessor(
+        preprocessor = CustomStatefulPreprocessor(
             get_max_a,
             subtract_max_a_from_a_and_add_max_a_to_b
         )
@@ -109,11 +107,13 @@ class StatefulPreprocessor(Preprocessor):
         return self.transform_fn(df, self.stats_)
 
     def __repr__(self):
-        fit_fn_name = getattr(self.fit_fn, "__name__", self.fit_fn)
-        transform_fn_name = getattr(self.transform_fn, "__name__", self.transform_fn)
+        fit_fn_name = getattr(self.fit_fn, "__name__", str(self.fit_fn))
+        transform_fn_name = getattr(
+            self.transform_fn, "__name__", str(self.transform_fn)
+        )
         stats = getattr(self, "stats_", None)
         return (
-            f"StatefulPreprocessor("
+            f"CustomStatefulPreprocessor("
             f"fit_fn={fit_fn_name}, "
             f"transform_fn={transform_fn_name}, "
             f"stats={stats})"
