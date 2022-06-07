@@ -14,8 +14,13 @@ import random
 
 import ray
 from ray import tune
-from ray.rllib.algorithms.pg import PG, PGTFPolicy, PGTorchPolicy
-from ray.rllib.algorithms.registry import get_trainer_class
+from ray.rllib.algorithms.pg import (
+    PG,
+    PGEagerTFPolicy,
+    PGStaticGraphTFPolicy,
+    PGTorchPolicy,
+)
+from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.rllib.env import PettingZooEnv
 from ray.rllib.examples.policy.rock_paper_scissors_dummies import (
     BeatLastHeuristic,
@@ -78,7 +83,7 @@ def run_same_policy(args, stop):
         check_learning_achieved(results, 0.0)
 
 
-def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
+def run_heuristic_vs_learned(args, use_lstm=False, algorithm="PG"):
     """Run heuristic policies vs a learned agent.
 
     The learned agent should eventually reach a reward of ~5 with
@@ -119,10 +124,10 @@ def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
         },
         "framework": args.framework,
     }
-    cls = get_trainer_class(trainer) if isinstance(trainer, str) else trainer
-    trainer_obj = cls(config=config)
+    cls = get_algorithm_class(algorithm) if isinstance(algorithm, str) else algorithm
+    algo = cls(config=config)
     for _ in range(args.stop_iters):
-        results = trainer_obj.train()
+        results = algo.train()
         # Timesteps reached.
         if "policy_always_same_reward" not in results["hist_stats"]:
             reward_diff = 0
@@ -148,24 +153,32 @@ def run_with_custom_entropy_loss(args, stop):
 
     This performs about the same as the default loss does."""
 
-    def entropy_policy_gradient_loss(policy, model, dist_class, train_batch):
-        logits, _ = model(train_batch)
-        action_dist = dist_class(logits, model)
-        if args.framework == "torch":
-            # Required by PGTorchPolicy's stats fn.
-            model.tower_stats["policy_loss"] = torch.tensor([0.0])
-            policy.policy_loss = torch.mean(
-                -0.1 * action_dist.entropy()
-                - (action_dist.logp(train_batch["actions"]) * train_batch["advantages"])
-            )
-        else:
-            policy.policy_loss = -0.1 * action_dist.entropy() - tf.reduce_mean(
-                action_dist.logp(train_batch["actions"]) * train_batch["advantages"]
-            )
-        return policy.policy_loss
+    policy_cls = {
+        "torch": PGTorchPolicy,
+        "tf": PGStaticGraphTFPolicy,
+        "tf2": PGEagerTFPolicy,
+        "tfe": PGEagerTFPolicy,
+    }[args.framework]
 
-    policy_cls = PGTorchPolicy if args.framework == "torch" else PGTFPolicy
-    EntropyPolicy = policy_cls.with_updates(loss_fn=entropy_policy_gradient_loss)
+    class EntropyPolicy(policy_cls):
+        def loss_fn(policy, model, dist_class, train_batch):
+            logits, _ = model(train_batch)
+            action_dist = dist_class(logits, model)
+            if args.framework == "torch":
+                # Required by PGTorchPolicy's stats fn.
+                model.tower_stats["policy_loss"] = torch.tensor([0.0])
+                policy.policy_loss = torch.mean(
+                    -0.1 * action_dist.entropy()
+                    - (
+                        action_dist.logp(train_batch["actions"])
+                        * train_batch["advantages"]
+                    )
+                )
+            else:
+                policy.policy_loss = -0.1 * action_dist.entropy() - tf.reduce_mean(
+                    action_dist.logp(train_batch["actions"]) * train_batch["advantages"]
+                )
+            return policy.policy_loss
 
     class EntropyLossPG(PG):
         def get_default_policy_class(self, config):

@@ -1,10 +1,10 @@
 from typing import Any
 
 from ray.data.block import Block, T, BlockAccessor
-from ray.data.impl.block_builder import BlockBuilder
-from ray.data.impl.simple_block import SimpleBlockBuilder
-from ray.data.impl.arrow_block import ArrowRow, ArrowBlockBuilder
-from ray.data.impl.pandas_block import PandasRow, PandasBlockBuilder
+from ray.data._internal.block_builder import BlockBuilder
+from ray.data._internal.simple_block import SimpleBlockBuilder
+from ray.data._internal.arrow_block import ArrowRow, ArrowBlockBuilder
+from ray.data._internal.pandas_block import PandasRow, PandasBlockBuilder
 
 
 class DelegatingBlockBuilder(BlockBuilder[T]):

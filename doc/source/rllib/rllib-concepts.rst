@@ -374,7 +374,7 @@ In PPO we run ``setup_mixins`` before the loss function is called (i.e., ``befor
 
 **Example 2: Deep Q Networks**
 
-Let's look at how to implement a different family of policies, by looking at the `SimpleQ policy definition <https://github.com/ray-project/ray/blob/master/rllib/algorithms/dqn/simple_q_tf_policy.py>`__:
+Let's look at how to implement a different family of policies, by looking at the `SimpleQ policy definition <https://github.com/ray-project/ray/blob/master/rllib/algorithms/simple_q/simple_q_tf_policy.py>`__:
 
 .. code-block:: python
 

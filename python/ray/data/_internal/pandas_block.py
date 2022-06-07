@@ -15,14 +15,14 @@ import numpy as np
 
 from ray.data.block import BlockAccessor, BlockMetadata, KeyFn, U
 from ray.data.row import TableRow
-from ray.data.impl.table_block import TableBlockAccessor, TableBlockBuilder
-from ray.data.impl.arrow_block import ArrowBlockAccessor
+from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
+from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data.aggregate import AggregateFn
 
 if TYPE_CHECKING:
     import pyarrow
     import pandas
-    from ray.data.impl.sort import SortKeyT
+    from ray.data._internal.sort import SortKeyT
 
 T = TypeVar("T")
 

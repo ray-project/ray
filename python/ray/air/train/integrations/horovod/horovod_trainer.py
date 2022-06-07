@@ -165,8 +165,8 @@ class HorovodTrainer(DataParallelTrainer):
 
     def __init__(
         self,
-        *,
         train_loop_per_worker: Union[Callable[[], None], Callable[[Dict], None]],
+        *,
         train_loop_config: Optional[Dict] = None,
         horovod_config: Optional[HorovodConfig] = None,
         scaling_config: Optional[ScalingConfig] = None,

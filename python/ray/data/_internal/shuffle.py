@@ -1,9 +1,9 @@
 from typing import List, Optional, Dict, Any, Tuple, Union
 
 from ray.data.block import Block, BlockMetadata
-from ray.data.impl.progress_bar import ProgressBar
-from ray.data.impl.block_list import BlockList
-from ray.data.impl.remote_fn import cached_remote_fn
+from ray.data._internal.progress_bar import ProgressBar
+from ray.data._internal.block_list import BlockList
+from ray.data._internal.remote_fn import cached_remote_fn
 
 
 class ShuffleOp:

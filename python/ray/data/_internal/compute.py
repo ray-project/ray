@@ -11,10 +11,10 @@ from ray.data.block import (
     BlockExecStats,
 )
 from ray.data.context import DatasetContext
-from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
-from ray.data.impl.block_list import BlockList
-from ray.data.impl.progress_bar import ProgressBar
-from ray.data.impl.remote_fn import cached_remote_fn
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.block_list import BlockList
+from ray.data._internal.progress_bar import ProgressBar
+from ray.data._internal.remote_fn import cached_remote_fn
 
 T = TypeVar("T")
 U = TypeVar("U")

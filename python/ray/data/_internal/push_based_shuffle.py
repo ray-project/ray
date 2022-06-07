@@ -6,10 +6,10 @@ import ray
 from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.data.block import Block, BlockAccessor, BlockMetadata, BlockExecStats
-from ray.data.impl.shuffle import ShuffleOp
-from ray.data.impl.progress_bar import ProgressBar
-from ray.data.impl.block_list import BlockList
-from ray.data.impl.remote_fn import cached_remote_fn
+from ray.data._internal.shuffle import ShuffleOp
+from ray.data._internal.progress_bar import ProgressBar
+from ray.data._internal.block_list import BlockList
+from ray.data._internal.remote_fn import cached_remote_fn
 
 logger = logging.getLogger(__name__)
 
