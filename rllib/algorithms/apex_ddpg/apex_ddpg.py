@@ -66,8 +66,8 @@ class ApexDDPGConfig(DDPGConfig):
         self.exploration_config = {"type": "PerWorkerOrnsteinUhlenbeckNoise"}
         self.num_gpus = 0
         self.num_workers = 32
-        self.min_sample_timesteps_per_reporting = 25000
-        self.min_time_s_per_reporting = 30
+        self.min_sample_timesteps_per_iteration = 25000
+        self.min_time_s_per_iteration = 30
         self.train_batch_size = 512
         self.rollout_fragment_length = 50
         self.replay_buffer_config = {
