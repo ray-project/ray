@@ -34,6 +34,7 @@ parts:
         - file: ray-air/examples/rl_serving_example
         - file: ray-air/examples/rl_online_example
         - file: ray-air/examples/rl_offline_example
+        - file: ray-air/examples/feast_example
     - file: ray-air/package-ref
 
   - caption: AIR Libraries
