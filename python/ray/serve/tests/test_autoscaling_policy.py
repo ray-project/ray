@@ -180,7 +180,7 @@ def test_e2e_basic_scale_up_down(min_replicas, serve_instance):
         _autoscaling_config={
             "metrics_interval_s": 0.1,
             "min_replicas": min_replicas,
-            "max_replicas": 2,
+            "max_replicas": 3,
             "look_back_period_s": 0.2,
             "downscale_delay_s": 0,
             "upscale_delay_s": 0,
