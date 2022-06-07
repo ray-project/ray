@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 import ray.cloudpickle as cpickle
 from ray.air.preprocessor import Preprocessor
@@ -9,8 +9,8 @@ from ray.air.constants import PREPROCESSOR_KEY
 
 def save_preprocessor_to_dir(
     preprocessor: Preprocessor,
-    parent_dir: os.PathLike,
-) -> os.PathLike:
+    parent_dir: Union[os.PathLike, str],
+) -> None:
     """Save preprocessor to file. Returns path saved to."""
     parent_dir = Path(parent_dir)
     with open(parent_dir.joinpath(PREPROCESSOR_KEY), "wb") as f:
