@@ -188,16 +188,26 @@ class LocalStorage(Sized, Iterable):
             yield self[i]
 
     @ExperimentalAPI
-    def __getitem__(self, i: int) -> SampleBatchType:
-        if not isinstance(i, int):
-            raise ValueError(
-                "Only single integer indices supported for getting values."
+    def __getitem__(
+        self, 
+        key: Union[int, slice],
+    ) -> Union[SampleBatchType, "StorageView"]:
+        if isinstance(key, int):
+            i = key
+            while i < 0:
+                i += len(self)
+            while i >= len(self):
+                i -= len(self)
+            idx = self._get_internal_index(i)
+            self._hit_count[idx] += 1
+            return self._get(idx)
+        elif isinstance(key, slice):
+            s = key
+            return StorageView(self, s)
+        else:
+            raise TypeError(
+                "Only single integer indices or slices are supported."
             )
-        if i >= len(self) or i < 0:
-            raise IndexError("Buffer index out of range.")
-        idx = self._get_internal_index(i)
-        self._hit_count[idx] += 1
-        return self._get(idx)
 
     @ExperimentalAPI
     def __setitem__(self, i: int, item: SampleBatchType) -> None:
@@ -380,6 +390,144 @@ class LocalStorage(Sized, Iterable):
             Item at index that has been removed.
         """
         return self._get(idx)
+
+
+@ExperimentalAPI
+class StorageView(LocalStorage):
+    @ExperimentalAPI
+    @override(LocalStorage)
+    def __init__(
+        self,
+        storage: LocalStorage,
+        storage_slice: slice,
+    ) -> None:
+        """Initializes a read-only StorageView instance of a LocalStorage.
+
+        Args:
+            storage: Underlying storage.
+            storage_slice: Slice of the storage
+        """
+        self._storage = storage
+        start = storage_slice.start or 0
+        stop = storage_slice.stop or len(storage)
+        step = storage_slice.step or 1
+        self._slice = slice(start, stop, step)
+        self._idx_map = list(range(self._slice.start, self._slice.stop, self._slice.step))
+
+    @ExperimentalAPI
+    @property
+    def slice(self) -> slice:
+        """Slice of the StorageView (`slice`, read-only)."""
+        return self._slice
+
+    @ExperimentalAPI
+    @override(LocalStorage)
+    @property
+    def capacity(self) -> int:
+        """Maximum number of timesteps the storage may contain
+        (`int`, read-only).
+        """
+        return self._storage.capacity
+
+    @ExperimentalAPI
+    @override(LocalStorage)
+    @property
+    def size_bytes(self) -> int:
+        """Current size of the data inside the storage in bytes
+        (`int`, read-only).
+        """
+        return self._storage.size_bytes
+
+    @ExperimentalAPI
+    @override(LocalStorage)
+    @property
+    def evicted_hit_stats(self) -> Dict[str, Any]:
+        """Hit statistics for items in storage including mean,
+        std, and quantiles (`dict`, read-only).
+        """
+        return self._storage.evicted_hit_stats
+
+    @ExperimentalAPI
+    @override(LocalStorage)
+    @property
+    def eviction_started(self) -> bool:
+        """Whether eviction of items started, i.e. storage
+        is "full" (`bool`, read-only).
+        """
+        return self._storage.eviction_started
+
+    @ExperimentalAPI
+    @override(LocalStorage)
+    @property
+    def num_timesteps_added(self) -> int:
+        """Total number of timesteps added to the storage
+        over its lifetime (`int`, read-only).
+        """
+        return self._storage.num_timesteps_added
+
+    @ExperimentalAPI
+    @override(LocalStorage)
+    @property
+    def num_timesteps(self) -> int:
+        """Number of timesteps currently in the storage
+        (`int`, read-only).
+        """
+        return self._storage.num_timesteps
+
+    @override(LocalStorage)
+    def get_state(self) -> Dict[str, Any]:
+        raise RuntimeError("The view of a storage is stateless.")
+
+    @override(LocalStorage)
+    def set_state(self, state: Dict[str, Any]) -> None:
+        raise RuntimeError("The view of a storage is stateless.")
+
+    @ExperimentalAPI
+    @override(LocalStorage)
+    def __len__(self) -> int:
+        return len(self._idx_map)
+
+    @ExperimentalAPI
+    @override(LocalStorage)
+    def __getitem__(
+        self,
+        key: Union[int, slice],
+    ) -> Union[SampleBatchType, "StorageView"]:
+        if isinstance(key, int):
+            i = key
+            while i < 0:
+                i += len(self)
+            while i >= len(self):
+                i -= len(self)
+            idx = self._idx_map[i]
+            return self._storage[idx]
+        elif isinstance(key, slice):
+            s = key
+            return StorageView(self, s)
+        else:
+            raise TypeError(
+                "Only single integer indices or slices are supported."
+            )
+
+    @override(LocalStorage)
+    def __setitem__(self, i: int, item: SampleBatchType) -> None:
+        raise RuntimeError("The view of a storage is read-only.")
+
+    @override(LocalStorage)
+    def add(self, item: SampleBatchType) -> None:
+        raise RuntimeError("The view of a storage is read-only.")
+
+    @override(LocalStorage)
+    def _get(self, idx: int) -> SampleBatchType:
+        raise RuntimeError("The view of a storage is read-only.")
+
+    @override(LocalStorage)
+    def _set(self, idx: int, item: SampleBatchType) -> None:
+        raise RuntimeError("The view of a storage is read-only.")
+
+    @override(LocalStorage)
+    def _del(self, idx: int) -> SampleBatchType:
+        raise RuntimeError("The view of a storage is read-only.")
 
 
 @ExperimentalAPI

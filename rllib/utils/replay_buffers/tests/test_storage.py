@@ -260,6 +260,33 @@ class TestStorage(unittest.TestCase):
             for k in m_batch:
                 assert np.array_equal(m_batch[k], d_batch[k])
 
+    def test_slicing(self):
+        """Create slices of a storage."""
+        storage = InMemoryStorage(100)
+
+        self._add_data_to_storage(storage, batch_size=10, num_batches=3)
+        view = storage[:6]
+        assert 2 * len(storage) == len(view)
+
+        view1 = view[:3]
+        view2 = view[3:]
+        assert len(view1) == len(view2)
+        for i in range(len(view1)):
+            batch1 = view1[i]
+            batch2 = view2[i]
+            assert set(batch1.keys()) == set(batch2.keys())
+            for k in batch1:
+                assert np.array_equal(batch1[k], batch2[k])
+        
+        view = storage[::-1]
+        assert len(storage) == len(view)
+        for i in range(len(storage)):
+            batch1 = storage[i]
+            batch2 = view[len(view) - i - 1]
+            assert set(batch1.keys()) == set(batch2.keys())
+            for k in batch1:
+                assert np.array_equal(batch1[k], batch2[k])
+
 
 if __name__ == "__main__":
     import pytest

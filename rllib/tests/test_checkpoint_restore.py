@@ -117,15 +117,13 @@ def ckpt_restore_test(alg_name, tfe=False, object_store=False, replay_buffer=Fal
 
             # Compare buffer content with restored one.
             if replay_buffer:
-                storage1 = alg1.local_replay_buffer.replay_buffers[
+                data = alg1.local_replay_buffer.replay_buffers[
                     "default_policy"
-                ]._storage
-                data1 = [storage1[i] for i in range(42, 42 + 42)]
-                storage2 = alg2.local_replay_buffer.replay_buffers[
+                ]._storage[42 : 42 + 42]
+                new_data = alg2.local_replay_buffer.replay_buffers[
                     "default_policy"
-                ]._storage
-                data2 = [storage2[i] for i in range(42, 42 + 42)]
-                check(data1, data2)
+                ]._storage[42 : 42 + 42]
+                check(list(data), list(new_data))
 
             for _ in range(1):
                 if "DDPG" in alg_name or "SAC" in alg_name:
