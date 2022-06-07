@@ -34,12 +34,16 @@ eval "${WORKSPACE_DIR}/ci/ci.sh build"
 # Install test requirements
 python -m pip install -U \
   pytest==5.4.3 \
-  numpy \
-  # AIR requirements.
-  # TODO: make this dynamic
-  pandas \
-  tabulate \
-  "tensorboardX>=1.9" \
-  requests \
-  "pyarrow >= 6.0.1, < 7.0.0" \
-  "fsspec"
+  numpy
+
+# AIR requirements.
+# TODO: make this dynamic
+if [ "${AIR_MINIMAL_INSTALL-}" = 1 ]; then
+    python -m pip install -U \
+    pandas \
+    tabulate \
+    "tensorboardX>=1.9" \
+    requests \
+    "pyarrow >= 6.0.1, < 7.0.0" \
+    "fsspec"
+fi
