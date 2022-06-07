@@ -1,7 +1,7 @@
 import os
 from typing import Optional
 
-from ray.ml.checkpoint import (
+from ray.air.checkpoint import (
     Checkpoint,
     _get_local_path,
     _get_external_path,

@@ -77,6 +77,70 @@ ds.groupby("variety").count().show()
 # fmt: on 
 
 # fmt: off
+# __writing_udfs_begin__
+import ray
+import pandas
+import pyarrow
+
+# Load dataset.
+ds = ray.data.read_csv("example://iris.csv")
+
+# UDF as a function on Pandas DataFrame.
+def pandas_filter_rows(df: pandas.DataFrame) -> pandas.DataFrame:
+    return df[df["variety"] == "Versicolor"]
+
+ds.map_batches(pandas_filter_rows).show(2)
+# -> {'sepal.length': 7.0, 'sepal.width': 3.2,
+#     'petal.length': 4.7, 'petal.width': 1.4, 'variety': 'Versicolor'}
+# -> {'sepal.length': 6.4, 'sepal.width': 3.2,
+#     'petal.length': 4.5, 'petal.width': 1.5, 'variety': 'Versicolor'}
+
+# UDF as a function on PyArrow Table.
+def pyarrow_filter_rows(batch: pyarrow.Table) -> pyarrow.Table:
+    return batch.filter(pyarrow.compute.equal(batch["variety"], "Versicolor"))
+
+ds.map_batches(pyarrow_filter_rows, batch_format="pyarrow").show(2)
+# -> {'sepal.length': 7.0, 'sepal.width': 3.2,
+#     'petal.length': 4.7, 'petal.width': 1.4, 'variety': 'Versicolor'}
+# -> {'sepal.length': 6.4, 'sepal.width': 3.2,
+#     'petal.length': 4.5, 'petal.width': 1.5, 'variety': 'Versicolor'}
+
+# UDF as a callable class on Pandas DataFrame.
+class UDFClassOnPandas:
+    def __int__(self):
+        pass
+
+    def __call__(self, df: pandas.DataFrame) -> pandas.DataFrame:
+        return df[df["variety"] == "Versicolor"]
+
+ds.map_batches(UDFClassOnPandas, compute="actors").show(2)
+# -> {'sepal.length': 7.0, 'sepal.width': 3.2,
+#     'petal.length': 4.7, 'petal.width': 1.4, 'variety': 'Versicolor'}
+# -> {'sepal.length': 6.4, 'sepal.width': 3.2,
+#     'petal.length': 4.5, 'petal.width': 1.5, 'variety': 'Versicolor'}
+
+# More UDF examples: Add a column.
+def add_column(df: pandas.DataFrame) -> pandas.DataFrame:
+    df["normalized.sepal.length"] =  df["sepal.length"] / df["sepal.length"].max()
+    return df
+
+ds.map_batches(add_column).show(2)
+# -> {'sepal.length': 5.1, 'sepal.width': 3.5, 'petal.length': 1.4, 'petal.width': 0.2,
+#     'variety': 'Setosa', 'normalized.sepal.length': 0.6455696202531644}
+# -> {'sepal.length': 4.9, 'sepal.width': 3.0, 'petal.length': 1.4, 'petal.width': 0.2,
+#     'variety': 'Setosa', 'normalized.sepal.length': 0.620253164556962}
+
+# More UDF examples: Drop a column.
+def drop_column(df: pandas.DataFrame) -> pandas.DataFrame:
+    return df.drop(columns=["sepal.length"])
+
+ds.map_batches(drop_column).show(2)
+# -> {'sepal.width': 3.5, 'petal.length': 1.4, 'petal.width': 0.2, 'variety': 'Setosa'}
+# -> {'sepal.width': 3.0, 'petal.length': 1.4, 'petal.width': 0.2, 'variety': 'Setosa'}
+# __writing_udfs_end__
+# fmt: on 
+
+# fmt: off
 # __dataset_compute_strategy_begin__
 import ray
 import pandas

@@ -86,7 +86,7 @@ def start(
     ray.init(address="auto") or ray.init("ray://<remote_addr>")).
 
     Args:
-        detached (bool): Whether not the instance should be detached from this
+        detached: Whether not the instance should be detached from this
           script. If set, the instance will live on the Ray cluster until it is
           explicitly stopped with serve.shutdown().
         http_options (Optional[Dict, serve.HTTPOptions]): Configuration options
@@ -112,7 +112,7 @@ def start(
                 - "NoServer" or None: disable HTTP server.
             - num_cpus (int): The number of CPU cores to reserve for each
               internal Serve HTTP proxy actor.  Defaults to 0.
-        dedicated_cpu (bool): Whether to reserve a CPU core for the internal
+        dedicated_cpu: Whether to reserve a CPU core for the internal
           Serve controller actor.  Defaults to False.
     """
     usage_lib.record_library_usage("serve")
@@ -421,7 +421,7 @@ def deployment(
             to '/a/b', '/a/b/', and '/a/b/c' go to B. Routes must not end with
             a '/' unless they're the root (just '/'), which acts as a
             catch-all.
-        ray_actor_options (dict): Options to be passed to the Ray actor
+        ray_actor_options: Options to be passed to the Ray actor
             constructor such as resource requirements.
         user_config (Optional[Any]): [experimental] Config to pass to the
             reconfigure method of the deployment. This can be updated
@@ -446,6 +446,11 @@ def deployment(
     Returns:
         Deployment
     """
+
+    # Num of replicas should not be 0.
+    # TODO(Sihan) seperate num_replicas attribute from internal and api
+    if num_replicas == 0:
+        raise ValueError("num_replicas is expected to larger than 0")
 
     if num_replicas is not None and _autoscaling_config is not None:
         raise ValueError(
@@ -513,7 +518,7 @@ def get_deployment(name: str) -> Deployment:
             f"Deployment {name} was not found. Did you call Deployment.deploy()?"
         )
     return Deployment(
-        cloudpickle.loads(deployment_info.replica_config.serialized_deployment_def),
+        deployment_info.replica_config.deployment_def,
         name,
         deployment_info.deployment_config,
         version=deployment_info.version,
@@ -536,7 +541,7 @@ def list_deployments() -> Dict[str, Deployment]:
     deployments = {}
     for name, (deployment_info, route_prefix) in infos.items():
         deployments[name] = Deployment(
-            cloudpickle.loads(deployment_info.replica_config.serialized_deployment_def),
+            deployment_info.replica_config.deployment_def,
             name,
             deployment_info.deployment_config,
             version=deployment_info.version,
@@ -569,8 +574,8 @@ def run(
             A user-built Serve Application or a ClassNode that acts as the
             root node of DAG. By default ClassNode is the Driver
             deployment unless user provides a customized one.
-        host (str): The host passed into serve.start().
-        port (int): The port passed into serve.start().
+        host: The host passed into serve.start().
+        port: The port passed into serve.start().
 
     Returns:
         RayServeHandle: A regular ray serve handle that can be called by user

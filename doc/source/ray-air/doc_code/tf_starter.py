@@ -18,7 +18,7 @@ from tensorflow.keras.callbacks import Callback
 
 import ray.train as train
 from ray.train.tensorflow import prepare_dataset_shard
-from ray.ml.train.integrations.tensorflow import TensorflowTrainer
+from ray.air.train.integrations.tensorflow import TensorflowTrainer
 
 
 def build_model() -> tf.keras.Model:
@@ -91,8 +91,8 @@ print(result.metrics)
 # __air_tf_batchpred_start__
 import numpy as np
 
-from ray.ml.batch_predictor import BatchPredictor
-from ray.ml.predictors.integrations.tensorflow import TensorflowPredictor
+from ray.air.batch_predictor import BatchPredictor
+from ray.air.predictors.integrations.tensorflow import TensorflowPredictor
 
 
 batch_predictor = BatchPredictor.from_checkpoint(

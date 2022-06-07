@@ -26,12 +26,12 @@ def create_or_update_cluster(
     Args:
         cluster_config (Union[str, dict]): Either the config dict of the
             cluster, or a path pointing to a file containing the config.
-        no_restart (bool): Whether to skip restarting Ray services during the
+        no_restart: Whether to skip restarting Ray services during the
             update. This avoids interrupting running jobs and can be used to
             dynamically adjust autoscaler configuration.
-        restart_only (bool): Whether to skip running setup commands and only
+        restart_only: Whether to skip running setup commands and only
             restart Ray. This cannot be used with 'no-restart'.
-        no_config_cache (bool): Whether to disable the config cache and fully
+        no_config_cache: Whether to disable the config cache and fully
             resolve all environment settings from the Cloud provider again.
     """
     with _as_config_file(cluster_config) as config_file:
@@ -59,9 +59,9 @@ def teardown_cluster(
     Args:
         cluster_config (Union[str, dict]): Either the config dict of the
             cluster, or a path pointing to a file containing the config.
-        workers_only (bool): Whether to keep the head node running and only
+        workers_only: Whether to keep the head node running and only
             teardown worker nodes.
-        keep_min_workers (bool): Whether to keep min_workers (as specified
+        keep_min_workers: Whether to keep min_workers (as specified
             in the YAML) still running.
     """
     with _as_config_file(cluster_config) as config_file:
@@ -90,15 +90,15 @@ def run_on_cluster(
     Args:
         cluster_config (Union[str, dict]): Either the config dict of the
             cluster, or a path pointing to a file containing the config.
-        cmd (str): the command to run, or None for a no-op command.
-        run_env (str): whether to run the command on the host or in a
+        cmd: the command to run, or None for a no-op command.
+        run_env: whether to run the command on the host or in a
             container. Select between "auto", "host" and "docker".
-        tmux (bool): whether to run in a tmux session
-        stop (bool): whether to stop the cluster after command run
-        no_config_cache (bool): Whether to disable the config cache and fully
+        tmux: whether to run in a tmux session
+        stop: whether to stop the cluster after command run
+        no_config_cache: Whether to disable the config cache and fully
             resolve all environment settings from the Cloud provider again.
         port_forward ( (int,int) or list[(int,int)]): port(s) to forward.
-        with_output (bool): Whether to capture command output.
+        with_output: Whether to capture command output.
 
     Returns:
         The output of the command as a string.
@@ -135,13 +135,13 @@ def rsync(
     Args:
         cluster_config (Union[str, dict]): Either the config dict of the
             cluster, or a path pointing to a file containing the config.
-        source (str): rsync source argument.
-        target (str): rsync target argument.
-        down (bool): whether we're syncing remote -> local.
-        ip_address (str): Address of node.
-        use_internal_ip (bool): Whether the provided ip_address is
+        source: rsync source argument.
+        target: rsync target argument.
+        down: whether we're syncing remote -> local.
+        ip_address: Address of node.
+        use_internal_ip: Whether the provided ip_address is
             public or private.
-        no_config_cache (bool): Whether to disable the config cache and fully
+        no_config_cache: Whether to disable the config cache and fully
             resolve all environment settings from the Cloud provider again.
         should_bootstrap: whether to bootstrap cluster config before syncing
 
@@ -216,7 +216,7 @@ def request_resources(
     internal bin packing algorithm and max worker count restrictions.
 
     Args:
-        num_cpus (int): Scale the cluster to ensure this number of CPUs are
+        num_cpus: Scale the cluster to ensure this number of CPUs are
             available. This request is persistent until another call to
             request_resources() is made to override.
         bundles (List[ResourceDict]): Scale the cluster to ensure this set of
@@ -245,7 +245,7 @@ def configure_logging(
     """Configures logging for cluster command calls.
 
     Args:
-        log_style (str): If 'pretty', outputs with formatting and color.
+        log_style: If 'pretty', outputs with formatting and color.
             If 'record', outputs record-style without formatting.
             'auto' defaults to 'pretty', and disables pretty logging
             if stdin is *not* a TTY. Defaults to "auto".
@@ -300,10 +300,10 @@ def register_callback_handler(
     """Registers a callback handler for autoscaler events.
 
     Args:
-        event_name (str): Event that callback should be called on. See
+        event_name: Event that callback should be called on. See
             CreateClusterEvent for details on the events available to be
             registered against.
-        callback (Callable): Callable object that is invoked
+        callback: Callable object that is invoked
             when specified event occurs.
     """
     global_event_system.add_callback_handler(event_name, callback)

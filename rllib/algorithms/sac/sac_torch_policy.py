@@ -57,9 +57,9 @@ def _get_dist_class(
     """Helper function to return a dist class based on config and action space.
 
     Args:
-        policy (Policy): The policy for which to return the action
+        policy: The policy for which to return the action
             dist class.
-        config (TrainerConfigDict): The Trainer's config dict.
+        config: The Trainer's config dict.
         action_space (gym.spaces.Space): The action space used.
 
     Returns:
@@ -97,10 +97,10 @@ def build_sac_model_and_action_dist(
     """Constructs the necessary ModelV2 and action dist class for the Policy.
 
     Args:
-        policy (Policy): The TFPolicy that will use the models.
+        policy: The TFPolicy that will use the models.
         obs_space (gym.spaces.Space): The observation space.
         action_space (gym.spaces.Space): The action space.
-        config (TrainerConfigDict): The SAC trainer's config dict.
+        config: The SAC trainer's config dict.
 
     Returns:
         ModelV2: The ModelV2 to be used by the Policy. Note: An additional
@@ -134,12 +134,12 @@ def action_distribution_fn(
     will be made on it to generate actions.
 
     Args:
-        policy (Policy): The Policy being queried for actions and calling this
+        policy: The Policy being queried for actions and calling this
             function.
         model (TorchModelV2): The SAC specific model to use to generate the
             distribution inputs (see sac_tf|torch_model.py). Must support the
             `get_action_model_outputs` method.
-        input_dict (ModelInputDict): The input-dict to be used for the model
+        input_dict: The input-dict to be used for the model
             call.
         state_batches (Optional[List[TensorType]]): The list of internal state
             tensor batches.
@@ -179,10 +179,10 @@ def actor_critic_loss(
     """Constructs the loss for the Soft Actor Critic.
 
     Args:
-        policy (Policy): The Policy to calculate the loss for.
+        policy: The Policy to calculate the loss for.
         model (ModelV2): The Model to calculate the loss for.
         dist_class (Type[TorchDistributionWrapper]: The action distr. class.
-        train_batch (SampleBatch): The training data.
+        train_batch: The training data.
 
     Returns:
         Union[TensorType, List[TensorType]]: A single loss tensor or a list
@@ -361,8 +361,8 @@ def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
     """Stats function for SAC. Returns a dict with important loss stats.
 
     Args:
-        policy (Policy): The Policy to generate stats for.
-        train_batch (SampleBatch): The SampleBatch (already) used for training.
+        policy: The Policy to generate stats for.
+        train_batch: The SampleBatch (already) used for training.
 
     Returns:
         Dict[str, TensorType]: The stats dict.
@@ -392,8 +392,8 @@ def optimizer_fn(policy: Policy, config: TrainerConfigDict) -> Tuple[LocalOptimi
     number of loss terms returned by the loss function.
 
     Args:
-        policy (Policy): The policy object to be trained.
-        config (TrainerConfigDict): The Trainer's config dict.
+        policy: The policy object to be trained.
+        config: The Trainer's config dict.
 
     Returns:
         Tuple[LocalOptimizer]: The local optimizers to use for policy training.
@@ -521,10 +521,10 @@ def setup_late_mixins(
     respective "main" Q-metworks, based on tau (smooth, partial updating).
 
     Args:
-        policy (Policy): The Policy object.
+        policy: The Policy object.
         obs_space (gym.spaces.Space): The Policy's observation space.
         action_space (gym.spaces.Space): The Policy's action space.
-        config (TrainerConfigDict): The Policy's config.
+        config: The Policy's config.
     """
     ComputeTDErrorMixin.__init__(policy)
     TargetNetworkMixin.__init__(policy)

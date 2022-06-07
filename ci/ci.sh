@@ -134,6 +134,32 @@ test_core() {
   bazel test --config=ci --build_tests_only $(./ci/run/bazel_export_options) -- "${args[@]}"
 }
 
+prepare_docker() {
+    pushd "${WORKSPACE_DIR}/python"
+    python setup.py bdist_wheel
+    tmp_dir="/tmp/prepare_docker_$RANDOM"
+    mkdir -p $tmp_dir
+    cp "${WORKSPACE_DIR}"/python/dist/*.whl $tmp_dir
+    base_image=$(python -c "import sys; print(f'rayproject/ray-deps:nightly-py{sys.version_info[0]}{sys.version_info[1]}-cpu')")
+    echo "
+    FROM $base_image
+
+    ENV LC_ALL=C.UTF-8
+    ENV LANG=C.UTF-8
+    COPY ./*.whl /
+    EXPOSE 8000
+    EXPOSE 10001
+    RUN pip install ray[serve] --no-index --find-links=/ && pip install redis
+    RUN sudo apt update && sudo apt install curl -y
+    " > $tmp_dir/Dockerfile
+
+    pushd $tmp_dir
+    docker build . -t ray_ci:v1
+    popd
+
+    popd
+}
+
 # For running Python tests on Windows.
 test_python() {
   local pathsep=":" args=()
@@ -496,6 +522,18 @@ lint_bazel() {
   )
 }
 
+lint_bazel_pytest() {
+  pip install yq
+  cd "${WORKSPACE_DIR}"
+  for team in "team:ml" "team:serve"; do
+    # this does the following:
+    # - find all py_test rules in bazel that have the specified team tag EXCEPT ones with "no_main" tag and outputs them as xml
+    # - converts the xml to json
+    # - feeds the json into pytest_checker.py
+    bazel query "kind(py_test.*, tests(python/...) intersect attr(tags, \"\b$team\b\", python/...) except attr(tags, \"\bno_main\b\", python/...))" --output xml | xq | python scripts/pytest_checker.py
+  done
+}
+
 lint_web() {
   (
     cd "${WORKSPACE_DIR}"/python/ray/dashboard/client
@@ -561,6 +599,9 @@ _lint() {
   if [ "${platform}" = linux ]; then
     # Run Bazel linter Buildifier.
     lint_bazel
+
+    # Check if py_test files have the if __name__... snippet
+    lint_bazel_pytest
 
     # Run TypeScript and HTML linting.
     lint_web

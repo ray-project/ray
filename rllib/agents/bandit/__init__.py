@@ -1,6 +1,6 @@
 from ray.rllib.algorithms.bandit.bandit import (
-    BanditLinTSTrainer,
-    BanditLinUCBTrainer,
+    BanditLinTS as BanditLinTSTrainer,
+    BanditLinUCB as BanditLinUCBTrainer,
     BanditLinTSConfig,
     BanditLinUCBConfig,
 )

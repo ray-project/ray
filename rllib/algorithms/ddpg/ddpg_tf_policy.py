@@ -386,10 +386,10 @@ def setup_early_mixins(
     Adds the necessary optimizers to the given Policy.
 
     Args:
-        policy (Policy): The Policy object.
+        policy: The Policy object.
         obs_space (gym.spaces.Space): The Policy's observation space.
         action_space (gym.spaces.Space): The Policy's action space.
-        config (TrainerConfigDict): The Policy's config.
+        config: The Policy's config.
     """
     ActorCriticOptimizerMixin.__init__(policy, config)
 

@@ -249,7 +249,7 @@ def test_push(init):
         def double(self, x):
             return 2 * x
 
-    a1, a2 = MyActor.remote(), MyActor.remote()
+    a1, a2, a3 = MyActor.remote(), MyActor.remote(), MyActor.remote()
     pool = ActorPool([a1])
 
     pool.submit(lambda a, v: a.double.remote(v), 1)
@@ -258,6 +258,14 @@ def test_push(init):
         pool.push(a1)
     pool.push(a2)
     assert pool.has_free()  # a2 is available
+
+    pool.submit(lambda a, v: a.double.remote(v), 1)
+    pool.submit(lambda a, v: a.double.remote(v), 1)
+    assert pool.has_free() is False
+    assert len(pool._pending_submits) == 1
+    pool.push(a3)
+    assert pool.has_free() is False  # a3 is used for pending submit
+    assert len(pool._pending_submits) == 0
 
 
 if __name__ == "__main__":
