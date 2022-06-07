@@ -131,10 +131,7 @@ def start(
         ray.init(namespace=SERVE_NAMESPACE)
 
     try:
-        client = get_global_client(
-            _override_controller_namespace=SERVE_NAMESPACE,
-            _health_check_controller=True,
-        )
+        client = get_global_client(_health_check_controller=True)
         logger.info(
             f'Connecting to existing Serve app in namespace "{SERVE_NAMESPACE}".'
         )

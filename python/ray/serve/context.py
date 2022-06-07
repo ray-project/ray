@@ -5,7 +5,7 @@ can use this state to access metadata or the Serve controller.
 
 import logging
 from dataclasses import dataclass
-from typing import Callable, Optional
+from typing import Callable
 
 import ray
 from ray.exceptions import RayActorError
@@ -30,10 +30,7 @@ class ReplicaContext:
     servable_object: Callable
 
 
-def get_global_client(
-    _override_controller_namespace: Optional[str] = None,
-    _health_check_controller: bool = False,
-) -> ServeControllerClient:
+def get_global_client(_health_check_controller: bool = False) -> ServeControllerClient:
     """Gets the global client, which stores the controller's handle.
 
     Args:
