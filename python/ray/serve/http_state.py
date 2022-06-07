@@ -6,7 +6,12 @@ from typing import Dict, List, Tuple, Optional
 import ray
 from ray.actor import ActorHandle
 from ray.serve.config import HTTPOptions, DeploymentMode
-from ray.serve.constants import ASYNC_CONCURRENCY, SERVE_LOGGER_NAME, SERVE_PROXY_NAME
+from ray.serve.constants import (
+    ASYNC_CONCURRENCY,
+    SERVE_LOGGER_NAME,
+    SERVE_PROXY_NAME,
+    SERVE_NAMESPACE,
+)
 from ray.serve.http_proxy import HTTPProxyActor
 from ray.serve.utils import (
     format_actor_name,
@@ -35,9 +40,7 @@ class HTTPState:
         _start_proxies_on_init: bool = True,
     ):
         self._controller_name = controller_name
-        self._controller_namespace = ray.serve.client.get_controller_namespace(
-            detached, _override_controller_namespace=_override_controller_namespace
-        )
+        self._controller_namespace = SERVE_NAMESPACE
         self._detached = detached
         self._config = config
         self._override_controller_namespace = _override_controller_namespace

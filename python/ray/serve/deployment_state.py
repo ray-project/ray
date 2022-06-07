@@ -32,6 +32,7 @@ from ray.serve.constants import (
     MAX_NUM_DELETED_DEPLOYMENTS,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     SERVE_LOGGER_NAME,
+    SERVE_NAMESPACE,
 )
 from ray.serve.generated.serve_pb2 import DeploymentLanguage
 from ray.serve.storage.kv_store import KVStoreBase
@@ -147,9 +148,7 @@ class ActorReplicaWrapper:
         self._placement_group_name = self._actor_name + "_placement_group"
         self._detached = detached
         self._controller_name = controller_name
-        self._controller_namespace = ray.serve.client.get_controller_namespace(
-            detached, _override_controller_namespace=_override_controller_namespace
-        )
+        self._controller_namespace = SERVE_NAMESPACE
 
         self._replica_tag = replica_tag
         self._deployment_name = deployment_name

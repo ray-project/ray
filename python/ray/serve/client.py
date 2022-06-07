@@ -137,11 +137,7 @@ class ServeControllerClient:
             started = time.time()
             while True:
                 try:
-                    controller_namespace = get_controller_namespace(
-                        self._detached,
-                        self._override_controller_namespace,
-                    )
-                    ray.get_actor(self._controller_name, namespace=controller_namespace)
+                    ray.get_actor(self._controller_name, namespace=SERVE_NAMESPACE)
                     if time.time() - started > 5:
                         logger.warning(
                             "Waited 5s for Serve to shutdown gracefully but "
@@ -563,17 +559,3 @@ class ServeControllerClient:
             f"Deployment '{name}{':'+version if version else ''}' is ready"
             f"{url_part}. {tag}"
         )
-
-
-def get_controller_namespace(
-    detached: bool, _override_controller_namespace: Optional[str] = None
-):
-    """Gets the controller's namespace.
-
-    Args:
-        detached: Whether serve.start() was called with detached=True
-        _override_controller_namespace (Optional[str]): When set, this is the
-            controller's namespace
-    """
-
-    return SERVE_NAMESPACE
