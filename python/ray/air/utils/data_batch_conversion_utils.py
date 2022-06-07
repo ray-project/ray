@@ -45,7 +45,6 @@ def convert_batch_type_to_pandas(data: DataBatchType) -> pd.DataFrame:
     elif isinstance(data, pa.Table):
         return data.to_pandas()
     else:
-
         raise ValueError(
             f"Received data of type: {type(data)}, but expected it to be one "
             f"of {DataBatchType}"
