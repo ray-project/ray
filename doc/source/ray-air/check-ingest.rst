@@ -17,6 +17,8 @@ which are not possible in less general ML data preprocessing libraries.
 Ingest Basics
 -------------
 
+.. _ingest_basics:
+
 The following figure illustrates a simple Ray AIR training job that (1) loads parquet data from S3, (2) applies a simple
 user-defined function to preprocess batches of data, and (3) runs an AIR Trainer with the given dataset and preprocessor.
 
@@ -32,15 +34,64 @@ that you pass to the Trainer. Dataset blocks that don't fit into memory will be 
 the dataset initially, typically only the first block and block metadata is read into memory. The rest of the blocks are
 not loaded until ``fit`` is called.
 
-**Preprocessing**: Next, if a preprocessor is defined, AIR will ``fit`` the preprocessor (e.g., for stateful preprocessors) on the
+**Preprocessing**: Next, if a preprocessor is defined, AIR will by default ``fit`` the preprocessor (e.g., compute statistics) on the
 ``"train"`` dataset, and then ``transform`` all given datasets with the fitted preprocessor. This is done by calling ``prep.fit_transform()``
 on the train dataset passed to the Trainer, followed by ``prep.transform()`` on remaining datasets. Preprocessors use Dataset APIs to execute
 preprocessing in a parallelized way across the cluster. Both read and preprocessing stages use Ray tasks under the hood.
 
 **Training**: Finally, AIR passes a reference to the preprocessed dataset to Train workers (Ray actors) launched by the Trainer. Each worker then
-typically calls ``iter_batches``, ``to_tf``, or ``to_torch`` to iterate over the dataset reference retrieved by ``get_dataset_shard``.
+typically calls ``iter_batches``, ``to_tf``, or ``to_torch`` to iterate over the dataset reader retrieved by ``get_dataset_shard``.
 These read methods load blocks of the dataset into the local worker's memory in a streaming fashion, only fetching / prefetching a
 limited number of blocks at once. Workers loop over the dataset blocks repeatedly until training completes.
+
+Configuring Ingest Per-Dataset
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+It is common to customize processing per-dataset. For example, you may want to enable sharding
+on a validation dataset, disable preprocessing of an auxiliary dataset, or adjust ingest strategy per dataset.
+
+Each DataParallelTrainer has a default per-dataset config given by a ``Trainer._dataset_config`` class field. It is a mapping
+from dataset names to ``DatasetConfig`` objects, and implements the default behavior described in :ref:`Ingest Basics <ingest_basics>`:
+
+.. code:: python
+
+    # The default DataParallelTrainer dataset config, which is inherited
+    # by sub-classes such as TorchTrainer, HorovodTrainer, etc.
+    _dataset_config = {
+        # Fit preprocessors on the train dataset only. Split the dataset
+        # across workers if scaling_config["num_workers"] > 1.
+        "train": DatasetConfig(fit=True, split=True),
+        # For all other datasets, use the defaults (don't fit, don't split).
+        # The datasets will be transformed by the fitted preprocessor.
+        "*": DatasetConfig(),
+    }
+
+These configs can be overriden via the ``dataset_config`` kwarg, which is recursively merged with the Trainer defaults.
+Here are some examples of configuring Dataset ingest options and what they do:
+
+.. tabbed:: Split All
+
+    This example shows overriding the split config for the "valid" and "test" datasets. This means that
+    both the valid and test datasets here will be ``.split()`` across the training workers.
+
+    .. literalinclude:: doc_code/air_ingest.py
+        :language: python
+        :start-after: __config_1__
+        :end-before: __config_1_end__
+
+.. tabbed:: Disable Transform
+
+    This example shows overriding the transform config for the "side" dataset. This means that
+    the original dataset will be returned by ``.get_dataset_shard("side")``.
+
+    .. literalinclude:: doc_code/air_ingest.py
+        :language: python
+        :start-after: __config_2__
+        :end-before: __config_2_end__
+
+
+Bulk vs Streaming Reads
+-----------------------
 
 Bulk Ingest
 ~~~~~~~~~~~
@@ -54,13 +105,53 @@ if spilling is occuring, and you can check this as well with the ``ray memory --
 care to ensure the cluster has enough disk space to handle the spilled blocks. Alternatively, consider using machine with more memory /
 more machines to avoid spilling.
 
-Streamed Ingest
-~~~~~~~~~~~~~~~
+Streaming Ingest
+~~~~~~~~~~~~~~~~
 
-This section is a placeholder.
+AIR also supports streaming ingest via the DatasetPipeline feature. Streaming ingest is preferable when you are using large datasets
+that don't fit into memory, and prefer to read *windows* of data from storage to minimize the active memory required for data ingest.
 
-AIR will support streamed ingest and enable it by default by Beta. Streamed ingest is preferable when you are using large
-datasets that don't fit into memory, and also don't need advanced training quality features such as global random shuffle.
+To enable streaming ingest, set ``use_stream_api=True`` in the dataset config. By default, this will configure streaming ingest with a window
+size of 1GiB, which means AIR will load ~1 GiB of data at a time from the datasource.
+Performance can be increased with larger window sizes, which can be adjusted using the ``stream_window_size`` config.
+A reasonable stream window size is something like 20% of available object store memory. Note that the data may be larger
+once deserialized in memory, or if individual files are larger than the window size.
+If the window size is set to -1, then an infinite window size (equivalent to bulk loading) will be used.
+
+.. warning::
+
+    In AIR alpha, streaming ingest only applies to preprocessor transform, not preprocessor fitting.
+    This means that the preprocessor will be initially fit in bulk, after which data will be transformed
+    as it is loaded in a streaming manner.
+
+Reading Data
+~~~~~~~~~~~~
+
+The ``get_dataset_shard`` method returns a reader object that is either a ``Dataset`` or ``DatasetPipeline``, depending on whether the ``use_stream_api``
+option is set. The former is a finite set of records, and the latter represents an infinite stream of records.
+See the following examples for clarification:
+
+.. tabbed:: Bulk Ingest
+
+    This example shows bulk ingest (the default). Data is bulk loaded and made available
+    directly via a ``Dataset`` object that can be looped over manually.
+
+    .. literalinclude:: doc_code/air_ingest.py
+        :language: python
+        :start-after: __config_4__
+        :end-before: __config_4_end__
+
+.. tabbed:: Streaming Ingest
+
+    This example shows enabling streaming ingest for the "train" dataset with a *N-byte* window.
+    This means that AIR will only load *N* bytes of data from the datasource at a time (the data
+    may be larger once deserialized in memory or if individual files are larger than the window).
+
+    .. literalinclude:: doc_code/air_ingest.py
+        :language: python
+        :start-after: __config_5__
+        :end-before: __config_5_end__
+
 
 Ingest and Ray Tune
 -------------------

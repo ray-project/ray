@@ -1,7 +1,12 @@
-from ray.air.predictors.integrations.tensorflow import TensorflowPredictor
-from ray.air.preprocessor import Preprocessor
+import ray
+from ray.air.batch_predictor import BatchPredictor
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import PREPROCESSOR_KEY, MODEL_KEY
+from ray.air.predictors.integrations.tensorflow import (
+    TensorflowPredictor,
+    to_air_checkpoint,
+)
+from ray.air.preprocessor import Preprocessor
 
 import numpy as np
 import pandas as pd
@@ -91,6 +96,17 @@ def test_predict_dataframe_with_feature_columns():
 
     assert len(predictions) == 2
     assert predictions.to_numpy().flatten().tolist() == [1, 3]
+
+
+def test_tensorflow_predictor_no_training():
+    model = build_model()
+    checkpoint = to_air_checkpoint(model)
+    batch_predictor = BatchPredictor.from_checkpoint(
+        checkpoint, TensorflowPredictor, model_definition=build_model
+    )
+    predict_dataset = ray.data.range(3)
+    predictions = batch_predictor.predict(predict_dataset)
+    assert predictions.count() == 3
 
 
 if __name__ == "__main__":

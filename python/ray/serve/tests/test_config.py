@@ -1,6 +1,8 @@
 import pytest
 from pydantic import ValidationError
 
+from ray import cloudpickle
+
 from ray.serve.config import (
     DeploymentConfig,
     DeploymentMode,
@@ -113,73 +115,101 @@ class TestDeploymentConfig:
         assert dc.max_concurrent_queries == default.max_concurrent_queries
 
 
-def test_replica_config_validation():
-    class Class:
-        pass
+class TestReplicaConfig:
+    def test_replica_config_validation(self):
+        class Class:
+            pass
 
-    def function(_):
-        pass
+        def function(_):
+            pass
 
-    ReplicaConfig(Class)
-    ReplicaConfig(function)
-    with pytest.raises(TypeError):
-        ReplicaConfig(Class())
+        ReplicaConfig.create(Class)
+        ReplicaConfig.create(function)
+        with pytest.raises(TypeError):
+            ReplicaConfig.create(Class())
 
-    # Check ray_actor_options validation.
-    ReplicaConfig(
-        Class,
-        tuple(),
-        dict(),
-        ray_actor_options={
-            "num_cpus": 1.0,
-            "num_gpus": 10,
-            "resources": {"abc": 1.0},
-            "memory": 1000000.0,
-            "object_store_memory": 1000000,
-        },
-    )
-    with pytest.raises(TypeError):
-        ReplicaConfig(Class, ray_actor_options=1.0)
-    with pytest.raises(TypeError):
-        ReplicaConfig(Class, ray_actor_options=False)
-    with pytest.raises(TypeError):
-        ReplicaConfig(Class, ray_actor_options={"num_cpus": "hello"})
-    with pytest.raises(ValueError):
-        ReplicaConfig(Class, ray_actor_options={"num_cpus": -1})
-    with pytest.raises(TypeError):
-        ReplicaConfig(Class, ray_actor_options={"num_gpus": "hello"})
-    with pytest.raises(ValueError):
-        ReplicaConfig(Class, ray_actor_options={"num_gpus": -1})
-    with pytest.raises(TypeError):
-        ReplicaConfig(Class, ray_actor_options={"memory": "hello"})
-    with pytest.raises(ValueError):
-        ReplicaConfig(Class, ray_actor_options={"memory": -1})
-    with pytest.raises(TypeError):
-        ReplicaConfig(Class, ray_actor_options={"object_store_memory": "hello"})
-    with pytest.raises(ValueError):
-        ReplicaConfig(Class, ray_actor_options={"object_store_memory": -1})
-    with pytest.raises(TypeError):
-        ReplicaConfig(Class, ray_actor_options={"resources": []})
-
-    disallowed_ray_actor_options = {
-        "max_concurrency",
-        "max_restarts",
-        "max_task_retries",
-        "name",
-        "namespace",
-        "lifetime",
-        "placement_group",
-        "placement_group_bundle_index",
-        "placement_group_capture_child_tasks",
-        "max_pending_calls",
-        "scheduling_strategy",
-        "get_if_exists",
-        "_metadata",
-    }
-
-    for option in disallowed_ray_actor_options:
+        # Check ray_actor_options validation.
+        ReplicaConfig.create(
+            Class,
+            tuple(),
+            dict(),
+            ray_actor_options={
+                "num_cpus": 1.0,
+                "num_gpus": 10,
+                "resources": {"abc": 1.0},
+                "memory": 1000000.0,
+                "object_store_memory": 1000000,
+            },
+        )
+        with pytest.raises(TypeError):
+            ReplicaConfig.create(Class, ray_actor_options=1.0)
+        with pytest.raises(TypeError):
+            ReplicaConfig.create(Class, ray_actor_options=False)
+        with pytest.raises(TypeError):
+            ReplicaConfig.create(Class, ray_actor_options={"num_cpus": "hello"})
         with pytest.raises(ValueError):
-            ReplicaConfig(Class, ray_actor_options={option: None})
+            ReplicaConfig.create(Class, ray_actor_options={"num_cpus": -1})
+        with pytest.raises(TypeError):
+            ReplicaConfig.create(Class, ray_actor_options={"num_gpus": "hello"})
+        with pytest.raises(ValueError):
+            ReplicaConfig.create(Class, ray_actor_options={"num_gpus": -1})
+        with pytest.raises(TypeError):
+            ReplicaConfig.create(Class, ray_actor_options={"memory": "hello"})
+        with pytest.raises(ValueError):
+            ReplicaConfig.create(Class, ray_actor_options={"memory": -1})
+        with pytest.raises(TypeError):
+            ReplicaConfig.create(
+                Class, ray_actor_options={"object_store_memory": "hello"}
+            )
+        with pytest.raises(ValueError):
+            ReplicaConfig.create(Class, ray_actor_options={"object_store_memory": -1})
+        with pytest.raises(TypeError):
+            ReplicaConfig.create(Class, ray_actor_options={"resources": []})
+
+        disallowed_ray_actor_options = {
+            "max_concurrency",
+            "max_restarts",
+            "max_task_retries",
+            "name",
+            "namespace",
+            "lifetime",
+            "placement_group",
+            "placement_group_bundle_index",
+            "placement_group_capture_child_tasks",
+            "max_pending_calls",
+            "scheduling_strategy",
+            "get_if_exists",
+            "_metadata",
+        }
+
+        for option in disallowed_ray_actor_options:
+            with pytest.raises(ValueError):
+                ReplicaConfig.create(Class, ray_actor_options={option: None})
+
+    def test_replica_config_lazy_deserialization(self):
+        def f():
+            return "Check this out!"
+
+        f_serialized = cloudpickle.dumps(f)
+        config = ReplicaConfig(
+            "f", f_serialized, cloudpickle.dumps(()), cloudpickle.dumps({}), {}
+        )
+
+        assert config.serialized_deployment_def == f_serialized
+        assert config._deployment_def is None
+
+        assert config.serialized_init_args == cloudpickle.dumps(tuple())
+        assert config._init_args is None
+
+        assert config.serialized_init_kwargs == cloudpickle.dumps(dict())
+        assert config._init_kwargs is None
+
+        assert isinstance(config.ray_actor_options, dict)
+        assert isinstance(config.resource_dict, dict)
+
+        assert config.deployment_def() == "Check this out!"
+        assert config.init_args == tuple()
+        assert config.init_kwargs == dict()
 
 
 def test_http_options():

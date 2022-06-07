@@ -90,9 +90,9 @@ if __name__ == "__main__":
 
     # Example (use `config` from the above code):
     # >> import numpy as np
-    # >> from ray.rllib.agents.ppo import PPOTrainer
+    # >> from ray.rllib.algorithms.ppo import PPO
     # >>
-    # >> trainer = PPOTrainer(config)
+    # >> trainer = PPO(config)
     # >> lstm_cell_size = config["model"]["custom_model_config"]["cell_size"]
     # >> env = RepeatAfterMeEnv({})
     # >> obs = env.reset()

@@ -1,13 +1,15 @@
 .. _air-api-ref:
 
-AIR API
-=======
+Ray AIR API
+===========
 
 .. contents::
     :local:
 
 Components
 ----------
+
+.. _air-preprocessor-ref:
 
 Preprocessors
 ~~~~~~~~~~~~~
@@ -43,6 +45,10 @@ Trainer
     :show-inheritance:
 
 .. automodule:: ray.air.train.integrations.torch
+    :members:
+    :show-inheritance:
+
+.. automodule:: ray.air.train.integrations.horovod
     :members:
     :show-inheritance:
 
@@ -124,9 +130,16 @@ Serving
 Outputs
 ~~~~~~~
 
+.. _air-checkpoint-ref:
+
+Checkpoint
+##########
+
 .. automodule:: ray.air.checkpoint
     :members:
 
+Result
+######
 
 .. automodule:: ray.air.result
     :members:

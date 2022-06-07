@@ -241,6 +241,14 @@ py_test(
 )
 
 py_test(
+    name = "test_warnings",
+    size = "medium",
+    srcs = ["tests/test_warnings.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_W"],
+)
+
+py_test(
     name = "test_sample",
     size = "large",
     srcs = ["tests/test_sample.py"],
@@ -284,6 +292,14 @@ py_test(
     name = "test_trainable_util",
     size = "small",
     srcs = ["tests/test_trainable_util.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_T"],
+)
+
+py_test(
+    name = "test_trial_relative_logdir",
+    size = "medium",
+    srcs = ["tests/test_trial_relative_logdir.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "tests_dir_T"],
 )

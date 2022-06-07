@@ -2,6 +2,7 @@ import abc
 import warnings
 from enum import Enum
 from typing import Optional, TYPE_CHECKING
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -10,12 +11,14 @@ from ray.data import Dataset
 from ray.air.predictor import DataBatchType
 
 
+@PublicAPI(stability="alpha")
 class PreprocessorNotFittedException(RuntimeError):
     """Error raised when the preprocessor needs to be fitted first."""
 
     pass
 
 
+@PublicAPI(stability="alpha")
 class Preprocessor(abc.ABC):
     """Implements an ML preprocessing operation.
 
@@ -50,10 +53,7 @@ class Preprocessor(abc.ABC):
             return Preprocessor.FitStatus.NOT_FITTED
 
     def transform_stats(self) -> Optional[str]:
-        """Return Dataset stats for the most recent transform call, if any.
-
-        TODO(ekl) we should also be able to provide stats for fit().
-        """
+        """Return Dataset stats for the most recent transform call, if any."""
         if not hasattr(self, "_transform_stats"):
             return None
         return self._transform_stats

@@ -6,11 +6,15 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Uni
 import ray
 from ray.util import PublicAPI
 from ray.air.checkpoint import Checkpoint
-from ray.air.config import RunConfig, ScalingConfig, ScalingConfigDataClass
 from ray.air.constants import TRAIN_DATASET_KEY
+from ray.air.config import (
+    RunConfig,
+    ScalingConfig,
+    ScalingConfigDataClass,
+)
 from ray.air.preprocessor import Preprocessor
 from ray.air.result import Result
-from ray.air.utils.config import (
+from ray.air._internal.config import (
     ensure_only_allowed_dataclass_keys_updated,
     ensure_only_allowed_dict_keys_set,
 )

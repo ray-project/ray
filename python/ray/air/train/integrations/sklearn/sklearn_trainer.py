@@ -17,11 +17,11 @@ from ray.air.config import RunConfig, ScalingConfig
 from ray.air.constants import MODEL_KEY, TRAIN_DATASET_KEY
 from ray.air.preprocessor import Preprocessor
 from ray.air.trainer import GenDataset, Trainer
-from ray.air.utils.checkpointing import (
+from ray.air._internal.checkpointing import (
     load_preprocessor_from_dir,
     save_preprocessor_to_dir,
 )
-from ray.air.utils.sklearn_utils import has_cpu_params, set_cpu_params
+from ray.air._internal.sklearn_utils import has_cpu_params, set_cpu_params
 from ray.util import PublicAPI
 from ray.util.joblib import register_ray
 
@@ -149,6 +149,7 @@ class SklearnTrainer(Trainer):
         scaling_config: Configuration for how to scale training.
             Only the ``trainer_resources`` key can be provided,
             as the training is not distributed.
+        dataset_config: Configuration for dataset ingest.
         run_config: Configuration for the execution of the training run.
         preprocessor: A ray.air.preprocessor.Preprocessor to preprocess the
             provided datasets.
