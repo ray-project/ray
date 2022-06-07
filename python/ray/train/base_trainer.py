@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Uni
 import ray
 from ray.util import PublicAPI
 from ray.air.checkpoint import Checkpoint
-from ray.air.constants import TRAIN_DATASET_KEY
+from ray.train.constants import TRAIN_DATASET_KEY
 from ray.air.config import (
     RunConfig,
     ScalingConfig,

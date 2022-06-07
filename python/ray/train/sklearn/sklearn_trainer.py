@@ -14,7 +14,7 @@ from ray import tune
 import ray.cloudpickle as cpickle
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import RunConfig, ScalingConfig
-from ray.air.constants import MODEL_KEY, TRAIN_DATASET_KEY
+from ray.train.constants import MODEL_KEY, TRAIN_DATASET_KEY
 from ray.air.preprocessor import Preprocessor
 from ray.train.trainer import GenDataset, BaseTrainer
 from ray.air._internal.checkpointing import (

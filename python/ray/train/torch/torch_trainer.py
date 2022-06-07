@@ -1,7 +1,7 @@
 from typing import Callable, Optional, Dict, Tuple, Union
 import torch
 
-from ray.train.torch import TorchConfig
+from ray.train.torch.impl import TorchConfig
 from ray.train.trainer import GenDataset
 from ray.train.data_parallel_trainer import DataParallelTrainer, _load_checkpoint
 from ray.air.config import ScalingConfig, RunConfig, DatasetConfig

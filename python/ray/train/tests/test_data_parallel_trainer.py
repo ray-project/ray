@@ -3,7 +3,7 @@ import pytest
 import ray
 from ray import train, tune
 from ray.air.checkpoint import Checkpoint
-from ray.air.constants import PREPROCESSOR_KEY
+from ray.train.constants import PREPROCESSOR_KEY
 
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.air.preprocessor import Preprocessor

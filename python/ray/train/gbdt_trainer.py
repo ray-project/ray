@@ -10,7 +10,7 @@ from ray.util.annotations import DeveloperAPI
 from ray.train.trainer import BaseTrainer
 from ray.air.checkpoint import Checkpoint
 from ray.tune import Trainable
-from ray.air.constants import MODEL_KEY, TRAIN_DATASET_KEY
+from ray.train.constants import MODEL_KEY, TRAIN_DATASET_KEY
 
 if TYPE_CHECKING:
     import xgboost_ray

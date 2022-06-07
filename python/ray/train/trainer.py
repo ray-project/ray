@@ -8,7 +8,6 @@ import warnings
 
 import ray
 from ray.actor import ActorHandle
-from ray.train.base_trainer import BaseTrainer
 from ray.train.backend import (
     BackendConfig,
     BackendExecutor,
@@ -42,6 +41,9 @@ from ray.train.utils import construct_path
 from ray.train.worker_group import WorkerGroup
 from ray.util.annotations import Deprecated, DeveloperAPI
 from ray.util.ml_utils.checkpoint_manager import CheckpointStrategy
+
+# NEW API
+from ray.train.base_trainer import BaseTrainer, GenDataset, TrainingFailedError
 
 if TUNE_INSTALLED:
     from ray import tune
@@ -913,4 +915,11 @@ def _create_tune_trainable(
     return TrainTrainable
 
 
-__all__ = ["Trainer", "TrainWorkerGroup", "TrainingIterator", "BaseTrainer"]
+__all__ = [
+    "Trainer",
+    "TrainWorkerGroup",
+    "TrainingIterator",
+    "BaseTrainer",
+    "GenDataset",
+    "TrainingFailedError",
+]

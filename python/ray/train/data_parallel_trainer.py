@@ -13,7 +13,7 @@ from typing import (
 
 import ray
 from ray import tune
-from ray.air.constants import (
+from ray.train.constants import (
     MODEL_KEY,
     PREPROCESSOR_KEY,
     TRAIN_DATASET_KEY,

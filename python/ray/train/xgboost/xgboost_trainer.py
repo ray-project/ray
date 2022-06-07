@@ -6,7 +6,7 @@ from ray.air.preprocessor import Preprocessor
 from ray.train.gbdt_trainer import GBDTTrainer
 from ray.air._internal.checkpointing import load_preprocessor_from_dir
 from ray.util.annotations import PublicAPI
-from ray.air.constants import MODEL_KEY
+from ray.train.constants import MODEL_KEY
 
 import xgboost
 import xgboost_ray

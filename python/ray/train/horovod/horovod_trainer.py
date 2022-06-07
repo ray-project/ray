@@ -7,7 +7,7 @@ from ray.air.checkpoint import Checkpoint
 
 
 from ray.train.data_parallel_trainer import DataParallelTrainer
-from ray.train.horovod import HorovodConfig
+from ray.train.horovod.impl import HorovodConfig
 
 
 class HorovodTrainer(DataParallelTrainer):

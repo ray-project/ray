@@ -700,6 +700,7 @@ def backward(tensor: torch.Tensor) -> None:
     get_accelerator(TorchAccelerator).backward(tensor)
 
 
+@PublicAPI(stability="beta")
 def enable_reproducibility(seed: int = 0) -> None:
     """Limits sources of nondeterministic behavior.
 
@@ -724,6 +725,7 @@ def enable_reproducibility(seed: int = 0) -> None:
 WORKER_TRACE_DIR_NAME = "pytorch_profiler_worker_traces"
 
 
+@PublicAPI(stability="beta")
 class TorchWorkerProfiler:
     """Utility class for running PyTorch Profiler on a Train worker.
 

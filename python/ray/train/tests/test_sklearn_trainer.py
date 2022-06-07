@@ -4,7 +4,7 @@ import pandas as pd
 import ray
 from ray import tune
 from ray.air.checkpoint import Checkpoint
-from ray.air.constants import TRAIN_DATASET_KEY
+from ray.train.constants import TRAIN_DATASET_KEY
 
 from ray.train.sklearn import SklearnTrainer, load_checkpoint
 from ray.air.preprocessor import Preprocessor

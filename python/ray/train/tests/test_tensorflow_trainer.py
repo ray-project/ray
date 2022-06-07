@@ -9,7 +9,7 @@ from ray.air.examples.tf.tensorflow_linear_dataset_example import (
     get_dataset,
 )
 from ray.air.predictors.integrations.tensorflow import TensorflowPredictor
-from ray.air.constants import MODEL_KEY, TRAIN_DATASET_KEY
+from ray.train.constants import MODEL_KEY, TRAIN_DATASET_KEY
 
 
 @pytest.fixture
