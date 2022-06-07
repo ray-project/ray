@@ -35,4 +35,5 @@ eval "${WORKSPACE_DIR}/ci/ci.sh build"
 python -m pip install -U \
   pytest==5.4.3 \
   numpy \
-  pandas
+  pandas \
+  tabulate

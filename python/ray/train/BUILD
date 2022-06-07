@@ -117,7 +117,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_base_trainer.py"],
     tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
+    deps = [":train_lib"]
 )
 
 py_test(
@@ -133,7 +133,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_data_parallel_trainer.py"],
     tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
+    deps = [":train_lib"]
 )
 
 py_test(
@@ -157,7 +157,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_horovod_trainer.py"],
     tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
+    deps = [":train_lib"]
 )
 
 py_test(
@@ -165,7 +165,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_huggingface_trainer.py"],
     tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
+    deps = [":train_lib"]
 )
 
 py_test(
@@ -173,7 +173,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_lightgbm_trainer.py"],
     tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
+    deps = [":train_lib"]
 )
 
 py_test(
@@ -205,7 +205,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_sklearn_trainer.py"],
     tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
+    deps = [":train_lib"]
 )
 
 py_test(
@@ -221,7 +221,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_tensorflow_trainer.py"],
     tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
+    deps = [":train_lib"]
 )
 
 py_test(
@@ -229,7 +229,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_torch_trainer.py"],
     tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
+    deps = [":train_lib"]
 )
 
 py_test(
@@ -261,7 +261,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_xgboost_trainer.py"],
     tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
+    deps = [":train_lib"]
 )
 
 # This is a dummy test dependency that causes the above tests to be
