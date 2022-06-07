@@ -11,7 +11,7 @@ from typing import (
 )
 
 from ray.rllib.agents import TrainerConfig
-from ray.rllib.algorithms.crr.torch.model_torch_crr import CRRModel
+from ray.rllib.algorithms.crr.torch import CRRModel
 from ray.rllib.algorithms.ddpg.noop_model import TorchNoopModel
 from ray.rllib.algorithms.sac.sac_torch_policy import TargetNetworkMixin
 from ray.rllib.models.catalog import ModelCatalog

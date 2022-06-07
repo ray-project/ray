@@ -1,4 +1,4 @@
-from .algorithm_crr import CRR, CRRConfig
+from .crr import CRR, CRRConfig
 
 __all__ = [
     "CRR",
