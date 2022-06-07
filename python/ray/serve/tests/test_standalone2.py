@@ -1,6 +1,7 @@
 from contextlib import contextmanager
 import sys
 import os
+import time
 import subprocess
 from tempfile import NamedTemporaryFile
 import requests
@@ -468,11 +469,10 @@ class TestDeployApp:
         config = ServeApplicationSchema.parse_obj(self.get_test_config())
         client.deploy_app(config)
 
-        wait_for_condition(
-            lambda: client.get_serve_status().app_status.deployment_timestamp > 0
-        )
+        assert client.get_serve_status().app_status.deployment_timestamp > 0
 
         first_deploy_time = client.get_serve_status().app_status.deployment_timestamp
+        time.sleep(0.1)
 
         config = self.get_test_config()
         config["deployments"] = [
@@ -483,8 +483,8 @@ class TestDeployApp:
         ]
         client.deploy_app(ServeApplicationSchema.parse_obj(config))
 
-        wait_for_condition(
-            lambda: client.get_serve_status().app_status.deployment_timestamp
+        assert (
+            client.get_serve_status().app_status.deployment_timestamp
             > first_deploy_time
         )
         assert client.get_serve_status().app_status.status in {
