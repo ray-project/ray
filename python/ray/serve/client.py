@@ -66,12 +66,10 @@ class ServeControllerClient:
         controller: ActorHandle,
         controller_name: str,
         detached: bool = False,
-        _override_controller_namespace: Optional[str] = None,
     ):
         self._controller: ServeController = controller
         self._controller_name = controller_name
         self._detached = detached
-        self._override_controller_namespace = _override_controller_namespace
         self._shutdown = False
         self._http_config: HTTPOptions = ray.get(controller.get_http_config.remote())
         self._root_url = ray.get(controller.get_root_url.remote())

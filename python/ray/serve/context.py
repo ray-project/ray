@@ -123,7 +123,6 @@ def _connect() -> ServeControllerClient:
         controller,
         controller_name,
         detached=True,
-        _override_controller_namespace=SERVE_NAMESPACE,
     )
     set_global_client(client)
     return client
