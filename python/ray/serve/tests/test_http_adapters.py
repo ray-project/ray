@@ -87,3 +87,9 @@ async def test_pandas_dataframe():
         MockRequest(_body=raw_json, query_params={"orient": "records"})
     )
     assert parsed_df.equals(df)
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", "-s", __file__]))
