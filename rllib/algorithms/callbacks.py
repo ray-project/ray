@@ -283,7 +283,12 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         pass
 
     def on_train_result(
-        self, *, algorithm: Algorithm = None, result: dict, trainer=None, **kwargs
+        self,
+        *,
+        algorithm: Optional["Algorithm"] = None,
+        result: dict,
+        trainer=None,
+        **kwargs,
     ) -> None:
         """Called at the end of Trainable.train().
 
