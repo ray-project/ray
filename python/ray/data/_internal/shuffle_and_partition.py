@@ -4,9 +4,9 @@ from typing import List, Optional, Union, Callable, Iterable
 import numpy as np
 
 from ray.data.block import Block, BlockAccessor, BlockMetadata, BlockExecStats
-from ray.data.impl.shuffle import ShuffleOp, SimpleShufflePlan
-from ray.data.impl.push_based_shuffle import PushBasedShufflePlan
-from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.shuffle import ShuffleOp, SimpleShufflePlan
+from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 
 
 class _ShufflePartitionOp(ShuffleOp):

@@ -61,6 +61,14 @@ def find_newest_experiment_checkpoint(ckpt_dir) -> Optional[str]:
     return max(full_paths)
 
 
+def load_trial_from_checkpoint(trial_cp: dict, stub: bool = False, **kwargs):
+    new_trial = Trial(
+        trial_cp["trainable_name"], stub=stub, _setup_default_resource=False, **kwargs
+    )
+    new_trial.__setstate__(trial_cp)
+    return new_trial
+
+
 def load_trials_from_experiment_checkpoint(
     experiment_checkpoint: Mapping[str, Any], stub: bool = False
 ) -> List[Trial]:
@@ -75,11 +83,7 @@ def load_trials_from_experiment_checkpoint(
 
     trials = []
     for trial_cp in checkpoints:
-        new_trial = Trial(
-            trial_cp["trainable_name"], stub=stub, _setup_default_resource=False
-        )
-        new_trial.__setstate__(trial_cp)
-        trials.append(new_trial)
+        trials.append(load_trial_from_checkpoint(trial_cp, stub=stub))
 
     return trials
 

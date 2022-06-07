@@ -4,11 +4,11 @@ from typing import Dict, Iterator, List, Union, Any, TypeVar, TYPE_CHECKING
 
 from ray.data.block import Block, BlockAccessor
 from ray.data.row import TableRow
-from ray.data.impl.block_builder import BlockBuilder
-from ray.data.impl.size_estimator import SizeEstimator
+from ray.data._internal.block_builder import BlockBuilder
+from ray.data._internal.size_estimator import SizeEstimator
 
 if TYPE_CHECKING:
-    from ray.data.impl.sort import SortKeyT
+    from ray.data._internal.sort import SortKeyT
 
 T = TypeVar("T")
 

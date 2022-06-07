@@ -32,11 +32,11 @@ from ray.air.train.integrations.huggingface.huggingface_utils import (
     TrainReportCallback,
     wrap_transformers_trainer,
 )
-from ray.air.utils.checkpointing import (
+from ray.air._internal.checkpointing import (
     load_preprocessor_from_dir,
     save_preprocessor_to_dir,
 )
-from ray.air.utils.torch_utils import load_torch_model
+from ray.air._internal.torch_utils import load_torch_model
 from ray.train.constants import TUNE_CHECKPOINT_ID
 from ray.train.torch import TorchConfig
 from ray.tune.trainable import Trainable
@@ -238,23 +238,16 @@ class HuggingFaceTrainer(TorchTrainer):
     _checkpoint_manager_cls = _DataParallelSyncingCheckpointManager
 
     _dataset_config = {
-        "train": DatasetConfig(
-            required=True,
-            streamable=False,
-            _noncustomizable_fields=["streamable"],
-        ),
-        "evaluation": DatasetConfig(
-            streamable=False,
-            _noncustomizable_fields=["streamable"],
-        ),
+        "train": DatasetConfig(fit=True, split=False, required=True),
+        "evaluation": DatasetConfig(split=False),
     }
 
     def __init__(
         self,
-        *,
         trainer_init_per_worker: Callable[
             [TorchDataset, Optional[TorchDataset], Any], transformers.trainer.Trainer
         ],
+        *,
         datasets: Dict[str, GenDataset],
         trainer_init_config: Optional[Dict] = None,
         torch_config: Optional[TorchConfig] = None,
@@ -308,20 +301,11 @@ class HuggingFaceTrainer(TorchTrainer):
             )
 
     def _validate_attributes(self):
-        # exceptions first
-        if TRAIN_DATASET_KEY not in self.datasets:
-            raise KeyError(
-                f"'{TRAIN_DATASET_KEY}' key must be preset in `datasets`. "
-                f"Got {list(self.datasets.keys())}"
-            )
-        if not all(
-            key in (TRAIN_DATASET_KEY, EVALUATION_DATASET_KEY) for key in self.datasets
-        ):
-            raise KeyError(
-                f"Only '{TRAIN_DATASET_KEY}' and '{EVALUATION_DATASET_KEY}' "
-                "keys can be preset in `datasets`. "
-                f"Got {list(self.datasets.keys())}"
-            )
+        for key, conf in self._dataset_config.items():
+            if conf.use_stream_api:
+                raise ValueError(
+                    "HuggingFaceTrainer does not support `use_stream_api`."
+                )
         gpus_per_worker = self.scaling_config.get("num_gpus_per_worker", 0)
         if gpus_per_worker > 1:
             raise ValueError(
