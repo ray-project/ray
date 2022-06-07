@@ -7,7 +7,8 @@ from typing import List, Optional, Dict, Set, Tuple, Union
 
 import numpy as np
 
-from ray.train.callbacks import TrainingCallback, _deprecation_msg
+from ray.train.callbacks import TrainingCallback
+from ray.train.callbacks.callback import _deprecation_msg
 from ray.train.callbacks.results_preprocessors import (
     IndexedResultsPreprocessor,
     ExcludedKeysResultsPreprocessor,

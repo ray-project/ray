@@ -2,7 +2,8 @@ import json
 from typing import Dict, List
 import warnings
 
-from ray.train.callbacks import TrainingCallback, _deprecation_msg
+from ray.train.callbacks import TrainingCallback
+from ray.train.callbacks.callback import _deprecation_msg
 
 
 class PrintCallback(TrainingCallback):

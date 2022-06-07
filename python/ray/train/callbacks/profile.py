@@ -3,7 +3,8 @@ from pathlib import Path
 from typing import List, Dict, Optional, Union
 import warnings
 
-from ray.train.callbacks import TrainingCallback, _deprecation_msg
+from ray.train.callbacks import TrainingCallback
+from ray.train.callbacks.callback import _deprecation_msg
 from ray.train.callbacks.logging import TrainCallbackLogdirManager
 from ray.train.callbacks.results_preprocessors import IndexedResultsPreprocessor
 from ray.train.constants import PYTORCH_PROFILER_KEY
