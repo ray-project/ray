@@ -80,10 +80,7 @@ def run(
         result: "WorkflowExecutionResult" = ray.get(
             workflow_manager.run_or_resume.remote(job_id, workflow_id, ignore_existing)
         )
-        if not is_growing:
-            return flatten_workflow_output(workflow_id, result.persisted_output)
-        else:
-            return flatten_workflow_output(workflow_id, result.volatile_output)
+        return flatten_workflow_output(workflow_id, result.output)
 
 
 # TODO(suquark): support recovery with ObjectRef inputs.
@@ -102,7 +99,7 @@ def resume(workflow_id: str) -> ray.ObjectRef:
         )
     )
     logger.info(f"Workflow job {workflow_id} resumed.")
-    return flatten_workflow_output(workflow_id, result.persisted_output)
+    return flatten_workflow_output(workflow_id, result.output)
 
 
 def get_output(workflow_id: str, name: Optional[str]) -> ray.ObjectRef:
@@ -221,7 +218,7 @@ def resume_all(with_failed: bool) -> List[Tuple[str, ray.ObjectRef]]:
             result: "WorkflowExecutionResult" = (
                 await workflow_manager.run_or_resume.remote(job_id, wid)
             )
-            obj = flatten_workflow_output(wid, result.persisted_output)
+            obj = flatten_workflow_output(wid, result.output)
             return wid, obj
         except Exception:
             logger.error(f"Failed to resume workflow {wid}")

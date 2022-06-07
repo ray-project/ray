@@ -11,7 +11,7 @@ import ray
 from ray.tests.conftest import *  # noqa
 from ray.data.block import BlockAccessor
 from ray.data.tests.conftest import *  # noqa
-from ray.data.impl.push_based_shuffle import PushBasedShufflePlan
+from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
 
 
 @pytest.mark.parametrize("use_push_based_shuffle", [False, True])
@@ -76,17 +76,12 @@ def test_sort_partition_same_key_to_same_block(
 
 @pytest.mark.parametrize("num_items,parallelism", [(100, 1), (1000, 4)])
 @pytest.mark.parametrize("use_push_based_shuffle", [False, True])
-@pytest.mark.parametrize("use_polars", [False, True])
-def test_sort_arrow(
-    ray_start_regular, num_items, parallelism, use_push_based_shuffle, use_polars
-):
+def test_sort_arrow(ray_start_regular, num_items, parallelism, use_push_based_shuffle):
     ctx = ray.data.context.DatasetContext.get_current()
 
     try:
-        original_push_based_shuffle = ctx.use_push_based_shuffle
+        original = ctx.use_push_based_shuffle
         ctx.use_push_based_shuffle = use_push_based_shuffle
-        original_use_polars = ctx.use_polars
-        ctx.use_polars = use_polars
 
         a = list(reversed(range(num_items)))
         b = [f"{x:03}" for x in range(num_items)]
@@ -117,22 +112,16 @@ def test_sort_arrow(
         assert_sorted(ds.sort(key="b"), zip(a, b))
         assert_sorted(ds.sort(key="a", descending=True), zip(a, b))
     finally:
-        ctx.use_push_based_shuffle = original_push_based_shuffle
-        ctx.use_polars = original_use_polars
+        ctx.use_push_based_shuffle = original
 
 
 @pytest.mark.parametrize("use_push_based_shuffle", [False, True])
-@pytest.mark.parametrize("use_polars", [False, True])
-def test_sort_arrow_with_empty_blocks(
-    ray_start_regular, use_push_based_shuffle, use_polars
-):
+def test_sort_arrow_with_empty_blocks(ray_start_regular, use_push_based_shuffle):
     ctx = ray.data.context.DatasetContext.get_current()
 
     try:
-        original_push_based_shuffle = ctx.use_push_based_shuffle
+        original = ctx.use_push_based_shuffle
         ctx.use_push_based_shuffle = use_push_based_shuffle
-        original_use_polars = ctx.use_polars
-        ctx.use_polars = use_polars
 
         assert (
             BlockAccessor.for_block(pa.Table.from_pydict({})).sample(10, "A").num_rows
@@ -165,7 +154,7 @@ def test_sort_arrow_with_empty_blocks(
         ds = ray.data.range_table(10).filter(lambda r: r["value"] > 10)
         assert (
             len(
-                ray.data.impl.sort.sample_boundaries(
+                ray.data._internal.sort.sample_boundaries(
                     ds._plan.execute().get_blocks(), "value", 3
                 )
             )
@@ -173,8 +162,7 @@ def test_sort_arrow_with_empty_blocks(
         )
         assert ds.sort("value").count() == 0
     finally:
-        ctx.use_push_based_shuffle = original_push_based_shuffle
-        ctx.use_polars = original_use_polars
+        ctx.use_push_based_shuffle = original
 
 
 def test_push_based_shuffle_schedule():

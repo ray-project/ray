@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Optional, Dict, Union, Callable, Tuple, List, Any
 
 import ray
-from ray.ml import Checkpoint
+from ray.air import Checkpoint
 from ray.tune.result import NODE_IP
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
@@ -171,7 +171,7 @@ class CheckpointStrategy:
             checkpoint will be deleted. If this is ``None`` then checkpoints
             will not be deleted. If this is ``0`` then no checkpoints will be
             persisted to disk.
-        checkpoint_score_attribute (str): The attribute that will be used to
+        checkpoint_score_attribute: The attribute that will be used to
             score checkpoints to determine which checkpoints should be kept
             on disk when there are greater than ``num_to_keep`` checkpoints.
             This attribute must be a key from the checkpoint
