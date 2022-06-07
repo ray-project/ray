@@ -24,6 +24,7 @@
 #   - `evaluation` directory tests.
 #   - `execution` directory tests.
 #   - `models` directory tests.
+#   - `offline` directory tests.
 #   - `policy` directory tests.
 #   - `utils` directory tests.
 
@@ -1140,7 +1141,7 @@ py_test(
         "--env", "CartPole-v0",
         "--run", "DQN",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"input\": \"tests/data/cartpole\", \"replay_buffer_config\": {\"learning_starts\": 0}, \"off_policy_estimation_methods\": [\"wis\", \"is\"], \"exploration_config\": {\"type\": \"SoftQ\"}}'"
+        "--config", "'{\"framework\": \"tf\", \"input\": \"tests/data/cartpole\", \"replay_buffer_config\": {\"learning_starts\": 0}, \"off_policy_estimation_methods\": {\"wis\": {\"type\": \"wis\"}, \"is\": {\"type\": \"is\"}}, \"exploration_config\": {\"type\": \"SoftQ\"}}'"
         ]
 )
 
@@ -1529,6 +1530,20 @@ py_test(
     tags = ["team:ml", "models"],
     size = "large",
     srcs = ["models/tests/test_preprocessors.py"]
+)
+
+# --------------------------------------------------------------------
+# Offline
+# rllib/offline/
+#
+# Tag: offline
+# --------------------------------------------------------------------
+
+py_test(
+    name = "test_ope",
+    tags = ["team:ml", "offline", "torch_only"],
+    size = "medium",
+    srcs = ["offline/estimators/tests/test_ope.py"]
 )
 
 # --------------------------------------------------------------------
