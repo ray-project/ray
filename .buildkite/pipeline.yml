@@ -443,6 +443,7 @@
     - ./ci/env/install-dependencies.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=soft_imports python/ray/tune/...
 
+# Test to see if Train can be used without torch, tf, etc. installed
 - label: ":steam_locomotive: Train minimal install"
   conditions: ["RAY_CI_TRAIN_AFFECTED"]
   commands:
