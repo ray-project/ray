@@ -41,7 +41,6 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.deprecation import (
     Deprecated,
 )
-from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.metrics import SYNCH_WORKER_WEIGHTS_TIMER
 from ray.rllib.execution.common import (
     LAST_TARGET_UPDATE_TS,
@@ -333,7 +332,7 @@ class DQN(SimpleQ):
         else:
             return DQNTFPolicy
 
-    @ExperimentalAPI
+    @override(SimpleQ)
     def training_step(self) -> ResultDict:
         """DQN training iteration function.
 

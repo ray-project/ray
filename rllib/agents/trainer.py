@@ -214,18 +214,6 @@ class Trainer(Trainable):
             logger_creator: Callable that creates a ray.tune.Logger
                 object. If unspecified, a default logger is created.
         """
-        # Check, whether `training_iteration` is still a tune.Trainable property
-        # and has not been overridden by the user in the attempt to implement the
-        # algos logic (this should be done now inside `training_loop`).
-        try:
-            assert isinstance(self.training_iteration, int)
-        except AssertionError:
-            raise AssertionError(
-                "Your Trainer's `training_iteration` seems to be overridden by your "
-                "custom training logic! To solve this problem, simply rename your "
-                "`self.training_iteration()` method into `self.training_step`."
-            )
-
         # User provided (partial) config (this may be w/o the default
         # Trainer's Config object). Will get merged with TrainerConfig()
         # in self.setup().
@@ -304,6 +292,18 @@ class Trainer(Trainable):
         super().__init__(
             config, logger_creator, remote_checkpoint_dir, sync_function_tpl
         )
+
+        # Check, whether `training_iteration` is still a tune.Trainable property
+        # and has not been overridden by the user in the attempt to implement the
+        # algos logic (this should be done now inside `training_loop`).
+        try:
+            assert isinstance(self.training_iteration, int)
+        except AssertionError:
+            raise AssertionError(
+                "Your Trainer's `training_iteration` seems to be overridden by your "
+                "custom training logic! To solve this problem, simply rename your "
+                "`self.training_iteration()` method into `self.training_step`."
+            )
 
     @OverrideToImplementCustomLogic
     @classmethod
@@ -1694,7 +1694,7 @@ class Trainer(Trainable):
         weights = ray.put(self.workers.local_worker().save())
         worker_set.foreach_worker(lambda w: w.restore(ray.get(weights)))
 
-    def _exec_plan_or_training_iteration_fn(self):
+    def _exec_plan_or_training_step_fn(self):
         with self._timers[TRAINING_ITERATION_TIMER]:
             if self.config["_disable_execution_plan_api"]:
                 results = self.training_step()
@@ -2009,21 +2009,31 @@ class Trainer(Trainable):
             )
             config["min_time_s_per_iteration"] = config["min_time_s_per_reporting"] or 0
 
-        if config.get("min_sample_timesteps_per_reporting", DEPRECATED_VALUE) != DEPRECATED_VALUE:
+        if (
+            config.get("min_sample_timesteps_per_reporting", DEPRECATED_VALUE)
+            != DEPRECATED_VALUE
+        ):
             deprecation_warning(
                 old="min_sample_timesteps_per_reporting",
                 new="min_sample_timesteps_per_iteration",
                 error=False,
             )
-            config["min_sample_timesteps_per_iteration"] = config["min_sample_timesteps_per_reporting"] or 0
+            config["min_sample_timesteps_per_iteration"] = (
+                config["min_sample_timesteps_per_reporting"] or 0
+            )
 
-        if config.get("min_train_timesteps_per_reporting", DEPRECATED_VALUE) != DEPRECATED_VALUE:
+        if (
+            config.get("min_train_timesteps_per_reporting", DEPRECATED_VALUE)
+            != DEPRECATED_VALUE
+        ):
             deprecation_warning(
                 old="min_train_timesteps_per_reporting",
                 new="min_train_timesteps_per_iteration",
                 error=False,
             )
-            config["min_train_timesteps_per_iteration"] = config["min_train_timesteps_per_reporting"] or 0
+            config["min_train_timesteps_per_iteration"] = (
+                config["min_train_timesteps_per_reporting"] or 0
+            )
 
         if config.get("collect_metrics_timeout", DEPRECATED_VALUE) != DEPRECATED_VALUE:
             # TODO: Warn once all algos use the `training_iteration` method.
