@@ -13,40 +13,49 @@ from pathlib import Path
 import os
 import numpy as np
 import gym
-from ray.rllib.utils.typing import SampleBatchType, SampleBatch
-from typing import Generator, Tuple
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.typing import SampleBatchType
+from typing import Generator, Tuple, Union
 
 
-def k_fold_cv(
-    batch: SampleBatchType, k: int, should_train: bool = True
+def train_test_split(
+    batch: SampleBatchType,
+    k: Union[float, int] = 0.0,
 ) -> Generator[Tuple[SampleBatch], None, None]:
-    """Utility function that returns a k-fold cross validation generator
-    over episodes from the given batch. If the number of episodes in the
-    batch is less than `k` or `should_train` is set to False, yields an empty
-    train_batch and eval_batch = batch.
+    """Utility function that returns either a train/test split or
+    a k-fold cross validation generator over episodes from the given batch.
+    By default, `k` is set to 0.0, which sets eval_batch = batch
+    and train_batch to an empty SampleBatch.
 
     Args:
         batch: A SampleBatch of episodes to split
-        k: Number of cross-validation splits
-        should_train: True by default. If False, yield [], [eval_batch].
+        k: train/test split parameter; if k < 1, split the batch into
+        `(1 - k) * num_episodes` eval batches and `k * num_episodes` train batches;
+        if k > 1 split the batch into `k` folds fro cross-validation
 
     Returns:
-        A tuple with two SampleBatches (train_batch, eval_batch)
+        A tuple with two SampleBatches (eval_batch, train_batch)
     """
     episodes = batch.split_by_episode()
     n_episodes = len(episodes)
-    if n_episodes < k or not should_train:
-        yield SampleBatch(), SampleBatch.concat(episodes)
+    assert (
+        isinstance(k, float) and k >= 0 and k < 1 or isinstance(k, int)
+    ), f" k: {k} must be either a float with 0.0 <= k < 1.0 or an int"
+    if k < 1:
+        train_episodes = episodes[: int(n_episodes * k)]
+        eval_episodes = episodes[int(n_episodes * k) :]
+        yield SampleBatch.concat(eval_episodes), SampleBatch.concat(train_episodes)
+        breakpoint()
         return
     n_fold = n_episodes // k
     for i in range(k):
         train_episodes = episodes[: i * n_fold] + episodes[(i + 1) * n_fold :]
         if i != k - 1:
-            test_episodes = episodes[i * n_fold : (i + 1) * n_fold]
+            eval_episodes = episodes[i * n_fold : (i + 1) * n_fold]
         else:
-            # Append remaining episodes onto the last test_episodes
-            test_episodes = episodes[i * n_fold :]
-        yield SampleBatch.concat(train_episodes), SampleBatch.concat(test_episodes)
+            # Append remaining episodes onto the last eval_episodes
+            eval_episodes = episodes[i * n_fold :]
+        yield SampleBatch.concat(eval_episodes), SampleBatch.concat(train_episodes)
     return
 
 
@@ -73,10 +82,9 @@ class TestOPE(unittest.TestCase):
 
         config = (
             DQNConfig()
-            .rollouts(num_rollout_workers=2)
+            .rollouts(num_rollout_workers=2, batch_mode="complete_episodes")
             .environment(env=env_name)
             .training(gamma=cls.gamma)
-            .rollouts(num_rollout_workers=3)
             .exploration(
                 explore=True,
                 exploration_config={
@@ -85,7 +93,6 @@ class TestOPE(unittest.TestCase):
                 },
             )
             .framework("torch")
-            .rollouts(batch_mode="complete_episodes")
         )
         cls.trainer = config.build()
 
@@ -94,7 +101,7 @@ class TestOPE(unittest.TestCase):
             "DQN",
             config=config.to_dict(),
             stop={"timesteps_total": train_steps},
-            verbose=0,
+            verbose=3,
         )
 
         # Read n_batches of data
@@ -128,8 +135,8 @@ class TestOPE(unittest.TestCase):
         cls.std_ret["simulation"] = np.std(mc_ret)
 
         # Optional configs for the model-based estimators
-        cls.model_config = {"k": 5, "n_iters": 10}
-        ray.shutdown()
+        cls.k = 2
+        cls.model_config = {"n_iters": 10}
 
     @classmethod
     def tearDownClass(cls):
@@ -172,7 +179,10 @@ class TestOPE(unittest.TestCase):
             q_model_type="qreg",
             **self.model_config,
         )
-        estimator.process(self.batch)
+        for eval_batch, train_batch in train_test_split(
+            self.batch, self.model_config["k"]
+        ):
+            estimator.process(eval_batch, train_batch)
         estimates = estimator.get_metrics()
         assert len(estimates) == self.n_episodes
         self.mean_ret[name] = np.mean([e.metrics["v_new"] for e in estimates])
@@ -187,7 +197,10 @@ class TestOPE(unittest.TestCase):
             q_model_type="fqe",
             **self.model_config,
         )
-        estimator.process(self.batch)
+        for eval_batch, train_batch in train_test_split(
+            self.batch, self.model_config["k"]
+        ):
+            estimator.process(eval_batch, train_batch)
         estimates = estimator.get_metrics()
         assert len(estimates) == self.n_episodes
         self.mean_ret[name] = np.mean([e.metrics["v_new"] for e in estimates])
@@ -202,7 +215,8 @@ class TestOPE(unittest.TestCase):
             q_model_type="qreg",
             **self.model_config,
         )
-        estimator.process(self.batch)
+        for eval_batch, train_batch in train_test_split(self.batch, self.k):
+            estimator.process(eval_batch, train_batch)
         estimates = estimator.get_metrics()
         assert len(estimates) == self.n_episodes
         self.mean_ret[name] = np.mean([e.metrics["v_new"] for e in estimates])
@@ -217,7 +231,10 @@ class TestOPE(unittest.TestCase):
             q_model_type="fqe",
             **self.model_config,
         )
-        estimator.process(self.batch)
+        for eval_batch, train_batch in train_test_split(
+            self.batch, self.model_config["k"]
+        ):
+            estimator.process(eval_batch, train_batch)
         estimates = estimator.get_metrics()
         assert len(estimates) == self.n_episodes
         self.mean_ret[name] = np.mean([e.metrics["v_new"] for e in estimates])
@@ -240,7 +257,10 @@ class TestOPE(unittest.TestCase):
             .training(gamma=gamma)
             .environment(env=env_name)
             .offline_data(
-                input_=data_file,
+                input_={
+                    data_file: 0.5,
+                    "sampler": 0.5,
+                }
             )
             .exploration(
                 explore=True,
@@ -251,12 +271,9 @@ class TestOPE(unittest.TestCase):
             )
             .evaluation(
                 evaluation_interval=1,
-                evaluation_num_workers=1,
+                evaluation_num_workers=0,
                 evaluation_config={
-                    "input": {
-                        "sampler": 0.5,
-                        os.path.join(rllib_dir, "tests/data/cartpole/small.json"): 0.5,
-                    },
+                    "input": os.path.join(rllib_dir, "tests/data/cartpole/small.json"),
                 },
                 off_policy_estimation_methods={
                     "is": {"type": ImportanceSampling},
@@ -277,11 +294,6 @@ class TestOPE(unittest.TestCase):
         print("Training", result["off_policy_estimator"])
         print("Evaluation", result["evaluation"]["off_policy_estimator"])
         assert not result["off_policy_estimator"]  # Should be None or {}
-
-    def test_ope_simple_replaybuffer(self):
-        # Move estimator.process calls out of worker.sample and make it take in a
-        # whole ReplayBuffer instead of a SampleBatch
-        pass
 
     def test_5_fold_cv_local_eval_worker(self):
         # 5-fold cv, local eval worker

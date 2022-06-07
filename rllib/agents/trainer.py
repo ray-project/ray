@@ -888,8 +888,8 @@ class Trainer(Trainable):
                         f"Ran round {round_} of parallel evaluation "
                         f"({num_units_done}/{duration} {unit} done)"
                     )
-                for i, w in enumerate(self.evaluation_workers.remote_workers()):
-                    pass
+                # for i, w in enumerate(self.evaluation_workers.remote_workers()):
+                #     pass
 
             if metrics is None:
                 metrics = collect_metrics(
