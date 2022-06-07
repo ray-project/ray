@@ -3,7 +3,7 @@ from typing import Type
 import numpy as np
 import pandas as pd
 
-from ray.air.predictor import DataBatchType
+from ray.air.data_batch_type import DataBatchType
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.util.annotations import DeveloperAPI
 

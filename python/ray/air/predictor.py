@@ -1,16 +1,10 @@
 import abc
-from typing import Dict, Union, TYPE_CHECKING
 
+from ray.air.data_batch_type import DataBatchType
 from ray.air.checkpoint import Checkpoint
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
-import numpy as np
 import pandas as pd
-
-if TYPE_CHECKING:
-    import pyarrow
-
-DataBatchType = Union[np.ndarray, pd.DataFrame, "pyarrow.Table", Dict[str, np.ndarray]]
 
 
 @PublicAPI(stability="alpha")
