@@ -480,3 +480,15 @@
       --test_env=PULL_POLICY=IfNotPresent
       --test_env=KUBECONFIG=/root/.kube/config
       python/ray/tests/...
+- label: ":python: Ray DAG Tests"
+  conditions:
+    [
+        "RAY_CI_PYTHON_AFFECTED",
+    ]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - pip install -U pydot
+    - sudo apt-get install -y graphviz
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_tag_filters=ray_dag_tests
+      python/ray/dag/tests/...

@@ -16,7 +16,7 @@ py_test(
     name = "test_function_dag",
     size = "small",
     srcs = dag_tests_srcs,
-    tags = ["exclusive", "team:core"],
+    tags = ["exclusive", "team:core", "ray_dag_tests"],
     deps = [":dag_lib"],
 )
 
@@ -24,7 +24,7 @@ py_test(
     name = "test_class_dag",
     size = "small",
     srcs = dag_tests_srcs,
-    tags = ["exclusive", "team:core"],
+    tags = ["exclusive", "team:core", "ray_dag_tests"],
     deps = [":dag_lib"],
 )
 
@@ -32,7 +32,7 @@ py_test(
     name = "test_input_node",
     size = "small",
     srcs = dag_tests_srcs,
-    tags = ["exclusive", "team:core"],
+    tags = ["exclusive", "team:core", "ray_dag_tests"],
     deps = [":dag_lib"],
 )
 
@@ -40,6 +40,6 @@ py_test(
     name = "test_plot",
     size = "small",
     srcs = dag_tests_srcs,
-    tags = ["exclusive", "team:core"],
+    tags = ["exclusive", "team:core", "ray_dag_tests"],
     deps = [":dag_lib"],
 )
