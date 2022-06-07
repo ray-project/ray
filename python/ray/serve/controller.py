@@ -39,6 +39,7 @@ from ray.serve.logging_utils import configure_component_logger
 from ray.serve.long_poll import LongPollHost
 from ray.serve.storage.checkpoint_path import make_kv_store
 from ray.serve.storage.kv_store import RayInternalKVStore
+from ray.serve.utils import merge_runtime_envs
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -571,7 +572,7 @@ class ServeController:
 
 @ray.remote(max_calls=1)
 def run_graph(
-    import_path: str, runtime_env: dict, deployment_override_options: List[Dict]
+    import_path: str, graph_env: dict, deployment_override_options: List[Dict]
 ):
     """Deploys a Serve application to the controller's Ray cluster."""
     from ray import serve
@@ -582,18 +583,17 @@ def run_graph(
     app = build(graph)
 
     # Override options for each deployment
-    for options_dict in deployment_override_options:
-        name = options_dict["name"]
+    for options in deployment_override_options:
+        name = options["name"]
 
-        if options_dict.get("ray_actor_options") is None:
-            options_dict["ray_actor_options"] = {"runtime_env": {}}
-        elif options_dict.get("ray_actor_options").get("runtime_env") is None:
-            options_dict.get("ray_actor_options")["runtime_env"] = {}
-        options_dict["ray_actor_options"]["runtime_env"] = (
-            options_dict.get("ray_actor_options").get("runtime_env").update(runtime_env)
-        )
+        # Merge graph-level and deployment-level runtime_envs
+        if options.get("ray_actor_options") is None:
+            options["ray_actor_options"] = {"runtime_env": {}}
+        deployment_env = options["ray_actor_options"].get("runtime_env", {})
+        merged_env = merge_runtime_envs(graph_env, deployment_env)
+        options["ray_actor_options"].update({"runtime_env": merged_env})
 
-        app.deployments[name].set_options(**options_dict)
+        app.deployments[name].set_options(**options)
 
     # Run the graph locally on the cluster
     serve.start(_override_controller_namespace="serve")
