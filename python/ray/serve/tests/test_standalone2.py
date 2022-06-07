@@ -526,7 +526,8 @@ class TestDeployApp:
             "import_path": "conditional_dag.serve_dag",
             "runtime_env": {
                 "working_dir": (
-                    "https://github.com/shrekris-anyscale/test_dag/archive/HEAD.zip"
+                    "https://github.com/ray-project/test_dag/archive/"
+                    "12740a10a5ee401f8728c0caeb683fc03e0be9cb.zip"
                 )
             },
         }
