@@ -2264,7 +2264,6 @@ class Dataset(Generic[T]):
             blocks.iter_blocks(),
             stats,
             prefetch_blocks=prefetch_blocks,
-            clear_block_after_read=self._lazy,
             batch_size=batch_size,
             batch_format=batch_format,
             drop_last=drop_last,
@@ -2986,7 +2985,7 @@ class Dataset(Generic[T]):
 
                 def gen():
                     ds = Dataset(
-                        ExecutionPlan(blocks, outer_stats), self._epoch, lazy=True,
+                        ExecutionPlan(blocks, outer_stats), self._epoch, lazy=True
                     )
                     return ds
 
