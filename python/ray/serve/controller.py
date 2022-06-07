@@ -586,13 +586,13 @@ def run_graph(
     for options in deployment_override_options:
         name = options["name"]
 
-        # Merge graph-level and deployment-level runtime_envs. This logic
-        # gets the deployment's ray_actor_options from the config, if
-        # specified. If not specified there, it gets the options from the graph
-        # code, and if there are no options there, it defaults to an empty dict.
+        # Merge graph-level and deployment-level runtime_envs
         if "ray_actor_options" in options:
+            # If specified, get ray_actor_options from config
             ray_actor_options = options["ray_actor_options"]
         else:
+            # Otherwise, get options from graph code (and default to {} if code
+            # sets options to None)
             ray_actor_options = app.deployments[name].ray_actor_options or {}
 
         deployment_env = ray_actor_options.get("runtime_env", {})
