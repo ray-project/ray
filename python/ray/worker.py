@@ -124,6 +124,11 @@ class RemoteFunctionNoArgs(Generic[R]):
     ) -> "ObjectRef[R]":
         ...
 
+    def __call__(
+        self,
+    ) -> R:
+        ...
+
 
 class RemoteFunction0(Generic[R, T0]):
     def __init__(self, function: Callable[[T0], R]) -> None:
@@ -133,6 +138,12 @@ class RemoteFunction0(Generic[R, T0]):
         self,
         __arg0: "Union[T0, ObjectRef[T0]]",
     ) -> "ObjectRef[R]":
+        ...
+
+    def __call__(
+        self,
+        __arg0: T0,
+    ) -> R:
         ...
 
 
@@ -145,6 +156,13 @@ class RemoteFunction1(Generic[R, T0, T1]):
         __arg0: "Union[T0, ObjectRef[T0]]",
         __arg1: "Union[T1, ObjectRef[T1]]",
     ) -> "ObjectRef[R]":
+        ...
+
+    def __call__(
+        self,
+        __arg0: T0,
+        __arg1: T1,
+    ) -> R:
         ...
 
 
@@ -160,6 +178,14 @@ class RemoteFunction2(Generic[R, T0, T1, T2]):
     ) -> "ObjectRef[R]":
         ...
 
+    def __call__(
+        self,
+        __arg0: T0,
+        __arg1: T1,
+        __arg2: T2,
+    ) -> R:
+        ...
+
 
 class RemoteFunction3(Generic[R, T0, T1, T2, T3]):
     def __init__(self, function: Callable[[T0, T1, T2, T3], R]) -> None:
@@ -172,6 +198,15 @@ class RemoteFunction3(Generic[R, T0, T1, T2, T3]):
         __arg2: "Union[T2, ObjectRef[T2]]",
         __arg3: "Union[T3, ObjectRef[T3]]",
     ) -> "ObjectRef[R]":
+        ...
+
+    def __call__(
+        self,
+        __arg0: T0,
+        __arg1: T1,
+        __arg2: T2,
+        __arg3: T3,
+    ) -> R:
         ...
 
 
@@ -189,6 +224,16 @@ class RemoteFunction4(Generic[R, T0, T1, T2, T3, T4]):
     ) -> "ObjectRef[R]":
         ...
 
+    def __call__(
+        self,
+        __arg0: T0,
+        __arg1: T1,
+        __arg2: T2,
+        __arg3: T3,
+        __arg4: T4,
+    ) -> R:
+        ...
+
 
 class RemoteFunction5(Generic[R, T0, T1, T2, T3, T4, T5]):
     def __init__(self, function: Callable[[T0, T1, T2, T3, T4, T5], R]) -> None:
@@ -203,6 +248,17 @@ class RemoteFunction5(Generic[R, T0, T1, T2, T3, T4, T5]):
         __arg4: "Union[T4, ObjectRef[T4]]",
         __arg5: "Union[T5, ObjectRef[T5]]",
     ) -> "ObjectRef[R]":
+        ...
+
+    def __call__(
+        self,
+        __arg0: T0,
+        __arg1: T1,
+        __arg2: T2,
+        __arg3: T3,
+        __arg4: T4,
+        __arg5: T5,
+    ) -> R:
         ...
 
 
@@ -222,6 +278,18 @@ class RemoteFunction6(Generic[R, T0, T1, T2, T3, T4, T5, T6]):
     ) -> "ObjectRef[R]":
         ...
 
+    def __call__(
+        self,
+        __arg0: T0,
+        __arg1: T1,
+        __arg2: T2,
+        __arg3: T3,
+        __arg4: T4,
+        __arg5: T5,
+        __arg6: T6,
+    ) -> R:
+        ...
+
 
 class RemoteFunction7(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7]):
     def __init__(self, function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7], R]) -> None:
@@ -238,6 +306,19 @@ class RemoteFunction7(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7]):
         __arg6: "Union[T6, ObjectRef[T6]]",
         __arg7: "Union[T7, ObjectRef[T7]]",
     ) -> "ObjectRef[R]":
+        ...
+
+    def __call__(
+        self,
+        __arg0: T0,
+        __arg1: T1,
+        __arg2: T2,
+        __arg3: T3,
+        __arg4: T4,
+        __arg5: T5,
+        __arg6: T6,
+        __arg7: T7,
+    ) -> R:
         ...
 
 
@@ -261,6 +342,20 @@ class RemoteFunction8(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8]):
     ) -> "ObjectRef[R]":
         ...
 
+    def __call__(
+        self,
+        __arg0: T0,
+        __arg1: T1,
+        __arg2: T2,
+        __arg3: T3,
+        __arg4: T4,
+        __arg5: T5,
+        __arg6: T6,
+        __arg7: T7,
+        __arg8: T8,
+    ) -> R:
+        ...
+
 
 class RemoteFunction9(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
     def __init__(
@@ -281,6 +376,21 @@ class RemoteFunction9(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
         __arg8: "Union[T8, ObjectRef[T8]]",
         __arg9: "Union[T9, ObjectRef[T9]]",
     ) -> "ObjectRef[R]":
+        ...
+
+    def __call__(
+        self,
+        __arg0: T0,
+        __arg1: T1,
+        __arg2: T2,
+        __arg3: T3,
+        __arg4: T4,
+        __arg5: T5,
+        __arg6: T6,
+        __arg7: T7,
+        __arg8: T8,
+        __arg9: T9,
+    ) -> R:
         ...
 
 
