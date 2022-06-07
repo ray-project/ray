@@ -4,7 +4,7 @@ from typing import Any, Callable, Dict, Optional, Type, Union
 
 import ray.cloudpickle as pickle
 from ray.air.config import RunConfig
-from ray.air.trainer import Trainer
+from ray.air.trainer import BaseTrainer
 from ray.tune import Experiment, TuneError, ExperimentAnalysis
 from ray.tune.impl.utils import execute_dataset
 from ray.tune.result_grid import ResultGrid
@@ -55,7 +55,7 @@ class TunerInternal:
                 str,
                 Callable,
                 Type[Trainable],
-                Trainer,
+                BaseTrainer,
             ]
         ] = None,
         param_space: Optional[Dict[str, Any]] = None,
@@ -85,7 +85,7 @@ class TunerInternal:
 
         # If no run config was passed to Tuner directly, use the one from the Trainer,
         # if available
-        if not run_config and isinstance(trainable, Trainer):
+        if not run_config and isinstance(trainable, BaseTrainer):
             run_config = trainable.run_config
 
         self._is_restored = False
@@ -144,7 +144,7 @@ class TunerInternal:
 
     @staticmethod
     def _convert_trainable(trainable: Any) -> Type[Trainable]:
-        if isinstance(trainable, Trainer):
+        if isinstance(trainable, BaseTrainer):
             trainable = trainable.as_trainable()
         else:
             trainable = trainable

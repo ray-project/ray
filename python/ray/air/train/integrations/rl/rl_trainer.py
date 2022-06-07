@@ -6,7 +6,7 @@ import ray.cloudpickle as cpickle
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import ScalingConfig, RunConfig
 from ray.air.preprocessor import Preprocessor
-from ray.air.trainer import Trainer, GenDataset
+from ray.air.trainer import BaseTrainer, GenDataset
 from ray.air._internal.checkpointing import (
     load_preprocessor_from_dir,
     save_preprocessor_to_dir,
@@ -27,7 +27,7 @@ RL_CONFIG_FILE = "config.pkl"
 
 
 @PublicAPI(stability="alpha")
-class RLTrainer(Trainer):
+class RLTrainer(BaseTrainer):
     """Reinforcement learning trainer.
 
     This trainer provides an interface to RLlib trainables.

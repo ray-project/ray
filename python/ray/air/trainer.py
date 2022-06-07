@@ -43,10 +43,10 @@ class TrainingFailedError(RuntimeError):
 
 
 @DeveloperAPI
-class Trainer(abc.ABC):
+class BaseTrainer(abc.ABC):
     """Defines interface for distributed training on Ray.
 
-    Note: The base ``Trainer`` class cannot be instantiated directly. Only
+    Note: The base ``BaseTrainer`` class cannot be instantiated directly. Only
     one of its subclasses can be used.
 
     How does a trainer work?
@@ -68,18 +68,18 @@ class Trainer(abc.ABC):
 
     **How do I create a new Trainer?**
 
-    Subclass ``ray.train.Trainer``, and override the ``training_loop``
+    Subclass ``ray.train.BaseTrainer``, and override the ``training_loop``
     method, and optionally ``setup``.
 
     .. code-block:: python
 
         import torch
 
-        from ray.air.train import Trainer
+        from ray.air.train import BaseTrainer
         from ray import tune
 
 
-        class MyPytorchTrainer(Trainer):
+        class MyPytorchTrainer(BaseTrainer):
             def setup(self):
                 self.model = torch.nn.Linear(1, 1)
                 self.optimizer = torch.optim.SGD(
@@ -162,7 +162,7 @@ class Trainer(abc.ABC):
 
     def __new__(cls, *args, **kwargs):
         """Store the init args as attributes so this can be merged with Tune hparams."""
-        trainer = super(Trainer, cls).__new__(cls)
+        trainer = super(BaseTrainer, cls).__new__(cls)
         parameters = inspect.signature(cls.__init__).parameters
         parameters = list(parameters.keys())
         # Remove self.
@@ -301,9 +301,9 @@ class Trainer(abc.ABC):
         Example:
             .. code-block: python
 
-                from ray.air.trainer import Trainer
+                from ray.air.trainer import BaseTrainer
 
-                class MyTrainer(Trainer):
+                class MyTrainer(BaseTrainer):
                     def training_loop(self):
                         for epoch_idx in range(5):
                             ...

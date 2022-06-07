@@ -7,7 +7,7 @@ from ray.air.preprocessor import Preprocessor
 from ray.air._internal.checkpointing import save_preprocessor_to_dir
 from ray.tune.utils.trainable import TrainableUtil
 from ray.util.annotations import DeveloperAPI
-from ray.air.trainer import Trainer
+from ray.air.trainer import BaseTrainer
 from ray.air.checkpoint import Checkpoint
 from ray.tune import Trainable
 from ray.air.constants import MODEL_KEY, TRAIN_DATASET_KEY
@@ -40,7 +40,7 @@ def _convert_scaling_config_to_ray_params(
 
 
 @DeveloperAPI
-class GBDTTrainer(Trainer):
+class GBDTTrainer(BaseTrainer):
     """Common logic for gradient-boosting decision tree (GBDT) frameworks
     like XGBoost-Ray and LightGBM-Ray.
 
@@ -65,7 +65,7 @@ class GBDTTrainer(Trainer):
         **train_kwargs: Additional kwargs passed to framework ``train()`` function.
     """
 
-    _scaling_config_allowed_keys = Trainer._scaling_config_allowed_keys + [
+    _scaling_config_allowed_keys = BaseTrainer._scaling_config_allowed_keys + [
         "num_workers",
         "num_cpus_per_worker",
         "num_gpus_per_worker",

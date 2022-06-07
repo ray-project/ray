@@ -16,7 +16,7 @@ from ray.air.checkpoint import Checkpoint
 from ray.air.config import RunConfig, ScalingConfig
 from ray.air.constants import MODEL_KEY, TRAIN_DATASET_KEY
 from ray.air.preprocessor import Preprocessor
-from ray.air.trainer import GenDataset, Trainer
+from ray.air.trainer import GenDataset, BaseTrainer
 from ray.air._internal.checkpointing import (
     load_preprocessor_from_dir,
     save_preprocessor_to_dir,
@@ -46,7 +46,7 @@ CVType = Union[int, Iterable, BaseCrossValidator]
 
 
 @PublicAPI(stability="alpha")
-class SklearnTrainer(Trainer):
+class SklearnTrainer(BaseTrainer):
     """A Trainer for scikit-learn estimator training.
 
     This Trainer runs the ``fit`` method of the given estimator in a

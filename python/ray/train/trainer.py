@@ -39,8 +39,7 @@ from ray.train.constants import (
 # Ray Train should be usable even if Tune is not installed.
 from ray.train.utils import construct_path
 from ray.train.worker_group import WorkerGroup
-from ray.util import PublicAPI
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import Deprecated, DeveloperAPI
 from ray.util.ml_utils.checkpoint_manager import CheckpointStrategy
 
 if TUNE_INSTALLED:
@@ -95,7 +94,7 @@ def get_backend_config_cls(backend_name) -> type:
     return config_cls
 
 
-@PublicAPI(stability="beta")
+@Deprecated
 class Trainer:
     """A class for enabling seamless distributed deep learning.
 

@@ -15,7 +15,7 @@ from ray.air.examples.pytorch.torch_linear_example import (
 )
 from ray.air.train.integrations.torch import TorchTrainer
 from ray.air.train.integrations.xgboost import XGBoostTrainer
-from ray.air.train import Trainer
+from ray.air.train import BaseTrainer
 from ray.tune import Callback, TuneError
 from ray.tune.cloud import TrialCheckpoint
 from ray.tune.result import DEFAULT_RESULTS_DIR
@@ -23,7 +23,7 @@ from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 
 
-class DummyTrainer(Trainer):
+class DummyTrainer(BaseTrainer):
     _scaling_config_allowed_keys = [
         "num_workers",
         "num_cpus_per_worker",

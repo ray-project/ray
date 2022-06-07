@@ -4,7 +4,7 @@ import ray
 from ray import tune
 
 from ray.air.preprocessor import Preprocessor
-from ray.air.trainer import Trainer
+from ray.air.trainer import BaseTrainer
 from ray.util.placement_group import get_current_placement_group
 
 
@@ -27,7 +27,7 @@ class DummyPreprocessor(Preprocessor):
         return ds.map(lambda x: x + 1)
 
 
-class DummyTrainer(Trainer):
+class DummyTrainer(BaseTrainer):
     _scaling_config_allowed_keys = [
         "num_workers",
         "num_cpus_per_worker",

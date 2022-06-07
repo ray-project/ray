@@ -3,7 +3,7 @@ from typing import Any, Callable, Dict, Optional, Type, Union
 import ray
 
 from ray.air.config import RunConfig
-from ray.air.trainer import Trainer
+from ray.air.trainer import BaseTrainer
 from ray.tune import TuneError
 from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
@@ -111,7 +111,7 @@ class Tuner:
                 str,
                 Callable,
                 Type[Trainable],
-                Trainer,
+                BaseTrainer,
             ]
         ] = None,
         param_space: Optional[Dict[str, Any]] = None,

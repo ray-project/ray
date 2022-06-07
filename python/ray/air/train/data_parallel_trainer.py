@@ -19,7 +19,7 @@ from ray.air.constants import (
     TRAIN_DATASET_KEY,
     WILDCARD_KEY,
 )
-from ray.air.trainer import Trainer
+from ray.air.trainer import BaseTrainer
 from ray.air.config import ScalingConfig, RunConfig, DatasetConfig
 from ray.air.trainer import GenDataset
 from ray.air.preprocessor import Preprocessor
@@ -57,7 +57,7 @@ class _DataParallelCheckpointManager(TuneCheckpointManager):
 
 
 @DeveloperAPI
-class DataParallelTrainer(Trainer):
+class DataParallelTrainer(BaseTrainer):
     """A Trainer for data parallel training.
 
     You should subclass this Trainer if your Trainer follows SPMD (single program,
@@ -225,7 +225,7 @@ class DataParallelTrainer(Trainer):
         TuneCheckpointManager
     ] = _DataParallelCheckpointManager
 
-    _scaling_config_allowed_keys = Trainer._scaling_config_allowed_keys + [
+    _scaling_config_allowed_keys = BaseTrainer._scaling_config_allowed_keys + [
         "num_workers",
         "num_cpus_per_worker",
         "num_gpus_per_worker",
