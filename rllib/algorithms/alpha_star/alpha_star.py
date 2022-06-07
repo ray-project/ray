@@ -415,7 +415,7 @@ class AlphaStar(appo.APPO):
         return result
 
     @override(Trainer)
-    def training_loop(self) -> ResultDict:
+    def training_step(self) -> ResultDict:
         # Trigger asynchronous rollouts on all RolloutWorkers.
         # - Rollout results are sent directly to correct replay buffer
         #   shards, instead of here (to the driver).

@@ -252,7 +252,7 @@ class MARWIL(Trainer):
             return MARWILTF2Policy
 
     @override(Trainer)
-    def training_loop(self) -> ResultDict:
+    def training_step(self) -> ResultDict:
         # Collect SampleBatches from sample workers.
         batch = synchronous_parallel_sample(worker_set=self.workers)
         batch = batch.as_multi_agent()

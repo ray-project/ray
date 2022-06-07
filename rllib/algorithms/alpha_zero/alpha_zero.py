@@ -319,7 +319,7 @@ class AlphaZero(Trainer):
         return AlphaZeroPolicyWrapperClass
 
     @override(Trainer)
-    def training_loop(self) -> ResultDict:
+    def training_step(self) -> ResultDict:
         """TODO:
 
         Returns:

@@ -223,7 +223,7 @@ class Trainer(Trainable):
             raise AssertionError(
                 "Your Trainer's `training_iteration` seems to be overridden by your "
                 "custom training logic! To solve this problem, simply rename your "
-                "`self.training_iteration()` method into `self.training_loop`."
+                "`self.training_iteration()` method into `self.training_step`."
             )
 
         # User provided (partial) config (this may be w/o the default
@@ -896,7 +896,7 @@ class Trainer(Trainable):
 
     @OverrideToImplementCustomLogic
     @DeveloperAPI
-    def training_loop(self) -> ResultDict:
+    def training_step(self) -> ResultDict:
         """Default single iteration logic of an algorithm.
 
         - Collect on-policy samples (SampleBatches) in parallel using the
@@ -948,7 +948,7 @@ class Trainer(Trainable):
         raise NotImplementedError(
             "It is not longer recommended to use Trainer's `execution_plan` method/API."
             " Set `_disable_execution_plan_api=True` in your config and override the "
-            "`Trainer.training_loop()` method with your algo's custom "
+            "`Trainer.training_step()` method with your algo's custom "
             "execution logic."
         )
 
@@ -1697,7 +1697,7 @@ class Trainer(Trainable):
     def _exec_plan_or_training_iteration_fn(self):
         with self._timers[TRAINING_ITERATION_TIMER]:
             if self.config["_disable_execution_plan_api"]:
-                results = self.training_loop()
+                results = self.training_step()
             else:
                 results = next(self.train_exec_impl)
         return results

@@ -190,7 +190,7 @@ class A3C(Trainer):
 
             return A3CEagerTFPolicy
 
-    def training_loop(self) -> ResultDict:
+    def training_step(self) -> ResultDict:
         # Shortcut.
         local_worker = self.workers.local_worker()
 

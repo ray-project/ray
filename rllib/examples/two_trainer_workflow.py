@@ -88,7 +88,7 @@ class MyTrainer(Trainer):
         )
 
     @override(Trainer)
-    def training_loop(self) -> ResultDict:
+    def training_step(self) -> ResultDict:
         # Generate common experiences, collect batch for PPO, store every (DQN) batch
         # into replay buffer.
         ppo_batches = []

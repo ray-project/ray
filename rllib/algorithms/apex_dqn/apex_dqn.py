@@ -435,7 +435,7 @@ class ApexDQN(DQN):
         super().validate_config(config)
 
     @override(Trainable)
-    def training_loop(self) -> ResultDict:
+    def training_step(self) -> ResultDict:
         num_samples_ready_dict = self.get_samples_and_store_to_replay_buffers()
         worker_samples_collected = defaultdict(int)
 

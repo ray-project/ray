@@ -655,7 +655,7 @@ The following is a list of the common algorithm hyper-parameters:
 
     # === API deprecations/simplifications/changes ===
     # If True, the execution plan API will not be used. Instead,
-    # a Trainer's `training_loop()` method will be called on each
+    # a Trainer's `training_step()` method will be called on each
     # training iteration.
     "_disable_execution_plan_api": True,
 

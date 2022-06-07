@@ -1113,24 +1113,24 @@ class TrainerConfig:
             metrics_num_episodes_for_smoothing: Smooth metrics over this many episodes.
             min_time_s_per_iteration: Minimum time to accumulate within a single
                 `train()` call. This value does not affect learning,
-                only the number of times `Trainer.training_loop()` is called by
+                only the number of times `Trainer.training_step()` is called by
                 `Trainer.train()`. If - after one such step attempt, the time taken
                 has not reached `min_time_s_per_iteration`, will perform n more
-                `training_loop()` calls until the minimum time has been
+                `training_step()` calls until the minimum time has been
                 consumed. Set to 0 or None for no minimum time.
             min_train_timesteps_per_iteration: Minimum training timesteps to accumulate
                 within a single `train()` call. This value does not affect learning,
-                only the number of times `Trainer.training_loop()` is called by
+                only the number of times `Trainer.training_step()` is called by
                 `Trainer.train()`. If - after one such step attempt, the training
                 timestep count has not been reached, will perform n more
                 `training_step()` calls until the minimum timesteps have been
                 executed. Set to 0 or None for no minimum timesteps.
             min_sample_timesteps_per_iteration: Minimum env sampling timesteps to
                 accumulate within a single `train()` call. This value does not affect
-                learning, only the number of times `Trainer.training_loop()` is
+                learning, only the number of times `Trainer.training_step()` is
                 called by `Trainer.train()`. If - after one such step attempt, the env
                 sampling timestep count has not been reached, will perform n more
-                `training_loop()` calls until the minimum timesteps have been
+                `training_step()` calls until the minimum timesteps have been
                 executed. Set to 0 or None for no minimum timesteps.
 
         Returns:

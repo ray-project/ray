@@ -312,7 +312,7 @@ class SimpleQ(Trainer):
 
     @ExperimentalAPI
     @override(Trainer)
-    def training_loop(self) -> ResultDict:
+    def training_step(self) -> ResultDict:
         """Simple Q training iteration function.
 
         Simple Q consists of the following steps:

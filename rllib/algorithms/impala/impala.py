@@ -608,7 +608,7 @@ class Impala(Trainer):
             self.workers_that_need_updates = set()
 
     @override(Trainer)
-    def training_loop(self) -> ResultDict:
+    def training_step(self) -> ResultDict:
         unprocessed_sample_batches = self.get_samples_from_workers()
 
         self.workers_that_need_updates |= unprocessed_sample_batches.keys()
