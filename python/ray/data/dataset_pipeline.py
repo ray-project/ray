@@ -171,6 +171,10 @@ class DatasetPipeline(Generic[T]):
         if self._executed[0]:
             raise RuntimeError("Pipeline cannot be read multiple times.")
         time_start = time.perf_counter()
+        # When the DatasetPipeline actually did transformations (i.e. the self._stages
+        # isn't empty), there will be output blocks created. In this case, those output
+        # blocks are safe to clear right after read, because we know they will never be
+        # accessed again, given that DatasetPipeline can be read at most once.
         yield from batch_blocks(
             self._iter_blocks(),
             self._stats,
