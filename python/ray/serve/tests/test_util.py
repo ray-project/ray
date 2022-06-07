@@ -14,6 +14,7 @@ from ray.serve.utils import (
     serve_encoders,
     get_deployment_import_path,
     node_id_to_ip_addr,
+    merge_runtime_envs,
 )
 
 
@@ -140,6 +141,108 @@ class TestGetDeploymentImportPath:
                 f.write(code)
 
             subprocess.check_output(["python", full_fname])
+
+
+class TestMergeRuntimeEnvs:
+    def test_merge_empty(self):
+        assert {} == merge_runtime_envs({}, {})
+
+    def test_merge_empty_parent(self):
+        child = {"env_vars": {"test1": "test_val"}, "working_dir": "."}
+        assert child == merge_runtime_envs({}, child)
+
+    def test_merge_empty_child(self):
+        parent = {"env_vars": {"test1": "test_val"}, "working_dir": "."}
+        assert parent == merge_runtime_envs(parent, {})
+
+    @pytest.mark.parametrize("invalid_env", [None, 0, "runtime_env", set()])
+    def test_invalid_type(self, invalid_env):
+        with pytest.raises(TypeError):
+            merge_runtime_envs(invalid_env, {})
+        with pytest.raises(TypeError):
+            merge_runtime_envs({}, invalid_env)
+        with pytest.raises(TypeError):
+            merge_runtime_envs(invalid_env, invalid_env)
+
+    def test_basic_merge(self):
+        parent = {
+            "py_modules": ["http://test.com/test0.zip", "s3://path/test1.zip"],
+            "working_dir": "gs://path/test2.zip",
+            "env_vars": {"test": "val", "trial": "val2"},
+            "pip": ["pandas", "numpy"],
+            "excludes": ["my_file.txt"],
+        }
+        original_parent = parent.copy()
+
+        child = {
+            "py_modules": [],
+            "working_dir": "s3://path/test1.zip",
+            "env_vars": {"test": "val", "trial": "val2"},
+            "pip": ["numpy"],
+        }
+        original_child = child.copy()
+
+        merged = merge_runtime_envs(parent, child)
+
+        assert original_parent == parent
+        assert original_child == child
+        assert merged == {
+            "py_modules": [],
+            "working_dir": "s3://path/test1.zip",
+            "env_vars": {"test": "val", "trial": "val2"},
+            "pip": ["numpy"],
+            "excludes": ["my_file.txt"],
+        }
+
+    def test_merge_deep_copy(self):
+        """Check that merge_runtime_envs actually deep copies the env values."""
+
+        parent_env_vars = {"parent": "pval"}
+        child_env_vars = {"child": "cval"}
+
+        parent = {"env_vars": parent_env_vars}
+        child = {"env_vars": child_env_vars}
+        original_parent = parent.copy()
+        original_child = parent.copy()
+
+        merged = merge_runtime_envs(parent, child)
+        assert merged["env_vars"] == {"parent": "pval", "child": "cval"}
+        assert original_parent == parent
+        assert original_child == child
+
+    def test_merge_empty_env_vars(self):
+        env_vars = {"test": "val", "trial": "val2"}
+
+        non_empty = {"env_vars": {"test": "val", "trial": "val2"}}
+        empty = {}
+
+        assert env_vars == merge_runtime_envs(non_empty, empty)["env_vars"]
+        assert env_vars == merge_runtime_envs(empty, non_empty)["env_vars"]
+        assert {} == merge_runtime_envs(empty, empty)["env_vars"]
+
+    def test_merge_env_vars(self):
+        parent = {
+            "py_modules": ["http://test.com/test0.zip", "s3://path/test1.zip"],
+            "working_dir": "gs://path/test2.zip",
+            "env_vars": {"parent": "pval", "override": "old"},
+            "pip": ["pandas", "numpy"],
+            "excludes": ["my_file.txt"],
+        }
+
+        child = {
+            "py_modules": [],
+            "working_dir": "s3://path/test1.zip",
+            "env_vars": {"child": "cval", "override": "new"},
+            "pip": ["numpy"],
+        }
+
+        merged = merge_runtime_envs(parent, child)
+        assert merged == {
+            "py_modules": [],
+            "working_dir": "s3://path/test1.zip",
+            "env_vars": {"parent": "pval", "child": "cval", "override": "new"},
+            "pip": ["numpy"],
+        }
 
 
 if __name__ == "__main__":

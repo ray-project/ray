@@ -7,6 +7,7 @@ import string
 import time
 from typing import Iterable, List, Dict, Tuple
 import os
+import copy
 import traceback
 from enum import Enum
 import __main__
@@ -346,8 +347,8 @@ def merge_runtime_envs(parent_env: Dict, child_env: Dict) -> Dict:
             "child_env must be a dictionary."
         )
 
-    parent_copy = parent_env.copy()
-    child_copy = child_env.copy()
+    parent_copy = copy.deepcopy(parent_env)
+    child_copy = copy.deepcopy(child_env)
 
     env_vars = parent_env.get("env_vars", {}).update(child_env.get("env_vars", {}))
 
