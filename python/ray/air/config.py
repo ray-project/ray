@@ -10,11 +10,13 @@ from typing import (
     Union,
 )
 
+from ray.air.constants import WILDCARD_KEY
 from ray.tune.syncer import SyncConfig
 from ray.tune.utils.log import Verbosity
 from ray.util import PublicAPI
 
 if TYPE_CHECKING:
+    from ray.data import Dataset
     from ray.tune.callback import Callback
     from ray.tune.stopper import Stopper
     from ray.tune.trainable import PlacementGroupFactory
@@ -114,6 +116,154 @@ class ScalingConfigDataClass:
         ]
         bundles = trainer_bundle + worker_bundles
         return PlacementGroupFactory(bundles, strategy=self.placement_strategy)
+
+
+@dataclass
+@PublicAPI(stability="alpha")
+class DatasetConfig:
+    """Configuration for ingest of a single Dataset.
+
+    These configs define how the Dataset should be read into the DataParallelTrainer.
+    It configures the preprocessing, splitting, and ingest strategy per-dataset.
+
+    DataParallelTrainers declare default DatasetConfigs for each dataset passed in the
+    ``datasets`` argument. Users have the opportunity to selectively override these
+    configs by passing the ``dataset_config`` argument. Trainers can also define user
+    customizable values (e.g., XGBoostTrainer doesn't support streaming ingest).
+    """
+
+    # TODO(ekl) could we unify DataParallelTrainer and Trainer so the same data ingest
+    # strategy applies to all Trainers?
+
+    # Whether to fit preprocessors on this dataset. This can be set on at most one
+    # dataset at a time.
+    # True by default for the "train" dataset only.
+    fit: Optional[bool] = None
+
+    # Whether the dataset should be split across multiple workers.
+    # True by default for the "train" dataset only.
+    split: Optional[bool] = None
+
+    # Whether to raise an error if the Dataset isn't provided by the user.
+    # False by default.
+    required: Optional[bool] = None
+
+    # Whether to transform the dataset with the fitted preprocessor. This must be
+    # enabled at least for the dataset that is fit.
+    # True by default.
+    transform: Optional[bool] = None
+
+    # Whether the dataset should be streamed into memory using pipelined reads.
+    # When enabled, get_dataset_shard() returns DatasetPipeline instead of Dataset.
+    # The amount of memory to use is controlled by `stream_window_size`.
+    # False by default.
+    use_stream_api: Optional[bool] = None
+
+    # Configure the streaming window size in bytes. A good value is something like
+    # 20% of object store memory. If set to -1, then an infinite window size will be
+    # used (similar to bulk ingest). This only has an effect if use_stream_api is set.
+    # Set to 1.0 GiB by default.
+    stream_window_size: Optional[float] = None
+
+    # Whether to enable global shuffle (per pipeline window in streaming mode). Note
+    # that this is an expensive all-to-all operation, and most likely you want to use
+    # local shuffle instead. See https://docs.ray.io/en/master/data/faq.html
+    # False by default.
+    global_shuffle: Optional[bool] = None
+
+    def fill_defaults(self) -> "DatasetConfig":
+        """Return a copy of this config with all default values filled in."""
+        return DatasetConfig(
+            fit=self.fit or False,
+            split=self.split or False,
+            required=self.required or False,
+            use_stream_api=self.use_stream_api or False,
+            stream_window_size=self.stream_window_size
+            if self.stream_window_size is not None
+            else 1024 * 1024 * 1024,
+            global_shuffle=self.global_shuffle or False,
+            transform=self.transform if self.transform is not None else True,
+        )
+
+    @staticmethod
+    def merge(
+        a: Dict[str, "DatasetConfig"], b: Optional[Dict[str, "DatasetConfig"]]
+    ) -> Dict[str, "DatasetConfig"]:
+        """Merge two given DatasetConfigs, the second taking precedence.
+
+        Raises:
+            ValueError if validation fails on the merged configs.
+        """
+        has_wildcard = WILDCARD_KEY in a
+        result = a.copy()
+        if b is None:
+            return result
+        for key in b:
+            if key in a:
+                result[key] = a[key]._merge(b[key])
+            elif has_wildcard:
+                result[key] = a[WILDCARD_KEY]._merge(b[key])
+            else:
+                raise ValueError(
+                    f"Invalid dataset config `{key}`. It must be one of `{list(a)}`."
+                )
+        return result
+
+    @staticmethod
+    def validated(
+        config: Dict[str, "DatasetConfig"], datasets: Dict[str, "Dataset"]
+    ) -> Dict[str, "DatasetConfig"]:
+        """Validate the given config and datasets are usable.
+
+        Returns dict of validated configs with defaults filled out.
+        """
+        has_wildcard = WILDCARD_KEY in config
+        fittable = set()
+        result = {k: v.fill_defaults() for k, v in config.items()}
+        for k, v in result.items():
+            if v.fit:
+                fittable.add(k)
+                if not v.transform:
+                    raise ValueError(
+                        f"Error configuring dataset `{k}`: cannot specify both "
+                        "fit=True and transform=False."
+                    )
+            if v.required:
+                if k not in datasets:
+                    raise ValueError(
+                        f"The required dataset `{k}` was not found in {datasets}."
+                    )
+        if len(fittable) > 1:
+            raise ValueError(
+                f"More than one dataset was specified to be fit: {fittable}"
+            )
+        if not has_wildcard:
+            for k, v in datasets.items():
+                if k not in result:
+                    raise ValueError(
+                        f"An unexpected dataset `{k}` was given. The list of expected "
+                        f"datasets is `{list(result)}`."
+                    )
+        return result
+
+    def _merge(self, other: "DatasetConfig") -> "DatasetConfig":
+        """Merge the given DatasetConfig into this one."""
+        new_config = DatasetConfig(
+            fit=self.fit if other.fit is None else other.fit,
+            split=self.split if other.split is None else other.split,
+            required=self.required if other.required is None else other.required,
+            transform=self.transform if other.transform is None else other.transform,
+            use_stream_api=self.use_stream_api
+            if other.use_stream_api is None
+            else other.use_stream_api,
+            stream_window_size=self.stream_window_size
+            if other.stream_window_size is None
+            else other.stream_window_size,
+            global_shuffle=self.global_shuffle
+            if other.global_shuffle is None
+            else other.global_shuffle,
+        )
+        return new_config
 
 
 @PublicAPI(stability="alpha")

@@ -36,6 +36,9 @@ from ray._private import ray_option_utils
 
 logger = logging.getLogger(__name__)
 
+# Hook to call with (actor, resources, strategy) on each local actor creation.
+_actor_launch_hook = None
+
 
 @PublicAPI
 @client_mode_hook(auto_init=False)
@@ -908,6 +911,11 @@ class ActorClass:
             max_pending_calls=max_pending_calls,
             scheduling_strategy=scheduling_strategy,
         )
+
+        if _actor_launch_hook:
+            _actor_launch_hook(
+                meta.actor_creation_function_descriptor, resources, scheduling_strategy
+            )
 
         actor_handle = ActorHandle(
             meta.language,
