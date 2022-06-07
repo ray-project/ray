@@ -22,8 +22,7 @@ from ray.train.utils import (
     construct_train_func,
     ActorWrapper,
 )
-from ray.train.checkpoint import (
-    CheckpointStrategy,
+from ray.train._checkpoint import (
     TuneCheckpointManager,
     CheckpointManager,
     load_checkpoint_from_path,
@@ -31,7 +30,6 @@ from ray.train.checkpoint import (
 from ray.train.constants import (
     TUNE_INSTALLED,
     DEFAULT_RESULTS_DIR,
-    TUNE_CHECKPOINT_FILE_NAME,
     ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
     TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
@@ -43,6 +41,7 @@ from ray.train.utils import construct_path
 from ray.train.worker_group import WorkerGroup
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
+from ray.util.ml_utils.checkpoint_manager import CheckpointStrategy
 
 if TUNE_INSTALLED:
     from ray import tune
@@ -224,11 +223,16 @@ class Trainer:
 
         self._backend_executor = ActorWrapper(backend_executor_actor)
 
+        # Todo (krfricke): Initialize checkpoint manager here with final values
+        # rather than in `on_training_start`
         if self._is_tune_enabled():
-            self.checkpoint_manager = TuneCheckpointManager()
+            self.checkpoint_manager = TuneCheckpointManager(
+                checkpoint_strategy=None, run_dir=None
+            )
         else:
-            self.checkpoint_manager = CheckpointManager()
-        self.checkpoint_manager.on_init()
+            self.checkpoint_manager = CheckpointManager(
+                checkpoint_strategy=None, run_dir=None
+            )
 
     def create_logdir(self, log_dir: Optional[Union[str, Path]]) -> Path:
         """Create logdir for the Trainer."""
@@ -876,13 +880,8 @@ def _create_tune_trainable(
 
         trainer.start()
 
-        if checkpoint_dir is not None:
-            checkpoint_path = os.path.join(checkpoint_dir, TUNE_CHECKPOINT_FILE_NAME)
-        else:
-            checkpoint_path = None
-
         iterator = trainer.run_iterator(
-            train_func, config, dataset=dataset, checkpoint=checkpoint_path
+            train_func, config, dataset=dataset, checkpoint=checkpoint_dir
         )
 
         for results in iterator:

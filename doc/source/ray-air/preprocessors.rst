@@ -20,7 +20,7 @@ Ray AIR exposes a ``Preprocessor`` class for preprocessing. The ``Preprocessor``
 #. ``transform()``: Apply a transformation to a ``Dataset``.
    If the ``Preprocessor`` is stateful, then ``fit()`` must be called first.
    *This is typically called on the training, validation, test datasets.*
-#. ``transform_batch()``: Apply a transformation to a single :class:`batch <ray.ml.predictor.DataBatchType>` of data.
+#. ``transform_batch()``: Apply a transformation to a single :class:`batch <ray.air.predictor.DataBatchType>` of data.
    *This is typically called on online or offline inference data.*
 #. ``fit_transform()``: Syntactic sugar for calling both ``fit()`` and ``transform()`` on a ``Dataset``.
 
@@ -63,7 +63,7 @@ The same logic is applicable to other integrations as well.
 Trainer
 ~~~~~~~
 
-The journey of the ``Preprocessor`` starts with the :class:`Trainer <ray.ml.trainer.Trainer>`.
+The journey of the ``Preprocessor`` starts with the :class:`Trainer <ray.air.trainer.Trainer>`.
 If the ``Trainer`` is instantiated with a ``Preprocessor``, then the following logic will be executed when ``Trainer.fit()`` is called:
 
 #. If a ``"train"`` ``Dataset`` is passed in, then the ``Preprocessor`` will call ``fit()`` on it.
@@ -127,31 +127,31 @@ Ray AIR provides a handful of ``Preprocessor``\s that you can use out of the box
 
 .. tabbed:: Common APIs
 
-    #. :class:`Preprocessor <ray.ml.preprocessor.Preprocessor>`
-    #. :class:`BatchMapper <ray.ml.preprocessors.BatchMapper>`
-    #. :class:`Chain <ray.ml.preprocessors.Chain>`
+    #. :class:`Preprocessor <ray.air.preprocessor.Preprocessor>`
+    #. :class:`BatchMapper <ray.air.preprocessors.BatchMapper>`
+    #. :class:`Chain <ray.air.preprocessors.Chain>`
 
 .. tabbed:: Tabular
 
-    #. :class:`Categorizer <ray.ml.preprocessors.Categorizer>`
-    #. :class:`FeatureHasher <ray.ml.preprocessors.FeatureHasher>`
-    #. :class:`LabelEncoder <ray.ml.preprocessors.LabelEncoder>`
-    #. :class:`MaxAbsScaler <ray.ml.preprocessors.MaxAbsScaler>`
-    #. :class:`MinMaxScaler <ray.ml.preprocessors.MinMaxScaler>`
-    #. :class:`Normalizer <ray.ml.preprocessors.Normalizer>`
-    #. :class:`OneHotEncoder <ray.ml.preprocessors.OneHotEncoder>`
-    #. :class:`OrdinalEncoder <ray.ml.preprocessors.OrdinalEncoder>`
-    #. :class:`PowerTransformer <ray.ml.preprocessors.PowerTransformer>`
-    #. :class:`RobustScaler <ray.ml.preprocessors.RobustScaler>`
-    #. :class:`SimpleImputer <ray.ml.preprocessors.SimpleImputer>`
-    #. :class:`StandardScaler <ray.ml.preprocessors.StandardScaler>`
-    #. :class:`SimpleImputer <ray.ml.preprocessors.SimpleImputer>`
+    #. :class:`Categorizer <ray.air.preprocessors.Categorizer>`
+    #. :class:`FeatureHasher <ray.air.preprocessors.FeatureHasher>`
+    #. :class:`LabelEncoder <ray.air.preprocessors.LabelEncoder>`
+    #. :class:`MaxAbsScaler <ray.air.preprocessors.MaxAbsScaler>`
+    #. :class:`MinMaxScaler <ray.air.preprocessors.MinMaxScaler>`
+    #. :class:`Normalizer <ray.air.preprocessors.Normalizer>`
+    #. :class:`OneHotEncoder <ray.air.preprocessors.OneHotEncoder>`
+    #. :class:`OrdinalEncoder <ray.air.preprocessors.OrdinalEncoder>`
+    #. :class:`PowerTransformer <ray.air.preprocessors.PowerTransformer>`
+    #. :class:`RobustScaler <ray.air.preprocessors.RobustScaler>`
+    #. :class:`SimpleImputer <ray.air.preprocessors.SimpleImputer>`
+    #. :class:`StandardScaler <ray.air.preprocessors.StandardScaler>`
+    #. :class:`SimpleImputer <ray.air.preprocessors.SimpleImputer>`
 
 .. tabbed:: Text
 
-    #. :class:`CountVectorizer <ray.ml.preprocessors.CountVectorizer>`
-    #. :class:`HashingVectorizer <ray.ml.preprocessors.HashingVectorizer>`
-    #. :class:`Tokenizer <ray.ml.preprocessors.Tokenizer>`
+    #. :class:`CountVectorizer <ray.air.preprocessors.CountVectorizer>`
+    #. :class:`HashingVectorizer <ray.air.preprocessors.HashingVectorizer>`
+    #. :class:`Tokenizer <ray.air.preprocessors.Tokenizer>`
 
 .. tabbed:: Image
 
@@ -159,7 +159,7 @@ Ray AIR provides a handful of ``Preprocessor``\s that you can use out of the box
 
 .. tabbed:: Utilities
 
-    #. :func:`train_test_split <ray.ml.train_test_split>`
+    #. :func:`train_test_split <ray.air.train_test_split>`
 
 Chaining Preprocessors
 ~~~~~~~~~~~~~~~~~~~~~~

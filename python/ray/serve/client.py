@@ -496,7 +496,7 @@ class ServeControllerClient:
         else:
             ray_actor_options["runtime_env"] = curr_job_env
 
-        replica_config = ReplicaConfig(
+        replica_config = ReplicaConfig.create(
             deployment_def,
             init_args=init_args,
             init_kwargs=init_kwargs,

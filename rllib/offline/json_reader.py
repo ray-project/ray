@@ -276,6 +276,8 @@ class JsonReader(InputReader):
 
         # Clip actions (from any values into env's bounds), if necessary.
         cfg = self.ioctx.config
+        # TODO(jungong) : we should not clip_action in input reader.
+        # Use connector to handle this.
         if cfg.get("clip_actions") and self.ioctx.worker is not None:
             if isinstance(batch, SampleBatch):
                 batch[SampleBatch.ACTIONS] = clip_action(

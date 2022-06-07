@@ -64,7 +64,7 @@ class AlphaZeroDefaultCallbacks(DefaultCallbacks):
 
 
 class AlphaZeroConfig(TrainerConfig):
-    """Defines a configuration class from which an AlphaZeroTrainer can be built.
+    """Defines a configuration class from which an AlphaZero Trainer can be built.
 
     Example:
         >>> from ray.rllib.algorithms.alpha_zero import AlphaZeroConfig
@@ -97,7 +97,7 @@ class AlphaZeroConfig(TrainerConfig):
 
     def __init__(self, trainer_class=None):
         """Initializes a PPOConfig instance."""
-        super().__init__(trainer_class=trainer_class or AlphaZeroTrainer)
+        super().__init__(trainer_class=trainer_class or AlphaZero)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -302,7 +302,7 @@ class AlphaZeroPolicyWrapperClass(AlphaZeroPolicy):
         )
 
 
-class AlphaZeroTrainer(Trainer):
+class AlphaZero(Trainer):
     @classmethod
     @override(Trainer)
     def get_default_config(cls) -> TrainerConfigDict:

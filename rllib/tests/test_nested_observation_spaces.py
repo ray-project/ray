@@ -7,7 +7,7 @@ import unittest
 
 import ray
 from ray.rllib.algorithms.a2c import A2C
-from ray.rllib.algorithms.pg import PGTrainer
+from ray.rllib.algorithms.pg import PG
 from ray.rllib.env import MultiAgentEnv
 from ray.rllib.env.base_env import convert_to_base_env
 from ray.rllib.env.tests.test_external_env import SimpleServing
@@ -363,7 +363,7 @@ class NestedObservationSpacesTest(unittest.TestCase):
         self.assertRaisesRegex(
             ValueError,
             "Subclasses of TorchModelV2 must also inherit from nn.Module",
-            lambda: PGTrainer(
+            lambda: PG(
                 env="CartPole-v0",
                 config={
                     "model": {
@@ -379,7 +379,7 @@ class NestedObservationSpacesTest(unittest.TestCase):
         self.assertRaisesRegex(
             ValueError,
             "State output is not a list",
-            lambda: PGTrainer(
+            lambda: PG(
                 env="CartPole-v0",
                 config={
                     "model": {
@@ -393,7 +393,7 @@ class NestedObservationSpacesTest(unittest.TestCase):
     def do_test_nested_dict(self, make_env, test_lstm=False):
         ModelCatalog.register_custom_model("composite", DictSpyModel)
         register_env("nested", make_env)
-        pg = PGTrainer(
+        pg = PG(
             env="nested",
             config={
                 "num_workers": 0,
@@ -427,7 +427,7 @@ class NestedObservationSpacesTest(unittest.TestCase):
     def do_test_nested_tuple(self, make_env):
         ModelCatalog.register_custom_model("composite2", TupleSpyModel)
         register_env("nested2", make_env)
-        pg = PGTrainer(
+        pg = PG(
             env="nested2",
             config={
                 "num_workers": 0,
@@ -493,7 +493,7 @@ class NestedObservationSpacesTest(unittest.TestCase):
         ModelCatalog.register_custom_model("tuple_spy", TupleSpyModel)
         register_env("nested_ma", lambda _: NestedMultiAgentEnv())
         act_space = spaces.Discrete(2)
-        pg = PGTrainer(
+        pg = PG(
             env="nested_ma",
             config={
                 "num_workers": 0,
@@ -552,13 +552,13 @@ class NestedObservationSpacesTest(unittest.TestCase):
 
     def test_rollout_dict_space(self):
         register_env("nested", lambda _: NestedDictEnv())
-        agent = PGTrainer(env="nested", config={"framework": "tf"})
+        agent = PG(env="nested", config={"framework": "tf"})
         agent.train()
         path = agent.save()
         agent.stop()
 
         # Test train works on restore
-        agent2 = PGTrainer(env="nested", config={"framework": "tf"})
+        agent2 = PG(env="nested", config={"framework": "tf"})
         agent2.restore(path)
         agent2.train()
 
