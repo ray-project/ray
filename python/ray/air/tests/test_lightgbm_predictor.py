@@ -5,7 +5,7 @@ from ray.air.predictors.integrations.lightgbm import LightGBMPredictor
 from ray.air.preprocessor import Preprocessor
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import MODEL_KEY
-from ray.air.utils.checkpointing import save_preprocessor_to_dir
+from ray.air._internal.checkpointing import save_preprocessor_to_dir
 
 import numpy as np
 import pandas as pd
