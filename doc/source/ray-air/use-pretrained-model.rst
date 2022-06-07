@@ -15,6 +15,7 @@ steps into ``Checkpoint``.
 To facilitate this, we have prepared framework specific ``to_air_checkpoint`` helper function.
 
 Examples:
+
 .. literalinclude:: doc_code/use_pretrained_model.py
     :language: python
     :start-after: __use_pretrained_model_start__
