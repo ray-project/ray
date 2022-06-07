@@ -61,7 +61,6 @@ class TestCRR(unittest.TestCase):
                 evaluation_config={"input": "sampler", "explore": False},
             )
             .rollouts(num_rollout_workers=0)
-            .resources(num_gpus=0.1)
         )
 
         num_iterations = 4
