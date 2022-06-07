@@ -87,10 +87,10 @@ class ServeController:
         )
 
         # Used to read/write checkpoints.
-        self.controller_namespace = ray.get_runtime_context().namespace
+        self.ray_worker_namespace = ray.get_runtime_context().namespace
         self.controller_name = controller_name
         self.checkpoint_path = checkpoint_path
-        kv_store_namespace = f"{self.controller_name}-{self.controller_namespace}"
+        kv_store_namespace = f"{self.controller_name}-{self.ray_worker_namespace}"
         self.kv_store = make_kv_store(checkpoint_path, namespace=kv_store_namespace)
         self.snapshot_store = RayInternalKVStore(namespace=kv_store_namespace)
 
