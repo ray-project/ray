@@ -77,7 +77,10 @@ from ray.exceptions import (
     RayTaskError,
     ObjectStoreFullError,
 )
-from ray._private.function_manager import FunctionActorManager, make_function_table_key
+from ray._private.function_manager import (
+    FunctionActorManager,
+    make_function_table_key,
+)
 from ray._private.ray_logging import setup_logger
 from ray._private.ray_logging import global_worker_stdstream_dispatcher
 from ray._private.utils import check_oversized_function
@@ -131,7 +134,9 @@ class RemoteFunction(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
 
     @overload
     def remote(
-        self, __arg0: "Union[T0, ObjectRef[T0]]", __arg1: "Union[T1, ObjectRef[T1]]"
+        self,
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
     ) -> "ObjectRef[R]":
         ...
 
@@ -463,7 +468,9 @@ class Worker:
         # reference counter.
         return ray.ObjectRef(
             self.core_worker.put_serialized_object_and_increment_local_ref(
-                serialized_value, object_ref=object_ref, owner_address=owner_address
+                serialized_value,
+                object_ref=object_ref,
+                owner_address=owner_address,
             ),
             # The initial local reference is already acquired internally.
             skip_adding_local_ref=True,
@@ -1209,7 +1216,10 @@ def init(
         # handler. We still spawn a reaper process in case the atexit handler
         # isn't called.
         _global_node = ray.node.Node(
-            head=True, shutdown_at_exit=False, spawn_reaper=True, ray_params=ray_params
+            head=True,
+            shutdown_at_exit=False,
+            spawn_reaper=True,
+            ray_params=ray_params,
         )
     else:
         # In this case, we are connecting to an existing cluster.
