@@ -277,7 +277,7 @@ class TestStorage(unittest.TestCase):
             assert set(batch1.keys()) == set(batch2.keys())
             for k in batch1:
                 assert np.array_equal(batch1[k], batch2[k])
-        
+
         view = storage[::-1]
         assert len(storage) == len(view)
         for i in range(len(storage)):

@@ -189,7 +189,7 @@ class LocalStorage(Sized, Iterable):
 
     @ExperimentalAPI
     def __getitem__(
-        self, 
+        self,
         key: Union[int, slice],
     ) -> Union[SampleBatchType, "StorageView"]:
         if isinstance(key, int):
@@ -205,9 +205,7 @@ class LocalStorage(Sized, Iterable):
             s = key
             return StorageView(self, s)
         else:
-            raise TypeError(
-                "Only single integer indices or slices are supported."
-            )
+            raise TypeError("Only single integer indices or slices are supported.")
 
     @ExperimentalAPI
     def __setitem__(self, i: int, item: SampleBatchType) -> None:
@@ -412,7 +410,9 @@ class StorageView(LocalStorage):
         stop = storage_slice.stop or len(storage)
         step = storage_slice.step or 1
         self._slice = slice(start, stop, step)
-        self._idx_map = list(range(self._slice.start, self._slice.stop, self._slice.step))
+        self._idx_map = list(
+            range(self._slice.start, self._slice.stop, self._slice.step)
+            )
 
     @ExperimentalAPI
     @property
@@ -421,7 +421,6 @@ class StorageView(LocalStorage):
         return self._slice
 
     @ExperimentalAPI
-    @override(LocalStorage)
     @property
     def capacity(self) -> int:
         """Maximum number of timesteps the storage may contain
@@ -430,7 +429,6 @@ class StorageView(LocalStorage):
         return self._storage.capacity
 
     @ExperimentalAPI
-    @override(LocalStorage)
     @property
     def size_bytes(self) -> int:
         """Current size of the data inside the storage in bytes
@@ -439,7 +437,6 @@ class StorageView(LocalStorage):
         return self._storage.size_bytes
 
     @ExperimentalAPI
-    @override(LocalStorage)
     @property
     def evicted_hit_stats(self) -> Dict[str, Any]:
         """Hit statistics for items in storage including mean,
@@ -448,7 +445,6 @@ class StorageView(LocalStorage):
         return self._storage.evicted_hit_stats
 
     @ExperimentalAPI
-    @override(LocalStorage)
     @property
     def eviction_started(self) -> bool:
         """Whether eviction of items started, i.e. storage
@@ -457,7 +453,6 @@ class StorageView(LocalStorage):
         return self._storage.eviction_started
 
     @ExperimentalAPI
-    @override(LocalStorage)
     @property
     def num_timesteps_added(self) -> int:
         """Total number of timesteps added to the storage
@@ -466,7 +461,6 @@ class StorageView(LocalStorage):
         return self._storage.num_timesteps_added
 
     @ExperimentalAPI
-    @override(LocalStorage)
     @property
     def num_timesteps(self) -> int:
         """Number of timesteps currently in the storage
@@ -505,9 +499,7 @@ class StorageView(LocalStorage):
             s = key
             return StorageView(self, s)
         else:
-            raise TypeError(
-                "Only single integer indices or slices are supported."
-            )
+            raise TypeError("Only single integer indices or slices are supported.")
 
     @override(LocalStorage)
     def __setitem__(self, i: int, item: SampleBatchType) -> None:
