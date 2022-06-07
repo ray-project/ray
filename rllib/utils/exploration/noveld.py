@@ -274,9 +274,12 @@ class NovelD(RND):
     def _compute_intrinsic_reward(self, sample_batch):
         """Computes the intrinsic reward."""
         state_counts = self._get_state_counts(sample_batch[SampleBatch.NEXT_OBS])
-        self._intrinsic_reward_np = np.maximum(
-            self._novelty_next_np - self.alpha * self._novelty_np, self.beta
-        ) * (state_counts == 1) * (1 / np.sqrt(state_counts)) * self.intrinsic_reward_coeff
+        self._intrinsic_reward_np = (
+            np.maximum(self._novelty_next_np - self.alpha * self._novelty_np, self.beta)
+            * (state_counts == 1)
+            * (1 / np.sqrt(state_counts))
+            * self.intrinsic_reward_coeff
+        )
 
     def _defaulthash_state(
         self,

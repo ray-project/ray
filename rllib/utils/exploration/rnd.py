@@ -267,8 +267,7 @@ class RND(Exploration):
 
         # Add intrinsic reward to extrinsic one.
         sample_batch[SampleBatch.REWARDS] = (
-            sample_batch[SampleBatch.REWARDS]
-            + self._intrinsic_reward_np
+            sample_batch[SampleBatch.REWARDS] + self._intrinsic_reward_np
         )
 
         return sample_batch
@@ -331,8 +330,7 @@ class RND(Exploration):
 
         # Add intrinsic reward to extrinsic one.
         sample_batch[SampleBatch.REWARDS] = (
-            sample_batch[SampleBatch.REWARDS]
-            + self._intrinsic_reward_np 
+            sample_batch[SampleBatch.REWARDS] + self._intrinsic_reward_np
         )
 
         # Perform an optimizer step.
