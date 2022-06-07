@@ -124,9 +124,9 @@ class Trainer:
             defined in this Dict will be reserved for each worker. The
             ``CPU`` and ``GPU`` keys (case-sensitive) can be defined to
             override the number of CPU/GPUs used by each worker.
-        logdir (Optional[str]): Path to the file directory where logs
+        logdir (Optional[Union[str, bool]]): Path to the file directory where logs
             should be persisted. If this is not specified, one will be
-            generated.
+            generated. If set to False, the logs will not be generated.
          max_retries: Number of retries when Ray actors fail.
             Defaults to 3. Set to -1 for unlimited retries.
     """
@@ -137,7 +137,7 @@ class Trainer:
         num_workers: int,
         use_gpu: bool = False,
         resources_per_worker: Optional[Dict[str, float]] = None,
-        logdir: Optional[str] = None,
+        logdir: Optional[Union[str, bool]] = None,
         max_retries: int = 3,
     ):
         warnings.warn(
@@ -174,7 +174,8 @@ class Trainer:
 
         # Incremental unique run ID.
         self._run_id = 0
-        self.logdir = self.create_logdir(logdir)
+        if logdir != False: 
+            self.logdir = self.create_logdir(logdir)
 
         # Setup executor.
         self._backend_config = self._get_backend_config(backend)
@@ -876,6 +877,7 @@ def _create_tune_trainable(
             num_workers=num_workers,
             use_gpu=use_gpu,
             resources_per_worker=resources_per_worker,
+            logdir=False #disable logging for trainer
         )
 
         trainer.start()
