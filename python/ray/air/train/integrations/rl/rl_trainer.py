@@ -136,8 +136,7 @@ class RLTrainer(Trainer):
         super(RLTrainer, self)._validate_attributes()
 
         if not isinstance(self._algorithm, str) and not (
-            inspect.isclass(self._algorithm)
-            and issubclass(self._algorithm, RLlibAlgo)
+            inspect.isclass(self._algorithm) and issubclass(self._algorithm, RLlibAlgo)
         ):
             raise ValueError(
                 f"`algorithm` should be either a string or a RLlib trainer class, "
