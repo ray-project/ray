@@ -3,6 +3,7 @@ import gym
 from typing import Dict, List, Optional
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
+from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.typing import AgentID
 
 # info key for the individual rewards of an agent, for example:
@@ -22,6 +23,7 @@ GROUP_REWARDS = "_group_rewards"
 GROUP_INFO = "_group_info"
 
 
+@DeveloperAPI
 class GroupAgentsWrapper(MultiAgentEnv):
     """Wraps a MultiAgentEnv environment with agents grouped as specified.
 

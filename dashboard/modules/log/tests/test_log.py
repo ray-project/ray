@@ -5,17 +5,14 @@ import time
 import traceback
 import html.parser
 import urllib.parse
-import json
-import os
-
-from ray.dashboard.tests.conftest import *  # noqa
 import pytest
 import ray
 from ray._private.test_utils import (
     format_web_url,
     wait_until_server_available,
 )
-from ray.dashboard.modules.log.log_agent import tail as tail_file
+
+from ray.dashboard.tests.conftest import *  # noqa
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +38,7 @@ def test_log(disable_aiohttp_cache, ray_start_with_dashboard):
     def write_log(s):
         print(s)
 
+    # Make sure that this works with unicode
     test_log_text = "test_log_text"
     ray.get(write_log.remote(test_log_text))
 
@@ -83,7 +81,7 @@ def test_log(disable_aiohttp_cache, ray_start_with_dashboard):
             for u in urls:
                 response = requests.get(u)
                 response.raise_for_status()
-                if test_log_text in response.text:
+                if test_log_text in response.content.decode(encoding="utf-8"):
                     break
             else:
                 raise Exception(f"Can't find {test_log_text} from {urls}")
@@ -162,85 +160,6 @@ def test_log_proxy(ray_start_with_dashboard):
                 )
                 ex_stack = "".join(ex_stack)
                 raise Exception(f"Timed out while testing, {ex_stack}")
-
-
-def test_logs_experimental_list(ray_start_with_dashboard):
-    assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
-    webui_url = ray_start_with_dashboard["webui_url"]
-    webui_url = format_web_url(webui_url)
-
-    # test that list logs is comprehensive
-    response = requests.get(webui_url + "/api/experimental/logs/list")
-    response.raise_for_status()
-    logs = json.loads(response.text)
-    assert len(logs) == 1
-    node_id = next(iter(logs))
-
-    # test worker logs
-    outs = logs[node_id]["worker_outs"]
-    errs = logs[node_id]["worker_outs"]
-    core_worker_logs = logs[node_id]["python_core_worker_logs"]
-
-    assert len(outs) == len(errs) == len(core_worker_logs)
-    assert len(outs) > 0
-
-    for file in ["debug_state_gcs.txt", "gcs_server.out", "gcs_server.err"]:
-        assert file in logs[node_id]["gcs_server"]
-    for file in ["raylet.out", "raylet.err"]:
-        assert file in logs[node_id]["raylet"]
-    for file in ["dashboard_agent.log", "dashboard.log"]:
-        assert file in logs[node_id]["dashboard"]
-    return True
-
-    # Test that logs/list can be filtered
-    response = requests.get(webui_url + "/api/experimental/logs/list?filters=gcs")
-    response.raise_for_status()
-    logs = json.loads(response.text)
-    assert len(logs) == 1
-    node_id = next(iter(logs))
-    assert "gcs_server" in logs[node_id]
-    for category in logs[node_id]:
-        if category != "gcs_server":
-            assert len(logs[node_id][category]) == 0
-
-    response = requests.get(webui_url + "/api/experimental/logs/list?filters=worker")
-    response.raise_for_status()
-    logs = json.loads(response.text)
-    assert len(logs) == 1
-    node_id = next(iter(logs))
-    worker_log_categories = [
-        "python_core_worker_logs",
-        "worker_outs",
-        "worker_errors",
-    ]
-    assert all([cat in logs[node_id] for cat in worker_log_categories])
-    for category in logs[node_id]:
-        if category not in worker_log_categories:
-            assert len(logs[node_id][category]) == 0
-
-
-def test_logs_tail():
-    """
-    Unit test for tail
-    """
-    TOTAL_LINES = 1000
-    FILE_NAME = "test_file.txt"
-    try:
-        with open(FILE_NAME, "w") as f:
-            for i in range(TOTAL_LINES):
-                f.write(f"Message {i:4}\n")
-        file = open(FILE_NAME, "rb")
-        text, byte_pos = tail_file(file, 100)
-        assert byte_pos == TOTAL_LINES * len(b"Message 1000\n")
-        lines = text.decode("utf-8").split("\n")
-        assert len(lines) == 100
-        assert lines[0] == "Message  900"
-        assert lines[99] == "Message  999"
-    except Exception as e:
-        raise e
-    finally:
-        if os.path.exists(FILE_NAME):
-            os.remove(FILE_NAME)
 
 
 if __name__ == "__main__":

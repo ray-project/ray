@@ -4,6 +4,7 @@ import json
 import logging
 from numbers import Number
 import os
+from pathlib import Path
 import platform
 import re
 import shutil
@@ -15,7 +16,7 @@ import ray
 import ray.cloudpickle as cloudpickle
 from ray.exceptions import RayActorError, RayTaskError
 from ray.tune import TuneError
-from ray.tune.checkpoint_manager import _TuneCheckpoint, CheckpointManager
+from ray.tune.checkpoint_manager import _TuneCheckpoint, _CheckpointManager
 
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
 # need because there are cyclic imports that may cause specific names to not
@@ -39,13 +40,14 @@ from ray.tune.utils.serialization import TuneFunctionEncoder
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.utils import date_str, flatten_dict
 from ray.util.annotations import DeveloperAPI
+from ray.util.debug import log_once
 from ray._private.utils import binary_to_hex, hex_to_binary
 
 DEBUG_PRINT_INTERVAL = 5
 logger = logging.getLogger(__name__)
 
 
-class Location:
+class _Location:
     """Describes the location at which Trial is placed to run."""
 
     def __init__(self, hostname=None, pid=None):
@@ -92,7 +94,7 @@ class ExportFormat:
                 raise TuneError("Unsupported import/export format: " + formats[i])
 
 
-class CheckpointDeleter:
+class _CheckpointDeleter:
     """Checkpoint deleter callback for a runner."""
 
     def __init__(self, trial_id, runner):
@@ -129,7 +131,7 @@ class CheckpointDeleter:
                     logger.debug("Local checkpoint dir not found during deletion.")
 
 
-class TrialInfo:
+class _TrialInfo:
     """Serializable struct for holding information for a Trial.
 
     Attributes:
@@ -160,19 +162,16 @@ class TrialInfo:
         self._trial_resources = new_resources
 
 
-def create_logdir(dirname, local_dir):
-    local_dir = os.path.expanduser(local_dir)
-    logdir = os.path.join(local_dir, dirname)
-    if os.path.exists(logdir):
-        old_dirname = dirname
-        dirname += "_" + uuid.uuid4().hex[:4]
+def create_unique_logdir_name(root: str, relative_logdir: str) -> str:
+    candidate = Path(root).expanduser().joinpath(relative_logdir)
+    if candidate.exists():
+        relative_logdir_old = relative_logdir
+        relative_logdir += "_" + uuid.uuid4().hex[:4]
         logger.info(
-            f"Creating a new dirname {dirname} because "
-            f"trial dirname '{old_dirname}' already exists."
+            f"Creating a new dirname {relative_logdir} because "
+            f"trial dirname '{relative_logdir_old}' already exists."
         )
-        logdir = os.path.join(local_dir, dirname)
-    os.makedirs(logdir, exist_ok=True)
-    return logdir
+    return relative_logdir
 
 
 def _to_pg_factory(
@@ -209,8 +208,12 @@ class Trial:
         trainable_name: Name of the trainable object to be executed.
         config: Provided configuration dictionary with evaluated params.
         trial_id: Unique identifier for the trial.
-        local_dir: Local_dir as passed to tune.run.
+        local_dir: ``local_dir`` as passed to ``tune.run`` joined
+            with the name of the experiment.
         logdir: Directory where the trial logs are saved.
+        relative_logdir: Same as ``logdir``, but relative to the parent of
+            the ``local_dir`` (equal to ``local_dir`` argument passed
+            to ``tune.run``).
         evaluated_params: Evaluated parameters by search algorithm,
         experiment_tag: Identifying trial name to show in the console
         status: One of PENDING, RUNNING, PAUSED, TERMINATED, ERROR/
@@ -286,7 +289,7 @@ class Trial:
         # Parameters that Tune varies across searches.
         self.evaluated_params = evaluated_params or {}
         self.experiment_tag = experiment_tag
-        self.location = Location()
+        self.location = _Location()
         trainable_cls = self.get_trainable_cls()
         if trainable_cls and _setup_default_resource:
             default_resources = trainable_cls.default_resource_request(self.config)
@@ -343,7 +346,7 @@ class Trial:
         self.export_formats = export_formats
         self.status = Trial.PENDING
         self.start_time = None
-        self.logdir = None
+        self.relative_logdir = None
         self.runner = None
         self.last_debug = 0
         self.error_file = None
@@ -369,10 +372,10 @@ class Trial:
         self.keep_checkpoints_num = keep_checkpoints_num
         self.checkpoint_score_attr = checkpoint_score_attr
         self.sync_on_checkpoint = sync_on_checkpoint
-        self.checkpoint_manager = CheckpointManager(
+        self.checkpoint_manager = _CheckpointManager(
             keep_checkpoints_num,
             checkpoint_score_attr,
-            CheckpointDeleter(self._trainable_name(), self.runner),
+            _CheckpointDeleter(self._trainable_name(), self.runner),
         )
 
         # Restoration fields
@@ -414,7 +417,7 @@ class Trial:
                 self._default_result_or_future = None
         if self._default_result_or_future and self.runner:
             self.set_location(
-                Location(
+                _Location(
                     self._default_result_or_future.get(NODE_IP),
                     self._default_result_or_future.get(PID),
                 )
@@ -442,6 +445,28 @@ class Trial:
     @last_result.setter
     def last_result(self, val: dict):
         self._last_result = val
+
+    @property
+    def logdir(self):
+        if not self.relative_logdir:
+            return None
+        return str(Path(self.local_dir).joinpath(self.relative_logdir))
+
+    @logdir.setter
+    def logdir(self, logdir):
+        relative_logdir = Path(logdir).relative_to(self.local_dir)
+        if ".." in str(relative_logdir):
+            raise ValueError(
+                f"The `logdir` points to a directory outside the trial's `local_dir` "
+                f"({self.local_dir}), which is unsupported. Use a logdir within the "
+                f"local directory instead. Got: {logdir}"
+            )
+        if log_once("logdir_setter"):
+            logger.warning(
+                "Deprecated. In future versions only the relative logdir "
+                "will be used and calling logdir will raise an error."
+            )
+        self.relative_logdir = relative_logdir
 
     @property
     def has_reported_at_least_once(self) -> bool:
@@ -479,8 +504,7 @@ class Trial:
         assert self.logdir, "Trial {}: logdir not initialized.".format(self)
         if not self.remote_checkpoint_dir_prefix:
             return None
-        logdir_name = os.path.basename(self.logdir)
-        return os.path.join(self.remote_checkpoint_dir_prefix, logdir_name)
+        return os.path.join(self.remote_checkpoint_dir_prefix, self.relative_logdir)
 
     @property
     def uses_cloud_checkpointing(self):
@@ -526,10 +550,13 @@ class Trial:
 
     def init_logdir(self):
         """Init logdir."""
-        if not self.logdir:
-            self.logdir = create_logdir(self._generate_dirname(), self.local_dir)
-        else:
-            os.makedirs(self.logdir, exist_ok=True)
+        if not self.relative_logdir:
+            self.relative_logdir = create_unique_logdir_name(
+                self.local_dir, self._generate_dirname()
+            )
+        assert self.logdir
+        logdir_path = Path(self.logdir)
+        logdir_path.mkdir(parents=True, exist_ok=True)
 
         self.invalidate_json_state()
 
@@ -564,7 +591,7 @@ class Trial:
             self._default_result_or_future = runner.get_auto_filled_metrics.remote(
                 debug_metrics_only=True
             )
-        self.checkpoint_manager.delete = CheckpointDeleter(
+        self.checkpoint_manager.delete = _CheckpointDeleter(
             self._trainable_name(), runner
         )
         # No need to invalidate state cache: runner is not stored in json
@@ -678,7 +705,7 @@ class Trial:
         if self.experiment_tag:
             result.update(experiment_tag=self.experiment_tag)
 
-        self.set_location(Location(result.get(NODE_IP), result.get(PID)))
+        self.set_location(_Location(result.get(NODE_IP), result.get(PID)))
         self.last_result = result
         self.last_update_time = time.time()
 
@@ -800,7 +827,7 @@ class Trial:
             state[key] = binary_to_hex(cloudpickle.dumps(state.get(key)))
 
         state["runner"] = None
-        state["location"] = Location()
+        state["location"] = _Location()
         # Avoid waiting for events that will never occur on resume.
         state["restoring_from"] = None
         state["saving_to"] = None
@@ -816,7 +843,8 @@ class Trial:
         if state["status"] == Trial.RUNNING:
             state["status"] = Trial.PENDING
         for key in self._nonjson_fields:
-            state[key] = cloudpickle.loads(hex_to_binary(state[key]))
+            if key in state:
+                state[key] = cloudpickle.loads(hex_to_binary(state[key]))
 
         # Ensure that stub doesn't get overriden
         stub = state.pop("stub", True)

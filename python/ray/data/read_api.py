@@ -54,14 +54,14 @@ from ray.data.datasource.file_based_datasource import (
     _wrap_arrow_serialization_workaround,
     _unwrap_arrow_serialization_workaround,
 )
-from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
-from ray.data.impl.arrow_block import ArrowRow
-from ray.data.impl.block_list import BlockList
-from ray.data.impl.lazy_block_list import LazyBlockList
-from ray.data.impl.plan import ExecutionPlan
-from ray.data.impl.remote_fn import cached_remote_fn
-from ray.data.impl.stats import DatasetStats
-from ray.data.impl.util import _lazy_import_pyarrow_dataset
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.arrow_block import ArrowRow
+from ray.data._internal.block_list import BlockList
+from ray.data._internal.lazy_block_list import LazyBlockList
+from ray.data._internal.plan import ExecutionPlan
+from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data._internal.stats import DatasetStats
+from ray.data._internal.util import _lazy_import_pyarrow_dataset
 
 T = TypeVar("T")
 
@@ -174,10 +174,10 @@ def range_tensor(
         >>> import ray
         >>> ds = ray.data.range_tensor(1000, shape=(3, 10)) # doctest: +SKIP
         >>> ds.map_batches( # doctest: +SKIP
-        ...     lambda arr: arr * 2).show()
+        ...     lambda arr: arr * 2, batch_format="pandas").show()
 
     This is similar to range_table(), but uses the ArrowTensorArray extension
-    type. The dataset elements take the form {VALUE_COL_NAME: array(N, shape=shape)}.
+    type. The dataset elements take the form {"value": array(N, shape=shape)}.
 
     Args:
         n: The upper bound of the range of integer records.
@@ -248,7 +248,7 @@ def read_datasource(
         )
 
     if len(read_tasks) < parallelism and (
-        len(read_tasks) < ray.available_resources().get("CPU", parallelism) // 2
+        len(read_tasks) < ray.available_resources().get("CPU", 1) // 2
     ):
         logger.warning(
             "The number of blocks in this dataset ({}) limits its parallelism to {} "
@@ -1020,11 +1020,16 @@ def _df_to_block(df: "pandas.DataFrame") -> Block[ArrowRow]:
 
 def _ndarray_to_block(ndarray: np.ndarray) -> Block[np.ndarray]:
     stats = BlockExecStats.builder()
-    block = BlockAccessor.batch_to_block(ndarray)
-    metadata = BlockAccessor.for_block(block).get_metadata(
-        input_files=None, exec_stats=stats.build()
+    import pyarrow as pa
+    from ray.data.extensions import TensorArray
+
+    table = pa.Table.from_pydict({"value": TensorArray(ndarray)})
+    return (
+        table,
+        BlockAccessor.for_block(table).get_metadata(
+            input_files=None, exec_stats=stats.build()
+        ),
     )
-    return block, metadata
 
 
 def _get_metadata(table: Union["pyarrow.Table", "pandas.DataFrame"]) -> BlockMetadata:

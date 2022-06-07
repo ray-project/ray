@@ -11,12 +11,13 @@ https://docs.ray.io/en/master/rllib-algorithms.html#deep-q-networks-dqn-rainbow-
 
 import logging
 from typing import List, Optional, Type, Callable
+import numpy as np
 
 from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.algorithms.dqn.dqn_torch_policy import DQNTorchPolicy
-from ray.rllib.algorithms.dqn.simple_q import (
+from ray.rllib.algorithms.simple_q.simple_q import (
+    SimpleQ,
     SimpleQConfig,
-    SimpleQTrainer,
 )
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
@@ -47,12 +48,13 @@ from ray.rllib.execution.common import (
     NUM_TARGET_UPDATES,
 )
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
 
 logger = logging.getLogger(__name__)
 
 
 class DQNConfig(SimpleQConfig):
-    """Defines a DQNTrainer configuration class from which a DQNTrainer can be built.
+    """Defines a configuration class from which a DQN Trainer can be built.
 
     Example:
         >>> from ray.rllib.algorithms.dqn.dqn import DQNConfig
@@ -70,7 +72,7 @@ class DQNConfig(SimpleQConfig):
         >>>       .resources(num_gpus=1)\
         >>>       .rollouts(num_rollout_workers=3)\
         >>>       .environment("CartPole-v1")
-        >>> trainer = DQNTrainer(config=config)
+        >>> trainer = DQN(config=config)
         >>> while True:
         >>>     trainer.train()
 
@@ -116,7 +118,7 @@ class DQNConfig(SimpleQConfig):
 
     def __init__(self, trainer_class=None):
         """Initializes a DQNConfig instance."""
-        super().__init__(trainer_class=trainer_class or DQNTrainer)
+        super().__init__(trainer_class=trainer_class or DQN)
 
         # DQN specific config settings.
         # fmt: off
@@ -199,7 +201,7 @@ class DQNConfig(SimpleQConfig):
                 `train_batch_size` / (`rollout_fragment_length` x `num_workers` x
                 `num_envs_per_worker`).
                 If not None, will make sure that the ratio between timesteps inserted
-                into and sampled from th buffer matches the given values.
+                into and sampled from the buffer matches the given values.
                 Example:
                 training_intensity=1000.0
                 train_batch_size=250
@@ -209,7 +211,8 @@ class DQNConfig(SimpleQConfig):
                 -> natural value = 250 / 1 = 250.0
                 -> will make sure that replay+train op will be executed 4x asoften as
                 rollout+insert op (4 * 250 = 1000).
-                See: rllib/agents/dqn/dqn.py::calculate_rr_weights for further details.
+                See: rllib/algorithms/dqn/dqn.py::calculate_rr_weights for further
+                details.
             replay_buffer_config: Replay buffer config.
                 Examples:
                 {
@@ -217,7 +220,6 @@ class DQNConfig(SimpleQConfig):
                 "type": "MultiAgentReplayBuffer",
                 "learning_starts": 1000,
                 "capacity": 50000,
-                "replay_batch_size": 32,
                 "replay_sequence_length": 1,
                 }
                 - OR -
@@ -293,22 +295,27 @@ def calculate_rr_weights(config: TrainerConfigDict) -> List[float]:
     native_ratio = config["train_batch_size"] / (
         config["rollout_fragment_length"]
         * config["num_envs_per_worker"]
-        * config["num_workers"]
+        # Add one to workers because the local
+        # worker usually collects experiences as well, and we avoid division by zero.
+        * max(config["num_workers"] + 1, 1)
     )
 
     # Training intensity is specified in terms of
     # (steps_replayed / steps_sampled), so adjust for the native ratio.
-    weights = [1, config["training_intensity"] / native_ratio]
-    return weights
+    sample_and_train_weight = config["training_intensity"] / native_ratio
+    if sample_and_train_weight < 1:
+        return [int(np.round(1 / sample_and_train_weight)), 1]
+    else:
+        return [1, int(np.round(sample_and_train_weight))]
 
 
-class DQNTrainer(SimpleQTrainer):
+class DQN(SimpleQ):
     @classmethod
-    @override(SimpleQTrainer)
+    @override(SimpleQ)
     def get_default_config(cls) -> TrainerConfigDict:
         return DEFAULT_CONFIG
 
-    @override(SimpleQTrainer)
+    @override(SimpleQ)
     def validate_config(self, config: TrainerConfigDict) -> None:
         # Call super's validation method.
         super().validate_config(config)
@@ -317,7 +324,7 @@ class DQNTrainer(SimpleQTrainer):
         adjusted_rollout_len = max(config["rollout_fragment_length"], config["n_step"])
         config["rollout_fragment_length"] = adjusted_rollout_len
 
-    @override(SimpleQTrainer)
+    @override(SimpleQ)
     def get_default_policy_class(
         self, config: TrainerConfigDict
     ) -> Optional[Type[Policy]]:
@@ -366,8 +373,10 @@ class DQNTrainer(SimpleQTrainer):
 
         for _ in range(sample_and_train_weight):
             # Sample training batch (MultiAgentBatch) from replay buffer.
-            train_batch = self.local_replay_buffer.sample(
-                self.config["train_batch_size"]
+            train_batch = sample_min_n_steps_from_buffer(
+                self.local_replay_buffer,
+                self.config["train_batch_size"],
+                count_by_agent_steps=self._by_agent_steps,
             )
 
             # Old-style replay buffers return None if learning has not started
@@ -378,6 +387,10 @@ class DQNTrainer(SimpleQTrainer):
             # Postprocess batch before we learn on it
             post_fn = self.config.get("before_learn_on_batch") or (lambda b, *a: b)
             train_batch = post_fn(train_batch, self.workers, self.config)
+
+            # for policy_id, sample_batch in train_batch.policy_batches.items():
+            #     print(len(sample_batch["obs"]))
+            #     print(sample_batch.count)
 
             # Learn on training batch.
             # Use simple optimizer (only for multi-agent or tf-eager; all other
@@ -436,8 +449,6 @@ class _deprecated_default_config(dict):
 DEFAULT_CONFIG = _deprecated_default_config()
 
 
-@Deprecated(
-    new="Sub-class directly from `DQNTrainer` and override its methods", error=False
-)
-class GenericOffPolicyTrainer(DQNTrainer):
+@Deprecated(new="Sub-class directly from `DQN` and override its methods", error=False)
+class GenericOffPolicyTrainer(SimpleQ):
     pass

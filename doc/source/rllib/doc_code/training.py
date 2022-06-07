@@ -22,9 +22,9 @@ prep.transform(env.reset()).shape
 # __query_action_dist_start__
 # Get a reference to the policy
 import numpy as np
-from ray.rllib.agents.ppo import PPOTrainer
+from ray.rllib.algorithms.ppo import PPO
 
-trainer = PPOTrainer(env="CartPole-v0", config={"framework": "tf2", "num_workers": 0})
+trainer = PPO(env="CartPole-v0", config={"framework": "tf2", "num_workers": 0})
 policy = trainer.get_policy()
 # <ray.rllib.policy.eager_tf_policy.PPOTFPolicy_eager object at 0x7fd020165470>
 
@@ -80,9 +80,9 @@ _____________________________________________________________________
 # __get_q_values_dqn_start__
 # Get a reference to the model through the policy
 import numpy as np
-from ray.rllib.algorithms.dqn import DQNTrainer
+from ray.rllib.algorithms.dqn import DQN
 
-trainer = DQNTrainer(env="CartPole-v0", config={"framework": "tf2"})
+trainer = DQN(env="CartPole-v0", config={"framework": "tf2"})
 model = trainer.get_policy().model
 # <ray.rllib.models.catalog.FullyConnectedNetwork_as_DistributionalQModel ...>
 

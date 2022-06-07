@@ -55,12 +55,13 @@ class Protocol(Enum):
     HTTPS = "https", "Remote https path, assumes everything packed in one zip file."
     S3 = "s3", "Remote s3 path, assumes everything packed in one zip file."
     GS = "gs", "Remote google storage path, assumes everything packed in one zip file."
+    FILE = "file", "File storage path, assumes everything packed in one zip file."
 
     @classmethod
     def remote_protocols(cls):
-        # Returns a lit of protocols that support remote storage
+        # Returns a list of protocols that support remote storage
         # These protocols should only be used with paths that end in ".zip"
-        return [cls.HTTPS, cls.S3, cls.GS]
+        return [cls.HTTPS, cls.S3, cls.GS, cls.FILE]
 
 
 def _xor_bytes(left: bytes, right: bytes) -> bytes:
@@ -174,6 +175,15 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
             )
             -> ("gs",
             "gs_public-runtime-env-test_test_module.zip")
+    For FILE URIs, the path will have '/' replaced with '_'. The package name
+    will be the adjusted path with 'file_' prepended.
+        urlparse("file:///path/to/test_module.zip")
+            -> ParseResult(
+                scheme='file',
+                netloc='path',
+                path='/path/to/test_module.zip'
+            )
+            -> ("file", "file__path_to_test_module.zip")
     """
     uri = urlparse(pkg_uri)
     protocol = Protocol(uri.scheme)
@@ -183,6 +193,11 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
         return (
             protocol,
             f"https_{uri.netloc.replace('.', '_')}{uri.path.replace('/', '_')}",
+        )
+    elif protocol == Protocol.FILE:
+        return (
+            protocol,
+            f"file_{uri.path.replace('/', '_')}",
         )
     else:
         return (protocol, uri.netloc)
@@ -284,8 +299,8 @@ def _store_package_in_gcs(
     """Stores package data in the Global Control Store (GCS).
 
     Args:
-        pkg_uri (str): The GCS key to store the data in.
-        data (bytes): The serialized package's bytes to store in the GCS.
+        pkg_uri: The GCS key to store the data in.
+        data: The serialized package's bytes to store in the GCS.
         logger (Optional[logging.Logger]): The logger used by this function.
 
     Return:
@@ -332,9 +347,9 @@ def _zip_directory(
 ) -> None:
     """Zip the target directory and write it to the output_path.
 
-    directory (str): The directory to zip.
+    directory: The directory to zip.
     excludes (List(str)): The directories or file to be excluded.
-    output_path (str): The output path for the zip file.
+    output_path: The output path for the zip file.
     include_parent_dir: If true, includes the top-level directory as a
         directory inside the zip file.
     """
@@ -368,7 +383,7 @@ def package_exists(pkg_uri: str) -> bool:
     """Check whether the package with given URI exists or not.
 
     Args:
-        pkg_uri (str): The uri of the package
+        pkg_uri: The uri of the package
 
     Return:
         True for package existing and False for not.
@@ -412,7 +427,7 @@ def get_uri_for_directory(directory: str, excludes: Optional[List[str]] = None) 
         .... _ray_pkg_af2734982a741.zip
 
     Args:
-        directory (str): The directory.
+        directory: The directory.
         excludes (list[str]): The dir or files that should be excluded.
 
     Returns:
@@ -575,7 +590,7 @@ def download_and_unpack_package(
 
                 if protocol == Protocol.S3:
                     try:
-                        from smart_open import open
+                        from smart_open import open as open_file
                         import boto3
                     except ImportError:
                         raise ImportError(
@@ -586,7 +601,7 @@ def download_and_unpack_package(
                     tp = {"client": boto3.client("s3")}
                 elif protocol == Protocol.GS:
                     try:
-                        from smart_open import open
+                        from smart_open import open as open_file
                         from google.cloud import storage  # noqa: F401
                     except ImportError:
                         raise ImportError(
@@ -594,17 +609,23 @@ def download_and_unpack_package(
                             "`pip install google-cloud-storage` "
                             "to fetch URIs in Google Cloud Storage bucket."
                         )
+                elif protocol == Protocol.FILE:
+                    pkg_uri = pkg_uri[len("file://") :]
+
+                    def open_file(uri, mode, *, transport_params=None):
+                        return open(uri, mode)
+
                 else:
                     try:
-                        from smart_open import open
+                        from smart_open import open as open_file
                     except ImportError:
                         raise ImportError(
                             "You must `pip install smart_open` "
                             f"to fetch {protocol.value.upper()} URIs."
                         )
 
-                with open(pkg_uri, "rb", transport_params=tp) as package_zip:
-                    with open(pkg_file, "wb") as fin:
+                with open_file(pkg_uri, "rb", transport_params=tp) as package_zip:
+                    with open_file(pkg_file, "wb") as fin:
                         fin.write(package_zip.read())
 
                 unzip_package(
@@ -718,7 +739,7 @@ def delete_package(pkg_uri: str, base_directory: str) -> Tuple[bool, int]:
     """Deletes a specific URI from the local filesystem.
 
     Args:
-        pkg_uri (str): URI to delete.
+        pkg_uri: URI to delete.
 
     Returns:
         bool: True if the URI was successfully deleted, else False.

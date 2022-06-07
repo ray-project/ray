@@ -34,15 +34,15 @@ class HorovodConfig(BackendConfig):
     Args:
         nics (Optional[Set[str]): Network interfaces that can be used for
             communication.
-        verbose (int): Horovod logging verbosity.
+        verbose: Horovod logging verbosity.
         key (Optional[str]): Secret used for communication between workers.
         ssh_port (Optional[int]): Port for SSH server running on worker nodes.
         ssh_identity_file (Optional[str]): Path to the identity file to
             ssh into different hosts on the cluster.
         ssh_str (Optional[str]): CAUTION WHEN USING THIS. Private key
             file contents. Writes the private key to ssh_identity_file.
-        timeout_s (int): Timeout parameter for Gloo rendezvous.
-        placement_group_timeout_s (int): Timeout parameter for Ray
+        timeout_s: Timeout parameter for Gloo rendezvous.
+        placement_group_timeout_s: Timeout parameter for Ray
             Placement Group creation. Currently unused.
     """
 
