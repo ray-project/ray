@@ -7,13 +7,58 @@ from ray.rllib.offline.io_context import IOContext
 from ray.rllib.utils.annotations import Deprecated
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import TensorType, SampleBatchType
-from typing import List, Optional
+from typing import List, Optional, Generator, Tuple, Union
 
 logger = logging.getLogger(__name__)
 
 OffPolicyEstimate = DeveloperAPI(
     namedtuple("OffPolicyEstimate", ["estimator_name", "metrics"])
 )
+
+
+@DeveloperAPI
+def train_test_split(
+    batch: SampleBatchType,
+    k: Union[float, int] = 0.0,
+) -> Generator[Tuple[SampleBatch], None, None]:
+    """Utility function that returns either a train/test split or
+    a k-fold cross validation generator over episodes from the given batch.
+    By default, `k` is set to 0.0, which sets eval_batch = batch
+    and train_batch to an empty SampleBatch.
+
+    Args:
+        batch: A SampleBatch of episodes to split
+        k: train/test split parameter; if k < 1, split the batch into a
+        `(1 - k) * n_episodes` eval batch and a `k * n_episodes` train batch;
+        if k > 1 split the batch into `k` folds fro cross-validation
+
+    Returns:
+        A tuple with two SampleBatches (eval_batch, train_batch)
+    """
+    episodes = batch.split_by_episode()
+    n_episodes = len(episodes)
+    assert (
+        isinstance(k, float) and k >= 0 and k < 1 or isinstance(k, int)
+    ), f" k: {k} must be either a float with 0.0 <= k < 1.0 or an int"
+    if k < 1:
+        train_episodes = episodes[: int(n_episodes * k)]
+        eval_episodes = episodes[int(n_episodes * k) :]
+        yield SampleBatch.concat_samples(eval_episodes), SampleBatch.concat_samples(
+            train_episodes
+        )
+        return
+    n_fold = n_episodes // k
+    for i in range(k):
+        train_episodes = episodes[: i * n_fold] + episodes[(i + 1) * n_fold :]
+        if i != k - 1:
+            eval_episodes = episodes[i * n_fold : (i + 1) * n_fold]
+        else:
+            # Append remaining episodes onto the last eval_episodes
+            eval_episodes = episodes[i * n_fold :]
+        yield SampleBatch.concat_samples(eval_episodes), SampleBatch.concat_samples(
+            train_episodes
+        )
+    return
 
 
 @DeveloperAPI

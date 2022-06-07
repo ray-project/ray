@@ -41,6 +41,7 @@ from ray.rllib.evaluation.metrics import (
 )
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.worker_set import WorkerSet
+from ray.rllib.offline.estimators import train_test_split
 from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer
 from ray.rllib.execution.common import WORKER_UPDATE_TIMER
 from ray.rllib.execution.rollout_ops import (
@@ -816,6 +817,7 @@ class Trainer(Trainable):
 
             metrics = None
             total_batch = SampleBatch()
+            k = self.config["off_policy_estimation_methods"].get("k", 0.0)
             # No evaluation worker set ->
             # Do evaluation using the local worker. Expect error due to the
             # local worker not having an env.
@@ -829,8 +831,10 @@ class Trainer(Trainable):
                     batch = self.workers.local_worker().sample()
                     num_ts_run += len(batch)
                     total_batch.concat(batch)
-                for estimator in self.workers.local_worker().reward_estimators:
-                    estimator.process(total_batch)
+                for eval_batch, train_batch in train_test_split(total_batch, k):
+                    self.workers.local_worker().compute_off_policy_estimates(
+                        eval_batch, train_batch
+                    )
                 metrics = collect_metrics(
                     self.workers.local_worker(),
                     keep_custom_metrics=self.config["keep_per_episode_custom_metrics"],
@@ -847,10 +851,10 @@ class Trainer(Trainable):
                     batch = self.evaluation_workers.local_worker().sample()
                     num_ts_run += len(batch)
                     total_batch.concat(batch)
-                for (
-                    estimator
-                ) in self.evaluation_workers.local_worker().reward_estimators:
-                    estimator.process(total_batch)
+                for eval_batch, train_batch in train_test_split(total_batch, k):
+                    self.evaluation_workers.local_worker().compute_off_policy_estimates(
+                        eval_batch, train_batch
+                    )
 
             # Evaluation worker set has n remote workers.
             else:
@@ -887,8 +891,13 @@ class Trainer(Trainable):
                         f"Ran round {round_} of parallel evaluation "
                         f"({num_units_done}/{duration} {unit} done)"
                     )
-                # for i, w in enumerate(self.evaluation_workers.remote_workers()):
-                #     pass
+                remote_workers = self.evaluation_workers.remote_workers()
+                for idx, (eval_batch, train_batch) in enumerate(
+                    train_test_split(total_batch, k)
+                ):
+                    # Round robin on remote workers
+                    worker = remote_workers[idx % len(remote_workers)]
+                    worker.compute_off_policy_estimates.remote(eval_batch, train_batch)
 
             if metrics is None:
                 metrics = collect_metrics(
@@ -897,8 +906,6 @@ class Trainer(Trainable):
                     keep_custom_metrics=self.config["keep_per_episode_custom_metrics"],
                 )
             metrics["timesteps_this_iter"] = num_ts_run
-
-            # Compute OPE estimates
 
         # Evaluation does not run for every step.
         # Save evaluation metrics on trainer, so it can be attached to
@@ -1935,6 +1942,9 @@ class Trainer(Trainable):
                 )
 
         # Offline RL settings.
+        config["evaluation_config"]["off_policy_estimation_methods"] = config.pop(
+            "off_policy_estimation_methods"
+        )
         input_evaluation = config.get("input_evaluation")
         if input_evaluation and input_evaluation is not DEPRECATED_VALUE:
             ope_dict = {str(ope): {"type": ope} for ope in input_evaluation}
@@ -1943,8 +1953,11 @@ class Trainer(Trainable):
                 new="config.off_policy_estimation_methods={}".format(
                     ope_dict,
                 ),
-                error=True,
+                error=False,
             )
+            config["off_policy_estimation_methods"] = ope_dict
+        else:
+            config["off_policy_estimation_methods"] = {}
 
         # Check model config.
         # If no preprocessing, propagate into model's config as well

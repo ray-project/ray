@@ -814,6 +814,11 @@ class RolloutWorker(ParallelIteratorWorker):
         )
 
     @DeveloperAPI
+    def compute_off_policy_estimates(self, eval_batch, train_batch) -> None:
+        for estimator in self.reward_estimators:
+            estimator.process(eval_batch, train_batch)
+
+    @DeveloperAPI
     def sample(self) -> SampleBatchType:
         """Returns a batch of experience sampled from this worker.
 
@@ -880,12 +885,6 @@ class RolloutWorker(ParallelIteratorWorker):
         # Always do writes prior to compression for consistency and to allow
         # for better compression inside the writer.
         self.output_writer.write(batch)
-
-        # DEPRECATED: Moved to trainer instead, kept here for backwards compatibility
-        # Do off-policy estimation, if needed.
-        if self.reward_estimators:
-            for estimator in self.reward_estimators:
-                estimator.process(batch)
 
         if log_once("sample_end"):
             logger.info("Completed sample batch:\n\n{}\n".format(summarize(batch)))

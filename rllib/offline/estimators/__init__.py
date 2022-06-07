@@ -7,11 +7,13 @@ from ray.rllib.offline.estimators.doubly_robust import DoublyRobust
 from ray.rllib.offline.estimators.off_policy_estimator import (
     OffPolicyEstimate,
     OffPolicyEstimator,
+    train_test_split,
 )
 
 __all__ = [
     "OffPolicyEstimator",
     "OffPolicyEstimate",
+    "train_test_split",
     "ImportanceSampling",
     "WeightedImportanceSampling",
     "DirectMethod",
