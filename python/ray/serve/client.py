@@ -30,9 +30,9 @@ from ray.serve.config import (
 )
 from ray.serve.schema import ServeApplicationSchema
 from ray.serve.constants import (
+    SERVE_NAMESPACE,
     MAX_CACHED_HANDLES,
     CLIENT_POLLING_INTERVAL_S,
-    ANONYMOUS_NAMESPACE_PATTERN,
 )
 from ray.serve.controller import ServeController
 from ray.serve.exceptions import RayServeException
@@ -576,16 +576,4 @@ def get_controller_namespace(
             controller's namespace
     """
 
-    if _override_controller_namespace is not None:
-        return _override_controller_namespace
-
-    controller_namespace = ray.get_runtime_context().namespace
-
-    if not detached:
-        return controller_namespace
-
-    # Start controller in "serve" namespace if detached and currently
-    # in anonymous namespace.
-    if ANONYMOUS_NAMESPACE_PATTERN.fullmatch(controller_namespace) is not None:
-        controller_namespace = "serve"
-    return controller_namespace
+    return SERVE_NAMESPACE
