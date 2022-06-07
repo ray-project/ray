@@ -439,6 +439,7 @@ class Trainer(Trainable):
         # the eval config is always complete, no matter whether we have eval
         # workers or perform evaluation on the (non-eval) local worker.
         eval_config = merge_dicts(self.config, user_eval_config)
+
         self.config["evaluation_config"] = eval_config
 
         if self.config.get("evaluation_num_workers", 0) > 0 or self.config.get(
@@ -815,6 +816,7 @@ class Trainer(Trainable):
             logger.info(f"Evaluating current policy for {duration} {unit}.")
 
             metrics = None
+            total_batch = SampleBatch()
             # No evaluation worker set ->
             # Do evaluation using the local worker. Expect error due to the
             # local worker not having an env.
@@ -825,7 +827,11 @@ class Trainer(Trainable):
                 # `rollout_fragment_length` is exactly the desired ts.
                 iters = duration if unit == "episodes" else 1
                 for _ in range(iters):
-                    num_ts_run += len(self.workers.local_worker().sample())
+                    batch = self.workers.local_worker().sample()
+                    num_ts_run += len(batch)
+                    total_batch.concat(batch)
+                for estimator in self.workers.local_worker().reward_estimators:
+                    estimator.process(total_batch)
                 metrics = collect_metrics(
                     self.workers.local_worker(),
                     keep_custom_metrics=self.config["keep_per_episode_custom_metrics"],
@@ -839,7 +845,13 @@ class Trainer(Trainable):
                 # `rollout_fragment_length` is exactly the desired ts.
                 iters = duration if unit == "episodes" else 1
                 for _ in range(iters):
-                    num_ts_run += len(self.evaluation_workers.local_worker().sample())
+                    batch = self.evaluation_workers.local_worker().sample()
+                    num_ts_run += len(batch)
+                    total_batch.concat(batch)
+                for (
+                    estimator
+                ) in self.evaluation_workers.local_worker().reward_estimators:
+                    estimator.process(total_batch)
 
             # Evaluation worker set has n remote workers.
             else:
@@ -870,11 +882,14 @@ class Trainer(Trainable):
                         ts = sum(len(b) for b in batches)
                         num_ts_run += ts
                         num_units_done += ts
+                    total_batch.concat_samples(batches)
 
                     logger.info(
                         f"Ran round {round_} of parallel evaluation "
                         f"({num_units_done}/{duration} {unit} done)"
                     )
+                for i, w in enumerate(self.evaluation_workers.remote_workers()):
+                    pass
 
             if metrics is None:
                 metrics = collect_metrics(
@@ -883,6 +898,8 @@ class Trainer(Trainable):
                     keep_custom_metrics=self.config["keep_per_episode_custom_metrics"],
                 )
             metrics["timesteps_this_iter"] = num_ts_run
+
+            # Compute OPE estimates
 
         # Evaluation does not run for every step.
         # Save evaluation metrics on trainer, so it can be attached to

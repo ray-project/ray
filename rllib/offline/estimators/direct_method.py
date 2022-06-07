@@ -1,4 +1,4 @@
-from typing import Tuple, List, Generator
+from typing import Optional
 from ray.rllib.offline.estimators.off_policy_estimator import (
     OffPolicyEstimator,
     OffPolicyEstimate,
@@ -17,42 +17,6 @@ import numpy as np
 torch, nn = try_import_torch()
 
 
-# TODO (rohan): replace with AIR/parallel workers
-# (And find a better name than `should_train`)
-@DeveloperAPI
-def k_fold_cv(
-    batch: SampleBatchType, k: int, should_train: bool = True
-) -> Generator[Tuple[List[SampleBatch]], None, None]:
-    """Utility function that returns a k-fold cross validation generator
-    over episodes from the given batch. If the number of episodes in the
-    batch is less than `k` or `should_train` is set to False, yields an empty
-    list for train_episodes and all the episodes in test_episodes.
-
-    Args:
-        batch: A SampleBatch of episodes to split
-        k: Number of cross-validation splits
-        should_train: True by default. If False, yield [], [episodes].
-
-    Returns:
-        A tuple with two lists of SampleBatches (train_episodes, test_episodes)
-    """
-    episodes = batch.split_by_episode()
-    n_episodes = len(episodes)
-    if n_episodes < k or not should_train:
-        yield [], episodes
-        return
-    n_fold = n_episodes // k
-    for i in range(k):
-        train_episodes = episodes[: i * n_fold] + episodes[(i + 1) * n_fold :]
-        if i != k - 1:
-            test_episodes = episodes[i * n_fold : (i + 1) * n_fold]
-        else:
-            # Append remaining episodes onto the last test_episodes
-            test_episodes = episodes[i * n_fold :]
-        yield train_episodes, test_episodes
-    return
-
-
 @DeveloperAPI
 class DirectMethod(OffPolicyEstimator):
     """The Direct Method estimator.
@@ -66,7 +30,6 @@ class DirectMethod(OffPolicyEstimator):
         policy: Policy,
         gamma: float,
         q_model_type: str = "fqe",
-        k: int = 5,
         **kwargs,
     ):
         """
@@ -78,7 +41,7 @@ class DirectMethod(OffPolicyEstimator):
             gamma: Discount factor of the environment.
             q_model_type: Either "fqe" for Fitted Q-Evaluation
                 or "qreg" for Q-Regression, or a custom model that implements:
-                - `estimate_q(states,actions)`
+                - `estimate_q(states, actions)`
                 - `estimate_v(states, action_probs)`
             k: k-fold cross validation for training model and evaluating OPE
             kwargs: Optional arguments for the specified Q model
@@ -117,54 +80,51 @@ class DirectMethod(OffPolicyEstimator):
             gamma=gamma,
             **kwargs,
         )
-        self.k = k
         self.losses = []
 
     @override(OffPolicyEstimator)
     def estimate(
-        self, batch: SampleBatchType, should_train: bool = True
+        self,
+        eval_batch: SampleBatchType,
+        train_batch: Optional[SampleBatchType] = None,
     ) -> OffPolicyEstimate:
-        self.check_can_estimate_for(batch)
+        self.check_can_estimate_for(eval_batch)
         estimates = []
-        # Split data into train and test using k-fold cross validation
-        for train_episodes, test_episodes in k_fold_cv(batch, self.k, should_train):
 
-            # Train Q-function
-            if train_episodes:
-                # Reinitialize model
-                self.model.reset()
-                train_batch = SampleBatch.concat_samples(train_episodes)
-                losses = self.train(train_batch)
-                self.losses.append(losses)
+        # Train Q-function
+        if train_batch:
+            self.check_can_estimate_for(train_batch)
+            self.model.reset()
+            losses = self.train(train_batch)
+            self.losses.append(losses)
 
-            # Calculate direct method OPE estimates
-            for episode in test_episodes:
-                rewards = episode["rewards"]
-                v_old = 0.0
-                v_new = 0.0
-                for t in range(episode.count):
-                    v_old += rewards[t] * self.gamma ** t
+        # Calculate direct method OPE estimates
+        for episode in eval_batch.split_by_episode():
+            rewards = episode["rewards"]
+            v_old = 0.0
+            v_new = 0.0
+            for t in range(episode.count):
+                v_old += rewards[t] * self.gamma ** t
 
-                init_step = episode[0:1]
-                init_obs = np.array([init_step[SampleBatch.OBS]])
-                all_actions = np.arange(self.policy.action_space.n, dtype=float)
-                init_step[SampleBatch.ACTIONS] = all_actions
-                action_probs = np.exp(self.action_log_likelihood(init_step))
-                v_value = self.model.estimate_v(init_obs, action_probs)
-                v_new = convert_to_numpy(v_value).item()
+            init_step = episode[0:1]
+            init_obs = np.array([init_step[SampleBatch.OBS]])
+            all_actions = np.arange(self.policy.action_space.n, dtype=float)
+            init_step[SampleBatch.ACTIONS] = all_actions
+            action_probs = np.exp(self.action_log_likelihood(init_step))
+            v_value = self.model.estimate_v(init_obs, action_probs)
+            v_new = convert_to_numpy(v_value).item()
 
-                estimates.append(
-                    OffPolicyEstimate(
-                        self.name,
-                        {
-                            "v_old": v_old,
-                            "v_new": v_new,
-                            "v_gain": v_new / max(1e-8, v_old),
-                        },
-                    )
+            estimates.append(
+                OffPolicyEstimate(
+                    self.name,
+                    {
+                        "v_old": v_old,
+                        "v_new": v_new,
+                        "v_gain": v_new / max(1e-8, v_old),
+                    },
                 )
+            )
         return estimates
 
-    @override(OffPolicyEstimator)
     def train(self, batch: SampleBatchType):
         return self.model.train_q(batch)

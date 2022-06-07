@@ -41,7 +41,11 @@ from ray.rllib.offline.estimators import (
     DirectMethod,
     DoublyRobust,
 )
-from ray.rllib.policy.sample_batch import MultiAgentBatch, DEFAULT_POLICY_ID
+from ray.rllib.policy.sample_batch import (
+    MultiAgentBatch,
+    DEFAULT_POLICY_ID,
+    SampleBatch,
+)
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.torch_policy import TorchPolicy
@@ -869,7 +873,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 else batch.agent_steps()
             )
             batches.append(batch)
-        batch = batches[0].concat_samples(batches) if len(batches) > 1 else batches[0]
+        batch = SampleBatch.concat_samples(batches) if len(batches) > 1 else batches[0]
 
         self.callbacks.on_sample_end(worker=self, samples=batch)
 
@@ -877,10 +881,11 @@ class RolloutWorker(ParallelIteratorWorker):
         # for better compression inside the writer.
         self.output_writer.write(batch)
 
+        # DEPRECATED: Moved to trainer instead, kept here for backwards compatibility
         # Do off-policy estimation, if needed.
         if self.reward_estimators:
             for estimator in self.reward_estimators:
-                estimator.process(batch)
+                estimator.process(batch.split_by_episode())
 
         if log_once("sample_end"):
             logger.info("Completed sample batch:\n\n{}\n".format(summarize(batch)))

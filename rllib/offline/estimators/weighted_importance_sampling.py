@@ -1,3 +1,4 @@
+from typing import List, Optional
 from ray.rllib.offline.estimators.off_policy_estimator import (
     OffPolicyEstimator,
     OffPolicyEstimate,
@@ -22,7 +23,9 @@ class WeightedImportanceSampling(OffPolicyEstimator):
         self.filter_counts = []
 
     @override(OffPolicyEstimator)
-    def estimate(self, batch: SampleBatchType) -> OffPolicyEstimate:
+    def estimate(
+        self, batch: SampleBatchType, train_batch: Optional[SampleBatchType] = None
+    ) -> List[OffPolicyEstimate]:
         self.check_can_estimate_for(batch)
         estimates = []
         for sub_batch in batch.split_by_episode():

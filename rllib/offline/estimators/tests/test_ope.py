@@ -13,6 +13,41 @@ from pathlib import Path
 import os
 import numpy as np
 import gym
+from ray.rllib.utils.typing import SampleBatchType, SampleBatch
+from typing import Generator, Tuple
+
+
+def k_fold_cv(
+    batch: SampleBatchType, k: int, should_train: bool = True
+) -> Generator[Tuple[SampleBatch], None, None]:
+    """Utility function that returns a k-fold cross validation generator
+    over episodes from the given batch. If the number of episodes in the
+    batch is less than `k` or `should_train` is set to False, yields an empty
+    train_batch and eval_batch = batch.
+
+    Args:
+        batch: A SampleBatch of episodes to split
+        k: Number of cross-validation splits
+        should_train: True by default. If False, yield [], [eval_batch].
+
+    Returns:
+        A tuple with two SampleBatches (train_batch, eval_batch)
+    """
+    episodes = batch.split_by_episode()
+    n_episodes = len(episodes)
+    if n_episodes < k or not should_train:
+        yield SampleBatch(), SampleBatch.concat(episodes)
+        return
+    n_fold = n_episodes // k
+    for i in range(k):
+        train_episodes = episodes[: i * n_fold] + episodes[(i + 1) * n_fold :]
+        if i != k - 1:
+            test_episodes = episodes[i * n_fold : (i + 1) * n_fold]
+        else:
+            # Append remaining episodes onto the last test_episodes
+            test_episodes = episodes[i * n_fold :]
+        yield SampleBatch.concat(train_episodes), SampleBatch.concat(test_episodes)
+    return
 
 
 class TestOPE(unittest.TestCase):
@@ -93,7 +128,7 @@ class TestOPE(unittest.TestCase):
         cls.std_ret["simulation"] = np.std(mc_ret)
 
         # Optional configs for the model-based estimators
-        cls.model_config = {"k": 2, "n_iters": 10}
+        cls.model_config = {"k": 5, "n_iters": 10}
         ray.shutdown()
 
     @classmethod
@@ -248,16 +283,16 @@ class TestOPE(unittest.TestCase):
         # whole ReplayBuffer instead of a SampleBatch
         pass
 
-    def test_5_fold_cv_eval_worker_1(self):
-        # 5-fold cv, 1 eval worker; current default after the previous tests pass
+    def test_5_fold_cv_local_eval_worker(self):
+        # 5-fold cv, local eval worker
+        pass
+
+    def test_5_fold_cv_eval_worker_0(self):
+        # 5-fold cv, remote eval worker 0
         pass
 
     def test_5_fold_cv_eval_worker_3(self):
         # 5-fold cv, 3 eval workers
-        pass
-
-    def test_5_fold_cv_eval_worker_5(self):
-        # 5-fold cv, 5 eval workers
         pass
 
     def test_5_fold_cv_eval_worker_10(self):

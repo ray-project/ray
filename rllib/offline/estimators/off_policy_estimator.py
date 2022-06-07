@@ -7,7 +7,7 @@ from ray.rllib.offline.io_context import IOContext
 from ray.rllib.utils.annotations import Deprecated
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import TensorType, SampleBatchType
-from typing import List
+from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -35,30 +35,21 @@ class OffPolicyEstimator:
         self.new_estimates = []
 
     @DeveloperAPI
-    def estimate(self, batch: SampleBatchType) -> List[OffPolicyEstimate]:
+    def estimate(
+        self,
+        eval_batch: List[SampleBatchType],
+        train_batch: Optional[List[SampleBatchType]] = None,
+    ) -> List[OffPolicyEstimate]:
         """Returns a list of off policy estimates for the given batch of episodes.
 
         Args:
-            batch: The batch to calculate the off policy estimates (OPE) on.
+            eval_batch: The batch to calculate the off policy estimates (OPE) on.
+            train_batch: An optional batch to train a model-based OPE estimator on.
 
         Returns:
-            The off-policy estimates (OPE) calculated on the given batch.
+            The off-policy estimates (OPE) calculated on the given eval_batch.
         """
         raise NotImplementedError
-
-    @DeveloperAPI
-    def train(self, batch: SampleBatchType) -> TensorType:
-        """Trains an Off-Policy Estimator on a batch of experiences.
-        A model-based estimator should override this and train
-        a transition, value, or reward model.
-
-        Args:
-            batch: The batch to train the model on
-
-        Returns:
-            any optional training/loss metrics from the model
-        """
-        pass
 
     @DeveloperAPI
     def action_log_likelihood(self, batch: SampleBatchType) -> TensorType:
@@ -120,15 +111,20 @@ class OffPolicyEstimator:
             )
 
     @DeveloperAPI
-    def process(self, batch: SampleBatchType) -> None:
+    def process(
+        self,
+        eval_batch: List[SampleBatchType],
+        train_batch: Optional[List[SampleBatchType]] = None,
+    ) -> None:
         """Computes off policy estimates (OPE) on batch and stores results.
         Thus-far collected results can be retrieved then by calling
         `self.get_metrics` (which flushes the internal results storage).
         Args:
-            batch: The batch to process (call `self.estimate()` on) and
+            eval_batch: The batch to process (call `self.estimate()` on) and
                 store results (OPEs) for.
+            train_batch: An optional batch to train a model-based OPE estimator on
         """
-        self.new_estimates.extend(self.estimate(batch))
+        self.new_estimates.extend(self.estimate(eval_batch, train_batch))
 
     @DeveloperAPI
     def get_metrics(self, get_losses: bool = False) -> List[OffPolicyEstimate]:

@@ -4,7 +4,7 @@ from ray.rllib.offline.estimators.off_policy_estimator import (
 )
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.typing import SampleBatchType
-from typing import List
+from typing import List, Optional
 import numpy as np
 
 
@@ -16,10 +16,12 @@ class ImportanceSampling(OffPolicyEstimator):
     https://arxiv.org/pdf/1911.06854.pdf"""
 
     @override(OffPolicyEstimator)
-    def estimate(self, batch: SampleBatchType) -> List[OffPolicyEstimate]:
-        self.check_can_estimate_for(batch)
+    def estimate(
+        self, eval_batch: SampleBatchType, train_batch: Optional[SampleBatchType] = None
+    ) -> List[OffPolicyEstimate]:
+        self.check_can_estimate_for(eval_batch)
         estimates = []
-        for sub_batch in batch.split_by_episode():
+        for sub_batch in eval_batch.split_by_episode():
             rewards, old_prob = sub_batch["rewards"], sub_batch["action_prob"]
             new_prob = np.exp(self.action_log_likelihood(sub_batch))
 
