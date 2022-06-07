@@ -1,13 +1,13 @@
 from typing import TYPE_CHECKING, Dict, Tuple, Type, Any, Optional
 import warnings
 
-from ray.air.trainer import GenDataset
+from ray.train.trainer import GenDataset
 from ray.air.config import ScalingConfig, RunConfig, ScalingConfigDataClass
 from ray.air.preprocessor import Preprocessor
 from ray.air._internal.checkpointing import save_preprocessor_to_dir
 from ray.tune.utils.trainable import TrainableUtil
 from ray.util.annotations import DeveloperAPI
-from ray.air.trainer import BaseTrainer
+from ray.train.trainer import BaseTrainer
 from ray.air.checkpoint import Checkpoint
 from ray.tune import Trainable
 from ray.air.constants import MODEL_KEY, TRAIN_DATASET_KEY

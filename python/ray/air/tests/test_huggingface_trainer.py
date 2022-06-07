@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 from unittest.mock import patch
-from ray.air.train.integrations.huggingface.huggingface_utils import TrainReportCallback
+from ray.train.huggingface.huggingface_utils import TrainReportCallback
 
 from transformers import (
     AutoConfig,
@@ -13,7 +13,7 @@ from transformers import (
 from transformers.trainer_callback import TrainerState
 
 import ray.data
-from ray.air.train.integrations.huggingface import HuggingFaceTrainer
+from ray.train.huggingface import HuggingFaceTrainer
 from ray.air.predictors.integrations.huggingface import HuggingFacePredictor
 from ray.air.batch_predictor import BatchPredictor
 

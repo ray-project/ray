@@ -1,23 +1,22 @@
-from typing import Callable, Optional, Dict, Tuple, Union
-import torch
+from typing import Callable, Optional, Dict, Tuple, Type, Union
+import tensorflow as tf
 
-from ray.train.torch import TorchConfig
-from ray.air.trainer import GenDataset
-from ray.air.train.data_parallel_trainer import DataParallelTrainer, _load_checkpoint
+from ray.train.tensorflow import TensorflowConfig
+from ray.train.trainer import GenDataset
+from ray.train.data_parallel_trainer import DataParallelTrainer, _load_checkpoint
 from ray.air.config import ScalingConfig, RunConfig, DatasetConfig
 from ray.air.preprocessor import Preprocessor
 from ray.air.checkpoint import Checkpoint
-from ray.air._internal.torch_utils import load_torch_model
 from ray.util import PublicAPI
 
 
 @PublicAPI(stability="alpha")
-class TorchTrainer(DataParallelTrainer):
-    """A Trainer for data parallel PyTorch training.
+class TensorflowTrainer(DataParallelTrainer):
+    """A Trainer for data parallel Tensorflow training.
 
     This Trainer runs the function ``train_loop_per_worker`` on multiple Ray
-    Actors. These actors already have the necessary torch process group already
-    configured for distributed PyTorch training.
+    Actors. These actors already have the necessary TensorFlow process group already
+    configured for distributed TensorFlow training.
 
     The ``train_loop_per_worker`` function is expected to take in either 0 or 1
     arguments:
@@ -69,90 +68,81 @@ class TorchTrainer(DataParallelTrainer):
             # Returns the rank of the worker on the current node.
             train.get_local_rank()
 
-    You can also use any of the :ref:`Torch specific function utils
-    <train-api-torch-utils>`.
+    You can also use any of the :ref:`TensorFlow specific function utils
+    <train-api-tensorflow-utils>`.
 
     .. code-block:: python
 
         def train_loop_per_worker():
-            # Prepares model for distribted training by wrapping in
-            # `DistributedDataParallel` and moving to correct device.
-            train.torch.prepare_model(...)
+            # Turns off autosharding for a dataset.
+            # You should use this if you are doing
+            # `train.get_dataset_shard(...).to_tf(...)`
+            # as the data will be already sharded.
+            train.tensorflow.prepare_dataset_shard(...)
 
-            # Configures the dataloader for distributed training by adding a
-            # `DistributedSampler`.
-            # You should NOT use this if you are doing
-            # `train.get_dataset_shard(...).to_torch(...)`
-            train.torch.prepare_data_loader(...)
-
-            # Returns the current torch device.
-            train.torch.get_device()
-
-    To save a model to use for the ``TorchPredictor``, you must save it under the
+    To save a model to use for the ``TensorflowPredictor``, you must save it under the
     "model" kwarg in ``train.save_checkpoint()``.
 
     Example:
-        .. code-block:: python
 
-            import torch
-            import torch.nn as nn
+    .. code-block:: python
 
-            import ray
-            from ray import train
-            from ray.air.train.integrations.torch import TorchTrainer
+        import tensorflow as tf
 
-            input_size = 1
-            layer_size = 15
-            output_size = 1
-            num_epochs = 3
+        import ray
+        from ray import train
+        from ray.train.tensorflow import prepare_dataset_shard
 
-            class NeuralNetwork(nn.Module):
-                def __init__(self):
-                    super(NeuralNetwork, self).__init__()
-                    self.layer1 = nn.Linear(input_size, layer_size)
-                    self.relu = nn.ReLU()
-                    self.layer2 = nn.Linear(layer_size, output_size)
+        from ray.train.tensorflow import TensorflowTrainer
 
-                def forward(self, input):
-                    return self.layer2(self.relu(self.layer1(input)))
+        input_size = 1
 
-            def train_loop_per_worker():
-                dataset_shard = train.get_dataset_shard("train")
-                model = NeuralNetwork()
-                loss_fn = nn.MSELoss()
-                optimizer = optim.SGD(model.parameters(), lr=0.1)
+        def build_model():
+            # toy neural network : 1-layer
+            return tf.keras.Sequential(
+                [tf.keras.layers.Dense(
+                    1, activation="linear", input_shape=(input_size,))]
+            )
 
-                model = train.torch.prepare_model(model)
+        def train_loop_for_worker(config):
+            dataset_shard = train.get_dataset_shard("train")
+            strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
+            with strategy.scope():
+                model = build_model()
+                model.compile(
+                    optimizer="Adam", loss="mean_squared_error", metrics=["mse"])
 
-                for epoch in range(num_epochs):
-                    for batch in iter(dataset_shard.to_torch(batch_size=32)):
-                        output = model(input)
-                        loss = loss_fn(output, labels)
-                        optimizer.zero_grad()
-                        loss.backward()
-                        optimizer.step()
-                        print(f"epoch: {epoch}, loss: {loss.item()}")
+            for epoch in range(config["num_epochs"]):
+                tf_dataset = prepare_dataset_shard(
+                    dataset_shard.to_tf(
+                        label_column="y",
+                        output_signature=(
+                            tf.TensorSpec(shape=(None, 1), dtype=tf.float32),
+                            tf.TensorSpec(shape=(None), dtype=tf.float32),
+                        ),
+                        batch_size=1,
+                    )
+                )
+                model.fit(tf_dataset)
+                train.save_checkpoint(
+                    epoch=epoch, model=model.get_weights())
 
-                    train.save_checkpoint(model=model.state_dict())
+        train_dataset = ray.data.from_items(
+            [{"x": x, "y": x + 1} for x in range(32)])
+        trainer = TensorflowTrainer(scaling_config={"num_workers": 3},
+            datasets={"train": train_dataset},
+            train_loop_config={"num_epochs": 2})
+        result = trainer.fit()
 
-            train_dataset = ray.data.from_items([1, 2, 3])
-            scaling_config = {"num_workers": 3}
-            # If using GPUs, use the below scaling config instead.
-            # scaling_config = {"num_workers": 3, "use_gpu": True}
-            trainer = TorchTrainer(
-                train_loop_per_worker=train_loop_per_worker,
-                scaling_config=scaling_config,
-                datasets={"train": train_dataset})
-            result = trainer.fit()
 
     Args:
         train_loop_per_worker: The training function to execute.
             This can either take in no arguments or a ``config`` dict.
         train_loop_config: Configurations to pass into
             ``train_loop_per_worker`` if it accepts an argument.
-        torch_config: Configuration for setting up the PyTorch backend. If set to
-            None, use the default configuration. This replaces the ``backend_config``
-            arg of ``DataParallelTrainer``.
+        tensorflow_config: Configuration for setting up the TensorFlow backend.
+            If set to None, use the default configuration. This replaces the
+            ``backend_config`` arg of ``DataParallelTrainer``.
         scaling_config: Configuration for how to scale data parallel training.
         dataset_config: Configuration for dataset ingest.
         run_config: Configuration for the execution of the training run.
@@ -161,7 +151,7 @@ class TorchTrainer(DataParallelTrainer):
             dataset. If a ``preprocessor`` is provided and has not already been fit,
             it will be fit on the training dataset. All datasets will be transformed
             by the ``preprocessor`` if one is provided.
-        preprocessor: A ``ray.air.preprocessor.Preprocessor`` to preprocess the
+        preprocessor: A ray.air.preprocessor.Preprocessor to preprocess the
             provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
     """
@@ -171,7 +161,7 @@ class TorchTrainer(DataParallelTrainer):
         train_loop_per_worker: Union[Callable[[], None], Callable[[Dict], None]],
         *,
         train_loop_config: Optional[Dict] = None,
-        torch_config: Optional[TorchConfig] = None,
+        tensorflow_config: Optional[TensorflowConfig] = None,
         scaling_config: Optional[ScalingConfig] = None,
         dataset_config: Optional[Dict[str, DatasetConfig]] = None,
         run_config: Optional[RunConfig] = None,
@@ -179,13 +169,13 @@ class TorchTrainer(DataParallelTrainer):
         preprocessor: Optional[Preprocessor] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
-        if not torch_config:
-            torch_config = TorchConfig()
+        if not tensorflow_config:
+            tensorflow_config = TensorflowConfig()
 
-        super(TorchTrainer, self).__init__(
+        super(TensorflowTrainer, self).__init__(
             train_loop_per_worker=train_loop_per_worker,
             train_loop_config=train_loop_config,
-            backend_config=torch_config,
+            backend_config=tensorflow_config,
             scaling_config=scaling_config,
             dataset_config=dataset_config,
             run_config=run_config,
@@ -196,21 +186,24 @@ class TorchTrainer(DataParallelTrainer):
 
 
 def load_checkpoint(
-    checkpoint: Checkpoint, model: Optional[torch.nn.Module] = None
-) -> Tuple[torch.nn.Module, Optional[Preprocessor]]:
-    """Load a Checkpoint from ``TorchTrainer``.
+    checkpoint: Checkpoint,
+    model: Union[Callable[[], tf.keras.Model], Type[tf.keras.Model], tf.keras.Model],
+) -> Tuple[tf.keras.Model, Optional[Preprocessor]]:
+    """Load a Checkpoint from ``TensorflowTrainer``.
 
     Args:
         checkpoint: The checkpoint to load the model and
             preprocessor from. It is expected to be from the result of a
-            ``TorchTrainer`` run.
-        model: If the checkpoint contains a model state dict, and not
-            the model itself, then the state dict will be loaded to this
-            ``model``.
+            ``TensorflowTrainer`` run.
+        model: A callable that returns a TensorFlow Keras model
+            to use, or an instantiated model.
+            Model weights will be loaded from the checkpoint.
 
     Returns:
         The model with set weights and AIR preprocessor contained within.
     """
-    saved_model, preprocessor = _load_checkpoint(checkpoint, "TorchTrainer")
-    model = load_torch_model(saved_model=saved_model, model_definition=model)
+    model_weights, preprocessor = _load_checkpoint(checkpoint, "TensorflowTrainer")
+    if isinstance(model, type) or callable(model):
+        model = model()
+    model.set_weights(model_weights)
     return model, preprocessor

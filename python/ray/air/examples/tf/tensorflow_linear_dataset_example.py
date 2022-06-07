@@ -10,7 +10,7 @@ import ray
 import ray.train as train
 from ray.data import Dataset
 from ray.train.tensorflow import prepare_dataset_shard
-from ray.air.train.integrations.tensorflow import TensorflowTrainer
+from ray.train.tensorflow import TensorflowTrainer
 from ray.air.predictors.integrations.tensorflow import TensorflowPredictor
 from ray.air.result import Result
 

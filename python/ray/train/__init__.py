@@ -12,6 +12,9 @@ from ray.train.session import (
 from ray.train.trainer import Trainer, TrainingIterator
 from ray.util.ml_utils.checkpoint_manager import CheckpointStrategy
 
+from ray.air.constants import TRAIN_DATASET_KEY
+from ray.train.trainer import BaseTrainer
+
 from ray._private.usage import usage_lib
 
 usage_lib.record_library_usage("train")
@@ -29,4 +32,6 @@ __all__ = [
     "Trainer",
     "world_rank",
     "world_size",
+    "BaseTrainer",
+    "TRAIN_DATASET_KEY",
 ]

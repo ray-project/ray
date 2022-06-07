@@ -1,4 +1,4 @@
-from ray.air.train.integrations.sklearn.sklearn_trainer import (
+from ray.train.sklearn.sklearn_trainer import (
     SklearnTrainer,
     load_checkpoint,
 )

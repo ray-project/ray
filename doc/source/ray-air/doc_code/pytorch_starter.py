@@ -28,7 +28,7 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader
 import ray.train as train
-from ray.air.train.integrations.torch import TorchTrainer
+from ray.train.torch import TorchTrainer
 
 # Define model
 class NeuralNetwork(nn.Module):

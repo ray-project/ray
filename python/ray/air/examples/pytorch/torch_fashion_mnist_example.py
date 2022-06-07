@@ -8,7 +8,7 @@ from torchvision import datasets
 from torchvision.transforms import ToTensor
 
 import ray.train as train
-from ray.air.train.integrations.torch import TorchTrainer
+from ray.train.torch import TorchTrainer
 
 # Download training data from open datasets.
 training_data = datasets.FashionMNIST(

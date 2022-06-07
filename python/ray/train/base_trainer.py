@@ -75,7 +75,7 @@ class BaseTrainer(abc.ABC):
 
         import torch
 
-        from ray.air.train import BaseTrainer
+        from ray.train import BaseTrainer
         from ray import tune
 
 
@@ -301,7 +301,7 @@ class BaseTrainer(abc.ABC):
         Example:
             .. code-block: python
 
-                from ray.air.trainer import BaseTrainer
+                from ray.train.trainer import BaseTrainer
 
                 class MyTrainer(BaseTrainer):
                     def training_loop(self):

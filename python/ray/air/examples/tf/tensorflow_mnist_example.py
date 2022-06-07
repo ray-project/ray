@@ -11,7 +11,7 @@ import tensorflow as tf
 from tensorflow.keras.callbacks import Callback
 
 import ray.train as train
-from ray.air.train.integrations.tensorflow import TensorflowTrainer
+from ray.train.tensorflow import TensorflowTrainer
 
 
 class TrainCheckpointReportCallback(Callback):

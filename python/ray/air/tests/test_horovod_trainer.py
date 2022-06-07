@@ -11,7 +11,7 @@ from ray.air.examples.horovod.horovod_pytorch_example import (
     Net,
 )
 from ray.air.predictors.integrations.torch import TorchPredictor
-from ray.air.train.integrations.horovod import HorovodTrainer
+from ray.train.horovod import HorovodTrainer
 
 
 @pytest.fixture

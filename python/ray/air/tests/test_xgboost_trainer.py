@@ -9,7 +9,7 @@ from ray import tune
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import TRAIN_DATASET_KEY
 
-from ray.air.train.integrations.xgboost import XGBoostTrainer, load_checkpoint
+from ray.train.xgboost import XGBoostTrainer, load_checkpoint
 from ray.air.preprocessor import Preprocessor
 
 from sklearn.datasets import load_breast_cancer

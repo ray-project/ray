@@ -7,7 +7,7 @@ import xgboost
 from ray.air.checkpoint import Checkpoint
 from ray.air.predictor import Predictor, DataBatchType
 from ray.air.preprocessor import Preprocessor
-from ray.air.train.integrations.xgboost import load_checkpoint
+from ray.train.xgboost import load_checkpoint
 
 
 class XGBoostPredictor(Predictor):

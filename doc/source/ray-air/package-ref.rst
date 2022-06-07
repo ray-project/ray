@@ -29,42 +29,42 @@ Preprocessors
 Trainer
 ~~~~~~~
 
-.. autoclass:: ray.air.trainer.Trainer
+.. autoclass:: ray.train.trainer.Trainer
     :members:
 
-.. automodule:: ray.air.train.integrations.xgboost
-    :members:
-    :show-inheritance:
-
-.. automodule:: ray.air.train.integrations.lightgbm
+.. automodule:: ray.train.xgboost
     :members:
     :show-inheritance:
 
-.. automodule:: ray.air.train.integrations.tensorflow
+.. automodule:: ray.train.lightgbm
     :members:
     :show-inheritance:
 
-.. automodule:: ray.air.train.integrations.torch
+.. automodule:: ray.train.tensorflow
     :members:
     :show-inheritance:
 
-.. automodule:: ray.air.train.integrations.horovod
+.. automodule:: ray.train.torch
     :members:
     :show-inheritance:
 
-.. automodule:: ray.air.train.integrations.huggingface
+.. automodule:: ray.train.horovod
     :members:
     :show-inheritance:
 
-.. automodule:: ray.air.train.integrations.sklearn
+.. automodule:: ray.train.huggingface
     :members:
     :show-inheritance:
 
-.. autoclass:: ray.air.train.data_parallel_trainer.DataParallelTrainer
+.. automodule:: ray.train.sklearn
     :members:
     :show-inheritance:
 
-.. autoclass:: ray.air.train.gbdt_trainer.GBDTTrainer
+.. autoclass:: ray.train.data_parallel_trainer.DataParallelTrainer
+    :members:
+    :show-inheritance:
+
+.. autoclass:: ray.train.gbdt_trainer.GBDTTrainer
     :members:
     :show-inheritance:
 

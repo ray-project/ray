@@ -63,7 +63,7 @@ The same logic is applicable to other integrations as well.
 Trainer
 ~~~~~~~
 
-The journey of the ``Preprocessor`` starts with the :class:`Trainer <ray.air.trainer.Trainer>`.
+The journey of the ``Preprocessor`` starts with the :class:`Trainer <ray.train.trainer.Trainer>`.
 If the ``Trainer`` is instantiated with a ``Preprocessor``, then the following logic will be executed when ``Trainer.fit()`` is called:
 
 #. If a ``"train"`` ``Dataset`` is passed in, then the ``Preprocessor`` will call ``fit()`` on it.

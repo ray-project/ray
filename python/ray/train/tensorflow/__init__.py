@@ -1,4 +1,4 @@
-from ray.air.train.integrations.tensorflow.tensorflow_trainer import (
+from ray.train.tensorflow.tensorflow_trainer import (
     TensorflowTrainer,
     load_checkpoint,
 )

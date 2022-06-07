@@ -1,12 +1,12 @@
 from typing import Dict, Callable, Optional, Union
 
 from ray.air.config import ScalingConfig, RunConfig, DatasetConfig
-from ray.air.trainer import GenDataset
+from ray.train.trainer import GenDataset
 from ray.air.preprocessor import Preprocessor
 from ray.air.checkpoint import Checkpoint
 
 
-from ray.air.train.data_parallel_trainer import DataParallelTrainer
+from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.horovod import HorovodConfig
 
 
@@ -81,7 +81,7 @@ class HorovodTrainer(DataParallelTrainer):
         import horovod.torch as hvd
         import torch
         import torch.nn as nn
-        from ray.air.train.integrations.horovod import HorovodTrainer
+        from ray.train.horovod import HorovodTrainer
 
         input_size = 1
         layer_size = 15

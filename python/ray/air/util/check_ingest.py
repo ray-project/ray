@@ -8,7 +8,7 @@ import ray
 from ray import train
 from ray.air.preprocessors import Chain, BatchMapper
 from ray.air.config import DatasetConfig
-from ray.air.train.data_parallel_trainer import DataParallelTrainer
+from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.util.annotations import DeveloperAPI
 
 

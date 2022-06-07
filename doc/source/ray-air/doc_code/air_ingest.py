@@ -90,7 +90,7 @@ trainer.fit()
 
 # __config_1__
 import ray
-from ray.air.train.integrations.torch import TorchTrainer
+from ray.train.torch import TorchTrainer
 from ray.air.config import DatasetConfig
 
 train_ds = ray.data.range_tensor(1000)
@@ -118,7 +118,7 @@ print(my_trainer.get_dataset_config())
 
 # __config_2__
 import ray
-from ray.air.train.integrations.torch import TorchTrainer
+from ray.train.torch import TorchTrainer
 from ray.air.config import DatasetConfig
 
 train_ds = ray.data.range_tensor(1000)
@@ -144,7 +144,7 @@ print(my_trainer.get_dataset_config())
 import ray
 from ray import train
 from ray.data import Dataset
-from ray.air.train.integrations.torch import TorchTrainer
+from ray.train.torch import TorchTrainer
 from ray.air.config import DatasetConfig
 
 
@@ -175,7 +175,7 @@ my_trainer.fit()
 import ray
 from ray import train
 from ray.data import DatasetPipeline
-from ray.air.train.integrations.torch import TorchTrainer
+from ray.train.torch import TorchTrainer
 from ray.air.config import DatasetConfig
 
 

@@ -3,7 +3,7 @@ import numpy as np
 
 import ray
 from ray import train
-from ray.air.train.integrations.tensorflow import TensorflowTrainer
+from ray.train.tensorflow import TensorflowTrainer
 from ray.air.examples.tf.tensorflow_linear_dataset_example import (
     train_func as tensorflow_linear_train_func,
     get_dataset,

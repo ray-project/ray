@@ -5,7 +5,7 @@ import torch
 import ray
 from ray import train
 from ray import tune
-from ray.air.train.integrations.horovod import HorovodTrainer
+from ray.train.horovod import HorovodTrainer
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 

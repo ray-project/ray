@@ -2,7 +2,7 @@ import argparse
 
 import ray
 from ray import tune
-from ray.air.train.integrations.torch import TorchTrainer
+from ray.train.torch import TorchTrainer
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 

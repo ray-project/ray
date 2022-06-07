@@ -16,7 +16,7 @@ from ray.air.checkpoint import Checkpoint
 from ray.air.config import RunConfig, ScalingConfig
 from ray.air.constants import MODEL_KEY, TRAIN_DATASET_KEY
 from ray.air.preprocessor import Preprocessor
-from ray.air.trainer import GenDataset, BaseTrainer
+from ray.train.trainer import GenDataset, BaseTrainer
 from ray.air._internal.checkpointing import (
     load_preprocessor_from_dir,
     save_preprocessor_to_dir,
@@ -68,7 +68,7 @@ class SklearnTrainer(BaseTrainer):
 
             import ray
 
-            from ray.air.train.integrations.sklearn import SklearnTrainer
+            from ray.train.sklearn import SklearnTrainer
             from sklearn.ensemble import RandomForestRegressor
 
             train_dataset = ray.data.from_items(

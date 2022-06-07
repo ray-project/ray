@@ -3,7 +3,7 @@ import torch.nn as nn
 import numpy as np
 import torchvision
 from ray.air import RunConfig
-from ray.air.train.integrations.horovod import HorovodTrainer
+from ray.train.horovod import HorovodTrainer
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 from torch.utils.data import DataLoader

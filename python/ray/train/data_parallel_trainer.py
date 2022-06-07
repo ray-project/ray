@@ -19,12 +19,12 @@ from ray.air.constants import (
     TRAIN_DATASET_KEY,
     WILDCARD_KEY,
 )
-from ray.air.trainer import BaseTrainer
+from ray.train.trainer import BaseTrainer
 from ray.air.config import ScalingConfig, RunConfig, DatasetConfig
-from ray.air.trainer import GenDataset
+from ray.train.trainer import GenDataset
 from ray.air.preprocessor import Preprocessor
 from ray.air.checkpoint import Checkpoint
-from ray.air.train.data_parallel_ingest import _DataParallelIngestSpec
+from ray.train.data_parallel_ingest import _DataParallelIngestSpec
 from ray.train import BackendConfig, TrainingIterator
 from ray.train.backend import BackendExecutor
 from ray.train._checkpoint import TuneCheckpointManager
@@ -160,7 +160,7 @@ class DataParallelTrainer(BaseTrainer):
 
     .. code-block:: python
 
-        from ray.air.train.data_parallel_trainer import DataParallelTrainer
+        from ray.train.data_parallel_trainer import DataParallelTrainer
 
         class MyDataParallelTrainer(DataParallelTrainer):
             def __init__(self, *args, **kwargs):

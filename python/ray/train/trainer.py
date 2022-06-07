@@ -8,6 +8,7 @@ import warnings
 
 import ray
 from ray.actor import ActorHandle
+from ray.train.base_trainer import BaseTrainer
 from ray.train.backend import (
     BackendConfig,
     BackendExecutor,
@@ -910,3 +911,6 @@ def _create_tune_trainable(
             return PlacementGroupFactory(bundles, strategy="PACK")
 
     return TrainTrainable
+
+
+__all__ = ["Trainer", "TrainWorkerGroup", "TrainingIterator", "BaseTrainer"]

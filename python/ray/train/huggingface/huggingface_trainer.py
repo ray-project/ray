@@ -26,10 +26,10 @@ from ray.air.constants import (
     PREPROCESSOR_KEY,
 )
 from ray.air.preprocessor import Preprocessor
-from ray.air.train.integrations.torch import TorchTrainer
-from ray.air.trainer import GenDataset
-from ray.air.train.data_parallel_trainer import _DataParallelCheckpointManager
-from ray.air.train.integrations.huggingface.huggingface_utils import (
+from ray.train.torch import TorchTrainer
+from ray.train.trainer import GenDataset
+from ray.train.data_parallel_trainer import _DataParallelCheckpointManager
+from ray.train.huggingface.huggingface_utils import (
     CHECKPOINT_PATH_ON_NODE_KEY,
     NODE_IP_KEY,
     process_datasets,
@@ -155,7 +155,7 @@ class HuggingFaceTrainer(TorchTrainer):
             from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
             import ray
-            from ray.air.train.integrations.huggingface import HuggingFaceTrainer
+            from ray.train.huggingface import HuggingFaceTrainer
 
             model_checkpoint = "gpt2"
             tokenizer_checkpoint = "sgugger/gpt2-like-tokenizer"

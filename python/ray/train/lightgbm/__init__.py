@@ -1,4 +1,4 @@
-from ray.air.train.integrations.lightgbm.lightgbm_trainer import (
+from ray.train.lightgbm.lightgbm_trainer import (
     LightGBMTrainer,
     load_checkpoint,
 )

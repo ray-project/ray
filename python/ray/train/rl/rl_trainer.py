@@ -6,7 +6,7 @@ import ray.cloudpickle as cpickle
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import ScalingConfig, RunConfig
 from ray.air.preprocessor import Preprocessor
-from ray.air.trainer import BaseTrainer, GenDataset
+from ray.train.trainer import BaseTrainer, GenDataset
 from ray.air._internal.checkpointing import (
     load_preprocessor_from_dir,
     save_preprocessor_to_dir,
@@ -57,7 +57,7 @@ class RLTrainer(BaseTrainer):
         .. code-block:: python
 
             from ray.air.config import RunConfig
-            from ray.air.train.integrations.rl import RLTrainer
+            from ray.train.rl import RLTrainer
 
             trainer = RLTrainer(
                 run_config=RunConfig(stop={"training_iteration": 5}),
@@ -84,7 +84,7 @@ class RLTrainer(BaseTrainer):
 
             import ray
             from ray.air.config import RunConfig
-            from ray.air.train.integrations.rl import RLTrainer
+            from ray.train.rl import RLTrainer
             from ray.rllib.agents.marwil.bc import BCTrainer
 
             dataset = ray.data.read_json(

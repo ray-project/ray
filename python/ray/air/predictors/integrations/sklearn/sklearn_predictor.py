@@ -7,7 +7,7 @@ from joblib import parallel_backend
 from ray.air.checkpoint import Checkpoint
 from ray.air.predictor import Predictor, DataBatchType
 from ray.air.preprocessor import Preprocessor
-from ray.air.train.integrations.sklearn import load_checkpoint
+from ray.train.sklearn import load_checkpoint
 from ray.air._internal.sklearn_utils import set_cpu_params
 from ray.util.joblib import register_ray
 

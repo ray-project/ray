@@ -4,7 +4,7 @@ from typing import Any, Callable, Dict, Optional, Type, Union
 
 import ray.cloudpickle as pickle
 from ray.air.config import RunConfig
-from ray.air.trainer import BaseTrainer
+from ray.train.trainer import BaseTrainer
 from ray.tune import Experiment, TuneError, ExperimentAnalysis
 from ray.tune.impl.utils import execute_dataset
 from ray.tune.result_grid import ResultGrid

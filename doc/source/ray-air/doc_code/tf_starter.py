@@ -18,7 +18,7 @@ from tensorflow.keras.callbacks import Callback
 
 import ray.train as train
 from ray.train.tensorflow import prepare_dataset_shard
-from ray.air.train.integrations.tensorflow import TensorflowTrainer
+from ray.train.tensorflow import TensorflowTrainer
 
 
 def build_model() -> tf.keras.Model:

@@ -1,4 +1,4 @@
-from ray.air.train.integrations.huggingface.huggingface_trainer import (
+from ray.train.huggingface.huggingface_trainer import (
     HuggingFaceTrainer,
     load_checkpoint,
 )
