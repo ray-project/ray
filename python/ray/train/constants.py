@@ -1,13 +1,5 @@
 from pathlib import Path
 
-from ray.air.constants import (  # noqa: F401
-    EVALUATION_DATASET_KEY,
-    MODEL_KEY,
-    PREPROCESSOR_KEY,
-    TRAIN_DATASET_KEY,
-    WILDCARD_KEY,
-)
-
 try:
     TUNE_INSTALLED = True
     from ray import tune  # noqa: F401
@@ -79,3 +71,19 @@ PYTORCH_PROFILER_KEY = "_train_torch_profiler"
 # By default these will be filtered out from ``train.report()``.
 # See ``TrainingCallback._preprocess_results`` for more details.
 ALL_RESERVED_KEYS = {PYTORCH_PROFILER_KEY}
+
+
+# --------------- Constants for Ray AIR APIs-------------------
+
+# Key to denote which dataset is the evaluation dataset.
+# Only used in trainers which do not support multiple
+# evaluation datasets.
+EVALUATION_DATASET_KEY = "evaluation"
+
+# Key to denote which dataset is the training dataset.
+# This is the dataset that the preprocessor is fit on.
+TRAIN_DATASET_KEY = "train"
+
+# Key to denote all user-specified auxiliary datasets in DatasetConfig.
+WILDCARD_KEY = "*"
+
