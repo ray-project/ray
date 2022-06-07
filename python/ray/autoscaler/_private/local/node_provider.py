@@ -29,6 +29,7 @@ filelock_logger.setLevel(logging.WARNING)
 class ClusterState:
     def __init__(self, lock_path, save_path, provider_config):
         self.lock = RLock()
+        os.makedirs(os.path.dirname(lock_path), exist_ok=True)
         self.file_lock = FileLock(lock_path)
         self.save_path = save_path
 
