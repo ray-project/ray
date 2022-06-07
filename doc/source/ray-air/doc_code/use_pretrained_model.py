@@ -29,4 +29,4 @@ batch_predictor = BatchPredictor(
 predict_dataset = ray.data.range(3)
 predictions = batch_predictor.predict(predict_dataset)
 
-# __use_pretrained_model_start__
+# __use_pretrained_model_end__
