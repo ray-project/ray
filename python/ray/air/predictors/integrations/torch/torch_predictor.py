@@ -1,4 +1,4 @@
-from typing import Optional, Union, List
+from typing import Dict, Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -9,7 +9,7 @@ from ray.air.preprocessor import Preprocessor
 from ray.air.checkpoint import Checkpoint
 from ray.air.train.integrations.torch import load_checkpoint
 from ray.air.utils.data_batch_conversion_utils import convert_pandas_to_batch_type
-from ray.air.utils.torch_utils import convert_pandas_to_torch_tensor
+from ray.air.utils.tensor_extensions.pandas import TensorArray
 
 
 class TorchPredictor(Predictor):
@@ -46,85 +46,54 @@ class TorchPredictor(Predictor):
         model, preprocessor = load_checkpoint(checkpoint, model)
         return TorchPredictor(model=model, preprocessor=preprocessor)
 
-    # parity with Datset.to_torch
-    def _convert_to_tensor(
+    def _predict_pandas(
         self,
         data: pd.DataFrame,
-        feature_columns: Optional[
-            Union[List[str], List[List[str]], List[int], List[List[int]]]
-        ] = None,
-        dtypes: Optional[torch.dtype] = None,
-        unsqueeze: bool = True,
-    ) -> torch.Tensor:
-        """Handle conversion of data to tensor.
-
-        Same arguments as in ``convert_pandas_to_torch_tensor``."""
-        # TODO(amog): Add `_convert_numpy_to_torch_tensor to use based on input type.
-        # Reduce conversion cost if input is in Numpy
-        if isinstance(feature_columns, dict):
-            features_tensor = {
-                key: convert_pandas_to_torch_tensor(
-                    data,
-                    feature_columns[key],
-                    dtypes[key] if isinstance(dtypes, dict) else dtypes,
-                    unsqueeze=unsqueeze,
-                )
-                for key in feature_columns
-            }
+        dtype: Optional[Union[torch.dtype, Dict[str, torch.dtype]]] = None,
+    ) -> pd.DataFrame:
+        if len(data.columns) == 1:
+            column_name = data.columns[0]
+            if isinstance(dtype, dict):
+                dtype = dtype[column_name]
+            model_input = torch.from_numpy(
+                convert_pandas_to_batch_type(data, type=np.ndarray)
+            ).to(dtype=dtype)
         else:
-            features_tensor = convert_pandas_to_torch_tensor(
-                data,
-                columns=feature_columns,
-                column_dtypes=dtypes,
-                unsqueeze=unsqueeze,
-            )
-        return features_tensor
+            array_dict = convert_pandas_to_batch_type(data, type=dict)
+            model_input = {
+                k: torch.from_numpy(v).to(
+                    dtype=dtype[k] if isinstance(dtype, dict) else dtype
+                )
+                for k, v in array_dict.items()
+            }
 
-    def _predict_pandas(self, data: pd.DataFrame, **kwargs) -> pd.DataFrame:
-        array_dict = convert_pandas_to_batch_type(data, type=dict)
+        self.model.eval()
+        output = self.model(model_input).cpu().detach().numpy()
 
-
-    def _predict(self, tensor: torch.Tensor) -> pd.DataFrame:
-        """Handle actual prediction."""
-        prediction = self.model(tensor).cpu().detach().numpy()
-        # If model has outputs a Numpy array (for example outputting logits),
-        # these cannot be used as values in a Pandas Dataframe.
-        # We have to convert the outermost dimension to a python list (but the values
-        # in the list can still be Numpy arrays).
-        return pd.DataFrame({"predictions": list(prediction)}, columns=["predictions"])
+        return pd.DataFrame(
+            {"predictions": TensorArray(output)}, columns=["predictions"]
+        )
 
     def predict(
         self,
         data: DataBatchType,
-        feature_columns: Optional[
-            Union[List[str], List[List[str]], List[int], List[List[int]]]
-        ] = None,
-        dtype: Optional[torch.dtype] = None,
-        unsqueeze: bool = True,
+        dtype: Optional[Union[torch.dtype, Dict[str, torch.dtype]]] = None,
     ) -> DataBatchType:
         """Run inference on data batch.
 
-        The data is converted into a torch Tensor before being inputted to
-        the model.
+        If the provided data is a single array or a dataframe/table with a single
+        column, it will be converted into a single PyTorch tensor before being
+        inputted to the model.
+
+        If the provided data is a multi-column table or a dict of numpy arrays,
+        it will be converted into a dict of tensors before being inputted to the
+        model. This is useful for multi-modal inputs (for example your model accepts
+        both image and text).
 
         Args:
-            data: A batch of input data. Either a pandas DataFrame or numpy
-                array.
-            feature_columns: The names or indices of the columns in the
-                data to use as features to predict on. If this arg is a
-                list of lists or a dict of  string-list pairs, then the
-                data batch will be converted into a
-                multiple tensors which are then concatenated before feeding
-                into the model. This is useful for multi-input models. If
-                None, then use all columns in ``data``.
-            dtype: The dtypes to use for the tensors. This should match the
-                format of ``feature_columns``, or be a single dtype, in which
-                case it will be applied to all tensors.
-                If None, then automatically infer the dtype.
-            unsqueeze: If set to True, the features tensors will be unsqueezed
-                (reshaped to (N, 1)) before being concatenated into the final features
-                tensor. Otherwise, they will be left as is, that is (N, ).
-                Defaults to True.
+            data: A batch of input data of ``DataBatchType``.
+            dtype: The dtypes to use for the tensors. Either a single dtype for all
+                tensors or a mapping from column name to dtype.
 
         Examples:
 
@@ -160,16 +129,4 @@ class TorchPredictor(Predictor):
         Returns:
             DataBatchType: Prediction result.
         """
-        self.model.eval()
-
-        if self.preprocessor:
-            data = self.preprocessor.transform_batch(data)
-
-        if isinstance(data, np.ndarray):
-            tensor = torch.tensor(data, dtype=dtype)
-        else:
-            tensor = self._convert_to_tensor(
-                data, feature_columns=feature_columns, dtypes=dtype, unsqueeze=unsqueeze
-            )
-
-        return self._predict(tensor)
+        return super(TorchPredictor, self).predict(data=data, dtype=dtype)
