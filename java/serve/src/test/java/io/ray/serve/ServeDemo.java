@@ -7,7 +7,7 @@ import io.ray.serve.deployment.Deployment;
 import io.ray.serve.deployment.DeploymentRoute;
 import java.io.IOException;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.junit.Assert;
+import org.testng.Assert;
 
 public class ServeDemo {
 
