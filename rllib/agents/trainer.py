@@ -439,7 +439,6 @@ class Trainer(Trainable):
         # the eval config is always complete, no matter whether we have eval
         # workers or perform evaluation on the (non-eval) local worker.
         eval_config = merge_dicts(self.config, user_eval_config)
-
         self.config["evaluation_config"] = eval_config
 
         if self.config.get("evaluation_num_workers", 0) > 0 or self.config.get(
