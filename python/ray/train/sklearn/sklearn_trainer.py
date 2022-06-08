@@ -4,7 +4,7 @@ import warnings
 from collections import defaultdict
 from time import time
 from traceback import format_exc
-from typing import Any, Callable, Dict, Iterable, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, Optional, Tuple, Union, TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -15,7 +15,6 @@ import ray.cloudpickle as cpickle
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import RunConfig, ScalingConfig
 from ray.train.constants import MODEL_KEY, TRAIN_DATASET_KEY
-from ray.air.preprocessor import Preprocessor
 from ray.train.trainer import GenDataset, BaseTrainer
 from ray.air._internal.checkpointing import (
     load_preprocessor_from_dir,
@@ -32,6 +31,8 @@ from sklearn.model_selection import BaseCrossValidator, cross_validate
 # we are using a private API here, but it's consistent across versions
 from sklearn.model_selection._validation import _check_multimetric_scoring, _score
 
+if TYPE_CHECKING:
+    from ray.air.preprocessor import Preprocessor
 
 logger = logging.getLogger(__name__)
 
@@ -171,7 +172,7 @@ class SklearnTrainer(BaseTrainer):
         set_estimator_cpus: bool = True,
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
-        preprocessor: Optional[Preprocessor] = None,
+        preprocessor: Optional["Preprocessor"] = None,
         **fit_params,
     ):
         if fit_params.pop("resume_from_checkpoint", None):
@@ -439,7 +440,7 @@ class SklearnTrainer(BaseTrainer):
 
 def load_checkpoint(
     checkpoint: Checkpoint,
-) -> Tuple[BaseEstimator, Optional[Preprocessor]]:
+) -> Tuple[BaseEstimator, Optional["Preprocessor"]]:
     """Load a Checkpoint from ``SklearnTrainer``.
 
     Args:

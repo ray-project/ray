@@ -1,14 +1,16 @@
-from typing import Optional, Union, List
+from typing import Optional, Union, List, TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 import torch
 
 from ray.air.predictor import Predictor, DataBatchType
-from ray.air.preprocessor import Preprocessor
 from ray.air.checkpoint import Checkpoint
 from ray.train.torch import load_checkpoint
 from ray.air._internal.torch_utils import convert_pandas_to_torch_tensor
+
+if TYPE_CHECKING:
+    from ray.air.preprocessor import Preprocessor
 
 
 class TorchPredictor(Predictor):
@@ -21,7 +23,7 @@ class TorchPredictor(Predictor):
     """
 
     def __init__(
-        self, model: torch.nn.Module, preprocessor: Optional[Preprocessor] = None
+        self, model: torch.nn.Module, preprocessor: Optional["Preprocessor"] = None
     ):
         self.model = model
         self.preprocessor = preprocessor

@@ -1,7 +1,21 @@
 import abc
+import warnings
 from typing import List, Dict
 
+from ray.util.annotations import Deprecated
 
+_deprecation_msg = (
+    "`ray.train.callbacks.results_preprocessors` and the `ray.train.Trainer` API are "
+    "deprecated in Ray "
+    "2.0, and is replaced by Ray AI Runtime (Ray AIR). Ray AIR "
+    "(https://docs.ray.io/en/latest/ray-air/getting-started.html) "
+    "will provide greater functionality and a unified API "
+    "compared to the current Ray Train API. "
+    "This class will be removed in the future."
+)
+
+
+@Deprecated
 class ResultsPreprocessor(abc.ABC):
     """Abstract class for preprocessing Train results."""
 
@@ -24,6 +38,7 @@ class ResultsPreprocessor(abc.ABC):
         return results
 
 
+@Deprecated
 class SequentialResultsPreprocessor(ResultsPreprocessor):
     """A processor that sequentially runs a series of preprocessing steps.
 
@@ -37,6 +52,11 @@ class SequentialResultsPreprocessor(ResultsPreprocessor):
     """
 
     def __init__(self, preprocessors: List[ResultsPreprocessor]):
+        warnings.warn(
+            "The `ray.train.results_preprocessors` API is deprecated in Ray " "2.0",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.preprocessors = preprocessors
 
     def preprocess(self, results: List[Dict]) -> List[Dict]:

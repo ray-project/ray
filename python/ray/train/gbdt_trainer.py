@@ -3,7 +3,6 @@ import warnings
 
 from ray.train.trainer import GenDataset
 from ray.air.config import ScalingConfig, RunConfig, ScalingConfigDataClass
-from ray.air.preprocessor import Preprocessor
 from ray.air._internal.checkpointing import save_preprocessor_to_dir
 from ray.tune.utils.trainable import TrainableUtil
 from ray.util.annotations import DeveloperAPI
@@ -14,6 +13,7 @@ from ray.train.constants import MODEL_KEY, TRAIN_DATASET_KEY
 
 if TYPE_CHECKING:
     import xgboost_ray
+    from ray.air.preprocessor import Preprocessor
 
 
 def _convert_scaling_config_to_ray_params(
@@ -88,7 +88,7 @@ class GBDTTrainer(BaseTrainer):
         dmatrix_params: Optional[Dict[str, Dict[str, Any]]] = None,
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
-        preprocessor: Optional[Preprocessor] = None,
+        preprocessor: Optional["Preprocessor"] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
         **train_kwargs,
     ):
@@ -135,7 +135,7 @@ class GBDTTrainer(BaseTrainer):
     def _load_checkpoint(
         self,
         checkpoint: Checkpoint,
-    ) -> Tuple[Any, Optional[Preprocessor]]:
+    ) -> Tuple[Any, Optional["Preprocessor"]]:
         raise NotImplementedError
 
     def _train(self, **kwargs):

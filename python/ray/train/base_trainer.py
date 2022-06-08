@@ -12,7 +12,6 @@ from ray.air.config import (
     ScalingConfig,
     ScalingConfigDataClass,
 )
-from ray.air.preprocessor import Preprocessor
 from ray.air.result import Result
 from ray.air._internal.config import (
     ensure_only_allowed_dataclass_keys_updated,
@@ -26,6 +25,7 @@ from ray.util.ml_utils.dict import merge_dicts
 
 if TYPE_CHECKING:
     from ray.data import Dataset
+    from ray.air.preprocessor import Preprocessor
 
 # A type representing either a ray.data.Dataset or a function that returns a
 # ray.data.Dataset and accepts no arguments.
@@ -148,7 +148,7 @@ class BaseTrainer(abc.ABC):
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
-        preprocessor: Optional[Preprocessor] = None,
+        preprocessor: Optional["Preprocessor"] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
 

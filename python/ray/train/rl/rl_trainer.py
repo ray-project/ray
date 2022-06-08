@@ -1,11 +1,10 @@
 import inspect
 import os
-from typing import Optional, Dict, Tuple, Type, Union, Callable, Any
+from typing import Optional, Dict, Tuple, Type, Union, Callable, Any, TYPE_CHECKING
 
 import ray.cloudpickle as cpickle
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import ScalingConfig, RunConfig
-from ray.air.preprocessor import Preprocessor
 from ray.train.trainer import BaseTrainer, GenDataset
 from ray.air._internal.checkpointing import (
     load_preprocessor_from_dir,
@@ -21,6 +20,8 @@ from ray.tune.resources import Resources
 from ray.util.annotations import PublicAPI
 from ray.util.ml_utils.dict import merge_dicts
 
+if TYPE_CHECKING:
+    from ray.air.preprocessor import Preprocessor
 
 RL_TRAINER_CLASS_FILE = "trainer_class.pkl"
 RL_CONFIG_FILE = "config.pkl"
@@ -118,7 +119,7 @@ class RLTrainer(BaseTrainer):
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
-        preprocessor: Optional[Preprocessor] = None,
+        preprocessor: Optional["Preprocessor"] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
         self._algorithm = algorithm
@@ -257,7 +258,7 @@ class RLTrainer(BaseTrainer):
 def load_checkpoint(
     checkpoint: Checkpoint,
     env: Optional[EnvType] = None,
-) -> Tuple[Policy, Optional[Preprocessor]]:
+) -> Tuple[Policy, Optional["Preprocessor"]]:
     """Load a Checkpoint from ``RLTrainer``.
 
     Args:
