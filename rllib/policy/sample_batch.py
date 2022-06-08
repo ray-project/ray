@@ -16,7 +16,7 @@ from ray.rllib.utils.typing import (
     PolicyID,
     TensorType,
     SampleBatchType,
-    ViewRequirementsDict
+    ViewRequirementsDict,
 )
 
 tf1, tf, tfv = try_import_tf()
@@ -188,8 +188,7 @@ class SampleBatch(dict):
         return len(self)
 
     @Deprecated(
-        new='calling concat_samples() from rllib.policy.sample_batch',
-        error=False
+        new="calling concat_samples() from rllib.policy.sample_batch", error=False
     )
     @staticmethod
     @PublicAPI
@@ -1177,8 +1176,7 @@ class MultiAgentBatch:
         return MultiAgentBatch(policy_batches=policy_batches, env_steps=env_steps)
 
     @Deprecated(
-        new='calling concat_samples() from rllib.policy.sample_batch',
-        error=False
+        new="calling concat_samples() from rllib.policy.sample_batch", error=False
     )
     @staticmethod
     @PublicAPI
@@ -1306,8 +1304,7 @@ def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
                 s.max_seq_len is None or max_seq_len is None
             ) and s.max_seq_len != max_seq_len:
                 raise ValueError(
-                    "Samples must consistently either provide or omit "
-                    "`max_seq_len`!"
+                    "Samples must consistently either provide or omit " "`max_seq_len`!"
                 )
             elif zero_padded and s.max_seq_len != max_seq_len:
                 raise ValueError(
