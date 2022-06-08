@@ -120,6 +120,35 @@ def test_predict_array_no_training(model):
     assert predictions.flatten().tolist() == [2, 4, 6]
 
 
+def test_array_real_model():
+    model = torch.nn.Linear(2, 1)
+    predictor = TorchPredictor(model=model)
+
+    data = np.array([[1, 2], [3, 4]])
+    predictions = predictor.predict(data, dtype=torch.float)
+    assert len(predictions) == 2
+
+
+def test_multi_modal_real_model():
+    class CustomModule(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.linear1 = torch.nn.Linear(1, 1)
+            self.linear2 = torch.nn.Linear(1, 1)
+
+        def forward(self, input_dict: dict):
+            out1 = self.linear1(input_dict["A"])
+            out2 = self.linear2(input_dict["B"])
+            return out1 + out2
+
+    predictor = TorchPredictor(model=CustomModule())
+
+    data = pd.DataFrame([[1, 2], [3, 4]], columns=["A", "B"])
+
+    predictions = predictor.predict(data, dtype=torch.float)
+    assert len(predictions) == 2
+
+
 if __name__ == "__main__":
     import pytest
     import sys

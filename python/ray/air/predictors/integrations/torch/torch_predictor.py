@@ -51,19 +51,29 @@ class TorchPredictor(Predictor):
         data: pd.DataFrame,
         dtype: Optional[Union[torch.dtype, Dict[str, torch.dtype]]] = None,
     ) -> pd.DataFrame:
+        def tensorize(numpy_array, dtype):
+            torch_tensor = torch.from_numpy(numpy_array).to(dtype)
+
+            # Off-the-shelf torch Modules expect the input size to have at least 2
+            # dimensions (batch_size, feature_size). If the tensor for the column
+            # is flattened, then we unqueeze it to add an extra dimension.
+            if len(torch_tensor.size()) == 1:
+                torch_tensor = torch_tensor.unsqueeze(dim=1)
+
+            return torch_tensor
+
         if len(data.columns) == 1:
             column_name = data.columns[0]
             if isinstance(dtype, dict):
                 dtype = dtype[column_name]
-            model_input = torch.from_numpy(
-                convert_pandas_to_batch_type(data, type=np.ndarray)
-            ).to(dtype=dtype)
+            model_input = tensorize(
+                convert_pandas_to_batch_type(data, np.ndarray), dtype
+            )
         else:
             array_dict = convert_pandas_to_batch_type(data, type=dict)
+
             model_input = {
-                k: torch.from_numpy(v).to(
-                    dtype=dtype[k] if isinstance(dtype, dict) else dtype
-                )
+                k: tensorize(v, dtype=dtype[k] if isinstance(dtype, dict) else dtype)
                 for k, v in array_dict.items()
             }
 
@@ -108,7 +118,7 @@ class TorchPredictor(Predictor):
             predictor = TorchPredictor(model=model)
 
             data = np.array([[1, 2], [3, 4]])
-            predictions = predictor.predict(data)
+            predictions = predictor.predict(data, dtype=torch.float)
 
         .. code-block:: python
 
@@ -116,16 +126,23 @@ class TorchPredictor(Predictor):
             import torch
             from ray.air.predictors.integrations.torch import TorchPredictor
 
-            model = torch.nn.Linear(1, 1)
-            predictor = TorchPredictor(model=model)
+            class CustomModule(torch.nn.Module):
+                def __init__(self):
+                    super().__init__()
+                    self.linear1 = torch.nn.Linear(1, 1)
+                    self.linear2 = torch.nn.Linear(1, 1)
+
+                def forward(self, input_dict: dict):
+                    out1 = self.linear1(input_dict["A"])
+                    out2 = self.linear2(input_dict["B"])
+                    return out1 + out2
+
+            predictor = TorchPredictor(model=CustomModule())
 
             # Pandas dataframe.
             data = pd.DataFrame([[1, 2], [3, 4]], columns=["A", "B"])
 
             predictions = predictor.predict(data)
-
-            # Only use first column as the feature
-            predictions = predictor.predict(data, feature_columns=["A"])
 
         Returns:
             DataBatchType: Prediction result.
