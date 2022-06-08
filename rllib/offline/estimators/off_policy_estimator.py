@@ -40,6 +40,7 @@ def train_test_split(
     assert (
         isinstance(k, float) and k >= 0 and k < 1 or isinstance(k, int)
     ), f" k: {k} must be either a float with 0.0 <= k < 1.0 or an int"
+    ### Train-test split
     if k < 1:
         train_episodes = episodes[: int(n_episodes * k)]
         eval_episodes = episodes[int(n_episodes * k) :]
@@ -47,6 +48,8 @@ def train_test_split(
             train_episodes
         )
         return
+    ### k-fold cv
+    assert(n_episodes >= k), "Not enough eval episodes in batch!"
     n_fold = n_episodes // k
     for i in range(k):
         train_episodes = episodes[: i * n_fold] + episodes[(i + 1) * n_fold :]
@@ -143,7 +146,7 @@ class OffPolicyEstimator:
         if isinstance(batch, MultiAgentBatch):
             raise ValueError(
                 "Off-Policy Estimation is not implemented for multi-agent batches. "
-                "You can set `off_policy_estimation_methods: \{\}` to resolve this."
+                "You can set `off_policy_estimation_methods: {}` to resolve this."
             )
 
         if "action_prob" not in batch:
@@ -152,7 +155,7 @@ class OffPolicyEstimator:
                 "include action probabilities (i.e., the policy is stochastic "
                 "and emits the 'action_prob' key). For DQN this means using "
                 "`exploration_config: {type: 'SoftQ'}`. You can also set "
-                "`off_policy_estimation_methods: \{\}` to disable estimation."
+                "`off_policy_estimation_methods: {}` to disable estimation."
             )
 
     @DeveloperAPI

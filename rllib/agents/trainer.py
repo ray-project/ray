@@ -817,7 +817,6 @@ class Trainer(Trainable):
 
             metrics = None
             total_batch = SampleBatch()
-            k = self.config["off_policy_estimation_methods"].get("k", 0.0)
             # No evaluation worker set ->
             # Do evaluation using the local worker. Expect error due to the
             # local worker not having an env.
@@ -830,8 +829,8 @@ class Trainer(Trainable):
                 for _ in range(iters):
                     batch = self.workers.local_worker().sample()
                     num_ts_run += len(batch)
-                    total_batch.concat(batch)
-                for eval_batch, train_batch in train_test_split(total_batch, k):
+                    total_batch = total_batch.concat(batch)
+                for eval_batch, train_batch in train_test_split(total_batch, self.train_test_split_val):
                     self.workers.local_worker().compute_off_policy_estimates(
                         eval_batch, train_batch
                     )
@@ -850,8 +849,8 @@ class Trainer(Trainable):
                 for _ in range(iters):
                     batch = self.evaluation_workers.local_worker().sample()
                     num_ts_run += len(batch)
-                    total_batch.concat(batch)
-                for eval_batch, train_batch in train_test_split(total_batch, k):
+                    total_batch = total_batch.concat(batch)
+                for eval_batch, train_batch in train_test_split(total_batch, self.train_test_split_val):
                     self.evaluation_workers.local_worker().compute_off_policy_estimates(
                         eval_batch, train_batch
                     )
@@ -885,16 +884,18 @@ class Trainer(Trainable):
                         ts = sum(len(b) for b in batches)
                         num_ts_run += ts
                         num_units_done += ts
-                    total_batch.concat_samples(batches)
+                    total_batch = total_batch.concat(SampleBatch.concat_samples(batches))
 
                     logger.info(
                         f"Ran round {round_} of parallel evaluation "
                         f"({num_units_done}/{duration} {unit} done)"
                     )
+                breakpoint()
                 remote_workers = self.evaluation_workers.remote_workers()
                 for idx, (eval_batch, train_batch) in enumerate(
-                    train_test_split(total_batch, k)
+                    train_test_split(total_batch, self.train_test_split_val)
                 ):
+                    breakpoint()
                     # Round robin on remote workers
                     worker = remote_workers[idx % len(remote_workers)]
                     worker.compute_off_policy_estimates.remote(eval_batch, train_batch)
@@ -1942,9 +1943,6 @@ class Trainer(Trainable):
                 )
 
         # Offline RL settings.
-        config["evaluation_config"]["off_policy_estimation_methods"] = config.pop(
-            "off_policy_estimation_methods"
-        )
         input_evaluation = config.get("input_evaluation")
         if input_evaluation and input_evaluation is not DEPRECATED_VALUE:
             ope_dict = {str(ope): {"type": ope} for ope in input_evaluation}
@@ -1956,8 +1954,10 @@ class Trainer(Trainable):
                 error=False,
             )
             config["off_policy_estimation_methods"] = ope_dict
+        if "k" in config["off_policy_estimation_methods"]:
+            self.train_test_split_val = config["off_policy_estimation_methods"].pop("k")
         else:
-            config["off_policy_estimation_methods"] = {}
+            self.train_test_split_val = 0.0
 
         # Check model config.
         # If no preprocessing, propagate into model's config as well
