@@ -25,7 +25,6 @@ class RuntimeContext(object):
             "job_id": self.job_id,
             "node_id": self.node_id,
             "namespace": self.namespace,
-            "gcs_address": self.gcs_address,
         }
         if self.worker.mode == ray.worker.WORKER_MODE:
             if self.task_id is not None:
