@@ -8,6 +8,7 @@ from typing import List, Optional, Dict, Set, Tuple, Union
 import numpy as np
 
 from ray.train.callbacks import TrainingCallback
+from ray.train.callbacks.callback import _deprecation_msg
 from ray.train._internal.results_preprocessors import (
     IndexedResultsPreprocessor,
     ExcludedKeysResultsPreprocessor,
@@ -23,11 +24,11 @@ from ray.train.constants import (
     PID,
     TRAIN_CHECKPOINT_SUBDIR,
 )
+from ray.util.annotations import Deprecated
 from ray.util.debug import log_once
 from ray.util.ml_utils.dict import flatten_dict
 from ray.util.ml_utils.json import SafeFallbackEncoder
 from ray.util.ml_utils.mlflow import MLflowLoggerUtil
-from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +93,7 @@ class _TrainCallbackLogdirManager:
         raise RuntimeError("Logdir must be set in init or setup_logdir.")
 
 
-@PublicAPI(stability="beta")
+@Deprecated
 class JsonLoggerCallback(TrainingCallback):
     """Logs Train results in json format.
 
@@ -113,6 +114,10 @@ class JsonLoggerCallback(TrainingCallback):
         filename: Optional[str] = None,
         workers_to_log: Optional[Union[int, List[int]]] = 0,
     ):
+        warnings.warn(
+            _deprecation_msg,
+            DeprecationWarning,
+        )
         self._filename = filename
         self._logdir_manager = _TrainCallbackLogdirManager(logdir=logdir)
         self.results_preprocessor = IndexedResultsPreprocessor(indices=workers_to_log)
@@ -141,7 +146,7 @@ class JsonLoggerCallback(TrainingCallback):
         return self.logdir.joinpath(filename)
 
 
-@PublicAPI(stability="beta")
+@Deprecated
 class MLflowLoggerCallback(TrainingCallback):
     """MLflow Logger to automatically log Train results and config to MLflow.
 
@@ -192,6 +197,10 @@ class MLflowLoggerCallback(TrainingCallback):
         logdir: Optional[str] = None,
         worker_to_log: int = 0,
     ):
+        warnings.warn(
+            _deprecation_msg,
+            DeprecationWarning,
+        )
         self._logdir_manager = _TrainCallbackLogdirManager(logdir=logdir)
         self.results_preprocessor = IndexedResultsPreprocessor(indices=worker_to_log)
 
@@ -239,7 +248,7 @@ class MLflowLoggerCallback(TrainingCallback):
         return self._logdir_manager.logdir_path
 
 
-@PublicAPI(stability="beta")
+@Deprecated
 class TBXLoggerCallback(TrainingCallback):
     """Logs Train results in TensorboardX format.
 
@@ -261,6 +270,10 @@ class TBXLoggerCallback(TrainingCallback):
     IGNORE_KEYS: Set[str] = {PID, TIMESTAMP, TIME_TOTAL_S}
 
     def __init__(self, logdir: Optional[str] = None, worker_to_log: int = 0) -> None:
+        warnings.warn(
+            _deprecation_msg,
+            DeprecationWarning,
+        )
         self._logdir_manager = _TrainCallbackLogdirManager(logdir=logdir)
 
         results_preprocessors = [

@@ -4,7 +4,7 @@ import shutil
 import tempfile
 from distutils.version import LooseVersion
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Tuple, Type, Union
+from typing import Any, Callable, Dict, Optional, Tuple, Type, Union, TYPE_CHECKING
 import warnings
 
 import torch
@@ -25,7 +25,6 @@ from ray.air.constants import (
     TRAIN_DATASET_KEY,
     PREPROCESSOR_KEY,
 )
-from ray.air.preprocessor import Preprocessor
 from ray.air.train.integrations.torch import TorchTrainer
 from ray.air.trainer import GenDataset
 from ray.air.train.data_parallel_trainer import _DataParallelCheckpointManager
@@ -45,6 +44,9 @@ from ray.train.constants import TUNE_CHECKPOINT_ID
 from ray.train.torch import TorchConfig
 from ray.tune.trainable import Trainable
 from ray.tune.utils.file_transfer import delete_on_node, sync_dir_between_nodes
+
+if TYPE_CHECKING:
+    from ray.air.preprocessor import Preprocessor
 
 # This trainer uses a special checkpoint syncing logic.
 # Because HF checkpoints are very large dirs (at least several GBs),
@@ -276,7 +278,7 @@ class HuggingFaceTrainer(TorchTrainer):
         scaling_config: Optional[ScalingConfig] = None,
         dataset_config: Optional[Dict[str, DatasetConfig]] = None,
         run_config: Optional[RunConfig] = None,
-        preprocessor: Optional[Preprocessor] = None,
+        preprocessor: Optional["Preprocessor"] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
 
@@ -416,7 +418,7 @@ def load_checkpoint(
     Union[transformers.modeling_utils.PreTrainedModel, torch.nn.Module],
     transformers.training_args.TrainingArguments,
     Optional[transformers.PreTrainedTokenizer],
-    Optional[Preprocessor],
+    Optional["Preprocessor"],
 ]:
     """Load a Checkpoint from ``HuggingFaceTrainer``.
 
