@@ -74,19 +74,21 @@ ds.groupby("variety").count().show()
 # -> {'variety': 'Versicolor', 'count()': 50}
 # -> {'variety': 'Virginica', 'count()': 50}
 # __dataset_transformation_end__
-# fmt: on 
+# fmt: on
 
 # fmt: off
 # __writing_udfs_begin__
 import ray
-import pandas
-import pyarrow
+import numpy as np
+import pandas as pd
+import pyarrow as pa
+import pyarrow.compute as pac
 
 # Load dataset.
 ds = ray.data.read_csv("example://iris.csv")
 
 # UDF as a function on Pandas DataFrame.
-def pandas_filter_rows(df: pandas.DataFrame) -> pandas.DataFrame:
+def pandas_filter_rows(df: pd.DataFrame) -> pd.DataFrame:
     return df[df["variety"] == "Versicolor"]
 
 ds.map_batches(pandas_filter_rows).show(2)
@@ -96,8 +98,8 @@ ds.map_batches(pandas_filter_rows).show(2)
 #     'petal.length': 4.5, 'petal.width': 1.5, 'variety': 'Versicolor'}
 
 # UDF as a function on PyArrow Table.
-def pyarrow_filter_rows(batch: pyarrow.Table) -> pyarrow.Table:
-    return batch.filter(pyarrow.compute.equal(batch["variety"], "Versicolor"))
+def pyarrow_filter_rows(batch: pa.Table) -> pa.Table:
+    return batch.filter(pac.equal(batch["variety"], "Versicolor"))
 
 ds.map_batches(pyarrow_filter_rows, batch_format="pyarrow").show(2)
 # -> {'sepal.length': 7.0, 'sepal.width': 3.2,
@@ -110,7 +112,7 @@ class UDFClassOnPandas:
     def __int__(self):
         pass
 
-    def __call__(self, df: pandas.DataFrame) -> pandas.DataFrame:
+    def __call__(self, df: pd.DataFrame) -> pd.DataFrame:
         return df[df["variety"] == "Versicolor"]
 
 ds.map_batches(UDFClassOnPandas, compute="actors").show(2)
@@ -120,7 +122,7 @@ ds.map_batches(UDFClassOnPandas, compute="actors").show(2)
 #     'petal.length': 4.5, 'petal.width': 1.5, 'variety': 'Versicolor'}
 
 # More UDF examples: Add a column.
-def add_column(df: pandas.DataFrame) -> pandas.DataFrame:
+def add_column(df: pd.DataFrame) -> pd.DataFrame:
     df["normalized.sepal.length"] =  df["sepal.length"] / df["sepal.length"].max()
     return df
 
@@ -131,14 +133,35 @@ ds.map_batches(add_column).show(2)
 #     'variety': 'Setosa', 'normalized.sepal.length': 0.620253164556962}
 
 # More UDF examples: Drop a column.
-def drop_column(df: pandas.DataFrame) -> pandas.DataFrame:
+def drop_column(df: pd.DataFrame) -> pd.DataFrame:
     return df.drop(columns=["sepal.length"])
 
 ds.map_batches(drop_column).show(2)
 # -> {'sepal.width': 3.5, 'petal.length': 1.4, 'petal.width': 0.2, 'variety': 'Setosa'}
 # -> {'sepal.width': 3.0, 'petal.length': 1.4, 'petal.width': 0.2, 'variety': 'Setosa'}
+
+# Tensor example.
+tensor_ds = ray.data.read_numpy("example://mnist_subset.npy")
+
+# UDF as a function on NumPy ndarray.
+def normalize(arr: np.ndarray) -> np.ndarray:
+    # Normalizes each image to [0, 1] range.
+    mins = arr.min((1, 2))[:, np.newaxis, np.newaxis]
+    maxes = arr.max((1, 2))[:, np.newaxis, np.newaxis]
+    range_ = maxes - mins
+    idx = np.where(range_ == 0)
+    mins[idx] = 0
+    range_[idx] = 1
+    return (arr - mins) / range_
+
+tensor_ds.map_batches(normalize, batch_format="numpy")
+# -> Dataset(
+#        num_blocks=1,
+#        num_rows=3,
+#        schema={__value__: <ArrowTensorType: shape=(28, 28), dtype=double>}
+#    )
 # __writing_udfs_end__
-# fmt: on 
+# fmt: on
 
 # fmt: off
 # __dataset_compute_strategy_begin__
@@ -159,7 +182,7 @@ def predict_iris(df: pandas.DataFrame) -> pandas.DataFrame:
 
 class IrisInferModel:
     def __init__(self):
-        self._model = predict_iris 
+        self._model = predict_iris
 
     def __call__(self, batch: pandas.DataFrame) -> pandas.DataFrame:
         return self._model(batch)

@@ -80,13 +80,18 @@ API in Datasets.
 
 A UDF can be a function or a callable class, which has the following input/output:
 
-* **Input type**: a ``pandas.DataFrame``, ``pyarrow.Table`` or a Python list. You can
-  control the input type fed to your UDF by specifying the ``batch_format`` parameter in
-  :meth:`.map_batches() <ray.data.Dataset.map_batches>`. By default, the ``batch_format``
-  is "native", which will feed ``pandas.DataFrame`` to UDF regardless of the underlying
-  batch type.
-* **Output type**: a ``pandas.DataFrame``, ``pyarrow.Table`` or a Python list. Note
-  the output type doesn't need to be the same as input type.
+* **Input type**: a ``pandas.DataFrame``, ``pyarrow.Table``, ``numpy.ndarray``,
+  column-dictionary of ``numpy.ndarray``, or a Python list. You can control the input
+  type fed to your UDF by specifying the ``batch_format`` parameter in
+  :meth:`.map_batches() <ray.data.Dataset.map_batches>`. By default, the
+  ``batch_format`` is ``"native"``, which will feed data batches in the
+  canonical/"native" format for each data type, namely: ``pandas.DataFrame``
+  batches on tabular (Arrow or Pandas) data, ``numpy.ndarray`` batches on tensor data,
+  and Python lists on simple Python list data.
+* **Output type**: a ``pandas.DataFrame``, ``pyarrow.Table``, ``numpy.ndarray``,
+  column-dictionary of ``numpy.ndarray``, or a Python list. Note that the output type
+  doesn't need to be the same as input type, which allows you to dynamically convert
+  between data formats.
 
 The following are some UDF examples.
 
@@ -95,16 +100,20 @@ The following are some UDF examples.
    :start-after: __writing_udfs_begin__
    :end-before: __writing_udfs_end__
 
-You may reference the `pyarrow.Table APIs <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__
-or the `pandas.DataFrame APIs <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html>`__
-in writing UDFs.
+You may reference the `pyarrow.Table APIs
+<https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__, the
+`pandas.DataFrame APIs
+<https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html>__`, or the
+`numpy.ndarray APIs <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>__`
+when writing batch UDFs.
 
 .. tip::
 
-   Write your UDFs to leverage built-in vectorized operations in ``pandas.DataFrame``
-   or ``pyarrow.Table`` for better performance. For example, suppose you want to compute
-   the sum of a column in ``pandas.DataFrame``, instead of iterating each row of a batch
-   and sum up values of that column, you may want to use ``df_batch["col_foo"].sum()``.
+   Write your UDFs to leverage built-in vectorized operations on the ``pandas.DataFrame``,
+   ``pyarrow.Table``, and ``numpy.ndarray`` abstractions for better performance. For
+   example, suppose you want to compute the sum of a column in ``pandas.DataFrame``:
+   instead of iterating over each row of a batch and summing up values of that column,
+   you should use ``df_batch["col_foo"].sum()``.
 
 Compute Strategy
 ----------------
