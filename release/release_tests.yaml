@@ -861,7 +861,7 @@
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
 
-  stable: false
+  stable: true
 
   legacy:
     test_name: aws_durable_upload_rllib_str
@@ -892,7 +892,7 @@
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
 
-  stable: false
+  stable: true
 
   legacy:
     test_name: aws_durable_upload_rllib_trainer
