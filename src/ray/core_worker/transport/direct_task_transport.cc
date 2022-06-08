@@ -352,6 +352,12 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
         lease_policy_->GetBestNodeForTask(resource_spec);
     raylet_address = &best_node_address;
   }
+  if (resource_spec.IsNodeAffinitySchedulingStrategy()) {
+    const auto &node_id = resource_spec.GetNodeAffinitySchedulingStrategyNodeId();
+    node_affinities_[node_id]++;
+    nodes_requested_[NodeID::FromBinary(raylet_address->raylet_id())]++;
+  }
+
 
   auto lease_client = GetOrConnectLeaseClient(raylet_address);
   const TaskID task_id = resource_spec.TaskId();

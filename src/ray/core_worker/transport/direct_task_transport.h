@@ -122,6 +122,23 @@ class CoreWorkerDirectTaskSubmitter {
   /// we avoid double counting backlogs in autoscaler.
   void ReportWorkerBacklog();
 
+  void PrintNodesRequested() const {
+    RAY_LOG(INFO) << "Nodes requested:";
+    RAY_LOG(INFO) << "================";
+
+    absl::MutexLock lock(&mu_);
+    for (const auto &pair : nodes_requested_) {
+      RAY_LOG(INFO) << pair.first << ": " << pair.second;
+    }
+
+    RAY_LOG(INFO) << "Node affinities:";
+    RAY_LOG(INFO) << "================";
+
+    for (const auto &pair : node_affinities_) {
+      RAY_LOG(INFO) << pair.first << ": " << pair.second;
+    }
+  }
+
  private:
   /// Schedule more work onto an idle worker or return it back to the raylet if
   /// no more tasks are queued for submission. If an error was encountered
@@ -236,7 +253,7 @@ class CoreWorkerDirectTaskSubmitter {
   std::shared_ptr<ActorCreatorInterface> actor_creator_;
 
   // Protects task submission state below.
-  absl::Mutex mu_;
+  mutable absl::Mutex mu_;
 
   /// Cache of gRPC clients to other workers.
   std::shared_ptr<rpc::CoreWorkerClientPool> client_cache_;
@@ -338,6 +355,8 @@ class CoreWorkerDirectTaskSubmitter {
 
   int64_t num_tasks_submitted_ = 0;
   int64_t num_leases_requested_ GUARDED_BY(mu_) = 0;
+  absl::flat_hash_map<NodeID, int64_t> nodes_requested_ GUARDED_BY(mu_);
+  absl::flat_hash_map<NodeID, int64_t> node_affinities_ GUARDED_BY(mu_);
 };
 
 }  // namespace core

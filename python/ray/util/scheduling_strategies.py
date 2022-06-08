@@ -66,6 +66,9 @@ class NodeAffinitySchedulingStrategy:
         self.node_id = node_id
         self.soft = soft
 
+    def __repr__(self):
+        return f"NodeAffinitySchedulingStrategy(node_id={self.node_id}, soft={self.soft})"
+
 
 SchedulingStrategyT = Union[
     None,

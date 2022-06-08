@@ -29,6 +29,7 @@
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/gcs/pb_util.h"
+#include "ray/stats/metric_defs.h"
 #include "ray/stats/stats.h"
 #include "ray/util/event.h"
 #include "ray/util/util.h"
@@ -511,6 +512,11 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   periodical_runner_.RunFnPeriodically([this] { InternalHeartbeat(); },
                                        kInternalHeartbeatMillis);
+
+  periodical_runner_.RunFnPeriodically(
+      [this] {
+      direct_task_submitter_->PrintNodesRequested();
+      }, 10000);
 
 #ifndef _WIN32
   // Doing this last during CoreWorker initialization, so initialization logic like

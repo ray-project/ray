@@ -31,8 +31,11 @@ scheduling::NodeID NodeAffinitySchedulingPolicy::Schedule(
     return scheduling::NodeID::Nil();
   }
 
+
   options.scheduling_type = SchedulingType::HYBRID;
-  return hybrid_policy_.Schedule(resource_request, options);
+  auto node_id = hybrid_policy_.Schedule(resource_request, options);
+  RAY_LOG(INFO) << "Scheduling task that had NodeAffinity " << target_node_id << " to node " << node_id;
+  return node_id;
 }
 
 }  // namespace raylet_scheduling_policy

@@ -296,12 +296,15 @@ class PushBasedShufflePlan(ShuffleOp):
         reducer_idx = 0
 
         def submit_reduce_tasks():
+            from collections import defaultdict
+            placement = defaultdict(int)
             if reducer_idx >= output_num_blocks:
                 return None
             idx = 0
             reduce_outs, reduce_metas = [], []
             while reducer_idx + idx < output_num_blocks and idx < num_reduce_tasks_per_stage:
                 merge_idx = schedule.get_merge_idx_for_reducer_idx(reducer_idx + idx)
+                placement[schedule.get_merge_task_options(merge_idx)["scheduling_strategy"]] += 1
                 # Submit one partition of reduce tasks, one for each of the P
                 # outputs produced by the corresponding merge task.
                 # We also add the merge task arguments so that the reduce task
@@ -318,17 +321,21 @@ class PushBasedShufflePlan(ShuffleOp):
                 reduce_metas.append(reduce_meta)
 
                 idx += 1
-            return reduce_metas, idx
+            return reduce_metas, idx, placement
 
         stages = [None, None]
         reduce_bar = ProgressBar("Shuffle Reduce", total=output_num_blocks)
         reduce_metadata = []
-        stages[0], idx = submit_reduce_tasks()
+        stages[0], idx, placement = submit_reduce_tasks()
+        for node, count in placement.items():
+            print(node, count)
         reducer_idx += idx
         while True:
             out = submit_reduce_tasks()
             if out is not None:
-                stages[1], idx = out
+                stages[1], idx, placement = out
+                for node, count in placement.items():
+                    print(node, count)
                 reducer_idx += idx
 
             if stages[0] is None:
