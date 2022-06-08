@@ -680,19 +680,14 @@ class Dataset(Generic[T]):
             The shuffled dataset.
         """
 
-        def do_shuffle(block_list, clear_input_blocks: bool, *_):
+        def do_shuffle(block_list, *_):
             num_blocks = block_list.executed_num_blocks()  # Blocking.
             if num_blocks == 0:
                 return block_list, {}
-            if clear_input_blocks:
-                blocks = block_list.copy()
-                block_list.clear()
-            else:
-                blocks = block_list
 
-            blocks.randomize_block_order(seed)
+            block_list.randomize_block_order(seed)
 
-            return blocks, {}
+            return block_list, {}
 
         plan = self._plan.with_stage(
             AllToAllStage(
