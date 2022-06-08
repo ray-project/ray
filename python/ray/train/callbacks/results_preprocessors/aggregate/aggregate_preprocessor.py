@@ -3,13 +3,13 @@ from typing import Dict, List, Optional
 import warnings
 
 from ray.util.annotations import Deprecated
-from ray.train.callbacks.callback import _deprecation_msg
 from ray.train.callbacks.results_preprocessors.preprocessor import ResultsPreprocessor
 from ray.train.callbacks.results_preprocessors.aggregate.aggregate_fn import (
     AggregateFn,
     Average,
     Max,
     WeightedAverage,
+    _deprecation_msg,
 )
 from ray.train.callbacks.results_preprocessors.aggregate.aggregate_utils import (
     _get_metrics_from_results,

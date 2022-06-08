@@ -1,8 +1,10 @@
 import warnings
 from typing import List, Dict, Iterable, Union, Optional
 
-from ray.train.callbacks.results_preprocessors.preprocessor import ResultsPreprocessor
-from ray.train.callbacks.callback import _deprecation_msg
+from ray.train.callbacks.results_preprocessors.preprocessor import (
+    ResultsPreprocessor,
+    _deprecation_msg,
+)
 from ray.util.annotations import Deprecated
 
 

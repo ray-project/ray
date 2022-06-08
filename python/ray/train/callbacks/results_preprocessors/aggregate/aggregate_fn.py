@@ -8,8 +8,18 @@ from ray.train.callbacks.results_preprocessors.aggregate.aggregate_utils import 
     VALID_AGGREGATE_TYPES,
     _get_weights_from_results,
 )
-from ray.train.callbacks.callback import _deprecation_msg
 from ray.util.annotations import Deprecated
+
+_deprecation_msg = (
+    "`ray.train.callbacks.results_preprocessors.aggregate` and the `ray.train.Trainer` "
+    "API are "
+    "deprecated in Ray "
+    "2.0, and is replaced by Ray AI Runtime (Ray AIR). Ray AIR "
+    "(https://docs.ray.io/en/latest/ray-air/getting-started.html) "
+    "will provide greater functionality and a unified API "
+    "compared to the current Ray Train API. "
+    "This class will be removed in the future."
+)
 
 
 @Deprecated

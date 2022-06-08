@@ -4,6 +4,16 @@ from typing import List, Dict
 
 from ray.util.annotations import Deprecated
 
+_deprecation_msg = (
+    "`ray.train.callbacks.results_preprocessors` and the `ray.train.Trainer` API are "
+    "deprecated in Ray "
+    "2.0, and is replaced by Ray AI Runtime (Ray AIR). Ray AIR "
+    "(https://docs.ray.io/en/latest/ray-air/getting-started.html) "
+    "will provide greater functionality and a unified API "
+    "compared to the current Ray Train API. "
+    "This class will be removed in the future."
+)
+
 
 @Deprecated
 class ResultsPreprocessor(abc.ABC):
