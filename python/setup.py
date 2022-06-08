@@ -290,6 +290,7 @@ if setup_spec.type == SetupType.RAY:
         "frozenlist",
         "requests",
         "virtualenv",  # For pip runtime env.
+        "Jinja2 >= 3.0.3",
     ]
 
 
