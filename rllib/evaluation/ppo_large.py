@@ -1,9 +1,7 @@
 # Import the RL algorithm (Trainer) we would like to use.
 import ray
 from ray.rllib.agents.ppo import PPOTrainer
-import ray.util.collective as collective
 from ray.util.collective.types import Backend
-import cupy as cp
 
 # ray.init(address="auto")
 
@@ -18,12 +16,16 @@ config = {
     # Change this to "framework: torch", if you are using PyTorch.
     # Also, use "framework: tf2" for tf2.x eager execution.
     "framework": "torch",
-    "train_batch_size": 128,
+    "train_batch_size": 10,
+    "sgd_minibatch_size": 10,
     "num_sgd_iter": 1,
+    "min_sample_timesteps_per_reporting": 1,
+    "min_train_timesteps_per_reporting": 1,
+    "min_time_s_per_reporting": 0,
     # Tweak the default model provided automatically by RLlib,
     # given the environment's observation- and action spaces.
     "model": {
-        "fcnet_hiddens": [10000, 10000],
+        "fcnet_hiddens": [4096, 4096, 2048],
         "fcnet_activation": "relu",
     },
     # Set up a separate evaluation worker set for the
@@ -77,7 +79,7 @@ print(init_results)
 # )
 # print(f">>>>> results: {results}")
 
-for _ in range(3):
+for _ in range(50):
     print(ray.get(trainer_actor.train.remote()))
 
 # Evaluate the trained Trainer (and render each timestep to the shell's
