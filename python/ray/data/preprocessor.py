@@ -1,14 +1,20 @@
 import abc
 import warnings
 from enum import Enum
-from typing import Optional, TYPE_CHECKING
+from typing import Dict, Optional, Union, TYPE_CHECKING
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
+    import numpy as np
     import pandas as pd
+    import pyarrow
 
 from ray.data import Dataset
-from ray.air.predictor import DataBatchType
+
+# TODO move this to one place
+DataBatchType = Union[
+    "np.ndarray", "pd.DataFrame", "pyarrow.Table", Dict[str, "np.ndarray"]
+]
 
 
 @PublicAPI(stability="alpha")
