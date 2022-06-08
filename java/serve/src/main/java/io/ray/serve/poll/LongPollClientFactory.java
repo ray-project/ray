@@ -14,7 +14,7 @@ import io.ray.serve.common.Constants;
 import io.ray.serve.config.RayServeConfig;
 import io.ray.serve.controller.ServeController;
 import io.ray.serve.exception.RayServeException;
-import io.ray.serve.generated.ActorSet;
+import io.ray.serve.generated.ActorNameList;
 import io.ray.serve.replica.ReplicaContext;
 import io.ray.serve.util.CollectionUtil;
 import io.ray.serve.util.LogUtil;
@@ -58,10 +58,10 @@ public class LongPollClientFactory {
   static {
     DESERIALIZERS.put(LongPollNamespace.ROUTE_TABLE, body -> ServeProtoUtil.parseEndpointSet(body));
     DESERIALIZERS.put(
-        LongPollNamespace.REPLICA_HANDLES,
+        LongPollNamespace.RUNNING_REPLICAS,
         body -> {
           try {
-            return ActorSet.parseFrom(body);
+            return ActorNameList.parseFrom(body);
           } catch (InvalidProtocolBufferException e) {
             throw new RayServeException(
                 LogUtil.format("Failed to parse ActorSet from protobuf bytes."), e);

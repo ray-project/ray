@@ -10,7 +10,7 @@ import io.ray.serve.config.RayServeConfig;
 import io.ray.serve.controller.ControllerInfo;
 import io.ray.serve.deployment.DeploymentVersion;
 import io.ray.serve.deployment.DeploymentWrapper;
-import io.ray.serve.generated.ActorSet;
+import io.ray.serve.generated.ActorNameList;
 import io.ray.serve.generated.DeploymentLanguage;
 import io.ray.serve.generated.EndpointInfo;
 import io.ray.serve.proxy.HttpProxy;
@@ -89,7 +89,7 @@ public class ProxyActorTest {
           .get(endpointName)
           .getRouter()
           .getReplicaSet()
-          .updateWorkerReplicas(ActorSet.newBuilder().addNames(replicaTag).build());
+          .updateWorkerReplicas(ActorNameList.newBuilder().addNames(replicaTag).build());
 
       // Send request.
       HttpClient httpClient = HttpClientBuilder.create().build();

@@ -143,7 +143,7 @@ public class ReplicaConfig {
     }
     ReplicaConfig replicaConfig =
         new ReplicaConfig(
-            proto.getSerializedDeploymentDef().toString(), // TODO-xlang
+            proto.getSerializedDeploymentDef().toStringUtf8(), // TODO-xlang
             MessagePackSerializer.decode(proto.getInitArgs().toByteArray(), null), // TODO-xlang
             gson.fromJson(proto.getRayActorOptions(), Map.class));
     return replicaConfig;

@@ -340,7 +340,7 @@ class ServeController:
         version = deployment_config.version
         prev_version = deployment_config.prev_version
         replica_config = ReplicaConfig.from_proto_bytes(
-            replica_config_proto_bytes, deployment_config.get_api_client_lang()
+            replica_config_proto_bytes, deployment_config.need_pickle()
         )
 
         if prev_version is not None:

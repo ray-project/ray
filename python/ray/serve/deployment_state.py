@@ -301,7 +301,7 @@ class ActorReplicaWrapper:
         ):
             self._is_cross_language = True
             actor_def = ray.cross_language.java_actor_class(
-                "io.ray.serve.RayServeWrappedReplica"
+                "io.ray.serve.replica.RayServeWrappedReplica"
             )
             init_args = (
                 # String deploymentName,
@@ -311,7 +311,8 @@ class ActorReplicaWrapper:
                 # String deploymentDef
                 deployment_info.replica_config.func_or_class_name,
                 # byte[] initArgsbytes
-                msgpack_serialize(deployment_info.replica_config.init_args),
+                msgpack_serialize(
+                    deployment_info.replica_config.init_args) if deployment_info.deployment_config.api_language == DeploymentLanguage.PYTHON else deployment_info.replica_config.init_args,
                 # byte[] deploymentConfigBytes,
                 deployment_info.deployment_config.to_proto_bytes(),
                 # byte[] deploymentVersionBytes,
