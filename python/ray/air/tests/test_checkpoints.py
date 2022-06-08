@@ -7,7 +7,7 @@ from typing import Any
 
 import ray
 from ray.air.checkpoint import Checkpoint
-from ray.air.utils.remote_storage import delete_at_uri, _ensure_directory
+from ray.air._internal.remote_storage import delete_at_uri, _ensure_directory
 
 
 class CheckpointsConversionTest(unittest.TestCase):

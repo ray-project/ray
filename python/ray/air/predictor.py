@@ -1,10 +1,14 @@
 import abc
 
+import pandas as pd
+
 from ray.air.data_batch_type import DataBatchType
 from ray.air.checkpoint import Checkpoint
+from ray.air.util.data_batch_conversion import (
+    convert_batch_type_to_pandas,
+    convert_pandas_to_batch_type,
+)
 from ray.util.annotations import DeveloperAPI, PublicAPI
-
-import pandas as pd
 
 
 @PublicAPI(stability="alpha")
@@ -14,7 +18,7 @@ class PredictorNotSerializableException(RuntimeError):
     pass
 
 
-@DeveloperAPI
+@PublicAPI(stability="alpha")
 class Predictor(abc.ABC):
     """Predictors load models from checkpoints to perform inference.
 
@@ -76,21 +80,16 @@ class Predictor(abc.ABC):
         Returns:
             DataBatchType: Prediction result.
         """
-        from ray.air.utils.data_batch_conversion_utils import (
-            convert_batch_type_to_pandas,
-            convert_pandas_to_batch_type,
-        )
-
         data_df = convert_batch_type_to_pandas(data)
 
-        if hasattr(self, "preprocessor") and self.preprocessor:
+        if getattr(self, "preprocessor", None):
             data_df = self.preprocessor.transform_batch(data_df)
 
         predictions_df = self._predict_pandas(data_df, **kwargs)
         return convert_pandas_to_batch_type(predictions_df, type=type(data))
 
     @DeveloperAPI
-    def _predict_pandas(self, data: pd.DataFrame, **kwargs) -> pd.DataFrame:
+    def _predict_pandas(self, data: "pd.DataFrame", **kwargs) -> "pd.DataFrame":
         """Perform inference on a Pandas DataFrame.
 
         All predictors are expected to implement this method.

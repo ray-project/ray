@@ -24,7 +24,7 @@ def convert_batch_type_to_pandas(data: DataBatchType) -> pd.DataFrame:
         A pandas Dataframe representation of the input data.
 
     """
-    from ray.air.utils.tensor_extensions.pandas import TensorArray
+    from ray.air.util.tensor_extensions.pandas import TensorArray
 
     if isinstance(data, pd.DataFrame):
         return data
@@ -33,12 +33,17 @@ def convert_batch_type_to_pandas(data: DataBatchType) -> pd.DataFrame:
         if data.dtype == object:
             return pd.DataFrame({TENSOR_COLUMN_NAME: list(data)})
         else:
-
             return pd.DataFrame({TENSOR_COLUMN_NAME: TensorArray(data)})
 
     elif isinstance(data, dict):
         tensor_dict = {}
         for k, v in data.items():
+            if not isinstance(v, np.ndarray):
+                raise ValueError(
+                    "All values in the provided dict must be of type "
+                    f"np.ndarray. Found type {type(v)} for key {k} "
+                    f"instead."
+                )
             # Convert numpy arrays to TensorArray.
             tensor_dict[k] = TensorArray(v)
         return pd.DataFrame(tensor_dict)
@@ -46,7 +51,6 @@ def convert_batch_type_to_pandas(data: DataBatchType) -> pd.DataFrame:
     elif isinstance(data, pa.Table):
         return data.to_pandas()
     else:
-
         raise ValueError(
             f"Received data of type: {type(data)}, but expected it to be one "
             f"of {DataBatchType}"
@@ -73,7 +77,21 @@ def convert_pandas_to_batch_type(
         # If just a single column, return as a single tensor.
         if len(data.columns) == 1:
             return data.iloc[:, 0].to_numpy()
-        return data.to_numpy()
+
+        try:
+            return data.to_numpy()
+        except ValueError as e:
+            # Pandas DataFrame.values doesn't support extension arrays in all
+            # supported Pandas versions, so we check to see if this DataFrame
+            # contains any extensions arrays and do a manual conversion if so.
+            # See https://github.com/pandas-dev/pandas/pull/43160.
+            if any(
+                isinstance(dtype, pd.api.extensions.ExtensionDtype)
+                for dtype in data.dtypes
+            ):
+                return np.stack([col.to_numpy() for _, col in data.items()], axis=1)
+            else:
+                raise e from None
 
     elif type == dict:
         output_dict = {}

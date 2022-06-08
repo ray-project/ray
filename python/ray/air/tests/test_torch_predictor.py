@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import torch
 
-from ray.air.predictors.integrations.torch import TorchPredictor
+from ray.air.predictors.integrations.torch import TorchPredictor, to_air_checkpoint
 from ray.air.preprocessor import Preprocessor
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import PREPROCESSOR_KEY, MODEL_KEY
@@ -109,8 +109,8 @@ def test_predict_array_with_different_dtypes(model, input_dtype, expected_output
     assert predictions.dtype == expected_output_dtype
 
 
-def test_predict_array_from_checkpoint(model):
-    checkpoint = Checkpoint.from_dict({MODEL_KEY: model})
+def test_predict_array_no_training(model):
+    checkpoint = to_air_checkpoint(model)
     predictor = TorchPredictor.from_checkpoint(checkpoint)
 
     data_batch = np.array([[1], [2], [3]])

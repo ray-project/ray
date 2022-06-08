@@ -14,8 +14,8 @@ py_test(
 py_test(
     name = "check_ingest",
     size = "large",
-    main = "utils/check_ingest.py",
-    srcs = ["utils/check_ingest.py"],
+    main = "util/check_ingest.py",
+    srcs = ["util/check_ingest.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
@@ -181,6 +181,14 @@ py_test(
     name = "test_checkpoints",
     size = "small",
     srcs = ["tests/test_checkpoints.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_data_batch_conversion",
+    size = "small",
+    srcs = ["tests/test_data_batch_conversion.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
