@@ -12,6 +12,7 @@ from tensorflow.keras.callbacks import Callback
 
 import ray.train as train
 from ray.air.train.integrations.tensorflow import TensorflowTrainer
+from ray.air.config import ScalingConfig
 
 
 class TrainCheckpointReportCallback(Callback):
@@ -86,11 +87,10 @@ def train_tensorflow_mnist(
     num_workers: int = 2, use_gpu: bool = False, epochs: int = 4
 ) -> Result:
     config = {"lr": 1e-3, "batch_size": 64, "epochs": epochs}
-    scaling_config = dict(num_workers=num_workers, use_gpu=use_gpu)
     trainer = TensorflowTrainer(
         train_loop_per_worker=train_func,
         train_loop_config=config,
-        scaling_config=scaling_config,
+        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
     )
     results = trainer.fit()
     return results

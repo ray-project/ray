@@ -18,6 +18,7 @@ import torch
 import ray
 import ray.data
 from ray.air.train.integrations.huggingface import HuggingFaceTrainer
+from ray.air.config import ScalingConfig
 from ray.air.predictors.integrations.huggingface import HuggingFacePredictor
 from ray.air.batch_predictor import BatchPredictor
 
@@ -112,7 +113,7 @@ def main(
 
     trainer = HuggingFaceTrainer(
         trainer_init_per_worker=train_function,
-        scaling_config={"num_workers": num_workers, "use_gpu": use_gpu},
+        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
         datasets={"train": ray_train, "evaluation": ray_validation},
     )
     results = trainer.fit()
