@@ -1,22 +1,24 @@
 import logging
 from typing import Dict, List, Optional
+import warnings
 
-from ray.util.annotations import DeveloperAPI
-from ray.train.callbacks.results_preprocessors.preprocessor import ResultsPreprocessor
-from ray.train.callbacks.results_preprocessors.aggregate.aggregate_fn import (
+from ray.util.annotations import Deprecated
+from ray.train._internal.results_preprocessors.preprocessor import ResultsPreprocessor
+from ray.train._internal.results_preprocessors.aggregate.aggregate_fn import (
     AggregateFn,
     Average,
     Max,
     WeightedAverage,
+    _deprecation_msg,
 )
-from ray.train.callbacks.results_preprocessors.aggregate.aggregate_utils import (
+from ray.train._internal.results_preprocessors.aggregate.aggregate_utils import (
     _get_metrics_from_results,
 )
 
 logger = logging.getLogger(__name__)
 
 
-@DeveloperAPI
+@Deprecated
 class AggregateResultsPreprocessor(ResultsPreprocessor):
     """A preprocessor that aggregates training metrics from all workers.
 
@@ -30,6 +32,11 @@ class AggregateResultsPreprocessor(ResultsPreprocessor):
     """
 
     def __init__(self, aggregation_fn: AggregateFn, keys: Optional[List[str]] = None):
+        warnings.warn(
+            _deprecation_msg,
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.aggregate_fn = aggregation_fn
         self.keys = keys
 
@@ -79,6 +86,7 @@ class AggregateResultsPreprocessor(ResultsPreprocessor):
         return results
 
 
+@Deprecated
 class AverageResultsPreprocessor(AggregateResultsPreprocessor):
     """A preprocessor that averages results with equal weight.
 
@@ -102,6 +110,7 @@ class AverageResultsPreprocessor(AggregateResultsPreprocessor):
         super().__init__(Average(), keys)
 
 
+@Deprecated
 class MaxResultsPreprocessor(AggregateResultsPreprocessor):
     """A preprocessor that computes maximum values of specified keys.
 
@@ -125,6 +134,7 @@ class MaxResultsPreprocessor(AggregateResultsPreprocessor):
         super().__init__(Max(), keys)
 
 
+@Deprecated
 class WeightedAverageResultsPreprocessor(AggregateResultsPreprocessor):
     """A preprocessor that performs weighted average over metrics.
 

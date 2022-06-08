@@ -10,7 +10,7 @@ RayDataset = Union["Dataset", "DatasetPipeline"]
 
 
 @dataclass
-class _RayDatasetSpec:
+class RayDatasetSpec:
     """Configuration for Ray Datasets to pass to the training workers.
 
     dataset_or_dict: An optional Ray Dataset (or DatasetPipeline) or a dictionary of

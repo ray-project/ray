@@ -26,9 +26,9 @@ from ray.air.trainer import GenDataset
 from ray.air.checkpoint import Checkpoint
 from ray.air.train.data_parallel_ingest import _DataParallelIngestSpec
 from ray.train import BackendConfig, TrainingIterator
-from ray.train.backend import BackendExecutor
-from ray.train._checkpoint import TuneCheckpointManager
-from ray.train.utils import construct_train_func
+from ray.train._internal.backend_executor import BackendExecutor
+from ray.train._internal.checkpoint import TuneCheckpointManager
+from ray.train._internal.utils import construct_train_func
 from ray.util.annotations import DeveloperAPI
 from ray.util.ml_utils.checkpoint_manager import CheckpointStrategy, _TrackedCheckpoint
 

@@ -1,16 +1,37 @@
 import abc
 from typing import Dict, List, Union, Optional
+import warnings
 
 import numpy as np
 
-from ray.train.callbacks.results_preprocessors.aggregate.aggregate_utils import (
+from ray.train._internal.results_preprocessors.aggregate.aggregate_utils import (
     VALID_AGGREGATE_TYPES,
     _get_weights_from_results,
 )
+from ray.util.annotations import Deprecated
+
+_deprecation_msg = (
+    "`ray.train.callbacks.results_preprocessors.aggregate` and the `ray.train.Trainer` "
+    "API are "
+    "deprecated in Ray "
+    "2.0, and is replaced by Ray AI Runtime (Ray AIR). Ray AIR "
+    "(https://docs.ray.io/en/latest/ray-air/getting-started.html) "
+    "will provide greater functionality and a unified API "
+    "compared to the current Ray Train API. "
+    "This class will be removed in the future."
+)
 
 
+@Deprecated
 class AggregateFn(abc.ABC):
     """An abstract class for aggregation function."""
+
+    def __init__(self):
+        warnings.warn(
+            _deprecation_msg,
+            DeprecationWarning,
+            stacklevel=2,
+        )
 
     def __call__(
         self, values: List[Union[VALID_AGGREGATE_TYPES]]
@@ -43,6 +64,7 @@ class AggregateFn(abc.ABC):
         return str(self) + f"({key})"
 
 
+@Deprecated
 class Average(AggregateFn):
     """Average aggregation class."""
 
@@ -57,6 +79,7 @@ class Average(AggregateFn):
         return "avg"
 
 
+@Deprecated
 class Max(AggregateFn):
     """Maximum aggregation class."""
 
@@ -71,6 +94,7 @@ class Max(AggregateFn):
         return "max"
 
 
+@Deprecated
 class WeightedAverage(AggregateFn):
     """Weighted average aggregation class.
 
@@ -81,6 +105,11 @@ class WeightedAverage(AggregateFn):
     """
 
     def __init__(self, weight_key: Optional[str] = None):
+        warnings.warn(
+            _deprecation_msg,
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.weight_key = weight_key
         self.weights = None
 

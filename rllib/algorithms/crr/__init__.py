@@ -1,4 +1,4 @@
-from .crr import CRR, CRRConfig
+from ray.rllib.algorithms.crr.crr import CRR, CRRConfig
 
 __all__ = [
     "CRR",
