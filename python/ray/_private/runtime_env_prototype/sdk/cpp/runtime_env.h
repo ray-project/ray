@@ -1,5 +1,6 @@
 #pragma once
 #include "nlohmann/json.hpp"
+#include "plugin_schema_manager.h"
 
 using json = nlohmann::json;
 
@@ -9,6 +10,7 @@ class RuntimeEnv {
     template <typename T>
     void Set(std::string name, T typed_runtime_env) {
       json typed_runtime_env_j = typed_runtime_env;
+      RuntimeEnvPluginSchemaManager::GetInstance().validate(name, typed_runtime_env_j);
       j_[name] = typed_runtime_env_j;
     }
 

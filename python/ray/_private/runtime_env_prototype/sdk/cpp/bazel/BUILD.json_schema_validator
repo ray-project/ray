@@ -1,0 +1,19 @@
+cc_library(
+    name = "json_schema_validator",
+    hdrs = glob([
+        "src/**/*.hpp",
+    ]),
+    srcs = glob([
+        "src/**/*.hpp",
+        "src/**/*.cpp",
+    ]),
+    strip_include_prefix = "src",
+    deps = [
+        "@nlohmann_json",
+    ],
+    copts = [
+        "-Wno-switch",
+    ],
+    visibility = ["//visibility:public"],
+    alwayslink = 1,
+)

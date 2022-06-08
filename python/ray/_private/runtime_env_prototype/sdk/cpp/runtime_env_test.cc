@@ -1,9 +1,17 @@
 #include <iostream>
 #include "pip.h"
 #include "runtime_env.h"
+#include "plugin_schema_manager.h"
 
 
 int main(int argc, char **argv) {
+  // Load plugin schemas
+  std::vector<std::string> schema_paths = {
+    "/home/admin/ray/python/ray/_private/runtime_env_prototype/pip/pip_schema.json",
+    "/home/admin/ray/python/ray/_private/runtime_env_prototype/working_dir/working_dir_schema.json"
+  };
+  RuntimeEnvPluginSchemaManager::GetInstance().LoadSchemas(schema_paths);
+
   RuntimeEnv runtime_env;
   // Set pip
   std::vector<std::string> packages = {"requests"};

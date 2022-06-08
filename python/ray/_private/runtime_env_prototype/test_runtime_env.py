@@ -1,8 +1,14 @@
+import os
 import pytest
 from ray._private.runtime_env_prototype.sdk.runtime_env import RuntimeEnv
 from ray._private.runtime_env_prototype.pip.sdk.pip import Pip
+from ray._private.runtime_env_prototype.pip import pip_plugin
+from ray._private.runtime_env_prototype.working_dir import working_dir_plugin
 from ray._private.runtime_env_prototype.pluggability.plugin_manager import (
     RuntimeEnvPluginManager,
+)
+from ray._private.runtime_env_prototype.pluggability.plugin_schema_manager import (
+    RuntimeEnvPluginSchemaManager,
 )
 from ray.core.generated.common_pb2 import Language
 import json
@@ -16,6 +22,15 @@ def test_runtime_env():
         "WorkingDirPlugin",
     ]
     RuntimeEnvPluginManager.load_plugins(plugins)
+
+    # [Worker internal] Load json schemas.
+    schema_paths = [
+        os.path.join(
+            os.path.dirname(pip_plugin.__file__), "pip_schema.json"),
+        os.path.join(
+            os.path.dirname(working_dir_plugin.__file__), "working_dir_schema.json")
+    ]
+    RuntimeEnvPluginSchemaManager.load_schemas(schema_paths)
 
     # [user code] Construct runtime env in user code.
     # Strong-typed API
