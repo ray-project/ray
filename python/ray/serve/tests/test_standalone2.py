@@ -94,7 +94,7 @@ def test_serve_namespace(shutdown_ray, detached, ray_namespace):
 
         @serve.deployment
         def f(*args):
-            pass
+            return "got f"
 
         f.deploy()
 
@@ -102,6 +102,7 @@ def test_serve_namespace(shutdown_ray, detached, ray_namespace):
 
         assert len(actors) == 3
         assert all(actor["namespace"] == SERVE_NAMESPACE for actor in actors)
+        assert requests.get("http://localhost:8000/f").text == "got f"
 
         serve.shutdown()
 
