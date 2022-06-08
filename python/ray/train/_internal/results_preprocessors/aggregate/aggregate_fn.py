@@ -3,7 +3,7 @@ from typing import Dict, List, Union, Optional
 
 import numpy as np
 
-from ray.train.callbacks.results_preprocessors.aggregate.aggregate_utils import (
+from ray.train._internal.results_preprocessors.aggregate.aggregate_utils import (
     VALID_AGGREGATE_TYPES,
     _get_weights_from_results,
 )
