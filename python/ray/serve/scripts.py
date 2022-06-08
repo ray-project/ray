@@ -15,6 +15,7 @@ from ray.serve.constants import (
     DEFAULT_CHECKPOINT_PATH,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
+    SERVE_NAMESPACE,
 )
 from ray.serve.schema import ServeApplicationSchema
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
@@ -59,14 +60,6 @@ def cli():
     help=RAY_INIT_ADDRESS_HELP_STR,
 )
 @click.option(
-    "--namespace",
-    "-n",
-    default="serve",
-    required=False,
-    type=str,
-    help='Ray namespace to connect to. Defaults to "serve".',
-)
-@click.option(
     "--http-host",
     default=DEFAULT_HTTP_HOST,
     required=False,
@@ -96,7 +89,6 @@ def cli():
 )
 def start(
     address,
-    namespace,
     http_host,
     http_port,
     http_location,
@@ -104,7 +96,7 @@ def start(
 ):
     ray.init(
         address=address,
-        namespace=namespace,
+        namespace=SERVE_NAMESPACE,
     )
     serve.start(
         detached=True,
@@ -126,18 +118,10 @@ def start(
     type=str,
     help=RAY_INIT_ADDRESS_HELP_STR,
 )
-@click.option(
-    "--namespace",
-    "-n",
-    default="serve",
-    required=False,
-    type=str,
-    help='Ray namespace to connect to. Defaults to "serve".',
-)
 def shutdown(address: str, namespace: str):
     ray.init(
         address=address,
-        namespace=namespace,
+        namespace=SERVE_NAMESPACE,
     )
     serve.context._connect()
     serve.shutdown()
@@ -290,7 +274,7 @@ def run(
         app_or_node = import_attr(import_path)
 
     # Setting the runtime_env here will set defaults for the deployments.
-    ray.init(address=address, namespace="serve", runtime_env=final_runtime_env)
+    ray.init(address=address, namespace=SERVE_NAMESPACE, runtime_env=final_runtime_env)
 
     try:
         serve.run(app_or_node, host=host, port=port)
