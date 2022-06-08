@@ -289,7 +289,6 @@ class ActorReplicaWrapper:
             deployment_info.deployment_config.to_proto_bytes(),
             version,
             self._controller_name,
-            SERVE_NAMESPACE,
             self._detached,
         )
         # TODO(simon): unify the constructor arguments across language
