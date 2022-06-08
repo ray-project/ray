@@ -58,6 +58,29 @@ class TensorflowPredictor(Predictor):
         )
 
     def _predict_pandas(self, data: "pd.DataFrame", dtype: Optional[tf.dtypes.DType] = None) -> "pd.DataFrame":
+        # if isinstance(data, pd.DataFrame):
+        #     if feature_columns:
+        #         data = data[feature_columns]
+        #     tensor = convert_pandas_to_tf_tensor(data, dtype=dtype)
+        # else:
+        #     tensor = tf.convert_to_tensor(data, dtype=dtype)
+
+        # TensorFlow model objects cannot be pickled, therefore we use
+        # a callable that returns the model and initialize it here,
+        # instead of having an initialized model object as an attribute.
+        model = self.model_definition()
+
+        if self.model_weights is not None:
+            input_shape = list(tensor.shape)
+            # The batch axis can contain varying number of elements, so we set
+            # the shape along the axis to `None`.
+            input_shape[0] = None
+
+            model.build(input_shape=input_shape)
+            model.set_weights(self.model_weights)
+
+        prediction = list(model(tensor).numpy())
+        return pd.DataFrame({"predictions": prediction}, columns=["predictions"])
 
 
 
@@ -131,26 +154,4 @@ class TensorflowPredictor(Predictor):
         super(TensorflowPredictor, self).predict(data=data, dtype=dtype)
 
 
-        if isinstance(data, pd.DataFrame):
-            if feature_columns:
-                data = data[feature_columns]
-            tensor = convert_pandas_to_tf_tensor(data, dtype=dtype)
-        else:
-            tensor = tf.convert_to_tensor(data, dtype=dtype)
 
-        # TensorFlow model objects cannot be pickled, therefore we use
-        # a callable that returns the model and initialize it here,
-        # instead of having an initialized model object as an attribute.
-        model = self.model_definition()
-
-        if self.model_weights is not None:
-            input_shape = list(tensor.shape)
-            # The batch axis can contain varying number of elements, so we set
-            # the shape along the axis to `None`.
-            input_shape[0] = None
-
-            model.build(input_shape=input_shape)
-            model.set_weights(self.model_weights)
-
-        prediction = list(model(tensor).numpy())
-        return pd.DataFrame({"predictions": prediction}, columns=["predictions"])
