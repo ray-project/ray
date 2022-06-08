@@ -140,8 +140,8 @@ class Trainer:
         max_retries: int = 3,
     ):
         warnings.warn(
-            "The `ray.train.Trainer` API will be deprecated in Ray "
-            "2.0, and will be replaced by Ray AI Runtime (Ray AIR). Ray AIR ("
+            "The `ray.train.Trainer` API is deprecated in Ray "
+            "2.0, and is replaced by Ray AI Runtime (Ray AIR). Ray AIR ("
             "https://docs.ray.io/en/latest/ray-air/getting-started.html) will "
             "provide greater functionality than `ray.train.Trainer`, "
             "and with a more flexible and easy-to-use API.",
@@ -635,11 +635,7 @@ class TrainWorkerGroup:
 
     def __init__(self, worker_group: WorkerGroup):
         warnings.warn(
-            "The `ray.train.trainer.WorkerGroup` API will be deprecated in Ray "
-            "2.0, and will be replaced by Ray AI Runtime (Ray AIR). Ray AIR ("
-            "https://docs.ray.io/en/latest/ray-air/getting-started.html) will "
-            "provide greater functionality than `ray.train.Trainer`, "
-            "and with a more flexible and easy-to-use API.",
+            "The `ray.train.trainer.WorkerGroup` API is deprecated in Ray 2.0",
             DeprecationWarning,
             stacklevel=2,
         )
