@@ -98,8 +98,10 @@ def get_cloud_sync_client(remote_path) -> "CommandBasedClient":
                 "Upload uri starting with '{}' requires hdfs tool"
                 " to be installed".format(HDFS_PREFIX)
             )
-        sync_up_template = "hdfs dfs -put -f {source} {target}"
-        sync_down_template = "hdfs dfs -get -f {source} {target}"
+        sync_up_template = (
+            "hdfs dfs -mkdir -p {target}/ && hdfs dfs -put -f {source}/ {target}/"
+        )
+        sync_down_template = "hdfs dfs -get -f {source}/ {target}/"
         delete_template = "hdfs dfs -rm -r {target}"
         exclude_template = None
     else:

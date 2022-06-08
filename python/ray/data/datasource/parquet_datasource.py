@@ -221,8 +221,11 @@ def _fetch_metadata_remotely(
         for pcs in np.array_split(pieces, parallelism):
             if len(pcs) == 0:
                 continue
-            metas.append(remote_fetch_metadata.options(
-                scheduling_strategy="SPREAD").remote(cloudpickle.dumps(pcs)))
+            metas.append(
+                remote_fetch_metadata.options(scheduling_strategy="SPREAD").remote(
+                    cloudpickle.dumps(pcs)
+                )
+            )
     finally:
         _deregister_parquet_file_fragment_serialization()
     metas = meta_fetch_bar.fetch_until_complete(metas)
