@@ -241,6 +241,36 @@ py_test(
     args = ["--yaml-dir=tuned_examples/cql"]
 )
 
+
+# CRR
+py_test(
+    name = "learning_tests_pendulum_crr",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:ml", "torch_only", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    # Include an offline json data file as well.
+    data = [
+        "tuned_examples/crr/pendulum-v1-crr.yaml",
+        "tests/data/pendulum/pendulum_replay_v1.1.0.zip",
+    ],
+    args = ["--yaml-dir=tuned_examples/crr"]
+)
+
+py_test(
+    name = "learning_tests_cartpole_crr",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:ml", "torch_only", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    # Include an offline json data file as well.
+    data = [
+        "tuned_examples/crr/cartpole-v0-crr.yaml",
+        "tests/data/cartpole/large.json",
+    ],
+    args = ["--yaml-dir=tuned_examples/crr", '--framework=torch']
+)
+
 # DDPG
 # py_test(
 #   name = "learning_tests_pendulum_ddpg",
@@ -761,6 +791,14 @@ py_test(
     tags = ["team:ml", "algorithms_dir"],
     size = "medium",
     srcs = ["algorithms/cql/tests/test_cql.py"]
+)
+
+# CRR
+py_test(
+    name = "test_crr",
+    tags = ["team:ml", "algorithms_dir"],
+    size = "medium",
+    srcs = ["algorithms/crr/tests/test_crr.py"]
 )
 
 # DDPG

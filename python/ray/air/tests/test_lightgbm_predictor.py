@@ -1,7 +1,10 @@
 import os
 import pytest
 
-from ray.air.predictors.integrations.lightgbm import LightGBMPredictor
+from ray.air.predictors.integrations.lightgbm import (
+    LightGBMPredictor,
+    to_air_checkpoint,
+)
 from ray.air.preprocessor import Preprocessor
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import MODEL_KEY
@@ -88,16 +91,9 @@ def test_predict_feature_columns_pandas():
     assert hasattr(predictor.preprocessor, "_batch_transformed")
 
 
-def test_predict_no_preprocessor():
+def test_predict_no_preprocessor_no_training():
     with tempfile.TemporaryDirectory() as tmpdir:
-        # This somewhat convoluted procedure is the same as in the
-        # Trainers. The reason for saving model to disk instead
-        # of directly to the dict as bytes is due to all callbacks
-        # following save to disk logic. GBDT models are small
-        # enough that IO should not be an issue.
-        model.save_model(os.path.join(tmpdir, MODEL_KEY))
-
-        checkpoint = Checkpoint.from_directory(tmpdir)
+        checkpoint = to_air_checkpoint(tmpdir, booster=model)
         predictor = LightGBMPredictor.from_checkpoint(checkpoint)
 
     data_batch = np.array([[1, 2], [3, 4], [5, 6]])
