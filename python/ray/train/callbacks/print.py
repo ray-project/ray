@@ -4,8 +4,10 @@ import warnings
 
 from ray.train.callbacks import TrainingCallback
 from ray.train.callbacks.callback import _deprecation_msg
+from ray.util.annotations import Deprecated
 
 
+@Deprecated
 class PrintCallback(TrainingCallback):
     """A callback that prints training results to STDOUT.
 

@@ -1,10 +1,10 @@
 import abc
 from typing import List, Dict
 
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import Deprecated
 
 
-@DeveloperAPI
+@Deprecated
 class ResultsPreprocessor(abc.ABC):
     """Abstract class for preprocessing Train results."""
 
@@ -27,7 +27,7 @@ class ResultsPreprocessor(abc.ABC):
         return results
 
 
-@DeveloperAPI
+@Deprecated
 class SequentialResultsPreprocessor(ResultsPreprocessor):
     """A processor that sequentially runs a series of preprocessing steps.
 

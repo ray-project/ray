@@ -7,8 +7,10 @@ from ray.train.callbacks.results_preprocessors.aggregate.aggregate_utils import 
     VALID_AGGREGATE_TYPES,
     _get_weights_from_results,
 )
+from ray.util.annotations import Deprecated
 
 
+@Deprecated
 class AggregateFn(abc.ABC):
     """An abstract class for aggregation function."""
 
@@ -43,6 +45,7 @@ class AggregateFn(abc.ABC):
         return str(self) + f"({key})"
 
 
+@Deprecated
 class Average(AggregateFn):
     """Average aggregation class."""
 
@@ -57,6 +60,7 @@ class Average(AggregateFn):
         return "avg"
 
 
+@Deprecated
 class Max(AggregateFn):
     """Maximum aggregation class."""
 
@@ -71,6 +75,7 @@ class Max(AggregateFn):
         return "max"
 
 
+@Deprecated
 class WeightedAverage(AggregateFn):
     """Weighted average aggregation class.
 
