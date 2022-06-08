@@ -126,9 +126,7 @@ def get_remote_model(remote_model_checkpoint_path):
 
 
 def get_model(model_checkpoint_path):
-    checkpoint_dict = Trainer.load_checkpoint_from_path(
-        model_checkpoint_path + "/checkpoint"
-    )
+    checkpoint_dict = Trainer.load_checkpoint_from_path(model_checkpoint_path)
     model_state = checkpoint_dict["model_state_dict"]
 
     model = ResNet18(None)

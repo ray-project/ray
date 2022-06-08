@@ -11,7 +11,7 @@ marwil-halfcheetahbulletenv-v0:
         input: ["~/halfcheetah_expert_sac.zip"]
         actions_in_input_normalized: true
         # Switch off input evaluation (data does not contain action probs).
-        off_policy_estimation_methods: []
+        off_policy_estimation_methods: {}
 
         num_gpus: 1
 

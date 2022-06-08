@@ -25,12 +25,12 @@ from ray.rllib.utils.typing import (
 logger = logging.getLogger(__name__)
 
 
-class DREAMERConfig(TrainerConfig):
-    """Defines a PPOTrainer configuration class from which a PPOTrainer can be built.
+class DreamerConfig(TrainerConfig):
+    """Defines a configuration class from which a Dreamer Trainer can be built.
 
     Example:
-        >>> from ray.rllib.algorithms.dreamer import DREAMERConfig
-        >>> config = DREAMERConfig().training(gamma=0.9, lr=0.01)\
+        >>> from ray.rllib.algorithms.dreamer import DreamerConfig
+        >>> config = DreamerConfig().training(gamma=0.9, lr=0.01)\
         ...     .resources(num_gpus=0)\
         ...     .rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())
@@ -40,8 +40,8 @@ class DREAMERConfig(TrainerConfig):
 
     Example:
         >>> from ray import tune
-        >>> from ray.rllib.algorithms.dreamer import DREAMERConfig
-        >>> config = DREAMERConfig()
+        >>> from ray.rllib.algorithms.dreamer import DreamerConfig
+        >>> config = DreamerConfig()
         >>> # Print out some default values.
         >>> print(config.clip_param)
         >>> # Update the config object.
@@ -51,7 +51,7 @@ class DREAMERConfig(TrainerConfig):
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
         >>> tune.run(
-        ...     "DREAMER",
+        ...     "Dreamer",
         ...     stop={"episode_reward_mean": 200},
         ...     config=config.to_dict(),
         ... )
@@ -59,7 +59,7 @@ class DREAMERConfig(TrainerConfig):
 
     def __init__(self):
         """Initializes a PPOConfig instance."""
-        super().__init__(trainer_class=DREAMERTrainer)
+        super().__init__(trainer_class=Dreamer)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -129,7 +129,7 @@ class DREAMERConfig(TrainerConfig):
         explore_noise: Optional[float] = None,
         dreamer_model: Optional[dict] = None,
         **kwargs,
-    ) -> "DREAMERConfig":
+    ) -> "DreamerConfig":
         """
 
         Args:
@@ -291,11 +291,11 @@ class DreamerIteration:
         return _postprocess_gif(gif=gif)
 
 
-class DREAMERTrainer(Trainer):
+class Dreamer(Trainer):
     @classmethod
     @override(Trainer)
     def get_default_config(cls) -> TrainerConfigDict:
-        return DREAMERConfig().to_dict()
+        return DreamerConfig().to_dict()
 
     @override(Trainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
@@ -416,14 +416,14 @@ class DREAMERTrainer(Trainer):
         return results
 
 
-# Deprecated: Use ray.rllib.algorithms.dreamer.DREAMERConfig instead!
+# Deprecated: Use ray.rllib.algorithms.dreamer.DreamerConfig instead!
 class _deprecated_default_config(dict):
     def __init__(self):
-        super().__init__(DREAMERConfig().to_dict())
+        super().__init__(DreamerConfig().to_dict())
 
     @Deprecated(
         old="ray.rllib.algorithms.dreamer.dreamer.DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.dreamer.dreamer.DREAMERConfig(...)",
+        new="ray.rllib.algorithms.dreamer.dreamer.DreamerConfig(...)",
         error=False,
     )
     def __getitem__(self, item):

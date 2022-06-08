@@ -16,7 +16,20 @@ import warnings
 from abc import ABCMeta, abstractmethod
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Generic,
+    Iterator,
+    List,
+    Optional,
+    Sequence,
+    Tuple,
+    TypeVar,
+    Union,
+    overload,
+)
 
 # Ray modules
 import ray.cloudpickle as pickle
@@ -87,6 +100,188 @@ RESTORE_WORKER_MODE = 4
 # into the program using Ray. Ray provides a default configuration at
 # entry/init points.
 logger = logging.getLogger(__name__)
+
+
+T0 = TypeVar("T0")
+T1 = TypeVar("T1")
+T2 = TypeVar("T2")
+T3 = TypeVar("T3")
+T4 = TypeVar("T4")
+T5 = TypeVar("T5")
+T6 = TypeVar("T6")
+T7 = TypeVar("T7")
+T8 = TypeVar("T8")
+T9 = TypeVar("T9")
+R = TypeVar("R")
+
+
+class RemoteFunctionNoArgs(Generic[R]):
+    def __init__(self, function: Callable[[], R]) -> None:
+        pass
+
+    def remote(
+        self,
+    ) -> "ObjectRef[R]":
+        ...
+
+
+class RemoteFunction0(Generic[R, T0]):
+    def __init__(self, function: Callable[[T0], R]) -> None:
+        pass
+
+    def remote(
+        self,
+        __arg0: "Union[T0, ObjectRef[T0]]",
+    ) -> "ObjectRef[R]":
+        ...
+
+
+class RemoteFunction1(Generic[R, T0, T1]):
+    def __init__(self, function: Callable[[T0, T1], R]) -> None:
+        pass
+
+    def remote(
+        self,
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
+    ) -> "ObjectRef[R]":
+        ...
+
+
+class RemoteFunction2(Generic[R, T0, T1, T2]):
+    def __init__(self, function: Callable[[T0, T1, T2], R]) -> None:
+        pass
+
+    def remote(
+        self,
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
+        __arg2: "Union[T2, ObjectRef[T2]]",
+    ) -> "ObjectRef[R]":
+        ...
+
+
+class RemoteFunction3(Generic[R, T0, T1, T2, T3]):
+    def __init__(self, function: Callable[[T0, T1, T2, T3], R]) -> None:
+        pass
+
+    def remote(
+        self,
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
+        __arg2: "Union[T2, ObjectRef[T2]]",
+        __arg3: "Union[T3, ObjectRef[T3]]",
+    ) -> "ObjectRef[R]":
+        ...
+
+
+class RemoteFunction4(Generic[R, T0, T1, T2, T3, T4]):
+    def __init__(self, function: Callable[[T0, T1, T2, T3, T4], R]) -> None:
+        pass
+
+    def remote(
+        self,
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
+        __arg2: "Union[T2, ObjectRef[T2]]",
+        __arg3: "Union[T3, ObjectRef[T3]]",
+        __arg4: "Union[T4, ObjectRef[T4]]",
+    ) -> "ObjectRef[R]":
+        ...
+
+
+class RemoteFunction5(Generic[R, T0, T1, T2, T3, T4, T5]):
+    def __init__(self, function: Callable[[T0, T1, T2, T3, T4, T5], R]) -> None:
+        pass
+
+    def remote(
+        self,
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
+        __arg2: "Union[T2, ObjectRef[T2]]",
+        __arg3: "Union[T3, ObjectRef[T3]]",
+        __arg4: "Union[T4, ObjectRef[T4]]",
+        __arg5: "Union[T5, ObjectRef[T5]]",
+    ) -> "ObjectRef[R]":
+        ...
+
+
+class RemoteFunction6(Generic[R, T0, T1, T2, T3, T4, T5, T6]):
+    def __init__(self, function: Callable[[T0, T1, T2, T3, T4, T5, T6], R]) -> None:
+        pass
+
+    def remote(
+        self,
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
+        __arg2: "Union[T2, ObjectRef[T2]]",
+        __arg3: "Union[T3, ObjectRef[T3]]",
+        __arg4: "Union[T4, ObjectRef[T4]]",
+        __arg5: "Union[T5, ObjectRef[T5]]",
+        __arg6: "Union[T6, ObjectRef[T6]]",
+    ) -> "ObjectRef[R]":
+        ...
+
+
+class RemoteFunction7(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7]):
+    def __init__(self, function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7], R]) -> None:
+        pass
+
+    def remote(
+        self,
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
+        __arg2: "Union[T2, ObjectRef[T2]]",
+        __arg3: "Union[T3, ObjectRef[T3]]",
+        __arg4: "Union[T4, ObjectRef[T4]]",
+        __arg5: "Union[T5, ObjectRef[T5]]",
+        __arg6: "Union[T6, ObjectRef[T6]]",
+        __arg7: "Union[T7, ObjectRef[T7]]",
+    ) -> "ObjectRef[R]":
+        ...
+
+
+class RemoteFunction8(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8]):
+    def __init__(
+        self, function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8], R]
+    ) -> None:
+        pass
+
+    def remote(
+        self,
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
+        __arg2: "Union[T2, ObjectRef[T2]]",
+        __arg3: "Union[T3, ObjectRef[T3]]",
+        __arg4: "Union[T4, ObjectRef[T4]]",
+        __arg5: "Union[T5, ObjectRef[T5]]",
+        __arg6: "Union[T6, ObjectRef[T6]]",
+        __arg7: "Union[T7, ObjectRef[T7]]",
+        __arg8: "Union[T8, ObjectRef[T8]]",
+    ) -> "ObjectRef[R]":
+        ...
+
+
+class RemoteFunction9(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
+    def __init__(
+        self, function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8, T9], R]
+    ) -> None:
+        pass
+
+    def remote(
+        self,
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
+        __arg2: "Union[T2, ObjectRef[T2]]",
+        __arg3: "Union[T3, ObjectRef[T3]]",
+        __arg4: "Union[T4, ObjectRef[T4]]",
+        __arg5: "Union[T5, ObjectRef[T5]]",
+        __arg6: "Union[T6, ObjectRef[T6]]",
+        __arg7: "Union[T7, ObjectRef[T7]]",
+        __arg8: "Union[T8, ObjectRef[T8]]",
+        __arg9: "Union[T9, ObjectRef[T9]]",
+    ) -> "ObjectRef[R]":
+        ...
 
 
 # Visible for testing.
@@ -698,24 +893,11 @@ def init(
     job_config: "ray.job_config.JobConfig" = None,
     configure_logging: bool = True,
     logging_level: int = ray_constants.LOGGER_LEVEL,
-    logging_format: str = ray_constants.LOGGER_FORMAT,
+    logging_format: Optional[str] = None,
     log_to_driver: bool = True,
     namespace: Optional[str] = None,
     runtime_env: Optional[Union[Dict[str, Any], "RuntimeEnv"]] = None,  # noqa: F821
     storage: Optional[str] = None,
-    # The following are unstable parameters and their use is discouraged.
-    _enable_object_reconstruction: bool = False,
-    _redis_max_memory: Optional[int] = None,
-    _plasma_directory: Optional[str] = None,
-    _node_ip_address: str = ray_constants.NODE_DEFAULT_IP,
-    _driver_object_store_memory: Optional[int] = None,
-    _memory: Optional[int] = None,
-    _redis_password: str = ray_constants.REDIS_DEFAULT_PASSWORD,
-    _temp_dir: Optional[str] = None,
-    _metrics_export_port: Optional[int] = None,
-    _system_config: Optional[Dict[str, str]] = None,
-    _tracing_startup_hook: Optional[Callable] = None,
-    _node_name: str = None,
     **kwargs,
 ) -> BaseContext:
     """
@@ -852,6 +1034,33 @@ def init(
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
+
+    # Parse the hidden options:
+    _enable_object_reconstruction: bool = kwargs.pop(
+        "_enable_object_reconstruction", False
+    )
+    _redis_max_memory: Optional[int] = kwargs.pop("_redis_max_memory", None)
+    _plasma_directory: Optional[str] = kwargs.pop("_plasma_directory", None)
+    _node_ip_address: str = kwargs.pop(
+        "_node_ip_address", ray_constants.NODE_DEFAULT_IP
+    )
+    _driver_object_store_memory: Optional[int] = kwargs.pop(
+        "_driver_object_store_memory", None
+    )
+    _memory: Optional[int] = kwargs.pop("_memory", None)
+    _redis_password: str = kwargs.pop(
+        "_redis_password", ray_constants.REDIS_DEFAULT_PASSWORD
+    )
+    _temp_dir: Optional[str] = kwargs.pop("_temp_dir", None)
+    _metrics_export_port: Optional[int] = kwargs.pop("_metrics_export_port", None)
+    _system_config: Optional[Dict[str, str]] = kwargs.pop("_system_config", None)
+    _tracing_startup_hook: Optional[Callable] = kwargs.pop(
+        "_tracing_startup_hook", None
+    )
+    _node_name: str = kwargs.pop("_node_name", None)
+
+    if not logging_format:
+        logging_format = ray_constants.LOGGER_FORMAT
 
     # If available, use RAY_ADDRESS to override if the address was left
     # unspecified, or set to "auto" in the call to init
@@ -1770,10 +1979,29 @@ def show_in_dashboard(message: str, key: str = "", dtype: str = "text"):
 blocking_get_inside_async_warned = False
 
 
+@overload
+def get(
+    object_refs: "Sequence[ObjectRef[Any]]", *, timeout: Optional[float] = None
+) -> List[Any]:
+    ...
+
+
+@overload
+def get(
+    object_refs: "Sequence[ObjectRef[R]]", *, timeout: Optional[float] = None
+) -> List[R]:
+    ...
+
+
+@overload
+def get(object_refs: "ObjectRef[R]", *, timeout: Optional[float] = None) -> R:
+    ...
+
+
 @PublicAPI
 @client_mode_hook(auto_init=True)
 def get(
-    object_refs: Union[ray.ObjectRef, List[ray.ObjectRef]],
+    object_refs: Union[ray.ObjectRef, Sequence[ray.ObjectRef]],
     *,
     timeout: Optional[float] = None,
 ) -> Union[Any, List[Any]]:
@@ -1868,7 +2096,7 @@ def get(
 @client_mode_hook(auto_init=True)
 def put(
     value: Any, *, _owner: Optional["ray.actor.ActorHandle"] = None
-) -> ray.ObjectRef:
+) -> "ray.ObjectRef":
     """Store an object in the object store.
 
     The object may not be evicted while a reference to the returned ID exists.
@@ -1920,12 +2148,12 @@ blocking_wait_inside_async_warned = False
 @PublicAPI
 @client_mode_hook(auto_init=True)
 def wait(
-    object_refs: List[ray.ObjectRef],
+    object_refs: List["ray.ObjectRef"],
     *,
     num_returns: int = 1,
     timeout: Optional[float] = None,
     fetch_local: bool = True,
-) -> Tuple[List[ray.ObjectRef], List[ray.ObjectRef]]:
+) -> Tuple[List["ray.ObjectRef"], List["ray.ObjectRef"]]:
     """Return a list of IDs that are ready and a list of IDs that are not.
 
     If timeout is set, the function returns either when the requested number of
@@ -2097,7 +2325,7 @@ def kill(actor: "ray.actor.ActorHandle", *, no_restart: bool = True):
 
 @PublicAPI
 @client_mode_hook(auto_init=True)
-def cancel(object_ref: ray.ObjectRef, *, force: bool = False, recursive: bool = True):
+def cancel(object_ref: "ray.ObjectRef", *, force: bool = False, recursive: bool = True):
     """Cancels a task according to the following conditions.
 
     If the specified task is pending execution, it will not be executed. If
@@ -2161,6 +2389,82 @@ def _make_remote(function_or_class, options):
     raise TypeError(
         "The @ray.remote decorator must be applied to either a function or a class."
     )
+
+
+@overload
+def remote(function: Callable[[], R]) -> RemoteFunctionNoArgs[R]:
+    ...
+
+
+@overload
+def remote(function: Callable[[T0], R]) -> RemoteFunction0[R, T0]:
+    ...
+
+
+@overload
+def remote(function: Callable[[T0, T1], R]) -> RemoteFunction1[R, T0, T1]:
+    ...
+
+
+@overload
+def remote(function: Callable[[T0, T1, T2], R]) -> RemoteFunction2[R, T0, T1, T2]:
+    ...
+
+
+@overload
+def remote(
+    function: Callable[[T0, T1, T2, T3], R]
+) -> RemoteFunction3[R, T0, T1, T2, T3]:
+    ...
+
+
+@overload
+def remote(
+    function: Callable[[T0, T1, T2, T3, T4], R]
+) -> RemoteFunction4[R, T0, T1, T2, T3, T4]:
+    ...
+
+
+@overload
+def remote(
+    function: Callable[[T0, T1, T2, T3, T4, T5], R]
+) -> RemoteFunction5[R, T0, T1, T2, T3, T4, T5]:
+    ...
+
+
+@overload
+def remote(
+    function: Callable[[T0, T1, T2, T3, T4, T5, T6], R]
+) -> RemoteFunction6[R, T0, T1, T2, T3, T4, T5, T6]:
+    ...
+
+
+@overload
+def remote(
+    function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7], R]
+) -> RemoteFunction7[R, T0, T1, T2, T3, T4, T5, T6, T7]:
+    ...
+
+
+@overload
+def remote(
+    function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8], R]
+) -> RemoteFunction8[R, T0, T1, T2, T3, T4, T5, T6, T7, T8]:
+    ...
+
+
+@overload
+def remote(
+    function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8, T9], R]
+) -> RemoteFunction9[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]:
+    ...
+
+
+# Pass on typing actors for now. The following makes it so no type errors
+# are generated for actors.
+@overload
+def remote(t: type) -> Any:
+    ...
 
 
 @PublicAPI
