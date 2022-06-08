@@ -3,6 +3,8 @@ import logging
 import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Union
+import pprint
+import collections
 
 import ray
 from ray import tune
@@ -374,6 +376,45 @@ class DataParallelTrainer(BaseTrainer):
             The merged default + user-supplied dataset config.
         """
         return self._dataset_config.copy()
+
+    def _ipython_display_(self):
+        try:
+            from ipywidgets import HTML, VBox, Tab, Layout
+        except ImportError:
+            logger.warn(
+                "ipywidgets is not installed. `pip install ipywidgets` to "
+                "enable notebook widgets."
+            )
+            return None
+
+        from IPython.display import display
+
+        title = HTML(f"<h2>{self.__class__.__name__}</h2>")
+        content = collections.OrderedDict(
+            [
+                ("Train Loop Config", self._train_loop_config),
+                ("Backend Config", self._backend_config),
+                ("Dataset Config", self._dataset_config),
+                ("Scaling Config", self.scaling_config),
+                ("Run Config", self.run_config),
+                ("Datasets", self.datasets),
+            ]
+        )
+
+        tab = Tab()
+        children = []
+        for i, (name, data) in enumerate(content.items()):
+            tab.set_title(i, name)
+
+            if hasattr(data, "_repr_html_"):
+                repr = data._repr_html_()
+            else:
+                HTML(pprint.pformat(data).replace(r"\n", "<br>")),
+
+            children.append(repr)
+
+        tab.children = children
+        display(VBox([title, tab], layout=Layout(width="50%")))
 
 
 def _load_checkpoint(
