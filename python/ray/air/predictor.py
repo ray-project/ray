@@ -111,6 +111,24 @@ class Predictor(abc.ABC):
         """
         raise NotImplementedError
 
+    @DeveloperAPI
+    def _predict_arrow(self, data: "pyarrow.Table", **kwargs) -> "pyarrow.Table":
+        """Perform inference on an Arrow Table.
+
+        Predictors can implement this method instead of ``_predict_pandas``
+        for better performance when the input batch type is a Numpy array, dict of
+        numpy arrays, or an Arrow Table as conversion from these types are zero copy.
+
+        Args:
+            data: An Arrow Table to perform predictions on.
+            kwargs: Arguments specific to the predictor implementation.
+
+        Returns:
+            An Arrow Table containing the prediction result.
+        """
+
+        raise NotImplementedError
+
     def __reduce__(self):
         raise PredictorNotSerializableException(
             "Predictor instances are not serializable. Instead, you may want "
