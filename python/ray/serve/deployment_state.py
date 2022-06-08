@@ -1047,7 +1047,7 @@ class DeploymentState:
         )
 
     def _set_deployment_goal(
-        self, deployment_info: Optional[DeploymentInfo], version_preserve: bool = False
+        self, deployment_info: Optional[DeploymentInfo], preserve_version: bool = False
     ) -> None:
         """
         Set desirable state for a given deployment, identified by tag.
@@ -1056,14 +1056,14 @@ class DeploymentState:
             deployment_info (Optional[DeploymentInfo]): Contains deployment and
                 replica config, if passed in as None, we're marking
                 target deployment as shutting down.
-            version_preserve: keep the same version explicilty. When it is set
+            preserve_version: keep the same version explicitly. When it is set
                 to True, self._target_version will not be changed.
         """
 
         if deployment_info is not None:
             self._target_info = deployment_info
             self._target_replicas = deployment_info.deployment_config.num_replicas
-            if version_preserve is False:
+            if preserve_version is False:
                 self._target_version = DeploymentVersion(
                     deployment_info.version,
                     user_config=deployment_info.deployment_config.user_config,
@@ -1812,9 +1812,11 @@ class DeploymentStateManager:
         Return replica average ongoing requests
         Args:
             deployment_name: deployment name
-            look_back_period_s: the look back time period to collect the requests metrics
+            look_back_period_s: the look back time period to collect the requests
+                metrics
         Returns:
-            List of ongoing requests, the length of list indicate the number of replicas
+            List of ongoing requests, the length of list indicate the number
+                of replicas
         """
 
         replicas = self._deployment_states[deployment_name]._replicas
@@ -1831,7 +1833,9 @@ class DeploymentStateManager:
                 current_num_ongoing_requests.append(num_ongoing_requests)
         return current_num_ongoing_requests
 
-    def get_handle_queueing_metrics(self, deployment_name: str, look_back_period_s):
+    def get_handle_queueing_metrics(
+        self, deployment_name: str, look_back_period_s
+    ) -> int:
         """
         Return handle queue length metrics
         Args:

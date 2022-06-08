@@ -453,9 +453,9 @@ def deployment(
         raise ValueError("num_replicas is expected to larger than 0")
 
     if num_replicas is not None and _autoscaling_config is not None:
-        raise ValueError(
-            "Manually setting num_replicas is not allowed when "
-            "_autoscaling_config is provided."
+        logger.warning(
+            "num_replicas and _autoscaling_config are both set, "
+            "num_replicas will not take effect"
         )
 
     config = DeploymentConfig.from_default(

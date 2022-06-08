@@ -10,6 +10,9 @@ from ray.experimental.dag.input_node import InputNode
 from ray.serve.deployment_state import ReplicaState
 from ray._private.test_utils import SignalActor, wait_for_condition
 
+# Magic number to use for speed up scale from 0 replica
+serve_constants.HANDLE_METRIC_PUSH_INTERVAL_S = 1
+
 
 def get_num_running_replicas(controller, deployment_name):
     replicas = ray.get(
@@ -20,7 +23,6 @@ def get_num_running_replicas(controller, deployment_name):
 
 
 def test_autoscaling_0_replica(serve_instance):
-    serve_constants.HANDLE_METRIC_PUSH_INTERVAL_S = 1
     autoscaling_config = {
         "metrics_interval_s": 0.1,
         "min_replicas": 0,
@@ -54,7 +56,6 @@ def test_autoscaling_0_replica(serve_instance):
 @pytest.mark.parametrize("min_replicas", [0, 1])
 def test_autoscaling_with_chain_nodes(min_replicas, serve_instance):
 
-    serve_constants.HANDLE_METRIC_PUSH_INTERVAL_S = 1
     signal = SignalActor.remote()
 
     autoscaling_config = {
@@ -140,7 +141,6 @@ def test_autoscaling_with_chain_nodes(min_replicas, serve_instance):
 
 def test_autoscaling_with_ensemble_nodes(serve_instance):
 
-    serve_constants.HANDLE_METRIC_PUSH_INTERVAL_S = 1
     signal = SignalActor.remote()
     autoscaling_config = {
         "metrics_interval_s": 0.1,

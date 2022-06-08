@@ -1,5 +1,6 @@
 from copy import copy
 import inspect
+import logging
 from typing import (
     Any,
     Callable,
@@ -16,6 +17,7 @@ from ray.serve.config import (
     AutoscalingConfig,
     DeploymentConfig,
 )
+from ray.serve.constants import SERVE_LOGGER_NAME
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve.utils import DEFAULT, get_deployment_import_path
 from ray.util.annotations import PublicAPI
@@ -23,6 +25,9 @@ from ray.serve.schema import (
     RayActorOptionsSchema,
     DeploymentSchema,
 )
+
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 @PublicAPI
@@ -288,9 +293,9 @@ class Deployment:
         new_config = self._config.copy()
 
         if num_replicas is not None and _autoscaling_config is not None:
-            raise ValueError(
-                "Manually setting num_replicas is not allowed when "
-                "_autoscaling_config is provided."
+            logger.info(
+                "num_replicas and _autoscaling_config are both set, "
+                "num_replicas will not take effect"
             )
 
         if num_replicas == 0:
