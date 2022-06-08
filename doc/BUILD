@@ -163,7 +163,7 @@ py_test_run_all_subdirectory(
     include = ["source/rllib/doc_code/*.py"],
     exclude = [],
     extra_srcs = [],
-    tags = ["exclusive", "team:ml"],
+    tags = ["exclusive", "team:rllib"],
 )
 
 # --------------------------------------------------------------------
