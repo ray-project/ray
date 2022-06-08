@@ -94,7 +94,7 @@ public class DeploymentCrossLanguageTest {
             .create();
 
     ObjectRef<Object> res = deployment.getHandle().method("increase").remote("1");
-     Assert.assertEquals(res.get(), "2".getBytes());
+    Assert.assertEquals(res.get(), "2".getBytes());
   }
 
   @Test
