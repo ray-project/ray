@@ -1,4 +1,4 @@
-from typing import Optional, List, Union, Dict, Any
+from typing import Optional, List, Union, Dict, Any, TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
@@ -6,8 +6,10 @@ import xgboost
 
 from ray.air.checkpoint import Checkpoint
 from ray.air.predictor import Predictor, DataBatchType
-from ray.air.preprocessor import Preprocessor
 from ray.air.train.integrations.xgboost import load_checkpoint
+
+if TYPE_CHECKING:
+    from ray.air.preprocessor import Preprocessor
 
 
 class XGBoostPredictor(Predictor):
@@ -20,7 +22,7 @@ class XGBoostPredictor(Predictor):
     """
 
     def __init__(
-        self, model: xgboost.Booster, preprocessor: Optional[Preprocessor] = None
+        self, model: xgboost.Booster, preprocessor: Optional["Preprocessor"] = None
     ):
         self.model = model
         self.preprocessor = preprocessor

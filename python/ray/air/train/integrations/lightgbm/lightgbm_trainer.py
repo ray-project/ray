@@ -1,8 +1,7 @@
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional, Tuple, TYPE_CHECKING
 import os
 
 from ray.air.checkpoint import Checkpoint
-from ray.air.preprocessor import Preprocessor
 from ray.air.train.gbdt_trainer import GBDTTrainer
 from ray.air._internal.checkpointing import load_preprocessor_from_dir
 from ray.util.annotations import PublicAPI
@@ -11,6 +10,9 @@ from ray.air.constants import MODEL_KEY
 import lightgbm
 import lightgbm_ray
 from lightgbm_ray.tune import TuneReportCheckpointCallback
+
+if TYPE_CHECKING:
+    from ray.air.preprocessor import Preprocessor
 
 
 @PublicAPI(stability="alpha")
@@ -81,13 +83,13 @@ class LightGBMTrainer(GBDTTrainer):
 
     def _load_checkpoint(
         self, checkpoint: Checkpoint
-    ) -> Tuple[lightgbm.Booster, Optional[Preprocessor]]:
+    ) -> Tuple[lightgbm.Booster, Optional["Preprocessor"]]:
         return load_checkpoint(checkpoint)
 
 
 def load_checkpoint(
     checkpoint: Checkpoint,
-) -> Tuple[lightgbm.Booster, Optional[Preprocessor]]:
+) -> Tuple[lightgbm.Booster, Optional["Preprocessor"]]:
     """Load a Checkpoint from ``LightGBMTrainer``.
 
     Args:

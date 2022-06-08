@@ -115,27 +115,43 @@ T9 = TypeVar("T9")
 R = TypeVar("R")
 
 
-class RemoteFunction(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
-    def __init__(
-        self, function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8, T9], R]
-    ) -> None:
+class RemoteFunctionNoArgs(Generic[R]):
+    def __init__(self, function: Callable[[], R]) -> None:
         pass
 
-    @overload
-    def remote(self) -> "ObjectRef[R]":
-        ...
-
-    @overload
-    def remote(self, __arg0: "Union[T0, ObjectRef[T0]]") -> "ObjectRef[R]":
-        ...
-
-    @overload
     def remote(
-        self, __arg0: "Union[T0, ObjectRef[T0]]", __arg1: "Union[T1, ObjectRef[T1]]"
+        self,
     ) -> "ObjectRef[R]":
         ...
 
-    @overload
+
+class RemoteFunction0(Generic[R, T0]):
+    def __init__(self, function: Callable[[T0], R]) -> None:
+        pass
+
+    def remote(
+        self,
+        __arg0: "Union[T0, ObjectRef[T0]]",
+    ) -> "ObjectRef[R]":
+        ...
+
+
+class RemoteFunction1(Generic[R, T0, T1]):
+    def __init__(self, function: Callable[[T0, T1], R]) -> None:
+        pass
+
+    def remote(
+        self,
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
+    ) -> "ObjectRef[R]":
+        ...
+
+
+class RemoteFunction2(Generic[R, T0, T1, T2]):
+    def __init__(self, function: Callable[[T0, T1, T2], R]) -> None:
+        pass
+
     def remote(
         self,
         __arg0: "Union[T0, ObjectRef[T0]]",
@@ -144,7 +160,11 @@ class RemoteFunction(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
     ) -> "ObjectRef[R]":
         ...
 
-    @overload
+
+class RemoteFunction3(Generic[R, T0, T1, T2, T3]):
+    def __init__(self, function: Callable[[T0, T1, T2, T3], R]) -> None:
+        pass
+
     def remote(
         self,
         __arg0: "Union[T0, ObjectRef[T0]]",
@@ -154,7 +174,11 @@ class RemoteFunction(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
     ) -> "ObjectRef[R]":
         ...
 
-    @overload
+
+class RemoteFunction4(Generic[R, T0, T1, T2, T3, T4]):
+    def __init__(self, function: Callable[[T0, T1, T2, T3, T4], R]) -> None:
+        pass
+
     def remote(
         self,
         __arg0: "Union[T0, ObjectRef[T0]]",
@@ -165,7 +189,11 @@ class RemoteFunction(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
     ) -> "ObjectRef[R]":
         ...
 
-    @overload
+
+class RemoteFunction5(Generic[R, T0, T1, T2, T3, T4, T5]):
+    def __init__(self, function: Callable[[T0, T1, T2, T3, T4, T5], R]) -> None:
+        pass
+
     def remote(
         self,
         __arg0: "Union[T0, ObjectRef[T0]]",
@@ -177,7 +205,11 @@ class RemoteFunction(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
     ) -> "ObjectRef[R]":
         ...
 
-    @overload
+
+class RemoteFunction6(Generic[R, T0, T1, T2, T3, T4, T5, T6]):
+    def __init__(self, function: Callable[[T0, T1, T2, T3, T4, T5, T6], R]) -> None:
+        pass
+
     def remote(
         self,
         __arg0: "Union[T0, ObjectRef[T0]]",
@@ -190,7 +222,11 @@ class RemoteFunction(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
     ) -> "ObjectRef[R]":
         ...
 
-    @overload
+
+class RemoteFunction7(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7]):
+    def __init__(self, function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7], R]) -> None:
+        pass
+
     def remote(
         self,
         __arg0: "Union[T0, ObjectRef[T0]]",
@@ -204,7 +240,13 @@ class RemoteFunction(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
     ) -> "ObjectRef[R]":
         ...
 
-    @overload
+
+class RemoteFunction8(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8]):
+    def __init__(
+        self, function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8], R]
+    ) -> None:
+        pass
+
     def remote(
         self,
         __arg0: "Union[T0, ObjectRef[T0]]",
@@ -219,7 +261,13 @@ class RemoteFunction(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
     ) -> "ObjectRef[R]":
         ...
 
-    @overload
+
+class RemoteFunction9(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
+    def __init__(
+        self, function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8, T9], R]
+    ) -> None:
+        pass
+
     def remote(
         self,
         __arg0: "Union[T0, ObjectRef[T0]]",
@@ -233,9 +281,6 @@ class RemoteFunction(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
         __arg8: "Union[T8, ObjectRef[T8]]",
         __arg9: "Union[T9, ObjectRef[T9]]",
     ) -> "ObjectRef[R]":
-        ...
-
-    def remote(self, *args, **kwargs) -> "ObjectRef[R]":
         ...
 
 
@@ -2347,79 +2392,71 @@ def _make_remote(function_or_class, options):
 
 
 @overload
-def remote(
-    function: Callable[[], R]
-) -> RemoteFunction[R, None, None, None, None, None, None, None, None, None, None]:
+def remote(function: Callable[[], R]) -> RemoteFunctionNoArgs[R]:
     ...
 
 
 @overload
-def remote(
-    function: Callable[[T0], R]
-) -> RemoteFunction[R, T0, None, None, None, None, None, None, None, None, None]:
+def remote(function: Callable[[T0], R]) -> RemoteFunction0[R, T0]:
     ...
 
 
 @overload
-def remote(
-    function: Callable[[T0, T1], R]
-) -> RemoteFunction[R, T0, T1, None, None, None, None, None, None, None, None]:
+def remote(function: Callable[[T0, T1], R]) -> RemoteFunction1[R, T0, T1]:
     ...
 
 
 @overload
-def remote(
-    function: Callable[[T0, T1, T2], R]
-) -> RemoteFunction[R, T0, T1, T2, None, None, None, None, None, None, None]:
+def remote(function: Callable[[T0, T1, T2], R]) -> RemoteFunction2[R, T0, T1, T2]:
     ...
 
 
 @overload
 def remote(
     function: Callable[[T0, T1, T2, T3], R]
-) -> RemoteFunction[R, T0, T1, T2, T3, None, None, None, None, None, None]:
+) -> RemoteFunction3[R, T0, T1, T2, T3]:
     ...
 
 
 @overload
 def remote(
     function: Callable[[T0, T1, T2, T3, T4], R]
-) -> RemoteFunction[R, T0, T1, T2, T3, T4, None, None, None, None, None]:
+) -> RemoteFunction4[R, T0, T1, T2, T3, T4]:
     ...
 
 
 @overload
 def remote(
     function: Callable[[T0, T1, T2, T3, T4, T5], R]
-) -> RemoteFunction[R, T0, T1, T2, T3, T4, T5, None, None, None, None]:
+) -> RemoteFunction5[R, T0, T1, T2, T3, T4, T5]:
     ...
 
 
 @overload
 def remote(
     function: Callable[[T0, T1, T2, T3, T4, T5, T6], R]
-) -> RemoteFunction[R, T0, T1, T2, T3, T4, T5, T6, None, None, None]:
+) -> RemoteFunction6[R, T0, T1, T2, T3, T4, T5, T6]:
     ...
 
 
 @overload
 def remote(
     function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7], R]
-) -> RemoteFunction[R, T0, T1, T2, T3, T4, T5, T6, T7, None, None]:
+) -> RemoteFunction7[R, T0, T1, T2, T3, T4, T5, T6, T7]:
     ...
 
 
 @overload
 def remote(
     function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8], R]
-) -> RemoteFunction[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, None]:
+) -> RemoteFunction8[R, T0, T1, T2, T3, T4, T5, T6, T7, T8]:
     ...
 
 
 @overload
 def remote(
     function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8, T9], R]
-) -> RemoteFunction[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]:
+) -> RemoteFunction9[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]:
     ...
 
 
