@@ -134,7 +134,9 @@ class TestOPE(unittest.TestCase):
             q_model_type="qreg",
             **self.model_config,
         )
-        for eval_batch, train_batch in train_test_split(self.batch, self.k):
+        for eval_batch, train_batch in train_test_split(
+            self.batch, self.train_test_split_val
+        ):
             estimator.process(eval_batch, train_batch)
         estimates = estimator.get_metrics()
         assert len(estimates) == self.n_episodes
@@ -150,7 +152,9 @@ class TestOPE(unittest.TestCase):
             q_model_type="fqe",
             **self.model_config,
         )
-        for eval_batch, train_batch in train_test_split(self.batch, self.k):
+        for eval_batch, train_batch in train_test_split(
+            self.batch, self.train_test_split_val
+        ):
             estimator.process(eval_batch, train_batch)
         estimates = estimator.get_metrics()
         assert len(estimates) == self.n_episodes
@@ -166,7 +170,9 @@ class TestOPE(unittest.TestCase):
             q_model_type="qreg",
             **self.model_config,
         )
-        for eval_batch, train_batch in train_test_split(self.batch, self.k):
+        for eval_batch, train_batch in train_test_split(
+            self.batch, self.train_test_split_val
+        ):
             estimator.process(eval_batch, train_batch)
         estimates = estimator.get_metrics()
         assert len(estimates) == self.n_episodes
@@ -182,7 +188,9 @@ class TestOPE(unittest.TestCase):
             q_model_type="fqe",
             **self.model_config,
         )
-        for eval_batch, train_batch in train_test_split(self.batch, self.k):
+        for eval_batch, train_batch in train_test_split(
+            self.batch, self.train_test_split_val
+        ):
             estimator.process(eval_batch, train_batch)
         estimates = estimator.get_metrics()
         assert len(estimates) == self.n_episodes
@@ -226,7 +234,7 @@ class TestOPE(unittest.TestCase):
                     "input_config": {"format": "json", "path": small_data},
                 },
                 off_policy_estimation_methods={
-                    "k": 5,
+                    "train_test_split_val": self.train_test_split_val,
                     "is": {"type": ImportanceSampling},
                     "wis": {"type": WeightedImportanceSampling},
                 },

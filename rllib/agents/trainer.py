@@ -1958,9 +1958,12 @@ class Trainer(Trainable):
                 error=False,
             )
             config["off_policy_estimation_methods"] = ope_dict
-        if "k" in config["off_policy_estimation_methods"]:
-            self.train_test_split_val = config["off_policy_estimation_methods"].pop("k")
+        if "train_test_split_val" in config["off_policy_estimation_methods"]:
+            self.train_test_split_val = config["off_policy_estimation_methods"].pop(
+                "train_test_split_val"
+            )
         else:
+            # Eval only
             self.train_test_split_val = 0.0
 
         # Check model config.
