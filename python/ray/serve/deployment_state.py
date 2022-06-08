@@ -301,7 +301,7 @@ class ActorReplicaWrapper:
         ):
             self._is_cross_language = True
             actor_def = ray.cross_language.java_actor_class(
-                "io.ray.serve.RayServeWrappedReplica"
+                "io.ray.serve.replica.RayServeWrappedReplica"
             )
             init_args = (
                 # String deploymentName,
