@@ -1,20 +1,22 @@
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 import os
 import xgboost
 
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import MODEL_KEY
-from ray.air.preprocessor import Preprocessor
 from ray.air._internal.checkpointing import (
     save_preprocessor_to_dir,
 )
+
+if TYPE_CHECKING:
+    from ray.air.preprocessor import Preprocessor
 
 
 def to_air_checkpoint(
     path: str,
     booster: xgboost.Booster,
-    preprocessor: Optional[Preprocessor] = None,
+    preprocessor: Optional["Preprocessor"] = None,
 ) -> Checkpoint:
     """Convert a pretrained model to AIR checkpoint for serve or inference.
 

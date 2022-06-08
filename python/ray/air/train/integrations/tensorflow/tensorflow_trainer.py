@@ -1,13 +1,15 @@
-from typing import Callable, Optional, Dict, Tuple, Type, Union
+from typing import Callable, Optional, Dict, Tuple, Type, Union, TYPE_CHECKING
 import tensorflow as tf
 
 from ray.train.tensorflow import TensorflowConfig
 from ray.air.trainer import GenDataset
 from ray.air.train.data_parallel_trainer import DataParallelTrainer, _load_checkpoint
 from ray.air.config import ScalingConfig, RunConfig, DatasetConfig
-from ray.air.preprocessor import Preprocessor
 from ray.air.checkpoint import Checkpoint
 from ray.util import PublicAPI
+
+if TYPE_CHECKING:
+    from ray.air.preprocessor import Preprocessor
 
 
 @PublicAPI(stability="alpha")
@@ -166,7 +168,7 @@ class TensorflowTrainer(DataParallelTrainer):
         dataset_config: Optional[Dict[str, DatasetConfig]] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
-        preprocessor: Optional[Preprocessor] = None,
+        preprocessor: Optional["Preprocessor"] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
         if not tensorflow_config:
@@ -188,7 +190,7 @@ class TensorflowTrainer(DataParallelTrainer):
 def load_checkpoint(
     checkpoint: Checkpoint,
     model: Union[Callable[[], tf.keras.Model], Type[tf.keras.Model], tf.keras.Model],
-) -> Tuple[tf.keras.Model, Optional[Preprocessor]]:
+) -> Tuple[tf.keras.Model, Optional["Preprocessor"]]:
     """Load a Checkpoint from ``TensorflowTrainer``.
 
     Args:
