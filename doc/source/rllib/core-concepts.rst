@@ -239,8 +239,7 @@ Breaking that ``training_iteration`` code down:
 This set is covered in greater depth on the :ref:`WorkerSet documentation page<workerset-reference-docs>`.
 The function ``synchronous_parallel_sample`` is an RLlib utility that can be used for sampling in a blocking parallel
 fashion across multiple rollout workers. RLlib includes other utilities, such as the ``AsyncRequestsManager``, for
-facilitating the dataflow between various components in parallelizable fashion. They are covered in the **Concurrency ops**
-section below.
+facilitating the dataflow between various components in parallelizable fashion. They are covered in the :ref:`parallel requests documentation <parallel-requests-docs>`
 
 .. code-block:: python
 
