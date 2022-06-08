@@ -4,10 +4,10 @@ from typing import Optional, Union, Dict, Callable, List, TYPE_CHECKING
 from ray.actor import ActorHandle
 
 from ray.air.config import DatasetConfig
-from ray.air.preprocessor import Preprocessor
 
 if TYPE_CHECKING:
     from ray.data import Dataset, DatasetPipeline
+    from ray.air.preprocessor import Preprocessor
 
 RayDataset = Union["Dataset", "DatasetPipeline"]
 
@@ -108,10 +108,10 @@ class DataParallelIngestSpec:
         """
         self.dataset_config = dataset_config
         self.preprocessed_datasets: Optional[Dict[str, "Dataset"]] = None
-        self.preprocessor: Optional[Preprocessor] = None
+        self.preprocessor: Optional["Preprocessor"] = None
 
     def preprocess_datasets(
-        self, prep: Preprocessor, datasets: Dict[str, "Dataset"]
+        self, prep: "Preprocessor", datasets: Dict[str, "Dataset"]
     ) -> Dict[str, "Dataset"]:
         """Preprocess the given datasets.
 

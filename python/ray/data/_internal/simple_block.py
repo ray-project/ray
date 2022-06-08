@@ -1,7 +1,7 @@
 import random
 import sys
 import heapq
-from typing import Callable, Iterator, List, Tuple, Any, Optional, TYPE_CHECKING
+from typing import Union, Callable, Iterator, List, Tuple, Any, Optional, TYPE_CHECKING
 
 import numpy as np
 
@@ -84,9 +84,9 @@ class SimpleBlockAccessor(BlockAccessor):
 
         return pandas.DataFrame({"value": self._items})
 
-    def to_numpy(self, column: str = None) -> np.ndarray:
-        if column:
-            raise ValueError("`column` arg not supported for list block")
+    def to_numpy(self, columns: Optional[Union[str, List[str]]] = None) -> np.ndarray:
+        if columns:
+            raise ValueError("`columns` arg is not supported for list block.")
         return np.array(self._items)
 
     def to_arrow(self) -> "pyarrow.Table":

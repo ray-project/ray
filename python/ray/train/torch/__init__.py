@@ -7,6 +7,7 @@ except ModuleNotFoundError:
 
 from ray.train.torch.config import TorchConfig
 from ray.train.torch.train_loop_utils import (
+    accelerate,
     get_device,
     prepare_model,
     prepare_data_loader,
@@ -15,6 +16,7 @@ from ray.train.torch.train_loop_utils import (
     enable_reproducibility,
     TorchWorkerProfiler,
 )
+
 from ray.train.torch.torch_trainer import TorchTrainer, load_checkpoint
 
 
@@ -22,6 +24,7 @@ __all__ = [
     "TorchTrainer",
     "load_checkpoint",
     "TorchConfig",
+    "accelerate",
     "get_device",
     "prepare_model",
     "prepare_optimizer",

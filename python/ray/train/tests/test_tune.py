@@ -117,7 +117,7 @@ def test_tune_checkpoint(ray_start_2_cpus):
     TestTrainable = trainer.to_tune_trainable(train_func)
 
     [trial] = tune.run(TestTrainable).trials
-    checkpoint_path = trial.checkpoint.value
+    checkpoint_path = trial.checkpoint.dir_or_data
     assert os.path.exists(checkpoint_path)
     checkpoint = Checkpoint.from_directory(checkpoint_path).to_dict()
     assert checkpoint["hello"] == "world"
@@ -138,7 +138,7 @@ def test_reuse_checkpoint(ray_start_2_cpus):
     TestTrainable = trainer.to_tune_trainable(train_func)
 
     [trial] = tune.run(TestTrainable, config={"max_iter": 5}).trials
-    checkpoint_path = trial.checkpoint.value
+    checkpoint_path = trial.checkpoint.dir_or_data
     checkpoint = Checkpoint.from_directory(checkpoint_path).to_dict()
     assert checkpoint["iter"] == 4
     analysis = tune.run(TestTrainable, config={"max_iter": 10}, restore=checkpoint_path)
@@ -164,7 +164,7 @@ def test_retry(ray_start_2_cpus):
     TestTrainable = trainer.to_tune_trainable(train_func)
 
     analysis = tune.run(TestTrainable, max_failures=3)
-    checkpoint_path = analysis.trials[0].checkpoint.value
+    checkpoint_path = analysis.trials[0].checkpoint.dir_or_data
     checkpoint = Checkpoint.from_directory(checkpoint_path).to_dict()
     assert checkpoint["iter"] == 3
 
