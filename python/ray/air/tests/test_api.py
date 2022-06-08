@@ -70,7 +70,8 @@ def test_scaling_config_validate_config_prohibited_class():
             ScalingConfigDataClass(**scaling_config),
             ["trainer_resources"],
         )
-    assert "trainer_resources" in str(exc_info.value)
+    assert "num_workers" in str(exc_info.value)
+    assert "to be updated" in str(exc_info.value)
 
 
 def test_scaling_config_validate_config_bad_allowed_keys():
@@ -82,6 +83,7 @@ def test_scaling_config_validate_config_bad_allowed_keys():
             ["BAD_KEY"],
         )
     assert "BAD_KEY" in str(exc_info.value)
+    assert "are not present in" in str(exc_info.value)
 
 
 def test_datasets():
