@@ -5,6 +5,7 @@ import logging
 import os
 import random
 import types
+import warnings
 
 from datetime import timedelta
 from pathlib import Path
@@ -19,7 +20,7 @@ from torch.optim import Optimizer
 from ray.train.session import get_accelerator, set_accelerator
 from ray.train.worker_group import WorkerGroup
 from ray.train.utils import get_address_and_port
-from ray.util import PublicAPI
+from ray.util.annotations import PublicAPI, Deprecated
 
 import numpy as np
 
@@ -724,6 +725,7 @@ def enable_reproducibility(seed: int = 0) -> None:
 WORKER_TRACE_DIR_NAME = "pytorch_profiler_worker_traces"
 
 
+@Deprecated
 class TorchWorkerProfiler:
     """Utility class for running PyTorch Profiler on a Train worker.
 
@@ -733,6 +735,11 @@ class TorchWorkerProfiler:
     """
 
     def __init__(self, trace_dir: Optional[str] = None):
+        warnings.warn(
+            "The `ray.train.trainer.WorkerGroup` API is deprecated in Ray 2.0",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         if profile is None:
             raise ImportError(
                 "Torch Profiler requires torch>=1.8.1. "
