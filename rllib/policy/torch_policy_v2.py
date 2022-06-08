@@ -705,6 +705,8 @@ class TorchPolicyV2(Policy):
     @override(Policy)
     @DeveloperAPI
     def learn_on_loaded_batch(self, offset: int = 0, buffer_index: int = 0):
+        print(f">>>> self.devices : {self.devices}")
+        print(f">>>> len(self.model_gpu_towers): {len(self.model_gpu_towers)}")
         if not self._loaded_batches[buffer_index]:
             raise ValueError(
                 "Must call Policy.load_batch_into_buffer() before "
@@ -725,6 +727,7 @@ class TorchPolicyV2(Policy):
         # Shortcut for 1 CPU only: Batch should already be stored in
         # `self._loaded_batches`.
         if len(self.devices) == 1 and self.devices[0].type == "cpu":
+            print(f">>>> Using CPU ??")
             assert buffer_index == 0
             if device_batch_size >= len(self._loaded_batches[0][0]):
                 batch = self._loaded_batches[0][0]
@@ -736,10 +739,12 @@ class TorchPolicyV2(Policy):
             # Copy weights of main model (tower-0) to all other towers.
             state_dict = self.model.state_dict()
             # Just making sure tower-0 is really the same as self.model.
+
             assert self.model_gpu_towers[0] is self.model
             for tower in self.model_gpu_towers[1:]:
                 tower.load_state_dict(state_dict)
 
+        start = time.time()
         if device_batch_size >= sum(len(s) for s in self._loaded_batches[buffer_index]):
             device_batches = self._loaded_batches[buffer_index]
         else:
@@ -756,12 +761,16 @@ class TorchPolicyV2(Policy):
                 policy=self, train_batch=batch, result=custom_metrics
             )
             batch_fetches[f"tower_{i}"] = {"custom_metrics": custom_metrics}
+        print(f">>>> device_batch: {(time.time() - start)*1000}ms")
 
+        start = time.time()
         # Do the (maybe parallelized) gradient calculation step.
         tower_outputs = self._multi_gpu_parallel_grad_calc(device_batches)
+        print(f">>>> grad calc: {(time.time() - start)*1000}ms")
 
         # Mean-reduce gradients over GPU-towers (do this on CPU: self.device).
         all_grads = []
+        start = time.time()
         for i in range(len(tower_outputs[0][0])):
             if tower_outputs[0][0][i] is not None:
                 all_grads.append(
@@ -775,9 +784,11 @@ class TorchPolicyV2(Policy):
         # Set main model's grads to mean-reduced values.
         for i, p in enumerate(self.model.parameters()):
             p.grad = all_grads[i]
-
+        print(f">>>> Mean-reduce gradients: {(time.time() - start)*1000}ms")
+        start = time.time()
         self.apply_gradients(_directStepOptimizerSingleton)
-
+        print(f">>>> apply_gradients: {(time.time() - start)*1000}ms")
+        start = time.time()
         for i, (model, batch) in enumerate(zip(self.model_gpu_towers, device_batches)):
             batch_fetches[f"tower_{i}"].update(
                 {
@@ -787,7 +798,7 @@ class TorchPolicyV2(Policy):
             )
 
         batch_fetches.update(self.extra_compute_grad_fetches())
-
+        print(f">>>> batch_fetches: {(time.time() - start)*1000}ms")
         return batch_fetches
 
     @with_lock

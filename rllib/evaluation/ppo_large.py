@@ -79,7 +79,7 @@ print(init_results)
 # )
 # print(f">>>>> results: {results}")
 
-for _ in range(50):
+for _ in range(5):
     print(ray.get(trainer_actor.train.remote()))
 
 # Evaluate the trained Trainer (and render each timestep to the shell's
