@@ -148,7 +148,8 @@ def list(
     i.e. 'jobs', 'actors', 'nodes', ...
 
     """
-    resource = StateResource(resource)
+    # All resource names use '_' rather than '-'. But users options have '-'
+    resource = StateResource(resource.replace("-", "_"))
     format = AvailableFormat(format)
 
     # Get the state API server address from ray if not provided by user
