@@ -57,23 +57,29 @@ class TensorflowPredictor(Predictor):
             preprocessor=preprocessor,
         )
 
+    def _predict_pandas(self, data: "pd.DataFrame", dtype: Optional[tf.dtypes.DType] = None) -> "pd.DataFrame":
+
+
+
     def predict(
         self,
         data: DataBatchType,
-        feature_columns: Optional[Union[List[str], List[int]]] = None,
         dtype: Optional[tf.dtypes.DType] = None,
     ) -> DataBatchType:
         """Run inference on data batch.
 
-        The data is converted into a TensorFlow Tensor before being inputted to
-        the model.
+        If the provided data is a single array or a dataframe/table with a single
+        column, it will be converted into a single Tensorflow tensor before being
+        inputted to the model.
+
+        If the provided data is a multi-column table or a dict of numpy arrays,
+        it will be converted into a dict of tensors before being inputted to the
+        model. This is useful for multi-modal inputs (for example your model accepts
+        both image and text).
 
         Args:
             data: A batch of input data. Either a pandas DataFrame or numpy
                 array.
-            feature_columns: The names or indices of the columns in the
-                data to use as features to predict on. If None, then use
-                all columns in ``data``.
             dtype: The TensorFlow dtype to use when creating the TensorFlow tensor.
                 If set to None, then automatically infer the dtype.
 
@@ -105,12 +111,11 @@ class TensorflowPredictor(Predictor):
             from ray.air.predictors.tensorflow import TensorflowPredictor
 
             def build_model(self):
-                return tf.keras.Sequential(
-                    [
-                        tf.keras.layers.InputLayer(input_shape=(1,)),
-                        tf.keras.layers.Dense(1),
-                    ]
-                )
+                input1 = tf.keras.layers.Input(shape=(1,), name="A")
+                input2 = tf.keras.layers.Input(shape=(1,), name="B")
+                merged = keras.layers.Concatenate(axis=1)([input1, input2])
+                output = keras.layers.Dense(2, input_dim=2)(merged)
+                return keras.models.Model(inputs=[input1, input2], output=output)
 
             predictor = TensorflowPredictor(model_definition=build_model)
 
@@ -119,15 +124,12 @@ class TensorflowPredictor(Predictor):
 
             predictions = predictor.predict(data)
 
-            # Only use first column as the feature
-            predictions = predictor.predict(data, feature_columns=["A"])
-
 
         Returns:
             DataBatchType: Prediction result.
         """
-        if self.preprocessor:
-            data = self.preprocessor.transform_batch(data)
+        super(TensorflowPredictor, self).predict(data=data, dtype=dtype)
+
 
         if isinstance(data, pd.DataFrame):
             if feature_columns:
