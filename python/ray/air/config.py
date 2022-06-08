@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from ray.tune.stopper import Stopper
     from ray.tune.trainable import PlacementGroupFactory
 
+
 @dataclass
 @PublicAPI(stability="alpha")
 class ScalingConfig:

@@ -133,8 +133,10 @@ class DataParallelTrainer(Trainer):
 
         train_dataset = ray.data.from_items([1, 2, 3])
         assert len(train_dataset) == 3
-        trainer = DataParallelTrainer(scaling_config=ray.air.config.ScalingConfig(num_workers=3),
-            datasets={"train": train_dataset})
+        trainer = DataParallelTrainer(
+            scaling_config=ray.air.config.ScalingConfig(num_workers=3),
+            datasets={"train": train_dataset},
+        )
         result = trainer.fit()
 
     **How do I develop on top of ``DataParallelTrainer``?**
@@ -280,10 +282,7 @@ class DataParallelTrainer(Trainer):
     def _validate_attributes(self):
         super()._validate_attributes()
 
-        if (
-            not self.scaling_config.use_gpu
-            and "GPU" in ray.available_resources()
-        ):
+        if not self.scaling_config.use_gpu and "GPU" in ray.available_resources():
             logger.info(
                 "GPUs are detected in your Ray cluster, but GPU "
                 "training is not enabled for this trainer. To enable "
@@ -330,9 +329,7 @@ class DataParallelTrainer(Trainer):
             fn_arg_name="train_loop_per_worker",
         )
 
-        additional_resources_per_worker = (
-            scaling_config.additional_resources_per_worker
-        )
+        additional_resources_per_worker = scaling_config.additional_resources_per_worker
 
         backend_executor = BackendExecutor(
             backend_config=self._backend_config,
