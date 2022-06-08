@@ -80,7 +80,7 @@ class TrialStub:
         local_dir: str,
         experiment_tag: str,
         _last_result: Dict[str, Any],
-        logdir: str,
+        relative_logdir: str,
         *args,
         **kwargs,
     ):
@@ -91,7 +91,7 @@ class TrialStub:
         self.local_dir = local_dir
         self.experiment_tag = experiment_tag
         self.last_result = _last_result
-        self.logdir = logdir
+        self.relative_logidr = relative_logdir
 
         self.local_experiment_dir = None
 
@@ -107,7 +107,7 @@ class TrialStub:
 
     @property
     def dirname(self):
-        return os.path.basename(self.logdir)
+        return os.path.basename(self.relative_logidr)
 
     @property
     def was_on_driver_node(self):
