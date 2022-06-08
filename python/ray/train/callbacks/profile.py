@@ -5,8 +5,8 @@ import warnings
 
 from ray.train.callbacks import TrainingCallback
 from ray.train.callbacks.callback import _deprecation_msg
-from ray.train.callbacks.logging import TrainCallbackLogdirManager
-from ray.train.callbacks.results_preprocessors import IndexedResultsPreprocessor
+from ray.train.callbacks.logging import _TrainCallbackLogdirManager
+from ray.train._internal.results_preprocessors import IndexedResultsPreprocessor
 from ray.train.constants import PYTORCH_PROFILER_KEY
 from ray.util.annotations import Deprecated
 
@@ -44,7 +44,7 @@ class TorchTensorboardProfilerCallback(TrainingCallback):
         )
         super().__init__()
         self._logdir = logdir
-        self._logdir_manager = TrainCallbackLogdirManager(logdir=logdir)
+        self._logdir_manager = _TrainCallbackLogdirManager(logdir=logdir)
         self.results_preprocessor = IndexedResultsPreprocessor(indices=workers_to_log)
 
     def start_training(self, logdir: str, **info):

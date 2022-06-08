@@ -1,7 +1,7 @@
 import abc
 from typing import List, Dict
 
-from ray.train.callbacks.results_preprocessors import (
+from ray.train._internal.results_preprocessors import (
     ResultsPreprocessor,
     ExcludedKeysResultsPreprocessor,
     SequentialResultsPreprocessor,

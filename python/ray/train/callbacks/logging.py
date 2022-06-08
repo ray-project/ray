@@ -9,11 +9,11 @@ import numpy as np
 
 from ray.train.callbacks import TrainingCallback
 from ray.train.callbacks.callback import _deprecation_msg
-from ray.train.callbacks.results_preprocessors import (
+from ray.train._internal.results_preprocessors import (
     IndexedResultsPreprocessor,
     ExcludedKeysResultsPreprocessor,
 )
-from ray.train.callbacks.results_preprocessors.preprocessor import (
+from ray.train._internal.results_preprocessors.preprocessor import (
     SequentialResultsPreprocessor,
 )
 from ray.train.constants import (
@@ -33,7 +33,7 @@ from ray.util.ml_utils.mlflow import MLflowLoggerUtil
 logger = logging.getLogger(__name__)
 
 
-class TrainCallbackLogdirManager:
+class _TrainCallbackLogdirManager:
     """Sets up a logging directory for a callback.
 
     The path of the ``logdir`` can be set during initialization. Otherwise, the
@@ -119,7 +119,7 @@ class JsonLoggerCallback(TrainingCallback):
             DeprecationWarning,
         )
         self._filename = filename
-        self._logdir_manager = TrainCallbackLogdirManager(logdir=logdir)
+        self._logdir_manager = _TrainCallbackLogdirManager(logdir=logdir)
         self.results_preprocessor = IndexedResultsPreprocessor(indices=workers_to_log)
 
     def start_training(self, logdir: str, **info):
@@ -201,7 +201,7 @@ class MLflowLoggerCallback(TrainingCallback):
             _deprecation_msg,
             DeprecationWarning,
         )
-        self._logdir_manager = TrainCallbackLogdirManager(logdir=logdir)
+        self._logdir_manager = _TrainCallbackLogdirManager(logdir=logdir)
         self.results_preprocessor = IndexedResultsPreprocessor(indices=worker_to_log)
 
         self.tracking_uri = tracking_uri
@@ -274,7 +274,7 @@ class TBXLoggerCallback(TrainingCallback):
             _deprecation_msg,
             DeprecationWarning,
         )
-        self._logdir_manager = TrainCallbackLogdirManager(logdir=logdir)
+        self._logdir_manager = _TrainCallbackLogdirManager(logdir=logdir)
 
         results_preprocessors = [
             IndexedResultsPreprocessor(indices=worker_to_log),
