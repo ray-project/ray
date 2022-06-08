@@ -179,7 +179,11 @@ class DeploymentConfig(BaseModel):
         )
         if "user_config" in data:
             if data["user_config"] != "":
-                api_lang = data["api_language"] if "api_language" in data else DeploymentLanguage.PYTHON
+                api_lang = (
+                    data["api_language"]
+                    if "api_language" in data
+                    else DeploymentLanguage.PYTHON
+                )
                 if api_lang == DeploymentLanguage.PYTHON:
                     data["user_config"] = cloudpickle.loads(proto.user_config)
             else:
@@ -307,20 +311,22 @@ class ReplicaConfig:
         self.resource_dict = resources_from_ray_options(self.ray_actor_options)
 
     @classmethod
-    def from_proto(
-        cls, proto: ReplicaConfigProto, need_pickle: bool
-    ):
+    def from_proto(cls, proto: ReplicaConfigProto, need_pickle: bool):
         deployment_def = None
         init_args = None
         if proto.serialized_deployment_def != b"":
             if need_pickle:
                 deployment_def = cloudpickle.loads(proto.serialized_deployment_def)
                 init_args = (
-                    cloudpickle.loads(proto.init_args) if proto.init_args != b"" else None
+                    cloudpickle.loads(proto.init_args)
+                    if proto.init_args != b""
+                    else None
                 )
             else:
                 # serialized_deployment_def is string in java replica
-                deployment_def = proto.serialized_deployment_def.decode(encoding="utf-8")
+                deployment_def = proto.serialized_deployment_def.decode(
+                    encoding="utf-8"
+                )
                 init_args = proto.init_args if proto.init_args != b"" else None
 
         init_kwargs = (
@@ -332,12 +338,12 @@ class ReplicaConfig:
             else None
         )
 
-        return ReplicaConfig(deployment_def, init_args, init_kwargs, ray_actor_options, need_pickle)
+        return ReplicaConfig(
+            deployment_def, init_args, init_kwargs, ray_actor_options, need_pickle
+        )
 
     @classmethod
-    def from_proto_bytes(
-        cls, proto_bytes: bytes, need_pickle: bool
-    ):
+    def from_proto_bytes(cls, proto_bytes: bytes, need_pickle: bool):
         proto = ReplicaConfigProto.FromString(proto_bytes)
         return cls.from_proto(proto, need_pickle)
 

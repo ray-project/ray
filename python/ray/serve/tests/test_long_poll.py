@@ -8,7 +8,12 @@ import pytest
 
 import ray
 from ray.serve.common import EndpointTag, EndpointInfo, RunningReplicaInfo
-from ray.serve.long_poll import LongPollClient, LongPollHost, UpdatedObject, LongPollNamespace
+from ray.serve.long_poll import (
+    LongPollClient,
+    LongPollHost,
+    UpdatedObject,
+    LongPollNamespace,
+)
 from ray.serve.generated.serve_pb2 import (
     LongPollRequest,
     UpdatedObject as UpdatedObjectProto,
@@ -168,32 +173,32 @@ async def test_client_threadsafe(serve_instance):
 def test_listen_for_change_xlang(serve_instance):
     host = ray.remote(LongPollHost).remote()
     ray.get(host.notify_changed.remote("key_1", 999))
-    request_1 = {
-        "keys_to_snapshot_ids": {"key_1": -1}
-    }
-    object_ref = host.listen_for_change_xlang.remote(LongPollRequest(**request_1).SerializeToString())
+    request_1 = {"keys_to_snapshot_ids": {"key_1": -1}}
+    object_ref = host.listen_for_change_xlang.remote(
+        LongPollRequest(**request_1).SerializeToString()
+    )
     result_1: bytes = ray.get(object_ref)
     poll_result_1 = LongPollResult.FromString(result_1)
     assert set(poll_result_1.updated_objects.keys()) == {"key_1"}
     assert poll_result_1.updated_objects["key_1"].object_snapshot.decode() == "999"
-    request_2 = {
-        "keys_to_snapshot_ids": {"ROUTE_TABLE": -1}
-    }
+    request_2 = {"keys_to_snapshot_ids": {"ROUTE_TABLE": -1}}
     endpoints: Dict[EndpointTag, EndpointInfo] = dict()
     endpoints["deployment_name"] = EndpointInfo(route="/test/xlang/poll")
     endpoints["deployment_name1"] = EndpointInfo(route="/test/xlang/poll1")
     ray.get(host.notify_changed.remote(LongPollNamespace.ROUTE_TABLE, endpoints))
-    object_ref_2 = host.listen_for_change_xlang.remote(LongPollRequest(**request_2).SerializeToString())
+    object_ref_2 = host.listen_for_change_xlang.remote(
+        LongPollRequest(**request_2).SerializeToString()
+    )
     result_2: bytes = ray.get(object_ref_2)
     poll_result_2 = LongPollResult.FromString(result_2)
     assert set(poll_result_2.updated_objects.keys()) == {"ROUTE_TABLE"}
-    endpoint_set = EndpointSet.FromString(poll_result_2.updated_objects["ROUTE_TABLE"].object_snapshot)
+    endpoint_set = EndpointSet.FromString(
+        poll_result_2.updated_objects["ROUTE_TABLE"].object_snapshot
+    )
     assert set(endpoint_set.endpoints.keys()) == {"deployment_name", "deployment_name1"}
     assert endpoint_set.endpoints["deployment_name"].route == "/test/xlang/poll"
 
-    request_3 = {
-        "keys_to_snapshot_ids": {"(RUNNING_REPLICAS,deployment_name)": -1}
-    }
+    request_3 = {"keys_to_snapshot_ids": {"(RUNNING_REPLICAS,deployment_name)": -1}}
     replicas = [
         RunningReplicaInfo(
             deployment_name="deployment_name",
@@ -203,12 +208,22 @@ def test_listen_for_change_xlang(serve_instance):
         )
         for i in range(2)
     ]
-    ray.get(host.notify_changed.remote((LongPollNamespace.RUNNING_REPLICAS, "deployment_name"), replicas))
-    object_ref_3 = host.listen_for_change_xlang.remote(LongPollRequest(**request_3).SerializeToString())
+    ray.get(
+        host.notify_changed.remote(
+            (LongPollNamespace.RUNNING_REPLICAS, "deployment_name"), replicas
+        )
+    )
+    object_ref_3 = host.listen_for_change_xlang.remote(
+        LongPollRequest(**request_3).SerializeToString()
+    )
     result_3: bytes = ray.get(object_ref_3)
     poll_result_3 = LongPollResult.FromString(result_3)
     # assert set(poll_result_3.updated_objects.keys()) == {"(RUNNING_REPLICAS,deployment_name)"}
-    replica_name_list = ActorNameList.FromString(poll_result_3.updated_objects["(RUNNING_REPLICAS,deployment_name)"].object_snapshot)
+    replica_name_list = ActorNameList.FromString(
+        poll_result_3.updated_objects[
+            "(RUNNING_REPLICAS,deployment_name)"
+        ].object_snapshot
+    )
     assert replica_name_list.names == ["SERVE_REPLICA::0", "SERVE_REPLICA::1"]
 
 

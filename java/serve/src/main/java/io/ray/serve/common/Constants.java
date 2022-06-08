@@ -25,6 +25,9 @@ public class Constants {
 
   public static final String CHECK_HEALTH_METHOD = "checkHealth";
 
+  /** Controller checkpoint path */
+  public static final String DEFAULT_CHECKPOINT_PATH = "ray://";
+
   /**
    * Because ServeController will accept one long poll request per handle, its concurrency needs to
    * scale as O(num_handles)

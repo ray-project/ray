@@ -160,7 +160,9 @@ class ServeController:
         Args:
             keys_to_snapshot_ids_bytes (Dict[str, int]): the protobuf bytes of keys_to_snapshot_ids (Dict[str, int]).
         """
-        return await (self.long_poll_host.listen_for_change_xlang(keys_to_snapshot_ids_bytes))
+        return await (
+            self.long_poll_host.listen_for_change_xlang(keys_to_snapshot_ids_bytes)
+        )
 
     def get_checkpoint_path(self) -> str:
         return self.checkpoint_path

@@ -91,6 +91,9 @@ public class Serve {
             : CommonUtil.formatActorName(
                 Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
 
+    if (StringUtils.isBlank(checkpointPath)) {
+      checkpointPath = Constants.DEFAULT_CHECKPOINT_PATH;
+    }
     // TODO The namespace, max_task_retries and dispatching on head node is not supported in Java
     // now.
     PyActorCreator controllerCreator =

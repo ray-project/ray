@@ -263,7 +263,9 @@ class LongPollHost:
         Args:
             keys_to_snapshot_ids_bytes (Dict[str, int]): the protobuf bytes of keys_to_snapshot_ids (Dict[str, int]).
         """
-        keys_to_snapshot_ids_proto = LongPollRequest.FromString(keys_to_snapshot_ids_bytes)
+        keys_to_snapshot_ids_proto = LongPollRequest.FromString(
+            keys_to_snapshot_ids_bytes
+        )
         keys_to_snapshot_ids = {
             self._parse_xlang_key(xlang_key): snapshot_id
             for xlang_key, snapshot_id in keys_to_snapshot_ids_proto.keys_to_snapshot_ids.items()
@@ -283,7 +285,7 @@ class LongPollHost:
         if xlang_key is None:
             raise ValueError("func _parse_xlang_key: xlang_key is None")
         if xlang_key.startswith("(") and xlang_key.endswith(")"):
-            fields = xlang_key[1:-1].split(',')
+            fields = xlang_key[1:-1].split(",")
             if len(fields) == 2:
                 enum_field = self._parse_poll_namespace(fields[0].strip())
                 if isinstance(enum_field, LongPollNamespace):
@@ -294,13 +296,15 @@ class LongPollHost:
 
     def _build_xlang_key(self, key: KeyType) -> str:
         if isinstance(key, tuple):
-            return '(' + key[0].name + ',' + key[1] + ')'
+            return "(" + key[0].name + "," + key[1] + ")"
         elif isinstance(key, LongPollNamespace):
             return key.name
         else:
             return key
 
-    def _object_snapshot_to_proto_bytes(self, key: KeyType, object_snapshot: Any) -> bytes:
+    def _object_snapshot_to_proto_bytes(
+        self, key: KeyType, object_snapshot: Any
+    ) -> bytes:
         if key == LongPollNamespace.ROUTE_TABLE:
             # object_snapshot is Dict[EndpointTag, EndpointInfo]
             xlang_endpoints = {
@@ -318,11 +322,16 @@ class LongPollHost:
         else:
             return str.encode(str(object_snapshot))
 
-    def _listen_result_to_proto_bytes(self, keys_to_updated_objects: Dict[KeyType, UpdatedObject]) -> bytes:
+    def _listen_result_to_proto_bytes(
+        self, keys_to_updated_objects: Dict[KeyType, UpdatedObject]
+    ) -> bytes:
         xlang_keys_to_updated_objects = {
-            self._build_xlang_key(key): UpdatedObjectProto(snapshot_id=updated_object.snapshot_id,
-                                                           object_snapshot=self._object_snapshot_to_proto_bytes(
-                                                               key, updated_object.object_snapshot))
+            self._build_xlang_key(key): UpdatedObjectProto(
+                snapshot_id=updated_object.snapshot_id,
+                object_snapshot=self._object_snapshot_to_proto_bytes(
+                    key, updated_object.object_snapshot
+                ),
+            )
             for key, updated_object in keys_to_updated_objects.items()
         }
         data = {
