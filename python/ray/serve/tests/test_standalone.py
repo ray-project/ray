@@ -227,8 +227,8 @@ def test_multiple_routers(ray_cluster):
     # Two actors should be started.
     def get_first_two_actors():
         try:
-            ray.get_actor(proxy_names[0])
-            ray.get_actor(proxy_names[1])
+            ray.get_actor(proxy_names[0], namespace=SERVE_NAMESPACE)
+            ray.get_actor(proxy_names[1], namespace=SERVE_NAMESPACE)
             return True
         except ValueError:
             return False
@@ -239,7 +239,9 @@ def test_multiple_routers(ray_cluster):
     ray.get(block_until_http_ready.remote("http://127.0.0.1:8005/-/routes"))
 
     # Kill one of the servers, the HTTP server should still function.
-    ray.kill(ray.get_actor(get_proxy_names()[0]), no_restart=True)
+    ray.kill(
+        ray.get_actor(get_proxy_names()[0], namespace=SERVE_NAMESPACE), no_restart=True
+    )
     ray.get(block_until_http_ready.remote("http://127.0.0.1:8005/-/routes"))
 
     # Add a new node to the cluster. This should trigger a new router to get
@@ -251,7 +253,7 @@ def test_multiple_routers(ray_cluster):
 
     def get_third_actor():
         try:
-            ray.get_actor(third_proxy)
+            ray.get_actor(third_proxy, namespace=SERVE_NAMESPACE)
             return True
         # IndexErrors covers when cluster resources aren't updated yet.
         except (IndexError, ValueError):
@@ -265,7 +267,7 @@ def test_multiple_routers(ray_cluster):
 
     def third_actor_removed():
         try:
-            ray.get_actor(third_proxy)
+            ray.get_actor(third_proxy, namespace=SERVE_NAMESPACE)
             return False
         except ValueError:
             return True
