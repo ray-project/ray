@@ -187,11 +187,11 @@ class SampleBatch(dict):
         """
         return len(self)
 
-    @Deprecated(
-        new="calling concat_samples() from rllib.policy.sample_batch", error=False
-    )
     @staticmethod
     @PublicAPI
+    @Deprecated(
+        new="concat_samples() from rllib.policy.sample_batch", error=False
+    )
     def concat_samples(
         samples: Union[List["SampleBatch"], List["MultiAgentBatch"]],
     ) -> Union["SampleBatch", "MultiAgentBatch"]:
@@ -1175,11 +1175,11 @@ class MultiAgentBatch:
             return policy_batches[DEFAULT_POLICY_ID]
         return MultiAgentBatch(policy_batches=policy_batches, env_steps=env_steps)
 
-    @Deprecated(
-        new="calling concat_samples() from rllib.policy.sample_batch", error=False
-    )
     @staticmethod
     @PublicAPI
+    @Deprecated(
+        new="concat_samples() from rllib.policy.sample_batch", error=False
+    )
     def concat_samples(samples: List["MultiAgentBatch"]) -> "MultiAgentBatch":
         return concat_samples(samples)
 
