@@ -954,8 +954,9 @@ class SimpleListCollector(SampleCollector):
             if episode_id in self.agent_steps:
                 del self.agent_steps[episode_id]
             else:
-                assert len(pre_batches) == 0, \
-                    'Expected the batch to be empty since the episode_id is missing.'
+                assert (
+                    len(pre_batches) == 0
+                ), "Expected the batch to be empty since the episode_id is missing."
                 # if the key does not exist it means that throughout the episode all
                 # observations were empty (i.e. there was no agent in the env)
                 msg = (
