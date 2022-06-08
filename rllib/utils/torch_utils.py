@@ -51,9 +51,16 @@ def apply_grad_clipping(
             # clip_grad_norm_. Would fail otherwise.
             params = list(filter(lambda p: p.grad is not None, param_group["params"]))
             if params:
+                # PyTorch clips gradients inplace and returns the norm before clipping
+                # We therefore simply clip twice (fixes #4965)
+                nn.utils.clip_grad_norm_(
+                    params, policy.config["grad_clip"]
+                )
+
                 grad_gnorm = nn.utils.clip_grad_norm_(
                     params, policy.config["grad_clip"]
                 )
+
                 if isinstance(grad_gnorm, torch.Tensor):
                     grad_gnorm = grad_gnorm.cpu().numpy()
                 info["grad_gnorm"] = grad_gnorm
