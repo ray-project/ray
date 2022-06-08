@@ -14,7 +14,7 @@ On this page, we'll cover the key concepts to help you understand how RLlib work
 In RLlib you use `trainers` to train `algorithms`.
 These algorithms use `policies` to select actions for your agents.
 Given a policy, `evaluation` of a policy produces `sample batches` of experiences.
-You can also customize the `execution plans` of your RL experiments.
+You can also customize the `training_iteration` method of your RL experiments.
 
 Trainers
 --------
@@ -172,16 +172,16 @@ Training Iteration Method
     Furthermore, we utilize concepts such as the ``SampleBatch``, ``RolloutWorker``, and ``Trainer``, which can be read about on this page
     and the :ref:`rollout worker reference docs <rolloutworker-reference-docs>`.
 
-    Finally, users who are looking to implement custom algorithms should familiarize themselves with the :ref:`Policy <rllib-policy-walkthrough>` and
+    Finally, developers who are looking to implement custom algorithms should familiarize themselves with the :ref:`Policy <rllib-policy-walkthrough>` and
     :ref:`Model <rllib-models-walkthrough>` classes.
 
 What is it?
 ~~~~~~~~~~~
 
-The ``training_iteration`` method is an attribute of ``Trainer`` that dictates the execution of your algorithm. Specifically, it is used to express how you want to
+The ``training_iteration`` method is an attribute of ``Trainer`` that dictates the execution logic of your algorithm. Specifically, it is used to express how you want to
 coordinate the movement of samples and policy data across your distributed workers.
 
-**A user will need to modify this attribute of an algorithm if they want to
+**A developer will need to modify this attribute of an algorithm if they want to
 make some custom changes to an algorithm or write their own from scratch if they are implementing a new algorithm.**
 
 When is it invoked?
@@ -240,7 +240,8 @@ Breaking that ``training_iteration`` code down:
 This set is covered in greater depth on the :ref:`WorkerSet documentation page<workerset-reference-docs>`.
 The method ``synchronous_parallel_sample`` is an RLlib utility that can be used for sampling in a blocking parallel
 fashion across multiple rollout workers. RLlib includes other utilities, such as the ``AsyncRequestsManager``, for
-facilitating the dataflow between various components in parallelizable fashion. They are covered in the :ref:`parallel requests documentation <parallel-requests-docs>`.
+facilitating the dataflow between various components in parallelizable fashion. They are covered in the :ref:`parallel
+requests documentation <parallel-requests-docs>`.
 
 .. code-block:: python
 
@@ -254,8 +255,8 @@ with examples on them can be found on the :ref:`train ops documentation page <tr
     self.workers.sync_weights()
 
 The training updates on the policy are applied to ``self.workers.local_worker``. By calling ``self.workers.sync_weights()``,
-weights are broadcasted from the local worker to the remote workers if there are remote workers. See :ref:`rollout worker reference docs <rolloutworker-reference-docs>`
-for further details.
+weights are broadcasted from the local worker to the remote workers if there are remote workers. See :ref:`rollout worker
+reference docs <rolloutworker-reference-docs>` for further details.
 
 .. code-block:: python
 
@@ -285,7 +286,7 @@ Training Iteration Method Utilities
 RLlib provides a collection of utilities that abstract away common tasks in RL training.
 
 `Sample Batch <core-concepts.html#sample-batches>`__:
-``SampleBatch`` and `MultiAgentBatch` are the two datatypes that we use for containing timesteps in RLlib. All of our
+``SampleBatch`` and ``MultiAgentBatch`` are the two datatypes that we use for containing timesteps in RLlib. All of our
 RLlib abstractions (policies, replay buffers, etc.) operate using these types.
 
 :ref:`Rollout Workers <rolloutworker-reference-docs>`:
@@ -299,15 +300,18 @@ for training and ``remote_workers`` for sampling.
 
 
 :ref:`Train Ops <train-ops-docs>`:
-These are methods that improve the policy and update workers. The most basic operator, ``train_one_step``, take in as input a batch of experiences and emit metrics as output.
-For training with gpus, use ``multi_gpu_train_one_step``. These methods use the ``learn_on_batch`` method of rollout workers to complete the training update.
+These are methods that improve the policy and update workers. The most basic operator, ``train_one_step``, takes in as
+input a batch of experiences and emits a ``ResultDict`` with metrics as output. For training with GPUs, use
+``multi_gpu_train_one_step``. These methods use the ``learn_on_batch`` method of rollout workers to complete the
+ training update.
 
 :ref:`Replay Buffers <replay-buffer-docs>`:
-RLlib provides `a collection <https://github.com/ray-project/ray/tree/master/rllib/utils/replay_buffers>`__ of replay buffers that can be used for storing and sampling experiences.
+RLlib provides `a collection <https://github.com/ray-project/ray/tree/master/rllib/utils/replay_buffers>`__ of replay
+buffers that can be used for storing and sampling experiences.
 
 :ref:`Parallel Request Utilities <parallel-requests-docs>`:
 RLlib provides a collection of concurrency ops that can be asynchronous and synchronous operations in the training loop.
-``AsyncRequestsManager`` is used for launching and managing asynchronous requests on actors. Currently in RLlib it is
+``AsyncRequestsManager`` is used for launching and managing asynchronous requests on actors. Currently, in RLlib, it is
 used for asynchronous sampling on rollout workers and asynchronously adding to and sampling from replay buffer actors.
-``synchronous_parallel_sample`` has a more narrow but common ussage of synchronously sampling from a set of rollout workers.
+``synchronous_parallel_sample`` has a more narrow but common usage of synchronously sampling from a set of rollout workers.
 

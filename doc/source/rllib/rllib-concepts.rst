@@ -237,7 +237,7 @@ First, check out the `PPO trainer definition <https://github.com/ray-project/ray
 
 Besides some boilerplate for defining the PPO configuration and some warnings, the most important method to take note of is the ``training_iteration``.
 
-The trainer's `training iteration function <#training-iteration>`__ defines the distributed training workflow.
+The trainer's `training iteration method <core-concepts.html#training-iteration-method>`__ defines the distributed training workflow.
 Depending on the ``simple_optimizer`` trainer config,
 PPO can switch between a simple synchronous optimizer, or a multi-GPU plan that implements minibatch SGD (the default):
 
