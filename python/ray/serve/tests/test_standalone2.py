@@ -17,6 +17,7 @@ from ray.serve.context import get_global_client
 from ray.serve.schema import ServeApplicationSchema
 from ray.serve.client import ServeControllerClient
 from ray.serve.common import ApplicationStatus
+from ray.serve.constants import SERVE_NAMESPACE
 from ray._private.test_utils import wait_for_condition
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 
@@ -84,19 +85,25 @@ def test_memory_omitted_option(ray_shutdown):
 
 
 @pytest.mark.parametrize("detached", [True, False])
-def test_override_namespace(shutdown_ray, detached):
-    """Test the _override_controller_namespace flag in serve.start()."""
+@pytest.mark.parametrize("ray_namespace", ["arbitrary", "serve", None])
+def test_serve_namespace(shutdown_ray, detached, ray_namespace):
+    """Test that Serve starts in SERVE_NAMESPACE regardless of driver namespace."""
 
-    ray_namespace = "ray_namespace"
-    controller_namespace = "controller_namespace"
+    with ray.init(namespace=ray_namespace):
+        serve.start(detached=detached)
 
-    ray.init(namespace=ray_namespace)
-    serve.start(detached=detached, _override_controller_namespace=controller_namespace)
+        @serve.deployment
+        def f(*args):
+            pass
 
-    controller_name = get_global_client()._controller_name
-    ray.get_actor(controller_name, namespace=controller_namespace)
+        f.deploy()
 
-    serve.shutdown()
+        actors = ray.util.list_named_actors(all_namespaces=True)
+
+        assert len(actors) == 3
+        assert all(actor["namespace"] == SERVE_NAMESPACE for actor in actors)
+
+        serve.shutdown()
 
 
 @pytest.mark.parametrize("detached", [True, False])

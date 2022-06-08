@@ -269,7 +269,7 @@ def init_ray_and_catch_exceptions(connect_to_serve: bool = False) -> Callable:
 
                 if connect_to_serve:
                     from ray import serve
-                    
+
                     serve.start(detached=True)
 
                 return await f(self, *args, **kwargs)
