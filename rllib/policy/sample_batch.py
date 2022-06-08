@@ -12,7 +12,12 @@ from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import concat_aligned
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
-from ray.rllib.utils.typing import PolicyID, TensorType, ViewRequirementsDict
+from ray.rllib.utils.typing import (
+    PolicyID,
+    TensorType,
+    SampleBatchType,
+    ViewRequirementsDict
+)
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -182,104 +187,16 @@ class SampleBatch(dict):
         """
         return len(self)
 
+    @Deprecated(
+        new='calling concat_samples() from rllib.policy.sample_batch',
+        error=False
+    )
     @staticmethod
     @PublicAPI
     def concat_samples(
         samples: Union[List["SampleBatch"], List["MultiAgentBatch"]],
     ) -> Union["SampleBatch", "MultiAgentBatch"]:
-        """Concatenates n SampleBatches or MultiAgentBatches.
-
-        Args:
-            samples: List of SampleBatches or MultiAgentBatches to be
-                concatenated.
-
-        Returns:
-            A new (concatenated) SampleBatch or MultiAgentBatch.
-
-        Examples:
-            >>> import numpy as np
-            >>> from ray.rllib.policy.sample_batch import SampleBatch
-            >>> b1 = SampleBatch({"a": np.array([1, 2]), # doctest: +SKIP
-            ...                   "b": np.array([10, 11])})
-            >>> b2 = SampleBatch({"a": np.array([3]), # doctest: +SKIP
-            ...                   "b": np.array([12])})
-            >>> print(SampleBatch.concat_samples([b1, b2])) # doctest: +SKIP
-            {"a": np.array([1, 2, 3]), "b": np.array([10, 11, 12])}
-        """
-        if any(isinstance(s, MultiAgentBatch) for s in samples):
-            return MultiAgentBatch.concat_samples(samples)
-        concatd_seq_lens = []
-        concat_samples = []
-        # Make sure these settings are consistent amongst all batches.
-        zero_padded = max_seq_len = time_major = None
-        for s in samples:
-            if s.count > 0:
-                if max_seq_len is None:
-                    zero_padded = s.zero_padded
-                    max_seq_len = s.max_seq_len
-                    time_major = s.time_major
-
-                # Make sure these settings are consistent amongst all batches.
-                if s.zero_padded != zero_padded or s.time_major != time_major:
-                    raise ValueError(
-                        "All SampleBatches' `zero_padded` and `time_major` settings "
-                        "must be consistent!"
-                    )
-                if (
-                    s.max_seq_len is None or max_seq_len is None
-                ) and s.max_seq_len != max_seq_len:
-                    raise ValueError(
-                        "Samples must consistently either provide or omit "
-                        "`max_seq_len`!"
-                    )
-                elif zero_padded and s.max_seq_len != max_seq_len:
-                    raise ValueError(
-                        "For `zero_padded` SampleBatches, the values of `max_seq_len` "
-                        "must be consistent!"
-                    )
-
-                if max_seq_len is not None:
-                    max_seq_len = max(max_seq_len, s.max_seq_len)
-                concat_samples.append(s)
-                if s.get(SampleBatch.SEQ_LENS) is not None:
-                    concatd_seq_lens.extend(s[SampleBatch.SEQ_LENS])
-
-        # If we don't have any samples (0 or only empty SampleBatches),
-        # return an empty SampleBatch here.
-        if len(concat_samples) == 0:
-            return SampleBatch()
-
-        # Collect the concat'd data.
-        concatd_data = {}
-
-        def concat_key(*values):
-            return concat_aligned(values, time_major)
-
-        try:
-            for k in concat_samples[0].keys():
-                if k == "infos":
-                    concatd_data[k] = concat_aligned(
-                        [s[k] for s in concat_samples], time_major=time_major
-                    )
-                else:
-                    concatd_data[k] = tree.map_structure(
-                        concat_key, *[c[k] for c in concat_samples]
-                    )
-        except Exception:
-            raise ValueError(
-                f"Cannot concat data under key '{k}', b/c "
-                "sub-structures under that key don't match. "
-                f"`samples`={samples}"
-            )
-
-        # Return a new (concat'd) SampleBatch.
-        return SampleBatch(
-            concatd_data,
-            seq_lens=concatd_seq_lens,
-            _time_major=time_major,
-            _zero_padded=zero_padded,
-            _max_seq_len=max_seq_len,
-        )
+        return concat_samples(samples)
 
     @PublicAPI
     def concat(self, other: "SampleBatch") -> "SampleBatch":
@@ -1247,45 +1164,26 @@ class MultiAgentBatch:
             The single default policy's SampleBatch or a MultiAgentBatch
             (more than one policy).
         """
-        # handle the empty case
-        if not policy_batches:
-            return SampleBatch(policy_batches, env_steps=env_steps)
+        # # handle the empty case
+        # if not policy_batches:
+        #     foo = SampleBatch(policy_batches, env_steps=env_steps)
+        #     bar = MultiAgentBatch(policy_batches, env_steps=env_steps)
+        #     print('sample_batch = ', foo.count)
+        #     print('ma_batch = ', bar.count)
+        #     return SampleBatch(policy_batches, env_steps=env_steps)
 
         if len(policy_batches) == 1 and DEFAULT_POLICY_ID in policy_batches:
             return policy_batches[DEFAULT_POLICY_ID]
         return MultiAgentBatch(policy_batches=policy_batches, env_steps=env_steps)
 
+    @Deprecated(
+        new='calling concat_samples() from rllib.policy.sample_batch',
+        error=False
+    )
     @staticmethod
     @PublicAPI
     def concat_samples(samples: List["MultiAgentBatch"]) -> "MultiAgentBatch":
-        """Concatenates a list of MultiAgentBatches into a new MultiAgentBatch.
-
-        Args:
-            samples: List of MultiagentBatch objects to concatenate.
-
-        Returns:
-            A new MultiAgentBatch consisting of the concatenated inputs.
-        """
-        policy_batches = collections.defaultdict(list)
-        env_steps = 0
-        for s in samples:
-            # Some batches in `samples` are not MultiAgentBatch.
-            if not isinstance(s, MultiAgentBatch):
-                # If empty SampleBatch: ok (just ignore).
-                if isinstance(s, SampleBatch) and len(s) <= 0:
-                    continue
-                # Otherwise: Error.
-                raise ValueError(
-                    "`MultiAgentBatch.concat_samples()` can only concat "
-                    "MultiAgentBatch types, not {}!".format(type(s).__name__)
-                )
-            for key, batch in s.policy_batches.items():
-                policy_batches[key].append(batch)
-            env_steps += s.env_steps()
-        out = {}
-        for key, batches in policy_batches.items():
-            out[key] = SampleBatch.concat_samples(batches)
-        return MultiAgentBatch(out, env_steps)
+        return concat_samples(samples)
 
     @PublicAPI
     def copy(self) -> "MultiAgentBatch":
@@ -1355,3 +1253,139 @@ class MultiAgentBatch:
         return "MultiAgentBatch({}, env_steps={})".format(
             str(self.policy_batches), self.count
         )
+
+
+def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
+    """
+    Concatenates n SampleBatches or MultiAgentBatches.
+    If all items in samples are SampleBatche types, the output will be
+    a SampleBatch type. Otherwise, the output will be a MultiAgentBatch type.
+    The output will still be a MultiAgentBatch object even if all
+    MultiAgentBatches are empty. Empty samples are simply ignored.
+
+        Args:
+            samples: List of SampleBatches or MultiAgentBatches to be
+                concatenated.
+
+        Returns:
+            A new (concatenated) SampleBatch or MultiAgentBatch.
+
+        Examples:
+            >>> import numpy as np
+            >>> from ray.rllib.policy.sample_batch import SampleBatch
+            >>> b1 = SampleBatch({"a": np.array([1, 2]), # doctest: +SKIP
+            ...                   "b": np.array([10, 11])})
+            >>> b2 = SampleBatch({"a": np.array([3]), # doctest: +SKIP
+            ...                   "b": np.array([12])})
+            >>> print(concat_samples([b1, b2])) # doctest: +SKIP
+            {"a": np.array([1, 2, 3]), "b": np.array([10, 11, 12])}
+    """
+
+    if any([isinstance(s, MultiAgentBatch) for s in samples]):
+        return _concat_samples_into_ma_batch(samples)
+
+    # the output is a SampleBatch type
+    concatd_seq_lens = []
+    concated_samples = []
+    # Make sure these settings are consistent amongst all batches.
+    zero_padded = max_seq_len = time_major = None
+    for s in samples:
+        if s.count > 0:
+            if max_seq_len is None:
+                zero_padded = s.zero_padded
+                max_seq_len = s.max_seq_len
+                time_major = s.time_major
+
+            # Make sure these settings are consistent amongst all batches.
+            if s.zero_padded != zero_padded or s.time_major != time_major:
+                raise ValueError(
+                    "All SampleBatches' `zero_padded` and `time_major` settings "
+                    "must be consistent!"
+                )
+            if (
+                s.max_seq_len is None or max_seq_len is None
+            ) and s.max_seq_len != max_seq_len:
+                raise ValueError(
+                    "Samples must consistently either provide or omit "
+                    "`max_seq_len`!"
+                )
+            elif zero_padded and s.max_seq_len != max_seq_len:
+                raise ValueError(
+                    "For `zero_padded` SampleBatches, the values of `max_seq_len` "
+                    "must be consistent!"
+                )
+
+            if max_seq_len is not None:
+                max_seq_len = max(max_seq_len, s.max_seq_len)
+            concated_samples.append(s)
+            if s.get(SampleBatch.SEQ_LENS) is not None:
+                concatd_seq_lens.extend(s[SampleBatch.SEQ_LENS])
+
+    # If we don't have any samples (0 or only empty SampleBatches),
+    # return an empty SampleBatch here.
+    if len(concated_samples) == 0:
+        return SampleBatch()
+
+    # Collect the concat'd data.
+    concatd_data = {}
+
+    for k in concated_samples[0].keys():
+        try:
+            if k == "infos":
+                concatd_data[k] = concat_aligned(
+                    [s[k] for s in concated_samples], time_major=time_major
+                )
+            else:
+                concatd_data[k] = tree.map_structure(
+                    _concat_key, *[c[k] for c in concated_samples]
+                )
+        except Exception:
+            raise ValueError(
+                f"Cannot concat data under key '{k}', b/c "
+                "sub-structures under that key don't match. "
+                f"`samples`={samples}"
+            )
+
+    # Return a new (concat'd) SampleBatch.
+    return SampleBatch(
+        concatd_data,
+        seq_lens=concatd_seq_lens,
+        _time_major=time_major,
+        _zero_padded=zero_padded,
+        _max_seq_len=max_seq_len,
+    )
+
+
+def _concat_samples_into_ma_batch(samples: List[SampleBatchType]) -> "MultiAgentBatch":
+
+    policy_batches = collections.defaultdict(list)
+    env_steps = 0
+    for s in samples:
+        # Some batches in `samples` may be SampleBatch.
+        if isinstance(s, SampleBatch):
+            # If empty SampleBatch: ok (just ignore).
+            if len(s) <= 0:
+                continue
+            else:
+                # if non-empty: just convert to MA-batch and move forward
+                s = s.as_multi_agent()
+        elif not isinstance(s, MultiAgentBatch):
+            # Otherwise: Error.
+            raise ValueError(
+                "`concat_samples_into_ma_batch` can only concat "
+                "SampleBatchType objects, not {}!".format(type(s).__name__)
+            )
+
+        for key, batch in s.policy_batches.items():
+            policy_batches[key].append(batch)
+        env_steps += s.env_steps()
+
+        out = {}
+        for key, batches in policy_batches.items():
+            out[key] = concat_samples(batches)
+
+        return MultiAgentBatch(out, env_steps)
+
+
+def _concat_key(*values, time_major=None):
+    return concat_aligned(list(values), time_major)
