@@ -44,6 +44,87 @@ class TrainingResult:
 
 
 class TrainSession(Session):
+    """Session client that "per worker train loop" can interact with.
+
+    Notice that each worker will automatically switch to its working
+    directory on entering the train loop. This is to ensure that
+    each worker can safely write to a local directory without racing
+    and overwriting each other."""
+
+    def __init__(self, session: "_TrainSession"):
+        self._session = session
+
+    def report(self, metrics: Dict, checkpoint: Optional[Checkpoint] = None) -> None:
+        self._session.report(metrics, checkpoint)
+
+    @property
+    def loaded_checkpoint(self) -> Optional[Checkpoint]:
+        return self._session.loaded_checkpoint
+
+    @property
+    def world_size(self) -> int:
+        """Get the current world size (i.e. total number of workers) for this run.
+
+        .. code-block:: python
+
+            import time
+            from ray.air.session import get_session
+
+            def train_func():
+                assert get_session().world_size == 4
+
+            trainer = Trainer(backend="torch", num_workers=4)
+            trainer.start()
+            trainer.run(train_func)
+            trainer.shutdown()
+        """
+        return self._session.world_size
+
+    @property
+    def world_rank(self) -> int:
+        """Get the world rank of this worker.
+
+        .. code-block:: python
+
+            import time
+            from ray.air.session import get_session
+
+            def train_func():
+                for iter in range(100):
+                    time.sleep(1)
+                    if get_session().world_rank == 0:
+                        print("Worker 0")
+
+            trainer = Trainer(backend="torch")
+            trainer.start()
+            trainer.run(train_func)
+            trainer.shutdown()
+        """
+        return self._session.world_rank
+
+    @property
+    def local_rank(self) -> int:
+        """Get the local rank of this worker (rank of the worker on its node).
+
+        .. code-block:: python
+
+            import time
+            from ray.air.session import get_session
+
+            def train_func():
+                if torch.cuda.is_available():
+                    torch.cuda.set_device(get_session().local_rank)
+                ...
+
+            trainer = Trainer(backend="torch", use_gpu=True)
+            trainer.start()
+            trainer.run(train_func)
+            trainer.shutdown()
+        """
+        return self._session.local_rank
+
+
+class _TrainSession(Session):
     """Holds information for training on each worker."""
 
     def __init__(
@@ -52,8 +133,9 @@ class TrainSession(Session):
         world_rank: int,
         local_rank: int,
         world_size: int,
+        logdir: str,
         dataset_shard: Optional[Union[Dataset, DatasetPipeline]] = None,
-        checkpoint: Optional[Dict] = None,
+        checkpoint: Optional[Union[Dict, Checkpoint]] = None,
         encode_data_fn: Callable = None,
         detailed_autofilled_metrics: bool = False,
     ):
@@ -75,6 +157,10 @@ class TrainSession(Session):
 
             encode_data_fn = noop
         self._encode_data_fn = encode_data_fn
+
+        # Change the working directory to `logdir`.
+        os.makedirs(logdir, exist_ok=True)
+        os.chdir(logdir)
 
         # This lock is used to control the execution of the training thread.
         self.continue_lock = threading.Semaphore(0)
@@ -245,8 +331,20 @@ class TrainSession(Session):
             self.checkpoint(**checkpoint_dict)
         self._report_legacy(**metrics)
 
+    def loaded_checkpoint(self) -> Optional[Checkpoint]:
+        if not self.loaded_checkpoint:
+            return None
+        elif isinstance(self.loaded_checkpoint, dict):
+            return Checkpoint.from_dict(self.loaded_checkpoint)
+        elif isinstance(self.loaded_checkpoint, Checkpoint):
+            return self.loaded_checkpoint
+        else:
+            assert None
 
-_session = None
+
+_session: Optional[_TrainSession] = None
+# V2 Session API
+_session_v2: Optional[TrainSession] = None
 
 
 def _warn_session_misuse(fn_name: str):
@@ -267,15 +365,17 @@ def _warn_session_misuse(fn_name: str):
 
 def init_session(*args, **kwargs) -> None:
     global _session
+    global _session_v2
     if _session:
         raise ValueError(
             "A Train session is already in use. Do not call "
             "`init_session()` manually."
         )
-    _session = TrainSession(*args, **kwargs)
+    _session = _TrainSession(*args, **kwargs)
+    _session_v2 = TrainSession(session=_session)
 
 
-def get_session() -> Optional[TrainSession]:
+def get_session() -> Optional[_TrainSession]:
     global _session
     return _session
 

@@ -18,6 +18,7 @@ from ray.air._internal.config import (
     ensure_only_allowed_dataclass_keys_updated,
     ensure_only_allowed_dict_keys_set,
 )
+from ray.air.session import get_session
 from ray.tune import Trainable
 from ray.tune.error import TuneError
 from ray.tune.function_runner import wrap_function
@@ -348,12 +349,14 @@ class Trainer(abc.ABC):
         def train_func(config, checkpoint_dir=None):
             # config already contains merged values.
             # Instantiate new Trainer in Trainable.
+            tune_session = get_session()
             trainer = trainer_cls(**config)
 
             if checkpoint_dir:
                 trainer.resume_from_checkpoint = Checkpoint.from_directory(
                     checkpoint_dir
                 )
+            trainer.logdir = tune_session.logdir
 
             trainer.setup()
             trainer.preprocess_datasets()

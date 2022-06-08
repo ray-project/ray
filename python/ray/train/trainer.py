@@ -42,6 +42,7 @@ from ray.train.worker_group import WorkerGroup
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
 from ray.util.ml_utils.checkpoint_manager import CheckpointStrategy
+from ray.air.checkpoint import Checkpoint
 
 if TUNE_INSTALLED:
     from ray import tune
@@ -664,7 +665,7 @@ class TrainingIterator:
         train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
         dataset_spec: _RayDatasetSpec,
         checkpoint_manager: CheckpointManager,
-        checkpoint: Optional[Union[Dict, str, Path]],
+        checkpoint: Optional[Union[Dict, str, Path, Checkpoint]],
         checkpoint_strategy: Optional[CheckpointStrategy],
         run_dir: Optional[Path] = None,
     ):
@@ -703,12 +704,12 @@ class TrainingIterator:
             run_dir=run_dir,
             latest_checkpoint_id=latest_checkpoint_id,
         )
-        checkpoint_dict = self._checkpoint_manager._load_checkpoint(checkpoint)
+        checkpoint = self._checkpoint_manager._load_checkpoint(checkpoint)
         self._run_with_error_handling(
             lambda: self._backend_executor.start_training(
                 train_func=train_func,
                 dataset_spec=dataset_spec,
-                checkpoint=checkpoint_dict,
+                checkpoint=checkpoint,
             )
         )
 

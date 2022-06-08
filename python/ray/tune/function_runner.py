@@ -12,7 +12,6 @@ from numbers import Number
 from typing import Any, Callable, Dict, Optional
 
 from ray.air.checkpoint import Checkpoint
-from ray.air.session import Session
 from ray.util.annotations import DeveloperAPI
 from six.moves import queue
 
@@ -124,7 +123,7 @@ class FuncCheckpointUtil:
         return perm_checkpoint_dir
 
 
-class TuneSession(Session):
+class _StatusReporter:
     def __init__(
         self,
         result_queue,
@@ -145,7 +144,10 @@ class TuneSession(Session):
         self._last_checkpoint = None
         self._fresh_checkpoint = False
         self._trial_resources = trial_resources
-        self._epoch = 0
+        # Also used as a marker of whether new `report()` API is being used,
+        # in which case, `_iter` will be incremented from 0 every time `report`
+        # is called.
+        self._iter = None
 
     def reset(self, trial_name=None, trial_id=None, logdir=None, trial_resources=None):
         self._trial_name = trial_name
@@ -154,10 +156,7 @@ class TuneSession(Session):
         self._last_checkpoint = None
         self._fresh_checkpoint = False
         self._trial_resources = trial_resources
-        # Also used as a marker of whether new `report()` API is being used,
-        # in which case, `_epoch` will be incremented from 0 every time `report`
-        # is called.
-        self._epoch = None
+        self._iter = None
 
     def __call__(self, _metric=None, **kwargs):
         """Report updated training status.
@@ -173,7 +172,7 @@ class TuneSession(Session):
         """
 
         assert self._last_report_time is not None, (
-            "TuneSession._start() must be called before the first "
+            "_StatusReporter._start() must be called before the first "
             "report __call__ is made to ensure correct runtime metrics."
         )
 
@@ -236,14 +235,21 @@ class TuneSession(Session):
 
     def report(self, metrics: Dict, checkpoint: Optional[Checkpoint] = None) -> None:
         # TODO(xwjiang): Tons of optimizations.
-        if not self._epoch:
-            self._epoch = 0
+        if not self._iter:
+            self._iter = 0
         if checkpoint:
-            checkpoint_dir = self.make_checkpoint_dir(step=self._epoch)
+            checkpoint_dir = self.make_checkpoint_dir(step=self._iter)
             self.set_checkpoint(checkpoint_dir)
             checkpoint.to_directory(checkpoint_dir)
         self.__call__(**metrics)
-        self._epoch += 1
+        self._iter += 1
+
+    @property
+    def loaded_checkpoint(self) -> Optional[Checkpoint]:
+        if self._last_checkpoint:
+            assert isinstance(self._last_checkpoint, str)
+            return Checkpoint.from_directory(self._last_checkpoint)
+        return None
 
     @property
     def logdir(self):
@@ -326,7 +332,7 @@ class FunctionRunner(Trainable):
         # reporting to block until finished.
         self._error_queue = queue.Queue(1)
 
-        self._tune_session = TuneSession(
+        self._status_reporter = _StatusReporter(
             self._results_queue,
             self._continue_semaphore,
             self._end_event,
@@ -337,7 +343,7 @@ class FunctionRunner(Trainable):
         )
         self._last_result = {}
 
-        session.init(self._tune_session)
+        session.init(self._status_reporter)
         self._runner = None
         self._restore_tmpdir = None
         self.temp_checkpoint_dir = None
@@ -351,14 +357,14 @@ class FunctionRunner(Trainable):
         def entrypoint():
             return self._trainable_func(
                 self.config,
-                self._tune_session,
-                self._tune_session.get_checkpoint(),
+                self._status_reporter,
+                self._status_reporter.get_checkpoint(),
             )
 
         # the runner thread is not started until the first call to _train
         self._runner = _RunnerThread(entrypoint, self._error_queue)
         # if not alive, try to start
-        self._tune_session._start()
+        self._status_reporter._start()
         try:
             self._runner.start()
         except RuntimeError:
@@ -436,7 +442,7 @@ class FunctionRunner(Trainable):
             result = new_result
 
         self._last_result = result
-        if self._tune_session.has_new_checkpoint():
+        if self._status_reporter.has_new_checkpoint():
             result[SHOULD_CHECKPOINT] = True
         return result
 
@@ -447,7 +453,7 @@ class FunctionRunner(Trainable):
         if tmp_checkpoint_dir:
             raise ValueError("Checkpoint dir should not be used with function API.")
 
-        checkpoint = self._tune_session.get_checkpoint()
+        checkpoint = self._status_reporter.get_checkpoint()
         state = self.get_state()
 
         if not checkpoint:
@@ -500,7 +506,7 @@ class FunctionRunner(Trainable):
         obj = TrainableUtil.checkpoint_to_object(checkpoint_path)
         return obj
 
-    def load_checkpoint(self, checkpoint):
+    def load_checkpoint(self, checkpoint: str):
         # This should be removed once Trainables are refactored.
         if "tune_checkpoint_path" in checkpoint:
             del checkpoint["tune_checkpoint_path"]
@@ -511,7 +517,7 @@ class FunctionRunner(Trainable):
         # By informing that this checkpoint is not new,
         # we will not return the checkpoint path
         # as a new checkpoint.
-        self._tune_session.set_checkpoint(checkpoint, is_new=False)
+        self._status_reporter.set_checkpoint(checkpoint, is_new=False)
 
     def restore_from_object(self, obj):
         self.temp_checkpoint_dir = FuncCheckpointUtil.mk_temp_checkpoint_dir(
@@ -562,7 +568,7 @@ class FunctionRunner(Trainable):
         self._runner = None
         self._last_result = {}
 
-        self._tune_session.reset(
+        self._status_reporter.reset(
             trial_name=self.trial_name,
             trial_id=self.trial_id,
             logdir=self.logdir,

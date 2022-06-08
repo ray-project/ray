@@ -4,21 +4,15 @@ import numpy as np
 
 import tensorflow as tf
 from ray.air.batch_predictor import BatchPredictor
-from tensorflow.keras.callbacks import Callback
 
 import ray
+from ray.air.callbacks.keras import Callback
 import ray.train as train
 from ray.data import Dataset
 from ray.train.tensorflow import prepare_dataset_shard
 from ray.air.train.integrations.tensorflow import TensorflowTrainer
 from ray.air.predictors.integrations.tensorflow import TensorflowPredictor
 from ray.air.result import Result
-
-
-class TrainCheckpointReportCallback(Callback):
-    def on_epoch_end(self, epoch, logs=None):
-        train.save_checkpoint(**{"model": self.model.get_weights()})
-        train.report(**logs)
 
 
 def get_dataset(a=5, b=10, size=1000) -> Dataset:
@@ -66,9 +60,7 @@ def train_func(config: dict):
                 batch_size=batch_size,
             )
         )
-        history = multi_worker_model.fit(
-            tf_dataset, callbacks=[TrainCheckpointReportCallback()]
-        )
+        history = multi_worker_model.fit(tf_dataset, callbacks=[Callback()])
         results.append(history.history)
     return results
 

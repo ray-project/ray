@@ -1,5 +1,6 @@
 import pytest
 import numpy as np
+import os
 
 import ray
 from ray import train
@@ -10,6 +11,9 @@ from ray.air.examples.tf.tensorflow_linear_dataset_example import (
 )
 from ray.air.predictors.integrations.tensorflow import TensorflowPredictor
 from ray.air.constants import MODEL_KEY, TRAIN_DATASET_KEY
+
+from ray.air.session import get_session
+from ray.air.checkpoint import Checkpoint
 
 
 @pytest.fixture
@@ -35,6 +39,8 @@ def build_model():
 
 @pytest.mark.parametrize("num_workers", [1, 2])
 def test_tensorflow_linear(ray_start_4_cpus, num_workers):
+    """Also tests air Keras callback."""
+
     def train_func(config):
         result = tensorflow_linear_train_func(config)
         assert len(result) == epochs
@@ -54,7 +60,9 @@ def test_tensorflow_linear(ray_start_4_cpus, num_workers):
         scaling_config=scaling_config,
         datasets={TRAIN_DATASET_KEY: get_dataset()},
     )
-    trainer.fit()
+    checkpoint = trainer.fit().checkpoint
+    with checkpoint.as_directory() as ckpt_dir:
+        assert os.path.exists(os.path.join(ckpt_dir, "saved_model.pb"))
 
 
 def test_tensorflow_e2e(ray_start_4_cpus):
@@ -82,6 +90,38 @@ def test_tensorflow_e2e(ray_start_4_cpus):
         TensorflowScorer, batch_format="pandas", compute="actors"
     )
     assert predictions.count() == 3
+
+
+def test_report_and_load_using_ml_session(ray_start_4_cpus):
+    def train_func():
+        session = get_session()
+        if session.loaded_checkpoint:
+            with session.loaded_checkpoint.as_directory() as loaded_checkpoint_dir:
+                import tensorflow as tf
+
+                model = tf.keras.models.load_model(loaded_checkpoint_dir)
+        else:
+            model = build_model()
+
+        model.save("my_model", overwrite=True)
+        session.report(
+            metrics={"iter": 1}, checkpoint=Checkpoint.from_directory("my_model")
+        )
+
+    scaling_config = {"num_workers": 2}
+    trainer = TensorflowTrainer(
+        train_loop_per_worker=train_func, scaling_config=scaling_config
+    )
+    result = trainer.fit()
+
+    trainer2 = TensorflowTrainer(
+        train_loop_per_worker=train_func,
+        scaling_config=scaling_config,
+        resume_from_checkpoint=result.checkpoint,
+    )
+    checkpoint = trainer2.fit().checkpoint
+    with checkpoint.as_directory() as ckpt_dir:
+        assert os.path.exists(os.path.join(ckpt_dir, "saved_model.pb"))
 
 
 if __name__ == "__main__":

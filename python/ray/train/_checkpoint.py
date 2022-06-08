@@ -81,12 +81,15 @@ class CheckpointManager(CommonCheckpointManager):
             self._checkpoint_strategy.checkpoint_score_attribute = TIMESTAMP
 
     def _load_checkpoint(
-        self, checkpoint_to_load: Optional[Union[Dict, str, Path]]
-    ) -> Optional[Dict]:
+        self, checkpoint_to_load: Optional[Union[Dict, str, Path, Checkpoint]]
+    ) -> Optional[Union[Dict, Checkpoint]]:
         """Load the checkpoint dictionary from the input dict or path."""
         if checkpoint_to_load is None:
             return None
         if isinstance(checkpoint_to_load, Dict):
+            return checkpoint_to_load
+        elif isinstance(checkpoint_to_load, Checkpoint):
+            # Do nothing, just returns
             return checkpoint_to_load
         else:
             # Load checkpoint from path.
@@ -198,8 +201,13 @@ class CheckpointManager(CommonCheckpointManager):
 
 class TuneCheckpointManager(CheckpointManager):
     def _load_checkpoint(
-        self, checkpoint_to_load: Optional[Union[Dict, str, Path]]
-    ) -> Optional[Dict]:
+        self, checkpoint_to_load: Optional[Union[Dict, str, Path, Checkpoint]]
+    ) -> Optional[Union[Dict, Checkpoint]]:
+        if isinstance(checkpoint_to_load, Checkpoint):
+            # The new logic
+            checkpoint_dict = checkpoint_to_load.to_dict()
+            self._latest_checkpoint_id = checkpoint_dict[TUNE_CHECKPOINT_ID]
+            return checkpoint_to_load
         loaded_checkpoint = super()._load_checkpoint(checkpoint_to_load)
         if loaded_checkpoint is not None:
             # If the Tune trial is restarted, a new Trainer is instantiated.

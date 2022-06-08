@@ -269,6 +269,14 @@ class DataParallelTrainer(Trainer):
             dataset_config=self._dataset_config,
         )
 
+        # Not set during initialization, as Trainer serves both as the entrypoint,
+        # as well as constructed within Trainable.
+        # If it's constructed from within Trainable, the field will be set directly
+        # by the TuneSession.
+        # The log directory that the Trainer can safely work with. Only meaningful
+        # if the Trainer is within the scope of a TuneSession.
+        self.logdir = None
+
         super(DataParallelTrainer, self).__init__(
             scaling_config=scaling_config,
             run_config=run_config,
@@ -338,6 +346,7 @@ class DataParallelTrainer(Trainer):
 
         backend_executor = BackendExecutor(
             backend_config=self._backend_config,
+            logdir=self.logdir,
             num_workers=scaling_config_dataclass.num_workers,
             num_cpus_per_worker=scaling_config_dataclass.num_cpus_per_worker,
             num_gpus_per_worker=scaling_config_dataclass.num_gpus_per_worker,
@@ -352,20 +361,13 @@ class DataParallelTrainer(Trainer):
         # Start the remote actors.
         backend_executor.start(initialization_hook=None)
 
-        if self.resume_from_checkpoint:
-            resume_checkpoint_dict = self.resume_from_checkpoint.to_dict()
-        else:
-            resume_checkpoint_dict = None
-
-        # TODO(amog): Have TrainingIterator also accept a checkpoint ObjectRef instead
-        #  of just a Dict.
         training_iterator = TrainingIterator(
             backend_executor=backend_executor,
             backend_config=self._backend_config,
             train_func=train_loop_per_worker,
             dataset_spec=self._ingest_spec,
             checkpoint_manager=checkpoint_manager,
-            checkpoint=resume_checkpoint_dict,
+            checkpoint=self.resume_from_checkpoint,
             checkpoint_strategy=None,
         )
 
