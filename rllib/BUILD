@@ -793,11 +793,11 @@ py_test(
     srcs = ["algorithms/cql/tests/test_cql.py"]
 )
 
-# CRRTrainer
+# CRR
 py_test(
     name = "test_crr",
-    tags = ["team:ml", "trainers_dir"],
-    size = "small",
+    tags = ["team:ml", "algorithms_dir"],
+    size = "medium",
     srcs = ["algorithms/crr/tests/test_crr.py"]
 )
 
