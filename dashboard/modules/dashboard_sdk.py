@@ -5,7 +5,7 @@ import json
 import yaml
 from pathlib import Path
 import tempfile
-from typing import Any, Dict, List, Optional, Union, Tuple
+from typing import Any, Dict, List, Optional
 from pkg_resources import packaging
 
 try:
