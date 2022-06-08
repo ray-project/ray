@@ -44,7 +44,7 @@ class MBMPOConfig(TrainerConfig):
         ...     .resources(num_gpus=4)\
         ...     .rollouts(num_rollout_workers=64)
         >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> # Build a Trainer object from the config and run 1 training_step.
         >>> trainer = config.build(env="CartPole-v1")
         >>> trainer.train()
 

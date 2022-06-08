@@ -30,7 +30,7 @@ config = {
 # Create our RLlib Trainer.
 trainer = PPO(config=config)
 
-# Run it for n training iterations. A training iteration includes
+# Run it for n training iterations. A training_step includes
 # parallel sample collection by the environment workers as well as
 # loss calculation on the collected batch and a model update.
 for _ in range(3):

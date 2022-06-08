@@ -55,7 +55,7 @@ class AlphaStarConfig(appo.APPOConfig):
         ...     .resources(num_gpus=4)\
         ...     .rollouts(num_rollout_workers=64)
         >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> # Build a Trainer object from the config and run 1 training step.
         >>> trainer = config.build(env="CartPole-v1")
         >>> trainer.train()
 
@@ -415,7 +415,7 @@ class AlphaStar(appo.APPO):
         return result
 
     @override(Trainer)
-    def training_iteration(self) -> ResultDict:
+    def training_step(self) -> ResultDict:
         # Trigger asynchronous rollouts on all RolloutWorkers.
         # - Rollout results are sent directly to correct replay buffer
         #   shards, instead of here (to the driver).

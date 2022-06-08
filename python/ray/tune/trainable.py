@@ -334,8 +334,8 @@ class Trainable:
             for this experiment. This id is preserved
             across checkpoint / restore calls.
 
-            `training_iteration` (int): The index of this
-            training iteration, e.g. call to train(). This is incremented
+            `training_step` (int): The index of this
+            training step, e.g. call to train(). This is incremented
             after `step()` is called.
 
             `pid` (str): The pid of the training process.
@@ -877,7 +877,7 @@ class Trainable:
         return self._iteration
 
     @property
-    def training_iteration(self):
+    def training_step(self):
         """Current training iteration (same as `self.iteration`).
 
         This value is automatically incremented every time `train()` is called

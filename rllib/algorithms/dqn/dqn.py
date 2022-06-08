@@ -334,10 +334,10 @@ class DQN(SimpleQ):
             return DQNTFPolicy
 
     @ExperimentalAPI
-    def training_iteration(self) -> ResultDict:
-        """DQN training iteration function.
+    def training_step(self) -> ResultDict:
+        """DQN training_step function.
 
-        Each training iteration, we:
+        Each training_step, we:
         - Sample (MultiAgentBatch) from workers.
         - Store new samples in replay buffer.
         - Sample training batch (MultiAgentBatch) from replay buffer.
@@ -347,7 +347,7 @@ class DQN(SimpleQ):
         - Return all collected metrics for the iteration.
 
         Returns:
-            The results dict from executing the training iteration.
+            The results dict from executing the training_step.
         """
         train_results = {}
 

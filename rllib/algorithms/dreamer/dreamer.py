@@ -36,7 +36,7 @@ class DreamerConfig(TrainerConfig):
         ...     .resources(num_gpus=0)\
         ...     .rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> # Build a Trainer object from the config and run 1 training_step.
         >>> trainer = config.build(env="CartPole-v1")
         >>> trainer.train()
 
@@ -140,7 +140,7 @@ class DreamerConfig(TrainerConfig):
             critic_lr: Critic model learning rate.
             grad_clip: If specified, clip the global norm of gradients by this amount.
             lambda_: The GAE (lambda) parameter.
-            dreamer_train_iters: Training iterations per data collection from real env.
+            dreamer_train_iters: training_steps per data collection from real env.
             batch_size: Number of episodes to sample for loss calculation.
             batch_length: Length of each episode to sample for loss calculation.
             imagine_horizon: Imagination horizon for training Actor and Critic.
@@ -377,7 +377,7 @@ class Dreamer(Trainer):
         return rollouts
 
     @override(Trainer)
-    def training_iteration(self) -> ResultDict:
+    def training_step(self) -> ResultDict:
         local_worker = self.workers.local_worker()
 
         # Number of sub-iterations for Dreamer
@@ -391,7 +391,7 @@ class Dreamer(Trainer):
         fetches = {}
 
         # Dreamer training loop.
-        # Run multiple sub-iterations for each training iteration.
+        # Run multiple sub-iterations for each training_step.
         for n in range(dreamer_train_iters):
             print(f"sub-iteration={n}/{dreamer_train_iters}")
             batch = self.local_replay_buffer.sample(batch_size)

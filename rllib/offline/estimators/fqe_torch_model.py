@@ -40,7 +40,7 @@ class FQETorchModel:
                         "fcnet_activation": "relu",
                         "vf_share_layers": True,
                     },
-            # Maximum number of training iterations to run on the batch
+            # Maximum number of training_steps to run on the batch
             n_iters = 160,
             # Learning rate for Q-function optimizer
             lr = 1e-3,
@@ -110,7 +110,7 @@ class FQETorchModel:
             batch: A SampleBatch of episodes to train on
 
         Returns:
-            A list of losses for each training iteration
+            A list of losses for each training_step
         """
         losses = []
         for _ in range(self.n_iters):

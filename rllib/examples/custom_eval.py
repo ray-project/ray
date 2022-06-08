@@ -170,7 +170,7 @@ if __name__ == "__main__":
         "evaluation_num_workers": 2,
         # Optional custom eval function.
         "custom_eval_function": eval_fn,
-        # Enable evaluation, once per training iteration.
+        # Enable evaluation, once per training_step.
         "evaluation_interval": 1,
         # Run 10 episodes each time evaluation runs.
         "evaluation_duration": 10,

@@ -367,7 +367,7 @@ class Trainer(Trainable):
         if _init is False:
             # - Create rollout workers here automatically.
             # - Run the execution plan to create the local iterator to `next()`
-            #   in each training iteration.
+            #   in each training step.
             # This matches the behavior of using `build_trainer()`, which
             # has been deprecated.
             try:
@@ -403,14 +403,14 @@ class Trainer(Trainable):
             # By default, collect metrics for all remote workers.
             self._remote_workers_for_metrics = self.workers.remote_workers()
 
-            # Function defining one single training iteration's behavior.
+            # Function defining one single training step's behavior.
             if self.config["_disable_execution_plan_api"]:
                 # Ensure remote workers are initially in sync with the local worker.
                 self.workers.sync_weights()
             # LocalIterator-creating "execution plan".
             # Only call this once here to create `self.train_exec_impl`,
             # which is a ray.util.iter.LocalIterator that will be `next`'d
-            # on each training iteration.
+            # on each training step.
             else:
                 self.train_exec_impl = self.execution_plan(
                     self.workers, self.config, **self._kwargs_for_execution_plan()
@@ -670,14 +670,14 @@ class Trainer(Trainable):
 
         step_results = {}
 
-        # No evaluation necessary, just run the next training iteration.
+        # No evaluation necessary, just run the next training step.
         if not evaluate_this_iter:
-            step_results = self._exec_plan_or_training_iteration_fn()
-        # We have to evaluate in this training iteration.
+            step_results = self._exec_plan_or_training_step_fn()
+        # We have to evaluate in this training step.
         else:
             # No parallelism.
             if not self.config["evaluation_parallel_to_training"]:
-                step_results = self._exec_plan_or_training_iteration_fn()
+                step_results = self._exec_plan_or_training_step_fn()
 
             # Kick off evaluation-loop (and parallel train() call,
             # if requested).
@@ -685,7 +685,7 @@ class Trainer(Trainable):
             if self.config["evaluation_parallel_to_training"]:
                 with concurrent.futures.ThreadPoolExecutor() as executor:
                     train_future = executor.submit(
-                        lambda: self._exec_plan_or_training_iteration_fn()
+                        lambda: self._exec_plan_or_training_step_fn()
                     )
                     # Automatically determine duration of the evaluation.
                     if self.config["evaluation_duration"] == "auto":
@@ -894,7 +894,7 @@ class Trainer(Trainable):
 
     @OverrideToImplementCustomLogic
     @DeveloperAPI
-    def training_iteration(self) -> ResultDict:
+    def training_step(self) -> ResultDict:
         """Default single iteration logic of an algorithm.
 
         - Collect on-policy samples (SampleBatches) in parallel using the
@@ -907,7 +907,7 @@ class Trainer(Trainable):
         - Return all collected metrics for the iteration.
 
         Returns:
-            The results dict from executing the training iteration.
+            The results dict from executing the training step.
         """
         # Collect SampleBatches from sample workers until we have a full batch.
         if self._by_agent_steps:
@@ -946,7 +946,7 @@ class Trainer(Trainable):
         raise NotImplementedError(
             "It is not longer recommended to use Trainer's `execution_plan` method/API."
             " Set `_disable_execution_plan_api=True` in your config and override the "
-            "`Trainer.training_iteration()` method with your algo's custom "
+            "`Trainer.training_step()` method with your algo's custom "
             "execution logic."
         )
 
@@ -1692,10 +1692,10 @@ class Trainer(Trainable):
         weights = ray.put(self.workers.local_worker().save())
         worker_set.foreach_worker(lambda w: w.restore(ray.get(weights)))
 
-    def _exec_plan_or_training_iteration_fn(self):
+    def _exec_plan_or_training_step_fn(self):
         with self._timers[TRAINING_ITERATION_TIMER]:
             if self.config["_disable_execution_plan_api"]:
-                results = self.training_iteration()
+                results = self.training_step()
             else:
                 results = next(self.train_exec_impl)
         return results

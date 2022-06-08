@@ -39,7 +39,7 @@ class A3CConfig(TrainerConfig):
         ...     .resources(num_gpus=0)\
         ...     .rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> # Build a Trainer object from the config and run 1 training step.
         >>> trainer = config.build(env="CartPole-v1")
         >>> trainer.train()
 
@@ -82,7 +82,7 @@ class A3CConfig(TrainerConfig):
         self.rollout_fragment_length = 10
         self.lr = 0.0001
         # Min time (in seconds) per reporting.
-        # This causes not every call to `training_iteration` to be reported,
+        # This causes not every call to `training_step` to be reported,
         # but to wait until n seconds have passed and then to summarize the
         # thus far collected results.
         self.min_time_s_per_reporting = 5
@@ -190,7 +190,7 @@ class A3C(Trainer):
 
             return A3CEagerTFPolicy
 
-    def training_iteration(self) -> ResultDict:
+    def training_step(self) -> ResultDict:
         # Shortcut.
         local_worker = self.workers.local_worker()
 

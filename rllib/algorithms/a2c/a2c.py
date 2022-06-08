@@ -39,7 +39,7 @@ class A2CConfig(A3CConfig):
         ...     .resources(num_gpus=0)\
         ...     .rollouts(num_rollout_workers=2)
         >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> # Build a Trainer object from the config and run 1 training step.
         >>> trainer = config.build(env="CartPole-v1")
         >>> trainer.train()
 
@@ -145,12 +145,12 @@ class A2C(A3C):
             self._microbatches_counts = self._num_microbatches = 0
 
     @override(A3C)
-    def training_iteration(self) -> ResultDict:
+    def training_step(self) -> ResultDict:
         # W/o microbatching: Identical to Trainer's default implementation.
         # Only difference to a default Trainer being the value function loss term
         # and its value computations alongside each action.
         if self.config["microbatch_size"] is None:
-            return Trainer.training_iteration(self)
+            return Trainer.training_step(self)
 
         # In microbatch mode, we want to compute gradients on experience
         # microbatches, average a number of these microbatches, and then

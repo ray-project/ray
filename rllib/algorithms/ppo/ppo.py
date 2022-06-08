@@ -48,7 +48,7 @@ class PPOConfig(TrainerConfig):
         ...             .resources(num_gpus=0)\
         ...             .rollouts(num_workers=4)
         >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> # Build a Trainer object from the config and run 1 training_step.
         >>> trainer = config.build(env="CartPole-v1")
         >>> trainer.train()
 
@@ -378,7 +378,7 @@ class PPO(Trainer):
             return PPOTF2Policy
 
     @ExperimentalAPI
-    def training_iteration(self) -> ResultDict:
+    def training_step(self) -> ResultDict:
         # Collect SampleBatches from sample workers until we have a full batch.
         if self._by_agent_steps:
             train_batch = synchronous_parallel_sample(

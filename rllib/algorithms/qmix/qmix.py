@@ -35,7 +35,7 @@ class QMixConfig(SimpleQConfig):
         ...             .resources(num_gpus=0)\
         ...             .rollouts(num_workers=4)
         >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> # Build a Trainer object from the config and run 1 training_step.
         >>> trainer = config.build(env=TwoStepGame)
         >>> trainer.train()
 
@@ -124,7 +124,7 @@ class QMixConfig(SimpleQConfig):
         }
 
         # .evaluation()
-        # Evaluate with epsilon=0 every `evaluation_interval` training iterations.
+        # Evaluate with epsilon=0 every `evaluation_interval` training_steps.
         # The evaluation stats will be reported under the "evaluation" metric key.
         # Note that evaluation is currently not parallelized, and that for Ape-X
         # metrics are already only reported for the lowest epsilon workers.
@@ -226,8 +226,8 @@ class QMix(SimpleQ):
         return QMixTorchPolicy
 
     @override(SimpleQ)
-    def training_iteration(self) -> ResultDict:
-        """QMIX training iteration function.
+    def training_step(self) -> ResultDict:
+        """QMIX training_step function.
 
         - Sample n MultiAgentBatches from n workers synchronously.
         - Store new samples in the replay buffer.
@@ -237,7 +237,7 @@ class QMix(SimpleQ):
         - Return all collected training metrics for the iteration.
 
         Returns:
-            The results dict from executing the training iteration.
+            The results dict from executing the training_step.
         """
         # Sample n batches from n workers.
         new_sample_batches = synchronous_parallel_sample(

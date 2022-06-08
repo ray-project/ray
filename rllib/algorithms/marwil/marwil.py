@@ -36,7 +36,7 @@ class MARWILConfig(TrainerConfig):
         >>> config = MARWILConfig().training(beta=1.0, lr=0.00001, gamma=0.99)\
         ...             .offline_data(input_=["./rllib/tests/data/cartpole/large.json"])
         >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> # Build a Trainer object from the config and run 1 training_step.
         >>> trainer = config.build()
         >>> trainer.train()
 
@@ -252,7 +252,7 @@ class MARWIL(Trainer):
             return MARWILTF2Policy
 
     @override(Trainer)
-    def training_iteration(self) -> ResultDict:
+    def training_step(self) -> ResultDict:
         # Collect SampleBatches from sample workers.
         batch = synchronous_parallel_sample(worker_set=self.workers)
         batch = batch.as_multi_agent()

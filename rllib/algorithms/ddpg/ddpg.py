@@ -20,7 +20,7 @@ class DDPGConfig(SimpleQConfig):
         >>> from ray.rllib.algorithms.ddpg.ddpg import DDPGConfig
         >>> config = DDPGConfig().training(lr=0.01).resources(num_gpus=1)
         >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run one training iteration.
+        >>> # Build a Trainer object from the config and run one training_step.
         >>> trainer = config.build(env="Pendulum-v1")
         >>> trainer.train()
 

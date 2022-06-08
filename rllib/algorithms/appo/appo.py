@@ -41,7 +41,7 @@ class APPOConfig(ImpalaConfig):
         ...     .resources(num_gpus=1)\
         ...     .rollouts(num_rollout_workers=16)
         >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> # Build a Trainer object from the config and run 1 training step.
         >>> trainer = config.build(env="CartPole-v1")
         >>> trainer.train()
 
@@ -179,7 +179,7 @@ class APPO(Impala):
     def after_train_step(self, train_results: ResultDict) -> None:
         """Updates the target network and the KL coefficient for the APPO-loss.
 
-        This method is called from within the `training_iteration` method after each
+        This method is called from within the `training_step` method after each
         train update.
 
         The target network update frequency is calculated automatically by the product
@@ -228,8 +228,8 @@ class APPO(Impala):
                 self.workers.local_worker().foreach_policy_to_train(update)
 
     @override(Impala)
-    def training_iteration(self) -> ResultDict:
-        train_results = super().training_iteration()
+    def training_step(self) -> ResultDict:
+        train_results = super().training_step()
 
         # Update KL, target network periodically.
         self.after_train_step(train_results)

@@ -131,7 +131,7 @@ if __name__ == "__main__":
         # Use two evaluation workers. Must be >0, otherwise,
         # evaluation will run on a local worker and block (no parallelism).
         "evaluation_num_workers": args.evaluation_num_workers,
-        # Evaluate every other training iteration (together
+        # Evaluate every other training_step (together
         # with every other call to Trainer.train()).
         "evaluation_interval": args.evaluation_interval,
         # Run for n episodes/timesteps (properly distribute load amongst

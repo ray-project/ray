@@ -60,7 +60,7 @@ class DDPPOConfig(PPOConfig):
         ...             .resources(num_gpus=1)\
         ...             .rollouts(num_workers=10)
         >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> # Build a Trainer object from the config and run 1 training_step.
         >>> trainer = config.build(env="CartPole-v1")
         >>> trainer.train()
 
@@ -282,7 +282,7 @@ class DDPPO(PPO):
             )
 
     @override(PPO)
-    def training_iteration(self) -> ResultDict:
+    def training_step(self) -> ResultDict:
         # Shortcut.
         first_worker = self.workers.remote_workers()[0]
 

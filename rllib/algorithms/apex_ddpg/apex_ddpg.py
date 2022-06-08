@@ -20,7 +20,7 @@ class ApexDDPGConfig(DDPGConfig):
         >>> from ray.rllib.algorithms.apex_ddpg.apex_ddpg import ApexDDPGConfig
         >>> config = ApexDDPGConfig().training(lr=0.01).resources(num_gpus=1)
         >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run one training iteration.
+        >>> # Build a Trainer object from the config and run one training step.
         >>> trainer = config.build(env="Pendulum-v1")
         >>> trainer.train()
 
@@ -182,9 +182,9 @@ class ApexDDPG(DDPG, ApexDQN):
         return ApexDQN.setup(self, config)
 
     @override(DDPG)
-    def training_iteration(self) -> ResultDict:
-        """Use APEX-DQN's training iteration function."""
-        return ApexDQN.training_iteration(self)
+    def training_step(self) -> ResultDict:
+        """Use APEX-DQN's training step function."""
+        return ApexDQN.training_step(self)
 
     @override(Trainer)
     def on_worker_failures(

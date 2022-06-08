@@ -46,7 +46,7 @@ class BanditLinTSConfig(BanditConfig):
         >>> from ray.rllib.examples.env.bandit_envs_discrete import WheelBanditEnv
         >>> config = BanditLinTSConfig().rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> # Build a Trainer object from the config and run 1 training_step.
         >>> trainer = config.build(env=WheelBanditEnv)
         >>> trainer.train()
     """
@@ -69,7 +69,7 @@ class BanditLinUCBConfig(BanditConfig):
         >>> from ray.rllib.examples.env.bandit_envs_discrete import WheelBanditEnv
         >>> config = BanditLinUCBConfig().rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> # Build a Trainer object from the config and run 1 training_step.
         >>> trainer = config.build(env=WheelBanditEnv)
         >>> trainer.train()
     """

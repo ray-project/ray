@@ -13,7 +13,7 @@ class BCConfig(MARWILConfig):
         >>> config = BCConfig().training(lr=0.00001, gamma=0.99)\
         ...             .offline_data(input_="./rllib/tests/data/cartpole/large.json")
         >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> # Build a Trainer object from the config and run 1 training_step.
         >>> trainer = config.build()
         >>> trainer.train()
 

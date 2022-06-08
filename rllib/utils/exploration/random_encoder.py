@@ -87,7 +87,7 @@ def update_beta(beta_schedule: str, beta: float, rho: float, step: int) -> float
         beta_schedule: Schedule for beta update.
         beta: Initial beta.
         rho: Schedule decay parameter.
-        step: Current training iteration.
+        step: Current training_step.
 
     Returns:
         Updated beta as per input schedule.

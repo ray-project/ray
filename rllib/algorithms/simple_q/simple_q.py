@@ -312,8 +312,8 @@ class SimpleQ(Trainer):
 
     @ExperimentalAPI
     @override(Trainer)
-    def training_iteration(self) -> ResultDict:
-        """Simple Q training iteration function.
+    def training_step(self) -> ResultDict:
+        """Simple Q training_step function.
 
         Simple Q consists of the following steps:
         - Sample n MultiAgentBatches from n workers synchronously.
@@ -324,7 +324,7 @@ class SimpleQ(Trainer):
         - Return all collected training metrics for the iteration.
 
         Returns:
-            The results dict from executing the training iteration.
+            The results dict from executing the training_step.
         """
         batch_size = self.config["train_batch_size"]
         local_worker = self.workers.local_worker()

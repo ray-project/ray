@@ -828,7 +828,7 @@ class TrainerConfig:
                 duration. Either "episodes" (default) or "timesteps".
             evaluation_parallel_to_training: Whether to run evaluation in parallel to
                 a Trainer.train() call using threading. Default=False.
-                E.g. evaluation_interval=2 -> For every other training iteration,
+                E.g. evaluation_interval=2 -> For every other training step,
                 the Trainer.train() and Trainer.evaluate() calls run in parallel.
                 Note: This is experimental. Possible pitfalls could be race conditions
                 for weight synching at the beginning of the evaluation loop.
@@ -1226,7 +1226,7 @@ class TrainerConfig:
             _disable_execution_plan_api: Experimental flag.
                 If True, the execution plan API will not be used. Instead,
                 a Trainer's `training_iteration` method will be called as-is each
-                training iteration.
+                training step.
 
         Returns:
             This updated TrainerConfig object.

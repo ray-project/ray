@@ -20,7 +20,7 @@ Run as follows using a simple command line config
 $ python debug_learning_failure_git_bisect.py --config '{...}'
     --env CartPole-v0 --run PPO --stop-time=120 --stop-timesteps=1000000
 
-With a yaml file (must reach 180.0 reward in 100 training iterations):
+With a yaml file (must reach 180.0 reward in 100 training_steps):
 $ python debug_learning_failure_git_bisect.py -f [yaml file] --stop-reward=180
     --stop-iters=100
 """

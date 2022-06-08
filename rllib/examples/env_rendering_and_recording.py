@@ -95,7 +95,7 @@ if __name__ == "__main__":
             "corridor_length": 10,
             "max_steps": 100,
         },
-        # Evaluate once per training iteration.
+        # Evaluate once per training_step.
         "evaluation_interval": 1,
         # Run evaluation on (at least) two episodes
         "evaluation_duration": 2,
