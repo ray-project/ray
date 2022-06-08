@@ -166,6 +166,7 @@ public class DeploymentConfig {
   public DeploymentConfig setDeploymentLanguage(DeploymentLanguage deploymentLanguage) {
     if (deploymentLanguage != null) {
       this.deploymentLanguage = deploymentLanguage;
+      this.isCrossLanguage = deploymentLanguage != DeploymentLanguage.JAVA;
     }
     return this;
   }

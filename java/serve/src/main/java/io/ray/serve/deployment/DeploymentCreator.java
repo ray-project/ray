@@ -3,6 +3,7 @@ package io.ray.serve.deployment;
 import com.google.common.base.Preconditions;
 import io.ray.serve.config.AutoscalingConfig;
 import io.ray.serve.config.DeploymentConfig;
+import io.ray.serve.generated.DeploymentLanguage;
 import java.util.Map;
 
 public class DeploymentCreator {
@@ -78,6 +79,8 @@ public class DeploymentCreator {
 
   private boolean routed;
 
+  private DeploymentLanguage deploymentLanguage;
+
   public Deployment create() {
 
     Preconditions.checkArgument(
@@ -93,7 +96,8 @@ public class DeploymentCreator {
             .setGracefulShutdownWaitLoopS(gracefulShutdownWaitLoopS)
             .setGracefulShutdownTimeoutS(gracefulShutdownTimeoutS)
             .setHealthCheckPeriodS(healthCheckPeriodS)
-            .setHealthCheckTimeoutS(healthCheckTimeoutS);
+            .setHealthCheckTimeoutS(healthCheckTimeoutS)
+            .setDeploymentLanguage(deploymentLanguage);
 
     return new Deployment(
         deploymentDef,
@@ -240,5 +244,13 @@ public class DeploymentCreator {
   public DeploymentCreator setHealthCheckTimeoutS(Double healthCheckTimeoutS) {
     this.healthCheckTimeoutS = healthCheckTimeoutS;
     return this;
+  }
+
+  public DeploymentLanguage getDeploymentLanguage() {
+    return deploymentLanguage;
+  }
+
+  public void setDeploymentLanguage(DeploymentLanguage deploymentLanguage) {
+    this.deploymentLanguage = deploymentLanguage;
   }
 }
