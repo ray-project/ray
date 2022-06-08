@@ -25,6 +25,15 @@ def connect(
             "Ray Client is already connected. Maybe you called "
             'ray.init("ray://<address>") twice by accident?'
         )
+
+    # Pull out metadata from kwargs and put into explicit metadata arg to connect
+    if ray_init_kwargs is not None:
+        if "metadata" in ray_init_kwargs.keys():
+            if metadata is None:
+                metadata = []
+            metadata = metadata + ray_init_kwargs["metadata"]
+            del ray_init_kwargs["metadata"]
+
     # Enable the same hooks that RAY_CLIENT_MODE does, as calling
     # ray.init("ray://<address>") is specifically for using client mode.
     _set_client_hook_status(True)

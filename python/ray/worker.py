@@ -702,6 +702,7 @@ def init(
     log_to_driver: bool = True,
     namespace: Optional[str] = None,
     runtime_env: Optional[Union[Dict[str, Any], "RuntimeEnv"]] = None,  # noqa: F821
+    metadata: List[Tuple[str, str]] = None,
     storage: Optional[str] = None,
     # The following are unstable parameters and their use is discouraged.
     _enable_object_reconstruction: bool = False,
@@ -806,6 +807,7 @@ def init(
         namespace: Namespace to use
         runtime_env: The runtime environment to use
             for this job (see :ref:`runtime-environments` for details).
+        metadata (list): List of tuples representing request metadata.
         storage: [Experimental] Specify a URI for persistent cluster-wide storage.
             This storage path must be accessible by all nodes of the cluster, otherwise
             an error will be raised. This option can also be specified as the
