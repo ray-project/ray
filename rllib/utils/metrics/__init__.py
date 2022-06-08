@@ -22,6 +22,7 @@ SYNCH_WORKER_WEIGHTS_COLLECTIVE_TIMER = "sync_weights_collective"
 GRAD_WAIT_TIMER = "grad_wait"
 SAMPLE_TIMER = "sample"
 LEARN_ON_BATCH_TIMER = "learn"
+LEARN_ON_LOADED_BATCH_TIMER = "learn_on_loaded_batch"
 LOAD_BATCH_TIMER = "load"
 TARGET_NET_UPDATE_TIMER = "target_net_update"
 

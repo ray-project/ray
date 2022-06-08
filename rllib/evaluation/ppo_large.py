@@ -19,6 +19,7 @@ config = {
     # Also, use "framework: tf2" for tf2.x eager execution.
     "framework": "torch",
     "train_batch_size": 128,
+    "num_sgd_iter": 1,
     # Tweak the default model provided automatically by RLlib,
     # given the environment's observation- and action spaces.
     "model": {
