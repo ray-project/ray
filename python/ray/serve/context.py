@@ -34,8 +34,6 @@ def get_global_client(_health_check_controller: bool = False) -> ServeController
     """Gets the global client, which stores the controller's handle.
 
     Args:
-        _override_controller_namespace (Optional[str]): If None and there's no
-            cached client, searches for the controller in this namespace.
         _health_check_controller: If True, run a health check on the
             cached controller if it exists. If the check fails, try reconnecting
             to the controller.
