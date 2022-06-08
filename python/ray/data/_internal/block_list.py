@@ -1,5 +1,5 @@
 import math
-from typing import List, Iterator, Tuple
+from typing import List, Iterator, Tuple, Optional
 
 import numpy as np
 
@@ -178,3 +178,22 @@ class BlockList:
         doesn't know how many blocks will be produced until tasks finish.
         """
         return len(self.get_blocks())
+
+    def randomize_block_order(self, seed: Optional[int] = None) -> None:
+        """Randomizes the order of the blocks.
+
+        Args:
+            seed: Fix the random seed to use, otherwise one will be chosen
+                based on system randomness.
+        """
+        import random
+
+        if seed is not None:
+            random.seed(seed)
+
+        blocks_with_metadata = self.get_blocks_with_metadata()
+        random.shuffle(blocks_with_metadata)
+        blocks, metadata = map(list, zip(*blocks_with_metadata))
+
+        self._blocks = blocks
+        self._metadata = metadata

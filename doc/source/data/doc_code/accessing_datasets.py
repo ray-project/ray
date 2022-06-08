@@ -67,23 +67,6 @@ print(cum_sum)
 # fmt: on
 
 # fmt: off
-# __iter_batches_random_begin__
-import ray
-
-ds = ray.data.range(12).repartition(3)
-print(ds.take())
-# -> [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
-
-results = []
-for batch in ds.iter_batches(batch_size=2, random_block_order=True, random_seed=0):
-    results.append(batch)
-
-print(results)
-# -> [[4, 5], [6, 7], [8, 9], [10, 11], [0, 1], [2, 3]]
-# __iter_batches_random_end__
-# fmt: on
-
-# fmt: off
 # __remote_iterators_begin__
 import ray
 

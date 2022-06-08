@@ -657,6 +657,52 @@ class Dataset(Generic[T]):
         )
         return Dataset(plan, self._epoch, self._lazy)
 
+    def randomize_block_order(
+        self,
+        *,
+        seed: Optional[int] = None,
+    ) -> "Dataset[T]":
+        """Randomly shuffle the blocks of this dataset.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.range(100) # doctest: +SKIP
+            >>> # Randomize the block order.
+            >>> ds.randomize_block_order() # doctest: +SKIP
+            >>> # Randomize the block order with a fixed random seed.
+            >>> ds.randomize_block_order(seed=12345) # doctest: +SKIP
+
+        Args:
+            seed: Fix the random seed to use, otherwise one will be chosen
+                based on system randomness.
+
+        Returns:
+            The shuffled dataset.
+        """
+
+        def do_shuffle(block_list, clear_input_blocks: bool, *_):
+            num_blocks = block_list.executed_num_blocks()  # Blocking.
+            if num_blocks == 0:
+                return block_list, {}
+            if clear_input_blocks:
+                blocks = block_list.copy()
+                block_list.clear()
+            else:
+                blocks = block_list
+
+            blocks.randomize_block_order(seed)
+
+            return blocks, {}
+
+        plan = self._plan.with_stage(
+            AllToAllStage(
+                "randomize_block_order",
+                None,
+                do_shuffle,
+            )
+        )
+        return Dataset(plan, self._epoch, self._lazy)
+
     def random_sample(
         self, fraction: float, *, seed: Optional[int] = None
     ) -> "Dataset[T]":
@@ -688,7 +734,7 @@ class Dataset(Generic[T]):
         if fraction < 0 or fraction > 1:
             raise ValueError("Fraction must be between 0 and 1.")
 
-        if seed:
+        if seed is not None:
             random.seed(seed)
 
         def process_batch(batch):
@@ -2231,8 +2277,6 @@ class Dataset(Generic[T]):
         batch_size: Optional[int] = None,
         batch_format: str = "native",
         drop_last: bool = False,
-        random_block_order: bool = False,
-        random_seed: Optional[int] = None,
     ) -> Iterator[BatchType]:
         """Return a local batched iterator over the dataset.
 
@@ -2253,30 +2297,17 @@ class Dataset(Generic[T]):
                 select ``pandas.DataFrame`` or "pyarrow" to select
                 ``pyarrow.Table``. Default is "native".
             drop_last: Whether to drop the last batch if it's incomplete.
-            random_block_order: Whether the blocks should be fetched in
-                random order.
-            random_seed: Seeds the python random pRNG generator. Used if
-                ``random_block_order`` is True.
 
         Returns:
             An iterator over record batches.
         """
-        import random
-
         blocks = self._plan.execute()
         stats = self._plan.stats()
 
         time_start = time.perf_counter()
 
-        blocks = list(blocks.iter_blocks())
-
-        if random_block_order:
-            if random_seed:
-                random.seed(random_seed)
-            random.shuffle(blocks)
-
         yield from batch_blocks(
-            blocks,
+            blocks.iter_blocks(),
             stats,
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,

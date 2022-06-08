@@ -152,7 +152,6 @@ These aggregations can be combined with batch mapping to transform a dataset usi
     # -> Map Progress: 100%|██████████████████████████████████████| 10/10 [00:00<00:00, 144.79it/s]
     # -> Dataset(num_blocks=10, num_rows=10, schema={A: int64, B: double, C: double})
 
-.. _datasets-random-shuffle:
 
 Random shuffle
 ==============
@@ -202,3 +201,21 @@ Randomly shuffling data is an important part of training machine learning models
     # -> DatasetPipeline(num_windows=10, num_stages=2)
 
 See the `large-scale ML ingest example <examples/big_data_ingestion.html>`__ for an end-to-end example of per-epoch shuffled data loading for distributed training.
+
+Random block order
+~~~~~~~~~~~~~~~~~~
+
+For a low-cost way to perform a pseudo global shuffle that does not require loading the full Dataset into memory,
+you can randomize the order of the *blocks* with ``Dataset.randomize_block_order``.
+
+.. code-block:: python
+
+    import ray
+
+    ds = ray.data.range(12).repartition(4)
+    print(ds.take())
+    # -> [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+
+    random_ds = ds.randomize_block_order(seed=0)
+    print(random_ds.take())
+    # -> [6, 7, 8, 0, 1, 2, 3, 4, 5, 9, 10, 11]
