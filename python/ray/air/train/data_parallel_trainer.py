@@ -133,7 +133,7 @@ class DataParallelTrainer(Trainer):
 
         train_dataset = ray.data.from_items([1, 2, 3])
         assert len(train_dataset) == 3
-        trainer = DataParallelTrainer(scaling_config={"num_workers": 3},
+        trainer = DataParallelTrainer(scaling_config=ray.air.config.ScalingConfig(num_workers=3),
             datasets={"train": train_dataset})
         result = trainer.fit()
 
@@ -283,7 +283,7 @@ class DataParallelTrainer(Trainer):
         super()._validate_attributes()
 
         if (
-            not self.scaling_config.get("use_gpu", False)
+            not self.scaling_config.use_gpu
             and "GPU" in ray.available_resources()
         ):
             logger.info(
@@ -293,13 +293,13 @@ class DataParallelTrainer(Trainer):
                 "in your scaling config."
             )
 
-        if "num_workers" not in self.scaling_config:
+        if self.scaling_config.num_workers is None:
             raise ValueError("You must specify the 'num_workers' in scaling_config.")
 
-        if self.scaling_config["num_workers"] <= 0:
+        if self.scaling_config.num_workers <= 0:
             raise ValueError(
                 "'num_workers' in `scaling_config` must be a positive "
-                f"integer. Received {self.scaling_config['num_workers']}"
+                f"integer. Received {self.scaling_config.num_workers}"
             )
 
         self._validate_train_loop_per_worker(
@@ -324,9 +324,7 @@ class DataParallelTrainer(Trainer):
             )
 
     def training_loop(self) -> None:
-        scaling_config_dataclass = self._validate_and_get_scaling_config_data_class(
-            self.scaling_config
-        )
+        scaling_config = self._validate_scaling_config(self.scaling_config)
 
         train_loop_per_worker = construct_train_func(
             self._train_loop_per_worker,
@@ -335,14 +333,14 @@ class DataParallelTrainer(Trainer):
         )
 
         additional_resources_per_worker = (
-            scaling_config_dataclass.additional_resources_per_worker
+            scaling_config.additional_resources_per_worker
         )
 
         backend_executor = BackendExecutor(
             backend_config=self._backend_config,
-            num_workers=scaling_config_dataclass.num_workers,
-            num_cpus_per_worker=scaling_config_dataclass.num_cpus_per_worker,
-            num_gpus_per_worker=scaling_config_dataclass.num_gpus_per_worker,
+            num_workers=scaling_config.num_workers,
+            num_cpus_per_worker=scaling_config.num_cpus_per_worker,
+            num_gpus_per_worker=scaling_config.num_gpus_per_worker,
             additional_resources_per_worker=additional_resources_per_worker,
             max_retries=0,
         )

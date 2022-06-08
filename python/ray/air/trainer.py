@@ -219,23 +219,16 @@ class Trainer(abc.ABC):
             )
 
     @classmethod
-    def _validate_and_get_scaling_config_data_class(
-        cls, dataclass_or_dict: Union[ScalingConfig, Dict[str, Any]]
+    def _validate_scaling_config(
+        cls,
+        dataclass: ScalingConfig,
     ) -> ScalingConfig:
         """Return scaling config dataclass after validating updated keys."""
-        if isinstance(dataclass_or_dict, dict):
-            ensure_only_allowed_dict_keys_set(
-                dataclass_or_dict, cls._scaling_config_allowed_keys
-            )
-            scaling_config_dataclass = ScalingConfig(**dataclass_or_dict)
-
-            return scaling_config_dataclass
-
         ensure_only_allowed_dataclass_keys_updated(
-            dataclass=dataclass_or_dict,
+            dataclass=dataclass,
             allowed_keys=cls._scaling_config_allowed_keys,
         )
-        return dataclass_or_dict
+        return dataclass
 
     def setup(self) -> None:
         """Called during fit() to perform initial setup on the Trainer.
@@ -387,9 +380,7 @@ class Trainer(abc.ABC):
             def default_resource_request(cls, config):
                 updated_scaling_config = config.get("scaling_config", scaling_config)
                 scaling_config_dataclass = (
-                    trainer_cls._validate_and_get_scaling_config_data_class(
-                        updated_scaling_config
-                    )
+                    trainer_cls._validate_scaling_config(updated_scaling_config)
                 )
                 return scaling_config_dataclass.as_placement_group_factory()
 

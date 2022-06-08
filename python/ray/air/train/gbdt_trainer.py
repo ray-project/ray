@@ -22,11 +22,10 @@ def _convert_scaling_config_to_ray_params(
     default_ray_params: Optional[Dict[str, Any]] = None,
 ) -> "xgboost_ray.RayParams":
     default_ray_params = default_ray_params or {}
-    scaling_config_dataclass = ScalingConfig(**scaling_config)
-    resources_per_worker = scaling_config_dataclass.additional_resources_per_worker
-    num_workers = scaling_config_dataclass.num_workers
-    cpus_per_worker = scaling_config_dataclass.num_cpus_per_worker
-    gpus_per_worker = scaling_config_dataclass.num_gpus_per_worker
+    resources_per_worker = scaling_config.additional_resources_per_worker
+    num_workers = scaling_config.num_workers
+    cpus_per_worker = scaling_config.num_cpus_per_worker
+    gpus_per_worker = scaling_config.num_gpus_per_worker
 
     ray_params = ray_params_cls(
         num_actors=int(num_workers),
