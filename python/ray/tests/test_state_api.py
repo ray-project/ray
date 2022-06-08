@@ -1425,9 +1425,7 @@ def test_filter(shutdown_only):
     dead_actor_id = list(list_actors(filters=[("state", "DEAD")]))[0]
     alive_actor_id = list(list_actors(filters=[("state", "ALIVE")]))[0]
     runner = CliRunner()
-    result = runner.invoke(
-        list_state_cli_group, ["actors", "--filter", "state", "DEAD"]
-    )
+    result = runner.invoke(cli_list, ["actors", "--filter", "state", "DEAD"])
     assert result.exit_code == 0
     assert dead_actor_id in result.output
     assert alive_actor_id not in result.output
