@@ -1,6 +1,7 @@
 from contextlib import contextmanager
 import sys
 import os
+import time
 import subprocess
 from tempfile import NamedTemporaryFile
 import requests
@@ -426,11 +427,10 @@ class TestDeployApp:
         config = ServeApplicationSchema.parse_obj(self.get_test_config())
         client.deploy_app(config)
 
-        wait_for_condition(
-            lambda: client.get_serve_status().app_status.deployment_timestamp > 0
-        )
+        assert client.get_serve_status().app_status.deployment_timestamp > 0
 
         first_deploy_time = client.get_serve_status().app_status.deployment_timestamp
+        time.sleep(0.1)
 
         config = self.get_test_config()
         config["deployments"] = [
@@ -441,8 +441,8 @@ class TestDeployApp:
         ]
         client.deploy_app(ServeApplicationSchema.parse_obj(config))
 
-        wait_for_condition(
-            lambda: client.get_serve_status().app_status.deployment_timestamp
+        assert (
+            client.get_serve_status().app_status.deployment_timestamp
             > first_deploy_time
         )
         assert client.get_serve_status().app_status.status in {
@@ -477,6 +477,42 @@ class TestDeployApp:
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
             == "4 pizzas please!"
+        )
+
+    def test_deploy_app_runtime_env(self, client: ServeControllerClient):
+        config_template = {
+            "import_path": "conditional_dag.serve_dag",
+            "runtime_env": {
+                "working_dir": (
+                    "https://github.com/ray-project/test_dag/archive/"
+                    "cc246509ba3c9371f8450f74fdc18018428630bd.zip"
+                )
+            },
+        }
+
+        config1 = ServeApplicationSchema.parse_obj(config_template)
+        client.deploy_app(config1)
+
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
+            == "0 pizzas please!"
+        )
+
+        # Override the configuration
+        config_template["deployments"] = [
+            {
+                "name": "Adder",
+                "ray_actor_options": {
+                    "runtime_env": {"env_vars": {"override_increment": "1"}}
+                },
+            }
+        ]
+        config2 = ServeApplicationSchema.parse_obj(config_template)
+        client.deploy_app(config2)
+
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
+            == "3 pizzas please!"
         )
 
 
