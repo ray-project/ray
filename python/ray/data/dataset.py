@@ -3,6 +3,7 @@ import itertools
 import logging
 import os
 import time
+import html
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -92,6 +93,7 @@ from ray.data.random_access_dataset import RandomAccessDataset
 from ray.data.row import TableRow
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.widgets import Template
 
 if TYPE_CHECKING:
     import dask
@@ -3598,6 +3600,45 @@ class Dataset(Generic[T]):
                 return list(result.values())[0]
         else:
             return result
+
+    def _repr_html_(self) -> str:
+        try:
+            from tabulate import tabulate
+        except ImportError:
+            logger.info("For rich Dataset reprs in notebooks, `pip install tabulate`.")
+            return ""
+
+        metadata = {
+            "num_blocks": self._plan.initial_num_blocks(),
+            "num_rows": self._meta_count(),
+        }
+
+        schema = self.schema()
+        if schema is None:
+            schema_repr = "<h5>Unknown schema</h5>"
+        elif isinstance(schema, type):
+            schema_repr = f"<h5>Data type: {html.escape(str(schema))}</h5>"
+        else:
+            schema_data = {}
+            for sname, stype in zip(schema.names, schema.types):
+                schema_data[sname] = getattr(stype, "__name__", str(stype))
+
+            schema_repr = tabulate(
+                tabular_data=schema_data.items(),
+                tablefmt="html",
+                showindex=False,
+                headers=["Name", "Type"],
+            )
+
+        return Template("dataset.html.j2").render(
+            schema=schema_repr,
+            metadata=tabulate(
+                tabular_data=metadata.items(),
+                tablefmt="html",
+                showindex=False,
+                headers=["Setting", "Value"],
+            ),
+        )
 
     def __repr__(self) -> str:
         schema = self.schema()

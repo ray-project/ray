@@ -14,6 +14,7 @@ from typing import (
 
 from ray.air.constants import WILDCARD_KEY
 from ray.util.annotations import PublicAPI
+from ray.widgets import make_table_html_repr
 
 
 # Move here later when ml_utils is deprecated. Doing it now causes a circular import.
@@ -134,6 +135,9 @@ class ScalingConfig:
 
     def __repr__(self):
         return _repr_dataclass(self)
+
+    def _repr_html_(self) -> str:
+        return make_table_html_repr(self)
 
     def __eq__(self, o: "ScalingConfig") -> bool:
         if not isinstance(o, type(self)):
@@ -322,6 +326,9 @@ class DatasetConfig:
 
     def __repr__(self):
         return _repr_dataclass(self)
+
+    def _repr_html_(self) -> str:
+        return make_table_html_repr(self)
 
     def fill_defaults(self) -> "DatasetConfig":
         """Return a copy of this config with all default values filled in."""
@@ -618,3 +625,6 @@ class RunConfig:
                 "checkpoint_config": CheckpointConfig(),
             },
         )
+
+    def _repr_html_(self) -> str:
+        return make_table_html_repr(obj=self)
