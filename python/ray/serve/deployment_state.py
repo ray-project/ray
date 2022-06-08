@@ -7,7 +7,6 @@ import logging
 import math
 import os
 import random
-import threading
 import time
 import traceback
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -950,9 +949,15 @@ class DeploymentState:
         self._deleting = False
 
     def is_autoscalable(self) -> bool:
+        """
+        Check if the deployment is under autoscaling
+        """
         return self._target_info.autoscaling_policy is not None
 
-    def get_autoscale_metric_lookback_period(self):
+    def get_autoscale_metric_lookback_period(self) -> float:
+        """
+        Return the autoscaling metrics look back period
+        """
         return self._target_info.autoscaling_policy.config.look_back_period_s
 
     def get_target_state_checkpoint_data(self):
@@ -1630,6 +1635,9 @@ class DeploymentStateManager:
         self.handle_metrics_store.add_metrics_point(data, send_timestamp)
 
     def get_autoscaling_metrics(self):
+        """
+        Return autoscaling metrics (used for dumping from controller)
+        """
         return self.autoscaling_metrics_store.data
 
     def _map_actor_names_to_deployment(
@@ -1799,7 +1807,15 @@ class DeploymentStateManager:
 
     def get_replica_ongoing_request_metrics(
         self, deployment_name: str, look_back_period_s
-    ):
+    ) -> List[float]:
+        """
+        Return replica average ongoing requests
+        Args:
+            deployment_name: deployment name
+            look_back_period_s: the look back time period to collect the requests metrics
+        Returns:
+            List of ongoing requests, the length of list indicate the number of replicas
+        """
 
         replicas = self._deployment_states[deployment_name]._replicas
         running_replicas = replicas.get([ReplicaState.RUNNING])
@@ -1816,6 +1832,14 @@ class DeploymentStateManager:
         return current_num_ongoing_requests
 
     def get_handle_queueing_metrics(self, deployment_name: str, look_back_period_s):
+        """
+        Return handle queue length metrics
+        Args:
+            deployment_name: deployment name
+            look_back_period_s: the look back time period to collect the requests metrics
+        Returns:
+            if multiple handles queue length, return the max number of queue length.
+        """
         current_handle_queued_queries = self.handle_metrics_store.max(
             deployment_name,
             time.time() - look_back_period_s,
