@@ -319,12 +319,13 @@
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only python/ray/util/horovod/...
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only python/ray/util/ray_lightning/...
 
-- label: ":octopus: Ludwig tests and examples. Python 3.7"
-  conditions: ["RAY_CI_TUNE_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - PYTHON=3.7 INSTALL_LUDWIG=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only python/ray/tests/ludwig/...
+# TODO(amogkam): Re-enable Ludwig tests after Ludwig supports Ray 2.0
+#- label: ":octopus: Ludwig tests and examples. Python 3.7"
+#  conditions: ["RAY_CI_TUNE_AFFECTED"]
+#  commands:
+#    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+#    - PYTHON=3.7 INSTALL_LUDWIG=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
+#    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only python/ray/tests/ludwig/...
 
 - label: ":tropical_fish: ML Libraries w/ Ray Client Examples (Python 3.7)."
   conditions: ["RAY_CI_TUNE_AFFECTED"]
