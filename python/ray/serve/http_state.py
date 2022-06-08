@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import random
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple
 
 import ray
 from ray.actor import ActorHandle
@@ -35,7 +35,6 @@ class HTTPState:
         controller_name: str,
         detached: bool,
         config: HTTPOptions,
-        _override_controller_namespace: Optional[str] = None,
         # Used by unit testing
         _start_proxies_on_init: bool = True,
     ):
