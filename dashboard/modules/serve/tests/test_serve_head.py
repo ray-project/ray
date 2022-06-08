@@ -159,7 +159,7 @@ def test_put_new_rest_api(ray_start_stop):
         "runtime_env": {
             "working_dir": (
                 "https://github.com/ray-project/test_dag/archive/"
-                "12740a10a5ee401f8728c0caeb683fc03e0be9cb.zip"
+                "cc246509ba3c9371f8450f74fdc18018428630bd.zip"
             )
         },
         "deployments": [
