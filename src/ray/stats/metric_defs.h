@@ -53,6 +53,7 @@ DECLARE_stats(grpc_server_req_process_time_ms);
 DECLARE_stats(grpc_server_req_new);
 DECLARE_stats(grpc_server_req_handling);
 DECLARE_stats(grpc_server_req_finished);
+DECLARE_stats(grpc_server_calls);
 
 /// GRPC client related
 DECLARE_stats(grpc_client_retries);

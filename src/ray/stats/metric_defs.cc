@@ -64,6 +64,11 @@ DEFINE_stats(grpc_server_req_finished,
              ("Method"),
              (),
              ray::stats::COUNT);
+DEFINE_stats(grpc_server_calls,
+             "Number of inflight calls in each state",
+             ("Method", "State"),
+             (),
+             ray::stats::COUNT);
 
 DEFINE_stats(grpc_client_retries,
              "Number of client retries for each method",

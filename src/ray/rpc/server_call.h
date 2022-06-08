@@ -150,6 +150,8 @@ class ServerCallImpl : public ServerCall {
     // TODO call_name_ sometimes get corrunpted due to memory issues.
     RAY_CHECK(!call_name_.empty()) << "Call name is empty";
     ray::stats::STATS_grpc_server_req_new.Record(1.0, call_name_);
+    ray::stats::STATS_grpc_server_calls.Record(
+        1, {{"Method", call_name_}, {"State", "PENDING"}});
   }
 
   ~ServerCallImpl() override = default;
@@ -161,6 +163,8 @@ class ServerCallImpl : public ServerCall {
   void HandleRequest() override {
     start_time_ = absl::GetCurrentTimeNanos();
     ray::stats::STATS_grpc_server_req_handling.Record(1.0, call_name_);
+    ray::stats::STATS_grpc_server_calls.Record(
+        -1, {{"Method", call_name_}, {"State", "PENDING"}});
     if (!io_service_.stopped()) {
       io_service_.post([this] { HandleRequestImpl(); }, call_name_);
     } else {
@@ -173,6 +177,8 @@ class ServerCallImpl : public ServerCall {
 
   void HandleRequestImpl() {
     state_ = ServerCallState::PROCESSING;
+    ray::stats::STATS_grpc_server_calls.Record(
+        1, {{"Method", call_name_}, {"State", "PROCESSING"}});
     // NOTE(hchen): This `factory` local variable is needed. Because `SendReply` runs in
     // a different thread, and will cause `this` to be deleted.
     const auto &factory = factory_;
@@ -201,7 +207,9 @@ class ServerCallImpl : public ServerCall {
   }
 
   void OnReplySent() override {
-    ray::stats::STATS_grpc_server_req_finished.Record(1.0, call_name_);
+    ray::stats::STATS_grpc_server_req_finished.Record(1, call_name_);
+    ray::stats::STATS_grpc_server_calls.Record(
+        -1, {{"Method", call_name_}, {"State", "SENDING_REPLY"}});
     if (send_reply_success_callback_ && !io_service_.stopped()) {
       auto callback = std::move(send_reply_success_callback_);
       io_service_.post([callback]() { callback(); }, call_name_ + ".success_callback");
@@ -210,7 +218,9 @@ class ServerCallImpl : public ServerCall {
   }
 
   void OnReplyFailed() override {
-    ray::stats::STATS_grpc_server_req_finished.Record(1.0, call_name_);
+    ray::stats::STATS_grpc_server_req_finished.Record(1, call_name_);
+    ray::stats::STATS_grpc_server_calls.Record(
+        -1, {{"Method", call_name_}, {"State", "SENDING_REPLY"}});
     if (send_reply_failure_callback_ && !io_service_.stopped()) {
       auto callback = std::move(send_reply_failure_callback_);
       io_service_.post([callback]() { callback(); }, call_name_ + ".failure_callback");
@@ -227,9 +237,12 @@ class ServerCallImpl : public ServerCall {
     ray::stats::STATS_grpc_server_req_process_time_ms.Record(
         (end_time - start_time_) / 1000000.0, call_name_);
   }
+
   /// Tell gRPC to finish this request and send reply asynchronously.
   void SendReply(const Status &status) {
     state_ = ServerCallState::SENDING_REPLY;
+    ray::stats::STATS_grpc_server_calls.Record(
+        1, {{"Method", call_name_}, {"State", "SENDING_REPLY"}});
     response_writer_.Finish(*reply_, RayStatusToGrpcStatus(status), this);
   }
 
@@ -339,7 +352,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
   void CreateCall() const override {
     // Create a new `ServerCall`. This object will eventually be deleted by
     // `GrpcServer::PollEventsFromCompletionQueue`.
-    auto call = new ServerCallImpl<ServiceHandler, Request, Reply>(
+    auto *call = new ServerCallImpl<ServiceHandler, Request, Reply>(
         *this, service_handler_, handle_request_function_, io_service_, call_name_);
     /// Request gRPC runtime to starting accepting this kind of request, using the call as
     /// the tag.
