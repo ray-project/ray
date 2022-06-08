@@ -141,12 +141,9 @@ def test_update_num_replicas(shutdown_ray, detached):
 def test_refresh_controller_after_death(shutdown_ray, detached):
     """Check if serve.start() refreshes the controller handle if it's dead."""
 
-    ray_namespace = "ray_namespace"
-    controller_namespace = "controller_namespace"
-
-    ray.init(namespace=ray_namespace)
+    ray.init(namespace="ray_namespace")
     serve.shutdown()  # Ensure serve isn't running before beginning the test
-    serve.start(detached=detached, _override_controller_namespace=controller_namespace)
+    serve.start(detached=detached)
 
     old_handle = get_global_client()._controller
     ray.kill(old_handle, no_restart=True)
@@ -161,7 +158,7 @@ def test_refresh_controller_after_death(shutdown_ray, detached):
     wait_for_condition(controller_died, handle=old_handle, timeout=15)
 
     # Call start again to refresh handle
-    serve.start(detached=detached, _override_controller_namespace=controller_namespace)
+    serve.start(detached=detached)
 
     new_handle = get_global_client()._controller
     assert new_handle is not old_handle
