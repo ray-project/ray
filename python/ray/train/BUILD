@@ -53,11 +53,11 @@ py_test(
     size = "large",
     main = "examples/transformers/transformers_example.py",
     srcs = ["examples/transformers/transformers_example.py"],
-    tags = ["team:ml", "exclusive", "tune"],
+    tags = ["team:ml", "exclusive", "tune", "gpu_only"],
     deps = [":train_lib"],
     args = ["--model_name_or_path=bert-base-cased", "--task_name=mrpc",
     "--max_length=32", "--per_device_train_batch_size=64",
-    "--max_train_steps=2", "--start_local", "--num_workers=2"]
+    "--max_train_steps=2", "--start_local", "--num_workers=2", "--use-gpu"]
 )
 
 py_test(
