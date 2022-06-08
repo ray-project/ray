@@ -95,7 +95,7 @@ def _connect() -> ServeControllerClient:
     # Initialize Ray if needed.
     ray.worker.global_worker.filter_logs_by_job = False
     if not ray.is_initialized():
-        ray.init(namespace="serve")
+        ray.init(namespace=SERVE_NAMESPACE)
 
     # When running inside of a replica, _INTERNAL_REPLICA_CONTEXT is set to
     # ensure that the correct instance is connected to.

@@ -147,7 +147,6 @@ class ActorReplicaWrapper:
         self._placement_group_name = self._actor_name + "_placement_group"
         self._detached = detached
         self._controller_name = controller_name
-        self._controller_namespace = SERVE_NAMESPACE
 
         self._replica_tag = replica_tag
         self._deployment_name = deployment_name
@@ -191,7 +190,7 @@ class ActorReplicaWrapper:
         if not self._actor_handle:
             try:
                 self._actor_handle = ray.get_actor(
-                    self._actor_name, namespace=self._controller_namespace
+                    self._actor_name, namespace=SERVE_NAMESPACE
                 )
             except ValueError:
                 self._actor_handle = None
@@ -290,7 +289,7 @@ class ActorReplicaWrapper:
             deployment_info.deployment_config.to_proto_bytes(),
             version,
             self._controller_name,
-            self._controller_namespace,
+            SERVE_NAMESPACE,
             self._detached,
         )
         # TODO(simon): unify the constructor arguments across language
@@ -321,7 +320,7 @@ class ActorReplicaWrapper:
 
         self._actor_handle = actor_def.options(
             name=self._actor_name,
-            namespace=self._controller_namespace,
+            namespace=SERVE_NAMESPACE,
             lifetime="detached" if self._detached else None,
             placement_group=self._placement_group,
             placement_group_capture_child_tasks=False,
@@ -437,9 +436,7 @@ class ActorReplicaWrapper:
         Returns the timeout after which to kill the actor.
         """
         try:
-            handle = ray.get_actor(
-                self._actor_name, namespace=self._controller_namespace
-            )
+            handle = ray.get_actor(self._actor_name, namespace=SERVE_NAMESPACE)
             self._graceful_shutdown_ref = handle.prepare_for_shutdown.remote()
         except ValueError:
             pass
@@ -449,9 +446,7 @@ class ActorReplicaWrapper:
     def check_stopped(self) -> bool:
         """Check if the actor has exited."""
         try:
-            handle = ray.get_actor(
-                self._actor_name, namespace=self._controller_namespace
-            )
+            handle = ray.get_actor(self._actor_name, namespace=SERVE_NAMESPACE)
             stopped = self._check_obj_ref_ready(self._graceful_shutdown_ref)
             if stopped:
                 ray.kill(handle, no_restart=True)
@@ -583,9 +578,7 @@ class ActorReplicaWrapper:
     def force_stop(self):
         """Force the actor to exit without shutting down gracefully."""
         try:
-            ray.kill(
-                ray.get_actor(self._actor_name, namespace=self._controller_namespace)
-            )
+            ray.kill(ray.get_actor(self._actor_name, namespace=SERVE_NAMESPACE))
         except ValueError:
             pass
 
