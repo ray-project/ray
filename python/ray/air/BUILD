@@ -258,6 +258,14 @@ py_test(
 )
 
 py_test(
+    name = "test_remote_storage",
+    size = "small",
+    srcs = ["tests/test_remote_storage.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
     name = "test_rl_predictor",
     size = "small",
     srcs = ["tests/test_rl_predictor.py"],
