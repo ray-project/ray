@@ -217,7 +217,7 @@ class TestOPE(unittest.TestCase):
             )
             .evaluation(
                 evaluation_interval=1,
-                evaluation_num_workers=3,
+                evaluation_num_workers=2,
                 evaluation_config={
                     "input": os.path.join(rllib_dir, "tests/data/cartpole/small.json"),
                 },

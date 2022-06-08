@@ -890,12 +890,10 @@ class Trainer(Trainable):
                         f"Ran round {round_} of parallel evaluation "
                         f"({num_units_done}/{duration} {unit} done)"
                     )
-                breakpoint()
                 remote_workers = self.evaluation_workers.remote_workers()
                 for idx, (eval_batch, train_batch) in enumerate(
                     train_test_split(total_batch, self.train_test_split_val)
                 ):
-                    breakpoint()
                     # Round robin on remote workers
                     worker = remote_workers[idx % len(remote_workers)]
                     worker.compute_off_policy_estimates.remote(eval_batch, train_batch)
