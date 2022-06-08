@@ -42,7 +42,7 @@ from ray.internal.internal_api import memory_summary
 from ray.internal.storage import _load_class
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cli_logger, cf
 from ray.dashboard.modules.job.cli import job_cli_group
-from ray.experimental.state.state_cli import list
+from ray.experimental.state.state_cli import list as cli_list
 from distutils.dir_util import copy_tree
 
 logger = logging.getLogger(__name__)
@@ -2327,7 +2327,7 @@ cli.add_command(cpp)
 cli.add_command(disable_usage_stats)
 cli.add_command(enable_usage_stats)
 add_command_alias(job_cli_group, name="job", hidden=True)
-cli.add_command(list)
+cli.add_command(cli_list)
 
 try:
     from ray.serve.scripts import serve_cli
