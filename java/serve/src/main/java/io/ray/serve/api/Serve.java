@@ -4,6 +4,7 @@ import io.ray.api.ActorHandle;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.PyActorHandle;
 import io.ray.api.Ray;
+import io.ray.api.call.PyActorCreator;
 import io.ray.api.exception.RayActorException;
 import io.ray.api.exception.RayTimeoutException;
 import io.ray.api.function.PyActorClass;
@@ -92,7 +93,7 @@ public class Serve {
 
     // TODO The namespace, max_task_retries and dispatching on head node is not supported in Java
     // now.
-    PyActorHandle controller =
+    PyActorCreator controllerCreator =
         Ray.actor(
                 PyActorClass.of("ray.serve.controller", "ServeController"),
                 controllerName,
@@ -100,12 +101,14 @@ public class Serve {
                 checkpointPath,
                 detached,
                 overrideControllerNamespace)
-            .setResource("CPU", dedicatedCpu ? 1.0 : 0.0)
             .setName(controllerName)
             .setLifetime(detached ? ActorLifetime.DETACHED : ActorLifetime.NON_DETACHED)
             .setMaxRestarts(-1)
-            .setMaxConcurrency(Constants.CONTROLLER_MAX_CONCURRENCY)
-            .remote();
+            .setMaxConcurrency(Constants.CONTROLLER_MAX_CONCURRENCY);
+    if (dedicatedCpu) {
+      controllerCreator.setResource("CPU", 1.0);
+    }
+    PyActorHandle controller = controllerCreator.remote();
 
     ActorNameList actorNameList =
         ServeProtoUtil.bytesToProto(
