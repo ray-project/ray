@@ -152,7 +152,6 @@ These aggregations can be combined with batch mapping to transform a dataset usi
     # -> Map Progress: 100%|██████████████████████████████████████| 10/10 [00:00<00:00, 144.79it/s]
     # -> Dataset(num_blocks=10, num_rows=10, schema={A: int64, B: double, C: double})
 
-
 Random shuffle
 ==============
 

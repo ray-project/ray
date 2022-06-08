@@ -1632,6 +1632,17 @@ def test_iter_batches_grid(ray_start_regular_shared):
                         assert len(batches[-1]) == num_rows % batch_size
 
 
+def test_iter_batches_random_block_order(ray_start_regular_shared):
+    ds = ray.data.range(12).repartition(3)
+
+    results = []
+    for batch in ds.iter_batches(batch_size=2, random_block_order=True, random_seed=0):
+        results.append(batch)
+
+    expected = [[4, 5], [6, 7], [8, 9], [10, 11], [0, 1], [2, 3]]
+    assert results == expected
+
+
 def test_lazy_loading_iter_batches_exponential_rampup(ray_start_regular_shared):
     ds = ray.data.range(32, parallelism=8)
     expected_num_blocks = [1, 2, 4, 4, 8, 8, 8, 8]
