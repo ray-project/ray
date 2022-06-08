@@ -93,26 +93,20 @@ def batch_blocks(
 
 
 def _format_batch(batch: Block, batch_format: str) -> BatchType:
-    import pyarrow as pa
-
     if batch_format == "native":
-        # Always promote Arrow blocks to pandas for consistency, since
-        # we lazily convert pandas->Arrow internally for efficiency.
-        if isinstance(batch, pa.Table) or isinstance(batch, bytes):
-            batch = BlockAccessor.for_block(batch)
-            batch = batch.to_pandas()
-        return batch
+        batch = BlockAccessor.for_block(batch).to_native()
     elif batch_format == "pandas":
-        batch = BlockAccessor.for_block(batch)
-        return batch.to_pandas()
+        batch = BlockAccessor.for_block(batch).to_pandas()
     elif batch_format == "pyarrow":
-        batch = BlockAccessor.for_block(batch)
-        return batch.to_arrow()
+        batch = BlockAccessor.for_block(batch).to_arrow()
+    elif batch_format == "numpy":
+        batch = BlockAccessor.for_block(batch).to_numpy()
     else:
         raise ValueError(
             f"The given batch format: {batch_format} "
             f"is invalid. Supported batch type: {BatchType}"
         )
+    return batch
 
 
 def _sliding_window(iterable: Iterable, n: int):
