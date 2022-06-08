@@ -39,8 +39,7 @@ def get_global_client(_health_check_controller: bool = False) -> ServeController
             to the controller.
 
     Raises:
-        RayServeException: if there is no Serve controller actor in the
-            expected namespace.
+        RayServeException: if there is no running Serve controller actor.
     """
 
     try:
@@ -90,8 +89,7 @@ def _connect() -> ServeControllerClient:
         existing Serve application's Serve Controller.
 
     Raises:
-        RayServeException: if there is no Serve controller actor in the
-            expected namespace.
+        RayServeException: if there is no running Serve controller actor.
     """
 
     # Initialize Ray if needed.
