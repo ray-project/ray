@@ -39,5 +39,5 @@ python -m pip install -U \
 # Train requirements.
 # TODO: make this dynamic
 if [ "${TRAIN_MINIMAL_INSTALL-}" = 1 ]; then
-    python -m pip install -U "ray[train]"
+    python -m pip install -U "ray[tune]"
 fi
