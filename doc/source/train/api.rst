@@ -31,6 +31,7 @@ TorchConfig
 ~~~~~~~~~~~
 
 .. autoclass:: ray.train.torch.TorchConfig
+    :noindex:
 
 .. _train-api-tensorflow-config:
 
@@ -38,6 +39,7 @@ TensorflowConfig
 ~~~~~~~~~~~~~~~~
 
 .. autoclass:: ray.train.tensorflow.TensorflowConfig
+    :noindex:
 
 .. _train-api-horovod-config:
 
@@ -45,6 +47,7 @@ HorovodConfig
 ~~~~~~~~~~~~~
 
 .. autoclass:: ray.train.horovod.HorovodConfig
+    :noindex:
 
 .. _train-api-backend-interfaces:
 
