@@ -2,7 +2,7 @@
 
 # __air_xgb_preprocess_start__
 import ray
-from ray.air.preprocessors import StandardScaler
+from ray.data.preprocessors import StandardScaler
 
 import pandas as pd
 

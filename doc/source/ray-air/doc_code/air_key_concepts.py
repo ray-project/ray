@@ -6,7 +6,7 @@ import pandas as pd
 from sklearn.datasets import load_breast_cancer
 from sklearn.model_selection import train_test_split
 
-from ray.air.preprocessors import *
+from ray.data.preprocessors import *
 
 data_raw = load_breast_cancer()
 dataset_df = pd.DataFrame(data_raw["data"], columns=data_raw["feature_names"])

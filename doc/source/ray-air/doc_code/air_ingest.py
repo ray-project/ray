@@ -60,7 +60,7 @@ tuner.fit()
 
 # __check_ingest_1__
 import ray
-from ray.air.preprocessors import Chain, BatchMapper
+from ray.data.preprocessors import Chain, BatchMapper
 from ray.air.util.check_ingest import DummyTrainer
 
 # Generate a synthetic dataset of ~10GiB of float64 data. The dataset is sharded

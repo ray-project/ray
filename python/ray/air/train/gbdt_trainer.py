@@ -13,7 +13,7 @@ from ray.air.constants import MODEL_KEY, TRAIN_DATASET_KEY
 
 if TYPE_CHECKING:
     import xgboost_ray
-    from ray.air.preprocessor import Preprocessor
+    from ray.data.preprocessor import Preprocessor
 
 
 def _convert_scaling_config_to_ray_params(
@@ -59,7 +59,7 @@ class GBDTTrainer(Trainer):
             :class:`xgboost_ray.RayDMatrix` initializations.
         scaling_config: Configuration for how to scale data parallel training.
         run_config: Configuration for the execution of the training run.
-        preprocessor: A ray.air.preprocessor.Preprocessor to preprocess the
+        preprocessor: A ray.data.Preprocessor to preprocess the
             provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
         **train_kwargs: Additional kwargs passed to framework ``train()`` function.

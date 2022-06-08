@@ -3,7 +3,7 @@ import pytest
 import ray
 from ray import tune
 
-from ray.air.preprocessor import Preprocessor
+from ray.data.preprocessor import Preprocessor
 from ray.air.trainer import Trainer
 from ray.util.placement_group import get_current_placement_group
 

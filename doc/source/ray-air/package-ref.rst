@@ -14,10 +14,10 @@ Components
 Preprocessors
 ~~~~~~~~~~~~~
 
-.. autoclass:: ray.air.preprocessor.Preprocessor
+.. autoclass:: ray.data.preprocessor.Preprocessor
     :members:
 
-.. automodule:: ray.air.preprocessors
+.. automodule:: ray.data.preprocessors
     :members:
     :show-inheritance:
 

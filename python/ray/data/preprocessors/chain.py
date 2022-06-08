@@ -1,5 +1,5 @@
 from ray.data import Dataset
-from ray.air.preprocessor import Preprocessor, DataBatchType
+from ray.data.preprocessor import Preprocessor, DataBatchType
 
 
 class Chain(Preprocessor):

@@ -7,8 +7,8 @@ import pandas as pd
 import pytest
 
 import ray
-from ray.air.preprocessor import PreprocessorNotFittedException
-from ray.air.preprocessors import (
+from ray.data.preprocessor import PreprocessorNotFittedException
+from ray.data.preprocessors import (
     BatchMapper,
     StandardScaler,
     MinMaxScaler,
@@ -18,14 +18,14 @@ from ray.air.preprocessors import (
     SimpleImputer,
     Chain,
 )
-from ray.air.preprocessors.encoder import Categorizer, MultiHotEncoder
-from ray.air.preprocessors.hasher import FeatureHasher
-from ray.air.preprocessors.normalizer import Normalizer
-from ray.air.preprocessors.scaler import MaxAbsScaler, RobustScaler
-from ray.air.preprocessors.tokenizer import Tokenizer
-from ray.air.preprocessors.transformer import PowerTransformer
-from ray.air.preprocessors.utils import simple_split_tokenizer, simple_hash
-from ray.air.preprocessors.vectorizer import CountVectorizer, HashingVectorizer
+from ray.data.preprocessors.encoder import Categorizer, MultiHotEncoder
+from ray.data.preprocessors.hasher import FeatureHasher
+from ray.data.preprocessors.normalizer import Normalizer
+from ray.data.preprocessors.scaler import MaxAbsScaler, RobustScaler
+from ray.data.preprocessors.tokenizer import Tokenizer
+from ray.data.preprocessors.transformer import PowerTransformer
+from ray.data.preprocessors.utils import simple_split_tokenizer, simple_hash
+from ray.data.preprocessors.vectorizer import CountVectorizer, HashingVectorizer
 
 
 def test_standard_scaler():

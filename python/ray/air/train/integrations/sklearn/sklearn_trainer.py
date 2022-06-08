@@ -32,7 +32,7 @@ from sklearn.model_selection import BaseCrossValidator, cross_validate
 from sklearn.model_selection._validation import _check_multimetric_scoring, _score
 
 if TYPE_CHECKING:
-    from ray.air.preprocessor import Preprocessor
+    from ray.data.preprocessor import Preprocessor
 
 logger = logging.getLogger(__name__)
 
@@ -152,7 +152,7 @@ class SklearnTrainer(Trainer):
             as the training is not distributed.
         dataset_config: Configuration for dataset ingest.
         run_config: Configuration for the execution of the training run.
-        preprocessor: A ray.air.preprocessor.Preprocessor to preprocess the
+        preprocessor: A ray.data.Preprocessor to preprocess the
             provided datasets.
         **fit_params: Additional kwargs passed to ``estimator.fit()``
             method.

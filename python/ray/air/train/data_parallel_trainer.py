@@ -33,7 +33,7 @@ from ray.util.annotations import DeveloperAPI
 from ray.util.ml_utils.checkpoint_manager import CheckpointStrategy, _TrackedCheckpoint
 
 if TYPE_CHECKING:
-    from ray.air.preprocessor import Preprocessor
+    from ray.data.preprocessor import Preprocessor
 
 logger = logging.getLogger(__name__)
 
@@ -218,7 +218,7 @@ class DataParallelTrainer(Trainer):
             dataset. If a ``preprocessor`` is provided and has not already been fit,
             it will be fit on the training dataset. All datasets will be transformed
             by the ``preprocessor`` if one is provided.
-        preprocessor: A ray.air.preprocessor.Preprocessor to preprocess the
+        preprocessor: A ray.data.Preprocessor to preprocess the
             provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
     """

@@ -12,7 +12,7 @@ import xgboost_ray
 from xgboost_ray.tune import TuneReportCheckpointCallback
 
 if TYPE_CHECKING:
-    from ray.air.preprocessor import Preprocessor
+    from ray.data.preprocessor import Preprocessor
 
 
 @PublicAPI(stability="alpha")
@@ -57,7 +57,7 @@ class XGBoostTrainer(GBDTTrainer):
             be used to add sample weights with the ``weights`` parameter.
         scaling_config: Configuration for how to scale data parallel training.
         run_config: Configuration for the execution of the training run.
-        preprocessor: A ray.air.preprocessor.Preprocessor to preprocess the
+        preprocessor: A ray.data.Preprocessor to preprocess the
             provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
         **train_kwargs: Additional kwargs passed to ``xgboost.train()`` function.

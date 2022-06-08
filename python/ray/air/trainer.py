@@ -12,7 +12,7 @@ from ray.air.config import (
     ScalingConfig,
     ScalingConfigDataClass,
 )
-from ray.air.preprocessor import Preprocessor
+from ray.data.preprocessor import Preprocessor
 from ray.air.result import Result
 from ray.air._internal.config import (
     ensure_only_allowed_dataclass_keys_updated,
@@ -60,7 +60,7 @@ class Trainer(abc.ABC):
           specified here.
         - ``trainer.preprocess_datasets()``: The provided
           ray.data.Dataset are preprocessed with the provided
-          ray.air.preprocessor.
+          ray.data.Preprocessor.
         - ``trainer.train_loop()``: Executes the main training logic.
         - Calling ``trainer.fit()`` will return a ``ray.result.Result``
           object where you can access metrics from your training run, as well
@@ -203,10 +203,10 @@ class Trainer(abc.ABC):
             )
         # Preprocessor
         if self.preprocessor is not None and not isinstance(
-            self.preprocessor, ray.air.preprocessor.Preprocessor
+            self.preprocessor, ray.data.Preprocessor
         ):
             raise ValueError(
-                f"`preprocessor` should be an instance of `ray.air.Preprocessor`, "
+                f"`preprocessor` should be an instance of `ray.data.Preprocessor`, "
                 f"found {type(self.preprocessor)} with value `{self.preprocessor}`."
             )
 
