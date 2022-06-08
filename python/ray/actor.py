@@ -8,7 +8,7 @@ import ray._raylet
 import ray._private.signature as signature
 from ray.utils import get_runtime_env_info, parse_runtime_env
 import ray.worker
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import PublicAPI, DeveloperAPI
 from ray.util.placement_group import configure_placement_group_based_on_context
 from ray.util.scheduling_strategies import (
     PlacementGroupSchedulingStrategy,
@@ -33,6 +33,7 @@ from ray.util.tracing.tracing_helper import (
     _inject_tracing_into_class,
 )
 from ray._private import ray_option_utils
+
 
 logger = logging.getLogger(__name__)
 
@@ -566,12 +567,11 @@ class ActorClass:
             def remote(self, *args, **kwargs):
                 return actor_cls._remote(args=args, kwargs=kwargs, **updated_options)
 
+            @DeveloperAPI
             def bind(self, *args, **kwargs):
                 """
-                **Experimental**
-
-                For ray DAG building. Implementation and interface subject
-                to changes.
+                For Ray DAG building that creates static graph from decorated
+                class or functions.
                 """
                 from ray.experimental.dag.class_node import ClassNode
 
@@ -931,12 +931,11 @@ class ActorClass:
 
         return actor_handle
 
+    @DeveloperAPI
     def bind(self, *args, **kwargs):
         """
-        **Experimental**
-
-        For ray DAG building. Implementation and interface subject
-        to changes.
+        For Ray DAG building that creates static graph from decorated
+        class or functions.
         """
         from ray.experimental.dag.class_node import ClassNode
 
