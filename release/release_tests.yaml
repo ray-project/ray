@@ -2117,7 +2117,7 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: 8gpus_64cpus.yaml
+    cluster_compute: 12gpus_192cpus.yaml
 
   run:
     timeout: 14400
