@@ -57,7 +57,7 @@ py_test(
     deps = [":train_lib"],
     args = ["--model_name_or_path=bert-base-cased", "--task_name=mrpc",
     "--max_length=32", "--per_device_train_batch_size=64",
-    "--max_train_steps=2", "--start_local", "--num_workers=2", "--use-gpu"]
+    "--max_train_steps=2", "--start_local", "--num_workers=2", "--use_gpu"]
 )
 
 py_test(
