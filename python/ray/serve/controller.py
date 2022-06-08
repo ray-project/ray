@@ -582,5 +582,5 @@ def run_graph(import_path: str, deployment_override_options: List[Dict]):
         app.deployments[name].set_options(**options_dict)
 
     # Run the graph locally on the cluster
-    serve.start(_override_controller_namespace="serve")
+    serve.start()
     serve.run(app)
