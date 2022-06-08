@@ -1,6 +1,5 @@
 from ray.train.backend import BackendConfig
 from ray.train.callbacks import TrainingCallback
-from ray.train.checkpoint import CheckpointStrategy
 from ray.train.session import (
     get_dataset_shard,
     local_rank,
@@ -11,6 +10,7 @@ from ray.train.session import (
     world_size,
 )
 from ray.train.trainer import Trainer, TrainingIterator
+from ray.util.ml_utils.checkpoint_manager import CheckpointStrategy
 
 from ray._private.usage import usage_lib
 
