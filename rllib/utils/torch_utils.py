@@ -54,9 +54,7 @@ def apply_grad_clipping(
                 # PyTorch clips gradients inplace and returns the norm before clipping
                 # We therefore need to compute grad_gnorm further down (fixes #4965)
                 clip_value = policy.config["grad_clip"]
-                global_norm = nn.utils.clip_grad_norm_(
-                    params, clip_value
-                )
+                global_norm = nn.utils.clip_grad_norm_(params, clip_value)
 
                 if isinstance(global_norm, torch.Tensor):
                     global_norm = global_norm.cpu().numpy()
