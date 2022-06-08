@@ -163,12 +163,12 @@ These batches are wrapped up together in a ``MultiAgentBatch``,
 serving as a container for the individual agents' sample batches.
 
 
-Training Iteration Functions
-----------------------------
+Training Iteration Method
+-------------------------
 
 .. TODO all four execution plan snippets below must be tested
 .. note::
-    It's important to have a good understanding of the basic :ref:`ray core functions <core-walkthrough>` before reading this section.
+    It's important to have a good understanding of the basic :ref:`ray core methods <core-walkthrough>` before reading this section.
     Furthermore, we utilize concepts such as the ``SampleBatch``, ``RolloutWorker``, and ``Trainer``, which can be read about on this page
     and the :ref:`rollout worker reference docs <rolloutworker-reference-docs>`.
 
@@ -178,7 +178,7 @@ Training Iteration Functions
 What is it?
 ~~~~~~~~~~~
 
-The ``training_iteration`` function is an attribute of ``Trainer`` that dictates the execution of your algorithm. Specifically, it is used to express how you want to
+The ``training_iteration`` method is an attribute of ``Trainer`` that dictates the execution of your algorithm. Specifically, it is used to express how you want to
 coordinate the movement of samples and policy data across your distributed workers.
 
 **A user will need to modify this attribute of an algorithm if they want to
@@ -189,18 +189,19 @@ When is it invoked?
 
 ``training_iteration`` is called in 2 ways:
 
- 1. The ``train()`` function of ``Trainer`` is called.
+ 1. The ``train()`` method of ``Trainer`` is called.
  2. An RLlib trainer is being used with ray tune and ``training_iteration`` will be continuously called till the
     :ref:`ray tune stop criteria <tune-run-ref>` is met.
 
 Key Subconcepts
 ~~~~~~~~~~~~~~~
 
-The vanilla policy gradient algorithm can be thought of a sequence of repeating steps, or *dataflow*, of:
+The vanilla policy gradient algorithm can be thought of as a sequence of repeating steps, or *dataflow*, of:
 
- 1. Generating experiences from many envs in parallel using rollout workers.
- 2. Update our policy using the experiences generated in the previous step.
- 3. Update the weights of our rollout workers using the updated policy.
+ 1. Sampling (to collect data from an env or offline data store)
+ 2. Updating (to learn a behavior).
+ 3. Broadcasting (to make sure all distributed units have the same weights again)
+ 4. Metrics reporting (returning relevant stats from the previous operations with regards to performance and runtime)
 
 .. code-block:: python
 
@@ -221,8 +222,8 @@ The vanilla policy gradient algorithm can be thought of a sequence of repeating 
         return train_results
 
 .. note::
-    Note that the training iteration function is framework agnostic. This means that you don’t need to implement torch
-    or tensorflow code inside this module. This allows the training iteration function / algorithm to support different frameworks.
+    Note that the training iteration method is framework agnostic. This means that you don’t need to implement torch
+    or tensorflow code inside this module. This allows the training iteration method / algorithm to support different frameworks.
     Within the :ref:`Policy <rllib-policy-walkthrough>` and :ref:`Model <rllib-models-walkthrough>` classes, we leverage the
     framework-specific operations and modules.
 
@@ -237,143 +238,76 @@ Breaking that ``training_iteration`` code down:
 
 ``self.workers`` is a set of ``RolloutWorkers`` that are created for developers in ``Trainer``'s ``setup`` method.
 This set is covered in greater depth on the :ref:`WorkerSet documentation page<workerset-reference-docs>`.
-The function ``synchronous_parallel_sample`` is an RLlib utility that can be used for sampling in a blocking parallel
+The method ``synchronous_parallel_sample`` is an RLlib utility that can be used for sampling in a blocking parallel
 fashion across multiple rollout workers. RLlib includes other utilities, such as the ``AsyncRequestsManager``, for
-facilitating the dataflow between various components in parallelizable fashion. They are covered in the :ref:`parallel requests documentation <parallel-requests-docs>`
+facilitating the dataflow between various components in parallelizable fashion. They are covered in the :ref:`parallel requests documentation <parallel-requests-docs>`.
 
 .. code-block:: python
 
     train_results = train_one_step(self, train_batch)
 
-Functions like ``train_one_step`` and ``multi_gpu_train_one_step`` can be used for
+Methods like ``train_one_step`` and ``multi_gpu_train_one_step`` can be used for training a policy. Further documentation
+with examples on them can be found on the :ref:`train ops documentation page <train-ops-docs>`.
 
 .. code-block:: python
 
     self.workers.sync_weights()
 
-As you can see each call to ``training_iteration`` does one sampling and training update. A dictionary is a returned that contains the results of the training update.
-It's generally recommended that the dictionary map keys of type ``str`` to values that are of type ``float`` or to dictionaries of the same form, allowing for a nested structure.
+The training updates on the policy are applied to ``self.workers.local_worker``. By calling ``self.workers.sync_weights()``,
+weights are broadcasted from the local worker to the remote workers if there are remote workers. See :ref:`rollout worker reference docs <rolloutworker-reference-docs>`
+for further details.
 
-Training Iteration Function Utilities
+.. code-block:: python
+
+    return train_results
+
+A dictionary is expected to be returned that contains the results of the training update.
+It's generally recommended that the dictionary map keys of type ``str`` to values that are
+of type ``float`` or to dictionaries of the same form, allowing for a nested structure.
+
+For example, a results dictionary could map policy_ids to learning and sampling statistics for that policy:
+
+.. code-block:: python
+
+     {
+        'agent_1': {
+                      'learner_stats': {'policy_loss': 6.7291455},
+                      'num_agent_steps_trained': 32.0},
+        'agent_2': {
+                     'learner_stats': {'policy_loss': 3.554927},
+                     'num_agent_steps_trained': 32.0
+                   }
+     }
+
+Training Iteration Method Utilities
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 RLlib provides a collection of utilities that abstract away common tasks in RL training.
 
-**Sample Batches** (`sample_batch.py <https://github.com/ray-project/ray/blob/master/rllib/policy/sample_batch.py>`__):
+`Sample Batch <core-concepts.html#sample-batches>`__:
 ``SampleBatch`` and `MultiAgentBatch` are the two datatypes that we use for containing timesteps in RLlib. All of our
 RLlib abstractions (policies, replay buffers, etc.) operate using these types.
 
-**Rollout Workers** (`rollout_worker.py <https://github.com/ray-project/ray/blob/master/rllib/evaluation/rollout_worker.py>`__):
-Rollout workers are an abstraction that wrap a policy (or policies in the case of multi-agent) and an environment.
-From a high-level, we can use rollout workers to collect experiences from the environment by calling
-their ``sample`` function and we can train their policies by calling their ``learn_on_batch`` function.
-By default in RLlib we create a set of workers that can be used for sampling and training. We create a ``WorkerSet``
+:ref:`Rollout Workers <rolloutworker-reference-docs>`:
+Rollout workers are an abstraction that wraps a policy (or policies in the case of multi-agent) and an environment.
+From a high level, we can use rollout workers to collect experiences from the environment by calling
+their ``sample`` method and we can train their policies by calling their ``learn_on_batch`` method.
+By default, in RLlib, we create a set of workers that can be used for sampling and training. We create a ``WorkerSet``
 object inside of ``setup`` which is called when an RLlib algorithm is created. The ``WorkerSet`` has a ``local_worker``
 and ``remote_workers`` if ``num_workers > 0`` in the experiment config. In RLlib we use typically use ``local_worker``
 for training and ``remote_workers`` for sampling.
 
 
-**Train ops** (`train_ops.py <https://github.com/ray-project/ray/blob/master/rllib/execution/train_ops.py>`__):
-These are functions that improve the policy and update workers. The most basic operator, ``train_one_step``, take in as input a batch of experiences and emit metrics as output.
-For training with gpus, use ``multi_gpu_train_one_step``. These functions use the ``learn_on_batch`` function of rollout workers to complete the training update.
+:ref:`Train Ops <train-ops-docs>`:
+These are methods that improve the policy and update workers. The most basic operator, ``train_one_step``, take in as input a batch of experiences and emit metrics as output.
+For training with gpus, use ``multi_gpu_train_one_step``. These methods use the ``learn_on_batch`` method of rollout workers to complete the training update.
 
-**Replay Buffers**:
+:ref:`Replay Buffers <replay-buffer-docs>`:
 RLlib provides `a collection <https://github.com/ray-project/ray/tree/master/rllib/utils/replay_buffers>`__ of replay buffers that can be used for storing and sampling experiences.
 
-**Concurrency ops**:
+:ref:`Parallel Request Utilities <parallel-requests-docs>`:
 RLlib provides a collection of concurrency ops that can be asynchronous and synchronous operations in the training loop.
 ``AsyncRequestsManager`` is used for launching and managing asynchronous requests on actors. Currently in RLlib it is
 used for asynchronous sampling on rollout workers and asynchronously adding to and sampling from replay buffer actors.
 ``synchronous_parallel_sample`` has a more narrow but common ussage of synchronously sampling from a set of rollout workers.
 
-
-Examples
-~~~~~~~~
-
-.. dropdown::  **Example: Synchronous Policy-Gradients**
-
-    This is what the Vanilla Policy Gradients algorithm looks like:
-
-    .. code-block:: python
-
-            def training_iteration(self) -> ResultDict:
-                # Collect SampleBatches from sample workers until we have a full batch.
-                if self._by_agent_steps:
-                    train_batch = synchronous_parallel_sample(
-                        worker_set=self.workers,
-                        max_agent_steps=self.config["train_batch_size"]
-                    )
-                else:
-                    train_batch = synchronous_parallel_sample(
-                        worker_set=self.workers,
-                        max_env_steps=self.config["train_batch_size"]
-                    )
-                train_batch = train_batch.as_multi_agent()
-                self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
-                self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
-
-                # Use simple optimizer (only for non-gpu cases; all other
-                # cases should use the multi-GPU optimizer, even if only using 1 GPU).
-                if self.config.get("simple_optimizer") is True:
-                    train_results = train_one_step(self, train_batch)
-                else:
-                    train_results = multi_gpu_train_one_step(self, train_batch)
-
-                # Update weights and global_vars - after learning on the local worker
-                # - on all remote workers.
-                global_vars = {
-                    "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
-                }
-                with self._timers[WORKER_UPDATE_TIMER]:
-                    self.workers.sync_weights(global_vars=global_vars)
-
-                return train_results
-
-.. dropdown:: **Asynchronous Policy-Gradients**
-
-    A3C consists of an asynchronous sampling and training operation on rollout workers:
-
-    .. code-block:: python
-
-            def training_iteration(self) -> ResultDict:
-                # Shortcut.
-                local_worker = self.workers.local_worker()
-
-                # Define the function executed in parallel by all RolloutWorkers to collect
-                # samples + compute and return gradients (and other information).
-
-                def sample_and_compute_grads(worker: RolloutWorker) -> Dict[str, Any]:
-                    """Call sample() and compute_gradients() remotely on workers."""
-                    samples = worker.sample()
-                    grads, infos = worker.compute_gradients(samples)
-                    return {
-                        "grads": grads,
-                        "infos": infos,
-                        "agent_steps": samples.agent_steps(),
-                        "env_steps": samples.env_steps(),
-                    }
-
-                # self._worker_manager is of type `AsyncRequestsManager`.
-                # call_on_all_available submits the remote function
-                # `sample_and_compute_grads`
-                # to all workers that haven't hit the max in flight requests limit.
-                self._worker_manager.call_on_all_available(sample_and_compute_grads)
-                async_results = self._worker_manager.get_ready()
-
-                learner_info_builder = LearnerInfoBuilder()
-                for worker, results in async_results.items():
-                    for result in results:
-
-                        # Update the local worker's policy with the gradients computed by
-                        # the remote workers.
-                        local_worker.apply_gradients(result["grads"])
-                        learner_info_builder.add_learn_on_batch_results_multi_agent(
-                            result["infos"]
-                        )
-                    # broadcast the new weights on the local worker to all remote workers.
-                    weights = local_worker.get_weights(local_worker.get_policies_to_train())
-                    worker.set_weights.remote(weights, global_vars)
-                return learner_info_builder.finalize()
-
-
-.. include:: /_includes/rllib/announcement_bottom.rst
