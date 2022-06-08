@@ -8,7 +8,6 @@ import socket
 import subprocess
 import sys
 from tempfile import mkstemp
-from typing import Optional
 
 import pytest
 import pydantic
@@ -514,31 +513,6 @@ def test_detached_instance_in_non_anonymous_namespace(ray_shutdown):
     # Can start detached instance in non-anonymous namespace.
     ray.init(namespace="foo")
     serve.start(detached=True)
-
-
-@pytest.mark.parametrize("namespace", [None, "test_namespace"])
-@pytest.mark.parametrize("detached", [True, False])
-def test_serve_controller_namespace(
-    ray_shutdown, namespace: Optional[str], detached: bool
-):
-    """
-    Tests the serve controller is started in the current namespace if not
-    anonymous or in the "serve" namespace if no namespace is specified.
-    When the controller is started in the "serve" namespace, this also tests
-    that we can get the serve controller from another namespace.
-    """
-
-    ray.init(namespace=namespace)
-    serve.start(detached=detached)
-    client = serve.context._global_client
-    if namespace:
-        controller_namespace = namespace
-    elif detached:
-        controller_namespace = "serve"
-    else:
-        controller_namespace = ray.get_runtime_context().namespace
-
-    assert ray.get_actor(client._controller_name, namespace=controller_namespace)
 
 
 def test_checkpoint_isolation_namespace(ray_shutdown):
