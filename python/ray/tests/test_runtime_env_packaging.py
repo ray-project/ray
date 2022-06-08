@@ -159,6 +159,10 @@ class TestGetURIForDirectory:
         hex_hash = uri.split("_")[-1][: -len(".zip")]
         assert len(hex_hash) == 16
 
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="Unix sockets and chmod not available on windows",
+    )
     def test_unopenable_files_skipped(self, random_dir, short_path_dir):
         """Test that unopenable files can be present in the working_dir.
 
