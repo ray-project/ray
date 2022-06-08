@@ -374,18 +374,22 @@ class LazyBlockList(BlockList):
         if seed is not None:
             random.seed(seed)
 
-        tasks_blocks_metadata = zip(
+        zipped = zip(
             self._tasks,
             self._block_partition_refs,
             self._block_partition_meta_refs,
+            self._cached_metadata,
         )
 
-        random.shuffle(tasks_blocks_metadata)
-        tasks, blocks, metadata = map(list, zip(*tasks_blocks_metadata))
+        random.shuffle(zipped)
+        tasks, block_partition_refs, block_partition_meta_refs, cached_metadata = map(
+            list, zip(*zipped)
+        )
 
         self._tasks = tasks
-        self._block_partition_refs = blocks
-        self._block_partition_meta_refs = metadata
+        self._block_partition_refs = block_partition_refs
+        self._block_partition_meta_refs = block_partition_meta_refs
+        self._cached_metadata = cached_metadata
 
     def _iter_block_partition_refs(
         self,
