@@ -11,6 +11,8 @@ if TYPE_CHECKING:
 
 from ray.data import Dataset
 
+# Duplicated from ray.air.predictor
+# Causes a circular import otherwise
 # TODO move this to one place
 DataBatchType = Union[
     "np.ndarray", "pd.DataFrame", "pyarrow.Table", Dict[str, "np.ndarray"]
