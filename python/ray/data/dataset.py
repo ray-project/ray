@@ -2301,22 +2301,13 @@ class Dataset(Generic[T]):
         Returns:
             An iterator over record batches.
         """
-        import random
-
         blocks = self._plan.execute()
         stats = self._plan.stats()
 
         time_start = time.perf_counter()
 
-        blocks = list(blocks.iter_blocks())
-
-        if random_block_order:
-            if random_seed:
-                random.seed(random_seed)
-            random.shuffle(blocks)
-
         yield from batch_blocks(
-            blocks,
+            blocks.iter_blocks(),
             stats,
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
