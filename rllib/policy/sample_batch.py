@@ -1153,7 +1153,7 @@ class MultiAgentBatch:
         policy_batches: Dict[PolicyID, SampleBatch], env_steps: int
     ) -> Union[SampleBatch, "MultiAgentBatch"]:
         """Returns SampleBatch or MultiAgentBatch, depending on given policies.
-        If policy_batches is empty (i.e. {}) it returns an empty SampleBatch.
+        If policy_batches is empty (i.e. {}) it returns an empty MultiAgentBatch.
 
         Args:
             policy_batches: Mapping from policy ids to SampleBatch.
@@ -1163,14 +1163,6 @@ class MultiAgentBatch:
             The single default policy's SampleBatch or a MultiAgentBatch
             (more than one policy).
         """
-        # # handle the empty case
-        # if not policy_batches:
-        #     foo = SampleBatch(policy_batches, env_steps=env_steps)
-        #     bar = MultiAgentBatch(policy_batches, env_steps=env_steps)
-        #     print('sample_batch = ', foo.count)
-        #     print('ma_batch = ', bar.count)
-        #     return SampleBatch(policy_batches, env_steps=env_steps)
-
         if len(policy_batches) == 1 and DEFAULT_POLICY_ID in policy_batches:
             return policy_batches[DEFAULT_POLICY_ID]
         return MultiAgentBatch(policy_batches=policy_batches, env_steps=env_steps)
