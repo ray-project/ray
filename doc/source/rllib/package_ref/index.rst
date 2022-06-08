@@ -25,7 +25,7 @@ If you think there is anything missing, please open an issue on `Github`_.
    models.rst
    evaluation.rst
    offline.rst
-   execution.rst
+   parallel_requests.rst
    utils.rst
 
 .. include:: /_includes/rllib/announcement_bottom.rst
