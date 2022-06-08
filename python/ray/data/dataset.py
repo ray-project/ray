@@ -680,20 +680,20 @@ class Dataset(Generic[T]):
             The shuffled dataset.
         """
 
-        def do_shuffle(block_list, *_):
+        def do_randomize_block_order(block_list, *_):
             num_blocks = block_list.executed_num_blocks()  # Blocking.
             if num_blocks == 0:
                 return block_list, {}
 
-            block_list.randomize_block_order(seed)
+            randomized_block_list = block_list.randomize_block_order(seed)
 
-            return block_list, {}
+            return randomized_block_list, {}
 
         plan = self._plan.with_stage(
             AllToAllStage(
                 "randomize_block_order",
                 None,
-                do_shuffle,
+                do_randomize_block_order,
             )
         )
         return Dataset(plan, self._epoch, self._lazy)

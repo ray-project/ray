@@ -179,7 +179,7 @@ class BlockList:
         """
         return len(self.get_blocks())
 
-    def randomize_block_order(self, seed: Optional[int] = None):
+    def randomize_block_order(self, seed: Optional[int] = None) -> "BlockList":
         """Randomizes the order of the blocks.
 
         Args:
@@ -195,5 +195,4 @@ class BlockList:
         random.shuffle(blocks_with_metadata)
         blocks, metadata = map(list, zip(*blocks_with_metadata))
 
-        self._blocks = blocks
-        self._metadata = metadata
+        return BlockList(blocks, metadata)
