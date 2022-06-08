@@ -15,7 +15,6 @@ from ray.serve.generated.serve_pb2 import (
     ApplicationStatus as ApplicationStatusProto,
     ApplicationStatusInfo as ApplicationStatusInfoProto,
     StatusOverview as StatusOverviewProto,
-    DeploymentLanguage,
 )
 
 EndpointTag = str

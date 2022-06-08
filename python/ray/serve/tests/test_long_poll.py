@@ -16,10 +16,8 @@ from ray.serve.long_poll import (
 )
 from ray.serve.generated.serve_pb2 import (
     LongPollRequest,
-    UpdatedObject as UpdatedObjectProto,
     LongPollResult,
     EndpointSet,
-    EndpointInfo as EndpointInfoProto,
     ActorNameList,
 )
 
@@ -218,7 +216,6 @@ def test_listen_for_change_xlang(serve_instance):
     )
     result_3: bytes = ray.get(object_ref_3)
     poll_result_3 = LongPollResult.FromString(result_3)
-    # assert set(poll_result_3.updated_objects.keys()) == {"(RUNNING_REPLICAS,deployment_name)"}
     replica_name_list = ActorNameList.FromString(
         poll_result_3.updated_objects[
             "(RUNNING_REPLICAS,deployment_name)"

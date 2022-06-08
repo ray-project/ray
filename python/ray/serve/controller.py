@@ -158,7 +158,8 @@ class ServeController:
         """Proxy long pull client's listen request.
 
         Args:
-            keys_to_snapshot_ids_bytes (Dict[str, int]): the protobuf bytes of keys_to_snapshot_ids (Dict[str, int]).
+            keys_to_snapshot_ids_bytes (Dict[str, int]): the protobuf bytes of
+              keys_to_snapshot_ids (Dict[str, int]).
         """
         return await (
             self.long_poll_host.listen_for_change_xlang(keys_to_snapshot_ids_bytes)

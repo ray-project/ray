@@ -8,6 +8,7 @@ import io.ray.serve.deployment.DeploymentRoute;
 import java.io.IOException;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.testng.Assert;
+import org.testng.annotations.Test;
 
 public class ServeDemo {
 
@@ -24,7 +25,8 @@ public class ServeDemo {
     }
   }
 
-  public static void main(String[] args) throws IOException {
+  @Test
+  public static void testDepoly() throws IOException {
 
     Ray.init();
 
