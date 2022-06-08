@@ -19,7 +19,7 @@ from ray.rllib.algorithms.ppo.ppo import DEFAULT_CONFIG as PPO_CONFIG
 from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
 from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
 from ray.rllib.evaluation.postprocessing import Postprocessing
-from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
+from ray.rllib.execution.parallel_requests import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import train_one_step
 from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import (
     MultiAgentReplayBuffer,

@@ -185,7 +185,7 @@ coordinate the movement of samples and policy data across your distributed worke
 make some custom changes to an algorithm or write their own from scratch if they are implementing a new algorithm.**
 
 When is it invoked?
-~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~
 
 ``training_iteration`` is called in 2 ways:
 
