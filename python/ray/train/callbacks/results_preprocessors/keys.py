@@ -1,6 +1,8 @@
 from typing import List, Dict, Optional, Iterable
+import warnings
 
 from ray.train.callbacks.results_preprocessors.preprocessor import ResultsPreprocessor
+from ray.train.callbacks.callback import _deprecation_msg
 from ray.util.annotations import Deprecated
 
 
@@ -20,6 +22,11 @@ class ExcludedKeysResultsPreprocessor(ResultsPreprocessor):
     """
 
     def __init__(self, excluded_keys: Optional[Iterable[str]] = None) -> None:
+        warnings.warn(
+            _deprecation_msg,
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.excluded_keys = set(excluded_keys) or {}
 
     def preprocess(self, results: List[Dict]) -> List[Dict]:

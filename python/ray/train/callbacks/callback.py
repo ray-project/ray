@@ -10,11 +10,11 @@ from ray.train.constants import ALL_RESERVED_KEYS
 from ray.util.annotations import Deprecated
 
 _deprecation_msg = (
-    "`ray.train.callbacks` will be deprecated in Ray "
-    "2.0, and will be replaced by Ray AI Runtime (Ray AIR). Ray AIR "
-    "callbacks (https://docs.ray.io/en/latest/ray-air/getting-started.html) "
+    "`ray.train.callbacks` and the `ray.train.Trainer` API are deprecated in Ray "
+    "2.0, and is replaced by Ray AI Runtime (Ray AIR). Ray AIR "
+    "(https://docs.ray.io/en/latest/ray-air/getting-started.html) "
     "will provide greater functionality and a unified API "
-    "compared to `ray.train.callbacks`. "
+    "compared to the current Ray Train API. "
     "This class will be removed in the future."
 )
 

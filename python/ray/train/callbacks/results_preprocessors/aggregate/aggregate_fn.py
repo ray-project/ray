@@ -1,5 +1,6 @@
 import abc
 from typing import Dict, List, Union, Optional
+import warnings
 
 import numpy as np
 
@@ -7,12 +8,20 @@ from ray.train.callbacks.results_preprocessors.aggregate.aggregate_utils import 
     VALID_AGGREGATE_TYPES,
     _get_weights_from_results,
 )
+from ray.train.callbacks.callback import _deprecation_msg
 from ray.util.annotations import Deprecated
 
 
 @Deprecated
 class AggregateFn(abc.ABC):
     """An abstract class for aggregation function."""
+
+    def __init__(self):
+        warnings.warn(
+            _deprecation_msg,
+            DeprecationWarning,
+            stacklevel=2,
+        )
 
     def __call__(
         self, values: List[Union[VALID_AGGREGATE_TYPES]]
@@ -86,6 +95,11 @@ class WeightedAverage(AggregateFn):
     """
 
     def __init__(self, weight_key: Optional[str] = None):
+        warnings.warn(
+            _deprecation_msg,
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.weight_key = weight_key
         self.weights = None
 

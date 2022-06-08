@@ -1,7 +1,9 @@
 import logging
 from typing import Dict, List, Optional
+import warnings
 
 from ray.util.annotations import Deprecated
+from ray.train.callbacks.callback import _deprecation_msg
 from ray.train.callbacks.results_preprocessors.preprocessor import ResultsPreprocessor
 from ray.train.callbacks.results_preprocessors.aggregate.aggregate_fn import (
     AggregateFn,
@@ -30,6 +32,11 @@ class AggregateResultsPreprocessor(ResultsPreprocessor):
     """
 
     def __init__(self, aggregation_fn: AggregateFn, keys: Optional[List[str]] = None):
+        warnings.warn(
+            _deprecation_msg,
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.aggregate_fn = aggregation_fn
         self.keys = keys
 

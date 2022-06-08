@@ -1,4 +1,5 @@
 import abc
+import warnings
 from typing import List, Dict
 
 from ray.util.annotations import Deprecated
@@ -41,6 +42,11 @@ class SequentialResultsPreprocessor(ResultsPreprocessor):
     """
 
     def __init__(self, preprocessors: List[ResultsPreprocessor]):
+        warnings.warn(
+            "The `ray.train.results_preprocessors` API is deprecated in Ray " "2.0",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.preprocessors = preprocessors
 
     def preprocess(self, results: List[Dict]) -> List[Dict]:
