@@ -586,6 +586,10 @@ def main(
     commands: bool = False,
     filters: Optional[List[str]] = None,
 ):
+    if filters and not commands:
+        raise ValueError(
+            "Must specify the command flag '-c' to use filter options '-f'."
+        )
     random.seed(1235)
 
     logger = logging.getLogger("main")

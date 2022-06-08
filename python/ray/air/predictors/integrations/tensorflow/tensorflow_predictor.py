@@ -1,13 +1,15 @@
-from typing import Callable, Optional, Union, List, Type
+from typing import Callable, Optional, Union, List, Type, TYPE_CHECKING
 
 import pandas as pd
 import tensorflow as tf
 
 from ray.air.predictor import Predictor, DataBatchType
-from ray.air.preprocessor import Preprocessor
 from ray.air.checkpoint import Checkpoint
 from ray.air.train.data_parallel_trainer import _load_checkpoint
 from ray.air._internal.tensorflow_utils import convert_pandas_to_tf_tensor
+
+if TYPE_CHECKING:
+    from ray.air.preprocessor import Preprocessor
 
 
 class TensorflowPredictor(Predictor):
@@ -24,7 +26,7 @@ class TensorflowPredictor(Predictor):
     def __init__(
         self,
         model_definition: Union[Callable[[], tf.keras.Model], Type[tf.keras.Model]],
-        preprocessor: Optional[Preprocessor] = None,
+        preprocessor: Optional["Preprocessor"] = None,
         model_weights: Optional[list] = None,
     ):
         self.model_definition = model_definition
