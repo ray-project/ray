@@ -184,7 +184,6 @@ def start(
         controller,
         controller_name,
         detached=detached,
-        _override_controller_namespace=SERVE_NAMESPACE,
     )
     set_global_client(client)
     logger.info(
