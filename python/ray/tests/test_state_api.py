@@ -76,7 +76,7 @@ from ray.experimental.state.state_manager import (
     StateDataSourceClient,
 )
 from ray.experimental.state.state_cli import (
-    list_state_cli_group,
+    list as cli_list,
     get_state_api_output_to_print,
     AvailableFormat,
 )
@@ -735,7 +735,7 @@ def test_cli_apis_sanity_check(ray_start_cluster):
     pg = ray.util.placement_group(bundles=[{"CPU": 1}])  # noqa
 
     def verify_output(resource_name, necessary_substrings: List[str]):
-        result = runner.invoke(list_state_cli_group, [resource_name])
+        result = runner.invoke(cli_list, [resource_name])
         exit_code_correct = result.exit_code == 0
         substring_matched = all(
             substr in result.output for substr in necessary_substrings

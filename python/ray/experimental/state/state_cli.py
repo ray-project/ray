@@ -10,19 +10,12 @@ import ray
 import ray.ray_constants as ray_constants
 import ray._private.services as services
 
-from ray.experimental.state.api import (
-    StateApiClient,
-    list_nodes,
-    list_jobs,
-    list_workers,
-    list_tasks,
-    list_objects,
-    list_runtime_envs,
-)
+from ray.experimental.state.api import StateApiClient
 from ray.experimental.state.common import (
     DEFAULT_LIMIT,
     DEFAULT_RPC_TIMEOUT,
     ListApiOptions,
+    StateResource,
 )
 from ray._private.gcs_utils import use_gcs_for_bootstrap
 from ray._private.gcs_utils import GcsClient
@@ -41,6 +34,12 @@ class AvailableFormat(Enum):
 def _get_available_formats() -> List[str]:
     """Return the available formats in a list of string"""
     return [format_enum.value for format_enum in AvailableFormat]
+
+
+def _get_available_resources() -> List[str]:
+    """Return the available resources in a list of string"""
+    # All resource names use '_' rather than '-'. But users options have '-'
+    return [e.value.replace("_", "-") for e in StateResource]
 
 
 def get_state_api_output_to_print(
@@ -71,9 +70,7 @@ def _should_explain(format: AvailableFormat):
     return format == AvailableFormat.DEFAULT or format == AvailableFormat.TABLE
 
 
-@click.group("list")
-@click.pass_context
-def list_state_cli_group(ctx):
+def _get_state_api_server_address() -> str:
     address = services.canonicalize_bootstrap_address(None)
     gcs_client = GcsClient(address=address, nums_reconnect_retry=0)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
@@ -83,7 +80,7 @@ def list_state_cli_group(ctx):
         namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
         num_retries=20,
     )
-
+    api_server_url = api_server_url.decode()
     if api_server_url is None:
         raise ValueError(
             (
@@ -94,142 +91,64 @@ def list_state_cli_group(ctx):
         )
 
     assert use_gcs_for_bootstrap()
-    api_server_url = f"http://{api_server_url.decode()}"
+    api_server_url = f"http://{api_server_url}"
+
+    return api_server_url
+
+
+@click.command()
+@click.argument(
+    "resource",
+    type=click.Choice(_get_available_resources()),
+)
+@click.option(
+    "--format", default="default", type=click.Choice(_get_available_formats())
+)
+@click.option(
+    "--timeout",
+    default=DEFAULT_RPC_TIMEOUT,
+    help=f"Timeout in seconds for the API requests. Default is {DEFAULT_RPC_TIMEOUT}",
+)
+@click.option(
+    "--address",
+    default="",
+    help=(
+        "The address of Ray API server. If not provided, it will be configured "
+        "automatically from querying the GCS server."
+    ),
+)
+def list(resource: str, format: str, timeout: float, address: str):
+    """
+    List RESOURCE used by Ray.
+
+    RESOURCE is the name of the possible resources from `StateResource`,
+    i.e. 'jobs', 'actors', 'nodes', ...
+
+    """
+    resource = StateResource(resource)
+    format = AvailableFormat(format)
+
+    # Get the state API server address from ray if not provided by user
+    api_server_address = address if address else _get_state_api_server_address()
 
     # Create the State API server and put it into context
-    logger.info(f"Create StateApiClient at {api_server_url} with default options...")
+    logger.debug(f"Create StateApiClient at {api_server_address}...")
     client = StateApiClient(
-        options=ListApiOptions(limit=DEFAULT_LIMIT, timeout=DEFAULT_RPC_TIMEOUT),
-        api_server_url=api_server_url,
+        api_server_address=api_server_address,
     )
 
-    ctx.ensure_object(dict)
-    ctx.obj["api_client"] = client
-    ctx.obj["api_server_url"] = api_server_url
-
-
-@list_state_cli_group.command()
-@click.option(
-    "--format", default="default", type=click.Choice(_get_available_formats())
-)
-@click.pass_context
-def actors(ctx, format: str):
-    client = ctx.obj["api_client"]
-    format = AvailableFormat(format)
-    print(
-        get_state_api_output_to_print(
-            client.list_actors(_should_explain(format)), format=format
-        )
+    options = ListApiOptions(
+        limit=DEFAULT_LIMIT,  # TODO(rickyyx): should we make this configurable?
+        timeout=timeout,
     )
 
+    # If errors occur, exceptions will be thrown. Empty data indicate successful query.
+    data = client.list(resource, options=options, _explain=_should_explain(format))
 
-@list_state_cli_group.command()
-@click.option(
-    "--format", default="default", type=click.Choice(_get_available_formats())
-)
-@click.pass_context
-def placement_groups(ctx, format: str):
-    client = ctx.obj["api_server"]
-    format = AvailableFormat(format)
+    # Print data to console.
     print(
         get_state_api_output_to_print(
-            client.list_placement_groups(_explain=_should_explain(format)),
-            format=format,
-        )
-    )
-
-
-@list_state_cli_group.command()
-@click.option(
-    "--format", default="default", type=click.Choice(_get_available_formats())
-)
-@click.pass_context
-def nodes(ctx, format: str):
-    url = ctx.obj["api_server_url"]
-    format = AvailableFormat(format)
-    print(
-        get_state_api_output_to_print(
-            list_nodes(api_server_url=url, _explain=_should_explain(format)),
-            format=format,
-        )
-    )
-
-
-@list_state_cli_group.command()
-@click.option(
-    "--format", default="default", type=click.Choice(_get_available_formats())
-)
-@click.pass_context
-def jobs(ctx, format: str):
-    url = ctx.obj["api_server_url"]
-    format = AvailableFormat(format)
-    print(
-        get_state_api_output_to_print(
-            list_jobs(api_server_url=url, _explain=_should_explain(format)),
-            format=format,
-        )
-    )
-
-
-@list_state_cli_group.command()
-@click.option(
-    "--format", default="default", type=click.Choice(_get_available_formats())
-)
-@click.pass_context
-def workers(ctx, format: str):
-    url = ctx.obj["api_server_url"]
-    format = AvailableFormat(format)
-    print(
-        get_state_api_output_to_print(
-            list_workers(api_server_url=url, _explain=_should_explain(format)),
-            format=format,
-        )
-    )
-
-
-@list_state_cli_group.command()
-@click.option(
-    "--format", default="default", type=click.Choice(_get_available_formats())
-)
-@click.pass_context
-def tasks(ctx, format: str):
-    url = ctx.obj["api_server_url"]
-    format = AvailableFormat(format)
-    print(
-        get_state_api_output_to_print(
-            list_tasks(api_server_url=url, _explain=_should_explain(format)),
-            format=format,
-        )
-    )
-
-
-@list_state_cli_group.command()
-@click.option(
-    "--format", default="default", type=click.Choice(_get_available_formats())
-)
-@click.pass_context
-def objects(ctx, format: str):
-    url = ctx.obj["api_server_url"]
-    format = AvailableFormat(format)
-    print(
-        get_state_api_output_to_print(
-            list_objects(api_server_url=url, _explain=_should_explain(format)),
-            format=format,
-        )
-    )
-
-
-@list_state_cli_group.command()
-@click.option(
-    "--format", default="default", type=click.Choice(_get_available_formats())
-)
-@click.pass_context
-def runtime_envs(ctx, format: str):
-    url = ctx.obj["api_server_url"]
-    format = AvailableFormat(format)
-    print(
-        get_state_api_output_to_print(
-            list_runtime_envs(api_server_url=url, _explain=_should_explain(format)),
+            state_data=data,
             format=format,
         )
     )
