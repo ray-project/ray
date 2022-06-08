@@ -1,5 +1,6 @@
-from typing import Callable, Optional, Union, List, Type
+from typing import Callable, Optional, Union, Type, Dict
 
+import numpy as np
 import pandas as pd
 import tensorflow as tf
 
@@ -7,7 +8,7 @@ from ray.air.predictor import Predictor, DataBatchType
 from ray.air.preprocessor import Preprocessor
 from ray.air.checkpoint import Checkpoint
 from ray.air.train.data_parallel_trainer import _load_checkpoint
-from ray.air._internal.tensorflow_utils import convert_pandas_to_tf_tensor
+from ray.air.util.data_batch_conversion import convert_pandas_to_batch_type
 
 
 class TensorflowPredictor(Predictor):
@@ -57,37 +58,58 @@ class TensorflowPredictor(Predictor):
             preprocessor=preprocessor,
         )
 
-    def _predict_pandas(self, data: "pd.DataFrame", dtype: Optional[tf.dtypes.DType] = None) -> "pd.DataFrame":
-        # if isinstance(data, pd.DataFrame):
-        #     if feature_columns:
-        #         data = data[feature_columns]
-        #     tensor = convert_pandas_to_tf_tensor(data, dtype=dtype)
-        # else:
-        #     tensor = tf.convert_to_tensor(data, dtype=dtype)
-
+    def _predict_pandas(
+        self, data: "pd.DataFrame", dtype: Optional[tf.dtypes.DType] = None
+    ) -> "pd.DataFrame":
         # TensorFlow model objects cannot be pickled, therefore we use
         # a callable that returns the model and initialize it here,
         # instead of having an initialized model object as an attribute.
         model = self.model_definition()
 
-        if self.model_weights is not None:
-            input_shape = list(tensor.shape)
-            # The batch axis can contain varying number of elements, so we set
-            # the shape along the axis to `None`.
-            input_shape[0] = None
+        def tensorize(numpy_array, dtype):
+            return tf.convert_to_tensor(numpy_array, dtype=dtype)
 
-            model.build(input_shape=input_shape)
+        if len(data.columns) == 1:
+            column_name = data.columns[0]
+            if isinstance(dtype, dict):
+                dtype = dtype[column_name]
+            model_input = tensorize(
+                convert_pandas_to_batch_type(data, np.ndarray), dtype
+            )
+        else:
+            array_dict = convert_pandas_to_batch_type(data, type=dict)
+            model_input = {
+                k: tensorize(v, dtype=dtype[k] if isinstance(dtype, dict) else dtype)
+                for k, v in array_dict.items()
+            }
+
+        if self.model_weights is not None:
+            if not model.built:
+                if not isinstance(model_input, dict):
+                    input_shape = list(model_input.shape)
+                    # The batch axis can contain varying number of elements, so we set
+                    # the shape along the axis to `None`.
+                    input_shape[0] = None
+
+                    model.build(input_shape=input_shape)
+                else:
+                    raise RuntimeError(
+                        "The provided Keras model definition does not "
+                        "specify an input shape and the input shape "
+                        "could not be inferred. You must specify the "
+                        "input shape in your model."
+                    )
+
             model.set_weights(self.model_weights)
 
-        prediction = list(model(tensor).numpy())
+        model.set_weights(self.model_weights)
+        prediction = list(model(model_input).numpy())
         return pd.DataFrame({"predictions": prediction}, columns=["predictions"])
-
-
 
     def predict(
         self,
         data: DataBatchType,
-        dtype: Optional[tf.dtypes.DType] = None,
+        dtype: Optional[Union[tf.dtypes.DType, Dict[str, tf.dtypes.DType]]] = None,
     ) -> DataBatchType:
         """Run inference on data batch.
 
@@ -103,7 +125,8 @@ class TensorflowPredictor(Predictor):
         Args:
             data: A batch of input data. Either a pandas DataFrame or numpy
                 array.
-            dtype: The TensorFlow dtype to use when creating the TensorFlow tensor.
+            dtype: The TensorFlow dtype to use for the tensors. Either a single dtype
+                for all tensors or a mapping from column name to dtype.
                 If set to None, then automatically infer the dtype.
 
         Examples:
@@ -151,7 +174,4 @@ class TensorflowPredictor(Predictor):
         Returns:
             DataBatchType: Prediction result.
         """
-        super(TensorflowPredictor, self).predict(data=data, dtype=dtype)
-
-
-
+        return super(TensorflowPredictor, self).predict(data=data, dtype=dtype)
