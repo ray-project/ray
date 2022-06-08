@@ -95,8 +95,8 @@ The following are some UDF examples.
    :start-after: __writing_udfs_begin__
    :end-before: __writing_udfs_end__
 
-You may reference the `pyarrow.Table APIs <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`
-or the `pandas.DataFrame APIs <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html>`
+You may reference the `pyarrow.Table APIs <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__
+or the `pandas.DataFrame APIs <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html>`__
 in writing UDFs.
 
 .. tip::
