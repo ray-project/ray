@@ -179,7 +179,7 @@ class BlockList:
         """
         return len(self.get_blocks())
 
-    def randomize_block_order(self, seed: Optional[int] = None) -> None:
+    def randomize_block_order(self, seed: Optional[int] = None):
         """Randomizes the order of the blocks.
 
         Args:
