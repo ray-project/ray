@@ -189,9 +189,7 @@ class SampleBatch(dict):
 
     @staticmethod
     @PublicAPI
-    @Deprecated(
-        new="concat_samples() from rllib.policy.sample_batch", error=False
-    )
+    @Deprecated(new="concat_samples() from rllib.policy.sample_batch", error=False)
     def concat_samples(
         samples: Union[List["SampleBatch"], List["MultiAgentBatch"]],
     ) -> Union["SampleBatch", "MultiAgentBatch"]:
@@ -1169,9 +1167,7 @@ class MultiAgentBatch:
 
     @staticmethod
     @PublicAPI
-    @Deprecated(
-        new="concat_samples() from rllib.policy.sample_batch", error=False
-    )
+    @Deprecated(new="concat_samples() from rllib.policy.sample_batch", error=False)
     def concat_samples(samples: List["MultiAgentBatch"]) -> "MultiAgentBatch":
         return concat_samples(samples)
 
@@ -1318,9 +1314,6 @@ def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
     # Collect the concat'd data.
     concatd_data = {}
 
-    def concat_key(*values):
-        return concat_aligned(values, time_major)
-
     for k in concated_samples[0].keys():
         try:
             if k == "infos":
@@ -1329,7 +1322,7 @@ def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
                 )
             else:
                 concatd_data[k] = tree.map_structure(
-                    concat_key, *[c[k] for c in concated_samples]
+                    _concat_key, *[c[k] for c in concated_samples]
                 )
         except Exception:
             raise ValueError(
@@ -1372,11 +1365,11 @@ def _concat_samples_into_ma_batch(samples: List[SampleBatchType]) -> "MultiAgent
             policy_batches[key].append(batch)
         env_steps += s.env_steps()
 
-        out = {}
-        for key, batches in policy_batches.items():
-            out[key] = concat_samples(batches)
+    out = {}
+    for key, batches in policy_batches.items():
+        out[key] = concat_samples(batches)
 
-        return MultiAgentBatch(out, env_steps)
+    return MultiAgentBatch(out, env_steps)
 
 
 def _concat_key(*values, time_major=None):
