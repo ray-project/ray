@@ -85,7 +85,7 @@ def test_memory_omitted_option(ray_shutdown):
 
 
 @pytest.mark.parametrize("detached", [True, False])
-@pytest.mark.parametrize("ray_namespace", ["arbitrary", "serve", None])
+@pytest.mark.parametrize("ray_namespace", ["arbitrary", SERVE_NAMESPACE, None])
 def test_serve_namespace(shutdown_ray, detached, ray_namespace):
     """Test that Serve starts in SERVE_NAMESPACE regardless of driver namespace."""
 
