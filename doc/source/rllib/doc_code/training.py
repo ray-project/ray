@@ -80,9 +80,9 @@ _____________________________________________________________________
 # __get_q_values_dqn_start__
 # Get a reference to the model through the policy
 import numpy as np
-from ray.rllib.algorithms.dqn import DQNTrainer
+from ray.rllib.algorithms.dqn import DQN
 
-trainer = DQNTrainer(env="CartPole-v0", config={"framework": "tf2"})
+trainer = DQN(env="CartPole-v0", config={"framework": "tf2"})
 model = trainer.get_policy().model
 # <ray.rllib.models.catalog.FullyConnectedNetwork_as_DistributionalQModel ...>
 

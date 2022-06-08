@@ -234,6 +234,7 @@ class SubmissionClient:
         data: Optional[bytes] = None,
         json_data: Optional[dict] = None,
         timeout: Optional[Union[float, Tuple]] = None,
+        params: Optional[dict] = None,
     ) -> "requests.Response":
         url = self._address + endpoint
         logger.debug(f"Sending request to {url} with json data: {json_data or {}}.")
@@ -245,6 +246,7 @@ class SubmissionClient:
             json=json_data,
             headers=self._headers,
             timeout=timeout,
+            params=params,
         )
 
     def _package_exists(

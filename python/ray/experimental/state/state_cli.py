@@ -4,7 +4,7 @@ import json
 import yaml
 
 from enum import Enum, unique
-from typing import Union, List
+from typing import Union, List, Tuple
 
 import ray
 import ray.ray_constants as ray_constants
@@ -64,6 +64,11 @@ def get_state_api_output_to_print(
         )
 
 
+"""
+List API
+"""
+
+
 def _should_explain(format: AvailableFormat):
     # If the format is json or yaml, it should not print stats because
     # users don't want additional strings.
@@ -105,6 +110,18 @@ def _get_state_api_server_address() -> str:
     "--format", default="default", type=click.Choice(_get_available_formats())
 )
 @click.option(
+    "-f",
+    "--filter",
+    help=(
+        "A key value pair to filter the result. "
+        "For example, specify --filter [column] [value] "
+        "to filter out data that satsifies column==value."
+    ),
+    nargs=2,
+    type=click.Tuple([str, str]),
+    multiple=True,
+)
+@click.option(
     "--timeout",
     default=DEFAULT_RPC_TIMEOUT,
     help=f"Timeout in seconds for the API requests. Default is {DEFAULT_RPC_TIMEOUT}",
@@ -117,7 +134,13 @@ def _get_state_api_server_address() -> str:
         "automatically from querying the GCS server."
     ),
 )
-def list(resource: str, format: str, timeout: float, address: str):
+def list(
+    resource: str,
+    format: str,
+    filter: List[Tuple[str, str]],
+    timeout: float,
+    address: str,
+):
     """
     List RESOURCE used by Ray.
 
@@ -140,6 +163,7 @@ def list(resource: str, format: str, timeout: float, address: str):
     options = ListApiOptions(
         limit=DEFAULT_LIMIT,  # TODO(rickyyx): should we make this configurable?
         timeout=timeout,
+        filters=filter,
     )
 
     # If errors occur, exceptions will be thrown. Empty data indicate successful query.

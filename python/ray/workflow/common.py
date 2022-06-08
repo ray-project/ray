@@ -161,8 +161,6 @@ class StepType(str, Enum):
     """All step types."""
 
     FUNCTION = "FUNCTION"
-    ACTOR_METHOD = "ACTOR_METHOD"
-    READONLY_ACTOR_METHOD = "READONLY_ACTOR_METHOD"
     WAIT = "WAIT"
 
 
@@ -319,9 +317,7 @@ class WorkflowExecutionResult:
     """Dataclass for holding workflow execution result."""
 
     # Part of result to persist in a storage and pass to the next step.
-    persisted_output: "WorkflowStaticRef"
-    # Part of result to return to the user but does not require persistence.
-    volatile_output: "WorkflowStaticRef"
+    output: "WorkflowStaticRef"
 
 
 @dataclass

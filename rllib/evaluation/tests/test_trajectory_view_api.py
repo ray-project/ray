@@ -58,7 +58,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         config["rollout_fragment_length"] = 4
 
         for _ in framework_iterator(config):
-            trainer = dqn.DQNTrainer(
+            trainer = dqn.DQN(
                 config, env="ray.rllib.examples.env.debug_counter_env.DebugCounterEnv"
             )
             policy = trainer.get_policy()
