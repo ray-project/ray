@@ -308,6 +308,7 @@ def run_tune_script_for_time(
     indicator_file: str,
     no_syncer: bool,
     upload_dir: Optional[str],
+    run_start_timeout: int = 30,
 ):
     # Start run
     process = start_run(
@@ -318,7 +319,9 @@ def run_tune_script_for_time(
     )
     try:
         # Wait until indicator file exists
-        wait_for_run_or_raise(process, indicator_file=indicator_file, timeout=30)
+        wait_for_run_or_raise(
+            process, indicator_file=indicator_file, timeout=run_start_timeout
+        )
         # Stop experiment (with checkpoint) after some time
         send_signal_after_wait(process, signal=signal.SIGUSR1, wait=run_time)
         # Wait until process gracefully terminated
@@ -337,6 +340,7 @@ def run_resume_flow(
     upload_dir: Optional[str],
     first_run_time: int = 33,
     second_run_time: int = 33,
+    run_start_timeout: int = 30,
     before_experiments_callback: Optional[Callable[[], None]] = None,
     between_experiments_callback: Optional[Callable[[], None]] = None,
     after_experiments_callback: Optional[Callable[[], None]] = None,
@@ -372,6 +376,7 @@ def run_resume_flow(
         indicator_file=indicator_file,
         no_syncer=no_syncer,
         upload_dir=upload_dir,
+        run_start_timeout=run_start_timeout,
     )
 
     # Before we restart, run a couple of checks
@@ -1152,6 +1157,8 @@ def test_durable_upload(bucket: str):
 
     run_time = int(os.getenv("TUNE_RUN_TIME", "180")) or 180
 
+    run_start_timeout = 600 if "rllib" in os.environ["TUNE_TRAINABLE"] else 30
+
     run_resume_flow(
         experiment_name=experiment_name,
         indicator_file=indicator_file,
@@ -1159,6 +1166,7 @@ def test_durable_upload(bucket: str):
         upload_dir=bucket,
         first_run_time=run_time,
         second_run_time=run_time,
+        run_start_timeout=run_start_timeout,
         before_experiments_callback=before_experiments,
         between_experiments_callback=between_experiments,
         after_experiments_callback=after_experiments,
