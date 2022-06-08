@@ -39,7 +39,10 @@ class HTTPState:
             detached, _override_controller_namespace=_override_controller_namespace
         )
         self._detached = detached
-        self._config = config
+        if config is not None:
+            self._config = config
+        else:
+            self._config = HTTPOptions()
         self._override_controller_namespace = _override_controller_namespace
         self._proxy_actors: Dict[NodeId, ActorHandle] = dict()
         self._proxy_actor_names: Dict[NodeId, str] = dict()

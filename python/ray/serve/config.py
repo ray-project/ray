@@ -135,6 +135,8 @@ class DeploymentConfig(BaseModel):
     version: Optional[str] = None
     prev_version: Optional[str] = None
 
+    api_language: Any = DeploymentLanguage.PYTHON
+
     class Config:
         validate_assignment = True
         extra = "forbid"
@@ -150,29 +152,13 @@ class DeploymentConfig(BaseModel):
                 raise ValueError("max_concurrent_queries must be >= 0")
         return v
 
-    def get_api_client_lang(self):
-        return DeploymentConfig.api_client_lang(self.deployment_language, self.is_cross_language)
-
-    @classmethod
-    def api_client_lang(cls, deployment_language, is_cross_language):
-        # TODO(yangxiaofeng): If there are more than 2 types of api client language, this function needs to be reconstructed.
-        # Maybe we can add api_client_lang field to DeploymentConfig proto
-        if deployment_language == DeploymentLanguage.PYTHON:
-            if is_cross_language:
-                return DeploymentLanguage.JAVA
-            else:
-                return DeploymentLanguage.PYTHON
-        elif deployment_language == DeploymentLanguage.JAVA:
-            if is_cross_language:
-                return DeploymentLanguage.PYTHON
-            else:
-                return DeploymentLanguage.JAVA
+    def need_pickle(self):
+        return self.api_language == DeploymentLanguage.PYTHON
 
     def to_proto(self):
         data = self.dict()
         if data.get("user_config"):
-            api_client_lang = self.get_api_client_lang()
-            if api_client_lang == DeploymentLanguage.PYTHON:
+            if self.api_language == DeploymentLanguage.PYTHON:
                 data["user_config"] = cloudpickle.dumps(data["user_config"])
         if data.get("autoscaling_config"):
             data["autoscaling_config"] = AutoscalingConfigProto(
@@ -193,10 +179,8 @@ class DeploymentConfig(BaseModel):
         )
         if "user_config" in data:
             if data["user_config"] != "":
-                deployment_lang = data["deployment_language"] if "deployment_language" in data else None
-                is_cross_lang = data["is_cross_language"] if "is_cross_language" in data else None
-                api_client_lang = cls.api_client_lang(deployment_lang, is_cross_lang)
-                if api_client_lang == DeploymentLanguage.PYTHON:
+                api_lang = data["api_language"] if "api_language" in data else DeploymentLanguage.PYTHON
+                if api_lang == DeploymentLanguage.PYTHON:
                     data["user_config"] = cloudpickle.loads(proto.user_config)
             else:
                 data["user_config"] = None
@@ -258,9 +242,10 @@ class ReplicaConfig:
     def __init__(
         self,
         deployment_def: Union[Callable, str],
-        init_args: Optional[Tuple[Any]] = None,
+        init_args: Optional[Union[Tuple[Any], bytes]] = None,
         init_kwargs: Optional[Dict[Any, Any]] = None,
         ray_actor_options=None,
+        need_pickle=True,
     ):
         # Validate that deployment_def is an import path, function, or class.
         self.import_path = None
@@ -282,7 +267,10 @@ class ReplicaConfig:
                 )
             )
 
-        self.serialized_deployment_def = cloudpickle.dumps(deployment_def)
+        if need_pickle:
+            self.serialized_deployment_def = cloudpickle.dumps(deployment_def)
+        else:
+            self.serialized_deployment_def = deployment_def.encode(encoding="utf-8")
         self.init_args = init_args if init_args is not None else ()
         self.init_kwargs = init_kwargs if init_kwargs is not None else {}
         if ray_actor_options is None:
@@ -320,19 +308,19 @@ class ReplicaConfig:
 
     @classmethod
     def from_proto(
-        cls, proto: ReplicaConfigProto, api_client_language: DeploymentLanguage
+        cls, proto: ReplicaConfigProto, need_pickle: bool
     ):
         deployment_def = None
         init_args = None
         if proto.serialized_deployment_def != b"":
-            if api_client_language == DeploymentLanguage.PYTHON:
+            if need_pickle:
                 deployment_def = cloudpickle.loads(proto.serialized_deployment_def)
                 init_args = (
                     cloudpickle.loads(proto.init_args) if proto.init_args != b"" else None
                 )
-            elif api_client_language == DeploymentLanguage.JAVA:
+            else:
                 # serialized_deployment_def is string in java replica
-                deployment_def = proto.serialized_deployment_def
+                deployment_def = proto.serialized_deployment_def.decode(encoding="utf-8")
                 init_args = proto.init_args if proto.init_args != b"" else None
 
         init_kwargs = (
@@ -344,23 +332,23 @@ class ReplicaConfig:
             else None
         )
 
-        return ReplicaConfig(deployment_def, init_args, init_kwargs, ray_actor_options)
+        return ReplicaConfig(deployment_def, init_args, init_kwargs, ray_actor_options, need_pickle)
 
     @classmethod
     def from_proto_bytes(
-        cls, proto_bytes: bytes, api_client_language: DeploymentLanguage
+        cls, proto_bytes: bytes, need_pickle: bool
     ):
         proto = ReplicaConfigProto.FromString(proto_bytes)
-        return cls.from_proto(proto, api_client_language)
+        return cls.from_proto(proto, need_pickle)
 
-    def to_proto(self, api_client_language: DeploymentLanguage):
+    def to_proto(self, need_pickle: bool):
         data = {
             "serialized_deployment_def": self.serialized_deployment_def,
         }
         if self.init_args:
-            if api_client_language == DeploymentLanguage.PYTHON:
+            if need_pickle:
                 data["init_args"] = cloudpickle.dumps(self.init_args)
-            elif api_client_language == DeploymentLanguage.JAVA:
+            else:
                 data["init_args"] = self.init_args
         if self.init_kwargs:
             data["init_kwargs"] = cloudpickle.dumps(self.init_kwargs)
@@ -368,8 +356,8 @@ class ReplicaConfig:
             data["ray_actor_options"] = json.dumps(self.ray_actor_options)
         return ReplicaConfigProto(**data)
 
-    def to_proto_bytes(self, api_client_language: DeploymentLanguage):
-        return self.to_proto(api_client_language).SerializeToString()
+    def to_proto_bytes(self, need_pickle: bool):
+        return self.to_proto(need_pickle).SerializeToString()
 
 
 class DeploymentMode(str, Enum):

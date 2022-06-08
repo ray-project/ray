@@ -311,7 +311,8 @@ class ActorReplicaWrapper:
                 # String deploymentDef
                 deployment_info.replica_config.func_or_class_name,
                 # byte[] initArgsbytes
-                msgpack_serialize(deployment_info.replica_config.init_args),
+                msgpack_serialize(
+                    deployment_info.replica_config.init_args) if deployment_info.deployment_config.api_language == DeploymentLanguage.PYTHON else deployment_info.replica_config.init_args,
                 # byte[] deploymentConfigBytes,
                 deployment_info.deployment_config.to_proto_bytes(),
                 # byte[] deploymentVersionBytes,

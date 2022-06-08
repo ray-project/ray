@@ -10,7 +10,7 @@ import io.ray.serve.config.RayServeConfig;
 import io.ray.serve.controller.ControllerInfo;
 import io.ray.serve.deployment.DeploymentVersion;
 import io.ray.serve.deployment.DeploymentWrapper;
-import io.ray.serve.generated.ActorSet;
+import io.ray.serve.generated.ActorNameList;
 import io.ray.serve.generated.DeploymentLanguage;
 import io.ray.serve.handle.RayServeHandle;
 import io.ray.serve.replica.RayServeWrappedReplica;
@@ -76,7 +76,7 @@ public class RayServeHandleTest {
           new RayServeHandle(controllerHandle, deploymentName, null, null)
               .method("getDeploymentName");
       ;
-      ActorSet.Builder builder = ActorSet.newBuilder();
+      ActorNameList.Builder builder = ActorNameList.newBuilder();
       builder.addNames(actorName);
       rayServeHandle.getRouter().getReplicaSet().updateWorkerReplicas(builder.build());
 

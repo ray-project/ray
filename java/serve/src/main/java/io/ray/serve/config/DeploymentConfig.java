@@ -61,6 +61,8 @@ public class DeploymentConfig {
 
   private String prevVersion;
 
+  private DeploymentLanguage apiLanguage = DeploymentLanguage.JAVA;
+
   public Integer getNumReplicas() {
     return numReplicas;
   }
@@ -184,6 +186,14 @@ public class DeploymentConfig {
     this.prevVersion = prevVersion;
   }
 
+  public DeploymentLanguage getApiLanguage() {
+    return apiLanguage;
+  }
+
+  public void setApiLanguage(DeploymentLanguage apiLanguage) {
+    this.apiLanguage = apiLanguage;
+  }
+
   public byte[] toProtoBytes() {
     return io.ray.serve.generated.DeploymentConfig.newBuilder()
         .setNumReplicas(numReplicas)
@@ -197,6 +207,7 @@ public class DeploymentConfig {
         .setAutoscalingConfig(autoscalingConfig != null ? autoscalingConfig.toProto() : null)
         .setIsCrossLanguage(isCrossLanguage)
         .setDeploymentLanguage(deploymentLanguage)
+        .setApiLanguage(apiLanguage)
         .build()
         .toByteArray();
   }
@@ -220,6 +231,7 @@ public class DeploymentConfig {
               Lists.newArrayList(DeploymentLanguage.values())));
     }
     deploymentConfig.setDeploymentLanguage(proto.getDeploymentLanguage());
+    deploymentConfig.setApiLanguage(proto.getApiLanguage());
     if (proto.getUserConfig() != null && proto.getUserConfig().size() != 0) {
       deploymentConfig.setUserConfig(
           MessagePackSerializer.decode(
