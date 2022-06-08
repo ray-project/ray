@@ -10,7 +10,7 @@ import unittest
 import ray
 import ray.rllib.algorithms.a3c as a3c
 import ray.rllib.algorithms.dqn as dqn
-from ray.rllib.algorithms.marwil import BCConfig, BCTrainer
+from ray.rllib.algorithms.bc import BC, BCConfig
 import ray.rllib.algorithms.pg as pg
 from ray.rllib.agents.trainer import COMMON_CONFIG
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
@@ -35,7 +35,7 @@ class TestTrainer(unittest.TestCase):
         """
         # Given:
         standard_config = copy.deepcopy(COMMON_CONFIG)
-        trainer = pg.PGTrainer(env="CartPole-v0", config=standard_config)
+        trainer = pg.PG(env="CartPole-v0", config=standard_config)
 
         # When (we validate config 2 times).
         # Try deprecated `Trainer._validate_config()` method (static).
@@ -84,7 +84,7 @@ class TestTrainer(unittest.TestCase):
         )
 
         for _ in framework_iterator(config):
-            trainer = pg.PGTrainer(config=config)
+            trainer = pg.PG(config=config)
             pol0 = trainer.get_policy("p0")
             r = trainer.train()
             self.assertTrue("p0" in r["info"][LEARNER_INFO])
@@ -113,7 +113,7 @@ class TestTrainer(unittest.TestCase):
 
                 # Test restoring from the checkpoint (which has more policies
                 # than what's defined in the config dict).
-                test = pg.PGTrainer(config=config)
+                test = pg.PG(config=config)
                 test.restore(checkpoint)
 
                 # Make sure evaluation worker also gets the restored policy.
@@ -343,7 +343,7 @@ class TestTrainer(unittest.TestCase):
             .offline_data(input_=[input_file])
         )
 
-        bc_trainer = BCTrainer(config=offline_rl_config)
+        bc_trainer = BC(config=offline_rl_config)
         bc_trainer.train()
         bc_trainer.stop()
 

@@ -90,9 +90,16 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         assert self.ea.runner_data()
 
     def testTrialDataframe(self):
-        checkpoints = self.ea._checkpoints
+        checkpoints = self.ea._checkpoints_and_paths
         idx = random.randint(0, len(checkpoints) - 1)
-        trial_df = self.ea.trial_dataframes[checkpoints[idx]["logdir"]]
+        logdir_from_checkpoint = str(
+            checkpoints[idx][1].joinpath(checkpoints[idx][0]["relative_logdir"])
+        )
+        logdir_from_trial = self.ea.trials[idx].logdir
+
+        self.assertEqual(logdir_from_checkpoint, logdir_from_trial)
+
+        trial_df = self.ea.trial_dataframes[logdir_from_checkpoint]
 
         self.assertTrue(isinstance(trial_df, pd.DataFrame))
         self.assertEqual(trial_df.shape[0], 1)

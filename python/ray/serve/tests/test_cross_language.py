@@ -22,7 +22,7 @@ def test_controller_starts_java_replica(shutdown_only):  # noqa: F811
     config.deployment_language = JAVA
     config.is_cross_language = True
 
-    replica_config = ReplicaConfig(
+    replica_config = ReplicaConfig.create(
         "io.ray.serve.util.ExampleEchoDeployment",
         init_args=["my_prefix "],
     )
