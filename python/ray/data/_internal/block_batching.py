@@ -1,6 +1,6 @@
 import collections
 import itertools
-from typing import Iterator, Iterable, Union, Optional, TYPE_CHECKING
+from typing import Dict, Iterator, Iterable, Union, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     import pyarrow
@@ -18,7 +18,13 @@ from ray.data._internal.stats import DatasetStats, DatasetPipelineStats
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 # An output type of iter_batches() determined by the batch_format parameter.
-BatchType = Union["pandas.DataFrame", "pyarrow.Table", np.ndarray, list]
+BatchType = Union[
+    "pandas.DataFrame",
+    "pyarrow.Table",
+    np.ndarray,
+    Dict[str, np.ndarray],
+    list,
+]
 PREFETCHER_ACTOR_NAMESPACE = "ray.dataset"
 
 
