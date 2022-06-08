@@ -154,7 +154,34 @@ METRICS_GAUGES = {
         "raylet_cpu", "CPU usage of the raylet on a node.", "percentage", ["ip", "pid"]
     ),
     "raylet_mem": Gauge(
-        "raylet_mem", "Memory usage of the raylet on a node", "mb", ["ip", "pid"]
+        "raylet_mem",
+        "RSS usage of the Raylet on the node.",
+        "MB",
+        ["ip", "pid"],
+    ),
+    "raylet_mem_uss": Gauge(
+        "raylet_mem_uss",
+        "USS usage of the Raylet on the node. Only available on Linux",
+        "MB",
+        ["ip", "pid"],
+    ),
+    "workers_cpu": Gauge(
+        "workers_cpu",
+        "Total CPU usage of all workers on a node.",
+        "percentage",
+        ["ip"],
+    ),
+    "workers_mem": Gauge(
+        "workers_mem",
+        "RSS usage of all workers on the node.",
+        "MB",
+        ["ip"],
+    ),
+    "workers_mem_uss": Gauge(
+        "workers_mem_uss",
+        "USS usage of all workers on the node. Only available on Linux",
+        "MB",
+        ["ip"],
     ),
     "cluster_active_nodes": Gauge(
         "cluster_active_nodes", "Active nodes on the cluster", "count", ["node_type"]
@@ -339,9 +366,10 @@ class ReporterAgent(
             return []
         else:
             workers = set(raylet_proc.children())
-            self._workers.intersection_update(workers)
-            self._workers.update(workers)
-            self._workers.discard(psutil.Process())
+            # Remove the current process (reporter agent), which is also a child of
+            # the Raylet.
+            workers.discard(psutil.Process())
+            self._workers = workers
             return [
                 w.as_dict(
                     attrs=[
@@ -351,6 +379,7 @@ class ReporterAgent(
                         "cpu_times",
                         "cmdline",
                         "memory_info",
+                        "memory_full_info",
                     ]
                 )
                 for w in self._workers
@@ -387,6 +416,7 @@ class ReporterAgent(
                     "cpu_times",
                     "cmdline",
                     "memory_info",
+                    "memory_full_info",
                 ]
             )
 
@@ -650,20 +680,69 @@ class ReporterAgent(
             raylet_pid = str(raylet_stats["pid"])
             # -- raylet CPU --
             raylet_cpu_usage = float(raylet_stats["cpu_percent"]) * 100
-            raylet_cpu_record = Record(
-                gauge=METRICS_GAUGES["raylet_cpu"],
-                value=raylet_cpu_usage,
-                tags={"ip": ip, "pid": raylet_pid},
+            records_reported.append(
+                Record(
+                    gauge=METRICS_GAUGES["raylet_cpu"],
+                    value=raylet_cpu_usage,
+                    tags={"ip": ip, "pid": raylet_pid},
+                )
             )
 
             # -- raylet mem --
-            raylet_mem_usage = float(raylet_stats["memory_info"].rss) / 1e6
-            raylet_mem_record = Record(
-                gauge=METRICS_GAUGES["raylet_mem"],
-                value=raylet_mem_usage,
-                tags={"ip": ip, "pid": raylet_pid},
+            raylet_rss = float(raylet_stats["memory_info"].rss) / 1.0e6
+            records_reported.append(
+                Record(
+                    gauge=METRICS_GAUGES["raylet_mem"],
+                    value=raylet_rss,
+                    tags={"ip": ip, "pid": raylet_pid},
+                )
             )
-            records_reported.extend([raylet_cpu_record, raylet_mem_record])
+            raylet_mem_full_info = raylet_stats.get("memory_full_info")
+            if raylet_mem_full_info is not None:
+                raylet_uss = float(raylet_mem_full_info.uss) / 1.0e6
+                records_reported.append(
+                    Record(
+                        gauge=METRICS_GAUGES["raylet_mem_uss"],
+                        value=raylet_uss,
+                        tags={"ip": ip, "pid": raylet_pid},
+                    )
+                )
+
+        workers_stats = stats["workers"]
+        if workers_stats:
+            total_workers_cpu_percentage = 0.0
+            total_workers_rss = 0.0
+            total_workers_uss = 0.0
+            for worker in workers_stats:
+                total_workers_cpu_percentage += float(worker["cpu_percent"]) * 100.0
+                total_workers_rss += float(worker["memory_info"].rss) / 1.0e6
+                worker_mem_full_info = worker.get("memory_full_info")
+                if worker_mem_full_info is not None:
+                    total_workers_uss += float(worker_mem_full_info.uss) / 1.0e6
+
+            records_reported.append(
+                Record(
+                    gauge=METRICS_GAUGES["workers_cpu"],
+                    value=total_workers_cpu_percentage,
+                    tags={"ip": ip},
+                )
+            )
+
+            records_reported.append(
+                Record(
+                    gauge=METRICS_GAUGES["workers_mem"],
+                    value=total_workers_rss,
+                    tags={"ip": ip},
+                )
+            )
+            if total_workers_uss > 0.0:
+                records_reported.append(
+                    Record(
+                        gauge=METRICS_GAUGES["workers_mem_uss"],
+                        value=total_workers_uss,
+                        tags={"ip": ip},
+                    )
+                )
 
         records_reported.extend(
             [

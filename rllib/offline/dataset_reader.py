@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_NUM_CPUS_PER_TASK = 0.5
 
 
-def get_resource_bundles(config: TrainerConfigDict):
+def _get_resource_bundles(config: TrainerConfigDict):
     input_config = config.get("input_config", {})
     parallelism = input_config.get("parallelism", config.get("num_workers", 1))
     cpus_per_task = input_config.get(
@@ -23,6 +23,7 @@ def get_resource_bundles(config: TrainerConfigDict):
     return [{"CPU": math.ceil(parallelism * cpus_per_task)}]
 
 
+@PublicAPI
 def get_dataset_and_shards(
     config: TrainerConfigDict, num_workers: int, local_worker: bool
 ) -> (ray.data.dataset.Dataset, List[ray.data.dataset.Dataset]):

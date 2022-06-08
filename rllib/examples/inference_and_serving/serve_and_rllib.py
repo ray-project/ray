@@ -11,7 +11,7 @@ import requests
 from starlette.requests import Request
 
 import ray
-import ray.rllib.agents.dqn as dqn
+import ray.rllib.algorithms.dqn as dqn
 from ray.rllib.env.wrappers.atari_wrappers import FrameStack, WarpFrame
 from ray import serve
 
@@ -39,7 +39,7 @@ class ServeRLlibPolicy:
 
     def __init__(self, config, checkpoint_path):
         # Create the Trainer.
-        self.trainer = dqn.DQNTrainer(config=config)
+        self.trainer = dqn.DQN(config=config)
         # Load an already trained state for the trainer.
         self.trainer.restore(checkpoint_path)
 
@@ -54,15 +54,15 @@ class ServeRLlibPolicy:
 
 
 def train_rllib_policy(config):
-    """Trains a DQNTrainer on MsPacman-v0 for n iterations.
+    """Trains a DQN on MsPacman-v0 for n iterations.
 
     Saves the trained Trainer to disk and returns the checkpoint path.
 
     Returns:
-        str: The saved checkpoint to restore the trainer DQNTrainer from.
+        str: The saved checkpoint to restore the trainer DQN from.
     """
     # Create trainer from config.
-    trainer = dqn.DQNTrainer(config=config)
+    trainer = dqn.DQN(config=config)
 
     # Train for n iterations, then save.
     for _ in range(args.train_iters):

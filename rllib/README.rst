@@ -97,15 +97,15 @@ RL for recommender systems:
 
 Bandits: 
 
-- `Linear Upper Confidence Bound (BanditLinUCBTrainer) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#lin-ucb>`__ 
-- `Linear Thompson Sampling (BanditLinTSTrainer) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#lints>`__ 
+- `Linear Upper Confidence Bound (BanditLinUCB) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#lin-ucb>`__
+- `Linear Thompson Sampling (BanditLinTS) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#lints>`__
 
 Multi-agent:  
 
-- `Single-Player Alpha Zero (contrib/AlphaZero)  <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#alphazero>`__ 
+- `Single-Player Alpha Zero (AlphaZero)  <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#alphazero>`__
 - `Parameter Sharing <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#parameter>`__ 
 - `QMIX Monotonic Value Factorisation (QMIX, VDN, IQN)) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#qmix>`__ 
-- `Multi-Agent Deep Deterministic Policy Gradient (contrib/MADDPG) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#maddpg>`__ 
+- `Multi-Agent Deep Deterministic Policy Gradient (MADDPG) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#maddpg>`__
 - `Shared Critic Methods <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#sc>`__ 
 
 Others:  
@@ -123,7 +123,7 @@ Quick First Experiment
 .. code-block:: python
 
     import gym
-    from ray.rllib.agents.ppo import PPOTrainer
+    from ray.rllib.algorithms.ppo import PPO
 
 
     # Define your problem using python and openAI's gym API:
@@ -176,7 +176,7 @@ Quick First Experiment
 
     # Create an RLlib Trainer instance to learn how to act in the above
     # environment.
-    trainer = PPOTrainer(
+    trainer = PPO(
         config={
             # Env class to use (here: our gym.Env sub-class from above).
             "env": ParrotEnv,
@@ -278,7 +278,7 @@ for your particular problem, but tons of historic data recorded by a legacy (may
 non-RL/ML) system? This branch of reinforcement learning is for you!
 RLlib's comes with several `offline RL <https://github.com/ray-project/ray/blob/master/rllib/examples/offline_rl.py>`_
 algorithms (*CQL*, *MARWIL*, and *DQfD*), allowing you to either purely
-`behavior-clone <https://github.com/ray-project/ray/blob/master/rllib/agents/marwil/tests/test_bc.py>`_
+`behavior-clone <https://github.com/ray-project/ray/blob/master/rllib/algorithms/bc/tests/test_bc.py>`_
 your existing system or learn how to further improve over it.
 
 

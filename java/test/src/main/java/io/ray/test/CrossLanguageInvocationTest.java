@@ -5,13 +5,13 @@ import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.PyActorHandle;
 import io.ray.api.Ray;
+import io.ray.api.exception.CrossLanguageException;
+import io.ray.api.exception.RayException;
 import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyActorMethod;
 import io.ray.api.function.PyFunction;
 import io.ray.runtime.actor.NativeActorHandle;
-import io.ray.runtime.exception.CrossLanguageException;
-import io.ray.runtime.exception.RayException;
-import io.ray.runtime.generated.Common.Language;
+import io.ray.runtime.serializer.RayExceptionSerializer;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -204,7 +204,7 @@ public class CrossLanguageInvocationTest extends BaseTest {
       String formattedException =
           org.apache.commons.lang3.exception.ExceptionUtils.getStackTrace(e);
       io.ray.runtime.generated.Common.RayException exception =
-          io.ray.runtime.generated.Common.RayException.parseFrom(e.toBytes());
+          io.ray.runtime.generated.Common.RayException.parseFrom(RayExceptionSerializer.toBytes(e));
       Assert.assertEquals(exception.getFormattedExceptionString(), formattedException);
     }
   }
@@ -220,7 +220,6 @@ public class CrossLanguageInvocationTest extends BaseTest {
       // ex is a Python exception(py_func_python_raise_exception) with no cause.
       Assert.assertTrue(ex instanceof CrossLanguageException);
       CrossLanguageException e = (CrossLanguageException) ex;
-      Assert.assertEquals(e.getLanguage(), Language.PYTHON);
       // ex.cause is null.
       Assert.assertNull(ex.getCause());
       Assert.assertTrue(
@@ -278,7 +277,7 @@ public class CrossLanguageInvocationTest extends BaseTest {
       Assert.assertTrue(message.contains("py_func_nest_java_throw_exception"), message);
       Assert.assertEquals(
           org.apache.commons.lang3.StringUtils.countMatches(
-              message, "io.ray.runtime.exception.RayTaskException"),
+              message, "io.ray.api.exception.RayTaskException"),
           2);
       Assert.assertTrue(message.contains("py_func_java_throw_exception"), message);
       Assert.assertTrue(message.contains("java.lang.ArithmeticException: / by zero"), message);

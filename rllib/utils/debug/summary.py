@@ -3,10 +3,12 @@ import pprint
 from typing import Any, Mapping
 
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
+from ray.rllib.utils.annotations import DeveloperAPI
 
 _printer = pprint.PrettyPrinter(indent=2, width=60)
 
 
+@DeveloperAPI
 def summarize(obj: Any) -> Any:
     """Return a pretty-formatted string for an object.
 

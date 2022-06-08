@@ -121,7 +121,7 @@ def generalized_discount_cumsum(
         x (np.ndarray): A sequence of rewards or one-step TD residuals.
         deltas (np.ndarray): A sequence of time step deltas (length of time
             steps).
-        gamma (float): The discount factor gamma.
+        gamma: The discount factor gamma.
 
     Returns:
         np.ndarray: The sequence containing the 'time-dependent' discounted

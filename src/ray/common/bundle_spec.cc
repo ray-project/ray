@@ -62,6 +62,20 @@ const ResourceRequest &BundleSpecification::GetRequiredResources() const {
   return *unit_resource_;
 }
 
+absl::flat_hash_map<std::string, double> BundleSpecification::GetWildcardResources()
+    const {
+  absl::flat_hash_map<std::string, double> wildcard_resources;
+  std::string pattern("_group_");
+  for (const auto &[name, capacity] : bundle_resource_labels_) {
+    auto idx = name.find(pattern);
+    if (idx != std::string::npos &&
+        name.find("_", idx + pattern.size()) == std::string::npos) {
+      wildcard_resources[name] = capacity;
+    }
+  }
+  return wildcard_resources;
+}
+
 BundleID BundleSpecification::BundleId() const {
   if (message_->bundle_id()
           .placement_group_id()

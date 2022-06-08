@@ -104,8 +104,8 @@ if __name__ == "__main__":
     # Note: The above GPU settings should also work in case you are not
     # running via tune.run(), but instead do:
 
-    # >> from ray.rllib.agents.ppo import PPOTrainer
-    # >> trainer = PPOTrainer(config=config)
+    # >> from ray.rllib.algorithms.ppo import PPO
+    # >> trainer = PPO(config=config)
     # >> for _ in range(10):
     # >>     results = trainer.train()
     # >>     print(results)

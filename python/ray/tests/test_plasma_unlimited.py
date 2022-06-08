@@ -7,7 +7,11 @@ import platform
 import pytest
 
 import ray
-from ray._private.test_utils import check_spilled_mb
+from ray._private.test_utils import (
+    check_spilled_mb,
+    fetch_prometheus,
+    wait_for_condition,
+)
 
 MB = 1024 * 1024
 
@@ -251,6 +255,73 @@ def test_plasma_allocate(shutdown_only):
 
     # Check fourth object allocate in memory.
     check_spilled_mb(address, spilled=[90, 180])
+
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Need to fix up for Windows."
+)
+def test_object_store_memory_metrics_reported_correctly(shutdown_only):
+    """
+    Verify when fallback allocation is used, prometheus stats report the correct
+    used object store memory. https://github.com/ray-project/ray/issues/24624
+    """
+    obj_store_memory = 700e6
+    address = ray.init(
+        num_cpus=2,
+        object_store_memory=obj_store_memory,
+        _system_config={"metrics_report_interval_ms": 1000},
+    )
+    metrics_export_port = address["metrics_export_port"]
+    addr = address["node_ip_address"]
+    prom_addr = f"{addr}:{metrics_export_port}"
+
+    x1 = ray.put(np.zeros(400 * MB, dtype=np.uint8))
+    # x1 will be spilled.
+    x2 = ray.put(np.zeros(400 * MB, dtype=np.uint8))
+    check_spilled_mb(address, spilled=400)
+    # x1 will be restored, x2 will be spilled.
+    x1p = ray.get(x1)
+    check_spilled_mb(address, spilled=800, restored=400)
+    # x2 will be restored, triggering a fallback allocation.
+    x2p = ray.get(x2)
+    check_spilled_mb(address, spilled=800, restored=800, fallback=400)
+
+    def verify_used_object_store_memory(expected_mb):
+        components_dict, metric_names, metric_samples = fetch_prometheus([prom_addr])
+
+        def in_mb(bytes):
+            return int(bytes / 1024 / 1024)
+
+        total_memory = in_mb(obj_store_memory)
+        available_memory_sample = None
+        used_memory_sample = None
+        fallback_memory_sample = None
+
+        for sample in metric_samples:
+            if sample.name == "ray_object_store_available_memory":
+                available_memory_sample = sample
+            if sample.name == "ray_object_store_used_memory":
+                used_memory_sample = sample
+            if sample.name == "ray_object_store_fallback_memory":
+                fallback_memory_sample = sample
+
+        if not (
+            available_memory_sample and used_memory_sample and fallback_memory_sample
+        ):
+            return False
+
+        avail_memory = in_mb(available_memory_sample.value)
+        used_memory = in_mb(used_memory_sample.value)
+        fallback_memory = in_mb(fallback_memory_sample.value)
+
+        assert avail_memory == total_memory - used_memory
+        assert used_memory == 400  # 400MB
+        assert fallback_memory == 400
+        return True
+
+    wait_for_condition(lambda: verify_used_object_store_memory(expected_mb=30))
+    del x1p
+    del x2p
 
 
 if __name__ == "__main__":

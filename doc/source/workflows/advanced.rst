@@ -11,6 +11,9 @@ For example, this recursive workflow calculates the exponent. We write it with w
 .. code-block:: python
     :caption: Workflow without inplace execution:
 
+    import ray
+    from ray import workflow
+
     @ray.remote
     def exp_remote(k, n):
         if n == 0:
@@ -22,11 +25,18 @@ We could optimize it with inplace option:
 .. code-block:: python
     :caption: Workflow with inplace execution:
 
-    def exp_inplace(k, n, worker_id=None):
+    import ray
+    from ray import workflow
+
+    @ray.remote
+    def exp_inplace(k, n):
         if n == 0:
             return k
-        return workflow.continuation(exp_inplace.options(allow_inplace=True).bind(
-            2 * k, n - 1, worker_id))
+        return workflow.continuation(
+            exp_inplace.options(**workflow.options(allow_inplace=True)).bind(2 * k, n - 1))
+
+    assert workflow.create(exp_inplace.bind(3, 7)).run() == 3 * 2 ** 7
+
 
 With ``allow_inplace=True``, the task that called ``.bind()`` executes in the function. Ray options are ignored because they are used for remote execution. Also, you cannot retrieve the output of an inplace task using ``workflow.get_output()`` before it finishes execution.
 
@@ -37,7 +47,7 @@ Inplace is also useful when you need to pass something that is only valid in the
     @ray.remote
     def foo():
         x = "<something that is only valid in the current process>"
-        return workflow.continuation(bar.options(allow_inplace=True).bind(x))
+        return workflow.continuation(bar.options(**workflow.options(allow_inplace=True)).bind(x))
 
 
 Wait for Partial Results
@@ -78,7 +88,7 @@ We control the checkpoints by specify the checkpoint options like this:
 
 .. code-block:: python
 
-    data = read_data.options(checkpoint=False).bind(10)
+    data = read_data.options(**workflow.options(checkpoint=False)).bind(10)
 
 This example skips checkpointing the output of ``read_data``. During recovery, ``read_data`` would be executed again if recovery requires its output.
 

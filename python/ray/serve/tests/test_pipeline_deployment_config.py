@@ -5,7 +5,7 @@ from typing import Any
 
 from ray import serve
 from ray.serve.deployment_graph import RayServeDAGHandle
-from ray.experimental.dag.input_node import InputNode
+from ray.serve.dag import InputNode
 from ray.serve.pipeline.api import build as pipeline_build
 
 

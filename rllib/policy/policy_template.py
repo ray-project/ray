@@ -127,8 +127,8 @@ def build_policy_class(
     Supports frameworks JAX and PyTorch.
 
     Args:
-        name (str): name of the policy (e.g., "PPOTorchPolicy")
-        framework (str): Either "jax" or "torch".
+        name: name of the policy (e.g., "PPOTorchPolicy")
+        framework: Either "jax" or "torch".
         loss_fn (Optional[Callable[[Policy, ModelV2,
             Type[TorchDistributionWrapper], SampleBatch], Union[TensorType,
             List[TensorType]]]]): Callable that returns a loss tensor.

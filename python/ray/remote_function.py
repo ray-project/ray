@@ -2,6 +2,7 @@ from functools import wraps
 import inspect
 import logging
 import uuid
+import os
 
 from ray import cloudpickle as pickle
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -19,6 +20,10 @@ from ray.util.tracing.tracing_helper import (
 from ray._private import ray_option_utils
 
 logger = logging.getLogger(__name__)
+
+
+# Hook to call with (fn, resources, strategy) on each local task submission.
+_task_launch_hook = None
 
 
 class RemoteFunction:
@@ -217,6 +222,14 @@ class RemoteFunction:
 
         # fill task required options
         for k, v in ray_option_utils.task_options.items():
+            if k == "max_retries":
+                # TODO(swang): We need to override max_retries here because the default
+                # value gets set at Ray import time. Ideally, we should allow setting
+                # default values from env vars for other options too.
+                v.default_value = os.environ.get(
+                    "RAY_TASK_MAX_RETRIES", v.default_value
+                )
+                v.default_value = int(v.default_value)
             task_options[k] = task_options.get(k, v.default_value)
         # "max_calls" already takes effects and should not apply again.
         # Remove the default value here.
@@ -277,6 +290,9 @@ class RemoteFunction:
                 is_job_runtime_env=False,
                 serialize=True,
             )
+
+        if _task_launch_hook:
+            _task_launch_hook(self._function_descriptor, resources, scheduling_strategy)
 
         def invocation(args, kwargs):
             if self._is_cross_language:

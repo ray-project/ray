@@ -69,6 +69,9 @@ jupyter_execute_notebooks = os.getenv("RUN_NOTEBOOKS", "off")
 external_toc_exclude_missing = False
 external_toc_path = "_toc.yml"
 
+html_extra_path = ["robots.txt"]
+
+
 # There's a flaky autodoc import for "TensorFlowVariables" that fails depending on the doc structure / order
 # of imports.
 # autodoc_mock_imports = ["ray.experimental.tf_utils"]
@@ -256,6 +259,9 @@ texinfo_documents = [
 
 # Python methods should be presented in source code order
 autodoc_member_order = "bysource"
+
+# Better typehint formatting (see custom.css)
+autodoc_typehints = "signature"
 
 
 # Add a render priority for doctest

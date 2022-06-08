@@ -142,7 +142,7 @@ You can restore a single trial checkpoint by using ``tune.run(restore=<checkpoin
                 "max_iter": 5
             },
         ).trials
-        last_ckpt = trial.checkpoint.value
+        last_ckpt = trial.checkpoint.dir_or_data
         analysis = tune.run(train, config={"max_iter": 10}, restore=last_ckpt)
 
 Tune also may copy or move checkpoints during the course of tuning. For this purpose,
@@ -384,9 +384,3 @@ tune.with_parameters
 
 .. autofunction:: ray.tune.with_parameters
 
-
-StatusReporter
---------------
-
-.. autoclass:: ray.tune.function_runner.StatusReporter
-    :members: __call__, logdir

@@ -117,7 +117,7 @@ spec:
           # It is confirmed (via kuberay/test_autoscaling_e2e.py) to be compatible with all
           # Ray versions since Ray 1.11.0.
           # TODO: Use released Ray version when autoscaling support is stable.
-          image: rayproject/ray:8c5fe4
+          image: rayproject/ray:c6d3ff
           imagePullPolicy: Always
           env:
           - name: RAY_CLUSTER_NAMESPACE

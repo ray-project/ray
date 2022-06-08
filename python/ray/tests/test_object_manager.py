@@ -8,6 +8,7 @@ import warnings
 import ray
 from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.exceptions import GetTimeoutError
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if (
     multiprocessing.cpu_count() < 40
@@ -561,6 +562,63 @@ def test_object_directory_basic(ray_start_cluster_with_resource):
                     object_refs[(i + 1) % num_nodes]
                 )
             )
+
+
+def test_pull_bundle_deadlock(ray_start_cluster):
+    # Test https://github.com/ray-project/ray/issues/13689
+    cluster = ray_start_cluster
+    cluster.add_node(
+        num_cpus=0,
+        _system_config={
+            "max_direct_call_object_size": int(1e7),
+        },
+    )
+    ray.init(address=cluster.address)
+    worker_node_1 = cluster.add_node(
+        num_cpus=8,
+        resources={"worker_node_1": 1},
+    )
+    cluster.add_node(
+        num_cpus=8,
+        resources={"worker_node_2": 1},
+        object_store_memory=int(1e8 * 2 - 10),
+    )
+    cluster.wait_for_nodes()
+
+    @ray.remote(num_cpus=0)
+    def get_node_id():
+        return ray.get_runtime_context().node_id
+
+    worker_node_1_id = ray.get(
+        get_node_id.options(resources={"worker_node_1": 0.1}).remote()
+    )
+    worker_node_2_id = ray.get(
+        get_node_id.options(resources={"worker_node_2": 0.1}).remote()
+    )
+
+    object_a = ray.put(np.zeros(int(1e8), dtype=np.uint8))
+
+    @ray.remote(
+        scheduling_strategy=NodeAffinitySchedulingStrategy(worker_node_1_id, soft=True)
+    )
+    def task_a_to_b(a):
+        return np.zeros(int(1e8), dtype=np.uint8)
+
+    object_b = task_a_to_b.remote(object_a)
+    ray.wait([object_b], fetch_local=False)
+
+    @ray.remote(
+        scheduling_strategy=NodeAffinitySchedulingStrategy(worker_node_2_id, soft=False)
+    )
+    def task_b_to_c(b):
+        return "c"
+
+    object_c = task_b_to_c.remote(object_b)
+    # task_a_to_b will be re-executed on worker_node_2 so pull manager there will
+    # have object_a pull request after the existing object_b pull request.
+    # Make sure object_b pull request won't block the object_a pull request.
+    cluster.remove_node(worker_node_1, allow_graceful=False)
+    assert ray.get(object_c) == "c"
 
 
 def test_object_directory_failure(ray_start_cluster):

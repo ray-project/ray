@@ -44,7 +44,7 @@ and override one or more of its methods. Those are in particular:
 * :py:meth:`~ray.rllib.agents.trainer.Trainer.step_attempt`
 * :py:meth:`~ray.rllib.agents.trainer.Trainer.execution_plan`
 
-`See here for an example on how to override Trainer <https://github.com/ray-project/ray/blob/master/rllib/agents/pg/pg.py>`_.
+`See here for an example on how to override Trainer <https://github.com/ray-project/ray/blob/master/rllib/algorithms/pg/pg.py>`_.
 
 
 Trainer base class (ray.rllib.agents.trainer.Trainer)

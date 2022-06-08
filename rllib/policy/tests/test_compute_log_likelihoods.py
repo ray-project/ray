@@ -3,10 +3,10 @@ from scipy.stats import norm
 import unittest
 
 import ray
-import ray.rllib.agents.dqn as dqn
-import ray.rllib.agents.pg as pg
-import ray.rllib.agents.ppo as ppo
-import ray.rllib.agents.sac as sac
+import ray.rllib.algorithms.dqn as dqn
+import ray.rllib.algorithms.pg as pg
+import ray.rllib.algorithms.ppo as ppo
+import ray.rllib.algorithms.sac as sac
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check, framework_iterator
 from ray.rllib.utils.numpy import one_hot, fc, MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT
@@ -35,7 +35,7 @@ def do_test_log_likelihood(
         obs_batch = np.array([0])
         # PG does not preprocess anymore by default.
         preprocessed_obs_batch = (
-            one_hot(obs_batch, depth=16) if run is not pg.PGTrainer else obs_batch
+            one_hot(obs_batch, depth=16) if run is not pg.PG else obs_batch
         )
 
     prev_r = None if prev_a is None else np.array(0.0)
@@ -133,7 +133,7 @@ class TestComputeLogLikelihood(unittest.TestCase):
         # Soft-Q for DQN.
         config["exploration_config"] = {"type": "SoftQ", "temperature": 0.5}
         config["seed"] = 42
-        do_test_log_likelihood(dqn.DQNTrainer, config)
+        do_test_log_likelihood(dqn.DQN, config)
 
     def test_pg_cont(self):
         """Tests PG's (cont. actions) compute_log_likelihoods method."""
@@ -143,7 +143,7 @@ class TestComputeLogLikelihood(unittest.TestCase):
         config["model"]["fcnet_activation"] = "linear"
         prev_a = np.array([0.0])
         do_test_log_likelihood(
-            pg.PGTrainer,
+            pg.PG,
             config,
             prev_a,
             continuous=True,
@@ -155,7 +155,7 @@ class TestComputeLogLikelihood(unittest.TestCase):
         config = pg.DEFAULT_CONFIG.copy()
         config["seed"] = 42
         prev_a = np.array(0)
-        do_test_log_likelihood(pg.PGTrainer, config, prev_a)
+        do_test_log_likelihood(pg.PG, config, prev_a)
 
     def test_ppo_cont(self):
         """Tests PPO's (cont. actions) compute_log_likelihoods method."""
@@ -164,21 +164,21 @@ class TestComputeLogLikelihood(unittest.TestCase):
         config["model"]["fcnet_hiddens"] = [10]
         config["model"]["fcnet_activation"] = "linear"
         prev_a = np.array([0.0])
-        do_test_log_likelihood(ppo.PPOTrainer, config, prev_a, continuous=True)
+        do_test_log_likelihood(ppo.PPO, config, prev_a, continuous=True)
 
     def test_ppo_discr(self):
         """Tests PPO's (discr. actions) compute_log_likelihoods method."""
         config = ppo.DEFAULT_CONFIG.copy()
         config["seed"] = 42
         prev_a = np.array(0)
-        do_test_log_likelihood(ppo.PPOTrainer, config, prev_a)
+        do_test_log_likelihood(ppo.PPO, config, prev_a)
 
     def test_sac_cont(self):
         """Tests SAC's (cont. actions) compute_log_likelihoods method."""
         config = sac.DEFAULT_CONFIG.copy()
         config["seed"] = 42
-        config["policy_model"]["fcnet_hiddens"] = [10]
-        config["policy_model"]["fcnet_activation"] = "linear"
+        config["policy_model_config"]["fcnet_hiddens"] = [10]
+        config["policy_model_config"]["fcnet_activation"] = "linear"
         prev_a = np.array([0.0])
 
         # SAC cont uses a squashed normal distribution. Implement it's logp
@@ -194,7 +194,7 @@ class TestComputeLogLikelihood(unittest.TestCase):
             )
 
         do_test_log_likelihood(
-            sac.SACTrainer,
+            sac.SAC,
             config,
             prev_a,
             continuous=True,
@@ -210,11 +210,11 @@ class TestComputeLogLikelihood(unittest.TestCase):
         """Tests SAC's (discrete actions) compute_log_likelihoods method."""
         config = sac.DEFAULT_CONFIG.copy()
         config["seed"] = 42
-        config["policy_model"]["fcnet_hiddens"] = [10]
-        config["policy_model"]["fcnet_activation"] = "linear"
+        config["policy_model_config"]["fcnet_hiddens"] = [10]
+        config["policy_model_config"]["fcnet_activation"] = "linear"
         prev_a = np.array(0)
 
-        do_test_log_likelihood(sac.SACTrainer, config, prev_a)
+        do_test_log_likelihood(sac.SAC, config, prev_a)
 
 
 if __name__ == "__main__":

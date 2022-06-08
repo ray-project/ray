@@ -96,6 +96,9 @@ ANONYMOUS_NAMESPACE_PATTERN = re.compile(
     "[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89aAbB][a-f0-9]{3}-[a-f0-9]{12}"
 )
 
+# Handle metric push interval. (This interval will affect the cold start time period)
+HANDLE_METRIC_PUSH_INTERVAL_S = 10
+
 
 class ServeHandleType(str, Enum):
     SYNC = "SYNC"

@@ -2,7 +2,7 @@ from distutils.version import LooseVersion
 
 import numpy as np
 import ray
-import ray.rllib.agents.ppo as ppo
+import ray.rllib.algorithms.ppo as ppo
 import onnxruntime
 import os
 import shutil
@@ -28,7 +28,7 @@ test_data = {
 
 # Start Ray and initialize a PPO trainer
 ray.init()
-trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
+trainer = ppo.PPO(config=config, env="CartPole-v0")
 
 # You could train the model here
 # trainer.train()

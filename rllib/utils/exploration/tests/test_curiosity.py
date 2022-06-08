@@ -8,7 +8,7 @@ import unittest
 import ray
 from ray import tune
 from ray.rllib.agents.callbacks import DefaultCallbacks
-import ray.rllib.agents.ppo as ppo
+import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.utils.test_utils import check_learning_achieved, framework_iterator
 from ray.rllib.utils.numpy import one_hot
 from ray.tune import register_env
@@ -180,7 +180,7 @@ class TestCuriosity(unittest.TestCase):
                     "type": "StochasticSampling",
                 },
             }
-            trainer = ppo.PPOTrainer(config=config)
+            trainer = ppo.PPO(config=config)
             learnt = False
             for i in range(num_iterations):
                 result = trainer.train()
@@ -199,7 +199,7 @@ class TestCuriosity(unittest.TestCase):
             #    config["exploration_config"] = {
             #        "type": "StochasticSampling",
             #    }
-            #    trainer = ppo.PPOTrainer(config=config)
+            #    trainer = ppo.PPO(config=config)
             #    rewards_wo = 0.0
             #    for _ in range(num_iterations):
             #        result = trainer.train()
@@ -251,7 +251,7 @@ class TestCuriosity(unittest.TestCase):
         }
         for _ in framework_iterator(config, frameworks="torch"):
             # To replay:
-            # trainer = ppo.PPOTrainer(config=config)
+            # trainer = ppo.PPO(config=config)
             # trainer.restore("[checkpoint file]")
             # env = env_maker(config["env_config"])
             # s = env.reset()

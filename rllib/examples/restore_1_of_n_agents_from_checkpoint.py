@@ -16,7 +16,7 @@ import random
 
 import ray
 from ray import tune
-from ray.rllib.agents.ppo import PPOTrainer
+from ray.rllib.algorithms.ppo import PPO
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check_learning_achieved
@@ -102,7 +102,7 @@ if __name__ == "__main__":
     print(f".. best checkpoint was: {best_checkpoint}")
 
     # Create a new dummy Trainer to "fix" our checkpoint.
-    new_trainer = PPOTrainer(config=config)
+    new_trainer = PPO(config=config)
     # Get untrained weights for all policies.
     untrained_weights = new_trainer.get_weights()
     # Restore all policies from checkpoint.

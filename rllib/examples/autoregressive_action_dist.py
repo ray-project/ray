@@ -163,7 +163,7 @@ if __name__ == "__main__":
             raise ValueError("Only support --run PPO with --no-tune.")
         ppo_config = ppo.DEFAULT_CONFIG.copy()
         ppo_config.update(config)
-        trainer = ppo.PPOTrainer(config=ppo_config, env=CorrelatedActionsEnv)
+        trainer = ppo.PPO(config=ppo_config, env=CorrelatedActionsEnv)
         # run manual training loop and print results after each iteration
         for _ in range(args.stop_iters):
             result = trainer.train()

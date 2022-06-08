@@ -473,10 +473,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
 
   /// Some basic information about the worker process.
   struct WorkerProcessInfo {
-    /// The number of workers in the worker process.
-    int num_workers;
-    /// The number of pending registration workers in the worker process.
-    int num_starting_workers;
+    /// Whether this worker is pending registration or is started.
+    bool is_pending_registration = true;
     /// The started workers which is alive.
     std::unordered_set<std::shared_ptr<WorkerInterface>> alive_started_workers;
     /// The type of the worker.
@@ -684,7 +682,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env);
 
   void AddWorkerProcess(State &state,
-                        const int workers_to_start,
                         const rpc::WorkerType worker_type,
                         const Process &proc,
                         const std::chrono::high_resolution_clock::time_point &start,

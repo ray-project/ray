@@ -1,4 +1,4 @@
-"""Example on how to use a CQLTrainer to learn from an offline json file.
+"""Example on how to use CQL to learn from an offline json file.
 
 Important node: Make sure that your offline data file contains only
 a single timestep per line to mimic the way SAC pulls samples from
@@ -29,7 +29,7 @@ if __name__ == "__main__":
 
     # See rllib/tuned_examples/cql/pendulum-cql.yaml for comparison.
 
-    config = cql.CQL_DEFAULT_CONFIG.copy()
+    config = cql.DEFAULT_CONFIG.copy()
     config["num_workers"] = 0  # Run locally.
     config["horizon"] = 200
     config["soft_horizon"] = True
@@ -38,16 +38,18 @@ if __name__ == "__main__":
     config["bc_iters"] = 0
     config["clip_actions"] = False
     config["normalize_actions"] = True
-    config["learning_starts"] = 256
+    config["replay_buffer_config"]["learning_starts"] = 256
     config["rollout_fragment_length"] = 1
-    config["prioritized_replay"] = False
+    # Test without prioritized replay
+    config["replay_buffer_config"]["type"] = "MultiAgentReplayBuffer"
+    config["replay_buffer_config"]["capacity"] = int(1e6)
     config["tau"] = 0.005
     config["target_entropy"] = "auto"
-    config["Q_model"] = {
+    config["q_model_config"] = {
         "fcnet_hiddens": [256, 256],
         "fcnet_activation": "relu",
     }
-    config["policy_model"] = {
+    config["policy_model_config"] = {
         "fcnet_hiddens": [256, 256],
         "fcnet_activation": "relu",
     }
@@ -81,7 +83,7 @@ if __name__ == "__main__":
     min_reward = -300
 
     # Test for torch framework (tf not implemented yet).
-    trainer = cql.CQLTrainer(config=config)
+    trainer = cql.CQL(config=config)
     learnt = False
     for i in range(num_iterations):
         print(f"Iter {i}")
@@ -94,14 +96,14 @@ if __name__ == "__main__":
                 break
     if not learnt:
         raise ValueError(
-            "CQLTrainer did not reach {} reward from expert "
+            "CQL did not reach {} reward from expert "
             "offline data!".format(min_reward)
         )
 
     # Get policy, model, and replay-buffer.
     pol = trainer.get_policy()
     cql_model = pol.model
-    from ray.rllib.agents.cql.cql import replay_buffer
+    from ray.rllib.algorithms.cql.cql import replay_buffer
 
     # If you would like to query CQL's learnt Q-function for arbitrary
     # (cont.) actions, do the following:
@@ -116,8 +118,10 @@ if __name__ == "__main__":
 
     # Example on how to do evaluation on the trained Trainer
     # using the data from our buffer.
-    # Get a sample (MultiAgentBatch -> SampleBatch).
-    batch = replay_buffer.replay().policy_batches["default_policy"]
+    # Get a sample (MultiAgentBatch).
+    multi_agent_batch = replay_buffer.sample(num_items=config["train_batch_size"])
+    # All experiences have been buffered for `default_policy`
+    batch = multi_agent_batch.policy_batches["default_policy"]
     obs = torch.from_numpy(batch["obs"])
     # Pass the observations through our model to get the
     # features, which then to pass through the Q-head.

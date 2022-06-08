@@ -86,11 +86,13 @@ apex:
         lr: .0001
         adam_epsilon: .00015
         hiddens: [512]
-        buffer_size: 1000000
         exploration_config:
           epsilon_timesteps: 200000
           final_epsilon: 0.01
-        prioritized_replay_alpha: 0.5
+        replay_buffer_config:
+          type: MultiAgentPrioritizedReplayBuffer
+          prioritized_replay_alpha: 0.5
+          capacity: 1000000
         num_gpus: 1
         num_workers: 8
         num_envs_per_worker: 8
@@ -125,19 +127,19 @@ atari-basic-dqn:
         dueling: false
         num_atoms: 1
         noisy: false
-        prioritized_replay: false
+        replay_buffer_config:
+          type: MultiAgentReplayBuffer
+          learning_starts: 20000
+          capacity: 1000000
         n_step: 1
         target_network_update_freq: 8000
         lr: .0000625
         adam_epsilon: .00015
         hiddens: [512]
-        learning_starts: 20000
-        buffer_size: 1000000
         rollout_fragment_length: 4
         train_batch_size: 32
         exploration_config:
           epsilon_timesteps: 200000
           final_epsilon: 0.01
-        prioritized_replay_alpha: 0.5
         num_gpus: 0.2
         min_sample_timesteps_per_reporting: 10000

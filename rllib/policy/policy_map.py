@@ -6,7 +6,7 @@ import threading
 from typing import Callable, Dict, Optional, Set, Type, TYPE_CHECKING
 
 from ray.rllib.policy.policy import PolicySpec
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import get_tf_eager_cls_if_necessary
 from ray.rllib.utils.threading import with_lock
@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 tf1, tf, tfv = try_import_tf()
 
 
+@PublicAPI
 class PolicyMap(dict):
     """Maps policy IDs to Policy objects.
 

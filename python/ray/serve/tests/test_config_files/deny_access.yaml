@@ -3,8 +3,6 @@ deployments:
   - name: shallow
     import_path: "test_env.shallow_import.ShallowClass"
     route_prefix: null
-    init_args: null
-    init_kwargs: null
     num_replicas: null
     max_concurrent_queries: null
     user_config: null

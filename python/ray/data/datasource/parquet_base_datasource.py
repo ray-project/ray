@@ -14,10 +14,12 @@ from ray.data.datasource.file_based_datasource import (
     FileBasedDatasource,
     _resolve_kwargs,
 )
+from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
 
 
+@PublicAPI
 class ParquetBaseDatasource(FileBasedDatasource):
     """Minimal Parquet datasource, for reading and writing Parquet files."""
 

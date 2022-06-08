@@ -4,7 +4,7 @@ import numpy as np
 import unittest
 
 import ray
-import ray.rllib.agents.ppo as ppo
+import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.preprocessors import (
     DictFlatteningPreprocessor,
@@ -67,7 +67,7 @@ class TestPreprocessors(unittest.TestCase):
         num_iterations = 1
         # Only supported for tf so far.
         for _ in framework_iterator(config):
-            trainer = ppo.PPOTrainer(config=config)
+            trainer = ppo.PPO(config=config)
             for i in range(num_iterations):
                 results = trainer.train()
                 check_train_results(results)

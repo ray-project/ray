@@ -262,7 +262,10 @@ def test_ray_start(configure_lang, monkeypatch, tmp_path):
 
     _die_on_error(runner.invoke(scripts.stop))
 
-    _check_output_via_pattern("test_ray_start.txt", result)
+    if ray.util.get_node_ip_address() == "127.0.0.1":
+        _check_output_via_pattern("test_ray_start_localhost.txt", result)
+    else:
+        _check_output_via_pattern("test_ray_start.txt", result)
 
 
 def _ray_start_hook(ray_params, head):

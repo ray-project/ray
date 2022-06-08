@@ -55,7 +55,7 @@ Environments and Adapters
    Example demonstrating how to use the SUMO simulator in connection with RLlib.
 - `VizDoom example script using RLlib's auto-attention wrapper <https://github.com/ray-project/ray/blob/master/rllib/examples/vizdoom_with_attention_net.py>`__:
    Script showing how to run PPO with an attention net against a VizDoom gym environment.
-- `Subprocess environment <https://github.com/ray-project/ray/blob/master/rllib/tests/test_env_with_subprocess.py>`__:
+- `Subprocess environment <https://github.com/ray-project/ray/blob/master/rllib/env/tests/test_env_with_subprocess.py>`__:
    Example of how to ensure subprocesses spawned by envs are killed when RLlib exits.
 
 

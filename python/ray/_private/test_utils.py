@@ -64,6 +64,12 @@ def make_global_state_accessor(ray_context):
     return global_state_accessor
 
 
+def test_external_redis():
+    import os
+
+    return os.environ.get("TEST_EXTERNAL_REDIS") == "1"
+
+
 def _pid_alive(pid):
     """Check if the process with this PID is alive or not.
 
@@ -207,8 +213,8 @@ def run_string_as_driver(driver_script: str, env: Dict = None, encode: str = "ut
     """Run a driver as a separate process.
 
     Args:
-        driver_script (str): A string to run as a Python script.
-        env (dict): The environment variables for the driver.
+        driver_script: A string to run as a Python script.
+        env: The environment variables for the driver.
 
     Returns:
         The script's output.
@@ -860,8 +866,8 @@ def monitor_memory_usage(
     The monitor will run on the same node as this function is called.
 
     Params:
-        interval_s (int): The interval memory usage information is printed
-        warning_threshold (float): The threshold where the
+        interval_s: The interval memory usage information is printed
+        warning_threshold: The threshold where the
             memory usage warning is printed.
 
     Returns:
@@ -881,13 +887,13 @@ def monitor_memory_usage(
             """The actor that monitor the memory usage of the cluster.
 
             Params:
-                print_interval_s (float): The interval where
+                print_interval_s: The interval where
                     memory usage is printed.
-                record_interval_s (float): The interval where
+                record_interval_s: The interval where
                     memory usage is recorded.
-                warning_threshold (float): The threshold where
+                warning_threshold: The threshold where
                     memory warning is printed
-                n (int): When memory usage is printed,
+                n: When memory usage is printed,
                     top n entries are printed.
             """
             # -- Interval the monitor prints the memory usage information. --
@@ -1281,3 +1287,10 @@ def simulate_storage(storage_type, root=None):
             yield url
     else:
         raise ValueError(f"Unknown storage type: {storage_type}")
+
+
+def job_hook(**kwargs):
+    """Function called by reflection by test_cli_integration."""
+    cmd = " ".join(kwargs["entrypoint"])
+    print(f"hook intercepted: {cmd}")
+    sys.exit(0)

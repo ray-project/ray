@@ -278,7 +278,7 @@ py_test(
     name = "test_logs",
     size = "small",
     srcs = serve_tests_srcs,
-    tags = ["exclusive", "team:serve"],
+    tags = ["exclusive", "team:serve", "no_main"],
     deps = [":serve_lib"],
 )
 
@@ -419,7 +419,7 @@ py_test(
     name = "quickstart_class",
     size = "small",
     srcs = glob(["examples/doc/*.py"]),
-    tags = ["exclusive", "team:serve"],
+    tags = ["exclusive", "team:serve", "no_main"],
     deps = [":serve_lib"]
 )
 
@@ -427,7 +427,7 @@ py_test(
     name = "quickstart_function",
     size = "small",
     srcs = glob(["examples/doc/*.py"]),
-    tags = ["exclusive", "team:serve"],
+    tags = ["exclusive", "team:serve", "no_main"],
     deps = [":serve_lib"]
 )
 
@@ -435,7 +435,7 @@ py_test(
     name = "tutorial_tensorflow",
     size = "small",
     srcs = glob(["examples/doc/*.py"]),
-    tags = ["exclusive", "team:serve"],
+    tags = ["exclusive", "team:serve", "no_main"],
     deps = [":serve_lib"]
 )
 
@@ -443,7 +443,7 @@ py_test(
     name = "tutorial_pytorch",
     size = "small",
     srcs = glob(["examples/doc/*.py"]),
-    tags = ["exclusive", "team:serve"],
+    tags = ["exclusive", "team:serve", "no_main"],
     deps = [":serve_lib"]
 )
 
@@ -451,23 +451,8 @@ py_test(
     name = "tutorial_sklearn",
     size = "small",
     srcs = glob(["examples/doc/*.py"]),
-    tags = ["exclusive", "team:serve"],
+    tags = ["exclusive", "team:serve", "no_main"],
     deps = [":serve_lib"]
-)
-
-py_test(
-    name = "tutorial_sklearn_ray_overview",
-    size = "small",
-    main = "quick_start.py",
-    srcs = ["//doc/source/serve/doc_code:serve_doc_code"],
-    tags = ["exclusive", "team:serve"],
-)
-
-py_test(
-    name = "deployment_graph_same_class_different_args",
-    size = "small",
-    srcs = ["//doc/source/serve/doc_code:serve_doc_code"],
-    tags = ["exclusive", "team:serve"],
 )
 
 py_test(
@@ -477,7 +462,7 @@ py_test(
     main = "test_myst_doc.py",
     args = ["--path", "doc/source/serve/tutorials/rllib.md"],
     data = ["//doc/source/serve/tutorials:markdowns"],
-    tags = ["exclusive", "team:serve"],
+    tags = ["exclusive", "team:serve", "no_main"],
 )
 
 py_test(
@@ -492,7 +477,7 @@ py_test(
     name = "conda_env",
     size = "medium",
     srcs = glob(["examples/doc/*.py"]),
-    tags = ["exclusive", "post_wheel_build", "team:serve"],
+    tags = ["exclusive", "post_wheel_build", "team:serve", "no_main"],
     deps = [":serve_lib"]
 )
 

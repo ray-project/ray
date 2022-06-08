@@ -102,7 +102,7 @@ std::pair<Status, std::shared_ptr<msgpack::sbuffer>> GetExecuteResult(
     return std::make_pair(ray::Status::OK(),
                           std::make_shared<msgpack::sbuffer>(std::move(result)));
   } catch (RayIntentionalSystemExitException &e) {
-    return std::make_pair(ray::Status::IntentionalSystemExit(), nullptr);
+    return std::make_pair(ray::Status::IntentionalSystemExit(""), nullptr);
   } catch (RayException &e) {
     return std::make_pair(ray::Status::NotFound(e.what()), nullptr);
   } catch (msgpack::type_error &e) {
@@ -251,7 +251,7 @@ Status TaskExecutor::ExecuteTask(
     RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().SealReturnObject(result_id, result));
   } else {
     if (!status.ok()) {
-      return ray::Status::CreationTaskError();
+      return ray::Status::CreationTaskError("");
     }
   }
   return ray::Status::OK();

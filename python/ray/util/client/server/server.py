@@ -103,7 +103,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         """Construct a raylet service
 
         Args:
-           ray_connect_handler (Callable): Function to connect to ray cluster
+           ray_connect_handler: Function to connect to ray cluster
         """
         # Stores client_id -> (ref_id -> ObjectRef)
         self.object_refs: Dict[str, Dict[bytes, ray.ObjectRef]] = defaultdict(dict)

@@ -42,7 +42,7 @@ Result = namedtuple(
 
 
 class ESConfig(TrainerConfig):
-    """Defines an ESTrainer configuration class from which an ESTrainer can be built.
+    """Defines a configuration class from which an ES Trainer can be built.
 
     Example:
         >>> from ray.rllib.algorithms.es import ESConfig
@@ -75,7 +75,7 @@ class ESConfig(TrainerConfig):
 
     def __init__(self):
         """Initializes a ESConfig instance."""
-        super().__init__(trainer_class=ESTrainer)
+        super().__init__(trainer_class=ES)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -319,7 +319,7 @@ def get_policy_class(config):
     return policy_cls
 
 
-class ESTrainer(Trainer):
+class ES(Trainer):
     """Large-scale implementation of Evolution Strategies in Ray."""
 
     @classmethod
@@ -362,8 +362,6 @@ class ESTrainer(Trainer):
         # Call super's validation method.
         self.validate_config(self.config)
 
-        # Generate `self.env_creator` callable to create an env instance.
-        self.env_creator = self._get_env_creator_from_env_id(self._env_id)
         # Generate the local env.
         env_context = EnvContext(self.config["env_config"] or {}, worker_index=0)
         env = self.env_creator(env_context)

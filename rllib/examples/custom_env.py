@@ -187,7 +187,7 @@ if __name__ == "__main__":
         ppo_config.update(config)
         # use fixed learning rate instead of grid search (needs tune)
         ppo_config["lr"] = 1e-3
-        trainer = ppo.PPOTrainer(config=ppo_config, env=SimpleCorridor)
+        trainer = ppo.PPO(config=ppo_config, env=SimpleCorridor)
         # run manual training loop and print results after each iteration
         for _ in range(args.stop_iters):
             result = trainer.train()

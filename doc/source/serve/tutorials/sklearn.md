@@ -8,7 +8,7 @@ In particular, we show:
 - How to load the model from file system in your Ray Serve definition
 - How to parse the JSON request and evaluated in sklearn model
 
-Please see the {doc}`../core-apis` to learn more general information about Ray Serve.
+Please see the [Key Concepts](key-concepts) to learn more general information about Ray Serve.
 
 Ray Serve is framework agnostic. You can use any version of sklearn.
 

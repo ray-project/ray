@@ -157,7 +157,7 @@ class LongestPrefixRouter:
         """Return the longest prefix match among existing routes for the route.
 
         Args:
-            target_route (str): route to match against.
+            target_route: route to match against.
 
         Returns:
             (matched_route (str), serve_handle (RayServeHandle)) if found,

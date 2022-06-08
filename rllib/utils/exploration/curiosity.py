@@ -2,6 +2,7 @@ from gym.spaces import Discrete, MultiDiscrete, Space
 import numpy as np
 from typing import Optional, Tuple, Union
 
+from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -29,6 +30,7 @@ if nn is not None:
     F = nn.functional
 
 
+@PublicAPI
 class Curiosity(Exploration):
     """Implementation of:
     [1] Curiosity-driven Exploration by Self-supervised Prediction
@@ -341,8 +343,12 @@ class Curiosity(Exploration):
             {
                 SampleBatch.OBS: torch.cat(
                     [
-                        torch.from_numpy(sample_batch[SampleBatch.OBS]),
-                        torch.from_numpy(sample_batch[SampleBatch.NEXT_OBS]),
+                        torch.from_numpy(sample_batch[SampleBatch.OBS]).to(
+                            policy.device
+                        ),
+                        torch.from_numpy(sample_batch[SampleBatch.NEXT_OBS]).to(
+                            policy.device
+                        ),
                     ]
                 )
             }
@@ -400,7 +406,7 @@ class Curiosity(Exploration):
         Args:
             layer_dims (Tuple[int]): Tuple of layer dims, including the input
                 dimension.
-            activation (str): An activation specifier string (e.g. "relu").
+            activation: An activation specifier string (e.g. "relu").
 
         Examples:
             If layer_dims is [4,8,6] we'll have a two layer net: 4->8 (8 nodes)

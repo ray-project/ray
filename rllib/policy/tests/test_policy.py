@@ -1,7 +1,7 @@
 import unittest
 
 import ray
-from ray.rllib.agents.dqn import DQNTrainer, DEFAULT_CONFIG
+from ray.rllib.algorithms.dqn import DQN, DEFAULT_CONFIG
 from ray.rllib.utils.test_utils import check, framework_iterator
 
 
@@ -17,7 +17,7 @@ class TestPolicy(unittest.TestCase):
     def test_policy_save_restore(self):
         config = DEFAULT_CONFIG.copy()
         for _ in framework_iterator(config):
-            trainer = DQNTrainer(config=config, env="CartPole-v0")
+            trainer = DQN(config=config, env="CartPole-v0")
             policy = trainer.get_policy()
             state1 = policy.get_state()
             trainer.train()

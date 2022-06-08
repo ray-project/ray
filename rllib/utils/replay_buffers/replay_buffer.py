@@ -1,6 +1,6 @@
 import logging
 import platform
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Callable, Union
 
 import numpy as np
 import random
@@ -11,12 +11,12 @@ import ray  # noqa F401
 import psutil  # noqa E402
 
 from ray.util.debug import log_once
-from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
-from ray.rllib.utils.annotations import ExperimentalAPI
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics.window_stat import WindowStat
-from ray.rllib.utils.typing import SampleBatchType
-from ray.rllib.execution.buffers.replay_buffer import warn_replay_capacity
+from ray.rllib.utils.typing import SampleBatchType, T
+from ray.util.annotations import DeveloperAPI
+from ray.util.iter import ParallelIteratorWorker
 
 # Constant that represents all policies in lockstep replay mode.
 _ALL_POLICIES = "__all__"
@@ -24,7 +24,7 @@ _ALL_POLICIES = "__all__"
 logger = logging.getLogger(__name__)
 
 
-@ExperimentalAPI
+@DeveloperAPI
 class StorageUnit(Enum):
     TIMESTEPS = "timesteps"
     SEQUENCES = "sequences"
@@ -32,10 +32,36 @@ class StorageUnit(Enum):
     FRAGMENTS = "fragments"
 
 
-@ExperimentalAPI
-class ReplayBuffer:
+@DeveloperAPI
+def warn_replay_capacity(*, item: SampleBatchType, num_items: int) -> None:
+    """Warn if the configured replay buffer capacity is too large."""
+    if log_once("replay_capacity"):
+        item_size = item.size_bytes()
+        psutil_mem = psutil.virtual_memory()
+        total_gb = psutil_mem.total / 1e9
+        mem_size = num_items * item_size / 1e9
+        msg = (
+            "Estimated max memory usage for replay buffer is {} GB "
+            "({} batches of size {}, {} bytes each), "
+            "available system memory is {} GB".format(
+                mem_size, num_items, item.count, item_size, total_gb
+            )
+        )
+        if mem_size > total_gb:
+            raise ValueError(msg)
+        elif mem_size > 0.2 * total_gb:
+            logger.warning(msg)
+        else:
+            logger.info(msg)
+
+
+@DeveloperAPI
+class ReplayBuffer(ParallelIteratorWorker):
     def __init__(
-        self, capacity: int = 10000, storage_unit: str = "timesteps", **kwargs
+        self,
+        capacity: int = 10000,
+        storage_unit: Union[str, StorageUnit] = "timesteps",
+        **kwargs,
     ):
         """Initializes a (FIFO) ReplayBuffer instance.
 
@@ -59,7 +85,7 @@ class ReplayBuffer:
         else:
             raise ValueError(
                 "storage_unit must be either 'timesteps', `sequences` or `episodes` "
-                "or `fragments`."
+                "or `fragments`, but is {}".format(storage_unit)
             )
 
         # The actual storage (list of SampleBatches or MultiAgentBatches).
@@ -100,7 +126,7 @@ class ReplayBuffer:
         """Returns the number of items currently stored in this buffer."""
         return len(self._storage)
 
-    @ExperimentalAPI
+    @DeveloperAPI
     def add(self, batch: SampleBatchType, **kwargs) -> None:
         """Adds a batch of experiences to this buffer.
 
@@ -112,21 +138,15 @@ class ReplayBuffer:
             batch: Batch to add to this buffer's storage.
             **kwargs: Forward compatibility kwargs.
         """
-        assert batch.count > 0, batch
+        if not batch.count > 0:
+            return
+
         warn_replay_capacity(item=batch, num_items=self.capacity / batch.count)
 
-        if (
-            type(batch) == MultiAgentBatch
-            and self._storage_unit != StorageUnit.TIMESTEPS
-        ):
-            raise ValueError(
-                "Can not add MultiAgentBatch to ReplayBuffer "
-                "with storage_unit {}"
-                "".format(str(self._storage_unit))
-            )
-
         if self._storage_unit == StorageUnit.TIMESTEPS:
-            self._add_single_batch(batch, **kwargs)
+            timeslices = batch.timeslices(1)
+            for t in timeslices:
+                self._add_single_batch(t, **kwargs)
 
         elif self._storage_unit == StorageUnit.SEQUENCES:
             timestep_count = 0
@@ -152,10 +172,11 @@ class ReplayBuffer:
                             "to be added to it. Some samples may be "
                             "dropped."
                         )
+
         elif self._storage_unit == StorageUnit.FRAGMENTS:
             self._add_single_batch(batch, **kwargs)
 
-    @ExperimentalAPI
+    @DeveloperAPI
     def _add_single_batch(self, item: SampleBatchType, **kwargs) -> None:
         """Add a SampleBatch of experiences to self._storage.
 
@@ -174,7 +195,10 @@ class ReplayBuffer:
             self._storage.append(item)
             self._est_size_bytes += item.size_bytes()
         else:
+            item_to_be_removed = self._storage[self._next_idx]
+            self._est_size_bytes -= item_to_be_removed.size_bytes()
             self._storage[self._next_idx] = item
+            self._est_size_bytes += item.size_bytes()
 
         # Eviction of older samples has already started (buffer is "full").
         if self._eviction_started:
@@ -189,7 +213,7 @@ class ReplayBuffer:
         else:
             self._next_idx += 1
 
-    @ExperimentalAPI
+    @DeveloperAPI
     def sample(self, num_items: int, **kwargs) -> Optional[SampleBatchType]:
         """Samples `num_items` items from this buffer.
 
@@ -220,7 +244,7 @@ class ReplayBuffer:
         self._num_timesteps_sampled += sample.count
         return sample
 
-    @ExperimentalAPI
+    @DeveloperAPI
     def stats(self, debug: bool = False) -> dict:
         """Returns the stats of this buffer.
 
@@ -243,7 +267,7 @@ class ReplayBuffer:
             data.update(self._evicted_hit_stats.stats())
         return data
 
-    @ExperimentalAPI
+    @DeveloperAPI
     def get_state(self) -> Dict[str, Any]:
         """Returns all local state.
 
@@ -254,7 +278,7 @@ class ReplayBuffer:
         state.update(self.stats(debug=False))
         return state
 
-    @ExperimentalAPI
+    @DeveloperAPI
     def set_state(self, state: Dict[str, Any]) -> None:
         """Restores all local state to the provided `state`.
 
@@ -272,6 +296,7 @@ class ReplayBuffer:
         self._num_timesteps_sampled = state["sampled_count"]
         self._est_size_bytes = state["est_size_bytes"]
 
+    @DeveloperAPI
     def _encode_sample(self, idxes: List[int]) -> SampleBatchType:
         """Fetches concatenated samples at given indeces from the storage."""
         samples = []
@@ -288,6 +313,7 @@ class ReplayBuffer:
         out.decompress_if_needed()
         return out
 
+    @DeveloperAPI
     def get_host(self) -> str:
         """Returns the computer's network name.
 
@@ -297,10 +323,55 @@ class ReplayBuffer:
         """
         return platform.node()
 
-    @Deprecated(old="ReplayBuffer.add_batch()", new="RepayBuffer.add()", error=False)
+    @DeveloperAPI
+    def apply(
+        self,
+        func: Callable[["ReplayBuffer", Optional[Any], Optional[Any]], T],
+        *_args,
+        **kwargs,
+    ) -> T:
+        """Calls the given function with this ReplayBuffer instance.
+
+        This is useful if we want to apply a function to a set of remote actors.
+
+        Args:
+            func: A callable that accepts the replay buffer itself, args and kwargs
+            *_arkgs: Any args to pass to func
+            **kwargs: Any kwargs to pass to func
+
+        Returns:
+            Return value of the induced function call
+        """
+        return func(self, *_args, **kwargs)
+
+    @Deprecated(old="ReplayBuffer.add_batch()", new="ReplayBuffer.add()", error=False)
     def add_batch(self, *args, **kwargs):
         return self.add(*args, **kwargs)
 
-    @Deprecated(old="RepayBuffer.replay()", new="RepayBuffer.sample()", error=False)
-    def replay(self, *args, **kwargs):
-        return self.sample(*args, **kwargs)
+    @Deprecated(
+        old="ReplayBuffer.replay(num_items)",
+        new="ReplayBuffer.sample(num_items)",
+        error=False,
+    )
+    def replay(self, num_items):
+        return self.sample(num_items)
+
+    @Deprecated(
+        help="ReplayBuffers could be iterated over by default before. "
+        "Making a buffer an iterator will soon "
+        "be deprecated altogether. Consider switching to the training "
+        "iteration API to resolve this.",
+        error=False,
+    )
+    def make_iterator(self, num_items_to_replay: int):
+        """Make this buffer a ParallelIteratorWorker to retain compatibility.
+
+        Execution plans have made heavy use of buffers as ParallelIteratorWorkers.
+        This method provides an easy way to support this for now.
+        """
+
+        def gen_replay():
+            while True:
+                yield self.sample(num_items_to_replay)
+
+        ParallelIteratorWorker.__init__(self, gen_replay, False)

@@ -2,13 +2,13 @@ import copy
 import logging
 import re
 from collections.abc import Mapping
-from typing import Any, Dict, Generator, List, Optional, Tuple
+from typing import Any, Dict, Generator, Iterable, List, Optional, Tuple
 
 import numpy
 import random
 
-from ray.tune import TuneError
 from ray.tune.sample import Categorical, Domain, Function, RandomState
+from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
@@ -57,13 +57,12 @@ def generate_variants(
         yield resolved_vars, spec
 
 
-def grid_search(values: List) -> Dict[str, List]:
+def grid_search(values: Iterable) -> Dict[str, List]:
     """Convenience method for specifying grid search over a value.
 
     Arguments:
         values: An iterable whose parameters will be gridded.
     """
-
     return {"grid_search": values}
 
 
@@ -405,10 +404,6 @@ def _try_resolve(v) -> Tuple[bool, Any]:
     elif isinstance(v, dict) and len(v) == 1 and "grid_search" in v:
         # Grid search values
         grid_values = v["grid_search"]
-        if not isinstance(grid_values, list):
-            raise TuneError(
-                "Grid search expected list of values, got: {}".format(grid_values)
-            )
         return False, Categorical(grid_values).grid()
     return True, v
 
@@ -473,6 +468,7 @@ class _UnresolvedAccessGuard(dict):
             return value
 
 
+@DeveloperAPI
 class RecursiveDependencyError(Exception):
     def __init__(self, msg: str):
         Exception.__init__(self, msg)

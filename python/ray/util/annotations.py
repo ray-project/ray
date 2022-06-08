@@ -48,6 +48,7 @@ def PublicAPI(*args, **kwargs):
             )
         else:
             obj.__doc__ += "\n    PublicAPI: This API is stable across Ray releases."
+        _mark_annotated(obj)
         return obj
 
     return wrap
@@ -70,6 +71,7 @@ def DeveloperAPI(obj):
     if not obj.__doc__:
         obj.__doc__ = ""
     obj.__doc__ += "\n    DeveloperAPI: This API may change across minor Ray releases."
+    _mark_annotated(obj)
     return obj
 
 
@@ -111,6 +113,18 @@ def Deprecated(*args, **kwargs):
         if not obj.__doc__:
             obj.__doc__ = ""
         obj.__doc__ += f"{message}"
+        _mark_annotated(obj)
         return obj
 
     return inner
+
+
+def _mark_annotated(obj) -> None:
+    # Set magic token for check_api_annotations linter.
+    if hasattr(obj, "__name__"):
+        obj._annotated = obj.__name__
+
+
+def _is_annotated(obj) -> bool:
+    # Check the magic token exists and applies to this class (not a subclass).
+    return hasattr(obj, "_annotated") and obj._annotated == obj.__name__

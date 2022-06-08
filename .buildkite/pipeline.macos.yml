@@ -19,7 +19,7 @@ prelude_commands: &prelude_commands |-
 
 epilogue_commands: &epilogue_commands |-
   # Cleanup runtime environment to save storage
-  rm -rf /tmp/ray
+  rm -rf /tmp/ray || true
   # Cleanup local caches (this shouldn't clean up global disk cache)
   bazel clean
 

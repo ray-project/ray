@@ -4,11 +4,13 @@ import types
 
 from ray import cloudpickle as cloudpickle
 from ray._private.utils import binary_to_hex, hex_to_binary
+from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
 
 
+@DeveloperAPI
 class TuneFunctionEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, types.FunctionType):
@@ -27,6 +29,7 @@ class TuneFunctionEncoder(json.JSONEncoder):
         }
 
 
+@DeveloperAPI
 class TuneFunctionDecoder(json.JSONDecoder):
     def __init__(self, *args, **kwargs):
         json.JSONDecoder.__init__(self, object_hook=self.object_hook, *args, **kwargs)

@@ -22,7 +22,6 @@ from ray.serve.pipeline.tests.resources.test_modules import (
     combine,
     Counter,
     ClassHello,
-    fn,
     fn_hello,
     Combine,
     NESTED_HANDLE_KEY,
@@ -30,6 +29,7 @@ from ray.serve.pipeline.tests.resources.test_modules import (
 from ray.serve.pipeline.generate import (
     transform_ray_dag_to_serve_dag,
     extract_deployments_from_serve_dag,
+    transform_serve_dag_to_serve_executor_dag,
 )
 
 RayHandleLike = TypeVar("RayHandleLike")
@@ -239,22 +239,25 @@ def _test_deployment_json_serde_helper(
         serve_root_dag = ray_dag.apply_recursive(
             lambda node: transform_ray_dag_to_serve_dag(node, node_name_generator)
         )
-    json_serialized = json.dumps(serve_root_dag, cls=DAGNodeEncoder)
-    deserialized_serve_root_dag_node = json.loads(
-        json_serialized, object_hook=dagnode_from_json
+    deserialized_deployments = extract_deployments_from_serve_dag(serve_root_dag)
+    serve_executor_root_dag = serve_root_dag.apply_recursive(
+        transform_serve_dag_to_serve_executor_dag
     )
-    deserialized_deployments = extract_deployments_from_serve_dag(
-        deserialized_serve_root_dag_node
+    json_serialized = json.dumps(serve_executor_root_dag, cls=DAGNodeEncoder)
+    deserialized_serve_executor_root_dag_node = json.loads(
+        json_serialized, object_hook=dagnode_from_json
     )
     assert len(deserialized_deployments) == expected_num_deployments
     # Deploy deserilized version to ensure JSON serde correctness
     for model in deserialized_deployments:
         model.deploy()
     if input is None:
-        assert ray.get(ray_dag.execute()) == ray.get(serve_root_dag.execute())
+        assert ray.get(ray_dag.execute()) == ray.get(serve_executor_root_dag.execute())
     else:
-        assert ray.get(ray_dag.execute(input)) == ray.get(serve_root_dag.execute(input))
-    return serve_root_dag, deserialized_serve_root_dag_node
+        assert ray.get(ray_dag.execute(input)) == ray.get(
+            serve_executor_root_dag.execute(input)
+        )
+    return serve_executor_root_dag, deserialized_serve_executor_root_dag_node
 
 
 def test_simple_deployment_method_call_chain(serve_instance):
@@ -351,20 +354,6 @@ class TestHandleJSON:
         # Load the handle back from the dict.
         handle = serve_handle_from_json_dict(json.loads(serialized))
         assert await call(handle, "hi") == "hi"
-
-
-def test_chain_of_values():
-    with InputNode() as dag_input:
-        out = fn.bind(1)
-        out_2 = fn.bind(out, incr=2)
-        out_val = fn.bind(out_2, incr=3)
-        model = Model.bind(out_val)
-        ray_dag = model.forward.bind(dag_input)
-
-    json_serialized = json.dumps(ray_dag, cls=DAGNodeEncoder)
-    deserialized_dag_node = json.loads(json_serialized, object_hook=dagnode_from_json)
-
-    assert ray.get(deserialized_dag_node.execute(2)) == ray.get(ray_dag.execute(2))
 
 
 if __name__ == "__main__":

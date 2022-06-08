@@ -23,10 +23,12 @@ ddpg-halfcheetahbulletenv-v0:
         target_network_update_freq: 0
         tau: 0.001
         replay_buffer_config:
+          type: MultiAgentPrioritizedReplayBuffer
           capacity: 15000
           prioritized_replay_alpha: 0.6
           prioritized_replay_beta: 0.4
           prioritized_replay_eps: 0.000001
+          worker_side_prioritization: false
         clip_rewards: false
         actor_lr: 0.001
         critic_lr: 0.001
@@ -39,4 +41,3 @@ ddpg-halfcheetahbulletenv-v0:
         num_workers: 0
         num_gpus: 1
         num_gpus_per_worker: 0
-        worker_side_prioritization: false

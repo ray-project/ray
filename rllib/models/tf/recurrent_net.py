@@ -83,9 +83,9 @@ class RecurrentNetwork(TFModelV2):
         """Call the model with the given input tensors and state.
 
         Args:
-            inputs (dict): observation tensor with shape [B, T, obs_size].
-            state (list): list of state tensors, each with shape [B, T, size].
-            seq_lens (Tensor): 1d tensor holding input sequence lengths.
+            inputs: observation tensor with shape [B, T, obs_size].
+            state: list of state tensors, each with shape [B, T, size].
+            seq_lens: 1d tensor holding input sequence lengths.
 
         Returns:
             (outputs, new_state): The model output tensor of shape
@@ -117,6 +117,7 @@ class RecurrentNetwork(TFModelV2):
         raise NotImplementedError("You must implement this for a RNN model")
 
 
+@DeveloperAPI
 class LSTMWrapper(RecurrentNetwork):
     """An LSTM wrapper serving as an interface for ModelV2s that set use_lstm."""
 
@@ -280,6 +281,7 @@ class LSTMWrapper(RecurrentNetwork):
         return tf.reshape(self._value_out, [-1])
 
 
+@DeveloperAPI
 class Keras_LSTMWrapper(tf.keras.Model if tf else object):
     """A tf keras auto-LSTM wrapper used when `use_lstm`=True."""
 

@@ -276,12 +276,6 @@ import ray
 
 ray.shutdown()
 
-# __local_start__
-import ray
-
-ray.init(local_mode=True)
-# __local_end__
-
 # __grid_search_start__
 parameters = {
     "qux": tune.sample_from(lambda spec: 2 + 2),

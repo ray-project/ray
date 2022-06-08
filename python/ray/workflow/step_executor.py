@@ -87,7 +87,7 @@ def _resolve_dynamic_workflow_refs(job_id, workflow_refs: "List[WorkflowRef]"):
                 )
                 step_ref = recovery.resume_workflow_step(
                     job_id, workflow_id, workflow_ref.step_id, None
-                ).persisted_output
+                ).output
                 output = _resolve_static_workflow_ref(step_ref)
         workflow_ref_mapping.append(output)
     return workflow_ref_mapping
@@ -138,7 +138,7 @@ def _execute_workflow(job_id, workflow: "Workflow") -> "WorkflowExecutionResult"
                 extra_options = w.data.step_options.ray_options
                 # The input workflow is not a reference to an executed
                 # workflow.
-                static_ref = execute_workflow(job_id, w).persisted_output
+                static_ref = execute_workflow(job_id, w).output
                 static_ref._resolve_like_object_ref_in_args = extra_options.get(
                     "_resolve_like_object_ref_in_args", False
                 )
@@ -183,7 +183,7 @@ def _execute_workflow(job_id, workflow: "Workflow") -> "WorkflowExecutionResult"
             executor = _workflow_step_executor_remote.options(**ray_options).remote
 
     # Stage 3: execution
-    persisted_output, volatile_output = executor(
+    output = executor(
         workflow_data.func_body,
         step_context,
         job_id,
@@ -193,21 +193,15 @@ def _execute_workflow(job_id, workflow: "Workflow") -> "WorkflowExecutionResult"
     )
 
     # Stage 4: post processing outputs
-    if step_options.step_type != StepType.READONLY_ACTOR_METHOD:
-        if not step_options.allow_inplace:
-            # TODO: [Possible flaky bug] Here the RUNNING state may
-            # be recorded earlier than SUCCESSFUL. This caused some
-            # confusion during development.
+    if not step_options.allow_inplace:
+        # TODO: [Possible flaky bug] Here the RUNNING state may
+        # be recorded earlier than SUCCESSFUL. This caused some
+        # confusion during development.
 
-            # convert into workflow static ref for step status record.
-            volatile_output = WorkflowStaticRef.from_output(
-                workflow.step_id, volatile_output
-            )
-            _record_step_status(
-                workflow.step_id, WorkflowStatus.RUNNING, [volatile_output]
-            )
+        # convert into workflow static ref for step status record.
+        _record_step_status(workflow.step_id, WorkflowStatus.RUNNING, [None])
 
-    result = WorkflowExecutionResult(persisted_output, volatile_output)
+    result = WorkflowExecutionResult(output)
     workflow._result = result
     workflow._executed = True
     return result
@@ -239,18 +233,13 @@ def execute_workflow(job_id, workflow: Workflow) -> "WorkflowExecutionResult":
     while True:
         with workflow_context.fork_workflow_step_context(**context):
             result = _execute_workflow(job_id, workflow)
-        if not isinstance(result.persisted_output, InplaceReturnedWorkflow):
+        if not isinstance(result.output, InplaceReturnedWorkflow):
             break
-        workflow = result.persisted_output.workflow
-        context = result.persisted_output.context
+        workflow = result.output.workflow
+        context = result.output.context
 
     # Convert the outputs into WorkflowStaticRef.
-    result.persisted_output = WorkflowStaticRef.from_output(
-        workflow.step_id, result.persisted_output
-    )
-    result.volatile_output = WorkflowStaticRef.from_output(
-        workflow.step_id, result.volatile_output
-    )
+    result.output = WorkflowStaticRef.from_output(workflow.step_id, result.output)
     return result
 
 
@@ -317,23 +306,6 @@ def _wrap_run(
 ) -> Tuple[Any, Any]:
     """Wrap the function and execute it.
 
-    It returns two parts, persisted_output (p-out) and volatile_output (v-out).
-    P-out is the part of result to persist in a storage and pass to the
-    next step. V-out is the part of result to return to the user but does not
-    require persistence.
-
-    This table describes their relationships
-
-    +-----------------------------+-------+--------+----------------------+
-    | Step Type                   | p-out | v-out  | catch exception into |
-    +-----------------------------+-------+--------+----------------------+
-    | Function Step               | Y     | N      | p-out                |
-    +-----------------------------+-------+--------+----------------------+
-    | Virtual Actor Step          | Y     | Y      | v-out                |
-    +-----------------------------+-------+--------+----------------------+
-    | Readonly Virtual Actor Step | N     | Y      | v-out                |
-    +-----------------------------+-------+--------+----------------------+
-
     Args:
         func: The function body.
         runtime_options: Step execution params.
@@ -384,33 +356,23 @@ def _wrap_run(
                 # should be passed recursively.
                 assert exception is None
                 result.data.step_options.catch_exceptions = True
-                persisted_output, volatile_output = result, None
+                output = result
             else:
-                persisted_output, volatile_output = (result, exception), None
-        elif step_type == StepType.ACTOR_METHOD:
-            # virtual actors do not persist exception
-            persisted_output, volatile_output = result[0], (result[1], exception)
-        elif runtime_options.step_type == StepType.READONLY_ACTOR_METHOD:
-            persisted_output, volatile_output = None, (result, exception)
+                output = (result, exception)
         else:
             raise ValueError(f"Unknown StepType '{step_type}'")
     else:
         if exception is not None:
-            if step_type != StepType.READONLY_ACTOR_METHOD:
-                status = WorkflowStatus.FAILED
-                _record_step_status(workflow_context.get_current_step_id(), status)
-                logger.info(get_step_status_info(status))
+            status = WorkflowStatus.FAILED
+            _record_step_status(workflow_context.get_current_step_id(), status)
+            logger.info(get_step_status_info(status))
             raise exception
         if step_type == StepType.FUNCTION:
-            persisted_output, volatile_output = result, None
-        elif step_type == StepType.ACTOR_METHOD:
-            persisted_output, volatile_output = result
-        elif step_type == StepType.READONLY_ACTOR_METHOD:
-            persisted_output, volatile_output = None, result
+            output = result
         else:
             raise ValueError(f"Unknown StepType '{step_type}'")
 
-    return persisted_output, volatile_output
+    return output
 
 
 def _workflow_step_executor(
@@ -421,7 +383,7 @@ def _workflow_step_executor(
     baked_inputs: "_BakedWorkflowInputs",
     runtime_options: "WorkflowStepRuntimeOptions",
     inplace: bool = False,
-) -> Tuple[Any, Any]:
+) -> Any:
     """Executor function for workflow step.
 
     Args:
@@ -450,9 +412,7 @@ def _workflow_step_executor(
         step_prerun_metadata = {"start_time": time.time()}
         store.save_step_prerun_metadata(step_id, step_prerun_metadata)
         with workflow_context.workflow_execution():
-            persisted_output, volatile_output = _wrap_run(
-                func, runtime_options, *args, **kwargs
-            )
+            output = _wrap_run(func, runtime_options, *args, **kwargs)
         step_postrun_metadata = {"end_time": time.time()}
         store.save_step_postrun_metadata(step_id, step_postrun_metadata)
     except Exception as e:
@@ -461,81 +421,59 @@ def _workflow_step_executor(
         raise e
 
     # Part 4: save outputs
-    if step_type == StepType.READONLY_ACTOR_METHOD:
-        if isinstance(volatile_output, Workflow):
-            raise TypeError(
-                "Returning a Workflow from a readonly virtual actor is not allowed."
-            )
-        assert not isinstance(persisted_output, Workflow)
-    else:
-        # TODO(suquark): Validate checkpoint options before
-        # commit the step.
-        store = workflow_storage.get_workflow_storage()
-        if CheckpointMode(runtime_options.checkpoint) == CheckpointMode.SYNC:
-            commit_step(
-                store,
-                step_id,
-                persisted_output,
-                exception=None,
-            )
-        if isinstance(persisted_output, Workflow):
-            sub_workflow = persisted_output
-            outer_most_step_id = context.outer_most_step_id
-            assert volatile_output is None
-            if step_type == StepType.FUNCTION:
-                # Passing down outer most step so inner nested steps would
-                # access the same outer most step.
-                if not context.outer_most_step_id:
-                    # The current workflow step returns a nested workflow, and
-                    # there is no outer step for the current step. So the
-                    # current step is the outer most step for the inner nested
-                    # workflow steps.
-                    outer_most_step_id = workflow_context.get_current_step_id()
-            if inplace:
-                _step_options = sub_workflow.data.step_options
-                if (
-                    _step_options.step_type != StepType.WAIT
-                    and runtime_options.ray_options != _step_options.ray_options
-                ):
-                    logger.warning(
-                        f"Workflow step '{sub_workflow.step_id}' uses "
-                        f"a Ray option different to its caller step '{step_id}' "
-                        f"and will be executed inplace. Ray assumes it still "
-                        f"consumes the same resource as the caller. This may result "
-                        f"in oversubscribing resources."
-                    )
-                return (
-                    InplaceReturnedWorkflow(
-                        sub_workflow, {"outer_most_step_id": outer_most_step_id}
-                    ),
-                    None,
-                )
-            # Execute sub-workflow. Pass down "outer_most_step_id".
-            with workflow_context.fork_workflow_step_context(
-                outer_most_step_id=outer_most_step_id
-            ):
-                result = execute_workflow(job_id, sub_workflow)
-            # When virtual actor returns a workflow in the method,
-            # the volatile_output and persisted_output will be put together
-            persisted_output = result.persisted_output
-            volatile_output = result.volatile_output
-        elif context.last_step_of_workflow:
-            # advance the progress of the workflow
-            store.advance_progress(step_id)
-        _record_step_status(step_id, WorkflowStatus.SUCCESSFUL)
-    logger.info(get_step_status_info(WorkflowStatus.SUCCESSFUL))
-    if isinstance(volatile_output, Workflow):
-        # This is the case where a step method is called in the virtual actor.
-        # We need to run the method to get the final result.
-        assert step_type == StepType.ACTOR_METHOD
-        volatile_output = volatile_output.run_async(
-            workflow_context.get_current_workflow_id()
+    # TODO(suquark): Validate checkpoint options before
+    # commit the step.
+    store = workflow_storage.get_workflow_storage()
+    if CheckpointMode(runtime_options.checkpoint) == CheckpointMode.SYNC:
+        commit_step(
+            store,
+            step_id,
+            output,
+            exception=None,
         )
-        volatile_output = WorkflowStaticRef.from_output(step_id, volatile_output)
-    return persisted_output, volatile_output
+    if isinstance(output, Workflow):
+        sub_workflow = output
+        outer_most_step_id = context.outer_most_step_id
+        if step_type == StepType.FUNCTION:
+            # Passing down outer most step so inner nested steps would
+            # access the same outer most step.
+            if not context.outer_most_step_id:
+                # The current workflow step returns a nested workflow, and
+                # there is no outer step for the current step. So the
+                # current step is the outer most step for the inner nested
+                # workflow steps.
+                outer_most_step_id = workflow_context.get_current_step_id()
+        if inplace:
+            _step_options = sub_workflow.data.step_options
+            if (
+                _step_options.step_type != StepType.WAIT
+                and runtime_options.ray_options != _step_options.ray_options
+            ):
+                logger.warning(
+                    f"Workflow step '{sub_workflow.step_id}' uses "
+                    f"a Ray option different to its caller step '{step_id}' "
+                    f"and will be executed inplace. Ray assumes it still "
+                    f"consumes the same resource as the caller. This may result "
+                    f"in oversubscribing resources."
+                )
+            return InplaceReturnedWorkflow(
+                sub_workflow, {"outer_most_step_id": outer_most_step_id}
+            )
+        # Execute sub-workflow. Pass down "outer_most_step_id".
+        with workflow_context.fork_workflow_step_context(
+            outer_most_step_id=outer_most_step_id
+        ):
+            result = execute_workflow(job_id, sub_workflow)
+        output = result.output
+    elif context.last_step_of_workflow:
+        # advance the progress of the workflow
+        store.advance_progress(step_id)
+    _record_step_status(step_id, WorkflowStatus.SUCCESSFUL)
+    logger.info(get_step_status_info(WorkflowStatus.SUCCESSFUL))
+    return output
 
 
-@ray.remote(num_returns=2)
+@ray.remote
 def _workflow_step_executor_remote(
     func: Callable,
     context: "WorkflowStepContext",
@@ -575,24 +513,24 @@ def _workflow_wait_executor(
     # Part 2: Resolve any ready workflows.
     ready_workflows, remaining_workflows = baked_inputs.wait(**wait_options)
     ready_objects = [_resolve_static_workflow_ref(w.ref) for w in ready_workflows]
-    persisted_output = (ready_objects, remaining_workflows)
+    output = (ready_objects, remaining_workflows)
 
     # Part 3: Save the outputs.
     store = workflow_storage.get_workflow_storage()
     # TODO(suquark): Because the outputs are not generated by "workflow.wait",
     # we do not checkpoint the outputs here. Those steps that generate
     # outputs should checkpoint them.
-    commit_step(store, step_id, persisted_output, exception=None)
+    commit_step(store, step_id, output, exception=None)
     if context.last_step_of_workflow:
         # advance the progress of the workflow
         store.advance_progress(step_id)
 
     _record_step_status(step_id, WorkflowStatus.SUCCESSFUL)
     logger.info(get_step_status_info(WorkflowStatus.SUCCESSFUL))
-    return persisted_output, None
+    return output
 
 
-@ray.remote(num_returns=2)
+@ray.remote
 def _workflow_wait_executor_remote(
     func: Callable,
     context: "WorkflowStepContext",
@@ -679,8 +617,8 @@ class _BakedWorkflowInputs:
         are not. See `api.wait()` for details.
 
         Args:
-            num_returns (int): The number of workflows that should be returned.
-            timeout (float): The maximum amount of time in seconds to wait
+            num_returns: The number of workflows that should be returned.
+            timeout: The maximum amount of time in seconds to wait
             before returning.
 
         Returns:

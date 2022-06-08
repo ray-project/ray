@@ -51,7 +51,7 @@ DictCount = Tuple[Dict, Number]
 NodeType = str
 
 # e.g., {"resources": ..., "max_workers": ...}.
-NodeTypeConfigDict = str
+NodeTypeConfigDict = Dict[str, Any]
 
 # e.g., {"GPU": 1}.
 ResourceDict = Dict[str, Real]
@@ -61,6 +61,9 @@ NodeID = str
 
 # e.g., "127.0.0.1".
 NodeIP = str
+
+# Number of nodes to launch
+NodeCount = int
 
 logger = logging.getLogger(__name__)
 

@@ -4,7 +4,9 @@ from ray.experimental.dag.dag_node import DAGNode
 from ray.serve.pipeline.generate import (
     transform_ray_dag_to_serve_dag,
     extract_deployments_from_serve_dag,
+    transform_serve_dag_to_serve_executor_dag,
     process_ingress_deployment_in_serve_dag,
+    generate_executor_dag_driver_deployment,
 )
 from ray.serve.deployment import Deployment
 from ray.experimental.dag.utils import DAGNodeNameGenerator
@@ -67,6 +69,19 @@ def build(ray_dag_root_node: DAGNode) -> List[Deployment]:
             lambda node: transform_ray_dag_to_serve_dag(node, node_name_generator)
         )
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
+
+    # After Ray DAG is transformed to Serve DAG with deployments and their init
+    # args filled, generate a minimal weight executor serve dag for perf
+    serve_executor_root_dag = serve_root_dag.apply_recursive(
+        transform_serve_dag_to_serve_executor_dag
+    )
+    root_driver_deployment = deployments[-1]
+    new_driver_deployment = generate_executor_dag_driver_deployment(
+        serve_executor_root_dag, root_driver_deployment
+    )
+    # Replace DAGDriver deployment with executor DAGDriver deployment
+    deployments[-1] = new_driver_deployment
+    # Validate and only expose HTTP for the endpoint
     deployments_with_http = process_ingress_deployment_in_serve_dag(deployments)
 
     return deployments_with_http

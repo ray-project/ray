@@ -2,8 +2,8 @@ import numpy as np
 import unittest
 
 import ray
-import ray.rllib.agents.ddpg as ddpg
-import ray.rllib.agents.dqn as dqn
+import ray.rllib.algorithms.ddpg as ddpg
+import ray.rllib.algorithms.dqn as dqn
 from ray.rllib.utils.test_utils import check, framework_iterator
 
 
@@ -18,7 +18,7 @@ class TestParameterNoise(unittest.TestCase):
 
     def test_ddpg_parameter_noise(self):
         self.do_test_parameter_noise_exploration(
-            ddpg.DDPGTrainer,
+            ddpg.DDPG,
             ddpg.DEFAULT_CONFIG,
             "Pendulum-v1",
             {},
@@ -27,7 +27,7 @@ class TestParameterNoise(unittest.TestCase):
 
     def test_dqn_parameter_noise(self):
         self.do_test_parameter_noise_exploration(
-            dqn.DQNTrainer,
+            dqn.DQN,
             dqn.DEFAULT_CONFIG,
             "FrozenLake-v1",
             {"is_slippery": False, "map_name": "4x4"},
@@ -168,7 +168,7 @@ class TestParameterNoise(unittest.TestCase):
             # Switch off underlying exploration entirely.
             # ----
             config = core_config.copy()
-            if trainer_cls is dqn.DQNTrainer:
+            if trainer_cls is dqn.DQN:
                 sub_config = {
                     "type": "EpsilonGreedy",
                     "initial_epsilon": 0.0,  # <- no randomness whatsoever

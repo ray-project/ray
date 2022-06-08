@@ -22,7 +22,7 @@ from ray.tune.result import (
     EXPR_RESULT_FILE,
 )
 from ray.tune.utils import flatten_dict
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import PublicAPI, DeveloperAPI
 
 if TYPE_CHECKING:
     from ray.tune.trial import Trial  # noqa: F401
@@ -33,6 +33,7 @@ tf = None
 VALID_SUMMARY_TYPES = [int, float, np.float32, np.float64, np.int32, np.int64]
 
 
+@DeveloperAPI
 class Logger:
     """Logging interface for ray.tune.
 
@@ -76,11 +77,13 @@ class Logger:
         pass
 
 
+@PublicAPI
 class NoopLogger(Logger):
     def on_result(self, result):
         pass
 
 
+@PublicAPI
 class JsonLogger(Logger):
     """Logs trial results in json format.
 
@@ -119,6 +122,7 @@ class JsonLogger(Logger):
             cloudpickle.dump(self.config, f)
 
 
+@PublicAPI
 class CSVLogger(Logger):
     """Logs results to progress.csv under the trial directory.
 
@@ -168,6 +172,7 @@ class CSVLogger(Logger):
             self._file.close()
 
 
+@PublicAPI
 class TBXLogger(Logger):
     """TensorBoardX Logger.
 
@@ -296,6 +301,7 @@ class TBXLogger(Logger):
 DEFAULT_LOGGERS = (JsonLogger, CSVLogger, TBXLogger)
 
 
+@PublicAPI
 class UnifiedLogger(Logger):
     """Unified result logger for TensorBoard, rllab/viskit, plain json.
 
@@ -446,6 +452,7 @@ class LoggerCallback(Callback):
         self.log_trial_end(trial, failed=True)
 
 
+@DeveloperAPI
 class LegacyLoggerCallback(LoggerCallback):
     """Supports logging to trial-specific `Logger` classes.
 
@@ -495,6 +502,7 @@ class LegacyLoggerCallback(LoggerCallback):
                 trial_loggers[trial].close()
 
 
+@PublicAPI
 class JsonLoggerCallback(LoggerCallback):
     """Logs trial results in json format.
 
@@ -551,6 +559,7 @@ class JsonLoggerCallback(LoggerCallback):
             cloudpickle.dump(self._trial_configs[trial], f)
 
 
+@PublicAPI
 class CSVLoggerCallback(LoggerCallback):
     """Logs results to progress.csv under the trial directory.
 
@@ -608,6 +617,7 @@ class CSVLoggerCallback(LoggerCallback):
         del self._trial_files[trial]
 
 
+@PublicAPI
 class TBXLoggerCallback(LoggerCallback):
     """TensorBoardX Logger.
 

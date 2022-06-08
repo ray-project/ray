@@ -12,9 +12,10 @@ cartpole-sac:
         horizon: 200
         soft_horizon: true
         n_step: 3
-        prioritized_replay: true
+        replay_buffer_config:
+          type: MultiAgentPrioritizedReplayBuffer
+          learning_starts: 256
         initial_alpha: 0.2
-        learning_starts: 256
         clip_actions: false
         min_sample_timesteps_per_reporting: 1000
         optimization:

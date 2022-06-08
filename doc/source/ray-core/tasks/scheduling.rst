@@ -16,7 +16,7 @@ If all nodes are infeasible, the task cannot be scheduled until feasible nodes a
 
 Placement Group
 ---------------
-If ``placement_group`` option is set then the task will be scheduled where the placement group is located.
+If :ref:`scheduling_strategy=PlacementGroupSchedulingStrategy <scheduling-strategy-ref>` option is set then the task will be scheduled where the placement group is located.
 See :ref:`Placement Group <ray-placement-group-doc-ref>` for more details.
 
 Scheduling Strategy

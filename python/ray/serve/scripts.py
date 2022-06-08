@@ -1,12 +1,11 @@
 #!/usr/bin/env python
-import json
 import os
-import pathlib
-import click
-import time
 import sys
-from typing import Optional, Union
+import time
 import yaml
+import click
+import pathlib
+from typing import Optional, Union
 
 import ray
 from ray._private.utils import import_attr
@@ -350,7 +349,7 @@ def config(address: str):
 def status(address: str):
     app_status = ServeSubmissionClient(address).get_status()
     if app_status is not None:
-        print(json.dumps(app_status["statuses"], indent=4))
+        print(yaml.safe_dump(app_status, default_flow_style=False, sort_keys=False))
 
 
 @cli.command(

@@ -4,6 +4,6 @@
 
 ray_lightning==0.2.0
 tune-sklearn==0.4.1
-xgboost_ray==0.1.8
-lightgbm_ray==0.1.3
+xgboost_ray==0.1.9
+lightgbm_ray==0.1.4
 modin>=0.11.0; python_version >= '3.7'

@@ -17,7 +17,7 @@ py_test(
     size = "medium",
     main = "examples/mlflow_simple_example.py",
     srcs = ["examples/mlflow_simple_example.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "no_main"],
     deps = [":train_lib"],
 )
 
@@ -99,7 +99,7 @@ py_test(
     name = "pytorch_pbt_failure",
     size = "medium",
     srcs = ["tests/pytorch_pbt_failure.py"],
-    tags = ["team:ml", "exlusive"],
+    tags = ["team:ml", "exlusive", "no_main"],
     deps = [":train_lib"],
     args = ["--smoke-test"]
 )

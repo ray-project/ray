@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def to_float_array(v: List[Any]) -> np.ndarray:
+def _to_float_array(v: List[Any]) -> np.ndarray:
     arr = np.array(v)
     if arr.dtype == np.float64:
         return arr.astype(np.float32)  # save some memory
@@ -58,7 +58,7 @@ class SampleBatchBuilder:
     def build_and_reset(self) -> SampleBatch:
         """Returns a sample batch including all previously added values."""
 
-        batch = SampleBatch({k: to_float_array(v) for k, v in self.buffers.items()})
+        batch = SampleBatch({k: _to_float_array(v) for k, v in self.buffers.items()})
         if SampleBatch.UNROLL_ID not in batch:
             batch[SampleBatch.UNROLL_ID] = np.repeat(
                 SampleBatchBuilder._next_unroll_id, batch.count
@@ -93,7 +93,7 @@ class MultiAgentSampleBatchBuilder:
             policy_map (Dict[str,Policy]): Maps policy ids to policy instances.
             clip_rewards (Union[bool,float]): Whether to clip rewards before
                 postprocessing (at +/-1.0) or the actual value to +/- clip.
-            callbacks (DefaultCallbacks): RLlib callbacks.
+            callbacks: RLlib callbacks.
         """
         if log_once("MultiAgentSampleBatchBuilder"):
             deprecation_warning(old="MultiAgentSampleBatchBuilder", error=False)
@@ -136,9 +136,9 @@ class MultiAgentSampleBatchBuilder:
         """Add the given dictionary (row) of values to this batch.
 
         Args:
-            agent_id (obj): Unique id for the agent we are adding values for.
-            policy_id (obj): Unique id for policy controlling the agent.
-            values (dict): Row of values to add for this agent.
+            agent_id: Unique id for the agent we are adding values for.
+            policy_id: Unique id for policy controlling the agent.
+            values: Row of values to add for this agent.
         """
 
         if agent_id not in self.agent_builders:

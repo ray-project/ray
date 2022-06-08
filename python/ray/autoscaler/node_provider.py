@@ -84,8 +84,8 @@ class NodeProvider:
         Assumes ip-address is unique per node.
 
         Args:
-            ip_address (str): Address of node.
-            use_internal_ip (bool): Whether the ip address is
+            ip_address: Address of node.
+            use_internal_ip: Whether the ip address is
                 public or private.
 
         Raises:

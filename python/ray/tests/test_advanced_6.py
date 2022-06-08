@@ -219,6 +219,19 @@ print(ray.get(obj))
     wait_for_condition(lambda: not psutil.pid_exists(normal_task_pid), 10)
 
 
+@pytest.mark.skipif(platform.system() == "Windows", reason="Niceness is posix-only")
+def test_worker_niceness(ray_start_regular):
+    @ray.remote
+    class PIDReporter:
+        def get(self):
+            return os.getpid()
+
+    reporter = PIDReporter.remote()
+    worker_pid = ray.get(reporter.get.remote())
+    worker_proc = psutil.Process(worker_pid)
+    assert worker_proc.nice() == 15, worker_proc
+
+
 if __name__ == "__main__":
     import pytest
 

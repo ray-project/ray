@@ -10,6 +10,7 @@ from unittest.mock import patch
 import grpc
 
 import ray
+from ray.ray_constants import REDIS_DEFAULT_PASSWORD
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 from ray.cloudpickle.compat import pickle
 from ray.job_config import JobConfig
@@ -18,12 +19,12 @@ from ray._private.test_utils import run_string_as_driver
 
 
 def start_ray_and_proxy_manager(n_ports=2):
-    ray_instance = ray.init(_redis_password="test")
+    ray_instance = ray.init(_redis_password=REDIS_DEFAULT_PASSWORD)
     agent_port = ray.worker.global_worker.node.metrics_agent_port
     pm = proxier.ProxyManager(
         ray_instance["address"],
         session_dir=ray_instance["session_dir"],
-        redis_password="test",
+        redis_password=REDIS_DEFAULT_PASSWORD,
         runtime_env_agent_port=agent_port,
     )
     free_ports = random.choices(range(45000, 45100), k=n_ports)

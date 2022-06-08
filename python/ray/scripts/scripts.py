@@ -37,7 +37,7 @@ from ray.autoscaler._private.commands import (
 )
 from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
-from ray.autoscaler._private.kuberay.run_autoscaler import run_autoscaler_with_retries
+from ray.autoscaler._private.kuberay.run_autoscaler import run_kuberay_autoscaler
 from ray.internal.internal_api import memory_summary
 from ray.internal.storage import _load_class
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cli_logger, cf
@@ -340,8 +340,7 @@ def debug(address):
     required=False,
     type=int,
     default=10001,
-    help="the port number the ray client server will bind on. If not set, "
-    "the ray client server will not be started.",
+    help="the port number the ray client server binds on, default to 10001.",
 )
 @click.option(
     "--memory",
@@ -413,14 +412,12 @@ def debug(address):
 @click.option(
     "--dashboard-agent-listen-port",
     type=int,
-    hidden=True,
     default=0,
     help="the port for dashboard agents to listen for http on.",
 )
 @click.option(
     "--dashboard-agent-grpc-port",
     type=int,
-    hidden=True,
     default=None,
     help="the port for dashboard agents to listen for grpc on.",
 )
@@ -486,7 +483,6 @@ def debug(address):
 @click.option(
     "--metrics-export-port",
     type=int,
-    hidden=True,
     default=None,
     help="the port to use to expose Ray metrics through a Prometheus endpoint.",
 )
@@ -770,6 +766,17 @@ def start(
                 cf.bold("  ray start --address='{}'"),
                 bootstrap_addresses,
             )
+            if bootstrap_addresses.startswith("127.0.0.1:"):
+                cli_logger.print(
+                    "This Ray runtime only accepts connections from local host."
+                )
+                cli_logger.print(
+                    "To accept connections from remote hosts, "
+                    "specify a public ip when starting"
+                )
+                cli_logger.print(
+                    "the head node: ray start --head --node-ip-address=<public-ip>."
+                )
             cli_logger.newline()
             cli_logger.print("Alternatively, use the following Python code:")
             with cli_logger.indented():
@@ -973,19 +980,7 @@ def stop(force, grace_period):
             proc, proc_cmd, proc_args = candidate
             corpus = proc_cmd if filter_by_cmd else subprocess.list2cmdline(proc_args)
             if keyword in corpus:
-                # This is a way to avoid killing redis server that's not started by Ray.
-                # We are using a simple hacky solution here since
-                # Redis server will anyway removed soon from the ray repository.
-                # This feature is only supported on MacOS/Linux temporarily until
-                # Redis is removed from Ray.
-                if (
-                    keyword == "redis-server"
-                    and sys.platform != "win32"
-                    and "core/src/ray/thirdparty/redis/src/redis-server" not in corpus
-                ):
-                    continue
                 found.append(candidate)
-
         for proc, proc_cmd, proc_args in found:
             proc_string = str(subprocess.list2cmdline(proc_args))
             try:
@@ -2100,25 +2095,14 @@ def global_gc(address):
     help="The Kubernetes namespace the Ray Cluster lives in.\n"
     "Should coincide with the `metadata.namespace` of the RayCluster CR.",
 )
-@click.option(
-    "--redis-password",
-    required=False,
-    type=str,
-    default="",
-    help="The password to use for Redis.\n"
-    "Ray versions >= 1.11.0 don't use Redis.\n"
-    "Only set this if you really know what you're doing.",
-)
-def kuberay_autoscaler(
-    cluster_name: str, cluster_namespace: str, redis_password: str
-) -> None:
+def kuberay_autoscaler(cluster_name: str, cluster_namespace: str) -> None:
     """Runs the autoscaler for a Ray cluster managed by the KubeRay operator.
 
     `ray kuberay-autoscaler` is meant to be used as an entry point in
         KubeRay cluster configs.
     `ray kuberay-autoscaler` is NOT a public CLI.
     """
-    run_autoscaler_with_retries(cluster_name, cluster_namespace, redis_password)
+    run_kuberay_autoscaler(cluster_name, cluster_namespace)
 
 
 @cli.command(name="health-check", hidden=True)

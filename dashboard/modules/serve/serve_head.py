@@ -33,14 +33,14 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
     @routes.get("/api/serve/deployments/status")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def get_all_deployment_statuses(self, req: Request) -> Response:
-        from ray.serve.api import get_deployment_statuses
-        from ray.serve.schema import serve_application_status_to_schema
+        from ray.serve.context import get_global_client
+        from ray.serve.schema import serve_status_to_schema
 
-        serve_application_status_schema = serve_application_status_to_schema(
-            get_deployment_statuses()
-        )
+        client = get_global_client(_override_controller_namespace="serve")
+
+        serve_status_schema = serve_status_to_schema(client.get_serve_status())
         return Response(
-            text=serve_application_status_schema.json(),
+            text=serve_status_schema.json(),
             content_type="application/json",
         )
 
@@ -56,10 +56,19 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def put_all_deployments(self, req: Request) -> Response:
         from ray import serve
+        from ray.serve.context import get_global_client
+        from ray.serve.schema import ServeApplicationSchema
         from ray.serve.application import Application
 
-        app = Application.from_dict(await req.json())
-        serve.run(app, _blocking=False)
+        config = ServeApplicationSchema.parse_obj(await req.json())
+
+        if config.import_path is not None:
+            client = get_global_client(_override_controller_namespace="serve")
+            client.deploy_app(config)
+        else:
+            # TODO (shrekris-anyscale): Remove this conditional path
+            app = Application.from_dict(await req.json())
+            serve.run(app, _blocking=False)
 
         return Response()
 

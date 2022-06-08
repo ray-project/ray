@@ -98,6 +98,16 @@ bool ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_req
       /*ignore_object_store_memory_requirement*/ node_id == local_node_id_);
 }
 
+namespace {
+bool IsHardNodeAffinitySchedulingStrategy(
+    const rpc::SchedulingStrategy &scheduling_strategy) {
+  return scheduling_strategy.scheduling_strategy_case() ==
+             rpc::SchedulingStrategy::SchedulingStrategyCase::
+                 kNodeAffinitySchedulingStrategy &&
+         !scheduling_strategy.node_affinity_scheduling_strategy().soft();
+}
+}  // namespace
+
 scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
     const ResourceRequest &resource_request,
     const rpc::SchedulingStrategy &scheduling_strategy,
@@ -106,8 +116,9 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
     int64_t *total_violations,
     bool *is_infeasible) {
   // The zero cpu actor is a special case that must be handled the same way by all
-  // scheduling policies.
-  if (actor_creation && resource_request.IsEmpty()) {
+  // scheduling policies, except for HARD node affnity scheduling policy.
+  if (actor_creation && resource_request.IsEmpty() &&
+      !IsHardNodeAffinitySchedulingStrategy(scheduling_strategy)) {
     return scheduling_policy_->Schedule(resource_request, SchedulingOptions::Random());
   }
 
@@ -237,14 +248,22 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
                              &_unused,
                              is_infeasible);
 
-  // If there is no other available nodes, prefer waiting on the local node
-  // since the local node is chosen for a reason (e.g. spread).
-  if (prioritize_local_node && !best_node.IsNil() &&
+  // There is no other available nodes.
+  if (!best_node.IsNil() &&
       !IsSchedulableOnNode(best_node,
                            task_spec.GetRequiredResources().GetResourceMap(),
                            requires_object_store_memory)) {
-    *is_infeasible = false;
-    return local_node_id_;
+    // Prefer waiting on the local node since the local node is chosen for a reason (e.g.
+    // spread).
+    if (prioritize_local_node) {
+      *is_infeasible = false;
+      return local_node_id_;
+    }
+    // If the task is being scheduled by gcs, return nil to make it stay in the
+    // `cluster_task_manager`'s queue.
+    if (!is_local_node_with_raylet_) {
+      return scheduling::NodeID::Nil();
+    }
   }
 
   return best_node;

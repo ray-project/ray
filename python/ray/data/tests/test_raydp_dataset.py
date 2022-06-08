@@ -30,7 +30,7 @@ def test_raydp_roundtrip(spark):
 
 def test_raydp_to_spark(spark):
     n = 5
-    ds = ray.data.range_arrow(n)
+    ds = ray.data.range_table(n)
     values = [r["value"] for r in ds.take(5)]
     df = ds.to_spark(spark)
     rows = [r.value for r in df.take(5)]

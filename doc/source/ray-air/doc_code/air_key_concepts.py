@@ -6,7 +6,7 @@ import pandas as pd
 from sklearn.datasets import load_breast_cancer
 from sklearn.model_selection import train_test_split
 
-from ray.ml.preprocessors import *
+from ray.air.preprocessors import *
 
 data_raw = load_breast_cancer()
 dataset_df = pd.DataFrame(data_raw["data"], columns=data_raw["feature_names"])
@@ -21,7 +21,7 @@ preprocessor = StandardScaler(columns=columns_to_scale)
 # __air_preprocessors_end__
 
 # __air_trainer_start__
-from ray.ml.train.integrations.xgboost import XGBoostTrainer
+from ray.air.train.integrations.xgboost import XGBoostTrainer
 
 num_workers = 2
 use_gpu = False
@@ -68,8 +68,8 @@ print(best_result)
 # __air_tuner_end__
 
 # __air_batch_predictor_start__
-from ray.ml.batch_predictor import BatchPredictor
-from ray.ml.predictors.integrations.xgboost import XGBoostPredictor
+from ray.air.batch_predictor import BatchPredictor
+from ray.air.predictors.integrations.xgboost import XGBoostPredictor
 
 batch_predictor = BatchPredictor.from_checkpoint(result.checkpoint, XGBoostPredictor)
 

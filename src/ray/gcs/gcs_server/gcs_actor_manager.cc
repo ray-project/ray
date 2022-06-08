@@ -55,19 +55,23 @@ const ray::rpc::ActorDeathCause GenNodeDiedCause(const ray::gcs::GcsActor *actor
 const ray::rpc::ActorDeathCause GenWorkerDiedCause(
     const ray::gcs::GcsActor *actor,
     const std::string &ip_address,
-    const ray::rpc::WorkerExitType &disconnect_type) {
+    const ray::rpc::WorkerExitType &disconnect_type,
+    const std::string &disconnect_detail) {
   ray::rpc::ActorDeathCause death_cause;
   auto actor_died_error_ctx = death_cause.mutable_actor_died_error_context();
   AddActorInfo(actor, actor_died_error_ctx);
   actor_died_error_ctx->set_error_message(absl::StrCat(
       "The actor is dead because its worker process has died. Worker exit type: ",
-      ray::rpc::WorkerExitType_Name(disconnect_type)));
+      ray::rpc::WorkerExitType_Name(disconnect_type),
+      " Worker exit detail: ",
+      disconnect_detail));
   return death_cause;
 }
 const ray::rpc::ActorDeathCause GenOwnerDiedCause(
     const ray::gcs::GcsActor *actor,
     const WorkerID &owner_id,
     const ray::rpc::WorkerExitType disconnect_type,
+    const std::string &disconnect_detail,
     const std::string owner_ip_address) {
   ray::rpc::ActorDeathCause death_cause;
   auto actor_died_error_ctx = death_cause.mutable_actor_died_error_context();
@@ -78,7 +82,9 @@ const ray::rpc::ActorDeathCause GenOwnerDiedCause(
                    " Owner Ip address: ",
                    owner_ip_address,
                    " Owner worker exit type: ",
-                   ray::rpc::WorkerExitType_Name(disconnect_type)));
+                   ray::rpc::WorkerExitType_Name(disconnect_type),
+                   " Worker exit detail: ",
+                   disconnect_detail));
   return death_cause;
 }
 
@@ -686,12 +692,8 @@ void GcsActorManager::PollOwnerForActorOutOfScope(
         if (node_it != owners_.end() && node_it->second.count(owner_id)) {
           // Only destroy the actor if its owner is still alive. The actor may
           // have already been destroyed if the owner died.
-          // For multiple actors in one process, if one actor is out of scope,
-          // We shouldn't force kill the actor because other actors in the process
-          // are still alive.
-          auto force_kill =
-              get_job_config_(actor_id.JobId())->num_java_workers_per_process() <= 1;
-          DestroyActor(actor_id, GenActorOutOfScopeCause(GetActor(actor_id)), force_kill);
+          DestroyActor(
+              actor_id, GenActorOutOfScopeCause(GetActor(actor_id)), /*force_kill=*/true);
         }
       });
 }
@@ -745,7 +747,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
     if (node_it != created_actors_.end() && node_it->second.count(worker_id)) {
       // The actor has already been created. Destroy the process by force-killing
       // it.
-      NotifyCoreWorkerToKillActor(actor, force_kill);
+      NotifyCoreWorkerToKillActor(actor, death_cause, force_kill);
       RAY_CHECK(node_it->second.erase(actor->GetWorkerID()));
       if (node_it->second.empty()) {
         created_actors_.erase(node_it);
@@ -810,13 +812,18 @@ absl::flat_hash_set<ActorID> GcsActorManager::GetUnresolvedActorsByOwnerWorker(
 
 void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
                                    const ray::WorkerID &worker_id) {
-  OnWorkerDead(node_id, worker_id, "", rpc::WorkerExitType::SYSTEM_ERROR_EXIT);
+  OnWorkerDead(node_id,
+               worker_id,
+               "",
+               rpc::WorkerExitType::SYSTEM_ERROR,
+               "Worker exits unexpectedly.");
 }
 
 void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
                                    const ray::WorkerID &worker_id,
                                    const std::string &worker_ip,
                                    const rpc::WorkerExitType disconnect_type,
+                                   const std::string &disconnect_detail,
                                    const rpc::RayException *creation_task_exception) {
   std::string message = absl::StrCat("Worker ",
                                      worker_id.Hex(),
@@ -826,15 +833,15 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
                                      rpc::WorkerExitType_Name(disconnect_type),
                                      ", has creation_task_exception = ",
                                      (creation_task_exception != nullptr));
-  if (disconnect_type == rpc::WorkerExitType::INTENDED_EXIT ||
-      disconnect_type == rpc::WorkerExitType::IDLE_EXIT) {
+  if (disconnect_type == rpc::WorkerExitType::INTENDED_USER_EXIT ||
+      disconnect_type == rpc::WorkerExitType::INTENDED_SYSTEM_EXIT) {
     RAY_LOG(DEBUG) << message;
   } else {
     RAY_LOG(WARNING) << message;
   }
 
-  bool need_reconstruct = disconnect_type != rpc::WorkerExitType::INTENDED_EXIT &&
-                          disconnect_type != rpc::WorkerExitType::CREATION_TASK_ERROR;
+  bool need_reconstruct = disconnect_type != rpc::WorkerExitType::INTENDED_USER_EXIT &&
+                          disconnect_type != rpc::WorkerExitType::USER_ERROR;
   // Destroy all actors that are owned by this worker.
   const auto it = owners_.find(node_id);
   if (it != owners_.end() && it->second.count(worker_id)) {
@@ -843,9 +850,12 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
     // list.
     const auto children_ids = owner->second.children_actor_ids;
     for (const auto &child_id : children_ids) {
-      DestroyActor(
-          child_id,
-          GenOwnerDiedCause(GetActor(child_id), worker_id, disconnect_type, worker_ip));
+      DestroyActor(child_id,
+                   GenOwnerDiedCause(GetActor(child_id),
+                                     worker_id,
+                                     disconnect_type,
+                                     "Owner's worker process has crashed.",
+                                     worker_ip));
     }
   }
 
@@ -855,9 +865,12 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
   auto unresolved_actors = GetUnresolvedActorsByOwnerWorker(node_id, worker_id);
   for (auto &actor_id : unresolved_actors) {
     if (registered_actors_.count(actor_id)) {
-      DestroyActor(
-          actor_id,
-          GenOwnerDiedCause(GetActor(actor_id), worker_id, disconnect_type, worker_ip));
+      DestroyActor(actor_id,
+                   GenOwnerDiedCause(GetActor(actor_id),
+                                     worker_id,
+                                     disconnect_type,
+                                     "Owner's worker process has crashed.",
+                                     worker_ip));
     }
   }
 
@@ -891,7 +904,8 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
     death_cause.mutable_creation_task_failure_context()->CopyFrom(
         *creation_task_exception);
   } else {
-    death_cause = GenWorkerDiedCause(GetActor(actor_id), worker_ip, disconnect_type);
+    death_cause = GenWorkerDiedCause(
+        GetActor(actor_id), worker_ip, disconnect_type, disconnect_detail);
   }
   // Otherwise, try to reconstruct the actor that was already created or in the creation
   // process.
@@ -915,7 +929,8 @@ void GcsActorManager::OnNodeDead(const NodeID &node_id,
       DestroyActor(child_id,
                    GenOwnerDiedCause(GetActor(child_id),
                                      owner_id,
-                                     rpc::WorkerExitType::NODE_DIED,
+                                     rpc::WorkerExitType::SYSTEM_ERROR,
+                                     "Owner's node has crashed.",
                                      node_ip_address));
     }
   }
@@ -953,7 +968,8 @@ void GcsActorManager::OnNodeDead(const NodeID &node_id,
         DestroyActor(actor_id,
                      GenOwnerDiedCause(GetActor(actor_id),
                                        owner_id,
-                                       rpc::WorkerExitType::NODE_DIED,
+                                       rpc::WorkerExitType::SYSTEM_ERROR,
+                                       "Owner's node has crashed.",
                                        node_ip_address));
       }
     }
@@ -1160,7 +1176,12 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
   for (const auto &[actor_id, actor_table_data] : gcs_init_data.Actors()) {
     auto job_iter = jobs.find(actor_id.JobId());
     auto is_job_dead = (job_iter == jobs.end() || job_iter->second.is_dead());
-    if (actor_table_data.state() != ray::rpc::ActorTableData::DEAD && !is_job_dead) {
+    // We only load actors which are supposed to be alive:
+    //   - Actors which are not dead.
+    //   - Non-deatched actors whoes owner is alive.
+    //   - Detached actors which lives even when their original owner is dead.
+    if (actor_table_data.state() != ray::rpc::ActorTableData::DEAD &&
+        (!is_job_dead || actor_table_data.is_detached())) {
       const auto &iter = actor_task_specs.find(actor_id);
       RAY_CHECK(iter != actor_task_specs.end());
       auto actor = std::make_shared<GcsActor>(actor_table_data, iter->second);
@@ -1321,10 +1342,12 @@ void GcsActorManager::RemoveActorFromOwner(const std::shared_ptr<GcsActor> &acto
 }
 
 void GcsActorManager::NotifyCoreWorkerToKillActor(const std::shared_ptr<GcsActor> &actor,
+                                                  const rpc::ActorDeathCause &death_cause,
                                                   bool force_kill,
                                                   bool no_restart) {
   rpc::KillActorRequest request;
   request.set_intended_actor_id(actor->GetActorID().Binary());
+  request.mutable_death_cause()->CopyFrom(death_cause);
   request.set_force_kill(force_kill);
   request.set_no_restart(no_restart);
   auto actor_client = worker_client_factory_(actor->GetAddress());
@@ -1359,7 +1382,8 @@ void GcsActorManager::KillActor(const ActorID &actor_id,
   if (node_it != created_actors_.end() && node_it->second.count(worker_id)) {
     // The actor has already been created. Destroy the process by force-killing
     // it.
-    NotifyCoreWorkerToKillActor(actor, force_kill, no_restart);
+    NotifyCoreWorkerToKillActor(
+        actor, GenKilledByApplicationCause(GetActor(actor_id)), force_kill, no_restart);
   } else {
     const auto &task_id = actor->GetCreationTaskSpecification().TaskId();
     RAY_LOG(DEBUG) << "The actor " << actor->GetActorID()

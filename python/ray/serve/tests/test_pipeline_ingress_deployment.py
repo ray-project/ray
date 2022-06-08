@@ -3,7 +3,7 @@ import sys
 
 from ray.serve.pipeline.api import get_and_validate_ingress_deployment
 from ray.serve.pipeline.api import build as pipeline_build
-from ray.experimental.dag.input_node import InputNode
+from ray.serve.dag import InputNode
 from ray import serve
 
 

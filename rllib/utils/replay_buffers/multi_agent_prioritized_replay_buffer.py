@@ -2,9 +2,8 @@ from typing import Dict
 import logging
 import numpy as np
 
-import ray
 from ray.rllib.policy.rnn_sequencing import timeslice_along_seq_lens_with_overlap
-from ray.rllib.utils.annotations import override, ExperimentalAPI
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import (
     MultiAgentReplayBuffer,
     ReplayMode,
@@ -16,12 +15,15 @@ from ray.rllib.utils.replay_buffers.replay_buffer import StorageUnit
 from ray.rllib.utils.typing import PolicyID, SampleBatchType
 from ray.rllib.utils.timer import TimerStat
 from ray.util.debug import log_once
+from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
 
-@ExperimentalAPI
-class MultiAgentPrioritizedReplayBuffer(MultiAgentReplayBuffer):
+@DeveloperAPI
+class MultiAgentPrioritizedReplayBuffer(
+    MultiAgentReplayBuffer, PrioritizedReplayBuffer
+):
     """A prioritized replay buffer shard for multiagent setups.
 
     This buffer is meant to be run in parallel to distribute experiences
@@ -34,7 +36,6 @@ class MultiAgentPrioritizedReplayBuffer(MultiAgentReplayBuffer):
         capacity: int = 10000,
         storage_unit: str = "timesteps",
         num_shards: int = 1,
-        replay_batch_size: int = 1,
         learning_starts: int = 1000,
         replay_mode: str = "independent",
         replay_sequence_length: int = 1,
@@ -59,13 +60,7 @@ class MultiAgentPrioritizedReplayBuffer(MultiAgentReplayBuffer):
             learning_starts: Number of timesteps after which a call to
                 `replay()` will yield samples (before that, `replay()` will
                 return None).
-            capacity: The capacity of the buffer. Note that when
-                `replay_sequence_length` > 1, this is the number of sequences
-                (not single timesteps) stored.
-            replay_batch_size: The batch size to be sampled (in timesteps).
-                Note that if `replay_sequence_length` > 1,
-                `self.replay_batch_size` will be set to the number of
-                sequences sampled (B).
+            capacity: The capacity of the buffer, measured in `storage_unit`.
             prioritized_replay_alpha: Alpha parameter for a prioritized
                 replay buffer. Use 0.0 for no prioritization.
             prioritized_replay_beta: Beta parameter for a prioritized
@@ -130,7 +125,6 @@ class MultiAgentPrioritizedReplayBuffer(MultiAgentReplayBuffer):
             storage_unit,
             **kwargs,
             underlying_buffer_config=prioritized_replay_buffer_config,
-            replay_batch_size=replay_batch_size,
             learning_starts=learning_starts,
             replay_mode=replay_mode,
             replay_sequence_length=replay_sequence_length,
@@ -141,7 +135,7 @@ class MultiAgentPrioritizedReplayBuffer(MultiAgentReplayBuffer):
         self.prioritized_replay_eps = prioritized_replay_eps
         self.update_priorities_timer = TimerStat()
 
-    @ExperimentalAPI
+    @DeveloperAPI
     @override(MultiAgentReplayBuffer)
     def _add_to_underlying_buffer(
         self, policy_id: PolicyID, batch: SampleBatchType, **kwargs
@@ -162,51 +156,52 @@ class MultiAgentPrioritizedReplayBuffer(MultiAgentReplayBuffer):
         # simply store the samples how they arrive. For sequences and
         # episodes, the underlying buffer may split them itself.
         if self._storage_unit is StorageUnit.TIMESTEPS:
-            if self.replay_sequence_length == 1:
-                timeslices = batch.timeslices(1)
-            else:
-                timeslices = timeslice_along_seq_lens_with_overlap(
-                    sample_batch=batch,
-                    zero_pad_max_seq_len=self.replay_sequence_length,
-                    pre_overlap=self.replay_burn_in,
-                    zero_init_states=self.replay_zero_init_states,
-                )
-            for time_slice in timeslices:
-                # If SampleBatch has prio-replay weights, average
-                # over these to use as a weight for the entire
-                # sequence.
-                if self.replay_mode is ReplayMode.INDEPENDENT:
-                    if "weights" in time_slice and len(time_slice["weights"]):
-                        weight = np.mean(time_slice["weights"])
-                    else:
-                        weight = None
-
-                    if "weight" in kwargs and weight is not None:
-                        if log_once("overwrite_weight"):
-                            logger.warning(
-                                "Adding batches with column "
-                                "`weights` to this buffer while "
-                                "providing weights as a call argument "
-                                "to the add method results in the "
-                                "column being overwritten."
-                            )
-
-                    kwargs = {"weight": weight, **kwargs}
-                else:
-                    if "weight" in kwargs:
-                        if log_once("lockstep_no_weight_allowed"):
-                            logger.warning(
-                                "Settings weights for batches in "
-                                "lockstep mode is not allowed."
-                                "Weights are being ignored."
-                            )
-
-                    kwargs = {**kwargs, "weight": None}
-                self.replay_buffers[policy_id].add(time_slice, **kwargs)
+            timeslices = batch.timeslices(1)
+        elif self._storage_unit is StorageUnit.SEQUENCES:
+            timeslices = timeslice_along_seq_lens_with_overlap(
+                sample_batch=batch,
+                zero_pad_max_seq_len=self.replay_sequence_length,
+                pre_overlap=self.replay_burn_in,
+                zero_init_states=self.replay_zero_init_states,
+            )
         else:
-            self.replay_buffers[policy_id].add(batch, **kwargs)
+            timeslices = [batch]
 
-    @ExperimentalAPI
+        for time_slice in timeslices:
+            # If SampleBatch has prio-replay weights, average
+            # over these to use as a weight for the entire
+            # sequence.
+            if self.replay_mode is ReplayMode.INDEPENDENT:
+                if "weights" in time_slice and len(time_slice["weights"]):
+                    weight = np.mean(time_slice["weights"])
+                else:
+                    weight = None
+
+                if "weight" in kwargs and weight is not None:
+                    if log_once("overwrite_weight"):
+                        logger.warning(
+                            "Adding batches with column "
+                            "`weights` to this buffer while "
+                            "providing weights as a call argument "
+                            "to the add method results in the "
+                            "column being overwritten."
+                        )
+
+                kwargs = {"weight": weight, **kwargs}
+            else:
+                if "weight" in kwargs:
+                    if log_once("lockstep_no_weight_allowed"):
+                        logger.warning(
+                            "Settings weights for batches in "
+                            "lockstep mode is not allowed."
+                            "Weights are being ignored."
+                        )
+
+                kwargs = {**kwargs, "weight": None}
+            self.replay_buffers[policy_id].add(time_slice, **kwargs)
+
+    @DeveloperAPI
+    @override(PrioritizedReplayBuffer)
     def update_priorities(self, prio_dict: Dict) -> None:
         """Updates the priorities of underlying replay buffers.
 
@@ -225,13 +220,13 @@ class MultiAgentPrioritizedReplayBuffer(MultiAgentReplayBuffer):
                     batch_indexes, new_priorities
                 )
 
-    @ExperimentalAPI
+    @DeveloperAPI
     @override(MultiAgentReplayBuffer)
     def stats(self, debug: bool = False) -> Dict:
         """Returns the stats of this buffer and all underlying buffers.
 
         Args:
-            debug (bool): If True, stats of underlying replay buffers will
+            debug: If True, stats of underlying replay buffers will
             be fetched with debug=True.
 
         Returns:
@@ -249,6 +244,3 @@ class MultiAgentPrioritizedReplayBuffer(MultiAgentReplayBuffer):
                 {"policy_{}".format(policy_id): replay_buffer.stats(debug=debug)}
             )
         return stat
-
-
-ReplayActor = ray.remote(num_cpus=0)(MultiAgentPrioritizedReplayBuffer)

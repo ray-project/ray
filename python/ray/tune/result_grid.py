@@ -4,8 +4,8 @@ from typing import Optional, Union
 import pandas as pd
 from ray.cloudpickle import cloudpickle
 from ray.exceptions import RayTaskError
-from ray.ml.checkpoint import Checkpoint
-from ray.ml.result import Result
+from ray.air.checkpoint import Checkpoint
+from ray.air.result import Result
 from ray.tune import ExperimentAnalysis
 from ray.tune.error import TuneError
 from ray.tune.trial import Trial
@@ -165,8 +165,10 @@ class ResultGrid:
         return None
 
     def _trial_to_result(self, trial: Trial) -> Result:
-        if trial.checkpoint.value:
-            checkpoint_dir = TrainableUtil.find_checkpoint_dir(trial.checkpoint.value)
+        if trial.checkpoint.dir_or_data:
+            checkpoint_dir = TrainableUtil.find_checkpoint_dir(
+                trial.checkpoint.dir_or_data
+            )
             checkpoint = Checkpoint.from_directory(checkpoint_dir)
         else:
             checkpoint = None

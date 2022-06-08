@@ -29,6 +29,7 @@ tabulate
 uvicorn==0.16.0
 werkzeug
 wandb
+transformers
 
 # Ray libraries
 git+https://github.com/ray-project/tune-sklearn@master#tune-sklearn
