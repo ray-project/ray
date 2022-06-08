@@ -251,6 +251,54 @@ def test_push_based_shuffle_stats(ray_start_cluster):
         ctx.use_push_based_shuffle = original
 
 
+def test_sort_multinode(ray_start_cluster):
+    num_items = 100000
+    parallelism = 100
+    use_push_based_shuffle = True
+
+    ctx = ray.data.context.DatasetContext.get_current()
+
+    try:
+        original = ctx.use_push_based_shuffle
+        ctx.use_push_based_shuffle = use_push_based_shuffle
+
+        cluster = ray_start_cluster
+        for _ in range(4):
+            cluster.add_node(num_cpus=10)
+        ray.init(cluster.address)
+
+        a = list(reversed(range(num_items)))
+        b = [f"{x:03}" for x in range(num_items)]
+        shard = int(np.ceil(num_items / parallelism))
+        offset = 0
+        dfs = []
+        while offset < num_items:
+            dfs.append(
+                pd.DataFrame(
+                    {"a": a[offset : offset + shard], "b": b[offset : offset + shard]}
+                )
+            )
+            offset += shard
+        if offset < num_items:
+            dfs.append(pd.DataFrame({"a": a[offset:], "b": b[offset:]}))
+        ds = ray.data.from_pandas(dfs)
+
+        def assert_sorted(sorted_ds, expected_rows):
+            assert [tuple(row.values()) for row in sorted_ds.iter_rows()] == list(
+                expected_rows
+            )
+
+        assert_sorted(ds.sort(key="a"), zip(reversed(a), reversed(b)))
+        # Make sure we have rows in each block.
+        assert (
+            len([n for n in ds.sort(key="a")._block_num_rows() if n > 0]) == parallelism
+        )
+        assert_sorted(ds.sort(key="b"), zip(a, b))
+        assert_sorted(ds.sort(key="a", descending=True), zip(a, b))
+    finally:
+        ctx.use_push_based_shuffle = original
+
+
 if __name__ == "__main__":
     import sys
 
