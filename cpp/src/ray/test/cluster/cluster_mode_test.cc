@@ -254,9 +254,7 @@ TEST(RayClusterModeTest, PythonInvocationTest) {
 
 TEST(RayClusterModeTest, JavaInvocationTest) {
   auto java_actor_handle =
-      ray::Actor(
-          ray::JavaActorClass{"io.ray.test.Counter"})
-          .Remote(1);
+      ray::Actor(ray::JavaActorClass{"io.ray.test.Counter"}).Remote(1);
   EXPECT_TRUE(!java_actor_handle.ID().empty());
   auto java_actor_ret =
       java_actor_handle.Task(ray::JavaActorMethod<int>{"increase"}).Remote(2);

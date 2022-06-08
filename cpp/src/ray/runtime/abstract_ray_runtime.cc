@@ -206,8 +206,8 @@ std::string AbstractRayRuntime::CallActor(
     auto typed_descriptor = function_descriptor->As<JavaFunctionDescriptor>();
     RemoteFunctionHolder func_holder = remote_function_holder;
     func_holder.class_name = typed_descriptor->ClassName();
-    invocation_spec = BuildInvocationSpec1(TaskType::ACTOR_TASK, func_holder, args,
-                                           ActorID::FromBinary(actor));
+    invocation_spec = BuildInvocationSpec1(
+        TaskType::ACTOR_TASK, func_holder, args, ActorID::FromBinary(actor));
   } else {
     invocation_spec = BuildInvocationSpec1(
         TaskType::ACTOR_TASK, remote_function_holder, args, ActorID::FromBinary(actor));

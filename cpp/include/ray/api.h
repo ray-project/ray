@@ -233,9 +233,10 @@ inline ray::internal::TaskCaller<PyFunction<R>> Task(PyFunction<R> func) {
 }
 
 inline ray::internal::ActorCreator<JavaActorClass> Actor(JavaActorClass func) {
-  ray::internal::RemoteFunctionHolder remote_func_holder(
-      func.module_name, func.function_name, func.class_name,
-      ray::internal::LangType::JAVA);
+  ray::internal::RemoteFunctionHolder remote_func_holder(func.module_name,
+                                                         func.function_name,
+                                                         func.class_name,
+                                                         ray::internal::LangType::JAVA);
   return {ray::internal::GetRayRuntime().get(), std::move(remote_func_holder)};
 }
 

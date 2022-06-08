@@ -39,7 +39,8 @@ RayFunction BuildRayFunction(InvocationSpec &invocation) {
   } else if (invocation.remote_function_holder.lang_type == LangType::JAVA) {
     auto function_descriptor = FunctionDescriptorBuilder::BuildJava(
         invocation.remote_function_holder.class_name,
-        invocation.remote_function_holder.function_name, "");
+        invocation.remote_function_holder.function_name,
+        "");
     return RayFunction(ray::Language::JAVA, function_descriptor);
   } else {
     throw RayException("not supported yet");
