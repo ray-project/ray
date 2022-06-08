@@ -175,7 +175,7 @@ Ray has experimental support for machines running Apple Silicon (such as M1 macs
    
 #. Ensure that the ``grpcio`` package is installed via forge and **not pypi**. Grpcio currently requires special compilation flags, which pypi will _not_ correctly build with. Miniforge provides a prebuilt version of grpcio for M1 macs. 
    
-   * ``pip uninstall grpcio; conda install grpcio``.
+   * ``pip uninstall grpcio; conda install grpcio``
 
 #. Install Ray as you normally would.
 
