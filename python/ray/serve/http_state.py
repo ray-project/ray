@@ -39,7 +39,6 @@ class HTTPState:
         _start_proxies_on_init: bool = True,
     ):
         self._controller_name = controller_name
-        self._controller_namespace = SERVE_NAMESPACE
         self._detached = detached
         self._config = config
         self._proxy_actors: Dict[NodeId, ActorHandle] = dict()
@@ -108,7 +107,7 @@ class HTTPState:
 
             name = format_actor_name(SERVE_PROXY_NAME, self._controller_name, node_id)
             try:
-                proxy = ray.get_actor(name, namespace=self._controller_namespace)
+                proxy = ray.get_actor(name, namespace=SERVE_NAMESPACE)
             except ValueError:
                 logger.info(
                     "Starting HTTP proxy with name '{}' on node '{}' "
@@ -119,7 +118,7 @@ class HTTPState:
                 proxy = HTTPProxyActor.options(
                     num_cpus=self._config.num_cpus,
                     name=name,
-                    namespace=self._controller_namespace,
+                    namespace=SERVE_NAMESPACE,
                     lifetime="detached" if self._detached else None,
                     max_concurrency=ASYNC_CONCURRENCY,
                     max_restarts=-1,
@@ -130,7 +129,6 @@ class HTTPState:
                     self._config.port,
                     self._config.root_path,
                     controller_name=self._controller_name,
-                    controller_namespace=self._controller_namespace,
                     node_id=node_id,
                     http_middlewares=self._config.middlewares,
                 )
