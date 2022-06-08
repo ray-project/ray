@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, TYPE_CHECKING, Un
 import yaml
 
 import ray
+from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED, NUM_ENV_STEPS_TRAINED
 from ray.rllib.utils.typing import PartialTrainerConfigDict
