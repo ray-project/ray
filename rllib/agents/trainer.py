@@ -830,7 +830,9 @@ class Trainer(Trainable):
                     batch = self.workers.local_worker().sample()
                     num_ts_run += len(batch)
                     total_batch = total_batch.concat(batch)
-                for eval_batch, train_batch in train_test_split(total_batch, self.train_test_split_val):
+                for eval_batch, train_batch in train_test_split(
+                    total_batch, self.train_test_split_val
+                ):
                     self.workers.local_worker().compute_off_policy_estimates(
                         eval_batch, train_batch
                     )
@@ -850,7 +852,9 @@ class Trainer(Trainable):
                     batch = self.evaluation_workers.local_worker().sample()
                     num_ts_run += len(batch)
                     total_batch = total_batch.concat(batch)
-                for eval_batch, train_batch in train_test_split(total_batch, self.train_test_split_val):
+                for eval_batch, train_batch in train_test_split(
+                    total_batch, self.train_test_split_val
+                ):
                     self.evaluation_workers.local_worker().compute_off_policy_estimates(
                         eval_batch, train_batch
                     )
@@ -884,7 +888,9 @@ class Trainer(Trainable):
                         ts = sum(len(b) for b in batches)
                         num_ts_run += ts
                         num_units_done += ts
-                    total_batch = total_batch.concat(SampleBatch.concat_samples(batches))
+                    total_batch = total_batch.concat(
+                        SampleBatch.concat_samples(batches)
+                    )
 
                     logger.info(
                         f"Ran round {round_} of parallel evaluation "

@@ -49,7 +49,7 @@ def train_test_split(
         )
         return
     ### k-fold cv
-    assert(n_episodes >= k), "Not enough eval episodes in batch!"
+    assert n_episodes >= k, "Not enough eval episodes in batch!"
     n_fold = n_episodes // k
     for i in range(k):
         train_episodes = episodes[: i * n_fold] + episodes[(i + 1) * n_fold :]
