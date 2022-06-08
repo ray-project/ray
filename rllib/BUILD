@@ -48,7 +48,7 @@
 
 # Additional tags are:
 # - "team:rllib": Indicating that all tests in this file are the responsibility of
-#   the ML Team.
+#   the RLlib Team.
 # - "needs_gpu": Indicating that a test needs to have a GPU in order to run.
 # - "gpu": Indicating that a test may (but doesn't have to) be run in the GPU
 #   pipeline, defined in .buildkite/pipeline.gpu.yaml.
