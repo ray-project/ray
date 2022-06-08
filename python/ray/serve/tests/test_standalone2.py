@@ -212,7 +212,7 @@ def test_controller_deserialization_deployment_def(start_and_shutdown_ray_cli_fu
             app.deployments[name].set_options(ray_actor_options={"num_cpus": 0.1})
 
         # Run the graph locally on the cluster
-        serve.start(detached=True, _override_controller_namespace="serve")
+        serve.start(detached=True)
         serve.run(graph)
 
     # Start Serve controller in a directory without access to the graph code
