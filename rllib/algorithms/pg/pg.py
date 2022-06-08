@@ -7,8 +7,11 @@ from ray.rllib.execution.train_ops import train_one_step, multi_gpu_train_one_st
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
-from ray.rllib.utils.metrics import NUM_AGENT_STEPS_SAMPLED, NUM_ENV_STEPS_SAMPLED, \
-    WORKER_UPDATE_TIMER
+from ray.rllib.utils.metrics import (
+    NUM_AGENT_STEPS_SAMPLED,
+    NUM_ENV_STEPS_SAMPLED,
+    WORKER_UPDATE_TIMER,
+)
 from ray.rllib.utils.typing import TrainerConfigDict, ResultDict
 
 
