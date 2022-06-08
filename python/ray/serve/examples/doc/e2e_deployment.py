@@ -18,7 +18,7 @@ def summarize(text):
 # __local_model_end__
 
 # __start_ray_cluster_start__
-ray.init(address="auto", namespace="serve")
+ray.init(address="auto")
 # __start_ray_cluster_end__
 
 # __start_serve_start__

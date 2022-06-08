@@ -199,7 +199,7 @@ $ ray start --head
 ```
 
 The Ray cluster that this command launches is the same Ray cluster that the
-Python code connects to using `ray.init(address="auto", namespace="serve")`.
+Python code connects to using `ray.init(address="auto")`.
 It is also the same Ray cluster that keeps Ray Serve (and any deployments on
 it, such as `router`) alive even after the Python script exits as long as
 `detached=True` inside `serve.start()`.
