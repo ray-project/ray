@@ -54,6 +54,9 @@ DECLARE_stats(grpc_server_req_new);
 DECLARE_stats(grpc_server_req_handling);
 DECLARE_stats(grpc_server_req_finished);
 
+/// GRPC client related
+DECLARE_stats(grpc_client_retries);
+
 /// Object Manager.
 DECLARE_stats(object_manager_bytes);
 DECLARE_stats(object_manager_received_chunks);

@@ -377,7 +377,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
 
   /// Maximum request number to handle at the same time.
   /// -1 means no limit.
-  uint64_t max_active_rpcs_;
+  int64_t max_active_rpcs_;
 };
 
 }  // namespace rpc

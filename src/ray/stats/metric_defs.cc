@@ -65,6 +65,12 @@ DEFINE_stats(grpc_server_req_finished,
              (),
              ray::stats::COUNT);
 
+DEFINE_stats(grpc_client_retries,
+             "Number of client retries for each method",
+             ("Method"),
+             (),
+             ray::stats::COUNT);
+
 /// Object Manager.
 DEFINE_stats(object_manager_bytes,
              "Number of bytes pushed or received by type {PushedFromLocalPlasma, "

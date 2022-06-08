@@ -21,6 +21,8 @@
 
 #include "ray/common/network_util.h"
 #include "ray/rpc/grpc_client.h"
+#include "ray/stats/metric.h"
+#include "ray/stats/metric_defs.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
 
 namespace ray {
@@ -32,7 +34,8 @@ class GcsRpcClient;
 /// Executor saves operation and support retries.
 class Executor {
  public:
-  explicit Executor(GcsRpcClient *gcs_rpc_client) : gcs_rpc_client_(gcs_rpc_client) {}
+  Executor(GcsRpcClient *gcs_rpc_client, std::string_view name)
+      : gcs_rpc_client_(gcs_rpc_client), name_(name) {}
 
   /// This function is used to execute the given operation.
   ///
@@ -43,10 +46,14 @@ class Executor {
   }
 
   /// This function is used to retry the given operation.
-  void Retry() { operation_(gcs_rpc_client_); }
+  void Retry() {
+    stats::STATS_grpc_client_retries.Record(1, std::string(name_));
+    operation_(gcs_rpc_client_);
+  }
 
  private:
-  GcsRpcClient *gcs_rpc_client_;
+  GcsRpcClient *const gcs_rpc_client_;
+  const std::string_view name_;
   std::function<void(GcsRpcClient *gcs_rpc_client)> operation_;
 };
 
@@ -88,7 +95,7 @@ class Executor {
   void METHOD(const METHOD##Request &request,                                           \
               const ClientCallback<METHOD##Reply> &callback,                            \
               const int64_t timeout_ms = method_timeout_ms) SPECS {                     \
-    auto executor = new Executor(this);                                                 \
+    auto executor = new Executor(this, "SERVICE##METHOD");                              \
     auto operation_callback = [this, request, callback, executor](                      \
                                   const ray::Status &status,                            \
                                   const METHOD##Reply &reply) {                         \
