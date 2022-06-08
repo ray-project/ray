@@ -50,8 +50,9 @@ class Predictor(abc.ABC):
     To implement a new Predictor for your particular framework, you should subclass
     the base ``Predictor`` and implement the following two methods:
 
-        1. ``_predict_pandas``: Given a pandas.DataFrame input, return a
-           pandas.DataFrame containing predictions.
+        1. ``_predict_pandas`` or ``_predict_arrow``: Given a
+            pandas.DataFrame/pyarrow.Table input, return a
+            pandas.DataFrame/pyarrow.Table containing predictions.
         2. ``from_checkpoint``: Logic for creating a Predictor from an
            :ref:`AIR Checkpoint <air-checkpoint-ref>`.
     """
