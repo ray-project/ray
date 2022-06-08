@@ -11,6 +11,7 @@ from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.offline import JsonReader
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import (
+    add_gpu_if_necessary,
     check,
     check_compute_single_action,
     check_train_results,
@@ -57,6 +58,8 @@ class TestMARWIL(unittest.TestCase):
             )
             .offline_data(input_=[data_file])
         )
+        config = add_gpu_if_necessary(config)
+
 
         num_iterations = 350
         min_reward = 70.0

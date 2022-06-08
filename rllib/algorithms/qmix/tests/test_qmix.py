@@ -6,6 +6,7 @@ import ray
 from ray.tune import register_env
 from ray.rllib.algorithms.qmix import QMixConfig
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
+from ray.rllib.utils.test_utils import add_gpu_if_necessary
 
 
 class AvailActionsTestEnv(MultiAgentEnv):
@@ -104,6 +105,7 @@ class TestQMix(unittest.TestCase):
             )
             .rollouts(num_envs_per_worker=5)
         )  # Test with vectorization on.
+        config = add_gpu_if_necessary(config)
 
         trainer = config.build()
 

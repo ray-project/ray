@@ -5,6 +5,7 @@ import ray.rllib.algorithms.maddpg as maddpg
 from ray.rllib.examples.env.two_step_game import TwoStepGame
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.test_utils import (
+    add_gpu_if_necessary,
     check_train_results,
     framework_iterator,
 )
@@ -41,6 +42,7 @@ class TestMADDPG(unittest.TestCase):
                 policy_mapping_fn=lambda aid, **kwargs: "pol2" if aid else "pol1",
             )
         )
+        config = add_gpu_if_necessary(config)
 
         num_iterations = 1
 

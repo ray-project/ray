@@ -3,6 +3,7 @@ import unittest
 import ray
 import ray.rllib.algorithms.mbmpo as mbmpo
 from ray.rllib.utils.test_utils import (
+    add_gpu_if_necessary,
     check_compute_single_action,
     check_train_results,
     framework_iterator,
@@ -26,6 +27,8 @@ class TestMBMPO(unittest.TestCase):
             .training(dynamics_model={"ensemble_size": 2})
             .environment(env="ray.rllib.examples.env.mbmpo_env.CartPoleWrapper")
         )
+        config = add_gpu_if_necessary(config)
+
         num_iterations = 1
 
         # Test for torch framework (tf not implemented yet).

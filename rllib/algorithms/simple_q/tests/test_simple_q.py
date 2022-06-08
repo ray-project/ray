@@ -11,6 +11,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.numpy import fc, one_hot, huber_loss
 from ray.rllib.utils.test_utils import (
+    add_gpu_if_necessary,
     check,
     check_compute_single_action,
     check_train_results,
@@ -35,6 +36,7 @@ class TestSimpleQ(unittest.TestCase):
         config = simple_q.SimpleQConfig().rollouts(
             num_rollout_workers=0, compress_observations=True
         )
+        config = add_gpu_if_necessary(config)
 
         num_iterations = 2
 

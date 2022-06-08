@@ -4,7 +4,7 @@ import unittest
 import ray
 import ray.rllib.algorithms.dreamer as dreamer
 from ray.rllib.examples.env.random_env import RandomEnv
-from ray.rllib.utils.test_utils import framework_iterator
+from ray.rllib.utils.test_utils import add_gpu_if_necessary, framework_iterator
 
 
 class TestDreamer(unittest.TestCase):
@@ -30,6 +30,7 @@ class TestDreamer(unittest.TestCase):
         # Length (ts) of an episode chunk in a batch.
         # Sub-iterations per .train() call.
         config.training(batch_size=2, batch_length=20, dreamer_train_iters=4)
+        config = add_gpu_if_necessary(config)
 
         num_iterations = 1
 

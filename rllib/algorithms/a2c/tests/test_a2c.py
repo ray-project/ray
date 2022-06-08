@@ -3,6 +3,7 @@ import unittest
 import ray
 import ray.rllib.algorithms.a2c as a2c
 from ray.rllib.utils.test_utils import (
+    add_gpu_if_necessary,
     check_compute_single_action,
     check_train_results,
     framework_iterator,
@@ -21,7 +22,7 @@ class TestA2C(unittest.TestCase):
     def test_a2c_compilation(self):
         """Test whether an A2C can be built with both frameworks."""
         config = a2c.A2CConfig().rollouts(num_rollout_workers=2, num_envs_per_worker=2)
-
+        config = add_gpu_if_necessary(config)
         num_iterations = 1
 
         # Test against all frameworks.

@@ -5,6 +5,7 @@ import ray.rllib.algorithms.r2d2 as r2d2
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.test_utils import (
+    add_gpu_if_necessary,
     check_compute_single_action,
     check_train_results,
     framework_iterator,
@@ -73,6 +74,7 @@ class TestR2D2(unittest.TestCase):
             )
             .exploration(exploration_config={"epsilon_timesteps": 100000})
         )
+        config = add_gpu_if_necessary(config)
 
         num_iterations = 1
 

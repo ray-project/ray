@@ -5,6 +5,7 @@ import ray.rllib.algorithms.appo as appo
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
 from ray.rllib.utils.test_utils import (
+    add_gpu_if_necessary,
     check_compute_single_action,
     check_train_results,
     framework_iterator,
@@ -23,6 +24,7 @@ class TestAPPO(unittest.TestCase):
     def test_appo_compilation(self):
         """Test whether APPO can be built with both frameworks."""
         config = appo.APPOConfig().rollouts(num_rollout_workers=1)
+        config = add_gpu_if_necessary(config)
         num_iterations = 2
 
         for _ in framework_iterator(config, with_eager_tracing=True):

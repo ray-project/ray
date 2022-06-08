@@ -6,6 +6,7 @@ from ray.rllib.examples.env.recommender_system_envs_with_recsim import (
     InterestEvolutionRecSimEnv,
 )
 from ray.rllib.utils.test_utils import (
+    add_gpu_if_necessary,
     check_compute_single_action,
     check_train_results,
     framework_iterator,
@@ -28,6 +29,7 @@ class TestSlateQ(unittest.TestCase):
             .environment(env=InterestEvolutionRecSimEnv)
             .training(replay_buffer_config={"learning_starts": 1000})
         )
+        config = add_gpu_if_necessary(config)
 
         num_iterations = 1
 

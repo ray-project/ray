@@ -5,6 +5,7 @@ import ray.rllib.algorithms.alpha_zero as az
 from ray.rllib.algorithms.alpha_zero.models.custom_torch_models import DenseModel
 from ray.rllib.examples.env.cartpole_sparse_rewards import CartPoleSparseRewards
 from ray.rllib.utils.test_utils import (
+    add_gpu_if_necessary,
     check_train_results,
     framework_iterator,
 )
@@ -26,6 +27,7 @@ class TestAlphaZero(unittest.TestCase):
             .environment(env=CartPoleSparseRewards)
             .training(model={"custom_model": DenseModel})
         )
+        config = add_gpu_if_necessary(config)
         num_iterations = 1
 
         # Only working for torch right now.

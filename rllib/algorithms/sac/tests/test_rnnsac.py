@@ -3,7 +3,11 @@ import unittest
 import ray
 from ray.rllib.algorithms import sac
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.test_utils import check_compute_single_action, framework_iterator
+from ray.rllib.utils.test_utils import (
+    add_gpu_if_necessary,
+    check_compute_single_action,
+    framework_iterator
+)
 
 tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
@@ -48,6 +52,7 @@ class TestRNNSAC(unittest.TestCase):
                 lr=5e-4,
             )
         )
+        config = add_gpu_if_necessary(config)
         num_iterations = 1
 
         # Test building an RNNSAC agent in all frameworks.

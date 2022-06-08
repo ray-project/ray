@@ -12,6 +12,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import fc, huber_loss, l2_loss, relu, sigmoid
 from ray.rllib.utils.test_utils import (
+    add_gpu_if_necessary,
     check,
     check_compute_single_action,
     check_train_results,
@@ -42,6 +43,7 @@ class TestDDPG(unittest.TestCase):
         config.replay_buffer_config["learning_starts"] = 0
         explore = config.exploration_config.update({"random_timesteps": 100})
         config.exploration(exploration_config=explore)
+        config = add_gpu_if_necessary(config)
 
         num_iterations = 1
 

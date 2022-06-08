@@ -2,7 +2,11 @@ import unittest
 
 import ray
 import ray.rllib.algorithms.es as es
-from ray.rllib.utils.test_utils import check_compute_single_action, framework_iterator
+from ray.rllib.utils.test_utils import (
+    add_gpu_if_necessary,
+    check_compute_single_action,
+    framework_iterator
+)
 
 
 class TestES(unittest.TestCase):
@@ -24,6 +28,7 @@ class TestES(unittest.TestCase):
         # Test eval workers ("normal" WorkerSet, unlike ES' list of
         # RolloutWorkers used for collecting train batches).
         config.evaluation(evaluation_interval=1, evaluation_num_workers=2)
+        config = add_gpu_if_necessary(config)
 
         num_iterations = 1
 

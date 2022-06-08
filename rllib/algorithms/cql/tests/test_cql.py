@@ -8,6 +8,7 @@ from ray.rllib.algorithms import cql
 from ray.rllib.offline.estimators.importance_sampling import ImportanceSampling
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import (
+    add_gpu_if_necessary,
     check_compute_single_action,
     check_train_results,
     framework_iterator,
@@ -71,6 +72,7 @@ class TestCQL(unittest.TestCase):
             )
             .rollouts(rollout_fragment_length=1)
         )
+        config = add_gpu_if_necessary(config)
         num_iterations = 4
 
         # Test for tf/torch frameworks.

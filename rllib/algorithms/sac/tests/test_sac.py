@@ -22,6 +22,7 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import fc, huber_loss, relu
 from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.test_utils import (
+    add_gpu_if_necessary,
     check,
     check_compute_single_action,
     check_train_results,
@@ -85,6 +86,7 @@ class TestSAC(unittest.TestCase):
             )
             .rollouts(num_rollout_workers=0, rollout_fragment_length=10)
         )
+        config = add_gpu_if_necessary(config)
         num_iterations = 1
 
         ModelCatalog.register_custom_model("batch_norm", KerasBatchNormModel)

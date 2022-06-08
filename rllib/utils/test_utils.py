@@ -3,6 +3,7 @@ import copy
 from gym.spaces import Box
 import logging
 import numpy as np
+import os
 import random
 import re
 import time
@@ -31,6 +32,12 @@ if tf1:
 torch, _ = try_import_torch()
 
 logger = logging.getLogger(__name__)
+
+
+def add_gpu_if_necessary(config: TrainerConfig):
+    num_gpus = os.environ.get('RLLIB_NUM_GPUS', 0)
+    config.resources(num_gpus=num_gpus)
+    return config
 
 
 def framework_iterator(

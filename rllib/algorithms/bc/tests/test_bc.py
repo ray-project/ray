@@ -6,6 +6,7 @@ import ray
 import ray.rllib.algorithms.bc as bc
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import (
+    add_gpu_if_necessary,
     check_compute_single_action,
     check_train_results,
     framework_iterator,
@@ -45,6 +46,7 @@ class TestBC(unittest.TestCase):
             )
             .offline_data(input_=[data_file])
         )
+        config = add_gpu_if_necessary(config)
         num_iterations = 350
         min_reward = 75.0
 

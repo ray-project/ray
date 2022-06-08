@@ -2,7 +2,11 @@ import unittest
 
 import ray
 import ray.rllib.algorithms.ars as ars
-from ray.rllib.utils.test_utils import framework_iterator, check_compute_single_action
+from ray.rllib.utils.test_utils import (
+    add_gpu_if_necessary,
+    framework_iterator,
+    check_compute_single_action
+)
 
 
 class TestARS(unittest.TestCase):
@@ -29,6 +33,7 @@ class TestARS(unittest.TestCase):
         # Test eval workers ("normal" WorkerSet, unlike ARS' list of
         # RolloutWorkers used for collecting train batches).
         config.evaluation(evaluation_interval=1, evaluation_num_workers=1)
+        config = add_gpu_if_necessary(config)
 
         num_iterations = 2
 

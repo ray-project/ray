@@ -5,6 +5,7 @@ import unittest
 import ray
 import ray.rllib.algorithms.dqn as dqn
 from ray.rllib.utils.test_utils import (
+    add_gpu_if_necessary,
     check,
     check_compute_single_action,
     check_train_results,
@@ -25,6 +26,7 @@ class TestDQN(unittest.TestCase):
         """Test whether DQN can be built on all frameworks."""
         num_iterations = 1
         config = dqn.dqn.DQNConfig().rollouts(num_rollout_workers=2)
+        config = add_gpu_if_necessary(config)
 
         for _ in framework_iterator(config, with_eager_tracing=True):
             # Double-dueling DQN.

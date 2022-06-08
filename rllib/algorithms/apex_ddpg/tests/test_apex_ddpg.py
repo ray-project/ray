@@ -4,6 +4,7 @@ import unittest
 import ray
 import ray.rllib.algorithms.apex_ddpg.apex_ddpg as apex_ddpg
 from ray.rllib.utils.test_utils import (
+    add_gpu_if_necessary,
     check,
     check_compute_single_action,
     check_train_results,
@@ -30,6 +31,7 @@ class TestApexDDPG(unittest.TestCase):
             )
             .environment(env="Pendulum-v1")
         )
+        config = add_gpu_if_necessary(config)
 
         num_iterations = 1
 

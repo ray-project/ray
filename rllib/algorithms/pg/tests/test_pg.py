@@ -11,6 +11,7 @@ from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.numpy import fc
 from ray.rllib.utils.test_utils import (
+    add_gpu_if_necessary,
     check,
     check_compute_single_action,
     check_train_results,
@@ -37,6 +38,7 @@ class TestPG(unittest.TestCase):
             rollout_fragment_length=500,
             observation_filter="MeanStdFilter",
         )
+        config = add_gpu_if_necessary(config)
         num_iterations = 1
 
         image_space = Box(-1.0, 1.0, shape=(84, 84, 3))

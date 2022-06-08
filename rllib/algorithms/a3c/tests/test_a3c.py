@@ -5,6 +5,7 @@ import ray.rllib.algorithms.a3c as a3c
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
 from ray.rllib.utils.test_utils import (
+    add_gpu_if_necessary,
     check_compute_single_action,
     check_train_results,
     framework_iterator,
@@ -23,7 +24,7 @@ class TestA3C(unittest.TestCase):
     def test_a3c_compilation(self):
         """Test whether an A3C can be built with both frameworks."""
         config = a3c.A3CConfig().rollouts(num_rollout_workers=2, num_envs_per_worker=2)
-
+        config = add_gpu_if_necessary(config)
         num_iterations = 2
 
         # Test against all frameworks.

@@ -17,6 +17,7 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
 from ray.rllib.utils.numpy import fc
 from ray.rllib.utils.test_utils import (
+    add_gpu_if_necessary,
     check,
     check_compute_single_action,
     check_train_results,
@@ -118,7 +119,7 @@ class TestPPO(unittest.TestCase):
             )
             .callbacks(MyCallbacks)
         )  # For checking lr-schedule correctness.
-
+        config = add_gpu_if_necessary(config)
         num_iterations = 2
 
         for fw in framework_iterator(config, with_eager_tracing=True):

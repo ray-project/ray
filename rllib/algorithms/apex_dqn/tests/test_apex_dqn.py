@@ -6,6 +6,7 @@ import ray.rllib.algorithms.apex_dqn.apex_dqn as apex_dqn
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
 from ray.rllib.utils.test_utils import (
+    add_gpu_if_necessary,
     check,
     check_compute_single_action,
     check_train_results,
@@ -38,6 +39,7 @@ class TestApexDQN(unittest.TestCase):
                 min_time_s_per_reporting=1,
             )
         )
+        config = add_gpu_if_necessary(config)
 
         for _ in framework_iterator(config):
             trainer = config.build(env="CartPole-v0")

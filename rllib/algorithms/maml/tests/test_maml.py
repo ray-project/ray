@@ -3,6 +3,7 @@ import unittest
 import ray
 import ray.rllib.algorithms.maml as maml
 from ray.rllib.utils.test_utils import (
+    add_gpu_if_necessary,
     check_compute_single_action,
     check_train_results,
     framework_iterator,
@@ -21,6 +22,7 @@ class TestMAML(unittest.TestCase):
     def test_maml_compilation(self):
         """Test whether MAML can be built with all frameworks."""
         config = maml.MAMLConfig().rollouts(num_rollout_workers=1, horizon=200)
+        config = add_gpu_if_necessary(config)
 
         num_iterations = 1
 

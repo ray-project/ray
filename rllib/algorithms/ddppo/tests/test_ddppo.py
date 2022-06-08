@@ -6,6 +6,7 @@ import ray.rllib.algorithms.ddppo as ddppo
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
 from ray.rllib.utils.test_utils import (
+    add_gpu_if_necessary,
     check,
     check_compute_single_action,
     check_train_results,
@@ -25,6 +26,7 @@ class TestDDPPO(unittest.TestCase):
     def test_ddppo_compilation(self):
         """Test whether DDPPO can be built with both frameworks."""
         config = ddppo.DDPPOConfig().resources(num_gpus_per_worker=0)
+        config = add_gpu_if_necessary(config)
 
         num_iterations = 2
 

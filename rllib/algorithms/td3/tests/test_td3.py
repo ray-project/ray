@@ -5,6 +5,7 @@ import ray
 import ray.rllib.algorithms.td3 as td3
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import (
+    add_gpu_if_necessary,
     check,
     check_compute_single_action,
     check_train_results,
@@ -26,6 +27,7 @@ class TestTD3(unittest.TestCase):
     def test_td3_compilation(self):
         """Test whether TD3 can be built with both frameworks."""
         config = td3.TD3Config()
+        config = add_gpu_if_necessary(config)
 
         # Test against all frameworks.
         for _ in framework_iterator(config, with_eager_tracing=True):
