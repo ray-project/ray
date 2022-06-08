@@ -193,20 +193,23 @@ class TestOPE(unittest.TestCase):
         # Test that we can use input_=some_dataset and OPE in evaluation_config
         rllib_dir = Path(__file__).parent.parent.parent.parent
         print("rllib dir={}".format(rllib_dir))
-        data_file = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
-        print("data_file={} exists={}".format(data_file, os.path.isfile(data_file)))
+        large_data = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
+        small_data = os.path.join(rllib_dir, "tests/data/cartpole/small.json")
 
         env_name = "CartPole-v0"
         gamma = 0.99
         train_steps = 200000
+        num_workers = 2
+        eval_num_workers = 2
 
         config = (
             DQNConfig()
-            .rollouts(num_rollout_workers=2)
+            .rollouts(num_rollout_workers=num_workers)
             .training(gamma=gamma)
             .environment(env=env_name)
             .offline_data(
-                input_=data_file,
+                input_="dataset",
+                input_config={"format": "json", "path": large_data},
             )
             .exploration(
                 explore=True,
@@ -217,9 +220,10 @@ class TestOPE(unittest.TestCase):
             )
             .evaluation(
                 evaluation_interval=1,
-                evaluation_num_workers=2,
+                evaluation_num_workers=eval_num_workers,
                 evaluation_config={
-                    "input": os.path.join(rllib_dir, "tests/data/cartpole/small.json"),
+                    "input": "dataset",
+                    "input_config": {"format": "json", "path": small_data},
                 },
                 off_policy_estimation_methods={
                     "k": 5,

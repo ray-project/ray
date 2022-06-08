@@ -40,7 +40,7 @@ def train_test_split(
     assert (
         isinstance(k, float) and k >= 0 and k < 1 or isinstance(k, int)
     ), f" k: {k} must be either a float with 0.0 <= k < 1.0 or an int"
-    ### Train-test split
+    # Train-test split
     if k < 1:
         train_episodes = episodes[: int(n_episodes * k)]
         eval_episodes = episodes[int(n_episodes * k) :]
@@ -48,7 +48,7 @@ def train_test_split(
             train_episodes
         )
         return
-    ### k-fold cv
+    # k-fold cv
     assert n_episodes >= k, "Not enough eval episodes in batch!"
     n_fold = n_episodes // k
     for i in range(k):

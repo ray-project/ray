@@ -55,7 +55,7 @@ class TestMARWIL(unittest.TestCase):
                 evaluation_parallel_to_training=True,
                 evaluation_config={"input": "sampler"},
             )
-            .offline_data(input_=[data_file])
+            .offline_data(input_=[data_file], shuffle_buffer_size=2)
         )
 
         num_iterations = 350
