@@ -9,10 +9,7 @@ import shutil
 import torch
 
 # Configure our PPO trainer
-config = ppo.DEFAULT_CONFIG.copy()
-config["num_gpus"] = 0
-config["num_workers"] = 1
-config["framework"] = "torch"
+config = ppo.PPOConfig().rollouts(num_rollout_workers=1).framework("torch")
 
 outdir = "export_torch"
 if os.path.exists(outdir):
@@ -28,27 +25,25 @@ test_data = {
 
 # Start Ray and initialize a PPO trainer
 ray.init()
-trainer = ppo.PPO(config=config, env="CartPole-v0")
+trainer = config.build(env="CartPole-v0")
 
 # You could train the model here
 # trainer.train()
 
 # Let's run inference on the torch model
 policy = trainer.get_policy()
-result_pytorch, _ = policy.model(
-    {
-        "obs": torch.tensor(test_data["obs"]),
-    }
-)
+result_pytorch, _ = policy.model({"obs": torch.tensor(test_data["obs"])})
 
 # Evaluate tensor to fetch numpy array
 result_pytorch = result_pytorch.detach().numpy()
 
-# This line will export the model to ONNX
-res = trainer.export_policy_model(outdir, onnx=11)
+# This line will export the model to ONNX.
+policy.export_model(outdir, onnx=11)
+# Equivalent to:
+# trainer.export_policy_model(outdir, onnx=11)
 
-# Import ONNX model
-exported_model_file = os.path.join(outdir, "model.onnx")
+# Import ONNX model.
+exported_model_file = os.path.join(outdir, "saved_model.onnx")
 
 # Start an inference session for the ONNX model
 session = onnxruntime.InferenceSession(exported_model_file, None)

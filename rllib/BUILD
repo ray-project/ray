@@ -1627,6 +1627,13 @@ py_test(
 )
 
 py_test(
+    name = "tests/test_export_model",
+    tags = ["team:ml", "policy"],
+    size = "medium",
+    srcs = ["policy/tests/test_export_model.py"]
+)
+
+py_test(
     name = "policy/tests/test_multi_agent_batch",
     tags = ["team:ml", "policy"],
     size = "small",
@@ -1881,13 +1888,6 @@ py_test(
     tags = ["team:ml", "tests_dir", "tests_dir_E"],
     size = "medium",
     srcs = ["tests/test_execution.py"]
-)
-
-py_test(
-    name = "tests/test_export",
-    tags = ["team:ml", "tests_dir", "tests_dir_E"],
-    size = "medium",
-    srcs = ["tests/test_export.py"]
 )
 
 py_test(
@@ -2669,6 +2669,16 @@ py_test(
     tags = ["team:ml", "exclusive", "examples", "examples_E", "no_main"],
     size = "medium",
     srcs = ["examples/export/onnx_tf.py"],
+    args = ["--framework=tf"],
+)
+
+py_test(
+    name = "examples/export/onnx_tf2",
+    main = "examples/export/onnx_tf.py",
+    tags = ["team:ml", "exclusive", "examples", "examples_E", "no_main"],
+    size = "medium",
+    srcs = ["examples/export/onnx_tf.py"],
+    args = ["--framework=tf2"],
 )
 
 py_test(

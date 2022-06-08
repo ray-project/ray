@@ -88,9 +88,10 @@ def export_test(alg_name, failures, framework="tf"):
         ray._private.utils.get_user_temp_dir(), "export_dir_%s" % alg_name
     )
     print("Exporting model ", alg_name, export_dir)
-    algo.export_policy_model(export_dir)
-    if framework == "tf" and not valid_tf_model(export_dir):
+    algo.export_policy_model(export_dir, onnx=None)
+    if framework in ["tf", "tf2"] and not valid_tf_model(export_dir):
         failures.append(alg_name)
+
     shutil.rmtree(export_dir)
 
     if framework == "tf":
@@ -118,7 +119,7 @@ def export_test(alg_name, failures, framework="tf"):
 class TestExport(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(num_cpus=4)
+        ray.init(num_cpus=4, local_mode=True)#TODO
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -141,7 +142,8 @@ class TestExport(unittest.TestCase):
 
     def test_export_ppo(self):
         failures = []
-        export_test("PPO", failures, "torch")
+        #export_test("PPO", failures, "torch")
+        export_test("PPO", failures, "tf2")
         export_test("PPO", failures, "tf")
         assert not failures, failures
 

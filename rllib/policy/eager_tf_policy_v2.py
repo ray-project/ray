@@ -5,6 +5,7 @@ It supports both traced and non-traced eager execution modes.
 
 import gym
 import logging
+import os
 import threading
 import tree  # pip install dm_tree
 from typing import Dict, List, Optional, Tuple, Type, Union
@@ -691,12 +692,30 @@ class EagerTFPolicyV2(Policy):
         self.global_timestep.assign(state["global_timestep"])
 
     @override(Policy)
-    def export_checkpoint(self, export_dir):
-        raise NotImplementedError  # TODO: implement this
+    def export_checkpoint(
+        self, export_dir: str, filename_prefix: str = "model"
+    ) -> None:
+        raise NotImplementedError(
+            "`EagerTFPolicyV2` does not support `export_checkpoint` yet!"
+        )
 
     @override(Policy)
-    def export_model(self, export_dir):
-        raise NotImplementedError  # TODO: implement this
+    def export_model(self, export_dir, onnx: Optional[int] = None) -> None:
+        if onnx:
+            try:
+                import tf2onnx
+            except ImportError as e:
+                raise RuntimeError(
+                    "Converting a TensorFlow model to ONNX requires "
+                    "`tf2onnx` to be installed. Install with "
+                    "`pip install tf2onnx`."
+                ) from e
+
+            model_proto, external_tensor_storage = tf2onnx.convert.from_keras(
+                self.model.base_model, output_path=os.path.join(export_dir, "saved_model.onnx")
+            )
+        else:
+            self.model.base_model.save(export_dir, save_format="tf")
 
     def variables(self):
         """Return the list of all savable variables for this policy."""
