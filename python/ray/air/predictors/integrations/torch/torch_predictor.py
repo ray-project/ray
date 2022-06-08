@@ -67,8 +67,9 @@ class TorchPredictor(Predictor):
                 for k, v in array_dict.items()
             }
 
-        self.model.eval()
-        output = self.model(model_input).cpu().detach().numpy()
+        with torch.no_grad():
+            self.model.eval()
+            output = self.model(model_input).cpu().detach().numpy()
 
         return pd.DataFrame(
             {"predictions": TensorArray(output)}, columns=["predictions"]
