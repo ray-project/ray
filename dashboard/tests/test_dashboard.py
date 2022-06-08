@@ -146,7 +146,8 @@ def test_raylet_and_agent_share_fate(shutdown_only):
     ray.init(include_dashboard=True)
     p = init_error_pubsub()
 
-    all_processes = ray.worker._global_node.all_processes
+    node = ray.worker._global_node
+    all_processes = node.all_processes
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
 
@@ -189,7 +190,8 @@ def test_agent_report_unexpected_raylet_death(shutdown_only):
     ray.init(include_dashboard=True)
     p = init_error_pubsub()
 
-    all_processes = ray.worker._global_node.all_processes
+    node = ray.worker._global_node
+    all_processes = node.all_processes
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
 
@@ -204,6 +206,47 @@ def test_agent_report_unexpected_raylet_death(shutdown_only):
     raylet_proc.wait()
     agent_proc.wait(5)
 
+    errors = get_error_message(p, 1, ray_constants.RAYLET_DIED_ERROR)
+    assert len(errors) == 1, errors
+    err = errors[0]
+    assert err.type == ray_constants.RAYLET_DIED_ERROR
+    assert "Termination is unexpected." in err.error_message, err.error_message
+    assert "Raylet logs:" in err.error_message, err.error_message
+    assert (
+        os.path.getsize(os.path.join(node.get_session_dir_path(), "logs", "raylet.out"))
+        < 1 * 1024 ** 2
+    )
+
+
+def test_agent_report_unexpected_raylet_death_large_file(shutdown_only):
+    """Test agent reports Raylet death if it is not SIGTERM."""
+
+    ray.init(include_dashboard=True)
+    p = init_error_pubsub()
+
+    node = ray.worker._global_node
+    all_processes = node.all_processes
+    raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
+    raylet_proc = psutil.Process(raylet_proc_info.process.pid)
+
+    wait_for_condition(lambda: search_agent(raylet_proc.children()))
+    agent_proc = search_agent(raylet_proc.children())
+    agent_pid = agent_proc.pid
+
+    check_agent_register(raylet_proc, agent_pid)
+
+    # Append to the Raylet log file with data >> 1 MB.
+    with open(
+        os.path.join(node.get_session_dir_path(), "logs", "raylet.out"), "a"
+    ) as f:
+        f.write("test data\n" * 1024 ** 2)
+
+    # The agent should be dead if raylet exits.
+    raylet_proc.kill()
+    raylet_proc.wait()
+    agent_proc.wait(5)
+
+    # Reading and publishing logs should still work.
     errors = get_error_message(p, 1, ray_constants.RAYLET_DIED_ERROR)
     assert len(errors) == 1, errors
     err = errors[0]
