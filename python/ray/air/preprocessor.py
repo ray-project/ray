@@ -6,6 +6,7 @@ from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     import pandas as pd
+    import pyarrow
 
 from ray.data import Dataset
 from ray.air.predictor import DataBatchType
@@ -165,18 +166,59 @@ class Preprocessor(abc.ABC):
     def _transform(self, dataset: Dataset) -> Dataset:
         # TODO(matt): Expose `batch_size` or similar configurability.
         # The default may be too small for some datasets and too large for others.
-        return dataset.map_batches(self._transform_pandas, batch_format="pandas")
+        dataset_format = dataset._dataset_format()
+        exc_msg = "Neither `_transform_arrow` nor `_transform_pandas` are implemented."
+
+        if dataset_format == "arrow":
+            if self.__class__._transform_arrow != Preprocessor._transform_arrow:
+                return dataset.map_batches(
+                    self._transform_arrow, batch_format="pyarrow"
+                )
+            elif self.__class__._transform_pandas != Preprocessor._transform_pandas:
+                return dataset.map_batches(
+                    self._transform_pandas, batch_format="pandas"
+                )
+            else:
+                raise NotImplementedError(exc_msg)
+        elif dataset_format == "pandas":
+            if self.__class__._transform_pandas != Preprocessor._transform_pandas:
+                return dataset.map_batches(
+                    self._transform_pandas, batch_format="pandas"
+                )
+            elif self.__class__._transform_arrow != Preprocessor._transform_arrow:
+                return dataset.map_batches(
+                    self._transform_arrow, batch_format="pyarrow"
+                )
+            else:
+                raise NotImplementedError(exc_msg)
+        else:
+            raise ValueError(
+                f"Unsupported Dataset format: '{dataset_format}'. Only 'pandas' and "
+                "'arrow' Dataset formats are supported."
+            )
 
     def _transform_batch(self, df: DataBatchType) -> DataBatchType:
         import pandas as pd
 
+        try:
+            import pyarrow
+        except ImportError:
+            pyarrow = None
+
         # TODO(matt): Add `_transform_arrow` to use based on input type.
         # Reduce conversion cost if input is in Arrow:  Arrow -> Pandas -> Arrow.
-        if not isinstance(df, pd.DataFrame):
+        if isinstance(df, pd.DataFrame):
+            return self._transform_pandas(df)
+        elif pyarrow is not None and isinstance(df, pyarrow.Table):
+            return self._transform_arrow(df)
+        else:
             raise NotImplementedError(
-                "`transform_batch` is currently only implemented for Pandas DataFrames."
+                "`transform_batch` is currently only implemented for Pandas DataFrames "
+                f"and PyArrow Tables. Got {type(df)}."
             )
-        return self._transform_pandas(df)
 
     def _transform_pandas(self, df: "pd.DataFrame") -> "pd.DataFrame":
+        raise NotImplementedError()
+
+    def _transform_arrow(self, table: "pyarrow.Table") -> "pyarrow.Table":
         raise NotImplementedError()

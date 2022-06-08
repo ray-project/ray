@@ -4,10 +4,11 @@ from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
+import pyarrow
 import pytest
 
 import ray
-from ray.air.preprocessor import PreprocessorNotFittedException
+from ray.air.preprocessor import Preprocessor, PreprocessorNotFittedException
 from ray.air.preprocessors import (
     BatchMapper,
     StandardScaler,
@@ -26,6 +27,34 @@ from ray.air.preprocessors.tokenizer import Tokenizer
 from ray.air.preprocessors.transformer import PowerTransformer
 from ray.air.preprocessors.utils import simple_split_tokenizer, simple_hash
 from ray.air.preprocessors.vectorizer import CountVectorizer, HashingVectorizer
+
+
+@pytest.fixture
+def create_dummy_preprocessors():
+    class DummyPreprocessorWithNothing(Preprocessor):
+        _is_fittable = False
+
+    class DummyPreprocessorWithPandas(DummyPreprocessorWithNothing):
+        def _transform_pandas(self, df: "pd.DataFrame") -> "pd.DataFrame":
+            return df
+
+    class DummyPreprocessorWithArrow(DummyPreprocessorWithNothing):
+        def _transform_arrow(self, table: "pyarrow.Table") -> "pyarrow.Table":
+            return table
+
+    class DummyPreprocessorWithPandasAndArrow(DummyPreprocessorWithNothing):
+        def _transform_pandas(self, df: "pd.DataFrame") -> "pd.DataFrame":
+            return df
+
+        def _transform_arrow(self, table: "pyarrow.Table") -> "pyarrow.Table":
+            return table
+
+    yield (
+        DummyPreprocessorWithNothing(),
+        DummyPreprocessorWithPandas(),
+        DummyPreprocessorWithArrow(),
+        DummyPreprocessorWithPandasAndArrow(),
+    )
 
 
 def test_standard_scaler():
@@ -1324,6 +1353,71 @@ def test_simple_hash():
     assert simple_hash("a", 100) == 52
     assert simple_hash("banana", 100) == 16
     assert simple_hash([1, 2, "apple"], 100) == 37
+
+
+def test_arrow_pandas_support_simple_dataset(create_dummy_preprocessors):
+    # Case 1: simple dataset. No support
+    (
+        with_nothing,
+        with_pandas,
+        with_arrow,
+        with_pandas_and_arrow,
+    ) = create_dummy_preprocessors
+
+    ds = ray.data.range(10)
+    with pytest.raises(ValueError):
+        with_nothing.transform(ds)
+
+    with pytest.raises(ValueError):
+        with_pandas.transform(ds)
+
+    with pytest.raises(ValueError):
+        with_arrow.transform(ds)
+
+    with pytest.raises(ValueError):
+        with_pandas_and_arrow.transform(ds)
+
+
+def test_arrow_pandas_support_pandas_dataset(create_dummy_preprocessors):
+    # Case 2: pandas dataset
+    (
+        with_nothing,
+        with_pandas,
+        with_arrow,
+        with_pandas_and_arrow,
+    ) = create_dummy_preprocessors
+    df = pd.DataFrame([[1, 2, 3], [4, 5, 6]], columns=["A", "B", "C"])
+
+    ds = ray.data.from_pandas(df)
+    with pytest.raises(NotImplementedError):
+        with_nothing.transform(ds)
+
+    assert with_pandas.transform(ds)._dataset_format() == "pandas"
+
+    assert with_arrow.transform(ds)._dataset_format() == "arrow"
+
+    assert with_pandas_and_arrow.transform(ds)._dataset_format() == "pandas"
+
+
+def test_arrow_pandas_support_arrow_dataset(create_dummy_preprocessors):
+    # Case 3: arrow dataset
+    (
+        with_nothing,
+        with_pandas,
+        with_arrow,
+        with_pandas_and_arrow,
+    ) = create_dummy_preprocessors
+    df = pd.DataFrame([[1, 2, 3], [4, 5, 6]], columns=["A", "B", "C"])
+
+    ds = ray.data.from_arrow(pyarrow.Table.from_pandas(df))
+    with pytest.raises(NotImplementedError):
+        with_nothing.transform(ds)
+
+    assert with_pandas.transform(ds)._dataset_format() == "pandas"
+
+    assert with_arrow.transform(ds)._dataset_format() == "arrow"
+
+    assert with_pandas_and_arrow.transform(ds)._dataset_format() == "arrow"
 
 
 if __name__ == "__main__":
