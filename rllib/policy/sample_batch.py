@@ -1318,6 +1318,9 @@ def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
     # Collect the concat'd data.
     concatd_data = {}
 
+    def concat_key(*values):
+        return concat_aligned(values, time_major)
+
     for k in concated_samples[0].keys():
         try:
             if k == "infos":
@@ -1326,7 +1329,7 @@ def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
                 )
             else:
                 concatd_data[k] = tree.map_structure(
-                    _concat_key, *[c[k] for c in concated_samples]
+                    concat_key, *[c[k] for c in concated_samples]
                 )
         except Exception:
             raise ValueError(
