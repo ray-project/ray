@@ -202,11 +202,13 @@ train.torch.get_device
 ~~~~~~~~~~~~~~~~~~~~~~
 
 .. autofunction:: ray.train.torch.get_device
+    :noindex:
 
 train.torch.enable_reproducibility
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autofunction:: ray.train.torch.enable_reproducibility
+    :noindex:
 
 .. _train-api-torch-worker-profiler:
 
@@ -214,12 +216,14 @@ train.torch.accelerate
 ~~~~~~~~~~~~~~~~~~~~~~
 
 .. autofunction:: ray.train.torch.accelerate
+    :noindex:
 
 train.torch.TorchWorkerProfiler
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autoclass:: ray.train.torch.TorchWorkerProfiler
     :members:
+    :noindex:
 
 .. _train-api-tensorflow-utils:
 
@@ -230,3 +234,4 @@ train.tensorflow.prepare_dataset_shard
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autofunction:: ray.train.tensorflow.prepare_dataset_shard
+    :noindex:
