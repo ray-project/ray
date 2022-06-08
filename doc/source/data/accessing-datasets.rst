@@ -51,16 +51,6 @@ it's a list.
   :start-after: __iter_batches_begin__
   :end-before: __iter_batches_end__
 
-By default, batches will be read in consecutive order. If you want to add some randomness,
-you can specify ``random_block_order=True`` and optionally a ``random_seed``. This can be
-used as a low-cost way to perform a pseudo global shuffle. For more robust shuffling, see
-:ref:`Random Shuffle<datasets-random-shuffle>`.
-
-.. literalinclude:: ./doc_code/accessing_datasets.py
-  :language: python
-  :start-after: __iter_batches_random_begin__
-  :end-before: __iter_batches_random_end__
-
 
 Datasets can be passed to Ray tasks or actors and accessed by these iteration methods.
 This does not incur a copy, since the blocks of the Dataset are passed by reference as Ray objects:

@@ -2277,8 +2277,6 @@ class Dataset(Generic[T]):
         batch_size: Optional[int] = None,
         batch_format: str = "native",
         drop_last: bool = False,
-        random_block_order: bool = False,
-        random_seed: Optional[int] = None,
     ) -> Iterator[BatchType]:
         """Return a local batched iterator over the dataset.
 
