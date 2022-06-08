@@ -27,7 +27,11 @@ from ray.cluster_utils import Cluster, cluster_not_supported
 from ray import serve
 from ray.serve.context import get_global_client
 from ray.serve.config import HTTPOptions
-from ray.serve.constants import SERVE_ROOT_URL_ENV_KEY, SERVE_PROXY_NAME
+from ray.serve.constants import (
+    SERVE_NAMESPACE,
+    SERVE_ROOT_URL_ENV_KEY,
+    SERVE_PROXY_NAME,
+)
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import ActorNameList
 from ray.serve.utils import block_until_http_ready, get_all_node_ids, format_actor_name
@@ -73,12 +77,7 @@ def test_shutdown(ray_shutdown):
         alive = True
         for actor_name in actor_names:
             try:
-                if actor_name == serve_controller_name:
-                    ray.get_actor(
-                        actor_name, namespace=ray.get_runtime_context().namespace
-                    )
-                else:
-                    ray.get_actor(actor_name)
+                ray.get_actor(actor_name, namespace=SERVE_NAMESPACE)
             except ValueError:
                 alive = False
         return alive
@@ -92,12 +91,7 @@ def test_shutdown(ray_shutdown):
     def check_dead():
         for actor_name in actor_names:
             try:
-                if actor_name == serve_controller_name:
-                    ray.get_actor(
-                        actor_name, namespace=ray.get_runtime_context().namespace
-                    )
-                else:
-                    ray.get_actor(actor_name)
+                ray.get_actor(actor_name, namespace=SERVE_NAMESPACE)
                 return False
             except ValueError:
                 pass
@@ -113,7 +107,7 @@ def test_detached_deployment(ray_cluster):
     head_node = cluster.add_node(num_cpus=6)
 
     # Create first job, check we can run a simple serve endpoint
-    ray.init(head_node.address, namespace="serve")
+    ray.init(head_node.address, namespace=SERVE_NAMESPACE)
     first_job_id = ray.get_runtime_context().job_id
     serve.start(detached=True)
 
