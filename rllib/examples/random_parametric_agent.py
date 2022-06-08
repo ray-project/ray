@@ -6,7 +6,7 @@ import numpy as np
 
 from ray.rllib import Policy
 from ray.rllib.agents.trainer import Trainer
-from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
+from ray.rllib.execution.parallel_requests import synchronous_parallel_sample
 from ray.rllib.examples.env.parametric_actions_cartpole import ParametricActionsCartPole
 from ray.rllib.models.modelv2 import restore_original_dimensions
 from ray.rllib.utils import override

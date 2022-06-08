@@ -18,6 +18,7 @@ from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.execution.rollout_ops import (
     standardize_fields,
 )
+from ray.rllib.execution.parallel_requests import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import (
     train_one_step,
     multi_gpu_train_one_step,
@@ -29,7 +30,6 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
 from ray.rllib.utils.typing import TrainerConfigDict, ResultDict
-from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,

@@ -2,6 +2,8 @@
 
 .. include:: /_includes/rllib/we_are_hiring.rst
 
+.. _rllib-policy-walkthrough:
+
 How To Customize Policies
 =========================
 

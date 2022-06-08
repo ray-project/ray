@@ -8,9 +8,7 @@ from ray.rllib.execution.common import (
     STEPS_TRAINED_COUNTER,
     STEPS_TRAINED_THIS_ITER_COUNTER,
 )
-from ray.rllib.execution.rollout_ops import (
-    synchronous_parallel_sample,
-)
+from ray.rllib.execution.parallel_requests import synchronous_parallel_sample
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated

@@ -44,9 +44,7 @@ from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer
 from ray.rllib.execution.common import WORKER_UPDATE_TIMER
-from ray.rllib.execution.rollout_ops import (
-    synchronous_parallel_sample,
-)
+from ray.rllib.execution.parallel_requests import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import (
     train_one_step,
     multi_gpu_train_one_step,

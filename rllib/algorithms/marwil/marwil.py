@@ -3,9 +3,7 @@ from typing import Optional, Type
 from ray.rllib.agents.trainer import Trainer
 from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.utils.replay_buffers.utils import validate_buffer_config
-from ray.rllib.execution.rollout_ops import (
-    synchronous_parallel_sample,
-)
+from ray.rllib.execution.parallel_requests import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import (
     multi_gpu_train_one_step,
     train_one_step,

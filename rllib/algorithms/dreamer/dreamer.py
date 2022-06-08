@@ -10,10 +10,8 @@ from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, _get_shared_metric
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.algorithms.dreamer.dreamer_model import DreamerModel
-from ray.rllib.execution.rollout_ops import (
-    ParallelRollouts,
-    synchronous_parallel_sample,
-)
+from ray.rllib.execution.parallel_requests import synchronous_parallel_sample
+from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO

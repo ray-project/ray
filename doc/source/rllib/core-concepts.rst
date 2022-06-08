@@ -167,12 +167,36 @@ Training Iteration Functions
 ----------------------------
 
 .. TODO all four execution plan snippets below must be tested
+.. note::
+    It's important to have a good understanding of the basic :ref:`ray core functions <core-walkthrough>` before reading this section.
+    Furthermore, we utilize concepts such as the ``SampleBatch``, ``RolloutWorker``, and ``Trainer``, which can be read about on this page
+    and the :ref:`rollout worker reference docs <rolloutworker-reference-docs>`.
 
-The training iteration function lets you easily express the execution of an RL algorithm as a sequence of steps that
-occur either sequentially in the learner, or in parallel across many actors.
+    Finally, users who are looking to implement custom algorithms should familiarize themselves with the :ref:`Policy <rllib-policy-walkthrough>` and
+    :ref:`Model <rllib-models-walkthrough>` classes.
 
-They represent the **dataflow of the RL training job**. For example, the policy gradient algorithms can be thought
-of a sequence of repeating steps, or *dataflow*, of:
+What is it?
+~~~~~~~~~~~
+
+The ``training_iteration`` function is an attribute of ``Trainer`` that dictates the execution of your algorithm. Specifically, it is used to express how you want to
+coordinate the movement of samples and policy data across your distributed workers.
+
+**A user will need to modify this attribute of an algorithm if they want to
+make some custom changes to an algorithm or write their own from scratch if they are implementing a new algorithm.**
+
+When is it invoked?
+~~~~~~~~~~~~~~~~~~
+
+``training_iteration`` is called in 2 ways:
+
+ 1. The ``train()`` function of ``Trainer`` is called.
+ 2. An RLlib trainer is being used with ray tune and ``training_iteration`` will be continuously called till the
+    :ref:`ray tune stop criteria <tune-run-ref>` is met.
+
+Key Subconcepts
+~~~~~~~~~~~~~~~
+
+The vanilla policy gradient algorithm can be thought of a sequence of repeating steps, or *dataflow*, of:
 
  1. Generating experiences from many envs in parallel using rollout workers.
  2. Update our policy using the experiences generated in the previous step.
@@ -196,11 +220,43 @@ of a sequence of repeating steps, or *dataflow*, of:
 
         return train_results
 
+.. note::
+    Note that the training iteration function is framework agnostic. This means that you don’t need to implement torch
+    or tensorflow code inside this module. This allows the training iteration function / algorithm to support different frameworks.
+    Within the :ref:`Policy <rllib-policy-walkthrough>` and :ref:`Model <rllib-models-walkthrough>` classes, we leverage the
+    framework-specific operations and modules.
+
+Breaking that ``training_iteration`` code down:
+
+.. code-block:: python
+
+    train_batch = synchronous_parallel_sample(
+                        worker_set=self.workers,
+                        max_env_steps=self.config["train_batch_size"]
+                    )
+
+``self.workers`` is a set of ``RolloutWorkers`` that are created for developers in ``Trainer``'s ``setup`` method.
+This set is covered in greater depth on the :ref:`WorkerSet documentation page<workerset-reference-docs>`.
+The function ``synchronous_parallel_sample`` is an RLlib utility that can be used for sampling in a blocking parallel
+fashion across multiple rollout workers. RLlib includes other utilities, such as the ``AsyncRequestsManager``, for
+facilitating the dataflow between various components in parallelizable fashion. They are covered in the **Concurrency ops**
+section below.
+
+.. code-block:: python
+
+    train_results = train_one_step(self, train_batch)
+
+Functions like ``train_one_step`` and ``multi_gpu_train_one_step`` can be used for
+
+.. code-block:: python
+
+    self.workers.sync_weights()
+
 As you can see each call to ``training_iteration`` does one sampling and training update. A dictionary is a returned that contains the results of the training update.
- Its generally recommended that the dictionary map keys of type ``str`` to values that are of type ``float`` or to dictionaries of the same form, allowing for a nested structure.
+It's generally recommended that the dictionary map keys of type ``str`` to values that are of type ``float`` or to dictionaries of the same form, allowing for a nested structure.
 
 Training Iteration Function Utilities
-~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 RLlib provides a collection of utilities that abstract away common tasks in RL training.
 

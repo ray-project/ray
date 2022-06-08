@@ -40,7 +40,7 @@ def train_one_step(trainer, train_batch, policies_to_train=None) -> Dict:
     """Function that improves the all policies in `train_batch` on the local worker.
 
     Examples:
-        >>> from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
+        >>> from ray.rllib.execution.parallel_requests import synchronous_parallel_sample
         >>> trainer = [...] # doctest: +SKIP
         >>> train_batch = synchronous_parallel_sample(trainer.workers) # doctest: +SKIP
         >>> # This trains the policy on one batch.

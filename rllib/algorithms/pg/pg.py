@@ -4,10 +4,14 @@ from ray.rllib.agents.trainer import Trainer
 from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.algorithms.pg.pg_tf_policy import PGTFPolicy
 from ray.rllib.algorithms.pg.pg_torch_policy import PGTorchPolicy
+from ray.rllib.execution.parallel_requests import synchronous_parallel_sample
+from ray.rllib.execution.train_ops import train_one_step, multi_gpu_train_one_step
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
-from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.metrics import NUM_AGENT_STEPS_SAMPLED, NUM_ENV_STEPS_SAMPLED, \
+    WORKER_UPDATE_TIMER
+from ray.rllib.utils.typing import TrainerConfigDict, ResultDict
 
 
 class PGConfig(TrainerConfig):
@@ -78,6 +82,54 @@ class PGTrainer(Trainer):
     @override(Trainer)
     def get_default_policy_class(self, config) -> Type[Policy]:
         return PGTorchPolicy if config.get("framework") == "torch" else PGTFPolicy
+
+    @override(Trainer)
+    def training_iteration(self) -> ResultDict:
+        """Single Iteration of Vanilla Policy Gradient Algorithm.
+
+        - Collect on-policy samples (SampleBatches) in parallel using the
+          Trainer's RolloutWorkers (@ray.remote).
+        - Concatenate collected SampleBatches into one train batch.
+        - Note that we may have more than one policy in the multi-agent case:
+          Call the different policies' `learn_on_batch` (simple optimizer) OR
+          `load_batch_into_buffer` + `learn_on_loaded_batch` (multi-GPU
+          optimizer) methods to calculate loss and update the model(s).
+        - Return all collected metrics for the iteration.
+
+        Returns:
+            The results dict from executing the training iteration.
+        """
+        # Collect SampleBatches from sample workers until we have a full batch.
+        if self._by_agent_steps:
+            train_batch = synchronous_parallel_sample(
+                worker_set=self.workers, max_agent_steps=self.config["train_batch_size"]
+            )
+        else:
+            train_batch = synchronous_parallel_sample(
+                worker_set=self.workers, max_env_steps=self.config["train_batch_size"]
+            )
+        train_batch = train_batch.as_multi_agent()
+        self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
+        self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
+
+        # Use simple optimizer (only for multi-agent or tf-eager; all other
+        # cases should use the multi-GPU optimizer, even if only using 1 GPU).
+        # TODO: (sven) rename MultiGPUOptimizer into something more
+        #  meaningful.
+        if self.config.get("simple_optimizer") is True:
+            train_results = train_one_step(self, train_batch)
+        else:
+            train_results = multi_gpu_train_one_step(self, train_batch)
+
+        # Update weights and global_vars - after learning on the local worker - on all
+        # remote workers.
+        global_vars = {
+            "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
+        }
+        with self._timers[WORKER_UPDATE_TIMER]:
+            self.workers.sync_weights(global_vars=global_vars)
+
+        return train_results
 
 
 # Deprecated: Use ray.rllib.algorithms.pg.PGConfig instead!

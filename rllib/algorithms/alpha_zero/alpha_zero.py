@@ -5,6 +5,7 @@ from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.agents.trainer import Trainer
 from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.evaluation.worker_set import WorkerSet
+from ray.rllib.execution.parallel_requests import synchronous_parallel_sample
 from ray.rllib.execution.replay_ops import (
     SimpleReplayBuffer,
     Replay,
@@ -14,7 +15,6 @@ from ray.rllib.execution.replay_ops import (
 from ray.rllib.execution.rollout_ops import (
     ParallelRollouts,
     ConcatBatches,
-    synchronous_parallel_sample,
 )
 from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.train_ops import (

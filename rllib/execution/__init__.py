@@ -20,7 +20,6 @@ from ray.rllib.execution.rollout_ops import (
     ConcatBatches,
     SelectExperiences,
     StandardizeFields,
-    synchronous_parallel_sample,
 )
 from ray.rllib.execution.train_ops import (
     TrainOneStep,
@@ -33,7 +32,6 @@ from ray.rllib.execution.train_ops import (
 )
 
 __all__ = [
-    "synchronous_parallel_sample",
     "train_one_step",
     "ApplyGradients",
     "AsyncGradients",

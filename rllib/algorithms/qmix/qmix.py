@@ -2,9 +2,7 @@ from typing import Optional, Type
 
 from ray.rllib.algorithms.dqn.simple_q import SimpleQConfig, SimpleQTrainer
 from ray.rllib.algorithms.qmix.qmix_policy import QMixTorchPolicy
-from ray.rllib.execution.rollout_ops import (
-    synchronous_parallel_sample,
-)
+from ray.rllib.execution.parallel_requests import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import (
     multi_gpu_train_one_step,
     train_one_step,

@@ -19,9 +19,7 @@ from ray.rllib.algorithms.dqn.simple_q import (
     SimpleQConfig,
     SimpleQTrainer,
 )
-from ray.rllib.execution.rollout_ops import (
-    synchronous_parallel_sample,
-)
+from ray.rllib.execution.parallel_requests import synchronous_parallel_sample
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.execution.train_ops import (
     train_one_step,
