@@ -7,6 +7,7 @@ import logging
 import math
 import os
 import random
+import threading
 import time
 import traceback
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -1125,7 +1126,6 @@ class DeploymentState:
                 if there are multiple handles, the max number of queries at
                 a single handle should be passed in
         """
-
         if self._deleting:
             return
 
