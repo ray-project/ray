@@ -118,7 +118,7 @@ def start(
     type=str,
     help=RAY_INIT_ADDRESS_HELP_STR,
 )
-def shutdown(address: str, namespace: str):
+def shutdown(address: str):
     ray.init(
         address=address,
         namespace=SERVE_NAMESPACE,
