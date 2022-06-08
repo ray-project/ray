@@ -22,82 +22,82 @@ class TestOPE(unittest.TestCase):
     def tearDown(self):
         ray.shutdown()
 
-    # @classmethod
-    # def setUpClass(cls):
-    #     ray.init(num_cpus=4)
-    #     rllib_dir = Path(__file__).parent.parent.parent.parent
-    #     print("rllib dir={}".format(rllib_dir))
-    #     data_file = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
-    #     print("data_file={} exists={}".format(data_file, os.path.isfile(data_file)))
+    @classmethod
+    def setUpClass(cls):
+        ray.init(num_cpus=4)
+        rllib_dir = Path(__file__).parent.parent.parent.parent
+        print("rllib dir={}".format(rllib_dir))
+        data_file = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
+        print("data_file={} exists={}".format(data_file, os.path.isfile(data_file)))
 
-    #     env_name = "CartPole-v0"
-    #     cls.gamma = 0.99
-    #     train_steps = 200000
-    #     n_batches = 20  # Approx. equal to n_episodes
-    #     n_eval_episodes = 100
+        env_name = "CartPole-v0"
+        cls.gamma = 0.99
+        train_steps = 200000
+        n_batches = 20  # Approx. equal to n_episodes
+        n_eval_episodes = 100
 
-    #     config = (
-    #         DQNConfig()
-    #         .rollouts(num_rollout_workers=3, batch_mode="complete_episodes")
-    #         .environment(env=env_name)
-    #         .training(gamma=cls.gamma)
-    #         .exploration(
-    #             explore=True,
-    #             exploration_config={
-    #                 "type": "SoftQ",
-    #                 "temperature": 1.0,
-    #             },
-    #         )
-    #         .framework("torch")
-    #     )
+        config = (
+            DQNConfig()
+            .rollouts(num_rollout_workers=3, batch_mode="complete_episodes")
+            .environment(env=env_name)
+            .training(gamma=cls.gamma)
+            .exploration(
+                explore=True,
+                exploration_config={
+                    "type": "SoftQ",
+                    "temperature": 1.0,
+                },
+            )
+            .framework("torch")
+        )
 
-    #     cls.trainer = config.build()
-    #     ts = 0
-    #     while ts < train_steps:
-    #         results = cls.trainer.train()
-    #         ts = results["timesteps_total"]
-    #     print("time_total_s", results["time_total_s"])
-    #     print("episode_reward_mean", results["episode_reward_mean"])
+        cls.trainer = config.build()
+        ts = 0
+        while ts < train_steps:
+            results = cls.trainer.train()
+            ts = results["timesteps_total"]
+        print("time_total_s", results["time_total_s"])
+        print("episode_reward_mean", results["episode_reward_mean"])
 
-    #     # Read n_batches of data
-    #     reader = JsonReader(data_file)
-    #     cls.batch = reader.next()
-    #     for _ in range(n_batches - 1):
-    #         cls.batch = cls.batch.concat(reader.next())
-    #     cls.n_episodes = len(cls.batch.split_by_episode())
-    #     print("Episodes:", cls.n_episodes, "Steps:", cls.batch.count)
+        # Read n_batches of data
+        reader = JsonReader(data_file)
+        cls.batch = reader.next()
+        for _ in range(n_batches - 1):
+            cls.batch = cls.batch.concat(reader.next())
+        cls.n_episodes = len(cls.batch.split_by_episode())
+        print("Episodes:", cls.n_episodes, "Steps:", cls.batch.count)
 
-    #     cls.mean_ret = {}
-    #     cls.std_ret = {}
+        cls.mean_ret = {}
+        cls.std_ret = {}
 
-    #     # Simulate Monte-Carlo rollouts
-    #     mc_ret = []
-    #     env = gym.make(env_name)
-    #     for _ in range(n_eval_episodes):
-    #         obs = env.reset()
-    #         done = False
-    #         rewards = []
-    #         while not done:
-    #             act = cls.trainer.compute_single_action(obs)
-    #             obs, reward, done, _ = env.step(act)
-    #             rewards.append(reward)
-    #         ret = 0
-    #         for r in reversed(rewards):
-    #             ret = r + cls.gamma * ret
-    #         mc_ret.append(ret)
+        # Simulate Monte-Carlo rollouts
+        mc_ret = []
+        env = gym.make(env_name)
+        for _ in range(n_eval_episodes):
+            obs = env.reset()
+            done = False
+            rewards = []
+            while not done:
+                act = cls.trainer.compute_single_action(obs)
+                obs, reward, done, _ = env.step(act)
+                rewards.append(reward)
+            ret = 0
+            for r in reversed(rewards):
+                ret = r + cls.gamma * ret
+            mc_ret.append(ret)
 
-    #     cls.mean_ret["simulation"] = np.mean(mc_ret)
-    #     cls.std_ret["simulation"] = np.std(mc_ret)
+        cls.mean_ret["simulation"] = np.mean(mc_ret)
+        cls.std_ret["simulation"] = np.std(mc_ret)
 
-    #     # Optional configs for the model-based estimators
-    #     cls.k = 5
-    #     cls.model_config = {"n_iters": 10}
-    #     ray.shutdown()
+        # Optional configs for the model-based estimators
+        cls.k = 5
+        cls.model_config = {"n_iters": 10}
+        ray.shutdown()
 
-    # @classmethod
-    # def tearDownClass(cls):
-    #     print("Mean:", cls.mean_ret)
-    #     print("Stddev:", cls.std_ret)
+    @classmethod
+    def tearDownClass(cls):
+        print("Mean:", cls.mean_ret)
+        print("Stddev:", cls.std_ret)
 
     def test_is(self):
         name = "is"
