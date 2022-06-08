@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, Extra, validator
+from pydantic import BaseModel, Field, Extra, root_validator, validator
 from typing import Union, Tuple, List, Dict
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve.common import (
@@ -199,6 +199,19 @@ class DeploymentSchema(
     ray_actor_options: RayActorOptionsSchema = Field(
         default=None, description="Options set for each replica actor."
     )
+
+    @root_validator
+    def num_replicas_and_autoscaling_config_mutually_exclusive(cls, values):
+        if (
+            values.get("num_replicas", None) is not None
+            and values.get("autoscaling_config", None) is not None
+        ):
+            raise ValueError(
+                "Manually setting num_replicas is not allowed "
+                "when autoscaling_config is provided."
+            )
+
+        return values
 
     @validator("route_prefix")
     def route_prefix_format(cls, v):

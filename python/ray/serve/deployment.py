@@ -293,9 +293,9 @@ class Deployment:
         new_config = self._config.copy()
 
         if num_replicas is not None and _autoscaling_config is not None:
-            logger.info(
-                "num_replicas and _autoscaling_config are both set, "
-                "num_replicas will not take effect"
+            raise ValueError(
+                "Manually setting num_replicas is not allowed when "
+                "_autoscaling_config is provided."
             )
 
         if num_replicas == 0:
@@ -462,7 +462,11 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
         ),
         init_args=(),
         init_kwargs={},
-        num_replicas=d.num_replicas,
+        # TODO(Sihan) DeploymentConfig num_replicas and auto_config can be set together
+        # because internally we use these two field for autoscale and deploy.
+        # We can improve the code after we separate the user faced deployment config and
+        # internal deployment config.
+        num_replicas=None if d._config.autoscaling_config else d.num_replicas,
         route_prefix=d.route_prefix,
         max_concurrent_queries=d.max_concurrent_queries,
         user_config=d.user_config,

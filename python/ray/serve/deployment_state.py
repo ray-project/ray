@@ -1046,9 +1046,7 @@ class DeploymentState:
             self.get_running_replica_infos(),
         )
 
-    def _set_deployment_goal(
-        self, deployment_info: Optional[DeploymentInfo], preserve_version: bool = False
-    ) -> None:
+    def _set_deployment_goal(self, deployment_info: Optional[DeploymentInfo]) -> None:
         """
         Set desirable state for a given deployment, identified by tag.
 
@@ -1056,18 +1054,15 @@ class DeploymentState:
             deployment_info (Optional[DeploymentInfo]): Contains deployment and
                 replica config, if passed in as None, we're marking
                 target deployment as shutting down.
-            preserve_version: keep the same version explicitly. When it is set
-                to True, self._target_version will not be changed.
         """
 
         if deployment_info is not None:
             self._target_info = deployment_info
             self._target_replicas = deployment_info.deployment_config.num_replicas
-            if preserve_version is False:
-                self._target_version = DeploymentVersion(
-                    deployment_info.version,
-                    user_config=deployment_info.deployment_config.user_config,
-                )
+            self._target_version = DeploymentVersion(
+                deployment_info.version,
+                user_config=deployment_info.deployment_config.user_config,
+            )
 
         else:
             self._target_replicas = 0
@@ -1148,7 +1143,9 @@ class DeploymentState:
         new_config.deployment_config.num_replicas = decision_num_replicas
         # Reset constructor retry counter.
         self._replica_constructor_retry_counter = 0
-        self._set_deployment_goal(new_config, True)
+        if new_config.version is None:
+            new_config.version = self._target_version.code_version
+        self._set_deployment_goal(new_config)
         self._save_checkpoint_func()
 
     def delete(self) -> None:

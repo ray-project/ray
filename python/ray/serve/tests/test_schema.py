@@ -20,6 +20,7 @@ from ray.serve.schema import (
     serve_status_to_schema,
 )
 from ray.util.accelerators.accelerators import NVIDIA_TESLA_V100, NVIDIA_TESLA_P4
+from ray.serve.config import AutoscalingConfig
 from ray.serve.deployment import (
     deployment_to_schema,
     schema_to_deployment,
@@ -350,6 +351,23 @@ class TestDeploymentSchema:
         # Ensure route_prefix of None works
         deployment_schema["route_prefix"] = None
         DeploymentSchema.parse_obj(deployment_schema)
+
+    def test_mutually_exclusive_num_replicas_and_autoscaling_config(self):
+        # num_replicas and autoscaling_config cannot be set at the same time
+        deployment_schema = self.get_minimal_deployment_schema()
+
+        deployment_schema["num_replicas"] = 5
+        deployment_schema["autoscaling_config"] = None
+        DeploymentSchema.parse_obj(deployment_schema)
+
+        deployment_schema["num_replicas"] = None
+        deployment_schema["autoscaling_config"] = AutoscalingConfig().dict()
+        DeploymentSchema.parse_obj(deployment_schema)
+
+        deployment_schema["num_replicas"] = 5
+        deployment_schema["autoscaling_config"] = AutoscalingConfig().dict()
+        with pytest.raises(ValueError):
+            DeploymentSchema.parse_obj(deployment_schema)
 
     def test_extra_fields_invalid_deployment_schema(self):
         # Undefined fields should be forbidden in the schema
