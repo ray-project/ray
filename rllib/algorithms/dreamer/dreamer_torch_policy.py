@@ -1,25 +1,184 @@
-import logging
+from typing import (
+    List,
+    Tuple,
+    Union,
+)
 
+import logging
+import ray
 import numpy as np
 from typing import Dict, Optional
 
-import ray
+
 from ray.rllib.algorithms.dreamer.utils import FreezeParameters
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import apply_grad_clipping
 from ray.rllib.utils.typing import AgentID, TensorType
+from ray.rllib.utils.annotations import override
+from ray.rllib.models.action_dist import ActionDistribution
+from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 
 torch, nn = try_import_torch()
 if torch:
     from torch import distributions as td
 
 logger = logging.getLogger(__name__)
+
+
+class DreamerTorchPolicy(TorchPolicyV2):
+    def __init__(self, observation_space, action_space, config):
+
+        config = dict(ray.rllib.algorithms.dreamer.DreamerConfig().to_dict(), **config)
+
+        TorchPolicyV2.__init__(
+            self,
+            observation_space,
+            action_space,
+            config,
+            max_seq_len=config["model"]["max_seq_len"],
+        )
+
+        # TODO: Don't require users to call this manually.
+        self._initialize_loss_from_dummy_batch()
+
+    @override(TorchPolicyV2)
+    def loss(
+        self, model: ModelV2, dist_class: ActionDistribution, train_batch: SampleBatch
+    ) -> Union[TensorType, List[TensorType]]:
+        log_gif = False
+        if "log_gif" in train_batch:
+            log_gif = True
+
+        self.stats_dict = compute_dreamer_loss(
+            train_batch["obs"],
+            train_batch["actions"],
+            train_batch["rewards"],
+            self.model,
+            self.config["imagine_horizon"],
+            self.config["gamma"],
+            self.config["lambda"],
+            self.config["kl_coeff"],
+            self.config["free_nats"],
+            log_gif,
+        )
+
+        loss_dict = self.stats_dict
+
+        return (
+            loss_dict["model_loss"],
+            loss_dict["actor_loss"],
+            loss_dict["critic_loss"],
+        )
+
+    @override(TorchPolicyV2)
+    def postprocess_trajectory(
+        self,
+        sample_batch: SampleBatch,
+        other_agent_batches: Optional[
+            Dict[AgentID, Tuple["Policy", SampleBatch]]
+        ] = None,
+        episode: Optional["Episode"] = None,
+    ) -> SampleBatch:
+        """Batch format should be in the form of (s_t, a_(t-1), r_(t-1))
+        When t=0, the resetted obs is paired with action and reward of 0.
+        """
+        obs = sample_batch[SampleBatch.OBS]
+        new_obs = sample_batch[SampleBatch.NEXT_OBS]
+        action = sample_batch[SampleBatch.ACTIONS]
+        reward = sample_batch[SampleBatch.REWARDS]
+        eps_ids = sample_batch[SampleBatch.EPS_ID]
+
+        act_shape = action.shape
+        act_reset = np.array([0.0] * act_shape[-1])[None]
+        rew_reset = np.array(0.0)[None]
+        obs_end = np.array(new_obs[act_shape[0] - 1])[None]
+
+        batch_obs = np.concatenate([obs, obs_end], axis=0)
+        batch_action = np.concatenate([act_reset, action], axis=0)
+        batch_rew = np.concatenate([rew_reset, reward], axis=0)
+        batch_eps_ids = np.concatenate([eps_ids, eps_ids[-1:]], axis=0)
+
+        new_batch = {
+            SampleBatch.OBS: batch_obs,
+            SampleBatch.REWARDS: batch_rew,
+            SampleBatch.ACTIONS: batch_action,
+            SampleBatch.EPS_ID: batch_eps_ids,
+        }
+        return SampleBatch(new_batch)
+
+    def stats_fn(self, train_batch):
+        return self.stats_dict
+
+    @override(TorchPolicyV2)
+    def optimizer(self):
+        model = self.model
+        encoder_weights = list(model.encoder.parameters())
+        decoder_weights = list(model.decoder.parameters())
+        reward_weights = list(model.reward.parameters())
+        dynamics_weights = list(model.dynamics.parameters())
+        actor_weights = list(model.actor.parameters())
+        critic_weights = list(model.value.parameters())
+        model_opt = torch.optim.Adam(
+            encoder_weights + decoder_weights + reward_weights + dynamics_weights,
+            lr=self.config["td_model_lr"],
+        )
+        actor_opt = torch.optim.Adam(actor_weights, lr=self.config["actor_lr"])
+        critic_opt = torch.optim.Adam(critic_weights, lr=self.config["critic_lr"])
+
+        return (model_opt, actor_opt, critic_opt)
+
+    def action_sampler_fn(policy, model, obs_batch, state_batches, explore, timestep):
+        """Action sampler function has two phases. During the prefill phase,
+        actions are sampled uniformly [-1, 1]. During training phase, actions
+        are evaluated through DreamerPolicy and an additive gaussian is added
+        to incentivize exploration.
+        """
+        obs = obs_batch["obs"]
+
+        # Custom Exploration
+        if timestep <= policy.config["prefill_timesteps"]:
+            logp = None
+            # Random action in space [-1.0, 1.0]
+            action = 2.0 * torch.rand(1, model.action_space.shape[0]) - 1.0
+            state_batches = model.get_initial_state()
+        else:
+            # Weird RLlib Handling, this happens when env rests
+            if len(state_batches[0].size()) == 3:
+                # Very hacky, but works on all envs
+                state_batches = model.get_initial_state()
+            action, logp, state_batches = model.policy(obs, state_batches, explore)
+            action = td.Normal(action, policy.config["explore_noise"]).sample()
+            action = torch.clamp(action, min=-1.0, max=1.0)
+
+        policy.global_timestep += policy.config["action_repeat"]
+
+        return action, logp, state_batches
+
+    def make_model(self):
+
+        model = ModelCatalog.get_model_v2(
+            self.observation_space,
+            self.action_space,
+            1,
+            self.config["dreamer_model"],
+            name="DreamerModel",
+            framework="torch",
+        )
+
+        self.model_variables = model.variables()
+
+        return model
+
+    def extra_grad_process(
+        self, optimizer: "torch.optim.Optimizer", loss: TensorType
+    ) -> Dict[str, TensorType]:
+        return apply_grad_clipping(self, optimizer, loss)
 
 
 # This is the computation graph for workers (inner adaptation steps)
@@ -156,140 +315,3 @@ def log_summary(obs, action, embed, image_pred, model):
     mod = torch.cat([recon[:, :5] + 0.5, openl + 0.5], 1)
     error = (mod - truth + 1.0) / 2.0
     return torch.cat([truth, mod, error], 3)
-
-
-def dreamer_loss(policy, model, dist_class, train_batch):
-    log_gif = False
-    if "log_gif" in train_batch:
-        log_gif = True
-
-    policy.stats_dict = compute_dreamer_loss(
-        train_batch["obs"],
-        train_batch["actions"],
-        train_batch["rewards"],
-        policy.model,
-        policy.config["imagine_horizon"],
-        policy.config["gamma"],
-        policy.config["lambda"],
-        policy.config["kl_coeff"],
-        policy.config["free_nats"],
-        log_gif,
-    )
-
-    loss_dict = policy.stats_dict
-
-    return (loss_dict["model_loss"], loss_dict["actor_loss"], loss_dict["critic_loss"])
-
-
-def build_dreamer_model(policy, obs_space, action_space, config):
-
-    model = ModelCatalog.get_model_v2(
-        obs_space,
-        action_space,
-        1,
-        config["dreamer_model"],
-        name="DreamerModel",
-        framework="torch",
-    )
-
-    policy.model_variables = model.variables()
-
-    return model
-
-
-def action_sampler_fn(policy, model, input_dict, state, explore, timestep):
-    """Action sampler function has two phases. During the prefill phase,
-    actions are sampled uniformly [-1, 1]. During training phase, actions
-    are evaluated through DreamerPolicy and an additive gaussian is added
-    to incentivize exploration.
-    """
-    obs = input_dict["obs"]
-
-    # Custom Exploration
-    if timestep <= policy.config["prefill_timesteps"]:
-        logp = None
-        # Random action in space [-1.0, 1.0]
-        action = 2.0 * torch.rand(1, model.action_space.shape[0]) - 1.0
-        state = model.get_initial_state()
-    else:
-        # Weird RLlib Handling, this happens when env rests
-        if len(state[0].size()) == 3:
-            # Very hacky, but works on all envs
-            state = model.get_initial_state()
-        action, logp, state = model.policy(obs, state, explore)
-        action = td.Normal(action, policy.config["explore_noise"]).sample()
-        action = torch.clamp(action, min=-1.0, max=1.0)
-
-    policy.global_timestep += policy.config["action_repeat"]
-
-    return action, logp, state
-
-
-def dreamer_stats(policy, train_batch):
-    return policy.stats_dict
-
-
-def dreamer_optimizer_fn(policy, config):
-    model = policy.model
-    encoder_weights = list(model.encoder.parameters())
-    decoder_weights = list(model.decoder.parameters())
-    reward_weights = list(model.reward.parameters())
-    dynamics_weights = list(model.dynamics.parameters())
-    actor_weights = list(model.actor.parameters())
-    critic_weights = list(model.value.parameters())
-    model_opt = torch.optim.Adam(
-        encoder_weights + decoder_weights + reward_weights + dynamics_weights,
-        lr=config["td_model_lr"],
-    )
-    actor_opt = torch.optim.Adam(actor_weights, lr=config["actor_lr"])
-    critic_opt = torch.optim.Adam(critic_weights, lr=config["critic_lr"])
-
-    return (model_opt, actor_opt, critic_opt)
-
-
-def preprocess_episode(
-    policy: Policy,
-    sample_batch: SampleBatch,
-    other_agent_batches: Optional[Dict[AgentID, SampleBatch]] = None,
-    episode: Optional[Episode] = None,
-) -> SampleBatch:
-    """Batch format should be in the form of (s_t, a_(t-1), r_(t-1))
-    When t=0, the resetted obs is paired with action and reward of 0.
-    """
-    obs = sample_batch[SampleBatch.OBS]
-    new_obs = sample_batch[SampleBatch.NEXT_OBS]
-    action = sample_batch[SampleBatch.ACTIONS]
-    reward = sample_batch[SampleBatch.REWARDS]
-    eps_ids = sample_batch[SampleBatch.EPS_ID]
-
-    act_shape = action.shape
-    act_reset = np.array([0.0] * act_shape[-1])[None]
-    rew_reset = np.array(0.0)[None]
-    obs_end = np.array(new_obs[act_shape[0] - 1])[None]
-
-    batch_obs = np.concatenate([obs, obs_end], axis=0)
-    batch_action = np.concatenate([act_reset, action], axis=0)
-    batch_rew = np.concatenate([rew_reset, reward], axis=0)
-    batch_eps_ids = np.concatenate([eps_ids, eps_ids[-1:]], axis=0)
-
-    new_batch = {
-        SampleBatch.OBS: batch_obs,
-        SampleBatch.REWARDS: batch_rew,
-        SampleBatch.ACTIONS: batch_action,
-        SampleBatch.EPS_ID: batch_eps_ids,
-    }
-    return SampleBatch(new_batch)
-
-
-DreamerTorchPolicy = build_policy_class(
-    name="DreamerTorchPolicy",
-    framework="torch",
-    get_default_config=lambda: ray.rllib.algorithms.dreamer.dreamer.DEFAULT_CONFIG,
-    action_sampler_fn=action_sampler_fn,
-    postprocess_fn=preprocess_episode,
-    loss_fn=dreamer_loss,
-    stats_fn=dreamer_stats,
-    make_model=build_dreamer_model,
-    optimizer_fn=dreamer_optimizer_fn,
-    extra_grad_process_fn=apply_grad_clipping,
-)
