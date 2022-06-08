@@ -2297,10 +2297,6 @@ class Dataset(Generic[T]):
                 select ``pandas.DataFrame`` or "pyarrow" to select
                 ``pyarrow.Table``. Default is "native".
             drop_last: Whether to drop the last batch if it's incomplete.
-            random_block_order: Whether the blocks should be fetched in
-                random order.
-            random_seed: Seeds the python random pRNG generator. Used if
-                ``random_block_order`` is True.
 
         Returns:
             An iterator over record batches.
