@@ -9,6 +9,7 @@ from typing import (
     Tuple,
     Union,
     Type,
+    TYPE_CHECKING,
 )
 
 import ray
@@ -21,7 +22,6 @@ from ray.train.constants import (
 from ray.train.trainer import BaseTrainer
 from ray.air.config import ScalingConfig, RunConfig, DatasetConfig
 from ray.train.trainer import GenDataset
-from ray.air.preprocessor import Preprocessor
 from ray.air.checkpoint import Checkpoint
 from ray.train._internal.dataset_spec import DataParallelIngestSpec
 from ray.train import BackendConfig, TrainingIterator
@@ -31,6 +31,8 @@ from ray.train._internal.utils import construct_train_func
 from ray.util.annotations import DeveloperAPI
 from ray.util.ml_utils.checkpoint_manager import CheckpointStrategy, _TrackedCheckpoint
 
+if TYPE_CHECKING:
+    from ray.air.preprocessor import Preprocessor
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +41,7 @@ logger = logging.getLogger(__name__)
 class _DataParallelCheckpointManager(TuneCheckpointManager):
     def __init__(
         self,
-        preprocessor: Preprocessor,
+        preprocessor: "Preprocessor",
         run_dir: Optional[Path] = None,
         checkpoint_strategy: Optional[CheckpointStrategy] = None,
     ):
@@ -248,7 +250,7 @@ class DataParallelTrainer(BaseTrainer):
         dataset_config: Optional[Dict[str, DatasetConfig]] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
-        preprocessor: Optional[Preprocessor] = None,
+        preprocessor: Optional["Preprocessor"] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
         if not ray.is_initialized():
@@ -388,7 +390,7 @@ class DataParallelTrainer(BaseTrainer):
 
 def _load_checkpoint(
     checkpoint: Checkpoint, trainer_name: str
-) -> Tuple[Any, Optional[Preprocessor]]:
+) -> Tuple[Any, Optional["Preprocessor"]]:
     """Load a Ray Train Checkpoint.
 
     This is a private API.

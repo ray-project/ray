@@ -1,14 +1,16 @@
-from typing import Callable, Optional, Dict, Tuple, Union
+from typing import Callable, Optional, Dict, Tuple, Union, TYPE_CHECKING
 import torch
 
 from ray.train.torch.config import TorchConfig
 from ray.train.trainer import GenDataset
 from ray.train.data_parallel_trainer import DataParallelTrainer, _load_checkpoint
 from ray.air.config import ScalingConfig, RunConfig, DatasetConfig
-from ray.air.preprocessor import Preprocessor
 from ray.air.checkpoint import Checkpoint
 from ray.air._internal.torch_utils import load_torch_model
 from ray.util import PublicAPI
+
+if TYPE_CHECKING:
+    from ray.air.preprocessor import Preprocessor
 
 
 @PublicAPI(stability="alpha")
@@ -176,7 +178,7 @@ class TorchTrainer(DataParallelTrainer):
         dataset_config: Optional[Dict[str, DatasetConfig]] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
-        preprocessor: Optional[Preprocessor] = None,
+        preprocessor: Optional["Preprocessor"] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
         if not torch_config:
@@ -197,7 +199,7 @@ class TorchTrainer(DataParallelTrainer):
 
 def load_checkpoint(
     checkpoint: Checkpoint, model: Optional[torch.nn.Module] = None
-) -> Tuple[torch.nn.Module, Optional[Preprocessor]]:
+) -> Tuple[torch.nn.Module, Optional["Preprocessor"]]:
     """Load a Checkpoint from ``TorchTrainer``.
 
     Args:
