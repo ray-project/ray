@@ -132,7 +132,20 @@ class MultiAgentEnv(gym.Env):
                 self._check_if_space_maps_agent_id_to_sub_space()
             )
         if self._spaces_in_preferred_format:
-            return self.observation_space.contains(x)
+            for key, agent_obs in x.items():
+                if not self.observation_space[key].contains(agent_obs):
+                    return False
+            if not all(k in self.observation_space for k in x):
+                if log_once("possibly_bad_multi_agent_dict_missing_agent_observations"):
+                    logger.warning(
+                        "You environment returns observations that are "
+                        "MultiAgentDicts with incomplete information. "
+                        "Meaning that they only contain information on a subset of"
+                        " participating agents. Ignore this warning if this is "
+                        "intended, for example if your environment is a turn-based "
+                        "simulation."
+                    )
+            return True
 
         logger.warning("observation_space_contains() has not been implemented")
         return True

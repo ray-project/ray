@@ -403,7 +403,7 @@ def test_auto_transfer_data_from_host_to_device(
             torch.matmul(x, x)
 
     def host_to_device_auto_pipeline(device):
-        wrapped_dataloader = ray.train.torch._WrappedDataLoader(
+        wrapped_dataloader = ray.train.torch.train_loop_utils._WrappedDataLoader(
             small_dataloader, device, auto_transfer
         )
         for (x,) in wrapped_dataloader:

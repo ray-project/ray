@@ -627,7 +627,7 @@ class WorkerSet:
             )
 
         if config["input"] == "sampler":
-            off_policy_estimation_methods = []
+            off_policy_estimation_methods = {}
         else:
             off_policy_estimation_methods = config["off_policy_estimation_methods"]
 

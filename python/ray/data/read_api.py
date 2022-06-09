@@ -174,10 +174,10 @@ def range_tensor(
         >>> import ray
         >>> ds = ray.data.range_tensor(1000, shape=(3, 10)) # doctest: +SKIP
         >>> ds.map_batches( # doctest: +SKIP
-        ...     lambda arr: arr * 2, batch_format="pandas").show()
+        ...     lambda arr: arr * 2).show()
 
     This is similar to range_table(), but uses the ArrowTensorArray extension
-    type. The dataset elements take the form {"value": array(N, shape=shape)}.
+    type. The dataset elements take the form {VALUE_COL_NAME: array(N, shape=shape)}.
 
     Args:
         n: The upper bound of the range of integer records.
@@ -821,9 +821,12 @@ def from_pandas_refs(
     context = DatasetContext.get_current()
     if context.enable_pandas_block:
         get_metadata = cached_remote_fn(_get_metadata)
-        metadata = [get_metadata.remote(df) for df in dfs]
+        metadata = ray.get([get_metadata.remote(df) for df in dfs])
         return Dataset(
-            ExecutionPlan(BlockList(dfs, ray.get(metadata)), DatasetStats.TODO()),
+            ExecutionPlan(
+                BlockList(dfs, metadata),
+                DatasetStats(stages={"from_pandas_refs": metadata}, parent=None),
+            ),
             0,
             False,
         )
@@ -831,10 +834,11 @@ def from_pandas_refs(
     df_to_block = cached_remote_fn(_df_to_block, num_returns=2)
 
     res = [df_to_block.remote(df) for df in dfs]
-    blocks, metadata = zip(*res)
+    blocks, metadata = map(list, zip(*res))
+    metadata = ray.get(metadata)
     return Dataset(
         ExecutionPlan(
-            BlockList(blocks, ray.get(list(metadata))),
+            BlockList(blocks, metadata),
             DatasetStats(stages={"from_pandas_refs": metadata}, parent=None),
         ),
         0,
@@ -888,11 +892,12 @@ def from_numpy_refs(
     ndarray_to_block = cached_remote_fn(_ndarray_to_block, num_returns=2)
 
     res = [ndarray_to_block.remote(ndarray) for ndarray in ndarrays]
-    blocks, metadata = zip(*res)
+    blocks, metadata = map(list, zip(*res))
+    metadata = ray.get(metadata)
     return Dataset(
         ExecutionPlan(
-            BlockList(blocks, ray.get(list(metadata))),
-            DatasetStats(stages={"from_numpy": metadata}, parent=None),
+            BlockList(blocks, metadata),
+            DatasetStats(stages={"from_numpy_refs": metadata}, parent=None),
         ),
         0,
         False,
@@ -939,10 +944,10 @@ def from_arrow_refs(
         tables = [tables]
 
     get_metadata = cached_remote_fn(_get_metadata)
-    metadata = [get_metadata.remote(t) for t in tables]
+    metadata = ray.get([get_metadata.remote(t) for t in tables])
     return Dataset(
         ExecutionPlan(
-            BlockList(tables, ray.get(metadata)),
+            BlockList(tables, metadata),
             DatasetStats(stages={"from_arrow_refs": metadata}, parent=None),
         ),
         0,
@@ -1020,16 +1025,11 @@ def _df_to_block(df: "pandas.DataFrame") -> Block[ArrowRow]:
 
 def _ndarray_to_block(ndarray: np.ndarray) -> Block[np.ndarray]:
     stats = BlockExecStats.builder()
-    import pyarrow as pa
-    from ray.data.extensions import TensorArray
-
-    table = pa.Table.from_pydict({"value": TensorArray(ndarray)})
-    return (
-        table,
-        BlockAccessor.for_block(table).get_metadata(
-            input_files=None, exec_stats=stats.build()
-        ),
+    block = BlockAccessor.batch_to_block(ndarray)
+    metadata = BlockAccessor.for_block(block).get_metadata(
+        input_files=None, exec_stats=stats.build()
     )
+    return block, metadata
 
 
 def _get_metadata(table: Union["pyarrow.Table", "pandas.DataFrame"]) -> BlockMetadata:

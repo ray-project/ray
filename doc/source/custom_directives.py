@@ -161,11 +161,24 @@ MOCK_MODULES = [
 ]
 
 
+def make_typing_mock(module, name):
+    class Object:
+        pass
+
+    Object.__module__ = module
+    Object.__qualname__ = name
+    Object.__name__ = name
+
+    return Object
+
+
 def mock_modules():
     for mod_name in MOCK_MODULES:
         mock_module = mock.MagicMock()
         mock_module.__spec__ = mock.MagicMock()
         sys.modules[mod_name] = mock_module
+
+    sys.modules["ray._raylet"].ObjectRef = make_typing_mock("ray", "ObjectRef")
 
     sys.modules["tensorflow"].VERSION = "9.9.9"
 

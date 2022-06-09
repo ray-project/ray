@@ -91,8 +91,8 @@ class R2D2Config(DQNConfig):
         self.lr = 1e-4
         self.gamma = 0.997
         self.train_batch_size = 1000
-        self.target_network_update_freq = 2500
-        self.training_intensity = 1000
+        self.target_network_update_freq = 1000
+        self.training_intensity = 150
         # R2D2 is using a buffer that stores sequences.
         self.replay_buffer_config = {
             "type": "MultiAgentReplayBuffer",

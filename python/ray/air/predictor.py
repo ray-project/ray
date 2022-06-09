@@ -4,13 +4,14 @@ from typing import Dict, Type, Union, TYPE_CHECKING
 from ray.air.checkpoint import Checkpoint
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
-import numpy as np
-import pandas as pd
-
 if TYPE_CHECKING:
+    import numpy as np
+    import pandas as pd
     import pyarrow
 
-DataBatchType = Union[np.ndarray, pd.DataFrame, "pyarrow.Table", Dict[str, np.ndarray]]
+DataBatchType = Union[
+    "np.ndarray", "pd.DataFrame", "pyarrow.Table", Dict[str, "np.ndarray"]
+]
 
 
 @PublicAPI(stability="alpha")
@@ -20,7 +21,7 @@ class PredictorNotSerializableException(RuntimeError):
     pass
 
 
-@DeveloperAPI
+@PublicAPI(stability="alpha")
 class Predictor(abc.ABC):
     """Predictors load models from checkpoints to perform inference.
 
@@ -49,8 +50,9 @@ class Predictor(abc.ABC):
     To implement a new Predictor for your particular framework, you should subclass
     the base ``Predictor`` and implement the following two methods:
 
-        1. ``_predict_pandas``: Given a pandas.DataFrame input, return a
-           pandas.DataFrame containing predictions.
+        1. ``_predict_pandas`` or ``_predict_arrow``: Given a
+            pandas.DataFrame/pyarrow.Table input, return a
+            pandas.DataFrame/pyarrow.Table containing predictions.
         2. ``from_checkpoint``: Logic for creating a Predictor from an
            :ref:`AIR Checkpoint <air-checkpoint-ref>`.
     """
@@ -95,7 +97,7 @@ class Predictor(abc.ABC):
         # return _convert_pandas_to_batch_type(predictions_df, type=type(data))
 
     @DeveloperAPI
-    def _predict_pandas(self, data: pd.DataFrame, **kwargs) -> pd.DataFrame:
+    def _predict_pandas(self, data: "pd.DataFrame", **kwargs) -> "pd.DataFrame":
         """Perform inference on a Pandas DataFrame.
 
         All predictors are expected to implement this method.
@@ -110,6 +112,24 @@ class Predictor(abc.ABC):
         """
         raise NotImplementedError
 
+    @DeveloperAPI
+    def _predict_arrow(self, data: "pyarrow.Table", **kwargs) -> "pyarrow.Table":
+        """Perform inference on an Arrow Table.
+
+        Predictors can implement this method instead of ``_predict_pandas``
+        for better performance when the input batch type is a Numpy array, dict of
+        numpy arrays, or an Arrow Table as conversion from these types are zero copy.
+
+        Args:
+            data: An Arrow Table to perform predictions on.
+            kwargs: Arguments specific to the predictor implementation.
+
+        Returns:
+            An Arrow Table containing the prediction result.
+        """
+
+        raise NotImplementedError
+
     def __reduce__(self):
         raise PredictorNotSerializableException(
             "Predictor instances are not serializable. Instead, you may want "
@@ -118,13 +138,13 @@ class Predictor(abc.ABC):
         )
 
 
-def _convert_batch_type_to_pandas(data: DataBatchType) -> pd.DataFrame:
+def _convert_batch_type_to_pandas(data: DataBatchType) -> "pd.DataFrame":
     """Convert the provided data to a Pandas DataFrame."""
     pass
 
 
 def _convert_pandas_to_batch_type(
-    data: pd.DataFrame, type: Type[DataBatchType]
+    data: "pd.DataFrame", type: Type[DataBatchType]
 ) -> DataBatchType:
     """Convert the provided Pandas dataframe to the provided ``type``."""
 
