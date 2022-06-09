@@ -948,7 +948,7 @@ class DeploymentState:
         )
         self._deleting = False
 
-    def is_autoscalable(self) -> bool:
+    def should_autoscale(self) -> bool:
         """
         Check if the deployment is under autoscaling
         """
@@ -1855,7 +1855,7 @@ class DeploymentStateManager:
         """Updates the state of all deployments to match their goal state."""
         deleted_tags = []
         for deployment_name, deployment_state in self._deployment_states.items():
-            if deployment_state.is_autoscalable():
+            if deployment_state.should_autoscale():
                 current_num_ongoing_requests = self.get_replica_ongoing_request_metrics(
                     deployment_name,
                     deployment_state.get_autoscale_metric_lookback_period(),
