@@ -19,7 +19,7 @@ class TestRNNSAC(unittest.TestCase):
         ray.shutdown()
 
     def test_rnnsac_compilation(self):
-        """Test whether a R2D2Trainer can be built on all frameworks."""
+        """Test whether RNNSAC can be built on all frameworks."""
         config = (
             sac.RNNSACConfig()
             .rollouts(num_rollout_workers=0)

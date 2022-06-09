@@ -34,7 +34,6 @@ from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.evaluation.episode import Episode
-from ray.rllib.utils import force_list
 from ray.rllib.evaluation.metrics import (
     collect_episodes,
     collect_metrics,
@@ -188,6 +187,9 @@ class Trainer(Trainable):
         "exploration_config",
         "replay_buffer_config",
     ]
+
+    # List of keys that are always fully overridden if present in any dict or sub-dict
+    _override_all_key_list = ["off_policy_estimation_methods"]
 
     @PublicAPI
     def __init__(
@@ -1431,9 +1433,9 @@ class Trainer(Trainable):
                 If None, the output format will be DL framework specific.
 
         Example:
-            >>> from ray.rllib.agents.ppo import PPOTrainer
+            >>> from ray.rllib.algorithms.ppo import PPO
             >>> # Use a Trainer from RLlib or define your own.
-            >>> trainer = PPOTrainer(...) # doctest: +SKIP
+            >>> trainer = PPO(...) # doctest: +SKIP
             >>> for _ in range(10): # doctest: +SKIP
             >>>     trainer.train() # doctest: +SKIP
             >>> trainer.export_policy_model("/tmp/dir") # doctest: +SKIP
@@ -1456,9 +1458,9 @@ class Trainer(Trainable):
             policy_id: Optional policy id to export.
 
         Example:
-            >>> from ray.rllib.agents.ppo import PPOTrainer
+            >>> from ray.rllib.algorithms.ppo import PPO
             >>> # Use a Trainer from RLlib or define your own.
-            >>> trainer = PPOTrainer(...) # doctest: +SKIP
+            >>> trainer = PPO(...) # doctest: +SKIP
             >>> for _ in range(10): # doctest: +SKIP
             >>>     trainer.train() # doctest: +SKIP
             >>> trainer.export_policy_checkpoint("/tmp/export_dir") # doctest: +SKIP
@@ -1478,8 +1480,8 @@ class Trainer(Trainable):
             policy_id: Optional policy id to import into.
 
         Example:
-            >>> from ray.rllib.agents.ppo import PPOTrainer
-            >>> trainer = PPOTrainer(...) # doctest: +SKIP
+            >>> from ray.rllib.algorithms.ppo import PPO
+            >>> trainer = PPO(...) # doctest: +SKIP
             >>> trainer.import_policy_model_from_h5("/tmp/weights.h5") # doctest: +SKIP
             >>> for _ in range(10): # doctest: +SKIP
             >>>     trainer.train() # doctest: +SKIP
@@ -1535,45 +1537,46 @@ class Trainer(Trainable):
         cf = dict(cls.get_default_config(), **config)
         eval_cf = cf["evaluation_config"]
 
-        # TODO(ekl): add custom resources here once tune supports them
+        local_worker = {
+            "CPU": cf["num_cpus_for_driver"],
+            "GPU": 0 if cf["_fake_gpus"] else cf["num_gpus"],
+        }
+        rollout_workers = [
+            {
+                "CPU": cf["num_cpus_per_worker"],
+                "GPU": cf["num_gpus_per_worker"],
+                **cf["custom_resources_per_worker"],
+            }
+            for _ in range(cf["num_workers"])
+        ]
+
+        bundles = [local_worker] + rollout_workers
+
+        if cf["evaluation_interval"]:
+            # Evaluation workers.
+            # Note: The local eval worker is located on the driver CPU.
+            bundles += [
+                {
+                    "CPU": eval_cf.get(
+                        "num_cpus_per_worker", cf["num_cpus_per_worker"]
+                    ),
+                    "GPU": eval_cf.get(
+                        "num_gpus_per_worker", cf["num_gpus_per_worker"]
+                    ),
+                    **eval_cf.get(
+                        "custom_resources_per_worker", cf["custom_resources_per_worker"]
+                    ),
+                }
+                for _ in range(cf["evaluation_num_workers"])
+            ]
+
+        # In case our I/O reader/writer requires conmpute resources.
+        bundles += get_offline_io_resource_bundles(cf)
+
         # Return PlacementGroupFactory containing all needed resources
         # (already properly defined as device bundles).
         return PlacementGroupFactory(
-            bundles=[
-                {
-                    # Local worker.
-                    "CPU": cf["num_cpus_for_driver"],
-                    "GPU": 0 if cf["_fake_gpus"] else cf["num_gpus"],
-                }
-            ]
-            + [
-                {
-                    # RolloutWorkers.
-                    "CPU": cf["num_cpus_per_worker"],
-                    "GPU": cf["num_gpus_per_worker"],
-                }
-                for _ in range(cf["num_workers"])
-            ]
-            + (
-                [
-                    {
-                        # Evaluation workers.
-                        # Note: The local eval worker is located on the driver CPU.
-                        "CPU": eval_cf.get(
-                            "num_cpus_per_worker", cf["num_cpus_per_worker"]
-                        ),
-                        "GPU": eval_cf.get(
-                            "num_gpus_per_worker", cf["num_gpus_per_worker"]
-                        ),
-                    }
-                    for _ in range(cf["evaluation_num_workers"])
-                ]
-                if cf["evaluation_interval"]
-                else []
-            )
-            +
-            # In case our I/O reader/writer requires conmpute resources.
-            get_offline_io_resource_bundles(cf),
+            bundles=bundles,
             strategy=config.get("placement_strategy", "PACK"),
         )
 
@@ -1747,6 +1750,7 @@ class Trainer(Trainable):
             _allow_unknown_configs,
             cls._allow_unknown_subkeys,
             cls._override_all_subkeys_if_type_changes,
+            cls._override_all_key_list,
         )
 
     @staticmethod
@@ -1923,9 +1927,22 @@ class Trainer(Trainable):
                 error=False,
             )
             config["off_policy_estimation_methods"] = input_evaluation
-        config["off_policy_estimation_methods"] = force_list(
-            config["off_policy_estimation_methods"]
-        )
+        if isinstance(config["off_policy_estimation_methods"], list) or isinstance(
+            config["off_policy_estimation_methods"], tuple
+        ):
+            ope_dict = {
+                str(ope): {"type": ope} for ope in self.off_policy_estimation_methods
+            }
+            deprecation_warning(
+                old="config.off_policy_estimation_methods={}".format(
+                    self.off_policy_estimation_methods
+                ),
+                new="config.off_policy_estimation_methods={}".format(
+                    ope_dict,
+                ),
+                error=False,
+            )
+            config["off_policy_estimation_methods"] = ope_dict
 
         # Check model config.
         # If no preprocessing, propagate into model's config as well

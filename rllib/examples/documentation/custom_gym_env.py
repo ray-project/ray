@@ -2,7 +2,7 @@
 import gym
 
 import ray
-from ray.rllib.agents import ppo
+import ray.rllib.algorithms.ppo as ppo
 
 
 class SimpleCorridor(gym.Env):
@@ -35,7 +35,7 @@ config = {
     },
 }
 
-trainer = ppo.PPOTrainer(config=config)
+trainer = ppo.PPO(config=config)
 for _ in range(3):
     print(trainer.train())
 # __rllib-custom-gym-env-end__

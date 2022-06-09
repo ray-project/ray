@@ -294,10 +294,6 @@ class NevergradSearch(Searcher):
     def restore(self, checkpoint_path: str):
         with open(checkpoint_path, "rb") as inputFile:
             save_object = pickle.load(inputFile)
-        if not isinstance(save_object, dict):
-            # backwards compatibility
-            # Deprecate: 1.8
-            self._nevergrad_opt, self._parameters = save_object
         self.__dict__.update(save_object)
 
     @staticmethod

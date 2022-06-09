@@ -295,6 +295,16 @@ class Deployment:
         unchanged from the existing deployment.
         """
         new_config = self._config.copy()
+
+        if num_replicas is not None and _autoscaling_config is not None:
+            raise ValueError(
+                "Manually setting num_replicas is not allowed when "
+                "_autoscaling_config is provided."
+            )
+
+        if num_replicas == 0:
+            raise ValueError("num_replicas is expected to larger than 0")
+
         if num_replicas is not None:
             new_config.num_replicas = num_replicas
         if user_config is not None:

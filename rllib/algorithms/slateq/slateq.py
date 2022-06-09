@@ -15,7 +15,7 @@ environment (https://github.com/google-research/recsim).
 import logging
 from typing import Any, Dict, List, Optional, Type, Union
 
-from ray.rllib.algorithms.dqn.dqn import DQNTrainer
+from ray.rllib.algorithms.dqn.dqn import DQN
 from ray.rllib.algorithms.slateq.slateq_tf_policy import SlateQTFPolicy
 from ray.rllib.algorithms.slateq.slateq_torch_policy import SlateQTorchPolicy
 from ray.rllib.agents.trainer_config import TrainerConfig
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 class SlateQConfig(TrainerConfig):
-    """Defines a configuration class from which a SlateQTrainer can be built.
+    """Defines a configuration class from which a SlateQ Trainer can be built.
 
     Example:
         >>> from ray.rllib.algorithms.slateq import SlateQConfig
@@ -60,7 +60,7 @@ class SlateQConfig(TrainerConfig):
 
     def __init__(self):
         """Initializes a PGConfig instance."""
-        super().__init__(trainer_class=SlateQTrainer)
+        super().__init__(trainer_class=SlateQ)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -218,13 +218,13 @@ def calculate_round_robin_weights(config: TrainerConfigDict) -> List[float]:
     return weights
 
 
-class SlateQTrainer(DQNTrainer):
+class SlateQ(DQN):
     @classmethod
-    @override(DQNTrainer)
+    @override(DQN)
     def get_default_config(cls) -> TrainerConfigDict:
         return SlateQConfig().to_dict()
 
-    @override(DQNTrainer)
+    @override(DQN)
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             return SlateQTorchPolicy
@@ -238,8 +238,8 @@ class _deprecated_default_config(dict):
         super().__init__(SlateQConfig().to_dict())
 
     @Deprecated(
-        old="ray.rllib.algorithms.slateq.slateq.DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.slateq.slateq.SlateQConfig(...)",
+        old="ray.rllib.algorithms.slateq.slateq::DEFAULT_CONFIG",
+        new="ray.rllib.algorithms.slateq.slateq::SlateQConfig(...)",
         error=False,
     )
     def __getitem__(self, item):

@@ -1,7 +1,7 @@
 import logging
 from typing import Type, Dict, Any, Optional, Union
 
-from ray.rllib.algorithms.dqn.dqn import DQNTrainer
+from ray.rllib.algorithms.dqn.dqn import DQN
 from ray.rllib.algorithms.sac.sac_tf_policy import SACTFPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 class SACConfig(TrainerConfig):
-    """Defines a configuration class from which an SACTrainer can be built.
+    """Defines a configuration class from which an SAC Trainer can be built.
 
     Example:
         >>> config = SACConfig().training(gamma=0.9, lr=0.01)\
@@ -34,7 +34,7 @@ class SACConfig(TrainerConfig):
     """
 
     def __init__(self, trainer_class=None):
-        super().__init__(trainer_class=trainer_class or SACTrainer)
+        super().__init__(trainer_class=trainer_class or SAC)
         # fmt: off
         # __sphinx_doc_begin__
         # SAC-specific config settings.
@@ -212,7 +212,8 @@ class SACConfig(TrainerConfig):
                 -> natural value = 250 / 1 = 250.0
                 -> will make sure that replay+train op will be executed 4x asoften as
                 rollout+insert op (4 * 250 = 1000).
-                See: rllib/agents/dqn/dqn.py::calculate_rr_weights for further details.
+                See: rllib/algorithms/dqn/dqn.py::calculate_rr_weights for further
+                details.
             clip_actions: Whether to clip actions. If actions are already normalized,
                 this should be set to False.
             grad_clip: If not None, clip gradients during optimization at this value.
@@ -270,7 +271,7 @@ class SACConfig(TrainerConfig):
         return self
 
 
-class SACTrainer(DQNTrainer):
+class SAC(DQN):
     """Soft Actor Critic (SAC) Trainer class.
 
     This file defines the distributed Trainer class for the soft actor critic
@@ -286,11 +287,11 @@ class SACTrainer(DQNTrainer):
         super().__init__(*args, **kwargs)
 
     @classmethod
-    @override(DQNTrainer)
+    @override(DQN)
     def get_default_config(cls) -> TrainerConfigDict:
         return SACConfig().to_dict()
 
-    @override(DQNTrainer)
+    @override(DQN)
     def validate_config(self, config: TrainerConfigDict) -> None:
         # Call super's validation method.
         super().validate_config(config)
@@ -327,7 +328,7 @@ class SACTrainer(DQNTrainer):
             )
             try_import_tfp(error=True)
 
-    @override(DQNTrainer)
+    @override(DQN)
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.sac.sac_torch_policy import SACTorchPolicy
@@ -343,8 +344,8 @@ class _deprecated_default_config(dict):
         super().__init__(SACConfig().to_dict())
 
     @Deprecated(
-        old="ray.rllib.algorithms.sac.sac.DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.sac.sac.SACConfig(...)",
+        old="ray.rllib.algorithms.sac.sac::DEFAULT_CONFIG",
+        new="ray.rllib.algorithms.sac.sac::SACConfig(...)",
         error=False,
     )
     def __getitem__(self, item):

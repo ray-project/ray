@@ -286,8 +286,9 @@ class ActorReplicaWrapper:
         init_args = (
             self.deployment_name,
             self.replica_tag,
-            deployment_info.replica_config.init_args,
-            deployment_info.replica_config.init_kwargs,
+            deployment_info.replica_config.serialized_deployment_def,
+            deployment_info.replica_config.serialized_init_args,
+            deployment_info.replica_config.serialized_init_kwargs,
             deployment_info.deployment_config.to_proto_bytes(),
             version,
             self._controller_name,
@@ -309,7 +310,7 @@ class ActorReplicaWrapper:
                 # String replicaTag,
                 self.replica_tag,
                 # String deploymentDef
-                deployment_info.replica_config.func_or_class_name,
+                deployment_info.replica_config.deployment_def_name,
                 # byte[] initArgsbytes
                 msgpack_serialize(deployment_info.replica_config.init_args),
                 # byte[] deploymentConfigBytes,
@@ -943,13 +944,19 @@ class DeploymentState:
         self._curr_status_info: DeploymentStatusInfo = DeploymentStatusInfo(
             self._name, DeploymentStatus.UPDATING
         )
+        self._deleting = False
 
     def get_target_state_checkpoint_data(self):
         """
         Return deployment's target state submitted by user's deployment call.
         Should be persisted and outlive current ray cluster.
         """
-        return (self._target_info, self._target_replicas, self._target_version)
+        return (
+            self._target_info,
+            self._target_replicas,
+            self._target_version,
+            self._deleting,
+        )
 
     def get_checkpoint_data(self):
         return self.get_target_state_checkpoint_data()
@@ -962,6 +969,7 @@ class DeploymentState:
             self._target_info,
             self._target_replicas,
             self._target_version,
+            self._deleting,
         ) = target_state_checkpoint
 
     def recover_current_state_from_replica_actor_names(
@@ -1044,6 +1052,7 @@ class DeploymentState:
 
         else:
             self._target_replicas = 0
+            self._deleting = True
 
         self._curr_status_info = DeploymentStatusInfo(
             self._name, DeploymentStatus.UPDATING
@@ -1331,11 +1340,11 @@ class DeploymentState:
             == 0
         ):
             # Check for deleting.
-            if target_replica_count == 0 and all_running_replica_cnt == 0:
+            if self._deleting and all_running_replica_cnt == 0:
                 return True
 
             # Check for a non-zero number of deployments.
-            elif target_replica_count == running_at_target_version_replica_cnt:
+            if target_replica_count == running_at_target_version_replica_cnt:
                 self._curr_status_info = DeploymentStatusInfo(
                     self._name, DeploymentStatus.HEALTHY
                 )

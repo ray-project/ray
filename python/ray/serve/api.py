@@ -447,6 +447,11 @@ def deployment(
         Deployment
     """
 
+    # Num of replicas should not be 0.
+    # TODO(Sihan) seperate num_replicas attribute from internal and api
+    if num_replicas == 0:
+        raise ValueError("num_replicas is expected to larger than 0")
+
     if num_replicas is not None and _autoscaling_config is not None:
         raise ValueError(
             "Manually setting num_replicas is not allowed when "
@@ -513,7 +518,7 @@ def get_deployment(name: str) -> Deployment:
             f"Deployment {name} was not found. Did you call Deployment.deploy()?"
         )
     return Deployment(
-        cloudpickle.loads(deployment_info.replica_config.serialized_deployment_def),
+        deployment_info.replica_config.deployment_def,
         name,
         deployment_info.deployment_config,
         version=deployment_info.version,
@@ -536,7 +541,7 @@ def list_deployments() -> Dict[str, Deployment]:
     deployments = {}
     for name, (deployment_info, route_prefix) in infos.items():
         deployments[name] = Deployment(
-            cloudpickle.loads(deployment_info.replica_config.serialized_deployment_def),
+            deployment_info.replica_config.deployment_def,
             name,
             deployment_info.deployment_config,
             version=deployment_info.version,

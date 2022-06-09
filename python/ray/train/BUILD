@@ -113,10 +113,26 @@ py_test(
 )
 
 py_test(
+    name = "test_base_trainer",
+    size = "medium",
+    srcs = ["tests/test_base_trainer.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_callbacks",
     size = "medium",
     srcs = ["tests/test_callbacks.py"],
     tags = ["team:ml", "exclusive"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_data_parallel_trainer",
+    size = "medium",
+    srcs = ["tests/test_data_parallel_trainer.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
     deps = [":train_lib"]
 )
 
@@ -137,18 +153,34 @@ py_test(
 )
 
 py_test(
-    name = "test_minimal",
-    size = "small",
-    srcs = ["tests/test_minimal.py"],
-    tags = ["team:ml", "exclusive", "minimal"],
+    name = "test_horovod_trainer",
+    size = "large",
+    srcs = ["tests/test_horovod_trainer.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
     deps = [":train_lib"]
 )
 
 py_test(
-    name = "test_session",
+    name = "test_huggingface_trainer",
+    size = "medium",
+    srcs = ["tests/test_huggingface_trainer.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_lightgbm_trainer",
+    size = "medium",
+    srcs = ["tests/test_lightgbm_trainer.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_minimal",
     size = "small",
-    srcs = ["tests/test_session.py"],
-    tags = ["team:ml", "exclusive"],
+    srcs = ["tests/test_minimal.py"],
+    tags = ["team:ml", "exclusive", "minimal"],
     deps = [":train_lib"]
 )
 
@@ -161,10 +193,42 @@ py_test(
 )
 
 py_test(
+    name = "test_session",
+    size = "small",
+    srcs = ["tests/test_session.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_sklearn_trainer",
+    size = "medium",
+    srcs = ["tests/test_sklearn_trainer.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_trainer",
     size = "large",
     srcs = ["tests/test_trainer.py"],
     tags = ["team:ml", "exclusive"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_tensorflow_trainer",
+    size = "medium",
+    srcs = ["tests/test_tensorflow_trainer.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_torch_trainer",
+    size = "medium",
+    srcs = ["tests/test_torch_trainer.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
     deps = [":train_lib"]
 )
 
@@ -184,7 +248,6 @@ py_test(
     deps = [":train_lib"]
 )
 
-
 py_test(
     name = "test_worker_group",
     size = "medium",
@@ -193,7 +256,13 @@ py_test(
     deps = [":train_lib"]
 )
 
-
+py_test(
+    name = "test_xgboost_trainer",
+    size = "medium",
+    srcs = ["tests/test_xgboost_trainer.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib"]
+)
 
 # This is a dummy test dependency that causes the above tests to be
 # re-run if any of these files changes.

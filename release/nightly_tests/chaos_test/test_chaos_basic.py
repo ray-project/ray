@@ -9,7 +9,7 @@ import logging
 import numpy as np
 import ray
 
-from ray.data.impl.progress_bar import ProgressBar
+from ray.data._internal.progress_bar import ProgressBar
 from ray._private.test_utils import monitor_memory_usage, wait_for_condition
 
 

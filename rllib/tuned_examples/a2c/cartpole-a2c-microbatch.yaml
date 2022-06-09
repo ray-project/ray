@@ -3,7 +3,7 @@ cartpole-a2c-microbatch:
     run: A2C
     stop:
         episode_reward_mean: 150
-        timesteps_total: 500000
+        timesteps_total: 1000000
     config:
         # Works for both torch and tf.
         framework: tf
@@ -12,4 +12,3 @@ cartpole-a2c-microbatch:
         rollout_fragment_length: 20
         microbatch_size: 40
         train_batch_size: 120
-        seed: 13

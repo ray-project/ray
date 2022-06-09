@@ -3,7 +3,7 @@ import json
 import yaml
 
 from enum import Enum, unique
-from typing import Union, List
+from typing import Union, List, Tuple
 
 import ray
 
@@ -59,6 +59,11 @@ def get_state_api_output_to_print(
         )
 
 
+"""
+List API
+"""
+
+
 def _should_explain(format: AvailableFormat):
     # If the format is json or yaml, it should not print stats because
     # users don't want additional strings.
@@ -92,129 +97,170 @@ def list_state_cli_group(ctx):
     ctx.obj["api_server_url"] = f"http://{api_server_url.decode()}"
 
 
-@list_state_cli_group.command()
-@click.option(
+list_format_option = click.option(
     "--format", default="default", type=click.Choice(_get_available_formats())
 )
+list_filter_option = click.option(
+    "-f",
+    "--filter",
+    help=(
+        "A key value pair to filter the result. "
+        "For example, specify --filter [column] [value] "
+        "to filter out data that satsifies column==value."
+    ),
+    nargs=2,
+    type=click.Tuple([str, str]),
+    multiple=True,
+)
+
+
+@list_state_cli_group.command()
+@list_format_option
+@list_filter_option
 @click.pass_context
-def actors(ctx, format: str):
+def actors(ctx, format: str, filter: List[Tuple[str, str]]):
     url = ctx.obj["api_server_url"]
     format = AvailableFormat(format)
     print(
         get_state_api_output_to_print(
-            list_actors(api_server_url=url, _explain=_should_explain(format)),
+            list_actors(
+                api_server_url=url,
+                filters=filter,
+                _explain=_should_explain(format),
+            ),
             format=format,
         )
     )
 
 
 @list_state_cli_group.command()
-@click.option(
-    "--format", default="default", type=click.Choice(_get_available_formats())
-)
+@list_format_option
+@list_filter_option
 @click.pass_context
-def placement_groups(ctx, format: str):
+def placement_groups(ctx, format: str, filter: List[Tuple[str, str]]):
     url = ctx.obj["api_server_url"]
     format = AvailableFormat(format)
     print(
         get_state_api_output_to_print(
-            list_placement_groups(api_server_url=url, _explain=_should_explain(format)),
+            list_placement_groups(
+                api_server_url=url,
+                filters=filter,
+                _explain=_should_explain(format),
+            ),
             format=format,
         )
     )
 
 
 @list_state_cli_group.command()
-@click.option(
-    "--format", default="default", type=click.Choice(_get_available_formats())
-)
+@list_format_option
+@list_filter_option
 @click.pass_context
-def nodes(ctx, format: str):
+def nodes(ctx, format: str, filter: List[Tuple[str, str]]):
     url = ctx.obj["api_server_url"]
     format = AvailableFormat(format)
     print(
         get_state_api_output_to_print(
-            list_nodes(api_server_url=url, _explain=_should_explain(format)),
+            list_nodes(
+                api_server_url=url,
+                filters=filter,
+                _explain=_should_explain(format),
+            ),
             format=format,
         )
     )
 
 
 @list_state_cli_group.command()
-@click.option(
-    "--format", default="default", type=click.Choice(_get_available_formats())
-)
+@list_format_option
+@list_filter_option
 @click.pass_context
-def jobs(ctx, format: str):
+def jobs(ctx, format: str, filter: List[Tuple[str, str]]):
     url = ctx.obj["api_server_url"]
     format = AvailableFormat(format)
     print(
         get_state_api_output_to_print(
-            list_jobs(api_server_url=url, _explain=_should_explain(format)),
+            list_jobs(
+                api_server_url=url,
+                filters=filter,
+                _explain=_should_explain(format),
+            ),
             format=format,
         )
     )
 
 
 @list_state_cli_group.command()
-@click.option(
-    "--format", default="default", type=click.Choice(_get_available_formats())
-)
+@list_format_option
+@list_filter_option
 @click.pass_context
-def workers(ctx, format: str):
+def workers(ctx, format: str, filter: List[Tuple[str, str]]):
     url = ctx.obj["api_server_url"]
     format = AvailableFormat(format)
     print(
         get_state_api_output_to_print(
-            list_workers(api_server_url=url, _explain=_should_explain(format)),
+            list_workers(
+                api_server_url=url,
+                filters=filter,
+                _explain=_should_explain(format),
+            ),
             format=format,
         )
     )
 
 
 @list_state_cli_group.command()
-@click.option(
-    "--format", default="default", type=click.Choice(_get_available_formats())
-)
+@list_format_option
+@list_filter_option
 @click.pass_context
-def tasks(ctx, format: str):
+def tasks(ctx, format: str, filter: List[Tuple[str, str]]):
     url = ctx.obj["api_server_url"]
     format = AvailableFormat(format)
     print(
         get_state_api_output_to_print(
-            list_tasks(api_server_url=url, _explain=_should_explain(format)),
+            list_tasks(
+                api_server_url=url,
+                filters=filter,
+                _explain=_should_explain(format),
+            ),
             format=format,
         )
     )
 
 
 @list_state_cli_group.command()
-@click.option(
-    "--format", default="default", type=click.Choice(_get_available_formats())
-)
+@list_format_option
+@list_filter_option
 @click.pass_context
-def objects(ctx, format: str):
+def objects(ctx, format: str, filter: List[Tuple[str, str]]):
     url = ctx.obj["api_server_url"]
     format = AvailableFormat(format)
     print(
         get_state_api_output_to_print(
-            list_objects(api_server_url=url, _explain=_should_explain(format)),
+            list_objects(
+                api_server_url=url,
+                filters=filter,
+                _explain=_should_explain(format),
+            ),
             format=format,
         )
     )
 
 
 @list_state_cli_group.command()
-@click.option(
-    "--format", default="default", type=click.Choice(_get_available_formats())
-)
+@list_format_option
+@list_filter_option
 @click.pass_context
-def runtime_envs(ctx, format: str):
+def runtime_envs(ctx, format: str, filter: List[Tuple[str, str]]):
     url = ctx.obj["api_server_url"]
     format = AvailableFormat(format)
     print(
         get_state_api_output_to_print(
-            list_runtime_envs(api_server_url=url, _explain=_should_explain(format)),
+            list_runtime_envs(
+                api_server_url=url,
+                filters=filter,
+                _explain=_should_explain(format),
+            ),
             format=format,
         )
     )

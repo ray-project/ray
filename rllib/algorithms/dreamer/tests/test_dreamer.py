@@ -18,7 +18,7 @@ class TestDreamer(unittest.TestCase):
 
     def test_dreamer_compilation(self):
         """Test whether an DreamerTrainer can be built with all frameworks."""
-        config = dreamer.DREAMERConfig()
+        config = dreamer.DreamerConfig()
         config.environment(
             env=RandomEnv,
             env_config={

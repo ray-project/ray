@@ -3,7 +3,7 @@ import numpy as np
 import unittest
 
 import ray
-import ray.rllib.agents.ppo as ppo
+import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.examples.models.modelv3 import RNNModel
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.fcnet import FullyConnectedNetwork
@@ -71,7 +71,7 @@ class TestModels(unittest.TestCase):
             },
             "num_workers": 0,
         }
-        trainer = ppo.PPOTrainer(config=config)
+        trainer = ppo.PPO(config=config)
         for _ in range(2):
             results = trainer.train()
             print(results)

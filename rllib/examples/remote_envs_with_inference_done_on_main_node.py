@@ -13,7 +13,7 @@ import argparse
 import os
 
 import ray
-from ray.rllib.agents.ppo import PPOTrainer
+from ray.rllib.algorithms.ppo import PPO
 from ray.rllib.agents.trainer import Trainer
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.test_utils import check_learning_achieved
@@ -76,10 +76,10 @@ def get_cli_args():
 
 
 # The modified Trainer class we will use. This is the exact same
-# as a PPOTrainer, but with the additional default_resource_request
+# as a PPO, but with the additional default_resource_request
 # override, telling tune that it's ok (not mandatory) to place our
 # n remote envs on a different node (each env using 1 CPU).
-class PPOTrainerRemoteInference(PPOTrainer):
+class PPOTrainerRemoteInference(PPO):
     @classmethod
     @override(Trainer)
     def default_resource_request(cls, config):

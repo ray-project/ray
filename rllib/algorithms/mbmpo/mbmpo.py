@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 
 class MBMPOConfig(TrainerConfig):
-    """Defines a configuration class from which an MBMPOTrainer can be built.
+    """Defines a configuration class from which an MBMPO Trainer can be built.
 
     Example:
         >>> from ray.rllib.algorithms.mbmpo import MBMPOConfig
@@ -69,7 +69,7 @@ class MBMPOConfig(TrainerConfig):
 
     def __init__(self, trainer_class=None):
         """Initializes a MBMPOConfig instance."""
-        super().__init__(trainer_class=trainer_class or MBMPOTrainer)
+        super().__init__(trainer_class=trainer_class or MBMPO)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -446,7 +446,7 @@ def post_process_samples(samples, config: TrainerConfigDict):
     return samples, split_lst
 
 
-class MBMPOTrainer(Trainer):
+class MBMPO(Trainer):
     """Model-Based Meta Policy Optimization (MB-MPO) Trainer.
 
     This file defines the distributed Trainer class for model-based meta

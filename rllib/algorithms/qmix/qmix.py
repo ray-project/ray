@@ -1,6 +1,6 @@
 from typing import Optional, Type
 
-from ray.rllib.algorithms.dqn.simple_q import SimpleQConfig, SimpleQTrainer
+from ray.rllib.algorithms.simple_q.simple_q import SimpleQ, SimpleQConfig
 from ray.rllib.algorithms.qmix.qmix_policy import QMixTorchPolicy
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
@@ -22,10 +22,11 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
 from ray.rllib.utils.typing import ResultDict, TrainerConfigDict
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import deprecation_warning
 
 
 class QMixConfig(SimpleQConfig):
-    """Defines a configuration class from which a QMixTrainer can be built.
+    """Defines a configuration class from which a QMix Trainer can be built.
 
     Example:
         >>> from ray.rllib.examples.env.two_step_game import TwoStepGame
@@ -60,7 +61,7 @@ class QMixConfig(SimpleQConfig):
 
     def __init__(self):
         """Initializes a PPOConfig instance."""
-        super().__init__(trainer_class=QMixTrainer)
+        super().__init__(trainer_class=QMix)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -70,7 +71,7 @@ class QMixConfig(SimpleQConfig):
         self.double_q = True
         self.optim_alpha = 0.99
         self.optim_eps = 0.00001
-        self.grad_norm_clipping = 10
+        self.grad_clip = 10
 
         # Override some of TrainerConfig's default values with QMix-specific values.
         # .training()
@@ -149,6 +150,7 @@ class QMixConfig(SimpleQConfig):
         optim_alpha: Optional[float] = None,
         optim_eps: Optional[float] = None,
         grad_norm_clipping: Optional[float] = None,
+        grad_clip: Optional[float] = None,
         **kwargs,
     ) -> "QMixConfig":
         """Sets the training related configuration.
@@ -162,14 +164,28 @@ class QMixConfig(SimpleQConfig):
             replay_buffer_config:
             optim_alpha: RMSProp alpha.
             optim_eps: RMSProp epsilon.
-            grad_norm_clipping: If not None, clip gradients during optimization at
+            grad_clip: If not None, clip gradients during optimization at
                 this value.
+            grad_norm_clipping: Depcrecated in favor of grad_clip
 
         Returns:
             This updated TrainerConfig object.
         """
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
+
+        if grad_norm_clipping is not None:
+            deprecation_warning(
+                old="grad_norm_clipping",
+                new="grad_clip",
+                help="Parameter `grad_norm_clipping` has been "
+                "deprecated in favor of grad_clip in QMix. "
+                "This is now the same parameter as in other "
+                "algorithms. `grad_clip` will be overwritten by "
+                "`grad_norm_clipping={}`".format(grad_norm_clipping),
+                error=False,
+            )
+            grad_clip = grad_norm_clipping
 
         if mixer is not None:
             self.mixer = mixer
@@ -185,31 +201,31 @@ class QMixConfig(SimpleQConfig):
             self.optim_alpha = optim_alpha
         if optim_eps is not None:
             self.optim_eps = optim_eps
-        if grad_norm_clipping is not None:
-            self.grad_norm_clipping = grad_norm_clipping
+        if grad_clip is not None:
+            self.grad_clip = grad_clip
 
         return self
 
 
-class QMixTrainer(SimpleQTrainer):
+class QMix(SimpleQ):
     @classmethod
-    @override(SimpleQTrainer)
+    @override(SimpleQ)
     def get_default_config(cls) -> TrainerConfigDict:
         return QMixConfig().to_dict()
 
-    @override(SimpleQTrainer)
+    @override(SimpleQ)
     def validate_config(self, config: TrainerConfigDict) -> None:
         # Call super's validation method.
         super().validate_config(config)
 
         if config["framework"] != "torch":
-            raise ValueError("Only `framework=torch` supported so far for QMixTrainer!")
+            raise ValueError("Only `framework=torch` supported so far for QMix!")
 
-    @override(SimpleQTrainer)
+    @override(SimpleQ)
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         return QMixTorchPolicy
 
-    @override(SimpleQTrainer)
+    @override(SimpleQ)
     def training_iteration(self) -> ResultDict:
         """QMIX training iteration function.
 

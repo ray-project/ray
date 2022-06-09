@@ -1,27 +1,25 @@
-from typing import Dict, Optional, Type, Union
+from typing import Callable, Dict, List, Optional, Tuple, Type, Union
+import numpy as np
 
 from ray._private.utils import import_attr
-from ray.ml.checkpoint import Checkpoint
-from ray.ml.predictor import Predictor
+from ray.air.checkpoint import Checkpoint
+from ray.air.predictor import Predictor
 from ray.serve.drivers import HTTPAdapterFn, SimpleSchemaIngress
 import ray
 from ray import serve
+from ray.serve.utils import require_packages
+
+try:
+    import pandas as pd
+except ImportError:
+    pd = None
 
 
 def _load_checkpoint(
-    checkpoint: Union[Checkpoint, Dict],
+    checkpoint: Union[Checkpoint, str],
 ) -> Checkpoint:
-    if isinstance(checkpoint, dict):
-        user_keys = set(checkpoint.keys())
-        expected_keys = {"checkpoint_cls", "uri"}
-        if user_keys != expected_keys:
-            raise ValueError(
-                "The `checkpoint` dictionary is expects keys "
-                f"{expected_keys} but got {user_keys}"
-            )
-        checkpoint = import_attr(checkpoint["checkpoint_cls"]).from_uri(
-            checkpoint["uri"]
-        )
+    if isinstance(checkpoint, str):
+        checkpoint = Checkpoint.from_uri(checkpoint)
     assert isinstance(checkpoint, Checkpoint)
     return checkpoint
 
@@ -33,9 +31,54 @@ def _load_predictor_cls(
         predictor_cls = import_attr(predictor_cls)
     if not issubclass(predictor_cls, Predictor):
         raise ValueError(
-            f"{predictor_cls} class must be a subclass of ray.ml `Predictor`"
+            f"{predictor_cls} class must be a subclass of ray.air `Predictor`"
         )
     return predictor_cls
+
+
+def collate_array(
+    input_list: List[np.ndarray],
+) -> Tuple[np.ndarray, Callable[[np.ndarray], List[np.ndarray]]]:
+    batch_size = len(input_list)
+    batched = np.stack(input_list)
+
+    def unpack(output_arr):
+        if isinstance(output_arr, list):
+            return output_arr
+        assert isinstance(
+            output_arr, np.ndarray
+        ), f"The output should be np.ndarray but Serve got {type(output_arr)}."
+        assert len(output_arr) == batch_size, (
+            f"The output array should have shape of ({batch_size}, ...) "
+            f"but Serve got {output_arr.shape}"
+        )
+        return [arr.squeeze(axis=0) for arr in np.split(output_arr, batch_size, axis=0)]
+
+    return batched, unpack
+
+
+@require_packages(["pandas"])
+def collate_dataframe(
+    input_list: List["pd.DataFrame"],
+) -> Tuple["pd.DataFrame", Callable[["pd.DataFrame"], List["pd.DataFrame"]]]:
+    import pandas as pd
+
+    batch_size = len(input_list)
+    batched = pd.concat(input_list, axis="index", ignore_index=True, copy=False)
+
+    def unpack(output_df):
+        if isinstance(output_df, list):
+            return output_df
+        assert isinstance(
+            output_df, pd.DataFrame
+        ), f"The output should be a Pandas DataFrame but Serve got {type(output_df)}"
+        assert len(output_df) % batch_size == 0, (
+            f"The output dataframe should have length divisible by {batch_size}, "
+            f"but Serve got length {len(output_df)}."
+        )
+        return [df.reset_index(drop=True) for df in np.split(output_df, batch_size)]
+
+    return batched, unpack
 
 
 class ModelWrapper(SimpleSchemaIngress):
@@ -43,17 +86,14 @@ class ModelWrapper(SimpleSchemaIngress):
 
     Args:
         predictor_cls(str, Type[Predictor]): The class or path for predictor class.
-            The type must be a subclass of :class:`ray.ml.predicotr.Predictor`.
-        checkpoint(Checkpoint, dict): The checkpoint object or a dictionary describe
-            the object.
+            The type must be a subclass of :class:`ray.air.predictor.Predictor`.
+        checkpoint(Checkpoint, str): The checkpoint object or a uri to load checkpoint
+            from
 
-            - The checkpoint object must be a subclass of
-              :class:`ray.ml.checkpoint.Checkpoint`.
-            - The dictionary should be in the form of
-              ``{"checkpoint_cls": "import.path.MyCheckpoint",
-              "uri": "uri_to_load_from"}``.
-              Serve will then call ``MyCheckpoint.from_uri("uri_to_load_from")`` to
-              instantiate the object.
+            - The checkpoint object must be an instance of
+              :class:`ray.air.checkpoint.Checkpoint`.
+            - The uri string will be called to construct a checkpoint object using
+              ``Checkpoint.from_uri("uri_to_load_from")``.
 
         http_adapter(str, HTTPAdapterFn, None): The FastAPI input conversion
             function. By default, Serve will use the
@@ -71,7 +111,7 @@ class ModelWrapper(SimpleSchemaIngress):
     def __init__(
         self,
         predictor_cls: Union[str, Type[Predictor]],
-        checkpoint: Union[Checkpoint, Dict],
+        checkpoint: Union[Checkpoint, str],
         http_adapter: Union[
             str, HTTPAdapterFn
         ] = "ray.serve.http_adapters.json_to_ndarray",
@@ -85,26 +125,42 @@ class ModelWrapper(SimpleSchemaIngress):
 
         # Configure Batching
         if batching_params is False:
-            # Inject noop decorator to disable batching
-            batching_decorator = lambda f: f  # noqa: E731
+
+            async def predict_impl(inp: Union[np.ndarray, "pd.DataFrame"]):
+                out = self.model.predict(inp)
+                if isinstance(out, ray.ObjectRef):
+                    out = await out
+                return out
+
         else:
             batching_params = batching_params or dict()
-            batching_decorator = serve.batch(**batching_params)
 
-        @batching_decorator
-        async def batched_predict(inp):
-            out = self.model.predict(inp)
-            if isinstance(out, ray.ObjectRef):
-                out = await out
-            return out
+            @serve.batch(**batching_params)
+            async def predict_impl(inp: Union[List[np.ndarray], List["pd.DataFrame"]]):
 
-        self.batched_predict = batched_predict
+                if isinstance(inp[0], np.ndarray):
+                    collate_func = collate_array
+                elif pd is not None and isinstance(inp[0], pd.DataFrame):
+                    collate_func = collate_dataframe
+                else:
+                    raise ValueError(
+                        "ModelWrapper only accepts numpy array or dataframe as input "
+                        f"but got types {[type(i) for i in inp]}"
+                    )
+
+                batched, unpack = collate_func(inp)
+                out = self.model.predict(batched)
+                if isinstance(out, ray.ObjectRef):
+                    out = await out
+                return unpack(out)
+
+        self.predict_impl = predict_impl
 
         super().__init__(http_adapter)
 
     async def predict(self, inp):
         """Perform inference directly without HTTP."""
-        return await self.batched_predict(inp)
+        return await self.predict_impl(inp)
 
 
 @serve.deployment

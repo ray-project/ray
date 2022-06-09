@@ -27,8 +27,8 @@ from ray.data.read_api import (  # noqa: F401
 from ray.data.datasource import Datasource, ReadTask
 from ray.data.dataset import Dataset
 from ray.data.dataset_pipeline import DatasetPipeline
-from ray.data.impl.progress_bar import set_progress_bars
-from ray.data.impl.compute import ActorPoolStrategy
+from ray.data._internal.progress_bar import set_progress_bars
+from ray.data._internal.compute import ActorPoolStrategy
 
 # Module-level cached global functions (for impl/compute). It cannot be defined
 # in impl/compute since it has to be process-global across cloudpickled funcs.

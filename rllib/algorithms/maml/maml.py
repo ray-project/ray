@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 class MAMLConfig(TrainerConfig):
-    """Defines a configuration class from which a MAMLTrainer can be built.
+    """Defines a configuration class from which a MAML Trainer can be built.
 
     Example:
         >>> from ray.rllib.algorithms.maml import MAMLConfig
@@ -58,7 +58,7 @@ class MAMLConfig(TrainerConfig):
 
     def __init__(self, trainer_class=None):
         """Initializes a PGConfig instance."""
-        super().__init__(trainer_class=trainer_class or MAMLTrainer)
+        super().__init__(trainer_class=trainer_class or MAML)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -252,7 +252,7 @@ def inner_adaptation(workers, samples):
         e.learn_on_batch.remote(samples[i])
 
 
-class MAMLTrainer(Trainer):
+class MAML(Trainer):
     @classmethod
     @override(Trainer)
     def get_default_config(cls) -> TrainerConfigDict:

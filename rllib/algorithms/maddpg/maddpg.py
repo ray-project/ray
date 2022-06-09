@@ -13,7 +13,7 @@ import logging
 from typing import List, Optional, Type
 
 from ray.rllib.agents.trainer_config import TrainerConfig
-from ray.rllib.algorithms.dqn.dqn import DQNTrainer
+from ray.rllib.algorithms.dqn.dqn import DQN
 from ray.rllib.algorithms.maddpg.maddpg_tf_policy import MADDPGTFPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
@@ -26,7 +26,7 @@ logger.setLevel(logging.INFO)
 
 
 class MADDPGConfig(TrainerConfig):
-    """Defines a configuration class from which a MADDPGTrainer can be built.
+    """Defines a configuration class from which a MADDPG Trainer can be built.
 
     Example:
         >>> from ray.rllib.algorithms.maddpg.maddpg import MADDPGConfig
@@ -63,7 +63,7 @@ class MADDPGConfig(TrainerConfig):
 
     def __init__(self, trainer_class=None):
         """Initializes a DQNConfig instance."""
-        super().__init__(trainer_class=trainer_class or MADDPGTrainer)
+        super().__init__(trainer_class=trainer_class or MADDPG)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -274,13 +274,13 @@ def before_learn_on_batch(multi_agent_batch, policies, train_batch_size):
     return MultiAgentBatch(policy_batches, train_batch_size)
 
 
-class MADDPGTrainer(DQNTrainer):
+class MADDPG(DQN):
     @classmethod
-    @override(DQNTrainer)
+    @override(DQN)
     def get_default_config(cls) -> TrainerConfigDict:
         return MADDPGConfig().to_dict()
 
-    @override(DQNTrainer)
+    @override(DQN)
     def validate_config(self, config: TrainerConfigDict) -> None:
         """Adds the `before_learn_on_batch` hook to the config.
 
@@ -298,7 +298,7 @@ class MADDPGTrainer(DQNTrainer):
 
         config["before_learn_on_batch"] = f
 
-    @override(DQNTrainer)
+    @override(DQN)
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         return MADDPGTFPolicy
 
