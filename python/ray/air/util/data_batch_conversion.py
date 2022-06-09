@@ -8,14 +8,15 @@ from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.util.annotations import DeveloperAPI
 
 try:
-    import pyarrow as pa
+    import pyarrow
 except ImportError:
-    pass
+    pyarrow = None
+
 
 class DataType(Enum):
     PANDAS = auto()
     ARROW = auto()
-    NUMPY = auto()
+    NUMPY = auto()  # Either a single numpy array or a Dict of numpy arrays.
 
 
 @DeveloperAPI
@@ -53,7 +54,7 @@ def convert_batch_type_to_pandas(data: DataBatchType) -> pd.DataFrame:
             tensor_dict[k] = TensorArray(v)
         return pd.DataFrame(tensor_dict)
 
-    elif isinstance(data, pa.Table):
+    elif pyarrow is not None and isinstance(data, pyarrow.Table):
         return data.to_pandas()
     else:
         raise ValueError(
@@ -63,14 +64,12 @@ def convert_batch_type_to_pandas(data: DataBatchType) -> pd.DataFrame:
 
 
 @DeveloperAPI
-def convert_pandas_to_batch_type(
-    data: pd.DataFrame, type: DataType
-) -> DataBatchType:
+def convert_pandas_to_batch_type(data: pd.DataFrame, type: DataType) -> DataBatchType:
     """Convert the provided Pandas dataframe to the provided ``type``.
 
     Args:
         data: A Pandas DataFrame
-        type: The specific ``DataBatchType`` to convert data type.
+        type: The specific ``DataBatchType`` to convert to.
 
     Returns:
         The input data represented with the provided type.
@@ -80,7 +79,7 @@ def convert_pandas_to_batch_type(
 
     elif type == DataType.NUMPY:
         if len(data.columns) == 1:
-            # If just a single column, return as a single tensor.
+            # If just a single column, return as a single numpy array.
             return data.iloc[:, 0].to_numpy()
         else:
             # Else return as a dict of numpy arrays.
@@ -90,7 +89,13 @@ def convert_pandas_to_batch_type(
             return output_dict
 
     elif type == DataType.ARROW:
-        return pa.Table.from_pandas(data)
+        if not pyarrow:
+            raise ValueError(
+                "Attempted to convert data to Pyarrow Table but Pyarrow "
+                "is not installed. Please do `pip install pyarrow` to "
+                "install Pyarrow."
+            )
+        return pyarrow.Table.from_pandas(data)
 
     else:
         raise ValueError(

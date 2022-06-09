@@ -1,14 +1,30 @@
 import abc
+from typing import Dict, Type
 
+import numpy as np
 import pandas as pd
 
 from ray.air.data_batch_type import DataBatchType
 from ray.air.checkpoint import Checkpoint
 from ray.air.util.data_batch_conversion import (
+    DataType,
     convert_batch_type_to_pandas,
     convert_pandas_to_batch_type,
 )
 from ray.util.annotations import DeveloperAPI, PublicAPI
+
+try:
+    import pyarrow
+    import pyarrow.Table as pa_table
+except ImportError:
+    pa_table = None
+
+TYPE_TO_ENUM: Dict[Type[DataBatchType], DataType] = {
+    np.ndarray: DataType.NUMPY,
+    dict: DataType.NUMPY,
+    pd.DataFrame: DataType.PANDAS,
+    pa_table: DataType.ARROW,
+}
 
 
 @PublicAPI(stability="alpha")
@@ -47,11 +63,12 @@ class Predictor(abc.ABC):
     To implement a new Predictor for your particular framework, you should subclass
     the base ``Predictor`` and implement the following two methods:
 
-        1. ``_predict_pandas`` or ``_predict_arrow``: Given a
-            pandas.DataFrame/pyarrow.Table input, return a
-            pandas.DataFrame/pyarrow.Table containing predictions.
+        1. ``_predict_pandas``: Given a pandas.DataFrame input, return a
+            pandas.DataFrame containing predictions.
         2. ``from_checkpoint``: Logic for creating a Predictor from an
            :ref:`AIR Checkpoint <air-checkpoint-ref>`.
+        3. Optionally ``_predict_arrow`` for better performance when working with
+           tensor data to avoid extra copies from Pandas conversions.
     """
 
     @classmethod
@@ -87,7 +104,9 @@ class Predictor(abc.ABC):
             data_df = self.preprocessor.transform_batch(data_df)
 
         predictions_df = self._predict_pandas(data_df, **kwargs)
-        return convert_pandas_to_batch_type(predictions_df, type=type(data))
+        return convert_pandas_to_batch_type(
+            predictions_df, type=TYPE_TO_ENUM[type(data)]
+        )
 
     @DeveloperAPI
     def _predict_pandas(self, data: "pd.DataFrame", **kwargs) -> "pd.DataFrame":

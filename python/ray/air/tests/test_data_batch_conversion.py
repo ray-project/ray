@@ -68,10 +68,8 @@ def test_dict_pandas():
     actual_output = convert_batch_type_to_pandas(input_data)
     assert expected_output.equals(actual_output)
 
-    output_dict = convert_pandas_to_batch_type(actual_output, type=dict)
-    assert output_dict.keys() == input_data.keys()
-    for k, v in output_dict.items():
-        assert np.array_equal(v, input_data[k])
+    output_array = convert_pandas_to_batch_type(actual_output, type=DataType.NUMPY)
+    assert np.array_equal(output_array, input_data["x"])
 
 
 def test_dict_multi_dim_to_pandas():
@@ -81,10 +79,19 @@ def test_dict_multi_dim_to_pandas():
     actual_output = convert_batch_type_to_pandas(input_data)
     assert expected_output.equals(actual_output)
 
-    output_dict = convert_pandas_to_batch_type(actual_output, type=dict)
-    assert output_dict.keys() == input_data.keys()
+    output_array = convert_pandas_to_batch_type(actual_output, type=DataType.NUMPY)
+    assert np.array_equal(output_array, input_data["x"])
+
+
+def test_dict_pandas_multi_column():
+    array_dict = {"x": np.array([1, 2, 3]), "y": np.array([4, 5, 6])}
+    expected_output = pd.DataFrame({k: TensorArray(v) for k, v in array_dict.items()})
+    actual_output = convert_batch_type_to_pandas(array_dict)
+    assert expected_output.equals(actual_output)
+
+    output_dict = convert_pandas_to_batch_type(actual_output, type=DataType.NUMPY)
     for k, v in output_dict.items():
-        assert np.array_equal(v, input_data[k])
+        assert np.array_equal(v, array_dict[k])
 
 
 def test_arrow_pandas():
@@ -94,7 +101,9 @@ def test_arrow_pandas():
     actual_output = convert_batch_type_to_pandas(input_data)
     assert expected_output.equals(actual_output)
 
-    assert convert_pandas_to_batch_type(actual_output, type=pa.Table).equals(input_data)
+    assert convert_pandas_to_batch_type(actual_output, type=DataType.ARROW).equals(
+        input_data
+    )
 
 
 def test_arrow_tensor_pandas():
@@ -107,7 +116,9 @@ def test_arrow_tensor_pandas():
     actual_output = convert_batch_type_to_pandas(input_data)
     assert expected_output.equals(actual_output)
 
-    assert convert_pandas_to_batch_type(actual_output, type=pa.Table).equals(input_data)
+    assert convert_pandas_to_batch_type(actual_output, type=DataType.ARROW).equals(
+        input_data
+    )
 
 
 if __name__ == "__main__":
