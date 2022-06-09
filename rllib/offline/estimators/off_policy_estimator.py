@@ -2,7 +2,7 @@ from collections import namedtuple
 import logging
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.policy import Policy
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.offline.io_context import IOContext
 from ray.rllib.utils.annotations import Deprecated
 from ray.rllib.utils.numpy import convert_to_numpy
@@ -11,12 +11,12 @@ from typing import List, Optional, Generator, Tuple, Union
 
 logger = logging.getLogger(__name__)
 
-OffPolicyEstimate = DeveloperAPI(
+OffPolicyEstimate = ExperimentalAPI(
     namedtuple("OffPolicyEstimate", ["estimator_name", "metrics"])
 )
 
 
-@DeveloperAPI
+@ExperimentalAPI
 def train_test_split(
     batch: SampleBatchType,
     k: Union[float, int] = 0.0,
@@ -64,11 +64,11 @@ def train_test_split(
     return
 
 
-@DeveloperAPI
+@ExperimentalAPI
 class OffPolicyEstimator:
     """Interface for an off policy reward estimator."""
 
-    @DeveloperAPI
+    @ExperimentalAPI
     def __init__(self, name: str, policy: Policy, gamma: float):
         """Initializes an OffPolicyEstimator instance.
 
@@ -82,7 +82,7 @@ class OffPolicyEstimator:
         self.gamma = gamma
         self.new_estimates = []
 
-    @DeveloperAPI
+    @ExperimentalAPI
     def estimate(
         self,
         eval_batch: List[SampleBatchType],
@@ -99,7 +99,7 @@ class OffPolicyEstimator:
         """
         raise NotImplementedError
 
-    @DeveloperAPI
+    @ExperimentalAPI
     def action_log_likelihood(self, batch: SampleBatchType) -> TensorType:
         """Returns log likelihood for actions in given batch for policy.
 
@@ -131,7 +131,7 @@ class OffPolicyEstimator:
         log_likelihoods = convert_to_numpy(log_likelihoods)
         return log_likelihoods
 
-    @DeveloperAPI
+    @ExperimentalAPI
     def check_can_estimate_for(self, batch: SampleBatchType) -> None:
         """Checks if we support off policy estimation (OPE) on given batch.
 
@@ -158,7 +158,7 @@ class OffPolicyEstimator:
                 "`off_policy_estimation_methods: {}` to disable estimation."
             )
 
-    @DeveloperAPI
+    @ExperimentalAPI
     def process(
         self,
         eval_batch: List[SampleBatchType],
@@ -174,7 +174,7 @@ class OffPolicyEstimator:
         """
         self.new_estimates.extend(self.estimate(eval_batch, train_batch))
 
-    @DeveloperAPI
+    @ExperimentalAPI
     def get_metrics(self, get_losses: bool = False) -> List[OffPolicyEstimate]:
         """Returns list of new episode metric estimates since the last call.
 
@@ -198,7 +198,7 @@ class OffPolicyEstimator:
 
     @Deprecated(help="OffPolicyEstimator.__init__(policy, gamma, config)", error=False)
     @classmethod
-    @DeveloperAPI
+    @ExperimentalAPI
     def create_from_io_context(cls, ioctx: IOContext) -> "OffPolicyEstimator":
         """Creates an off-policy estimator from an IOContext object.
         Extracts Policy and gamma (discount factor) information from the
@@ -222,11 +222,11 @@ class OffPolicyEstimator:
         return cls(policy, gamma, config)
 
     @Deprecated(new="OffPolicyEstimator.create_from_io_context", error=True)
-    @DeveloperAPI
+    @ExperimentalAPI
     def create(self, *args, **kwargs):
         return self.create_from_io_context(*args, **kwargs)
 
     @Deprecated(new="OffPolicyEstimator.compute_log_likelihoods", error=False)
-    @DeveloperAPI
+    @ExperimentalAPI
     def action_prob(self, *args, **kwargs):
         return self.compute_log_likelihoods(*args, **kwargs)

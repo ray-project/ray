@@ -33,8 +33,11 @@ class TestOPE(unittest.TestCase):
         env_name = "CartPole-v0"
         cls.gamma = 0.99
         train_steps = 200000
-        n_batches = 20  # Approx. equal to n_episodes
-        n_eval_episodes = 100
+        n_batches = 100  # Approx. equal to n_episodes
+        n_eval_episodes = 1000
+        # Optional configs for the model-based estimators
+        cls.train_test_split_val = 0.8
+        cls.model_config = {}
 
         config = (
             DQNConfig()
@@ -89,9 +92,6 @@ class TestOPE(unittest.TestCase):
         cls.mean_ret["simulation"] = np.mean(mc_ret)
         cls.std_ret["simulation"] = np.std(mc_ret)
 
-        # Optional configs for the model-based estimators
-        cls.train_test_split_val = 5
-        cls.model_config = {}
         ray.shutdown()
 
     @classmethod
@@ -108,7 +108,6 @@ class TestOPE(unittest.TestCase):
         )
         estimator.process(self.batch)
         estimates = estimator.get_metrics()
-        assert len(estimates) == self.n_episodes
         self.mean_ret[name] = np.mean([e.metrics["v_new"] for e in estimates])
         self.std_ret[name] = np.std([e.metrics["v_new"] for e in estimates])
 
@@ -121,7 +120,6 @@ class TestOPE(unittest.TestCase):
         )
         estimator.process(self.batch)
         estimates = estimator.get_metrics()
-        assert len(estimates) == self.n_episodes
         self.mean_ret[name] = np.mean([e.metrics["v_new"] for e in estimates])
         self.std_ret[name] = np.std([e.metrics["v_new"] for e in estimates])
 
@@ -139,7 +137,6 @@ class TestOPE(unittest.TestCase):
         ):
             estimator.process(eval_batch, train_batch)
         estimates = estimator.get_metrics()
-        assert len(estimates) == self.n_episodes
         self.mean_ret[name] = np.mean([e.metrics["v_new"] for e in estimates])
         self.std_ret[name] = np.std([e.metrics["v_new"] for e in estimates])
 
@@ -157,7 +154,6 @@ class TestOPE(unittest.TestCase):
         ):
             estimator.process(eval_batch, train_batch)
         estimates = estimator.get_metrics()
-        assert len(estimates) == self.n_episodes
         self.mean_ret[name] = np.mean([e.metrics["v_new"] for e in estimates])
         self.std_ret[name] = np.std([e.metrics["v_new"] for e in estimates])
 
@@ -175,7 +171,6 @@ class TestOPE(unittest.TestCase):
         ):
             estimator.process(eval_batch, train_batch)
         estimates = estimator.get_metrics()
-        assert len(estimates) == self.n_episodes
         self.mean_ret[name] = np.mean([e.metrics["v_new"] for e in estimates])
         self.std_ret[name] = np.std([e.metrics["v_new"] for e in estimates])
 
@@ -193,7 +188,6 @@ class TestOPE(unittest.TestCase):
         ):
             estimator.process(eval_batch, train_batch)
         estimates = estimator.get_metrics()
-        assert len(estimates) == self.n_episodes
         self.mean_ret[name] = np.mean([e.metrics["v_new"] for e in estimates])
         self.std_ret[name] = np.std([e.metrics["v_new"] for e in estimates])
 
@@ -227,6 +221,8 @@ class TestOPE(unittest.TestCase):
             )
             .evaluation(
                 evaluation_interval=1,
+                evaluation_duration_unit="episodes",
+                evaluation_duration=10,
                 evaluation_num_workers=eval_num_workers,
                 evaluation_config={
                     "input": "dataset",
@@ -237,8 +233,6 @@ class TestOPE(unittest.TestCase):
                     "is": {"type": ImportanceSampling},
                     "wis": {"type": WeightedImportanceSampling},
                 },
-                evaluation_duration_unit="episodes",
-                evaluation_duration=10,
             )
             .framework("torch")
             .rollouts(batch_mode="complete_episodes")

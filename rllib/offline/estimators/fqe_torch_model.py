@@ -5,14 +5,14 @@ from typing import List, Union
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
 
 torch, nn = try_import_torch()
 
 
-@DeveloperAPI
+@ExperimentalAPI
 class FQETorchModel:
     """Pytorch implementation of the Fitted Q-Evaluation (FQE) model from
     https://arxiv.org/pdf/1911.06854.pdf
@@ -28,7 +28,7 @@ class FQETorchModel:
         delta: float = 1e-4,
         clip_grad_norm: float = 100.0,
         batch_size: int = 32,
-        tau: float = 0.05,
+        tau: float = 1.0,
     ) -> None:
         """
         Args:
@@ -51,7 +51,7 @@ class FQETorchModel:
             # Minibatch size for training Q-function
             batch_size = 32,
             # Polyak averaging factor for target Q-function
-            tau = 0.05
+            tau = 1.0
         """
         self.policy = policy
         self.gamma = gamma
