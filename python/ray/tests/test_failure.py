@@ -463,7 +463,7 @@ def test_version_mismatch(ray_start_cluster):
         # Test the driver.
         ray.__version__ = "fake ray version"
         with pytest.raises(RuntimeError):
-            ray.init(address="auto")
+            ray.init(address=cluster.address)
 
     finally:
         # Reset the version.
