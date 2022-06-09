@@ -1,7 +1,7 @@
 .. _api-stability:
 
 API stability
--------------
+=============
 
 Ray provides stability guarantees for its public APIs in Ray core and libraries, which are decorated/labeled accordingly.
 

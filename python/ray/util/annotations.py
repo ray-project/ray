@@ -13,7 +13,7 @@ def PublicAPI(*args, **kwargs):
     minor Ray releases (e.g., Ray 1.4 -> 1.8).
 
     For a full definition of the stability levels, please refer to the
-    `Ray API Stability definitions <api-stability>`_.
+    :ref:`Ray API Stability definitions <api-stability>`.
 
     Args:
         stability: One of {"stable", "beta", "alpha"}.
