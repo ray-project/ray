@@ -46,13 +46,15 @@ def collate_array(
     def unpack(output_arr):
         if isinstance(output_arr, list):
             return output_arr
-        assert isinstance(
-            output_arr, np.ndarray
-        ), f"The output should be np.ndarray but Serve got {type(output_arr)}."
-        assert len(output_arr) == batch_size, (
-            f"The output array should have shape of ({batch_size}, ...) "
-            f"but Serve got {output_arr.shape}"
-        )
+        if not isinstance(output_arr, np.ndarray):
+            raise TypeError(
+                f"The output should be np.ndarray but Serve got {type(output_arr)}."
+            )
+        if len(output_arr) != batch_size:
+            raise ValueError(
+                f"The output array should have shape of ({batch_size}, ...) "
+                f"but Serve got {output_arr.shape}"
+            )
         return [arr.squeeze(axis=0) for arr in np.split(output_arr, batch_size, axis=0)]
 
     return batched, unpack
@@ -93,9 +95,10 @@ def collate_dict_array(
         if isinstance(output_dict, list):
             return output_dict
 
-        assert isinstance(
-            output_dict, Dict
-        ), f"The output should be a dicitonary but Serve got {type(output_dict)}."
+        if not isinstance(output_dict, Dict):
+            raise TypeError(
+                f"The output should be a dictionary but Serve got {type(output_dict)}."
+            )
 
         split_list_of_dict = [{} for _ in range(batch_size)]
         for key, arr_unpack_func in unpack_dict.items():
@@ -121,13 +124,15 @@ def collate_dataframe(
     def unpack(output_df):
         if isinstance(output_df, list):
             return output_df
-        assert isinstance(
-            output_df, pd.DataFrame
-        ), f"The output should be a Pandas DataFrame but Serve got {type(output_df)}"
-        assert len(output_df) % batch_size == 0, (
-            f"The output dataframe should have length divisible by {batch_size}, "
-            f"but Serve got length {len(output_df)}."
-        )
+        if not isinstance(output_df, pd.DataFrame):
+            raise TypeError(
+                f"The output should be a Pandas DataFrame but Serve got {type(output_df)}"
+            )
+        if len(output_df) % batch_size != 0:
+            raise ValueError(
+                f"The output dataframe should have length divisible by {batch_size}, "
+                f"but Serve got length {len(output_df)}."
+            )
         return [df.reset_index(drop=True) for df in np.split(output_df, batch_size)]
 
     return batched, unpack
