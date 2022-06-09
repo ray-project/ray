@@ -9,7 +9,6 @@ import tempfile
 import time
 import unittest
 from unittest.mock import patch
-import yaml
 
 from collections import deque
 
@@ -19,13 +18,8 @@ from ray.rllib import _register_all
 
 from ray import tune
 from ray.tune import TuneError
-from ray.tune.integration.docker import DockerSyncer
-from ray.tune.integration.kubernetes import KubernetesSyncer
 from ray.tune.sync_client import NOOP, RemoteTaskClient
 from ray.tune.syncer import (
-    CommandBasedClient,
-    detect_cluster_syncer,
-    get_cloud_sync_client,
     SyncerCallback,
 )
 from ray.tune.utils.callback import create_default_callbacks
@@ -336,40 +330,6 @@ class TestSyncFunctionality(unittest.TestCase):
                 "local_target",
             )
 
-    def testSyncDetection(self):
-        kubernetes_conf = {"provider": {"type": "kubernetes", "namespace": "test_ray"}}
-        docker_conf = {"docker": {"image": "bogus"}, "provider": {"type": "aws"}}
-        aws_conf = {"provider": {"type": "aws"}}
-
-        with tempfile.TemporaryDirectory() as dir:
-            kubernetes_file = os.path.join(dir, "kubernetes.yaml")
-            with open(kubernetes_file, "wt") as fp:
-                yaml.safe_dump(kubernetes_conf, fp)
-
-            docker_file = os.path.join(dir, "docker.yaml")
-            with open(docker_file, "wt") as fp:
-                yaml.safe_dump(docker_conf, fp)
-
-            aws_file = os.path.join(dir, "aws.yaml")
-            with open(aws_file, "wt") as fp:
-                yaml.safe_dump(aws_conf, fp)
-
-            kubernetes_syncer = detect_cluster_syncer(None, kubernetes_file)
-            self.assertTrue(issubclass(kubernetes_syncer, KubernetesSyncer))
-            self.assertEqual(kubernetes_syncer._namespace, "test_ray")
-
-            docker_syncer = detect_cluster_syncer(None, docker_file)
-            self.assertTrue(issubclass(docker_syncer, DockerSyncer))
-
-            aws_syncer = detect_cluster_syncer(None, aws_file)
-            self.assertEqual(aws_syncer, None)
-
-            # Should still return DockerSyncer, since it was passed explicitly
-            syncer = detect_cluster_syncer(
-                tune.SyncConfig(syncer=DockerSyncer), kubernetes_file
-            )
-            self.assertTrue(issubclass(syncer, DockerSyncer))
-
     @patch(
         "ray.tune.syncer.get_rsync_template_if_available",
         lambda: "rsync {source} {target}",
@@ -399,41 +359,6 @@ class TestSyncFunctionality(unittest.TestCase):
         # Sync to driver is disabled, so this should be no-op
         trial_syncer = syncer_callback._get_trial_syncer(trial)
         self.assertEqual(trial_syncer.sync_client, NOOP)
-
-    def testSyncWaitRetry(self):
-        class CountingClient(CommandBasedClient):
-            def __init__(self, *args, **kwargs):
-                self._sync_ups = 0
-                self._sync_downs = 0
-                super(CountingClient, self).__init__(*args, **kwargs)
-
-            def _start_process(self, cmd):
-                if "UPLOAD" in cmd:
-                    self._sync_ups += 1
-                elif "DOWNLOAD" in cmd:
-                    self._sync_downs += 1
-                    if self._sync_downs == 1:
-                        self._last_cmd = "echo DOWNLOAD && true"
-                return super(CountingClient, self)._start_process(cmd)
-
-        client = CountingClient(
-            "echo UPLOAD {source} {target} && false",
-            "echo DOWNLOAD {source} {target} && false",
-            "echo DELETE {target}",
-        )
-
-        # Fail always
-        with self.assertRaisesRegex(TuneError, "Failed sync even after"):
-            client.sync_up("test_source", "test_target")
-            client.wait_or_retry(max_retries=3, backoff_s=0)
-
-        self.assertEquals(client._sync_ups, 3)
-
-        # Succeed after second try
-        client.sync_down("test_source", "test_target")
-        client.wait_or_retry(max_retries=3, backoff_s=0)
-
-        self.assertEquals(client._sync_downs, 2)
 
     def _check_dir_contents(self, path: str):
         assert os.path.exists(os.path.join(path, "dir_level0"))
