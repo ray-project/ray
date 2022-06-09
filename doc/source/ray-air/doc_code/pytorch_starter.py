@@ -28,7 +28,8 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader
 import ray.train as train
-from ray.air.train.integrations.torch import TorchTrainer
+from ray.train.torch import TorchTrainer
+from ray.air.config import ScalingConfig
 
 # Define model
 class NeuralNetwork(nn.Module):
@@ -121,7 +122,7 @@ use_gpu = False
 trainer = TorchTrainer(
     train_loop_per_worker=train_func,
     train_loop_config={"lr": 1e-3, "batch_size": 64, "epochs": 4},
-    scaling_config={"num_workers": num_workers, "use_gpu": use_gpu},
+    scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
 )
 result = trainer.fit()
 print(f"Last result: {result.metrics}")
