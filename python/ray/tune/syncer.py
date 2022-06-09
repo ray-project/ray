@@ -100,7 +100,7 @@ class _BackgroundProcess:
 
     @property
     def is_running(self):
-        return bool(self._process)
+        return self._process and self._process.is_alive()
 
     def start(self, *args, **kwargs):
         if self.is_running:
@@ -174,11 +174,12 @@ class Syncer(abc.ABC):
             exclude: Regex pattern of files to exclude, e.g.
                 ``[".*/checkpoint_.*]`` to exclude trial checkpoints.
         """
-        if time.time() - self.last_sync_up_time > self.sync_period:
+        now = time.time()
+        if now - self.last_sync_up_time >= self.sync_period:
             result = self.sync_up(
                 local_dir=local_dir, remote_dir=remote_dir, exclude=exclude
             )
-            self.last_sync_up_time = time.time()
+            self.last_sync_up_time = now
             return result
 
     def sync_down_if_needed(
@@ -191,11 +192,12 @@ class Syncer(abc.ABC):
             exclude: Pattern of files to exclude, e.g.
                 ``["*/checkpoint_*]`` to exclude trial checkpoints.
         """
-        if time.time() - self.last_sync_down_time > self.sync_period:
+        now = time.time()
+        if now - self.last_sync_down_time >= self.sync_period:
             result = self.sync_down(
                 remote_dir=remote_dir, local_dir=local_dir, exclude=exclude
             )
-            self.last_sync_down_time = time.time()
+            self.last_sync_down_time = now
             return result
 
     def wait(self):

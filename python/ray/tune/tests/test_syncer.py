@@ -3,6 +3,8 @@ import pytest
 import shutil
 import tempfile
 
+from freezegun import freeze_time
+
 from ray.tune.syncer import _DefaultSyncer
 
 
@@ -44,14 +46,16 @@ def assert_file(exists: bool, root: str, path: str):
 
 
 def test_syncer_sync_up_down(temp_data_dirs):
-    syncer = _DefaultSyncer()
-
     tmp_source, tmp_target = temp_data_dirs
+
+    syncer = _DefaultSyncer()
 
     syncer.sync_up(local_dir=tmp_source, remote_dir="memory:///test/syncer1")
     syncer.wait()
 
-    syncer.sync_down(remote_dir="memory:///test/syncer1", local_dir=tmp_target)
+    syncer.sync_down(
+        remote_dir="memory:///test/test_syncer_sync_up_down", local_dir=tmp_target
+    )
     syncer.wait()
 
     assert_file(True, tmp_target, "level0.txt")
@@ -61,6 +65,84 @@ def test_syncer_sync_up_down(temp_data_dirs):
     assert_file(True, tmp_target, "subdir/nested/level2.txt")
     assert_file(True, tmp_target, "subdir_nested_level2_exclude.txt")
     assert_file(True, tmp_target, "subdir_exclude/something/somewhere.txt")
+
+
+def test_sync_up_if_needed(temp_data_dirs):
+    tmp_source, tmp_target = temp_data_dirs
+
+    with freeze_time() as frozen:
+        syncer = _DefaultSyncer(sync_period=60)
+        assert syncer.sync_up_if_needed(
+            local_dir=tmp_source, remote_dir="memory:///test/test_sync_up_not_needed"
+        )
+        syncer.wait()
+
+        frozen.tick(30)
+
+        assert not syncer.sync_up_if_needed(
+            local_dir=tmp_source, remote_dir="memory:///test/test_sync_up_not_needed"
+        )
+
+        frozen.tick(30)
+
+        assert syncer.sync_up_if_needed(
+            local_dir=tmp_source, remote_dir="memory:///test/test_sync_up_not_needed"
+        )
+
+
+def test_sync_down_if_needed(temp_data_dirs):
+    tmp_source, tmp_target = temp_data_dirs
+
+    with freeze_time() as frozen:
+        syncer = _DefaultSyncer(sync_period=60)
+
+        # Populate remote directory
+        syncer.sync_up(
+            local_dir=tmp_source, remote_dir="memory:///test/test_sync_down_if_needed"
+        )
+        syncer.wait()
+
+        assert syncer.sync_down_if_needed(
+            remote_dir="memory:///test/test_sync_down_if_needed", local_dir=tmp_target
+        )
+        syncer.wait()
+
+        frozen.tick(30)
+
+        assert not syncer.sync_down_if_needed(
+            remote_dir="memory:///test/test_sync_down_if_needed", local_dir=tmp_target
+        )
+
+        frozen.tick(30)
+
+        assert syncer.sync_down_if_needed(
+            remote_dir="memory:///test/test_sync_down_if_needed", local_dir=tmp_target
+        )
+
+
+def test_syncer_delete(temp_data_dirs):
+    tmp_source, tmp_target = temp_data_dirs
+
+    syncer = _DefaultSyncer(sync_period=60)
+
+    # Populate remote directory
+    syncer.sync_up(local_dir=tmp_source, remote_dir="memory:///test/test_syncer_delete")
+    syncer.wait()
+
+    syncer.delete(remote_dir="memory:///test/test_syncer_delete")
+
+    syncer.sync_down(
+        remote_dir="memory:///test/test_syncer_delete", local_dir=tmp_target
+    )
+    syncer.wait()
+
+    assert_file(False, tmp_target, "level0.txt")
+    assert_file(False, tmp_target, "level0_exclude.txt")
+    assert_file(False, tmp_target, "subdir/level1.txt")
+    assert_file(False, tmp_target, "subdir/level1_exclude.txt")
+    assert_file(False, tmp_target, "subdir/nested/level2.txt")
+    assert_file(False, tmp_target, "subdir_nested_level2_exclude.txt")
+    assert_file(False, tmp_target, "subdir_exclude/something/somewhere.txt")
 
 
 if __name__ == "__main__":
