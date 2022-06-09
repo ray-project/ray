@@ -37,14 +37,6 @@ def StandardMetricsReporting(
     Returns:
         LocalIterator[dict]: A local iterator over training results.
 
-    Examples:
-        >>> from ray.rllib.execution import ParallelRollouts, TrainOneStep
-        >>> train_op = ParallelRollouts(...) # doctest: +SKIP
-        ...     .for_each(TrainOneStep(...))
-        >>> metrics_op = StandardMetricsReporting( # doctest: +SKIP
-        ...     train_op, workers, config)
-        >>> next(metrics_op) # doctest: +SKIP
-        {"episode_reward_max": ..., "episode_reward_mean": ..., ...}
     """
 
     output_op = (

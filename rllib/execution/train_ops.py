@@ -511,21 +511,10 @@ class AverageGradients:
 class UpdateTargetNetwork:
     """Periodically call policy.update_target() on all trainable policies.
 
-    This should be used with the .for_each() operator after training step
+    This should be used with the `.for_each()` operator after training step
     has been taken.
 
-    Examples:
-        >>> from ray.rllib.execution.train_ops import UpdateTargetNetwork
-        >>> from ray.rllib.execution import ParallelRollouts, TrainOneStep
-        >>> workers = ... # doctest: +SKIP
-        >>> train_op = ParallelRollouts(...).for_each( # doctest: +SKIP
-        ...     TrainOneStep(...))
-        >>> update_op = train_op.for_each( # doctest: +SKIP
-        ...     UpdateTargetNetwork(workers, target_update_freq=500)) # doctest: +SKIP
-        >>> print(next(update_op)) # doctest: +SKIP
-        None
-
-    Updates the LAST_TARGET_UPDATE_TS and NUM_TARGET_UPDATES counters in the
+    Updates the `LAST_TARGET_UPDATE_TS` and `NUM_TARGET_UPDATES` counters in the
     local iterator context. The value of the last update counter is used to
     track when we should update the target next.
     """
