@@ -1870,7 +1870,6 @@ class Trainer(Trainable):
         policies, is_multi_agent = check_multi_agent(config)
 
         framework = config.get("framework")
-        # Multi-GPU setting: Must use MultiGPUTrainOneStep.
         if config.get("num_gpus", 0) > 1:
             if framework in ["tfe", "tf2"]:
                 raise ValueError(
@@ -1884,7 +1883,7 @@ class Trainer(Trainable):
                 )
             config["simple_optimizer"] = False
         # Auto-setting: Use simple-optimizer for tf-eager or multiagent,
-        # otherwise: MultiGPUTrainOneStep (if supported by the algo's execution
+        # otherwise: multi_gpu_train_one_step (if supported by the algo's execution
         # plan).
         elif simple_optim_setting == DEPRECATED_VALUE:
             # tf-eager: Must use simple optimizer.
@@ -2372,10 +2371,6 @@ class Trainer(Trainable):
                     # a (tolerable) failure.
                     return False
 
-                # Stopping criteria: Only when using the `training_iteration`
-                # API, b/c for the `exec_plan` API, the logic to stop is
-                # already built into the execution plans via the
-                # `StandardMetricsReporting` op.
                 elif trainer.config["_disable_execution_plan_api"]:
                     if trainer._by_agent_steps:
                         self.sampled = (
