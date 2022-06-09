@@ -289,6 +289,22 @@ py_test(
 )
 
 py_test(
+    name = "test_syncer",
+    size = "medium",
+    srcs = ["tests/test_syncer.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_S"],
+)
+
+py_test(
+    name = "test_syncer_callback",
+    size = "medium",
+    srcs = ["tests/test_syncer_callback.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_S"],
+)
+
+py_test(
     name = "test_trainable_util",
     size = "small",
     srcs = ["tests/test_trainable_util.py"],

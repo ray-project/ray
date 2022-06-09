@@ -17,6 +17,51 @@ import ray.util
 from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 
 
+@pytest.fixture
+def ray_start_2_cpus():
+    address_info = ray.init(num_cpus=2, configure_logging=False)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+
+@pytest.fixture
+def temp_data_dirs():
+    tmp_source = os.path.realpath(tempfile.mkdtemp())
+    tmp_target = os.path.realpath(tempfile.mkdtemp())
+
+    os.makedirs(os.path.join(tmp_source, "subdir", "nested"))
+    os.makedirs(os.path.join(tmp_source, "subdir_exclude", "something"))
+
+    files = [
+        "level0.txt",
+        "level0_exclude.txt",
+        "subdir/level1.txt",
+        "subdir/level1_exclude.txt",
+        "subdir/nested/level2.txt",
+        "subdir_nested_level2_exclude.txt",
+        "subdir_exclude/something/somewhere.txt",
+    ]
+
+    for file in files:
+        with open(os.path.join(tmp_source, file), "w") as f:
+            f.write("Data")
+
+    yield tmp_source, tmp_target
+
+    shutil.rmtree(tmp_source)
+    shutil.rmtree(tmp_target)
+
+
+def assert_file(exists: bool, root: str, path: str):
+    full_path = os.path.join(root, path)
+
+    if exists:
+        assert os.path.exists(full_path)
+    else:
+        assert not os.path.exists(full_path)
+
+
 class MockTrial:
     def __init__(self, trial_id: str, logdir: str):
         self.trial_id = trial_id
@@ -65,51 +110,6 @@ class MaybeFailingProcess(_BackgroundProcess):
         if self.should_fail:
             raise TuneError("Syncing failed.")
         return result
-
-
-@pytest.fixture
-def ray_start_2_cpus():
-    address_info = ray.init(num_cpus=2, configure_logging=False)
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-
-
-@pytest.fixture
-def temp_data_dirs():
-    tmp_source = os.path.realpath(tempfile.mkdtemp())
-    tmp_target = os.path.realpath(tempfile.mkdtemp())
-
-    os.makedirs(os.path.join(tmp_source, "subdir", "nested"))
-    os.makedirs(os.path.join(tmp_source, "subdir_exclude", "something"))
-
-    files = [
-        "level0.txt",
-        "level0_exclude.txt",
-        "subdir/level1.txt",
-        "subdir/level1_exclude.txt",
-        "subdir/nested/level2.txt",
-        "subdir_nested_level2_exclude.txt",
-        "subdir_exclude/something/somewhere.txt",
-    ]
-
-    for file in files:
-        with open(os.path.join(tmp_source, file), "w") as f:
-            f.write("Data")
-
-    yield tmp_source, tmp_target
-
-    shutil.rmtree(tmp_source)
-    shutil.rmtree(tmp_target)
-
-
-def assert_file(exists: bool, root: str, path: str):
-    full_path = os.path.join(root, path)
-
-    if exists:
-        assert os.path.exists(full_path)
-    else:
-        assert not os.path.exists(full_path)
 
 
 def test_syncer_callback_sync(ray_start_2_cpus, temp_data_dirs):
