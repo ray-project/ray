@@ -253,17 +253,20 @@ def test_no_workflow_found(workflow_start_regular):
 
     workflow.create(simple.bind()).run(workflow_id)
 
+    # here we use "in" rather than "==" because error in client
+    # mode would be wrapped with "RayTaskError", i.e.:
+    # ValueError -> RayTaskError(ValueError)
     with pytest.raises(ValueError) as excinfo:
         workflow.get_metadata("simple1")
-    assert str(excinfo.value) == "No such workflow_id simple1"
+    assert "No such workflow_id simple1" in str(excinfo.value)
 
     with pytest.raises(ValueError) as excinfo:
         workflow.get_metadata("simple1", "simple_step")
-    assert str(excinfo.value) == "No such workflow_id simple1"
+    assert "No such workflow_id simple1" in str(excinfo.value)
 
     with pytest.raises(ValueError) as excinfo:
         workflow.get_metadata("simple", "simple_step1")
-    assert str(excinfo.value) == "No such step_id simple_step1 in workflow simple"
+    assert "No such step_id simple_step1 in workflow simple" in str(excinfo.value)
 
 
 if __name__ == "__main__":
