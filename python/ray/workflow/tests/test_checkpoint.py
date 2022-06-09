@@ -5,6 +5,7 @@ from ray.tests.conftest import *  # noqa
 import numpy as np
 from ray import workflow
 from ray.workflow import workflow_storage
+from ray.workflow.tests import utils
 
 
 @ray.remote
@@ -53,6 +54,7 @@ def _assert_step_checkpoints(wf_storage, step_id, mode):
 
 
 def test_checkpoint_dag_skip_all(workflow_start_regular_shared):
+    utils.skip_client_test()
     outputs = workflow.create(
         checkpoint_dag.options(
             **workflow.options(name="checkpoint_dag", checkpoint=False)
@@ -70,6 +72,7 @@ def test_checkpoint_dag_skip_all(workflow_start_regular_shared):
 
 
 def test_checkpoint_dag_skip_partial(workflow_start_regular_shared):
+    utils.skip_client_test()
     outputs = workflow.create(
         checkpoint_dag.options(**workflow.options(name="checkpoint_dag")).bind(False)
     ).run(workflow_id="checkpoint_partial")
@@ -85,6 +88,7 @@ def test_checkpoint_dag_skip_partial(workflow_start_regular_shared):
 
 
 def test_checkpoint_dag_full(workflow_start_regular_shared):
+    utils.skip_client_test()
     outputs = workflow.create(
         checkpoint_dag.options(**workflow.options(name="checkpoint_dag")).bind(True)
     ).run(workflow_id="checkpoint_whole")

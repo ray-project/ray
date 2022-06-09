@@ -4,6 +4,7 @@ from filelock import FileLock
 from ray._private.test_utils import SignalActor
 from ray import workflow
 from ray.tests.conftest import *  # noqa
+from ray.workflow.tests import utils
 
 
 @pytest.mark.parametrize(
@@ -53,6 +54,7 @@ def test_get_output_1(workflow_start_regular, tmp_path):
 
 
 def test_get_output_2(workflow_start_regular, tmp_path):
+    utils.skip_client_test()
     lock_path = str(tmp_path / "lock")
     lock = FileLock(lock_path)
 

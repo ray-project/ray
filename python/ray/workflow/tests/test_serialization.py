@@ -4,6 +4,7 @@ import ray
 from ray import workflow
 from ray.workflow import serialization
 from ray.workflow import workflow_storage
+from ray.workflow.tests import utils
 from ray._private.test_utils import run_string_as_driver_nonblocking
 from ray.tests.conftest import *  # noqa
 import subprocess
@@ -167,6 +168,7 @@ if __name__ == "__main__":
 
 
 def test_embedded_objectrefs(workflow_start_regular):
+    utils.skip_client_test()
     workflow_id = test_embedded_objectrefs.__name__
 
     class ObjectRefsWrapper:

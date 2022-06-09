@@ -2,9 +2,11 @@ import pytest
 
 from ray.workflow.common import WorkflowStatus
 from ray.workflow.workflow_storage import WorkflowIndexingStorage
+from ray.workflow.tests import utils
 
 
 def test_workflow_status_update(workflow_start_regular):
+    utils.skip_client_test()
     # Test workflow status update is working.
     store = WorkflowIndexingStorage()
     assert not store.list_workflow()

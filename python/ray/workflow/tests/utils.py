@@ -1,6 +1,10 @@
 import pathlib
 import tempfile
 
+import pytest
+
+import ray
+
 _GLOBAL_MARK_PATH = pathlib.Path(tempfile.gettempdir())
 
 
@@ -28,3 +32,8 @@ def clear_marks():
     files = _GLOBAL_MARK_PATH.glob("**/workflow-*")
     for file in files:
         file.unlink()
+
+
+def skip_client_test():
+    if ray._private.client_mode_hook.is_client_mode_enabled:
+        pytest.skip("skip test in client mode")

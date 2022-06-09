@@ -7,6 +7,7 @@ import pytest
 import ray
 from ray import workflow
 from ray.workflow import workflow_access
+from ray.workflow.tests import utils
 
 
 def test_basic_workflows(workflow_start_regular_shared):
@@ -314,6 +315,8 @@ def test_nested_catch_exception_2(workflow_start_regular_shared, tmp_path):
 
 
 def test_dynamic_output(workflow_start_regular_shared):
+    utils.skip_client_test()
+
     @ray.remote
     def exponential_fail(k, n):
         if n > 0:

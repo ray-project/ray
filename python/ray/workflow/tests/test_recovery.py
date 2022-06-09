@@ -293,6 +293,8 @@ if __name__ == "__main__":
 
 
 def test_shortcut(workflow_start_regular):
+    utils.skip_client_test()
+
     @ray.remote
     def recursive_chain(x):
         if x < 100:
