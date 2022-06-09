@@ -1,4 +1,4 @@
-from typing import Type
+from enum import Enum, auto
 
 import numpy as np
 import pandas as pd
@@ -11,6 +11,11 @@ try:
     import pyarrow as pa
 except ImportError:
     pass
+
+class DataType(Enum):
+    PANDAS = auto()
+    ARROW = auto()
+    NUMPY = auto()
 
 
 @DeveloperAPI
@@ -59,7 +64,7 @@ def convert_batch_type_to_pandas(data: DataBatchType) -> pd.DataFrame:
 
 @DeveloperAPI
 def convert_pandas_to_batch_type(
-    data: pd.DataFrame, type: Type[DataBatchType]
+    data: pd.DataFrame, type: DataType
 ) -> DataBatchType:
     """Convert the provided Pandas dataframe to the provided ``type``.
 
@@ -70,39 +75,24 @@ def convert_pandas_to_batch_type(
     Returns:
         The input data represented with the provided type.
     """
-    if type == pd.DataFrame:
+    if type == DataType.PANDAS:
         return data
 
-    elif type == np.ndarray:
-        # If just a single column, return as a single tensor.
+    elif type == DataType.NUMPY:
         if len(data.columns) == 1:
+            # If just a single column, return as a single tensor.
             return data.iloc[:, 0].to_numpy()
+        else:
+            # Else return as a dict of numpy arrays.
+            output_dict = {}
+            for column in data:
+                output_dict[column] = data[column].to_numpy()
+            return output_dict
 
-        try:
-            return data.to_numpy()
-        except ValueError as e:
-            # Pandas DataFrame.values doesn't support extension arrays in all
-            # supported Pandas versions, so we check to see if this DataFrame
-            # contains any extensions arrays and do a manual conversion if so.
-            # See https://github.com/pandas-dev/pandas/pull/43160.
-            if any(
-                isinstance(dtype, pd.api.extensions.ExtensionDtype)
-                for dtype in data.dtypes
-            ):
-                return np.stack([col.to_numpy() for _, col in data.items()], axis=1)
-            else:
-                raise e from None
-
-    elif type == dict:
-        output_dict = {}
-        for column in data:
-            output_dict[column] = data[column].to_numpy()
-        return output_dict
-
-    elif type == pa.Table:
+    elif type == DataType.ARROW:
         return pa.Table.from_pandas(data)
 
     else:
         raise ValueError(
-            f"Received type {type}, but expected it to be one of {DataBatchType}"
+            f"Received type {type}, but expected it to be one of {DataType}"
         )

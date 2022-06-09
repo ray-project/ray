@@ -7,6 +7,7 @@ import pyarrow as pa
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.data_batch_conversion import convert_batch_type_to_pandas
 from ray.air.util.data_batch_conversion import convert_pandas_to_batch_type
+from ray.air.util.data_batch_conversion import DataType
 from ray.air.util.tensor_extensions.pandas import TensorArray
 from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
 
@@ -17,7 +18,7 @@ def test_pandas_pandas():
     actual_output = convert_batch_type_to_pandas(input_data)
     assert expected_output.equals(actual_output)
 
-    assert convert_pandas_to_batch_type(actual_output, type=pd.DataFrame).equals(
+    assert convert_pandas_to_batch_type(actual_output, type=DataType.PANDAS).equals(
         input_data
     )
 
@@ -29,7 +30,7 @@ def test_numpy_pandas():
     assert expected_output.equals(actual_output)
 
     assert np.array_equal(
-        convert_pandas_to_batch_type(actual_output, type=np.ndarray), input_data
+        convert_pandas_to_batch_type(actual_output, type=DataType.NUMPY), input_data
     )
 
 
@@ -40,7 +41,7 @@ def test_numpy_multi_dim_pandas():
     assert expected_output.equals(actual_output)
 
     assert np.array_equal(
-        convert_pandas_to_batch_type(actual_output, type=np.ndarray), input_data
+        convert_pandas_to_batch_type(actual_output, type=DataType.NUMPY), input_data
     )
 
 
@@ -51,7 +52,7 @@ def test_numpy_object_pandas():
     assert expected_output.equals(actual_output)
 
     assert np.array_equal(
-        convert_pandas_to_batch_type(actual_output, type=np.ndarray), input_data
+        convert_pandas_to_batch_type(actual_output, type=DataType.NUMPY), input_data
     )
 
 
