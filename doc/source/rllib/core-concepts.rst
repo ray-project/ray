@@ -10,19 +10,22 @@
 Key Concepts
 ============
 
-On this page, we'll cover the key concepts to help you understand how RLlib works and how to use it.
-In RLlib you use `algorithms` to learn in problem environments.
-These algorithms use `policies` to select actions for your agents.
-Given a policy, `evaluation` of a policy produces `sample batches` of experiences.
-You can also customize the `training_iteration`s of your RL experiments.
+On this page, we'll cover the key concepts to help you understand how RLlib works and
+how to use it. In RLlib you use ``algorithms`` to learn in problem environments.
+These algorithms use ``policies`` to select actions for your agents.
+Given a policy, ``evaluation`` of a policy produces ``sample batches`` of experiences.
+You can also customize the ``training_iteration``\s of your RL experiments.
 
 Algorithms
 ----------
 
-Algorithms bring all RLlib components together, making learning of different tasks accessible via RLlib's Python API and its command line interface (CLI).
-Each Algorithm class is managed by its respective AlgorithmConfig (e.g. `PPOConfig` for `PPO`).
-An Algorithm sets up its rollout workers and optimizers, and collects training metrics.
-Algorithms also implement the :ref:`Tune Trainable API <tune-60-seconds>` for easy experiment management.
+Algorithms bring all RLlib components together, making learning of different tasks
+accessible via RLlib's Python API and its command line interface (CLI).
+Each ``Algorithm`` class is managed by its respective ``AlgorithmConfig``, for example to
+configure a ``PPO`` instance, you should use the ``PPOConfig`` class.
+An ``Algorithm`` sets up its rollout workers and optimizers, and collects training metrics.
+``Algorithms`` also implement the :ref:`Tune Trainable API <tune-60-seconds>` for
+easy experiment management.
 
 You have three ways to interact with an algorithm. You can use the basic Python API or the command line to train it, or you
 can use Ray Tune to tune hyperparameters of your reinforcement learning algorithm.
@@ -33,23 +36,39 @@ which implements the proximal policy optimization algorithm in RLlib.
 
     .. code-block:: python
 
-        algo = PPO(env="CartPole-v0", config={"train_batch_size": 4000})
+        # Configure.
+        from ray.rllib.algorithms import PPOConfig
+        config = PPOConfig().environment("CartPole-v0").training(train_batch_size=4000)
+
+        # Build.
+        algo = config.build()
+
+        # Train.
         while True:
             print(algo.train())
 
-.. tabbed:: RLlib Command Line
-
-    .. code-block:: bash
-
-        rllib train --run=PPO --env=CartPole-v0 --config='{"train_batch_size": 4000}'
 
 .. tabbed:: RLlib Algorithms and Tune
 
     .. code-block:: python
 
         from ray import tune
-        tune.run("PPO", config={"env": "CartPole-v0", "train_batch_size": 4000})
 
+        # Configure.
+        from ray.rllib.algorithms import PPOConfig
+        config = PPOConfig().environment("CartPole-v0").training(train_batch_size=4000)
+
+        # Train via Ray Tune.
+        # Note that Ray Tune does not yet support AlgorithmConfig objects, hence
+        # we need to convert back to old-style config dicts.
+        tune.run("PPO", config=config.to_dict())
+
+
+.. tabbed:: RLlib Command Line
+
+    .. code-block:: bash
+
+        rllib train --run=PPO --env=CartPole-v0 --config='{"train_batch_size": 4000}'
 
 
 RLlib `Algorithm classes <rllib-concepts.html#algorithms>`__ coordinate the distributed workflow of running rollouts and optimizing policies.
