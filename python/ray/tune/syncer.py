@@ -149,9 +149,6 @@ class Syncer(abc.ABC):
             self.last_sync_down_time = time.time()
             return result
 
-    def wait_or_retry(self, max_retries: int = 3, backoff_s: int = 5):
-        return self.wait()
-
     def wait(self):
         pass
 
@@ -191,7 +188,7 @@ class _DefaultSyncer(Syncer):
     def __init__(self, sync_period: float = 300.0):
         super(_DefaultSyncer, self).__init__(sync_period=sync_period)
         self._sync_process = None
-        self._current_command = None
+        self._previous_args = tuple()
 
     def sync_up(
         self, local_dir: str, remote_dir: str, exclude: Optional[List] = None
@@ -199,11 +196,8 @@ class _DefaultSyncer(Syncer):
         if self._sync_process:
             return False
 
-        self._current_command = (
-            upload_to_uri,
-            dict(local_path=local_dir, uri=remote_dir, exclude=exclude),
-        )
-        self.retry()
+        self._sync_process = _BackgroundProcess(upload_to_uri)
+        self._sync_process.start(local_path=local_dir, uri=remote_dir, exclude=exclude)
         return True
 
     def sync_down(
@@ -212,58 +206,25 @@ class _DefaultSyncer(Syncer):
         if self._sync_process:
             return False
 
-        self._current_command = (
-            download_from_uri,
-            dict(uri=remote_dir, local_path=remote_dir),
-        )
-        self.retry()
-
+        self._sync_process = _BackgroundProcess(download_from_uri)
+        self._sync_process.start(uri=remote_dir, local_path=remote_dir)
         return True
 
     def delete(self, remote_dir: str) -> bool:
         if self._sync_process:
             return False
 
-        self._current_command = (delete_at_uri, dict(uri=remote_dir))
-        self.retry()
+        self._sync_process = _BackgroundProcess(delete_at_uri)
+        self._sync_process.start(uri=remote_dir)
         return True
-
-    def retry(self):
-        if not self._current_command:
-            return
-
-        cmd, kwargs = self._current_command
-
-        self._sync_process = _BackgroundProcess(cmd)
-        self._sync_process.start(**kwargs)
-
-    def wait_or_retry(self, max_retries: int = 3, backoff_s: int = 5):
-        assert max_retries > 0
-        for _ in range(max_retries - 1):
-            try:
-                self.wait()
-            except TuneError as e:
-                logger.error(
-                    f"Caught sync error: {e}. "
-                    f"Retrying after sleeping for {backoff_s} seconds..."
-                )
-                time.sleep(backoff_s)
-                self.retry()
-                continue
-            self._current_command = None
-            return
-        self._current_command = None
-        raise TuneError(f"Failed sync even after {max_retries} retries.")
 
     def wait(self):
         if self._sync_process:
             self._sync_process.wait()
-            self._sync_process = None
-            self._current_command = None
 
 
 def get_node_to_storage_syncer(sync_config: SyncConfig):
-    return _DefaultSyncer(sync_period=sync_config.sync_period)
+    return
 
 
 @DeveloperAPI
