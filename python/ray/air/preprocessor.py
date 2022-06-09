@@ -166,41 +166,46 @@ class Preprocessor(abc.ABC):
     def _transform(self, dataset: Dataset) -> Dataset:
         # TODO(matt): Expose `batch_size` or similar configurability.
         # The default may be too small for some datasets and too large for others.
-        dataset_format = dataset._dataset_format()
-        exc_msg = "Neither `_transform_arrow` nor `_transform_pandas` are implemented."
 
         # If only _transform_arrow is implemented, will convert the data to arrow.
         # If only _transform_pandas is implemented, will convert the data to pandas.
         # If both are implemented, will pick the method corresponding to the format
         # for best performance.
         # Implementation is defined as overriding the method in a sub-class.
-        if dataset_format == "arrow":
-            if self.__class__._transform_arrow != Preprocessor._transform_arrow:
-                return dataset.map_batches(
-                    self._transform_arrow, batch_format="pyarrow"
-                )
-            elif self.__class__._transform_pandas != Preprocessor._transform_pandas:
-                return dataset.map_batches(
-                    self._transform_pandas, batch_format="pandas"
-                )
-            else:
-                raise NotImplementedError(exc_msg)
-        elif dataset_format == "pandas":
-            if self.__class__._transform_pandas != Preprocessor._transform_pandas:
-                return dataset.map_batches(
-                    self._transform_pandas, batch_format="pandas"
-                )
-            elif self.__class__._transform_arrow != Preprocessor._transform_arrow:
-                return dataset.map_batches(
-                    self._transform_arrow, batch_format="pyarrow"
-                )
-            else:
-                raise NotImplementedError(exc_msg)
-        else:
+        has_transform_arrow = (
+            self.__class__._transform_arrow != Preprocessor._transform_arrow
+        )
+        has_transform_pandas = (
+            self.__class__._transform_pandas != Preprocessor._transform_pandas
+        )
+
+        dataset_format = dataset._dataset_format()
+        if dataset_format not in ("pandas", "arrow"):
             raise ValueError(
                 f"Unsupported Dataset format: '{dataset_format}'. Only 'pandas' and "
                 "'arrow' Dataset formats are supported."
             )
+
+        if has_transform_arrow and has_transform_pandas:
+            # Both transforms available, so we delegate based on the dataset format to
+            # ensure minimal data conversions.
+            if dataset_format == "pandas":
+                use_transform_pandas = True
+            elif dataset_format == "arrow":
+                use_transform_pandas = False
+        elif has_transform_pandas:
+            use_transform_pandas = True
+        elif has_transform_arrow:
+            use_transform_pandas = False
+        else:
+            raise NotImplementedError(
+                "Neither `_transform_arrow` nor `_transform_pandas` are implemented."
+            )
+
+        if use_transform_pandas:
+            return dataset.map_batches(self._transform_pandas, batch_format="pandas")
+        else:
+            return dataset.map_batches(self._transform_arrow, batch_format="pyarrow")
 
     def _transform_batch(self, df: DataBatchType) -> DataBatchType:
         import pandas as pd
@@ -211,9 +216,21 @@ class Preprocessor(abc.ABC):
             pyarrow = None
 
         if isinstance(df, pd.DataFrame):
-            return self._transform_pandas(df)
+            try:
+                return self._transform_pandas(df)
+            except NotImplementedError as e:
+                raise NotImplementedError(
+                    "`_transform_pandas` is not implemented and a Pandas DataFrame "
+                    "was passed."
+                ) from e
         elif pyarrow is not None and isinstance(df, pyarrow.Table):
-            return self._transform_arrow(df)
+            try:
+                return self._transform_arrow(df)
+            except NotImplementedError as e:
+                raise NotImplementedError(
+                    "`_transform_arrow` is not implemented and a PyArrow Table "
+                    "was passed."
+                ) from e
         else:
             raise NotImplementedError(
                 "`transform_batch` is currently only implemented for Pandas DataFrames "
