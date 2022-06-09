@@ -164,6 +164,8 @@ def test_syncer_callback_force_on_checkpoint(ray_start_2_cpus, temp_data_dirs):
         with open(os.path.join(tmp_source, "level0_new.txt"), "w") as f:
             f.write("Data\n")
 
+        assert_file(False, tmp_target, "level0_new.txt")
+
         frozen.tick(30)
 
         # Should sync as checkpoint observed
@@ -174,6 +176,42 @@ def test_syncer_callback_force_on_checkpoint(ray_start_2_cpus, temp_data_dirs):
             checkpoint=_TrackedCheckpoint(
                 dir_or_data=tmp_target, storage_mode=CheckpointStorage.PERSISTENT
             ),
+        )
+        syncer_callback.wait_for_all()
+
+        assert_file(True, tmp_target, "level0.txt")
+        assert_file(True, tmp_target, "level0_new.txt")
+
+
+def test_syncer_callback_force_on_complete(ray_start_2_cpus, temp_data_dirs):
+    tmp_source, tmp_target = temp_data_dirs
+
+    with freeze_time() as frozen:
+        syncer_callback = TestSyncerCallback(
+            sync_period=60, local_logdir_override=tmp_target
+        )
+
+        trial1 = MockTrial(trial_id="a", logdir=tmp_source)
+
+        syncer_callback.on_trial_result(iteration=1, trials=[], trial=trial1, result={})
+        syncer_callback.wait_for_all()
+
+        assert_file(True, tmp_target, "level0.txt")
+        assert_file(False, tmp_target, "level0_new.txt")
+
+        # Add new file to source directory
+        with open(os.path.join(tmp_source, "level0_new.txt"), "w") as f:
+            f.write("Data\n")
+
+        assert_file(False, tmp_target, "level0_new.txt")
+
+        frozen.tick(30)
+
+        # Should sync as checkpoint observed
+        syncer_callback.on_trial_complete(
+            iteration=2,
+            trials=[],
+            trial=trial1,
         )
         syncer_callback.wait_for_all()
 
