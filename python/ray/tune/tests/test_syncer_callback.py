@@ -1,18 +1,19 @@
+from typing import Optional
+
 import logging
 import os
-from typing import Optional
 
 import pytest
 import shutil
 import tempfile
 
-import ray.util
 from freezegun import freeze_time
+
 from ray.tune import TuneError
 from ray.tune.result import NODE_IP
-
 from ray.tune.syncer import SyncerCallback, DEFAULT_SYNC_PERIOD, _BackgroundProcess
 from ray.tune.utils.file_transfer import sync_dir_between_nodes
+import ray.util
 from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 
 
