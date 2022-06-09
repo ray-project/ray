@@ -3690,6 +3690,31 @@ def test_random_sample_checks(ray_start_regular_shared):
         ray.data.range(1).random_sample(10)
 
 
+def test_random_block_order(ray_start_regular_shared):
+
+    # Test BlockList.randomize_block_order.
+    ds = ray.data.range(12).repartition(4)
+    ds = ds.randomize_block_order(seed=0)
+
+    results = ds.take()
+    expected = [6, 7, 8, 0, 1, 2, 3, 4, 5, 9, 10, 11]
+    assert results == expected
+
+    # Test LazyBlockList.randomize_block_order.
+    context = DatasetContext.get_current()
+    try:
+        original_optimize_fuse_read_stages = context.optimize_fuse_read_stages
+        context.optimize_fuse_read_stages = False
+
+        lazy_blocklist_ds = ray.data.range(12, parallelism=4)
+        lazy_blocklist_ds = lazy_blocklist_ds.randomize_block_order(seed=0)
+        lazy_blocklist_results = lazy_blocklist_ds.take()
+        lazy_blocklist_expected = [6, 7, 8, 0, 1, 2, 3, 4, 5, 9, 10, 11]
+        assert lazy_blocklist_results == lazy_blocklist_expected
+    finally:
+        context.optimize_fuse_read_stages = original_optimize_fuse_read_stages
+
+
 @pytest.mark.parametrize("pipelined", [False, True])
 @pytest.mark.parametrize("use_push_based_shuffle", [False, True])
 def test_random_shuffle(shutdown_only, pipelined, use_push_based_shuffle):

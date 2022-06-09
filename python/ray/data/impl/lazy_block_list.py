@@ -362,6 +362,41 @@ class LazyBlockList(BlockList):
 
         return Iter()
 
+    def randomize_block_order(self, seed: Optional[int] = None) -> "LazyBlockList":
+        """Randomizes the order of the blocks.
+
+        Args:
+            seed: Fix the random seed to use, otherwise one will be chosen
+                based on system randomness.
+        """
+        import random
+
+        if seed is not None:
+            random.seed(seed)
+
+        zipped = list(
+            zip(
+                self._tasks,
+                self._block_partition_refs,
+                self._block_partition_meta_refs,
+                self._cached_metadata,
+            )
+        )
+
+        random.shuffle(zipped)
+        tasks, block_partition_refs, block_partition_meta_refs, cached_metadata = map(
+            list, zip(*zipped)
+        )
+
+        return LazyBlockList(
+            tasks,
+            block_partition_refs=block_partition_refs,
+            block_partition_meta_refs=block_partition_meta_refs,
+            cached_metadata=cached_metadata,
+            ray_remote_args=self._remote_args.copy(),
+            stats_uuid=self._stats_uuid,
+        )
+
     def _iter_block_partition_refs(
         self,
     ) -> Iterator[
