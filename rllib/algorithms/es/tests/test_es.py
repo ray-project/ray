@@ -10,9 +10,15 @@ from ray.rllib.utils.test_utils import (
 
 
 class TestES(unittest.TestCase):
+
+    def setUp(self):
+        ray.init()
+
+    def tearDown(self):
+        ray.shutdown()
+
     def test_es_compilation(self):
         """Test whether an ESTrainer can be built on all frameworks."""
-        ray.init(num_cpus=4)
         config = es.ESConfig()
         # Keep it simple.
         config.training(

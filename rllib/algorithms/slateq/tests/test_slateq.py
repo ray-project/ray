@@ -17,7 +17,7 @@ class TestSlateQ(unittest.TestCase):
     """Sanity tests for Slateq algorithm."""
 
     def setUp(self):
-        ray.init(num_cpus=4)
+        ray.init()
 
     def tearDown(self):
         ray.shutdown()

@@ -12,7 +12,7 @@ from ray.rllib.utils.test_utils import (
 class TestARS(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=3)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls):

@@ -12,7 +12,6 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, TYPE_CHECKING, Un
 import yaml
 
 import ray
-from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED, NUM_ENV_STEPS_TRAINED
 from ray.rllib.utils.typing import PartialTrainerConfigDict
@@ -35,8 +34,8 @@ torch, _ = try_import_torch()
 logger = logging.getLogger(__name__)
 
 
-def add_gpu_if_necessary(config: TrainerConfig):
-    num_gpus = os.environ.get('RLLIB_NUM_GPUS', "0")
+def add_gpu_if_necessary(config: "TrainerConfig"):
+    num_gpus = int(os.environ.get('RLLIB_NUM_GPUS', 0))
     if num_gpus > 0:
         logger.info(f'Using {num_gpus} GPUS ...')
     config.resources(num_gpus=num_gpus)
