@@ -614,5 +614,6 @@ def run_graph(
         serve.start(_override_controller_namespace="serve")
         serve.run(app)
     except KeyboardInterrupt:
+        # Error is raised when this task is canceled with ray.cancel(), which
+        # happens when deploy_app() is called.
         logger.debug("Existing config deployment request terminated.")
-        pass
