@@ -36,7 +36,9 @@ logger = logging.getLogger(__name__)
 
 
 def add_gpu_if_necessary(config: TrainerConfig):
-    num_gpus = os.environ.get('RLLIB_NUM_GPUS', 0)
+    num_gpus = os.environ.get('RLLIB_NUM_GPUS', "0")
+    if num_gpus > 0:
+        logger.info(f'Using {num_gpus} GPUS ...')
     config.resources(num_gpus=num_gpus)
     return config
 
