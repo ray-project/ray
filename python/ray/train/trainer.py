@@ -174,7 +174,7 @@ class Trainer:
 
         # Incremental unique run ID.
         self._run_id = 0
-        if logdir != False: 
+        if logdir or logdir == None: 
             self.logdir = self.create_logdir(logdir)
 
         # Setup executor.
