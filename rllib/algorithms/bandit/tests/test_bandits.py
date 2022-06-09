@@ -6,7 +6,7 @@ from ray.rllib.examples.env.bandit_envs_discrete import SimpleContextualBandit
 from ray.rllib.utils.test_utils import (
     add_gpu_if_necessary,
     check_train_results,
-    framework_iterator
+    framework_iterator,
 )
 
 
@@ -51,7 +51,7 @@ class TestBandits(unittest.TestCase):
             .environment(env=SimpleContextualBandit)
             .rollouts(num_envs_per_worker=2)
         )
-
+        config = add_gpu_if_necessary(config)
         num_iterations = 5
 
         for _ in framework_iterator(

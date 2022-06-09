@@ -18,7 +18,7 @@ register_env("connect_four", lambda _: OpenSpielEnv(pyspiel.load_game("connect_f
 class TestAlphaStar(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init()
+        ray.init(num_cpus=20)
 
     @classmethod
     def tearDownClass(cls):

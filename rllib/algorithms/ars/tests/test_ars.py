@@ -5,7 +5,7 @@ import ray.rllib.algorithms.ars as ars
 from ray.rllib.utils.test_utils import (
     add_gpu_if_necessary,
     framework_iterator,
-    check_compute_single_action
+    check_compute_single_action,
 )
 
 

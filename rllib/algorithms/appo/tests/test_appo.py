@@ -53,6 +53,7 @@ class TestAPPO(unittest.TestCase):
         config = (
             appo.APPOConfig().rollouts(num_rollout_workers=1).training(use_kl_loss=True)
         )
+        config = add_gpu_if_necessary(config)
         num_iterations = 2
 
         for _ in framework_iterator(config, with_eager_tracing=True):

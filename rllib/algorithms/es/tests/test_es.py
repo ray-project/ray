@@ -5,12 +5,11 @@ import ray.rllib.algorithms.es as es
 from ray.rllib.utils.test_utils import (
     add_gpu_if_necessary,
     check_compute_single_action,
-    framework_iterator
+    framework_iterator,
 )
 
 
 class TestES(unittest.TestCase):
-
     def setUp(self):
         ray.init()
 

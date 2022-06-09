@@ -60,7 +60,6 @@ class TestMARWIL(unittest.TestCase):
         )
         config = add_gpu_if_necessary(config)
 
-
         num_iterations = 350
         min_reward = 70.0
 

@@ -6,7 +6,7 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import (
     add_gpu_if_necessary,
     check_compute_single_action,
-    framework_iterator
+    framework_iterator,
 )
 
 tf1, tf, tfv = try_import_tf()
