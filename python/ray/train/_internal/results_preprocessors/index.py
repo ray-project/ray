@@ -1,8 +1,14 @@
+import warnings
 from typing import List, Dict, Iterable, Union, Optional
 
-from ray.train._internal.results_preprocessors.preprocessor import ResultsPreprocessor
+from ray.train._internal.results_preprocessors.preprocessor import (
+    ResultsPreprocessor,
+    _deprecation_msg,
+)
+from ray.util.annotations import Deprecated
 
 
+@Deprecated
 class IndexedResultsPreprocessor(ResultsPreprocessor):
     """Preprocesses results by filtering by index.
 
@@ -18,6 +24,11 @@ class IndexedResultsPreprocessor(ResultsPreprocessor):
     """
 
     def __init__(self, indices: Optional[Union[int, List[int]]]) -> None:
+        warnings.warn(
+            _deprecation_msg,
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self._indices = self._validate_indices(indices)
 
     def _validate_indices(self, indices) -> Optional[List[int]]:

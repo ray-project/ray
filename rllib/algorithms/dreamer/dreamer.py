@@ -412,8 +412,8 @@ class Dreamer(Trainer):
 
         return fetches
 
-    def _compile_step_results(self, *args, **kwargs):
-        results = super()._compile_step_results(*args, **kwargs)
+    def _compile_iteration_results(self, *args, **kwargs):
+        results = super()._compile_iteration_results(*args, **kwargs)
         results["timesteps_total"] = self._counters[STEPS_SAMPLED_COUNTER]
         return results
 

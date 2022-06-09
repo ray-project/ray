@@ -41,9 +41,14 @@ from ray.train.constants import (
 # Ray Train should be usable even if Tune is not installed.
 from ray.train._internal.utils import construct_path
 from ray.train._internal.worker_group import WorkerGroup
-from ray.util import PublicAPI
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import DeveloperAPI, Deprecated
 from ray.util.ml_utils.checkpoint_manager import CheckpointStrategy
+
+from ray.train.base_trainer import (  # noqa: F401
+    BaseTrainer,
+    GenDataset,
+    TrainingFailedError,
+)
 
 if TUNE_INSTALLED:
     from ray import tune
@@ -97,7 +102,7 @@ def _get_backend_config_cls(backend_name) -> type:
     return config_cls
 
 
-@PublicAPI(stability="beta")
+@Deprecated
 class Trainer:
     """A class for enabling seamless distributed deep learning.
 
@@ -143,12 +148,12 @@ class Trainer:
         max_retries: int = 3,
     ):
         warnings.warn(
-            "The `ray.train.Trainer` API will be deprecated in Ray "
-            "2.0, and will be replaced by Ray AI Runtime (Ray AIR). Ray AIR ("
+            "The `ray.train.Trainer` API is deprecated in Ray "
+            "2.0, and is replaced by Ray AI Runtime (Ray AIR). Ray AIR ("
             "https://docs.ray.io/en/latest/ray-air/getting-started.html) will "
             "provide greater functionality than `ray.train.Trainer`, "
             "and with a more flexible and easy-to-use API.",
-            PendingDeprecationWarning,
+            DeprecationWarning,
             stacklevel=2,
         )
 
@@ -609,7 +614,7 @@ class Trainer:
         return TrainWorkerGroup(worker_group)
 
 
-@DeveloperAPI
+@Deprecated
 class TrainWorkerGroup:
     """A container for a group of Ray actors.
 
@@ -637,6 +642,11 @@ class TrainWorkerGroup:
     """
 
     def __init__(self, worker_group: WorkerGroup):
+        warnings.warn(
+            "The `ray.train.trainer.WorkerGroup` API is deprecated in Ray 2.0",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self._worker_group = worker_group
 
     def __getitem__(self, item) -> ActorHandle:

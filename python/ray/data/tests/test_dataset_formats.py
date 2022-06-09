@@ -77,6 +77,8 @@ def test_from_pandas(ray_start_regular_shared, enable_pandas_block):
         values = [(r["one"], r["two"]) for r in ds.take(6)]
         rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
         assert values == rows
+        # Check that metadata fetch is included in stats.
+        assert "from_pandas_refs" in ds.stats()
 
         # test from single pandas dataframe
         ds = ray.data.from_pandas(df1)
@@ -84,6 +86,8 @@ def test_from_pandas(ray_start_regular_shared, enable_pandas_block):
         values = [(r["one"], r["two"]) for r in ds.take(3)]
         rows = [(r.one, r.two) for _, r in df1.iterrows()]
         assert values == rows
+        # Check that metadata fetch is included in stats.
+        assert "from_pandas_refs" in ds.stats()
     finally:
         ctx.enable_pandas_block = old_enable_pandas_block
 
@@ -101,6 +105,8 @@ def test_from_pandas_refs(ray_start_regular_shared, enable_pandas_block):
         values = [(r["one"], r["two"]) for r in ds.take(6)]
         rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
         assert values == rows
+        # Check that metadata fetch is included in stats.
+        assert "from_pandas_refs" in ds.stats()
 
         # test from single pandas dataframe ref
         ds = ray.data.from_pandas_refs(ray.put(df1))
@@ -108,6 +114,8 @@ def test_from_pandas_refs(ray_start_regular_shared, enable_pandas_block):
         values = [(r["one"], r["two"]) for r in ds.take(3)]
         rows = [(r.one, r.two) for _, r in df1.iterrows()]
         assert values == rows
+        # Check that metadata fetch is included in stats.
+        assert "from_pandas_refs" in ds.stats()
     finally:
         ctx.enable_pandas_block = old_enable_pandas_block
 
@@ -123,6 +131,8 @@ def test_from_numpy(ray_start_regular_shared, from_ref):
         ds = ray.data.from_numpy(arrs)
     values = np.stack(ds.take(8))
     np.testing.assert_array_equal(values, np.concatenate((arr1, arr2)))
+    # Check that conversion task is included in stats.
+    assert "from_numpy_refs" in ds.stats()
 
     # Test from single NumPy ndarray.
     if from_ref:
@@ -131,6 +141,8 @@ def test_from_numpy(ray_start_regular_shared, from_ref):
         ds = ray.data.from_numpy(arr1)
     values = np.stack(ds.take(4))
     np.testing.assert_array_equal(values, arr1)
+    # Check that conversion task is included in stats.
+    assert "from_numpy_refs" in ds.stats()
 
 
 def test_from_arrow(ray_start_regular_shared):
@@ -140,12 +152,16 @@ def test_from_arrow(ray_start_regular_shared):
     values = [(r["one"], r["two"]) for r in ds.take(6)]
     rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
     assert values == rows
+    # Check that metadata fetch is included in stats.
+    assert "from_arrow_refs" in ds.stats()
 
     # test from single pyarrow table
     ds = ray.data.from_arrow(pa.Table.from_pandas(df1))
     values = [(r["one"], r["two"]) for r in ds.take(3)]
     rows = [(r.one, r.two) for _, r in df1.iterrows()]
     assert values == rows
+    # Check that metadata fetch is included in stats.
+    assert "from_arrow_refs" in ds.stats()
 
 
 def test_from_arrow_refs(ray_start_regular_shared):
@@ -157,12 +173,16 @@ def test_from_arrow_refs(ray_start_regular_shared):
     values = [(r["one"], r["two"]) for r in ds.take(6)]
     rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
     assert values == rows
+    # Check that metadata fetch is included in stats.
+    assert "from_arrow_refs" in ds.stats()
 
     # test from single pyarrow table ref
     ds = ray.data.from_arrow_refs(ray.put(pa.Table.from_pandas(df1)))
     values = [(r["one"], r["two"]) for r in ds.take(3)]
     rows = [(r.one, r.two) for _, r in df1.iterrows()]
     assert values == rows
+    # Check that metadata fetch is included in stats.
+    assert "from_arrow_refs" in ds.stats()
 
 
 def test_to_pandas(ray_start_regular_shared):

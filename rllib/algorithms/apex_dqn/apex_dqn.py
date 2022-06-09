@@ -655,9 +655,9 @@ class ApexDQN(DQN):
         self._sampling_actor_manager.add_workers(new_workers)
 
     @override(Trainer)
-    def _compile_step_results(self, *, step_ctx, step_attempt_results=None):
-        result = super()._compile_step_results(
-            step_ctx=step_ctx, step_attempt_results=step_attempt_results
+    def _compile_iteration_results(self, *, step_ctx, iteration_results=None):
+        result = super()._compile_iteration_results(
+            step_ctx=step_ctx, iteration_results=iteration_results
         )
         replay_stats = ray.get(
             self._replay_actors[0].stats.remote(self.config["optimizer"].get("debug"))

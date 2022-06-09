@@ -2308,7 +2308,9 @@ class Trainer(Trainable):
         return kwargs
 
     @staticmethod
-    def _auto_duration_fn(unit, num_eval_workers, eval_cfg, num_units_done, train_future):
+    def _auto_duration_fn(
+        unit, num_eval_workers, eval_cfg, num_units_done, train_future
+    ):
         # Training is done and we already ran at least one
         # evaluation -> Nothing left to run.
         if num_units_done > 0 and train_future.done():

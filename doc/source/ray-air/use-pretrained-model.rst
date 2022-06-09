@@ -3,12 +3,12 @@
 Use a pretrained model for batch or online inference
 =====================================================
 
-Ray Air moves end to end machine learning workloads seamlessly through the construct of ``Checkpoint``. ``Checkpoint``
+Ray AIR moves end to end machine learning workloads seamlessly through the construct of ``Checkpoint``. ``Checkpoint``
 is the output of training and tuning as well as the input to downstream inference tasks.
 
-Having said that, it is entirely possible and supported to use Ray Air in a piecemeal fashion.
+Having said that, it is entirely possible and supported to use Ray AIR in a piecemeal fashion.
 
-Say you already have a model trained elsewhere, you can use Ray Air for downstream tasks such as batch and
+Say you already have a model trained elsewhere, you can use Ray AIR for downstream tasks such as batch and
 online inference. To do that, you would need to convert the pretrained model together with any preprocessing
 steps into ``Checkpoint``.
 

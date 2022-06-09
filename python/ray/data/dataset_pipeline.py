@@ -39,7 +39,12 @@ logger = logging.getLogger(__name__)
 _PER_DATASET_OPS = ["map", "map_batches", "add_column", "flat_map", "filter"]
 
 # Operations that apply to each dataset holistically in the pipeline.
-_HOLISTIC_PER_DATASET_OPS = ["repartition", "random_shuffle", "sort"]
+_HOLISTIC_PER_DATASET_OPS = [
+    "repartition",
+    "random_shuffle",
+    "sort",
+    "randomize_block_order",
+]
 
 # Similar to above but we should force evaluation immediately.
 _PER_DATASET_OUTPUT_OPS = [
