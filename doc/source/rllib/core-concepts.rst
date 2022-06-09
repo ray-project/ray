@@ -281,7 +281,7 @@ For example, a results dictionary could map policy_ids to learning and sampling 
      }
 
 Training Iteration Method Utilities
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 RLlib provides a collection of utilities that abstract away common tasks in RL training.
 
@@ -303,7 +303,7 @@ for training and ``remote_workers`` for sampling.
 These are methods that improve the policy and update workers. The most basic operator, ``train_one_step``, takes in as
 input a batch of experiences and emits a ``ResultDict`` with metrics as output. For training with GPUs, use
 ``multi_gpu_train_one_step``. These methods use the ``learn_on_batch`` method of rollout workers to complete the
- training update.
+training update.
 
 :ref:`Replay Buffers <replay-buffer-docs>`:
 RLlib provides `a collection <https://github.com/ray-project/ray/tree/master/rllib/utils/replay_buffers>`__ of replay
