@@ -185,6 +185,7 @@ class _BackgroundProcess:
 
 
 class _DefaultSyncer(Syncer):
+    """Default syncer between local storage and remote URI."""
     def __init__(self, sync_period: float = 300.0):
         super(_DefaultSyncer, self).__init__(sync_period=sync_period)
         self._sync_process = None
@@ -229,6 +230,7 @@ def get_node_to_storage_syncer(sync_config: SyncConfig):
 
 @DeveloperAPI
 class SyncerCallback(Callback):
+    """Callback to synchronize trial directories on a worker node with the driver."""
     def __init__(self, enabled: bool = True, sync_period: float = DEFAULT_SYNC_PERIOD):
         self._enabled = enabled
         self._sync_processes: Dict[str, _BackgroundProcess] = {}
@@ -317,12 +319,6 @@ class SyncerCallback(Callback):
 
         if not os.path.exists(checkpoint.dir_or_data):
             raise TuneError(
-                f"Trial {trial}: Checkpoint path {checkpoint.value} not "
-                "found after successful sync down. "
-                "Are you running on a Kubernetes or "
-                "managed cluster? rsync will not function "
-                "due to a lack of SSH functionality. "
-                "You'll need to use cloud-checkpointing "
-                "if that's the case, see instructions "
-                f"here: {CLOUD_CHECKPOINTING_URL}."
+                f"Trial {trial}: Checkpoint path {checkpoint.dir_or_data} not "
+                "found after successful sync down."
             )
