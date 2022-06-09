@@ -1240,7 +1240,7 @@ class MultiAgentBatch:
             str(self.policy_batches), self.count
         )
 
-
+@PublicAPI
 def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
     """
     Concatenates n SampleBatches or MultiAgentBatches.
@@ -1340,7 +1340,7 @@ def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
         _max_seq_len=max_seq_len,
     )
 
-
+@PublicAPI
 def concat_samples_into_ma_batch(samples: List[SampleBatchType]) -> "MultiAgentBatch":
     """
     Concatenates a list of SampleBatchTypes to a single MultiAgentBatch type.
