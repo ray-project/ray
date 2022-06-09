@@ -97,7 +97,8 @@ Bulk Ingest
 ~~~~~~~~~~~
 
 By default, AIR loads all Dataset blocks into the object store at the start of training. This provides the best performance if the
-cluster has enough aggregate memory to fit all the data blocks in object store memory. Note that data often requires more space
+cluster has enough aggregate memory to fit all the data blocks in object store memory, or if your preprocessing step is expensive
+and you don't want it to be re-run on each epoch. Note that data often requires more space
 when loaded uncompressed in memory than when resident in storage.
 
 If there is insufficient object store memory, blocks may be spilled to disk during reads or preprocessing. Ray will print log messages
@@ -110,13 +111,17 @@ Streaming Ingest
 
 AIR also supports streaming ingest via the DatasetPipeline feature. Streaming ingest is preferable when you are using large datasets
 that don't fit into memory, and prefer to read *windows* of data from storage to minimize the active memory required for data ingest.
+Note that streaming ingest will re-execute preprocessing on each pass over the data. If preprocessing is a bottleneck, consider
+using bulk ingest instead for better performance.
 
 To enable streaming ingest, set ``use_stream_api=True`` in the dataset config. By default, this will configure streaming ingest with a window
 size of 1GiB, which means AIR will load ~1 GiB of data at a time from the datasource.
 Performance can be increased with larger window sizes, which can be adjusted using the ``stream_window_size`` config.
 A reasonable stream window size is something like 20% of available object store memory. Note that the data may be larger
 once deserialized in memory, or if individual files are larger than the window size.
-If the window size is set to -1, then an infinite window size (equivalent to bulk loading) will be used.
+
+If the window size is set to -1, then an infinite window size will be used. This case is equivalent to using bulk loading
+(including the performance advantages of caching preprocessed blocks), but still exposing a DatasetPipeline reader.
 
 .. warning::
 
