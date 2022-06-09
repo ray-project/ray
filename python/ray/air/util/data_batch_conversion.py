@@ -13,6 +13,7 @@ except ImportError:
     pyarrow = None
 
 
+@DeveloperAPI
 class DataType(Enum):
     PANDAS = auto()
     ARROW = auto()

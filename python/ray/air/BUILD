@@ -194,14 +194,6 @@ py_test(
 )
 
 py_test(
-    name = "test_data_parallel_trainer",
-    size = "medium",
-    srcs = ["tests/test_data_parallel_trainer.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test(
     name = "test_dataset_config",
     size = "medium",
     srcs = ["tests/test_dataset_config.py"],
