@@ -7,10 +7,7 @@ import ray
 from ray.util import PublicAPI
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import TRAIN_DATASET_KEY
-from ray.air.config import (
-    RunConfig,
-    ScalingConfig,
-)
+from ray.air.config import RunConfig, ScalingConfig
 from ray.air.preprocessor import Preprocessor
 from ray.air.result import Result
 from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
@@ -148,7 +145,9 @@ class Trainer(abc.ABC):
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
 
-        self.scaling_config = scaling_config if scaling_config is not None else {}
+        self.scaling_config = (
+            scaling_config if scaling_config is not None else ScalingConfig()
+        )
         self.run_config = run_config if run_config is not None else RunConfig()
         self.datasets = datasets if datasets is not None else {}
         self.preprocessor = preprocessor
@@ -176,11 +175,10 @@ class Trainer(abc.ABC):
                 f"found {type(self.run_config)} with value `{self.run_config}`."
             )
         # Scaling config
-        # Todo: move to ray.air.ScalingConfig
-        if not isinstance(self.scaling_config, dict):
+        if not isinstance(self.scaling_config, ScalingConfig):
             raise ValueError(
                 f"`scaling_config` should be an instance of `dict`, "
-                f"found {type(self.run_config)} with value `{self.run_config}`."
+                f"found {type(self.scaling_config)} with value `{self.scaling_config}`."
             )
         # Datasets
         if not isinstance(self.datasets, dict):
@@ -376,9 +374,9 @@ class Trainer(abc.ABC):
             @classmethod
             def default_resource_request(cls, config):
                 updated_scaling_config = config.get("scaling_config", scaling_config)
-                scaling_config_dataclass = trainer_cls._validate_scaling_config(
+                scaling_config = trainer_cls._validate_scaling_config(
                     updated_scaling_config
                 )
-                return scaling_config_dataclass.as_placement_group_factory()
+                return scaling_config.as_placement_group_factory()
 
         return TrainTrainable
