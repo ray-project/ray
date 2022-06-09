@@ -90,8 +90,8 @@ class TestOPE(unittest.TestCase):
         cls.std_ret["simulation"] = np.std(mc_ret)
 
         # Optional configs for the model-based estimators
-        cls.k = 5
-        cls.model_config = {"n_iters": 10}
+        cls.train_test_split_val = 5
+        cls.model_config = {}
         ray.shutdown()
 
     @classmethod
@@ -201,8 +201,7 @@ class TestOPE(unittest.TestCase):
         # Test that we can use input_=some_dataset and OPE in evaluation_config
         rllib_dir = Path(__file__).parent.parent.parent.parent
         print("rllib dir={}".format(rllib_dir))
-        large_data = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
-        small_data = os.path.join(rllib_dir, "tests/data/cartpole/small.json")
+        data_file = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
 
         env_name = "CartPole-v0"
         gamma = 0.99
@@ -217,7 +216,7 @@ class TestOPE(unittest.TestCase):
             .environment(env=env_name)
             .offline_data(
                 input_="dataset",
-                input_config={"format": "json", "path": large_data},
+                input_config={"format": "json", "path": data_file},
             )
             .exploration(
                 explore=True,
@@ -231,7 +230,7 @@ class TestOPE(unittest.TestCase):
                 evaluation_num_workers=eval_num_workers,
                 evaluation_config={
                     "input": "dataset",
-                    "input_config": {"format": "json", "path": small_data},
+                    "input_config": {"format": "json", "path": data_file},
                 },
                 off_policy_estimation_methods={
                     "train_test_split_val": self.train_test_split_val,
