@@ -109,6 +109,7 @@ def test_delete(workflow_start_regular):
 
 
 def test_workflow_storage(workflow_start_regular):
+    utils.skip_client_test()
     workflow_id = test_workflow_storage.__name__
     wf_storage = workflow_storage.WorkflowStorage(workflow_id)
     step_id = "some_step"
