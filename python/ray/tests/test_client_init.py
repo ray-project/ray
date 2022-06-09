@@ -232,4 +232,4 @@ def test_max_clients(init_and_serve):
 if __name__ == "__main__":
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__] + sys.argv[1:]))
+    sys.exit(pytest.main(["-n", "auto", "-v", __file__]))

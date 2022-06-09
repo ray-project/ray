@@ -212,4 +212,4 @@ def test_plugin_timeout(start_cluster):
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-n", "auto", "--boxed", "-v", __file__]))

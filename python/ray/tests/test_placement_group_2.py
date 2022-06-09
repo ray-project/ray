@@ -812,4 +812,4 @@ def test_bundle_recreated_when_raylet_fo_after_gcs_server_restart(
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-n", "auto", "--boxed", "-v", __file__]))

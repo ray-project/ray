@@ -96,4 +96,4 @@ def test_ray_client_init(call_ray_start):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-n", "auto", "--boxed", "-v", __file__]))

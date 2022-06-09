@@ -76,4 +76,4 @@ def test_placement_group_bin_packing_priority(
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-n", "auto", "--boxed", "-v", __file__]))

@@ -280,4 +280,4 @@ def test_function_table_gc_actor(call_ray_start):
 if __name__ == "__main__":
     import pytest
 
-    sys.exit(pytest.main(["-n", "auto", "-v", __file__]))
+    sys.exit(pytest.main(["-n", "auto", "--boxed", "-v", __file__]))

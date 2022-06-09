@@ -72,4 +72,4 @@ def test_actor_in_heterogeneous_image():
 if __name__ == "__main__":
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__, "-s"]))
+    sys.exit(pytest.main(["-n", "auto", "--boxed", "-v", __file__]))
