@@ -3,6 +3,7 @@ package io.ray.serve;
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
 import io.ray.serve.api.Serve;
+import io.ray.serve.Constants;
 import io.ray.serve.generated.EndpointInfo;
 import io.ray.serve.util.CommonUtil;
 import java.io.IOException;
@@ -22,6 +23,9 @@ public class HttpProxyTest {
   @Test
   public void test() throws IOException {
     boolean inited = Ray.isInitialized();
+    String previous_namespace = System.getProperty("ray.job.namespace")
+    System.setProperty("ray.job.namespace", Constants.SERVE_NAMESPACE);
+
     Ray.init();
 
     try {
@@ -68,6 +72,11 @@ public class HttpProxyTest {
     } finally {
       if (!inited) {
         Ray.shutdown();
+        if (previous_namespace == null) {
+          System.clearProperty("ray.job.namespace");
+        } else {
+          System.setProperty("ray.job.namespace", previous_namespace);
+        }
       }
       Serve.setInternalReplicaContext(null);
       Serve.setGlobalClient(null);
