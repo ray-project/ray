@@ -142,6 +142,9 @@ class Preprocessor(abc.ABC):
     def transform_batch(self, df: DataBatchType) -> DataBatchType:
         """Transform a single batch of data.
 
+        The data will be converted to the format supported by the Preprocessor,
+        based on which ``_transform_*`` method(s) are implemented.
+
         Args:
             df: Input data batch.
 
@@ -174,21 +177,44 @@ class Preprocessor(abc.ABC):
         """Sub-classes should override this instead of fit()."""
         raise NotImplementedError()
 
-    def _transform(self, dataset: Dataset) -> Dataset:
-        # TODO(matt): Expose `batch_size` or similar configurability.
-        # The default may be too small for some datasets and too large for others.
+    def _determine_transform_to_use(self, data_format: str) -> str:
+        """Determine which transform to use based on data format and implementation.
 
-        # If only _transform_arrow is implemented, will convert the data to arrow.
-        # If only _transform_pandas is implemented, will convert the data to pandas.
-        # If both are implemented, will pick the method corresponding to the format
-        # for best performance.
-        # Implementation is defined as overriding the method in a sub-class.
+        * If only _transform_arrow is implemented, will convert the data to arrow.
+        * If only _transform_pandas is implemented, will convert the data to pandas.
+        If both are implemented, will pick the method corresponding to the format
+        for best performance.
+        * Implementation is defined as overriding the method in a sub-class.
+        """
+
+        assert data_format in ("pandas", "arrow")
         has_transform_arrow = (
             self.__class__._transform_arrow != Preprocessor._transform_arrow
         )
         has_transform_pandas = (
             self.__class__._transform_pandas != Preprocessor._transform_pandas
         )
+
+        if has_transform_arrow and has_transform_pandas:
+            # Both transforms available, so we delegate based on the dataset format to
+            # ensure minimal data conversions.
+            if data_format == "pandas":
+                transform_type = "pandas"
+            elif data_format == "arrow":
+                transform_type = "arrow"
+        elif has_transform_pandas:
+            transform_type = "pandas"
+        elif has_transform_arrow:
+            transform_type = "arrow"
+        else:
+            raise NotImplementedError(
+                "Neither `_transform_arrow` nor `_transform_pandas` are implemented."
+            )
+        return transform_type
+
+    def _transform(self, dataset: Dataset) -> Dataset:
+        # TODO(matt): Expose `batch_size` or similar configurability.
+        # The default may be too small for some datasets and too large for others.
 
         dataset_format = dataset._dataset_format()
         if dataset_format not in ("pandas", "arrow"):
@@ -197,23 +223,9 @@ class Preprocessor(abc.ABC):
                 "'arrow' Dataset formats are supported."
             )
 
-        if has_transform_arrow and has_transform_pandas:
-            # Both transforms available, so we delegate based on the dataset format to
-            # ensure minimal data conversions.
-            if dataset_format == "pandas":
-                use_transform_pandas = True
-            elif dataset_format == "arrow":
-                use_transform_pandas = False
-        elif has_transform_pandas:
-            use_transform_pandas = True
-        elif has_transform_arrow:
-            use_transform_pandas = False
-        else:
-            raise NotImplementedError(
-                "Neither `_transform_arrow` nor `_transform_pandas` are implemented."
-            )
+        transform_type = self._determine_transform_to_use(dataset_format)
 
-        if use_transform_pandas:
+        if transform_type == "pandas":
             return dataset.map_batches(self._transform_pandas, batch_format="pandas")
         else:
             return dataset.map_batches(self._transform_arrow, batch_format="pyarrow")
@@ -227,26 +239,27 @@ class Preprocessor(abc.ABC):
             pyarrow = None
 
         if isinstance(df, pd.DataFrame):
-            try:
-                return self._transform_pandas(df)
-            except NotImplementedError as e:
-                raise NotImplementedError(
-                    "`_transform_pandas` is not implemented and a Pandas DataFrame "
-                    "was passed."
-                ) from e
+            data_format = "pandas"
         elif pyarrow is not None and isinstance(df, pyarrow.Table):
-            try:
-                return self._transform_arrow(df)
-            except NotImplementedError as e:
-                raise NotImplementedError(
-                    "`_transform_arrow` is not implemented and a PyArrow Table "
-                    "was passed."
-                ) from e
+            data_format = "arrow"
         else:
             raise NotImplementedError(
                 "`transform_batch` is currently only implemented for Pandas DataFrames "
                 f"and PyArrow Tables. Got {type(df)}."
             )
+
+        transform_type = self._determine_transform_to_use(data_format)
+
+        if transform_type == "pandas":
+            if data_format == "pandas":
+                return self._transform_pandas(df)
+            else:
+                return self._transform_pandas(df.to_pandas())
+        elif transform_type == "arrow":
+            if data_format == "arrow":
+                return self._transform_arrow(df)
+            else:
+                return self._transform_arrow(pyarrow.Table.from_pandas(df))
 
     @DeveloperAPI
     def _transform_pandas(self, df: "pd.DataFrame") -> "pd.DataFrame":

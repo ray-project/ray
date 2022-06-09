@@ -179,6 +179,7 @@ class DataParallelIngestSpec:
                     ).repeat()
                     # In windowed mode, we re-apply the preprocessor on each iteration.
                     if self.preprocessor:
+                        # TODO: Replace with self.preprocessor.transform when possible.
                         prep = self.preprocessor.transform_batch
                         dataset = dataset.map_batches(prep, batch_format="pandas")
                 else:

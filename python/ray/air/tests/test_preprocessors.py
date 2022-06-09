@@ -1420,6 +1420,70 @@ def test_arrow_pandas_support_arrow_dataset(create_dummy_preprocessors):
     assert with_pandas_and_arrow.transform(ds)._dataset_format() == "arrow"
 
 
+def test_arrow_pandas_support_transform_batch_wrong_format(create_dummy_preprocessors):
+    # Case 1: simple dataset. No support
+    (
+        with_nothing,
+        with_pandas,
+        with_arrow,
+        with_pandas_and_arrow,
+    ) = create_dummy_preprocessors
+
+    batch = [1, 2, 3]
+    with pytest.raises(NotImplementedError):
+        with_nothing.transform_batch(batch)
+
+    with pytest.raises(NotImplementedError):
+        with_pandas.transform_batch(batch)
+
+    with pytest.raises(NotImplementedError):
+        with_arrow.transform_batch(batch)
+
+    with pytest.raises(NotImplementedError):
+        with_pandas_and_arrow.transform_batch(batch)
+
+
+def test_arrow_pandas_support_transform_batch_pandas(create_dummy_preprocessors):
+    # Case 2: pandas dataset
+    (
+        with_nothing,
+        with_pandas,
+        with_arrow,
+        with_pandas_and_arrow,
+    ) = create_dummy_preprocessors
+
+    df = pd.DataFrame([[1, 2, 3], [4, 5, 6]], columns=["A", "B", "C"])
+    with pytest.raises(NotImplementedError):
+        with_nothing.transform_batch(df)
+
+    assert isinstance(with_pandas.transform_batch(df), pd.DataFrame)
+
+    assert isinstance(with_arrow.transform_batch(df), pyarrow.Table)
+
+    assert isinstance(with_pandas_and_arrow.transform_batch(df), pd.DataFrame)
+
+
+def test_arrow_pandas_support_transform_batch_arrow(create_dummy_preprocessors):
+    # Case 3: arrow dataset
+    (
+        with_nothing,
+        with_pandas,
+        with_arrow,
+        with_pandas_and_arrow,
+    ) = create_dummy_preprocessors
+
+    df = pd.DataFrame([[1, 2, 3], [4, 5, 6]], columns=["A", "B", "C"])
+    table = pyarrow.Table.from_pandas(df)
+    with pytest.raises(NotImplementedError):
+        with_nothing.transform_batch(table)
+
+    assert isinstance(with_pandas.transform_batch(table), pd.DataFrame)
+
+    assert isinstance(with_arrow.transform_batch(table), pyarrow.Table)
+
+    assert isinstance(with_pandas_and_arrow.transform_batch(table), pyarrow.Table)
+
+
 if __name__ == "__main__":
     import sys
 
