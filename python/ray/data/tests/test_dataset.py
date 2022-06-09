@@ -300,6 +300,49 @@ def test_dataset_lineage_serialization_unsupported(shutdown_only, lazy):
     with pytest.raises(ValueError):
         ds2.serialize_lineage()
 
+    # Object refs captured in UDF.
+    # TODO(Clark): Enable this test case after Ray Core hang on closed ref fetch is
+    # fixed.
+    # obj = ray.put(1)
+    # ds = ray.data.range(10)
+    # ds = maybe_lazy(ds, lazy)
+    # ds = ds.map_batches(
+    #     lambda x: [x_ + ray.get(obj) for x_ in x], batch_size=2,
+    # )
+
+    # with pytest.raises(ValueError):
+    #     ds.serialize_lineage()
+
+    # Object refs captured in stage.
+    obj = ray.put(1)
+    ds = ray.data.range(10)
+    ds = maybe_lazy(ds, lazy)
+    ds = ds.map_batches(lambda x, v: [x_ + v for x_ in x], batch_size=2, fn_args=(obj,))
+
+    with pytest.raises(ValueError):
+        ds.serialize_lineage()
+
+    obj = ray.put(1)
+    ds = ray.data.range(10)
+    ds = maybe_lazy(ds, lazy)
+
+    class CallableClass:
+        def __init__(self, v):
+            self.v = v
+
+        def __call__(self, x):
+            return [x_ + self.v for x_ in x]
+
+    ds = ds.map_batches(
+        CallableClass,
+        batch_size=2,
+        compute="actors",
+        fn_constructor_args=(obj,),
+    )
+
+    with pytest.raises(ValueError):
+        ds.serialize_lineage()
+
 
 @pytest.mark.parametrize("pipelined", [False, True])
 def test_basic(ray_start_regular_shared, pipelined):
@@ -1788,6 +1831,62 @@ def test_map_batch(ray_start_regular_shared, tmp_path):
         ds_list = ds.map_batches(
             lambda df: 1, batch_size=2, batch_format="pyarrow"
         ).take()
+
+    # Test extra UDF args.
+    df = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
+    table = pa.Table.from_pandas(df)
+    pq.write_table(table, os.path.join(tmp_path, "test1.parquet"))
+
+    def udf(batch, a, b=None):
+        assert a == 1
+        assert b == 2
+        return b * batch + a
+
+    ds = ray.data.read_parquet(str(tmp_path))
+    ds2 = ds.map_batches(
+        udf,
+        batch_size=1,
+        batch_format="pandas",
+        fn_args=(ray.put(1),),
+        fn_kwargs={"b": ray.put(2)},
+    )
+    assert ds2._dataset_format() == "pandas"
+    ds_list = ds2.take()
+    values = [s["one"] for s in ds_list]
+    assert values == [3, 5, 7]
+    values = [s["two"] for s in ds_list]
+    assert values == [5, 7, 9]
+
+    # Test constructor UDF args.
+    df = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
+    table = pa.Table.from_pandas(df)
+    pq.write_table(table, os.path.join(tmp_path, "test1.parquet"))
+
+    class CallableFn:
+        def __init__(self, a, b=None):
+            assert a == 1
+            assert b == 2
+            self.a = a
+            self.b = b
+
+        def __call__(self, x):
+            return self.b * x + self.a
+
+    ds = ray.data.read_parquet(str(tmp_path))
+    ds2 = ds.map_batches(
+        CallableFn,
+        batch_size=1,
+        batch_format="pandas",
+        compute="actors",
+        fn_constructor_args=(ray.put(1),),
+        fn_constructor_kwargs={"b": ray.put(2)},
+    )
+    assert ds2._dataset_format() == "pandas"
+    ds_list = ds2.take()
+    values = [s["one"] for s in ds_list]
+    assert values == [3, 5, 7]
+    values = [s["two"] for s in ds_list]
+    assert values == [5, 7, 9]
 
 
 def test_map_batch_actors_preserves_order(ray_start_regular_shared):

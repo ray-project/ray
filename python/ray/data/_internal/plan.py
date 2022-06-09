@@ -1,10 +1,12 @@
 import copy
 from typing import (
     Callable,
+    Dict,
     List,
     Tuple,
     Optional,
     Union,
+    Any,
     Iterator,
     Iterable,
     TYPE_CHECKING,
@@ -18,7 +20,14 @@ import ray
 from ray.data.context import DatasetContext
 from ray.data.block import Block
 from ray.data._internal.block_list import BlockList
-from ray.data._internal.compute import get_compute, is_task_compute
+from ray.data._internal.compute import (
+    get_compute,
+    is_task_compute,
+    ComputeStrategy,
+    ActorPoolStrategy,
+    BlockTransform,
+    UDF,
+)
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.lazy_block_list import LazyBlockList
 
@@ -399,14 +408,24 @@ class OneToOneStage(Stage):
     def __init__(
         self,
         name: str,
-        block_fn: Callable[[Block], Block],
-        compute: str,
+        block_fn: BlockTransform,
+        compute: Union[str, ComputeStrategy],
         ray_remote_args: dict,
+        fn: Optional[UDF] = None,
+        fn_args: Optional[List[Any]] = None,
+        fn_kwargs: Optional[Dict[str, Any]] = None,
+        fn_constructor_args: Optional[List[Any]] = None,
+        fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(name, None)
         self.block_fn = block_fn
         self.compute = compute or "tasks"
         self.ray_remote_args = ray_remote_args or {}
+        self.fn = fn
+        self.fn_args = fn_args
+        self.fn_kwargs = fn_kwargs
+        self.fn_constructor_args = fn_constructor_args
+        self.fn_constructor_kwargs = fn_constructor_kwargs
 
     def can_fuse(self, prev: Stage):
         if not isinstance(prev, OneToOneStage):
@@ -414,6 +433,23 @@ class OneToOneStage(Stage):
         # Allow fusing tasks->actors if the resources are compatible (read->map), but
         # not the other way around. The latter will be used as the compute if fused.
         if is_task_compute(self.compute) and prev.compute != self.compute:
+            return False
+        if prev.fn_constructor_args != self.fn_constructor_args:
+            return False
+        if prev.fn_constructor_kwargs != self.fn_constructor_kwargs:
+            return False
+        if (
+            any(
+                args is not None
+                for args in (
+                    prev.fn_constructor_args,
+                    prev.fn_constructor_kwargs,
+                    self.fn_constructor_args,
+                    self.fn_constructor_kwargs,
+                )
+            )
+            and prev.fn != self.fn
+        ):
             return False
         if not _are_remote_args_compatible(prev.ray_remote_args, self.ray_remote_args):
             return False
@@ -425,22 +461,48 @@ class OneToOneStage(Stage):
                 f"Tried to fuse {prev} with {self}, but these are not fusable."
             )
         name = prev.name + "->" + self.name
-        fn1 = prev.block_fn
-        fn2 = self.block_fn
+        prev_fn_args = prev.fn_args or tuple()
+        prev_fn_args = prev_fn_args if prev.fn is None else (prev.fn,) + prev_fn_args
+        prev_fn_kwargs = prev.fn_kwargs or {}
+        block_fn1 = prev.block_fn
+        block_fn2 = self.block_fn
 
-        def block_fn(block: Block) -> Iterable[Block]:
-            for tmp1 in fn1(block):
-                for tmp2 in fn2(tmp1):
+        def block_fn(block: Block, fn: UDF, *fn_args, **fn_kwargs) -> Iterable[Block]:
+            fn_args_ = fn_args if fn is None else (fn,) + fn_args
+            for tmp1 in block_fn1(block, *prev_fn_args, **prev_fn_kwargs):
+                for tmp2 in block_fn2(tmp1, *fn_args_, **fn_kwargs):
                     yield tmp2
 
-        return OneToOneStage(name, block_fn, self.compute, prev.ray_remote_args)
+        return OneToOneStage(
+            name,
+            block_fn,
+            self.compute,
+            prev.ray_remote_args,
+            fn=self.fn,
+            fn_args=self.fn_args,
+            fn_kwargs=self.fn_kwargs,
+            fn_constructor_args=self.fn_constructor_args,
+            fn_constructor_kwargs=self.fn_constructor_kwargs,
+        )
 
     def __call__(
         self, blocks: BlockList, clear_input_blocks: bool
     ) -> Tuple[BlockList, dict]:
         compute = get_compute(self.compute)
+        assert (
+            self.fn_constructor_args is None and self.fn_constructor_kwargs is None
+        ) or isinstance(compute, ActorPoolStrategy)
         blocks = compute._apply(
-            self.block_fn, self.ray_remote_args, blocks, clear_input_blocks, self.name
+            self.block_fn,
+            self.ray_remote_args,
+            blocks,
+            clear_input_blocks,
+            name=self.name,
+            fn=self.fn,
+            fn_args=self.fn_args,
+            fn_kwargs=self.fn_kwargs,
+            fn_constructor_args=self.fn_constructor_args,
+            fn_constructor_kwargs=self.fn_constructor_kwargs,
         )
         assert isinstance(blocks, BlockList), blocks
         return blocks, {}
@@ -455,8 +517,8 @@ class AllToAllStage(Stage):
         num_blocks: Optional[int],
         fn: Callable[[BlockList, bool, Callable], Tuple[BlockList, dict]],
         supports_block_udf: bool = False,
-        block_udf=None,
-        remote_args=None,
+        block_udf: Optional[BlockTransform] = None,
+        remote_args: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(name, num_blocks)
         self.fn = fn
@@ -485,9 +547,31 @@ class AllToAllStage(Stage):
                 f"Tried to fuse {prev} with {self}, but these are not fusable."
             )
         assert self.supports_block_udf
+        assert prev.fn_constructor_args is None and prev.fn_constructor_kwargs is None
         name = prev.name + "->" + self.name
+        prev_fn_args = prev.fn_args or tuple()
+        prev_fn_args = prev_fn_args if prev.fn is None else (prev.fn,) + prev_fn_args
+        prev_fn_kwargs = prev.fn_kwargs or {}
+        prev_block_fn = prev.block_fn
+        if self.block_udf is None:
+
+            def block_udf(block: Block) -> Iterable[Block]:
+                yield from prev_block_fn(block, *prev_fn_args, **prev_fn_kwargs)
+
+        else:
+            self_block_udf = self.block_udf
+
+            def block_udf(block: Block) -> Iterable[Block]:
+                for tmp1 in prev_block_fn(
+                    block,
+                    *prev_fn_args,
+                    **prev_fn_kwargs,
+                ):
+                    for tmp2 in self_block_udf(tmp1):
+                        yield tmp2
+
         return AllToAllStage(
-            name, self.num_blocks, self.fn, True, prev.block_fn, prev.ray_remote_args
+            name, self.num_blocks, self.fn, True, block_udf, prev.ray_remote_args
         )
 
     def __call__(
