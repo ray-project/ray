@@ -37,12 +37,6 @@ logger = logging.getLogger(__name__)
 # Syncing period for syncing checkpoints between nodes or to cloud.
 DEFAULT_SYNC_PERIOD = 300
 
-CLOUD_CHECKPOINTING_URL = (
-    "https://docs.ray.io/en/master/tune/user-guide.html#using-cloud-storage"
-)
-_log_sync_warned = False
-_syncers = {}
-
 
 def validate_upload_dir(sync_config: "SyncConfig"):
     if sync_config.upload_dir:
@@ -301,8 +295,9 @@ class _DefaultSyncer(Syncer):
         self._sync_process.start(**kwargs)
 
 
+@DeveloperAPI
 def get_node_to_storage_syncer(sync_config: SyncConfig):
-    return
+    return _DefaultSyncer(sync_period=sync_config.sync_period)
 
 
 @DeveloperAPI
@@ -354,22 +349,30 @@ class SyncerCallback(Callback):
 
         try:
             sync_process.wait()
-            sync_process.start(
-                source_ip=source_ip,
-                source_path=self._remote_trial_logdir(trial),
-                target_ip=ray.util.get_node_ip_address(),
-                target_path=self._local_trial_logdir(trial),
-            )
-            self._sync_times[trial.trial_id] = time.time()
-            if wait:
-                sync_process.wait()
         except TuneError as e:
             # Errors occurring during this wait are not fatal for this
             # checkpoint, so it should just be logged.
             logger.error(
                 f"Trial {trial}: An error occurred during the "
-                f"checkpoint syncing: {e}"
+                f"checkpoint syncing of the previous checkpoint: {e}"
             )
+        sync_process.start(
+            source_ip=source_ip,
+            source_path=self._remote_trial_logdir(trial),
+            target_ip=ray.util.get_node_ip_address(),
+            target_path=self._local_trial_logdir(trial),
+        )
+        self._sync_times[trial.trial_id] = time.time()
+        if wait:
+            try:
+                sync_process.wait()
+            except TuneError as e:
+                # Errors occurring during this wait are not fatal for this
+                # checkpoint, so it should just be logged.
+                logger.error(
+                    f"Trial {trial}: An error occurred during the "
+                    f"checkpoint syncing of the current checkpoint: {e}"
+                )
 
     def on_trial_result(
         self,
@@ -409,5 +412,18 @@ class SyncerCallback(Callback):
             )
 
     def wait_for_all(self):
-        for sync_process in self._sync_processes.values():
-            sync_process.wait()
+        failed_syncs = {}
+        for trial, sync_process in self._sync_processes.items():
+            try:
+                sync_process.wait()
+            except Exception as e:
+                failed_syncs[trial] = e
+
+        if failed_syncs:
+            sync_str = "\n".join(
+                [f"  {trial}: {e}" for trial, e in failed_syncs.items()]
+            )
+            raise TuneError(
+                f"At least one trial failed to sync down when waiting for all "
+                f"trials to sync: \n{sync_str}"
+            )

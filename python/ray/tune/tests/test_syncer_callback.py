@@ -1,3 +1,4 @@
+import logging
 import os
 from typing import Optional
 
@@ -7,9 +8,11 @@ import tempfile
 
 import ray.util
 from freezegun import freeze_time
+from ray.tune import TuneError
 from ray.tune.result import NODE_IP
 
-from ray.tune.syncer import SyncerCallback, DEFAULT_SYNC_PERIOD
+from ray.tune.syncer import SyncerCallback, DEFAULT_SYNC_PERIOD, _BackgroundProcess
+from ray.tune.utils.file_transfer import sync_dir_between_nodes
 from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 
 
@@ -29,16 +32,38 @@ class TestSyncerCallback(SyncerCallback):
         enabled: bool = True,
         sync_period: float = DEFAULT_SYNC_PERIOD,
         local_logdir_override: Optional[str] = None,
+        remote_logdir_override: Optional[str] = None,
     ):
         super(TestSyncerCallback, self).__init__(
             enabled=enabled, sync_period=sync_period
         )
-        self._local_logdir_override = local_logdir_override
+        self.local_logdir_override = local_logdir_override
+        self.remote_logdir_override = remote_logdir_override
 
     def _local_trial_logdir(self, trial):
-        if self._local_logdir_override:
-            return self._local_logdir_override
+        if self.local_logdir_override:
+            return self.local_logdir_override
         return super(TestSyncerCallback, self)._local_trial_logdir(trial)
+
+    def _remote_trial_logdir(self, trial):
+        if self.remote_logdir_override:
+            return self.remote_logdir_override
+        return super(TestSyncerCallback, self)._remote_trial_logdir(trial)
+
+    def _get_trial_sync_process(self, trial):
+        return self._sync_processes.setdefault(
+            trial.trial_id, MaybeFailingProcess(sync_dir_between_nodes)
+        )
+
+
+class MaybeFailingProcess(_BackgroundProcess):
+    should_fail = False
+
+    def wait(self):
+        result = super(MaybeFailingProcess, self).wait()
+        if self.should_fail:
+            raise TuneError("Syncing failed.")
+        return result
 
 
 @pytest.fixture
@@ -217,6 +242,64 @@ def test_syncer_callback_force_on_complete(ray_start_2_cpus, temp_data_dirs):
 
         assert_file(True, tmp_target, "level0.txt")
         assert_file(True, tmp_target, "level0_new.txt")
+
+
+def test_syncer_callback_wait_for_all_error(ray_start_2_cpus, temp_data_dirs):
+    tmp_source, tmp_target = temp_data_dirs
+
+    syncer_callback = TestSyncerCallback(
+        sync_period=0,
+        local_logdir_override=tmp_target,
+    )
+
+    trial1 = MockTrial(trial_id="a", logdir=tmp_source)
+
+    # Inject FailingProcess into callback
+    sync_process = syncer_callback._get_trial_sync_process(trial1)
+    sync_process.should_fail = True
+
+    # This sync will fail because the remote location does not exist
+    syncer_callback.on_trial_result(iteration=1, trials=[], trial=trial1, result={})
+
+    with pytest.raises(TuneError) as e:
+        syncer_callback.wait_for_all()
+        assert "At least one" in e
+
+
+def test_syncer_callback_log_error(caplog, ray_start_2_cpus, temp_data_dirs):
+    caplog.set_level(logging.ERROR, logger="ray.tune.syncer")
+
+    tmp_source, tmp_target = temp_data_dirs
+
+    syncer_callback = TestSyncerCallback(
+        sync_period=0,
+        local_logdir_override=tmp_target,
+    )
+
+    trial1 = MockTrial(trial_id="a", logdir=tmp_source)
+
+    # Inject FailingProcess into callback
+    sync_process = syncer_callback._get_trial_sync_process(trial1)
+
+    syncer_callback.on_trial_result(iteration=1, trials=[], trial=trial1, result={})
+
+    assert not caplog.text
+    assert_file(False, tmp_target, "level0.txt")
+
+    sync_process.should_fail = True
+
+    # When the previous sync processes fails, an error is logged but sync is restarted
+    syncer_callback.on_trial_result(iteration=2, trials=[], trial=trial1, result={})
+
+    assert (
+        "An error occurred during the checkpoint syncing of the previous checkpoint"
+        in caplog.text
+    )
+
+    sync_process.should_fail = False
+
+    syncer_callback.wait_for_all()
+    assert_file(True, tmp_target, "level0.txt")
 
 
 if __name__ == "__main__":
