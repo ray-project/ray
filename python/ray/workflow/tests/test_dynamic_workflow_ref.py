@@ -5,6 +5,7 @@ import pytest
 import ray
 from ray import workflow
 from ray.workflow.common import WorkflowRef
+from ray.workflow.tests import utils
 
 
 def test_dynamic_workflow_ref(workflow_start_regular_shared):
@@ -15,6 +16,9 @@ def test_dynamic_workflow_ref(workflow_start_regular_shared):
     # This test also shows different "style" of running workflows.
     first_step = workflow.create(incr.bind(0))
     assert first_step.run("test_dynamic_workflow_ref") == 1
+    # skip the following assertion in client mode as first_step.step_id
+    # requires workflow context which is not available on client side
+    utils.skip_client_test()
     second_step = workflow.create(incr.bind(WorkflowRef(first_step.step_id)))
     # Without rerun, it'll just return the previous result
     assert second_step.run("test_dynamic_workflow_ref") == 1
