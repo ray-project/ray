@@ -197,6 +197,8 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
       current_queue.pop_front();
     }
 
+    RAY_LOG_EVERY_MS(INFO, 3 * 1000)
+        << "dbg CoreWorkerDirectTaskSubmitter::OnWorkerIdle cancelling";
     CancelWorkerLeaseIfNeeded(scheduling_key);
   }
   RequestNewWorkerIfNeeded(scheduling_key);
@@ -213,6 +215,11 @@ void CoreWorkerDirectTaskSubmitter::CancelWorkerLeaseIfNeeded(
 
   RAY_LOG(DEBUG) << "Task queue is empty; canceling lease request";
 
+  static int64_t total_cancel = 0;
+  RAY_LOG_EVERY_MS(INFO, 3 * 1000)
+      << "dbg CoreWorkerDirectTaskSubmitter::CancelWorkerLeaseIfNeeded requests="
+      << scheduling_key_entry.pending_lease_requests.size() << " total=" << total_cancel;
+  total_cancel += scheduling_key_entry.pending_lease_requests.size();
   for (auto &pending_lease_request : scheduling_key_entry.pending_lease_requests) {
     // There is an in-flight lease request. Cancel it.
     auto lease_client = GetOrConnectLeaseClient(&pending_lease_request.second);
