@@ -1837,7 +1837,8 @@ class DeploymentStateManager:
         Return handle queue length metrics
         Args:
             deployment_name: deployment name
-            look_back_period_s: the look back time period to collect the requests metrics
+            look_back_period_s: the look back time period to collect the requests
+                metrics
         Returns:
             if multiple handles queue length, return the max number of queue length.
         """
