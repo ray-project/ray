@@ -1069,6 +1069,8 @@ class DeploymentState:
         If the deployment already exists with the same version and config,
         this is a no-op and returns False.
 
+        **Thread-safety needs to be taken care of.**
+
         Returns:
             bool: Whether or not the deployment is being updated.
         """
@@ -1098,6 +1100,7 @@ class DeploymentState:
         return True
 
     async def delete(self) -> None:
+        # **Thread-safety needs to be taken care of.**
         self._set_deployment_goal(None)
         await self._save_checkpoint_func()
 
