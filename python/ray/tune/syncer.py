@@ -24,10 +24,10 @@ from ray.air._internal.remote_storage import (
 )
 from ray.tune import TuneError
 from ray.tune.callback import Callback
-from ray.tune.checkpoint_manager import _TuneCheckpoint
 from ray.tune.result import NODE_IP
 from ray.tune.utils.file_transfer import sync_dir_between_nodes
 from ray.util.annotations import PublicAPI, DeveloperAPI
+from ray.util.ml_utils.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 
 if TYPE_CHECKING:
     from ray.tune.trial import Trial
@@ -305,17 +305,17 @@ class SyncerCallback(Callback):
         iteration: int,
         trials: List["Trial"],
         trial: "Trial",
-        checkpoint: _TuneCheckpoint,
+        checkpoint: _TrackedCheckpoint,
         **info,
     ):
-        if checkpoint.storage == _TuneCheckpoint.MEMORY:
+        if checkpoint.storage_mode == CheckpointStorage.MEMORY:
             return
         self._sync_trial_dir(trial, force=trial.sync_on_checkpoint, wait=True)
 
         if trial.uses_cloud_checkpointing:
             return
 
-        if not os.path.exists(checkpoint.value):
+        if not os.path.exists(checkpoint.dir_or_data):
             raise TuneError(
                 f"Trial {trial}: Checkpoint path {checkpoint.value} not "
                 "found after successful sync down. "

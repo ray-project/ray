@@ -4,13 +4,14 @@ from typing import Dict, Type, Union, TYPE_CHECKING
 from ray.air.checkpoint import Checkpoint
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
-import numpy as np
-import pandas as pd
-
 if TYPE_CHECKING:
+    import numpy as np
+    import pandas as pd
     import pyarrow
 
-DataBatchType = Union[np.ndarray, pd.DataFrame, "pyarrow.Table", Dict[str, np.ndarray]]
+DataBatchType = Union[
+    "np.ndarray", "pd.DataFrame", "pyarrow.Table", Dict[str, "np.ndarray"]
+]
 
 
 @PublicAPI(stability="alpha")
@@ -95,7 +96,7 @@ class Predictor(abc.ABC):
         # return _convert_pandas_to_batch_type(predictions_df, type=type(data))
 
     @DeveloperAPI
-    def _predict_pandas(self, data: pd.DataFrame, **kwargs) -> pd.DataFrame:
+    def _predict_pandas(self, data: "pd.DataFrame", **kwargs) -> "pd.DataFrame":
         """Perform inference on a Pandas DataFrame.
 
         All predictors are expected to implement this method.
@@ -118,13 +119,13 @@ class Predictor(abc.ABC):
         )
 
 
-def _convert_batch_type_to_pandas(data: DataBatchType) -> pd.DataFrame:
+def _convert_batch_type_to_pandas(data: DataBatchType) -> "pd.DataFrame":
     """Convert the provided data to a Pandas DataFrame."""
     pass
 
 
 def _convert_pandas_to_batch_type(
-    data: pd.DataFrame, type: Type[DataBatchType]
+    data: "pd.DataFrame", type: Type[DataBatchType]
 ) -> DataBatchType:
     """Convert the provided Pandas dataframe to the provided ``type``."""
 
