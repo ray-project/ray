@@ -164,6 +164,10 @@ class Syncer(abc.ABC):
     def retry(self):
         raise NotImplementedError
 
+    @abc.abstractmethod
+    def wait(self):
+        raise NotImplementedError
+
     def sync_up_if_needed(
         self, local_dir: str, remote_dir: str, exclude: Optional[List] = None
     ) -> bool:
@@ -199,9 +203,6 @@ class Syncer(abc.ABC):
             )
             self.last_sync_down_time = now
             return result
-
-    def wait(self):
-        pass
 
     def wait_or_retry(self, max_retries: int = 3, backoff_s: int = 5):
         assert max_retries > 0
@@ -324,10 +325,16 @@ class SyncerCallback(Callback):
 
     def _should_sync(self, trial: "Trial"):
         last_sync_time = self._sync_times.setdefault(trial.trial_id, float("-inf"))
-        return time.time() - last_sync_time > self._sync_period
+        return time.time() - last_sync_time >= self._sync_period
 
     def _mark_as_synced(self, trial: "Trial"):
         self._sync_times[trial.trial_id] = time.time()
+
+    def _local_trial_logdir(self, trial: "Trial"):
+        return trial.logdir
+
+    def _remote_trial_logdir(self, trial: "Trial"):
+        return trial.logdir
 
     def _sync_trial_dir(
         self, trial: "Trial", force: bool = False, wait: bool = True
@@ -349,10 +356,11 @@ class SyncerCallback(Callback):
             sync_process.wait()
             sync_process.start(
                 source_ip=source_ip,
-                source_path=trial.logdir,
+                source_path=self._remote_trial_logdir(trial),
                 target_ip=ray.util.get_node_ip_address(),
-                target_path=trial.logdir,
+                target_path=self._local_trial_logdir(trial),
             )
+            self._sync_times[trial.trial_id] = time.time()
             if wait:
                 sync_process.wait()
         except TuneError as e:
@@ -399,3 +407,7 @@ class SyncerCallback(Callback):
                 f"Trial {trial}: Checkpoint path {checkpoint.dir_or_data} not "
                 "found after successful sync down."
             )
+
+    def wait_for_all(self):
+        for sync_process in self._sync_processes.values():
+            sync_process.wait()
