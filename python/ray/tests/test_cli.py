@@ -25,7 +25,6 @@ import re
 import os
 from contextlib import contextmanager
 from pathlib import Path
-
 import pytest
 
 import moto
