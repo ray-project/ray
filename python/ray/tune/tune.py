@@ -49,8 +49,6 @@ from ray.tune.schedulers.util import (
 from ray.tune.suggest.variant_generator import has_unresolved_values
 from ray.tune.syncer import (
     SyncConfig,
-    set_sync_periods,
-    wait_for_sync,
     validate_upload_dir,
 )
 from ray.tune.trainable import Trainable
@@ -429,7 +427,6 @@ def run(
     config = config or {}
     sync_config = sync_config or SyncConfig()
     validate_upload_dir(sync_config)
-    set_sync_periods(sync_config)
 
     if num_samples == -1:
         num_samples = sys.maxsize
@@ -722,7 +719,7 @@ def run(
     if has_verbosity(Verbosity.V1_EXPERIMENT):
         _report_progress(runner, progress_reporter, done=True)
 
-    wait_for_sync()
+    # wait_for_sync()  # Todo: wait for syncs
     runner.cleanup()
 
     incomplete_trials = []

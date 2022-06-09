@@ -73,7 +73,7 @@ class SyncConfig:
         upload_dir: Optional URI to sync training results and checkpoints
             to (e.g. ``s3://bucket``, ``gs://bucket`` or ``hdfs://path``).
             Specifying this will enable cloud-based checkpointing.
-        sync_process: Syncer class to use for synchronizing checkpoints to/from
+        syncer: Syncer class to use for synchronizing checkpoints to/from
             cloud storage. If set to ``None``, no syncing will take place.
             Defaults to ``"auto"`` (auto detect).
         sync_on_checkpoint: Force sync-down of trial checkpoint to
@@ -86,10 +86,34 @@ class SyncConfig:
     """
 
     upload_dir: Optional[str] = None
-    sync_process: Optional[Union[str, "Syncer"]] = "auto"
+    syncer: Optional[Union[str, "Syncer"]] = "auto"
 
     sync_on_checkpoint: bool = True
     sync_period: int = DEFAULT_SYNC_PERIOD
+
+
+class _BackgroundProcess:
+    def __init__(self, fn: Callable):
+        self._fn = fn
+        self._process = None
+
+    @property
+    def is_running(self):
+        return bool(self._process)
+
+    def start(self, *args, **kwargs):
+        if self.is_running:
+            return False
+
+        self._process = threading.Thread(target=self._fn, args=args, kwargs=kwargs)
+        self._process.start()
+
+    def wait(self):
+        if not self._process:
+            return True
+
+        self._process.join()
+        return True
 
 
 @DeveloperAPI
@@ -113,6 +137,10 @@ class Syncer(abc.ABC):
 
     @abc.abstractmethod
     def delete(self, remote_dir: str) -> bool:
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def retry(self):
         raise NotImplementedError
 
     def sync_up_if_needed(
@@ -152,6 +180,22 @@ class Syncer(abc.ABC):
     def wait(self):
         pass
 
+    def wait_or_retry(self, max_retries: int = 3, backoff_s: int = 5):
+        assert max_retries > 0
+        for _ in range(max_retries - 1):
+            try:
+                self.wait()
+            except TuneError as e:
+                logger.error(
+                    f"Caught sync error: {e}. "
+                    f"Retrying after sleeping for {backoff_s} seconds..."
+                )
+                time.sleep(backoff_s)
+                self.retry()
+                continue
+            return
+        raise TuneError(f"Failed sync even after {max_retries} retries.")
+
     def reset(self):
         self.last_sync_up_time = float("-inf")
         self.last_sync_down_time = float("-inf")
@@ -160,36 +204,13 @@ class Syncer(abc.ABC):
         pass
 
 
-class _BackgroundProcess:
-    def __init__(self, fn: Callable):
-        self._fn = fn
-        self._process = None
-
-    @property
-    def is_running(self):
-        return bool(self._process)
-
-    def start(self, *args, **kwargs):
-        if self.is_running:
-            return False
-
-        self._process = threading.Thread(target=self._fn, args=args, kwargs=kwargs)
-        self._process.start()
-
-    def wait(self):
-        if not self._process:
-            return True
-
-        self._process.join()
-        return True
-
-
 class _DefaultSyncer(Syncer):
     """Default syncer between local storage and remote URI."""
+
     def __init__(self, sync_period: float = 300.0):
         super(_DefaultSyncer, self).__init__(sync_period=sync_period)
         self._sync_process = None
-        self._previous_args = tuple()
+        self._current_cmd = None
 
     def sync_up(
         self, local_dir: str, remote_dir: str, exclude: Optional[List] = None
@@ -197,8 +218,12 @@ class _DefaultSyncer(Syncer):
         if self._sync_process:
             return False
 
-        self._sync_process = _BackgroundProcess(upload_to_uri)
-        self._sync_process.start(local_path=local_dir, uri=remote_dir, exclude=exclude)
+        self._current_cmd = (
+            upload_to_uri,
+            dict(local_path=local_dir, uri=remote_dir, exclude=exclude),
+        )
+        self.retry()
+
         return True
 
     def sync_down(
@@ -207,21 +232,33 @@ class _DefaultSyncer(Syncer):
         if self._sync_process:
             return False
 
-        self._sync_process = _BackgroundProcess(download_from_uri)
-        self._sync_process.start(uri=remote_dir, local_path=remote_dir)
+        self._current_cmd = (
+            download_from_uri,
+            dict(uri=remote_dir, local_path=local_dir),
+        )
+        self.retry()
+
         return True
 
     def delete(self, remote_dir: str) -> bool:
         if self._sync_process:
             return False
 
-        self._sync_process = _BackgroundProcess(delete_at_uri)
-        self._sync_process.start(uri=remote_dir)
+        self._current_cmd = (delete_at_uri, dict(uri=remote_dir))
+        self.retry()
+
         return True
 
     def wait(self):
         if self._sync_process:
             self._sync_process.wait()
+
+    def retry(self):
+        if not self._current_cmd:
+            raise TuneError("No sync command set, cannot retry.")
+        cmd, kwargs = self._current_cmd
+        self._sync_process = _BackgroundProcess(cmd)
+        self._sync_process.start(**kwargs)
 
 
 def get_node_to_storage_syncer(sync_config: SyncConfig):
@@ -231,6 +268,7 @@ def get_node_to_storage_syncer(sync_config: SyncConfig):
 @DeveloperAPI
 class SyncerCallback(Callback):
     """Callback to synchronize trial directories on a worker node with the driver."""
+
     def __init__(self, enabled: bool = True, sync_period: float = DEFAULT_SYNC_PERIOD):
         self._enabled = enabled
         self._sync_processes: Dict[str, _BackgroundProcess] = {}
