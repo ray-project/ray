@@ -2,12 +2,12 @@ import pytest
 import ray
 import grpc
 import ray.serve as serve
-from ray.tests.conftest import external_redis
+from ray.tests.conftest import external_redis  # noqa: F401
 from ray.serve.storage.kv_store import RayInternalKVStore, KVStoreError
 
 
 @pytest.fixture
-def serve_ha(external_redis):
+def serve_ha(external_redis):  # noqa: F811
     address_info = ray.init(
         num_cpus=36,
         namespace="default_test_namespace",

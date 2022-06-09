@@ -1,9 +1,7 @@
 import os
 import tempfile
 from typing import Optional
-import grpc
 import pytest
-import ray
 from ray.serve.constants import DEFAULT_CHECKPOINT_PATH
 from ray._private.test_utils import simulate_storage
 from ray.serve.storage.checkpoint_path import make_kv_store
@@ -11,7 +9,6 @@ from ray.serve.storage.kv_store import (
     RayInternalKVStore,
     RayLocalKVStore,
     RayS3KVStore,
-    KVStoreError
 )
 from ray.serve.storage.kv_store_base import KVStoreBase
 from ray.serve.storage.ray_gcs_kv_store import RayGcsKVStore

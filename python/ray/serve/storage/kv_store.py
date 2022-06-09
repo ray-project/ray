@@ -25,8 +25,9 @@ def get_storage_key(namespace: str, storage_key: str) -> str:
 
 
 class KVStoreError(Exception):
-    def __init__(self, orig_exce: Optional[Exception]=None):
+    def __init__(self, orig_exce: Optional[Exception] = None):
         self.orig_exce = orig_exce
+
 
 class RayInternalKVStore(KVStoreBase):
     """Wraps ray's internal_kv with a namespace to avoid collisions.
