@@ -8,4 +8,6 @@ public interface ServeController {
   byte[] getAllEndpoints();
 
   LongPollResult listenForChange(LongPollRequest longPollRequest);
+
+  String getRootUrl();
 }

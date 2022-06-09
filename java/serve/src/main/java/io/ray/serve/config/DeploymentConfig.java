@@ -9,9 +9,12 @@ import io.ray.serve.common.Constants;
 import io.ray.serve.exception.RayServeException;
 import io.ray.serve.generated.DeploymentLanguage;
 import io.ray.serve.util.LogUtil;
+import java.io.Serializable;
 
 /** Configuration options for a deployment, to be set by the user. */
-public class DeploymentConfig {
+public class DeploymentConfig implements Serializable {
+
+  private static final long serialVersionUID = 5965977837248820843L;
 
   /**
    * The number of processes to start up that will handle requests to this deployment. Defaults to

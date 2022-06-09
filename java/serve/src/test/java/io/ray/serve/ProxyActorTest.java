@@ -53,7 +53,7 @@ public class ProxyActorTest {
 
       // Controller
       ActorHandle<DummyServeController> controller =
-          Ray.actor(DummyServeController::new).setName(controllerName).remote();
+          Ray.actor(DummyServeController::new, "").setName(controllerName).remote();
       Map<String, EndpointInfo> endpointInfos = new HashMap<>();
       endpointInfos.put(
           endpointName,
