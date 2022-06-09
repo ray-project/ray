@@ -437,7 +437,6 @@ class Workflow(Generic[T]):
         using BFS."""
         # deque is used instead of queue.Queue because queue.Queue is aimed
         # at multi-threading. We just need a pure data structure here.
-        assert not ray._private.client_mode_hook.is_client_mode_enabled
         visited_workflows: Set[Workflow] = {self}
         q = deque([self])
         while q:  # deque's pythonic way to check emptyness

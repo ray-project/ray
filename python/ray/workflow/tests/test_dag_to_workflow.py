@@ -5,11 +5,13 @@ import pytest
 import ray
 from ray import workflow
 from ray.experimental.dag import InputNode
+from ray.workflow.tests import utils
 
 
 def test_dag_to_workflow_execution(workflow_start_regular_shared):
     """This test constructs a DAG with complex dependencies
     and turns it into a workflow."""
+    utils.skip_client_test()
 
     @ray.remote
     def begin(x, pos, a):
