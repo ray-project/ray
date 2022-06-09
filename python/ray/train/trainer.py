@@ -443,6 +443,7 @@ class Trainer:
 
         Returns ``None`` if ``run()`` has not been called.
         """
+        if self.logdir == False: return None
         if self._run_id > 0:
             run_dir = Path(f"run_{self._run_id:03d}")
             return construct_path(run_dir, self.logdir)
