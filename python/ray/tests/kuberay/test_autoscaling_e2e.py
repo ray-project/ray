@@ -149,6 +149,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
 
         autoscaler_options = {
             "image": AUTOSCALER_IMAGE,
+            "imagePullPolicy": PULL_POLICY,
             # Allow quick scale-down for test purposes.
             "idleTimeoutSeconds": 10,
         }
