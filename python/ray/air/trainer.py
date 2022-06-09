@@ -177,7 +177,7 @@ class Trainer(abc.ABC):
         # Scaling config
         if not isinstance(self.scaling_config, ScalingConfig):
             raise ValueError(
-                f"`scaling_config` should be an instance of `dict`, "
+                f"`scaling_config` should be an instance of `ScalingConfig`, "
                 f"found {type(self.scaling_config)} with value `{self.scaling_config}`."
             )
         # Datasets
@@ -374,9 +374,9 @@ class Trainer(abc.ABC):
             @classmethod
             def default_resource_request(cls, config):
                 updated_scaling_config = config.get("scaling_config", scaling_config)
-                scaling_config = trainer_cls._validate_scaling_config(
+                validated_scaling_config = trainer_cls._validate_scaling_config(
                     updated_scaling_config
                 )
-                return scaling_config.as_placement_group_factory()
+                return validated_scaling_config.as_placement_group_factory()
 
         return TrainTrainable

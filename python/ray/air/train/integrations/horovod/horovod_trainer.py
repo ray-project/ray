@@ -84,6 +84,7 @@ class HorovodTrainer(DataParallelTrainer):
         import torch
         import torch.nn as nn
         from ray.air.train.integrations.horovod import HorovodTrainer
+        from ray.air.config import ScalingConfig
 
         input_size = 1
         layer_size = 15
@@ -134,12 +135,12 @@ class HorovodTrainer(DataParallelTrainer):
                     print(f"epoch: {epoch}, loss: {loss.item()}")
                 train.save_checkpoint(model=model.state_dict())
         train_dataset = ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])
-        scaling_config = {"num_workers": 3}
-        # If using GPUs, use the below scaling config instead.
-        # scaling_config = {"num_workers": 3, "use_gpu": True}
+        scaling_config = ScalingConfig(num_workers=3)
+        # If using GPUs, use the below scxaling config instead.
+        # scaling_config = ScalingConfig(num_workers=3, use_gpu=True)
         trainer = HorovodTrainer(
             train_loop_per_worker=train_loop_per_worker,
-            scaling_config={"num_workers": 3},
+            scaling_config=scaling_config,
             datasets={"train": train_dataset},
         )
         result = trainer.fit()

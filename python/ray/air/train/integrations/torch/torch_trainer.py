@@ -102,6 +102,7 @@ class TorchTrainer(DataParallelTrainer):
             import ray
             from ray import train
             from ray.air.train.integrations.torch import TorchTrainer
+            from ray.air.config import ScalingConfig
 
             input_size = 1
             layer_size = 15
@@ -138,9 +139,9 @@ class TorchTrainer(DataParallelTrainer):
                     train.save_checkpoint(model=model.state_dict())
 
             train_dataset = ray.data.from_items([1, 2, 3])
-            scaling_config = {"num_workers": 3}
+            scaling_config = ScalingConfig(num_workers=3)
             # If using GPUs, use the below scaling config instead.
-            # scaling_config = {"num_workers": 3, "use_gpu": True}
+            # scaling_config = ScalingConfig(num_workers=3, use_gpu=True)
             trainer = TorchTrainer(
                 train_loop_per_worker=train_loop_per_worker,
                 scaling_config=scaling_config,

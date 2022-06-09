@@ -57,15 +57,12 @@ class RLTrainer(Trainer):
 
         .. code-block:: python
 
-            from ray.air.config import RunConfig
+            from ray.air.config import RunConfig, ScalingConfig
             from ray.air.train.integrations.rl import RLTrainer
 
             trainer = RLTrainer(
                 run_config=RunConfig(stop={"training_iteration": 5}),
-                scaling_config={
-                    "num_workers": 2,
-                    "use_gpu": False,
-                },
+                scaling_config=ScalingConfig(num_workers=2, use_gpu=False),
                 algorithm="PPO",
                 config={
                     "env": "CartPole-v0",
