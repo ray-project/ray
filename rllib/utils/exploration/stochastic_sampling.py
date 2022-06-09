@@ -1,5 +1,6 @@
 import functools
 import gym
+import numpy as np
 from typing import Optional, Union
 
 from ray.rllib.utils.annotations import PublicAPI
@@ -9,6 +10,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.exploration.random import Random
 from ray.rllib.utils.framework import (
+    get_variable,
     try_import_tf,
     try_import_torch,
     TensorType,
@@ -58,6 +60,14 @@ class StochasticSampling(Exploration):
             action_space, model=self.model, framework=self.framework, **kwargs
         )
 
+        # The current timestep value (tf-var or python int).
+        self.last_timestep = get_variable(
+            np.array(0, np.int64),
+            framework=self.framework,
+            tf_name="timestep",
+            dtype=np.int64,
+        )
+
     @override(Exploration)
     def get_exploration_action(
         self,
@@ -76,8 +86,10 @@ class StochasticSampling(Exploration):
             )
 
     def _get_tf_exploration_action_op(self, action_dist, timestep, explore):
+        ts = self.last_timestep + 1
+
         stochastic_actions = tf.cond(
-            pred=tf.convert_to_tensor(timestep < self.random_timesteps),
+            pred=tf.convert_to_tensor(ts < self.random_timesteps),
             true_fn=lambda: (
                 self.random_exploration.get_tf_exploration_action_op(
                     action_dist, explore=True
@@ -95,13 +107,24 @@ class StochasticSampling(Exploration):
 
         logp = tf.cond(
             tf.math.logical_and(
-                explore, tf.convert_to_tensor(timestep >= self.random_timesteps)
+                explore, tf.convert_to_tensor(ts >= self.random_timesteps)
             ),
             true_fn=lambda: action_dist.sampled_action_logp(),
             false_fn=functools.partial(zero_logps_from_actions, deterministic_actions),
         )
 
-        return action, logp
+        # Increment `last_timestep` by 1 (or set to `timestep`).
+        if self.framework in ["tf2", "tfe"]:
+            self.last_timestep.assign_add(1)
+            return action, logp
+        else:
+            assign_op = (
+                tf1.assign_add(self.last_timestep, 1)
+                if timestep is None
+                else tf1.assign(self.last_timestep, timestep)
+            )
+            with tf1.control_dependencies([assign_op]):
+                return action, logp
 
     def _get_torch_exploration_action(
         self,
@@ -109,10 +132,15 @@ class StochasticSampling(Exploration):
         timestep: Union[TensorType, int],
         explore: Union[TensorType, bool],
     ):
+        # Set last timestep or (if not given) increase by one.
+        self.last_timestep = (
+            timestep if timestep is not None else self.last_timestep + 1
+        )
+
         # Apply exploration.
         if explore:
             # Random exploration phase.
-            if timestep < self.random_timesteps:
+            if self.last_timestep < self.random_timesteps:
                 action, logp = self.random_exploration.get_torch_exploration_action(
                     action_dist, explore=True
                 )

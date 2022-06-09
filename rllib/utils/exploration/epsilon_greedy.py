@@ -79,7 +79,7 @@ class EpsilonGreedy(Exploration):
             dtype=np.int64,
         )
 
-        # Build the tf-state-op.
+        # Build the tf-info-op.
         if self.framework == "tf":
             self._tf_state_op = self.get_state()
 
