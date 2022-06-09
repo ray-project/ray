@@ -107,10 +107,9 @@ void GrpcServer::Run() {
   // Create calls for all the server call factories.
   for (auto &entry : server_call_factories_) {
     for (int i = 0; i < num_threads_; i++) {
-      // Create a buffer of 100 calls for each RPC handler.
-      // TODO(edoakes): a small buffer should be fine and seems to have better
-      // performance, but we don't currently handle backpressure on the client.
-      int buffer_size = 100;
+      // When there is no max active RPC limit, a call will be added to the completetion
+      // queue before processing starts, so adding only 1 call is enough.
+      int buffer_size = 1;
       if (entry->GetMaxActiveRPCs() != -1) {
         buffer_size = entry->GetMaxActiveRPCs();
       }
