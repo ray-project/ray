@@ -775,7 +775,7 @@ class TorchPolicyV2(Policy):
             if tower_outputs[0][0][i] is not None:
                 all_grads.append(
                     torch.mean(
-                        torch.stack([t[0][i].to(self.device) for t in tower_outputs]),
+                        torch.stack([t[0][i].to(self.device, non_blocking=True) for t in tower_outputs]),
                         dim=0,
                     )
                 )
@@ -788,17 +788,25 @@ class TorchPolicyV2(Policy):
         start = time.time()
         self.apply_gradients(_directStepOptimizerSingleton)
         print(f">>>> apply_gradients: {(time.time() - start)*1000}ms")
-        start = time.time()
+
         for i, (model, batch) in enumerate(zip(self.model_gpu_towers, device_batches)):
+            start = time.time()
             batch_fetches[f"tower_{i}"].update(
                 {
                     LEARNER_STATS_KEY: self.stats_fn(batch),
+                }
+            )
+            print(f">>>> batch_fetches - stats_fn {(time.time() - start)*1000}ms")
+            start = time.time()
+            batch_fetches[f"tower_{i}"].update(
+                {
                     "model": model.metrics(),
                 }
             )
-
+            print(f">>>> batch_fetches -  model.metrics {(time.time() - start)*1000}ms")
+        start = time.time()
         batch_fetches.update(self.extra_compute_grad_fetches())
-        print(f">>>> batch_fetches: {(time.time() - start)*1000}ms")
+        print(f">>>> batch_fetches - extra_compute_grad_fetches: {(time.time() - start)*1000}ms")
         return batch_fetches
 
     @with_lock
@@ -845,9 +853,9 @@ class TorchPolicyV2(Policy):
             for g, p in zip(gradients, self.model.parameters()):
                 if g is not None:
                     if torch.is_tensor(g):
-                        p.grad = g.to(self.device)
+                        p.grad = g.to(self.device, non_blocking=True)
                     else:
-                        p.grad = torch.from_numpy(g).to(self.device)
+                        p.grad = torch.from_numpy(g).to(self.device, non_blocking=True)
 
             self._optimizers[0].step()
 
@@ -868,13 +876,15 @@ class TorchPolicyV2(Policy):
             of the tower's `tower_stats` dicts.
         """
         data = []
+        start = time.time()
         for tower in self.model_gpu_towers:
             if stats_name in tower.tower_stats:
                 data.append(
                     tree.map_structure(
-                        lambda s: s.to(self.device), tower.tower_stats[stats_name]
+                        lambda s: s.to(self.device, non_blocking=True).detach(), tower.tower_stats[stats_name]
                     )
                 )
+        print(f">>>>> get_tower_stats for {stats_name}: {(time.time() - start)*1000}ms")
         assert len(data) > 0, (
             f"Stats `{stats_name}` not found in any of the towers (you have "
             f"{len(self.model_gpu_towers)} towers in total)! Make "

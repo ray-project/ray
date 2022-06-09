@@ -1,5 +1,6 @@
 import logging
 from typing import Dict, List, Type, Union
+import time
 
 import ray
 from ray.rllib.agents.ppo.ppo_tf_policy import validate_config
@@ -177,29 +178,56 @@ class PPOTorchPolicy(
 
     @override(TorchPolicyV2)
     def stats_fn(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
-        return convert_to_numpy(
-            {
-                "cur_kl_coeff": self.kl_coeff,
-                "cur_lr": self.cur_lr,
-                "total_loss": torch.mean(
-                    torch.stack(self.get_tower_stats("total_loss"))
-                ),
-                "policy_loss": torch.mean(
-                    torch.stack(self.get_tower_stats("mean_policy_loss"))
-                ),
-                "vf_loss": torch.mean(
-                    torch.stack(self.get_tower_stats("mean_vf_loss"))
-                ),
-                "vf_explained_var": torch.mean(
-                    torch.stack(self.get_tower_stats("vf_explained_var"))
-                ),
-                "kl": torch.mean(torch.stack(self.get_tower_stats("mean_kl_loss"))),
-                "entropy": torch.mean(
-                    torch.stack(self.get_tower_stats("mean_entropy"))
-                ),
-                "entropy_coeff": self.entropy_coeff,
-            }
-        )
+        start = time.time()
+        raw_dict = {
+            "cur_kl_coeff": self.kl_coeff,
+            "cur_lr": self.cur_lr,
+            "total_loss": torch.mean(
+                torch.stack(self.get_tower_stats("total_loss"))
+            ),
+            "policy_loss": torch.mean(
+                torch.stack(self.get_tower_stats("mean_policy_loss"))
+            ),
+            "vf_loss": torch.mean(
+                torch.stack(self.get_tower_stats("mean_vf_loss"))
+            ),
+            "vf_explained_var": torch.mean(
+                torch.stack(self.get_tower_stats("vf_explained_var"))
+            ),
+            "kl": torch.mean(torch.stack(self.get_tower_stats("mean_kl_loss"))),
+            "entropy": torch.mean(
+                torch.stack(self.get_tower_stats("mean_entropy"))
+            ),
+            "entropy_coeff": self.entropy_coeff,
+        }
+        torch.cuda.synchronize()
+        print(f">>>> [stats_fn] getting raw_dict: {(time.time() - start)*1000}ms")
+        # print(f">>>> raw_dict: {raw_dict}")
+        # for key, value in raw_dict.items():
+        #     if isinstance(value, torch.Tensor):
+        #         print(f">>>> key: {key}, item: {value.item()} shape: {value.shape}")
+
+        start = time.time()
+        numpy_tensor = torch.stack([
+            raw_dict["total_loss"],
+            raw_dict["policy_loss"],
+            raw_dict["vf_loss"],
+            raw_dict["vf_explained_var"],
+            raw_dict["kl"],
+            raw_dict["entropy"]
+        ]).cpu().numpy()
+        # rst = convert_to_numpy(
+        #     raw_dict
+        # )
+        raw_dict["total_loss"] = numpy_tensor[0]
+        raw_dict["policy_loss"] = numpy_tensor[1]
+        raw_dict["vf_loss"] = numpy_tensor[2]
+        raw_dict["vf_explained_var"] = numpy_tensor[3]
+        raw_dict["kl"] = numpy_tensor[4]
+        raw_dict["entropy"] = numpy_tensor[5]
+
+        print(f">>>> [stats_fn] convert_to_numpy: {(time.time() - start)*1000}ms")
+        return raw_dict
 
     @override(TorchPolicyV2)
     def postprocess_trajectory(
