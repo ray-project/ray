@@ -69,7 +69,7 @@ class MaybeFailingProcess(_BackgroundProcess):
 
 @pytest.fixture
 def ray_start_2_cpus():
-    address_info = ray.init(num_cpus=2)
+    address_info = ray.init(num_cpus=2, configure_logging=False)
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
