@@ -35,9 +35,9 @@ class TestCollationFunctions:
     def test_array_error(self):
         list_of_arr = [np.array([i]) for i in range(4)]
         _, unpack = collate_array(list_of_arr)
-        with pytest.raises(AssertionError, match="output array should have shape of"):
+        with pytest.raises(ValueError, match="output array should have shape of"):
             unpack(np.arange(2))
-        with pytest.raises(AssertionError, match="output should be np.ndarray but"):
+        with pytest.raises(TypeError, match="output should be np.ndarray but"):
             unpack("string")
 
     def test_dict_array(self):

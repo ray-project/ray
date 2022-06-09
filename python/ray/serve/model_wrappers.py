@@ -127,7 +127,8 @@ def collate_dataframe(
             return output_df
         if not isinstance(output_df, pd.DataFrame):
             raise TypeError(
-                f"The output should be a Pandas DataFrame but Serve got {type(output_df)}"
+                "The output should be a Pandas DataFrame but Serve got "
+                f"{type(output_df)}"
             )
         if len(output_df) % batch_size != 0:
             raise ValueError(
