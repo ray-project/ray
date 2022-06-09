@@ -9,7 +9,7 @@ import tempfile
 from ray.air.predictors.integrations.rl.rl_predictor import RLPredictor
 from ray.air.preprocessor import Preprocessor
 from ray.air.checkpoint import Checkpoint
-from ray.air.train.integrations.rl import RLTrainer
+from ray.train.rl import RLTrainer
 
 from ray.rllib.agents import Trainer
 from ray.rllib.policy import Policy
