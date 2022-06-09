@@ -2,7 +2,7 @@ import abc
 import warnings
 from enum import Enum
 from typing import Optional, TYPE_CHECKING
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -27,6 +27,14 @@ class Preprocessor(abc.ABC):
     to transform both local data batches and distributed datasets. For example, a
     Normalization preprocessor may calculate the mean and stdev of a field during
     fitting, and uses these attributes to implement its normalization transform.
+
+    If you are implementing your own Preprocessor sub-class, you should override the
+    following:
+    * ``_fit`` - if your preprocessor is stateful. Otherwise, set
+    ``_is_fittable=False``.
+    * ``_transform_pandas`` and/or ``_transform_arrow`` - for best performance,
+    implement both. Otherwise, the data will be converted to the match the
+    implemented method.
     """
 
     class FitStatus(str, Enum):
@@ -138,7 +146,9 @@ class Preprocessor(abc.ABC):
             df: Input data batch.
 
         Returns:
-            DataBatchType: The transformed data batch.
+            DataBatchType: The transformed data batch. This may differ
+                from the input type depending on which ``_transform_*`` method(s)
+                are implemented.
         """
         fit_status = self.fit_status()
         if fit_status in (
@@ -159,6 +169,7 @@ class Preprocessor(abc.ABC):
         fitted_vars = [v for v in vars(self) if v.endswith("_")]
         return bool(fitted_vars)
 
+    @DeveloperAPI
     def _fit(self, dataset: Dataset) -> "Preprocessor":
         """Sub-classes should override this instead of fit()."""
         raise NotImplementedError()
@@ -237,8 +248,12 @@ class Preprocessor(abc.ABC):
                 f"and PyArrow Tables. Got {type(df)}."
             )
 
+    @DeveloperAPI
     def _transform_pandas(self, df: "pd.DataFrame") -> "pd.DataFrame":
+        """Run the transformation on a data batch in a Pandas DataFrame format."""
         raise NotImplementedError()
 
+    @DeveloperAPI
     def _transform_arrow(self, table: "pyarrow.Table") -> "pyarrow.Table":
+        """Run the transformation on a data batch in a PyArrow Table format."""
         raise NotImplementedError()
