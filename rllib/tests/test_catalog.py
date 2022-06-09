@@ -1,6 +1,6 @@
 from functools import partial
 import gym
-from gym.spaces import Box, Dict, Discrete
+from gym.spaces import Box, Dict, Discrete, Tuple
 import numpy as np
 import unittest
 
@@ -88,34 +88,43 @@ class TestModelCatalog(unittest.TestCase):
     def test_default_models(self):
         ray.init(object_store_memory=1000 * 1024 * 1024)
 
-        for fw in framework_iterator(frameworks=("jax", "tf", "tf2", "torch")):
-            obs_space = Box(0, 1, shape=(3,), dtype=np.float32)
-            p1 = ModelCatalog.get_model_v2(
-                obs_space=obs_space,
-                action_space=Discrete(5),
-                num_outputs=5,
-                model_config={},
-                framework=fw,
-            )
-            self.assertTrue("FullyConnectedNetwork" in type(p1).__name__)
-            # Do a test forward pass.
-            obs = np.array([obs_space.sample()])
-            if fw == "torch":
-                obs = torch.from_numpy(obs)
-            out, state_outs = p1({"obs": obs})
-            self.assertTrue(out.shape == (1, 5))
-            self.assertTrue(state_outs == [])
+        # Build test configs
+        # Output configs
+        num_outputs = 5
+        action_spaces = [Discrete(num_outputs), Box(0, 1, shape=(num_outputs,))]
+        # Input configs
+        # Tuple: obs_space, network_name, skip_fw
+        input_configs = []
+        flat_space = Box(0, 1, shape=(3,), dtype=np.float32)
+        input_configs.append((flat_space, "FullyConnectedNetwork", []))
+        img_space = Box(0, 1, shape=(84, 84, 3), dtype=np.float32)
+        input_configs.append((img_space, "VisionNetwork", ["jax"]))
+        flat_complex_space = Box(0, 1, shape=(9,), dtype=np.float32)
+        flat_complex_space.original_space = Tuple([flat_space, flat_space, Discrete(3)])
+        input_configs.append((flat_complex_space, "FullyConnectedNetwork", []))
+        nested_complex_space = Tuple([flat_space, Discrete(3), Tuple([img_space, img_space])])
+        input_configs.append((nested_complex_space, "ComplexInputNetwork", ["jax"]))
 
-            # No Conv2Ds for JAX yet.
-            if fw != "jax":
-                p2 = ModelCatalog.get_model_v2(
-                    obs_space=Box(0, 1, shape=(84, 84, 3), dtype=np.float32),
-                    action_space=Discrete(5),
-                    num_outputs=5,
-                    model_config={},
-                    framework=fw,
-                )
-                self.assertTrue("VisionNetwork" in type(p2).__name__)
+        for obs_space, network_name, skip_fw in input_configs:
+            for action_space in action_spaces:
+                for fw in framework_iterator(frameworks=("jax", "tf", "tf2", "torch")):
+                    if fw not in skip_fw:
+                        m = ModelCatalog.get_model_v2(
+                            obs_space=obs_space,
+                            action_space=action_space,
+                            num_outputs=num_outputs,
+                            model_config={},
+                            framework=fw,
+                        )
+                        self.assertTrue(network_name in type(m).__name__)
+                        if isinstance(obs_space, Box):
+                            # Do a test forward pass.
+                            obs = np.array([obs_space.sample()])
+                            if fw == "torch":
+                                obs = torch.from_numpy(obs)
+                            out, state_outs = m({"obs": obs})
+                            self.assertTrue(out.shape == (1, num_outputs))
+                            self.assertTrue(state_outs == [])
 
     def test_custom_model(self):
         ray.init(object_store_memory=1000 * 1024 * 1024)
