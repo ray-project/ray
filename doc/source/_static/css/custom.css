@@ -10,13 +10,6 @@
     margin: auto;
 }
 
-/* Hide confusing "<-" back arrow in navigation for larger displays */
-@media (min-width: 768px) {
-    #navbar-toggler {
-        display: none;
-    }
-}
-
 /* Make navigation scrollable on mobile, by making algolia not overflow */
 @media (max-width: 768px) {
     #site-navigation {
@@ -27,6 +20,12 @@
         min-width: 250px;
     }
 }
+
+/*Enable proper viewing of algolia box*/
+#algolia-autocomplete-listbox-0 > .ds-dataset-1{
+    position: fixed;
+}
+
 
 /* sphinx-panels overrides the content width to 1140 for large displays.*/
 @media (min-width: 1200px) {
