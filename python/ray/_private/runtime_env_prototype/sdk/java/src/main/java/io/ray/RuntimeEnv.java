@@ -1,9 +1,11 @@
 package io.ray;
 
+import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.github.fge.jackson.JsonLoader;
 
 public class RuntimeEnv {
   private static ObjectMapper mapper = new ObjectMapper();
@@ -12,6 +14,17 @@ public class RuntimeEnv {
 
   public void set(String name, Object typedRuntimeEnv) throws Exception {
     JsonNode node = mapper.valueToTree(typedRuntimeEnv);
+    PluginSchemaManager.getInstance().validate(name, node);
+    runtimeEnvs.set(name, node);
+  }
+
+  public void set(String name, String RuntimeEnvString) throws Exception {
+    JsonNode node = null;
+    try {
+      node = JsonLoader.fromString(RuntimeEnvString);
+    } catch (JsonParseException ex) {
+      node = mapper.valueToTree(RuntimeEnvString);
+    }
     PluginSchemaManager.getInstance().validate(name, node);
     runtimeEnvs.set(name, node);
   }

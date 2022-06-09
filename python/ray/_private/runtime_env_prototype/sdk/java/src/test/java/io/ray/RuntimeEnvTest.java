@@ -2,6 +2,9 @@ package io.ray;
 
 import java.util.Arrays;
 import static org.junit.Assert.assertTrue;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.github.fge.jackson.JsonLoader;
 import org.junit.Test;
 
 public class RuntimeEnvTest
@@ -33,5 +36,21 @@ public class RuntimeEnvTest
       assertTrue(Arrays.equals(pip2.packages, packages));
       String workingDir2 = runtimeEnv2.get("working_dir", String.class);
       assertTrue(workingDir2.equals(workingDir));
+
+      // Construct runtime env with raw json
+      RuntimeEnv runtimeEnv3 = new RuntimeEnv();
+      String pipString = "    "
+        + "{\n"
+        + "      \"packages\": [\"requests\", \"tensorflow\"],\n"
+        + "      \"pip_check\": false\n"
+        + "}";
+      JsonNode pipRawJson = JsonLoader.fromString(pipString);
+      runtimeEnv3.set("pip", pipRawJson);
+      System.out.println("serializedRuntimeEnv 3: " + runtimeEnv3.serialize());
+
+      // Construct runtime env with raw json string
+      RuntimeEnv runtimeEnv4 = new RuntimeEnv();
+      runtimeEnv4.set("pip", pipString);
+      System.out.println("serializedRuntimeEnv 4: " + runtimeEnv4.serialize());
     }
 }
