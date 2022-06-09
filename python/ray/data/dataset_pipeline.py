@@ -39,7 +39,12 @@ logger = logging.getLogger(__name__)
 _PER_DATASET_OPS = ["map", "map_batches", "add_column", "flat_map", "filter"]
 
 # Operations that apply to each dataset holistically in the pipeline.
-_HOLISTIC_PER_DATASET_OPS = ["repartition", "random_shuffle", "sort"]
+_HOLISTIC_PER_DATASET_OPS = [
+    "repartition",
+    "random_shuffle",
+    "sort",
+    "randomize_block_order",
+]
 
 # Similar to above but we should force evaluation immediately.
 _PER_DATASET_OUTPUT_OPS = [
@@ -168,11 +173,18 @@ class DatasetPipeline(Generic[T]):
         Returns:
             An iterator over record batches.
         """
+        if self._executed[0]:
+            raise RuntimeError("Pipeline cannot be read multiple times.")
         time_start = time.perf_counter()
+        # When the DatasetPipeline actually did transformations (i.e. the self._stages
+        # isn't empty), there will be output blocks created. In this case, those output
+        # blocks are safe to clear right after read, because we know they will never be
+        # accessed again, given that DatasetPipeline can be read at most once.
         yield from batch_blocks(
             self._iter_blocks(),
             self._stats,
             prefetch_blocks=prefetch_blocks,
+            clear_block_after_read=(len(self._stages) > 0),
             batch_size=batch_size,
             batch_format=batch_format,
             drop_last=drop_last,

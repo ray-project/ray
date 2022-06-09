@@ -1012,7 +1012,6 @@ class TorchPolicyV2(Policy):
         if is_overridden(self.action_sampler_fn):
             action_dist = dist_inputs = None
             actions, logp, state_out = self.action_sampler_fn(
-                self,
                 self.model,
                 obs_batch=input_dict,
                 state_batches=state_batches,

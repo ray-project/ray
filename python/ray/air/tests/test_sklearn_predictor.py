@@ -8,7 +8,7 @@ from sklearn.ensemble import RandomForestClassifier
 
 import ray
 import ray.cloudpickle as cpickle
-from ray.air.predictors.integrations.sklearn import SklearnPredictor
+from ray.air.predictors.integrations.sklearn import SklearnPredictor, to_air_checkpoint
 from ray.air.preprocessor import Preprocessor
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import MODEL_KEY
@@ -137,6 +137,17 @@ def test_batch_prediction_with_set_cpus(ray_start_4_cpus):
         batch_predictor.predict(
             test_dataset, num_cpus_per_worker=2, num_estimator_cpus=2
         )
+
+
+def test_sklearn_predictor_no_training():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        checkpoint = to_air_checkpoint(path=tmpdir, estimator=model)
+        batch_predictor = BatchPredictor.from_checkpoint(checkpoint, SklearnPredictor)
+        test_dataset = ray.data.from_pandas(
+            pd.DataFrame(dummy_data, columns=["A", "B"])
+        )
+        predictions = batch_predictor.predict(test_dataset)
+        assert len(predictions.to_pandas()) == 3
 
 
 if __name__ == "__main__":
