@@ -6,7 +6,7 @@ a3c-pongdeterministic-v4:
         episode_reward_mean: 18.0
         timesteps_total: 5000000
     stop:
-        time_total_s: 3600
+        time_total_s: 1800
     # TODO(sven, jungong): fix A3C on torch and re-enable.
     frameworks: [ "tf", "tf2" ]
     config:

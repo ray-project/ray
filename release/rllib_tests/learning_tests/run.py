@@ -14,15 +14,32 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
+        "--test-name",
+        type=str,
+        default="",
+        help="Name of this test run, used as the name of the output JSON file.",
+    )
+    parser.add_argument(
         "--smoke-test",
         action="store_true",
         default=False,
         help="Finish quickly for training.",
     )
+    parser.add_argument(
+        "--yaml-sub-dir",
+        type=str,
+        default="",
+        help="Sub directory under yaml_files/ to look for test files.",
+    )
     args = parser.parse_args()
 
+    assert args.test_name, "--test-name can't be empty."
+    assert args.yaml_sub_dir, "--yaml-sub-dir can't be empty."
+
     # Get path of this very script to look for yaml files.
-    abs_yaml_path = os.path.join(str(Path(__file__).parent), "yaml_files")
+    abs_yaml_path = os.path.join(
+        str(Path(__file__).parent), "yaml_files", args.yaml_sub_dir
+    )
     print("abs_yaml_path={}".format(abs_yaml_path))
 
     yaml_files = Path(abs_yaml_path).rglob("*.yaml")
@@ -33,11 +50,15 @@ if __name__ == "__main__":
     # Run all tests in the found yaml files.
     results = run_learning_tests_from_yaml(
         yaml_files=yaml_files,
+        # Note(jungong) : run learning tests to full desired duration
+        # for performance regression purpose.
+        # Talk to jungong@ if you have questions about why we do this.
+        use_pass_criteria_as_stop=False,
         smoke_test=args.smoke_test,
     )
 
     test_output_json = os.environ.get(
-        "TEST_OUTPUT_JSON", "/tmp/rllib_learning_tests.json"
+        "TEST_OUTPUT_JSON", f"/tmp/{args.test_name}.json"
     )
     with open(test_output_json, "wt") as f:
         json.dump(results, f)

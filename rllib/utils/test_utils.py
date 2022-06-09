@@ -577,6 +577,7 @@ def run_learning_tests_from_yaml(
     yaml_files: List[str],
     *,
     max_num_repeats: int = 2,
+    use_pass_criteria_as_stop: bool = True,
     smoke_test: bool = False,
 ) -> Dict[str, Any]:
     """Runs the given experiments in yaml_files and returns results dict.
@@ -585,6 +586,8 @@ def run_learning_tests_from_yaml(
         yaml_files: List of yaml file names.
         max_num_repeats: How many times should we repeat a failed
             experiment?
+        use_pass_criteria_as_stop: Configure the Trial so that it stops
+            as soon as pass criterias are met.
         smoke_test: Whether this is just a smoke-test. If True,
             set time_total_s to 5min and don't early out due to rewards
             or timesteps reached.
@@ -649,10 +652,12 @@ def run_learning_tests_from_yaml(
                     if not check_eval
                     else "evaluation/episode_reward_mean"
                 )
-                # We also stop early, once we reach the desired reward.
-                min_reward = e.get("pass_criteria", {}).get(episode_reward_key)
-                if min_reward is not None:
-                    e["stop"][episode_reward_key] = min_reward
+
+                if use_pass_criteria_as_stop:
+                    # We also stop early, once we reach the desired reward.
+                    min_reward = e.get("pass_criteria", {}).get(episode_reward_key)
+                    if min_reward is not None:
+                        e["stop"][episode_reward_key] = min_reward
 
             # Generate `checks` dict for all experiments
             # (tf, tf2 and/or torch).
@@ -748,22 +753,24 @@ def run_learning_tests_from_yaml(
             # Experiment finished: Check reward achieved and timesteps done
             # (throughput).
             else:
+                # Use best_result's reward to check min_reward.
                 if check_eval:
                     episode_reward_mean = np.mean(
                         [
-                            t.last_result["evaluation"]["episode_reward_mean"]
+                            t.metric_analysis["evaluation/episode_reward_mean"]["max"]
                             for t in trials_for_experiment
                         ]
                     )
                 else:
                     episode_reward_mean = np.mean(
                         [
-                            t.last_result["episode_reward_mean"]
+                            t.metric_analysis["episode_reward_mean"]["max"]
                             for t in trials_for_experiment
                         ]
                     )
                 desired_reward = checks[experiment]["min_reward"]
 
+                # Use last_result["timesteps_total"] to check throughput.
                 timesteps_total = np.mean(
                     [t.last_result["timesteps_total"] for t in trials_for_experiment]
                 )

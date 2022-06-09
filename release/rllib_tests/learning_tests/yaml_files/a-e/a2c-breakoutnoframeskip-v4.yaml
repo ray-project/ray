@@ -6,7 +6,7 @@ a2c-breakoutnoframeskip-v4:
         episode_reward_mean: 50.0
         timesteps_total: 5000000
     stop:
-        time_total_s: 7200
+        time_total_s: 3600
     config:
         rollout_fragment_length: 20
         clip_rewards: True
