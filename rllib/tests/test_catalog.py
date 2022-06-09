@@ -111,11 +111,14 @@ class TestModelCatalog(unittest.TestCase):
             for action_space in action_spaces:
                 for fw in framework_iterator(frameworks=("jax", "tf", "tf2", "torch")):
                     if fw not in skip_fw:
+                        model_config = {}
+                        if network_name == "ComplexInputNetwork":
+                            model_config["fcnet_hiddens"] = [256, 256]
                         m = ModelCatalog.get_model_v2(
                             obs_space=obs_space,
                             action_space=action_space,
                             num_outputs=num_outputs,
-                            model_config={},
+                            model_config=model_config,
                             framework=fw,
                         )
                         self.assertTrue(network_name in type(m).__name__)
