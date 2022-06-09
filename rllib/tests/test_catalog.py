@@ -101,8 +101,10 @@ class TestModelCatalog(unittest.TestCase):
         input_configs.append((img_space, "VisionNetwork", ["jax"]))
         flat_complex_space = Box(0, 1, shape=(9,), dtype=np.float32)
         flat_complex_space.original_space = Tuple([flat_space, flat_space, Discrete(3)])
-        input_configs.append((flat_complex_space, "FullyConnectedNetwork", []))
-        nested_complex_space = Tuple([flat_space, Discrete(3), Tuple([img_space, img_space])])
+        input_configs.append((flat_complex_space, "FullyConnectedNetwork", ["jax"]))
+        nested_complex_space = Tuple(
+            [flat_space, Discrete(3), Tuple([img_space, img_space])]
+        )
         input_configs.append((nested_complex_space, "ComplexInputNetwork", ["jax"]))
 
         for obs_space, network_name, skip_fw in input_configs:
