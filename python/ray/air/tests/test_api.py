@@ -51,8 +51,11 @@ def test_scaling_config():
     with pytest.raises(ValueError):
         DummyTrainer(scaling_config=True)
 
+    with pytest.raises(ValueError):
+        DummyTrainer(scaling_config={})
+
     # Succeed
-    DummyTrainer(scaling_config={})
+    DummyTrainer(scaling_config=ScalingConfig())
 
     # Succeed
     DummyTrainer(scaling_config=None)
