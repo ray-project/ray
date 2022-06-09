@@ -35,6 +35,7 @@ def convert_pandas_to_tf_tensor(
         TensorShape([3, 2])
 
         >>> from ray.data.extensions import TensorArray
+        >>> import numpy as np
         >>>
         >>> df = pd.DataFrame({"image": TensorArray(np.zeros((4, 3, 32, 32)))})
         >>> convert_pandas_to_tf_tensor(df).shape
