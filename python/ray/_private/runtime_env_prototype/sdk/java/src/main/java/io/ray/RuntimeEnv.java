@@ -1,33 +1,36 @@
 package io.ray;
 
-import com.google.gson.Gson;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 public class RuntimeEnv {
-  JsonObject runtimeEnvs = new JsonObject();
-  static private JsonParser jsonParser = new JsonParser();
-  private Gson gson = new Gson();
+  private static ObjectMapper mapper = new ObjectMapper();
 
-  public void set(String name, Object typedRuntimeEnv) {
-    runtimeEnvs.add(name, gson.toJsonTree(typedRuntimeEnv));
+  public ObjectNode runtimeEnvs = mapper.createObjectNode();
+
+  public void set(String name, Object typedRuntimeEnv) throws Exception {
+    JsonNode node = mapper.valueToTree(typedRuntimeEnv);
+    PluginSchemaManager.getInstance().validate(name, node);
+    runtimeEnvs.set(name, node);
   }
 
-  public <T> T get(String name, Class<T> classOfT) {
-    return gson.fromJson(runtimeEnvs.get(name), classOfT);
+  public <T> T get(String name, Class<T> classOfT) throws JsonProcessingException {
+    return mapper.treeToValue(runtimeEnvs.get(name), classOfT);
   }
 
   public void remove(String name) {
     runtimeEnvs.remove(name);
   }
 
-  public String serialize() {
-    return gson.toJson(runtimeEnvs);
+  public String serialize() throws JsonProcessingException {
+    return mapper.writeValueAsString(runtimeEnvs);
   }
 
-  public static RuntimeEnv deserialize(String serializedRuntimeEnv) {
+  public static RuntimeEnv deserialize(String serializedRuntimeEnv) throws JsonProcessingException {
     RuntimeEnv runtimeEnv = new RuntimeEnv();
-    runtimeEnv.runtimeEnvs = jsonParser.parse(serializedRuntimeEnv).getAsJsonObject();
+    runtimeEnv.runtimeEnvs = (ObjectNode)mapper.readTree(serializedRuntimeEnv);
     return runtimeEnv;
   }
 }

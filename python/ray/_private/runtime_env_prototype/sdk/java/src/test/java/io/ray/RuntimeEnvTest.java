@@ -7,8 +7,12 @@ import org.junit.Test;
 public class RuntimeEnvTest
 {
     @Test
-    public void testRuntimeEnv()
-    {
+    public void testRuntimeEnv() throws Exception {
+      // Load plugin schemas
+      final String currentDir = System.getProperty("user.dir");
+      String[] schema_paths={currentDir + "/../../pip/pip_schema.json",
+        currentDir + "/../../working_dir/working_dir_schema.json"};
+      PluginSchemaManager.getInstance().loadSchemas(schema_paths);
       RuntimeEnv runtimeEnv = new RuntimeEnv();
       // Add pip runtime env
       Pip pip = new Pip();
