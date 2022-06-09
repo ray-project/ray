@@ -4,6 +4,7 @@ import shutil
 import tempfile
 
 from freezegun import freeze_time
+from ray.tune import TuneError
 
 from ray.tune.syncer import _DefaultSyncer
 
@@ -143,6 +144,20 @@ def test_syncer_delete(temp_data_dirs):
     assert_file(False, tmp_target, "subdir/nested/level2.txt")
     assert_file(False, tmp_target, "subdir_nested_level2_exclude.txt")
     assert_file(False, tmp_target, "subdir_exclude/something/somewhere.txt")
+
+
+def test_syncer_wait_or_retry(temp_data_dirs):
+    tmp_source, tmp_target = temp_data_dirs
+
+    syncer = _DefaultSyncer(sync_period=60)
+
+    # Will fail as dir does not exist
+    syncer.sync_down(
+        remote_dir="memory:///test/test_syncer_wait_or_retry", local_dir=tmp_target
+    )
+    with pytest.raises(TuneError) as e:
+        syncer.wait_or_retry(max_retries=3, backoff_s=0)
+        assert "Failed sync even after 3 retries." in str(e)
 
 
 if __name__ == "__main__":

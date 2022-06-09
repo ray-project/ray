@@ -205,19 +205,23 @@ class Syncer(abc.ABC):
 
     def wait_or_retry(self, max_retries: int = 3, backoff_s: int = 5):
         assert max_retries > 0
+        last_error = None
         for _ in range(max_retries - 1):
             try:
                 self.wait()
-            except TuneError as e:
+            except Exception as e:
                 logger.error(
                     f"Caught sync error: {e}. "
                     f"Retrying after sleeping for {backoff_s} seconds..."
                 )
+                last_error = e
                 time.sleep(backoff_s)
                 self.retry()
                 continue
             return
-        raise TuneError(f"Failed sync even after {max_retries} retries.")
+        raise TuneError(
+            f"Failed sync even after {max_retries} retries."
+        ) from last_error
 
     def reset(self):
         self.last_sync_up_time = float("-inf")
