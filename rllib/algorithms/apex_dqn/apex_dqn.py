@@ -354,10 +354,6 @@ class ApexDQN(DQN):
     def setup(self, config: PartialTrainerConfigDict):
         super().setup(config)
 
-        # Shortcut: If execution_plan, thread and buffer will be created in there.
-        if self.config["_disable_execution_plan_api"] is False:
-            return
-
         # Tag those workers (top 1/3rd indices) that we should collect episodes from
         # for metrics due to `PerWorkerEpsilonGreedy` exploration strategy.
         if self.workers.remote_workers():
