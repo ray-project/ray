@@ -102,7 +102,7 @@ ANONYMOUS_NAMESPACE_PATTERN = re.compile(
 HANDLE_METRIC_PUSH_INTERVAL_S = 10
 
 # Timeout for GCS internal KV service
-SERVE_KV_TIMEOUT = int(os.environ.get("RAY_SERVE_KV_TIMEOUT_S", "5"))
+RAY_SERVE_KV_TIMEOUT = int(os.environ.get("RAY_SERVE_KV_TIMEOUT_S", "5"))
 
 
 class ServeHandleType(str, Enum):

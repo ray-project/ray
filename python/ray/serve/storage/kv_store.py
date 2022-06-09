@@ -13,7 +13,7 @@ import ray
 from ray import ray_constants
 from ray._private.gcs_utils import GcsClient
 
-from ray.serve.constants import SERVE_LOGGER_NAME
+from ray.serve.constants import SERVE_LOGGER_NAME, RAY_SERVE_KV_TIMEOUT
 from ray.serve.storage.kv_store_base import KVStoreBase
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -33,14 +33,13 @@ class RayInternalKVStore(KVStoreBase):
     def __init__(
         self,
         namespace: str = None,
-        timeout: Optional[float] = None,
     ):
         if namespace is not None and not isinstance(namespace, str):
             raise TypeError("namespace must a string, got: {}.".format(type(namespace)))
 
         self.gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
 
-        self.timeout = timeout
+        self.timeout = RAY_SERVE_KV_TIMEOUT
         self.namespace = namespace or ""
 
     def get_storage_key(self, key: str) -> str:
