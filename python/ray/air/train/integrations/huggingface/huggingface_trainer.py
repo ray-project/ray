@@ -157,7 +157,7 @@ class HuggingFaceTrainer(TorchTrainer):
             from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
             import ray
-            from ray.air.train.integrations.huggingface import HuggingFaceTrainer
+            from ray.train.huggingface import HuggingFaceTrainer
             from ray.air.config import ScalingConfig
 
             model_checkpoint = "gpt2"
