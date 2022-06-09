@@ -14,6 +14,18 @@ class RuntimeEnv {
       j_[name] = typed_runtime_env_j;
     }
 
+    void Set(std::string name, std::string runtime_env_string) {
+      json typed_runtime_env_j;
+      try {
+        typed_runtime_env_j = json::parse(runtime_env_string);
+
+      } catch (const nlohmann::detail::parse_error& e) {
+        typed_runtime_env_j = runtime_env_string;
+      }
+      RuntimeEnvPluginSchemaManager::GetInstance().validate(name, typed_runtime_env_j);
+      j_[name] = typed_runtime_env_j;
+    }
+
     template <typename T>
     T Get(std::string name) {
       return j_[name].get<T>();

@@ -2,7 +2,8 @@
 #include "pip.h"
 #include "runtime_env.h"
 #include "plugin_schema_manager.h"
-
+#include "nlohmann/json.hpp"
+using json = nlohmann::json;
 
 int main(int argc, char **argv) {
   // Load plugin schemas
@@ -34,6 +35,28 @@ int main(int argc, char **argv) {
 
   auto working_dir2 = runtime_env_2.Get<std::string>("working_dir");
   assert(working_dir2 == working_dir);
+
+  // Construct runtime env with raw json
+  RuntimeEnv runtime_env_3;
+  json pip_raw_json = R"(
+    {
+      "packages": ["requests", "tensorflow"],
+      "pip_check": false
+    }
+  )"_json;
+  runtime_env_3.Set("pip", pip_raw_json);
+  std::cout << "serialized_runtime_env 3: " << runtime_env_3.Serialize() << std::endl;
+
+  // Construct runtime env with raw json string
+  RuntimeEnv runtime_env_4;
+  std::string pip_raw_json_string = R"(
+    {
+      "packages": ["requests", "tensorflow"],
+      "pip_check": false
+    }
+  )";
+  runtime_env_4.Set("pip", pip_raw_json_string);
+  std::cout << "serialized_runtime_env 4: " << runtime_env_4.Serialize() << std::endl;
 
   std::cout << "Finished!" << std::endl;;
 
