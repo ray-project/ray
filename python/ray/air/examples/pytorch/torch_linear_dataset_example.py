@@ -12,7 +12,7 @@ from ray.air import train_test_split
 from ray.air.batch_predictor import BatchPredictor
 from ray.air.predictors.integrations.torch import TorchPredictor
 from ray.air.result import Result
-from ray.air.train.integrations.torch import TorchTrainer
+from ray.train.torch import TorchTrainer
 
 
 def get_datasets(a=5, b=10, size=1000, split=0.8) -> Tuple[Dataset]:
