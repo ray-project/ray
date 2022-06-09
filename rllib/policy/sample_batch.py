@@ -1169,7 +1169,7 @@ class MultiAgentBatch:
     @PublicAPI
     @Deprecated(new="concat_samples() from rllib.policy.sample_batch", error=False)
     def concat_samples(samples: List["MultiAgentBatch"]) -> "MultiAgentBatch":
-        return concat_samples(samples)
+        return _concat_samples_into_ma_batch(samples)
 
     @PublicAPI
     def copy(self) -> "MultiAgentBatch":
