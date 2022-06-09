@@ -8,7 +8,7 @@ def dir_contents_to_dict(dir: str) -> Dict:
 
     Args:
         dir: The directory to read in and return as a dict.
-        
+
     Returns:
         A dictionary mapping relative path/filenames (relative to given `dir`) to
         binary strings representing the respective files' contents. Note that the
@@ -23,7 +23,7 @@ def dir_contents_to_dict(dir: str) -> Dict:
             # Join the two strings in order to form the full filepath.
             filepath = os.path.join(root, filename)
             with open(filepath, mode="rb") as file:
-                dir_dict[os.path.join(root[len(dir) + 1:], filename)] = file.read()
+                dir_dict[os.path.join(root[len(dir) + 1 :], filename)] = file.read()
 
     return dir_dict
 

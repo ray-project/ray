@@ -1,6 +1,5 @@
 import functools
 import gym
-import numpy as np
 from typing import Optional, Union
 
 from ray.rllib.utils.annotations import PublicAPI
@@ -10,12 +9,10 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.exploration.random import Random
 from ray.rllib.utils.framework import (
-    get_variable,
     try_import_tf,
     try_import_torch,
     TensorType,
 )
-from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.tf_utils import zero_logps_from_actions
 
 tf1, tf, tfv = try_import_tf()

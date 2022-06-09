@@ -35,7 +35,6 @@ if __name__ == "__main__":
         "obs": np.random.uniform(0, 1.0, size=(10, 4)).astype(np.float32),
     }
 
-
     # Start Ray and initialize a PPO trainer
     ray.init()
     trainer = config.build(env="CartPole-v0")

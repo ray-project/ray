@@ -146,7 +146,7 @@ class Policy(metaclass=ABCMeta):
         new_policy = pol_spec.policy_class(
             observation_space=pol_spec.observation_space,
             action_space=pol_spec.action_space,
-            config=pol_spec.config
+            config=pol_spec.config,
         )
         # Set the new policy's state (weights, optimizer vars, exploration state,
         # etc..).

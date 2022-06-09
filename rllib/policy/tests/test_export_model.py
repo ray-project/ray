@@ -119,7 +119,7 @@ def export_test(alg_name, failures, framework="tf"):
 class TestExport(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(num_cpus=4, local_mode=True)#TODO
+        ray.init(num_cpus=4, local_mode=True)  # TODO
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -142,7 +142,7 @@ class TestExport(unittest.TestCase):
 
     def test_export_ppo(self):
         failures = []
-        #export_test("PPO", failures, "torch")
+        # export_test("PPO", failures, "torch")
         export_test("PPO", failures, "tf2")
         export_test("PPO", failures, "tf")
         assert not failures, failures
