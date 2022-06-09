@@ -22,6 +22,7 @@ from ray.experimental.dag.function_node import FunctionNode
 from ray.experimental.dag.input_node import InputNode
 from ray.experimental.dag.utils import DAGNodeNameGenerator
 
+
 def build(ray_dag_root_node: DAGNode) -> List[Deployment]:
     """Do all the DAG transformation, extraction and generation needed to
     produce a runnable and deployable serve pipeline application from a valid
