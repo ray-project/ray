@@ -136,7 +136,7 @@ class ReplayBuffer(ParallelIteratorWorker):
 
         Args:
             batch: Batch to add to this buffer's storage.
-            **kwargs: Forward compatibility kwargs.
+            kwargs: Forward compatibility kwargs.
         """
         if not batch.count > 0:
             return
@@ -234,7 +234,7 @@ class ReplayBuffer(ParallelIteratorWorker):
 
         Args:
             num_items: Number of items to sample from this buffer.
-            **kwargs: Forward compatibility kwargs.
+            kwargs: Forward compatibility kwargs.
 
         Returns:
             Concatenated batch of items.
@@ -336,8 +336,8 @@ class ReplayBuffer(ParallelIteratorWorker):
 
         Args:
             func: A callable that accepts the replay buffer itself, args and kwargs
-            *_arkgs: Any args to pass to func
-            **kwargs: Any kwargs to pass to func
+            _args: Any args to pass to func
+            kwargs: Any kwargs to pass to func
 
         Returns:
             Return value of the induced function call

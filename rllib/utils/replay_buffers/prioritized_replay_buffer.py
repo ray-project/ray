@@ -115,13 +115,14 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         Args:
             num_items: Number of items to sample from this buffer.
             beta: To what degree to use importance weights
-                (0 - no corrections, 1 - full correction).
-            **kwargs: Forward compatibility kwargs.
+            (0 - no corrections, 1 - full correction).
+            kwargs: Forward compatibility kwargs.
 
         Returns:
             Concatenated SampleBatch of items including "weights" and
             "batch_indexes" fields denoting IS of each sampled
             transition and original idxes in buffer of sampled experiences.
+
         """
         assert beta >= 0.0
 
@@ -167,7 +168,8 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         Args:
             idxes: List of indices of items
             priorities: List of updated priorities corresponding to
-                items at the idxes denoted by variable `idxes`.
+            items at the idxes denoted by variable `idxes`.
+
         """
         # Making sure we don't pass in e.g. a torch tensor.
         assert isinstance(

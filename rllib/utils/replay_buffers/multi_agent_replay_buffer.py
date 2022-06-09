@@ -205,7 +205,8 @@ class MultiAgentReplayBuffer(ReplayBuffer):
 
         Args:
             batch : The batch to be added.
-            **kwargs: Forward compatibility kwargs.
+            kwargs: Forward compatibility kwargs.
+
         """
         if batch is None:
             if log_once("empty_batch_added_to_buffer"):
@@ -290,11 +291,12 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         Args:
             num_items: Number of items to sample from a policy's buffer.
             policy_id: ID of the policy that created the experiences we sample.
-                If none is given, sample from all policies.
+            If none is given, sample from all policies.
 
         Returns:
             Concatenated MultiAgentBatch of items.
-            **kwargs: Forward compatibility kwargs.
+            kwargs: Forward compatibility kwargs.
+
         """
         # Merge kwargs, overwriting standard call arguments
         kwargs = merge_dicts_with_warning(self.underlying_buffer_call_args, kwargs)
