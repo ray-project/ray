@@ -247,6 +247,7 @@ def test_wait_failure_recovery_2(workflow_start_regular_shared):
     indirect=True,
 )
 def test_wait_recovery_step_id(workflow_start_regular_shared):
+    utils.skip_client_test()
     # This test ensures workflow reuse the original directory and
     # step id for "workflow.wait" during recovery.
 
