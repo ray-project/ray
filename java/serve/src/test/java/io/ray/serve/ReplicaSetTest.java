@@ -15,6 +15,7 @@ import io.ray.serve.replica.RayServeWrappedReplica;
 import io.ray.serve.replica.ReplicaContext;
 import io.ray.serve.router.Query;
 import io.ray.serve.router.ReplicaSet;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import org.apache.commons.lang3.RandomStringUtils;
@@ -44,6 +45,7 @@ public class ReplicaSetTest {
 
     try {
       String controllerName = deploymentName + "_controller";
+      String controllerNameSpace = "serve";
       String replicaTag = deploymentName + "_replica";
       String actorName = replicaTag;
       String version = "v1";
@@ -57,7 +59,14 @@ public class ReplicaSetTest {
           new DeploymentConfig().setDeploymentLanguage(DeploymentLanguage.JAVA);
 
       Object[] initArgs =
-          new Object[] {deploymentName, replicaTag, controllerName, null, new Object(), null};
+          new Object[] {
+            deploymentName,
+            replicaTag,
+            controllerName,
+            controllerNameSpace,
+            new Object(),
+            new HashMap<>()
+          };
 
       DeploymentWrapper deploymentWrapper =
           new DeploymentWrapper()

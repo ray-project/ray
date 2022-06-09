@@ -35,6 +35,7 @@ public class RouterTest {
       String controllerName =
           CommonUtil.formatActorName(
               Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
+      String controllerNameSpace = "serve";
       String replicaTag = deploymentName + "_replica";
       String actorName = replicaTag;
       String version = "v1";
@@ -50,7 +51,14 @@ public class RouterTest {
           new DeploymentConfig().setDeploymentLanguage(DeploymentLanguage.JAVA);
 
       Object[] initArgs =
-          new Object[] {deploymentName, replicaTag, controllerName, null, new Object(), null};
+          new Object[] {
+            deploymentName,
+            replicaTag,
+            controllerName,
+            controllerNameSpace,
+            new Object(),
+            new HashMap<>()
+          };
 
       DeploymentWrapper deploymentWrapper =
           new DeploymentWrapper()
