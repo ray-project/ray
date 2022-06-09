@@ -8,5 +8,14 @@ except ModuleNotFoundError:
 
 from ray.train.tensorflow.config import TensorflowConfig
 from ray.train.tensorflow.train_loop_utils import prepare_dataset_shard
+from ray.train.tensorflow.tensorflow_trainer import (
+    TensorflowTrainer,
+    load_checkpoint,
+)
 
-__all__ = ["TensorflowConfig", "prepare_dataset_shard"]
+__all__ = [
+    "TensorflowConfig",
+    "prepare_dataset_shard",
+    "TensorflowTrainer",
+    "load_checkpoint",
+]

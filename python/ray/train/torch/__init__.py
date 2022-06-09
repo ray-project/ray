@@ -17,7 +17,12 @@ from ray.train.torch.train_loop_utils import (
     TorchWorkerProfiler,
 )
 
+from ray.train.torch.torch_trainer import TorchTrainer, load_checkpoint
+
+
 __all__ = [
+    "TorchTrainer",
+    "load_checkpoint",
     "TorchConfig",
     "accelerate",
     "get_device",
