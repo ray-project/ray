@@ -53,4 +53,4 @@ if __name__ == "__main__":
     import pytest
 
     # Test suite is timing out. Disable on windows for now.
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-n", "auto", "--boxed", "-v", __file__]))

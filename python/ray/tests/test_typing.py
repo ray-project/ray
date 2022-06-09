@@ -44,4 +44,4 @@ if __name__ == "__main__":
         shutil.copy(checking_typing_good, os.getcwd())
     if os.path.exists(checking_typing_bad):
         shutil.copy(checking_typing_bad, os.getcwd())
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-n", "auto", "--boxed", "-v", __file__]))

@@ -483,4 +483,4 @@ def test_override_max_retries(ray_start_cluster, override_max_retries):
 if __name__ == "__main__":
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-n", "auto", "--boxed", "-v", __file__]))

@@ -197,4 +197,4 @@ if __name__ == "__main__":
     # https://github.com/ray-project/ray/issues/20355
     # is fixed.
     os.environ["RAY_ENABLE_AUTO_CONNECT"] = "0"
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-n", "auto", "--boxed", "-v", __file__]))

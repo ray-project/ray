@@ -184,4 +184,4 @@ def test_exponential_wait(shutdown_only):
 
 if __name__ == "__main__":
     os.environ["RAY_worker_cap_enabled"] = "true"
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-n", "auto", "--boxed", "-v", __file__]))

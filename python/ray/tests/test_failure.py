@@ -647,4 +647,4 @@ def test_actor_failover_with_bad_network(ray_start_cluster_head):
 if __name__ == "__main__":
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-n", "auto", "--boxed", "-v", __file__]))

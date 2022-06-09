@@ -539,4 +539,4 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-n", "auto", "--boxed", "-v", __file__]))

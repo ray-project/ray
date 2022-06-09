@@ -22,4 +22,4 @@ def test_list_named_actors_restarting_actor(ray_start_regular):
 
 if __name__ == "__main__":
     # Test suite is timing out. Disable on windows for now.
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-n", "auto", "--boxed", "-v", __file__]))

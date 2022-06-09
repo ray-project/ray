@@ -275,4 +275,4 @@ def test_pull_from_streaming_batch_queue(ray_start_regular_shared):
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-n", "auto", "--boxed", "-v", __file__]))

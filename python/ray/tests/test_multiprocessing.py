@@ -649,4 +649,4 @@ def test_task_to_actor_assignment(ray_start_4_cpu):
 if __name__ == "__main__":
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-n", "auto", "--boxed", "-v", __file__]))

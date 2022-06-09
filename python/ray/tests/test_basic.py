@@ -961,4 +961,4 @@ def test_failed_task(ray_start_shared_local_modes, error_pubsub):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-n", "auto", "--boxed", "-v", __file__]))

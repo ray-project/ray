@@ -239,4 +239,4 @@ def test_dashboard_agent_metrics_or_http_port_conflict(listen_port, call_ray_sta
 if __name__ == "__main__":
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-n", "auto", "--boxed", "-v", __file__]))

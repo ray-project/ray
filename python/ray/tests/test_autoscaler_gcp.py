@@ -65,4 +65,4 @@ def test_gcp_broken_pipe_retry(error_input, expected_error_raised):
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-n", "auto", "--boxed", "-v", __file__]))
