@@ -3435,6 +3435,17 @@ class Dataset(Generic[T]):
     def __str__(self) -> str:
         return repr(self)
 
+    def __bool__(self) -> bool:
+        # Prevents `__len__` from being called to check if it is None
+        # see: issue #25152
+        return True
+
+    def __len__(self) -> int:
+        raise AttributeError(
+            "Use `ds.count()` to compute the length of a distributed Dataset. "
+            "This may be an expensive operation."
+        )
+
     def _block_num_rows(self) -> List[int]:
         get_num_rows = cached_remote_fn(_get_num_rows)
         return ray.get([get_num_rows.remote(b) for b in self.get_internal_block_refs()])
