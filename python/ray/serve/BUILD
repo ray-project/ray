@@ -481,20 +481,18 @@ py_test(
     deps = [":serve_lib"]
 )
 
-pipeline_tests_srcs = glob(["pipeline/tests/**/*.py"])
-
 py_test(
     name = "test_deployment_node",
     size = "medium",
-    srcs = pipeline_tests_srcs,
+    srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
 
 py_test(
-    name = "test_generate",
+    name = "test_deployment_graph_build",
     size = "medium",
-    srcs = pipeline_tests_srcs,
+    srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
@@ -510,7 +508,7 @@ py_test(
 py_test(
     name = "test_json_serde",
     size = "medium",
-    srcs = pipeline_tests_srcs,
+    srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
