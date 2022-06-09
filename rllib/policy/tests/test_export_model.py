@@ -80,15 +80,15 @@ def export_test(alg_name, failures, framework="tf"):
     else:
         algo = cls(config=config, env="CartPole-v0")
 
-    for _ in range(1):
-        res = algo.train()
-        print("current status: " + str(res))
+    # Train for some iterations.
+    print(algo.train())
 
     export_dir = os.path.join(
         ray._private.utils.get_user_temp_dir(), "export_dir_%s" % alg_name
     )
     print("Exporting model ", alg_name, export_dir)
-    algo.export_policy_model(export_dir, onnx=None)
+    policy = algo.get_policy()
+    policy.export_model(export_dir)
     if framework in ["tf", "tf2"] and not valid_tf_model(export_dir):
         failures.append(alg_name)
 

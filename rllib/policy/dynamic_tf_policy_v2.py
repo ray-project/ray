@@ -2,6 +2,7 @@ from collections import OrderedDict
 import gym
 import logging
 import re
+import tempfile
 import tree  # pip install dm_tree
 from typing import Dict, List, Optional, Tuple, Type, TYPE_CHECKING, Union
 
@@ -9,7 +10,7 @@ from ray.util.debug import log_once
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.dynamic_tf_policy import TFMultiGPUTowerStack
-from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.view_requirement import ViewRequirement
@@ -23,6 +24,7 @@ from ray.rllib.utils.annotations import (
     override,
 )
 from ray.rllib.utils.debug import summarize
+from ray.rllib.utils.files import dict_contents_to_dir, dir_contents_to_dict
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.spaces.space_utils import get_dummy_batch_for_space
@@ -1046,3 +1048,41 @@ class DynamicTFPolicyV2(TFPolicy):
                 return self.compute_gradients_fn(optimizers[0], losses[0])
         else:
             return super().gradients(optimizers, losses)
+
+    @override(TFPolicy)
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def get_state(self):
+        # Legacy Policy state (w/o keras model and w/o PolicySpec).
+        state = super().get_state()
+        # Add this Policy's spec so it can be retreived w/o access to the original
+        # code.
+        state["policy_spec"] = PolicySpec(
+            policy_class=type(self),
+            observation_space=self.observation_space,
+            action_space=self.action_space,
+            config=self.config,
+        )
+        # Save the tf.keras.Model (architecture and weights, so it can be retrieved
+        # w/o access to the original (custom) Model or Policy code).
+        if hasattr(self, "model") and hasattr(self.model, "base_model"):
+            tmpdir = tempfile.mkdtemp()
+            with self.get_session().graph.as_default():
+                self.model.base_model.save(filepath=tmpdir, save_format="tf")
+            state["model"] = dir_contents_to_dict(tmpdir)
+
+        return state
+
+    @override(TFPolicy)
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def set_state(self, state):
+        super().set_state(state)
+
+        # Recreate entire (tf.keras) model, including architecture and weights.
+        if hasattr(self, "model") and hasattr(self.model, "base_model"):
+            tmpdir = tempfile.mkdtemp()
+            dict_contents_to_dir(state["model"], tmpdir)
+            with self.get_session().graph.as_default():
+                self.model.base_model = tf.keras.models.load_model(filepath=tmpdir)
+        # Backup solution: Try to overwrite model's weights from old 'weights' key.
+        else:
+            self.set_weights(state["weights"])

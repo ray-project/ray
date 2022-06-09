@@ -131,7 +131,7 @@ class SlateQTorchModel(TorchModelV2, nn.Module):
 
     def __init__(
         self,
-        obs_space: gym.spaces.Space,
+        observation_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
         num_outputs: int,
         model_config: ModelConfigDict,
@@ -156,7 +156,7 @@ class SlateQTorchModel(TorchModelV2, nn.Module):
         nn.Module.__init__(self)
         TorchModelV2.__init__(
             self,
-            obs_space,
+            observation_space,
             action_space,
             # This required parameter (num_outputs) seems redundant: it has no
             # real impact, and can be set arbitrarily. TODO: fix this.

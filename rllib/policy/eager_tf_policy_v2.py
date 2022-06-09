@@ -6,6 +6,7 @@ It supports both traced and non-traced eager execution modes.
 import gym
 import logging
 import os
+import tempfile
 import threading
 import tree  # pip install dm_tree
 from typing import Dict, List, Optional, Tuple, Type, Union
@@ -21,7 +22,7 @@ from ray.rllib.policy.eager_tf_policy import (
     _OptimizerWrapper,
     _traced_eager_policy,
 )
-from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import force_list
@@ -32,6 +33,7 @@ from ray.rllib.utils.annotations import (
     is_overridden,
     override,
 )
+from ray.rllib.utils.files import dict_contents_to_dir, dir_contents_to_dict
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
@@ -662,8 +664,25 @@ class EagerTFPolicyV2(Policy):
         return []
 
     @override(Policy)
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
     def get_state(self):
+        # Legacy Policy state (w/o keras model and w/o PolicySpec).
         state = super().get_state()
+        # Add this Policy's spec so it can be retreived w/o access to the original
+        # code.
+        state["policy_spec"] = PolicySpec(
+            policy_class=type(self),
+            observation_space=self.observation_space,
+            action_space=self.action_space,
+            config=self.config,
+        )
+        # Save the tf.keras.Model (architecture and weights, so it can be retrieved
+        # w/o access to the original (custom) Model or Policy code).
+        if hasattr(self, "model") and hasattr(self.model, "base_model"):
+            tmpdir = tempfile.mkdtemp()
+            self.model.base_model.save(filepath=tmpdir, save_format="tf")
+            state["model"] = dir_contents_to_dict(tmpdir)
+
         state["global_timestep"] = state["global_timestep"].numpy()
         if self._optimizer and len(self._optimizer.variables()) > 0:
             state["_optimizer_variables"] = self._optimizer.variables()
@@ -672,8 +691,9 @@ class EagerTFPolicyV2(Policy):
         return state
 
     @override(Policy)
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
     def set_state(self, state):
-        # Set optimizer vars first.
+        # Set optimizer vars.
         optimizer_vars = state.get("_optimizer_variables", None)
         if optimizer_vars and self._optimizer.variables():
             logger.warning(
@@ -687,8 +707,17 @@ class EagerTFPolicyV2(Policy):
         # Set exploration's state.
         if hasattr(self, "exploration") and "_exploration_state" in state:
             self.exploration.set_state(state=state["_exploration_state"])
-        # Weights and global_timestep (tf vars).
-        self.set_weights(state["weights"])
+
+        # Recreate entire model (including architecture and weights).
+        if hasattr(self, "model") and hasattr(self.model, "base_model"):
+            tmpdir = tempfile.mkdtemp()
+            dict_contents_to_dir(state["model"], tmpdir)
+            self.model.base_model = tf.keras.models.load_model(filepath=tmpdir)
+        # Backup solution: Try to overwrite model's weights from old 'weights' key.
+        else:
+            self.set_weights(state["weights"])
+
+        # Global timestep variable.
         self.global_timestep.assign(state["global_timestep"])
 
     @override(Policy)

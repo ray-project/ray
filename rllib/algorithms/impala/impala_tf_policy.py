@@ -275,7 +275,7 @@ def get_impala_tf_policy(base: TFPolicyV2Type) -> TFPolicyV2Type:
     ):
         def __init__(
             self,
-            obs_space,
+            observation_space,
             action_space,
             config,
             existing_model=None,
@@ -291,7 +291,7 @@ def get_impala_tf_policy(base: TFPolicyV2Type) -> TFPolicyV2Type:
             # Initialize base class.
             base.__init__(
                 self,
-                obs_space,
+                observation_space,
                 action_space,
                 config,
                 existing_inputs=existing_inputs,

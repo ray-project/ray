@@ -5,6 +5,7 @@ import logging
 import math
 import numpy as np
 import os
+import tempfile
 import threading
 import time
 import tree  # pip install dm_tree
@@ -25,7 +26,7 @@ from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
-from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.torch_policy import _directStepOptimizerSingleton
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -37,6 +38,7 @@ from ray.rllib.utils.annotations import (
     override,
     is_overridden,
 )
+from ray.rllib.utils.files import dict_contents_to_dir, dir_contents_to_dict
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
@@ -48,6 +50,7 @@ from ray.rllib.utils.typing import (
     GradInfoDict,
     ModelGradients,
     ModelWeights,
+    PolicyState,
     TensorType,
     TensorStructType,
     TrainerConfigDict,
@@ -898,8 +901,28 @@ class TorchPolicyV2(Policy):
 
     @override(Policy)
     @DeveloperAPI
-    def get_state(self) -> Union[Dict[str, TensorType], List[TensorType]]:
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def get_state(self) -> PolicyState:
+        # Legacy Policy state (w/o torch.nn.Module and w/o PolicySpec).
         state = super().get_state()
+
+        # Add this Policy's spec so it can be retreived w/o access to the original
+        # code.
+        state["policy_spec"] = PolicySpec(
+            policy_class=type(self),
+            observation_space=self.observation_space,
+            action_space=self.action_space,
+            config=self.config,
+        )
+
+        # Save the tf.keras.Model (architecture and weights, so it can be retrieved
+        # w/o access to the original (custom) Model or Policy code).
+        if hasattr(self, "model"):
+            tmpdir = tempfile.mkdtemp()
+            filename = os.path.join(tmpdir, "model.pickle")
+            torch.save(self.model, f=filename)
+            state["model"] = dir_contents_to_dict(tmpdir)
+
         state["_optimizer_variables"] = []
         for i, o in enumerate(self._optimizers):
             optim_state_dict = convert_to_numpy(o.state_dict())
@@ -910,7 +933,8 @@ class TorchPolicyV2(Policy):
 
     @override(Policy)
     @DeveloperAPI
-    def set_state(self, state: dict) -> None:
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def set_state(self, state: PolicyState) -> None:
         # Set optimizer vars first.
         optimizer_vars = state.get("_optimizer_variables", None)
         if optimizer_vars:
@@ -921,7 +945,14 @@ class TorchPolicyV2(Policy):
         # Set exploration's state.
         if hasattr(self, "exploration") and "_exploration_state" in state:
             self.exploration.set_state(state=state["_exploration_state"])
-        # Then the Policy's (NN) weights.
+
+        # Recreate entire model (including architecture and weights).
+        if hasattr(self, "model"):
+            tmpdir = tempfile.mkdtemp()
+            dict_contents_to_dir(state["model"], tmpdir)
+            self.model = torch.load(os.path.join(tmpdir, "model.pickle"))
+
+        # Then the Policy's (NN) weights and global timesteps.
         super().set_state(state)
 
     @override(Policy)

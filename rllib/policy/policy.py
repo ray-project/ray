@@ -120,6 +120,40 @@ class Policy(metaclass=ABCMeta):
     `rllib.policy.tf_policy_template::build_tf_policy_class` (TF).
     """
 
+    @staticmethod
+    def from_state(state: PolicyState) -> "Policy":
+        """Recovers a Policy from a state object.
+
+        The `state` of an instantiated Policy can be retrieved by calling its
+        `get_state` method. This only works for the V2 Policy classes (EagerTFPolicyV2,
+        SynamicTFPolicyV2, and TorchPolicyV2). It contains all information necessary
+        to create the Policy. No access to the original code (e.g. configs, knowledge of
+        the policy's class, etc..) is needed.
+
+        Args:
+            state: The state to recover a new Policy instance from.
+
+        Returns:
+            A new Policy instance.
+        """
+        pol_spec: PolicySpec = state.get("policy_spec")
+        if pol_spec is None:
+            raise ValueError(
+                "No `policy_spec` key was found in given `state`! Cannot create "
+                "new Policy."
+            )
+        # Create the new policy.
+        new_policy = pol_spec.policy_class(
+            observation_space=pol_spec.observation_space,
+            action_space=pol_spec.action_space,
+            config=pol_spec.config
+        )
+        # Set the new policy's state (weights, optimizer vars, exploration state,
+        # etc..).
+        new_policy.set_state(state)
+        # Return the new policy.
+        return new_policy
+
     @DeveloperAPI
     def __init__(
         self,
@@ -691,6 +725,7 @@ class Policy(metaclass=ABCMeta):
         return []
 
     @DeveloperAPI
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
     def get_state(self) -> PolicyState:
         """Returns the entire current state of this Policy.
 
@@ -711,6 +746,7 @@ class Policy(metaclass=ABCMeta):
         return state
 
     @DeveloperAPI
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
     def set_state(self, state: PolicyState) -> None:
         """Restores the entire current state of this Policy from `state`.
 
