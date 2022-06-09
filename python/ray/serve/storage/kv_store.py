@@ -24,6 +24,10 @@ def get_storage_key(namespace: str, storage_key: str) -> str:
     return "{ns}-{key}".format(ns=namespace, key=storage_key)
 
 
+class KVStoreError(Exception):
+    def __init__(self, orig_exce: Optional[Exception]=None):
+        self.orig_exce = orig_exce
+
 class RayInternalKVStore(KVStoreBase):
     """Wraps ray's internal_kv with a namespace to avoid collisions.
 
@@ -57,13 +61,16 @@ class RayInternalKVStore(KVStoreBase):
         if not isinstance(val, bytes):
             raise TypeError("val must be bytes, got: {}.".format(type(val)))
 
-        return self.gcs_client.internal_kv_put(
-            self.get_storage_key(key).encode(),
-            val,
-            overwrite=True,
-            namespace=ray_constants.KV_NAMESPACE_SERVE,
-            timeout=self.timeout,
-        )
+        try:
+            return self.gcs_client.internal_kv_put(
+                self.get_storage_key(key).encode(),
+                val,
+                overwrite=True,
+                namespace=ray_constants.KV_NAMESPACE_SERVE,
+                timeout=self.timeout,
+            )
+        except Exception as e:
+            raise KVStoreError(e) from e
 
     def get(self, key: str) -> Optional[bytes]:
         """Get the value associated with the given key from the store.
@@ -77,11 +84,14 @@ class RayInternalKVStore(KVStoreBase):
         if not isinstance(key, str):
             raise TypeError("key must be a string, got: {}.".format(type(key)))
 
-        return self.gcs_client.internal_kv_get(
-            self.get_storage_key(key).encode(),
-            namespace=ray_constants.KV_NAMESPACE_SERVE,
-            timeout=self.timeout,
-        )
+        try:
+            return self.gcs_client.internal_kv_get(
+                self.get_storage_key(key).encode(),
+                namespace=ray_constants.KV_NAMESPACE_SERVE,
+                timeout=self.timeout,
+            )
+        except Exception as e:
+            raise KVStoreError(e) from e
 
     def delete(self, key: str):
         """Delete the value associated with the given key from the store.
@@ -93,12 +103,15 @@ class RayInternalKVStore(KVStoreBase):
         if not isinstance(key, str):
             raise TypeError("key must be a string, got: {}.".format(type(key)))
 
-        return self.gcs_client.internal_kv_del(
-            self.get_storage_key(key).encode(),
-            False,
-            namespace=ray_constants.KV_NAMESPACE_SERVE,
-            timeout=self.timeout,
-        )
+        try:
+            return self.gcs_client.internal_kv_del(
+                self.get_storage_key(key).encode(),
+                False,
+                namespace=ray_constants.KV_NAMESPACE_SERVE,
+                timeout=self.timeout,
+            )
+        except Exception as e:
+            raise KVStoreError(e) from e
 
 
 class RayLocalKVStore(KVStoreBase):
