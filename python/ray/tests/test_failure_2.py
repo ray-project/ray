@@ -384,11 +384,11 @@ def test_gcs_server_crash_cluster(ray_start_cluster):
         _system_config={"gcs_rpc_server_reconnect_timeout_s": GCS_RECONNECTION_TIMEOUT},
     )
 
-    script = """
+    script = f"""
 import ray
 import time
 
-ray.init(address="auto")
+ray.init(address="{ray_start_cluster.address}")
 time.sleep(60)
     """
 
