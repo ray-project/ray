@@ -71,9 +71,14 @@ public class ServeControllerClient {
                 .remote()
                 .get();
     this.checkpointPath =
-        (String)
-            ((PyActorHandle) controller)
-                .task(PyActorMethod.of("get_checkpoint_path"))
+        controller instanceof PyActorHandle
+            ? (String)
+                ((PyActorHandle) controller)
+                    .task(PyActorMethod.of("get_checkpoint_path"))
+                    .remote()
+                    .get()
+            : ((ActorHandle<ServeController>) controller)
+                .task(ServeController::getCheckpointPath)
                 .remote()
                 .get();
   }

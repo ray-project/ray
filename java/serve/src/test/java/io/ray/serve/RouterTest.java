@@ -49,7 +49,8 @@ public class RouterTest {
       DeploymentConfig deploymentConfig =
           new DeploymentConfig().setDeploymentLanguage(DeploymentLanguage.JAVA);
 
-      Object[] initArgs = new Object[] {deploymentName, replicaTag, controllerName, new Object()};
+      Object[] initArgs =
+          new Object[] {deploymentName, replicaTag, controllerName, null, new Object(), null};
 
       DeploymentWrapper deploymentWrapper =
           new DeploymentWrapper()
