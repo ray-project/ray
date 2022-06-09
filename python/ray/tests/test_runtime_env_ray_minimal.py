@@ -11,11 +11,9 @@ ray[default] but not in ray (e.g., `pip uninstall aiohttp`) and set
 
 import os
 import sys
-import subprocess
 import pytest
 
 import ray
-from ray._private.runtime_env.context import RuntimeEnvContext
 
 
 def _test_task_and_actor(capsys):
@@ -79,6 +77,7 @@ def test_ray_init(shutdown_only, capsys):
         return 1
 
     assert ray.get(f.remote()) == 1
+
 
 @pytest.mark.skipif(
     sys.platform == "win32", reason="runtime_env unsupported on Windows."
