@@ -47,7 +47,7 @@ def test_numpy_multi_dim_pandas():
 
 def test_numpy_object_pandas():
     input_data = np.array([[1, 2, 3], [1]], dtype=object)
-    expected_output = pd.DataFrame({TENSOR_COLUMN_NAME: input_data})
+    expected_output = pd.DataFrame({TENSOR_COLUMN_NAME: TensorArray(input_data)})
     actual_output = convert_batch_type_to_pandas(input_data)
     assert expected_output.equals(actual_output)
 
