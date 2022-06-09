@@ -1,4 +1,4 @@
-from typing import Optional, List, Union
+from typing import Optional, List, Union, TYPE_CHECKING
 
 import pandas as pd
 import numpy as np
@@ -6,12 +6,14 @@ from joblib import parallel_backend
 
 from ray.air.checkpoint import Checkpoint
 from ray.air.predictor import Predictor, DataBatchType
-from ray.air.preprocessor import Preprocessor
-from ray.air.train.integrations.sklearn import load_checkpoint
+from ray.train.sklearn import load_checkpoint
 from ray.air._internal.sklearn_utils import set_cpu_params
 from ray.util.joblib import register_ray
 
 from sklearn.base import BaseEstimator
+
+if TYPE_CHECKING:
+    from ray.air.preprocessor import Preprocessor
 
 
 class SklearnPredictor(Predictor):
@@ -25,7 +27,7 @@ class SklearnPredictor(Predictor):
     """
 
     def __init__(
-        self, estimator: BaseEstimator, preprocessor: Optional[Preprocessor] = None
+        self, estimator: BaseEstimator, preprocessor: Optional["Preprocessor"] = None
     ):
         self.estimator = estimator
         self.preprocessor = preprocessor

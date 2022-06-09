@@ -1,6 +1,7 @@
 import collections
-
 from typing import Dict, Iterator, List, Union, Any, TypeVar, TYPE_CHECKING
+
+import numpy as np
 
 from ray.data.block import Block, BlockAccessor
 from ray.data.row import TableRow
@@ -9,6 +10,11 @@ from ray.data._internal.size_estimator import SizeEstimator
 
 if TYPE_CHECKING:
     from ray.data._internal.sort import SortKeyT
+
+
+# The internal column name used for pure-tensor datasets, represented as
+# single-tensor-column tables.
+VALUE_COL_NAME = "__value__"
 
 T = TypeVar("T")
 
@@ -30,9 +36,11 @@ class TableBlockBuilder(BlockBuilder[T]):
         self._num_compactions = 0
         self._block_type = block_type
 
-    def add(self, item: Union[dict, TableRow]) -> None:
+    def add(self, item: Union[dict, TableRow, np.ndarray]) -> None:
         if isinstance(item, TableRow):
             item = item.as_pydict()
+        elif isinstance(item, np.ndarray):
+            item = {VALUE_COL_NAME: item}
         if not isinstance(item, dict):
             raise ValueError(
                 "Returned elements of an TableBlock must be of type `dict`, "
@@ -100,16 +108,42 @@ class TableBlockBuilder(BlockBuilder[T]):
 
 
 class TableBlockAccessor(BlockAccessor):
+    ROW_TYPE: TableRow = TableRow
+
     def __init__(self, table: Any):
         self._table = table
 
-    def _create_table_row(self, row: Any) -> TableRow:
+    def _get_row(self, index: int, copy: bool = False) -> Union[TableRow, np.ndarray]:
+        row = self.slice(index, index + 1, copy=copy)
+        if self.is_tensor_wrapper():
+            row = self._build_tensor_row(row)
+        else:
+            row = self.ROW_TYPE(row)
+        return row
+
+    @staticmethod
+    def _build_tensor_row(row: TableRow) -> np.ndarray:
+        raise NotImplementedError
+
+    def to_native(self) -> Block:
+        if self.is_tensor_wrapper():
+            native = self.to_numpy()
+        else:
+            # Always promote Arrow blocks to pandas for consistency, since
+            # we lazily convert pandas->Arrow internally for efficiency.
+            native = self.to_pandas()
+        return native
+
+    def column_names(self) -> List[str]:
         raise NotImplementedError
 
     def to_block(self) -> Block:
         return self._table
 
-    def iter_rows(self) -> Iterator[TableRow]:
+    def is_tensor_wrapper(self) -> bool:
+        return self.column_names() == [VALUE_COL_NAME]
+
+    def iter_rows(self) -> Iterator[Union[TableRow, np.ndarray]]:
         outer = self
 
         class Iter:
@@ -122,10 +156,7 @@ class TableBlockAccessor(BlockAccessor):
             def __next__(self):
                 self._cur += 1
                 if self._cur < outer.num_rows():
-                    row = outer._create_table_row(
-                        outer.slice(self._cur, self._cur + 1, copy=False)
-                    )
-                    return row
+                    return outer._get_row(self._cur)
                 raise StopIteration
 
         return Iter()
