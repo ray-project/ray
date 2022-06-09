@@ -15,8 +15,11 @@ public class DummyServeController implements ServeController {
 
   private String rootUrl;
 
-  public DummyServeController(String rootUrl) {
+  private String checkpointPath;
+
+  public DummyServeController(String rootUrl, String checkpointPath) {
     this.rootUrl = rootUrl;
+    this.checkpointPath = checkpointPath;
   }
 
   @Override
@@ -47,5 +50,10 @@ public class DummyServeController implements ServeController {
 
   public void setRootUrl(String rootUrl) {
     this.rootUrl = rootUrl;
+  }
+
+  @Override
+  public String getCheckpointPath() {
+    return checkpointPath;
   }
 }

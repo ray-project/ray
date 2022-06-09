@@ -40,7 +40,7 @@ public class RayServeReplicaTest {
       config.put(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false");
 
       ActorHandle<DummyServeController> controllerHandle =
-          Ray.actor(DummyServeController::new, "").setName(controllerName).remote();
+          Ray.actor(DummyServeController::new, "", "").setName(controllerName).remote();
 
       DeploymentConfig deploymentConfig =
           new DeploymentConfig().setDeploymentLanguage(DeploymentLanguage.JAVA);

@@ -32,7 +32,7 @@ public class ClientTest {
 
       // Controller.
       ActorHandle<DummyServeController> controllerHandle =
-          Ray.actor(DummyServeController::new, "").setName(controllerName).remote();
+          Ray.actor(DummyServeController::new, "", "").setName(controllerName).remote();
 
       // Set ReplicaContext
       Serve.setInternalReplicaContext(null, null, controllerName, null, null, config);

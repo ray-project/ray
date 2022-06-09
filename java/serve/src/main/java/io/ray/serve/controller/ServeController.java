@@ -10,4 +10,6 @@ public interface ServeController {
   LongPollResult listenForChange(LongPollRequest longPollRequest);
 
   String getRootUrl();
+
+  String getCheckpointPath();
 }
