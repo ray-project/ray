@@ -71,11 +71,11 @@ public class HttpProxyTest {
     } finally {
       if (!inited) {
         Ray.shutdown();
-        if (previous_namespace == null) {
-          System.clearProperty("ray.job.namespace");
-        } else {
-          System.setProperty("ray.job.namespace", previous_namespace);
-        }
+      }
+      if (previous_namespace == null) {
+        System.clearProperty("ray.job.namespace");
+      } else {
+        System.setProperty("ray.job.namespace", previous_namespace);
       }
       Serve.setInternalReplicaContext(null);
       Serve.setGlobalClient(null);
