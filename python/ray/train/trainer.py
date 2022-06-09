@@ -44,6 +44,12 @@ from ray.train._internal.worker_group import WorkerGroup
 from ray.util.annotations import DeveloperAPI, Deprecated
 from ray.util.ml_utils.checkpoint_manager import CheckpointStrategy
 
+from ray.train.base_trainer import (  # noqa: F401
+    BaseTrainer,
+    GenDataset,
+    TrainingFailedError,
+)
+
 if TUNE_INSTALLED:
     from ray import tune
     from ray.tune import Trainable

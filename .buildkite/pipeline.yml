@@ -443,12 +443,12 @@
     - ./ci/env/install-dependencies.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=soft_imports python/ray/tune/...
 
+# Test to see if Train can be used without torch, tf, etc. installed
 - label: ":steam_locomotive: Train minimal install"
   conditions: ["RAY_CI_TRAIN_AFFECTED"]
   commands:
       - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-      - ./ci/env/install-minimal.sh
-      - pip install pandas tabulate tensorboardX>=1.9 requests  # ray[tune]
+      - TRAIN_MINIMAL_INSTALL=1 ./ci/env/install-minimal.sh
       - ./ci/env/env_info.sh
       - python ./ci/env/check_minimal_install.py
       - bazel test --config=ci $(./ci/run/bazel_export_options)  --build_tests_only --test_tag_filters=minimal python/ray/train/...
