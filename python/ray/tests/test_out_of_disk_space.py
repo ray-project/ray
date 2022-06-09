@@ -1,5 +1,6 @@
 import sys
 import shutil
+import time
 import numpy as np
 
 import platform
@@ -11,24 +12,41 @@ from ray.cluster_utils import Cluster
 
 def calculate_capacity_threshold(disk_capacity_in_bytes):
     usage = shutil.disk_usage("/tmp")
-    threshold = min(1, 1.0 * (usage.used + disk_capacity_in_bytes) / usage.total)
-    assert threshold > 0 and threshold < 1
+    threshold = min(1, 1.0 - 1.0 * (usage.free - disk_capacity_in_bytes) / usage.total)
     return threshold
+
+
+def get_current_usage():
+    usage = shutil.disk_usage("/tmp")
+    print(f"free: {usage.free} ")
+    print(f"current usage: {1.0 - 1.0 * usage.free  / usage.total}")
+    return 1.0 - 1.0 * usage.free / usage.total
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Not targeting Windows")
 def test_put_out_of_disk(shutdown_only):
-    local_fs_capacity_threshold = calculate_capacity_threshold(1 * 1024 * 1024)
+    local_fs_capacity_threshold = calculate_capacity_threshold(100 * 1024 * 1024)
     ray.init(
         num_cpus=1,
         object_store_memory=80 * 1024 * 1024,
         _system_config={
             "local_fs_capacity_threshold": local_fs_capacity_threshold,
+            "local_fs_monitor_interval_ms": 10,
         },
     )
-    arr = np.random.rand(20 * 1024 * 1024)  # 160 MB data
+    print(get_current_usage())
+    assert get_current_usage() < local_fs_capacity_threshold
+    ref = ray.put(np.random.rand(20 * 1024 * 1024))
+    ray.wait([ref])
+    print(get_current_usage())
+    assert get_current_usage() > local_fs_capacity_threshold
+    time.sleep(1)
     with pytest.raises(ray.exceptions.OutOfDiskError):
-        ray.put(arr)
+        ray.put(np.random.rand(20 * 1024 * 1024))
+    del ref
+    assert get_current_usage() < local_fs_capacity_threshold
+    time.sleep(1)
+    ray.put(np.random.rand(20 * 1024 * 1024))
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Not targeting Windows")
