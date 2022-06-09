@@ -14,6 +14,7 @@ import io.ray.serve.generated.ActorNameList;
 import io.ray.serve.generated.DeploymentLanguage;
 import io.ray.serve.handle.RayServeHandle;
 import io.ray.serve.replica.RayServeWrappedReplica;
+import io.ray.serve.replica.ReplicaContext;
 import io.ray.serve.util.CommonUtil;
 import java.util.HashMap;
 import java.util.Map;
@@ -57,7 +58,7 @@ public class RayServeHandleTest {
               .setName(deploymentName)
               .setDeploymentConfig(deploymentConfig)
               .setDeploymentVersion(new DeploymentVersion(version))
-              .setDeploymentDef("io.ray.serve.ReplicaContext")
+              .setDeploymentDef(ReplicaContext.class.getName())
               .setInitArgs(initArgs)
               .setConfig(config);
 

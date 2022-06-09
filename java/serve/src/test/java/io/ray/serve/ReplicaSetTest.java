@@ -12,6 +12,7 @@ import io.ray.serve.generated.ActorNameList;
 import io.ray.serve.generated.DeploymentLanguage;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.replica.RayServeWrappedReplica;
+import io.ray.serve.replica.ReplicaContext;
 import io.ray.serve.router.Query;
 import io.ray.serve.router.ReplicaSet;
 import java.util.Map;
@@ -62,7 +63,7 @@ public class ReplicaSetTest {
               .setName(deploymentName)
               .setDeploymentConfig(deploymentConfig)
               .setDeploymentVersion(new DeploymentVersion(version))
-              .setDeploymentDef("io.ray.serve.ReplicaContext")
+              .setDeploymentDef(ReplicaContext.class.getName())
               .setInitArgs(initArgs);
 
       ActorHandle<RayServeWrappedReplica> replicaHandle =
