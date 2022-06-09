@@ -684,7 +684,7 @@ def test_recreate_child_actor(ray_start_cluster):
 def test_actor_failure_per_type(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node()
-    ray.init(address="auto")
+    ray.init(address=cluster.address)
 
     @ray.remote
     class Actor:

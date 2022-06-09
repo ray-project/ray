@@ -393,40 +393,6 @@ def test_ray_up_docker(
 )
 @mock_ec2
 @mock_iam
-def test_ray_up_record(
-    configure_lang, _unlink_test_ssh_key, configure_aws, monkeypatch, tmp_path
-):
-    monkeypatch.setenv("RAY_USAGE_STATS_CONFIG_PATH", str(tmp_path / "config.json"))
-
-    def commands_mock(command, stdin):
-        # if we want to have e.g. some commands fail,
-        # we can have overrides happen here.
-        # unfortunately, cutting out SSH prefixes and such
-        # is, to put it lightly, non-trivial
-        if "uptime" in command:
-            return PopenBehaviour(stdout=b"MOCKED uptime")
-        if "rsync" in command:
-            return PopenBehaviour(stdout=b"MOCKED rsync")
-        if "ray" in command:
-            return PopenBehaviour(stdout=b"MOCKED ray")
-        return PopenBehaviour(stdout=b"MOCKED GENERIC")
-
-    with _setup_popen_mock(commands_mock):
-        # config cache does not work with mocks
-        runner = CliRunner()
-        result = runner.invoke(
-            scripts.up,
-            [DEFAULT_TEST_CONFIG_PATH, "--no-config-cache", "-y", "--log-style=record"],
-        )
-        _check_output_via_pattern("test_ray_up_record.txt", result)
-
-
-@pytest.mark.skipif(
-    sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
-    reason=("Mac builds don't provide proper locale support"),
-)
-@mock_ec2
-@mock_iam
 def test_ray_attach(configure_lang, configure_aws, _unlink_test_ssh_key):
     def commands_mock(command, stdin):
         # TODO(maximsmol): this is a hack since stdout=sys.stdout
