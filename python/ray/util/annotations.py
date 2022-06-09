@@ -45,7 +45,7 @@ def PublicAPI(*args, **kwargs):
         if stability in ["alpha", "beta"]:
             obj.__doc__ += (
                 f"\n    PublicAPI ({stability}): This API is in {stability} "
-                "and may change before becoming stable. "
+                "and may change before becoming stable."
             )
         else:
             obj.__doc__ += "\n    PublicAPI: This API is stable across Ray releases."
