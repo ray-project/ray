@@ -79,7 +79,7 @@ class RayInternalKVStore(KVStoreBase):
         if not isinstance(key, str):
             raise TypeError("key must be a string, got: {}.".format(type(key)))
 
-        return self.gcs_aio_client.internal_kv_get(
+        return self.gcs_client.internal_kv_get(
             self.get_storage_key(key).encode(),
             namespace=ray_constants.KV_NAMESPACE_SERVE,
             timeout=self.timeout,
@@ -95,7 +95,7 @@ class RayInternalKVStore(KVStoreBase):
         if not isinstance(key, str):
             raise TypeError("key must be a string, got: {}.".format(type(key)))
 
-        return self.gcs_aio_client.internal_kv_del(
+        return self.gcs_client.internal_kv_del(
             self.get_storage_key(key).encode(),
             False,
             namespace=ray_constants.KV_NAMESPACE_SERVE,
