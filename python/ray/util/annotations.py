@@ -1,18 +1,19 @@
 def PublicAPI(*args, **kwargs):
     """Annotation for documenting public APIs.
 
-    Public APIs are classes and methods exposed to end users of Ray. You
-    can expect these APIs to remain backwards compatible across minor Ray
-    releases (e.g., Ray 1.4 -> 1.8).
+    Public APIs are classes and methods exposed to end users of Ray.
 
-    If "stability" is beta, the API is still public and can be used by early
-    users, but are subject to change.
-
-    If "stability" is alpha, the API can be used by advanced users who are
+    If ``stability="alpha"``, the API can be used by advanced users who are
     tolerant to and expect breaking changes.
 
+    If ``stability="beta"``, the API is still public and can be used by early
+    users, but are subject to change.
+
+    If ``stability="stable"``, the APIs will remain backwards compatible across
+    minor Ray releases (e.g., Ray 1.4 -> 1.8).
+
     For a full definition of the stability levels, please refer to the
-    `Google stability level guidelines <https://google.aip.dev/181>`_
+    `Ray API Stability definitions <api-stability>`_.
 
     Args:
         stability: One of {"stable", "beta", "alpha"}.
@@ -44,10 +45,15 @@ def PublicAPI(*args, **kwargs):
         if stability in ["alpha", "beta"]:
             obj.__doc__ += (
                 f"\n    PublicAPI ({stability}): This API is in {stability} "
-                "and may change before becoming stable."
+                "and may change before becoming stable. "
             )
         else:
             obj.__doc__ += "\n    PublicAPI: This API is stable across Ray releases."
+
+        obj.__doc__ += (
+            "(`Definitions <https://docs.ray.io/en/latest/"
+            "ray-contribute/getting-involved.html#api-stability>`_)"
+        )
         _mark_annotated(obj)
         return obj
 
