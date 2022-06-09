@@ -161,7 +161,7 @@ class TestGetURIForDirectory:
 
     @pytest.mark.skipif(
         sys.platform == "win32",
-        reason="Unix sockets and chmod not available on windows",
+        reason="Unix sockets not available on windows",
     )
     def test_unopenable_files_skipped(self, random_dir, short_path_dir):
         """Test that unopenable files can be present in the working_dir.
@@ -170,17 +170,6 @@ class TestGetURIForDirectory:
         we skip those files when generating the content hash. Previously this
         would raise an exception, see #25411.
         """
-        # Create a file that can't be opened.
-        with open(random_dir / "test_file", "w") as f:
-            f.write("test")
-        os.chmod(random_dir / "test_file", 0o000)
-
-        # Check that opening the file raises an exception.
-        with pytest.raises(OSError):
-            Path(random_dir / "test_file").open()
-
-        # Check that the hash can still be generated without errors.
-        get_uri_for_directory(random_dir)
 
         # Create a socket file.
         sock = socket.socket(socket.AF_UNIX)
