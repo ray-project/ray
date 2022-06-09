@@ -147,8 +147,8 @@ def summarize_episodes(
     if new_episodes is None:
         new_episodes = episodes
 
-    episodes, estimates = _partition(episodes)
-    new_episodes, _ = _partition(new_episodes)
+    episodes, _ = _partition(episodes)
+    new_episodes, estimates = _partition(new_episodes)
 
     episode_rewards = []
     episode_lengths = []
