@@ -326,5 +326,6 @@ def test_object_store_memory_metrics_reported_correctly(shutdown_only):
 
 if __name__ == "__main__":
     import sys
+
     # CI has 32GB memory and each test uses 700MB approximately
     sys.exit(pytest.main(["-n", "4", "--boxed", "-v", __file__]))

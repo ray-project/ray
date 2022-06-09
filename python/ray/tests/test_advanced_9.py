@@ -157,7 +157,7 @@ def test_function_table_gc(call_ray_start):
 )
 def test_function_table_gc_actor(call_ray_start):
     """If there is a detached actor, the table won't be cleaned up."""
-    ray.init(address="auto", namespace="a")
+    ray.init(address=call_ray_start, namespace="a")
 
     @ray.remote
     class Actor:
