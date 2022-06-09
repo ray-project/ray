@@ -107,7 +107,7 @@ std::vector<std::string> ParseSpillingPaths(const std::string &spilling_config) 
 
   try {
     json spill_config = json::parse(spilling_config);
-    auto &directory_path = spill_config.at("params").at("directory_path");
+    const auto &directory_path = spill_config.at("params").at("directory_path");
     if (directory_path.is_string()) {
       spilling_paths.push_back(directory_path);
     } else if (directory_path.is_array()) {

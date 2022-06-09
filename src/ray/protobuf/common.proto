@@ -194,7 +194,7 @@ enum ErrorType {
   // The actor is unschedulable.
   ACTOR_UNSCHEDULABLE_ERROR = 19;
   // We use this error for object fetches that failed due to out of disk.
-  OBJECT_FETCH_OUT_OF_DISK = 20;
+  OUT_OF_DISK_ERROR = 20;
 }
 
 /// The information per ray error type.

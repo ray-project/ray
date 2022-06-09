@@ -783,8 +783,15 @@ std::string PullManager::DebugString() const {
 }
 
 void PullManager::SetOutOfDisk(const ObjectID &object_id) {
-  RAY_LOG(DEBUG) << "Pull of object failed due to out of disk: " << object_id;
-  fail_pull_request_(object_id, rpc::ErrorType::OBJECT_FETCH_OUT_OF_DISK);
+  bool is_actively_pulled = false;
+  {
+    absl::MutexLock lock(&active_objects_mu_);
+    is_actively_pulled = active_object_pull_requests_.count(object_id) > 0;
+  }
+  if (is_actively_pulled) {
+    RAY_LOG(DEBUG) << "Pull of object failed due to out of disk: " << object_id;
+    fail_pull_request_(object_id, rpc::ErrorType::OUT_OF_DISK_ERROR);
+  }
 }
 
 }  // namespace ray

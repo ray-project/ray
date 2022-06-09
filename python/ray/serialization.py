@@ -275,7 +275,7 @@ class SerializationContext:
                 return ObjectFetchTimedOutError(
                     object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
                 )
-            elif error_type == ErrorType.Value("OBJECT_FETCH_OUT_OF_DISK"):
+            elif error_type == ErrorType.Value("OUT_OF_DISK_ERROR"):
                 return OutOfDiskError(
                     object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
                 )
