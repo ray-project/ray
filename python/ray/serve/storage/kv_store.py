@@ -9,6 +9,7 @@ try:
 except ImportError:
     boto3 = None
 
+import ray
 from ray import ray_constants
 from ray._private.gcs_utils import GcsClient
 
@@ -36,8 +37,6 @@ class RayInternalKVStore(KVStoreBase):
     ):
         if namespace is not None and not isinstance(namespace, str):
             raise TypeError("namespace must a string, got: {}.".format(type(namespace)))
-
-        import ray
 
         self.gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
 
