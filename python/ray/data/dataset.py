@@ -3415,7 +3415,7 @@ class Dataset(Generic[T]):
         return repr(self)
 
     def __bool__(self) -> bool:
-        # Prevents python from calling `__len__` on a `Dataset` object to check if it is None.
+        # Prevents `__len__` from being called to check if it is None
         # see: issue #25152
         return True
 
