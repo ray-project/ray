@@ -28,15 +28,9 @@ def test_initialized_local_mode(shutdown_only_with_initialization_check):
     assert ray.is_initialized()
 
 
-def test_ray_start_and_stop():
-    for i in range(10):
-        subprocess.check_call(["ray", "start", "--head"])
-        subprocess.check_call(["ray", "stop"])
-
-
 def test_ray_memory(shutdown_only):
-    ray.init(num_cpus=1)
-    subprocess.check_call(["ray", "memory"])
+    info = ray.init(num_cpus=1).address_info
+    subprocess.check_call(["ray", "memory", "--address", info["address"]])
 
 
 def test_jemalloc_env_var_propagate():
@@ -232,7 +226,7 @@ def test_function_table_gc(call_ray_start):
 
         return r.remote()
 
-    ray.init(address="auto", namespace="b")
+    ray.init(address=call_ray_start, namespace="b")
 
     # It should use > 500MB data
     ray.get([f() for _ in range(500)])
@@ -245,7 +239,7 @@ def test_function_table_gc(call_ray_start):
     ray.shutdown()
 
     # now check the function table is cleaned up after job finished
-    ray.init(address="auto", namespace="a")
+    ray.init(address=call_ray_start, namespace="a")
     wait_for_condition(lambda: function_entry_num(job_id) == 0, timeout=30)
 
 
@@ -254,7 +248,7 @@ def test_function_table_gc(call_ray_start):
 )
 def test_function_table_gc_actor(call_ray_start):
     """If there is a detached actor, the table won't be cleaned up."""
-    ray.init(address="auto", namespace="a")
+    ray.init(address=call_ray_start, namespace="a")
 
     @ray.remote
     class Actor:
@@ -267,7 +261,7 @@ def test_function_table_gc_actor(call_ray_start):
     job_id = ray.worker.global_worker.current_job_id.hex().encode()
     ray.shutdown()
 
-    ray.init(address="auto", namespace="b")
+    ray.init(address=call_ray_start, namespace="b")
     with pytest.raises(Exception):
         wait_for_condition(lambda: function_entry_num(job_id) == 0)
     a = ray.get_actor("a", namespace="a")
@@ -279,7 +273,7 @@ def test_function_table_gc_actor(call_ray_start):
     ray.get(a.ready.remote())
     job_id = ray.worker.global_worker.current_job_id.hex().encode()
     ray.shutdown()
-    ray.init(address="auto", namespace="c")
+    ray.init(address=call_ray_start, namespace="c")
     wait_for_condition(lambda: function_entry_num(job_id) == 0)
 
 

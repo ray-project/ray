@@ -135,7 +135,7 @@ def test_function_table_gc(call_ray_start):
 
         return r.remote()
 
-    ray.init(address="auto", namespace="b")
+    ray.init(address=call_ray_start, namespace="b")
 
     # It should use > 500MB data
     ray.get([f() for _ in range(500)])
@@ -148,7 +148,7 @@ def test_function_table_gc(call_ray_start):
     ray.shutdown()
 
     # now check the function table is cleaned up after job finished
-    ray.init(address="auto", namespace="a")
+    ray.init(address=call_ray_start, namespace="a")
     wait_for_condition(lambda: function_entry_num(job_id) == 0, timeout=30)
 
 
@@ -170,7 +170,7 @@ def test_function_table_gc_actor(call_ray_start):
     job_id = ray.worker.global_worker.current_job_id.hex().encode()
     ray.shutdown()
 
-    ray.init(address="auto", namespace="b")
+    ray.init(address=call_ray_start, namespace="b")
     with pytest.raises(Exception):
         wait_for_condition(lambda: function_entry_num(job_id) == 0)
     a = ray.get_actor("a", namespace="a")
@@ -182,7 +182,7 @@ def test_function_table_gc_actor(call_ray_start):
     ray.get(a.ready.remote())
     job_id = ray.worker.global_worker.current_job_id.hex().encode()
     ray.shutdown()
-    ray.init(address="auto", namespace="c")
+    ray.init(address=call_ray_start, namespace="c")
     wait_for_condition(lambda: function_entry_num(job_id) == 0)
 
 

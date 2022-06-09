@@ -541,7 +541,7 @@ def test_demand_report_for_node_affinity_scheduling_strategy(
     )
 
     cluster.start()
-    info = ray.init(address="auto")
+    info = ray.init(address=cluster.address)
 
     @ray.remote(num_cpus=1)
     def f(sleep_s):
@@ -620,7 +620,7 @@ def test_demand_report_when_scale_up(shutdown_only):
 
     cluster.start()
 
-    info = ray.init("auto")
+    info = ray.init(cluster.address)
 
     @ray.remote
     def f():
