@@ -4,6 +4,7 @@ import numpy as np
 import torchvision
 from ray.air import RunConfig
 from ray.air.train.integrations.horovod import HorovodTrainer
+from ray.air.config import ScalingConfig
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 from torch.utils.data import DataLoader
@@ -122,10 +123,10 @@ if __name__ == "__main__":
 
     horovod_trainer = HorovodTrainer(
         train_loop_per_worker=train_loop_per_worker,
-        scaling_config={
-            "use_gpu": False if args.smoke_test else True,
-            "num_workers": 2 if args.smoke_test else 4,
-        },
+        scaling_config=ScalingConfig(
+            num_workers=2 if args.smoke_test else 4,
+            use_gpu=False if args.smoke_test else True,
+        ),
         train_loop_config={"batch_size": 64, "data": ray.put(dataset)},
     )
 

@@ -1,7 +1,7 @@
 import abc
 import inspect
 import logging
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Union
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Type, Union
 
 import ray
 from ray.util import PublicAPI
@@ -10,14 +10,10 @@ from ray.air.constants import TRAIN_DATASET_KEY
 from ray.air.config import (
     RunConfig,
     ScalingConfig,
-    ScalingConfigDataClass,
 )
 from ray.air.preprocessor import Preprocessor
 from ray.air.result import Result
-from ray.air._internal.config import (
-    ensure_only_allowed_dataclass_keys_updated,
-    ensure_only_allowed_dict_keys_set,
-)
+from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
 from ray.tune import Trainable
 from ray.tune.error import TuneError
 from ray.tune.function_runner import wrap_function
@@ -220,23 +216,16 @@ class Trainer(abc.ABC):
             )
 
     @classmethod
-    def _validate_and_get_scaling_config_data_class(
-        cls, dataclass_or_dict: Union[ScalingConfigDataClass, Dict[str, Any]]
-    ) -> ScalingConfigDataClass:
+    def _validate_scaling_config(
+        cls,
+        dataclass: ScalingConfig,
+    ) -> ScalingConfig:
         """Return scaling config dataclass after validating updated keys."""
-        if isinstance(dataclass_or_dict, dict):
-            ensure_only_allowed_dict_keys_set(
-                dataclass_or_dict, cls._scaling_config_allowed_keys
-            )
-            scaling_config_dataclass = ScalingConfigDataClass(**dataclass_or_dict)
-
-            return scaling_config_dataclass
-
         ensure_only_allowed_dataclass_keys_updated(
-            dataclass=dataclass_or_dict,
+            dataclass=dataclass,
             allowed_keys=cls._scaling_config_allowed_keys,
         )
-        return dataclass_or_dict
+        return dataclass
 
     def setup(self) -> None:
         """Called during fit() to perform initial setup on the Trainer.
@@ -387,10 +376,8 @@ class Trainer(abc.ABC):
             @classmethod
             def default_resource_request(cls, config):
                 updated_scaling_config = config.get("scaling_config", scaling_config)
-                scaling_config_dataclass = (
-                    trainer_cls._validate_and_get_scaling_config_data_class(
-                        updated_scaling_config
-                    )
+                scaling_config_dataclass = trainer_cls._validate_scaling_config(
+                    updated_scaling_config
                 )
                 return scaling_config_dataclass.as_placement_group_factory()
 
