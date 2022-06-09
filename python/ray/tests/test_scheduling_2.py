@@ -715,5 +715,6 @@ def test_data_locality_spilled_objects(
 
 if __name__ == "__main__":
     import pytest
-
-    sys.exit(pytest.main(["-n", "auto", "--boxed", "-v", __file__]))
+    # TODO: Make it run parallel
+    # sys.exit(pytest.main(["-n", "auto", "--boxed", "-vx", __file__]))
+    sys.exit(pytest.main(["-v", __file__]))
