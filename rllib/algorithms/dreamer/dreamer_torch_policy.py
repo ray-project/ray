@@ -13,7 +13,6 @@ from typing import Dict, Optional
 from ray.rllib.algorithms.dreamer.utils import FreezeParameters
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
@@ -55,18 +54,103 @@ class DreamerTorchPolicy(TorchPolicyV2):
         if "log_gif" in train_batch:
             log_gif = True
 
-        self.stats_dict = compute_dreamer_loss(
-            train_batch["obs"],
-            train_batch["actions"],
-            train_batch["rewards"],
-            self.model,
-            self.config["imagine_horizon"],
-            self.config["gamma"],
-            self.config["lambda"],
-            self.config["kl_coeff"],
-            self.config["free_nats"],
-            log_gif,
+        # This is the computation graph for workers (inner adaptation steps)
+        encoder_weights = list(self.model.encoder.parameters())
+        decoder_weights = list(self.model.decoder.parameters())
+        reward_weights = list(self.model.reward.parameters())
+        dynamics_weights = list(self.model.dynamics.parameters())
+        critic_weights = list(self.model.value.parameters())
+        model_weights = list(
+            encoder_weights + decoder_weights + reward_weights + dynamics_weights
         )
+        device = (
+            torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+        )
+
+        # PlaNET Model Loss
+        latent = self.model.encoder(train_batch["obs"])
+        post, prior = self.model.dynamics.observe(latent, train_batch["actions"])
+        features = self.model.dynamics.get_feature(post)
+        image_pred = self.model.decoder(features)
+        reward_pred = self.model.reward(features)
+        image_loss = -torch.mean(image_pred.log_prob(train_batch["obs"]))
+        reward_loss = -torch.mean(reward_pred.log_prob(train_batch["rewards"]))
+        prior_dist = self.model.dynamics.get_dist(prior[0], prior[1])
+        post_dist = self.model.dynamics.get_dist(post[0], post[1])
+        div = torch.mean(
+            torch.distributions.kl_divergence(post_dist, prior_dist).sum(dim=2)
+        )
+        div = torch.clamp(div, min=(self.config["free_nats"]))
+        model_loss = self.config["kl_coeff"] * div + reward_loss + image_loss
+
+        # Actor Loss
+        # [imagine_horizon, batch_length*batch_size, feature_size]
+        with torch.no_grad():
+            actor_states = [v.detach() for v in post]
+        with FreezeParameters(model_weights):
+            imag_feat = self.model.imagine_ahead(
+                actor_states, self.config["imagine_horizon"]
+            )
+        with FreezeParameters(model_weights + critic_weights):
+            reward = self.model.reward(imag_feat).mean
+            value = self.model.value(imag_feat).mean
+        pcont = self.config["gamma"] * torch.ones_like(reward)
+
+        # Similar to GAE-Lambda, calculate value targets
+        next_values = torch.cat([value[:-1][1:], value[-1][None]], dim=0)
+        inputs = reward[:-1] + pcont[:-1] * next_values * (1 - self.config["lambda"])
+
+        def agg_fn(x, y):
+            return y[0] + y[1] * self.config["lambda"] * x
+
+        last = value[-1]
+        returns = []
+        for i in reversed(range(len(inputs))):
+            last = agg_fn(last, [inputs[i], pcont[:-1][i]])
+            returns.append(last)
+
+        returns = list(reversed(returns))
+        returns = torch.stack(returns, dim=0)
+        discount_shape = pcont[:1].size()
+        discount = torch.cumprod(
+            torch.cat([torch.ones(*discount_shape).to(device), pcont[:-2]], dim=0),
+            dim=0,
+        )
+        actor_loss = -torch.mean(discount * returns)
+
+        # Critic Loss
+        with torch.no_grad():
+            val_feat = imag_feat.detach()[:-1]
+            target = returns.detach()
+            val_discount = discount.detach()
+        val_pred = self.model.value(val_feat)
+        critic_loss = -torch.mean(val_discount * val_pred.log_prob(target))
+
+        # Logging purposes
+        prior_ent = torch.mean(prior_dist.entropy())
+        post_ent = torch.mean(post_dist.entropy())
+        gif = None
+        if log_gif:
+            gif = log_summary(
+                train_batch["obs"],
+                train_batch["actions"],
+                latent,
+                image_pred,
+                self.model,
+            )
+        return_dict = {
+            "model_loss": model_loss,
+            "reward_loss": reward_loss,
+            "image_loss": image_loss,
+            "divergence": div,
+            "actor_loss": actor_loss,
+            "critic_loss": critic_loss,
+            "prior_ent": prior_ent,
+            "post_ent": post_ent,
+        }
+        if gif is not None:
+            return_dict["log_gif"] = gif
+        self.stats_dict = return_dict
 
         loss_dict = self.stats_dict
 
@@ -179,128 +263,6 @@ class DreamerTorchPolicy(TorchPolicyV2):
         self, optimizer: "torch.optim.Optimizer", loss: TensorType
     ) -> Dict[str, TensorType]:
         return apply_grad_clipping(self, optimizer, loss)
-
-
-# This is the computation graph for workers (inner adaptation steps)
-def compute_dreamer_loss(
-    obs: TensorType,
-    action: TensorType,
-    reward: TensorType,
-    model: TorchModelV2,
-    imagine_horizon: int,
-    gamma: float = 0.99,
-    lambda_: float = 0.95,
-    kl_coeff: float = 1.0,
-    free_nats: float = 3.0,
-    log: bool = False,
-):
-    """Constructs loss for the Dreamer objective.
-
-    Args:
-        obs: Observations (o_t).
-        action: Actions (a_(t-1)).
-        reward: Rewards (r_(t-1)).
-        model: DreamerModel, encompassing all other models.
-        imagine_horizon: Imagine horizon for actor and critic loss.
-        gamma: Discount factor gamma.
-        lambda_: Lambda, like in GAE.
-        kl_coeff: KL Coefficient for Divergence loss in model loss.
-        free_nats: Threshold for minimum divergence in model loss.
-        log: If log, generate gifs.
-    """
-    encoder_weights = list(model.encoder.parameters())
-    decoder_weights = list(model.decoder.parameters())
-    reward_weights = list(model.reward.parameters())
-    dynamics_weights = list(model.dynamics.parameters())
-    critic_weights = list(model.value.parameters())
-    model_weights = list(
-        encoder_weights + decoder_weights + reward_weights + dynamics_weights
-    )
-
-    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-
-    # PlaNET Model Loss
-    latent = model.encoder(obs)
-    post, prior = model.dynamics.observe(latent, action)
-    features = model.dynamics.get_feature(post)
-    image_pred = model.decoder(features)
-    reward_pred = model.reward(features)
-    image_loss = -torch.mean(image_pred.log_prob(obs))
-    reward_loss = -torch.mean(reward_pred.log_prob(reward))
-    prior_dist = model.dynamics.get_dist(prior[0], prior[1])
-    post_dist = model.dynamics.get_dist(post[0], post[1])
-    div = torch.mean(
-        torch.distributions.kl_divergence(post_dist, prior_dist).sum(dim=2)
-    )
-    div = torch.clamp(div, min=free_nats)
-    model_loss = kl_coeff * div + reward_loss + image_loss
-
-    # Actor Loss
-    # [imagine_horizon, batch_length*batch_size, feature_size]
-    with torch.no_grad():
-        actor_states = [v.detach() for v in post]
-    with FreezeParameters(model_weights):
-        imag_feat = model.imagine_ahead(actor_states, imagine_horizon)
-    with FreezeParameters(model_weights + critic_weights):
-        reward = model.reward(imag_feat).mean
-        value = model.value(imag_feat).mean
-    pcont = gamma * torch.ones_like(reward)
-    returns = lambda_return(reward[:-1], value[:-1], pcont[:-1], value[-1], lambda_)
-    discount_shape = pcont[:1].size()
-    discount = torch.cumprod(
-        torch.cat([torch.ones(*discount_shape).to(device), pcont[:-2]], dim=0), dim=0
-    )
-    actor_loss = -torch.mean(discount * returns)
-
-    # Critic Loss
-    with torch.no_grad():
-        val_feat = imag_feat.detach()[:-1]
-        target = returns.detach()
-        val_discount = discount.detach()
-    val_pred = model.value(val_feat)
-    critic_loss = -torch.mean(val_discount * val_pred.log_prob(target))
-
-    # Logging purposes
-    prior_ent = torch.mean(prior_dist.entropy())
-    post_ent = torch.mean(post_dist.entropy())
-
-    log_gif = None
-    if log:
-        log_gif = log_summary(obs, action, latent, image_pred, model)
-
-    return_dict = {
-        "model_loss": model_loss,
-        "reward_loss": reward_loss,
-        "image_loss": image_loss,
-        "divergence": div,
-        "actor_loss": actor_loss,
-        "critic_loss": critic_loss,
-        "prior_ent": prior_ent,
-        "post_ent": post_ent,
-    }
-
-    if log_gif is not None:
-        return_dict["log_gif"] = log_gif
-    return return_dict
-
-
-# Similar to GAE-Lambda, calculate value targets
-def lambda_return(reward, value, pcont, bootstrap, lambda_):
-    def agg_fn(x, y):
-        return y[0] + y[1] * lambda_ * x
-
-    next_values = torch.cat([value[1:], bootstrap[None]], dim=0)
-    inputs = reward + pcont * next_values * (1 - lambda_)
-
-    last = bootstrap
-    returns = []
-    for i in reversed(range(len(inputs))):
-        last = agg_fn(last, [inputs[i], pcont[i]])
-        returns.append(last)
-
-    returns = list(reversed(returns))
-    returns = torch.stack(returns, dim=0)
-    return returns
 
 
 # Creates gif
