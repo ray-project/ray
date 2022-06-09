@@ -169,6 +169,11 @@ class Preprocessor(abc.ABC):
         dataset_format = dataset._dataset_format()
         exc_msg = "Neither `_transform_arrow` nor `_transform_pandas` are implemented."
 
+        # If only _transform_arrow is implemented, will convert the data to arrow.
+        # If only _transform_pandas is implemented, will convert the data to pandas.
+        # If both are implemented, will pick the method corresponding to the format
+        # for best performance.
+        # Implementation is defined as overriding the method in a sub-class.
         if dataset_format == "arrow":
             if self.__class__._transform_arrow != Preprocessor._transform_arrow:
                 return dataset.map_batches(
@@ -205,8 +210,6 @@ class Preprocessor(abc.ABC):
         except ImportError:
             pyarrow = None
 
-        # TODO(matt): Add `_transform_arrow` to use based on input type.
-        # Reduce conversion cost if input is in Arrow:  Arrow -> Pandas -> Arrow.
         if isinstance(df, pd.DataFrame):
             return self._transform_pandas(df)
         elif pyarrow is not None and isinstance(df, pyarrow.Table):
