@@ -41,7 +41,7 @@ tabulate
 tensorboardX >= 1.9
 uvicorn==0.16.0
 dataclasses; python_version < '3.7'
-starlette
+starlette==0.18.0
 aiorwlock
 
 # Requirements for running tests
@@ -89,7 +89,7 @@ testfixtures
 werkzeug
 xlrd
 starlette
-fastapi
+fastapi==0.76.0
 smart_open[s3]
 tqdm
 async-exit-stack
