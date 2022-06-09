@@ -9,7 +9,7 @@ from preprocess_github_markdown import preprocess_github_markdown_file
 from sphinx.util import logging as sphinx_logging
 import logging
 import logging.handlers
-from queue import Queue
+from queue import LifoQueue
 from sphinx.util.console import red  # type: ignore
 
 # Note: the scipy import has to stay here, it's used implicitly down the line
@@ -270,7 +270,7 @@ class DownloadAndPreprocessEcosystemDocs:
         self.write_new_docs()
 
 
-class _BrokenLinksQueue(Queue):
+class _BrokenLinksQueue(LifoQueue):
     """Queue that discards messages about non-broken links."""
 
     def __init__(self, maxsize: int = 0) -> None:
