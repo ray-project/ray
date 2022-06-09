@@ -96,6 +96,7 @@ class _BackgroundProcess:
     def __init__(self, fn: Callable):
         self._fn = fn
         self._process = None
+        self._result = {}
 
     @property
     def is_running(self):
@@ -105,15 +106,35 @@ class _BackgroundProcess:
         if self.is_running:
             return False
 
-        self._process = threading.Thread(target=self._fn, args=args, kwargs=kwargs)
+        self._result = {}
+
+        def entrypoint():
+            try:
+                result = self._fn(*args, **kwargs)
+            except Exception as e:
+                self._result["exception"] = e
+                return
+
+            self._result["result"] = result
+
+        self._process = threading.Thread(target=entrypoint)
         self._process.start()
 
     def wait(self):
         if not self._process:
-            return True
+            return
 
         self._process.join()
-        return True
+        self._process = None
+
+        exception = self._result.get("exception")
+        if exception:
+            raise exception
+
+        result = self._result.get("result")
+
+        self._result = {}
+        return result
 
 
 @DeveloperAPI
@@ -216,6 +237,10 @@ class _DefaultSyncer(Syncer):
         self, local_dir: str, remote_dir: str, exclude: Optional[List] = None
     ) -> bool:
         if self._sync_process:
+            logger.warning(
+                f"Last sync still in progress, "
+                f"skipping sync up of {local_dir} to {remote_dir}"
+            )
             return False
 
         self._current_cmd = (
@@ -230,6 +255,10 @@ class _DefaultSyncer(Syncer):
         self, remote_dir: str, local_dir: str, exclude: Optional[List] = None
     ) -> bool:
         if self._sync_process:
+            logger.warning(
+                f"Last sync still in progress, "
+                f"skipping sync down of {remote_dir} to {local_dir}"
+            )
             return False
 
         self._current_cmd = (
@@ -242,6 +271,9 @@ class _DefaultSyncer(Syncer):
 
     def delete(self, remote_dir: str) -> bool:
         if self._sync_process:
+            logger.warning(
+                f"Last sync still in progress, " f"skipping deletion of {remote_dir}"
+            )
             return False
 
         self._current_cmd = (delete_at_uri, dict(uri=remote_dir))
@@ -252,6 +284,7 @@ class _DefaultSyncer(Syncer):
     def wait(self):
         if self._sync_process:
             self._sync_process.wait()
+            self._sync_process = None
 
     def retry(self):
         if not self._current_cmd:
