@@ -77,6 +77,12 @@ def _import_cql():
     return cql.CQL, cql.CQLConfig().to_dict()
 
 
+def _import_crr():
+    from ray.rllib.algorithms import crr
+
+    return crr.CRR, crr.CRRConfig
+
+
 def _import_ddpg():
     import ray.rllib.algorithms.ddpg as ddpg
 
@@ -202,6 +208,7 @@ ALGORITHMS = {
     "BanditLinUCB": _import_bandit_linucb,
     "BC": _import_bc,
     "CQL": _import_cql,
+    "CRR": _import_crr,
     "ES": _import_es,
     "DDPG": _import_ddpg,
     "DDPPO": _import_ddppo,
