@@ -319,6 +319,7 @@ def call_ray_start(request):
                 break
             time.sleep(1)
         else:
+            proc.kill()
             raise Exception("Failed to start ray cluster")
         yield address
         # Disconnect from the Ray cluster.
