@@ -53,6 +53,7 @@ def collate_array(
         if len(output_arr) != batch_size:
             raise ValueError(
                 f"The output array should have shape of ({batch_size}, ...) "
+                f"because the input has {batch_size} entries "
                 f"but Serve got {output_arr.shape}"
             )
         return [arr.squeeze(axis=0) for arr in np.split(output_arr, batch_size, axis=0)]
@@ -91,7 +92,7 @@ def collate_dict_array(
         unpack_dict[key] = unpack_func
 
     def unpack(output_dict: Dict[str, np.ndarray]):
-        # short circuit behavior, assume users know what they are doing.
+        # short circuit behavior, assume users already unpacked the output for us.
         if isinstance(output_dict, list):
             return output_dict
 
@@ -131,6 +132,7 @@ def collate_dataframe(
         if len(output_df) % batch_size != 0:
             raise ValueError(
                 f"The output dataframe should have length divisible by {batch_size}, "
+                f"because the input from {batch_size} different requests "
                 f"but Serve got length {len(output_df)}."
             )
         return [df.reset_index(drop=True) for df in np.split(output_df, batch_size)]
