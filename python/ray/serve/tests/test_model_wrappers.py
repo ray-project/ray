@@ -10,6 +10,7 @@ from ray.serve.model_wrappers import (
     ModelWrapperDeployment,
     collate_array,
     collate_dataframe,
+    collate_dict_array,
 )
 from ray.air.checkpoint import Checkpoint
 from ray.air.predictor import DataBatchType, Predictor
@@ -38,6 +39,23 @@ class TestCollationFunctions:
             unpack(np.arange(2))
         with pytest.raises(AssertionError, match="output should be np.ndarray but"):
             unpack("string")
+
+    def test_dict_array(self):
+        list_of_dicts = [
+            {"a": np.array([1, 2]), "b": np.array(3)},
+            {"a": np.array([3, 4]), "b": np.array(4)},
+        ]
+        batched_dict = {"a": np.array([[1, 2], [3, 4]]), "b": np.array([3, 4])}
+
+        batched, unpack = collate_dict_array(list_of_dicts)
+        assert batched.keys() == batched_dict.keys()
+        for key in batched.keys():
+            assert np.array_equal(batched[key], batched_dict[key])
+
+        for original, unpacked in zip(list_of_dicts, unpack(batched)):
+            assert original.keys() == unpacked.keys()
+            for key in original.keys():
+                assert np.array_equal(original[key], unpacked[key])
 
     def test_dataframe(self):
         list_of_dfs = [pd.DataFrame({"a": [i, i], "b": [i, i]}) for i in range(4)]
