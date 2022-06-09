@@ -32,13 +32,15 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
     """This buffer adds replayed samples to a stream of new experiences.
 
     - Any newly added batch (`add()`) is immediately returned upon
-    the next `sample` call (close to on-policy) as well as being moved
-    into the buffer.
+      the next `sample` call (close to on-policy) as well as being moved
+      into the buffer.
+
     - Additionally, a certain number of old samples is mixed into the
-    returned sample according to a given "replay ratio".
+      returned sample according to a given "replay ratio".
+
     - If >1 calls to `add()` are made without any `sample()` calls
-    in between, all newly added batches are returned (plus some older samples
-    according to the "replay ratio").
+      in between, all newly added batches are returned (plus some older samples
+      according to the "replay ratio").
 
     Examples:
         # replay ratio 0.66 (2/3 replayed, 1/3 new samples):
