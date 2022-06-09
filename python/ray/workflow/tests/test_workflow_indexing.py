@@ -50,6 +50,7 @@ def test_workflow_status_update(workflow_start_regular):
 
 
 def test_workflow_auto_fix_status(workflow_start_regular):
+    utils.skip_client_test()
     # Test workflow can recovery from corrupted status updating.
     store = WorkflowIndexingStorage()
     assert not store.list_workflow()
