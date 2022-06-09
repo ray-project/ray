@@ -1240,6 +1240,7 @@ class MultiAgentBatch:
             str(self.policy_batches), self.count
         )
 
+
 @PublicAPI
 def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
     """
@@ -1339,6 +1340,7 @@ def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
         _zero_padded=zero_padded,
         _max_seq_len=max_seq_len,
     )
+
 
 @PublicAPI
 def concat_samples_into_ma_batch(samples: List[SampleBatchType]) -> "MultiAgentBatch":
