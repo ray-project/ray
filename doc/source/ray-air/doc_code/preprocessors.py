@@ -47,8 +47,8 @@ print(batch_transformed)
 # __trainer_start__
 import ray
 
-from ray.air.train.integrations.xgboost import XGBoostTrainer
 from ray.data.preprocessors import MinMaxScaler
+from ray.train.xgboost import XGBoostTrainer
 
 train_dataset = ray.data.from_items([{"x": x, "y": 2 * x} for x in range(0, 32, 3)])
 valid_dataset = ray.data.from_items([{"x": x, "y": 2 * x} for x in range(1, 32, 3)])

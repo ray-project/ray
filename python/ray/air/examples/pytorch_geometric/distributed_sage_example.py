@@ -13,7 +13,7 @@ from torch_geometric.loader import NeighborSampler
 from torch_geometric.nn import SAGEConv
 
 from ray import train
-from ray.air.train.integrations.torch import TorchTrainer
+from ray.train.torch import TorchTrainer
 from torch_geometric.transforms import RandomNodeSplit
 
 

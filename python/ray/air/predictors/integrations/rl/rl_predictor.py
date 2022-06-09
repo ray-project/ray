@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 from ray.air.checkpoint import Checkpoint
 from ray.air.predictor import Predictor, DataBatchType
-from ray.air.train.integrations.rl import load_checkpoint
+from ray.train.rl import load_checkpoint
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.typing import EnvType
 
