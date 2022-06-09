@@ -246,73 +246,11 @@ check recent tests known to be flaky.
 
 .. _`CI`: https://github.com/ray-project/ray/tree/master/ci
 
-.. _api-stability:
-
-API stability
--------------
-
-Ray provides stability guarantees for its public APIs in Ray core and libraries, which are decorated/labeled accordingly.
-
-An API can be labeled:
-
-* :ref:`PublicAPI <public-api-def>`, which means the API is exposed to end users. PublicAPI has three sub-levels (alpha, beta, stable), as described below.
-* :ref:`DeveloperAPI <developer-api-def>`, which means the API is explicitly exposed to *advanced* Ray users and library developers
-* :ref:`Deprecated <deprecated-api-def>`, which may be removed in future releases of Ray.
-
-Ray's PublicAPI stability definitions are based off the `Google stability level guidelines <https://google.aip.dev/181>`_, with minor differences:
-
-Alpha
-~~~~~
-
-An *alpha* component undergoes rapid iteration with a known set of users who
-**must** be tolerant of change. The number of users **should** be a
-curated, manageable set, such that it is feasible to communicate with all
-of them individually.
-
-Breaking changes **must** be both allowed and expected in alpha components, and
-users **must** have no expectation of stability.
-
-Beta
-~~~~
-
-A *beta* component **must** be considered complete and ready to be declared
-stable, subject to public testing.
-
-Because users of beta components tend to have a lower tolerance of change, beta
-components **should** be as stable as possible; however, the beta component
-**must** be permitted to change over time. These changes **should** be minimal
-but **may** include backwards-incompatible changes to beta components.
-
-Backwards-incompatible changes **must** be made only after a reasonable
-deprecation period to provide users with an opportunity to migrate their code.
-
-Stable
-~~~~~~
-
-A *stable* component **must** be fully-supported over the lifetime of the major
-API version. Because users expect such stability from components marked stable,
-there **must** be no breaking changes to these components within a major version
-(excluding extraordinary circumstances).
-
-Docstrings
-~~~~~~~~~~
-
-.. _public-api-def:
-
-.. autofunction:: ray.util.annotations.PublicAPI
-
-.. _developer-api-def:
-
-.. autofunction:: ray.util.annotations.DeveloperAPI
-
-.. _deprecated-api-def:
-
-.. autofunction:: ray.util.annotations.Deprecated
-
-Undecorated functions can be generally assumed to not be part of the Ray public API.
 
 API compatibility style guide
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+-----------------------------
+
+Ray provides stability guarantees for its public APIs in Ray core and libraries, which are described in the :ref:`API Stability guide <api-stability>`.
 
 It's hard to fully capture the semantics of API compatibility into a single annotation (for example, public APIs may have "experimental" arguments). For more granular stability contracts, those can be noted in the pydoc (e.g., "the ``random_shuffle`` option is experimental"). When possible, experimental arguments should also be prefixed by underscores in Python (e.g., `_owner=`).
 
@@ -331,6 +269,8 @@ For callback APIs, consider adding a ``**kwargs`` placeholder as a "forward comp
 
     def tune_user_callback(model, score, **future_kwargs):
         pass
+
+
 
 Becoming a Reviewer
 -------------------

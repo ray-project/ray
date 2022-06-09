@@ -50,10 +50,6 @@ def PublicAPI(*args, **kwargs):
         else:
             obj.__doc__ += "\n    PublicAPI: This API is stable across Ray releases."
 
-        obj.__doc__ += (
-            "(`Definitions <https://docs.ray.io/en/latest/"
-            "ray-contribute/getting-involved.html#api-stability>`_)"
-        )
         _mark_annotated(obj)
         return obj
 
