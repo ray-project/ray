@@ -165,7 +165,7 @@ def test_best_model(best_trial):
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     best_trained_model.to(device)
 
-    checkpoint_path = os.path.join(best_trial.checkpoint.value, "checkpoint")
+    checkpoint_path = os.path.join(best_trial.checkpoint.dir_or_data, "checkpoint")
 
     model_state, optimizer_state = torch.load(checkpoint_path)
     best_trained_model.load_state_dict(model_state)
