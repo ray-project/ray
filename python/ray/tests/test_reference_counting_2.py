@@ -541,7 +541,7 @@ def test_object_unpin_stress(ray_start_cluster):
         lambda: (
             (f"Plasma memory usage {total_size} MiB") in memory_summary(stats_only=True)
         ),
-        timeout=30
+        timeout=30,
     )
 
 

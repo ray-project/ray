@@ -307,5 +307,6 @@ def test_worker_exit_intended_system_exit_and_user_error(ray_start_cluster):
 
 if __name__ == "__main__":
     import pytest
+
     # TODO: Make it parallel
     sys.exit(pytest.main(["-v", __file__]))
