@@ -33,14 +33,14 @@ DEFAULT_RAY_INSTANCE_PROFILE = RAY + "-v1"
 DEFAULT_RAY_IAM_ROLE = RAY + "-v1"
 SECURITY_GROUP_TEMPLATE = RAY + "-{}"
 
-DEFAULT_AMI_NAME = "AWS Deep Learning AMI (Ubuntu 18.04) V30.0"
+DEFAULT_AMI_NAME = "AWS Deep Learning AMI (Ubuntu 18.04) V61.0"
 
 # Obtained from https://aws.amazon.com/marketplace/pp/B07Y43P7X5 on 8/4/2020.
 DEFAULT_AMI = {
     "us-east-1": "ami-029510cec6d69f121",  # US East (N. Virginia)
     "us-east-2": "ami-08bf49c7b3a0c761e",  # US East (Ohio)
     "us-west-1": "ami-0cc472544ce594a19",  # US West (N. California)
-    "us-west-2": "ami-0a2363a9cff180a64",  # US West (Oregon)
+    "us-west-2": "ami-0387d929287ab193e",  # US West (Oregon)
     "ca-central-1": "ami-0a871851b2ab39f01",  # Canada (Central)
     "eu-central-1": "ami-049fb1ea198d189d7",  # EU (Frankfurt)
     "eu-west-1": "ami-0abcbc65f89fb220e",  # EU (Ireland)
