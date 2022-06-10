@@ -96,9 +96,11 @@ def synchronous_parallel_sample(
             sample_batches = [worker_set.local_worker().sample()]
         # Loop over remote workers' `sample()` method in parallel.
         else:
+            start = time.time()
             sample_batches = ray.get(
                 [worker.sample.remote() for worker in worker_set.remote_workers()]
             )
+            print(f">>>> One iteration of sample_batches from remote workers: {(time.time() - start)*1000}ms")
         # Update our counters for the stopping criterion of the while loop.
         for b in sample_batches:
             if max_agent_steps:

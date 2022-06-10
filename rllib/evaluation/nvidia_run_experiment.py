@@ -24,6 +24,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.modelv2 import restore_original_dimensions
 
 import json
+import time
 
 import numpy as np
 from gym.spaces.discrete import Discrete
@@ -36,13 +37,27 @@ class MyEnv(gym.Env):
     def __init__(self) :
         super(MyEnv, self).__init__()
         self.steps = 0
-        self.features = np.random.rand(2* 128 * 128)
-        self.observation_space = gym.spaces.Dict({"features": spaces.Box(low = -100, high = 100,shape=self.features.shape,dtype=np.float32) })
+        self.features = np.random.rand(2* 128 * 128) # 128 KB
+        self.observation_space = gym.spaces.Dict(
+            {"features": spaces.Box(
+                low = -100,
+                high = 100,
+                shape=self.features.shape,
+                dtype=np.float32)
+            })
         self.action_space = spaces.Discrete(2)
         self.max_steps = 130
+        # self.max_steps = 1
+        """
+        the env obs has 128 x 128 + 68 * 130 = 25224 floats per step,
+         each episode has 130 steps, and there are 256 episode
+         collected per iteration. So roughly 3.2GB data to process
+         at iteration.
+        """
 
     def step(self, action: gym.Space):
-        print("Steps",self.steps,action)
+        # start = time.time()
+        # print("Steps",self.steps,action)
         self.features = np.random.rand(2 * 128 * 128)
         self.steps += 1
         if self.steps < self.max_steps:
@@ -52,6 +67,7 @@ class MyEnv(gym.Env):
         reward = 0
         observation = { 'features': self.features }
         info = {}
+        # print(f">>>>> MyEnv.step() took {(time.time() - start)*1000}ms")
         return observation, reward, done, info
 
 
@@ -83,6 +99,7 @@ class CustomTorchModel(TorchModelV2, nn.Module):
         obs = input_dict["obs_flat"].float()
         new_obs = restore_original_dimensions(obs,self.obs_space,"torch")
         features = new_obs["features"]
+        # print(next(self.policy_net.parameters()).is_cuda)
         policy = self.policy_net(features)
         self._value_out = th.flatten(self.value_net(features))
         return policy, []
@@ -93,7 +110,7 @@ class CustomTorchModel(TorchModelV2, nn.Module):
 
 def train():
 
-        ray.init(dashboard_port=8080, object_store_memory=2* 1024* 1024 * 1024)
+        ray.init(dashboard_port=8080, object_store_memory=40 * 1024* 1024 * 1024)
 
         register_env("my_env", lambda config: MyEnv())
 
@@ -101,8 +118,8 @@ def train():
 
         config = ppo.DEFAULT_CONFIG.copy()
         # config["num_workers"]= 64
-        config["num_workers"]= 4
-        config["num_cpus_per_worker"] = 1
+        config["num_workers"]= 32
+        # config["num_cpus_per_worker"] = 1
         config["num_gpus_per_worker"] = 0.125
         config["num_envs_per_worker"] = 1
         config["num_gpus"] = 1
@@ -114,10 +131,12 @@ def train():
         config["framework"] = "torch"
         config["seed"] = 0
         config["lr"] = 0.0004
-        config["sgd_minibatch_size"] = 256
+        config["sgd_minibatch_size"] = 16
         config["gamma"] = 1
         config["rollout_fragment_length"] = 130
-        config["train_batch_size"] =  130 * 64 * 4
+        # config["rollout_fragment_length"] = 1
+        config["train_batch_size"] = 130 * 32 * 4
+        # config["train_batch_size"] = 4 * 4
         config["num_sgd_iter"] = 4
         config["model"] = {
             "vf_share_layers": True,
@@ -131,7 +150,7 @@ def train():
                          config=config,
                          logger_creator = custom_log_creator())
 
-        for k in range(2):
+        for k in range(1):
                 result = trainer.train()
                 print(pretty_print(result))
 

@@ -103,6 +103,7 @@ class _PerfStats:
             "mean_env_wait_ms": self.env_wait_time * factor,
             # Environment rendering (False by default).
             "mean_env_render_ms": self.env_render_time * factor,
+            "num_sampling_iters": self.iters,
         }
 
 
@@ -112,9 +113,14 @@ class SamplerInput(InputReader, metaclass=ABCMeta):
 
     @override(InputReader)
     def next(self) -> SampleBatchType:
+        start = time.time()
         batches = [self.get_data()]
+        print(f">>>>> SamplerInput: self.get_data() {(time.time() - start)*1000}ms")
+        start = time.time()
         batches.extend(self.get_extra_batches())
+        print(f">>>>> SamplerInput: self.get_extra_batches() {(time.time() - start)*1000}ms")
         if len(batches) > 1:
+            print(f">>>>> len(batches) > 1 !")
             return batches[0].concat_samples(batches)
         else:
             return batches[0]
@@ -285,10 +291,13 @@ class SyncSampler(SamplerInput):
     @override(SamplerInput)
     def get_data(self) -> SampleBatchType:
         while True:
+            start = time.time()
             item = next(self._env_runner)
+            print(f">>>>> Get item from env_runner: {(time.time() - start) * 1000} ms")
             if isinstance(item, RolloutMetrics):
                 self.metrics_queue.put(item)
             else:
+                print(f">>>>> {item.size_bytes()}, {len(item)}")
                 return item
 
     @override(SamplerInput)
@@ -652,6 +661,7 @@ def _env_runner(
 
     active_episodes: Dict[EnvID, Episode] = _NewEpisodeDefaultDict(new_episode)
 
+    # start_xxx = time.time()
     while True:
         perf_stats.iters += 1
         t0 = time.time()
@@ -686,8 +696,12 @@ def _env_runner(
         )
         perf_stats.raw_obs_processing_time += time.time() - t1
         for o in outputs:
+            # print(f">>>> time to yield one output: {(time.time() - start_xxx)*1000}ms")
+            print(f">>>> batch to yield: {o}, iter: {perf_stats.iters}")
+            # start_xxx = time.time()
             yield o
 
+        start = time.time()
         # Do batched policy eval (accross vectorized envs).
         t2 = time.time()
         # types: Dict[PolicyID, Tuple[TensorStructType, StateBatch, dict]]
@@ -698,9 +712,10 @@ def _env_runner(
             active_episodes=active_episodes,
         )
         perf_stats.inference_time += time.time() - t2
-
+        # print(f">>>> time to _do_policy_eval: {(time.time() - start)*1000}ms")
         # Process results and update episode state.
         t3 = time.time()
+        start = time.time()
         actions_to_send: Dict[
             EnvID, Dict[AgentID, EnvActionType]
         ] = _process_policy_eval_results(
@@ -714,12 +729,14 @@ def _env_runner(
             clip_actions=clip_actions,
         )
         perf_stats.action_processing_time += time.time() - t3
-
+        # print(f">>>> time to _process_policy_eval_results: {(time.time() - start)*1000}ms")
         # Return computed actions to ready envs. We also send to envs that have
         # taken off-policy actions; those envs are free to ignore the action.
         t4 = time.time()
+        start = time.time()
         base_env.send_actions(actions_to_send)
         perf_stats.env_wait_time += time.time() - t4
+        # print(f">>>> time to base_env.send_actions: {(time.time() - start)*1000}ms")
 
         # Try to render the env, if required.
         if render:

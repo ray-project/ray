@@ -9,6 +9,7 @@ See `ppo_[tf|torch]_policy.py` for the definition of the policy loss.
 Detailed documentation: https://docs.ray.io/en/master/rllib-algorithms.html#ppo
 """
 
+import time
 import logging
 from typing import List, Optional, Type, Union
 
@@ -380,6 +381,7 @@ class PPOTrainer(Trainer):
     @ExperimentalAPI
     def training_iteration(self) -> ResultDict:
         # Collect SampleBatches from sample workers until we have a full batch.
+        start = time.time()
         if self._by_agent_steps:
             train_batch = synchronous_parallel_sample(
                 worker_set=self.workers, max_agent_steps=self.config["train_batch_size"]
@@ -388,7 +390,11 @@ class PPOTrainer(Trainer):
             train_batch = synchronous_parallel_sample(
                 worker_set=self.workers, max_env_steps=self.config["train_batch_size"]
             )
+        print(f"\n\n >>>>> synchronous_parallel_sample time: {(time.time() - start) * 1000}ms\n\n")
         train_batch = train_batch.as_multi_agent()
+        start = time.time()
+        print(f"\n\n >>>>> as_multi_agent time: {(time.time() - start) * 1000}ms\n\n")
+        print(f"\n\n >>>>>batch_size: {train_batch.size_bytes() / (1 << 20)}MB \n\n")
         self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
         self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
 

@@ -1,4 +1,5 @@
 import copy
+import time
 import gym
 from gym.spaces import Discrete, MultiDiscrete, Space
 import logging
@@ -832,7 +833,10 @@ class RolloutWorker(ParallelIteratorWorker):
                 )
             )
 
+        start = time.time()
+        # print(f">>>> {self.input_reader}")
         batches = [self.input_reader.next()]
+        print(f">>>> input_reader.next(): {(time.time() - start)*1000}ms")
         steps_so_far = (
             batches[0].count
             if self.count_steps_by == "env_steps"
@@ -849,7 +853,9 @@ class RolloutWorker(ParallelIteratorWorker):
         while (
             steps_so_far < self.rollout_fragment_length and len(batches) < max_batches
         ):
+            start = time.time()
             batch = self.input_reader.next()
+            print(f">>>> input_reader.next(): {(time.time() - start)*1000}ms")
             steps_so_far += (
                 batch.count
                 if self.count_steps_by == "env_steps"
