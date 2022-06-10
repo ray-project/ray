@@ -131,44 +131,69 @@ def test_put_get(ray_start_stop):
         print("Deployments are live and reachable over HTTP.\n")
 
 
-def test_delete_success(ray_start_stop):
-    ray_actor_options = {
+def test_delete(ray_start_stop):
+    config = {
+        "import_path": "dir.subdir.a.add_and_sub.serve_dag",
         "runtime_env": {
             "working_dir": (
-                "https://github.com/shrekris-anyscale/"
-                "test_deploy_group/archive/HEAD.zip"
+                "https://github.com/ray-project/test_dag/archive/"
+                "41b26242e5a10a8c167fcb952fb11d7f0b33d614.zip"
             )
-        }
+        },
+        "deployments": [
+            {
+                "name": "Subtract",
+                "ray_actor_options": {
+                    "runtime_env": {
+                        "py_modules": [
+                            (
+                                "https://github.com/ray-project/test_module/archive/"
+                                "aa6f366f7daa78c98408c27d917a983caa9f888b.zip"
+                            )
+                        ]
+                    }
+                },
+            }
+        ],
     }
 
-    shallow = dict(
-        name="shallow",
-        num_replicas=3,
-        route_prefix="/shallow",
-        ray_actor_options=ray_actor_options,
-        import_path="test_env.shallow_import.ShallowClass",
-    )
-
     # Ensure the REST API is idempotent
-    for _ in range(2):
-        put_response = requests.put(
-            GET_OR_PUT_URL, json={"deployments": [shallow]}, timeout=30
-        )
-        assert put_response.status_code == 200
-        assert (
-            requests.get("http://localhost:8000/shallow", timeout=30).text
-            == "Hello shallow world!"
-        )
+    num_iterations = 2
+    for iteration in range(1, num_iterations + 1):
+        print(f"*** Starting Iteration {iteration}/{num_iterations} ***\n")
 
-        delete_response = requests.delete(GET_OR_PUT_URL, timeout=30)
+        print("Sending PUT request for config.")
+        deploy_and_check_config(config)
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/", json=["ADD", 1]).json()
+            == 2,
+            timeout=15,
+        )
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/", json=["SUB", 1]).json()
+            == -1,
+            timeout=15,
+        )
+        print("Deployments are live and reachable over HTTP.\n")
+
+        print("Sending DELETE request for config.")
+        delete_response = requests.delete(GET_OR_PUT_URL, timeout=15)
         assert delete_response.status_code == 200
+        print("DELETE request sent successfully.")
 
         # Make sure all deployments are deleted
         wait_for_condition(
-            lambda: len(requests.get(GET_OR_PUT_URL, timeout=3).json()["deployments"])
+            lambda: len(requests.get(GET_OR_PUT_URL, timeout=15).json()["deployments"])
             == 0,
-            timeout=10,
+            timeout=15,
         )
+        print("GET request returned empty config successfully.")
+
+        with pytest.raises(requests.exceptions.HTTPError):
+            requests.post("http://localhost:8000/", json=["ADD", 1]).raise_for_status()
+        with pytest.raises(requests.exceptions.HTTPError):
+            requests.post("http://localhost:8000/", json=["SUB", 1]).raise_for_status()
+        print("Deployments have been deleted and are not reachable.\n")
 
 
 def test_get_status_info(ray_start_stop):
