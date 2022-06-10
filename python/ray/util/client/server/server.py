@@ -9,6 +9,7 @@ import math
 import queue
 import pickle
 import signal
+import sys
 
 import threading
 from typing import Any, List
@@ -860,7 +861,7 @@ def main():
             f"Caught signal: {signal.Signals(signum).name}. Exiting gracefully."
         )
         server.stop(0)
-        keep_running = False
+        sys.exit(0)
 
     signal.signal(signal.SIGINT, graceful_exit)
     signal.signal(signal.SIGTERM, graceful_exit)

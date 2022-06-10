@@ -89,7 +89,7 @@ class LogFileInfo:
 class LogMonitor:
     """A monitor process for monitoring Ray log files.
 
-    This class mantains a list of open files and a list of closed log files. We
+    This class maintains a list of open files and a list of closed log files. We
     can't simply leave all files open because we'll run out of file
     descriptors.
 
@@ -134,7 +134,7 @@ class LogMonitor:
         self.can_open_more_files: bool = True
         self.max_files_open: int = max_files_open
         self.is_proc_alive_fn: Callable[[int], bool] = is_proc_alive_fn
-        self._keep_running :bool = True
+        self._keep_running: bool = True
 
     def _close_all_files(self):
         """Close all open files (so that we can open more)."""
