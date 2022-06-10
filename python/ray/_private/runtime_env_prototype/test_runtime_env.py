@@ -68,7 +68,7 @@ def test_runtime_env():
         # Setup runtime env in runtime env agent by the plugins.
         uris = RuntimeEnvPluginManager.plugins[name].validate(plugin_config)
         all_uris.append(uris)
-        size, workerly, jobly = RuntimeEnvPluginManager.plugins[name].create(
+        size = RuntimeEnvPluginManager.plugins[name].create(
             uris, plugin_config, None, None, None, Language.PYTHON
         )
     assert len(all_uris) == 2
