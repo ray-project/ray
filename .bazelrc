@@ -102,7 +102,7 @@ build:tsan-clang --config=tsan
 build:tsan-clang --config=llvm
 test:tsan --test_env=TSAN_OPTIONS="report_atomic_races=0"
 
-# Memory sanitizer configuration
+# Address sanitizer configuration
 build:asan --strip=never
 build:asan --copt -g
 build:asan --copt -fsanitize=address

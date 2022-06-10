@@ -1667,6 +1667,8 @@ def start_raylet(
         ["{},{}".format(*kv) for kv in static_resources.items()]
     )
 
+    env_updates["ASAN_OPTIONS"] = "detect_leaks=1"
+
     has_java_command = False
     if shutil.which("java") is not None:
         has_java_command = True
