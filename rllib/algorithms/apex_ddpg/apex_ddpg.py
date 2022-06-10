@@ -182,9 +182,9 @@ class ApexDDPG(DDPG, ApexDQN):
         return ApexDQN.setup(self, config)
 
     @override(DDPG)
-    def training_iteration(self) -> ResultDict:
+    def training_step(self) -> ResultDict:
         """Use APEX-DQN's training iteration function."""
-        return ApexDQN.training_iteration(self)
+        return ApexDQN.training_step(self)
 
     @override(Trainer)
     def on_worker_failures(
