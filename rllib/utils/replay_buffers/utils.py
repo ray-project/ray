@@ -20,13 +20,13 @@ from ray.util import log_once
 logger = logging.getLogger(__name__)
 
 
-@DeveloperAPI
 def update_priorities_in_replay_buffer(
     replay_buffer: ReplayBuffer,
     config: TrainerConfigDict,
     train_batch: SampleBatchType,
     train_results: ResultDict,
 ) -> None:
+
     """Updates the priorities in a prioritized replay buffer, given training results.
 
     The `abs(TD-error)` from the loss (inside `train_results`) is used as new
@@ -97,7 +97,6 @@ def update_priorities_in_replay_buffer(
         replay_buffer.update_priorities(prio_dict)
 
 
-@DeveloperAPI
 def sample_min_n_steps_from_buffer(
     replay_buffer: ReplayBuffer, min_steps: int, count_by_agent_steps: bool
 ) -> Optional[SampleBatchType]:
@@ -133,19 +132,7 @@ def sample_min_n_steps_from_buffer(
 
 
 @DeveloperAPI
-def validate_buffer_config(config: dict) -> None:
-    """Checks and fixes values in the replay buffer config.
-
-    Checks the replay buffer config for common misconfigurations, warns or raises
-    error in case validation fails. The type "key" is changed into the inferred
-    replay buffer class.
-
-    Args:
-        config: The replay buffer config to be validated.
-
-    Raises:
-        ValueError: When detecting severe misconfiguration.
-    """
+def validate_buffer_config(config: dict):
     if config.get("replay_buffer_config", None) is None:
         config["replay_buffer_config"] = {}
 
@@ -229,7 +216,7 @@ def validate_buffer_config(config: dict) -> None:
             if config.get("replay_buffer_config") is not None:
                 config["replay_buffer_config"][k] = config[k]
 
-    replay_mode = config.get("multiagent", {}).get("replay_mode", DEPRECATED_VALUE)
+    replay_mode = config["multiagent"].get("replay_mode", DEPRECATED_VALUE)
     if replay_mode != DEPRECATED_VALUE:
         deprecation_warning(
             old="config['multiagent']['replay_mode']",
@@ -292,7 +279,6 @@ def validate_buffer_config(config: dict) -> None:
             )
 
 
-@DeveloperAPI
 def warn_replay_buffer_capacity(*, item: SampleBatchType, capacity: int) -> None:
     """Warn if the configured replay buffer capacity is too large for machine's memory.
 
@@ -353,7 +339,7 @@ def patch_buffer_with_fake_sampling_method(
         Args:
             _: dummy arg to match signature of sample() method
             __: dummy arg to match signature of sample() method
-            ``**kwargs``: dummy args to match signature of sample() method
+            **kwargs: dummy args to match signature of sample() method
 
         Returns:
             Predefined MultiAgentBatch fake_sample_output

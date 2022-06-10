@@ -3005,14 +3005,6 @@ py_test(
 # )
 
 py_test(
-    name = "examples/replay_buffer_api",
-    tags = ["team:ml", "gpu"],
-    size = "large",
-    srcs = ["examples/replay_buffer_api.py"],
-    args = ["--as-test", "--stop-reward=70"]
-)
-
-py_test(
     name = "examples/restore_1_of_n_agents_from_checkpoint",
     tags = ["team:rllib", "exclusive", "examples", "examples_R"],
     size = "medium",
@@ -3201,14 +3193,6 @@ py_test(
 #
 # NOTE: Add tests alphabetically to this list.
 # --------------------------------------------------------------------
-
-py_test(
-    name = "examples/documentation/replay_buffer_demo",
-    main = "examples/documentation/replay_buffer_demo.py",
-    tags = ["team:ml", "documentation", "no_main"],
-    size = "medium",
-    srcs = ["examples/documentation/replay_buffer_demo.py"],
-)
 
 py_test(
     name = "examples/documentation/custom_gym_env",
