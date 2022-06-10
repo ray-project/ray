@@ -26,7 +26,11 @@ from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.deprecation import (
+    Deprecated,
+    DEPRECATED_VALUE,
+    deprecation_warning,
+)
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
 from ray.rllib.utils.typing import AlgorithmConfigDict, ResultDict
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
@@ -102,6 +106,9 @@ class PPOConfig(AlgorithmConfig):
         # __sphinx_doc_end__
         # fmt: on
 
+        # Deprecated keys.
+        self.vf_share_layers = DEPRECATED_VALUE
+
     @override(AlgorithmConfig)
     def training(
         self,
@@ -121,6 +128,8 @@ class PPOConfig(AlgorithmConfig):
         vf_clip_param: Optional[float] = None,
         grad_clip: Optional[float] = None,
         kl_target: Optional[float] = None,
+        # Deprecated.
+        vf_share_layers=None,
         **kwargs,
     ) -> "PPOConfig":
         """Sets the training related configuration.
@@ -189,6 +198,14 @@ class PPOConfig(AlgorithmConfig):
             self.grad_clip = grad_clip
         if kl_target is not None:
             self.kl_target = kl_target
+
+        if vf_share_layers is not None:
+            self.model["vf_share_layers"] = vf_share_layers
+            deprecation_warning(
+                old="ppo.DEFAULT_CONFIG['vf_share_layers']",
+                new="PPOConfig().training(model={'vf_share_layers': ...})",
+                error=False,
+            )
 
         return self
 

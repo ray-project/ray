@@ -1,4 +1,4 @@
-from ray.rllib.algorithms.algorithm import (
+from ray.rllib.algorithms.algorithm import (  # noqa
     Algorithm,
     COMMON_CONFIG,
     with_common_config,
@@ -9,5 +9,3 @@ deprecation_warning(old="rllib.agents::Trainer", new="rllib.algorithms::Algorith
 
 # Alias.
 Trainer = Algorithm
-COMMON_CONFIG = COMMON_CONFIG  # noqa
-with_common_config = with_common_config  # noqa
