@@ -22,7 +22,7 @@ When the controller dies, the client is still able to send requests, but autosca
 :::
 
 ## Autoscaling parameters
-**min_replicas**: The minimal number of replicas for the deployment, the min_replicas will be initial number replicas when the deployment is deployed.
+**min_replicas**: The minimal number of replicas for the deployment, the min_replicas will also be the initial number replicas when the deployment is deployed.
 :::{note}
 Ray Serve Autoscaling allows the `min_replicas` to be 0 to start your deployment, the scale up will be started when you start sending traffic. There will be cold start time during the period, ray serve handle will wait (block) for available replicas to assign the request.
 :::
