@@ -1,4 +1,4 @@
-from ray.serve.pipeline.tests.resources.test_modules import (
+from ray.serve.tests.resources.test_modules import (
     Model,
     Combine,
     combine,
