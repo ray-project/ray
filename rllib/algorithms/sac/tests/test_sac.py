@@ -101,12 +101,7 @@ class TestSAC(unittest.TestCase):
                         {
                             "a": simple_space,
                             "b": Discrete(2),
-                            "c": Dict(
-                                {
-                                    "c1": image_space,
-                                    "c2": image_space,
-                                }
-                            ),
+                            "c": image_space,
                         }
                     ),
                     "action_space": Box(-1.0, 1.0, shape=(1,)),
