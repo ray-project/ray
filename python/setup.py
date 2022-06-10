@@ -759,6 +759,9 @@ setuptools.setup(
     package_data={
         "ray": ["includes/*.pxd", "*.pxd"],
     },
+    exclude_package_data={
+        "ray": ["BUILD"],
+    },
     include_package_data=True,
     zip_safe=False,
     license="Apache 2.0",
