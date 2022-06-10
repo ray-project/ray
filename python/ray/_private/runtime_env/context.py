@@ -46,7 +46,9 @@ class RuntimeEnvContext:
     def exec_worker(self, passthrough_args: List[str], language: Language):
         os.environ.update(self.env_vars)
 
-        if language == Language.PYTHON:
+        if language == Language.PYTHON and sys.platform == "win32":
+            executable = self.py_executable
+        elif language == Language.PYTHON:
             executable = f"exec {self.py_executable}"
         elif language == Language.JAVA:
             executable = "java"
@@ -68,7 +70,7 @@ class RuntimeEnvContext:
         command_str = " && ".join(self.command_prefix + [exec_command])
         logger.debug(f"Exec'ing worker with command: {command_str}")
         if sys.platform == "win32":
-            subprocess.check_call([executable, *passthrough_args])
+            subprocess.run([executable, *passthrough_args])
         else:
             # PyCharm will monkey patch the os.execvp at
             # .pycharm_helpers/pydev/_pydev_bundle/pydev_monkey.py
