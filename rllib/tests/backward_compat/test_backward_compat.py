@@ -10,9 +10,10 @@ class TestBackwardCompatibility(unittest.TestCase):
         """
         # Try importing old Trainer class (this is just an Alias now to the `Algorithm`
         # class).
-        from ray.rllib.agents.trainer import Trainer
+        from ray.rllib.agents.trainer import Trainer  # noqa
+
         # Old registry code.
-        from ray.rllib.tests.backward_compat.registry import (
+        from ray.rllib.tests.backward_compat.old_registry import (
             ALGORITHMS,
             _get_trainer_class,
         )

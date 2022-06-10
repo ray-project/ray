@@ -1,4 +1,6 @@
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.algorithm_config import (  # noqa
+    AlgorithmConfig as TrainerConfig,
+)
 from ray.rllib.utils.deprecation import deprecation_warning
 
 deprecation_warning(
@@ -6,6 +8,3 @@ deprecation_warning(
     new="ray.rllib.algorithms.algorithm_config::AlgorithmConfig",
     error=False,
 )
-
-# Alias.
-TrainerConfig = AlgorithmConfig
