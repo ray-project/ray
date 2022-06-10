@@ -1797,6 +1797,13 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
+    name = "tests/backward_compat/test_backward_compat",
+    tags = ["team:rllib", "tests_dir", "tests_dir_B"],
+    size = "small",
+    srcs = ["tests/backward_compat/test_backward_compat.py"]
+)
+
+py_test(
     name = "tests/test_algorithm_imports",
     tags = ["team:rllib", "tests_dir", "tests_dir_C"],
     size = "small",
