@@ -2,7 +2,7 @@ try:
     import alpa  # noqa: F401
 except ModuleNotFoundError:
     raise ModuleNotFoundError(
-        "Alpa isn't installed. To install Alpa, Refer to the document:" 
+        "Alpa isn't installed. To install Alpa, Refer to the document:"
         "https://alpa-projects.github.io/install.html#install-from-source"
     )
 

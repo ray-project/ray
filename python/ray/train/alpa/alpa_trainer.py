@@ -67,7 +67,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-
 @PublicAPI(stability="beta")
 class AlpaTrainer(BaseTrainer):
     """Alpa: Automating Parallelism trainer.
@@ -77,7 +76,7 @@ class AlpaTrainer(BaseTrainer):
             Parallelism for Distributed Deep Learning
         https://arxiv.org/pdf/2201.12023.pdf
     """
-    
+
     def __init__(
         self,
         train_loop: Union[Callable[[], None], Callable[[Dict], None]],
@@ -92,20 +91,20 @@ class AlpaTrainer(BaseTrainer):
 
         if not ray.is_initialized():
             ray.init()
-        
-    # connect to the ray cluster
-        if not alpa.is_initialized:
-            alpa.init('ray')
-            
-        
-        cluster = alpa.get_global_cluster()
-        logger.info(f"Distributed Training with Alpa using"
-                    "{cluster.num_cpus} cpus and {cluster.num_devices} gpus.")
 
+        # connect to the ray cluster
+        if not alpa.is_initialized:
+            alpa.init("ray")
+
+        cluster = alpa.get_global_cluster()
+        logger.info(
+            f"Distributed Training with Alpa using"
+            "{cluster.num_cpus} cpus and {cluster.num_devices} gpus."
+        )
 
         self._train_loop = train_loop
         self._train_loop_config = train_loop_config
-        
+
         super(AlpaTrainer, self).__init__(
             scaling_config=scaling_config,
             run_config=run_config,
@@ -114,15 +113,14 @@ class AlpaTrainer(BaseTrainer):
             resume_from_checkpoint=resume_from_checkpoint,
         )
 
-
     def _validate_attributes(self):
         pass
 
     def _get_alpa_config(self, process_datasets: bool = False) -> Dict:
         pass
-    
+
     def training_loop(self) -> None:
         self._train_loop(self._train_loop_config)
-        
+
     def as_trainable(self) -> Type[Trainable]:
         pass
