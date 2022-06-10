@@ -1,0 +1,16 @@
+import_path: conditional_dag.serve_dag
+
+runtime_env:
+  working_dir: https://github.com/ray-project/test_dag/archive/76a741f6de31df78411b1f302071cde46f098418.zip
+
+deployments:
+
+  - name: Multiplier
+    user_config:
+      factor: 1
+
+  - name: Adder
+    ray_actor_options:
+      runtime_env:
+        env_vars:
+          override_increment: '1'
