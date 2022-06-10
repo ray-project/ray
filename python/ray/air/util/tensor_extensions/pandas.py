@@ -342,8 +342,8 @@ class TensorArrayElement(TensorOpsMixin):
         """
         return np.asarray(self._tensor)
 
-    def __array__(self, dtype: np.dtype = None):
-        return np.asarray(self._tensor, dtype=dtype)
+    def __array__(self, dtype: np.dtype = None, **kwargs) -> np.ndarray:
+        return np.asarray(self._tensor, dtype=dtype, **kwargs)
 
 
 @PublicAPI(stability="beta")
@@ -891,8 +891,8 @@ class TensorArray(pd.api.extensions.ExtensionArray, TensorOpsMixin):
         except KeyError:
             raise NotImplementedError(f"'{name}' aggregate not implemented.") from None
 
-    def __array__(self, dtype: np.dtype = None):
-        return np.asarray(self._tensor, dtype=dtype)
+    def __array__(self, dtype: np.dtype = None, **kwargs) -> np.ndarray:
+        return np.asarray(self._tensor, dtype=dtype, **kwargs)
 
     def __array_ufunc__(self, ufunc: Callable, method: str, *inputs, **kwargs):
         """
