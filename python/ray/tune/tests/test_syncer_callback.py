@@ -1,5 +1,3 @@
-import io
-import tarfile
 from typing import Optional
 
 import logging

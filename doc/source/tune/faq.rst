@@ -662,19 +662,11 @@ Second, you can set up a shared file system like NFS. If you do this, disable au
     :start-after: __sync_config_start__
     :end-before: __sync_config_end__
 
-Lastly, if you still want to use SSH for trial synchronization, but are not running
-on the Ray cluster launcher, you might need to pass a
-``KubernetesSyncer`` to the ``syncer`` argument of ``tune.SyncConfig``.
-You have to specify your Kubernetes namespace explicitly:
-
-.. literalinclude:: doc_code/faq.py
-    :dedent:
-    :language: python
-    :start-after: __k8s_start__
-    :end-before: __k8s_end__
+Otherwise, trial data is synchronized via the Ray object store. Note that this can be a bottleneck for very large
+checkpoints if object store memory is limited.
 
 Please note that we strongly encourage you to use one of the other two options instead, as they will
-result in less overhead and don't require pods to SSH into each other.
+result in less overhead and provide naturally durable checkpoint storage.
 
 .. _tune-default-search-space:
 

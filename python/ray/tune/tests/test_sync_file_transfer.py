@@ -9,12 +9,8 @@ import pytest
 import shutil
 import tempfile
 
-from freezegun import freeze_time
 from ray.exceptions import RayTaskError
 
-from ray.tune import TuneError
-from ray.tune.result import NODE_IP
-from ray.tune.syncer import SyncerCallback, DEFAULT_SYNC_PERIOD, _BackgroundProcess
 from ray.tune.utils.file_transfer import (
     _sync_dir_between_different_nodes,
     delete_on_node,

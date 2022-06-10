@@ -114,7 +114,8 @@ class Trainable:
             remote_checkpoint_dir: Upload directory (S3 or GS path).
                 This is **per trial** directory,
                 which is different from **per checkpoint** directory.
-            custom_syncer: Todo docstring
+            custom_syncer: Syncer used for synchronizing data from Ray nodes
+                to external storage.
         """
 
         self._experiment_id = uuid.uuid4().hex

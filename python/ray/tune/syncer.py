@@ -295,8 +295,12 @@ class _DefaultSyncer(Syncer):
 
 
 @DeveloperAPI
-def get_node_to_storage_syncer(sync_config: SyncConfig):
-    return _DefaultSyncer(sync_period=sync_config.sync_period)
+def get_node_to_storage_syncer(sync_config: SyncConfig) -> Optional[Syncer]:
+    if sync_config.syncer == None:
+        return None
+
+    if sync_config.syncer == "auto":
+        return _DefaultSyncer(sync_period=sync_config.sync_period)
 
 
 @DeveloperAPI

@@ -264,13 +264,6 @@ if not MOCK:
     )
     # __sync_config_end__
 
-    # __k8s_start__
-    from ray.tune.integration.kubernetes import NamespacedKubernetesSyncer
-
-    sync_config = tune.SyncConfig(syncer=NamespacedKubernetesSyncer("ray"))
-
-    tune.run(train, sync_config=sync_config)
-# __k8s_end__
 
 import ray
 
