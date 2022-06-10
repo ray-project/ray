@@ -12,6 +12,7 @@ from ray.tune.logger import (
     JsonLoggerCallback,
     JsonLogger,
     LegacyLoggerCallback,
+    LoggerCallback,
     TBXLoggerCallback,
     TBXLogger,
 )
@@ -69,7 +70,6 @@ def create_default_callbacks(
     # Check if we have a CSV, JSON and TensorboardX logger
     for i, callback in enumerate(callbacks):
         if isinstance(callback, LegacyLoggerCallback):
-            last_logger_index = i
             if CSVLogger in callback.logger_classes:
                 has_csv_logger = True
             if JsonLogger in callback.logger_classes:
@@ -78,16 +78,16 @@ def create_default_callbacks(
                 has_tbx_logger = True
         elif isinstance(callback, CSVLoggerCallback):
             has_csv_logger = True
-            last_logger_index = i
         elif isinstance(callback, JsonLoggerCallback):
             has_json_logger = True
-            last_logger_index = i
         elif isinstance(callback, TBXLoggerCallback):
             has_tbx_logger = True
-            last_logger_index = i
         elif isinstance(callback, SyncerCallback):
             syncer_index = i
             has_syncer_callback = True
+
+        if isinstance(callback, LoggerCallback):
+            last_logger_index = i
 
     # If CSV, JSON or TensorboardX loggers are missing, add
     if os.environ.get("TUNE_DISABLE_AUTO_CALLBACK_LOGGERS", "0") != "1":
@@ -125,18 +125,9 @@ def create_default_callbacks(
         and last_logger_index is not None
         and syncer_index < last_logger_index
     ):
-        if has_csv_logger or has_json_logger or has_tbx_logger:
-            raise ValueError(
-                "The `SyncerCallback` you passed to `tune.run()` came before "
-                "at least one `LoggerCallback`. Syncing should be done "
-                "after writing logs. Please re-order the callbacks so that "
-                "the `SyncerCallback` comes after any `LoggerCallback`."
-            )
-        else:
-            # If these loggers were automatically created. just re-order
-            # the callbacks
-            syncer_obj = callbacks[syncer_index]
-            callbacks.pop(syncer_index)
-            callbacks.insert(last_logger_index, syncer_obj)
+        # Re-order callbacks
+        syncer_obj = callbacks[syncer_index]
+        callbacks.pop(syncer_index)
+        callbacks.insert(last_logger_index, syncer_obj)
 
     return callbacks

@@ -152,6 +152,9 @@ def test_delete_on_node(ray_start_2_cpus, temp_data_dirs):
     assert_file(False, tmp_source, "level0.txt")
     assert_file(False, tmp_source, "subdir/level1.txt")
 
+    # Re-create dir for teardown
+    os.makedirs(tmp_source, exist_ok=True)
+
 
 @pytest.mark.parametrize("num_workers", [1, 8])
 def test_multi_sync_same_node(ray_start_2_cpus, temp_data_dirs, num_workers):
