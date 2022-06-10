@@ -144,11 +144,16 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
         if isinstance(batch, np.ndarray):
             batch = {VALUE_COL_NAME: batch}
-        else:
-            assert isinstance(batch, dict)
-            assert all(isinstance(col, np.ndarray) for col in batch.values())
+        elif not isinstance(batch, dict) or any(
+            not isinstance(col, np.ndarray) for col in batch.values()
+        ):
+            raise ValueError(
+                "Batch must be an ndarray or dictionary of ndarrays when converting "
+                f"a numpy batch to a block, got: {type(batch)}"
+            )
         new_batch = {}
         for col_name, col in batch.items():
+            # Use Arrow's native *List types for 1-dimensional ndarrays.
             if col.ndim > 1:
                 try:
                     col = ArrowTensorArray.from_numpy(col)
