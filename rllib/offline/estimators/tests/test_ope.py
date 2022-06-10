@@ -77,10 +77,9 @@ class TestOPE(unittest.TestCase):
         trainer = config.build()
 
         for _ in range(train_iters - 1):
-            trainer.train()
-        breakpoint()
-        print("Trained for ")
-        
+            results = trainer.train()
+        print("Trained for ", results["timesteps_total"], "timesteps")
+
         # Final .train() will run trainer.evaluate() as well
         results = trainer.train()
 
