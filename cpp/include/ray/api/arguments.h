@@ -43,35 +43,28 @@ class Arguments {
         PushReferenceArg(task_args, std::forward<InputArgTypes>(arg));
       }
     } else {
-      if (lang_type == LangType::PYTHON) {
-        msgpack::sbuffer dummy_buf(METADATA_STR_DUMMY.size());
-        dummy_buf.write(METADATA_STR_DUMMY.data(), METADATA_STR_DUMMY.size());
-
-        auto data_buf = Serializer::Serialize(std::forward<InputArgTypes>(arg));
-        auto len_buf = Serializer::Serialize(data_buf.size());
-
-        msgpack::sbuffer buffer(XLANG_HEADER_LEN + data_buf.size());
-        buffer.write(len_buf.data(), len_buf.size());
-        for (size_t i = 0; i < XLANG_HEADER_LEN - len_buf.size(); ++i) {
-          buffer.write("", 1);
-        }
-        buffer.write(data_buf.data(), data_buf.size());
-
-        PushValueArg(task_args, std::move(dummy_buf), METADATA_STR_RAW);
-        PushValueArg(task_args, std::move(buffer), METADATA_STR_XLANG);
-      } else if (lang_type == LangType::JAVA) {
-        auto data_buf = Serializer::Serialize(std::forward<InputArgTypes>(arg));
-        auto len_buf = Serializer::Serialize(data_buf.size());
-        msgpack::sbuffer buffer(XLANG_HEADER_LEN + data_buf.size());
-        buffer.write(len_buf.data(), len_buf.size());
-        for (size_t i = 0; i < XLANG_HEADER_LEN - len_buf.size(); ++i) {
-          buffer.write("", 1);
-        }
-        buffer.write(data_buf.data(), data_buf.size());
-        PushValueArg(task_args, std::move(buffer), METADATA_STR_XLANG);
-      } else {
+      if (lang_type == LangType::CPP) {
         msgpack::sbuffer buffer = Serializer::Serialize(std::forward<InputArgTypes>(arg));
         PushValueArg(task_args, std::move(buffer));
+      } else {
+        // Fill dummy field for handling kwargs.
+        if (lang_type == LangType::PYTHON) {
+          msgpack::sbuffer dummy_buf(METADATA_STR_DUMMY.size());
+          dummy_buf.write(METADATA_STR_DUMMY.data(), METADATA_STR_DUMMY.size());
+          PushValueArg(task_args, std::move(dummy_buf), METADATA_STR_RAW);
+        }
+        // Below applies to both PYTHON and JAVA.
+        auto data_buf = Serializer::Serialize(std::forward<InputArgTypes>(arg));
+        auto len_buf = Serializer::Serialize(data_buf.size());
+
+        msgpack::sbuffer buffer(XLANG_HEADER_LEN + data_buf.size());
+        buffer.write(len_buf.data(), len_buf.size());
+        for (size_t i = 0; i < XLANG_HEADER_LEN - len_buf.size(); ++i) {
+          buffer.write("", 1);
+        }
+        buffer.write(data_buf.data(), data_buf.size());
+
+        PushValueArg(task_args, std::move(buffer), METADATA_STR_XLANG);
       }
     }
   }
