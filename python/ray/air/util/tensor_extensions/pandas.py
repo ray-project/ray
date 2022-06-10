@@ -316,7 +316,31 @@ class TensorOpsMixin(pd.api.extensions.ExtensionScalarOpsMixin):
         return cls._create_method(op)
 
 
-class TensorArrayElement(TensorOpsMixin):
+class TensorScalarCastMixin:
+    """
+    Mixin for casting scalar tensors to a particular numeric type.
+    """
+
+    def _scalarfunc(self, func: Callable[[Any], Any]):
+        return func(self._tensor)
+
+    def __complex__(self):
+        return self._scalarfunc(complex)
+
+    def __float__(self):
+        return self._scalarfunc(float)
+
+    def __int__(self):
+        return self._scalarfunc(int)
+
+    def __hex__(self):
+        return self._scalarfunc(hex)
+
+    def __oct__(self):
+        return self._scalarfunc(oct)
+
+
+class TensorArrayElement(TensorOpsMixin, TensorScalarCastMixin):
     """
     Single element of a TensorArray, wrapping an underlying ndarray.
     """
@@ -336,6 +360,38 @@ class TensorArrayElement(TensorOpsMixin):
     def __str__(self):
         return self._tensor.__str__()
 
+    @property
+    def numpy_dtype(self):
+        """
+        Get the dtype of the tensor.
+        :return: The numpy dtype of the backing ndarray
+        """
+        return self._tensor.dtype
+
+    @property
+    def numpy_ndim(self):
+        """
+        Get the number of tensor dimensions.
+        :return: integer for the number of dimensions
+        """
+        return self._tensor.ndim
+
+    @property
+    def numpy_shape(self):
+        """
+        Get the shape of the tensor.
+        :return: A tuple of integers for the numpy shape of the backing ndarray
+        """
+        return self._tensor.shape
+
+    @property
+    def numpy_size(self):
+        """
+        Get the size of the tensor.
+        :return: integer for the number of elements in the tensor
+        """
+        return self._tensor.size
+
     def to_numpy(self):
         """
         Return the values of this element as a NumPy ndarray.
@@ -347,7 +403,11 @@ class TensorArrayElement(TensorOpsMixin):
 
 
 @PublicAPI(stability="beta")
-class TensorArray(pd.api.extensions.ExtensionArray, TensorOpsMixin):
+class TensorArray(
+    pd.api.extensions.ExtensionArray,
+    TensorOpsMixin,
+    TensorScalarCastMixin,
+):
     """
     Pandas `ExtensionArray` representing a tensor column, i.e. a column
     consisting of ndarrays as elements. All tensors in a column must have the
@@ -988,6 +1048,14 @@ class TensorArray(pd.api.extensions.ExtensionArray, TensorOpsMixin):
         :return: A tuple of integers for the numpy shape of the backing ndarray
         """
         return self._tensor.shape
+
+    @property
+    def numpy_size(self):
+        """
+        Get the size of the tensor.
+        :return: integer for the number of elements in the tensor
+        """
+        return self._tensor.size
 
     @property
     def _is_boolean(self):
