@@ -62,6 +62,7 @@ def assert_file(exists: bool, root: str, path: str):
 
 
 def test_sync_nodes(ray_start_2_cpus, temp_data_dirs):
+    """Check that syncing between nodes works (data is found in target directory)"""
     tmp_source, tmp_target = temp_data_dirs
 
     assert_file(True, tmp_source, "level0.txt")
@@ -138,6 +139,7 @@ def test_sync_nodes_only_diff(ray_start_2_cpus, temp_data_dirs):
 
 
 def test_delete_on_node(ray_start_2_cpus, temp_data_dirs):
+    """Check that delete on node works."""
     tmp_source, tmp_target = temp_data_dirs
 
     assert_file(True, tmp_source, "level0.txt")
@@ -158,6 +160,7 @@ def test_delete_on_node(ray_start_2_cpus, temp_data_dirs):
 
 @pytest.mark.parametrize("num_workers", [1, 8])
 def test_multi_sync_same_node(ray_start_2_cpus, temp_data_dirs, num_workers):
+    """Check that multiple competing syncs to the same node+dir don't interfere"""
     tmp_source, tmp_target = temp_data_dirs
 
     assert_file(True, tmp_source, "level0.txt")
@@ -181,6 +184,7 @@ def test_multi_sync_same_node(ray_start_2_cpus, temp_data_dirs, num_workers):
 
 @pytest.mark.parametrize("num_workers", [1, 8])
 def test_multi_sync_different_node(ray_start_2_cpus, temp_data_dirs, num_workers):
+    """Check that multiple competing syncs to the same dir don't interfere"""
     tmp_source, tmp_target = temp_data_dirs
 
     assert_file(True, tmp_source, "level0.txt")

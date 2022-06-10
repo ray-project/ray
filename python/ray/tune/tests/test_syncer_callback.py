@@ -121,6 +121,7 @@ class MaybeFailingProcess(_BackgroundProcess):
 
 
 def test_syncer_callback_disabled():
+    """Check that syncer=None disables callback"""
     callbacks = create_default_callbacks(
         callbacks=[], sync_config=SyncConfig(syncer=None)
     )
@@ -130,14 +131,16 @@ def test_syncer_callback_disabled():
             syncer_callback = cb
 
     trial1 = MockTrial(trial_id="a", logdir=None)
+    trial1.uses_cloud_checkpointing = False
 
     assert syncer_callback
     assert not syncer_callback._enabled
+    # Syncer disabled, so no-op
     assert not syncer_callback._sync_trial_dir(trial1)
 
 
 def test_syncer_callback_noop_on_trial_cloud_checkpointing():
-    """Sync to driver disabled when trials checkpoint to cloud."""
+    """Check that trial using cloud checkpointing disables sync to driver"""
     callbacks = create_default_callbacks(callbacks=[], sync_config=SyncConfig())
     syncer_callback = None
     for cb in callbacks:
@@ -149,10 +152,12 @@ def test_syncer_callback_noop_on_trial_cloud_checkpointing():
 
     assert syncer_callback
     assert syncer_callback._enabled
+    # Cloud checkpointing set, so no-op
     assert not syncer_callback._sync_trial_dir(trial1)
 
 
 def test_syncer_callback_op_on_no_cloud_checkpointing():
+    """Check that without cloud checkpointing sync to driver is enabled"""
     callbacks = create_default_callbacks(callbacks=[], sync_config=SyncConfig())
     syncer_callback = None
     for cb in callbacks:
@@ -168,6 +173,7 @@ def test_syncer_callback_op_on_no_cloud_checkpointing():
 
 
 def test_syncer_callback_sync(ray_start_2_cpus, temp_data_dirs):
+    """Check that on_trial_result triggers syncing"""
     tmp_source, tmp_target = temp_data_dirs
 
     syncer_callback = TestSyncerCallback(local_logdir_override=tmp_target)
@@ -187,6 +193,7 @@ def test_syncer_callback_sync(ray_start_2_cpus, temp_data_dirs):
 
 
 def test_syncer_callback_sync_period(ray_start_2_cpus, temp_data_dirs):
+    """Check that on_trial_result triggers syncing, obeying sync period"""
     tmp_source, tmp_target = temp_data_dirs
 
     with freeze_time() as frozen:
@@ -226,6 +233,7 @@ def test_syncer_callback_sync_period(ray_start_2_cpus, temp_data_dirs):
 
 
 def test_syncer_callback_force_on_checkpoint(ray_start_2_cpus, temp_data_dirs):
+    """Check that on_checkpoint forces syncing"""
     tmp_source, tmp_target = temp_data_dirs
 
     with freeze_time() as frozen:
@@ -265,6 +273,7 @@ def test_syncer_callback_force_on_checkpoint(ray_start_2_cpus, temp_data_dirs):
 
 
 def test_syncer_callback_force_on_complete(ray_start_2_cpus, temp_data_dirs):
+    """Check that on_trial_complete forces syncing"""
     tmp_source, tmp_target = temp_data_dirs
 
     with freeze_time() as frozen:
@@ -301,6 +310,7 @@ def test_syncer_callback_force_on_complete(ray_start_2_cpus, temp_data_dirs):
 
 
 def test_syncer_callback_wait_for_all_error(ray_start_2_cpus, temp_data_dirs):
+    """Check that syncer errors are caught correctly in wait_for_all()"""
     tmp_source, tmp_target = temp_data_dirs
 
     syncer_callback = TestSyncerCallback(
@@ -323,6 +333,7 @@ def test_syncer_callback_wait_for_all_error(ray_start_2_cpus, temp_data_dirs):
 
 
 def test_syncer_callback_log_error(caplog, ray_start_2_cpus, temp_data_dirs):
+    """Check that errors in a previous sync are logged correctly"""
     caplog.set_level(logging.ERROR, logger="ray.tune.syncer")
 
     tmp_source, tmp_target = temp_data_dirs
@@ -339,6 +350,7 @@ def test_syncer_callback_log_error(caplog, ray_start_2_cpus, temp_data_dirs):
 
     syncer_callback.on_trial_result(iteration=1, trials=[], trial=trial1, result={})
 
+    # So far we haven't wait()ed, so no error, yet
     assert not caplog.text
     assert_file(False, tmp_target, "level0.txt")
 

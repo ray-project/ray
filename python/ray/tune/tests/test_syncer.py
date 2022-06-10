@@ -118,6 +118,7 @@ def test_sync_string_valid_s3():
 
 
 def test_syncer_sync_up_down(temp_data_dirs):
+    """Check that syncing up and down works"""
     tmp_source, tmp_target = temp_data_dirs
 
     syncer = _DefaultSyncer()
@@ -132,6 +133,7 @@ def test_syncer_sync_up_down(temp_data_dirs):
     )
     syncer.wait()
 
+    # Target dir should have all files
     assert_file(True, tmp_target, "level0.txt")
     assert_file(True, tmp_target, "level0_exclude.txt")
     assert_file(True, tmp_target, "subdir/level1.txt")
@@ -142,6 +144,7 @@ def test_syncer_sync_up_down(temp_data_dirs):
 
 
 def test_syncer_sync_exclude(temp_data_dirs):
+    """Check that the exclude parameter works"""
     tmp_source, tmp_target = temp_data_dirs
 
     syncer = _DefaultSyncer()
@@ -158,6 +161,7 @@ def test_syncer_sync_exclude(temp_data_dirs):
     )
     syncer.wait()
 
+    # Excluded files should not be found in target
     assert_file(True, tmp_target, "level0.txt")
     assert_file(False, tmp_target, "level0_exclude.txt")
     assert_file(True, tmp_target, "subdir/level1.txt")
@@ -168,6 +172,7 @@ def test_syncer_sync_exclude(temp_data_dirs):
 
 
 def test_sync_up_if_needed(temp_data_dirs):
+    """Check that we only sync up again after sync period"""
     tmp_source, tmp_target = temp_data_dirs
 
     with freeze_time() as frozen:
@@ -179,18 +184,21 @@ def test_sync_up_if_needed(temp_data_dirs):
 
         frozen.tick(30)
 
+        # Sync period not over, yet
         assert not syncer.sync_up_if_needed(
             local_dir=tmp_source, remote_dir="memory:///test/test_sync_up_not_needed"
         )
 
         frozen.tick(30)
 
+        # Sync period over, sync again
         assert syncer.sync_up_if_needed(
             local_dir=tmp_source, remote_dir="memory:///test/test_sync_up_not_needed"
         )
 
 
 def test_sync_down_if_needed(temp_data_dirs):
+    """Check that we only sync down again after sync period"""
     tmp_source, tmp_target = temp_data_dirs
 
     with freeze_time() as frozen:
@@ -209,18 +217,21 @@ def test_sync_down_if_needed(temp_data_dirs):
 
         frozen.tick(30)
 
+        # Sync period not over, yet
         assert not syncer.sync_down_if_needed(
             remote_dir="memory:///test/test_sync_down_if_needed", local_dir=tmp_target
         )
 
         frozen.tick(30)
 
+        # Sync period over, sync again
         assert syncer.sync_down_if_needed(
             remote_dir="memory:///test/test_sync_down_if_needed", local_dir=tmp_target
         )
 
 
 def test_syncer_delete(temp_data_dirs):
+    """Check that deletion on remote storage works"""
     tmp_source, tmp_target = temp_data_dirs
 
     syncer = _DefaultSyncer(sync_period=60)
@@ -236,6 +247,7 @@ def test_syncer_delete(temp_data_dirs):
     )
     syncer.wait()
 
+    # Remote storage was deleted, so target should be empty
     assert_file(False, tmp_target, "level0.txt")
     assert_file(False, tmp_target, "level0_exclude.txt")
     assert_file(False, tmp_target, "subdir/level1.txt")
@@ -246,6 +258,7 @@ def test_syncer_delete(temp_data_dirs):
 
 
 def test_syncer_wait_or_retry(temp_data_dirs):
+    """Check that the wait or retry API works"""
     tmp_source, tmp_target = temp_data_dirs
 
     syncer = _DefaultSyncer(sync_period=60)
@@ -260,6 +273,7 @@ def test_syncer_wait_or_retry(temp_data_dirs):
 
 
 def test_trainable_syncer_default(ray_start_2_cpus, temp_data_dirs):
+    """Check that Trainable.save() triggers syncing using default syncing"""
     tmp_source, tmp_target = temp_data_dirs
 
     trainable = ray.remote(TestTrainable).remote(
@@ -273,6 +287,7 @@ def test_trainable_syncer_default(ray_start_2_cpus, temp_data_dirs):
 
 
 def test_trainable_syncer_custom(ray_start_2_cpus, temp_data_dirs):
+    """Check that Trainable.save() triggers syncing using custom syncer"""
     tmp_source, tmp_target = temp_data_dirs
 
     trainable = ray.remote(TestTrainable).remote(
