@@ -114,6 +114,8 @@ T8 = TypeVar("T8")
 T9 = TypeVar("T9")
 R = TypeVar("R")
 
+DAGNode = TypeVar("DAGNode")
+
 
 class RemoteFunction(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
     def __init__(
@@ -236,6 +238,123 @@ class RemoteFunction(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
         ...
 
     def remote(self, *args, **kwargs) -> "ObjectRef[R]":
+        ...
+
+    @overload
+    def bind(self) -> "DAGNode[R]":
+        ...
+
+    @overload
+    def bind(self, __arg0: "Union[T0, DAGNode[T0]]") -> "DAGNode[R]":
+        ...
+
+    @overload
+    def bind(
+        self, __arg0: "Union[T0, DAGNode[T0]]", __arg1: "Union[T1, DAGNode[T1]]"
+    ) -> "DAGNode[R]":
+        ...
+
+    @overload
+    def bind(
+        self,
+        __arg0: "Union[T0, DAGNode[T0]]",
+        __arg1: "Union[T1, DAGNode[T1]]",
+        __arg2: "Union[T2, DAGNode[T2]]",
+    ) -> "DAGNode[R]":
+        ...
+
+    @overload
+    def bind(
+        self,
+        __arg0: "Union[T0, DAGNode[T0]]",
+        __arg1: "Union[T1, DAGNode[T1]]",
+        __arg2: "Union[T2, DAGNode[T2]]",
+        __arg3: "Union[T3, DAGNode[T3]]",
+    ) -> "DAGNode[R]":
+        ...
+
+    @overload
+    def bind(
+        self,
+        __arg0: "Union[T0, DAGNode[T0]]",
+        __arg1: "Union[T1, DAGNode[T1]]",
+        __arg2: "Union[T2, DAGNode[T2]]",
+        __arg3: "Union[T3, DAGNode[T3]]",
+        __arg4: "Union[T4, DAGNode[T4]]",
+    ) -> "DAGNode[R]":
+        ...
+
+    @overload
+    def bind(
+        self,
+        __arg0: "Union[T0, DAGNode[T0]]",
+        __arg1: "Union[T1, DAGNode[T1]]",
+        __arg2: "Union[T2, DAGNode[T2]]",
+        __arg3: "Union[T3, DAGNode[T3]]",
+        __arg4: "Union[T4, DAGNode[T4]]",
+        __arg5: "Union[T5, DAGNode[T5]]",
+    ) -> "DAGNode[R]":
+        ...
+
+    @overload
+    def bind(
+        self,
+        __arg0: "Union[T0, DAGNode[T0]]",
+        __arg1: "Union[T1, DAGNode[T1]]",
+        __arg2: "Union[T2, DAGNode[T2]]",
+        __arg3: "Union[T3, DAGNode[T3]]",
+        __arg4: "Union[T4, DAGNode[T4]]",
+        __arg5: "Union[T5, DAGNode[T5]]",
+        __arg6: "Union[T6, DAGNode[T6]]",
+    ) -> "DAGNode[R]":
+        ...
+
+    @overload
+    def bind(
+        self,
+        __arg0: "Union[T0, DAGNode[T0]]",
+        __arg1: "Union[T1, DAGNode[T1]]",
+        __arg2: "Union[T2, DAGNode[T2]]",
+        __arg3: "Union[T3, DAGNode[T3]]",
+        __arg4: "Union[T4, DAGNode[T4]]",
+        __arg5: "Union[T5, DAGNode[T5]]",
+        __arg6: "Union[T6, DAGNode[T6]]",
+        __arg7: "Union[T7, DAGNode[T7]]",
+    ) -> "DAGNode[R]":
+        ...
+
+    @overload
+    def bind(
+        self,
+        __arg0: "Union[T0, DAGNode[T0]]",
+        __arg1: "Union[T1, DAGNode[T1]]",
+        __arg2: "Union[T2, DAGNode[T2]]",
+        __arg3: "Union[T3, DAGNode[T3]]",
+        __arg4: "Union[T4, DAGNode[T4]]",
+        __arg5: "Union[T5, DAGNode[T5]]",
+        __arg6: "Union[T6, DAGNode[T6]]",
+        __arg7: "Union[T7, DAGNode[T7]]",
+        __arg8: "Union[T8, DAGNode[T8]]",
+    ) -> "DAGNode[R]":
+        ...
+
+    @overload
+    def bind(
+        self,
+        __arg0: "Union[T0, DAGNode[T0]]",
+        __arg1: "Union[T1, DAGNode[T1]]",
+        __arg2: "Union[T2, DAGNode[T2]]",
+        __arg3: "Union[T3, DAGNode[T3]]",
+        __arg4: "Union[T4, DAGNode[T4]]",
+        __arg5: "Union[T5, DAGNode[T5]]",
+        __arg6: "Union[T6, DAGNode[T6]]",
+        __arg7: "Union[T7, DAGNode[T7]]",
+        __arg8: "Union[T8, DAGNode[T8]]",
+        __arg9: "Union[T9, DAGNode[T9]]",
+    ) -> "DAGNode[R]":
+        ...
+
+    def bind(self, *args, **kwargs) -> "DAGNode[R]":
         ...
 
 
@@ -2191,7 +2310,7 @@ def wait(
                 "of objects provided to ray.wait."
             )
 
-        timeout = timeout if timeout is not None else 10 ** 6
+        timeout = timeout if timeout is not None else 10**6
         timeout_milliseconds = int(timeout * 1000)
         ready_ids, remaining_ids = worker.core_worker.wait(
             object_refs,
