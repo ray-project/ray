@@ -2120,7 +2120,7 @@
     cluster_compute: 12gpus_192cpus.yaml
 
   run:
-    timeout: 14400
+    timeout: 18000
     script: python learning_tests/run.py --yaml-sub-dir=a-e
     type: sdk_command
     file_manager: job
@@ -2143,7 +2143,7 @@
     cluster_compute: 8gpus_96cpus.yaml
 
   run:
-    timeout: 14400
+    timeout: 18000
     script: python learning_tests/run.py --yaml-sub-dir=f-z
     type: sdk_command
     file_manager: job
