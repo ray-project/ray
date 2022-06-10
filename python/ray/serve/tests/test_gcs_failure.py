@@ -7,9 +7,9 @@ import requests
 import grpc
 from ray.tests.conftest import external_redis  # noqa: F401
 from ray.serve.storage.kv_store import RayInternalKVStore, KVStoreError
-import subprocess
 import ray.serve as serve
 from ray._private.test_utils import wait_for_condition
+
 
 @pytest.fixture(scope="function")
 def serve_ha(external_redis, monkeypatch):  # noqa: F811
@@ -36,12 +36,13 @@ def test_ray_internal_kv_timeout(serve_ha):  # noqa: F811
     with pytest.raises(KVStoreError) as e:
         kv1.put("2", b"2")
     assert e.value.args[0] in (
-        grpc.StatusCode.UNAVAILABLE, grpc.StatusCode.DEADLINE_EXCEEDED)
+        grpc.StatusCode.UNAVAILABLE,
+        grpc.StatusCode.DEADLINE_EXCEEDED,
+    )
 
 
 @pytest.mark.parametrize("use_handle", [True, False])
 def test_controller_gcs_failure(serve_ha, use_handle):  # noqa: F811
-
     @serve.deployment(version="1")
     def d(*args):
         return f"1|{os.getpid()}"
