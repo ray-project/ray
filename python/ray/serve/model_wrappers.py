@@ -194,7 +194,7 @@ class ModelWrapper(SimpleSchemaIngress):
         if batching_params is False:
 
             async def predict_impl(inp: Union[np.ndarray, "pd.DataFrame"]):
-                out = self.model.predict(inp)
+                out = self.model.predict(inp, **predict_kwargs)
                 if isinstance(out, ray.ObjectRef):
                     out = await out
                 return out
@@ -216,7 +216,7 @@ class ModelWrapper(SimpleSchemaIngress):
                     )
 
                 batched, unpack = collate_func(inp)
-                out = self.model.predict(batched)
+                out = self.model.predict(batched, **predict_kwargs)
                 if isinstance(out, ray.ObjectRef):
                     out = await out
                 return unpack(out)
