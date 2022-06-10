@@ -3,9 +3,12 @@ from typing import Type, Optional, Dict, Any
 import ray
 from ray.air import Checkpoint
 from ray.air.predictor import Predictor
+from ray.air.util.data_batch_conversion import convert_batch_type_to_pandas
+from ray.util.annotations import PublicAPI
 
 
-class BatchPredictor(Predictor):
+@PublicAPI(stability="alpha")
+class BatchPredictor:
     """Batch predictor class.
 
     Takes a predictor class and a checkpoint and provides an interface to run
@@ -81,7 +84,8 @@ class BatchPredictor(Predictor):
                 )
 
             def __call__(self, batch):
-                return self.predictor.predict(batch, **predict_kwargs)
+                prediction_output = self.predictor.predict(batch, **predict_kwargs)
+                return convert_batch_type_to_pandas(prediction_output)
 
         compute = ray.data.ActorPoolStrategy(
             min_size=min_scoring_workers, max_size=max_scoring_workers

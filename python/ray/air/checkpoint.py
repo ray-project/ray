@@ -12,7 +12,7 @@ from typing import Any, Dict, Iterator, Optional, Tuple, Union
 
 import ray
 from ray import cloudpickle as pickle
-from ray.air.utils.remote_storage import (
+from ray.air._internal.remote_storage import (
     download_from_uri,
     fs_hint,
     is_non_local_path_uri,
@@ -29,7 +29,7 @@ _CHECKPOINT_DIR_PREFIX = "checkpoint_tmp_"
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI
+@PublicAPI(stability="alpha")
 class Checkpoint:
     """Ray ML Checkpoint.
 

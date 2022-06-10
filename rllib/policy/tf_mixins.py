@@ -335,7 +335,7 @@ def compute_gradients(
     grads_and_vars = optimizer.compute_gradients(loss, variables)
 
     # Clip by global norm, if necessary.
-    if policy.config["grad_clip"] is not None:
+    if policy.config.get("grad_clip") is not None:
         # Defuse inf gradients (due to super large losses).
         grads = [g for (g, v) in grads_and_vars]
         grads, _ = tf.clip_by_global_norm(grads, policy.config["grad_clip"])

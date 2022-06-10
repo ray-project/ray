@@ -125,6 +125,9 @@ def test_prometheus_physical_stats_record(enable_test_module, shutdown_only):
                 "ray_node_mem_total" in metric_names,
                 "ray_raylet_cpu" in metric_names,
                 "ray_raylet_mem" in metric_names,
+                "ray_raylet_mem_uss" in metric_names
+                if sys.platform == "linux"
+                else True,
                 "ray_node_disk_io_read" in metric_names,
                 "ray_node_disk_io_write" in metric_names,
                 "ray_node_disk_io_read_count" in metric_names,
@@ -160,6 +163,38 @@ def test_prometheus_physical_stats_record(enable_test_module, shutdown_only):
     wait_for_condition(test_case_ip_correct, retry_interval_ms=1000)
 
 
+@pytest.mark.skipif(
+    prometheus_client is None,
+    reason="prometheus_client must be installed.",
+)
+def test_prometheus_export_worker_and_memory_stats(enable_test_module, shutdown_only):
+    addresses = ray.init(include_dashboard=True, num_cpus=1)
+    metrics_export_port = addresses["metrics_export_port"]
+    addr = addresses["raylet_ip_address"]
+    prom_addresses = [f"{addr}:{metrics_export_port}"]
+
+    @ray.remote
+    def f():
+        return 1
+
+    ret = f.remote()
+    ray.get(ret)
+
+    def test_worker_stats():
+        _, metric_names, metric_samples = fetch_prometheus(prom_addresses)
+        expected_metrics = ["ray_workers_cpu", "ray_workers_mem"]
+        if sys.platform == "linux":
+            expected_metrics.append("ray_workers_mem_uss")
+        for metric in expected_metrics:
+            if metric not in metric_names:
+                raise RuntimeError(
+                    f"Metric {metric} not found in exported metric names"
+                )
+        return True
+
+    wait_for_condition(test_worker_stats, retry_interval_ms=1000)
+
+
 def test_report_stats():
     class ReporterAgentDummy(object):
         pass
@@ -179,6 +214,7 @@ def test_report_stats():
                 "memory_info": Bunch(
                     rss=55934976, vms=7026937856, pfaults=15354, pageins=0
                 ),
+                "memory_full_info": Bunch(uss=51428381),
                 "cpu_percent": 0.0,
                 "cmdline": ["ray::IDLE", "", "", "", "", "", "", "", "", "", "", ""],
                 "create_time": 1614826391.338613,
@@ -231,21 +267,21 @@ def test_report_stats():
     }
 
     records = ReporterAgent._record_stats(obj, test_stats, cluster_stats)
-    assert len(records) == 24
+    assert len(records) == 27
     # Test stats without raylets
     test_stats["raylet"] = {}
     records = ReporterAgent._record_stats(obj, test_stats, cluster_stats)
-    assert len(records) == 22
+    assert len(records) == 25
     # Test stats with gpus
     test_stats["gpus"] = [
         {"utilization_gpu": 1, "memory_used": 100, "memory_total": 1000}
     ]
     records = ReporterAgent._record_stats(obj, test_stats, cluster_stats)
-    assert len(records) == 26
+    assert len(records) == 29
     # Test stats without autoscaler report
     cluster_stats = {}
     records = ReporterAgent._record_stats(obj, test_stats, cluster_stats)
-    assert len(records) == 24
+    assert len(records) == 27
 
 
 @pytest.mark.parametrize("enable_k8s_disk_usage", [True, False])
