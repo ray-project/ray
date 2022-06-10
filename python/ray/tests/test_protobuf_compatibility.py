@@ -14,7 +14,7 @@ def test_protobuf_compatibility(shutdown_only):
 
         # verfiy this no longer crashes. see
         # https://github.com/ray-project/ray/issues/25282
-        from ray import tune  # noqa
+        import ray  # noqa
 
         return google.protobuf.__version__
 
