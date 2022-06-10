@@ -39,5 +39,5 @@ Ray Serve Autoscaling allows the `min_replicas` to be 0 to start your deployment
 :::
 **smoothing_factor**: The multiplicative factor to speedup/slowdown the autoscaling step each. E.g. When the use case has high large traffic volume in short period of time, user can increase the smoothing_factor to scale up the resource quickly.
 
-**metrics_interval_s**: This is control the frequency of how long each replica sending metrics to the autoscaler. (Normally you don't need to change this config) 
+**metrics_interval_s**: This is control the frequency of how long each replica sending metrics to the autoscaler. (Normally you don't need to change this config.)
 
