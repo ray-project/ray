@@ -45,7 +45,7 @@ int main(int argc, char **argv) {
     }
   )";
   runtime_env_3.SetJsonStr("pip", pip_raw_json_string);
-  std::cout << "serialized_runtime_env 4: " << runtime_env_3.Serialize() << std::endl;
+  std::cout << "serialized_runtime_env 3: " << runtime_env_3.Serialize() << std::endl;
 
   std::cout << "Finished!" << std::endl;;
 

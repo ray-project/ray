@@ -18,13 +18,8 @@ public class RuntimeEnv {
     runtimeEnvs.set(name, node);
   }
 
-  public void set(String name, String RuntimeEnvString) throws Exception {
-    JsonNode node = null;
-    try {
-      node = JsonLoader.fromString(RuntimeEnvString);
-    } catch (JsonParseException ex) {
-      node = mapper.valueToTree(RuntimeEnvString);
-    }
+  public void setJsonStr(String name, String jsonStr) throws Exception {
+    JsonNode node = JsonLoader.fromString(jsonStr);
     PluginSchemaManager.getInstance().validate(name, node);
     runtimeEnvs.set(name, node);
   }
