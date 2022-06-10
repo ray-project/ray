@@ -99,6 +99,9 @@ Ray with cloud providers
 
 
     Azure Node Provider Maintainers (GitHub handles): gramhagen, eisber, ijrsvt
+    .. note::
+
+    The Azure Node Provider is community-maintained. It is maintained by its authors, not the Ray team.
 
 .. tabbed:: GCP
 
@@ -123,7 +126,7 @@ Ray with cloud providers
 
     GCP Node Provider Maintainers (GitHub handles): wuisawesome, DmitriGekhtman, ijrsvt
 
-.. tabbed:: Aliyun
+.. tabbed:: Aliyun (community-maintained)
 
     First, install the aliyun client package (``pip install aliyun-python-sdk-core aliyun-python-sdk-ecs``). Obtain the AccessKey pair of the Aliyun account as described in `the docs <https://www.alibabacloud.com/help/en/doc-detail/175967.htm>`__ and grant AliyunECSFullAccess/AliyunVPCFullAccess permissions to the RAM user. Finally, set the AccessKey pair in your cluster config file.
 
@@ -147,6 +150,11 @@ Ray with cloud providers
         $ ray down ray/python/ray/autoscaler/aliyun/example-full.yaml
 
     Aliyun Node Provider Maintainers (GitHub handles): zhuangzhuang131419, chenk008
+
+    .. note::
+
+    The Aliyun Node Provider is community-maintained. It is maintained by its authors, not the Ray team.
+
 
 .. tabbed:: Custom
 
