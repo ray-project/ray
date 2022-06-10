@@ -93,7 +93,7 @@ class AlpaTrainer(BaseTrainer):
             ray.init()
 
         # connect to the ray cluster
-        if not alpa.is_initialized:
+        if not alpa.api.is_initialized:
             alpa.init("ray")
 
         cluster = alpa.get_global_cluster()
