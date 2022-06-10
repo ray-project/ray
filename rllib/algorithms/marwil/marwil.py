@@ -103,9 +103,10 @@ class MARWILConfig(TrainerConfig):
         # the same line.
         self.input_ = "sampler"
         # Use importance sampling estimators for reward.
-        self.off_policy_estimation_methods = [
-            ImportanceSampling, WeightedImportanceSampling
-        ]
+        self.off_policy_estimation_methods = {
+            "is": {"type": ImportanceSampling},
+            "wis": {"type": WeightedImportanceSampling},
+        }
         self.postprocess_inputs = True
         self.lr = 1e-4
         self.train_batch_size = 2000
@@ -144,7 +145,6 @@ class MARWILConfig(TrainerConfig):
                 "type": "MultiAgentReplayBuffer",
                 "learning_starts": 1000,
                 "capacity": 50000,
-                "replay_batch_size": 32,
                 "replay_sequence_length": 1,
                 }
                 - OR -
@@ -251,7 +251,7 @@ class MARWIL(Trainer):
             return MARWILTF2Policy
 
     @override(Trainer)
-    def training_iteration(self) -> ResultDict:
+    def training_step(self) -> ResultDict:
         # Collect SampleBatches from sample workers.
         batch = synchronous_parallel_sample(worker_set=self.workers)
         batch = batch.as_multi_agent()

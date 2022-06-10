@@ -132,7 +132,7 @@ if __name__ == "__main__":
         # Use n worker processes to listen on different ports.
         "num_workers": args.num_workers,
         # Disable OPE, since the rollouts are coming from online clients.
-        "off_policy_estimation_methods": [],
+        "off_policy_estimation_methods": {},
         # Other settings.
         "train_batch_size": 256,
         "rollout_fragment_length": 20,

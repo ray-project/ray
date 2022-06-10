@@ -113,8 +113,8 @@ class SlateQConfig(TrainerConfig):
         self.rollout_fragment_length = 4
         self.train_batch_size = 32
         self.lr = 0.00025
-        self.min_sample_timesteps_per_reporting = 1000
-        self.min_time_s_per_reporting = 1
+        self.min_sample_timesteps_per_iteration = 1000
+        self.min_time_s_per_iteration = 1
         self.compress_observations = False
         self._disable_preprocessor_api = True
         # __sphinx_doc_end__

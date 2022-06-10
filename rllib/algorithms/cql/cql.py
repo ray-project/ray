@@ -67,11 +67,11 @@ class CQLConfig(SACConfig):
 
         # Changes to Trainer's/SACConfig's default:
         # .offline_data()
-        self.off_policy_estimation_methods = []
+        self.off_policy_estimation_methods = {}
 
         # .reporting()
-        self.min_sample_timesteps_per_reporting = 0
-        self.min_train_timesteps_per_reporting = 100
+        self.min_sample_timesteps_per_iteration = 0
+        self.min_train_timesteps_per_iteration = 100
         # fmt: on
         # __sphinx_doc_end__
 
@@ -176,10 +176,10 @@ class CQL(SAC):
         if config.get("timesteps_per_iteration", DEPRECATED_VALUE) != DEPRECATED_VALUE:
             deprecation_warning(
                 old="timesteps_per_iteration",
-                new="min_train_timesteps_per_reporting",
+                new="min_train_timesteps_per_iteration",
                 error=False,
             )
-            config["min_train_timesteps_per_reporting"] = config[
+            config["min_train_timesteps_per_iteration"] = config[
                 "timesteps_per_iteration"
             ]
             config["timesteps_per_iteration"] = DEPRECATED_VALUE
@@ -213,7 +213,7 @@ class CQL(SAC):
             return CQLTFPolicy
 
     @override(SAC)
-    def training_iteration(self) -> ResultDict:
+    def training_step(self) -> ResultDict:
 
         # Sample training batch from replay buffer.
         train_batch = sample_min_n_steps_from_buffer(
