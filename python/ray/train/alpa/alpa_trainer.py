@@ -98,8 +98,8 @@ class AlpaTrainer(BaseTrainer):
 
         cluster = alpa.get_global_cluster()
         logger.info(
-            f"Distributed Training with Alpa using"
-            "{cluster.num_cpus} cpus and {cluster.num_devices} gpus."
+             "Distributed Training with Alpa using "
+            f"{cluster.num_cpus} cpus and {cluster.num_devices} gpus."
         )
 
         self._train_loop = train_loop
