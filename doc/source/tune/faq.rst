@@ -578,7 +578,7 @@ How can I upload my Tune results to cloud storage?
 
 If an upload directory is provided, Tune will automatically sync results from the ``local_dir`` to the given directory,
 natively supporting standard URIs for systems like S3, gsutil or HDFS. You can add more filesystems by installing
-``fs-spec``-compatible filesystems in pip.
+`fs-spec <https://filesystem-spec.readthedocs.io/en/latest/>`_-compatible filesystems e.g. using pip.
 
 Here is an example of uploading to S3, using a bucket called ``my-log-dir``:
 

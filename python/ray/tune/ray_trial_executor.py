@@ -379,7 +379,7 @@ class RayTrialExecutor:
             # We keep these kwargs separate for backwards compatibility
             # with trainables that don't provide these keyword arguments
             kwargs["remote_checkpoint_dir"] = trial.remote_checkpoint_dir
-            kwargs["sync_function_tpl"] = trial.sync_function_tpl
+            kwargs["custom_syncer"] = trial.custom_syncer
 
             # Throw a meaningful error if trainable does not use the
             # new API
@@ -389,7 +389,7 @@ class RayTrialExecutor:
             except Exception as e:
                 raise RuntimeError(
                     "Your trainable class does not accept a "
-                    "`remote_checkpoint_dir` or `sync_function_tpl` argument "
+                    "`remote_checkpoint_dir` or `custom_syncer` argument "
                     "in its constructor, but you've passed a "
                     "`upload_dir` to your SyncConfig. Without accepting "
                     "these parameters and passing them to the base trainable "

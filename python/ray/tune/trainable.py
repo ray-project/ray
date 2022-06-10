@@ -450,49 +450,50 @@ class Trainable:
 
     def _maybe_save_to_cloud(self, checkpoint_dir: str) -> bool:
         # Derived classes like the FunctionRunner might call this
-        if self.uses_cloud_checkpointing:
-            if self.custom_syncer:
-                self.custom_syncer.sync_up(
-                    checkpoint_dir, self._storage_path(checkpoint_dir)
-                )
-                self.custom_syncer.wait_or_retry()
-                return True
+        if not self.uses_cloud_checkpointing:
+            return False
 
-            checkpoint = Checkpoint.from_directory(checkpoint_dir)
-            retry_fn(
-                lambda: checkpoint.to_uri(self._storage_path(checkpoint_dir)),
-                subprocess.CalledProcessError,
-                num_retries=3,
-                sleep_time=1,
+        if self.custom_syncer:
+            self.custom_syncer.sync_up(
+                checkpoint_dir, self._storage_path(checkpoint_dir)
             )
+            self.custom_syncer.wait_or_retry()
             return True
-        return False
 
-    def _maybe_load_from_cloud(self, checkpoint_path: str):
-        if self.uses_cloud_checkpointing:
-            rel_checkpoint_dir = TrainableUtil.find_rel_checkpoint_dir(
-                self.logdir, checkpoint_path
-            )
-            external_uri = os.path.join(self.remote_checkpoint_dir, rel_checkpoint_dir)
-            local_dir = os.path.join(self.logdir, rel_checkpoint_dir)
+        checkpoint = Checkpoint.from_directory(checkpoint_dir)
+        retry_fn(
+            lambda: checkpoint.to_uri(self._storage_path(checkpoint_dir)),
+            subprocess.CalledProcessError,
+            num_retries=3,
+            sleep_time=1,
+        )
+        return True
 
-            if self.custom_syncer:
-                # Only keep for backwards compatibility
-                self.custom_syncer.sync_down(
-                    remote_dir=external_uri, local_dir=local_dir
-                )
-                self.custom_syncer.wait_or_retry()
-                return True
+    def _maybe_load_from_cloud(self, checkpoint_path: str) -> bool:
+        if not self.uses_cloud_checkpointing:
+            return False
 
-            checkpoint = Checkpoint.from_uri(external_uri)
-            retry_fn(
-                lambda: checkpoint.to_directory(local_dir),
-                subprocess.CalledProcessError,
-                num_retries=3,
-                sleep_time=1,
-            )
+        rel_checkpoint_dir = TrainableUtil.find_rel_checkpoint_dir(
+            self.logdir, checkpoint_path
+        )
+        external_uri = os.path.join(self.remote_checkpoint_dir, rel_checkpoint_dir)
+        local_dir = os.path.join(self.logdir, rel_checkpoint_dir)
+
+        if self.custom_syncer:
+            # Only keep for backwards compatibility
+            self.custom_syncer.sync_down(remote_dir=external_uri, local_dir=local_dir)
+            self.custom_syncer.wait_or_retry()
             return True
-        return False
+
+        checkpoint = Checkpoint.from_uri(external_uri)
+        retry_fn(
+            lambda: checkpoint.to_directory(local_dir),
+            subprocess.CalledProcessError,
+            num_retries=3,
+            sleep_time=1,
+        )
+
+        return True
 
     def save_to_object(self):
         """Saves the current model state to a Python object.

@@ -486,10 +486,12 @@ class TrialRunner:
         )
         # Not clear if we need this assertion, since we should always have a
         # local checkpoint dir.
-        assert self._remote_checkpoint_dir and self._syncer
+        assert self._local_checkpoint_dir or (
+            self._remote_checkpoint_dir and self._syncer
+        )
 
         if resume_type == "AUTO":
-            if self._remote_checkpoint_dir:
+            if self._remote_checkpoint_dir and self._syncer:
                 logger.info(
                     f"Trying to find and download experiment checkpoint at "
                     f"{self._remote_checkpoint_dir}"
@@ -566,9 +568,10 @@ class TrialRunner:
                 f"({self._remote_checkpoint_dir})"
             ):
                 return False
-            if not self._remote_checkpoint_dir:
+            if not self._remote_checkpoint_dir or not self._syncer:
                 raise ValueError(
-                    "Called resume from remote without remote directory. "
+                    "Called resume from remote without remote directory or "
+                    "without valid syncer. "
                     "Fix this by passing a `SyncConfig` object with "
                     "`upload_dir` set to `tune.run(sync_config=...)`."
                 )

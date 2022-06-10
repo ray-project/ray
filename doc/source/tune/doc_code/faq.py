@@ -197,7 +197,6 @@ tune.run(tune.with_parameters(f, data=data))
 # __large_data_end__
 
 MyTrainableClass = None
-custom_sync_str_or_func = ""
 
 if not MOCK:
     # __log_1_start__
