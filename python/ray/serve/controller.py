@@ -3,13 +3,13 @@ from collections import defaultdict
 from copy import copy
 import json
 import logging
+import pickle
 import traceback
 import time
 import os
 from typing import Dict, Iterable, List, Optional, Tuple, Any
 
 import ray
-from ray import cloudpickle
 from ray.types import ObjectRef
 from ray.actor import ActorHandle
 from ray._private.utils import import_attr
@@ -323,7 +323,7 @@ class ServeController:
     def _recover_config_from_checkpoint(self):
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
         if checkpoint is not None:
-            self.deployment_timestamp, config = cloudpickle.loads(checkpoint)
+            self.deployment_timestamp, config = pickle.loads(checkpoint)
             self.deploy_app(ServeApplicationSchema.parse_obj(config), update_time=False)
 
     def _all_running_replicas(self) -> Dict[str, List[RunningReplicaInfo]]:
@@ -457,7 +457,7 @@ class ServeController:
         config_dict = config.dict(exclude_unset=True)
         self.kv_store.put(
             CONFIG_CHECKPOINT_KEY,
-            cloudpickle.dumps((self.deployment_timestamp, config_dict)),
+            pickle.dumps((self.deployment_timestamp, config_dict)),
         )
 
         if self.config_deployment_request_ref is not None:
