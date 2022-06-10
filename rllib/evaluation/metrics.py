@@ -223,9 +223,11 @@ def summarize_episodes(
         for k, v in e.metrics.items():
             acc[k].append(v)
     for name, metrics in estimators.items():
+        out = {}
         for k, v_list in metrics.items():
-            metrics[k] = np.mean(v_list)
-        estimators[name] = dict(metrics)
+            out[k + "_mean"] = np.mean(v_list)
+            out[k + "_std"] = np.std(v_list)
+        estimators[name] = out
 
     return dict(
         episode_reward_max=max_reward,

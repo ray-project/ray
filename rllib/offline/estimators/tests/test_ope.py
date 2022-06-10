@@ -7,8 +7,6 @@ from ray.rllib.offline.estimators import (
     DirectMethod,
     DoublyRobust,
 )
-from ray.rllib.offline.estimators.off_policy_estimator import train_test_split
-from ray.rllib.offline.json_reader import JsonReader
 from pathlib import Path
 import os
 import numpy as np
@@ -17,7 +15,7 @@ import gym
 
 class TestOPE(unittest.TestCase):
     def setUp(self):
-        ray.init(num_cpus=8)
+        ray.init(num_cpus=10)
 
     def tearDown(self):
         ray.shutdown()
@@ -30,11 +28,11 @@ class TestOPE(unittest.TestCase):
 
         env_name = "CartPole-v0"
         gamma = 0.99
-        train_iters = 2
-        num_workers = 4
-        eval_num_workers = 1
-        train_test_split_val = 0.8
-        eval_episodes = 128
+        train_iters = 25
+        num_workers = 2
+        eval_num_workers = 5
+        train_test_split_val = 5
+        eval_episodes = 100
 
         config = (
             DQNConfig()
@@ -66,10 +64,10 @@ class TestOPE(unittest.TestCase):
                     "train_test_split_val": train_test_split_val,
                     "is": {"type": ImportanceSampling},
                     "wis": {"type": WeightedImportanceSampling},
-                    # "dm_qreg": {"type": DirectMethod, "q_model_type": "qreg"},
-                    # "dm_fqe": {"type": DirectMethod, "q_model_type": "fqe"},
-                    # "dr_qreg": {"type": DoublyRobust, "q_model_type": "qreg"},
-                    # "dr_fqe": {"type": DoublyRobust, "q_model_type": "fqe"},
+                    "dm_qreg": {"type": DirectMethod, "q_model_type": "qreg"},
+                    "dm_fqe": {"type": DirectMethod, "q_model_type": "fqe"},
+                    "dr_qreg": {"type": DoublyRobust, "q_model_type": "qreg"},
+                    "dr_fqe": {"type": DoublyRobust, "q_model_type": "fqe"},
                 },
             )
             .framework("torch")
@@ -82,7 +80,7 @@ class TestOPE(unittest.TestCase):
         while iters < train_iters:
             results = trainer.train()
             iters += 1
-        
+
         # Simulate Monte-Carlo rollouts
         mc_ret = []
         env = gym.make(env_name)
@@ -98,9 +96,11 @@ class TestOPE(unittest.TestCase):
             for r in reversed(rewards):
                 ret = r + gamma * ret
             mc_ret.append(ret)
-        
+
         estimates = results["evaluation"]["off_policy_estimator"]
-        breakpoint()
+        print("Simulation", "mean:", np.mean(mc_ret), "std:", np.std(mc_ret))
+        for k, v in estimates.items():
+            print(k, v)
 
     def test_d3rply_cartpole_random(self):
         # Test OPE methods on d3rlpy cartpole-random
