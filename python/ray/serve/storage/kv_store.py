@@ -25,8 +25,7 @@ def get_storage_key(namespace: str, storage_key: str) -> str:
 
 
 class KVStoreError(Exception):
-    def __init__(self, orig_exce: Optional[Exception] = None):
-        self.orig_exce = orig_exce
+    pass
 
 
 class RayInternalKVStore(KVStoreBase):
@@ -71,7 +70,7 @@ class RayInternalKVStore(KVStoreBase):
                 timeout=self.timeout,
             )
         except Exception as e:
-            raise KVStoreError(e) from e
+            raise KVStoreError(e.code())
 
     def get(self, key: str) -> Optional[bytes]:
         """Get the value associated with the given key from the store.
@@ -92,7 +91,7 @@ class RayInternalKVStore(KVStoreBase):
                 timeout=self.timeout,
             )
         except Exception as e:
-            raise KVStoreError(e) from e
+            raise KVStoreError(e.code())
 
     def delete(self, key: str):
         """Delete the value associated with the given key from the store.
@@ -112,7 +111,7 @@ class RayInternalKVStore(KVStoreBase):
                 timeout=self.timeout,
             )
         except Exception as e:
-            raise KVStoreError(e) from e
+            raise KVStoreError(e.code())
 
 
 class RayLocalKVStore(KVStoreBase):

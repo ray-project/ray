@@ -399,7 +399,6 @@ class ServeController:
         # TODO(architkulkarni): When a deployment is redeployed, even if
         # the only change was num_replicas, the start_time_ms is refreshed.
         # Is this the desired behaviour?
-
         updating = self.deployment_state_manager.deploy(name, deployment_info)
 
         if route_prefix is not None:

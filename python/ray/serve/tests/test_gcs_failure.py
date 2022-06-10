@@ -1,13 +1,19 @@
+import os
+import sys
+
 import pytest
 import ray
+import requests
 import grpc
-import ray.serve as serve
 from ray.tests.conftest import external_redis  # noqa: F401
 from ray.serve.storage.kv_store import RayInternalKVStore, KVStoreError
+import subprocess
+import ray.serve as serve
+from ray._private.test_utils import wait_for_condition
 
-
-@pytest.fixture
-def serve_ha(external_redis):  # noqa: F811
+@pytest.fixture(scope="function")
+def serve_ha(external_redis, monkeypatch):  # noqa: F811
+    monkeypatch.setenv("RAY_SERVE_KV_TIMEOUT_S", "1")
     address_info = ray.init(
         num_cpus=36,
         namespace="default_test_namespace",
@@ -29,4 +35,59 @@ def test_ray_internal_kv_timeout(serve_ha):  # noqa: F811
 
     with pytest.raises(KVStoreError) as e:
         kv1.put("2", b"2")
-    assert e.value.orig_exce.code() == grpc.StatusCode.DEADLINE_EXCEEDED
+    assert e.value.args[0] in (
+        grpc.StatusCode.UNAVAILABLE, grpc.StatusCode.DEADLINE_EXCEEDED)
+
+
+@pytest.mark.parametrize("use_handle", [True, False])
+def test_controller_gcs_failure(serve_ha, use_handle):  # noqa: F811
+
+    @serve.deployment(version="1")
+    def d(*args):
+        return f"1|{os.getpid()}"
+
+    def call():
+        if use_handle:
+            ret = ray.get(d.get_handle().remote())
+        else:
+            ret = requests.get("http://localhost:8000/d").text
+        print(ret)
+        return ret.split("|")[0], ret.split("|")[1]
+
+    d.deploy()
+    val1, pid1 = call()
+    assert val1 == "1"
+
+    # Killfg the GCS
+    ray.worker._global_node.kill_gcs_server()
+
+    # Make sure it's still working even GCS is killed
+    val1, pid1 = call()
+    assert val1 == "1"
+
+    # Redeploy should fail
+    with pytest.raises(KVStoreError):
+        d.options(version="2").deploy()
+
+    # Make sure nothing changed
+    val1, pid1 = call()
+    assert val1 == "1"
+
+    # Bring GCS back
+    ray.worker._global_node.start_gcs_server()
+    # Make sure nothing changed even after GCS is back
+
+    with pytest.raises(Exception):
+        # TODO: We also need to check PID, but there is
+        # a bug in ray core which will restart the actor
+        # when GCS restarts.
+        wait_for_condition(lambda: call()[1] != val1)
+
+    # Redeploy again
+    d.options(version="2").deploy()
+    val2, pid2 = call()
+    assert val2 == "2"
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", "-s", "--forked", __file__]))
