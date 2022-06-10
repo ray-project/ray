@@ -290,19 +290,19 @@ class TargetNetworkMixin:
         action_space: gym.spaces.Space,
         config: TrainerConfigDict,
     ):
-        q_func_vars = self.model.trainable_variables()
-        target_q_func_vars = self.target_model.trainable_variables()
+        trainable_q_func_vars = self.model.trainable_variables()
+        trainable_target_q_func_vars = self.target_model.trainable_variables()
 
         @make_tf_callable(self.get_session())
         def do_update():
             # update_target_fn will be called periodically to copy Q network to
             # target Q network
             update_target_expr = []
-            assert len(q_func_vars) == len(target_q_func_vars), (
-                q_func_vars,
-                target_q_func_vars,
+            assert len(trainable_q_func_vars) == len(trainable_target_q_func_vars), (
+                trainable_q_func_vars,
+                trainable_target_q_func_vars,
             )
-            for var, var_target in zip(q_func_vars, target_q_func_vars):
+            for var, var_target in zip(trainable_q_func_vars, trainable_target_q_func_vars):
                 update_target_expr.append(var_target.assign(var))
                 logger.debug("Update target op {}".format(var_target))
             return tf.group(*update_target_expr)
