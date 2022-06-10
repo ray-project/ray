@@ -11,6 +11,9 @@ def test_protobuf_compatibility(shutdown_only):
     @ray.remote
     def load_ray_tune():
         import google.protobuf
+
+        # verfiy this no longer crashes. see
+        # https://github.com/ray-project/ray/issues/25282
         from ray import tune  # noqa
 
         return google.protobuf.__version__
