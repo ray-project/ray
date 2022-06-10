@@ -60,7 +60,6 @@ class CRRConfig(TrainerConfig):
         self.actor_lr = 3e-4
         self.tau = 5e-3
 
-
         # overriding the trainer config default
         self.num_workers = 0  # offline RL does not need rollout workers
 
