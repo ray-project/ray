@@ -28,15 +28,16 @@ class TestOPE(unittest.TestCase):
 
         env_name = "CartPole-v0"
         gamma = 0.99
-        train_iters = 25
+        train_iters = 50
         num_workers = 2
         eval_num_workers = 5
-        train_test_split_val = 0.8
+        train_test_split_val = 5
         eval_episodes = 100
 
         config = (
             DQNConfig()
             .rollouts(num_rollout_workers=num_workers)
+            .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
             .training(gamma=gamma)
             .environment(env=env_name)
             .offline_data(
@@ -64,9 +65,9 @@ class TestOPE(unittest.TestCase):
                     "train_test_split_val": train_test_split_val,
                     "is": {"type": ImportanceSampling},
                     "wis": {"type": WeightedImportanceSampling},
-                    "dm_qreg": {"type": DirectMethod, "q_model_type": "qreg"},
-                    "dm_fqe": {"type": DirectMethod, "q_model_type": "fqe"},
-                    "dr_qreg": {"type": DoublyRobust, "q_model_type": "qreg"},
+                    # "dm_qreg": {"type": DirectMethod, "q_model_type": "qreg"},
+                    # "dm_fqe": {"type": DirectMethod, "q_model_type": "fqe"},
+                    # "dr_qreg": {"type": DoublyRobust, "q_model_type": "qreg"},
                     "dr_fqe": {"type": DoublyRobust, "q_model_type": "fqe"},
                 },
             )
