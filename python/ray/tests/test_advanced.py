@@ -14,6 +14,7 @@ import ray._private.profiling as profiling
 from ray._private.test_utils import (
     client_test_enabled,
     RayTestTimeoutException,
+    wait_for_condition,
 )
 from ray.exceptions import ReferenceCountingAssertionError
 
@@ -144,7 +145,7 @@ def test_running_function_on_all_workers(ray_start_regular):
     def get_path1():
         return sys.path
 
-    assert "fake_directory" == ray.get(get_path1.remote())[-1]
+    wait_for_condition(lambda: "fake_directory" == ray.get(get_path1.remote())[-1])
 
     # the function should only run on the current driver once.
     assert sys.path[-1] == "fake_directory"
@@ -163,7 +164,7 @@ def test_running_function_on_all_workers(ray_start_regular):
     def get_path2():
         return sys.path
 
-    assert "fake_directory" not in ray.get(get_path2.remote())
+    wait_for_condition(lambda: "fake_directory" not in ray.get(get_path2.remote()))
 
 
 @pytest.mark.skipif(

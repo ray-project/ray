@@ -91,5 +91,11 @@ def test_bad_resources(ray_start_2_cpus):
 
 if __name__ == "__main__":
     import sys
+    import os
 
-    sys.exit(pytest.main(["-n", "auto", "--boxed", "-v", __file__]))
+    # Run in forked mode will make the driver fail to find the
+    # running script because it's forked inside pytest.
+    # Add the script dir here for module finding.
+    script_dir = os.path.dirname(os.path.realpath(__file__))
+    os.environ["PYTHONPATH"] = script_dir
+    sys.exit(pytest.main(["-n", "auto", "--boxed", "-vsx", __file__]))
