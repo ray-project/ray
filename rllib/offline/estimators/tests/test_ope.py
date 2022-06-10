@@ -76,10 +76,13 @@ class TestOPE(unittest.TestCase):
 
         trainer = config.build()
 
-        iters = 0
-        while iters < train_iters:
-            results = trainer.train()
-            iters += 1
+        for _ in range(train_iters - 1):
+            trainer.train()
+        breakpoint()
+        print("Trained for ")
+        
+        # Final .train() will run trainer.evaluate() as well
+        results = trainer.train()
 
         # Simulate Monte-Carlo rollouts
         mc_ret = []
