@@ -38,14 +38,11 @@ int main(int argc, char **argv) {
 
   // Construct runtime env with raw json string
   RuntimeEnv runtime_env_3;
-  std::string pip_raw_json_string = R"(
-    {
-      "packages": ["requests", "tensorflow"],
-      "pip_check": false
-    }
-  )";
+  std::string pip_raw_json_string = R"({"packages":["requests","tensorflow"],"pip_check":false})";
   runtime_env_3.SetJsonStr("pip", pip_raw_json_string);
   std::cout << "serialized_runtime_env 3: " << runtime_env_3.Serialize() << std::endl;
+  auto get_json_result = runtime_env_3.GetJsonStr("pip");
+  assert(get_json_result == pip_raw_json_string);
 
   std::cout << "Finished!" << std::endl;;
 

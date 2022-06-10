@@ -39,12 +39,10 @@ public class RuntimeEnvTest
 
       // Construct runtime env with raw json string
       RuntimeEnv runtimeEnv3 = new RuntimeEnv();
-      String pipString = "    "
-        + "{\n"
-        + "      \"packages\": [\"requests\", \"tensorflow\"],\n"
-        + "      \"pip_check\": false\n"
-        + "}";
+      String pipString = "{\"packages\":[\"requests\",\"tensorflow\"],\"pip_check\":false}";
       runtimeEnv3.setJsonStr("pip", pipString);
       System.out.println("serializedRuntimeEnv 3: " + runtimeEnv3.serialize());
+      String getJsonResult = runtimeEnv3.getJsonStr("pip");
+      assertTrue(getJsonResult.equals(pipString));
     }
 }

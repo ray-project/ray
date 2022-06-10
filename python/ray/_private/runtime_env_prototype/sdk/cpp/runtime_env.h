@@ -25,6 +25,11 @@ class RuntimeEnv {
       return j_[name].get<T>();
     }
 
+    std::string GetJsonStr(std::string name) {
+      auto j = j_[name].get<json>();
+      return j.dump();
+    }
+
     void Remove(std::string name) {
       j_.erase(name);
     }

@@ -28,6 +28,10 @@ public class RuntimeEnv {
     return mapper.treeToValue(runtimeEnvs.get(name), classOfT);
   }
 
+  public String getJsonStr(String name) throws JsonProcessingException {
+    return mapper.writeValueAsString(runtimeEnvs.get(name));
+  }
+
   public void remove(String name) {
     runtimeEnvs.remove(name);
   }
