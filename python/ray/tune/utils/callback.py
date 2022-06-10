@@ -125,7 +125,7 @@ def create_default_callbacks(
         and last_logger_index is not None
         and syncer_index < last_logger_index
     ):
-        if not has_csv_logger or not has_json_logger or not has_tbx_logger:
+        if has_csv_logger or has_json_logger or has_tbx_logger:
             raise ValueError(
                 "The `SyncerCallback` you passed to `tune.run()` came before "
                 "at least one `LoggerCallback`. Syncing should be done "
