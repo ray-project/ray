@@ -12,8 +12,6 @@ from ray._private.test_utils import wait_for_condition
 
 GET_OR_PUT_URL = "http://localhost:8265/api/serve/deployments/"
 STATUS_URL = "http://localhost:8265/api/serve/deployments/status"
-test_env_uri = "https://github.com/shrekris-anyscale/test_deploy_group/archive/HEAD.zip"
-test_module_uri = "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
 
 
 @pytest.fixture
