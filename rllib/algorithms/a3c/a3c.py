@@ -85,7 +85,7 @@ class A3CConfig(TrainerConfig):
         # This causes not every call to `training_iteration` to be reported,
         # but to wait until n seconds have passed and then to summarize the
         # thus far collected results.
-        self.min_time_s_per_reporting = 5
+        self.min_time_s_per_iteration = 5
         # __sphinx_doc_end__
         # fmt: on
 
@@ -190,7 +190,7 @@ class A3C(Trainer):
 
             return A3CEagerTFPolicy
 
-    def training_iteration(self) -> ResultDict:
+    def training_step(self) -> ResultDict:
         # Shortcut.
         local_worker = self.workers.local_worker()
 

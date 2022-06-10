@@ -1,13 +1,15 @@
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
-import numpy
 import numpy as np
 import pandas as pd
-from ray.air import Preprocessor, Checkpoint
+from ray.air.checkpoint import Checkpoint
 from ray.air.predictor import Predictor, DataBatchType
-from ray.air.train.integrations.rl import load_checkpoint
+from ray.train.rl import load_checkpoint
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.typing import EnvType
+
+if TYPE_CHECKING:
+    from ray.air.preprocessor import Preprocessor
 
 
 class RLPredictor(Predictor):
@@ -22,7 +24,7 @@ class RLPredictor(Predictor):
     def __init__(
         self,
         policy: Policy,
-        preprocessor: Optional[Preprocessor] = None,
+        preprocessor: Optional["Preprocessor"] = None,
     ):
         self.policy = policy
         self.preprocessor = preprocessor
