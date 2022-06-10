@@ -108,8 +108,10 @@ void GrpcServer::Run() {
   for (auto &entry : server_call_factories_) {
     for (int i = 0; i < num_threads_; i++) {
       // When there is no max active RPC limit, a call will be added to the completetion
-      // queue before processing starts, so adding only 1 call is enough.
-      int buffer_size = 1;
+      // queue before RPC processing starts. In this case, the buffer size only
+      // determines the number of tags in the completion queue, instead of the number of
+      // inflight RPCs being processed.
+      int buffer_size = 128;
       if (entry->GetMaxActiveRPCs() != -1) {
         buffer_size = entry->GetMaxActiveRPCs();
       }
