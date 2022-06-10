@@ -881,6 +881,8 @@ class Trainer(Trainable):
                 )
             metrics[NUM_AGENT_STEPS_SAMPLED_THIS_ITER] = agent_steps_this_iter
             metrics[NUM_ENV_STEPS_SAMPLED_THIS_ITER] = env_steps_this_iter
+            # TODO: Revmoe this key atv some point. Here for backward compatibility.
+            metrics["timesteps_this_iter"] = env_steps_this_iter
 
         # Evaluation does not run for every step.
         # Save evaluation metrics on trainer, so it can be attached to
