@@ -56,6 +56,51 @@ def _deregister_parquet_file_fragment_serialization():
     ray.util.deregister_serializer(ParquetFileFragment)
 
 
+# this retry helps when HA hdfs service not able to handle overloaded read request.
+# even with HA configed, hdfs service might be overloaded with parquet file read request
+# expecially when simutaneously running many hyper parameter tuning jobs
+# with ray.data parallelism setting at high value like the default 200
+def deserialize_pieces(
+    serialized_pieces: str
+) -> List["pyarrow._dataset.ParquetFileFragment"]:
+    from ray import cloudpickle
+    import random
+    # to make retries of different process hit hdfs server
+    # at slightly different time
+    min_interval = 1 + random.random()
+    final_exception = None
+    # retry at most 8 times
+    for i in range(8):
+        try:
+            pieces: List[
+                "pyarrow._dataset.ParquetFileFragment"
+            ] = cloudpickle.loads(serialized_pieces)
+            return pieces
+        except Exception as e:
+            import traceback
+            import time
+            tb_str = traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)
+            err_msg_str = f'{type(e)}:{str(e)}'
+            retry_timing = "" if i == 7 else (f'Will retry after {min_interval} sec. ')
+            log_only_show_in_1st_retry = "" if i else (
+                f"If earlier hdfsBuilderConnect threw java.net.UnknownHostException, "
+                f"it may or may not be an issue depends on these retries succeed or not. "
+                f"serialized_pieces:{serialized_pieces}"
+            )
+            logger.error(
+                f"{i + 1}th attempt to deserialize ParquetFileFragment pieces failed "
+                f"with:{err_msg_str} traceback:{tb_str}. "
+                f"{retry_timing}"
+                f"{log_only_show_in_1st_retry}"
+            )
+            # exponential backoff at
+            # 1, 2, 4, 8, 16, 32, 64
+            time.sleep(min_interval)
+            min_interval = min_interval * 2
+            final_exception = e
+    raise final_exception
+
+
 @PublicAPI
 class ParquetDatasource(ParquetBaseDatasource):
     """Parquet datasource, for reading and writing Parquet files.
@@ -119,9 +164,7 @@ class ParquetDatasource(ParquetBaseDatasource):
             # Deserialize after loading the filesystem class.
             try:
                 _register_parquet_file_fragment_serialization()
-                pieces: List[
-                    "pyarrow._dataset.ParquetFileFragment"
-                ] = cloudpickle.loads(serialized_pieces)
+                pieces = deserialize_pieces(serialized_pieces)
             finally:
                 _deregister_parquet_file_fragment_serialization()
 
@@ -233,12 +276,11 @@ def _fetch_metadata_serialization_wrapper(
     # Implicitly trigger S3 subsystem initialization by importing
     # pyarrow.fs.
     import pyarrow.fs  # noqa: F401
-    from ray import cloudpickle
 
     # Deserialize after loading the filesystem class.
     try:
         _register_parquet_file_fragment_serialization()
-        pieces: List["pyarrow._dataset.ParquetFileFragment"] = cloudpickle.loads(pieces)
+        pieces = deserialize_pieces(pieces)
     finally:
         _deregister_parquet_file_fragment_serialization()
 
