@@ -102,7 +102,7 @@ class HttpServerDashboardHead:
             dashboard_optional_utils.ClassMethodRouteTable.bind(c)
         # Http server should be initialized after all modules loaded.
         # working_dir uploads for job submission can be up to 100MiB.
-        app = aiohttp.web.Application(client_max_size=100 * 1024 ** 2)
+        app = aiohttp.web.Application(client_max_size=100 * 1024**2)
         app.add_routes(routes=routes.bound_routes())
         self.runner = aiohttp.web.AppRunner(app)
         await self.runner.setup()
