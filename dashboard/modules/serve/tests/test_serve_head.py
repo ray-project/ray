@@ -256,20 +256,34 @@ def test_serve_namespace(ray_start_stop):
     when they both start in the "serve namespace"
     """
 
-    one = dict(
-        name="one",
-        num_replicas=1,
-        route_prefix="/one",
-        ray_actor_options={"runtime_env": {"py_modules": [test_module_uri]}},
-        import_path="test_module.test.one",
+    config = {
+        "import_path": "basic_dag.DagNode",
+        "runtime_env": {
+            "working_dir": (
+                "https://github.com/ray-project/test_dag/archive/"
+                "41b26242e5a10a8c167fcb952fb11d7f0b33d614.zip"
+            )
+        },
+    }
+
+    print("Deploying config.")
+    deploy_and_check_config(config)
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8000/").text == "wonderful world",
+        timeout=15,
     )
-    put_response = requests.put(GET_OR_PUT_URL, json={"deployments": [one]}, timeout=30)
-    assert put_response.status_code == 200
+    print("Deployments are live and reachable over HTTP.\n")
+
     ray.init(address="auto", namespace="serve")
-    serve.start()
-    deployments = serve.list_deployments()
-    assert len(deployments) == 1
-    assert "one" in deployments
+    client = serve.start()
+    print("Connected to Serve with Python API.")
+    serve_status = client.get_serve_status()
+    assert (
+        len(serve_status.deployment_statuses) == 2
+        and serve_status.get_deployment_status("f") is not None
+    )
+    print("Successfully retrieved deployment statuses with Python API.")
+    print("Shutting down Python API.")
     serve.shutdown()
 
 
