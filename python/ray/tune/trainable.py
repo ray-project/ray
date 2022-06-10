@@ -478,7 +478,9 @@ class Trainable:
 
             if self.custom_syncer:
                 # Only keep for backwards compatibility
-                self.custom_syncer.sync_down(external_uri, local_dir)
+                self.custom_syncer.sync_down(
+                    remote_dir=external_uri, local_dir=local_dir
+                )
                 self.custom_syncer.wait_or_retry()
                 return True
 

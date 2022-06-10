@@ -50,6 +50,7 @@ from ray.tune.suggest.variant_generator import has_unresolved_values
 from ray.tune.syncer import (
     SyncConfig,
     _validate_upload_dir,
+    SyncerCallback,
 )
 from ray.tune.trainable import Trainable
 from ray.tune.trial import Trial
@@ -719,7 +720,14 @@ def run(
     if has_verbosity(Verbosity.V1_EXPERIMENT):
         _report_progress(runner, progress_reporter, done=True)
 
-    # wait_for_sync()  # Todo: wait for syncs
+    # Wait for syncing to finish
+    for callback in callbacks:
+        if isinstance(callback, SyncerCallback):
+            try:
+                callback.wait_for_all()
+            except TuneError as e:
+                logger.error(e)
+
     runner.cleanup()
 
     incomplete_trials = []

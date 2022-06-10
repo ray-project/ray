@@ -132,6 +132,24 @@ class _BackgroundProcess:
 
 @DeveloperAPI
 class Syncer(abc.ABC):
+    """Syncer class for synchronizing data between Ray nodes and external storage.
+
+    This class handles data transfer for two cases:
+
+    1. Synchronizing data from the driver to external storage. This affects
+      experiment-level checkpoints and trial-level checkpoints if no cloud storage
+      is used.
+    2. Synchronizing data from remote trainables to external storage.
+
+    Synchronizing tasks are usually asynchronous and can be awaited using ``wait()``.
+    The base class implements a ``wait_or_retry()`` API that will retry a failed
+    sync command.
+
+    The base class also exposes an API to only kick off syncs every ``sync_period``
+    seconds.
+
+    """
+
     def __init__(self, sync_period: float = 300.0):
         self.sync_period = sync_period
         self.last_sync_up_time = float("-inf")
@@ -141,25 +159,78 @@ class Syncer(abc.ABC):
     def sync_up(
         self, local_dir: str, remote_dir: str, exclude: Optional[List] = None
     ) -> bool:
+        """Synchronize local directory to remote directory.
+
+        This function can spawn an asynchronous process that can be awaited in
+        ``wait()``.
+
+        Args:
+            local_dir: Local directory to sync from.
+            remote_dir: Remote directory to sync up to. This is an URI
+                (``protocol://remote/path``).
+            exclude: Pattern of files to exclude, e.g.
+                ``["*/checkpoint_*]`` to exclude trial checkpoints.
+
+        Returns:
+            True if sync process has been spawned, False otherwise.
+
+        """
         raise NotImplementedError
 
     @abc.abstractmethod
     def sync_down(
         self, remote_dir: str, local_dir: str, exclude: Optional[List] = None
     ) -> bool:
+        """Synchronize remote directory to local directory.
+
+        This function can spawn an asynchronous process that can be awaited in
+        ``wait()``.
+
+        Args:
+            remote_dir: Remote directory to sync down from. This is an URI
+                (``protocol://remote/path``).
+            local_dir: Local directory to sync to.
+            exclude: Pattern of files to exclude, e.g.
+                ``["*/checkpoint_*]`` to exclude trial checkpoints.
+
+        Returns:
+            True if sync process has been spawned, False otherwise.
+
+        """
         raise NotImplementedError
 
     @abc.abstractmethod
     def delete(self, remote_dir: str) -> bool:
+        """Delete directory on remote storage.
+
+        This function can spawn an asynchronous process that can be awaited in
+        ``wait()``.
+
+        Args:
+            remote_dir: Remote directory to delete. This is an URI
+                (``protocol://remote/path``).
+
+        Returns:
+            True if sync process has been spawned, False otherwise.
+
+        """
         raise NotImplementedError
 
-    @abc.abstractmethod
     def retry(self):
-        raise NotImplementedError
+        """Retry the last sync up, sync down, or delete command.
 
-    @abc.abstractmethod
+        You should implement this method if you spawn asynchronous syncing
+        processes.
+        """
+        pass
+
     def wait(self):
-        raise NotImplementedError
+        """Wait for asynchronous sync command to finish.
+
+        You should implement this method if you spawn asynchronous syncing
+        processes.
+        """
+        pass
 
     def sync_up_if_needed(
         self, local_dir: str, remote_dir: str, exclude: Optional[List] = None
@@ -167,9 +238,11 @@ class Syncer(abc.ABC):
         """Syncs up if time since last sync up is greater than sync_period.
 
         Args:
-            sync_period: Time period between subsequent syncs.
-            exclude: Regex pattern of files to exclude, e.g.
-                ``[".*/checkpoint_.*]`` to exclude trial checkpoints.
+            local_dir: Local directory to sync from.
+            remote_dir: Remote directory to sync up to. This is an URI
+                (``protocol://remote/path``).
+            exclude: Pattern of files to exclude, e.g.
+                ``["*/checkpoint_*]`` to exclude trial checkpoints.
         """
         now = time.time()
         if now - self.last_sync_up_time >= self.sync_period:
@@ -185,7 +258,9 @@ class Syncer(abc.ABC):
         """Syncs down if time since last sync down is greater than sync_period.
 
         Args:
-            sync_period: Time period between subsequent syncs.
+            remote_dir: Remote directory to sync down from. This is an URI
+                (``protocol://remote/path``).
+            local_dir: Local directory to sync to.
             exclude: Pattern of files to exclude, e.g.
                 ``["*/checkpoint_*]`` to exclude trial checkpoints.
         """
@@ -296,11 +371,23 @@ class _DefaultSyncer(Syncer):
 
 @DeveloperAPI
 def get_node_to_storage_syncer(sync_config: SyncConfig) -> Optional[Syncer]:
-    if sync_config.syncer == None:
+    """"""
+    if sync_config.syncer is None:
         return None
 
     if sync_config.syncer == "auto":
         return _DefaultSyncer(sync_period=sync_config.sync_period)
+
+    if isinstance(sync_config.syncer, Syncer):
+        return sync_config.syncer
+
+    raise ValueError(
+        f"Unknown syncer type passed in SyncConfig: {type(sync_config.syncer)}. "
+        f"Note that custom sync functions and templates have been deprecated. "
+        f"Instead you can implement you own `Syncer` class. "
+        f"Please leave a comment on GitHub if you run into any issues with this: "
+        f"https://github.com/ray-project/ray/issues"
+    )
 
 
 @DeveloperAPI

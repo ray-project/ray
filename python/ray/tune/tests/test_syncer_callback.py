@@ -20,7 +20,6 @@ from ray.tune.syncer import (
 from ray.tune.utils.callback import create_default_callbacks
 from ray.tune.utils.file_transfer import (
     sync_dir_between_nodes,
-    _sync_dir_between_different_nodes,
 )
 import ray.util
 from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage

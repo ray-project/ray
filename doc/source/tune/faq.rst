@@ -577,7 +577,9 @@ How can I upload my Tune results to cloud storage?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 If an upload directory is provided, Tune will automatically sync results from the ``local_dir`` to the given directory,
-natively supporting standard URIs for systems like S3, gsutil or HDFS.
+natively supporting standard URIs for systems like S3, gsutil or HDFS. You can add more filesystems by installing
+``fs-spec``-compatible filesystems in pip.
+
 Here is an example of uploading to S3, using a bucket called ``my-log-dir``:
 
 .. literalinclude:: doc_code/faq.py
@@ -586,22 +588,13 @@ Here is an example of uploading to S3, using a bucket called ``my-log-dir``:
     :start-after: __log_1_start__
     :end-before: __log_1_end__
 
-You can customize this to specify arbitrary storages with the ``syncer`` argument in ``tune.SyncConfig``.
-This argument supports either strings with the same replacement fields OR arbitrary functions.
+You can customize synchronization behavior by implementing your own Syncer:
 
 .. literalinclude:: doc_code/faq.py
     :dedent:
     :language: python
     :start-after: __log_2_start__
     :end-before: __log_2_end__
-
-If a string is provided, then it must include replacement fields ``{source}`` and ``{target}``, like
-``s3 sync {source} {target}``. Alternatively, a function can be provided with the following signature:
-
-.. literalinclude:: doc_code/faq.py
-    :language: python
-    :start-after: __sync_start__
-    :end-before: __sync_end__
 
 By default, syncing occurs every 300 seconds.
 To change the frequency of syncing, set the ``sync_period`` attribute of the sync config to the desired syncing period.
@@ -623,23 +616,13 @@ How can I use Tune with Docker?
 Tune automatically syncs files and checkpoints between different remote
 containers as needed.
 
-To make this work in your Docker cluster, e.g. when you are using the Ray autoscaler
-with docker containers, you will need to pass a
-``DockerSyncer`` to the ``syncer`` argument of ``tune.SyncConfig``.
-
-.. literalinclude:: doc_code/faq.py
-    :dedent:
-    :language: python
-    :start-after: __docker_start__
-    :end-before: __docker_end__
-
 .. _tune-kubernetes:
 
 How can I use Tune with Kubernetes?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Ray Tune automatically synchronizes files and checkpoints between different remote nodes as needed.
-This usually happens via SSH, but this can be a :ref:`performance bottleneck <tune-bottlenecks>`,
+This usually happens via the Ray object store, but this can be a :ref:`performance bottleneck <tune-bottlenecks>`,
 especially when running many trials in parallel.
 
 Instead you should use shared storage for checkpoints so that no additional synchronization across nodes
@@ -662,10 +645,8 @@ Second, you can set up a shared file system like NFS. If you do this, disable au
     :start-after: __sync_config_start__
     :end-before: __sync_config_end__
 
-Otherwise, trial data is synchronized via the Ray object store. Note that this can be a bottleneck for very large
-checkpoints if object store memory is limited.
 
-Please note that we strongly encourage you to use one of the other two options instead, as they will
+Please note that we strongly encourage you to use one of these two options, as they will
 result in less overhead and provide naturally durable checkpoint storage.
 
 .. _tune-default-search-space:
