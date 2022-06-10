@@ -123,9 +123,11 @@ def sample_min_n_steps_from_buffer(
         batch_len = batch.agent_steps() if count_by_agent_steps else batch.env_steps()
         if batch_len == 0:
             # Replay has not started, so we can't accumulate timesteps here
-            return batch
+            break
         train_batches.append(batch)
         train_batch_size += batch_len
+    if len(train_batches) == 0:
+        return MultiAgentBatch({}, 0)
     # All batch types are the same type, hence we can use any concat_samples()
     train_batch = SampleBatch.concat_samples(train_batches)
     return train_batch

@@ -9,12 +9,14 @@ import ray
 from ray.actor import ActorHandle
 from ray.rllib import SampleBatch
 from ray.rllib.agents.trainer import Trainer, TrainerConfig
-from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
+from ray.rllib.utils.replay_buffers import MultiAgentMixInReplayBuffer
 from ray.rllib.execution.learner_thread import LearnerThread
 from ray.rllib.execution.multi_gpu_learner_thread import MultiGPULearnerThread
 from ray.rllib.execution.parallel_requests import (
     AsyncRequestsManager,
 )
+from ray.rllib.policy.sample_batch import MultiAgentBatch
+from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
 from ray.rllib.execution.tree_agg import gather_experiences_tree_aggregation
 from ray.rllib.execution.common import (
     STEPS_TRAINED_COUNTER,
@@ -562,6 +564,7 @@ class Impala(Trainer):
                             AggregatorWorker,
                             [
                                 self.config,
+                                self._by_agent_steps,
                             ],
                             {},
                             self.config["num_aggregation_workers"],
@@ -582,13 +585,15 @@ class Impala(Trainer):
 
             else:
                 # Create our local mixin buffer if the num of aggregation workers is 0.
-                self.local_mixin_buffer = MixInMultiAgentReplayBuffer(
+                self.local_mixin_buffer = MultiAgentMixInReplayBuffer(
                     capacity=(
                         self.config["replay_buffer_num_slots"]
                         if self.config["replay_buffer_num_slots"] > 0
                         else 1
                     ),
                     replay_ratio=self.config["replay_ratio"],
+                    storage_unit="fragments",
+                    learning_starts=0,
                 )
 
             self._sampling_actor_manager = AsyncRequestsManager(
@@ -620,7 +625,7 @@ class Impala(Trainer):
         else:
             batch = self.process_experiences_directly(unprocessed_sample_batches)
 
-        self.concatenate_batches_and_pre_queue(batch)
+        self.batches_to_place_on_learner.append(batch)
         self.place_processed_samples_on_learner_queue()
         train_results = self.process_trained_results()
 
@@ -743,27 +748,6 @@ class Impala(Trainer):
             strategy=config.get("placement_strategy", "PACK"),
         )
 
-    def concatenate_batches_and_pre_queue(self, batches: List[SampleBatch]):
-        """Concatenate batches that are being returned from rollout workers
-
-        Args:
-            batches: batches of experiences from rollout workers
-
-        """
-
-        def aggregate_into_larger_batch():
-            if (
-                sum(b.count for b in self.batch_being_built)
-                >= self.config["train_batch_size"]
-            ):
-                batch_to_add = SampleBatch.concat_samples(self.batch_being_built)
-                self.batches_to_place_on_learner.append(batch_to_add)
-                self.batch_being_built = []
-
-        for batch in batches:
-            self.batch_being_built.append(batch)
-            aggregate_into_larger_batch()
-
     def get_samples_from_workers(self) -> Dict[ActorHandle, List[SampleBatch]]:
         # Perform asynchronous sampling on all (remote) rollout workers.
         if self.workers.remote_workers():
@@ -785,6 +769,8 @@ class Impala(Trainer):
 
         while self.batches_to_place_on_learner:
             batch = self.batches_to_place_on_learner[0]
+            if len(batch) == 0:
+                return
             try:
                 self._learner_thread.inqueue.put(batch, block=False)
                 self.batches_to_place_on_learner.pop(0)
@@ -825,23 +811,26 @@ class Impala(Trainer):
     def process_experiences_directly(
         self, actor_to_sample_batches_refs: Dict[ActorHandle, List[ObjectRef]]
     ) -> Union[SampleBatchType, None]:
-        processed_batches = []
         batches = [
             sample_batch_ref
             for refs_batch in actor_to_sample_batches_refs.values()
             for sample_batch_ref in refs_batch
         ]
         if not batches:
-            return processed_batches
+            return MultiAgentBatch({}, 0)
         if batches and isinstance(batches[0], ray.ObjectRef):
             batches = ray.get(batches)
         for batch in batches:
             batch = batch.decompress_if_needed()
-            self.local_mixin_buffer.add_batch(batch)
-            batch = self.local_mixin_buffer.replay()
-            if batch:
-                processed_batches.append(batch)
-        return processed_batches
+            self.local_mixin_buffer.add(batch)
+
+        mixed_batches = sample_min_n_steps_from_buffer(
+            self.local_mixin_buffer,
+            self.config["train_batch_size"],
+            self._by_agent_steps,
+        )
+
+        return mixed_batches
 
     def process_experiences_tree_aggregation(
         self, actor_to_sample_batches_refs: Dict[ActorHandle, List[ObjectRef]]
@@ -915,21 +904,28 @@ class Impala(Trainer):
 class AggregatorWorker:
     """A worker for doing tree aggregation of collected episodes"""
 
-    def __init__(self, config: TrainerConfigDict):
+    def __init__(self, config: TrainerConfigDict, count_by_gent_steps):
         self.config = config
-        self._mixin_buffer = MixInMultiAgentReplayBuffer(
+        self._mixin_buffer = MultiAgentMixInReplayBuffer(
             capacity=(
                 self.config["replay_buffer_num_slots"]
                 if self.config["replay_buffer_num_slots"] > 0
                 else 1
             ),
             replay_ratio=self.config["replay_ratio"],
+            storage_unit="fragments",
+            learning_starts=0,
         )
+        self.count_by_gent_steps = count_by_gent_steps
 
     def process_episodes(self, batch: SampleBatchType) -> SampleBatchType:
         batch = batch.decompress_if_needed()
         self._mixin_buffer.add_batch(batch)
-        processed_batches = self._mixin_buffer.replay()
+        processed_batches = sample_min_n_steps_from_buffer(
+            self._mixin_buffer,
+            self.config["train_batch_size"],
+            self.count_by_gent_steps,
+        )
         return processed_batches
 
     def apply(

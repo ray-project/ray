@@ -4,6 +4,7 @@ import numpy as np
 import logging
 from typing import Optional, Dict, Any
 
+from ray.rllib.policy.rnn_sequencing import timeslice_along_seq_lens_with_overlap
 from ray.rllib.policy.sample_batch import (
     DEFAULT_POLICY_ID,
     SampleBatch,
@@ -75,9 +76,6 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
         capacity: int = 10000,
         storage_unit: str = "timesteps",
         num_shards: int = 1,
-        prioritized_replay_alpha: float = 0.6,
-        prioritized_replay_beta: float = 0.4,
-        prioritized_replay_eps: float = 1e-6,
         learning_starts: int = 1000,
         replay_sequence_length: int = 1,
         replay_burn_in: int = 0,
@@ -139,13 +137,10 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
                 )
             del kwargs["replay_mode"]
 
-        MultiAgentPrioritizedReplayBuffer.__init__(
+        MultiAgentReplayBuffer.__init__(
             self,
             capacity=capacity,
             storage_unit=storage_unit,
-            prioritized_replay_alpha=prioritized_replay_alpha,
-            prioritized_replay_beta=prioritized_replay_beta,
-            prioritized_replay_eps=prioritized_replay_eps,
             num_shards=num_shards,
             replay_mode="independent",
             learning_starts=learning_starts,
@@ -191,22 +186,31 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
                         self.replay_buffers[policy_id].add(time_slice, **kwargs)
                         self.last_added_batches[policy_id].append(time_slice)
             elif self._storage_unit == StorageUnit.SEQUENCES:
-                timestep_count = 0
                 for policy_id, sample_batch in batch.policy_batches.items():
-                    for seq_len in sample_batch.get(SampleBatch.SEQ_LENS):
-                        start_seq = timestep_count
-                        end_seq = timestep_count + seq_len
-                        self.replay_buffers[policy_id].add(
-                            sample_batch[start_seq:end_seq], **kwargs
+                    if self.replay_sequence_length == 1:
+                        timeslices = batch.timeslices(1)
+                    else:
+                        timeslices = timeslice_along_seq_lens_with_overlap(
+                            sample_batch=batch,
+                            zero_pad_max_seq_len=self.replay_sequence_length,
+                            pre_overlap=self.replay_burn_in,
+                            zero_init_states=self.replay_zero_init_states,
                         )
-                        self.last_added_batches[policy_id].append(
-                            sample_batch[start_seq:end_seq]
-                        )
-                        timestep_count = end_seq
+                    for time_slice in timeslices:
+                        self.replay_buffers[policy_id].add(time_slice, **kwargs)
+                        self.last_added_batches[policy_id].append(time_slice)
             elif self._storage_unit == StorageUnit.EPISODES:
                 for policy_id, sample_batch in batch.policy_batches.items():
                     for eps in sample_batch.split_by_episode():
                         # Only add full episodes to the buffer
+                        assert eps.get(SampleBatch.T), (
+                            "Trying to add an episode to "
+                            "this buffer without "
+                            "specifying the timestep T. "
+                            "SampleBatch={} does not "
+                            "contain this "
+                            "information.".format(eps)
+                        )
                         if (
                             eps.get(SampleBatch.T)[0] == 0
                             and eps.get(SampleBatch.DONES)[-1] == True  # noqa E712
