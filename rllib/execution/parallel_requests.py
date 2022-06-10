@@ -206,14 +206,14 @@ class AsyncRequestsManager:
         >>> from ray.rllib.execution.parallel_requests import (  # doctest: +SKIP
         ...    AsyncRequestsManager  # doctest: +SKIP
         >>>
-        >>> @ray.remote
-        ... class MyActor:
-        ...    def apply(self, fn, *args: List[Any], **kwargs: Dict[str, Any]) -> Any:
-        ...        return fn(*args, **kwargs)
+        >>> @ray.remote  # doctest: +SKIP
+        ... class MyActor:  # doctest: +SKIP
+        ...    def apply(self, fn, *args, **kwargs):  # doctest: +SKIP
+        ...        return fn(*args, **kwargs)  # doctest: +SKIP
         ...
-        ...    def task(self, a: int, b: int) -> Any:
-        ...        time.sleep(0.5)
-        ...        return a + b
+        ...    def task(self, a, b):  # doctest: +SKIP
+        ...        time.sleep(0.5)  # doctest: +SKIP
+        ...        return a + b  # doctest: +SKIP
         >>>
         >>> workers = [MyActor.remote() for _ in range(3)]  # doctest: +SKIP
         >>> manager = AsyncRequestsManager(workers,  # doctest: +SKIP
