@@ -518,7 +518,7 @@ def get_deployment(name: str) -> Deployment:
             f"Deployment {name} was not found. Did you call Deployment.deploy()?"
         )
     return Deployment(
-        cloudpickle.loads(deployment_info.replica_config.serialized_deployment_def),
+        deployment_info.replica_config.deployment_def,
         name,
         deployment_info.deployment_config,
         version=deployment_info.version,
@@ -541,7 +541,7 @@ def list_deployments() -> Dict[str, Deployment]:
     deployments = {}
     for name, (deployment_info, route_prefix) in infos.items():
         deployments[name] = Deployment(
-            cloudpickle.loads(deployment_info.replica_config.serialized_deployment_def),
+            deployment_info.replica_config.deployment_def,
             name,
             deployment_info.deployment_config,
             version=deployment_info.version,

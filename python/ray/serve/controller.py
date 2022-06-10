@@ -39,6 +39,7 @@ from ray.serve.logging_utils import configure_component_logger
 from ray.serve.long_poll import LongPollHost
 from ray.serve.storage.checkpoint_path import make_kv_store
 from ray.serve.storage.kv_store import RayInternalKVStore
+from ray.serve.utils import override_runtime_envs_except_env_vars
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -138,6 +139,9 @@ class ServeController:
     def check_alive(self) -> None:
         """No-op to check if this controller is alive."""
         return
+
+    def get_pid(self) -> int:
+        return os.getpid()
 
     def record_autoscaling_metrics(self, data: Dict[str, float], send_timestamp: float):
         self.autoscaling_metrics_store.add_metrics_point(data, send_timestamp)
@@ -278,7 +282,7 @@ class ServeController:
             entry["name"] = deployment_name
             entry["namespace"] = ray.get_runtime_context().namespace
             entry["ray_job_id"] = deployment_info.deployer_job_id.hex()
-            entry["class_name"] = deployment_info.replica_config.func_or_class_name
+            entry["class_name"] = deployment_info.replica_config.deployment_def_name
             entry["version"] = deployment_info.version
             entry["http_route"] = route_prefix
             entry["start_time"] = deployment_info.start_time_ms
@@ -386,7 +390,6 @@ class ServeController:
 
         deployment_info = DeploymentInfo(
             actor_name=name,
-            serialized_deployment_def=replica_config.serialized_deployment_def,
             version=version,
             deployment_config=deployment_config,
             replica_config=replica_config,
@@ -421,7 +424,7 @@ class ServeController:
     def deploy_app(
         self,
         import_path: str,
-        runtime_env: str,
+        runtime_env: Dict,
         deployment_override_options: List[Dict],
     ) -> None:
         """Kicks off a task that deploys a Serve application.
@@ -440,11 +443,14 @@ class ServeController:
 
         if self.config_deployment_request_ref is not None:
             ray.cancel(self.config_deployment_request_ref)
-            logger.debug("Canceled existing config deployment request.")
+            logger.info(
+                "Received new config deployment request. Cancelling "
+                "previous request."
+            )
 
         self.config_deployment_request_ref = run_graph.options(
             runtime_env=runtime_env
-        ).remote(import_path, deployment_override_options)
+        ).remote(import_path, runtime_env, deployment_override_options)
 
         self.deployment_timestamp = time.time()
 
@@ -568,20 +574,46 @@ class ServeController:
 
 
 @ray.remote(max_calls=1)
-def run_graph(import_path: str, deployment_override_options: List[Dict]):
+def run_graph(
+    import_path: str, graph_env: dict, deployment_override_options: List[Dict]
+):
     """Deploys a Serve application to the controller's Ray cluster."""
-    from ray import serve
-    from ray.serve.api import build
+    try:
+        from ray import serve
+        from ray.serve.api import build
 
-    # Import and build the graph
-    graph = import_attr(import_path)
-    app = build(graph)
+        # Import and build the graph
+        graph = import_attr(import_path)
+        app = build(graph)
 
-    # Override options for each deployment
-    for options_dict in deployment_override_options:
-        name = options_dict["name"]
-        app.deployments[name].set_options(**options_dict)
+        # Override options for each deployment
+        for options in deployment_override_options:
+            name = options["name"]
 
-    # Run the graph locally on the cluster
-    serve.start(_override_controller_namespace="serve")
-    serve.run(app)
+            # Merge graph-level and deployment-level runtime_envs
+            if "ray_actor_options" in options:
+                # If specified, get ray_actor_options from config
+                ray_actor_options = options["ray_actor_options"]
+            else:
+                # Otherwise, get options from graph code (and default to {} if code
+                # sets options to None)
+                ray_actor_options = app.deployments[name].ray_actor_options or {}
+
+            deployment_env = ray_actor_options.get("runtime_env", {})
+            merged_env = override_runtime_envs_except_env_vars(
+                graph_env, deployment_env
+            )
+
+            ray_actor_options.update({"runtime_env": merged_env})
+            options["ray_actor_options"] = ray_actor_options
+
+            # Update the deployment's options
+            app.deployments[name].set_options(**options)
+
+        # Run the graph locally on the cluster
+        serve.start(_override_controller_namespace="serve")
+        serve.run(app)
+    except KeyboardInterrupt:
+        # Error is raised when this task is canceled with ray.cancel(), which
+        # happens when deploy_app() is called.
+        logger.debug("Existing config deployment request terminated.")

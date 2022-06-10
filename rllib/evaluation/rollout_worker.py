@@ -33,8 +33,14 @@ from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.preprocessors import Preprocessor
 from ray.rllib.offline import NoopOutput, IOContext, OutputWriter, InputReader
-from ray.rllib.offline.off_policy_estimator import OffPolicyEstimator, OffPolicyEstimate
-from ray.rllib.offline.estimators import ImportanceSampling, WeightedImportanceSampling
+from ray.rllib.offline.estimators import (
+    OffPolicyEstimate,
+    OffPolicyEstimator,
+    ImportanceSampling,
+    WeightedImportanceSampling,
+    DirectMethod,
+    DoublyRobust,
+)
 from ray.rllib.policy.sample_batch import MultiAgentBatch, DEFAULT_POLICY_ID
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.policy_map import PolicyMap
@@ -242,7 +248,7 @@ class RolloutWorker(ParallelIteratorWorker):
         input_creator: Callable[
             [IOContext], InputReader
         ] = lambda ioctx: ioctx.default_sampler_input(),
-        off_policy_estimation_methods: List[str] = frozenset([]),
+        off_policy_estimation_methods: Optional[Dict[str, Dict]] = None,
         output_creator: Callable[
             [IOContext], OutputWriter
         ] = lambda ioctx: NoopOutput(),
@@ -339,14 +345,25 @@ class RolloutWorker(ParallelIteratorWorker):
                 DefaultCallbacks for training/policy/rollout-worker callbacks.
             input_creator: Function that returns an InputReader object for
                 loading previous generated experiences.
-            off_policy_estimation_methods: How to evaluate the policy performance.
-                Setting this only makes sense when the input is reading offline data.
-                Available options:
-                - "simulation" (str): Run the environment in the background, but use
+            off_policy_estimation_methods: A dict that specifies how to
+                evaluate the current policy.
+                This only has an effect when reading offline experiences
+                ("input" is not "sampler").
+                Available key-value pairs:
+                - {"simulation": None}: Run the environment in the background, but use
                 this data for evaluation only and not for learning.
-                - Any subclass (type) of the OffPolicyEstimator API class, e.g.
-                `ray.rllib.offline.estimators.importance_sampling::ImportanceSampling`
+                - {ope_name: {"type": ope_type, args}}. where `ope_name` is an arbitrary
+                string under which the metrics for this OPE estimator are saved,
+                and `ope_type` can be any subclass of OffPolicyEstimator, e.g.
+                ray.rllib.offline.estimators::ImportanceSampling
                 or your own custom subclass.
+                You can also add additional config arguments to be passed to the
+                OffPolicyEstimator e.g.
+                off_policy_estimation_methods = {
+                "dr_qreg": {"type": DoublyRobust, "q_model_type": "qreg"},
+                "dm_64": {"type": DirectMethod, "batch_size": 64},
+                }
+                See ray/rllib/offline/estimators for more information.
             output_creator: Function that returns an OutputWriter object for
                 saving generated experiences.
             remote_worker_envs: If using num_envs_per_worker > 1,
@@ -702,41 +719,50 @@ class RolloutWorker(ParallelIteratorWorker):
             log_dir, policy_config, worker_index, self
         )
         self.reward_estimators: List[OffPolicyEstimator] = []
-        for method in off_policy_estimation_methods:
-            if method == "is":
-                method = ImportanceSampling
+        ope_types = {
+            "is": ImportanceSampling,
+            "wis": WeightedImportanceSampling,
+            "dm": DirectMethod,
+            "dr": DoublyRobust,
+        }
+        off_policy_estimation_methods = off_policy_estimation_methods or {}
+        for name, method_config in off_policy_estimation_methods.items():
+            method_type = method_config.pop("type")
+            if method_type in ope_types:
                 deprecation_warning(
-                    old="config.off_policy_estimation_methods=[is]",
-                    new="from ray.rllib.offline.estimators import "
-                    f"{method.__name__}; config.off_policy_estimation_methods="
-                    f"[{method.__name__}]",
+                    old=method_type,
+                    new=str(ope_types[method_type]),
                     error=False,
                 )
-            elif method == "wis":
-                method = WeightedImportanceSampling
-                deprecation_warning(
-                    old="config.off_policy_estimation_methods=[wis]",
-                    new="from ray.rllib.offline.estimators import "
-                    f"{method.__name__}; config.off_policy_estimation_methods="
-                    f"[{method.__name__}]",
-                    error=False,
-                )
-
-            if method == "simulation":
+                method_type = ope_types[method_type]
+            if name == "simulation":
                 logger.warning(
                     "Requested 'simulation' input evaluation method: "
                     "will discard all sampler outputs and keep only metrics."
                 )
                 sample_async = True
-            elif isinstance(method, type) and issubclass(method, OffPolicyEstimator):
+            # TODO: Allow for this to be a full classpath string as well, then construct
+            #  this with our `from_config` util.
+            elif isinstance(method_type, type) and issubclass(
+                method_type, OffPolicyEstimator
+            ):
+                gamma = self.io_context.worker.policy_config["gamma"]
+                # Grab a reference to the current model
+                keys = list(self.io_context.worker.policy_map.keys())
+                if len(keys) > 1:
+                    raise NotImplementedError(
+                        "Off-policy estimation is not implemented for multi-agent. "
+                        "You can set `input_evaluation: []` to resolve this."
+                    )
+                policy = self.io_context.worker.get_policy(keys[0])
                 self.reward_estimators.append(
-                    method.create_from_io_context(self.io_context)
+                    method_type(name=name, policy=policy, gamma=gamma, **method_config)
                 )
             else:
                 raise ValueError(
-                    f"Unknown evaluation method: {method}! Must be "
-                    "either `simulation` or a sub-class of ray.rllib.offline."
-                    "off_policy_estimator::OffPolicyEstimator"
+                    f"Unknown off_policy_estimation type: {method_type}! Must be "
+                    "either `simulation|is|wis|dm|dr` or a sub-class of ray.rllib."
+                    "offline.estimators.off_policy_estimator::OffPolicyEstimator"
                 )
 
         render = False
@@ -866,9 +892,8 @@ class RolloutWorker(ParallelIteratorWorker):
 
         # Do off-policy estimation, if needed.
         if self.reward_estimators:
-            for sub_batch in batch.split_by_episode():
-                for estimator in self.reward_estimators:
-                    estimator.process(sub_batch)
+            for estimator in self.reward_estimators:
+                estimator.process(batch)
 
         if log_once("sample_end"):
             logger.info("Completed sample batch:\n\n{}\n".format(summarize(batch)))
@@ -1138,7 +1163,7 @@ class RolloutWorker(ParallelIteratorWorker):
             out = self.sampler.get_metrics()
         else:
             out = []
-        # Get metrics from our reward-estimators (if any).
+        # Get metrics from our reward estimators (if any).
         for m in self.reward_estimators:
             out.extend(m.get_metrics())
 

@@ -48,7 +48,7 @@ Then, we can tell DQN to train using these previously generated experiences with
         --env=CartPole-v0 \
         --config='{
             "input": "/tmp/cartpole-out",
-            "off_policy_estimation_methods": [],
+            "off_policy_estimation_methods": {},
             "explore": false}'
 
 .. _is:
@@ -62,7 +62,14 @@ Then, we can tell DQN to train using these previously generated experiences with
         --env=CartPole-v0 \
         --config='{
             "input": "/tmp/cartpole-out",
-            "off_policy_estimation_methods": ["is", "wis"],
+            "off_policy_estimation_methods": {
+                "is": {
+                    "type": "ImportanceSampling",
+                },
+                "wis": {
+                    "type": "WeightedImportanceSampling",
+                }
+            },
             "exploration_config": {
                 "type": "SoftQ",
                 "temperature": 1.0,
@@ -275,10 +282,10 @@ You can configure experience input for an agent using the following options:
     #  - Any subclass of OffPolicyEstimator, e.g.
     #    ray.rllib.offline.estimators.is::ImportanceSampling or your own custom
     #    subclass.
-    "off_policy_estimation_methods": [
-        ImportanceSampling,
-        WeightedImportanceSampling,
-    ],
+    "off_policy_estimation_methods": {
+        ImportanceSampling: None,
+        WeightedImportanceSampling: None,
+    },
     # Whether to run postprocess_trajectory() on the trajectory fragments from
     # offline inputs. Note that postprocessing will be done using the *current*
     # policy, not the *behavior* policy, which is typically undesirable for

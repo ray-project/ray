@@ -14,7 +14,7 @@ import gym
 import numpy as np
 import ray
 from ray import tune
-from ray.air.utils.remote_storage import _ensure_directory
+from ray.air._internal.remote_storage import _ensure_directory
 from ray.rllib import _register_all
 from ray.tune import (
     register_env,

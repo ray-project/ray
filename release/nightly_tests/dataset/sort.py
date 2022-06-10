@@ -7,8 +7,8 @@ import resource
 import json
 from typing import List
 
-from ray.data.impl.arrow_block import ArrowRow
-from ray.data.impl.util import _check_pyarrow_version
+from ray.data._internal.arrow_block import ArrowRow
+from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import Block, BlockMetadata
 
 from ray.data.datasource import Datasource, ReadTask
