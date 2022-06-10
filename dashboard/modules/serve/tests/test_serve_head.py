@@ -39,7 +39,7 @@ def test_put_get(ray_start_stop):
         "runtime_env": {
             "working_dir": (
                 "https://github.com/ray-project/test_dag/archive/"
-                "cc246509ba3c9371f8450f74fdc18018428630bd.zip"
+                "76a741f6de31df78411b1f302071cde46f098418.zip"
             )
         },
         "deployments": [
@@ -65,7 +65,7 @@ def test_put_get(ray_start_stop):
         "runtime_env": {
             "working_dir": (
                 "https://github.com/ray-project/test_dag/archive/"
-                "41b26242e5a10a8c167fcb952fb11d7f0b33d614.zip"
+                "76a741f6de31df78411b1f302071cde46f098418.zip"
             )
         },
         "deployments": [
@@ -134,7 +134,7 @@ def test_delete(ray_start_stop):
         "runtime_env": {
             "working_dir": (
                 "https://github.com/ray-project/test_dag/archive/"
-                "41b26242e5a10a8c167fcb952fb11d7f0b33d614.zip"
+                "76a741f6de31df78411b1f302071cde46f098418.zip"
             )
         },
         "deployments": [
@@ -212,7 +212,7 @@ def test_get_status(ray_start_stop):
         "runtime_env": {
             "working_dir": (
                 "https://github.com/ray-project/test_dag/archive/"
-                "41b26242e5a10a8c167fcb952fb11d7f0b33d614.zip"
+                "76a741f6de31df78411b1f302071cde46f098418.zip"
             )
         },
     }
@@ -259,7 +259,7 @@ def test_serve_namespace(ray_start_stop):
         "runtime_env": {
             "working_dir": (
                 "https://github.com/ray-project/test_dag/archive/"
-                "41b26242e5a10a8c167fcb952fb11d7f0b33d614.zip"
+                "76a741f6de31df78411b1f302071cde46f098418.zip"
             )
         },
     }
