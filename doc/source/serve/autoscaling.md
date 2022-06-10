@@ -18,7 +18,7 @@ Ray Serve autoscaling is to increase and decrease the number of replicas based o
 - Deployment Handle(Client) keeps polling the replica stats from controller to get the updated replicas information. Serve Handle(Client) will send requests directly to the replica based on the replicas information (Round Robin).
 
 :::{note}
-When the controller dies, the client is still able to send requests, but autoscaling will not work.
+When the controller dies, the client is still able to send requests, but autoscaling will pause to work. When the controller recovers, the autoscaling will start working, all previous metrics collected will be lost.
 :::
 
 ## Autoscaling parameters
