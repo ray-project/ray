@@ -7,6 +7,7 @@ import ray
 from ray.experimental.state.common import (
     SupportedFilterType,
     ListApiOptions,
+    SummaryApiOptions,
     DEFAULT_RPC_TIMEOUT,
     DEFAULT_LIMIT,
 )
@@ -190,6 +191,72 @@ def list_runtime_envs(
     return _list(
         "runtime_envs",
         ListApiOptions(limit=limit, timeout=timeout, filters=filters),
+        api_server_url=api_server_url,
+        _explain=_explain,
+    )
+
+
+def _summary(
+    resource_name: str,
+    *,
+    options: SummaryApiOptions,
+    api_server_url: str = None,
+    _explain: bool = False,
+):
+    if api_server_url is None:
+        assert ray.is_initialized()
+        api_server_url = (
+            f"http://{ray.worker.global_worker.node.address_info['webui_url']}"
+        )
+
+    params = {"timeout": options.timeout}
+    r = requests.request(
+        "GET",
+        f"{api_server_url}/api/v0/{resource_name}/summarize",
+        params=params,
+        headers={"Content-Type": "application/json"},
+        json=None,
+        timeout=options.timeout,
+    )
+    r.raise_for_status()
+
+    response = r.json()
+    if response["result"] is False:
+        raise RayStateApiException(
+            "API server internal error. See dashboard.log file for more details. "
+            f"Error: {response['msg']}"
+        )
+
+    if _explain:
+        # Print warnings if anything was given.
+        warning_msg = response["data"].get("partial_failure_warning", None)
+        if warning_msg:
+            warnings.warn(warning_msg, RuntimeWarning)
+
+    return response["data"]["result"]
+
+
+def summarize_tasks(
+    api_server_url: str = None,
+    timeout: int = DEFAULT_RPC_TIMEOUT,
+    _explain: bool = False,
+):
+    return _summary(
+        "tasks",
+        options=SummaryApiOptions(timeout=timeout),
+        api_server_url=api_server_url,
+        _explain=_explain,
+    )
+
+
+def summarize_actors(
+    api_server_url: str = None,
+    timeout: int = DEFAULT_RPC_TIMEOUT,
+    _explain: bool = False,
+):
+    return _summary(
+        "actors",
+        options=SummaryApiOptions(timeout=timeout),
         api_server_url=api_server_url,
         _explain=_explain,
     )

@@ -9,7 +9,7 @@ from ray.dashboard.modules.job.common import JobInfo
 logger = logging.getLogger(__name__)
 
 DEFAULT_RPC_TIMEOUT = 30
-DEFAULT_LIMIT = 1000
+DEFAULT_LIMIT = 10000
 
 
 def filter_fields(data: dict, state_dataclass) -> dict:
@@ -45,6 +45,11 @@ class ListApiOptions:
         self.timeout = int(self.timeout * self._server_timeout_multiplier)
         if self.filters is None:
             self.filters = []
+
+
+@dataclass(init=True)
+class SummaryApiOptions:
+    timeout: int = DEFAULT_RPC_TIMEOUT
 
 
 class StateSchema(ABC):
@@ -264,4 +269,24 @@ class ListApiResponse:
     # them fails. Note that it is impossible to guarantee high
     # availability of data because ray's state information is
     # not replicated.
+    partial_failure_warning: str = ""
+
+
+"""
+Summary API schema
+"""
+
+
+@dataclass(init=True)
+class TaskSummary:
+    # State name to the count dict
+    state_counts: Dict[str, int]
+    type: str
+    func_or_class_name: str
+    required_resources: dict
+
+
+@dataclass(init=True)
+class SummaryApiResponse:
+    result: Dict[str, TaskSummary] = None
     partial_failure_warning: str = ""

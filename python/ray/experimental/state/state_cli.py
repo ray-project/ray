@@ -21,6 +21,8 @@ from ray.experimental.state.api import (
     list_tasks,
     list_objects,
     list_runtime_envs,
+    summarize_tasks,
+    summarize_actors,
 )
 
 
@@ -59,6 +61,27 @@ def get_state_api_output_to_print(
         )
 
 
+def _get_api_server_url():
+    address = services.canonicalize_bootstrap_address(None)
+    gcs_client = GcsClient(address=address, nums_reconnect_retry=0)
+    ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
+    api_server_url = ray._private.utils.internal_kv_get_with_retry(
+        gcs_client,
+        ray_constants.DASHBOARD_ADDRESS,
+        namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+        num_retries=20,
+    )
+    if api_server_url is None:
+        raise ValueError(
+            (
+                "Couldn't obtain the API server address from GCS. It is likely that "
+                "the GCS server is down. Check gcs_server.[out | err] to see if it is "
+                "still alive."
+            )
+        )
+    return api_server_url
+
+
 """
 List API
 """
@@ -73,25 +96,7 @@ def _should_explain(format: AvailableFormat):
 @click.group("list")
 @click.pass_context
 def list_state_cli_group(ctx):
-    address = services.canonicalize_bootstrap_address(None)
-    gcs_client = GcsClient(address=address, nums_reconnect_retry=0)
-    ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
-    api_server_url = ray._private.utils.internal_kv_get_with_retry(
-        gcs_client,
-        ray_constants.DASHBOARD_ADDRESS,
-        namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-        num_retries=20,
-    )
-
-    if api_server_url is None:
-        raise ValueError(
-            (
-                "Couldn't obtain the API server address from GCS. It is likely that "
-                "the GCS server is down. Check gcs_server.[out | err] to see if it is "
-                "still alive."
-            )
-        )
-
+    api_server_url = _get_api_server_url()
     assert use_gcs_for_bootstrap()
     ctx.ensure_object(dict)
     ctx.obj["api_server_url"] = f"http://{api_server_url.decode()}"
@@ -262,5 +267,44 @@ def runtime_envs(ctx, format: str, filter: List[Tuple[str, str]]):
                 _explain=_should_explain(format),
             ),
             format=format,
+        )
+    )
+
+
+@click.group("summary")
+@click.pass_context
+def summary_state_cli_group(ctx):
+    api_server_url = _get_api_server_url()
+    assert use_gcs_for_bootstrap()
+    ctx.ensure_object(dict)
+    ctx.obj["api_server_url"] = f"http://{api_server_url.decode()}"
+
+
+@summary_state_cli_group.command(name="tasks")
+@click.pass_context
+def task_summary(ctx):
+    url = ctx.obj["api_server_url"]
+    print(
+        get_state_api_output_to_print(
+            summarize_tasks(
+                api_server_url=url,
+                _explain=True,
+            ),
+            format=AvailableFormat.YAML,
+        )
+    )
+
+
+@summary_state_cli_group.command(name="actors")
+@click.pass_context
+def actor_summary(ctx):
+    url = ctx.obj["api_server_url"]
+    print(
+        get_state_api_output_to_print(
+            summarize_actors(
+                api_server_url=url,
+                _explain=True,
+            ),
+            format=AvailableFormat.YAML,
         )
     )

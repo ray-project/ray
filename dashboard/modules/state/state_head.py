@@ -18,6 +18,7 @@ from ray.dashboard.state_aggregator import StateAPIManager
 from ray.experimental.state.common import (
     ListApiOptions,
     GetLogOptions,
+    SummaryApiOptions,
     DEFAULT_RPC_TIMEOUT,
 )
 from ray.experimental.state.exception import DataSourceUnavailable
@@ -42,7 +43,7 @@ class StateHead(dashboard_utils.DashboardHeadModule):
         DataSource.nodes.signal.append(self._update_raylet_stubs)
         DataSource.agents.signal.append(self._update_agent_stubs)
 
-    def _options_from_req(self, req) -> ListApiOptions:
+    def _options_from_req(self, req: aiohttp.web.Request) -> ListApiOptions:
         """Obtain `ListApiOptions` from the aiohttp request."""
         limit = int(req.query.get("limit"))
         timeout = int(req.query.get("timeout"))
@@ -53,6 +54,10 @@ class StateHead(dashboard_utils.DashboardHeadModule):
         for key, val in zip(filter_keys, filter_values):
             filters.append((key, val))
         return ListApiOptions(limit=limit, timeout=timeout, filters=filters)
+
+    def _summary_options_from_req(self, req: aiohttp.web.Request) -> SummaryApiOptions:
+        timeout = int(req.query.get("timeout", DEFAULT_RPC_TIMEOUT))
+        return SummaryApiOptions(timeout=timeout)
 
     def _reply(self, success: bool, error_message: str, result: dict, **kwargs):
         """Reply to the client."""
@@ -245,6 +250,36 @@ class StateHead(dashboard_utils.DashboardHeadModule):
             await response.write(str(e).encode())
             await response.write_eof()
             return response
+
+    @routes.get("/api/v0/tasks/summarize")
+    async def summarize_tasks(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        try:
+            result = await self._state_api.summarize_tasks(
+                option=self._summary_options_from_req(req)
+            )
+            return self._reply(
+                success=True,
+                error_message="",
+                result=result.result,
+                partial_failure_warning=result.partial_failure_warning,
+            )
+        except DataSourceUnavailable as e:
+            return self._reply(success=False, error_message=str(e), result=None)
+
+    @routes.get("/api/v0/actors/summarize")
+    async def summarize_actors(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        try:
+            result = await self._state_api.summarize_actors(
+                option=self._summary_options_from_req(req)
+            )
+            return self._reply(
+                success=True,
+                error_message="",
+                result=result.result,
+                partial_failure_warning=result.partial_failure_warning,
+            )
+        except DataSourceUnavailable as e:
+            return self._reply(success=False, error_message=str(e), result=None)
 
     async def run(self, server):
         gcs_channel = self._dashboard_head.aiogrpc_gcs_channel

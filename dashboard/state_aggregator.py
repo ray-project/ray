@@ -1,6 +1,7 @@
 import asyncio
 import logging
 
+from collections import defaultdict
 from dataclasses import fields
 from itertools import islice
 from typing import List, Tuple
@@ -22,6 +23,9 @@ from ray.experimental.state.common import (
     RuntimeEnvState,
     ListApiOptions,
     ListApiResponse,
+    SummaryApiResponse,
+    DEFAULT_LIMIT,
+    SummaryApiOptions,
 )
 from ray.experimental.state.state_manager import (
     StateDataSourceClient,
@@ -485,6 +489,56 @@ class StateAPIManager:
             result=list(islice(result, option.limit)),
             partial_failure_warning=partial_failure_warning,
         )
+
+    async def summarize_tasks(self, option: SummaryApiOptions) -> SummaryApiResponse:
+        result = await self.list_tasks(
+            option=ListApiOptions(
+                timeout=option.timeout, limit=DEFAULT_LIMIT, filters=[]
+            )
+        )
+        if result.partial_failure_warning:
+            return SummaryApiResponse(
+                result=None, partial_failure_warning=result.partial_failure_warning
+            )
+
+        summary = {}
+        tasks = result.result
+        for task in tasks.values():
+            if task["func_or_class_name"] not in summary:
+                summary[task["func_or_class_name"]] = {
+                    "state_counts": defaultdict(int),
+                    "type": task["type"],
+                    "func_or_class_name": task["func_or_class_name"],
+                    "required_resources": task["required_resources"],
+                }
+            task_summary = summary[task["func_or_class_name"]]
+            task_summary["state_counts"][task["scheduling_state"]] += 1
+
+        return SummaryApiResponse(result=summary)
+
+    async def summarize_actors(self, option: SummaryApiOptions) -> SummaryApiResponse:
+        result = await self.list_actors(
+            option=ListApiOptions(
+                timeout=option.timeout, limit=DEFAULT_LIMIT, filters=[]
+            )
+        )
+        if result.partial_failure_warning:
+            return SummaryApiResponse(
+                result=None, partial_failure_warning=result.partial_failure_warning
+            )
+
+        summary = {}
+        actors = result.result
+        for actor in actors.values():
+            if actor["class_name"] not in summary:
+                summary[actor["class_name"]] = {
+                    "state_counts": defaultdict(int),
+                    "resource_mapping": actor["resource_mapping"],
+                }
+            task_summary = summary[actor["class_name"]]
+            task_summary["state_counts"][actor["state"]] += 1
+
+        return SummaryApiResponse(result=summary)
 
     def _message_to_dict(
         self,
