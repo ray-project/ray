@@ -1,6 +1,5 @@
 import asyncio
 from collections import defaultdict
-from copy import copy
 import json
 import logging
 import traceback
@@ -14,7 +13,6 @@ from ray.actor import ActorHandle
 from ray._private.utils import import_attr
 from ray.exceptions import RayTaskError
 
-from ray.serve.autoscaling_metrics import InMemoryMetricsStore
 from ray.serve.autoscaling_policy import BasicAutoscalingPolicy
 from ray.serve.common import (
     DeploymentInfo,
@@ -127,10 +125,6 @@ class ServeController:
         # Unix timestamp of latest config deployment request. Defaults to 0.
         self.deployment_timestamp = 0
 
-        # TODO(simon): move autoscaling related stuff into a manager.
-        self.autoscaling_metrics_store = InMemoryMetricsStore()
-        self.handle_metrics_store = InMemoryMetricsStore()
-
         asyncio.get_event_loop().create_task(self.run_control_loop())
 
     def check_alive(self) -> None:
@@ -141,13 +135,13 @@ class ServeController:
         return os.getpid()
 
     def record_autoscaling_metrics(self, data: Dict[str, float], send_timestamp: float):
-        self.autoscaling_metrics_store.add_metrics_point(data, send_timestamp)
+        self.deployment_state_manager.record_autoscaling_metrics(data, send_timestamp)
 
     def record_handle_metrics(self, data: Dict[str, float], send_timestamp: float):
-        self.handle_metrics_store.add_metrics_point(data, send_timestamp)
+        self.deployment_state_manager.record_handle_metrics(data, send_timestamp)
 
     def _dump_autoscaling_metrics_for_testing(self):
-        return self.autoscaling_metrics_store.data
+        return self.deployment_state_manager.get_autoscaling_metrics()
 
     def _dump_replica_states_for_testing(self, deployment_name):
         return self.deployment_state_manager._deployment_states[
@@ -189,68 +183,11 @@ class ServeController:
         )
         return actor_name_list.SerializeToString()
 
-    def autoscale(self) -> None:
-        """Updates autoscaling deployments with calculated num_replicas."""
-        for deployment_name, (
-            deployment_info,
-            route_prefix,
-        ) in self.list_deployments_internal().items():
-            deployment_config = deployment_info.deployment_config
-            autoscaling_policy = deployment_info.autoscaling_policy
-
-            if autoscaling_policy is None:
-                continue
-
-            replicas = self.deployment_state_manager._deployment_states[
-                deployment_name
-            ]._replicas
-            running_replicas = replicas.get([ReplicaState.RUNNING])
-
-            current_num_ongoing_requests = []
-            for replica in running_replicas:
-                replica_tag = replica.replica_tag
-                num_ongoing_requests = self.autoscaling_metrics_store.window_average(
-                    replica_tag,
-                    time.time() - autoscaling_policy.config.look_back_period_s,
-                )
-                if num_ongoing_requests is not None:
-                    current_num_ongoing_requests.append(num_ongoing_requests)
-
-            current_handle_queued_queries = self.handle_metrics_store.max(
-                deployment_name,
-                time.time() - autoscaling_policy.config.look_back_period_s,
-            )
-
-            if current_handle_queued_queries is None:
-                current_handle_queued_queries = 0
-
-            new_deployment_config = deployment_config.copy()
-
-            decision_num_replicas = autoscaling_policy.get_decision_num_replicas(
-                curr_target_num_replicas=deployment_config.num_replicas,
-                current_num_ongoing_requests=current_num_ongoing_requests,
-                current_handle_queued_queries=current_handle_queued_queries,
-            )
-
-            if decision_num_replicas == deployment_config.num_replicas:
-                continue
-
-            new_deployment_config.num_replicas = decision_num_replicas
-
-            new_deployment_info = copy(deployment_info)
-            new_deployment_info.deployment_config = new_deployment_config
-
-            self.deployment_state_manager.deploy(deployment_name, new_deployment_info)
-
     async def run_control_loop(self) -> None:
         # NOTE(edoakes): we catch all exceptions here and simply log them,
         # because an unhandled exception would cause the main control loop to
         # halt, which should *never* happen.
         while True:
-            try:
-                self.autoscale()
-            except Exception:
-                logger.exception("Exception in autoscaling.")
 
             async with self.write_lock:
                 try:
@@ -440,7 +377,10 @@ class ServeController:
 
         if self.config_deployment_request_ref is not None:
             ray.cancel(self.config_deployment_request_ref)
-            logger.debug("Canceled existing config deployment request.")
+            logger.info(
+                "Received new config deployment request. Cancelling "
+                "previous request."
+            )
 
         self.config_deployment_request_ref = run_graph.options(
             runtime_env=runtime_env
@@ -572,35 +512,42 @@ def run_graph(
     import_path: str, graph_env: dict, deployment_override_options: List[Dict]
 ):
     """Deploys a Serve application to the controller's Ray cluster."""
-    from ray import serve
-    from ray.serve.api import build
+    try:
+        from ray import serve
+        from ray.serve.api import build
 
-    # Import and build the graph
-    graph = import_attr(import_path)
-    app = build(graph)
+        # Import and build the graph
+        graph = import_attr(import_path)
+        app = build(graph)
 
-    # Override options for each deployment
-    for options in deployment_override_options:
-        name = options["name"]
+        # Override options for each deployment
+        for options in deployment_override_options:
+            name = options["name"]
 
-        # Merge graph-level and deployment-level runtime_envs
-        if "ray_actor_options" in options:
-            # If specified, get ray_actor_options from config
-            ray_actor_options = options["ray_actor_options"]
-        else:
-            # Otherwise, get options from graph code (and default to {} if code
-            # sets options to None)
-            ray_actor_options = app.deployments[name].ray_actor_options or {}
+            # Merge graph-level and deployment-level runtime_envs
+            if "ray_actor_options" in options:
+                # If specified, get ray_actor_options from config
+                ray_actor_options = options["ray_actor_options"]
+            else:
+                # Otherwise, get options from graph code (and default to {} if code
+                # sets options to None)
+                ray_actor_options = app.deployments[name].ray_actor_options or {}
 
-        deployment_env = ray_actor_options.get("runtime_env", {})
-        merged_env = override_runtime_envs_except_env_vars(graph_env, deployment_env)
+            deployment_env = ray_actor_options.get("runtime_env", {})
+            merged_env = override_runtime_envs_except_env_vars(
+                graph_env, deployment_env
+            )
 
-        ray_actor_options.update({"runtime_env": merged_env})
-        options["ray_actor_options"] = ray_actor_options
+            ray_actor_options.update({"runtime_env": merged_env})
+            options["ray_actor_options"] = ray_actor_options
 
-        # Update the deployment's options
-        app.deployments[name].set_options(**options)
+            # Update the deployment's options
+            app.deployments[name].set_options(**options)
 
-    # Run the graph locally on the cluster
-    serve.start()
-    serve.run(app)
+        # Run the graph locally on the cluster
+        serve.start()
+        serve.run(app)
+    except KeyboardInterrupt:
+        # Error is raised when this task is canceled with ray.cancel(), which
+        # happens when deploy_app() is called.
+        logger.debug("Existing config deployment request terminated.")
