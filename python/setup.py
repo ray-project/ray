@@ -289,6 +289,8 @@ if setup_spec.type == SetupType.RAY:
         "frozenlist",
         "requests",
         "virtualenv",  # For pip runtime env.
+        # We need to discuss if there is other alternative for converting dict to dataclass.
+        "dacite",
     ]
 
 

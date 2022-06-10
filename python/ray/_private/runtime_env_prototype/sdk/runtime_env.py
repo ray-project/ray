@@ -7,24 +7,10 @@ from ray._private.runtime_env_prototype.pluggability.plugin_schema_manager impor
     RuntimeEnvPluginSchemaManager,
 )
 from typing import Any
+from dataclasses import dataclass, asdict, is_dataclass
+from dacite import from_dict
 
 logger = logging.getLogger(__name__)
-
-
-class RuntimeEnvBase(ABC):
-    """ The abstract class which makes sure the class could be converted to/from json.
-    """
-    @abstractmethod
-    def to_jsonable_type(self):
-        """ Convert class to a jsonable type, e.g. dict, list, string and so on.
-        """
-        raise NotImplementedError()
-
-    @abstractstaticmethod
-    def from_jsonable_type(jsonable_data) -> "RuntimeEnvBase":
-        """ Convert from jsonable type.
-        """
-        raise NotImplementedError()
 
 
 @PublicAPI
@@ -32,18 +18,22 @@ class RuntimeEnv(dict):
     def __init__(self):
         super().__init__()
 
-    def set(self, runtime_env_name, typed_runtime_env):
-        # Maybe we can do this automatically using `typed_runtime_env.__dict__` ?
-        jsonable_type = typed_runtime_env.to_jsonable_type()
-        RuntimeEnvPluginSchemaManager.validate(runtime_env_name, jsonable_type)
-        self[runtime_env_name] = jsonable_type
-
     def __setitem__(self, key: str, value: Any) -> None:
-        RuntimeEnvPluginSchemaManager.validate(key, value)
-        return super().__setitem__(key, value)
+        if is_dataclass(value):
+            jsonable_type = asdict(value)
+        else:
+            jsonable_type = value
+        RuntimeEnvPluginSchemaManager.validate(key, jsonable_type)
+        return super().__setitem__(key, jsonable_type)
 
-    def get(self, runtime_env_name, runtime_env_type):
-        return runtime_env_type.from_jsonable_type(self[runtime_env_name])
+    def set(self, runtime_env_name, typed_runtime_env):
+        self.__setitem__(runtime_env_name, typed_runtime_env)
+
+    def get(self, runtime_env_name, data_class=None):
+        if not data_class:
+            return self[runtime_env_name]
+        else:
+            return from_dict(data_class=data_class, data=self[runtime_env_name])
     
     def remove(self, runtime_env_name):
         del self[runtime_env_name]

@@ -37,8 +37,11 @@ def test_runtime_env():
     runtime_env = RuntimeEnv()
     pip_runtime_env = Pip(packages=["requests"], pip_check=True)
     runtime_env.set("pip", pip_runtime_env)
+    assert runtime_env.get("pip", Pip) == pip_runtime_env
     # Simple Dict API
-    runtime_env["working_dir"] = "https://path/to/working_dir.zip"
+    working_dir = "https://path/to/working_dir.zip"
+    runtime_env["working_dir"] = working_dir
+    assert runtime_env["working_dir"] == working_dir
 
     # The instance is both RuntimeEnv and dict.
     assert isinstance(runtime_env, RuntimeEnv)
