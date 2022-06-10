@@ -2305,7 +2305,7 @@ class Trainer(Trainable):
 
     @staticmethod
     def _auto_duration_fn(
-        unit, num_eval_workers, eval_cfg, num_units_done, train_future
+        unit, num_eval_workers, eval_cfg, train_future, num_units_done
     ):
         # Training is done and we already ran at least one
         # evaluation -> Nothing left to run.
