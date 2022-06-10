@@ -253,7 +253,7 @@ def test_get_status_info(ray_start_stop):
 def test_serve_namespace(ray_start_stop):
     """
     Check that the Dashboard's Serve can interact with the Python API
-    when they both start in the "serve namespace"
+    when they both start in the "serve" namespace.
     """
 
     config = {
