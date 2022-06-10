@@ -1799,7 +1799,7 @@ py_test(
 py_test(
     name = "tests/backward_compat/test_backward_compat",
     tags = ["team:rllib", "tests_dir", "tests_dir_B"],
-    size = "small",
+    size = "medium",
     srcs = ["tests/backward_compat/test_backward_compat.py"]
 )
 

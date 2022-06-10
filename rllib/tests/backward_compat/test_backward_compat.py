@@ -28,12 +28,8 @@ class TestBackwardCompatibility(unittest.TestCase):
         ):
             _get_trainer_class(key)
 
-        # Also test this for all `CONTRIBUTED_ALGORITHMS`.
-        for key in list(CONTRIBUTED_ALGORITHMS.keys()):
-            _get_trainer_class(key)
-
     def test_old_configs(self):
-        """Tests creating Trainers (Algorithms) with 1.10 config dicts."""
+        """Tests creating various Trainers (Algorithms) using 1.10 config dicts."""
         from ray.rllib.tests.backward_compat.old_ppo import DEFAULT_CONFIG
         from ray.rllib.agents.ppo import PPOTrainer
 
