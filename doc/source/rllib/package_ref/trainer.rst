@@ -42,7 +42,7 @@ and override one or more of its methods. Those are in particular:
 * :py:meth:`~ray.rllib.agents.trainer.Trainer.get_default_policy_class`
 * :py:meth:`~ray.rllib.agents.trainer.Trainer.setup`
 * :py:meth:`~ray.rllib.agents.trainer.Trainer.step_attempt`
-* :py:meth:`~ray.rllib.agents.trainer.Trainer.training_iteration`
+* :py:meth:`~ray.rllib.agents.trainer.Trainer.training_step`
 
 `See here for an example on how to override Trainer <https://github.com/ray-project/ray/blob/master/rllib/algorithms/pg/pg.py>`_.
 

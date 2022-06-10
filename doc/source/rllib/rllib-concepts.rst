@@ -232,10 +232,10 @@ First, check out the `PPO trainer definition <https://github.com/ray-project/ray
 
         @staticmethod
         @override(Trainer)
-        def training_iteration(workers, config, **kwargs):
+        def training_step(workers, config, **kwargs):
             ...
 
-Besides some boilerplate for defining the PPO configuration and some warnings, the most important method to take note of is the ``training_iteration``.
+Besides some boilerplate for defining the PPO configuration and some warnings, the most important method to take note of is the ``training_step``.
 
 The trainer's `training iteration method <core-concepts.html#training-iteration-method>`__ defines the distributed training workflow.
 Depending on the ``simple_optimizer`` trainer config,
@@ -243,7 +243,7 @@ PPO can switch between a simple synchronous optimizer, or a multi-GPU plan that 
 
 .. code-block:: python
 
-        def training_iteration(self) -> ResultDict:
+        def training_step(self) -> ResultDict:
         # Collect SampleBatches from sample workers until we have a full batch.
         if self._by_agent_steps:
             train_batch = synchronous_parallel_sample(

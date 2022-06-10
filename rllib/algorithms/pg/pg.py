@@ -95,54 +95,6 @@ class PG(Trainer):
 
             return PGEagerTFPolicy
 
-    @override(Trainer)
-    def training_iteration(self) -> ResultDict:
-        """Single Iteration of Vanilla Policy Gradient Algorithm.
-
-        - Collect on-policy samples (SampleBatches) in parallel using the
-          Trainer's RolloutWorkers (@ray.remote).
-        - Concatenate collected SampleBatches into one train batch.
-        - Note that we may have more than one policy in the multi-agent case:
-          Call the different policies' `learn_on_batch` (simple optimizer) OR
-          `load_batch_into_buffer` + `learn_on_loaded_batch` (multi-GPU
-          optimizer) methods to calculate loss and update the model(s).
-        - Return all collected metrics for the iteration.
-
-        Returns:
-            The results dict from executing the training iteration.
-        """
-        # Collect SampleBatches from sample workers until we have a full batch.
-        if self._by_agent_steps:
-            train_batch = synchronous_parallel_sample(
-                worker_set=self.workers, max_agent_steps=self.config["train_batch_size"]
-            )
-        else:
-            train_batch = synchronous_parallel_sample(
-                worker_set=self.workers, max_env_steps=self.config["train_batch_size"]
-            )
-        train_batch = train_batch.as_multi_agent()
-        self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
-        self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
-
-        # Use simple optimizer (only for multi-agent or tf-eager; all other
-        # cases should use the multi-GPU optimizer, even if only using 1 GPU).
-        # TODO: (sven) rename MultiGPUOptimizer into something more
-        #  meaningful.
-        if self.config.get("simple_optimizer") is True:
-            train_results = train_one_step(self, train_batch)
-        else:
-            train_results = multi_gpu_train_one_step(self, train_batch)
-
-        # Update weights and global_vars - after learning on the local worker - on all
-        # remote workers.
-        global_vars = {
-            "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
-        }
-        with self._timers[WORKER_UPDATE_TIMER]:
-            self.workers.sync_weights(global_vars=global_vars)
-
-        return train_results
-
 
 # Deprecated: Use ray.rllib.algorithms.pg.PGConfig instead!
 class _deprecated_default_config(dict):

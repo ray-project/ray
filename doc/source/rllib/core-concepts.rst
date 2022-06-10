@@ -14,7 +14,7 @@ On this page, we'll cover the key concepts to help you understand how RLlib work
 In RLlib you use `trainers` to train `algorithms`.
 These algorithms use `policies` to select actions for your agents.
 Given a policy, `evaluation` of a policy produces `sample batches` of experiences.
-You can also customize the `training_iteration` method of your RL experiments.
+You can also customize the `training_step` method of your RL experiments.
 
 Trainers
 --------
@@ -163,7 +163,7 @@ These batches are wrapped up together in a ``MultiAgentBatch``,
 serving as a container for the individual agents' sample batches.
 
 
-Training Iteration Method
+Training Step Method
 -------------------------
 
 .. TODO all four execution plan snippets below must be tested
@@ -178,7 +178,7 @@ Training Iteration Method
 What is it?
 ~~~~~~~~~~~
 
-The ``training_iteration`` method is an attribute of ``Trainer`` that dictates the execution logic of your algorithm. Specifically, it is used to express how you want to
+The ``training_step`` method is an attribute of ``Trainer`` that dictates the execution logic of your algorithm. Specifically, it is used to express how you want to
 coordinate the movement of samples and policy data across your distributed workers.
 
 **A developer will need to modify this attribute of an algorithm if they want to
@@ -187,10 +187,10 @@ make some custom changes to an algorithm or write their own from scratch if they
 When is it invoked?
 ~~~~~~~~~~~~~~~~~~~
 
-``training_iteration`` is called in 2 ways:
+``training_step`` is called in 2 ways:
 
  1. The ``train()`` method of ``Trainer`` is called.
- 2. An RLlib trainer is being used with ray tune and ``training_iteration`` will be continuously called till the
+ 2. An RLlib trainer is being used with ray tune and ``training_step`` will be continuously called till the
     :ref:`ray tune stop criteria <tune-run-ref>` is met.
 
 Key Subconcepts
@@ -205,7 +205,7 @@ The vanilla policy gradient algorithm can be thought of as a sequence of repeati
 
 .. code-block:: python
 
-    def training_iteration(self) -> ResultDict:
+    def training_step(self) -> ResultDict:
         # type: SampleBatchType
         train_batch = synchronous_parallel_sample(
                         worker_set=self.workers,
@@ -227,7 +227,7 @@ The vanilla policy gradient algorithm can be thought of as a sequence of repeati
     Within the :ref:`Policy <rllib-policy-walkthrough>` and :ref:`Model <rllib-models-walkthrough>` classes, we leverage the
     framework-specific operations and modules.
 
-Breaking that ``training_iteration`` code down:
+Breaking that ``training_step`` code down:
 
 .. code-block:: python
 
@@ -280,7 +280,7 @@ For example, a results dictionary could map policy_ids to learning and sampling 
                    }
      }
 
-Training Iteration Method Utilities
+Training Step Method Utilities
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 RLlib provides a collection of utilities that abstract away common tasks in RL training.
