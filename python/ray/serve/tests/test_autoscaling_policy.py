@@ -260,12 +260,12 @@ def test_e2e_basic_scale_up_down_with_0_replica(serve_instance):
     assert get_deployment_start_time(controller, A) == start_time
 
 
-@mock.patch.object(ServeController, "autoscale")
+@mock.patch.object(ServeController, "run_control_loop")
 def test_initial_num_replicas(mock, serve_instance):
     """assert that the inital amount of replicas a deployment is launched with
     respects the bounds set by autoscaling_config.
 
-    For this test we mock out the autoscaling loop, make sure the number of
+    For this test we mock out the run event loop, make sure the number of
     replicas is set correctly before we hit the autoscaling procedure.
     """
 
