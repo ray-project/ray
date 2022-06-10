@@ -682,10 +682,6 @@ def run_learning_tests_from_yaml(
                 # One experiment to run.
                 experiments[k_] = ec
 
-    # Print out the actual config.
-    print("== Test config ==")
-    print(yaml.dump(experiments))
-
     # Keep track of those experiments we still have to run.
     # If an experiment passes, we'll remove it from this dict.
     experiments_to_run = experiments.copy()
@@ -702,6 +698,10 @@ def run_learning_tests_from_yaml(
             break
 
         print(f"Starting learning test iteration {i}...")
+
+        # Print out the actual config.
+        print("== Test config ==")
+        print(yaml.dump(experiments_to_run))
 
         # Run remaining experiments.
         trials = run_experiments(
@@ -808,7 +808,11 @@ def run_learning_tests_from_yaml(
                     checks[experiment]["failures"] += 1
                 # We succeeded!
                 else:
-                    print(" ... Successful: (mark ok).")
+                    print(
+                        " ... Successful: (mark ok). Actual "
+                        f"reward={episode_reward_mean}; "
+                        f"actual throughput={throughput}"
+                    )
                     checks[experiment]["passed"] = True
                     del experiments_to_run[experiment]
 
