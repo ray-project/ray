@@ -251,6 +251,7 @@ class Trainer:
 
     def create_run_dir(self):
         """Create rundir for the particular training run."""
+        if self.latest_run_dir == None: return
         self.latest_run_dir.mkdir(parents=True, exist_ok=True)
         logger.info(f"Run results will be logged in: {self.latest_run_dir}")
 
@@ -556,6 +557,12 @@ class Trainer:
                 "`to_tune_trainable`. Either shutdown the "
                 "Trainer or don't start it in the first place."
             )
+
+        if os.path.exists(self.logdir) and len(os.listdir(self.logdir)) == 0:
+            os.rmdir(self.logdir)
+            self.logdir = False
+            logging.info(f"The trainer logdir ``{self.logdir}`` is "
+                         "removed and will be redirected to Tune logdir.")
 
         return _create_tune_trainable(
             train_func,
