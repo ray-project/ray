@@ -445,6 +445,12 @@ def test_count_sum_on_infinite_pipeline(ray_start_regular_shared):
     assert 9 == pipe.sum()
 
 
+def test_randomize_block_order_each_window(ray_start_regular_shared):
+    pipe = ray.data.range(12).repartition(6).window(blocks_per_window=3)
+    pipe = pipe.randomize_block_order_each_window(seed=0)
+    assert pipe.take() == [0, 1, 4, 5, 2, 3, 6, 7, 10, 11, 8, 9]
+
+
 if __name__ == "__main__":
     import sys
 

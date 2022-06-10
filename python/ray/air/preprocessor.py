@@ -2,20 +2,23 @@ import abc
 import warnings
 from enum import Enum
 from typing import Optional, TYPE_CHECKING
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     import pandas as pd
 
 from ray.data import Dataset
-from ray.air.predictor import DataBatchType
+from ray.air.data_batch_type import DataBatchType
 
 
+@PublicAPI(stability="alpha")
 class PreprocessorNotFittedException(RuntimeError):
     """Error raised when the preprocessor needs to be fitted first."""
 
     pass
 
 
+@PublicAPI(stability="alpha")
 class Preprocessor(abc.ABC):
     """Implements an ML preprocessing operation.
 
@@ -23,6 +26,10 @@ class Preprocessor(abc.ABC):
     to transform both local data batches and distributed datasets. For example, a
     Normalization preprocessor may calculate the mean and stdev of a field during
     fitting, and uses these attributes to implement its normalization transform.
+
+    Preprocessors can also be stateless and transform data without needed to be fitted.
+    For example, a preprocessor may simply remove a column, which does not require
+    any state to be fitted.
     """
 
     class FitStatus(str, Enum):

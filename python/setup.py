@@ -217,13 +217,7 @@ if setup_spec.type == SetupType.RAY:
             "prometheus_client >= 0.7.1, < 0.14.0",
             "smart_open",
         ],
-        "serve": [
-            "uvicorn[standard]==0.16.0",
-            "requests",
-            "starlette",
-            "fastapi",
-            "aiorwlock",
-        ],
+        "serve": ["uvicorn==0.16.0", "requests", "starlette", "fastapi", "aiorwlock"],
         "tune": ["pandas", "tabulate", "tensorboardX>=1.9", "requests"],
         "k8s": ["kubernetes", "urllib3"],
         "observability": [
@@ -262,11 +256,14 @@ if setup_spec.type == SetupType.RAY:
         "scipy",
     ]
 
+    setup_spec.extras["train"] = setup_spec.extras["tune"]
+
     # Ray AI Runtime should encompass Data, Tune, and Serve.
     setup_spec.extras["air"] = list(
         set(
             setup_spec.extras["tune"]
             + setup_spec.extras["data"]
+            + setup_spec.extras["train"]
             + setup_spec.extras["serve"]
         )
     )

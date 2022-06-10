@@ -91,8 +91,8 @@ class R2D2Config(DQNConfig):
         self.lr = 1e-4
         self.gamma = 0.997
         self.train_batch_size = 1000
-        self.target_network_update_freq = 2500
-        self.training_intensity = 1000
+        self.target_network_update_freq = 1000
+        self.training_intensity = 150
         # R2D2 is using a buffer that stores sequences.
         self.replay_buffer_config = {
             "type": "MultiAgentReplayBuffer",
@@ -209,7 +209,7 @@ class R2D2(DQN):
         # Call super's validation method.
         super().validate_config(config)
 
-        if config["replay_buffer_config"]["replay_sequence_length"] != -1:
+        if config["replay_buffer_config"].get("replay_sequence_length", -1) != -1:
             raise ValueError(
                 "`replay_sequence_length` is calculated automatically to be "
                 "model->max_seq_len + burn_in!"
