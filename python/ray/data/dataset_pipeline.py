@@ -289,7 +289,7 @@ class DatasetPipeline(Generic[T]):
         return self._split(len(indices) + 1, lambda ds: ds.split_at_indices(indices))
 
     def _split(
-        self, n: int, splitter: Callable[[Dataset], "Dataset[T]"]
+        self, n: int, splitter: Callable[[Dataset], List["Dataset[T]"]]
     ) -> List["DatasetPipeline[T]"]:
         resources = {}
         if not ray.util.client.ray.is_connected():
