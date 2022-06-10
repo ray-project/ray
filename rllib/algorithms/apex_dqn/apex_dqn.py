@@ -2,7 +2,7 @@
 Distributed Prioritized Experience Replay (Ape-X)
 =================================================
 
-This file defines a DQN trainer using the Ape-X architecture.
+This file defines a DQN algorithm using the Ape-X architecture.
 
 Ape-X uses a single GPU learner and many CPU workers for experience collection.
 Experience collection can scale to hundreds of CPU workers due to the
@@ -52,6 +52,7 @@ from ray.rllib.utils.typing import (
     ResultDict,
     PartialAlgorithmConfigDict,
 )
+from ray.tune.trainable import Trainable
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.util.ml_utils.dict import merge_dicts
 
@@ -75,9 +76,9 @@ class ApexDQNConfig(DQNConfig):
         >>>       .resources(num_gpus=1)\
         >>>       .rollouts(num_rollout_workers=30)\
         >>>       .environment("CartPole-v1")
-        >>> trainer = config.build()
+        >>> algo = config.build()
         >>> while True:
-        >>>     trainer.train()
+        >>>     algo.train()
 
     Example:
         >>> from ray.rllib.algorithms.apex_dqn.apex_dqn import ApexDQNConfig
@@ -679,7 +680,7 @@ class ApexDQN(DQN):
         return result
 
     @classmethod
-    @override(Trainer)
+    @override(Algorithm)
     def default_resource_request(cls, config):
         cf = dict(cls.get_default_config(), **config)
 

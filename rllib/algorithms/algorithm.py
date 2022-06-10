@@ -72,11 +72,13 @@ from ray.rllib.utils.error import EnvError, ERR_MSG_INVALID_ENV_DESCRIPTOR
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.metrics import (
-    TRAINING_ITERATION_TIMER,
-    NUM_ENV_STEPS_SAMPLED,
     NUM_AGENT_STEPS_SAMPLED,
-    NUM_ENV_STEPS_TRAINED,
+    NUM_AGENT_STEPS_SAMPLED_THIS_ITER,
     NUM_AGENT_STEPS_TRAINED,
+    NUM_ENV_STEPS_SAMPLED,
+    NUM_ENV_STEPS_SAMPLED_THIS_ITER,
+    NUM_ENV_STEPS_TRAINED,
+    TRAINING_ITERATION_TIMER,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.pre_checks.multi_agent import check_multi_agent
