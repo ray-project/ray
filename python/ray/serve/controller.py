@@ -9,6 +9,7 @@ import os
 from typing import Dict, Iterable, List, Optional, Tuple, Any
 
 import ray
+from ray import cloudpickle
 from ray.types import ObjectRef
 from ray.actor import ActorHandle
 from ray._private.utils import import_attr
@@ -37,6 +38,7 @@ from ray.serve.endpoint_state import EndpointState
 from ray.serve.http_state import HTTPState
 from ray.serve.logging_utils import configure_component_logger
 from ray.serve.long_poll import LongPollHost
+from ray.serve.schema import ServeApplicationSchema
 from ray.serve.storage.checkpoint_path import make_kv_store
 from ray.serve.storage.kv_store import RayInternalKVStore
 from ray.serve.utils import override_runtime_envs_except_env_vars
@@ -48,6 +50,7 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 _CRASH_AFTER_CHECKPOINT_PROBABILITY = 0
 
 SNAPSHOT_KEY = "serve-deployments-snapshot"
+CONFIG_CHECKPOINT_KEY = "serve-app-config-checkpoint"
 
 
 @ray.remote(num_cpus=0)
@@ -124,17 +127,19 @@ class ServeController:
             _override_controller_namespace=_override_controller_namespace,
         )
 
+        # TODO(simon): move autoscaling related stuff into a manager.
+        self.autoscaling_metrics_store = InMemoryMetricsStore()
+        self.handle_metrics_store = InMemoryMetricsStore()
+
         # Reference to Ray task executing most recent deployment request
         self.config_deployment_request_ref: ObjectRef = None
 
         # Unix timestamp of latest config deployment request. Defaults to 0.
         self.deployment_timestamp = 0
 
-        # TODO(simon): move autoscaling related stuff into a manager.
-        self.autoscaling_metrics_store = InMemoryMetricsStore()
-        self.handle_metrics_store = InMemoryMetricsStore()
-
         asyncio.get_event_loop().create_task(self.run_control_loop())
+
+        self._recover_config_from_checkpoint()
 
     def check_alive(self) -> None:
         """No-op to check if this controller is alive."""
@@ -315,6 +320,10 @@ class ServeController:
             val[deployment_name] = entry
         self.snapshot_store.put(SNAPSHOT_KEY, json.dumps(val).encode("utf-8"))
 
+    def _recover_config_from_checkpoint(self):
+        self.deployment_timestamp, config = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
+        self.deploy_app(config, update_time=False)
+
     def _all_running_replicas(self) -> Dict[str, List[RunningReplicaInfo]]:
         """Used for testing."""
         return self.deployment_state_manager.get_running_replica_infos()
@@ -422,10 +431,7 @@ class ServeController:
         return [self.deploy(**args) for args in deployment_args_list]
 
     def deploy_app(
-        self,
-        import_path: str,
-        runtime_env: Dict,
-        deployment_override_options: List[Dict],
+        self, config: ServeApplicationSchema, update_time: bool = True
     ) -> None:
         """Kicks off a task that deploys a Serve application.
 
@@ -433,13 +439,23 @@ class ServeController:
         application.
 
         Args:
-            import_path: Serve deployment graph's import path
-            runtime_env: runtime_env to run the deployment graph in
-            deployment_override_options: All dictionaries should
-                contain argument-value options that can be passed directly
-                into a set_options() call. Overrides deployment options set
-                in the graph itself.
+            config: Contains the following:
+                import_path: Serve deployment graph's import path
+                runtime_env: runtime_env to run the deployment graph in
+                deployment_override_options: Dictionaries that
+                    contain argument-value options that can be passed directly
+                    into a set_options() call. Overrides deployment options set
+                    in the graph's code itself.
+            update_time: Whether to update the deployment_timestamp.
         """
+
+        self.deployment_timestamp = time.time()
+        config_dict = config.dict(exclude_unset=True)
+
+        self.kv_store.put(
+            CONFIG_CHECKPOINT_KEY,
+            cloudpickle.dumps(tuple(self.deployment_timestamp, config_dict)),
+        )
 
         if self.config_deployment_request_ref is not None:
             ray.cancel(self.config_deployment_request_ref)
@@ -448,11 +464,13 @@ class ServeController:
                 "previous request."
             )
 
-        self.config_deployment_request_ref = run_graph.options(
-            runtime_env=runtime_env
-        ).remote(import_path, runtime_env, deployment_override_options)
+        deployment_override_options = config.dict(
+            by_alias=True, exclude_unset=True
+        ).get("deployments", [])
 
-        self.deployment_timestamp = time.time()
+        self.config_deployment_request_ref = run_graph.options(
+            runtime_env=config.runtime_env
+        ).remote(config.import_path, config.runtime_env, deployment_override_options)
 
     def delete_deployment(self, name: str):
         self.endpoint_state.delete_endpoint(name)
