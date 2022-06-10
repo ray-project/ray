@@ -12,7 +12,7 @@ import ray
 
 from ray import tune
 from ray.tune import TuneError
-from ray.tune.syncer import _DefaultSyncer, Syncer
+from ray.tune.syncer import _DefaultSyncer, Syncer, _validate_upload_dir
 from ray.tune.utils.file_transfer import _pack_dir, _unpack_dir
 
 
@@ -67,16 +67,6 @@ class TestTrainable(tune.Trainable):
             f.write("Data")
         return checkpoint_dir
 
-    def check_exists(self, checkpoint_path: str, file_path: str) -> bool:
-        if os.path.exists(checkpoint_path):
-            shutil.rmtree(checkpoint_path)
-
-        try:
-            self._maybe_load_from_cloud(checkpoint_path)
-            return os.path.exists(os.path.join(checkpoint_path, file_path))
-        except Exception:
-            return False
-
 
 class CustomSyncer(Syncer):
     def __init__(self, sync_period: float = 300.0):
@@ -86,6 +76,8 @@ class CustomSyncer(Syncer):
     def sync_up(
         self, local_dir: str, remote_dir: str, exclude: Optional[List] = None
     ) -> bool:
+        with open(os.path.join(local_dir, "custom_syncer.txt"), "w") as f:
+            f.write("Data\n")
         self._sync_status[remote_dir] = _pack_dir(local_dir)
         return True
 
@@ -107,12 +99,32 @@ class CustomSyncer(Syncer):
         pass
 
 
+def test_sync_string_invalid_uri():
+    with pytest.raises(ValueError):
+        _validate_upload_dir(tune.SyncConfig(upload_dir="invalid://some/url"))
+
+
+def test_sync_string_invalid_local():
+    with pytest.raises(ValueError):
+        _validate_upload_dir(tune.SyncConfig(upload_dir="/invalid/dir"))
+
+
+def test_sync_string_valid_local():
+    _validate_upload_dir(tune.SyncConfig(upload_dir="file:///valid/dir"))
+
+
+def test_sync_string_valid_s3():
+    _validate_upload_dir(tune.SyncConfig(upload_dir="s3://valid/bucket"))
+
+
 def test_syncer_sync_up_down(temp_data_dirs):
     tmp_source, tmp_target = temp_data_dirs
 
     syncer = _DefaultSyncer()
 
-    syncer.sync_up(local_dir=tmp_source, remote_dir="memory:///test/test_syncer_sync_up_down")
+    syncer.sync_up(
+        local_dir=tmp_source, remote_dir="memory:///test/test_syncer_sync_up_down"
+    )
     syncer.wait()
 
     syncer.sync_down(
@@ -127,6 +139,32 @@ def test_syncer_sync_up_down(temp_data_dirs):
     assert_file(True, tmp_target, "subdir/nested/level2.txt")
     assert_file(True, tmp_target, "subdir_nested_level2_exclude.txt")
     assert_file(True, tmp_target, "subdir_exclude/something/somewhere.txt")
+
+
+def test_syncer_sync_exclude(temp_data_dirs):
+    tmp_source, tmp_target = temp_data_dirs
+
+    syncer = _DefaultSyncer()
+
+    syncer.sync_up(
+        local_dir=tmp_source,
+        remote_dir="memory:///test/test_syncer_sync_exclude",
+        exclude=["*_exclude*"],
+    )
+    syncer.wait()
+
+    syncer.sync_down(
+        remote_dir="memory:///test/test_syncer_sync_exclude", local_dir=tmp_target
+    )
+    syncer.wait()
+
+    assert_file(True, tmp_target, "level0.txt")
+    assert_file(False, tmp_target, "level0_exclude.txt")
+    assert_file(True, tmp_target, "subdir/level1.txt")
+    assert_file(False, tmp_target, "subdir/level1_exclude.txt")
+    assert_file(True, tmp_target, "subdir/nested/level2.txt")
+    assert_file(False, tmp_target, "subdir_nested_level2_exclude.txt")
+    assert_file(False, tmp_target, "subdir_exclude/something/somewhere.txt")
 
 
 def test_sync_up_if_needed(temp_data_dirs):
@@ -221,25 +259,31 @@ def test_syncer_wait_or_retry(temp_data_dirs):
         assert "Failed sync even after 3 retries." in str(e)
 
 
-def test_trainable_syncer_default(ray_start_2_cpus):
+def test_trainable_syncer_default(ray_start_2_cpus, temp_data_dirs):
+    tmp_source, tmp_target = temp_data_dirs
+
     trainable = ray.remote(TestTrainable).remote(
-        remote_checkpoint_dir="memory:///test/test_trainable_syncer_default"
+        remote_checkpoint_dir=f"file://{tmp_target}"
     )
 
     checkpoint_dir = ray.get(trainable.save.remote())
 
-    assert ray.get(trainable.check_exists.remote(checkpoint_dir, "checkpoint.data"))
+    assert_file(True, tmp_target, os.path.join(checkpoint_dir, "checkpoint.data"))
+    assert_file(False, tmp_target, os.path.join(checkpoint_dir, "custom_syncer.txt"))
 
 
-def test_trainable_syncer_custom(ray_start_2_cpus):
+def test_trainable_syncer_custom(ray_start_2_cpus, temp_data_dirs):
+    tmp_source, tmp_target = temp_data_dirs
+
     trainable = ray.remote(TestTrainable).remote(
-        remote_checkpoint_dir="memory:///test/test_trainable_syncer_default",
+        remote_checkpoint_dir=f"file://{tmp_target}",
         custom_syncer=CustomSyncer(),
     )
 
     checkpoint_dir = ray.get(trainable.save.remote())
 
-    assert ray.get(trainable.check_exists.remote(checkpoint_dir, "checkpoint.data"))
+    assert_file(True, tmp_target, os.path.join(checkpoint_dir, "checkpoint.data"))
+    assert_file(True, tmp_target, os.path.join(checkpoint_dir, "custom_syncer.txt"))
 
 
 if __name__ == "__main__":

@@ -16,11 +16,11 @@ from dataclasses import dataclass
 
 import ray
 from ray.air._internal.remote_storage import (
-    get_fs_and_path,
     fs_hint,
     upload_to_uri,
     download_from_uri,
     delete_at_uri,
+    is_non_local_path_uri,
 )
 from ray.tune import TuneError
 from ray.tune.callback import Callback
@@ -38,20 +38,19 @@ logger = logging.getLogger(__name__)
 DEFAULT_SYNC_PERIOD = 300
 
 
-def validate_upload_dir(sync_config: "SyncConfig"):
-    if sync_config.upload_dir:
-        exc = None
-        try:
-            fs, _ = get_fs_and_path(sync_config.upload_dir)
-        except ImportError as e:
-            fs = None
-            exc = e
-        if not fs:
-            raise ValueError(
-                f"Could not identify external storage filesystem for "
-                f"upload dir `{sync_config.upload_dir}`. "
-                f"Hint: {fs_hint(sync_config.upload_dir)}"
-            ) from exc
+def _validate_upload_dir(sync_config: "SyncConfig") -> bool:
+    if not sync_config.upload_dir:
+        return True
+
+    if sync_config.upload_dir.startswith("file://"):
+        return True
+
+    if not is_non_local_path_uri(sync_config.upload_dir):
+        raise ValueError(
+            f"Could not identify external storage filesystem for "
+            f"upload dir `{sync_config.upload_dir}`. "
+            f"Hint: {fs_hint(sync_config.upload_dir)}"
+        )
 
 
 @PublicAPI
@@ -373,6 +372,7 @@ class SyncerCallback(Callback):
                     f"Trial {trial}: An error occurred during the "
                     f"checkpoint syncing of the current checkpoint: {e}"
                 )
+        return True
 
     def on_trial_result(
         self,

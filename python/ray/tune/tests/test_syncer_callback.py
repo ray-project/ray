@@ -1,3 +1,5 @@
+import io
+import tarfile
 from typing import Optional
 
 import logging
@@ -11,8 +13,17 @@ from freezegun import freeze_time
 
 from ray.tune import TuneError
 from ray.tune.result import NODE_IP
-from ray.tune.syncer import SyncerCallback, DEFAULT_SYNC_PERIOD, _BackgroundProcess
-from ray.tune.utils.file_transfer import sync_dir_between_nodes
+from ray.tune.syncer import (
+    SyncerCallback,
+    DEFAULT_SYNC_PERIOD,
+    _BackgroundProcess,
+    SyncConfig,
+)
+from ray.tune.utils.callback import create_default_callbacks
+from ray.tune.utils.file_transfer import (
+    sync_dir_between_nodes,
+    _sync_dir_between_different_nodes,
+)
 import ray.util
 from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 
@@ -110,6 +121,53 @@ class MaybeFailingProcess(_BackgroundProcess):
         if self.should_fail:
             raise TuneError("Syncing failed.")
         return result
+
+
+def test_syncer_callback_disabled():
+    callbacks = create_default_callbacks(
+        callbacks=[], sync_config=SyncConfig(syncer=None)
+    )
+    syncer_callback = None
+    for cb in callbacks:
+        if isinstance(cb, SyncerCallback):
+            syncer_callback = cb
+
+    trial1 = MockTrial(trial_id="a", logdir=None)
+
+    assert syncer_callback
+    assert not syncer_callback._enabled
+    assert not syncer_callback._sync_trial_dir(trial1)
+
+
+def test_syncer_callback_noop_on_trial_cloud_checkpointing():
+    """Sync to driver disabled when trials checkpoint to cloud."""
+    callbacks = create_default_callbacks(callbacks=[], sync_config=SyncConfig())
+    syncer_callback = None
+    for cb in callbacks:
+        if isinstance(cb, SyncerCallback):
+            syncer_callback = cb
+
+    trial1 = MockTrial(trial_id="a", logdir=None)
+    trial1.uses_cloud_checkpointing = True
+
+    assert syncer_callback
+    assert syncer_callback._enabled
+    assert not syncer_callback._sync_trial_dir(trial1)
+
+
+def test_syncer_callback_op_on_no_cloud_checkpointing():
+    callbacks = create_default_callbacks(callbacks=[], sync_config=SyncConfig())
+    syncer_callback = None
+    for cb in callbacks:
+        if isinstance(cb, SyncerCallback):
+            syncer_callback = cb
+
+    trial1 = MockTrial(trial_id="a", logdir=None)
+    trial1.uses_cloud_checkpointing = False
+
+    assert syncer_callback
+    assert syncer_callback._enabled
+    assert syncer_callback._sync_trial_dir(trial1)
 
 
 def test_syncer_callback_sync(ray_start_2_cpus, temp_data_dirs):
