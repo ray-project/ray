@@ -295,7 +295,7 @@ class Trainer(Trainable):
 
         # Check, whether `training_iteration` is still a tune.Trainable property
         # and has not been overridden by the user in the attempt to implement the
-        # algos logic (this should be done now inside `training_loop`).
+        # algos logic (this should be done now inside `training_step`).
         try:
             assert isinstance(self.training_iteration, int)
         except AssertionError:
@@ -705,10 +705,6 @@ class Trainer(Trainable):
             self.workers.foreach_env_with_context(fn)
 
         return result
-
-    @Deprecated(new="logic moved into `self.step()`", error=True)
-    def step_attempt(self):
-        pass
 
     @PublicAPI
     def evaluate(
@@ -2332,6 +2328,7 @@ class Trainer(Trainable):
     def _step_context(trainer):
         class StepCtx:
             def __enter__(self):
+                self.started = False
                 # Before first call to `step()`, `result` is expected to be None ->
                 # Start with self.failures=-1 -> set to 0 before the very first call
                 # to `self.step()`.
@@ -2358,9 +2355,9 @@ class Trainer(Trainable):
 
             def should_stop(self, result):
 
-                # Before first call to `step()`, `result` is expected to be None ->
-                # self.failures=0.
-                if result is None:
+                # Before first call to `step()`.
+                if self.started is False:
+                    self.started = True
                     # Fail after n retries.
                     self.failures += 1
                     if self.failures > self.failure_tolerance:
@@ -2498,6 +2495,10 @@ class Trainer(Trainable):
     @Deprecated(new="Trainer.compute_single_action()", error=False)
     def compute_action(self, *args, **kwargs):
         return self.compute_single_action(*args, **kwargs)
+
+    @Deprecated(new="logic moved into `self.step()`", error=True)
+    def step_attempt(self):
+        pass
 
     @Deprecated(new="construct WorkerSet(...) instance directly", error=False)
     def _make_workers(
