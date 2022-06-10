@@ -64,7 +64,6 @@ class TaskPoolStrategy(ComputeStrategy):
 
         # Release input block references.
         if clear_input_blocks:
-            del blocks
             block_list.clear()
 
         # Common wait for non-data refs.
@@ -159,8 +158,8 @@ class ActorPoolStrategy(ComputeStrategy):
         blocks_in = block_list.get_blocks_with_metadata()
 
         # Early release block references.
-        if clear_input_blocks:
-            block_list.clear()
+        # if clear_input_blocks:
+        #     block_list.clear()
 
         orig_num_blocks = len(blocks_in)
         results = []
@@ -249,8 +248,8 @@ class ActorPoolStrategy(ComputeStrategy):
                 tasks[ref] = worker
                 block_indices[ref] = len(blocks_in)
                 tasks_in_flight[worker] += 1
-
         map_bar.close()
+
         new_blocks, new_metadata = [], []
         # Put blocks in input order.
         results.sort(key=block_indices.get)
