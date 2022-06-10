@@ -358,7 +358,8 @@ class RayTrialExecutor:
         if not self._pg_manager.has_ready(trial):
             return None
 
-        full_actor_class = self._pg_manager.get_full_actor_cls(trial, _actor_cls)
+        runtime_env = trainable_cls.get_runtime_env(trial.placement_group_factory)
+        full_actor_class = self._pg_manager.get_full_actor_cls(trial, _actor_cls, runtime_env)
         # Clear the Trial's location (to be updated later on result)
         # since we don't know where the remote runner is placed.
         trial.set_location(_Location())

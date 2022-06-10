@@ -471,7 +471,7 @@ class _PlacementGroupManager:
         return list(self._staging_futures.keys())
 
     def get_full_actor_cls(
-        self, trial: "Trial", actor_cls: ActorClass
+        self, trial: "Trial", actor_cls: ActorClass, runtime_env: Dict
     ) -> Optional[ActorClass]:
         """Get a fully configured actor class.
 
@@ -482,6 +482,7 @@ class _PlacementGroupManager:
         Args:
             trial: "Trial" object to start
             actor_cls: Ray actor class.
+            runtime_env: Runtime environment dictionary.
 
         Returns:
             Configured ActorClass or None
@@ -518,6 +519,7 @@ class _PlacementGroupManager:
                 memory=memory,
                 object_store_memory=object_store_memory,
                 resources=resources,
+                runtime_env=runtime_env,
             )
         else:
             return actor_cls.options(
@@ -526,6 +528,7 @@ class _PlacementGroupManager:
                 num_cpus=0,
                 num_gpus=0,
                 resources={},
+                runtime_env=runtime_env,
             )
 
     def has_ready(self, trial: "Trial", update: bool = False) -> bool:

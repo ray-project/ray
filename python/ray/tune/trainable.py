@@ -228,6 +228,27 @@ class Trainable:
         """
         return ""
 
+    @classmethod
+    def get_runtime_env(cls, placement_group_factory):
+        """Provides users' customize runtime environment.
+
+        This can be overridden by sub-classes for users
+        to customize runtime environment.
+
+        .. code-block:: python
+
+            @classmethod
+            def default_resource_request(cls, placement_group_factory):
+                return {"env_vars":{"MY_ENV": "MY_VALUE"}}
+
+        Args:
+            placement_group_factory: The Trainable's placement_group_factory.
+
+        Returns:
+            Dict: A runtime env dictionary
+        """
+        return {}
+
     def get_current_ip(self):
         self._local_ip = ray.util.get_node_ip_address()
         return self._local_ip
