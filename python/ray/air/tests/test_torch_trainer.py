@@ -3,7 +3,8 @@ import torch
 
 import ray
 from ray.air.predictors.integrations.torch import TorchPredictor
-from ray.air.train.integrations.torch import TorchTrainer
+from ray.train.torch import TorchTrainer
+from ray.air.config import ScalingConfig
 from ray import train
 from ray.air.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
