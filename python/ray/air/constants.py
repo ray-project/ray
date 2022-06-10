@@ -15,3 +15,6 @@ TRAIN_DATASET_KEY = "train"
 
 # Key to denote all user-specified auxiliary datasets in DatasetConfig.
 WILDCARD_KEY = "*"
+
+# Name to use for the column when representing tensors in table format.
+TENSOR_COLUMN_NAME = "__value__"
