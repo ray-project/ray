@@ -321,8 +321,10 @@ class ServeController:
         self.snapshot_store.put(SNAPSHOT_KEY, json.dumps(val).encode("utf-8"))
 
     def _recover_config_from_checkpoint(self):
-        self.deployment_timestamp, config = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
-        self.deploy_app(config, update_time=False)
+        checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
+        if checkpoint is not None:
+            self.deployment_timestamp, config = cloudpickle.loads(checkpoint)
+            self.deploy_app(ServeApplicationSchema.parse_obj(config), update_time=False)
 
     def _all_running_replicas(self) -> Dict[str, List[RunningReplicaInfo]]:
         """Used for testing."""
@@ -449,12 +451,13 @@ class ServeController:
             update_time: Whether to update the deployment_timestamp.
         """
 
-        self.deployment_timestamp = time.time()
-        config_dict = config.dict(exclude_unset=True)
+        if update_time:
+            self.deployment_timestamp = time.time()
 
+        config_dict = config.dict(exclude_unset=True)
         self.kv_store.put(
             CONFIG_CHECKPOINT_KEY,
-            cloudpickle.dumps(tuple(self.deployment_timestamp, config_dict)),
+            cloudpickle.dumps((self.deployment_timestamp, config_dict)),
         )
 
         if self.config_deployment_request_ref is not None:

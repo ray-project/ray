@@ -328,13 +328,7 @@ class ServeControllerClient:
 
     @_ensure_connected
     def deploy_app(self, config: ServeApplicationSchema) -> None:
-        ray.get(
-            self._controller.deploy_app.remote(
-                config.import_path,
-                config.runtime_env,
-                config.dict(by_alias=True, exclude_unset=True).get("deployments", []),
-            )
-        )
+        ray.get(self._controller.deploy_app.remote(config))
 
     @_ensure_connected
     def delete_deployments(self, names: Iterable[str], blocking: bool = True) -> None:
