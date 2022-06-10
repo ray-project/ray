@@ -78,12 +78,13 @@ def multi_gpu_train_one_step(trainer, train_batch) -> Dict:
     actual train batch is only split once and loaded once into the GPU(s).
 
     Examples:
-        >>> from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
+        >>> from ray.rllib.execution.rollout_ops import ( # doctest: +SKIP
+        ...     synchronous_parallel_sample) # doctest: +SKIP
         >>> trainer = [...] # doctest: +SKIP
         >>> train_batch = synchronous_parallel_sample(trainer.workers) # doctest: +SKIP
         >>> # This trains the policy on one batch.
         >>> results = multi_gpu_train_one_step(trainer, train_batch)) # doctest: +SKIP
-        {"default_policy": ...}
+        ... {"default_policy": ...} # doctest: +SKIP
 
     Updates the NUM_ENV_STEPS_TRAINED and NUM_AGENT_STEPS_TRAINED counters as well as
     the LOAD_BATCH_TIMER and LEARN_ON_BATCH_TIMER timers of the `trainer` object.
