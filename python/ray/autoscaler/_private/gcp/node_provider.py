@@ -1,30 +1,21 @@
-from typing import Dict, List, Tuple
+import logging
+import time
 from functools import wraps
 from threading import RLock
-import time
-import logging
+from typing import Dict, List, Tuple
 
 import googleapiclient
-
-from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler._private.gcp.config import (
-    bootstrap_gcp,
-    construct_clients_from_provider_config,
-    get_node_type,
-)
-
+    bootstrap_gcp, construct_clients_from_provider_config, get_node_type)
 # The logic has been abstracted away here to allow for different GCP resources
 # (API endpoints), which can differ widely, making it impossible to use
 # the same logic for everything.
-from ray.autoscaler._private.gcp.node import (  # noqa
-    GCPResource,
-    GCPNode,
-    GCPCompute,
-    GCPTPU,
-    GCPNodeType,
-    INSTANCE_NAME_MAX_LEN,
-    INSTANCE_NAME_UUID_LEN,
-)
+from ray.autoscaler._private.gcp.node import (GCPTPU,  # noqa
+                                              INSTANCE_NAME_MAX_LEN,
+                                              INSTANCE_NAME_UUID_LEN,
+                                              GCPCompute, GCPNode, GCPNodeType,
+                                              GCPResource)
+from ray.autoscaler.node_provider import NodeProvider
 
 logger = logging.getLogger(__name__)
 

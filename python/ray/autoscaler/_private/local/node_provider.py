@@ -1,24 +1,19 @@
-from filelock import FileLock
-from threading import RLock
 import json
+import logging
 import os
 import socket
-import logging
+from threading import RLock
 
+from filelock import FileLock
+from ray.autoscaler._private.local.config import (LOCAL_CLUSTER_NODE_TYPE,
+                                                  bootstrap_local,
+                                                  get_lock_path,
+                                                  get_state_path)
 from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.tags import (
-    TAG_RAY_NODE_KIND,
-    NODE_KIND_WORKER,
-    NODE_KIND_HEAD,
-    TAG_RAY_USER_NODE_TYPE,
-    TAG_RAY_NODE_NAME,
-    TAG_RAY_NODE_STATUS,
-    STATUS_UP_TO_DATE,
-)
-from ray.autoscaler._private.local.config import bootstrap_local
-from ray.autoscaler._private.local.config import get_lock_path
-from ray.autoscaler._private.local.config import get_state_path
-from ray.autoscaler._private.local.config import LOCAL_CLUSTER_NODE_TYPE
+from ray.autoscaler.tags import (NODE_KIND_HEAD, NODE_KIND_WORKER,
+                                 STATUS_UP_TO_DATE, TAG_RAY_NODE_KIND,
+                                 TAG_RAY_NODE_NAME, TAG_RAY_NODE_STATUS,
+                                 TAG_RAY_USER_NODE_TYPE)
 
 logger = logging.getLogger(__name__)
 

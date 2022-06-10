@@ -1,7 +1,7 @@
 import copy
 import importlib
-import logging
 import json
+import logging
 import os
 from typing import Any, Dict
 
@@ -44,47 +44,48 @@ def _import_azure(provider_config):
 
 def _import_local(provider_config):
     if "coordinator_address" in provider_config:
-        from ray.autoscaler._private.local.coordinator_node_provider import (
-            CoordinatorSenderNodeProvider,
-        )
+        from ray.autoscaler._private.local.coordinator_node_provider import \
+            CoordinatorSenderNodeProvider
 
         return CoordinatorSenderNodeProvider
     else:
-        from ray.autoscaler._private.local.node_provider import LocalNodeProvider
+        from ray.autoscaler._private.local.node_provider import \
+            LocalNodeProvider
 
         return LocalNodeProvider
 
 
 def _import_readonly(provider_config):
-    from ray.autoscaler._private.readonly.node_provider import ReadOnlyNodeProvider
+    from ray.autoscaler._private.readonly.node_provider import \
+        ReadOnlyNodeProvider
 
     return ReadOnlyNodeProvider
 
 
 def _import_fake_multinode(provider_config):
-    from ray.autoscaler._private.fake_multi_node.node_provider import (
-        FakeMultiNodeProvider,
-    )
+    from ray.autoscaler._private.fake_multi_node.node_provider import \
+        FakeMultiNodeProvider
 
     return FakeMultiNodeProvider
 
 
 def _import_fake_multinode_docker(provider_config):
-    from ray.autoscaler._private.fake_multi_node.node_provider import (
-        FakeMultiNodeDockerProvider,
-    )
+    from ray.autoscaler._private.fake_multi_node.node_provider import \
+        FakeMultiNodeDockerProvider
 
     return FakeMultiNodeDockerProvider
 
 
 def _import_kubernetes(provider_config):
-    from ray.autoscaler._private._kubernetes.node_provider import KubernetesNodeProvider
+    from ray.autoscaler._private._kubernetes.node_provider import \
+        KubernetesNodeProvider
 
     return KubernetesNodeProvider
 
 
 def _import_kuberay(provider_config):
-    from ray.autoscaler._private.kuberay.node_provider import KuberayNodeProvider
+    from ray.autoscaler._private.kuberay.node_provider import \
+        KuberayNodeProvider
 
     return KuberayNodeProvider
 

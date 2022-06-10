@@ -7,15 +7,14 @@ import subprocess
 import sys
 import tempfile
 import time
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
+
 import yaml
+from ray.autoscaler._private.fake_multi_node.node_provider import (
+    FAKE_DOCKER_DEFAULT_CLIENT_PORT, FAKE_DOCKER_DEFAULT_GCS_PORT)
+from ray.util.ml_utils.dict import deep_update
 
 import ray
-from ray.autoscaler._private.fake_multi_node.node_provider import (
-    FAKE_DOCKER_DEFAULT_CLIENT_PORT,
-    FAKE_DOCKER_DEFAULT_GCS_PORT,
-)
-from ray.util.ml_utils.dict import deep_update
 
 logger = logging.getLogger(__name__)
 

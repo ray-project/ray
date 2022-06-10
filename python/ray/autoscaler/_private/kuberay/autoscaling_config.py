@@ -1,16 +1,13 @@
-from contextlib import suppress
+import json
 import logging
 import math
-import requests
+from contextlib import suppress
 from typing import Any, Dict, Optional
 
-import json
-
-from ray.autoscaler._private.constants import (
-    DISABLE_NODE_UPDATERS_KEY,
-    DISABLE_LAUNCH_CONFIG_CHECK_KEY,
-    FOREGROUND_NODE_LAUNCH_KEY,
-)
+import requests
+from ray.autoscaler._private.constants import (DISABLE_LAUNCH_CONFIG_CHECK_KEY,
+                                               DISABLE_NODE_UPDATERS_KEY,
+                                               FOREGROUND_NODE_LAUNCH_KEY)
 from ray.autoscaler._private.kuberay import node_provider
 from ray.autoscaler._private.util import validate_config
 
