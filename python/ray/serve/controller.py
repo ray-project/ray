@@ -531,6 +531,14 @@ class ServeController:
 
         return status_info.to_proto().SerializeToString()
 
+    def get_app_config(self) -> Dict:
+        checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
+        if checkpoint is None:
+            return {}
+        else:
+            _, config = pickle.loads(checkpoint)
+            return config
+
 
 @ray.remote(max_calls=1)
 def run_graph(

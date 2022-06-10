@@ -21,12 +21,12 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
     @routes.get("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def get_all_deployments(self, req: Request) -> Response:
-        from ray.serve.api import list_deployments
-        from ray.serve.application import Application
+        from ray.serve.context import get_global_client
 
-        app = Application(list(list_deployments().values()))
+        client = get_global_client(_override_controller_namespace="serve")
+
         return Response(
-            text=json.dumps(app.to_dict()),
+            text=json.dumps(client.get_app_config()),
             content_type="application/json",
         )
 

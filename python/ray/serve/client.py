@@ -361,6 +361,11 @@ class ServeControllerClient:
         }
 
     @_ensure_connected
+    def get_app_config(self) -> Dict:
+        """Returns the last requests Serve config."""
+        return ray.get(self._controller.get_app_config.remote())
+
+    @_ensure_connected
     def get_serve_status(self) -> StatusOverview:
         proto = StatusOverviewProto.FromString(
             ray.get(self._controller.get_serve_status.remote())
