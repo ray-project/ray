@@ -10,14 +10,20 @@ from types import ModuleType
 from typing import Any, Dict, Optional
 
 import yaml
-from ray.autoscaler._private.fake_multi_node.command_runner import \
-    FakeDockerCommandRunner
+from ray.autoscaler._private.fake_multi_node.command_runner import (
+    FakeDockerCommandRunner,
+)
 from ray.autoscaler.command_runner import CommandRunnerInterface
 from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.tags import (NODE_KIND_HEAD, NODE_KIND_WORKER,
-                                 STATUS_UP_TO_DATE, TAG_RAY_NODE_KIND,
-                                 TAG_RAY_NODE_NAME, TAG_RAY_NODE_STATUS,
-                                 TAG_RAY_USER_NODE_TYPE)
+from ray.autoscaler.tags import (
+    NODE_KIND_HEAD,
+    NODE_KIND_WORKER,
+    STATUS_UP_TO_DATE,
+    TAG_RAY_NODE_KIND,
+    TAG_RAY_NODE_NAME,
+    TAG_RAY_NODE_STATUS,
+    TAG_RAY_USER_NODE_TYPE,
+)
 from ray.ray_constants import DEFAULT_PORT
 
 import ray

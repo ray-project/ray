@@ -14,8 +14,7 @@ import psutil
 import yaml
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.autoscaler._private.providers import _get_node_provider
-from ray.autoscaler.tags import (NODE_KIND_HEAD, NODE_KIND_WORKER,
-                                 TAG_RAY_NODE_KIND)
+from ray.autoscaler.tags import NODE_KIND_HEAD, NODE_KIND_WORKER, TAG_RAY_NODE_KIND
 
 import ray  # noqa: F401
 

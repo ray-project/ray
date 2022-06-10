@@ -5,9 +5,11 @@ from contextlib import suppress
 from typing import Any, Dict, Optional
 
 import requests
-from ray.autoscaler._private.constants import (DISABLE_LAUNCH_CONFIG_CHECK_KEY,
-                                               DISABLE_NODE_UPDATERS_KEY,
-                                               FOREGROUND_NODE_LAUNCH_KEY)
+from ray.autoscaler._private.constants import (
+    DISABLE_LAUNCH_CONFIG_CHECK_KEY,
+    DISABLE_NODE_UPDATERS_KEY,
+    FOREGROUND_NODE_LAUNCH_KEY,
+)
 from ray.autoscaler._private.kuberay import node_provider
 from ray.autoscaler._private.util import validate_config
 

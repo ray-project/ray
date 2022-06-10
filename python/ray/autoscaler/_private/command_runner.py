@@ -13,17 +13,24 @@ from typing import Dict, List
 import click
 from ray.autoscaler._private.cli_logger import cf, cli_logger
 from ray.autoscaler._private.constants import (
-    AUTOSCALER_NODE_SSH_INTERVAL_S, AUTOSCALER_NODE_START_WAIT_S,
+    AUTOSCALER_NODE_SSH_INTERVAL_S,
+    AUTOSCALER_NODE_START_WAIT_S,
     DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES,
-    DEFAULT_OBJECT_STORE_MEMORY_PROPORTION)
-from ray.autoscaler._private.docker import (check_bind_mounts_cmd,
-                                            check_docker_image,
-                                            check_docker_running_cmd,
-                                            docker_start_cmds,
-                                            with_docker_exec)
+    DEFAULT_OBJECT_STORE_MEMORY_PROPORTION,
+)
+from ray.autoscaler._private.docker import (
+    check_bind_mounts_cmd,
+    check_docker_image,
+    check_docker_running_cmd,
+    docker_start_cmds,
+    with_docker_exec,
+)
 from ray.autoscaler._private.log_timer import LogTimer
 from ray.autoscaler._private.subprocess_output_util import (
-    ProcessRunnerError, is_output_redirected, run_cmd_redirected)
+    ProcessRunnerError,
+    is_output_redirected,
+    run_cmd_redirected,
+)
 from ray.autoscaler.command_runner import CommandRunnerInterface
 from ray.util.debug import log_once
 

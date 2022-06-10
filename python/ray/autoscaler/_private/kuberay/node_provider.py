@@ -3,13 +3,20 @@ import logging
 from typing import Any, Dict, List, Tuple
 
 import requests
-from ray.autoscaler._private.constants import (DISABLE_LAUNCH_CONFIG_CHECK_KEY,
-                                               DISABLE_NODE_UPDATERS_KEY,
-                                               FOREGROUND_NODE_LAUNCH_KEY)
+from ray.autoscaler._private.constants import (
+    DISABLE_LAUNCH_CONFIG_CHECK_KEY,
+    DISABLE_NODE_UPDATERS_KEY,
+    FOREGROUND_NODE_LAUNCH_KEY,
+)
 from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.tags import (NODE_KIND_HEAD, NODE_KIND_WORKER,
-                                 STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED,
-                                 TAG_RAY_NODE_KIND, TAG_RAY_USER_NODE_TYPE)
+from ray.autoscaler.tags import (
+    NODE_KIND_HEAD,
+    NODE_KIND_WORKER,
+    STATUS_UP_TO_DATE,
+    STATUS_UPDATE_FAILED,
+    TAG_RAY_NODE_KIND,
+    TAG_RAY_USER_NODE_TYPE,
+)
 
 # Terminology:
 

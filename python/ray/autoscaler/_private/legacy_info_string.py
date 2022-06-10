@@ -1,7 +1,6 @@
 import logging
 
-from ray.experimental.internal_kv import (_internal_kv_initialized,
-                                          _internal_kv_put)
+from ray.experimental.internal_kv import _internal_kv_initialized, _internal_kv_put
 from ray.ray_constants import DEBUG_AUTOSCALING_STATUS_LEGACY
 
 """This file provides legacy support for the old info string in order to

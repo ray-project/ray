@@ -16,14 +16,24 @@ import numpy as np
 import ray.ray_constants as ray_constants
 from ray._private.gcs_utils import PlacementGroupTableData
 from ray.autoscaler._private.constants import AUTOSCALER_CONSERVE_GPU_NODES
-from ray.autoscaler._private.util import (NodeID, NodeIP, NodeType,
-                                          NodeTypeConfigDict, ResourceDict,
-                                          is_placement_group_resource)
+from ray.autoscaler._private.util import (
+    NodeID,
+    NodeIP,
+    NodeType,
+    NodeTypeConfigDict,
+    ResourceDict,
+    is_placement_group_resource,
+)
 from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.tags import (NODE_KIND_HEAD, NODE_KIND_UNMANAGED,
-                                 NODE_KIND_WORKER, NODE_TYPE_LEGACY_HEAD,
-                                 NODE_TYPE_LEGACY_WORKER, TAG_RAY_NODE_KIND,
-                                 TAG_RAY_USER_NODE_TYPE)
+from ray.autoscaler.tags import (
+    NODE_KIND_HEAD,
+    NODE_KIND_UNMANAGED,
+    NODE_KIND_WORKER,
+    NODE_TYPE_LEGACY_HEAD,
+    NODE_TYPE_LEGACY_WORKER,
+    TAG_RAY_NODE_KIND,
+    TAG_RAY_USER_NODE_TYPE,
+)
 from ray.core.generated.common_pb2 import PlacementStrategy
 
 logger = logging.getLogger(__name__)

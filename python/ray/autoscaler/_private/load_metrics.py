@@ -8,9 +8,10 @@ import numpy as np
 import ray.ray_constants
 from ray._private.gcs_utils import PlacementGroupTableData
 from ray.autoscaler._private.constants import (
-    AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE, MEMORY_RESOURCE_UNIT_BYTES)
-from ray.autoscaler._private.resource_demand_scheduler import (NodeIP,
-                                                               ResourceDict)
+    AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE,
+    MEMORY_RESOURCE_UNIT_BYTES,
+)
+from ray.autoscaler._private.resource_demand_scheduler import NodeIP, ResourceDict
 from ray.autoscaler._private.util import DictCount, LoadMetricsSummary
 from ray.core.generated.common_pb2 import PlacementStrategy
 

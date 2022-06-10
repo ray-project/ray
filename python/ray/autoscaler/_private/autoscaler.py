@@ -9,8 +9,7 @@ import time
 from collections import Counter, defaultdict, namedtuple
 from dataclasses import dataclass
 from enum import Enum
-from typing import (Any, Callable, Dict, FrozenSet, List, Optional, Set, Tuple,
-                    Union)
+from typing import Any, Callable, Dict, FrozenSet, List, Optional, Set, Tuple, Union
 
 import grpc
 import yaml
@@ -21,36 +20,59 @@ except ImportError:
     MaxRetryError = None
 
 from ray.autoscaler._private.constants import (
-    AUTOSCALER_HEARTBEAT_TIMEOUT_S, AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
-    AUTOSCALER_MAX_LAUNCH_BATCH, AUTOSCALER_MAX_NUM_FAILURES,
-    AUTOSCALER_UPDATE_INTERVAL_S, DISABLE_LAUNCH_CONFIG_CHECK_KEY,
-    DISABLE_NODE_UPDATERS_KEY, FOREGROUND_NODE_LAUNCH_KEY)
+    AUTOSCALER_HEARTBEAT_TIMEOUT_S,
+    AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
+    AUTOSCALER_MAX_LAUNCH_BATCH,
+    AUTOSCALER_MAX_NUM_FAILURES,
+    AUTOSCALER_UPDATE_INTERVAL_S,
+    DISABLE_LAUNCH_CONFIG_CHECK_KEY,
+    DISABLE_NODE_UPDATERS_KEY,
+    FOREGROUND_NODE_LAUNCH_KEY,
+)
 from ray.autoscaler._private.event_summarizer import EventSummarizer
 from ray.autoscaler._private.legacy_info_string import legacy_log_info_string
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.local.node_provider import (
-    LocalNodeProvider, record_local_head_state_if_needed)
-from ray.autoscaler._private.node_launcher import (BaseNodeLauncher,
-                                                   NodeLauncher)
+    LocalNodeProvider,
+    record_local_head_state_if_needed,
+)
+from ray.autoscaler._private.node_launcher import BaseNodeLauncher, NodeLauncher
 from ray.autoscaler._private.node_tracker import NodeTracker
 from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from ray.autoscaler._private.providers import _get_node_provider
 from ray.autoscaler._private.resource_demand_scheduler import (
-    ResourceDemandScheduler, ResourceDict, get_bin_pack_residual)
+    ResourceDemandScheduler,
+    ResourceDict,
+    get_bin_pack_residual,
+)
 from ray.autoscaler._private.updater import NodeUpdaterThread
-from ray.autoscaler._private.util import (ConcurrentCounter, NodeCount, NodeID,
-                                          NodeIP, NodeType, NodeTypeConfigDict,
-                                          format_info_string, hash_launch_conf,
-                                          hash_runtime_conf, validate_config,
-                                          with_head_node_ip)
+from ray.autoscaler._private.util import (
+    ConcurrentCounter,
+    NodeCount,
+    NodeID,
+    NodeIP,
+    NodeType,
+    NodeTypeConfigDict,
+    format_info_string,
+    hash_launch_conf,
+    hash_runtime_conf,
+    validate_config,
+    with_head_node_ip,
+)
 from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.tags import (NODE_KIND_HEAD, NODE_KIND_UNMANAGED,
-                                 NODE_KIND_WORKER, STATUS_UP_TO_DATE,
-                                 STATUS_UPDATE_FAILED,
-                                 TAG_RAY_FILE_MOUNTS_CONTENTS,
-                                 TAG_RAY_LAUNCH_CONFIG, TAG_RAY_NODE_KIND,
-                                 TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG,
-                                 TAG_RAY_USER_NODE_TYPE)
+from ray.autoscaler.tags import (
+    NODE_KIND_HEAD,
+    NODE_KIND_UNMANAGED,
+    NODE_KIND_WORKER,
+    STATUS_UP_TO_DATE,
+    STATUS_UPDATE_FAILED,
+    TAG_RAY_FILE_MOUNTS_CONTENTS,
+    TAG_RAY_LAUNCH_CONFIG,
+    TAG_RAY_NODE_KIND,
+    TAG_RAY_NODE_STATUS,
+    TAG_RAY_RUNTIME_CONFIG,
+    TAG_RAY_USER_NODE_TYPE,
+)
 from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
 from six.moves import queue
 

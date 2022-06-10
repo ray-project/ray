@@ -9,12 +9,18 @@ from azure.mgmt.compute import ComputeManagementClient
 from azure.mgmt.network import NetworkManagementClient
 from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.resource.resources.models import DeploymentMode
-from ray.autoscaler._private._azure.config import (bootstrap_azure,
-                                                   get_azure_sdk_function)
+from ray.autoscaler._private._azure.config import (
+    bootstrap_azure,
+    get_azure_sdk_function,
+)
 from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.tags import (TAG_RAY_CLUSTER_NAME, TAG_RAY_LAUNCH_CONFIG,
-                                 TAG_RAY_NODE_KIND, TAG_RAY_NODE_NAME,
-                                 TAG_RAY_USER_NODE_TYPE)
+from ray.autoscaler.tags import (
+    TAG_RAY_CLUSTER_NAME,
+    TAG_RAY_LAUNCH_CONFIG,
+    TAG_RAY_NODE_KIND,
+    TAG_RAY_NODE_NAME,
+    TAG_RAY_USER_NODE_TYPE,
+)
 
 VM_NAME_MAX_LEN = 64
 VM_NAME_UUID_LEN = 8

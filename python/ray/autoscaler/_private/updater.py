@@ -9,16 +9,22 @@ from ray._private.usage import usage_constants, usage_lib
 from ray.autoscaler._private import subprocess_output_util as cmd_output_util
 from ray.autoscaler._private.cli_logger import cf, cli_logger
 from ray.autoscaler._private.command_runner import (
-    AUTOSCALER_NODE_START_WAIT_S, ProcessRunnerError)
+    AUTOSCALER_NODE_START_WAIT_S,
+    ProcessRunnerError,
+)
 from ray.autoscaler._private.constants import RESOURCES_ENVIRONMENT_VARIABLE
-from ray.autoscaler._private.event_system import (CreateClusterEvent,
-                                                  global_event_system)
+from ray.autoscaler._private.event_system import CreateClusterEvent, global_event_system
 from ray.autoscaler._private.log_timer import LogTimer
-from ray.autoscaler.tags import (STATUS_SETTING_UP, STATUS_SYNCING_FILES,
-                                 STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED,
-                                 STATUS_WAITING_FOR_SSH,
-                                 TAG_RAY_FILE_MOUNTS_CONTENTS,
-                                 TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG)
+from ray.autoscaler.tags import (
+    STATUS_SETTING_UP,
+    STATUS_SYNCING_FILES,
+    STATUS_UP_TO_DATE,
+    STATUS_UPDATE_FAILED,
+    STATUS_WAITING_FOR_SSH,
+    TAG_RAY_FILE_MOUNTS_CONTENTS,
+    TAG_RAY_NODE_STATUS,
+    TAG_RAY_RUNTIME_CONFIG,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -324,8 +330,9 @@ class NodeUpdater:
         logger.debug("Node tags: {}".format(str(node_tags)))
 
         if self.provider_type == "aws" and self.provider.provider_config:
-            from ray.autoscaler._private.aws.cloudwatch.cloudwatch_helper import \
-                CloudwatchHelper
+            from ray.autoscaler._private.aws.cloudwatch.cloudwatch_helper import (
+                CloudwatchHelper,
+            )
 
             CloudwatchHelper(
                 self.provider.provider_config, self.node_id, self.provider.cluster_name
