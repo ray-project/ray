@@ -638,6 +638,13 @@ def run_learning_tests_from_yaml(
             e["stop"] = e["stop"] if "stop" in e else {}
             e["pass_criteria"] = e["pass_criteria"] if "pass_criteria" in e else {}
 
+            check_eval = should_check_eval(e)
+            episode_reward_key = (
+                "episode_reward_mean"
+                if not check_eval
+                else "evaluation/episode_reward_mean"
+            )
+
             # For smoke-tests, we just run for n min.
             if smoke_test:
                 # 0sec for each(!) experiment/trial.
@@ -646,13 +653,6 @@ def run_learning_tests_from_yaml(
                 # create its trainer and run a first iteration.
                 e["stop"]["time_total_s"] = 0
             else:
-                check_eval = should_check_eval(e)
-                episode_reward_key = (
-                    "episode_reward_mean"
-                    if not check_eval
-                    else "evaluation/episode_reward_mean"
-                )
-
                 if use_pass_criteria_as_stop:
                     # We also stop early, once we reach the desired reward.
                     min_reward = e.get("pass_criteria", {}).get(episode_reward_key)
@@ -669,7 +669,7 @@ def run_learning_tests_from_yaml(
                     ec["config"]["eager_tracing"] = True
 
                 checks[k_] = {
-                    "min_reward": ec["pass_criteria"].get("episode_reward_mean", 0.0),
+                    "min_reward": ec["pass_criteria"].get(episode_reward_key, 0.0),
                     "min_throughput": ec["pass_criteria"].get("timesteps_total", 0.0)
                     / (ec["stop"].get("time_total_s", 1.0) or 1.0),
                     "time_total_s": ec["stop"].get("time_total_s"),
