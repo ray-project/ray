@@ -15,12 +15,14 @@ from ray._private.test_utils import wait_for_condition
 from ray.serve.application import Application
 from ray.serve.deployment_graph import RayServeDAGHandle
 
+CONNECTION_ERROR_MSG = "connection error"
+
 
 def ping_endpoint(endpoint: str, params: str = ""):
     try:
         return requests.get(f"http://localhost:8000/{endpoint}{params}").text
     except requests.exceptions.ConnectionError:
-        return "connection error"
+        return CONNECTION_ERROR_MSG
 
 
 @pytest.fixture
@@ -279,8 +281,8 @@ def test_run_application(ray_start_stop):
 
     p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
     p.wait()
-    assert ping_endpoint("one") == "connection error"
-    assert ping_endpoint("shallow") == "connection error"
+    assert ping_endpoint("one") == CONNECTION_ERROR_MSG
+    assert ping_endpoint("shallow") == CONNECTION_ERROR_MSG
 
     # Deploy via import path
     p = subprocess.Popen(
@@ -292,7 +294,7 @@ def test_run_application(ray_start_stop):
 
     p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
     p.wait()
-    assert ping_endpoint("parrot", params="?sound=squawk") == "connection error"
+    assert ping_endpoint("parrot", params="?sound=squawk") == CONNECTION_ERROR_MSG
 
 
 @serve.deployment
@@ -328,7 +330,7 @@ def test_run_deployment_node(ray_start_stop):
     wait_for_condition(lambda: ping_endpoint("Macaw") == "Molly is green!", timeout=10)
     p.send_signal(signal.SIGINT)
     p.wait()
-    assert ping_endpoint("Macaw") == "connection error"
+    assert ping_endpoint("Macaw") == CONNECTION_ERROR_MSG
 
 
 @serve.deployment
@@ -424,7 +426,7 @@ def test_build(ray_start_stop, node):
         subprocess.check_output(["serve", "deploy", tmp.name])
         assert ping_endpoint("") == "wonderful world"
         subprocess.check_output(["serve", "delete", "-y"])
-        assert ping_endpoint("") == "connection error"
+        assert ping_endpoint("") == CONNECTION_ERROR_MSG
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
