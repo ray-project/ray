@@ -203,8 +203,8 @@ class AsyncRequestsManager:
     Example:
         >>> import time
         >>> import ray
-        >>> from ray.rllib.execution.parallel_requests_manager import (
-        ...     AsyncRequestsManager)
+        >>> from ray.rllib.execution.parallel_requests import (  # doctest: +SKIP
+        ...    AsyncRequestsManager  # doctest: +SKIP
         >>>
         >>> @ray.remote
         ... class MyActor:
@@ -215,15 +215,16 @@ class AsyncRequestsManager:
         ...        time.sleep(0.5)
         ...        return a + b
         >>>
-        >>> workers = [MyActor.remote() for _ in range(3)]
-        >>> manager = AsyncRequestsManager(workers,
-        ...                                max_remote_requests_in_flight_per_worker=2)
-        >>> manager.call(lambda worker, a, b: worker.task(a, b), fn_args=[1, 2])
-        >>> print(manager.get_ready())
+        >>> workers = [MyActor.remote() for _ in range(3)]  # doctest: +SKIP
+        >>> manager = AsyncRequestsManager(workers,  # doctest: +SKIP
+        ...     max_remote_requests_in_flight_per_worker=2)  # doctest: +SKIP
         >>> manager.call(lambda worker, a, b: worker.task(a, b),
-        ...                fn_kwargs={"a": 1, "b": 2})
+        ...     fn_args=[1, 2])  # doctest: +SKIP
+        >>> print(manager.get_ready()  # doctest: +SKIP
+        >>> manager.call(lambda worker, a, b: worker.task(a, b),  # doctest: +SKIP
+        ...                fn_kwargs={"a": 1, "b": 2})  # doctest: +SKIP
         >>> time.sleep(2) # Wait for the tasks to finish.
-        >>> print(manager.get_ready())
+        >>> print(manager.get_ready())  # doctest: +SKIP
     """
 
     def __init__(
