@@ -176,9 +176,8 @@ class TestGetURIForDirectory:
         sock.bind(str(short_path_dir / "test_socket"))
 
         # Check that opening the socket raises an exception.
-        with pytest.raises(OSError) as excinfo:
+        with pytest.raises(OSError):
             (short_path_dir / "test_socket").open()
-        assert "Operation not supported on socket" in str(excinfo.value)
 
         # Check that the hash can still be generated without errors.
         get_uri_for_directory(short_path_dir)
