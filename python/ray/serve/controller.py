@@ -443,7 +443,10 @@ class ServeController:
 
         if self.config_deployment_request_ref is not None:
             ray.cancel(self.config_deployment_request_ref)
-            logger.debug("Canceled existing config deployment request.")
+            logger.info(
+                "Received new config deployment request. Cancelling "
+                "previous request."
+            )
 
         self.config_deployment_request_ref = run_graph.options(
             runtime_env=runtime_env
@@ -575,35 +578,42 @@ def run_graph(
     import_path: str, graph_env: dict, deployment_override_options: List[Dict]
 ):
     """Deploys a Serve application to the controller's Ray cluster."""
-    from ray import serve
-    from ray.serve.api import build
+    try:
+        from ray import serve
+        from ray.serve.api import build
 
-    # Import and build the graph
-    graph = import_attr(import_path)
-    app = build(graph)
+        # Import and build the graph
+        graph = import_attr(import_path)
+        app = build(graph)
 
-    # Override options for each deployment
-    for options in deployment_override_options:
-        name = options["name"]
+        # Override options for each deployment
+        for options in deployment_override_options:
+            name = options["name"]
 
-        # Merge graph-level and deployment-level runtime_envs
-        if "ray_actor_options" in options:
-            # If specified, get ray_actor_options from config
-            ray_actor_options = options["ray_actor_options"]
-        else:
-            # Otherwise, get options from graph code (and default to {} if code
-            # sets options to None)
-            ray_actor_options = app.deployments[name].ray_actor_options or {}
+            # Merge graph-level and deployment-level runtime_envs
+            if "ray_actor_options" in options:
+                # If specified, get ray_actor_options from config
+                ray_actor_options = options["ray_actor_options"]
+            else:
+                # Otherwise, get options from graph code (and default to {} if code
+                # sets options to None)
+                ray_actor_options = app.deployments[name].ray_actor_options or {}
 
-        deployment_env = ray_actor_options.get("runtime_env", {})
-        merged_env = override_runtime_envs_except_env_vars(graph_env, deployment_env)
+            deployment_env = ray_actor_options.get("runtime_env", {})
+            merged_env = override_runtime_envs_except_env_vars(
+                graph_env, deployment_env
+            )
 
-        ray_actor_options.update({"runtime_env": merged_env})
-        options["ray_actor_options"] = ray_actor_options
+            ray_actor_options.update({"runtime_env": merged_env})
+            options["ray_actor_options"] = ray_actor_options
 
-        # Update the deployment's options
-        app.deployments[name].set_options(**options)
+            # Update the deployment's options
+            app.deployments[name].set_options(**options)
 
-    # Run the graph locally on the cluster
-    serve.start(_override_controller_namespace="serve")
-    serve.run(app)
+        # Run the graph locally on the cluster
+        serve.start(_override_controller_namespace="serve")
+        serve.run(app)
+    except KeyboardInterrupt:
+        # Error is raised when this task is canceled with ray.cancel(), which
+        # happens when deploy_app() is called.
+        logger.debug("Existing config deployment request terminated.")
