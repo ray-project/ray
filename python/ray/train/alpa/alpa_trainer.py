@@ -113,14 +113,5 @@ class AlpaTrainer(BaseTrainer):
             resume_from_checkpoint=resume_from_checkpoint,
         )
 
-    def _validate_attributes(self):
-        pass
-
-    def _get_alpa_config(self, process_datasets: bool = False) -> Dict:
-        pass
-
     def training_loop(self) -> None:
         self._train_loop(self._train_loop_config)
-
-    def as_trainable(self) -> Type[Trainable]:
-        pass
