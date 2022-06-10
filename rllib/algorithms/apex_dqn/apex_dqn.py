@@ -52,7 +52,6 @@ from ray.rllib.utils.typing import (
     ResultDict,
     PartialTrainerConfigDict,
 )
-from ray.tune.trainable import Trainable
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.util.ml_utils.dict import merge_dicts
 
@@ -194,8 +193,8 @@ class ApexDQNConfig(DQNConfig):
         self.num_gpus = 1
 
         # .reporting()
-        self.min_time_s_per_reporting = 30
-        self.min_sample_timesteps_per_reporting = 25000
+        self.min_time_s_per_iteration = 30
+        self.min_sample_timesteps_per_iteration = 25000
 
         # fmt: on
         # __sphinx_doc_end__
@@ -351,7 +350,7 @@ class ApexDQNConfig(DQNConfig):
 
 
 class ApexDQN(DQN):
-    @override(Trainable)
+    @override(Trainer)
     def setup(self, config: PartialTrainerConfigDict):
         super().setup(config)
 
@@ -434,8 +433,8 @@ class ApexDQN(DQN):
         # Call DQN's validation method.
         super().validate_config(config)
 
-    @override(Trainable)
-    def training_iteration(self) -> ResultDict:
+    @override(DQN)
+    def training_step(self) -> ResultDict:
         num_samples_ready_dict = self.get_samples_and_store_to_replay_buffers()
         worker_samples_collected = defaultdict(int)
 
@@ -656,9 +655,9 @@ class ApexDQN(DQN):
         self._sampling_actor_manager.add_workers(new_workers)
 
     @override(Trainer)
-    def _compile_step_results(self, *, step_ctx, step_attempt_results=None):
-        result = super()._compile_step_results(
-            step_ctx=step_ctx, step_attempt_results=step_attempt_results
+    def _compile_iteration_results(self, *, step_ctx, iteration_results=None):
+        result = super()._compile_iteration_results(
+            step_ctx=step_ctx, iteration_results=iteration_results
         )
         replay_stats = ray.get(
             self._replay_actors[0].stats.remote(self.config["optimizer"].get("debug"))
@@ -680,7 +679,7 @@ class ApexDQN(DQN):
         return result
 
     @classmethod
-    @override(Trainable)
+    @override(Trainer)
     def default_resource_request(cls, config):
         cf = dict(cls.get_default_config(), **config)
 
