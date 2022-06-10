@@ -7,6 +7,7 @@ import os
 import platform
 import re
 import shutil
+import signal
 import time
 import traceback
 from typing import Set, List
@@ -133,6 +134,7 @@ class LogMonitor:
         self.can_open_more_files: bool = True
         self.max_files_open: int = max_files_open
         self.is_proc_alive_fn: Callable[[int], bool] = is_proc_alive_fn
+        self._keep_running :bool = True
 
     def _close_all_files(self):
         """Close all open files (so that we can open more)."""
@@ -414,7 +416,7 @@ class LogMonitor:
         log lines.
         """
         last_updated = time.time()
-        while True:
+        while self._keep_running:
             if self.should_update_filenames(last_updated):
                 self.update_log_filenames()
                 last_updated = time.time()
@@ -425,6 +427,13 @@ class LogMonitor:
             # for logs to avoid using too much CPU.
             if not anything_published:
                 time.sleep(0.1)
+
+    def stop(self):
+        """Stop the log monitor.
+
+        This function is idempotent.
+        """
+        self._keep_running = False
 
 
 if __name__ == "__main__":
@@ -502,6 +511,16 @@ if __name__ == "__main__":
     log_monitor = LogMonitor(
         args.logs_dir, gcs_pubsub.GcsPublisher(address=args.gcs_address), is_proc_alive
     )
+
+    # Set up handlers for graceful exit on SIGINT and SIGTERM
+    def graceful_exit(signum: int, _frame):
+        logger.info(
+            f"Caught signal: {signal.Signals(signum).name}. Exiting gracefully."
+        )
+        log_monitor.stop()
+
+    signal.signal(signal.SIGINT, graceful_exit)
+    signal.signal(signal.SIGTERM, graceful_exit)
 
     try:
         log_monitor.run()

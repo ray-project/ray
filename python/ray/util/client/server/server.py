@@ -8,6 +8,7 @@ import functools
 import math
 import queue
 import pickle
+import signal
 
 import threading
 from typing import Any, List
@@ -851,9 +852,22 @@ def main():
     else:
         server = serve(hostport, ray_connect_handler)
 
+    # Set up handlers for graceful exit on SIGINT and SIGTERM
+    keep_running = True
+
+    def graceful_exit(signum: int, _frame):
+        logger.info(
+            f"Caught signal: {signal.Signals(signum).name}. Exiting gracefully."
+        )
+        server.stop(0)
+        keep_running = False
+
+    signal.signal(signal.SIGINT, graceful_exit)
+    signal.signal(signal.SIGTERM, graceful_exit)
+
     try:
         idle_checks_remaining = TIMEOUT_FOR_SPECIFIC_SERVER_S
-        while True:
+        while keep_running:
             health_report = {
                 "time": time.time(),
             }

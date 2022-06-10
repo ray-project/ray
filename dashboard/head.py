@@ -1,3 +1,4 @@
+from cmath import log
 import os
 import asyncio
 import logging
@@ -166,6 +167,35 @@ class DashboardHead:
         return modules
 
     async def run(self):
+        try:
+            await self._run()
+        except asyncio.CancelledError:
+            # Received cancellation, this could be a result of caller canceling
+            # the task explicitly when received SIGTERM/SIGINT.
+            # NOTE(rickyyx): I believe the ordering here doesn't matter. Wrapping
+            # multiple shutdown routines in a timeout to prevent handing from
+            # non-terminating cleanup.
+            logger.warn(
+                "DashboardHead.run() cancelled, trying to clean up dependencies..."
+            )
+            try:
+                tasks = []
+                tasks.append(self.server.stop(grace=None))
+                if self.http_server:
+                    tasks.append(self.http_server.cleanup())
+                await asyncio.wait_for(
+                    asyncio.gather(*tasks),
+                    timeout=dashboard_consts.DEFAULT_CANCEL_WAIT_TIMEOUT_SECONDS,
+                )
+            except asyncio.TimeoutError:
+                logger.warn(
+                    "Failed to clean up HTTP and gRPC servers with"
+                    f" timeout={dashboard_consts.DEFAULT_CANCEL_WAIT_TIMEOUT_SECONDS}."
+                    "Some states might not be handled properly. "
+                    "Proceeding with the shutdown."
+                )
+
+    async def _run(self):
         gcs_address = self.gcs_address
 
         # Dashboard will handle connection failure automatically
