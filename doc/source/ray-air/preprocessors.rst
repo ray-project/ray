@@ -63,7 +63,7 @@ The same logic is applicable to other integrations as well.
 Trainer
 ~~~~~~~
 
-The journey of the ``Preprocessor`` starts with the :class:`Trainer <ray.air.trainer.Trainer>`.
+The journey of the ``Preprocessor`` starts with the :class:`Trainer <ray.train.trainer.BaseTrainer>`.
 If the ``Trainer`` is instantiated with a ``Preprocessor``, then the following logic will be executed when ``Trainer.fit()`` is called:
 
 #. If a ``"train"`` ``Dataset`` is passed in, then the ``Preprocessor`` will call ``fit()`` on it.
@@ -128,8 +128,9 @@ Ray AIR provides a handful of ``Preprocessor``\s that you can use out of the box
 .. tabbed:: Common APIs
 
     #. :class:`Preprocessor <ray.air.preprocessor.Preprocessor>`
-    #. :class:`BatchMapper <ray.air.preprocessors.BatchMapper>`
     #. :class:`Chain <ray.air.preprocessors.Chain>`
+    #. :class:`BatchMapper <ray.air.preprocessors.BatchMapper>`
+    #. :class:`CustomStatefulPreprocessor <ray.air.preprocessors.CustomStatefulPreprocessor>`
 
 .. tabbed:: Tabular
 
@@ -188,5 +189,9 @@ Custom Preprocessors
     :start-after: __custom_stateless_start__
     :end-before: __custom_stateless_end__
 
-**Stateful Preprocessors:** Coming soon!
+**Stateful Preprocessors:** Stateful preprocessors can be implemented with the ``CustomStatefulPreprocessor``.
 
+.. literalinclude:: doc_code/preprocessors.py
+    :language: python
+    :start-after: __custom_stateful_start__
+    :end-before: __custom_stateful_end__

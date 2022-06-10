@@ -180,7 +180,7 @@ def upload_to_uri(
 
 
 def _upload_to_uri_with_exclude(
-    local_path: str, fs: pyarrow.fs, bucket_path: str, exclude: Optional[List[str]]
+    local_path: str, fs: "pyarrow.fs", bucket_path: str, exclude: Optional[List[str]]
 ) -> None:
     def _should_exclude(candidate: str) -> bool:
         for excl in exclude:
