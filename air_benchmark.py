@@ -2,8 +2,19 @@ import argparse
 
 import ray
 from ray.air.preprocessors import BatchMapper
+from ray.air.batch_predictor import BatchPredictor
+from ray.air.predictor import Predictor
 from ray.air.util.check_ingest import DummyTrainer
 from ray.air.config import DatasetConfig
+
+
+class DummyPredictor(Predictor):
+    @classmethod
+    def from_checkpoint(cls, checkpoint: Checkpoint, **kwargs) -> "Predictor":
+        return DummyPredictor()
+
+    def predict(self, data, **kwargs):
+        return [42] * len(data)
 
 
 def make_ds(size_gb: int):
@@ -45,7 +56,15 @@ def run_ingest_streaming(dataset, num_workers):
 
 
 def run_infer_bulk(dataset, num_workers):
-    raise NotImplementedError
+    checkpoint = Checkpoint.from_dict({"dummy": 1})
+    predictor = BatchPredictor(checkpoint, DummyPredictor)
+    predictor.predict(
+        dataset,
+        batch_size=1024 // 8,
+        min_scoring_workers=num_workers,
+        max_scoring_workers=num_workers,
+        num_cpus_per_worker=1,
+    )
 
 
 def run_infer_streaming(dataset, num_workers):
