@@ -473,8 +473,6 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
 
     wait_for_condition(verify_basic)
 
-    print("Basic verified")
-
     @ray.remote
     class Actor:
         def write_log(self, strings):
@@ -589,7 +587,7 @@ def test_log_get(ray_start_cluster):
     def verify():
         # By default, node id should be configured to the head node.
         for log in get_log(
-            node_id=head_node["node_id"], filename="raylet.out", lines=10
+            node_id=head_node["node_id"], filename="raylet.out", tail=10
         ):
             # + 1 since the last line is just empty.
             assert len(log.split("\n")) == 11
@@ -606,7 +604,7 @@ def test_log_get(ray_start_cluster):
 
     def verify():
         # By default, node id should be configured to the head node.
-        for log in get_log(node_ip=head_node["node_ip"], pid=pid, lines=10):
+        for log in get_log(node_ip=head_node["node_ip"], pid=pid, tail=10):
             # + 1 since the last line is just empty.
             assert len(log.split("\n")) == 11
         return True
@@ -620,7 +618,7 @@ def test_log_get(ray_start_cluster):
 
     def verify():
         # By default, node id should be configured to the head node.
-        for log in get_log(actor_id=actor_id, lines=10):
+        for log in get_log(actor_id=actor_id, tail=10):
             # + 1 since the last line is just empty.
             assert len(log.split("\n")) == 11
         return True
@@ -628,7 +626,7 @@ def test_log_get(ray_start_cluster):
     wait_for_condition(verify)
 
     with pytest.raises(NotImplementedError):
-        for _ in get_log(task_id=123, lines=10):
+        for _ in get_log(task_id=123, tail=10):
             pass
 
 

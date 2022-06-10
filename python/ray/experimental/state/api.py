@@ -2,7 +2,7 @@ import requests
 import warnings
 import urllib
 
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Dict, Generator
 from dataclasses import fields
 
 import ray
@@ -216,17 +216,17 @@ def get_log(
     actor_id: Optional[str] = None,
     task_id: Optional[str] = None,
     pid: Optional[int] = None,
-    stream: bool = False,
-    lines: int = 100,
-    interval: Optional[float] = None,
-):
+    follow: bool = False,
+    tail: int = 100,
+    _interval: Optional[float] = None,
+) -> Generator[str, None, None]:
     if api_server_url is None:
         assert ray.is_initialized()
         api_server_url = (
             f"http://{ray.worker.global_worker.node.address_info['webui_url']}"
         )
 
-    media_type = "stream" if stream else "file"
+    media_type = "stream" if follow else "file"
     options = GetLogOptions(
         node_id=node_id,
         node_ip=node_ip,
@@ -234,8 +234,8 @@ def get_log(
         actor_id=actor_id,
         task_id=task_id,
         pid=pid,
-        lines=lines,
-        interval=interval,
+        lines=tail,
+        interval=_interval,
         media_type=media_type,
         timeout=DEFAULT_RPC_TIMEOUT,
     )
@@ -265,7 +265,7 @@ def list_logs(
     node_id: str = None,
     node_ip: str = None,
     glob_filter: str = None,
-):
+) -> Dict[str, List[str]]:
     if api_server_url is None:
         assert ray.is_initialized()
         api_server_url = (
@@ -295,4 +295,4 @@ def list_logs(
             f"Error: {response['msg']}"
         )
 
-    return r.json()["data"]["result"]
+    return response["data"]["result"]

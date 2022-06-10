@@ -80,30 +80,6 @@ def cli(logging_level, logging_format):
     cli_logger.set_format(format_tmpl=logging_format)
 
 
-def hide_exception_stacktrace(func):
-    """Helper function to hide exception stacktrace from CLI commands"""
-
-    @click.option(
-        "--show-stacktrace",
-        type=bool,
-        default=False,
-        is_flag=True,
-        help="Shows full stacktrace for CLI exceptions.",
-    )
-    @functools.wraps(func)
-    def inner(show_stacktrace: bool, *args, **kwargs):
-        if not show_stacktrace:
-            try:
-                return func(*args, **kwargs)
-            except Exception as e:
-                logger.exception(e)
-                print(f"Ray CLI Error ({e.__class__.__name__}): ", e)
-        else:
-            return func(*args, **kwargs)
-
-    return inner
-
-
 @click.command()
 @click.argument("cluster_config_file", required=True, type=str)
 @click.option(
@@ -1987,7 +1963,7 @@ def local_dump(
 )
 @click.option(
     "--node-id",
-    "-n",
+    "-id",
     required=False,
     type=str,
     default=None,
@@ -2039,8 +2015,8 @@ def local_dump(
     type=float,
     default=None,
     help="The interval to print new logs when `--follow` is specified.",
+    hidden=True
 )
-@hide_exception_stacktrace
 def logs(
     glob_filter,
     node_ip: str,
@@ -2049,7 +2025,7 @@ def logs(
     actor_id: str,
     task_id: str,
     follow: bool,
-    lines: int,
+    tail: int,
     interval: float,
 ):
     """ """
@@ -2093,13 +2069,13 @@ def logs(
 
     # If there's an unique match, print the log file.
     if match_unique:
-        if not lines:
-            lines = 0 if follow else DEFAULT_LIMIT
+        if not tail:
+            tail = 0 if follow else DEFAULT_LIMIT
 
-            if lines > 0:
+            if tail > 0:
                 print(
-                    f"--- Log has been truncated to last {lines} lines."
-                    " Use `--lines` flag to toggle. ---\n"
+                    f"--- Log has been truncated to last {tail} lines."
+                    " Use `--tail` flag to toggle. ---\n"
                 )
 
         for chunk in get_log(
@@ -2110,9 +2086,9 @@ def logs(
             actor_id=actor_id,
             task_id=task_id,
             pid=pid,
-            lines=lines,
-            interval=interval,
-            stream=follow,
+            tail=tail,
+            follow=follow,
+            _interval=interval,
         ):
             print(chunk, end="", flush=True)
 
