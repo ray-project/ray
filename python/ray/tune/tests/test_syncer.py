@@ -1,3 +1,4 @@
+import logging
 from typing import List, Optional
 
 import os
@@ -228,6 +229,66 @@ def test_sync_down_if_needed(temp_data_dirs):
         assert syncer.sync_down_if_needed(
             remote_dir="memory:///test/test_sync_down_if_needed", local_dir=tmp_target
         )
+
+
+def test_syncer_still_running_no_sync(temp_data_dirs):
+    """Check that no new sync is issued if old sync is still running"""
+    tmp_source, tmp_target = temp_data_dirs
+
+    class FakeSyncProcess:
+        @property
+        def is_running(self):
+            return True
+
+    syncer = _DefaultSyncer(sync_period=60)
+    syncer._sync_process = FakeSyncProcess()
+    assert not syncer.sync_up_if_needed(
+        local_dir=tmp_source,
+        remote_dir="memory:///test/test_syncer_still_running_no_sync",
+    )
+
+
+def test_syncer_not_running_sync(temp_data_dirs):
+    """Check that new sync is issued if old sync completed"""
+    tmp_source, tmp_target = temp_data_dirs
+
+    class FakeSyncProcess:
+        @property
+        def is_running(self):
+            return False
+
+        def wait(self):
+            return True
+
+    syncer = _DefaultSyncer(sync_period=60)
+    syncer._sync_process = FakeSyncProcess()
+    assert syncer.sync_up_if_needed(
+        local_dir=tmp_source,
+        remote_dir="memory:///test/test_syncer_not_running_sync",
+    )
+
+
+def test_syncer_not_running_sync_last_failed(caplog, temp_data_dirs):
+    """Check that new sync is issued if old sync completed"""
+    caplog.set_level(logging.WARNING)
+
+    tmp_source, tmp_target = temp_data_dirs
+
+    class FakeSyncProcess:
+        @property
+        def is_running(self):
+            return False
+
+        def wait(self):
+            raise RuntimeError("Sync failed")
+
+    syncer = _DefaultSyncer(sync_period=60)
+    syncer._sync_process = FakeSyncProcess()
+    assert syncer.sync_up_if_needed(
+        local_dir=tmp_source,
+        remote_dir="memory:///test/test_syncer_not_running_sync",
+    )
+    assert "Last sync command failed" in caplog.text
 
 
 def test_syncer_delete(temp_data_dirs):

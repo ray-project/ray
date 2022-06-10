@@ -311,12 +311,17 @@ class _DefaultSyncer(Syncer):
     def sync_up(
         self, local_dir: str, remote_dir: str, exclude: Optional[List] = None
     ) -> bool:
-        if self._sync_process:
+        if self._sync_process and self._sync_process.is_running:
             logger.warning(
                 f"Last sync still in progress, "
                 f"skipping sync up of {local_dir} to {remote_dir}"
             )
             return False
+        elif self._sync_process:
+            try:
+                self._sync_process.wait()
+            except Exception as e:
+                logger.warning(f"Last sync command failed: {e}")
 
         self._current_cmd = (
             upload_to_uri,
@@ -329,12 +334,17 @@ class _DefaultSyncer(Syncer):
     def sync_down(
         self, remote_dir: str, local_dir: str, exclude: Optional[List] = None
     ) -> bool:
-        if self._sync_process:
+        if self._sync_process and self._sync_process.is_running:
             logger.warning(
                 f"Last sync still in progress, "
                 f"skipping sync down of {remote_dir} to {local_dir}"
             )
             return False
+        elif self._sync_process:
+            try:
+                self._sync_process.wait()
+            except Exception as e:
+                logger.warning(f"Last sync command failed: {e}")
 
         self._current_cmd = (
             download_from_uri,
@@ -345,9 +355,9 @@ class _DefaultSyncer(Syncer):
         return True
 
     def delete(self, remote_dir: str) -> bool:
-        if self._sync_process:
+        if self._sync_process and self._sync_process.is_running:
             logger.warning(
-                f"Last sync still in progress, " f"skipping deletion of {remote_dir}"
+                f"Last sync still in progress, skipping deletion of {remote_dir}"
             )
             return False
 
@@ -358,8 +368,12 @@ class _DefaultSyncer(Syncer):
 
     def wait(self):
         if self._sync_process:
-            self._sync_process.wait()
-            self._sync_process = None
+            try:
+                self._sync_process.wait()
+            except Exception as e:
+                raise TuneError(f"Sync process failed: {e}") from e
+            finally:
+                self._sync_process = None
 
     def retry(self):
         if not self._current_cmd:

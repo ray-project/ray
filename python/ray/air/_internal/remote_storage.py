@@ -196,8 +196,8 @@ def _upload_to_uri_with_exclude(
             if _should_exclude(candidate):
                 continue
 
-            full_source_path = os.path.join(local_path, candidate)
-            full_target_path = os.path.join(bucket_path, candidate)
+            full_source_path = os.path.normpath(os.path.join(local_path, candidate))
+            full_target_path = os.path.normpath(os.path.join(bucket_path, candidate))
 
             pyarrow.fs.copy_files(
                 full_source_path, full_target_path, destination_filesystem=fs
