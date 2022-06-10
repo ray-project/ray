@@ -54,7 +54,12 @@ from ray.train._internal.utils import construct_train_func
 from ray.util.annotations import DeveloperAPI
 from ray.util.ml_utils.checkpoint_manager import CheckpointStrategy, _TrackedCheckpoint
 
-import alpa
+try:
+    import alpa
+except ModuleNotFoundError:
+    raise ModuleNotFoundError(
+        "alpa isn't installed. To install alpa, run 'pip install " "alpa'."
+    )
 
 if TYPE_CHECKING:
     from ray.air.preprocessor import Preprocessor
@@ -63,7 +68,7 @@ logger = logging.getLogger(__name__)
 
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class AlpaTrainer(BaseTrainer):
     """Alpa: Automating Parallelism trainer.
 
@@ -88,8 +93,15 @@ class AlpaTrainer(BaseTrainer):
         if not ray.is_initialized():
             ray.init()
         
+    # connect to the ray cluster
         if not alpa.is_initialized:
             alpa.init('ray')
+            
+        
+        cluster = alpa.get_global_cluster()
+        logger.info(f"Distributed Training with Alpa using"
+                    "{cluster.num_cpus} cpus and {cluster.num_devices} gpus.")
+
 
         self._train_loop = train_loop
         self._train_loop_config = train_loop_config
