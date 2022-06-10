@@ -1,15 +1,9 @@
 import argparse
-import functools
 import time
 from typing import Dict
 
-import einops
 import numpy as np
-import optax
-import ray.train as train
-import tensorflow_datasets as tfds
-from ray.train.callbacks import JsonLoggerCallback
-from ray.train.trainer import Trainer
+
 import alpa
 
 import ray.train as train
@@ -24,13 +18,15 @@ from ray.data.datasource import SimpleTensorFlowDatasource
 import pandas as pd
 from ray.data.extensions import TensorArray
 
-def get_dataset(dataset_name="mnist"): 
+
+def get_dataset(dataset_name="mnist"):
     """Load MNIST train and test datasets using Ray dataset."""
 
     # Hide any GPUs from TensorFlow. Otherwise TF might reserve memory and make
     # it unavailable to JAX.
     import tensorflow as tf
     import tensorflow_datasets as tfds
+
     tf.config.experimental.set_visible_devices([], "GPU")
 
     def train_dataset_factory():
@@ -70,8 +66,8 @@ def train_func(config: Dict):
     import jax.numpy as jnp
     from flax import linen as nn
     from flax.training import train_state
+    import optax
 
-    print(jax.devices())
     # NOTE: the flax nn module has to define inside
     # otherwise, the error message `ValueError: parent must be None, Module or Scope`
     # see: https://github.com/google/flax/discussions/1390
@@ -128,17 +124,12 @@ def train_func(config: Dict):
         state = state.apply_gradients(grads=grads)
         return state, loss, accuracy
 
-    def train_epoch(state, train_ds, batch_size, rng):
+    def train_epoch(state, train_ds):
         """Train for a single epoch."""
-        train_ds_size = len(train_ds["image"])
-        steps_per_epoch = train_ds_size // batch_size
-
         epoch_loss = []
         epoch_accuracy = []
 
-        for i in range(steps_per_epoch):
-            batch_images = train_ds["image"][i * batch_size : (i + 1) * batch_size]
-            batch_labels = train_ds["label"][i * batch_size : (i + 1) * batch_size]
+        for batch_images, batch_labels in train_ds:
             state, loss, accuracy = train_step(state, batch_images, batch_labels)
             epoch_loss.append(loss)
             epoch_accuracy.append(accuracy)
@@ -152,10 +143,9 @@ def train_func(config: Dict):
     momentum = config["momentum"]
     batch_size = config["batch_size"]
     num_epochs = config["num_epochs"]
-    worker_batch_size = batch_size // train.world_size()
 
     # Create datasets
-    train_ds, test_ds = get_datasets()
+    train_ds = train.get_dataset_shard("train")
 
     rng = jax.random.PRNGKey(0)
     rng, init_rng = jax.random.split(rng)
@@ -163,13 +153,21 @@ def train_func(config: Dict):
     # Create model & optimizer.
     state = create_train_state(init_rng, learning_rate, momentum)
 
+    # this can be numpy dataset
+    jax_dataset = train_ds.to_jax(
+        feature_columns=["image"],
+        label_column="label",
+        batch_size=batch_size,
+        unsqueeze_feature_tensors=False,
+        unsqueeze_label_tensor=False,
+    )
+    jax_dataset = list(jax_dataset)
+
     acc_results = []
     for epoch in range(1, num_epochs + 1):
         rng, input_rng = jax.random.split(rng)
         tic = time.time()
-        state, train_loss, train_accuracy = train_epoch(
-            state, train_ds, worker_batch_size, input_rng
-        )
+        state, train_loss, train_accuracy = train_epoch(state, jax_dataset)
         epoch_time = time.time() - tic
         print(
             "epoch:% 3d, train_loss: %.4f, train_accuracy: %.2f, epoch_time: %.3f"
@@ -184,14 +182,14 @@ def train_func(config: Dict):
 
 def train_mnist():
     train_dataset, test_dataset = get_dataset("mnist")
-    
-    config={
-            "learning_rate": 0.1,
-            "momentum": 0.9,
-            "batch_size": 5000,
-            "num_epochs": 100,
-        }
-    
+
+    config = {
+        "learning_rate": 0.1,
+        "momentum": 0.9,
+        "batch_size": 5000,
+        "num_epochs": 100,
+    }
+
     from ray.train.alpa import AlpaTrainer
 
     trainer = AlpaTrainer(
@@ -204,6 +202,7 @@ def train_mnist():
     print()
     print(f"Loss results: {results}")
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -213,5 +212,6 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
 
     import ray
+
     ray.init(address=args.address)
     train_mnist()
