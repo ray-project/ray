@@ -83,9 +83,9 @@ def test_multiple_directories(tmp_path, shutdown_only):
         wait_for_condition(lambda: is_dir_empty(temp_dir, append_path=""))
 
 
-def _check_spilled(num_objects_spilled=0):
+def _check_spilled(address, num_objects_spilled=0):
     def ok():
-        s = ray.internal.internal_api.memory_summary(stats_only=True)
+        s = ray.internal.internal_api.memory_summary(address, stats_only=True)
         if num_objects_spilled == 0:
             return "Spilled " not in s
 
@@ -96,20 +96,21 @@ def _check_spilled(num_objects_spilled=0):
 
         return False
 
+    ok()
     wait_for_condition(ok, timeout=90, retry_interval_ms=5000)
 
 
 def _test_object_spilling_threshold(thres, num_objects, num_objects_spilled):
     try:
-        ray.init(
+        address = ray.init(
             object_store_memory=2_200_000_000,
             _system_config={"object_spilling_threshold": thres} if thres else {},
-        )
+        ).address_info["address"]
         objs = []
         for _ in range(num_objects):
             objs.append(ray.put(np.empty(200_000_000, dtype=np.uint8)))
         time.sleep(10)  # Wait for spilling to happen
-        _check_spilled(num_objects_spilled)
+        _check_spilled(address, num_objects_spilled)
     finally:
         ray.shutdown()
 

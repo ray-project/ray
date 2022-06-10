@@ -91,7 +91,7 @@ def run_mini_integration_test(cluster, pg_removal=True, num_pgs=999):
     for _ in range(3):
         pg_launchers.append(pg_launcher.remote(num_pg // 3))
 
-    ray.get(pg_launchers, timeout=240)
+    ray.get(pg_launchers, timeout=360)
     ray.shutdown()
     ray.init(address=cluster.address)
 
