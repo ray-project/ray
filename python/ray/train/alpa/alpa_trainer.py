@@ -77,12 +77,19 @@ class AlpaTrainer(BaseTrainer):
         https://arxiv.org/pdf/2201.12023.pdf
     """
 
+    _dataset_config = {
+        TRAIN_DATASET_KEY: DatasetConfig(fit=True, split=False),
+        WILDCARD_KEY: DatasetConfig(split=False),
+    }
+    
+    
     def __init__(
         self,
         train_loop: Union[Callable[[], None], Callable[[Dict], None]],
         *,
         train_loop_config: Optional[Dict] = None,
         scaling_config: Optional[ScalingConfig] = None,
+        dataset_config: Optional[Dict[str, DatasetConfig]] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
         preprocessor: Optional["Preprocessor"] = None,
@@ -105,6 +112,14 @@ class AlpaTrainer(BaseTrainer):
         self._train_loop = train_loop
         self._train_loop_config = train_loop_config
 
+        self._dataset_config = DatasetConfig.validated(
+            DatasetConfig.merge(self._dataset_config, dataset_config), datasets
+        )
+        
+        self._ingest_spec = DataParallelIngestSpec(
+            dataset_config=self._dataset_config,
+        )
+        
         super(AlpaTrainer, self).__init__(
             scaling_config=scaling_config,
             run_config=run_config,
@@ -115,3 +130,17 @@ class AlpaTrainer(BaseTrainer):
 
     def training_loop(self) -> None:
         self._train_loop(self._train_loop_config)
+
+
+    def preprocess_datasets(self) -> None:
+        # Evaluate all datasets.
+        self.datasets = {k: d() if callable(d) else d for k, d in self.datasets.items()}
+        self.datasets = self._ingest_spec.preprocess_datasets(
+            self.preprocessor, self.datasets
+        )
+    def get_dataset_config(self) -> Dict[str, DatasetConfig]:
+        """Return a copy of this Trainer's final dataset configs.
+        Returns:
+            The merged default + user-supplied dataset config.
+        """
+        return self._dataset_config.copy()
