@@ -631,7 +631,7 @@ def run_learning_tests_from_yaml(
             else:
                 # By default we don't run tf2, because tf2's multi-gpu support
                 # isn't complete yet.
-                frameworks = ["tf", "torch"]
+                frameworks = ["torch"]
             # Pop frameworks key to not confuse Tune.
             e.pop("frameworks", None)
 
