@@ -11,6 +11,7 @@ Detailed documentation: https://docs.ray.io/en/master/rllib-algorithms.html#ppo
 
 import logging
 from typing import List, Optional, Type, Union
+import math
 
 from ray.util.debug import log_once
 from ray.rllib.agents.trainer import Trainer
@@ -325,8 +326,9 @@ class PPO(Trainer):
             config["train_batch_size"] > 0
             and config["train_batch_size"] % calculated_min_rollout_size != 0
         ):
-            new_rollout_fragment_length = config["train_batch_size"] // (
-                num_workers * config["num_envs_per_worker"]
+            new_rollout_fragment_length = math.ceil(
+                config["train_batch_size"]
+                / (num_workers * config["num_envs_per_worker"])
             )
             logger.warning(
                 "`train_batch_size` ({}) cannot be achieved with your other "
