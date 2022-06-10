@@ -342,8 +342,8 @@ class TensorArrayElement(TensorOpsMixin):
         """
         return np.asarray(self._tensor)
 
-    def __array__(self):
-        return np.asarray(self._tensor)
+    def __array__(self, dtype: np.dtype = None):
+        return np.asarray(self._tensor, dtype=dtype)
 
 
 @PublicAPI(stability="beta")
