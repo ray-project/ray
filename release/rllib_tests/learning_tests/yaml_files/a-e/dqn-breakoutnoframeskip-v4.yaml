@@ -6,7 +6,7 @@ dqn-breakoutnoframeskip-v4:
         episode_reward_mean: 20.0
         timesteps_total: 400000
     stop:
-        time_total_s: 3600
+        time_total_s: 5400
     config:
         double_q: false
         dueling: false

@@ -6,7 +6,7 @@ ddpg-hopperbulletenv-v0:
         episode_reward_mean: 110.0
         timesteps_total: 50000
     stop:
-        time_total_s: 3600
+        time_total_s: 1800
     config:
         actor_hiddens: [256, 256]
         critic_hiddens: [256, 256]
