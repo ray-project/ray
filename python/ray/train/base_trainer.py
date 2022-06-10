@@ -122,8 +122,9 @@ class BaseTrainer(abc.ABC):
     .. code-block:: python
 
         import ray
+        import numpy as np
         train_dataset = ray.data.from_items(
-            [{"x": i, "y": i} for i in range(3)])
+            [{"x": np.float32(i), "y": np.float32(i)} for i in range(3)])
         my_trainer = MyPytorchTrainer(datasets={"train": train_dataset})
         result = my_trainer.fit()
 
