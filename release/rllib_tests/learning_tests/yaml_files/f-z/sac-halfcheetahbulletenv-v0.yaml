@@ -6,7 +6,7 @@ sac-halfcheetahbulletenv-v0:
         episode_reward_mean: 400.0
         timesteps_total: 200000
     stop:
-        time_total_s: 3600
+        time_total_s: 1800
     config:
         horizon: 1000
         soft_horizon: false
