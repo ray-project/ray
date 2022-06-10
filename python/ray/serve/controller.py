@@ -125,10 +125,6 @@ class ServeController:
             _override_controller_namespace=_override_controller_namespace,
         )
 
-        # TODO(simon): move autoscaling related stuff into a manager.
-        self.autoscaling_metrics_store = InMemoryMetricsStore()
-        self.handle_metrics_store = InMemoryMetricsStore()
-
         # Reference to Ray task executing most recent deployment request
         self.config_deployment_request_ref: ObjectRef = None
 
@@ -291,6 +287,7 @@ class ServeController:
     async def shutdown(self):
         """Shuts down the serve instance completely."""
         async with self.write_lock:
+            self.kv_store.delete(CONFIG_CHECKPOINT_KEY)
             self.deployment_state_manager.shutdown()
             self.endpoint_state.shutdown()
             self.http_state.shutdown()

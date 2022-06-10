@@ -595,6 +595,12 @@ class TestDeployApp:
             == client.get_serve_status().app_status.deployment_timestamp
         )
 
+        serve.shutdown()
+        client = serve.start(detached=True)
+
+        # Ensure config checkpoint has been deleted
+        assert client.get_serve_status().app_status.deployment_timestamp == 0
+
 
 def test_controller_recover_and_delete():
     """Ensure that in-progress deletion can finish even after controller dies."""
