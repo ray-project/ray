@@ -176,7 +176,8 @@ class Trainer:
         self._run_id = 0
         if logdir or logdir == None: 
             self.logdir = self.create_logdir(logdir)
-
+        else: 
+            self.logdir = logdir
         # Setup executor.
         self._backend_config = self._get_backend_config(backend)
 
