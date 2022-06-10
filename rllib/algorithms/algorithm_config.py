@@ -194,9 +194,9 @@ class AlgorithmConfig:
         self.keep_per_episode_custom_metrics = False
         self.metrics_episode_collection_timeout_s = 180
         self.metrics_num_episodes_for_smoothing = 100
-        self.min_time_s_per_reporting = None
-        self.min_train_timesteps_per_reporting = 0
-        self.min_sample_timesteps_per_reporting = 0
+        self.min_time_s_per_iteration = None
+        self.min_train_timesteps_per_iteration = 0
+        self.min_sample_timesteps_per_iteration = 0
 
         # `self.debugging()`
         self.logger_creator = None
@@ -232,6 +232,9 @@ class AlgorithmConfig:
         self.prioritized_replay_alpha = DEPRECATED_VALUE
         self.prioritized_replay_beta = DEPRECATED_VALUE
         self.prioritized_replay_eps = DEPRECATED_VALUE
+        self.min_time_s_per_reporting = DEPRECATED_VALUE
+        self.min_train_timesteps_per_reporting = DEPRECATED_VALUE
+        self.min_sample_timesteps_per_reporting = DEPRECATED_VALUE
         self.input_evaluation = DEPRECATED_VALUE
 
     def to_dict(self) -> AlgorithmConfigDict:
@@ -1096,9 +1099,9 @@ class AlgorithmConfig:
         keep_per_episode_custom_metrics: Optional[bool] = None,
         metrics_episode_collection_timeout_s: Optional[int] = None,
         metrics_num_episodes_for_smoothing: Optional[int] = None,
-        min_time_s_per_reporting: Optional[int] = None,
-        min_train_timesteps_per_reporting: Optional[int] = None,
-        min_sample_timesteps_per_reporting: Optional[int] = None,
+        min_time_s_per_iteration: Optional[int] = None,
+        min_train_timesteps_per_iteration: Optional[int] = None,
+        min_sample_timesteps_per_iteration: Optional[int] = None,
     ) -> "AlgorithmConfig":
         """Sets the config's reporting settings.
 
@@ -1109,24 +1112,27 @@ class AlgorithmConfig:
                 this many seconds. Those that have not returned in time will be
                 collected in the next train iteration.
             metrics_num_episodes_for_smoothing: Smooth metrics over this many episodes.
-            min_time_s_per_reporting: Minimum time interval to run one `train()` call
-                for: If - after one `step_attempt()`, this time limit has not been
-                reached, will perform n more `step_attempt()` calls until this minimum
-                time has been consumed. Set to None or 0 for no minimum time.
-            min_train_timesteps_per_reporting: Minimum training timesteps to accumulate
+            min_time_s_per_iteration: Minimum time to accumulate within a single
+                `train()` call. This value does not affect learning,
+                only the number of times `Algorithm.training_step()` is called by
+                `Algorithm.train()`. If - after one such step attempt, the time taken
+                has not reached `min_time_s_per_iteration`, will perform n more
+                `training_step()` calls until the minimum time has been
+                consumed. Set to 0 or None for no minimum time.
+            min_train_timesteps_per_iteration: Minimum training timesteps to accumulate
                 within a single `train()` call. This value does not affect learning,
-                only the number of times `Algorithm.step_attempt()` is called by
-                `Trauber.train()`. If - after one `step_attempt()`, the training
+                only the number of times `Algorithm.training_step()` is called by
+                `Algorithm.train()`. If - after one such step attempt, the training
                 timestep count has not been reached, will perform n more
-                `step_attempt()` calls until the minimum timesteps have been executed.
-                Set to 0 for no minimum timesteps.
-            min_sample_timesteps_per_reporting: Minimum env sampling timesteps to
+                `training_step()` calls until the minimum timesteps have been
+                executed. Set to 0 or None for no minimum timesteps.
+            min_sample_timesteps_per_iteration: Minimum env sampling timesteps to
                 accumulate within a single `train()` call. This value does not affect
-                learning, only the number of times `Algorithm.step_attempt()` is
-                called by `Trauber.train()`. If - after one `step_attempt()`, the
-                env sampling timestep count has not been reached, will perform n more
-                `step_attempt()` calls until the minimum timesteps have been executed.
-                Set to 0 for no minimum timesteps.
+                learning, only the number of times `Algorithm.training_step()` is
+                called by `Algorithm.train()`. If - after one such step attempt, the env
+                sampling timestep count has not been reached, will perform n more
+                `training_step()` calls until the minimum timesteps have been
+                executed. Set to 0 or None for no minimum timesteps.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1139,12 +1145,12 @@ class AlgorithmConfig:
             )
         if metrics_num_episodes_for_smoothing is not None:
             self.metrics_num_episodes_for_smoothing = metrics_num_episodes_for_smoothing
-        if min_time_s_per_reporting is not None:
-            self.min_time_s_per_reporting = min_time_s_per_reporting
-        if min_train_timesteps_per_reporting is not None:
-            self.min_train_timesteps_per_reporting = min_train_timesteps_per_reporting
-        if min_sample_timesteps_per_reporting is not None:
-            self.min_sample_timesteps_per_reporting = min_sample_timesteps_per_reporting
+        if min_time_s_per_iteration is not None:
+            self.min_time_s_per_iteration = min_time_s_per_iteration
+        if min_train_timesteps_per_iteration is not None:
+            self.min_train_timesteps_per_iteration = min_train_timesteps_per_iteration
+        if min_sample_timesteps_per_iteration is not None:
+            self.min_sample_timesteps_per_iteration = min_sample_timesteps_per_iteration
 
         return self
 

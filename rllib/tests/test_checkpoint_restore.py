@@ -24,7 +24,7 @@ CONFIGS = {
         "explore": False,
         "observation_filter": "MeanStdFilter",
         "num_workers": 2,
-        "min_time_s_per_reporting": 1,
+        "min_time_s_per_iteration": 1,
         "optimizer": {
             "num_replay_buffer_shards": 1,
         },
@@ -38,7 +38,7 @@ CONFIGS = {
     },
     "DDPG": {
         "explore": False,
-        "min_sample_timesteps_per_reporting": 100,
+        "min_sample_timesteps_per_iteration": 100,
     },
     "DQN": {
         "explore": False,

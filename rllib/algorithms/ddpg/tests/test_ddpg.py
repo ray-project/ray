@@ -146,9 +146,9 @@ class TestDDPG(unittest.TestCase):
         # Use very simple nets.
         config.actor_hiddens = [10]
         config.critic_hiddens = [10]
-        # Make sure, timing differences do not affect algo.train().
-        config.min_time_s_per_reporting = 0
-        config.min_sample_timesteps_per_reporting = 100
+        # Make sure, timing differences do not affect Algorithm.train().
+        config.min_time_s_per_iteration = 0
+        config.min_sample_timesteps_per_iteration = 100
 
         map_ = {
             # Normal net.

@@ -176,7 +176,7 @@ class TestSAC(unittest.TestCase):
             )
             .rollouts(num_rollout_workers=0)
             .reporting(
-                min_time_s_per_reporting=0,
+                min_time_s_per_iteration=0,
             )
             .environment(
                 env_config={"simplex_actions": True},

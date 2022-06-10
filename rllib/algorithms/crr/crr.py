@@ -208,7 +208,7 @@ class CRR(Algorithm):
             raise ValueError("Non-torch frameworks are not supported yet!")
 
     @override(Algorithm)
-    def training_iteration(self) -> ResultDict:
+    def training_step(self) -> ResultDict:
 
         total_transitions = len(self.local_replay_buffer)
         bsize = self.config["train_batch_size"]

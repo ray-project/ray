@@ -397,7 +397,7 @@ class ARS(Algorithm):
         return self.policy
 
     @override(Algorithm)
-    def step_attempt(self):
+    def step(self):
         config = self.config
 
         theta = self.policy.get_flat_weights()

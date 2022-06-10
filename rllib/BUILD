@@ -1122,7 +1122,7 @@ py_test(
         "--env", "Pendulum-v1",
         "--run", "APEX_DDPG",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"num_workers\": 2, \"optimizer\": {\"num_replay_buffer_shards\": 1}, \"replay_buffer_config\": {\"learning_starts\": 100}, \"min_time_s_per_reporting\": 1, \"batch_mode\": \"complete_episodes\"}'",
+        "--config", "'{\"framework\": \"tf\", \"num_workers\": 2, \"optimizer\": {\"num_replay_buffer_shards\": 1}, \"replay_buffer_config\": {\"learning_starts\": 100}, \"min_time_s_per_iteration\": 1, \"batch_mode\": \"complete_episodes\"}'",
         "--ray-num-cpus", "4",
         ]
 )
@@ -1205,7 +1205,7 @@ py_test(
         "--env", "CartPole-v0",
         "--run", "IMPALA",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"num_gpus\": 0, \"num_workers\": 2, \"min_time_s_per_reporting\": 1, \"num_multi_gpu_tower_stacks\": 2, \"replay_buffer_num_slots\": 100, \"replay_proportion\": 1.0}'",
+        "--config", "'{\"framework\": \"tf\", \"num_gpus\": 0, \"num_workers\": 2, \"min_time_s_per_iteration\": 1, \"num_multi_gpu_tower_stacks\": 2, \"replay_buffer_num_slots\": 100, \"replay_proportion\": 1.0}'",
         "--ray-num-cpus", "4",
         ]
 )
@@ -1219,7 +1219,7 @@ py_test(
         "--env", "CartPole-v0",
         "--run", "IMPALA",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"num_gpus\": 0, \"num_workers\": 2, \"min_time_s_per_reporting\": 1, \"num_multi_gpu_tower_stacks\": 2, \"replay_buffer_num_slots\": 100, \"replay_proportion\": 1.0, \"model\": {\"use_lstm\": true}}'",
+        "--config", "'{\"framework\": \"tf\", \"num_gpus\": 0, \"num_workers\": 2, \"min_time_s_per_iteration\": 1, \"num_multi_gpu_tower_stacks\": 2, \"replay_buffer_num_slots\": 100, \"replay_proportion\": 1.0, \"model\": {\"use_lstm\": true}}'",
         "--ray-num-cpus", "4",
         ]
 )
@@ -3012,6 +3012,14 @@ py_test(
 # )
 
 py_test(
+    name = "examples/replay_buffer_api",
+    tags = ["team:ml", "gpu"],
+    size = "large",
+    srcs = ["examples/replay_buffer_api.py"],
+    args = ["--as-test", "--stop-reward=70"]
+)
+
+py_test(
     name = "examples/restore_1_of_n_agents_from_checkpoint",
     tags = ["team:rllib", "exclusive", "examples", "examples_R"],
     size = "medium",
@@ -3200,6 +3208,14 @@ py_test(
 #
 # NOTE: Add tests alphabetically to this list.
 # --------------------------------------------------------------------
+
+py_test(
+    name = "examples/documentation/replay_buffer_demo",
+    main = "examples/documentation/replay_buffer_demo.py",
+    tags = ["team:ml", "documentation", "no_main"],
+    size = "medium",
+    srcs = ["examples/documentation/replay_buffer_demo.py"],
+)
 
 py_test(
     name = "examples/documentation/custom_gym_env",

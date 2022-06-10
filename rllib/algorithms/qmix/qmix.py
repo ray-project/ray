@@ -103,8 +103,8 @@ class QMixConfig(SimpleQConfig):
         self.batch_mode = "complete_episodes"
 
         # .reporting()
-        self.min_time_s_per_reporting = 1
-        self.min_sample_timesteps_per_reporting = 1000
+        self.min_time_s_per_iteration = 1
+        self.min_sample_timesteps_per_iteration = 1000
 
         # .exploration()
         self.exploration_config = {
@@ -226,7 +226,7 @@ class QMix(SimpleQ):
         return QMixTorchPolicy
 
     @override(SimpleQ)
-    def training_iteration(self) -> ResultDict:
+    def training_step(self) -> ResultDict:
         """QMIX training iteration function.
 
         - Sample n MultiAgentBatches from n workers synchronously.
