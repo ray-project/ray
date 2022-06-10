@@ -40,6 +40,8 @@ class CRRConfig(TrainerConfig):
         self.n_action_sample = 4
         self.twin_q = True
         self.target_update_grad_intervals = 100
+        # __sphinx_doc_end__
+        # fmt: on
         self.replay_buffer_config = {
             "type": "ReplayBuffer",
             "capacity": 50000,
@@ -57,8 +59,7 @@ class CRRConfig(TrainerConfig):
         self.critic_lr = 3e-4
         self.actor_lr = 3e-4
         self.tau = 5e-3
-        # __sphinx_doc_end__
-        # fmt: on
+
 
         # overriding the trainer config default
         self.num_workers = 0  # offline RL does not need rollout workers

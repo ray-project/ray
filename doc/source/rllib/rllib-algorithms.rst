@@ -23,6 +23,7 @@ Algorithm                      Frameworks Discrete Actions              Continuo
 `Bandits`_ (`TS`_ & `LinUCB`_) torch      **Yes** `+parametric`_        No                 **Yes**                                                                   No
 `BC`_                          tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_                                                       torch
 `CQL`_                         tf + torch No                            **Yes**            No                                                                        tf + torch
+`CRR`_                         torch      **Yes** `+parametric`_        **Yes**            **Yes**                                                                   torch
 `DDPG`_                        tf + torch No                            **Yes**            **Yes**                                                                   torch
 `APEX-DDPG`_                   tf + torch No                            **Yes**            **Yes**                                                                   torch
 `ES`_                          tf + torch **Yes**                       **Yes**            No                                                                        No
@@ -633,6 +634,28 @@ Tuned examples: `HalfCheetah Random <https://github.com/ray-project/ray/blob/mas
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
+
+
+.. _crr:
+
+Critic Regularized Regression (CRR)
+-----------------------------------
+|pytorch|
+`[paper] <https://arxiv.org/abs/2006.15134>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/crr/crr.py>`__
+
+CRR is another offline RL algorithm based on Q-learning that can learn from an offline experience replay.
+The challenge in applying existing Q-learning algorithms to offline RL is the problem of overestimating Q-function, as well as lack of exploration beyond the observed data.
+The later become increasingly important during bootstrapping the bellman equation, where the Q-function queried for next state does not have support in the observed data.
+To mitigate these issues, CRR, implements a simple and yet powerful idea of value-filtered regression.
+Basically the key idea is to use a learned critic to filter-out the non-promising transitions from the replay dataset. For more details, please refer to the paper.
+
+Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/crr/cartpole-v0-crr.yaml>`__, `Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/crr/pendulum-v1-crr.yaml>`__
+
+.. literalinclude:: ../../../rllib/algorithms/crr/crr.py
+   :language: python
+   :start-after: __sphinx_doc_begin__
+   :end-before: __sphinx_doc_end__
+
 
 Derivative-free
 ~~~~~~~~~~~~~~~
