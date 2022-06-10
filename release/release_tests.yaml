@@ -2121,7 +2121,7 @@
 
   run:
     timeout: 14400
-    script: python learning_tests/run.py --yaml-sub-dir=a-e --test-name=rllib_learning_tests_a_to_e
+    script: python learning_tests/run.py --yaml-sub-dir=a-e
     type: sdk_command
     file_manager: job
 
@@ -2144,7 +2144,7 @@
 
   run:
     timeout: 14400
-    script: python learning_tests/run.py --yaml-sub-dir=f-z --test-name=rllib_learning_tests_f_to_z
+    script: python learning_tests/run.py --yaml-sub-dir=f-z
     type: sdk_command
     file_manager: job
 
