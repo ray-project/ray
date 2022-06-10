@@ -188,6 +188,7 @@ parts:
               - file: rllib/rllib-models
               - file: rllib/rllib-concepts
               - file: rllib/rllib-sample-collection
+              - file: rllib/rllib-replay-buffers
               - file: rllib/rllib-offline
               - file: rllib/rllib-dev
           - file: rllib/rllib-examples
@@ -233,6 +234,7 @@ parts:
           - file: ray-core/examples/plot_hyperparameter
           - file: ray-core/examples/plot_parameter_server
           - file: ray-core/examples/plot_pong_example
+          - file: ray-core/examples/highly_parallel
       - file: ray-core/package-ref
 
   - caption: Ray Clusters

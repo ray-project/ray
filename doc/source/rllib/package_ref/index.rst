@@ -29,5 +29,6 @@ If you think there is anything missing, please open an issue on `Github`_.
    train_ops.rst
    replay_buffer.rst
    utils.rst
+   replay-buffers.rst
 
 .. include:: /_includes/rllib/announcement_bottom.rst

@@ -282,7 +282,7 @@ class DDPPO(PPO):
             )
 
     @override(PPO)
-    def training_iteration(self) -> ResultDict:
+    def training_step(self) -> ResultDict:
         # Shortcut.
         first_worker = self.workers.remote_workers()[0]
 

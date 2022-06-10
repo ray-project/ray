@@ -15,22 +15,57 @@ Automatic conversion between the Pandas and Arrow extension types/arrays keeps t
 Single-column tensor datasets
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The most basic case is when a dataset only has a single column, which is of tensor type. This kind of dataset can be created with ``.range_tensor()``, and can be read from and written to ``.npy`` files. Here are some examples:
+The most basic case is when a dataset only has a single column, which is of tensor
+type. This kind of dataset can be:
+
+* created with :func:`range_tensor() <ray.data.range_tensor>`
+  or :func:`from_numpy() <ray.data.from_numpy>`,
+* transformed with NumPy UDFs via
+  :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`,
+* consumed with :meth:`ds.iter_rows() <ray.data.Dataset.iter_rows>` and
+  :meth:`ds.iter_batches() <ray.data.Dataset.iter_batches>`, and
+* can be read from and written to ``.npy`` files.
+
+Here is an end-to-end example:
 
 .. code-block:: python
 
-    # Create a Dataset of tensor-typed values.
-    ds = ray.data.range_tensor(10000, shape=(3, 5))
-    # -> Dataset(num_blocks=200, num_rows=10000,
-    #            schema={value: <ArrowTensorType: shape=(3, 5), dtype=int64>})
+    # Create a synthetic pure-tensor Dataset.
+    ds = ray.data.range_tensor(10, shape=(3, 5))
+    # -> Dataset(num_blocks=10, num_rows=10,
+    #            schema={__value__: <ArrowTensorType: shape=(3, 5), dtype=int64>})
 
-    # Save to storage.
-    ds.write_numpy("/tmp/tensor_out", column="value")
+    # Create a pure-tensor Dataset from an existing NumPy ndarray.
+    arr = np.arange(10 * 3 * 5).reshape((10, 3, 5))
+    ds = ray.data.from_numpy(arr)
+    # -> Dataset(num_blocks=1, num_rows=10,
+    #            schema={__value__: <ArrowTensorType: shape=(3, 5), dtype=int64>})
 
-    # Read from storage.
+    # Transform the tensors. Datasets will automatically unpack the single-column Arrow
+    # table into a NumPy ndarray, provide that ndarray to your UDF, and then repack it
+    # into a single-column Arrow table; this will be a zero-copy conversion in both
+    # cases.
+    ds = ds.map_batches(lambda arr: arr / arr.max())
+    # -> Dataset(num_blocks=1, num_rows=10,
+    #            schema={__value__: <ArrowTensorType: shape=(3, 5), dtype=double>})
+
+    # Consume the tensor. This will yield the underlying (3, 5) ndarrays.
+    for arr in ds.iter_rows():
+        assert isinstance(arr, np.ndarray)
+        assert arr.shape == (3, 5)
+
+    # Consume the tensor in batches.
+    for arr in ds.iter_batches(batch_size=2):
+        assert isinstance(arr, np.ndarray)
+        assert arr.shape == (2, 3, 5)
+
+    # Save to storage. This will write out the blocks of the tensor column as NPY files.
+    ds.write_numpy("/tmp/tensor_out")
+
+    # Read back from storage.
     ray.data.read_numpy("/tmp/tensor_out")
-    # -> Dataset(num_blocks=200, num_rows=?,
-    #            schema={value: <ArrowTensorType: shape=(3, 5), dtype=int64>})
+    # -> Dataset(num_blocks=1, num_rows=?,
+    #            schema={__value__: <ArrowTensorType: shape=(3, 5), dtype=double>})
 
 Reading existing serialized tensor columns
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

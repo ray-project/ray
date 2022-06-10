@@ -375,7 +375,7 @@ class Dreamer(Trainer):
         return rollouts
 
     @override(Trainer)
-    def training_iteration(self) -> ResultDict:
+    def training_step(self) -> ResultDict:
         local_worker = self.workers.local_worker()
 
         # Number of sub-iterations for Dreamer
@@ -410,8 +410,8 @@ class Dreamer(Trainer):
 
         return fetches
 
-    def _compile_step_results(self, *args, **kwargs):
-        results = super()._compile_step_results(*args, **kwargs)
+    def _compile_iteration_results(self, *args, **kwargs):
+        results = super()._compile_iteration_results(*args, **kwargs)
         results["timesteps_total"] = self._counters[STEPS_SAMPLED_COUNTER]
         return results
 
