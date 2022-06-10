@@ -1,5 +1,4 @@
 import logging
-import numpy as np
 from typing import Optional, Type
 
 from ray.rllib.algorithms.cql.cql_tf_policy import CQLTFPolicy
@@ -16,9 +15,7 @@ from ray.rllib.execution.train_ops import (
     train_one_step,
 )
 from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
-from ray.rllib.offline.shuffled_input import ShuffledInput
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
