@@ -1,11 +1,10 @@
-import os
 import sys
-import json
+import copy
 import time
 import pytest
 import requests
 import subprocess
-from typing import List, Dict, Set
+from typing import Dict
 
 import ray
 from ray import serve
@@ -25,136 +24,20 @@ def ray_start_stop():
     subprocess.check_output(["ray", "stop", "--force"])
 
 
-def deployments_match(list1: List[Dict], list2: List[Dict], properties: Set) -> bool:
-    """
-    Helper that takes in 2 lists of deployment dictionaries and compares their
-    properties and ray_actor_options.
-    """
+def deploy_and_check_config(config: Dict):
+    put_response = requests.put(GET_OR_PUT_URL, json=config, timeout=30)
+    assert put_response.status_code == 200
+    print("PUT request sent successfully.")
 
-    if len(list1) != len(list2):
-        return False
-
-    for deployment1 in list1:
-        matching_deployment = None
-        for i in range(len(list2)):
-            deployment2 = list2[i]
-            for property in properties:
-                if deployment1[property] != deployment2[property]:
-                    break
-            else:
-                matching_deployment = i
-        if matching_deployment is None:
-            return False
-        list2.pop(matching_deployment)
-
-    return len(list2) == 0
+    # Config should be immediately retrievable
+    get_response = requests.get(GET_OR_PUT_URL, timeout=15)
+    assert get_response.status_code == 200
+    assert get_response.json() == config
+    print("GET request returned correct config.")
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="File paths incompatible with Windows."
-)
-def test_put_get_success(ray_start_stop):
-    ray_actor_options = {
-        "runtime_env": {"py_modules": [test_env_uri, test_module_uri]},
-        "num_cpus": 0.1,
-    }
-
-    shallow = dict(
-        name="shallow",
-        num_replicas=3,
-        route_prefix="/shallow",
-        ray_actor_options=ray_actor_options,
-        import_path="test_env.shallow_import.ShallowClass",
-    )
-
-    deep = dict(
-        name="deep",
-        route_prefix="/deep",
-        ray_actor_options=ray_actor_options,
-        import_path="test_env.subdir1.subdir2.deep_import.DeepClass",
-    )
-
-    one = dict(
-        name="one",
-        num_replicas=3,
-        route_prefix="/one",
-        ray_actor_options=ray_actor_options,
-        import_path="test_module.test.one",
-    )
-
-    three_deployments = os.path.join(
-        os.path.dirname(__file__), "three_deployments_response.json"
-    )
-
-    two_deployments = os.path.join(
-        os.path.dirname(__file__), "two_deployments_response.json"
-    )
-
-    # Ensure the REST API is idempotent
-    for _ in range(2):
-        deployments = [shallow, deep, one]
-
-        put_response = requests.put(
-            GET_OR_PUT_URL, json={"deployments": deployments}, timeout=30
-        )
-        assert put_response.status_code == 200
-        assert (
-            requests.get("http://localhost:8000/shallow", timeout=30).text
-            == "Hello shallow world!"
-        )
-        assert (
-            requests.get("http://localhost:8000/deep", timeout=30).text
-            == "Hello deep world!"
-        )
-        assert requests.get("http://localhost:8000/one", timeout=30).text == "2"
-
-        get_response = requests.get(GET_OR_PUT_URL, timeout=30)
-        assert get_response.status_code == 200
-
-        with open(three_deployments, "r") as f:
-            response_deployments = get_response.json()["deployments"]
-            expected_deployments = json.load(f)["deployments"]
-            assert deployments_match(
-                response_deployments,
-                expected_deployments,
-                {"name", "import_path", "num_replicas", "route_prefix"},
-            )
-
-        deployments = [shallow, one]
-        put_response = requests.put(
-            GET_OR_PUT_URL, json={"deployments": deployments}, timeout=30
-        )
-        assert put_response.status_code == 200
-
-        # Use wait_for_condition() to ensure "deep" deployment deleted
-        wait_for_condition(
-            lambda: len(requests.get(GET_OR_PUT_URL, timeout=3).json()["deployments"])
-            == 2,
-            timeout=10,
-        )
-
-        assert (
-            requests.get("http://localhost:8000/shallow", timeout=30).text
-            == "Hello shallow world!"
-        )
-        assert requests.get("http://localhost:8000/deep", timeout=30).status_code == 404
-        assert requests.get("http://localhost:8000/one", timeout=30).text == "2"
-
-        get_response = requests.get(GET_OR_PUT_URL, timeout=30)
-        assert get_response.status_code == 200
-
-        with open(two_deployments, "r") as f:
-            response_deployments = get_response.json()["deployments"]
-            expected_deployments = json.load(f)["deployments"]
-            assert deployments_match(
-                response_deployments,
-                expected_deployments,
-                {"name", "import_path", "num_replicas", "route_prefix"},
-            )
-
-
-def test_put_new_rest_api(ray_start_stop):
-    config = {
+def test_put_get(ray_start_stop):
+    config1 = {
         "import_path": "conditional_dag.serve_dag",
         "runtime_env": {
             "working_dir": (
@@ -176,30 +59,76 @@ def test_put_new_rest_api(ray_start_stop):
         ],
     }
 
-    put_response = requests.put(GET_OR_PUT_URL, json=config, timeout=30)
-    assert put_response.status_code == 200
-    wait_for_condition(
-        lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
-        == "3 pizzas please!",
-        timeout=15,
-    )
-    wait_for_condition(
-        lambda: requests.post("http://localhost:8000/", json=["MUL", 2]).json()
-        == "-4 pizzas please!",
-        timeout=15,
-    )
+    # Use empty dictionary for Adder's ray_actor_options.
+    config2 = copy.deepcopy(config1)
+    config2["deployments"][1]["ray_actor_options"] = {}
 
-    # Make Adder's ray_actor_options an empty dictionary.
-    config["deployments"][1]["ray_actor_options"] = {}
+    config3 = {
+        "import_path": "dir.subdir.a.add_and_sub.serve_dag",
+        "runtime_env": {
+            "working_dir": (
+                "https://github.com/ray-project/test_dag/archive/"
+                "41b26242e5a10a8c167fcb952fb11d7f0b33d614.zip"
+            )
+        },
+        "deployments": [
+            {
+                "name": "Subtract",
+                "ray_actor_options": {
+                    "runtime_env": {
+                        "py_modules": [
+                            (
+                                "https://github.com/ray-project/test_module/archive/"
+                                "aa6f366f7daa78c98408c27d917a983caa9f888b.zip"
+                            )
+                        ]
+                    }
+                },
+            }
+        ],
+    }
 
-    # Check that Adder's empty config ray_actor_options override its code options
-    put_response = requests.put(GET_OR_PUT_URL, json=config, timeout=30)
-    assert put_response.status_code == 200
-    wait_for_condition(
-        lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
-        == "4 pizzas please!",
-        timeout=15,
-    )
+    # Ensure the REST API is idempotent
+    num_iterations = 2
+    for iteration in range(1, num_iterations + 1):
+        print(f"*** Starting Iteration {iteration}/{num_iterations} ***\n")
+
+        print("Sending PUT request for config1.")
+        deploy_and_check_config(config1)
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
+            == "3 pizzas please!",
+            timeout=15,
+        )
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/", json=["MUL", 2]).json()
+            == "-4 pizzas please!",
+            timeout=15,
+        )
+        print("Deployments are live and reachable over HTTP.\n")
+
+        print("Sending PUT request for config2.")
+        deploy_and_check_config(config2)
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
+            == "4 pizzas please!",
+            timeout=15,
+        )
+        print("Adder deployment updated correctly.\n")
+
+        print("Sending PUT request for config3.")
+        deploy_and_check_config(config3)
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/", json=["ADD", 1]).json()
+            == 2,
+            timeout=15,
+        )
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/", json=["SUB", 1]).json()
+            == -1,
+            timeout=15,
+        )
+        print("Deployments are live and reachable over HTTP.\n")
 
 
 def test_delete_success(ray_start_stop):
