@@ -16,6 +16,7 @@ from ray.air.preprocessors.scaler import (
     MaxAbsScaler,
     RobustScaler,
 )
+from ray.air.preprocessors.custom_stateful import CustomStatefulPreprocessor
 from ray.air.preprocessors.tokenizer import Tokenizer
 from ray.air.preprocessors.transformer import PowerTransformer
 from ray.air.preprocessors.vectorizer import CountVectorizer, HashingVectorizer
@@ -23,8 +24,9 @@ from ray.air.preprocessors.vectorizer import CountVectorizer, HashingVectorizer
 __all__ = [
     "BatchMapper",
     "Categorizer",
-    "CountVectorizer",
     "Chain",
+    "CountVectorizer",
+    "CustomStatefulPreprocessor",
     "FeatureHasher",
     "HashingVectorizer",
     "LabelEncoder",

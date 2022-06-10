@@ -13,8 +13,9 @@ from ray.rllib.utils.replay_buffers.replay_buffer import (
 from ray.rllib.utils.typing import SampleBatchType
 
 
+# __sphinx_doc_reservoir_buffer__begin__
 @ExperimentalAPI
-class ReservoirBuffer(ReplayBuffer):
+class ReservoirReplayBuffer(ReplayBuffer):
     """This buffer implements reservoir sampling.
 
     The algorithm has been described by Jeffrey S. Vitter in "Random sampling
@@ -29,10 +30,10 @@ class ReservoirBuffer(ReplayBuffer):
 
         Args:
             capacity: Max number of timesteps to store in the FIFO
-                buffer. After reaching this number, older samples will be
-                dropped to make space for new ones.
+                    buffer. After reaching this number, older samples will be
+                    dropped to make space for new ones.
             storage_unit: Either 'timesteps', 'sequences' or
-            'episodes'. Specifies how experiences are stored.
+                    'episodes'. Specifies how experiences are stored.
         """
         ReplayBuffer.__init__(self, capacity, storage_unit)
         self._num_add_calls = 0
@@ -49,7 +50,7 @@ class ReservoirBuffer(ReplayBuffer):
 
         Args:
             item: The batch to be added.
-            **kwargs: Forward compatibility kwargs.
+            ``**kwargs``: Forward compatibility kwargs.
         """
         self._num_timesteps_added += item.count
         self._num_timesteps_added_wrap += item.count
@@ -90,7 +91,7 @@ class ReservoirBuffer(ReplayBuffer):
 
         Args:
             debug: If True, adds sample eviction statistics to the returned
-                stats dict.
+                    stats dict.
 
         Returns:
             A dictionary of stats about this buffer.
@@ -122,8 +123,11 @@ class ReservoirBuffer(ReplayBuffer):
 
         Args:
             state: The new state to set this buffer. Can be
-                obtained by calling `self.get_state()`.
+                    obtained by calling `self.get_state()`.
         """
         self._num_evicted = state["num_evicted"]
         self._num_add_calls = state["num_add_calls"]
         ReplayBuffer.set_state(self, state)
+
+
+# __sphinx_doc_reservoir_buffer__end__
