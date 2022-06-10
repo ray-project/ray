@@ -15,7 +15,7 @@ import gym
 
 class TestOPE(unittest.TestCase):
     def setUp(self):
-        ray.init(num_cpus=10)
+        ray.init(num_cpus=8)
 
     def tearDown(self):
         ray.shutdown()
@@ -31,7 +31,7 @@ class TestOPE(unittest.TestCase):
         train_iters = 25
         num_workers = 2
         eval_num_workers = 5
-        train_test_split_val = 5
+        train_test_split_val = 0.8
         eval_episodes = 100
 
         config = (
