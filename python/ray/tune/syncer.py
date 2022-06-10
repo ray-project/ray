@@ -375,6 +375,9 @@ def get_node_to_storage_syncer(sync_config: SyncConfig) -> Optional[Syncer]:
     if sync_config.syncer is None:
         return None
 
+    if not sync_config.upload_dir:
+        return None
+
     if sync_config.syncer == "auto":
         return _DefaultSyncer(sync_period=sync_config.sync_period)
 
