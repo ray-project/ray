@@ -305,7 +305,7 @@ input a batch of experiences and emits a ``ResultDict`` with metrics as output. 
 ``multi_gpu_train_one_step``. These methods use the ``learn_on_batch`` method of rollout workers to complete the
 training update.
 
-:ref:`Replay Buffers < replay-buffer-reference-docs>`:
+:ref:`Replay Buffers <replay-buffer-reference-docs>`:
 RLlib provides `a collection <https://github.com/ray-project/ray/tree/master/rllib/utils/replay_buffers>`__ of replay
 buffers that can be used for storing and sampling experiences.
 
