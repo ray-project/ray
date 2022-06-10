@@ -411,8 +411,6 @@ class OneToOneStage(Stage):
     def can_fuse(self, prev: Stage):
         if not isinstance(prev, OneToOneStage):
             return False
-        if prev.compute != self.compute:
-            return False
         if not _are_remote_args_compatible(prev.ray_remote_args, self.ray_remote_args):
             return False
         return True
