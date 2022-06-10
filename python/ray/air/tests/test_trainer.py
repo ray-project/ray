@@ -4,7 +4,8 @@ import ray
 from ray import tune
 
 from ray.air.preprocessor import Preprocessor
-from ray.air.trainer import Trainer
+from ray.train.trainer import BaseTrainer
+from ray.air.config import ScalingConfig
 from ray.util.placement_group import get_current_placement_group
 
 
@@ -71,7 +72,9 @@ def test_resources(ray_start_4_cpus):
         assert ray.available_resources()["CPU"] == 2
 
     assert ray.available_resources()["CPU"] == 4
-    trainer = DummyTrainer(check_cpus, scaling_config={"trainer_resources": {"CPU": 2}})
+    trainer = DummyTrainer(
+        check_cpus, scaling_config=ScalingConfig(trainer_resources={"CPU": 2})
+    )
     trainer.fit()
 
 
@@ -122,7 +125,7 @@ def test_preprocessor_already_fitted(ray_start_4_cpus):
 
 def test_arg_override(ray_start_4_cpus):
     def check_override(self):
-        assert self.scaling_config["num_workers"] == 1
+        assert self.scaling_config.num_workers == 1
         # Should do deep update.
         assert not self.custom_arg["outer"]["inner"]
         assert self.custom_arg["outer"]["fixed"] == 1
@@ -134,7 +137,7 @@ def test_arg_override(ray_start_4_cpus):
 
     preprocessor = DummyPreprocessor()
     preprocessor.original = True
-    scale_config = {"num_workers": 4}
+    scale_config = ScalingConfig(num_workers=4)
     trainer = DummyTrainer(
         check_override,
         custom_arg={"outer": {"inner": True, "fixed": 1}},
@@ -144,7 +147,7 @@ def test_arg_override(ray_start_4_cpus):
 
     new_config = {
         "custom_arg": {"outer": {"inner": False}},
-        "scaling_config": {"num_workers": 1},
+        "scaling_config": ScalingConfig(num_workers=1),
     }
 
     tune.run(trainer.as_trainable(), config=new_config)
