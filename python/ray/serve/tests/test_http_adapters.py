@@ -8,6 +8,7 @@ import pandas as pd
 
 from ray.serve.http_adapters import (
     NdArray,
+    json_to_multi_ndarray,
     json_to_ndarray,
     image_to_ndarray,
     pandas_read_json,
@@ -51,6 +52,12 @@ def test_json_to_ndarray():
     )
 
 
+def test_json_to_multi_ndarray():
+    assert json_to_multi_ndarray(
+        {"a": NdArray(array=[1]), "b": NdArray(array=[3])}
+    ) == {"a": np.array(1), "b": np.array(3)}
+
+
 def test_image_to_ndarray():
     buffer = io.BytesIO()
     arr = (np.random.rand(100, 100, 3) * 255).astype("uint8")
@@ -87,3 +94,9 @@ async def test_pandas_dataframe():
         MockRequest(_body=raw_json, query_params={"orient": "records"})
     )
     assert parsed_df.equals(df)
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", "-s", __file__]))

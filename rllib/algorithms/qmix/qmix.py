@@ -22,6 +22,7 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
 from ray.rllib.utils.typing import ResultDict, TrainerConfigDict
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import deprecation_warning
 
 
 class QMixConfig(SimpleQConfig):
@@ -70,7 +71,7 @@ class QMixConfig(SimpleQConfig):
         self.double_q = True
         self.optim_alpha = 0.99
         self.optim_eps = 0.00001
-        self.grad_norm_clipping = 10
+        self.grad_clip = 10
 
         # Override some of TrainerConfig's default values with QMix-specific values.
         # .training()
@@ -102,8 +103,8 @@ class QMixConfig(SimpleQConfig):
         self.batch_mode = "complete_episodes"
 
         # .reporting()
-        self.min_time_s_per_reporting = 1
-        self.min_sample_timesteps_per_reporting = 1000
+        self.min_time_s_per_iteration = 1
+        self.min_sample_timesteps_per_iteration = 1000
 
         # .exploration()
         self.exploration_config = {
@@ -149,6 +150,7 @@ class QMixConfig(SimpleQConfig):
         optim_alpha: Optional[float] = None,
         optim_eps: Optional[float] = None,
         grad_norm_clipping: Optional[float] = None,
+        grad_clip: Optional[float] = None,
         **kwargs,
     ) -> "QMixConfig":
         """Sets the training related configuration.
@@ -162,14 +164,28 @@ class QMixConfig(SimpleQConfig):
             replay_buffer_config:
             optim_alpha: RMSProp alpha.
             optim_eps: RMSProp epsilon.
-            grad_norm_clipping: If not None, clip gradients during optimization at
+            grad_clip: If not None, clip gradients during optimization at
                 this value.
+            grad_norm_clipping: Depcrecated in favor of grad_clip
 
         Returns:
             This updated TrainerConfig object.
         """
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
+
+        if grad_norm_clipping is not None:
+            deprecation_warning(
+                old="grad_norm_clipping",
+                new="grad_clip",
+                help="Parameter `grad_norm_clipping` has been "
+                "deprecated in favor of grad_clip in QMix. "
+                "This is now the same parameter as in other "
+                "algorithms. `grad_clip` will be overwritten by "
+                "`grad_norm_clipping={}`".format(grad_norm_clipping),
+                error=False,
+            )
+            grad_clip = grad_norm_clipping
 
         if mixer is not None:
             self.mixer = mixer
@@ -185,8 +201,8 @@ class QMixConfig(SimpleQConfig):
             self.optim_alpha = optim_alpha
         if optim_eps is not None:
             self.optim_eps = optim_eps
-        if grad_norm_clipping is not None:
-            self.grad_norm_clipping = grad_norm_clipping
+        if grad_clip is not None:
+            self.grad_clip = grad_clip
 
         return self
 
@@ -210,7 +226,7 @@ class QMix(SimpleQ):
         return QMixTorchPolicy
 
     @override(SimpleQ)
-    def training_iteration(self) -> ResultDict:
+    def training_step(self) -> ResultDict:
         """QMIX training iteration function.
 
         - Sample n MultiAgentBatches from n workers synchronously.

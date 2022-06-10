@@ -3,24 +3,26 @@ import time
 import pytest
 
 import ray
-from ray.train.accelerator import Accelerator
+from ray.train._internal.accelerator import Accelerator
 from ray.train.constants import SESSION_MISUSE_LOG_ONCE_KEY
-from ray.train.session import (
+from ray.train._internal.session import (
     init_session,
     shutdown_session,
     get_session,
+    TrainingResultType,
+    get_accelerator,
+    set_accelerator,
+)
+from ray.train.train_loop_utils import (
     world_rank,
     local_rank,
     report,
     save_checkpoint,
-    TrainingResultType,
     load_checkpoint,
     get_dataset_shard,
     world_size,
-    get_accelerator,
-    set_accelerator,
-    SessionMisuseError,
 )
+from ray.train.error import SessionMisuseError
 
 
 @pytest.fixture(scope="function")

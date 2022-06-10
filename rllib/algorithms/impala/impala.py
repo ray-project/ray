@@ -133,7 +133,7 @@ class ImpalaConfig(TrainerConfig):
         self.num_workers = 2
         self.num_gpus = 1
         self.lr = 0.0005
-        self.min_time_s_per_reporting = 10
+        self.min_time_s_per_iteration = 10
         # __sphinx_doc_end__
         # fmt: on
 
@@ -608,7 +608,7 @@ class Impala(Trainer):
             self.workers_that_need_updates = set()
 
     @override(Trainer)
-    def training_iteration(self) -> ResultDict:
+    def training_step(self) -> ResultDict:
         unprocessed_sample_batches = self.get_samples_from_workers()
 
         self.workers_that_need_updates |= unprocessed_sample_batches.keys()
@@ -901,9 +901,9 @@ class Impala(Trainer):
         self._sampling_actor_manager.add_workers(new_workers)
 
     @override(Trainer)
-    def _compile_step_results(self, *, step_ctx, step_attempt_results=None):
-        result = super()._compile_step_results(
-            step_ctx=step_ctx, step_attempt_results=step_attempt_results
+    def _compile_iteration_results(self, *, step_ctx, iteration_results=None):
+        result = super()._compile_iteration_results(
+            step_ctx=step_ctx, iteration_results=iteration_results
         )
         result = self._learner_thread.add_learner_metrics(
             result, overwrite_learner_info=False
