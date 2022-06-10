@@ -164,8 +164,11 @@ async def test_logs_manager_resolve_file(logs_manager):
     """
     Test filename is given.
     """
+    logs_client = logs_manager.data_source_client
+    logs_client.get_all_registered_agent_ids = MagicMock()
+    logs_client.get_all_registered_agent_ids.return_value = [node_id.hex()]
     expected_filename = "filename"
-    log_file_name = await logs_manager.resolve_filename(
+    log_file_name, n = await logs_manager.resolve_filename(
         node_id=node_id,
         log_filename=expected_filename,
         actor_id=None,
@@ -175,6 +178,7 @@ async def test_logs_manager_resolve_file(logs_manager):
         timeout=10,
     )
     assert log_file_name == expected_filename
+    assert n == node_id
     """
     Test actor id is given.
     """
@@ -187,7 +191,7 @@ async def test_logs_manager_resolve_file(logs_manager):
                 return None
             assert False, "Not reachable."
 
-        log_file_name = await logs_manager.resolve_filename(
+        log_file_name, n = await logs_manager.resolve_filename(
             node_id=node_id,
             log_filename=None,
             actor_id=actor_id,
@@ -201,7 +205,7 @@ async def test_logs_manager_resolve_file(logs_manager):
     actor_id = ActorID(b"2" * 16)
 
     with pytest.raises(ValueError):
-        log_file_name = await logs_manager.resolve_filename(
+        log_file_name, n = await logs_manager.resolve_filename(
             node_id=node_id,
             log_filename=None,
             actor_id=actor_id,
@@ -218,7 +222,7 @@ async def test_logs_manager_resolve_file(logs_manager):
     logs_manager.list_logs.return_value = {
         "worker_out": [f"worker-{worker_id.hex()}-123-123.out"]
     }
-    log_file_name = await logs_manager.resolve_filename(
+    log_file_name, n = await logs_manager.resolve_filename(
         node_id=node_id.hex(),
         log_filename=None,
         actor_id=actor_id,
@@ -231,13 +235,14 @@ async def test_logs_manager_resolve_file(logs_manager):
         node_id.hex(), 10, glob_filter=f"*{worker_id.hex()}*"
     )
     assert log_file_name == f"worker-{worker_id.hex()}-123-123.out"
+    assert n == node_id.hex()
 
     """
     Test task id is given.
     """
     with pytest.raises(NotImplementedError):
         task_id = TaskID(b"2" * 24)
-        log_file_name = await logs_manager.resolve_filename(
+        log_file_name, n = await logs_manager.resolve_filename(
             node_id=node_id.hex(),
             log_filename=None,
             actor_id=None,
@@ -271,7 +276,7 @@ async def test_logs_manager_resolve_file(logs_manager):
     logs_manager.list_logs = AsyncMock()
     # Provide the wrong pid.
     logs_manager.list_logs.return_value = {"worker_out": [f"worker-123-123-{pid}.out"]}
-    log_file_name = await logs_manager.resolve_filename(
+    log_file_name, n = await logs_manager.resolve_filename(
         node_id=node_id.hex(),
         log_filename=None,
         actor_id=None,
@@ -496,9 +501,10 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
     if stream_response.status_code != 200:
         raise ValueError(stream_response.content.decode("utf-8"))
     stream_iterator = stream_response.iter_content(chunk_size=None)
+    # NOTE: Prefix 1 indicates the stream has succeeded.
     assert (
         next(stream_iterator).decode("utf-8")
-        == ":actor_name:Actor\n" + test_log_text.format("XXXXXX") + "\n"
+        == "1:actor_name:Actor\n" + test_log_text.format("XXXXXX") + "\n"
     )
 
     streamed_string = ""
@@ -513,7 +519,8 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
         for s in strings:
             string += s + "\n"
         streamed_string += string
-        assert next(stream_iterator).decode("utf-8") == string
+        # NOTE: Prefix 1 indicates the stream has succeeded.
+        assert next(stream_iterator).decode("utf-8") == "1" + string
     del stream_response
 
     # Test tailing log by actor id
@@ -524,7 +531,8 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
         + "&actor_id="
         + actor._ray_actor_id.hex(),
     ).content.decode("utf-8")
-    assert file_response == "\n".join(streamed_string.split("\n")[-(LINES + 1) :])
+    # NOTE: Prefix 1 indicates the stream has succeeded.
+    assert file_response == "1" + "\n".join(streamed_string.split("\n")[-(LINES + 1) :])
 
     # Test query by pid & node_ip instead of actor id.
     node_ip = list(ray.nodes())[0]["NodeManagerAddress"]
@@ -534,7 +542,8 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
         + f"/api/v0/logs/file?node_ip={node_ip}&lines={LINES}"
         + f"&pid={pid}",
     ).content.decode("utf-8")
-    assert file_response == "\n".join(streamed_string.split("\n")[-(LINES + 1) :])
+    # NOTE: Prefix 1 indicates the stream has succeeded.
+    assert file_response == "1" + "\n".join(streamed_string.split("\n")[-(LINES + 1) :])
 
 
 def test_log_list(ray_start_cluster):
@@ -637,8 +646,8 @@ def test_log_cli(shutdown_only):
     # Test the head node is chosen by default.
     def verify():
         result = runner.invoke(scripts.logs)
-        assert result.exit_code == 0
         print(result.output)
+        assert result.exit_code == 0
         assert "raylet.out" in result.output
         assert "raylet.err" in result.output
         assert "gcs_server.out" in result.output

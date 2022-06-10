@@ -71,7 +71,7 @@ class LogsManager:
         """
         node_id = options.node_id or self.ip_to_node_id(options.node_ip)
 
-        log_file_name = await self.resolve_filename(
+        log_file_name, node_id = await self.resolve_filename(
             node_id=node_id,
             log_filename=options.filename,
             actor_id=options.actor_id,

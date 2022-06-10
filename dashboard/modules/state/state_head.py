@@ -20,7 +20,6 @@ from ray.experimental.state.common import (
     GetLogOptions,
     DEFAULT_RPC_TIMEOUT,
     DEFAULT_LIMIT,
-    ERROR_HASH_CODE,
 )
 from ray.experimental.state.exception import DataSourceUnavailable
 from ray.experimental.state.state_manager import StateDataSourceClient
@@ -232,18 +231,24 @@ class StateHead(dashboard_utils.DashboardHeadModule):
         response.content_type = "text/plain"
         await response.prepare(req)
 
+        # NOTE: The first byte indicates the success / failure of individual
+        # stream. If the first byte is b"1", it means the stream was successful.
+        # If it is b"0", it means it is failed.
         try:
             async for logs_in_bytes in self._log_api.stream_logs(options):
-                await response.write(logs_in_bytes)
+                logs_to_stream = bytearray(b"1")
+                logs_to_stream.extend(logs_in_bytes)
+                await response.write(bytes(logs_to_stream))
             await response.write_eof()
             return response
         except Exception as e:
             logger.exception(e)
-            error_msg = (
-                f"{ERROR_HASH_CODE}"
-                f"::Closing HTTP stream due to internal server error.\n{e}"
+            error_msg = bytearray(b"0")
+            error_msg.extend(
+                f"Closing HTTP stream due to internal server error.\n{e}".encode()
             )
-            await response.write(error_msg.encode())
+
+            await response.write(bytes(error_msg))
             await response.write_eof()
             return response
 

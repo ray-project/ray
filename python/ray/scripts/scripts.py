@@ -12,7 +12,6 @@ import time
 import urllib
 import urllib.parse
 import yaml
-import functools
 
 import ray
 import psutil
@@ -2002,8 +2001,7 @@ def local_dump(
     help="Streams the log file as it is updated instead of just tailing.",
 )
 @click.option(
-    "--lines",
-    "-l",
+    "--tail",
     required=False,
     type=int,
     default=None,
@@ -2015,7 +2013,7 @@ def local_dump(
     type=float,
     default=None,
     help="The interval to print new logs when `--follow` is specified.",
-    hidden=True
+    hidden=True,
 )
 def logs(
     glob_filter,
@@ -2028,7 +2026,6 @@ def logs(
     tail: int,
     interval: float,
 ):
-    """ """
     if task_id is not None:
         raise NotImplementedError("--task-id is not yet supported")
 

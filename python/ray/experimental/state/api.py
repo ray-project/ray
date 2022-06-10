@@ -12,7 +12,6 @@ from ray.experimental.state.common import (
     GetLogOptions,
     DEFAULT_RPC_TIMEOUT,
     DEFAULT_LIMIT,
-    ERROR_HASH_CODE,
 )
 from ray.experimental.state.exception import RayStateApiException
 
@@ -253,9 +252,14 @@ def get_log(
         if r.status_code != 200:
             raise RayStateApiException(r.text)
         for bytes in r.iter_content(chunk_size=None):
-            logs = bytes.decode("utf-8")
-            if logs.startswith(ERROR_HASH_CODE):
-                error_msg = logs.split(ERROR_HASH_CODE)[1]
+            bytes = bytearray(bytes)
+            # First byte 1 means success.
+            if bytes.startswith(b"1"):
+                bytes.pop(0)
+                logs = bytes.decode("utf-8")
+            else:
+                assert bytes.startswith(b"0")
+                error_msg = bytes.decode("utf-8")
                 raise RayStateApiException(error_msg)
             yield logs
 

@@ -10,18 +10,6 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_RPC_TIMEOUT = 30
 DEFAULT_LIMIT = 1000
-# It is used to identify exceptions in the middle of streaming response.
-# Streaming response sends the http header "before" it writes data
-# to the stream. However, if the operation is failed in the middle of
-# streaming process (e.g., unexpected node failure), streaming can fail
-# after the header is sent (which means we cannot re-sent the header).
-# In this case, this error hash code is used to identify the error.
-# Protocol is as follow:
-# - Streamed data will start from this hash value if there's an error.
-# - The data will look like f"{ERROR_HASH_CODE}::{error_msg}"
-# - When the client reads the data, if the data starts from the hash,
-#   it raises an exception.
-ERROR_HASH_CODE = "8b74caa46a390f1aa810356e70c9ced7"
 
 
 def filter_fields(data: dict, state_dataclass) -> dict:
