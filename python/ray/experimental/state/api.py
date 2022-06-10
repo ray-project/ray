@@ -1,10 +1,8 @@
 import warnings
-
-from dataclasses import fields
+import requests
 from typing import Dict, List, Optional, Tuple, Union
 
 import ray
-
 from ray.experimental.state.common import (
     DEFAULT_LIMIT,
     DEFAULT_RPC_TIMEOUT,
@@ -14,6 +12,28 @@ from ray.experimental.state.common import (
 )
 from ray.experimental.state.exception import RayStateApiException
 from ray.dashboard.modules.dashboard_sdk import SubmissionClient
+
+"""
+This file contains API client and methods for querying ray state.
+
+NOTE(rickyyx): This is still a work-in-progress API, and subject to changes.
+
+Usage:
+    1. [Recommended] With StateApiClient:
+    ```
+        client = StateApiClient(api_server_address="localhost:8265")
+        data = client.list(StateResource.NODES)
+        ...
+    ```
+
+    2. With SDK APIs:
+    The API creates a `StateApiClient` for each invocation. So if multiple
+    invocations of listing are used, it is better to reuse the `StateApiClient`
+    as suggested above.
+    ```
+        data = list_nodes(address="localhost:8265")
+    ```
+"""
 
 
 class StateApiClient(SubmissionClient):
@@ -44,13 +64,6 @@ class StateApiClient(SubmissionClient):
         )
         return f"http://{ray.worker.global_worker.node.address_info['webui_url']}"
 
-    @classmethod
-    def _get_query_string(cls, options: ListApiOptions) -> str:
-        query_strings = []
-        for field in fields(options):
-            query_strings.append(f"{field.name}={getattr(options, field.name)}")
-        return "&".join(query_strings)
-
     def list(
         self, resource: StateResource, options: ListApiOptions, _explain: bool = False
     ) -> Union[Dict, List]:
@@ -72,8 +85,7 @@ class StateApiClient(SubmissionClient):
             when timeout occurs.
 
         """
-        # Append the ListApiOptions to the url
-        endpoint = f"/api/v0/{resource.value}?{self._get_query_string(options)}"
+        endpoint = f"/api/v0/{resource.value}"
 
         # We don't use `asdict` to avoid deepcopy.
         # https://docs.python.org/3/library/dataclasses.html#dataclasses.asdict
@@ -88,18 +100,31 @@ class StateApiClient(SubmissionClient):
             params["filter_keys"].append(filter_k)
             params["filter_values"].append(filter_val)
 
-        # NOTE(rickyyx)
-        # This might raise `requests.Timeout` exceptions and other related requests
-        # exceptions. Users of the functions are expected to handle this.
-        response = self._do_request(
-            "GET",
-            endpoint,
-            timeout=options.timeout,
-            params=params,
-        )
+        response = None
+        try:
+            response = self._do_request(
+                "GET",
+                endpoint,
+                timeout=options.timeout,
+                params=params,
+            )
 
-        if response.status_code != 200:
-            self._raise_error(response)
+            response.raise_for_status()
+        except Exception as e:
+            err_str = f"Failed to make request to {endpoint}. "
+
+            # Best-effort to give hints to users on potential reasons of connection
+            # failure.
+            if isinstance(e, requests.exceptions.ConnectionError):
+                err_str += (
+                    "Failed to connect to API server. Please check the API server "
+                    "log for details. Make sure dependencies are installed with "
+                    "`pip install ray[default]`."
+                )
+
+            if response is not None:
+                err_str += f"Response(url={response.url},status={response.status_code})"
+            raise RayStateApiException(err_str) from e
 
         response = response.json()
         if response["result"] is False:
@@ -122,6 +147,7 @@ Convenient methods for list_<RESOURCE>
 Supported arguments to the below methods, see `ListApiOptions`:
     address: The address of the Ray state server. If None, it assumes a running Ray
         deployment exists and will query the GCS for auto-configuration.
+    filters: Optional list of filter key-value pair.
     timeout: Time for the request.
     limit: Limit of entries in the result
 """
@@ -129,7 +155,7 @@ Supported arguments to the below methods, see `ListApiOptions`:
 
 def list_actors(
     address: Optional[str] = None,
-    filters: List[Tuple[str, SupportedFilterType]] = None,
+    filters: Optional[List[Tuple[str, SupportedFilterType]]] = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
@@ -143,7 +169,7 @@ def list_actors(
 
 def list_placement_groups(
     address: Optional[str] = None,
-    filters: List[Tuple[str, SupportedFilterType]] = None,
+    filters: Optional[List[Tuple[str, SupportedFilterType]]] = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
@@ -157,7 +183,7 @@ def list_placement_groups(
 
 def list_nodes(
     address: Optional[str] = None,
-    filters: List[Tuple[str, SupportedFilterType]] = None,
+    filters: Optional[List[Tuple[str, SupportedFilterType]]] = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
@@ -171,7 +197,7 @@ def list_nodes(
 
 def list_jobs(
     address: Optional[str] = None,
-    filters: List[Tuple[str, SupportedFilterType]] = None,
+    filters: Optional[List[Tuple[str, SupportedFilterType]]] = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
@@ -185,7 +211,7 @@ def list_jobs(
 
 def list_workers(
     address: Optional[str] = None,
-    filters: List[Tuple[str, SupportedFilterType]] = None,
+    filters: Optional[List[Tuple[str, SupportedFilterType]]] = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
@@ -199,7 +225,7 @@ def list_workers(
 
 def list_tasks(
     address: Optional[str] = None,
-    filters: List[Tuple[str, SupportedFilterType]] = None,
+    filters: Optional[List[Tuple[str, SupportedFilterType]]] = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
@@ -213,7 +239,7 @@ def list_tasks(
 
 def list_objects(
     address: Optional[str] = None,
-    filters: List[Tuple[str, SupportedFilterType]] = None,
+    filters: Optional[List[Tuple[str, SupportedFilterType]]] = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
@@ -227,7 +253,7 @@ def list_objects(
 
 def list_runtime_envs(
     address: Optional[str] = None,
-    filters: List[Tuple[str, SupportedFilterType]] = None,
+    filters: Optional[List[Tuple[str, SupportedFilterType]]] = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,

@@ -85,7 +85,6 @@ def _get_state_api_server_address() -> str:
         namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
         num_retries=20,
     )
-    api_server_url = api_server_url.decode()
     if api_server_url is None:
         raise ValueError(
             (
@@ -96,7 +95,7 @@ def _get_state_api_server_address() -> str:
         )
 
     assert use_gcs_for_bootstrap()
-    api_server_url = f"http://{api_server_url}"
+    api_server_url = f"http://{api_server_url.decode()}"
 
     return api_server_url
 
@@ -162,7 +161,7 @@ def list(
     )
 
     options = ListApiOptions(
-        limit=DEFAULT_LIMIT,  # TODO(rickyyx): should we make this configurable?
+        limit=DEFAULT_LIMIT,  # TODO(rickyyx): parameters discussion to be finalized
         timeout=timeout,
         filters=filter,
     )

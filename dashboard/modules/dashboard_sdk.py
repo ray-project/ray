@@ -9,11 +9,10 @@ from typing import Any, Dict, List, Optional
 from pkg_resources import packaging
 
 try:
-    import aiohttp
     import requests
 except ImportError:
-    aiohttp = None
     requests = None
+
 
 from ray._private.runtime_env.packaging import (
     create_package,
@@ -235,6 +234,11 @@ class SubmissionClient:
         json_data: Optional[dict] = None,
         **kwargs,
     ) -> "requests.Response":
+        """Perform the actual HTTP request
+
+        Keyword arguments other than "cookies", "headers" are forwarded to the
+        `requests.request()`.
+        """
         url = self._address + endpoint
         logger.debug(f"Sending request to {url} with json data: {json_data or {}}.")
         return requests.request(
