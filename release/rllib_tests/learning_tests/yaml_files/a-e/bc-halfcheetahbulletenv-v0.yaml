@@ -2,7 +2,7 @@ bc-halfcheetahbulletenv-v0:
     env: HalfCheetahBulletEnv-v0
     run: BC
     pass_criteria:
-        episode_reward_mean: 400.0
+        evaluation/episode_reward_mean: 400.0
         timesteps_total: 10000000
     stop:
         time_total_s: 7200
