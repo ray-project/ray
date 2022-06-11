@@ -138,6 +138,16 @@ def test_syncer_callback_disabled():
     # Syncer disabled, so no-op
     assert not syncer_callback._sync_trial_dir(trial1)
 
+    # This should not raise any error for not existing directory
+    syncer_callback.on_checkpoint(
+        iteration=1,
+        trials=[],
+        trial=trial1,
+        checkpoint=_TrackedCheckpoint(
+            dir_or_data="/does/not/exist", storage_mode=CheckpointStorage.PERSISTENT
+        ),
+    )
+
 
 def test_syncer_callback_noop_on_trial_cloud_checkpointing():
     """Check that trial using cloud checkpointing disables sync to driver"""
@@ -154,6 +164,16 @@ def test_syncer_callback_noop_on_trial_cloud_checkpointing():
     assert syncer_callback._enabled
     # Cloud checkpointing set, so no-op
     assert not syncer_callback._sync_trial_dir(trial1)
+
+    # This should not raise any error for not existing directory
+    syncer_callback.on_checkpoint(
+        iteration=1,
+        trials=[],
+        trial=trial1,
+        checkpoint=_TrackedCheckpoint(
+            dir_or_data="/does/not/exist", storage_mode=CheckpointStorage.PERSISTENT
+        ),
+    )
 
 
 def test_syncer_callback_op_on_no_cloud_checkpointing():

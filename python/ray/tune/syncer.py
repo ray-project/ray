@@ -508,12 +508,10 @@ class SyncerCallback(Callback):
     ):
         if checkpoint.storage_mode == CheckpointStorage.MEMORY:
             return
-        self._sync_trial_dir(trial, force=trial.sync_on_checkpoint, wait=True)
 
-        if trial.uses_cloud_checkpointing:
-            return
-
-        if not os.path.exists(checkpoint.dir_or_data):
+        if self._sync_trial_dir(
+            trial, force=trial.sync_on_checkpoint, wait=True
+        ) and not os.path.exists(checkpoint.dir_or_data):
             raise TuneError(
                 f"Trial {trial}: Checkpoint path {checkpoint.dir_or_data} not "
                 "found after successful sync down."
