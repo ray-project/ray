@@ -9,7 +9,7 @@ import ray._private.signature as signature
 from ray._private.utils import get_runtime_env_info, parse_runtime_env
 import ray._private.worker
 from ray.util.annotations import PublicAPI
-from ray.util.placement_group import configure_placement_group_based_on_context
+from ray.util.placement_group import _configure_placement_group_based_on_context
 from ray.util.scheduling_strategies import (
     PlacementGroupSchedulingStrategy,
     SchedulingStrategyT,
@@ -833,7 +833,7 @@ class ActorClass:
                 placement_group_capture_child_tasks = (
                     worker.should_capture_child_tasks_in_placement_group
                 )
-            placement_group = configure_placement_group_based_on_context(
+            placement_group = _configure_placement_group_based_on_context(
                 placement_group_capture_child_tasks,
                 placement_group_bundle_index,
                 resources,

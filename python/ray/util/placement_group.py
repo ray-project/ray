@@ -359,7 +359,7 @@ def _validate_resource_shape(
         )
 
 
-def configure_placement_group_based_on_context(
+def _configure_placement_group_based_on_context(
     placement_group_capture_child_tasks: bool,
     bundle_index: int,
     resources: Dict,
