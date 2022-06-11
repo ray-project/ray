@@ -6,7 +6,7 @@ from typing import Optional, List, Dict, Any
 import ray.ray_constants as ray_constants
 import ray._raylet
 import ray._private.signature as signature
-from ray.utils import get_runtime_env_info, parse_runtime_env
+from ray._private.utils import get_runtime_env_info, parse_runtime_env
 import ray._private.worker
 from ray.util.annotations import PublicAPI
 from ray.util.placement_group import configure_placement_group_based_on_context
