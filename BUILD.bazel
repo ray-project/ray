@@ -28,6 +28,15 @@ config_setting(
     values = {"compilation_mode": "opt"},
 )
 
+config_setting(
+    name = "jemalloc",
+    values = {
+        "define": "jemalloc=true",
+        "compilation_mode": "opt",
+    },
+    visibility = ["//visibility:public"],
+)
+
 # === Begin of rpc definitions ===
 
 # GRPC common lib.
@@ -487,6 +496,10 @@ cc_binary(
     srcs = ["src/ray/raylet/main.cc"],
     copts = COPTS,
     visibility = ["//java:__subpackages__"],
+    malloc = select({
+        ":jemalloc": "@jemalloc//:jemalloc",
+        "//conditions:default": "@bazel_tools//tools/cpp:malloc",
+    }),
     deps = [
         ":ray_util",
         ":raylet_lib",

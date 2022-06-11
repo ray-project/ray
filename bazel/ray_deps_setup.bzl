@@ -322,8 +322,8 @@ def ray_deps_setup():
 
     auto_http_archive(
         name = "jemalloc",
-        url = "https://github.com/jemalloc/jemalloc/archive/refs/tags/5.2.1.zip",  # 5.2.1
-        sha256 = "7822c5cb2d06a2665cdbbcd5d949f09b92ef5b891ad8354c6382a3614c9cc9cc",
+        url = "https://github.com/jemalloc/jemalloc/archive/20f9802e4f25922884448d9581c66d76cc905c0c.zip",  # 5.3
+        sha256 = "1cc1ec93701868691c73b371eb87e5452257996279a42303a91caad355374439",
         build_file = True,
-        strip_prefix = "jemalloc-ea6b3e973b477b8061e0076bb257dbd7f3faa756",
+        strip_prefix = "jemalloc-20f9802e4f25922884448d9581c66d76cc905c0c",
     )

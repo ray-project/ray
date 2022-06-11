@@ -62,6 +62,14 @@ JEMALLOC_BUILD_COMMAND = """
 
 """
 
+config_setting(
+    name = "linux",
+    constraint_values = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+    ],
+)
+
 genrule(
     name = "jemalloc_genrule",
     srcs = glob(
@@ -98,7 +106,7 @@ cc_library(
     srcs = [":jemalloc_genrule"],
     hdrs = ["include/jemalloc/jemalloc.h"],
     linkopts = select({
-        "@com_stripe_ruby_typer//tools/config:linux": ["-ldl"],  # side step https://github.com/jemalloc/jemalloc/issues/948
+        "//:linux": ["-ldl"],
         "//conditions:default": [],
     }),
     linkstatic = 1,
