@@ -399,7 +399,6 @@ validate_wheels_commit_str() {
       continue
     fi
 
-    folder=${basename%%-cp*}
     WHL_COMMIT=$(unzip -p "$whl" *ray/__init__.py | grep "__commit__" | awk -F'"' '{print $2}')
 
     if [ "${WHL_COMMIT}" != "${EXPECTED_COMMIT}" ]; then
