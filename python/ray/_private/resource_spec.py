@@ -183,10 +183,7 @@ class ResourceSpec(
                 num_gpus = min(num_gpus, len(gpu_ids))
 
         try:
-            if (
-                sys.platform.startswith("linux")
-                and importlib.util.find_spec("GPUtil") is not None
-            ):
+            if importlib.util.find_spec("GPUtil") is not None:
                 gpu_types = _get_gpu_types_gputil()
             else:
                 info_string = _get_gpu_info_string()
@@ -283,14 +280,13 @@ def _autodetect_num_gpus():
         The number of GPUs if any were detected, otherwise 0.
     """
     result = 0
-    if sys.platform.startswith("linux"):
-        if importlib.util.find_spec("GPUtil"):
-            gpu_list = GPUtil.getGPUs()
-            result = len(gpu_list)
-        else:
-            proc_gpus_path = "/proc/driver/nvidia/gpus"
-            if os.path.isdir(proc_gpus_path):
-                result = len(os.listdir(proc_gpus_path))
+    if importlib.util.find_spec("GPUtil"):
+        gpu_list = GPUtil.getGPUs()
+        result = len(gpu_list)
+    elif sys.platform.startswith("linux"):
+        proc_gpus_path = "/proc/driver/nvidia/gpus"
+        if os.path.isdir(proc_gpus_path):
+            result = len(os.listdir(proc_gpus_path))
     elif sys.platform == "win32":
         props = "AdapterCompatibility"
         cmdargs = ["WMIC", "PATH", "Win32_VideoController", "GET", props]
