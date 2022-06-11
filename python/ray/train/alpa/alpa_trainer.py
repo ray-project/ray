@@ -120,7 +120,7 @@ class AlpaTrainer(BaseTrainer):
             dataset_config=self._dataset_config,
         )
         
-        self._datasets = self._datasets
+        self._datasets = datasets
         
         super(AlpaTrainer, self).__init__(
             scaling_config=scaling_config,
