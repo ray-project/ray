@@ -201,22 +201,29 @@ def test_status(ray_start_stop):
 def test_delete(ray_start_stop):
     # Deploys a config file and deletes it
 
-    def get_num_deployments():
-        info_response = subprocess.check_output(["serve", "config"])
-        info = yaml.safe_load(info_response)
-        return len(info["deployments"])
+    def num_live_deployments():
+        status_response = subprocess.check_output(["serve", "status"])
+        serve_status = yaml.safe_load(status_response)
+        return len(serve_status["deployment_statuses"])
 
     config_file_name = os.path.join(
-        os.path.dirname(__file__), "test_config_files", "two_deployments.yaml"
+        os.path.dirname(__file__), "test_config_files", "basic_graph.yaml"
     )
 
     # Check idempotence
-    for _ in range(2):
-        subprocess.check_output(["serve", "deploy", config_file_name])
-        wait_for_condition(lambda: get_num_deployments() == 2, timeout=35)
+    num_iterations = 2
+    for iteration in range(1, num_iterations + 1):
+        print(f"*** Starting Iteration {iteration}/{num_iterations} ***\n")
 
+        print("Deploying config.")
+        subprocess.check_output(["serve", "deploy", config_file_name])
+        wait_for_condition(lambda: num_live_deployments() == 2, timeout=15)
+        print("Deployment successful. Deployments are live.")
+
+        print("Deleting Serve app.")
         subprocess.check_output(["serve", "delete", "-y"])
-        wait_for_condition(lambda: get_num_deployments() == 0, timeout=35)
+        wait_for_condition(lambda: num_live_deployments() == 0, timeout=15)
+        print("Deletion successful. All deployments have shut down.\n")
 
 
 @serve.deployment
