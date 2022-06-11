@@ -289,8 +289,8 @@ def test_actor_method_metadata_cache(ray_start_regular):
     class Actor(object):
         pass
 
-    # The cache of ActorClassMethodMetadata.
-    cache = ray.actor.ActorClassMethodMetadata._cache
+    # The cache of _ActorClassMethodMetadata.
+    cache = ray.actor._ActorClassMethodMetadata._cache
     cache.clear()
 
     # Check cache hit during ActorHandle deserialization.
@@ -300,7 +300,7 @@ def test_actor_method_metadata_cache(ray_start_regular):
     cached_data_id = [id(x) for x in list(cache.items())[0]]
     for x in range(10):
         a = pickle.loads(pickle.dumps(a))
-    assert len(ray.actor.ActorClassMethodMetadata._cache) == 1
+    assert len(ray.actor._ActorClassMethodMetadata._cache) == 1
     assert [id(x) for x in list(cache.items())[0]] == cached_data_id
 
 

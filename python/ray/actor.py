@@ -199,7 +199,7 @@ class ActorMethod:
         )
 
 
-class ActorClassMethodMetadata(object):
+class _ActorClassMethodMetadata(object):
     """Metadata for all methods in an actor class. This data can be cached.
 
     Attributes:
@@ -285,7 +285,7 @@ class ActorClassMethodMetadata(object):
         return self
 
 
-class ActorClassMetadata:
+class _ActorClassMetadata:
     """Metadata for an actor class.
 
     Attributes:
@@ -352,18 +352,19 @@ class ActorClassMetadata:
         self.concurrency_groups = concurrency_groups
         self.scheduling_strategy = scheduling_strategy
         self.last_export_session_and_job = None
-        self.method_meta = ActorClassMethodMetadata.create(
+        self.method_meta = _ActorClassMethodMetadata.create(
             modified_class, actor_creation_function_descriptor
         )
 
 
+@PublicAPI
 class ActorClassInheritanceException(TypeError):
     pass
 
 
 def _process_option_dict(actor_options):
     _filled_options = {}
-    arg_names = set(inspect.getfullargspec(ActorClassMetadata.__init__)[0])
+    arg_names = set(inspect.getfullargspec(_ActorClassMetadata.__init__)[0])
     for k, v in ray_option_utils.actor_options.items():
         if k in arg_names:
             _filled_options[k] = actor_options.get(k, v.default_value)
@@ -371,6 +372,7 @@ def _process_option_dict(actor_options):
     return _filled_options
 
 
+@PublicAPI
 class ActorClass:
     """An actor class.
 
@@ -478,7 +480,7 @@ class ActorClass:
             modified_class.__ray_actor_class__
         )
 
-        self.__ray_metadata__ = ActorClassMetadata(
+        self.__ray_metadata__ = _ActorClassMetadata(
             Language.PYTHON,
             modified_class,
             actor_creation_function_descriptor,
@@ -499,7 +501,7 @@ class ActorClass:
         actor_options,
     ):
         self = ActorClass.__new__(ActorClass)
-        self.__ray_metadata__ = ActorClassMetadata(
+        self.__ray_metadata__ = _ActorClassMetadata(
             language,
             None,
             actor_creation_function_descriptor,

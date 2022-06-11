@@ -1858,7 +1858,7 @@ cdef class CoreWorker:
                 actor_method_cpu = 0  # Actor is created by non Python worker.
             actor_class = manager.load_actor_class(
                 job_id, actor_creation_function_descriptor)
-            method_meta = ray.actor.ActorClassMethodMetadata.create(
+            method_meta = ray.actor._ActorClassMethodMetadata.create(
                 actor_class, actor_creation_function_descriptor)
             return ray.actor.ActorHandle(language, actor_id,
                                          method_meta.decorators,
