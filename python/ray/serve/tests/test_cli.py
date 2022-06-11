@@ -169,14 +169,21 @@ def test_status(ray_start_stop):
     # Deploys a config file and checks its status
 
     config_file_name = os.path.join(
-        os.path.dirname(__file__), "test_config_files", "three_deployments.yaml"
+        os.path.dirname(__file__), "test_config_files", "arithmetic.yaml"
     )
 
     subprocess.check_output(["serve", "deploy", config_file_name])
+
+    def num_live_deployments():
+        status_response = subprocess.check_output(["serve", "status"])
+        serve_status = yaml.safe_load(status_response)
+        return len(serve_status["deployment_statuses"])
+
+    wait_for_condition(lambda: num_live_deployments() == 4, timeout=15)
     status_response = subprocess.check_output(["serve", "status"])
     serve_status = yaml.safe_load(status_response)
 
-    expected_deployments = {"shallow", "deep", "one"}
+    expected_deployments = {"DAGDriver", "Subtract", "Add", "Router"}
     for status in serve_status["deployment_statuses"]:
         expected_deployments.remove(status["name"])
         assert status["status"] in {"HEALTHY", "UPDATING"}
