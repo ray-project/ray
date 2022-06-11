@@ -10,7 +10,7 @@ from ray.data.block import (
     BlockPartition,
     BlockExecStats,
 )
-from ray.data.context import DatasetContext
+from ray.data.context import DatasetContext, DEFAULT_SCHEDULING_STRATEGY
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.progress_bar import ProgressBar
@@ -187,6 +187,7 @@ class ActorPoolStrategy(ComputeStrategy):
         if not remote_args:
             remote_args["num_cpus"] = 1
 
+        ctx = DatasetContext.get_current()
         if (
             "scheduling_strategy" not in remote_args
             and ctx.scheduling_strategy == DEFAULT_SCHEDULING_STRATEGY
