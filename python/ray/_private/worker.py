@@ -41,7 +41,7 @@ import ray.job_config
 import ray._private.parameter
 import ray._private.ray_constants as ray_constants
 import ray.remote_function
-import ray.serialization as serialization
+import ray._private.serialization as serialization
 import ray._private.gcs_utils as gcs_utils
 import ray._private.services as services
 from ray._private.gcs_pubsub import (

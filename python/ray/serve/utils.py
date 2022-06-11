@@ -21,7 +21,7 @@ import pydantic.json
 import fastapi.encoders
 
 import ray
-import ray.serialization_addons
+import ray.util.serialization_addons
 from ray.exceptions import RayTaskError
 from ray.util.serialization import StandaloneSerializationContext
 from ray.serve.http_util import build_starlette_request, HTTPRequestWrapper
@@ -243,7 +243,7 @@ def ensure_serialization_context():
     """Ensure the serialization addons on registered, even when Ray has not
     been started."""
     ctx = StandaloneSerializationContext()
-    ray.serialization_addons.apply(ctx)
+    ray.util.serialization_addons.apply(ctx)
 
 
 def wrap_to_ray_error(function_name: str, exception: Exception) -> RayTaskError:

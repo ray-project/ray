@@ -1048,7 +1048,7 @@ cdef void get_py_stack(c_string* stack_out) nogil:
                 # TODO(ekl) distinguish between actor return objects and
                 # arguments. This can only be done in the core worker.
                 msg_frames = ["(actor call) "]
-            elif filename.endswith("ray/serialization.py"):
+            elif filename.endswith("_private/serialization.py"):
                 if frame.f_code.co_name == "id_deserializer":
                     msg_frames = ["(deserialize task arg) "]
             else:

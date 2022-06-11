@@ -106,11 +106,11 @@ class _ClientContext:
         The server side should have already registered the serializers via
         regular worker's serialization_context mechanism.
         """
-        import ray.serialization_addons
+        import ray.util.serialization_addons
         from ray.util.serialization import StandaloneSerializationContext
 
         ctx = StandaloneSerializationContext()
-        ray.serialization_addons.apply(ctx)
+        ray.util.serialization_addons.apply(ctx)
 
     def _check_versions(self, conn_info: Dict[str, Any], ignore_version: bool) -> None:
         local_major_minor = f"{sys.version_info[0]}.{sys.version_info[1]}"
