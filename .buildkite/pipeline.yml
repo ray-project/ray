@@ -69,6 +69,23 @@
     # Upload to latest directory.
     - if [ "$BUILDKITE_BRANCH" == "master" ]; then python .buildkite/copy_files.py --destination wheels --path ./.whl; fi
 
+- label: ":ferris_wheel: TSAN Wheels"
+  conditions:
+    [
+        "RAY_CI_LINUX_WHEELS_AFFECTED",
+    ]
+  commands:
+    # Build the tsan wheels
+    - UPLOAD_WHEELS_AS_ARTIFACTS=1 LINUX_WHEELS=1 RAY_DEBUG_BUILD=tsan ./ci/ci.sh build
+    # Upload the wheels and jars
+    # We don't want to push on PRs, in fact, the copy_files will fail because unauthenticated.
+    - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
+    - pip install -q docker aws_requests_auth boto3
+    # Upload to branch directory.
+    - python .buildkite/copy_files.py --destination branch_wheels --path ./.whl
+    # Upload to latest directory.
+    - if [ "$BUILDKITE_BRANCH" == "master" ]; then python .buildkite/copy_files.py --destination wheels --path ./.whl; fi
+
 - label: ":docker: Build Images: py36 (1/2)"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
   commands:
