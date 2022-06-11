@@ -141,7 +141,6 @@ class AlphaStarConfig(appo.APPOConfig):
         # values.
         self.vtrace_drop_last_ts = False
         self.min_time_s_per_iteration = 2
-        self._disable_execution_plan_api = True
         # __sphinx_doc_end__
         # fmt: on
 
