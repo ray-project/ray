@@ -28,7 +28,7 @@ from ray.util.annotations import Deprecated
 from ray.util.debug import log_once
 from ray.util.ml_utils.dict import flatten_dict
 from ray.util.ml_utils.json import SafeFallbackEncoder
-from ray.util.ml_utils.mlflow import MLflowLoggerUtil
+from ray.util.ml_utils.mlflow import _MLflowLoggerUtil
 
 logger = logging.getLogger(__name__)
 
@@ -211,7 +211,7 @@ class MLflowLoggerCallback(TrainingCallback):
         self.tags = tags
 
         self.save_artifact = save_artifact
-        self.mlflow_util = MLflowLoggerUtil()
+        self.mlflow_util = _MLflowLoggerUtil()
 
     def start_training(self, logdir: str, config: Dict, **info):
         self._logdir_manager.setup_logdir(default_logdir=logdir)

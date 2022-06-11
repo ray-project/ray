@@ -3,7 +3,7 @@ import shutil
 import tempfile
 import unittest
 
-from ray.util.ml_utils.mlflow import MLflowLoggerUtil
+from ray.util.ml_utils.mlflow import _MLflowLoggerUtil
 
 
 class MLflowTest(unittest.TestCase):
@@ -14,7 +14,7 @@ class MLflowTest(unittest.TestCase):
         mlflow.set_tracking_uri(self.dirpath)
         mlflow.create_experiment(name="existing_experiment")
 
-        self.mlflow_util = MLflowLoggerUtil()
+        self.mlflow_util = _MLflowLoggerUtil()
         self.tracking_uri = mlflow.get_tracking_uri()
 
     def tearDown(self):
