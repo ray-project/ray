@@ -430,7 +430,7 @@ def require_packages(packages: List[str]):
                 check_import_once()
                 return await func(*args, **kwargs)
 
-        elif inspect.isfunction(func):
+        elif inspect.isroutine(func):
 
             @wraps(func)
             def wrapped(*args, **kwargs):
