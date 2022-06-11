@@ -38,7 +38,7 @@ from ray._raylet import (
     MessagePackSerializedObject,
     RawSerializedObject,
 )
-from ray import serialization_addons
+from ray.util import serialization_addons
 
 logger = logging.getLogger(__name__)
 

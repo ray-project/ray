@@ -135,5 +135,3 @@ def _get_function_descriptor_for_actor_method(
         raise NotImplementedError(
             "Cross language remote actor method " f"not support language {language}"
         )
-
-
