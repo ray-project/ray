@@ -54,7 +54,7 @@ from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 import ray._private.import_thread as import_thread
-from ray.util.tracing.tracing_helper import import_from_string
+from ray.util.tracing.tracing_helper import _import_from_string
 from ray.util.annotations import PublicAPI, DeveloperAPI, Deprecated
 from ray.util.debug import log_once
 from ray._private import ray_option_utils

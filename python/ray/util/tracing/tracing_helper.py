@@ -87,7 +87,7 @@ _nameable = Union[str, Callable[..., Any]]
 _global_is_tracing_enabled = False
 
 
-def sort_params_list(params_list: List[Parameter]):
+def _sort_params_list(params_list: List[Parameter]):
     """Given a list of Parameters, if a kwargs Parameter exists,
     move it to the end of the list."""
     for i, param in enumerate(params_list):
@@ -97,29 +97,29 @@ def sort_params_list(params_list: List[Parameter]):
     return params_list
 
 
-def add_param_to_signature(function: Callable, new_param: Parameter):
+def _add_param_to_signature(function: Callable, new_param: Parameter):
     """Add additional Parameter to function signature."""
     old_sig = inspect.signature(function)
     old_sig_list_repr = list(old_sig.parameters.values())
     # If new_param is already in signature, do not add it again.
     if any(param.name == new_param.name for param in old_sig_list_repr):
         return old_sig
-    new_params = sort_params_list(old_sig_list_repr + [new_param])
+    new_params = _sort_params_list(old_sig_list_repr + [new_param])
     new_sig = old_sig.replace(parameters=new_params)
     return new_sig
 
 
-def is_tracing_enabled() -> bool:
+def _is_tracing_enabled() -> bool:
     """Checks environment variable feature flag to see if tracing is turned on.
     Tracing is off by default."""
     return _global_is_tracing_enabled
 
 
-class ImportFromStringError(Exception):
+class _ImportFromStringError(Exception):
     pass
 
 
-def import_from_string(import_str: Union[ModuleType, str]) -> ModuleType:
+def _import_from_string(import_str: Union[ModuleType, str]) -> ModuleType:
     """Given a string that is in format "<module>:<attribute>",
     import the attribute."""
     if not isinstance(import_str, str):
@@ -130,7 +130,7 @@ def import_from_string(import_str: Union[ModuleType, str]) -> ModuleType:
         message = (
             'Import string "{import_str}" must be in format' '"<module>:<attribute>".'
         )
-        raise ImportFromStringError(message.format(import_str=import_str))
+        raise _ImportFromStringError(message.format(import_str=import_str))
 
     try:
         module = importlib.import_module(module_str)
@@ -138,7 +138,7 @@ def import_from_string(import_str: Union[ModuleType, str]) -> ModuleType:
         if exc.name != module_str:
             raise exc from None
         message = 'Could not import module "{module_str}".'
-        raise ImportFromStringError(message.format(module_str=module_str))
+        raise _ImportFromStringError(message.format(module_str=module_str))
 
     instance = module
     try:
@@ -146,14 +146,14 @@ def import_from_string(import_str: Union[ModuleType, str]) -> ModuleType:
             instance = getattr(instance, attr_str)
     except AttributeError:
         message = 'Attribute "{attrs_str}" not found in module "{module_str}".'
-        raise ImportFromStringError(
+        raise _ImportFromStringError(
             message.format(attrs_str=attrs_str, module_str=module_str)
         )
 
     return instance
 
 
-class DictPropagator:
+class _DictPropagator:
     def inject_current_context() -> Dict[Any, Any]:
         """Inject trace context into otel propagator."""
         context_dict: Dict[Any, Any] = {}
@@ -168,7 +168,7 @@ class DictPropagator:
 
 
 @contextmanager
-def use_context(
+def _use_context(
     parent_context: "_opentelemetry.Context",
 ) -> Generator[None, None, None]:
     """Uses the Ray trace context for the span."""
@@ -297,7 +297,7 @@ def _tracing_task_invocation(method):
     ) -> Any:
         # If tracing feature flag is not on, perform a no-op.
         # Tracing doesn't work for cross lang yet.
-        if not is_tracing_enabled() or self._is_cross_language:
+        if not _is_tracing_enabled() or self._is_cross_language:
             if kwargs is not None:
                 assert "_ray_trace_ctx" not in kwargs
             return method(self, args, kwargs, *_args, **_kwargs)
@@ -311,7 +311,7 @@ def _tracing_task_invocation(method):
             attributes=_function_hydrate_span_args(self._function_name),
         ):
             # Inject a _ray_trace_ctx as a dictionary
-            kwargs["_ray_trace_ctx"] = DictPropagator.inject_current_context()
+            kwargs["_ray_trace_ctx"] = _DictPropagator.inject_current_context()
             return method(self, args, kwargs, *_args, **_kwargs)
 
     return _invocation_remote_span
@@ -323,13 +323,13 @@ def _inject_tracing_into_function(function):
     Use the provided trace context from kwargs.
     """
     # Add _ray_trace_ctx to function signature
-    if not is_tracing_enabled():
+    if not _is_tracing_enabled():
         return function
 
     setattr(
         function,
         "__signature__",
-        add_param_to_signature(
+        _add_param_to_signature(
             function,
             inspect.Parameter(
                 "_ray_trace_ctx", inspect.Parameter.KEYWORD_ONLY, default=None
@@ -350,8 +350,8 @@ def _inject_tracing_into_function(function):
         function_name = function.__module__ + "." + function.__name__
 
         # Retrieves the context from the _ray_trace_ctx dictionary we injected
-        with use_context(
-            DictPropagator.extract(_ray_trace_ctx)
+        with _use_context(
+            _DictPropagator.extract(_ray_trace_ctx)
         ), tracer.start_as_current_span(
             _function_span_consumer_name(function_name),
             kind=_opentelemetry.trace.SpanKind.CONSUMER,
@@ -378,7 +378,7 @@ def _tracing_actor_creation(method):
             kwargs = {}
 
         # If tracing feature flag is not on, perform a no-op
-        if not is_tracing_enabled():
+        if not _is_tracing_enabled():
             assert "_ray_trace_ctx" not in kwargs
             return method(self, args, kwargs, *_args, **_kwargs)
 
@@ -392,7 +392,7 @@ def _tracing_actor_creation(method):
             attributes=_actor_hydrate_span_args(class_name, method_name),
         ) as span:
             # Inject a _ray_trace_ctx as a dictionary
-            kwargs["_ray_trace_ctx"] = DictPropagator.inject_current_context()
+            kwargs["_ray_trace_ctx"] = _DictPropagator.inject_current_context()
 
             result = method(self, args, kwargs, *_args, **_kwargs)
 
@@ -415,7 +415,7 @@ def _tracing_actor_method_invocation(method):
         **_kwargs: Any,
     ) -> Any:
         # If tracing feature flag is not on, perform a no-op
-        if not is_tracing_enabled() or self._actor_ref()._ray_is_cross_language:
+        if not _is_tracing_enabled() or self._actor_ref()._ray_is_cross_language:
             if kwargs is not None:
                 assert "_ray_trace_ctx" not in kwargs
             return method(self, args, kwargs, *_args, **_kwargs)
@@ -433,7 +433,7 @@ def _tracing_actor_method_invocation(method):
             attributes=_actor_hydrate_span_args(class_name, method_name),
         ) as span:
             # Inject a _ray_trace_ctx as a dictionary
-            kwargs["_ray_trace_ctx"] = DictPropagator.inject_current_context()
+            kwargs["_ray_trace_ctx"] = _DictPropagator.inject_current_context()
 
             span.set_attribute("ray.actor_id", self._actor_ref()._ray_actor_id.hex())
 
@@ -458,7 +458,7 @@ def _inject_tracing_into_class(_cls):
             will extract the trace context
             """
             # If tracing feature flag is not on, perform a no-op
-            if not is_tracing_enabled() or _ray_trace_ctx is None:
+            if not _is_tracing_enabled() or _ray_trace_ctx is None:
                 return method(self, *_args, **_kwargs)
 
             tracer: _opentelemetry.trace.Tracer = _opentelemetry.trace.get_tracer(
@@ -467,8 +467,8 @@ def _inject_tracing_into_class(_cls):
 
             # Retrieves the context from the _ray_trace_ctx dictionary we
             # injected.
-            with use_context(
-                DictPropagator.extract(_ray_trace_ctx)
+            with _use_context(
+                _DictPropagator.extract(_ray_trace_ctx)
             ), tracer.start_as_current_span(
                 _actor_span_consumer_name(self.__class__.__name__, method),
                 kind=_opentelemetry.trace.SpanKind.CONSUMER,
@@ -490,15 +490,15 @@ def _inject_tracing_into_class(_cls):
             will extract the trace context
             """
             # If tracing feature flag is not on, perform a no-op
-            if not is_tracing_enabled() or _ray_trace_ctx is None:
+            if not _is_tracing_enabled() or _ray_trace_ctx is None:
                 return await method(self, *_args, **_kwargs)
 
             tracer = _opentelemetry.trace.get_tracer(__name__)
 
             # Retrieves the context from the _ray_trace_ctx dictionary we
             # injected, or starts a new context
-            with use_context(
-                DictPropagator.extract(_ray_trace_ctx)
+            with _use_context(
+                _DictPropagator.extract(_ray_trace_ctx)
             ), tracer.start_as_current_span(
                 _actor_span_consumer_name(self.__class__.__name__, method.__name__),
                 kind=_opentelemetry.trace.SpanKind.CONSUMER,
@@ -522,7 +522,7 @@ def _inject_tracing_into_class(_cls):
         setattr(
             method,
             "__signature__",
-            add_param_to_signature(
+            _add_param_to_signature(
                 method,
                 inspect.Parameter(
                     "_ray_trace_ctx", inspect.Parameter.KEYWORD_ONLY, default=None
