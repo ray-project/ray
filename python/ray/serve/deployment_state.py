@@ -1063,6 +1063,7 @@ class DeploymentState:
                 deployment_info.version,
                 user_config=deployment_info.deployment_config.user_config,
             )
+            self._deleting = False
 
         else:
             self._target_replicas = 0
