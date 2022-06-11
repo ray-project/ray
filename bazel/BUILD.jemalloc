@@ -1,3 +1,4 @@
+# forked from https://github.com/sorbet/sorbet/blob/master/third_party/jemalloc.BUILD
 # There's a bunch of workarounds in this build command.
 # - We workaround https://github.com/bazelbuild/bazel/issues/3128
 # - We need to convert CC et al to absolute paths, but we can't use
