@@ -27,7 +27,7 @@ Now you can deploy the KubeRay operator using
 kubectl create -k "ray/python/ray/autoscaler/kuberay/config/default"
 ```
 
-> Note `kubectl apply` will not work in the above command. `kubectl create` is required. This is issue is tracked in [KubeRay issue #271](https://github.com/ray-project/kuberay/issues/271).
+> Note `kubectl apply` will not work in the above command. `kubectl create` is required. See [KubeRay issue #271](https://github.com/ray-project/kuberay/issues/271).
 
 You can verify that the operator has been deployed using
 
