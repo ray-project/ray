@@ -6,7 +6,7 @@ if TYPE_CHECKING:
     from ray import NodeID
 
 
-class ClientWorkerPropertyAPI:
+class _ClientWorkerPropertyAPI:
     """Emulates the properties of the ray._private.worker object for the client"""
 
     def __init__(self, worker):
