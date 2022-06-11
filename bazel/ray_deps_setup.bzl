@@ -319,3 +319,11 @@ def ray_deps_setup():
         # When you first run this tool, it'll recommend a sha256 hash to put here with a message like: "DEBUG: Rule 'hedron_compile_commands' indicated that a canonical reproducible form can be obtained by modifying arguments sha256 = ..."
         sha256 = "7fbbbc05c112c44e9b406612e6a7a7f4789a6918d7aacefef4c35c105286930c",
     )
+
+    auto_http_archive(
+        name = "jemalloc",
+        url = "https://github.com/jemalloc/jemalloc/archive/refs/tags/5.2.1.zip",  # 5.2.1
+        sha256 = "7822c5cb2d06a2665cdbbcd5d949f09b92ef5b891ad8354c6382a3614c9cc9cc",
+        build_file = True,
+        strip_prefix = "jemalloc-ea6b3e973b477b8061e0076bb257dbd7f3faa756",
+    )
