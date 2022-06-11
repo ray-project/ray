@@ -47,7 +47,6 @@ from ray.rllib.utils.typing import (
     AlgorithmConfigDict,
 )
 from ray.tune.logger import Logger
-from ray.tune.syncer import Syncer
 
 logger = logging.getLogger(__name__)
 
@@ -164,8 +163,7 @@ class DDPPO(PPO):
         config: Optional[PartialAlgorithmConfigDict] = None,
         env: Optional[Union[str, EnvType]] = None,
         logger_creator: Optional[Callable[[], Logger]] = None,
-        remote_checkpoint_dir: Optional[str] = None,
-        custom_syncer: Optional[Syncer] = None,
+        **kwargs,
     ):
         """Initializes a DDPPO instance.
 
@@ -178,9 +176,11 @@ class DDPPO(PPO):
                 the "env" key in `config`.
             logger_creator: Callable that creates a ray.tune.Logger
                 object. If unspecified, a default logger is created.
+            **kwargs: Arguments passed to the Trainable base class
+
         """
         super().__init__(
-            config, env, logger_creator, remote_checkpoint_dir, custom_syncer
+            config=config, env=env, logger_creator=logger_creator, **kwargs
         )
 
         if "train_batch_size" in config.keys() and config["train_batch_size"] != -1:

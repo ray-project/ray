@@ -102,7 +102,6 @@ from ray.tune.logger import Logger, UnifiedLogger
 from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.tune.resources import Resources
 from ray.tune.result import DEFAULT_RESULTS_DIR
-from ray.tune.syncer import Syncer
 from ray.tune.trainable import Trainable
 from ray.tune.trial import ExportFormat
 from ray.tune.utils.placement_groups import PlacementGroupFactory
@@ -198,8 +197,7 @@ class Algorithm(Trainable):
         config: Optional[Union[PartialAlgorithmConfigDict, AlgorithmConfig]] = None,
         env: Optional[Union[str, EnvType]] = None,
         logger_creator: Optional[Callable[[], Logger]] = None,
-        remote_checkpoint_dir: Optional[str] = None,
-        custom_syncer: Optional[Syncer] = None,
+        **kwargs,
     ):
         """Initializes an Algorithm instance.
 
@@ -212,6 +210,8 @@ class Algorithm(Trainable):
                 the "env" key in `config`.
             logger_creator: Callable that creates a ray.tune.Logger
                 object. If unspecified, a default logger is created.
+            **kwargs: Arguments passed to the Trainable base class.
+
         """
 
         # User provided (partial) config (this may be w/o the default
@@ -289,12 +289,7 @@ class Algorithm(Trainable):
             }
         }
 
-        super().__init__(
-            config=config,
-            logger_creator=logger_creator,
-            remote_checkpoint_dir=remote_checkpoint_dir,
-            custom_syncer=custom_syncer,
-        )
+        super().__init__(config=config, logger_creator=logger_creator, **kwargs)
 
         # Check, whether `training_iteration` is still a tune.Trainable property
         # and has not been overridden by the user in the attempt to implement the
