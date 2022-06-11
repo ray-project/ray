@@ -2,8 +2,10 @@ from typing import Any, Dict, Optional, Union, List
 import uuid
 
 import ray._private.gcs_utils as gcs_utils
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI
 class JobConfig:
     """A class used to store the configurations of a job.
 
