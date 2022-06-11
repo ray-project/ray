@@ -88,7 +88,7 @@ def get_anyscale_sdk() -> AnyscaleSDK:
     if _anyscale_sdk:
         return _anyscale_sdk
 
-    _anyscale_sdk = AnyscaleSDK()
+    _anyscale_sdk = AnyscaleSDK(host=ANYSCALE_HOST)
     return _anyscale_sdk
 
 
