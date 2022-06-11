@@ -12,7 +12,7 @@ from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import Block, BlockMetadata
 
 from ray.data.datasource import Datasource, ReadTask
-from ray.internal.internal_api import memory_summary
+from ray._private.internal_api import memory_summary
 
 
 class RandomIntRowDatasource(Datasource[ArrowRow]):

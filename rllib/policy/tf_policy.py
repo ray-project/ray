@@ -151,7 +151,7 @@ class TFPolicy(Policy):
 
         # Get devices to build the graph on.
         worker_idx = config.get("worker_index", 0)
-        if not config["_fake_gpus"] and ray.worker._mode() == ray.worker.LOCAL_MODE:
+        if not config["_fake_gpus"] and ray._private.worker._mode() == ray._private.worker.LOCAL_MODE:
             num_gpus = 0
         elif worker_idx == 0:
             num_gpus = config["num_gpus"]
@@ -185,7 +185,7 @@ class TFPolicy(Policy):
 
             # We are a remote worker (WORKER_MODE=1):
             # GPUs should be assigned to us by ray.
-            if ray.worker._mode() == ray.worker.WORKER_MODE:
+            if ray._private.worker._mode() == ray._private.worker.WORKER_MODE:
                 gpu_ids = ray.get_gpu_ids()
 
             if len(gpu_ids) < num_gpus:

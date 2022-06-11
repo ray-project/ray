@@ -10,7 +10,7 @@ import click
 import ray._private.ray_constants as ray_constants
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cli_logger, cf
 from ray.job_submission import JobStatus, JobSubmissionClient
-from ray.internal.storage import _load_class
+from ray._private.storage import _load_class
 from ray.util.annotations import PublicAPI
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 

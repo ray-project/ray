@@ -7,7 +7,7 @@ from typing import List
 import ray
 
 from ray._raylet import TaskID, ActorID, JobID
-from ray.internal.internal_api import node_stats
+from ray._private.internal_api import node_stats
 import logging
 
 logger = logging.getLogger(__name__)

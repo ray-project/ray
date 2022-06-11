@@ -605,7 +605,7 @@ class RolloutWorker(ParallelIteratorWorker):
         # Error if we don't find enough GPUs.
         if (
             ray.is_initialized()
-            and ray.worker._mode() != ray.worker.LOCAL_MODE
+            and ray._private.worker._mode() != ray._private.worker.LOCAL_MODE
             and not policy_config.get("_fake_gpus")
         ):
 
@@ -623,7 +623,7 @@ class RolloutWorker(ParallelIteratorWorker):
         # requested.
         elif (
             ray.is_initialized()
-            and ray.worker._mode() == ray.worker.LOCAL_MODE
+            and ray._private.worker._mode() == ray._private.worker.LOCAL_MODE
             and num_gpus > 0
             and not policy_config.get("_fake_gpus")
         ):

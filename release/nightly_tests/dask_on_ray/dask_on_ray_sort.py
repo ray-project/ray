@@ -236,7 +236,7 @@ if __name__ == "__main__":
         )
     )
 
-    print(ray.internal.internal_api.memory_summary(stats_only=True))
+    print(ray._private.internal_api.memory_summary(stats_only=True))
     duration = np.mean(output)
 
     with open(os.environ["TEST_OUTPUT_JSON"], "w") as f:
