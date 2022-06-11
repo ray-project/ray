@@ -396,7 +396,7 @@ cdef prepare_args_internal(
         c_string put_arg_call_site
         c_vector[CObjectReference] inlined_refs
 
-    worker = ray.worker.global_worker
+    worker = ray._private.worker.global_worker
     put_threshold = RayConfig.instance().max_direct_call_object_size()
     total_inlined = 0
     rpc_inline_threshold = RayConfig.instance().task_rpc_inlined_bytes_limit()
@@ -499,7 +499,7 @@ cdef execute_task(
 
     is_application_level_error[0] = False
 
-    worker = ray.worker.global_worker
+    worker = ray._private.worker.global_worker
     manager = worker.function_actor_manager
     actor = None
     cdef:
@@ -637,14 +637,14 @@ cdef execute_task(
                         # We deserialize objects in event loop thread to
                         # prevent segfaults. See #7799
                         async def deserialize_args():
-                            return (ray.worker.global_worker
+                            return (ray._private.worker.global_worker
                                     .deserialize_objects(
                                         metadata_pairs, object_refs))
                         args = core_worker.run_async_func_in_event_loop(
                             deserialize_args, function_descriptor,
                             name_of_concurrency_group_to_execute)
                     else:
-                        args = ray.worker.global_worker.deserialize_objects(
+                        args = ray._private.worker.global_worker.deserialize_objects(
                             metadata_pairs, object_refs)
 
                     for arg in args:
@@ -664,13 +664,13 @@ cdef execute_task(
                     if is_existing:
                         title = f"{title}::Exiting"
                         next_title = f"{next_title}::Exiting"
-                    with ray.worker._changeproctitle(title, next_title):
+                    with ray._private.worker._changeproctitle(title, next_title):
                         if debugger_breakpoint != b"":
                             ray.util.pdb.set_trace(
                                 breakpoint_uuid=debugger_breakpoint)
                         outputs = function_executor(*args, **kwargs)
                         next_breakpoint = (
-                            ray.worker.global_worker.debugger_breakpoint)
+                            ray._private.worker.global_worker.debugger_breakpoint)
                         if next_breakpoint != b"":
                             # If this happens, the user typed "remote" and
                             # there were no more remote calls left in this
@@ -684,7 +684,7 @@ cdef execute_task(
                                 "RAY_PDB_CONTINUE_{}".format(next_breakpoint),
                                 namespace=ray_constants.KV_NAMESPACE_PDB
                             )
-                            ray.worker.global_worker.debugger_breakpoint = b""
+                            ray._private.worker.global_worker.debugger_breakpoint = b""
                     task_exception = False
                 except AsyncioActorExit as e:
                     exit_current_actor_if_asyncio()
@@ -834,7 +834,7 @@ cdef CRayStatus task_execution_handler(
                         "occurred while the worker "
                         "was executing a task.")
                     ray._private.utils.push_error_to_driver(
-                        ray.worker.global_worker,
+                        ray._private.worker.global_worker,
                         "worker_crash",
                         traceback_str,
                         job_id=None)
@@ -910,7 +910,7 @@ cdef c_vector[c_string] spill_objects_handler(
                     object_refs_to_spill[i].owner_address()
                     .SerializeAsString())
         try:
-            with ray.worker._changeproctitle(
+            with ray._private.worker._changeproctitle(
                     ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER,
                     ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER_IDLE):
                 urls = external_storage.spill_objects(
@@ -923,7 +923,7 @@ cdef c_vector[c_string] spill_objects_handler(
                 "was spilling objects: {}".format(err))
             logger.exception(exception_str)
             ray._private.utils.push_error_to_driver(
-                ray.worker.global_worker,
+                ray._private.worker.global_worker,
                 "spill_objects_error",
                 traceback.format_exc() + exception_str,
                 job_id=None)
@@ -944,7 +944,7 @@ cdef int64_t restore_spilled_objects_handler(
                 object_refs_to_restore,
                 skip_adding_local_ref=False)
         try:
-            with ray.worker._changeproctitle(
+            with ray._private.worker._changeproctitle(
                     ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER,
                     ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER_IDLE):
                 bytes_restored = external_storage.restore_spilled_objects(
@@ -956,7 +956,7 @@ cdef int64_t restore_spilled_objects_handler(
             logger.exception(exception_str)
             if os.getenv("RAY_BACKEND_LOG_LEVEL") == "debug":
                 ray._private.utils.push_error_to_driver(
-                    ray.worker.global_worker,
+                    ray._private.worker.global_worker,
                     "restore_objects_error",
                     traceback.format_exc() + exception_str,
                     job_id=None)
@@ -987,7 +987,7 @@ cdef void delete_spilled_objects_handler(
                 assert False, ("This line shouldn't be reachable.")
 
             # Delete objects.
-            with ray.worker._changeproctitle(
+            with ray._private.worker._changeproctitle(
                     proctitle,
                     original_proctitle):
                 external_storage.delete_spilled_objects(urls)
@@ -997,7 +997,7 @@ cdef void delete_spilled_objects_handler(
                 "was deleting spilled objects.")
             logger.exception(exception_str)
             ray._private.utils.push_error_to_driver(
-                ray.worker.global_worker,
+                ray._private.worker.global_worker,
                 "delete_spilled_objects_error",
                 traceback.format_exc() + exception_str,
                 job_id=None)
@@ -1005,7 +1005,7 @@ cdef void delete_spilled_objects_handler(
 
 cdef void unhandled_exception_handler(const CRayObject& error) nogil:
     with gil:
-        worker = ray.worker.global_worker
+        worker = ray._private.worker.global_worker
         data = None
         metadata = None
         if error.HasData():
@@ -1035,10 +1035,10 @@ cdef void get_py_stack(c_string* stack_out) nogil:
         while frame and len(msg_frames) < 4:
             filename = frame.f_code.co_filename
             # Decode Ray internal frames to add annotations.
-            if filename.endswith("ray/worker.py"):
+            if filename.endswith("ray._private.worker.py"):
                 if frame.f_code.co_name == "put":
                     msg_frames = ["(put object) "]
-            elif filename.endswith("ray/workers/default_worker.py"):
+            elif filename.endswith("ray._private.workers/default_worker.py"):
                 pass
             elif filename.endswith("ray/remote_function.py"):
                 # TODO(ekl) distinguish between task return objects and
@@ -1071,7 +1071,7 @@ cdef shared_ptr[CBuffer] string_to_buffer(c_string& c_str):
 
 cdef void terminate_asyncio_thread() nogil:
     with gil:
-        core_worker = ray.worker.global_worker.core_worker
+        core_worker = ray._private.worker.global_worker.core_worker
         core_worker.stop_and_join_asyncio_threads_if_exist()
 
 
@@ -1097,7 +1097,7 @@ cdef class CoreWorker:
         if worker_type in (ray.LOCAL_MODE, ray.SCRIPT_MODE):
             self.is_driver = True
             options.worker_type = WORKER_TYPE_DRIVER
-        elif worker_type == ray.WORKER_MODE:
+        elif worker_type == ray._private.worker_MODE:
             self.is_driver = False
             options.worker_type = WORKER_TYPE_WORKER
         elif worker_type == ray.SPILL_WORKER_MODE:
@@ -1837,7 +1837,7 @@ cdef class CoreWorker:
             c_actor_id)
 
     cdef make_actor_handle(self, ActorHandleSharedPtr c_actor_handle):
-        worker = ray.worker.global_worker
+        worker = ray._private.worker.global_worker
         worker.check_connected()
         manager = worker.function_actor_manager
 
@@ -2049,14 +2049,14 @@ cdef class CoreWorker:
             serialized_object = context.serialize(output)
             data_size = serialized_object.total_bytes
             metadata_str = serialized_object.metadata
-            if ray.worker.global_worker.debugger_get_breakpoint:
+            if ray._private.worker.global_worker.debugger_get_breakpoint:
                 breakpoint = (
-                    ray.worker.global_worker.debugger_get_breakpoint)
+                    ray._private.worker.global_worker.debugger_get_breakpoint)
                 metadata_str += (
                     b"," + ray_constants.OBJECT_METADATA_DEBUG_PREFIX +
                     breakpoint.encode())
                 # Reset debugging context of this worker.
-                ray.worker.global_worker.debugger_get_breakpoint = b""
+                ray._private.worker.global_worker.debugger_get_breakpoint = b""
             metadata = string_to_buffer(metadata_str)
             contained_id = ObjectRefsToVector(
                 serialized_object.contained_object_refs)
@@ -2301,7 +2301,7 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
     data_metadata_pairs = RayObjectsToDataMetadataPairs(
         objects_to_deserialize)
     ids_to_deserialize = [ObjectRef(object_ref.Binary())]
-    result = ray.worker.global_worker.deserialize_objects(
+    result = ray._private.worker.global_worker.deserialize_objects(
         data_metadata_pairs, ids_to_deserialize)[0]
 
     py_callback = <object>user_callback
