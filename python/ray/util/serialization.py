@@ -1,7 +1,9 @@
 import ray
 import ray.cloudpickle as pickle
+from ray.util.annotations import PublicAPI, DeveloperAPI
 
 
+@PublicAPI
 def register_serializer(cls: type, *, serializer: callable, deserializer: callable):
     """Use the given serializer to serialize instances of type ``cls``,
     and use the deserializer to deserialize the serialized object.
@@ -19,6 +21,7 @@ def register_serializer(cls: type, *, serializer: callable, deserializer: callab
     context._register_cloudpickle_serializer(cls, serializer, deserializer)
 
 
+@PublicAPI
 def deregister_serializer(cls: type):
     """Deregister the serializer associated with the type ``cls``.
     There is no effect if the serializer is unavailable.
@@ -30,6 +33,7 @@ def deregister_serializer(cls: type):
     context._unregister_cloudpickle_reducer(cls)
 
 
+@DeveloperAPI
 class StandaloneSerializationContext:
     # NOTE(simon): Used for registering custom serializers. We cannot directly
     # use the SerializationContext because it requires Ray workers. Please
