@@ -290,14 +290,6 @@ py_test(
 )
 
 py_test(
-    name = "test_util_file_transfer",
-    size = "medium",
-    srcs = ["tests/test_util_file_transfer.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "tests_dir_S"],
-)
-
-py_test(
     name = "test_torch_utils",
     size = "small",
     srcs = ["tests/test_torch_utils.py"],
