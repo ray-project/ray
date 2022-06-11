@@ -6,7 +6,7 @@ from ray.rllib.offline.input_reader import InputReader
 from ray.rllib.offline.io_context import IOContext
 from ray.rllib.offline.json_reader import from_json_data
 from ray.rllib.utils.annotations import override, PublicAPI
-from ray.rllib.utils.typing import SampleBatchType, TrainerConfigDict
+from ray.rllib.utils.typing import SampleBatchType, AlgorithmConfigDict
 from typing import List
 
 logger = logging.getLogger(__name__)
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_NUM_CPUS_PER_TASK = 0.5
 
 
-def _get_resource_bundles(config: TrainerConfigDict):
+def _get_resource_bundles(config: AlgorithmConfigDict):
     input_config = config.get("input_config", {})
     parallelism = input_config.get("parallelism", config.get("num_workers", 1))
     cpus_per_task = input_config.get(
@@ -25,7 +25,7 @@ def _get_resource_bundles(config: TrainerConfigDict):
 
 @PublicAPI
 def get_dataset_and_shards(
-    config: TrainerConfigDict, num_workers: int, local_worker: bool
+    config: AlgorithmConfigDict, num_workers: int, local_worker: bool
 ) -> (ray.data.dataset.Dataset, List[ray.data.dataset.Dataset]):
     assert config["input"] == "dataset"
     assert (
