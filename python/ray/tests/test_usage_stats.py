@@ -712,9 +712,7 @@ def test_first_usage_report_delayed(monkeypatch, ray_start_cluster):
 
         # The first report should be delayed for 10s.
         time.sleep(5)
-        session_dir = ray._private.worker.global_worker.node.address_info[
-            "session_dir"
-        ]
+        session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
         session_path = Path(session_dir)
         assert not (session_path / usage_constants.USAGE_STATS_FILE).exists()
 
@@ -738,9 +736,7 @@ def test_usage_report_disabled(monkeypatch, ray_start_cluster):
         # Wait enough so that usage report should happen.
         time.sleep(5)
 
-        session_dir = ray._private.worker.global_worker.node.address_info[
-            "session_dir"
-        ]
+        session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
         session_path = Path(session_dir)
         log_dir_path = session_path / "logs"
 

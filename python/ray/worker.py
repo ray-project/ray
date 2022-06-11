@@ -766,7 +766,7 @@ def get_resource_ids():
 
     if _mode() == LOCAL_MODE:
         raise RuntimeError(
-            "ray._private.worker.get_resource_ids() currently does not work in local_mode."
+            "ray._private.worker.get_resource_ids() does not work in local_mode."
         )
 
     return global_worker.core_worker.resource_ids()

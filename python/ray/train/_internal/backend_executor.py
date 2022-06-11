@@ -137,8 +137,9 @@ class BackendExecutor:
         self._placement_group.
         """
         current_placement_group = get_current_placement_group()
+        worker = ray._private.worker.global_worker
         should_capture_child_tasks_in_placement_group = (
-            ray._private.worker.global_worker.should_capture_child_tasks_in_placement_group
+            worker.should_capture_child_tasks_in_placement_group
         )
         should_create_placement_group = (
             current_placement_group is None

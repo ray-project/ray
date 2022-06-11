@@ -630,9 +630,7 @@ def get_non_head_nodes(cluster):
 
 def init_error_pubsub():
     """Initialize error info pub/sub"""
-    s = GcsErrorSubscriber(
-        address=ray._private.worker.global_worker.gcs_client.address
-    )
+    s = GcsErrorSubscriber(address=ray._private.worker.global_worker.gcs_client.address)
     s.subscribe()
     return s
 
