@@ -12,12 +12,14 @@ import ray._private.services
 from ray._private.client_mode_hook import disable_client_hook
 from ray._private import ray_constants
 from ray._raylet import GcsClientOptions
+from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
 cluster_not_supported = os.name == "nt"
 
 
+@DeveloperAPI
 class AutoscalingCluster:
     """Create a local autoscaling cluster for testing.
 
@@ -92,6 +94,7 @@ class AutoscalingCluster:
         subprocess.check_call(["ray", "stop", "--force"])
 
 
+@DeveloperAPI
 class Cluster:
     def __init__(
         self,
