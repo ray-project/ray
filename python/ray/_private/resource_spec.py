@@ -158,7 +158,8 @@ class ResourceSpec(
             node_ip_address = ray.util.get_node_ip_address()
 
         # Automatically create a node id resource on each node. This is
-        # queryable with ray._private.state.node_ids() and ray._private.state.current_node_id().
+        # queryable with ray._private.state.node_ids() and
+        # ray._private.state.current_node_id().
         resources[NODE_ID_PREFIX + node_ip_address] = 1.0
 
         num_cpus = self.num_cpus
