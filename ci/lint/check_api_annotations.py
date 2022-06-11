@@ -15,6 +15,7 @@ IGNORE_PATHS = {
     ".annotations.",
     ".deprecation.",
     ".protobuf.",
+    ".cloudpickle.",
 }
 
 
@@ -30,8 +31,8 @@ def _fullname(attr):
             fullname += attr.__name__
         if not fullname:
             fullname = str(attr)
-    except Exception:
-        pass
+    except Exception as e:
+        print("Error qualifying", e)
     return fullname
 
 
@@ -86,6 +87,7 @@ if __name__ == "__main__":
     import ray.serve
     import ray.tune
     import ray.train
+    import ray.workflow
 
     output = set()
     ok = set()
@@ -101,7 +103,7 @@ if __name__ == "__main__":
     # TODO(ekl) enable it for all modules.
     #    verify(ray.serve, set(), ok, output)
     #    verify(ray.tune, set(), ok, output)
-    #    verify(ray.tune, set(), ok, output)
+    #    verify(ray.workflow, set(), ok, output)
 
     print("Num ok", len(ok))
     print("Num bad", len(output))
