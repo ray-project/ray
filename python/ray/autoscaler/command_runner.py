@@ -1,6 +1,9 @@
 from typing import Any, List, Tuple, Dict, Optional
 
+from ray.util.annotations import DeveloperAPI
 
+
+@DeveloperAPI
 class CommandRunnerInterface:
     """Interface to run commands on a remote cluster node.
 
