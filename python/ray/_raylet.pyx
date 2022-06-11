@@ -1097,7 +1097,7 @@ cdef class CoreWorker:
         if worker_type in (ray.LOCAL_MODE, ray.SCRIPT_MODE):
             self.is_driver = True
             options.worker_type = WORKER_TYPE_DRIVER
-        elif worker_type == ray._private.worker_MODE:
+        elif worker_type == ray.WORKER_MODE:
             self.is_driver = False
             options.worker_type = WORKER_TYPE_WORKER
         elif worker_type == ray.SPILL_WORKER_MODE:
