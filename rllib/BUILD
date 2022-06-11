@@ -3006,7 +3006,7 @@ py_test(
 
 py_test(
     name = "examples/replay_buffer_api",
-    tags = ["team:ml", "gpu"],
+    tags = ["team:rllib", "gpu"],
     size = "large",
     srcs = ["examples/replay_buffer_api.py"],
     args = ["--as-test", "--stop-reward=70"]
@@ -3205,7 +3205,7 @@ py_test(
 py_test(
     name = "examples/documentation/replay_buffer_demo",
     main = "examples/documentation/replay_buffer_demo.py",
-    tags = ["team:ml", "documentation", "no_main"],
+    tags = ["team:rllib", "documentation", "no_main"],
     size = "medium",
     srcs = ["examples/documentation/replay_buffer_demo.py"],
 )
