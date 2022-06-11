@@ -1205,10 +1205,24 @@ def init(
     if bootstrap_address is None:
         # In this case, we need to start a new cluster.
 
-        # Don't collect usage stats in ray.init().
         from ray._private.usage import usage_lib
 
-        usage_lib.set_usage_stats_enabled_via_env_var(False)
+        import __main__
+        import inspect
+
+        # Try to work out if we're imported from the main program. Usage stats should
+        # only be eligible for enablement if Ray is directly initialized from main.
+        stack = inspect.stack()[2:]
+        if hasattr(__main__, "__file__"):
+            main_filename = __main__.__file__
+        else:
+            main_filename = "<stdin>"
+
+        # Enable only if ray is initialized from main, not as a library.
+        if stack and stack[0].filename == main_filename:
+            usage_lib.show_usage_stats_prompt()
+        else:
+            usage_lib.set_usage_stats_enabled_via_env_var(False)
 
         # Use a random port by not specifying Redis port / GCS server port.
         ray_params = ray._private.parameter.RayParams(
