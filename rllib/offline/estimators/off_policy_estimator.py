@@ -30,7 +30,7 @@ def train_test_split(
         batch: A SampleBatch of episodes to split
         k: train/test split parameter; if k < 1, split the batch into a
         `(1 - k) * n_episodes` eval batch and a `k * n_episodes` train batch;
-        if k > 1 split the batch into `k` folds fro cross-validation
+        if k > 1 split the batch into `k` folds from cross-validation
 
     Returns:
         A tuple with two SampleBatches (eval_batch, train_batch)

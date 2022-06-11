@@ -28,11 +28,11 @@ class TestOPE(unittest.TestCase):
 
         env_name = "CartPole-v0"
         gamma = 0.99
-        train_iters = 50
+        train_iters = 5
         num_workers = 2
         eval_num_workers = 5
         train_test_split_val = 5
-        eval_episodes = 100
+        eval_episodes = 20
 
         config = (
             DQNConfig()
@@ -52,22 +52,22 @@ class TestOPE(unittest.TestCase):
                 },
             )
             .evaluation(
-                # Evaluate once after training for train_iters
-                evaluation_interval=train_iters,
+                evaluation_interval=None,
                 evaluation_duration_unit="episodes",
                 evaluation_duration=eval_episodes,
                 evaluation_num_workers=eval_num_workers,
                 evaluation_config={
                     "input": "dataset",
                     "input_config": {"format": "json", "path": data_file},
+                    "metrics_episode_collection_timeout_s": 1800,
                 },
                 off_policy_estimation_methods={
                     "train_test_split_val": train_test_split_val,
                     "is": {"type": ImportanceSampling},
                     "wis": {"type": WeightedImportanceSampling},
-                    # "dm_qreg": {"type": DirectMethod, "q_model_type": "qreg"},
-                    # "dm_fqe": {"type": DirectMethod, "q_model_type": "fqe"},
-                    # "dr_qreg": {"type": DoublyRobust, "q_model_type": "qreg"},
+                    "dm_qreg": {"type": DirectMethod, "q_model_type": "qreg"},
+                    "dm_fqe": {"type": DirectMethod, "q_model_type": "fqe"},
+                    "dr_qreg": {"type": DoublyRobust, "q_model_type": "qreg"},
                     "dr_fqe": {"type": DoublyRobust, "q_model_type": "fqe"},
                 },
             )
@@ -77,12 +77,12 @@ class TestOPE(unittest.TestCase):
 
         trainer = config.build()
 
-        for _ in range(train_iters - 1):
+        for _ in range(train_iters):
             results = trainer.train()
-        print("Trained for ", results["timesteps_total"], "timesteps")
-
-        # Final .train() will run trainer.evaluate() as well
-        results = trainer.train()
+        print(
+            results["timesteps_total"], "timesteps", results["time_total_s"], "seconds"
+        )
+        results = trainer.evaluate()
 
         # Simulate Monte-Carlo rollouts
         mc_ret = []
@@ -104,14 +104,6 @@ class TestOPE(unittest.TestCase):
         print("Simulation", "mean:", np.mean(mc_ret), "std:", np.std(mc_ret))
         for k, v in estimates.items():
             print(k, v)
-
-    def test_d3rply_cartpole_random(self):
-        # Test OPE methods on d3rlpy cartpole-random
-        pass
-
-    def test_d3rlpy_cartpole_replay(self):
-        # Test OPE methods on d3rlpy cartpole-random
-        pass
 
     def test_cobs_mountaincar(self):
         # Test OPE methods on COBS MountainCar

@@ -112,7 +112,7 @@ def collect_episodes(
             a.apply.remote(lambda ev: ev.get_metrics()) for a in remote_workers
         ] + to_be_collected
         collected, to_be_collected = ray.wait(
-            pending, num_returns=len(pending), timeout=timeout_seconds * 1.0
+            pending, num_returns=len(pending), timeout=timeout_seconds
         )
         if pending and len(collected) == 0:
             logger.warning(

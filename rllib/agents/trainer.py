@@ -829,6 +829,7 @@ class Trainer(Trainable):
                 metrics = collect_metrics(
                     self.workers.local_worker(),
                     keep_custom_metrics=self.config["keep_per_episode_custom_metrics"],
+                    timeout_seconds=eval_cfg["metrics_episode_collection_timeout_s"],
                 )
 
             # Evaluation worker set only has local worker.
@@ -891,12 +892,13 @@ class Trainer(Trainable):
                         f"Ran round {round_} of parallel evaluation "
                         f"({num_units_done}/{duration} {unit} done)"
                     )
-                remote_workers = self.evaluation_workers.remote_workers()
                 for idx, (eval_batch, train_batch) in enumerate(
                     train_test_split(total_batch, self.train_test_split_val)
                 ):
                     # Round robin on remote workers
-                    worker = remote_workers[idx % len(remote_workers)]
+                    worker = self.evaluation_workers.remote_workers()[
+                        idx % len(self.evaluation_workers.remote_workers())
+                    ]
                     worker.compute_off_policy_estimates.remote(eval_batch, train_batch)
 
             if metrics is None:
@@ -904,6 +906,7 @@ class Trainer(Trainable):
                     self.evaluation_workers.local_worker(),
                     self.evaluation_workers.remote_workers(),
                     keep_custom_metrics=self.config["keep_per_episode_custom_metrics"],
+                    timeout_seconds=eval_cfg["metrics_episode_collection_timeout_s"],
                 )
             metrics[NUM_AGENT_STEPS_SAMPLED_THIS_ITER] = agent_steps_this_iter
             metrics[NUM_ENV_STEPS_SAMPLED_THIS_ITER] = env_steps_this_iter
