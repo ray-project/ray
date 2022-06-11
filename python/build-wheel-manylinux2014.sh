@@ -73,6 +73,7 @@ for ((i=0; i<${#PYTHONS[@]}; ++i)); do
   # The -d flag removes directories. The -x flag ignores the .gitignore file,
   # and the -e flag ensures that we don't remove the .whl directory, the
   # dashboard directory and jars directory.
+  git config --global --add safe.directory /ray
   git clean -f -f -x -d -e .whl -e python/ray/dashboard/client -e dashboard/client -e python/ray/jars
 
   pushd python
