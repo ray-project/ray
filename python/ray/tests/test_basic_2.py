@@ -452,7 +452,7 @@ def test_skip_plasma(ray_start_regular_shared):
     a = Actor.remote()
     obj_ref = a.f.remote(1)
     # it is not stored in plasma
-    assert not ray.worker.global_worker.core_worker.object_exists(obj_ref)
+    assert not ray._internal.worker.global_worker.core_worker.object_exists(obj_ref)
     assert ray.get(obj_ref) == 2
 
 
@@ -469,10 +469,10 @@ def test_actor_large_objects(ray_start_regular_shared):
 
     a = Actor.remote()
     obj_ref = a.f.remote()
-    assert not ray.worker.global_worker.core_worker.object_exists(obj_ref)
+    assert not ray._internal.worker.global_worker.core_worker.object_exists(obj_ref)
     done, _ = ray.wait([obj_ref])
     assert len(done) == 1
-    assert ray.worker.global_worker.core_worker.object_exists(obj_ref)
+    assert ray._internal.worker.global_worker.core_worker.object_exists(obj_ref)
     assert isinstance(ray.get(obj_ref), np.ndarray)
 
 
@@ -654,7 +654,7 @@ def test_duplicate_args(ray_start_regular_shared):
 
 @pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_get_correct_node_ip():
-    with patch("ray.worker") as worker_mock:
+    with patch("ray._internal.worker") as worker_mock:
         node_mock = MagicMock()
         node_mock.node_ip_address = "10.0.0.111"
         worker_mock._global_node = node_mock
@@ -732,11 +732,11 @@ def test_use_dynamic_function_and_class():
     # the same as in `FunctionActorManager.export`.
     key_func = (
         b"RemoteFunction:"
-        + ray.worker.global_worker.current_job_id.hex().encode()
+        + ray._internal.worker.global_worker.current_job_id.hex().encode()
         + b":"
         + f._function_descriptor.function_id.binary()
     )
-    assert ray.worker.global_worker.gcs_client.internal_kv_exists(
+    assert ray._internal.worker.global_worker.gcs_client.internal_kv_exists(
         key_func, KV_NAMESPACE_FUNCTION_TABLE
     )
     foo_actor = Foo.remote()
@@ -747,11 +747,11 @@ def test_use_dynamic_function_and_class():
     # the same as in `FunctionActorManager.export_actor_class`.
     key_cls = (
         b"ActorClass:"
-        + ray.worker.global_worker.current_job_id.hex().encode()
+        + ray._internal.worker.global_worker.current_job_id.hex().encode()
         + b":"
         + foo_actor._ray_actor_creation_function_descriptor.function_id.binary()
     )
-    assert ray.worker.global_worker.gcs_client.internal_kv_exists(
+    assert ray._internal.worker.global_worker.gcs_client.internal_kv_exists(
         key_cls, namespace=KV_NAMESPACE_FUNCTION_TABLE
     )
 

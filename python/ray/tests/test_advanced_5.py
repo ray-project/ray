@@ -167,7 +167,7 @@ def test_actor_distribution_balance(ray_start_cluster_enabled, args):
     @ray.remote(memory=100 * 1024 ** 2, num_cpus=0.01, scheduling_strategy="SPREAD")
     class Foo:
         def method(self):
-            return ray.worker.global_worker.node.unique_id
+            return ray._internal.worker.global_worker.node.unique_id
 
     actor_distribution = {}
     actor_list = [Foo.remote() for _ in range(actor_count)]
@@ -217,7 +217,7 @@ def test_worker_lease_reply_with_resources(ray_start_cluster_enabled):
     @ray.remote(memory=800 * 1024 ** 2, num_cpus=0.01)
     class Foo:
         def method(self):
-            return ray.worker.global_worker.node.unique_id
+            return ray._internal.worker.global_worker.node.unique_id
 
     foo1 = Foo.remote()
     o1 = foo1.method.remote()

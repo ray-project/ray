@@ -1,4 +1,4 @@
-import ray.worker
+import ray._internal.worker
 import logging
 from ray._private.client_mode_hook import client_mode_hook
 from ray.runtime_env import RuntimeEnv
@@ -26,7 +26,7 @@ class RuntimeContext(object):
             "node_id": self.node_id,
             "namespace": self.namespace,
         }
-        if self.worker.mode == ray.worker.WORKER_MODE:
+        if self.worker.mode == ray._internal.worker.WORKER_MODE:
             if self.task_id is not None:
                 context["task_id"] = self.task_id
             if self.actor_id is not None:
@@ -92,7 +92,7 @@ class RuntimeContext(object):
         """
         # only worker mode has actor_id
         assert (
-            self.worker.mode == ray.worker.WORKER_MODE
+            self.worker.mode == ray._internal.worker.WORKER_MODE
         ), f"This method is only available when the process is a\
                  worker. Current mode: {self.worker.mode}"
         task_id = self.worker.current_task_id
@@ -110,7 +110,7 @@ class RuntimeContext(object):
         """
         # only worker mode has actor_id
         assert (
-            self.worker.mode == ray.worker.WORKER_MODE
+            self.worker.mode == ray._internal.worker.WORKER_MODE
         ), f"This method is only available when the process is a\
                  worker. Current mode: {self.worker.mode}"
         actor_id = self.worker.actor_id
@@ -223,6 +223,6 @@ def get_runtime_context():
     """
     global _runtime_context
     if _runtime_context is None:
-        _runtime_context = RuntimeContext(ray.worker.global_worker)
+        _runtime_context = RuntimeContext(ray._internal.worker.global_worker)
 
     return _runtime_context

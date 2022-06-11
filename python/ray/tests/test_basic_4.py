@@ -64,7 +64,7 @@ def test_worker_startup_count(ray_start_cluster):
         slow_function.options(num_cpus=num_cpus).remote()
 
     # Check "debug_state.txt" to ensure no extra workers were started.
-    session_dir = ray.worker.global_worker.node.address_info["session_dir"]
+    session_dir = ray._internal.worker.global_worker.node.address_info["session_dir"]
     session_path = Path(session_dir)
     debug_state_path = session_path / "logs" / "debug_state.txt"
 

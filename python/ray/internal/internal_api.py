@@ -1,6 +1,6 @@
 import ray
 import ray._private.services as services
-import ray.worker
+import ray._internal.worker
 import ray._private.profiling as profiling
 import ray._private.utils as utils
 from ray import ray_constants
@@ -14,7 +14,7 @@ MAX_MESSAGE_LENGTH = ray._config.max_grpc_message_size()
 def global_gc():
     """Trigger gc.collect() on all workers in the cluster."""
 
-    worker = ray.worker.global_worker
+    worker = ray._internal.worker.global_worker
     worker.core_worker.global_gc()
 
 
@@ -192,7 +192,7 @@ def free(object_refs: list, local_only: bool = False):
         local_only: Whether only deleting the list of objects in local
             object store or all object stores.
     """
-    worker = ray.worker.global_worker
+    worker = ray._internal.worker.global_worker
 
     if isinstance(object_refs, ray.ObjectRef):
         object_refs = [object_refs]

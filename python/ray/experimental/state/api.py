@@ -33,9 +33,7 @@ def _list(
     """
     if api_server_url is None:
         assert ray.is_initialized()
-        api_server_url = (
-            f"http://{ray.worker.global_worker.node.address_info['webui_url']}"
-        )
+        api_server_url = f"http://{ray._internal.worker.global_worker.node.address_info['webui_url']}"
 
     # We don't use `asdict` to avoid deepcopy.
     # https://docs.python.org/3/library/dataclasses.html#dataclasses.asdict

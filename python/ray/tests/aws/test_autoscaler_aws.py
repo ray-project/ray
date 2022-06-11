@@ -269,7 +269,7 @@ def test_fills_out_amis_and_iam(iam_client_stub, ec2_client_stub, region):
 
     config = helpers.load_aws_example_config_file("example-full.yaml")
     head_node_config = config["available_node_types"]["ray.head.default"]["node_config"]
-    worker_node_config = config["available_node_types"]["ray.worker.default"][
+    worker_node_config = config["available_node_types"]["ray._internal.worker.default"][
         "node_config"
     ]
 
@@ -314,7 +314,7 @@ def test_iam_already_configured(iam_client_stub, ec2_client_stub):
 
     config = helpers.load_aws_example_config_file("example-full.yaml")
     head_node_config = config["available_node_types"]["ray.head.default"]["node_config"]
-    worker_node_config = config["available_node_types"]["ray.worker.default"][
+    worker_node_config = config["available_node_types"]["ray._internal.worker.default"][
         "node_config"
     ]
 
@@ -367,7 +367,7 @@ def test_create_sg_multinode(iam_client_stub, ec2_client_stub):
     config["provider"] = provider_data
     # Add head and worker fields.
     head_node_config = config["available_node_types"]["ray.head.default"]["node_config"]
-    worker_node_config = config["available_node_types"]["ray.worker.default"][
+    worker_node_config = config["available_node_types"]["ray._internal.worker.default"][
         "node_config"
     ]
     head_node_config["SubnetIds"] = [subnet_id]
@@ -461,7 +461,7 @@ def test_missing_keyname(iam_client_stub, ec2_client_stub):
     config = helpers.load_aws_example_config_file("example-full.yaml")
     config["auth"]["ssh_private_key"] = "/path/to/private/key"
     head_node_config = config["available_node_types"]["ray.head.default"]["node_config"]
-    worker_node_config = config["available_node_types"]["ray.worker.default"][
+    worker_node_config = config["available_node_types"]["ray._internal.worker.default"][
         "node_config"
     ]
 
@@ -500,7 +500,7 @@ def test_log_to_cli(iam_client_stub, ec2_client_stub):
     config = helpers.load_aws_example_config_file("example-full.yaml")
 
     head_node_config = config["available_node_types"]["ray.head.default"]["node_config"]
-    worker_node_config = config["available_node_types"]["ray.worker.default"][
+    worker_node_config = config["available_node_types"]["ray._internal.worker.default"][
         "node_config"
     ]
 

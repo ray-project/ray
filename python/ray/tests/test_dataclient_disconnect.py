@@ -21,7 +21,7 @@ def test_dataclient_disconnect_on_request():
         assert ray.get(f.remote()) == 42
         # Force grpc to error by sending garbage request
         with pytest.raises(ConnectionError):
-            ray.worker.data_client._blocking_send(Mock())
+            ray._internal.worker.data_client._blocking_send(Mock())
 
         # Client should be disconnected
         assert not ray.is_connected()
@@ -50,7 +50,7 @@ def test_dataclient_disconnect_before_request():
         # Force grpc to error by queueing garbage request. This simulates
         # the data channel shutting down for connection issues between
         # different remote calls.
-        ray.worker.data_client.request_queue.put(Mock())
+        ray._internal.worker.data_client.request_queue.put(Mock())
 
         # The following two assertions are relatively brittle. Consider a more
         # robust mechanism if they fail with code changes or become flaky.

@@ -8,7 +8,7 @@ import logging
 import grpc
 import uuid
 
-from ray.worker import print_worker_logs
+from ray._internal.worker import print_worker_logs
 from ray.util.client.common import CLIENT_SERVER_MAX_THREADS
 from ray._private.ray_logging import global_worker_stdstream_dispatcher
 import ray.core.generated.ray_client_pb2 as ray_client_pb2

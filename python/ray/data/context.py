@@ -115,7 +115,7 @@ class DatasetContext:
                     if _default_context:
                         _default_context.block_owner = None
 
-                ray.worker._post_init_hooks.append(clear_owner)
+                ray._internal.worker._post_init_hooks.append(clear_owner)
                 _default_context.block_owner = owner
 
             return _default_context

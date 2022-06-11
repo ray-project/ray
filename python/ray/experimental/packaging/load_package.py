@@ -81,7 +81,7 @@ def load_package(config_path: str) -> "_RuntimePackage":
         if ray.is_initialized():
             do_register_package()
         else:
-            ray.worker._post_init_hooks.append(do_register_package)
+            ray._internal.worker._post_init_hooks.append(do_register_package)
         runtime_env["working_dir"] = pkg_uri
 
     # Autofill conda config.

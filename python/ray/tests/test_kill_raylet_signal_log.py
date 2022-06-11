@@ -20,7 +20,7 @@ def get_pid(name):
 
 def check_result(filename, num_signal, check_key):
     ray.init(num_cpus=1)
-    session_dir = ray.worker._global_node.get_session_dir_path()
+    session_dir = ray._internal.worker._global_node.get_session_dir_path()
     raylet_out_path = filename.format(session_dir)
     pid = get_pid("raylet")
     assert pid > 0

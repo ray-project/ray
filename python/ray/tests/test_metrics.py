@@ -57,7 +57,7 @@ def test_worker_stats(shutdown_only):
 
     @ray.remote
     def f():
-        ray.worker.show_in_dashboard("test")
+        ray._internal.worker.show_in_dashboard("test")
         return os.getpid()
 
     @ray.remote
@@ -66,7 +66,7 @@ def test_worker_stats(shutdown_only):
             pass
 
         def f(self):
-            ray.worker.show_in_dashboard("test")
+            ray._internal.worker.show_in_dashboard("test")
             return os.getpid()
 
     # Test show_in_dashboard for remote functions.

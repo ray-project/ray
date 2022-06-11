@@ -192,9 +192,12 @@ def get_worker_log_file_name(worker_type, job_id=None):
         worker_name = "io_worker"
 
     # Make sure these values are set already.
-    assert ray.worker._global_node is not None
-    assert ray.worker.global_worker is not None
-    filename = f"{worker_name}-" f"{binary_to_hex(ray.worker.global_worker.worker_id)}-"
+    assert ray._internal.worker._global_node is not None
+    assert ray._internal.worker.global_worker is not None
+    filename = (
+        f"{worker_name}-"
+        f"{binary_to_hex(ray._internal.worker.global_worker.worker_id)}-"
+    )
     if job_id:
         filename += f"{job_id}-"
     filename += f"{os.getpid()}"
@@ -270,12 +273,12 @@ def setup_and_get_worker_interceptor_logger(
         worker_name = "io_worker"
 
     # Make sure these values are set already.
-    assert ray.worker._global_node is not None
-    assert ray.worker.global_worker is not None
+    assert ray._internal.worker._global_node is not None
+    assert ray._internal.worker.global_worker is not None
     filename = (
-        f"{ray.worker._global_node.get_session_dir_path()}/logs/"
+        f"{ray._internal.worker._global_node.get_session_dir_path()}/logs/"
         f"{worker_name}-"
-        f"{binary_to_hex(ray.worker.global_worker.worker_id)}-"
+        f"{binary_to_hex(ray._internal.worker.global_worker.worker_id)}-"
         f"{job_id}-{os.getpid()}.{file_extension}"
     )
     handler = StandardFdRedirectionRotatingFileHandler(

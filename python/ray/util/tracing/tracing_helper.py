@@ -21,7 +21,7 @@ from inspect import Parameter
 
 from ray.runtime_context import get_runtime_context
 from ray.util.inspect import is_class_method, is_function_or_method, is_static_method
-import ray.worker
+import ray._internal.worker
 
 logger = logging.getLogger(__name__)
 
@@ -197,16 +197,16 @@ def _function_hydrate_span_args(func: Callable[..., Any]):
     }
 
     # We only get task ID for workers
-    if ray.worker.global_worker.mode == ray.worker.WORKER_MODE:
+    if ray._internal.worker.global_worker.mode == ray._internal.worker.WORKER_MODE:
         task_id = (
             runtime_context["task_id"].hex() if runtime_context.get("task_id") else None
         )
         if task_id:
             span_args["ray.task_id"] = task_id
 
-    worker_id = getattr(ray.worker.global_worker, "worker_id", None)
+    worker_id = getattr(ray._internal.worker.global_worker, "worker_id", None)
     if worker_id:
-        span_args["ray.worker_id"] = worker_id.hex()
+        span_args["ray._internal.worker_id"] = worker_id.hex()
 
     return span_args
 
@@ -248,7 +248,7 @@ def _actor_hydrate_span_args(class_: _nameable, method: _nameable):
     }
 
     # We only get actor ID for workers
-    if ray.worker.global_worker.mode == ray.worker.WORKER_MODE:
+    if ray._internal.worker.global_worker.mode == ray._internal.worker.WORKER_MODE:
         actor_id = (
             runtime_context["actor_id"].hex()
             if runtime_context.get("actor_id")
@@ -258,9 +258,9 @@ def _actor_hydrate_span_args(class_: _nameable, method: _nameable):
         if actor_id:
             span_args["ray.actor_id"] = actor_id
 
-    worker_id = getattr(ray.worker.global_worker, "worker_id", None)
+    worker_id = getattr(ray._internal.worker.global_worker, "worker_id", None)
     if worker_id:
-        span_args["ray.worker_id"] = worker_id.hex()
+        span_args["ray._internal.worker_id"] = worker_id.hex()
 
     return span_args
 

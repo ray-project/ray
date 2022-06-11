@@ -104,7 +104,7 @@ print("Current namespace:", ray.get_runtime_context().namespace)
 def test_connect_to_cluster(ray_start_regular_shared):
     server = ray_client_server.serve("localhost:50055")
     with ray.client("localhost:50055").connect() as client_context:
-        assert client_context.dashboard_url == ray.worker.get_dashboard_url()
+        assert client_context.dashboard_url == ray._internal.worker.get_dashboard_url()
         python_version = ".".join([str(x) for x in list(sys.version_info)[:3]])
         assert client_context.python_version == python_version
         assert client_context.ray_version == ray.__version__

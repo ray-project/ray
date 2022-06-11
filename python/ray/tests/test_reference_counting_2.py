@@ -43,11 +43,13 @@ def _fill_object_store_and_get(obj, succeed=True, object_MiB=20, num_objects=5):
 
     if succeed:
         wait_for_condition(
-            lambda: ray.worker.global_worker.core_worker.object_exists(obj)
+            lambda: ray._internal.worker.global_worker.core_worker.object_exists(obj)
         )
     else:
         wait_for_condition(
-            lambda: not ray.worker.global_worker.core_worker.object_exists(obj)
+            lambda: not ray._internal.worker.global_worker.core_worker.object_exists(
+                obj
+            )
         )
 
 
@@ -178,7 +180,7 @@ def test_pass_returned_object_ref(one_worker_100MiB, use_ray_put, failure):
         assert failure
 
     def ref_not_exists():
-        worker = ray.worker.global_worker
+        worker = ray._internal.worker.global_worker
         inner_oid = ray.ObjectRef(inner_oid_binary)
         return not worker.core_worker.object_exists(inner_oid)
 

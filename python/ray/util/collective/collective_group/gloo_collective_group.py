@@ -43,7 +43,7 @@ class Rendezvous:
     def __init__(self, group_name, context, store_type, device_type):
         self._group_name = group_name
         self._context = context
-        redis_address = ray.worker._global_node.redis_address
+        redis_address = ray._internal.worker._global_node.redis_address
         (self._redis_ip_address, self._redis_port) = (
             redis_address.split(":") if store_type == "redis" else (None, None)
         )
@@ -68,7 +68,7 @@ class Rendezvous:
             redisStore = pygloo.rendezvous.RedisStore(
                 self._redis_ip_address, int(self._redis_port)
             )
-            redis_password = ray.worker._global_node.redis_password
+            redis_password = ray._internal.worker._global_node.redis_password
             if redis_password is None or len(redis_password) == 0:
                 redis_password = ray_constants.REDIS_DEFAULT_PASSWORD
             redisStore.authorize(redis_password)

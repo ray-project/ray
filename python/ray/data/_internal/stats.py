@@ -133,7 +133,7 @@ def _get_or_create_stats_actor():
         def clear_actor():
             _stats_actor[0] = None
 
-        ray.worker._post_init_hooks.append(clear_actor)
+        ray._internal.worker._post_init_hooks.append(clear_actor)
     return _stats_actor[0]
 
 

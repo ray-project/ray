@@ -157,7 +157,7 @@ class Monitor:
         if redis_password is not None:
             logger.warning("redis_password has been deprecated.")
         # Set the redis client and mode so _internal_kv works for autoscaler.
-        worker = ray.worker.global_worker
+        worker = ray._internal.worker.global_worker
         gcs_client = GcsClient(address=gcs_address)
 
         if monitor_ip:

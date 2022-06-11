@@ -19,7 +19,7 @@ def enable_export_loglevel(func):
 
 @enable_export_loglevel
 def test_ray_log_redirected(ray_start_regular):
-    session_dir = ray.worker._global_node.get_session_dir_path()
+    session_dir = ray._internal.worker._global_node.get_session_dir_path()
     assert os.path.exists(session_dir), "Session dir not found."
     raylet_out_path = "{}/logs/raylet.out".format(session_dir)
     raylet_err_path = "{}/logs/raylet.err".format(session_dir)

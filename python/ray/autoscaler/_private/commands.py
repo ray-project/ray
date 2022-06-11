@@ -71,7 +71,7 @@ from ray.autoscaler._private.cluster_dump import (
     get_all_local_data,
 )
 
-from ray.worker import global_worker  # type: ignore
+from ray._internal.worker import global_worker  # type: ignore
 from ray.util.debug import log_once
 
 from ray.autoscaler._private import subprocess_output_util as cmd_output_util

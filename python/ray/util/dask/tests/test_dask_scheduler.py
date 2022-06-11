@@ -80,7 +80,7 @@ def test_ray_dask_resources(ray_start_cluster, ray_enable_dask_on_ray):
     ray.init(address=cluster.address)
 
     def get_node_id():
-        return ray.worker.global_worker.node.unique_id
+        return ray._internal.worker.global_worker.node.unique_id
 
     # Test annotations on collection.
     with dask.annotate(ray_remote_args=dict(num_cpus=1, resources={"pin": 0.01})):

@@ -617,7 +617,8 @@ def get_other_nodes(cluster, exclude_head=False):
     return [
         node
         for node in cluster.list_all_nodes()
-        if node._raylet_socket_name != ray.worker._global_node._raylet_socket_name
+        if node._raylet_socket_name
+        != ray._internal.worker._global_node._raylet_socket_name
         and (exclude_head is False or node.head is False)
     ]
 
@@ -629,7 +630,9 @@ def get_non_head_nodes(cluster):
 
 def init_error_pubsub():
     """Initialize error info pub/sub"""
-    s = GcsErrorSubscriber(address=ray.worker.global_worker.gcs_client.address)
+    s = GcsErrorSubscriber(
+        address=ray._internal.worker.global_worker.gcs_client.address
+    )
     s.subscribe()
     return s
 
@@ -657,7 +660,7 @@ def get_error_message(subscriber, num=1e6, error_type=None, timeout=20):
 
 def init_log_pubsub():
     """Initialize log pub/sub"""
-    s = GcsLogSubscriber(address=ray.worker.global_worker.gcs_client.address)
+    s = GcsLogSubscriber(address=ray._internal.worker.global_worker.gcs_client.address)
     s.subscribe()
     return s
 
@@ -1007,7 +1010,7 @@ def monitor_memory_usage(
             """
             return self.peak_memory_usage, self.peak_top_n_memory_usage
 
-    current_node_ip = ray.worker.global_worker.node_ip_address
+    current_node_ip = ray._internal.worker.global_worker.node_ip_address
     # Schedule the actor on the current node.
     memory_monitor_actor = MemoryMonitorActor.options(
         resources={f"node:{current_node_ip}": 0.001}
@@ -1160,8 +1163,8 @@ def get_and_run_node_killer(
                     alive_nodes += 1
             return alive_nodes
 
-    head_node_ip = ray.worker.global_worker.node_ip_address
-    head_node_id = ray.worker.global_worker.current_node_id.hex()
+    head_node_ip = ray._internal.worker.global_worker.node_ip_address
+    head_node_id = ray._internal.worker.global_worker.current_node_id.hex()
     # Schedule the actor on the current node.
     node_killer = NodeKillerActor.options(
         resources={f"node:{head_node_ip}": 0.001},

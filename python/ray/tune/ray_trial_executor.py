@@ -144,7 +144,7 @@ class _TrialCleanup:
 def noop_logger_creator(config, logdir):
     # Set the working dir in the remote process, for user file writes
     os.makedirs(logdir, exist_ok=True)
-    if not ray.worker._mode() == ray.worker.LOCAL_MODE:
+    if not ray._internal.worker._mode() == ray._internal.worker.LOCAL_MODE:
         os.chdir(logdir)
     return NoopLogger(config, logdir)
 
@@ -850,7 +850,7 @@ class RayTrialExecutor:
 
         For non-local mode it is no-op.
         """
-        if ray.worker._mode() == ray.worker.LOCAL_MODE:
+        if ray._internal.worker._mode() == ray._internal.worker.LOCAL_MODE:
             old_dir = os.getcwd()
             try:
                 os.chdir(trial.logdir)

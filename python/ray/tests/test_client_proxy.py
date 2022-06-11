@@ -20,7 +20,7 @@ from ray._private.test_utils import run_string_as_driver
 
 def start_ray_and_proxy_manager(n_ports=2):
     ray_instance = ray.init(_redis_password=REDIS_DEFAULT_PASSWORD)
-    agent_port = ray.worker.global_worker.node.metrics_agent_port
+    agent_port = ray._internal.worker.global_worker.node.metrics_agent_port
     pm = proxier.ProxyManager(
         ray_instance["address"],
         session_dir=ray_instance["session_dir"],
@@ -152,7 +152,7 @@ def test_correct_num_clients(call_ray_start):
 check_connection = """
 import ray
 ray.client("localhost:25010").connect()
-assert ray.util.client.ray.worker.log_client.log_thread.is_alive()
+assert ray.util.client.ray._internal.worker.log_client.log_thread.is_alive()
 """
 
 

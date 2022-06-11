@@ -208,7 +208,7 @@ class _Registry:
 
 
 _global_registry = _Registry(prefix="global")
-ray.worker._post_init_hooks.append(_global_registry.flush_values)
+ray._internal.worker._post_init_hooks.append(_global_registry.flush_values)
 
 
 class _ParameterRegistry:

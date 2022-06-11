@@ -260,7 +260,7 @@ def test_config_metadata(shutdown_only):
 
     ray.init(job_config=job_config)
 
-    from_worker = ray.worker.global_worker.core_worker.get_job_config()
+    from_worker = ray._internal.worker.global_worker.core_worker.get_job_config()
 
     assert dict(from_worker.metadata) == job_config.metadata
 

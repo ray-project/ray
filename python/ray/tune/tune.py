@@ -541,7 +541,7 @@ def run(
         search_alg = create_searcher(search_alg)
 
     # if local_mode=True is set during ray.init().
-    is_local_mode = ray.worker._mode() == ray.worker.LOCAL_MODE
+    is_local_mode = ray._internal.worker._mode() == ray._internal.worker.LOCAL_MODE
 
     if is_local_mode:
         max_concurrent_trials = 1

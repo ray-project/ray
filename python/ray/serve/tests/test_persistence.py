@@ -16,7 +16,7 @@ def driver():
 
 driver.deploy()
 """.format(
-        ray.worker._global_node.address
+        ray._internal.worker._global_node.address
     )
     run_string_as_driver(script)
 

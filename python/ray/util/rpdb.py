@@ -185,7 +185,7 @@ class RemotePdb(Pdb):
         Skip into the next remote call.
         """
         # Tell the next task to drop into the debugger.
-        ray.worker.global_worker.debugger_breakpoint = self._breakpoint_uuid
+        ray._internal.worker.global_worker.debugger_breakpoint = self._breakpoint_uuid
         # Tell the debug loop to connect to the next task.
         data = json.dumps(
             {
@@ -205,7 +205,9 @@ class RemotePdb(Pdb):
         """get
         Skip to where the current task returns to.
         """
-        ray.worker.global_worker.debugger_get_breakpoint = self._breakpoint_uuid
+        ray._internal.worker.global_worker.debugger_get_breakpoint = (
+            self._breakpoint_uuid
+        )
         self.__restore()
         self.handle.connection.close()
         return Pdb.do_continue(self, arg)
@@ -234,7 +236,7 @@ def connect_ray_pdb(
     if not breakpoint_uuid:
         breakpoint_uuid = uuid.uuid4().hex
     if debugger_external:
-        ip_address = ray.worker.global_worker.node_ip_address
+        ip_address = ray._internal.worker.global_worker.node_ip_address
     else:
         ip_address = "localhost"
     rdb = RemotePdb(
@@ -279,7 +281,7 @@ def set_trace(breakpoint_uuid=None):
     """
     # If there is an active debugger already, we do not want to
     # start another one, so "set_trace" is just a no-op in that case.
-    if ray.worker.global_worker.debugger_breakpoint == b"":
+    if ray._internal.worker.global_worker.debugger_breakpoint == b"":
         frame = sys._getframe().f_back
         rdb = connect_ray_pdb(
             host=None,
@@ -287,7 +289,7 @@ def set_trace(breakpoint_uuid=None):
             patch_stdstreams=False,
             quiet=None,
             breakpoint_uuid=breakpoint_uuid.decode() if breakpoint_uuid else None,
-            debugger_external=ray.worker.global_worker.ray_debugger_external,
+            debugger_external=ray._internal.worker.global_worker.ray_debugger_external,
         )
         rdb.set_trace(frame=frame)
 
@@ -299,11 +301,11 @@ def _driver_set_trace():
     spammed: https://github.com/ray-project/ray/issues/18172
     """
     print("*** Temporarily disabling Ray worker logs ***")
-    ray.worker._worker_logs_enabled = False
+    ray._internal.worker._worker_logs_enabled = False
 
     def enable_logging():
         print("*** Re-enabling Ray worker logs ***")
-        ray.worker._worker_logs_enabled = True
+        ray._internal.worker._worker_logs_enabled = True
 
     pdb = PdbWrap(enable_logging)
     frame = sys._getframe().f_back
@@ -316,7 +318,7 @@ def post_mortem():
         port=None,
         patch_stdstreams=False,
         quiet=None,
-        debugger_external=ray.worker.global_worker.ray_debugger_external,
+        debugger_external=ray._internal.worker.global_worker.ray_debugger_external,
     )
     rdb.post_mortem()
 

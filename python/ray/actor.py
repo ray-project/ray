@@ -7,7 +7,7 @@ import ray.ray_constants as ray_constants
 import ray._raylet
 import ray._private.signature as signature
 from ray.utils import get_runtime_env_info, parse_runtime_env
-import ray.worker
+import ray._internal.worker
 from ray.util.annotations import PublicAPI
 from ray.util.placement_group import configure_placement_group_based_on_context
 from ray.util.scheduling_strategies import (
@@ -213,7 +213,7 @@ class _ActorClassMethodMetadata(object):
             each actor method.
     """
 
-    _cache = {}  # This cache will be cleared in ray.worker.disconnect()
+    _cache = {}  # This cache will be cleared in ray._internal.worker.disconnect()
 
     def __init__(self):
         class_name = type(self).__name__
@@ -720,7 +720,7 @@ class ActorClass:
         max_task_retries = actor_options["max_task_retries"]
         max_pending_calls = actor_options["max_pending_calls"]
 
-        worker = ray.worker.global_worker
+        worker = ray._internal.worker.global_worker
         worker.check_connected()
 
         # Check whether the name is already taken.
@@ -1025,8 +1025,8 @@ class ActorHandle:
     def __del__(self):
         # Mark that this actor handle has gone out of scope. Once all actor
         # handles are out of scope, the actor will exit.
-        if ray.worker:
-            worker = ray.worker.global_worker
+        if ray._internal.worker:
+            worker = ray._internal.worker.global_worker
             if worker.connected and hasattr(worker, "core_worker"):
                 worker.core_worker.remove_actor_handle_reference(self._ray_actor_id)
 
@@ -1057,7 +1057,7 @@ class ActorHandle:
             object_refs: A list of object refs returned by the remote actor
                 method.
         """
-        worker = ray.worker.global_worker
+        worker = ray._internal.worker.global_worker
 
         args = args or []
         kwargs = kwargs or {}
@@ -1157,7 +1157,7 @@ class ActorHandle:
         Returns:
             A dictionary of the information needed to reconstruct the object.
         """
-        worker = ray.worker.global_worker
+        worker = ray._internal.worker.global_worker
         worker.check_connected()
 
         if hasattr(worker, "core_worker"):
@@ -1191,7 +1191,7 @@ class ActorHandle:
                 to the actor handle.
 
         """
-        worker = ray.worker.global_worker
+        worker = ray._internal.worker.global_worker
         worker.check_connected()
 
         if hasattr(worker, "core_worker"):
@@ -1239,7 +1239,7 @@ def modify_class(cls):
         __ray_actor_class__ = cls  # The original actor class
 
         def __ray_terminate__(self):
-            worker = ray.worker.global_worker
+            worker = ray._internal.worker.global_worker
             if worker.mode != ray.LOCAL_MODE:
                 ray.actor.exit_actor()
 
@@ -1288,11 +1288,11 @@ def exit_actor():
         Exception: An exception is raised if this is a driver or this
             worker is not an actor.
     """
-    worker = ray.worker.global_worker
+    worker = ray._internal.worker.global_worker
     if worker.mode == ray.WORKER_MODE and not worker.actor_id.is_nil():
         # Intentionally disconnect the core worker from the raylet so the
         # raylet won't push an error message to the driver.
-        ray.worker.disconnect()
+        ray._internal.worker.disconnect()
         # Disconnect global state from GCS.
         ray.state.state.disconnect()
 

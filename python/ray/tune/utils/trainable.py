@@ -372,7 +372,7 @@ def with_parameters(trainable, **kwargs):
         )
 
     parameter_registry = _ParameterRegistry()
-    ray.worker._post_init_hooks.append(parameter_registry.flush)
+    ray._internal.worker._post_init_hooks.append(parameter_registry.flush)
 
     # Objects are moved into the object store
     prefix = f"{str(trainable)}_"

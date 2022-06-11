@@ -3200,7 +3200,7 @@ class Dataset(Generic[T]):
             state["_last_export_session_and_job"] = None
             return reconstructor, args, state
 
-        context = ray.worker.global_worker.get_serialization_context()
+        context = ray._internal.worker.global_worker.get_serialization_context()
         try:
             context._register_cloudpickle_reducer(
                 ray.remote_function.RemoteFunction, _reduce

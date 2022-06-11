@@ -206,7 +206,7 @@ def workflow_logging_context(job_id) -> None:
     Args:
         job_id: The ID of the job that submits the workflow execution.
     """
-    node = ray.worker._global_node
+    node = ray._internal.worker._global_node
     original_out_file, original_err_file = node.get_log_file_handles(
         get_worker_log_file_name("WORKER")
     )

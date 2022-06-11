@@ -299,7 +299,7 @@ def test_prometheus_file_based_service_discovery(ray_start_cluster):
 
 def test_prome_file_discovery_run_by_dashboard(shutdown_only):
     ray.init(num_cpus=0)
-    global_node = ray.worker._global_node
+    global_node = ray._internal.worker._global_node
     temp_dir = global_node.get_temp_dir_path()
 
     def is_service_discovery_exist():

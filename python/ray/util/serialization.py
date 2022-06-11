@@ -15,7 +15,7 @@ def register_serializer(cls: type, *, serializer: callable, deserializer: callab
             instance of type ``cls`` from the serialized object.
             This function itself must be serializable.
     """
-    context = ray.worker.global_worker.get_serialization_context()
+    context = ray._internal.worker.global_worker.get_serialization_context()
     context._register_cloudpickle_serializer(cls, serializer, deserializer)
 
 
@@ -26,7 +26,7 @@ def deregister_serializer(cls: type):
     Args:
         cls: A Python class/type.
     """
-    context = ray.worker.global_worker.get_serialization_context()
+    context = ray._internal.worker.global_worker.get_serialization_context()
     context._unregister_cloudpickle_reducer(cls)
 
 

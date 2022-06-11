@@ -186,19 +186,19 @@ def record_library_usage(library_usage: str):
 
     # Only report library usage from driver to reduce
     # the load to kv store.
-    if ray.worker.global_worker.mode == ray.SCRIPT_MODE:
+    if ray._internal.worker.global_worker.mode == ray.SCRIPT_MODE:
         _put_library_usage(library_usage)
 
 
 def _put_pre_init_library_usages():
     assert _internal_kv_initialized()
-    if ray.worker.global_worker.mode != ray.SCRIPT_MODE:
+    if ray._internal.worker.global_worker.mode != ray.SCRIPT_MODE:
         return
     for library_usage in _recorded_library_usages:
         _put_library_usage(library_usage)
 
 
-ray.worker._post_init_hooks.append(_put_pre_init_library_usages)
+ray._internal.worker._post_init_hooks.append(_put_pre_init_library_usages)
 
 
 def _usage_stats_report_url():

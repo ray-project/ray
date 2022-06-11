@@ -58,7 +58,7 @@ def test_log_rotation(shutdown_only, monkeypatch):
     backup_count = 3
     set_logging_config(monkeypatch, max_bytes, backup_count)
     ray.init(num_cpus=1)
-    session_dir = ray.worker.global_worker.node.address_info["session_dir"]
+    session_dir = ray._internal.worker.global_worker.node.address_info["session_dir"]
     session_path = Path(session_dir)
     log_dir_path = session_path / "logs"
 
@@ -134,7 +134,7 @@ def test_periodic_event_stats(shutdown_only):
         num_cpus=1,
         _system_config={"event_stats_print_interval_ms": 100, "event_stats": True},
     )
-    session_dir = ray.worker.global_worker.node.address_info["session_dir"]
+    session_dir = ray._internal.worker.global_worker.node.address_info["session_dir"]
     session_path = Path(session_dir)
     log_dir_path = session_path / "logs"
 
@@ -171,7 +171,7 @@ def test_worker_id_names(shutdown_only):
         num_cpus=1,
         _system_config={"event_stats_print_interval_ms": 100, "event_stats": True},
     )
-    session_dir = ray.worker.global_worker.node.address_info["session_dir"]
+    session_dir = ray._internal.worker.global_worker.node.address_info["session_dir"]
     session_path = Path(session_dir)
     log_dir_path = session_path / "logs"
 
@@ -285,7 +285,7 @@ import ray
 os.environ["RAY_LOG_TO_STDERR"] = "1"
 ray.init()
 
-session_dir = ray.worker.global_worker.node.address_info["session_dir"]
+session_dir = ray._internal.worker.global_worker.node.address_info["session_dir"]
 session_path = Path(session_dir)
 log_dir_path = session_path / "logs"
 

@@ -1933,7 +1933,7 @@ def disconnect(exiting_interpreter=False):
     except AttributeError:
         ray_actor = None  # This can occur during program termination
     if ray_actor is not None:
-        ray_actor.ActorClassMethodMetadata.reset_cache()
+        ray_actor._ActorClassMethodMetadata.reset_cache()
 
 
 @contextmanager

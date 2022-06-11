@@ -94,22 +94,22 @@ def test_caching_functions_to_run(shutdown_only):
     def f(worker_info):
         sys.path.append(1)
 
-    ray.worker.global_worker.run_function_on_all_workers(f)
+    ray._internal.worker.global_worker.run_function_on_all_workers(f)
 
     def f(worker_info):
         sys.path.append(2)
 
-    ray.worker.global_worker.run_function_on_all_workers(f)
+    ray._internal.worker.global_worker.run_function_on_all_workers(f)
 
     def g(worker_info):
         sys.path.append(3)
 
-    ray.worker.global_worker.run_function_on_all_workers(g)
+    ray._internal.worker.global_worker.run_function_on_all_workers(g)
 
     def f(worker_info):
         sys.path.append(4)
 
-    ray.worker.global_worker.run_function_on_all_workers(f)
+    ray._internal.worker.global_worker.run_function_on_all_workers(f)
 
     ray.init(num_cpus=1)
 
@@ -130,7 +130,7 @@ def test_caching_functions_to_run(shutdown_only):
         sys.path.pop()
         sys.path.pop()
 
-    ray.worker.global_worker.run_function_on_all_workers(f)
+    ray._internal.worker.global_worker.run_function_on_all_workers(f)
 
 
 @pytest.mark.skipif(client_test_enabled(), reason="internal api")
@@ -138,7 +138,7 @@ def test_running_function_on_all_workers(ray_start_regular):
     def f(worker_info):
         sys.path.append("fake_directory")
 
-    ray.worker.global_worker.run_function_on_all_workers(f)
+    ray._internal.worker.global_worker.run_function_on_all_workers(f)
 
     @ray.remote
     def get_path1():
@@ -154,7 +154,7 @@ def test_running_function_on_all_workers(ray_start_regular):
     def f(worker_info):
         sys.path.pop(-1)
 
-    ray.worker.global_worker.run_function_on_all_workers(f)
+    ray._internal.worker.global_worker.run_function_on_all_workers(f)
 
     # Create a second remote function to guarantee that when we call
     # get_path2.remote(), the second function to run will have been run on

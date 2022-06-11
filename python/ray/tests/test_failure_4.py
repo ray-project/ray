@@ -562,7 +562,7 @@ def test_locality_aware_scheduling_for_dead_nodes(shutdown_only):
     # This function requires obj1 and obj2.
     @ray.remote
     def func(obj1, obj2):
-        return ray.worker.global_worker.node.unique_id
+        return ray._internal.worker.global_worker.node.unique_id
 
     # This function should be scheduled to node2. As node2 has both objects.
     assert ray.get(func.remote(obj1, obj2)) == node2.unique_id

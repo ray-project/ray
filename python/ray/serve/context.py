@@ -105,7 +105,7 @@ def _connect(
     """
 
     # Initialize ray if needed.
-    ray.worker.global_worker.filter_logs_by_job = False
+    ray._internal.worker.global_worker.filter_logs_by_job = False
     if not ray.is_initialized():
         ray.init(namespace="serve")
 

@@ -22,7 +22,7 @@ def test_healthcheck():
     assert res.returncode == 0, res.stdout
 
     # Kill GCS to test ray health-check.
-    all_processes = ray.worker._global_node.all_processes
+    all_processes = ray._internal.worker._global_node.all_processes
     assert ray_constants.PROCESS_TYPE_GCS_SERVER in all_processes
     gcs_proc_info = all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER][0]
     gcs_proc = psutil.Process(gcs_proc_info.process.pid)
