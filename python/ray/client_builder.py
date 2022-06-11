@@ -9,7 +9,7 @@ import sys
 
 from typing import Any, Dict, Optional, Tuple
 
-from ray.ray_constants import (
+from ray._private.ray_constants import (
     RAY_ADDRESS_ENVIRONMENT_VARIABLE,
     RAY_NAMESPACE_ENVIRONMENT_VARIABLE,
     RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE,

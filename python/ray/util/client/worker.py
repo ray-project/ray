@@ -25,7 +25,7 @@ from ray.cloudpickle.compat import pickle
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.exceptions import GetTimeoutError
-from ray.ray_constants import DEFAULT_CLIENT_RECONNECT_GRACE_PERIOD
+from ray._private.ray_constants import DEFAULT_CLIENT_RECONNECT_GRACE_PERIOD
 from ray.util.client.client_pickler import (
     dumps_from_client,
     loads_from_server,

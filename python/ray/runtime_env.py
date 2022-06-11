@@ -19,7 +19,7 @@ from ray._private.runtime_env.conda import (
 
 from ray._private.runtime_env.pip import get_uri as get_pip_uri
 from ray.util.annotations import PublicAPI
-from ray.ray_constants import DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS
+from ray._private.ray_constants import DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS
 
 
 logger = logging.getLogger(__name__)

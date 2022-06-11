@@ -130,7 +130,7 @@ from ray.util.scheduling_strategies import (
     PlacementGroupSchedulingStrategy,
     NodeAffinitySchedulingStrategy,
 )
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 from ray._private.async_compat import sync_to_async, get_new_event_loop
 from ray._private.client_mode_hook import disable_client_hook
 import ray._private.gcs_utils as gcs_utils

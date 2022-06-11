@@ -41,7 +41,7 @@ def test_ray_memory(shutdown_only):
 
 def test_jemalloc_env_var_propagate():
     """Test `propagate_jemalloc_env_var`"""
-    gcs_ptype = ray.ray_constants.PROCESS_TYPE_GCS_SERVER
+    gcs_ptype = ray._private.ray_constants.PROCESS_TYPE_GCS_SERVER
     """
     If the shared library path is not specified,
     it should return an empty dict.
@@ -54,7 +54,7 @@ def test_jemalloc_env_var_propagate():
     actual = ray._private.services.propagate_jemalloc_env_var(
         jemalloc_path=None,
         jemalloc_conf="a,b,c",
-        jemalloc_comps=[ray.ray_constants.PROCESS_TYPE_GCS_SERVER],
+        jemalloc_comps=[ray._private.ray_constants.PROCESS_TYPE_GCS_SERVER],
         process_type=gcs_ptype,
     )
     assert actual == expected
@@ -66,7 +66,7 @@ def test_jemalloc_env_var_propagate():
     actual = ray._private.services.propagate_jemalloc_env_var(
         jemalloc_path=library_path,
         jemalloc_conf="",
-        jemalloc_comps=[ray.ray_constants.PROCESS_TYPE_GCS_SERVER],
+        jemalloc_comps=[ray._private.ray_constants.PROCESS_TYPE_GCS_SERVER],
         process_type=gcs_ptype,
     )
     assert actual == expected
@@ -76,7 +76,7 @@ def test_jemalloc_env_var_propagate():
         ray._private.services.propagate_jemalloc_env_var(
             jemalloc_path=library_path,
             jemalloc_conf="",
-            jemalloc_comps="ray.ray_constants.PROCESS_TYPE_GCS_SERVER,",
+            jemalloc_comps="ray._private.ray_constants.PROCESS_TYPE_GCS_SERVER,",
             process_type=gcs_ptype,
         )
 
@@ -85,7 +85,7 @@ def test_jemalloc_env_var_propagate():
     actual = ray._private.services.propagate_jemalloc_env_var(
         jemalloc_path=library_path,
         jemalloc_conf="",
-        jemalloc_comps=[ray.ray_constants.PROCESS_TYPE_RAYLET],
+        jemalloc_comps=[ray._private.ray_constants.PROCESS_TYPE_RAYLET],
         process_type=gcs_ptype,
     )
     """
@@ -97,7 +97,7 @@ def test_jemalloc_env_var_propagate():
     actual = ray._private.services.propagate_jemalloc_env_var(
         jemalloc_path=library_path,
         jemalloc_conf=malloc_conf,
-        jemalloc_comps=[ray.ray_constants.PROCESS_TYPE_GCS_SERVER],
+        jemalloc_comps=[ray._private.ray_constants.PROCESS_TYPE_GCS_SERVER],
         process_type=gcs_ptype,
     )
     assert actual == expected
@@ -185,7 +185,7 @@ def get_gcs_memory_used():
 
 
 def function_entry_num(job_id):
-    from ray.ray_constants import KV_NAMESPACE_FUNCTION_TABLE
+    from ray._private.ray_constants import KV_NAMESPACE_FUNCTION_TABLE
 
     return (
         len(

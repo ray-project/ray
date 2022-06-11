@@ -534,7 +534,7 @@ def test_ready_warning_suppressed(ray_start_regular, error_pubsub):
         ray.get(pg.ready(), timeout=0.5)
 
     errors = get_error_message(
-        p, 1, ray.ray_constants.INFEASIBLE_TASK_ERROR, timeout=0.1
+        p, 1, ray._private.ray_constants.INFEASIBLE_TASK_ERROR, timeout=0.1
     )
     assert len(errors) == 0
 

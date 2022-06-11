@@ -88,7 +88,7 @@ def get_gcs_memory_used():
 
 
 def function_entry_num(job_id):
-    from ray.ray_constants import KV_NAMESPACE_FUNCTION_TABLE
+    from ray._private.ray_constants import KV_NAMESPACE_FUNCTION_TABLE
 
     return (
         len(

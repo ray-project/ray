@@ -8,7 +8,7 @@ from filecmp import dircmp
 import uuid
 
 import pytest
-from ray.ray_constants import KV_NAMESPACE_PACKAGE
+from ray._private.ray_constants import KV_NAMESPACE_PACKAGE
 from ray.experimental.internal_kv import (
     _internal_kv_reset,
     _initialize_internal_kv,

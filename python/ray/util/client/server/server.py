@@ -39,7 +39,7 @@ from ray.util.client.server.server_pickler import loads_from_client
 from ray.util.client.server.dataservicer import DataServicer
 from ray.util.client.server.logservicer import LogstreamServicer
 from ray.util.client.server.server_stubs import current_server
-from ray.ray_constants import env_integer
+from ray._private.ray_constants import env_integer
 from ray._private.client_mode_hook import disable_client_hook
 from ray._private.ray_logging import setup_logger
 from ray._private.services import canonicalize_bootstrap_address

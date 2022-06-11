@@ -10,7 +10,7 @@ import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.experimental.internal_kv as internal_kv
 import ray._private.services
 import ray._private.utils
-from ray.ray_constants import (
+from ray._private.ray_constants import (
     GLOBAL_GRPC_OPTIONS,
     DEBUG_AUTOSCALING_STATUS,
     DEBUG_AUTOSCALING_STATUS_LEGACY,

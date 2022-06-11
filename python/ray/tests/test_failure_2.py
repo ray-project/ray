@@ -9,7 +9,7 @@ import pytest
 
 import ray
 from ray.experimental.internal_kv import _internal_kv_get
-from ray.ray_constants import DEBUG_AUTOSCALING_ERROR
+from ray._private.ray_constants import DEBUG_AUTOSCALING_ERROR
 import ray._private.utils
 import ray._private.ray_constants as ray_constants
 from ray.cluster_utils import cluster_not_supported

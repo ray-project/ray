@@ -27,7 +27,7 @@ def run_basic_workload():
     ray.get(ray.put(arr))
 
 
-def is_dir_empty(temp_folder, append_path=ray.ray_constants.DEFAULT_OBJECT_PREFIX):
+def is_dir_empty(temp_folder, append_path=ray._private.ray_constants.DEFAULT_OBJECT_PREFIX):
     # append_path is used because the file based spilling will append
     # new directory path.
     num_files = 0
@@ -508,7 +508,7 @@ def test_spill_worker_failure(ray_start_regular):
 
         for proc in psutil.process_iter():
             try:
-                name = ray.ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER_IDLE
+                name = ray._private.ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER_IDLE
                 if name in proc.name():
                     return proc
                 # for macOS

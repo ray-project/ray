@@ -25,7 +25,7 @@ from ray._private.utils import (
     ensure_str,
     format_error_message,
 )
-from ray.ray_constants import KV_NAMESPACE_FUNCTION_TABLE
+from ray._private.ray_constants import KV_NAMESPACE_FUNCTION_TABLE
 from ray.util.inspect import (
     is_function_or_method,
     is_class_method,

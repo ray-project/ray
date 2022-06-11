@@ -57,7 +57,7 @@ def test_healthcheck_ray_client_server():
     assert res.returncode == 0, res.stdout
 
     client_server_handle.send_signal(signal.SIGKILL)
-    time.sleep(ray.ray_constants.HEALTHCHECK_EXPIRATION_S)
+    time.sleep(ray._private.ray_constants.HEALTHCHECK_EXPIRATION_S)
     res = subprocess.run(["ray", "health-check", "--component", "ray_client_server"])
     assert res.returncode != 0, res.stdout
 

@@ -8,7 +8,7 @@ import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.modules.test.test_utils as test_utils
 import ray.dashboard.modules.test.test_consts as test_consts
 from ray.dashboard.datacenter import DataSource
-from ray.ray_constants import env_bool
+from ray._private.ray_constants import env_bool
 
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.ClassMethodRouteTable

@@ -17,7 +17,7 @@ from ray._private.test_utils import client_test_enabled
 from ray.tests.client_test_utils import create_remote_signal_actor
 from ray.exceptions import GetTimeoutError
 from ray.exceptions import RayTaskError
-from ray.ray_constants import KV_NAMESPACE_FUNCTION_TABLE
+from ray._private.ray_constants import KV_NAMESPACE_FUNCTION_TABLE
 
 if client_test_enabled():
     from ray.util.client import ray

@@ -281,11 +281,11 @@ class LoadMetrics:
         for key in total_resources:
             if key in ["memory", "object_store_memory"]:
                 total = (
-                    total_resources[key] * ray.ray_constants.MEMORY_RESOURCE_UNIT_BYTES
+                    total_resources[key] * ray._private.ray_constants.MEMORY_RESOURCE_UNIT_BYTES
                 )
                 available = (
                     available_resources[key]
-                    * ray.ray_constants.MEMORY_RESOURCE_UNIT_BYTES
+                    * ray._private.ray_constants.MEMORY_RESOURCE_UNIT_BYTES
                 )
                 usage_dict[key] = (total - available, total)
             else:

@@ -9,7 +9,7 @@ from collections import namedtuple
 from typing import List, IO, Tuple, Optional
 
 import ray
-from ray.ray_constants import DEFAULT_OBJECT_PREFIX
+from ray._private.ray_constants import DEFAULT_OBJECT_PREFIX
 from ray._raylet import ObjectRef
 
 ParsedURL = namedtuple("ParsedURL", "base_url, offset, size")

@@ -10,7 +10,7 @@ from unittest import mock
 
 import ray
 import ray.experimental.internal_kv as kv
-from ray.ray_constants import (
+from ray._private.ray_constants import (
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR,
 )
 from ray._private.test_utils import wait_for_condition, chdir, check_local_files_gced

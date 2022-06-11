@@ -11,7 +11,7 @@ import ray
 @contextlib.contextmanager
 def stop_gcs_server():
     process = ray._private.worker._global_node.all_processes[
-        ray.ray_constants.PROCESS_TYPE_GCS_SERVER
+        ray._private.ray_constants.PROCESS_TYPE_GCS_SERVER
     ][0].process
     pid = process.pid
     os.kill(pid, signal.SIGSTOP)

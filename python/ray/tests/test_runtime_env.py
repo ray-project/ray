@@ -232,7 +232,7 @@ def test_runtime_env_no_spurious_resource_deadlock_msg(
 
     # Check no warning printed.
     ray.get(f.remote())
-    errors = get_error_message(p, 5, ray.ray_constants.RESOURCE_DEADLOCK_ERROR)
+    errors = get_error_message(p, 5, ray._private.ray_constants.RESOURCE_DEADLOCK_ERROR)
     assert len(errors) == 0
 
 

@@ -25,7 +25,7 @@ from ray.autoscaler.tags import (
     TAG_RAY_NODE_STATUS,
     STATUS_UP_TO_DATE,
 )
-from ray.ray_constants import DEFAULT_PORT
+from ray._private.ray_constants import DEFAULT_PORT
 
 logger = logging.getLogger(__name__)
 

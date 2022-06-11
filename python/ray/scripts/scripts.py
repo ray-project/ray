@@ -2161,7 +2161,7 @@ def healthcheck(address, redis_password, component):
 
     # If the status is too old, the service has probably already died.
     delta = cur_time - report_time
-    time_ok = delta < ray.ray_constants.HEALTHCHECK_EXPIRATION_S
+    time_ok = delta < ray._private.ray_constants.HEALTHCHECK_EXPIRATION_S
 
     if time_ok:
         sys.exit(0)

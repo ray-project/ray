@@ -17,7 +17,7 @@ from ray.dashboard.modules.job.common import (
 )
 from ray.dashboard.modules.job.job_manager import generate_job_id, JobManager
 from ray._private.test_utils import SignalActor, async_wait_for_condition
-from ray.ray_constants import RAY_ADDRESS_ENVIRONMENT_VARIABLE
+from ray._private.ray_constants import RAY_ADDRESS_ENVIRONMENT_VARIABLE
 
 from ray.tests.conftest import call_ray_start  # noqa: F401
 
@@ -716,8 +716,8 @@ async def test_bootstrap_address(job_manager, monkeypatch):
     cluster might be started with http://ip:{dashboard_port} from previous
     runs.
     """
-    ip = ray.ray_constants.DEFAULT_DASHBOARD_IP
-    port = ray.ray_constants.DEFAULT_DASHBOARD_PORT
+    ip = ray._private.ray_constants.DEFAULT_DASHBOARD_IP
+    port = ray._private.ray_constants.DEFAULT_DASHBOARD_PORT
 
     monkeypatch.setenv("RAY_ADDRESS", f"http://{ip}:{port}")
     print_ray_address_cmd = (

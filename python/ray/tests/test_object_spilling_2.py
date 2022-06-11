@@ -255,7 +255,7 @@ def test_fusion_objects(fs_only_object_spilling_config, shutdown_only):
     is_test_passing = False
     # Since we'd like to see the temp directory that stores the files,
     # we need to append this directory.
-    temp_folder = temp_folder / ray.ray_constants.DEFAULT_OBJECT_PREFIX
+    temp_folder = temp_folder / ray._private.ray_constants.DEFAULT_OBJECT_PREFIX
     for path in temp_folder.iterdir():
         file_size = path.stat().st_size
         # Make sure there are at least one

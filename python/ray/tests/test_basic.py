@@ -909,7 +909,7 @@ def test_failed_task(ray_start_shared_local_modes, error_pubsub):
     throw_exception_fct1.remote()
 
     if ray._private.worker.global_worker.mode != ray._private.worker.LOCAL_MODE:
-        msgs = get_error_message(p, 2, ray.ray_constants.TASK_PUSH_ERROR)
+        msgs = get_error_message(p, 2, ray._private.ray_constants.TASK_PUSH_ERROR)
         assert len(msgs) == 2
         for msg in msgs:
             assert "Test function 1 intentionally failed." in msg.error_message

@@ -4,7 +4,7 @@ import ray
 from ray._raylet import PlacementGroupID
 from ray._private.utils import hex_to_binary
 from ray.util.annotations import PublicAPI, DeveloperAPI
-from ray.ray_constants import to_memory_units
+from ray._private.ray_constants import to_memory_units
 from ray._private.client_mode_hook import client_mode_should_convert
 from ray._private.client_mode_hook import client_mode_wrap
 

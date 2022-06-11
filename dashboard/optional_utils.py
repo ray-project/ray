@@ -17,7 +17,7 @@ from typing import Any, Callable
 
 import ray
 import ray.dashboard.consts as dashboard_consts
-from ray.ray_constants import env_bool
+from ray._private.ray_constants import env_bool
 
 try:
     create_task = asyncio.create_task

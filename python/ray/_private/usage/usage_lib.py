@@ -417,7 +417,7 @@ def get_cluster_status_to_report(gcs_client, num_retries: int) -> ClusterStatusT
     try:
         cluster_status = ray._private.utils.internal_kv_get_with_retry(
             gcs_client,
-            ray.ray_constants.DEBUG_AUTOSCALING_STATUS,
+            ray._private.ray_constants.DEBUG_AUTOSCALING_STATUS,
             namespace=None,
             num_retries=num_retries,
         )

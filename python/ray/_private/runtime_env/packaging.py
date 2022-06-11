@@ -16,7 +16,7 @@ from ray.experimental.internal_kv import (
     _pin_runtime_env_uri,
 )
 from ray._private.thirdparty.pathspec import PathSpec
-from ray.ray_constants import (
+from ray._private.ray_constants import (
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT,
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR,
 )

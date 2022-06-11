@@ -54,7 +54,7 @@ def test_multiple_directories(tmp_path, shutdown_only):
 
     num_files = defaultdict(int)
     for temp_dir in temp_dirs:
-        temp_folder = temp_dir / ray.ray_constants.DEFAULT_OBJECT_PREFIX
+        temp_folder = temp_dir / ray._private.ray_constants.DEFAULT_OBJECT_PREFIX
         for path in temp_folder.iterdir():
             num_files[str(temp_folder)] += 1
 

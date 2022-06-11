@@ -10,7 +10,7 @@ from unittest.mock import patch
 import grpc
 
 import ray
-from ray.ray_constants import REDIS_DEFAULT_PASSWORD
+from ray._private.ray_constants import REDIS_DEFAULT_PASSWORD
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 from ray.cloudpickle.compat import pickle
 from ray.job_config import JobConfig

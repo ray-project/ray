@@ -4,7 +4,7 @@ import logging
 from ray._private.ray_logging import setup_logger
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray.core.generated.common_pb2 import Language
-from ray.ray_constants import LOGGER_LEVEL, LOGGER_FORMAT
+from ray._private.ray_constants import LOGGER_LEVEL, LOGGER_FORMAT
 
 logger = logging.getLogger(__name__)
 

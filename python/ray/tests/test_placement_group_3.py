@@ -24,7 +24,7 @@ from ray.exceptions import RaySystemError
 from ray.util.placement_group import placement_group, remove_placement_group
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
 import ray.experimental.internal_kv as internal_kv
-from ray.ray_constants import DEBUG_AUTOSCALING_ERROR, DEBUG_AUTOSCALING_STATUS
+from ray._private.ray_constants import DEBUG_AUTOSCALING_ERROR, DEBUG_AUTOSCALING_STATUS
 
 
 def get_ray_status_output(address):

@@ -2,7 +2,7 @@ from typing import List, Any
 import threading
 
 import ray
-from ray.ray_constants import env_integer
+from ray._private.ray_constants import env_integer
 from ray.types import ObjectRef
 from ray.util.annotations import PublicAPI
 
