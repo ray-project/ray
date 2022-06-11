@@ -300,7 +300,10 @@ def get_device(config):
     # Figure out the number of GPUs to use on the local side (index=0) or on
     # the remote workers (index > 0).
     worker_idx = config.get("worker_index", 0)
-    if not config["_fake_gpus"] and ray._private.worker._mode() == ray._private.worker.LOCAL_MODE:
+    if (
+        not config["_fake_gpus"]
+        and ray._private.worker._mode() == ray._private.worker.LOCAL_MODE
+    ):
         num_gpus = 0
     elif worker_idx == 0:
         num_gpus = config["num_gpus"]

@@ -103,7 +103,10 @@ class TorchPolicyV2(Policy):
 
         # Get devices to build the graph on.
         worker_idx = self.config.get("worker_index", 0)
-        if not config["_fake_gpus"] and ray._private.worker._mode() == ray._private.worker.LOCAL_MODE:
+        if (
+            not config["_fake_gpus"]
+            and ray._private.worker._mode() == ray._private.worker.LOCAL_MODE
+        ):
             num_gpus = 0
         elif worker_idx == 0:
             num_gpus = config["num_gpus"]
