@@ -8,6 +8,7 @@ import pandas as pd
 
 from ray.serve.http_adapters import (
     NdArray,
+    json_to_multi_ndarray,
     json_to_ndarray,
     image_to_ndarray,
     pandas_read_json,
@@ -49,6 +50,12 @@ def test_json_to_ndarray():
         json_to_ndarray(NdArray(array=[[1.9], [2.1]], shape=[1, 2], dtype="int")),
         np.array([[1.9, 2.1]]).astype("int"),
     )
+
+
+def test_json_to_multi_ndarray():
+    assert json_to_multi_ndarray(
+        {"a": NdArray(array=[1]), "b": NdArray(array=[3])}
+    ) == {"a": np.array(1), "b": np.array(3)}
 
 
 def test_image_to_ndarray():

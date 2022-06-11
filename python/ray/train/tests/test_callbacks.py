@@ -1,3 +1,4 @@
+from typing import Dict, List
 import glob
 import io
 import json
@@ -18,14 +19,20 @@ from ray.train.callbacks import (
     TBXLoggerCallback,
     TorchTensorboardProfilerCallback,
 )
-from ray.train.callbacks.logging import MLflowLoggerCallback, TrainCallbackLogdirManager
+from ray.train.callbacks.logging import (
+    MLflowLoggerCallback,
+    _TrainCallbackLogdirManager,
+)
 from ray.train.constants import (
     TRAINING_ITERATION,
     DETAILED_AUTOFILLED_KEYS,
     BASIC_AUTOFILLED_KEYS,
     ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
 )
-from ray.train.worker_group import WorkerGroup
+from ray.train._internal.worker_group import WorkerGroup
+from ray.train._internal.results_preprocessors.preprocessor import (
+    SequentialResultsPreprocessor,
+)
 
 try:
     from tensorflow.python.summary.summary_iterator import summary_iterator
@@ -90,7 +97,7 @@ def test_train_callback_logdir_manager(tmp_path, input):
     else:
         input_logdir = None
 
-    logdir_manager = TrainCallbackLogdirManager(input_logdir)
+    logdir_manager = _TrainCallbackLogdirManager(input_logdir)
 
     if input_logdir:
         path = logdir_manager.logdir_path
@@ -306,11 +313,6 @@ def test_torch_tensorboard_profiler_callback(ray_start_4_cpus, tmp_path):
 # fix issue: repeat assignments for preprocessor results nested recursive calling
 # see https://github.com/ray-project/ray/issues/25005
 def test_hotfix_callback_nested_recusive_calling():
-    from ray.train.callbacks.results_preprocessors.preprocessor import (
-        SequentialResultsPreprocessor,
-    )
-    from typing import Dict, List
-
     # test callback used to simulate the nested recursive calling for preprocess()
     class TestCallback(TrainingCallback):
         def __init__(self):

@@ -8,7 +8,7 @@ import uuid
 
 import ray._private.utils
 
-from ray.rllib.agents.mock import _MockTrainer
+from ray.rllib.algorithms.mock import _MockTrainer
 from ray.tune import Trainable
 from ray.tune.callback import Callback
 from ray.tune.sync_client import get_sync_client

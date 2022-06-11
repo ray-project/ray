@@ -28,4 +28,4 @@ dqn-breakoutnoframeskip-v4:
             epsilon_timesteps: 200000
             final_epsilon: 0.01
         num_gpus: 0.5
-        min_sample_timesteps_per_reporting: 10000
+        min_sample_timesteps_per_iteration: 10000

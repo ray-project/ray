@@ -443,22 +443,139 @@ def test_range_table(ray_start_regular_shared):
     assert ds.take() == [{"value": i} for i in range(10)]
 
 
-def test_tensors(ray_start_regular_shared):
+def test_tensors_basic(ray_start_regular_shared):
     # Create directly.
-    ds = ray.data.range_tensor(5, shape=(3, 5))
+    tensor_shape = (3, 5)
+    ds = ray.data.range_tensor(6, shape=tensor_shape)
     assert str(ds) == (
-        "Dataset(num_blocks=5, num_rows=5, "
-        "schema={value: <ArrowTensorType: shape=(3, 5), dtype=int64>})"
+        "Dataset(num_blocks=6, num_rows=6, "
+        "schema={__value__: <ArrowTensorType: shape=(3, 5), dtype=int64>})"
     )
-    assert ds.size_bytes() == 5 * 3 * 5 * 8
+    assert ds.size_bytes() == 5 * 3 * 6 * 8
+
+    # Test row iterator yields tensors.
+    for tensor in ds.iter_rows():
+        assert isinstance(tensor, np.ndarray)
+        assert tensor.shape == tensor_shape
+
+    # Test batch iterator yields tensors.
+    for tensor in ds.iter_batches(batch_size=2):
+        assert isinstance(tensor, np.ndarray)
+        assert tensor.shape == (2,) + tensor_shape
+
+    # Native format.
+    def np_mapper(arr):
+        assert isinstance(arr, np.ndarray)
+        return arr + 1
+
+    res = ray.data.range_tensor(2, shape=(2, 2)).map(np_mapper).take()
+    np.testing.assert_equal(res, [np.ones((2, 2)), 2 * np.ones((2, 2))])
 
     # Pandas conversion.
-    res = (
-        ray.data.range_tensor(10)
-        .map_batches(lambda t: t + 2, batch_format="pandas")
-        .take(2)
+    def pd_mapper(df):
+        assert isinstance(df, pd.DataFrame)
+        return df + 2
+
+    res = ray.data.range_tensor(2).map_batches(pd_mapper, batch_format="pandas").take()
+    np.testing.assert_equal(res, [np.array([2]), np.array([3])])
+
+
+def test_tensors_shuffle(ray_start_regular_shared):
+    # Test Arrow table representation.
+    tensor_shape = (3, 5)
+    ds = ray.data.range_tensor(6, shape=tensor_shape)
+    shuffled_ds = ds.random_shuffle()
+    shuffled = shuffled_ds.take()
+    base = ds.take()
+    np.testing.assert_raises(
+        AssertionError,
+        np.testing.assert_equal,
+        shuffled,
+        base,
     )
-    assert str(res) == "[{'value': array([2])}, {'value': array([3])}]"
+    np.testing.assert_equal(
+        sorted(shuffled, key=lambda arr: arr.min()),
+        sorted(base, key=lambda arr: arr.min()),
+    )
+
+    # Test Pandas table representation.
+    tensor_shape = (3, 5)
+    ds = ray.data.range_tensor(6, shape=tensor_shape)
+    ds = ds.map_batches(lambda df: df, batch_format="pandas")
+    shuffled_ds = ds.random_shuffle()
+    shuffled = shuffled_ds.take()
+    base = ds.take()
+    np.testing.assert_raises(
+        AssertionError,
+        np.testing.assert_equal,
+        shuffled,
+        base,
+    )
+    np.testing.assert_equal(
+        sorted(shuffled, key=lambda arr: arr.min()),
+        sorted(base, key=lambda arr: arr.min()),
+    )
+
+
+def test_tensors_sort(ray_start_regular_shared):
+    # Test Arrow table representation.
+    t = pa.table({"a": TensorArray(np.arange(32).reshape((2, 4, 4))), "b": [1, 2]})
+    ds = ray.data.from_arrow(t)
+    sorted_ds = ds.sort(key="b", descending=True)
+    sorted_arrs = [row["a"] for row in sorted_ds.take()]
+    base = [row["a"] for row in ds.take()]
+    np.testing.assert_raises(
+        AssertionError,
+        np.testing.assert_equal,
+        sorted_arrs,
+        base,
+    )
+    np.testing.assert_equal(
+        sorted_arrs,
+        sorted(base, key=lambda arr: -arr.min()),
+    )
+
+    # Test Pandas table representation.
+    df = pd.DataFrame({"a": TensorArray(np.arange(32).reshape((2, 4, 4))), "b": [1, 2]})
+    ds = ray.data.from_pandas(df)
+    sorted_ds = ds.sort(key="b", descending=True)
+    sorted_arrs = [np.asarray(row["a"]) for row in sorted_ds.take()]
+    base = [np.asarray(row["a"]) for row in ds.take()]
+    np.testing.assert_raises(
+        AssertionError,
+        np.testing.assert_equal,
+        sorted_arrs,
+        base,
+    )
+    np.testing.assert_equal(
+        sorted_arrs,
+        sorted(base, key=lambda arr: -arr.min()),
+    )
+
+
+def test_tensors_inferred_from_map(ray_start_regular_shared):
+    # Test map.
+    ds = ray.data.range(10).map(lambda _: np.ones((4, 4)))
+    assert str(ds) == (
+        "Dataset(num_blocks=10, num_rows=10, "
+        "schema={__value__: <ArrowTensorType: shape=(4, 4), dtype=double>})"
+    )
+
+    # Test map_batches.
+    ds = ray.data.range(16, parallelism=4).map_batches(
+        lambda _: np.ones((3, 4, 4)), batch_size=2
+    )
+    assert str(ds) == (
+        "Dataset(num_blocks=4, num_rows=24, "
+        "schema={__value__: <ArrowTensorType: shape=(4, 4), dtype=double>})"
+    )
+
+    # Test flat_map.
+    ds = ray.data.range(10).flat_map(lambda _: [np.ones((4, 4)), np.ones((4, 4))])
+    assert str(ds) == (
+        "Dataset(num_blocks=10, num_rows=20, "
+        "schema={__value__: <ArrowTensorType: shape=(4, 4), dtype=double>})"
+    )
 
 
 def test_tensor_array_ops(ray_start_regular_shared):
@@ -485,6 +602,43 @@ def test_tensor_array_ops(ray_start_regular_shared):
     np.testing.assert_equal(apply_comparison_ops(arr), apply_comparison_ops(df["two"]))
 
     np.testing.assert_equal(apply_logical_ops(arr), apply_logical_ops(df["two"]))
+
+
+def test_tensor_array_array_protocol(ray_start_regular_shared):
+    outer_dim = 3
+    inner_shape = (2, 2, 2)
+    shape = (outer_dim,) + inner_shape
+    num_items = np.prod(np.array(shape))
+    arr = np.arange(num_items).reshape(shape)
+
+    t_arr = TensorArray(arr)
+
+    np.testing.assert_array_equal(
+        np.asarray(t_arr, dtype=np.float32), arr.astype(np.float32)
+    )
+
+    t_arr_elem = t_arr[0]
+
+    np.testing.assert_array_equal(
+        np.asarray(t_arr_elem, dtype=np.float32), arr[0].astype(np.float32)
+    )
+
+
+def test_tensor_array_scalar_cast(ray_start_regular_shared):
+    outer_dim = 3
+    inner_shape = (1,)
+    shape = (outer_dim,) + inner_shape
+    num_items = np.prod(np.array(shape))
+    arr = np.arange(num_items).reshape(shape)
+
+    t_arr = TensorArray(arr)
+
+    for t_arr_elem, arr_elem in zip(t_arr, arr):
+        assert float(t_arr_elem) == float(arr_elem)
+
+    arr = np.arange(1).reshape((1, 1, 1))
+    t_arr = TensorArray(arr)
+    assert float(t_arr) == float(arr)
 
 
 def test_tensor_array_reductions(ray_start_regular_shared):
@@ -3532,6 +3686,12 @@ def test_column_name_type_check(ray_start_regular_shared):
         ray.data.from_pandas(df)
 
 
+def test_len(ray_start_regular_shared):
+    ds = ray.data.range(1)
+    with pytest.raises(AttributeError):
+        len(ds)
+
+
 def test_random_sample(ray_start_regular_shared):
     import math
 
@@ -3572,6 +3732,31 @@ def test_random_sample_checks(ray_start_regular_shared):
     with pytest.raises(ValueError):
         # Cannot sample fraction > 1
         ray.data.range(1).random_sample(10)
+
+
+def test_random_block_order(ray_start_regular_shared):
+
+    # Test BlockList.randomize_block_order.
+    ds = ray.data.range(12).repartition(4)
+    ds = ds.randomize_block_order(seed=0)
+
+    results = ds.take()
+    expected = [6, 7, 8, 0, 1, 2, 3, 4, 5, 9, 10, 11]
+    assert results == expected
+
+    # Test LazyBlockList.randomize_block_order.
+    context = DatasetContext.get_current()
+    try:
+        original_optimize_fuse_read_stages = context.optimize_fuse_read_stages
+        context.optimize_fuse_read_stages = False
+
+        lazy_blocklist_ds = ray.data.range(12, parallelism=4)
+        lazy_blocklist_ds = lazy_blocklist_ds.randomize_block_order(seed=0)
+        lazy_blocklist_results = lazy_blocklist_ds.take()
+        lazy_blocklist_expected = [6, 7, 8, 0, 1, 2, 3, 4, 5, 9, 10, 11]
+        assert lazy_blocklist_results == lazy_blocklist_expected
+    finally:
+        context.optimize_fuse_read_stages = original_optimize_fuse_read_stages
 
 
 @pytest.mark.parametrize("pipelined", [False, True])
