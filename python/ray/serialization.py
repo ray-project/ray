@@ -3,7 +3,7 @@ import threading
 import traceback
 
 import ray.cloudpickle as pickle
-from ray import ray_constants
+from ray._private import ray_constants
 import ray._private.utils
 from ray._private.gcs_utils import ErrorType
 from ray.core.generated.common_pb2 import RayErrorInfo

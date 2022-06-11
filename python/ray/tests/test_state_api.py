@@ -14,7 +14,7 @@ else:
     from asyncmock import AsyncMock
 
 import ray
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 
 from click.testing import CliRunner
 from ray.cluster_utils import cluster_not_supported

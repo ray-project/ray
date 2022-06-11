@@ -10,7 +10,7 @@ import numpy as np
 import psutil
 import subprocess
 
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 
 from ray.cluster_utils import Cluster, cluster_not_supported
 from ray import NodeID

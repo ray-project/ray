@@ -125,7 +125,7 @@ from ray.exceptions import (
     AsyncioActorExit,
     PendingCallsLimitExceeded,
 )
-from ray import external_storage
+from ray._private import external_storage
 from ray.util.scheduling_strategies import (
     PlacementGroupSchedulingStrategy,
     NodeAffinitySchedulingStrategy,

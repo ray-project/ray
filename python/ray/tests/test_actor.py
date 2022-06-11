@@ -3,7 +3,7 @@ import pytest
 import numpy as np
 import os
 from ray import cloudpickle as pickle
-from ray import ray_constants
+from ray._private import ray_constants
 from ray.actor import ActorClassInheritanceException
 
 try:

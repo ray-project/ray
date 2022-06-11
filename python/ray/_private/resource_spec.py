@@ -8,7 +8,7 @@ import sys
 from typing import Optional
 
 import ray
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 
 try:
     import GPUtil

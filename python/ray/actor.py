@@ -3,7 +3,7 @@ import logging
 import weakref
 from typing import Optional, List, Dict, Any
 
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 import ray._raylet
 import ray._private.signature as signature
 from ray._private.utils import get_runtime_env_info, parse_runtime_env

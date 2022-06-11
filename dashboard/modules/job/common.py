@@ -5,7 +5,7 @@ from typing import Any, Dict, Optional, Tuple
 import pickle
 from pathlib import Path
 
-from ray import ray_constants
+from ray._private import ray_constants
 from ray.experimental.internal_kv import (
     _internal_kv_initialized,
     _internal_kv_get,

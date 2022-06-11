@@ -8,7 +8,7 @@ import os
 import ray
 import ray.actor
 import ray.node
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 import ray._private.utils
 from ray._private.parameter import RayParams
 from ray._private.ray_logging import get_worker_log_file_name, configure_log_file
@@ -194,7 +194,7 @@ if __name__ == "__main__":
     # connect to raylet. Otherwise we may receive requests before the
     # external storage is intialized.
     if mode == ray.RESTORE_WORKER_MODE or mode == ray.SPILL_WORKER_MODE:
-        from ray import external_storage
+        from ray._private import external_storage
         from ray.internal import storage
 
         storage._init_storage(args.storage, is_head=False)

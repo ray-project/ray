@@ -17,7 +17,7 @@ import ray
 import psutil
 from ray._private.usage import usage_lib
 import ray._private.services as services
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 import ray._private.utils
 from ray.util.annotations import PublicAPI
 from ray.autoscaler._private.commands import (

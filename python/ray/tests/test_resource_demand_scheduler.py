@@ -11,7 +11,7 @@ from unittest import mock
 import copy
 
 import ray
-import ray.ray_constants
+import ray._private.ray_constants
 from ray.autoscaler._private.util import (
     prepare_config,
     format_info_string,

@@ -3,7 +3,7 @@ import pytest
 import time
 
 import ray
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 from ray.util.placement_group import placement_group, remove_placement_group
 from ray.autoscaler.sdk import request_resources
 from ray.autoscaler._private.monitor import Monitor

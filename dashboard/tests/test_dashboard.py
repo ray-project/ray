@@ -15,7 +15,7 @@ import psutil
 import pytest
 import requests
 
-from ray import ray_constants
+from ray._private import ray_constants
 from ray._private.test_utils import (
     format_web_url,
     wait_for_condition,

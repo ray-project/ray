@@ -11,7 +11,7 @@ import ray
 from ray.experimental.internal_kv import _internal_kv_get
 from ray.ray_constants import DEBUG_AUTOSCALING_ERROR
 import ray._private.utils
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 from ray.cluster_utils import cluster_not_supported
 from ray._private.test_utils import (
     init_error_pubsub,

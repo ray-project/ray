@@ -4,7 +4,7 @@ import logging
 from typing import Union
 
 import ray.experimental.internal_kv as internal_kv
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 import ray._private.utils as utils
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.consts as dashboard_consts

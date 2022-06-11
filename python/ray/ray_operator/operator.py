@@ -19,7 +19,7 @@ from ray.ray_operator import operator_utils
 from ray.ray_operator.operator_utils import STATUS_AUTOSCALING_EXCEPTION
 from ray.ray_operator.operator_utils import STATUS_RUNNING
 from ray.ray_operator.operator_utils import STATUS_UPDATING
-from ray import ray_constants
+from ray._private import ray_constants
 
 logger = logging.getLogger(__name__)
 

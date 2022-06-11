@@ -18,7 +18,7 @@ import setproctitle
 import traceback
 from typing import Callable
 import ray
-from ray import ray_constants
+from ray._private import ray_constants
 from ray.experimental.internal_kv import _internal_kv_del, _internal_kv_put
 from ray.util.annotations import DeveloperAPI
 

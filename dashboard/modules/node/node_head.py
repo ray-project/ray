@@ -5,7 +5,7 @@ import json
 import aiohttp.web
 
 import ray._private.utils
-from ray import ray_constants
+from ray._private import ray_constants
 from ray.dashboard.modules.node import node_consts
 from ray.dashboard.modules.node.node_consts import (
     MAX_LOGS_TO_CACHE,

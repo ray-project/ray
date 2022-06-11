@@ -20,7 +20,7 @@ from collections import defaultdict
 from filelock import FileLock
 
 import ray
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
 from ray.internal import storage
@@ -1448,7 +1448,7 @@ class Node:
         object_spilling_config = self._config.get("object_spilling_config", {})
         if object_spilling_config:
             object_spilling_config = json.loads(object_spilling_config)
-            from ray import external_storage
+            from ray._private import external_storage
 
             storage = external_storage.setup_external_storage(
                 object_spilling_config, self.session_name
@@ -1490,7 +1490,7 @@ class Node:
         self._config["is_external_storage_type_fs"] = is_external_storage_type_fs
 
         # Validate external storage usage.
-        from ray import external_storage
+        from ray._private import external_storage
 
         external_storage.setup_external_storage(deserialized_config, self.session_name)
         external_storage.reset_external_storage()

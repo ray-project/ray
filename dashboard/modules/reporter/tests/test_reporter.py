@@ -7,7 +7,7 @@ import time
 
 import pytest
 import ray
-from ray import ray_constants
+from ray._private import ray_constants
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.dashboard.utils import Bunch
 from ray.dashboard.modules.reporter.reporter_agent import ReporterAgent

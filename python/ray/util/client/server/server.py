@@ -32,7 +32,7 @@ from ray.util.client.common import (
     OBJECT_TRANSFER_CHUNK_SIZE,
     ResponseCache,
 )
-from ray import ray_constants
+from ray._private import ray_constants
 from ray.util.client.server.proxier import serve_proxier
 from ray.util.client.server.server_pickler import dumps_from_server
 from ray.util.client.server.server_pickler import loads_from_client

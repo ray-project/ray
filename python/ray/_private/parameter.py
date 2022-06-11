@@ -4,7 +4,7 @@ from typing import Optional, List, Dict
 
 import numpy as np
 
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 
 logger = logging.getLogger(__name__)
 

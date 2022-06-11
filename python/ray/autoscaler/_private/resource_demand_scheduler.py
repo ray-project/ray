@@ -37,7 +37,7 @@ from ray.autoscaler.tags import (
     TAG_RAY_NODE_KIND,
     NODE_KIND_HEAD,
 )
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 
 logger = logging.getLogger(__name__)
 

@@ -39,7 +39,7 @@ from ray.internal.storage import _load_class
 import ray.node
 import ray.job_config
 import ray._private.parameter
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 import ray.remote_function
 import ray.serialization as serialization
 import ray._private.gcs_utils as gcs_utils

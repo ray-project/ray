@@ -20,7 +20,7 @@ import uuid
 
 # Ray modules
 import ray
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 from ray._raylet import GcsClientOptions
 from ray._private.gcs_utils import GcsClient
 from ray.core.generated.common_pb2 import Language

@@ -13,7 +13,7 @@ import psutil
 
 import ray
 from ray.dashboard import k8s_utils
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 import ray.util.accelerators
 import ray._private.utils
 import ray._private.gcs_utils as gcs_utils

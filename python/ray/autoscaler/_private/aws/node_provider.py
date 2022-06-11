@@ -25,7 +25,7 @@ from ray.autoscaler._private.aws.utils import (
     client_cache,
 )
 from ray.autoscaler._private.cli_logger import cli_logger, cf
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 
 from ray.autoscaler._private.aws.cloudwatch.cloudwatch_helper import (
     CloudwatchHelper,

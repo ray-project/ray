@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional
 import hashlib
 
 import ray
-from ray import ray_constants
+from ray._private import ray_constants
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_pb2
 from ray.core.generated import gcs_service_pb2_grpc

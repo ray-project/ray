@@ -9,7 +9,7 @@ import pytest
 import ray
 import ray._private.utils
 import ray._private.gcs_utils as gcs_utils
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 from ray.exceptions import RayTaskError, RayActorError, GetTimeoutError
 from ray._private.gcs_pubsub import GcsPublisher
 from ray._private.test_utils import (
@@ -472,7 +472,7 @@ def test_version_mismatch(ray_start_cluster):
 
 def test_export_large_objects(ray_start_regular, error_pubsub):
     p = error_pubsub
-    import ray.ray_constants as ray_constants
+    import ray._private.ray_constants as ray_constants
 
     large_object = np.zeros(
         2 * ray_constants.FUNCTION_SIZE_WARN_THRESHOLD, dtype=np.uint8

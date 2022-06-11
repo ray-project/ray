@@ -305,7 +305,7 @@ def test_ray_init_using_hostname(ray_start_cluster):
 
 
 def test_redis_connect_backoff():
-    from ray import ray_constants
+    from ray._private import ray_constants
     import time
 
     unreachable_address = "127.0.0.1:65535"

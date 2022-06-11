@@ -10,7 +10,7 @@ import time
 import ray
 import ray._private.services
 from ray._private.client_mode_hook import disable_client_hook
-from ray import ray_constants
+from ray._private import ray_constants
 from ray._raylet import GcsClientOptions
 
 logger = logging.getLogger(__name__)

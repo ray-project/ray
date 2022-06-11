@@ -8,7 +8,7 @@ import ray
 
 from collections import defaultdict
 from typing import Dict, List, Optional
-from ray import ray_constants
+from ray._private import ray_constants
 
 from grpc.aio._call import UnaryStreamCall
 

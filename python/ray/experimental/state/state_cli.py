@@ -8,7 +8,7 @@ from typing import Union, List, Tuple
 import ray
 
 import ray._private.services as services
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 from ray._private.gcs_utils import use_gcs_for_bootstrap
 from ray._private.gcs_utils import GcsClient
 

@@ -12,7 +12,7 @@ import pytest
 
 import ray
 from ray.cross_language import java_actor_class
-from ray import ray_constants
+from ray._private import ray_constants
 from ray._private.test_utils import (
     get_log_batch,
     wait_for_condition,

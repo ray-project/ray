@@ -13,7 +13,7 @@ from ray._private.test_utils import (
 )
 
 import ray
-from ray import ray_constants
+from ray._private import ray_constants
 
 
 def search_agents(cluster):

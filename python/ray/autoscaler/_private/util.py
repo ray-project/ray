@@ -12,7 +12,7 @@ import threading
 from typing import Any, Dict, Optional, Tuple, List, Union
 
 import ray
-import ray.ray_constants
+import ray._private.ray_constants
 import ray._private.services as services
 from ray.autoscaler._private import constants
 from ray.autoscaler._private.local.config import prepare_local

@@ -7,7 +7,7 @@ from typing import Optional, Tuple
 
 import click
 
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cli_logger, cf
 from ray.job_submission import JobStatus, JobSubmissionClient
 from ray.internal.storage import _load_class

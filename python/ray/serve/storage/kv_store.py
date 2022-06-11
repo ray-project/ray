@@ -9,7 +9,7 @@ try:
 except ImportError:
     boto3 = None
 
-from ray import ray_constants
+from ray._private import ray_constants
 import ray.experimental.internal_kv as ray_kv
 
 from ray.serve.constants import SERVE_LOGGER_NAME

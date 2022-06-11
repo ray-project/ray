@@ -16,7 +16,7 @@ from ray._private.gcs_utils import GcsClient, check_health
 import ray._private.services
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
-from ray import ray_constants
+from ray._private import ray_constants
 from ray._private.gcs_pubsub import (
     GcsAioErrorSubscriber,
     GcsAioLogSubscriber,

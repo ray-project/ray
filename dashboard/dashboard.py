@@ -8,7 +8,7 @@ import traceback
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.head as dashboard_head
 import ray.dashboard.utils as dashboard_utils
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
 from ray._private.gcs_pubsub import GcsPublisher

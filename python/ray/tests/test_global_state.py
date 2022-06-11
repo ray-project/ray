@@ -8,7 +8,7 @@ except ImportError:
 import time
 
 import ray
-import ray.ray_constants
+import ray._private.ray_constants
 import ray._private.gcs_utils as gcs_utils
 from ray._private.test_utils import (
     wait_for_condition,

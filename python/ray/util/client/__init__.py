@@ -9,7 +9,7 @@ import sys
 import logging
 import threading
 import grpc
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 from ray._private.ray_logging import setup_logger
 
 logger = logging.getLogger(__name__)

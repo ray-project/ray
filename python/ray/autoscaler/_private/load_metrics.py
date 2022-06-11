@@ -5,7 +5,7 @@ import time
 from typing import Dict, List
 
 import numpy as np
-import ray.ray_constants
+import ray._private.ray_constants
 from ray.autoscaler._private.constants import (
     MEMORY_RESOURCE_UNIT_BYTES,
     AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE,

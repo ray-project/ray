@@ -8,7 +8,7 @@ from pathlib import Path
 
 import ray
 import psutil
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 from ray._private.services import REDIS_EXECUTABLE, _start_redis_instance
 from ray._private.utils import detect_fate_sharing_support
 from ray._private.test_utils import (

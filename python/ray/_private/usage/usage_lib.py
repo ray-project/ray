@@ -57,7 +57,7 @@ from enum import Enum, auto
 import ray
 import requests
 
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 import ray._private.usage.usage_constants as usage_constant
 from ray.experimental.internal_kv import (
     _internal_kv_put,

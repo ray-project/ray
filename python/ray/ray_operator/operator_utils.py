@@ -11,7 +11,7 @@ from typing import List
 from kubernetes.watch import Watch
 from kubernetes.client.rest import ApiException
 
-from ray import ray_constants
+from ray._private import ray_constants
 from ray.autoscaler._private._kubernetes import custom_objects_api
 from ray.autoscaler._private._kubernetes.node_provider import head_service_selector
 from ray.autoscaler._private.providers import _get_default_config

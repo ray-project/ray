@@ -33,7 +33,7 @@ from ray.autoscaler._private.util import format_readonly_node_type
 
 from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
 from ray.core.generated import gcs_pb2
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 from ray._private.ray_logging import setup_component_logger
 from ray._private.gcs_pubsub import GcsPublisher
 from ray._private.gcs_utils import GcsClient

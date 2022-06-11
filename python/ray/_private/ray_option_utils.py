@@ -6,7 +6,7 @@ from ray.util.scheduling_strategies import (
     PlacementGroupSchedulingStrategy,
     NodeAffinitySchedulingStrategy,
 )
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 
 
 @dataclass

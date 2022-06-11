@@ -10,7 +10,7 @@ except ImportError:
     from grpc.experimental import aio as aiogrpc
 
 from ray._private.gcs_pubsub import GcsAioActorSubscriber
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray.dashboard.optional_utils import rest_response

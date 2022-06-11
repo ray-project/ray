@@ -4,7 +4,7 @@ import os
 import time
 
 import ray
-from ray import ray_constants
+from ray._private import ray_constants
 from ray._private.ray_logging import setup_component_logger
 from ray._private.services import get_node_ip_address
 from ray.autoscaler._private.kuberay.autoscaling_config import AutoscalingConfigProducer

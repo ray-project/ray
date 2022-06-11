@@ -5,7 +5,7 @@ import sys
 import time
 
 import ray
-from ray import ray_constants
+from ray._private import ray_constants
 from ray._private.test_utils import (
     RayTestTimeoutException,
     run_string_as_driver,

@@ -5,7 +5,7 @@ import os
 import shutil
 
 import ray
-from ray import ray_constants
+from ray._private import ray_constants
 import pygloo
 import numpy
 

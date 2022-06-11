@@ -12,7 +12,7 @@ from ray._private.test_utils import (
     Semaphore,
 )
 from ray.internal.internal_api import memory_summary
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 
 # Task status.
 WAITING_FOR_DEPENDENCIES = "WAITING_FOR_DEPENDENCIES"

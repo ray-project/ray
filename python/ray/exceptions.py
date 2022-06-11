@@ -7,7 +7,7 @@ from ray.util.annotations import PublicAPI, DeveloperAPI
 import ray.cloudpickle as pickle
 from ray.core.generated.common_pb2 import RayException, Language, PYTHON
 from ray.core.generated.common_pb2 import Address, ActorDiedErrorContext
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 from ray._raylet import WorkerID, ActorID, TaskID
 import colorama
 import setproctitle

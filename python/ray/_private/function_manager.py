@@ -17,7 +17,7 @@ from collections import (
 
 import ray
 import ray._private.profiling as profiling
-from ray import ray_constants
+from ray._private import ray_constants
 from ray import cloudpickle as pickle
 from ray._raylet import PythonFunctionDescriptor, JobID
 from ray._private.utils import (

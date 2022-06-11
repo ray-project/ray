@@ -5,7 +5,7 @@ import traceback
 import grpc
 
 import ray
-from ray import ray_constants
+from ray._private import ray_constants
 from ray import cloudpickle as pickle
 import ray._private.profiling as profiling
 import logging
