@@ -10,6 +10,8 @@ from ray.air.util.check_ingest import DummyTrainer
 from ray.air.config import DatasetConfig
 from ray.air.checkpoint import Checkpoint
 
+GiB = 1024 * 1024 * 1024
+
 
 class DummyPredictor(Predictor):
     @classmethod
@@ -46,7 +48,6 @@ def run_ingest_bulk(dataset, num_workers):
 
 def run_ingest_streaming(dataset, num_workers):
     dummy_prep = BatchMapper(lambda df: df * 2)
-    GiB = 1024 * 1024 * 1024
     trainer = DummyTrainer(
         scaling_config={"num_workers": num_workers, "trainer_resources": {"CPU": 0}, "resources_per_worker": {"CPU": 3}},
         datasets={"train": dataset},
@@ -73,8 +74,8 @@ def run_infer_bulk(dataset, num_workers):
 
 
 def run_infer_streaming(dataset, num_workers):
-    raise NotImplementedError
-
+    dataset = dataset.window(bytes_per_window=num_workers * GiB)
+    return run_infer_bulk(dataset, num_workers)
 
 
 if __name__ == "__main__":
