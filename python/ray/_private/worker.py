@@ -2121,7 +2121,9 @@ def put(
         # Ensure `ray._private.state.state.global_state_accessor` is not None
         ray._private.state.state._check_connected()
         owner_address = gcs_utils.ActorTableData.FromString(
-            ray._private.state.state.global_state_accessor.get_actor_info(_owner._actor_id)
+            ray._private.state.state.global_state_accessor.get_actor_info(
+                _owner._actor_id
+            )
         ).address
         if len(owner_address.worker_id) == 0:
             raise RuntimeError(f"{_owner} is not alive, it's worker_id is empty!")

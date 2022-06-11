@@ -181,7 +181,9 @@ def node_id_to_ip_addr(node_id: str):
 def get_node_id_for_actor(actor_handle):
     """Given an actor handle, return the node id it's placed on."""
 
-    return ray._private.state.actors()[actor_handle._actor_id.hex()]["Address"]["NodeID"]
+    return ray._private.state.actors()[actor_handle._actor_id.hex()]["Address"][
+        "NodeID"
+    ]
 
 
 def compute_iterable_delta(old: Iterable, new: Iterable) -> Tuple[set, set, set]:

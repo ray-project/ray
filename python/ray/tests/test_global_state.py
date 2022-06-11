@@ -146,13 +146,13 @@ def test_global_state_actor_entry(ray_start_regular):
     a_actor_id = a._actor_id.hex()
     b_actor_id = b._actor_id.hex()
     assert ray._private.state.actors(actor_id=a_actor_id)["ActorID"] == a_actor_id
-    assert ray._private.state.actors(actor_id=a_actor_id)["State"] == convert_actor_state(
-        gcs_utils.ActorTableData.ALIVE
-    )
+    assert ray._private.state.actors(actor_id=a_actor_id)[
+        "State"
+    ] == convert_actor_state(gcs_utils.ActorTableData.ALIVE)
     assert ray._private.state.actors(actor_id=b_actor_id)["ActorID"] == b_actor_id
-    assert ray._private.state.actors(actor_id=b_actor_id)["State"] == convert_actor_state(
-        gcs_utils.ActorTableData.ALIVE
-    )
+    assert ray._private.state.actors(actor_id=b_actor_id)[
+        "State"
+    ] == convert_actor_state(gcs_utils.ActorTableData.ALIVE)
 
 
 def test_node_name_cluster(ray_start_cluster):

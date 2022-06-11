@@ -117,7 +117,9 @@ def _get_bundle_cache(pg_id: PlacementGroupID) -> List[Dict]:
     worker = ray._private.worker.global_worker
     worker.check_connected()
 
-    return list(ray._private.state.state.placement_group_table(pg_id)["bundles"].values())
+    return list(
+        ray._private.state.state.placement_group_table(pg_id)["bundles"].values()
+    )
 
 
 @PublicAPI

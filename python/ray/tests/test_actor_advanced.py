@@ -752,13 +752,17 @@ def test_detached_actor_cleanup(ray_start_regular):
         detached_actor = ray.get_actor(dup_actor_name)
         ray.kill(detached_actor)
         # Wait until actor dies.
-        actor_status = ray._private.state.actors(actor_id=detached_actor._actor_id.hex())
+        actor_status = ray._private.state.actors(
+            actor_id=detached_actor._actor_id.hex()
+        )
         max_wait_time = 10
         wait_time = 0
         while actor_status["State"] != convert_actor_state(
             gcs_utils.ActorTableData.DEAD
         ):
-            actor_status = ray._private.state.actors(actor_id=detached_actor._actor_id.hex())
+            actor_status = ray._private.state.actors(
+                actor_id=detached_actor._actor_id.hex()
+            )
             time.sleep(1.0)
             wait_time += 1
             if wait_time >= max_wait_time:

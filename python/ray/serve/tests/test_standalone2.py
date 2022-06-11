@@ -686,7 +686,12 @@ def test_autoscaler_shutdown_node_http_everynode(
     # The http proxy on worker node should exit as well.
     wait_for_condition(
         lambda: len(
-            list(filter(lambda a: a["State"] == "ALIVE", ray._private.state.actors().values()))
+            list(
+                filter(
+                    lambda a: a["State"] == "ALIVE",
+                    ray._private.state.actors().values(),
+                )
+            )
         )
         == 2
     )
