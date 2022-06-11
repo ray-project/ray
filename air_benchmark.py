@@ -19,8 +19,8 @@ class DummyPredictor(Predictor):
         return DummyPredictor()
 
     def predict(self, data, **kwargs):
-        # For 20k records (200GiB), this amounts to 400 seconds of work.
-        time.sleep(len(data) * 0.02)
+        # For 20k records (200GiB), this amounts to 2000 seconds of work.
+        time.sleep(len(data) * 0.0001)
         return np.array([42] * len(data))
 
 
