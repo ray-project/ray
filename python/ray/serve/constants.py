@@ -1,3 +1,5 @@
+import os
+
 from enum import Enum
 import re
 
@@ -98,6 +100,9 @@ ANONYMOUS_NAMESPACE_PATTERN = re.compile(
 
 # Handle metric push interval. (This interval will affect the cold start time period)
 HANDLE_METRIC_PUSH_INTERVAL_S = 10
+
+# Timeout for GCS internal KV service
+RAY_SERVE_KV_TIMEOUT_S = float(os.environ.get("RAY_SERVE_KV_TIMEOUT_S", "0")) or None
 
 
 class ServeHandleType(str, Enum):
