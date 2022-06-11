@@ -346,12 +346,15 @@ def test_run_runtime_env(ray_start_stop):
             ),
             "--runtime-env-json",
             (
-                '{"py_modules": ["https://github.com/shrekris-anyscale/'
-                'test_deploy_group/archive/HEAD.zip"],'
+                '{"py_modules": ["https://github.com/ray-project/test_deploy_group'
+                '/archive/67971777e225600720f91f618cdfe71fc47f60ee.zip"],'
                 '"working_dir": "http://nonexistentlink-q490123950ni34t"}'
             ),
             "--working-dir",
-            "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip",
+            (
+                "https://github.com/ray-project/test_module/archive/"
+                "aa6f366f7daa78c98408c27d917a983caa9f888b.zip"
+            ),
         ]
     )
     wait_for_condition(lambda: ping_endpoint("one") == "2", timeout=10)
