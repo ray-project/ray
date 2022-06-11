@@ -57,10 +57,12 @@ def get_default_fixture_ray_kwargs():
     }
     return ray_kwargs
 
+
 def find_free_port():
     with socket.socket() as s:
         s.bind(("", 0))
         return s.getsockname()[1]
+
 
 @contextmanager
 def _setup_redis(request):

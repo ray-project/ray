@@ -126,6 +126,7 @@ class ProxyManager:
             range(MIN_SPECIFIC_SERVER_PORT, MAX_SPECIFIC_SERVER_PORT)
         )
         import random
+
         p = random.randint(0, len(self._free_ports))
         self._free_ports = self._free_ports[p:] + self._free_ports[:p]
 
