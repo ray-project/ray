@@ -73,7 +73,7 @@ class A2CConfig(A3CConfig):
         # Override some of A3CConfig's default values with A2C-specific values.
         self.rollout_fragment_length = 20
         self.sample_async = False
-        self.min_time_s_per_reporting = 10
+        self.min_time_s_per_iteration = 10
         # __sphinx_doc_end__
         # fmt: on
 
@@ -137,20 +137,17 @@ class A2C(A3C):
         # Create a microbatch variable for collecting gradients on microbatches'.
         # These gradients will be accumulated on-the-fly and applied at once (once train
         # batch size has been collected) to the model.
-        if (
-            self.config["_disable_execution_plan_api"] is True
-            and self.config["microbatch_size"]
-        ):
+        if self.config["microbatch_size"]:
             self._microbatches_grads = None
             self._microbatches_counts = self._num_microbatches = 0
 
     @override(A3C)
-    def training_iteration(self) -> ResultDict:
+    def training_step(self) -> ResultDict:
         # W/o microbatching: Identical to Trainer's default implementation.
         # Only difference to a default Trainer being the value function loss term
         # and its value computations alongside each action.
         if self.config["microbatch_size"] is None:
-            return Trainer.training_iteration(self)
+            return Trainer.training_step(self)
 
         # In microbatch mode, we want to compute gradients on experience
         # microbatches, average a number of these microbatches, and then

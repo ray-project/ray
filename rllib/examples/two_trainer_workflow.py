@@ -64,7 +64,7 @@ parser.add_argument(
 )
 
 
-# Define new Trainer with custom execution_plan/workflow.
+# Define new Trainer with custom training_step.
 class MyTrainer(Trainer):
     @classmethod
     @override(Trainer)
@@ -88,7 +88,7 @@ class MyTrainer(Trainer):
         )
 
     @override(Trainer)
-    def training_iteration(self) -> ResultDict:
+    def training_step(self) -> ResultDict:
         # Generate common experiences, collect batch for PPO, store every (DQN) batch
         # into replay buffer.
         ppo_batches = []

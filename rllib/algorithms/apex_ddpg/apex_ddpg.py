@@ -4,13 +4,11 @@ from ray.actor import ActorHandle
 from ray.rllib.agents import Trainer
 from ray.rllib.algorithms.apex_dqn.apex_dqn import ApexDQN
 from ray.rllib.algorithms.ddpg.ddpg import DDPG, DDPGConfig
-from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.rllib.utils.typing import PartialTrainerConfigDict
 from ray.rllib.utils.typing import ResultDict
 from ray.rllib.utils.deprecation import Deprecated, DEPRECATED_VALUE
-from ray.util.iter import LocalIterator
 
 
 class ApexDDPGConfig(DDPGConfig):
@@ -66,8 +64,8 @@ class ApexDDPGConfig(DDPGConfig):
         self.exploration_config = {"type": "PerWorkerOrnsteinUhlenbeckNoise"}
         self.num_gpus = 0
         self.num_workers = 32
-        self.min_sample_timesteps_per_reporting = 25000
-        self.min_time_s_per_reporting = 30
+        self.min_sample_timesteps_per_iteration = 25000
+        self.min_time_s_per_iteration = 30
         self.train_batch_size = 512
         self.rollout_fragment_length = 50
         self.replay_buffer_config = {
@@ -182,9 +180,9 @@ class ApexDDPG(DDPG, ApexDQN):
         return ApexDQN.setup(self, config)
 
     @override(DDPG)
-    def training_iteration(self) -> ResultDict:
+    def training_step(self) -> ResultDict:
         """Use APEX-DQN's training iteration function."""
-        return ApexDQN.training_iteration(self)
+        return ApexDQN.training_step(self)
 
     @override(Trainer)
     def on_worker_failures(
@@ -198,14 +196,6 @@ class ApexDDPG(DDPG, ApexDQN):
         """
         self._sampling_actor_manager.remove_workers(removed_workers)
         self._sampling_actor_manager.add_workers(new_workers)
-
-    @staticmethod
-    @override(DDPG)
-    def execution_plan(
-        workers: WorkerSet, config: dict, **kwargs
-    ) -> LocalIterator[dict]:
-        """Use APEX-DQN's execution plan."""
-        return ApexDQN.execution_plan(workers, config, **kwargs)
 
 
 # Deprecated: Use ray.rllib.algorithms.apex_ddpg.ApexDDPGConfig instead!
