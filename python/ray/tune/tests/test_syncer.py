@@ -306,7 +306,8 @@ def test_syncer_delete(temp_data_dirs):
     syncer.sync_down(
         remote_dir="memory:///test/test_syncer_delete", local_dir=tmp_target
     )
-    syncer.wait()
+    with pytest.raises(TuneError):
+        syncer.wait()
 
     # Remote storage was deleted, so target should be empty
     assert_file(False, tmp_target, "level0.txt")

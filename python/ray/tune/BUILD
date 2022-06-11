@@ -265,14 +265,6 @@ py_test(
 )
 
 py_test(
-    name = "test_sync_file_transfer",
-    size = "medium",
-    srcs = ["tests/test_sync_file_transfer.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "tests_dir_S"],
-)
-
-py_test(
     name = "test_syncer",
     size = "medium",
     srcs = ["tests/test_syncer.py"],
