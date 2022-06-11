@@ -2,7 +2,10 @@ import json
 import numpy as np
 import numbers
 
+from ray.util.annotations import Deprecated
 
+
+@Deprecated
 class SafeFallbackEncoder(json.JSONEncoder):
     def __init__(self, nan_str="null", **kwargs):
         super(SafeFallbackEncoder, self).__init__(**kwargs)
