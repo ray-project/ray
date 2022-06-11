@@ -186,7 +186,7 @@ class Cluster:
         ray_params.update_if_absent(**default_kwargs)
         with disable_client_hook():
             if self.head_node is None:
-                node = ray.node.Node(
+                node = ray._private.node.Node(
                     ray_params,
                     head=True,
                     shutdown_at_exit=self._shutdown_at_exit,
@@ -209,7 +209,7 @@ class Cluster:
                 # Let grpc pick a port.
                 ray_params.update_if_absent(node_manager_port=0)
 
-                node = ray.node.Node(
+                node = ray._private.node.Node(
                     ray_params,
                     head=False,
                     shutdown_at_exit=self._shutdown_at_exit,
@@ -269,7 +269,7 @@ class Cluster:
         """Wait until this node has appeared in the client table.
 
         Args:
-            node (ray.node.Node): The node to wait for.
+            node (ray._private.node.Node): The node to wait for.
             timeout: The amount of time in seconds to wait before raising an
                 exception.
 

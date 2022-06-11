@@ -139,7 +139,7 @@ class ProxyManager:
         self._check_thread.start()
 
         self.fate_share = bool(detect_fate_sharing_support())
-        self._node: Optional[ray.node.Node] = None
+        self._node: Optional[ray._private.node.Node] = None
         atexit.register(self._cleanup)
 
     def _get_unused_port(self) -> int:
@@ -175,7 +175,7 @@ class ProxyManager:
         return self._address
 
     @property
-    def node(self) -> ray.node.Node:
+    def node(self) -> ray._private.node.Node:
         """Gets a 'ray.Node' object for this node (the head node).
         If it does not already exist, one is created using the bootstrap
         address.
@@ -184,7 +184,7 @@ class ProxyManager:
             return self._node
         ray_params = RayParams(gcs_address=self.address)
 
-        self._node = ray.node.Node(
+        self._node = ray._private.node.Node(
             ray_params,
             head=False,
             shutdown_at_exit=False,

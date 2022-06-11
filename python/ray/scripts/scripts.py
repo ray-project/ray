@@ -736,7 +736,7 @@ def start(
                     " flag of `ray start` command."
                 )
 
-        node = ray.node.Node(
+        node = ray._private.node.Node(
             ray_params, head=True, shutdown_at_exit=block, spawn_reaper=block
         )
 
@@ -882,7 +882,7 @@ def start(
 
         cli_logger.labeled_value("Local node IP", ray_params.node_ip_address)
 
-        node = ray.node.Node(
+        node = ray._private.node.Node(
             ray_params, head=False, shutdown_at_exit=block, spawn_reaper=block
         )
 

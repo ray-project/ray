@@ -36,7 +36,7 @@ import ray.cloudpickle as pickle
 import ray._private.memory_monitor as memory_monitor
 import ray.internal.storage as storage
 from ray.internal.storage import _load_class
-import ray.node
+import ray._private.node
 import ray.job_config
 import ray._private.parameter
 import ray._private.ray_constants as ray_constants
@@ -299,7 +299,7 @@ class Worker:
         functions outside of this class are considered exposed.
 
     Attributes:
-        node (ray.node.Node): The node this worker is attached to.
+        node (ray._private.node.Node): The node this worker is attached to.
         mode: The mode of the worker. One of SCRIPT_MODE, LOCAL_MODE, and
             WORKER_MODE.
         cached_functions_to_run: A list of functions to run on all of
@@ -873,7 +873,7 @@ per worker process.
 """
 
 _global_node = None
-"""ray.node.Node: The global node object that is created by ray.init()."""
+"""ray._private.node.Node: The global node object that is created by ray.init()."""
 
 
 @PublicAPI
@@ -1253,7 +1253,7 @@ def init(
         # shutdown the node in the ray.shutdown call that happens in the atexit
         # handler. We still spawn a reaper process in case the atexit handler
         # isn't called.
-        _global_node = ray.node.Node(
+        _global_node = ray._private.node.Node(
             head=True, shutdown_at_exit=False, spawn_reaper=True, ray_params=ray_params
         )
     else:
@@ -1307,7 +1307,7 @@ def init(
             enable_object_reconstruction=_enable_object_reconstruction,
             metrics_export_port=_metrics_export_port,
         )
-        _global_node = ray.node.Node(
+        _global_node = ray._private.node.Node(
             ray_params,
             head=False,
             shutdown_at_exit=False,
@@ -1654,7 +1654,7 @@ def connect(
     """Connect this worker to the raylet, to Plasma, and to GCS.
 
     Args:
-        node (ray.node.Node): The node to connect.
+        node (ray._private.node.Node): The node to connect.
         mode: The mode of the worker. One of SCRIPT_MODE, WORKER_MODE, and LOCAL_MODE.
         log_to_driver: If true, then output from all of the worker
             processes on all nodes will be directed to the driver.

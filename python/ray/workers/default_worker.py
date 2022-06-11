@@ -7,7 +7,7 @@ import os
 
 import ray
 import ray.actor
-import ray.node
+import ray._private.node
 import ray._private.ray_constants as ray_constants
 import ray._private.utils
 from ray._private.parameter import RayParams
@@ -182,7 +182,7 @@ if __name__ == "__main__":
         gcs_address=args.gcs_address,
     )
 
-    node = ray.node.Node(
+    node = ray._private.node.Node(
         ray_params,
         head=False,
         shutdown_at_exit=False,
