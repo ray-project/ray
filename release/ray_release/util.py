@@ -88,7 +88,8 @@ def get_anyscale_sdk() -> AnyscaleSDK:
     if _anyscale_sdk:
         return _anyscale_sdk
 
-    _anyscale_sdk = AnyscaleSDK()
+    token = os.environ.get('ANYSCALE_SLI_TOKEN')
+    _anyscale_sdk = AnyscaleSDK(token, ANYSCALE_HOST)
     return _anyscale_sdk
 
 
