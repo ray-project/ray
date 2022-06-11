@@ -102,6 +102,7 @@ from ray.tune.logger import Logger, UnifiedLogger
 from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.tune.resources import Resources
 from ray.tune.result import DEFAULT_RESULTS_DIR
+from ray.tune.syncer import Syncer
 from ray.tune.trainable import Trainable
 from ray.tune.trial import ExportFormat
 from ray.tune.utils.placement_groups import PlacementGroupFactory
@@ -198,7 +199,7 @@ class Algorithm(Trainable):
         env: Optional[Union[str, EnvType]] = None,
         logger_creator: Optional[Callable[[], Logger]] = None,
         remote_checkpoint_dir: Optional[str] = None,
-        sync_function_tpl: Optional[str] = None,
+        custom_syncer: Optional[Syncer] = None,
     ):
         """Initializes an Algorithm instance.
 
@@ -289,7 +290,10 @@ class Algorithm(Trainable):
         }
 
         super().__init__(
-            config, logger_creator, remote_checkpoint_dir, sync_function_tpl
+            config=config,
+            logger_creator=logger_creator,
+            remote_checkpoint_dir=remote_checkpoint_dir,
+            custom_syncer=custom_syncer,
         )
 
         # Check, whether `training_iteration` is still a tune.Trainable property
