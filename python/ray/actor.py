@@ -87,6 +87,7 @@ def method(*args, **kwargs):
 
 # Create objects to wrap method invocations. This is done so that we can
 # invoke methods with actor.method.remote() instead of actor.method().
+@PublicAPI
 class ActorMethod:
     """A class used to invoke an actor method.
 
