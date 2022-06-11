@@ -6,6 +6,7 @@ import signal
 import pytest
 import requests
 import subprocess
+from typing import List
 from tempfile import NamedTemporaryFile
 
 import ray
@@ -23,6 +24,20 @@ def ping_endpoint(endpoint: str, params: str = ""):
         return requests.get(f"http://localhost:8000/{endpoint}{params}").text
     except requests.exceptions.ConnectionError:
         return CONNECTION_ERROR_MSG
+
+def assert_deployments_live(names: List[str]):
+    """Checks if all deployments named in names have at least 1 living replica."""
+
+    running_actor_names = [actor["name"] for actor in ray.util.list_named_actors(all_namespaces=True)]
+
+    all_deployments_live, nonliving_deployment = True, ""
+    for deployment_name in names:
+        for actor_name in running_actor_names:
+            if deployment_name in actor_name:
+                break
+        else:
+            all_deployments_live, nonliving_deployment = False, deployment_name
+    assert all_deployments_live, f'"{nonliving_deployment}" deployment is not live.'
 
 
 @pytest.fixture
@@ -50,104 +65,72 @@ def test_start_shutdown_in_namespace(ray_start_stop):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_deploy(ray_start_stop):
-    # Deploys some valid config files and checks that the deployments work
+    """Deploys some valid config files and checks that the deployments work."""
 
     # Initialize serve in test to enable calling serve.list_deployments()
     ray.init(address="auto", namespace="serve")
-    serve.start(detached=True)
 
     # Create absolute file names to YAML config files
-    three_deployments = os.path.join(
-        os.path.dirname(__file__), "test_config_files", "three_deployments.yaml"
+    pizza_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "pizza.yaml"
     )
-    two_deployments = os.path.join(
-        os.path.dirname(__file__), "test_config_files", "two_deployments.yaml"
-    )
-    deny_deployment = os.path.join(
-        os.path.dirname(__file__), "test_config_files", "deny_access.yaml"
+    arithmetic_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "arithmetic.yaml"
     )
 
-    # Dictionary mapping test config file names to expected deployment names
-    # and configurations. These should match the values specified in the YAML
-    # files.
-    configs = {
-        three_deployments: {
-            "shallow": {
-                "num_replicas": 1,
-                "response": "Hello shallow world!",
-            },
-            "deep": {
-                "num_replicas": 1,
-                "response": "Hello deep world!",
-            },
-            "one": {
-                "num_replicas": 2,
-                "response": "2",
-            },
-        },
-        two_deployments: {
-            "shallow": {
-                "num_replicas": 3,
-                "response": "Hello shallow world!",
-            },
-            "one": {
-                "num_replicas": 2,
-                "response": "2",
-            },
-        },
-    }
-
-    request_url = "http://localhost:8000/"
     success_message_fragment = b"Sent deploy request successfully!"
 
-    # Check idempotence:
-    for _ in range(2):
-        for config_file_name, expected_deployments in configs.items():
-            deploy_response = subprocess.check_output(
-                ["serve", "deploy", config_file_name]
-            )
-            assert success_message_fragment in deploy_response
+    # Ensure the CLI is idempotent
+    num_iterations = 2
+    for iteration in range(1, num_iterations + 1):
+        print(f"*** Starting Iteration {iteration}/{num_iterations} ***\n")
 
-            for name, deployment_config in expected_deployments.items():
-                # New deployments must be deployed
-                wait_for_condition(
-                    lambda: (
-                        requests.get(f"{request_url}{name}").text
-                        == deployment_config["response"]
-                    ),
-                    timeout=15,
-                )
-
-                # Outdated deployments should be deleted
-                wait_for_condition(
-                    lambda: len(serve.list_deployments()) == len(expected_deployments),
-                    timeout=15,
-                )
-
-            running_deployments = serve.list_deployments()
-
-            # Check that running deployment names match expected deployment names
-            assert set(running_deployments.keys()) == expected_deployments.keys()
-
-            for name, deployment in running_deployments.items():
-                assert (
-                    deployment.num_replicas
-                    == expected_deployments[name]["num_replicas"]
-                )
-
-        # Deploy a deployment without HTTP access
-        deploy_response = subprocess.check_output(["serve", "deploy", deny_deployment])
+        print("Deploying pizza config.")
+        deploy_response = subprocess.check_output(
+            ["serve", "deploy", pizza_file_name]
+        )
         assert success_message_fragment in deploy_response
+        print("Deploy request sent successfully.")
 
         wait_for_condition(
-            lambda: requests.get(f"{request_url}shallow").status_code == 404, timeout=15
+            lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
+            == "3 pizzas please!",
+            timeout=15,
         )
-        assert (
-            ray.get(serve.get_deployment("shallow").get_handle().remote())
-            == "Hello shallow world!"
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/", json=["MUL", 2]).json()
+            == "-4 pizzas please!",
+            timeout=15,
         )
+        print("Deployments are reachable over HTTP.")
 
-    serve.shutdown()
+        deployment_names = ["DAGDriver", "create_order", "Router", "Multiplier", "Adder"]
+        assert_deployments_live(deployment_names)
+        print("All deployments are live.\n")
+
+        print("Deploying arithmetic config.")
+        deploy_response = subprocess.check_output(
+            ["serve", "deploy", arithmetic_file_name]
+        )
+        assert success_message_fragment in deploy_response
+        print("Deploy request sent successfully.")
+
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/", json=["ADD", 0]).json()
+            == 1,
+            timeout=15,
+        )
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/", json=["SUB", 5]).json()
+            == 3,
+            timeout=15,
+        )
+        print("Deployments are reachable over HTTP.")
+
+        deployment_names = ["DAGDriver", "Router", "Add", "Subtract"]
+        assert_deployments_live(deployment_names)
+        print("All deployments are live.\n")
+
     ray.shutdown()
 
 
