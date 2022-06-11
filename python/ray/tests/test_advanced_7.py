@@ -176,16 +176,16 @@ def test_wait_makes_object_local(ray_start_cluster_enabled):
 
     # Test get makes the object local.
     x_id = a.method.remote()
-    assert not ray._internal.worker.global_worker.core_worker.object_exists(x_id)
+    assert not ray._private.worker.global_worker.core_worker.object_exists(x_id)
     ray.get(x_id)
-    assert ray._internal.worker.global_worker.core_worker.object_exists(x_id)
+    assert ray._private.worker.global_worker.core_worker.object_exists(x_id)
 
     # Test wait makes the object local.
     x_id = a.method.remote()
-    assert not ray._internal.worker.global_worker.core_worker.object_exists(x_id)
+    assert not ray._private.worker.global_worker.core_worker.object_exists(x_id)
     ok, _ = ray.wait([x_id])
     assert len(ok) == 1
-    assert ray._internal.worker.global_worker.core_worker.object_exists(x_id)
+    assert ray._private.worker.global_worker.core_worker.object_exists(x_id)
 
 
 @pytest.mark.skipif(client_test_enabled(), reason="internal api")
@@ -215,7 +215,7 @@ def test_future_resolution_skip_plasma(ray_start_cluster_enabled):
         f_result = ray.get(f_ref)
         # borrowed_ref should be inlined on future resolution and shouldn't be
         # in Plasma.
-        assert ray._internal.worker.global_worker.core_worker.object_exists(
+        assert ray._private.worker.global_worker.core_worker.object_exists(
             borrowed_ref, memory_store_only=True
         )
         return f_result * 2
@@ -253,7 +253,7 @@ def test_task_output_inline_bytes_limit(ray_start_cluster_enabled):
         result = 0
         for i, ref in enumerate(numbers):
             result += ray.get(ref)
-            inlined = ray._internal.worker.global_worker.core_worker.object_exists(
+            inlined = ray._private.worker.global_worker.core_worker.object_exists(
                 ref, memory_store_only=True
             )
             if i < 2:

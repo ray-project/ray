@@ -73,7 +73,7 @@ def read_file(temp_dir: Path, column: str):
 
 
 def print_dashboard_log():
-    session_dir = ray._internal.worker.global_worker.node.address_info["session_dir"]
+    session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
     session_path = Path(session_dir)
     log_dir_path = session_path / "logs"
 
@@ -683,7 +683,7 @@ provider:
         Verify the usage_stats.json is updated.
         """
         print("Verifying usage stats write.")
-        global_node = ray._internal.worker._global_node
+        global_node = ray._private.worker._global_node
         temp_dir = pathlib.Path(global_node.get_session_dir_path())
 
         wait_for_condition(lambda: file_exists(temp_dir), timeout=30)
@@ -712,7 +712,7 @@ def test_first_usage_report_delayed(monkeypatch, ray_start_cluster):
 
         # The first report should be delayed for 10s.
         time.sleep(5)
-        session_dir = ray._internal.worker.global_worker.node.address_info[
+        session_dir = ray._private.worker.global_worker.node.address_info[
             "session_dir"
         ]
         session_path = Path(session_dir)
@@ -738,7 +738,7 @@ def test_usage_report_disabled(monkeypatch, ray_start_cluster):
         # Wait enough so that usage report should happen.
         time.sleep(5)
 
-        session_dir = ray._internal.worker.global_worker.node.address_info[
+        session_dir = ray._private.worker.global_worker.node.address_info[
             "session_dir"
         ]
         session_path = Path(session_dir)
@@ -778,7 +778,7 @@ def test_usage_file_error_message(monkeypatch, ray_start_cluster):
         cluster.add_node(num_cpus=0)
         ray.init(address=cluster.address)
 
-        global_node = ray._internal.worker._global_node
+        global_node = ray._private.worker._global_node
         temp_dir = pathlib.Path(global_node.get_session_dir_path())
         try:
             wait_for_condition(lambda: file_exists(temp_dir), timeout=30)

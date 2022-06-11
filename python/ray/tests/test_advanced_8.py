@@ -554,7 +554,7 @@ def test_sync_job_config(shutdown_only):
     )
 
     # Check that the job config is synchronized at the driver side.
-    job_config = ray._internal.worker.global_worker.core_worker.get_job_config()
+    job_config = ray._private.worker.global_worker.core_worker.get_job_config()
     job_runtime_env = RuntimeEnv.deserialize(
         job_config.runtime_env_info.serialized_runtime_env
     )
@@ -562,7 +562,7 @@ def test_sync_job_config(shutdown_only):
 
     @ray.remote
     def get_job_config():
-        job_config = ray._internal.worker.global_worker.core_worker.get_job_config()
+        job_config = ray._private.worker.global_worker.core_worker.get_job_config()
         return job_config.SerializeToString()
 
     # Check that the job config is synchronized at the worker side.

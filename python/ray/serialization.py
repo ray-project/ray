@@ -62,7 +62,7 @@ def _object_ref_deserializer(binary, call_site, owner_address, object_status):
     # to 'self' here instead, but this function is itself pickled
     # somewhere, which causes an error.
     if owner_address:
-        worker = ray._internal.worker.global_worker
+        worker = ray._private.worker.global_worker
         worker.check_connected()
         context = worker.get_serialization_context()
         outer_id = context.get_outer_object_ref()
@@ -79,7 +79,7 @@ def _object_ref_deserializer(binary, call_site, owner_address, object_status):
 def _actor_handle_deserializer(serialized_obj):
     # If this actor handle was stored in another object, then tell the
     # core worker.
-    context = ray._internal.worker.global_worker.get_serialization_context()
+    context = ray._private.worker.global_worker.get_serialization_context()
     outer_id = context.get_outer_object_ref()
     return ray.actor.ActorHandle._deserialization_helper(serialized_obj, outer_id)
 
@@ -96,7 +96,7 @@ class SerializationContext:
         self._thread_local = threading.local()
 
         def actor_handle_reducer(obj):
-            ray._internal.worker.global_worker.check_connected()
+            ray._private.worker.global_worker.check_connected()
             serialized, actor_handle_id = obj._serialization_helper()
             # Update ref counting for the actor handle
             self.add_contained_object_ref(actor_handle_id)
@@ -105,7 +105,7 @@ class SerializationContext:
         self._register_cloudpickle_reducer(ray.actor.ActorHandle, actor_handle_reducer)
 
         def object_ref_reducer(obj):
-            worker = ray._internal.worker.global_worker
+            worker = ray._private.worker.global_worker
             worker.check_connected()
             self.add_contained_object_ref(obj)
             obj, owner_address, object_status = worker.core_worker.serialize_object_ref(
@@ -171,7 +171,7 @@ class SerializationContext:
             # cloudpickle directly or captured in a remote function/actor),
             # then pin the object for the lifetime of this worker by adding
             # a local reference that won't ever be removed.
-            ray._internal.worker.global_worker.core_worker.add_object_ref_reference(
+            ray._private.worker.global_worker.core_worker.add_object_ref_reference(
                 object_ref
             )
 

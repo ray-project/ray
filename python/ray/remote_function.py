@@ -182,7 +182,7 @@ class RemoteFunction:
         if client_mode_should_convert(auto_init=True):
             return client_mode_convert_function(self, args, kwargs, **task_options)
 
-        worker = ray._internal.worker.global_worker
+        worker = ray._private.worker.global_worker
         worker.check_connected()
 
         # If this function was not exported in this session and job, we need to
@@ -304,7 +304,7 @@ class RemoteFunction:
                     self._function_signature, args, kwargs
                 )
 
-            if worker.mode == ray._internal.worker.LOCAL_MODE:
+            if worker.mode == ray._private.worker.LOCAL_MODE:
                 assert (
                     not self._is_cross_language
                 ), "Cross language remote function cannot be executed locally."

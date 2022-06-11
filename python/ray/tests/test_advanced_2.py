@@ -131,7 +131,7 @@ def test_zero_cpus_actor(ray_start_cluster):
     @ray.remote
     class Foo:
         def method(self):
-            return ray._internal.worker.global_worker.node.unique_id
+            return ray._private.worker.global_worker.node.unique_id
 
     # Make sure tasks and actors run on the remote raylet.
     a = Foo.remote()
@@ -208,32 +208,32 @@ def test_multiple_raylets(ray_start_cluster):
     # This must be run on the zeroth raylet.
     @ray.remote(num_cpus=11)
     def run_on_0():
-        return ray._internal.worker.global_worker.node.plasma_store_socket_name
+        return ray._private.worker.global_worker.node.plasma_store_socket_name
 
     # This must be run on the first raylet.
     @ray.remote(num_gpus=2)
     def run_on_1():
-        return ray._internal.worker.global_worker.node.plasma_store_socket_name
+        return ray._private.worker.global_worker.node.plasma_store_socket_name
 
     # This must be run on the second raylet.
     @ray.remote(num_cpus=6, num_gpus=1)
     def run_on_2():
-        return ray._internal.worker.global_worker.node.plasma_store_socket_name
+        return ray._private.worker.global_worker.node.plasma_store_socket_name
 
     # This can be run anywhere.
     @ray.remote(num_cpus=0, num_gpus=0)
     def run_on_0_1_2():
-        return ray._internal.worker.global_worker.node.plasma_store_socket_name
+        return ray._private.worker.global_worker.node.plasma_store_socket_name
 
     # This must be run on the first or second raylet.
     @ray.remote(num_gpus=1)
     def run_on_1_2():
-        return ray._internal.worker.global_worker.node.plasma_store_socket_name
+        return ray._private.worker.global_worker.node.plasma_store_socket_name
 
     # This must be run on the zeroth or second raylet.
     @ray.remote(num_cpus=8)
     def run_on_0_2():
-        return ray._internal.worker.global_worker.node.plasma_store_socket_name
+        return ray._private.worker.global_worker.node.plasma_store_socket_name
 
     def run_lots_of_tasks():
         names = []
@@ -324,16 +324,16 @@ def test_custom_resources(ray_start_cluster):
 
     @ray.remote
     def f():
-        return ray._internal.worker.global_worker.node.unique_id
+        return ray._private.worker.global_worker.node.unique_id
 
     @ray.remote(resources={"CustomResource": 1})
     def g():
-        return ray._internal.worker.global_worker.node.unique_id
+        return ray._private.worker.global_worker.node.unique_id
 
     @ray.remote(resources={"CustomResource": 1})
     def h():
         ray.get([f.remote() for _ in range(5)])
-        return ray._internal.worker.global_worker.node.unique_id
+        return ray._private.worker.global_worker.node.unique_id
 
     # The g tasks should be scheduled only on the second raylet.
     raylet_ids = set(ray.get([g.remote() for _ in range(50)]))
@@ -378,7 +378,7 @@ def test_two_custom_resources(ray_start_cluster):
         # Sleep a while to emulate a slow operation. This is needed to make
         # sure tasks are scheduled to different nodes.
         time.sleep(0.1)
-        return ray._internal.worker.global_worker.node.unique_id
+        return ray._private.worker.global_worker.node.unique_id
 
     # Make sure each node has at least one idle worker.
     wait_for_condition(lambda: len(set(ray.get([foo.remote() for _ in range(6)]))) == 2)
@@ -389,27 +389,27 @@ def test_two_custom_resources(ray_start_cluster):
     @ray.remote(resources={"CustomResource1": 1})
     def f():
         time.sleep(0.001)
-        return ray._internal.worker.global_worker.node.unique_id
+        return ray._private.worker.global_worker.node.unique_id
 
     @ray.remote(resources={"CustomResource2": 1})
     def g():
         time.sleep(0.001)
-        return ray._internal.worker.global_worker.node.unique_id
+        return ray._private.worker.global_worker.node.unique_id
 
     @ray.remote(resources={"CustomResource1": 1, "CustomResource2": 3})
     def h():
         time.sleep(0.001)
-        return ray._internal.worker.global_worker.node.unique_id
+        return ray._private.worker.global_worker.node.unique_id
 
     @ray.remote(resources={"CustomResource1": 4})
     def j():
         time.sleep(0.001)
-        return ray._internal.worker.global_worker.node.unique_id
+        return ray._private.worker.global_worker.node.unique_id
 
     @ray.remote(resources={"CustomResource3": 1})
     def k():
         time.sleep(0.001)
-        return ray._internal.worker.global_worker.node.unique_id
+        return ray._private.worker.global_worker.node.unique_id
 
     # The f and g tasks should be scheduled on both raylets.
     assert len(set(ray.get([f.remote() for _ in range(500)]))) == 2

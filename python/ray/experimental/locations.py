@@ -34,6 +34,6 @@ def get_object_locations(
     """
     if not ray.is_initialized():
         raise RuntimeError("Ray hasn't been initialized.")
-    return ray._internal.worker.global_worker.core_worker.get_object_locations(
+    return ray._private.worker.global_worker.core_worker.get_object_locations(
         obj_refs, timeout_ms
     )

@@ -437,12 +437,12 @@ def remaining_processes_alive():
         Exception: An exception is raised if the processes were not started by
             ray.init().
     """
-    if ray._internal.worker._global_node is None:
+    if ray._private.worker._global_node is None:
         raise RuntimeError(
             "This process is not in a position to determine "
             "whether all processes are alive or not."
         )
-    return ray._internal.worker._global_node.remaining_processes_alive()
+    return ray._private.worker._global_node.remaining_processes_alive()
 
 
 def canonicalize_bootstrap_address(addr: str):
@@ -540,8 +540,8 @@ def node_ip_address_from_perspective(address: str):
 
 
 def get_node_ip_address(address="8.8.8.8:53"):
-    if ray._internal.worker._global_node is not None:
-        return ray._internal.worker._global_node.node_ip_address
+    if ray._private.worker._global_node is not None:
+        return ray._private.worker._global_node.node_ip_address
     if sys.platform == "darwin" or sys.platform == "win32":
         # Due to the mac osx/windows firewall,
         # we use loopback ip as the ip address

@@ -20,9 +20,9 @@ except ModuleNotFoundError as e:
 
 # Mute the warning because Serve sometimes intentionally calls
 # ray.get inside async actors.
-import ray._internal.worker
+import ray._private.worker
 
-ray._internal.worker.blocking_get_inside_async_warned = True
+ray._private.worker.blocking_get_inside_async_warned = True
 
 __all__ = [
     "batch",

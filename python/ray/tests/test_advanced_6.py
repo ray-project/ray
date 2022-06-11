@@ -66,7 +66,7 @@ def test_local_mode_gpus(save_gpu_ids_shutdown_only):
 
     from importlib import reload
 
-    reload(ray._internal.worker)
+    reload(ray._private.worker)
 
     ray.init(num_gpus=3, local_mode=True)
 

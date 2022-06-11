@@ -317,11 +317,11 @@ class ClientRemoteFunc(ClientStub):
                 # in-progress self reference value, which
                 # the encoding can detect and handle correctly.
                 self._ref = InProgressSentinel()
-                data = ray._internal.worker._dumps_from_client(self._func)
+                data = ray._private.worker._dumps_from_client(self._func)
                 # Check pickled size before sending it to server, which is more
                 # efficient and can be done synchronously inside remote() call.
                 check_oversized_function(data, self._name, "remote function", None)
-                self._ref = ray._internal.worker._put_pickled(
+                self._ref = ray._private.worker._put_pickled(
                     data, client_ref_id=self._client_side_ref.id
                 )
 
@@ -375,11 +375,11 @@ class ClientActorClass(ClientStub):
                 # in-progress self reference value, which
                 # the encoding can detect and handle correctly.
                 self._ref = InProgressSentinel()
-                data = ray._internal.worker._dumps_from_client(self.actor_cls)
+                data = ray._private.worker._dumps_from_client(self.actor_cls)
                 # Check pickled size before sending it to server, which is more
                 # efficient and can be done synchronously inside remote() call.
                 check_oversized_function(data, self._name, "actor", None)
-                self._ref = ray._internal.worker._put_pickled(
+                self._ref = ray._private.worker._put_pickled(
                     data, client_ref_id=self._client_side_ref.id
                 )
 

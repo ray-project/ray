@@ -679,7 +679,7 @@ def _check_and_get_group(group_name):
             name = "info_" + group_name
             mgr = ray.get_actor(name=name)
             ids, world_size, rank, backend = ray.get(mgr.get_info.remote())
-            worker = ray._internal.worker.global_worker
+            worker = ray._private.worker.global_worker
             id_ = worker.core_worker.get_actor_id()
             r = rank[ids.index(id_)]
             _group_mgr.create_collective_group(backend, world_size, r, group_name)
@@ -732,7 +732,7 @@ def _check_backend_availability(backend: types.Backend):
 
 def _check_inside_actor():
     """Check if currently it is inside a Ray actor/task."""
-    worker = ray._internal.worker.global_worker
+    worker = ray._private.worker.global_worker
     if worker.mode == ray.WORKER_MODE:
         return
     else:

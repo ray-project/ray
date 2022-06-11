@@ -7,7 +7,7 @@ if TYPE_CHECKING:
 
 
 class ClientWorkerPropertyAPI:
-    """Emulates the properties of the ray._internal.worker object for the client"""
+    """Emulates the properties of the ray._private.worker object for the client"""
 
     def __init__(self, worker):
         assert worker is not None
@@ -29,7 +29,7 @@ class ClientWorkerPropertyAPI:
 
     @property
     def mode(self):
-        from ray._internal.worker import SCRIPT_MODE
+        from ray._private.worker import SCRIPT_MODE
 
         return SCRIPT_MODE
 

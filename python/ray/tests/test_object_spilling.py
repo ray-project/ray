@@ -104,12 +104,12 @@ def test_default_config(shutdown_only):
     ray.init(num_cpus=0, object_store_memory=75 * 1024 * 1024)
     # Make sure the object spilling configuration is properly set.
     config = json.loads(
-        ray._internal.worker._global_node._config["object_spilling_config"]
+        ray._private.worker._global_node._config["object_spilling_config"]
     )
     assert config["type"] == "filesystem"
     assert (
         config["params"]["directory_path"]
-        == ray._internal.worker._global_node._session_dir
+        == ray._private.worker._global_node._session_dir
     )
     # Make sure the basic workload can succeed.
     run_basic_workload()
@@ -124,7 +124,7 @@ def test_default_config(shutdown_only):
             "object_store_full_delay_ms": 100,
         },
     )
-    assert "object_spilling_config" not in ray._internal.worker._global_node._config
+    assert "object_spilling_config" not in ray._private.worker._global_node._config
     run_basic_workload()
     ray.shutdown()
 
@@ -138,7 +138,7 @@ def test_default_config(shutdown_only):
         },
     )
     config = json.loads(
-        ray._internal.worker._global_node._config["object_spilling_config"]
+        ray._private.worker._global_node._config["object_spilling_config"]
     )
     assert config["type"] == "mock_distributed_fs"
 
@@ -151,7 +151,7 @@ def test_default_config_buffering(shutdown_only):
         },
     )
     config = json.loads(
-        ray._internal.worker._global_node._config["object_spilling_config"]
+        ray._private.worker._global_node._config["object_spilling_config"]
     )
     assert config["type"] == buffer_object_spilling_config["type"]
     assert (

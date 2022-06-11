@@ -138,7 +138,7 @@ from ray.state import (  # noqa: E402
     cluster_resources,
     available_resources,
 )
-from ray._internal.worker import (  # noqa: E402,F401
+from ray._private.worker import (  # noqa: E402,F401
     LOCAL_MODE,
     SCRIPT_MODE,
     WORKER_MODE,

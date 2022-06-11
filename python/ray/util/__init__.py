@@ -36,7 +36,7 @@ def list_named_actors(all_namespaces: bool = False) -> List[str]:
     returned regardless of namespace, and the returned entries will be of the
     form {"namespace": namespace, "name": name}.
     """
-    worker = ray._internal.worker.global_worker
+    worker = ray._private.worker.global_worker
     worker.check_connected()
 
     actors = worker.core_worker.list_named_actors(all_namespaces)

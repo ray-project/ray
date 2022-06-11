@@ -312,7 +312,7 @@ def test_actor_class_name(ray_start_regular):
             pass
 
     Foo.remote()
-    g = ray._internal.worker.global_worker.gcs_client
+    g = ray._private.worker.global_worker.gcs_client
     actor_keys = g.internal_kv_keys(
         b"ActorClass", ray_constants.KV_NAMESPACE_FUNCTION_TABLE
     )

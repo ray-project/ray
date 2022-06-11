@@ -39,7 +39,7 @@ def test_unhandled_errors(ray_start_regular):
         num_exceptions += 1
 
     # Test we report unhandled exceptions.
-    ray._internal.worker._unhandled_error_handler = interceptor
+    ray._private.worker._unhandled_error_handler = interceptor
     x1 = f.remote()
     x2 = a.f.remote()
     del x1
@@ -129,10 +129,10 @@ def test_failed_function_to_run(ray_start_2_cpus, error_pubsub):
     p = error_pubsub
 
     def f(worker):
-        if ray._internal.worker.global_worker.mode == ray.WORKER_MODE:
+        if ray._private.worker.global_worker.mode == ray.WORKER_MODE:
             raise Exception("Function to run failed.")
 
-    ray._internal.worker.global_worker.run_function_on_all_workers(f)
+    ray._private.worker.global_worker.run_function_on_all_workers(f)
     # Check that the error message is in the task info.
     errors = get_error_message(p, 2, ray_constants.FUNCTION_TO_RUN_PUSH_ERROR)
     assert len(errors) == 2
@@ -233,7 +233,7 @@ def test_worker_raising_exception(ray_start_regular, error_pubsub):
     def f():
         # This is the only reasonable variable we can set here that makes the
         # execute_task function fail after the task got executed.
-        worker = ray._internal.worker.global_worker
+        worker = ray._private.worker.global_worker
         worker.function_actor_manager.increase_task_counter = None
 
     # Running this task should cause the worker to raise an exception after

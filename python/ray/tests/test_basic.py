@@ -908,7 +908,7 @@ def test_failed_task(ray_start_shared_local_modes, error_pubsub):
     throw_exception_fct1.remote()
     throw_exception_fct1.remote()
 
-    if ray._internal.worker.global_worker.mode != ray._internal.worker.LOCAL_MODE:
+    if ray._private.worker.global_worker.mode != ray._private.worker.LOCAL_MODE:
         msgs = get_error_message(p, 2, ray.ray_constants.TASK_PUSH_ERROR)
         assert len(msgs) == 2
         for msg in msgs:

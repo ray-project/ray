@@ -136,7 +136,7 @@ def test_warning_for_dead_node(ray_start_cluster_2_nodes, error_pubsub):
 )
 def test_warning_for_dead_autoscaler(ray_start_regular, error_pubsub):
     # Terminate the autoscaler process.
-    from ray._internal.worker import _global_node
+    from ray._private.worker import _global_node
 
     autoscaler_process = _global_node.all_processes[ray_constants.PROCESS_TYPE_MONITOR][
         0
@@ -158,7 +158,7 @@ def test_raylet_crash_when_get(ray_start_regular):
     def sleep_to_kill_raylet():
         # Don't kill raylet before default workers get connected.
         time.sleep(2)
-        ray._internal.worker._global_node.kill_raylet()
+        ray._private.worker._global_node.kill_raylet()
 
     object_ref = ray.put(np.zeros(200 * 1024, dtype=np.uint8))
     ray.internal.free(object_ref)

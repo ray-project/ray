@@ -766,7 +766,7 @@ def get_resource_ids():
 
     if _mode() == LOCAL_MODE:
         raise RuntimeError(
-            "ray._internal.worker.get_resource_ids() currently does not work in local_mode."
+            "ray._private.worker.get_resource_ids() currently does not work in local_mode."
         )
 
     return global_worker.core_worker.resource_ids()
@@ -1635,7 +1635,7 @@ def is_initialized() -> bool:
     Returns:
         True if ray.init has already been called and false otherwise.
     """
-    return ray._internal.worker.global_worker.connected
+    return ray._private.worker.global_worker.connected
 
 
 def connect(
@@ -2350,7 +2350,7 @@ def cancel(object_ref: "ray.ObjectRef", *, force: bool = False, recursive: bool 
     Raises:
         TypeError: This is also raised for actor tasks.
     """
-    worker = ray._internal.worker.global_worker
+    worker = ray._private.worker.global_worker
     worker.check_connected()
 
     if not isinstance(object_ref, ray.ObjectRef):

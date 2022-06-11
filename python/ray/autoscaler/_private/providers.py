@@ -16,7 +16,7 @@ _provider_instances = {}
 MINIMAL_EXTERNAL_CONFIG = {
     "available_node_types": {
         "ray.head.default": {},
-        "ray._internal.worker.default": {},
+        "ray._private.worker.default": {},
     },
     "head_node_type": "ray.head.default",
     "head_node": {},

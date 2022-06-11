@@ -396,7 +396,7 @@ print("success")
         driver_script = driver_script_template.format(address, nonexistent_id.hex())
         out = run_string_as_driver(driver_script)
         # Simulate the nonexistent dependency becoming available.
-        ray._internal.worker.global_worker.put_object(None, nonexistent_id)
+        ray._private.worker.global_worker.put_object(None, nonexistent_id)
         # Make sure the first driver ran to completion.
         assert "success" in out
 
@@ -420,7 +420,7 @@ print("success")
         driver_script = driver_script_template.format(address, nonexistent_id.hex())
         out = run_string_as_driver(driver_script)
         # Simulate the nonexistent dependency becoming available.
-        ray._internal.worker.global_worker.put_object(None, nonexistent_id)
+        ray._private.worker.global_worker.put_object(None, nonexistent_id)
         # Make sure the first driver ran to completion.
         assert "success" in out
 

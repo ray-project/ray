@@ -87,7 +87,7 @@ class ExternalStorage(metaclass=abc.ABCMeta):
     HEADER_LENGTH = 24
 
     def _get_objects_from_store(self, object_refs):
-        worker = ray._internal.worker.global_worker
+        worker = ray._private.worker.global_worker
         # Since the object should always exist in the plasma store before
         # spilling, it can directly get the object from the local plasma
         # store.
@@ -98,7 +98,7 @@ class ExternalStorage(metaclass=abc.ABCMeta):
     def _put_object_to_store(
         self, metadata, data_size, file_like, object_ref, owner_address
     ):
-        worker = ray._internal.worker.global_worker
+        worker = ray._private.worker.global_worker
         worker.core_worker.put_file_like_object(
             metadata, data_size, file_like, object_ref, owner_address
         )

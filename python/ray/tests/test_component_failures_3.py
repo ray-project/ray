@@ -73,15 +73,15 @@ def test_actor_creation_node_failure(ray_start_cluster):
 
 
 def test_driver_lives_sequential(ray_start_regular):
-    ray._internal.worker._global_node.kill_raylet()
-    ray._internal.worker._global_node.kill_log_monitor()
-    ray._internal.worker._global_node.kill_monitor()
+    ray._private.worker._global_node.kill_raylet()
+    ray._private.worker._global_node.kill_log_monitor()
+    ray._private.worker._global_node.kill_monitor()
 
     # If the driver can reach the tearDown method, then it is still alive.
 
 
 def test_driver_lives_parallel(ray_start_regular):
-    all_processes = ray._internal.worker._global_node.all_processes
+    all_processes = ray._private.worker._global_node.all_processes
 
     process_infos = (
         all_processes[ray_constants.PROCESS_TYPE_RAYLET]

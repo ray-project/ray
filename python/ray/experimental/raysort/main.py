@@ -131,7 +131,7 @@ def _get_mount_points():
 
 
 def _part_info(args: Args, part_id: PartId, kind="input") -> PartInfo:
-    node = ray._internal.worker.global_worker.node_ip_address
+    node = ray._private.worker.global_worker.node_ip_address
     mnt = random.choice(args.mount_points)
     filepath = _get_part_path(mnt, part_id, kind)
     return PartInfo(part_id, node, filepath)

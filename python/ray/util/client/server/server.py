@@ -129,7 +129,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         current_job_config = None
         with disable_client_hook():
             if ray.is_initialized():
-                worker = ray._internal.worker.global_worker
+                worker = ray._private.worker.global_worker
                 current_job_config = worker.core_worker.get_job_config()
             else:
                 extra_kwargs = json.loads(request.ray_init_kwargs or "{}")

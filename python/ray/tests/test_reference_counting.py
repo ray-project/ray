@@ -42,18 +42,18 @@ def _fill_object_store_and_get(obj, succeed=True, object_MiB=20, num_objects=5):
 
     if succeed:
         wait_for_condition(
-            lambda: ray._internal.worker.global_worker.core_worker.object_exists(obj)
+            lambda: ray._private.worker.global_worker.core_worker.object_exists(obj)
         )
     else:
         wait_for_condition(
-            lambda: not ray._internal.worker.global_worker.core_worker.object_exists(
+            lambda: not ray._private.worker.global_worker.core_worker.object_exists(
                 obj
             )
         )
 
 
 def _check_refcounts(expected):
-    actual = ray._internal.worker.global_worker.core_worker.get_all_reference_counts()
+    actual = ray._private.worker.global_worker.core_worker.get_all_reference_counts()
     assert len(expected) == len(actual)
     for object_ref, (local, submitted) in expected.items():
         hex_id = object_ref.hex().encode("ascii")
@@ -255,13 +255,13 @@ def test_feature_flag(shutdown_only):
     del put_ref
 
     wait_for_condition(
-        lambda: not ray._internal.worker.global_worker.core_worker.object_exists(ref)
+        lambda: not ray._private.worker.global_worker.core_worker.object_exists(ref)
     )
 
 
 def test_out_of_band_serialized_object_ref(one_worker_100MiB):
     assert (
-        len(ray._internal.worker.global_worker.core_worker.get_all_reference_counts())
+        len(ray._private.worker.global_worker.core_worker.get_all_reference_counts())
         == 0
     )
     obj_ref = ray.put("hello")
@@ -270,7 +270,7 @@ def test_out_of_band_serialized_object_ref(one_worker_100MiB):
     _check_refcounts({obj_ref: (2, 0)})
     del obj_ref
     assert (
-        len(ray._internal.worker.global_worker.core_worker.get_all_reference_counts())
+        len(ray._private.worker.global_worker.core_worker.get_all_reference_counts())
         == 1
     )
     assert ray.get(ray.cloudpickle.loads(obj_ref_str)) == "hello"

@@ -439,7 +439,7 @@ class AutoscalingConfigTest(unittest.TestCase):
             workers_prepared["available_node_types"]["ray-legacy-worker-node-type"][
                 "node_config"
             ]
-            == aws_defaults["available_node_types"]["ray._internal.worker.default"][
+            == aws_defaults["available_node_types"]["ray._private.worker.default"][
                 "node_config"
             ]
         )
