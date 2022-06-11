@@ -97,7 +97,7 @@ build:tsan --copt -fno-omit-frame-pointer
 # Remove if switching to clang or newer gcc. Currently, gcc has false positives
 # for uninitialized variables when sanitizers are enabled.
 # https://gcc.gnu.org/bugzilla/show_bug.cgi?id=97067
-build:tsan --copt -Wno-maybe-uninitialized
+build:tsan --copt -Wno-uninitialized
 build:tsan --linkopt -fsanitize=thread
 # This config is only for running TSAN with LLVM toolchain on Linux.
 build:tsan-clang --config=tsan
