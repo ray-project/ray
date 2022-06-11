@@ -125,6 +125,9 @@ class ProxyManager:
         self._free_ports: List[int] = list(
             range(MIN_SPECIFIC_SERVER_PORT, MAX_SPECIFIC_SERVER_PORT)
         )
+        import random
+        p = random.randint(0, len(self._free_ports))
+        self._free_ports = self._free_ports[p:] + self._free_ports[:p]
 
         self._runtime_env_channel = ray._private.utils.init_grpc_channel(
             f"127.0.0.1:{runtime_env_agent_port}"

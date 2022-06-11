@@ -57,6 +57,10 @@ def get_default_fixture_ray_kwargs():
     }
     return ray_kwargs
 
+def find_free_port():
+    with socket.socket() as s:
+        s.bind(("", 0))
+        return s.getsockname()[1]
 
 @contextmanager
 def _setup_redis(request):
@@ -65,10 +69,7 @@ def _setup_redis(request):
 
     external_redis_ports = param.get("external_redis_ports")
     if external_redis_ports is None:
-        with socket.socket() as s:
-            s.bind(("", 0))
-            port = s.getsockname()[1]
-        external_redis_ports = [port]
+        external_redis_ports = [find_free_port()]
     else:
         del param["external_redis_ports"]
     processes = []
@@ -301,11 +302,7 @@ def call_ray_start(request):
     command_args = parameter.split(" ")
 
     command_args += ["--block"]
-
-    sock = socket.socket()
-    sock.bind(("", 0))
-    port = str(sock.getsockname()[1])
-    sock.close()
+    port = str(find_free_port())
     command_args += ["--port", port]
 
     address = f"localhost:{port}"
@@ -367,11 +364,12 @@ def start_cluster(ray_start_cluster_enabled, request):
     assert request.param in {"ray_client", "no_ray_client"}
     use_ray_client: bool = request.param == "ray_client"
     cluster = ray_start_cluster_enabled
-    cluster.add_node(num_cpus=4)
+    cluster.add_node(num_cpus=4, dashboard_port=find_free_port())
     if use_ray_client:
-        cluster.head_node._ray_params.ray_client_server_port = "10004"
+        port = find_free_port()
+        cluster.head_node._ray_params.ray_client_server_port = port
         cluster.head_node.start_ray_client_server()
-        address = "ray://localhost:10004"
+        address = f"ray://localhost:{port}"
     else:
         address = cluster.address
 

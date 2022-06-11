@@ -167,10 +167,8 @@ from ray.actor import method  # noqa: E402
 from ray.cross_language import java_function, java_actor_class  # noqa: E402
 from ray.runtime_context import get_runtime_context  # noqa: E402
 from ray import autoscaler  # noqa:E402
-from ray import data  # noqa: E402,F401
 from ray import util  # noqa: E402
 from ray import _private  # noqa: E402,F401
-from ray import workflow  # noqa: E402,F401
 
 # We import ClientBuilder so that modules can inherit from `ray.ClientBuilder`.
 from ray.client_builder import client, ClientBuilder  # noqa: E402
@@ -186,7 +184,6 @@ __all__ = [
     "client",
     "ClientBuilder",
     "cluster_resources",
-    "data",
     "get",
     "get_actor",
     "get_gpu_ids",

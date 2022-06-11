@@ -260,6 +260,7 @@ py_test_module_list(
     "test_plasma_unlimited.py",
     "test_placement_group_mini_integration.py",
     "test_scheduling_2.py",
+    "test_scheduling_serial.py",
   ],
   size = "large",
   extra_srcs = SRCS,
