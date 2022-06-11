@@ -187,7 +187,11 @@ class ActorPoolStrategy(ComputeStrategy):
         if not remote_args:
             remote_args["num_cpus"] = 1
 
-        remote_args["scheduling_strategy"] = context.scheduling_strategy
+        if (
+            "scheduling_strategy" not in remote_args
+            and ctx.scheduling_strategy == DEFAULT_SCHEDULING_STRATEGY
+        ):
+            remote_args["scheduling_strategy"] = "SPREAD"
 
         BlockWorker = ray.remote(**remote_args)(BlockWorker)
 
