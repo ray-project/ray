@@ -24,16 +24,17 @@ import typing
 
 from enum import Enum
 from collections import ChainMap, OrderedDict
+from ray.util.annotations import DeveloperAPI
 
 from .compat import pickle, Pickler
 from .cloudpickle import (
     _extract_code_globals, _BUILTIN_TYPE_NAMES, DEFAULT_PROTOCOL,
     _find_imported_submodules, _get_cell_contents, _should_pickle_by_reference,
     _builtin_type, _get_or_create_tracker_id,  _make_skeleton_class,
-    _make_skeleton_enum, _extract_class_dict, dynamic_subimport, subimport,
+    _make_skeleton_enum, _extract_class_dict, _dynamic_subimport, _subimport,
     _typevar_reduce, _get_bases, _make_cell, _make_empty_cell, CellType,
-    _is_parametrized_type_hint, PYPY, cell_set,
-    parametrized_type_hint_getinitargs, _create_parametrized_type_hint,
+    _is_parametrized_type_hint, PYPY, _do_cell_set,
+    _parametrized_type_hint_getinitargs, _create_parametrized_type_hint,
     builtin_code_type,
     _make_dict_keys, _make_dict_values, _make_dict_items,
 )
@@ -42,6 +43,7 @@ from .cloudpickle import (
 if pickle.HIGHEST_PROTOCOL >= 5 and not PYPY:
     # Shorthands similar to pickle.dump/pickle.dumps
 
+    @DeveloperAPI
     def dump(obj, file, protocol=None, buffer_callback=None):
         """Serialize obj as bytes streamed into file
 
@@ -56,6 +58,7 @@ if pickle.HIGHEST_PROTOCOL >= 5 and not PYPY:
             file, protocol=protocol, buffer_callback=buffer_callback
         ).dump(obj)
 
+    @DeveloperAPI
     def dumps(obj, protocol=None, buffer_callback=None):
         """Serialize obj as a string of bytes allocated in memory
 
@@ -75,6 +78,7 @@ if pickle.HIGHEST_PROTOCOL >= 5 and not PYPY:
 
 else:
     # Shorthands similar to pickle.dump/pickle.dumps
+    @DeveloperAPI
     def dump(obj, file, protocol=None):
         """Serialize obj as bytes streamed into file
 
@@ -87,6 +91,7 @@ else:
         """
         CloudPickler(file, protocol=protocol).dump(obj)
 
+    @DeveloperAPI
     def dumps(obj, protocol=None):
         """Serialize obj as a string of bytes allocated in memory
 
@@ -357,7 +362,7 @@ def _memoryview_reduce(obj):
 
 def _module_reduce(obj):
     if _should_pickle_by_reference(obj):
-        return subimport, (obj.__name__,)
+        return _subimport, (obj.__name__,)
     else:
         # Some external libraries can populate the "__builtins__" entry of a
         # module's `__dict__` with unpicklable objects (see #316). For that
@@ -365,7 +370,7 @@ def _module_reduce(obj):
         # restore a default value for it at unpickling time.
         state = obj.__dict__.copy()
         state.pop('__builtins__', None)
-        return dynamic_subimport, (obj.__name__, state)
+        return _dynamic_subimport, (obj.__name__, state)
 
 
 def _method_reduce(obj):
@@ -493,7 +498,7 @@ def _function_setstate(obj, state):
                 value = cell.cell_contents
             except ValueError:  # cell is empty
                 continue
-            cell_set(obj.__closure__[i], value)
+            _do_cell_set(obj.__closure__[i], value)
 
     for k, v in slotstate.items():
         setattr(obj, k, v)
@@ -521,6 +526,7 @@ def _ufunc_reduce(func):
     return func.__name__
 
 
+@DeveloperAPI
 class CloudPickler(Pickler):
     # set of reducers defined and used by cloudpickle (private)
     _dispatch_table = {}
@@ -697,7 +703,7 @@ class CloudPickler(Pickler):
                 try:
                     return (
                         _create_parametrized_type_hint,
-                        parametrized_type_hint_getinitargs(obj)
+                        _parametrized_type_hint_getinitargs(obj)
                     )
                 except pickle.PicklingError:
                     # There are some false positive cases in '_is_parametrized_type_hint'.
@@ -781,7 +787,7 @@ class CloudPickler(Pickler):
                 # to populate the Pickler's dispatch with type-specific savers.
                 self.save_reduce(
                     _create_parametrized_type_hint,
-                    parametrized_type_hint_getinitargs(obj),
+                    _parametrized_type_hint_getinitargs(obj),
                     obj=obj
                 )
             elif name is not None:

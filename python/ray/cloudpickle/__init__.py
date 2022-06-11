@@ -5,6 +5,7 @@ from pickle import PicklingError
 
 from ray.cloudpickle.cloudpickle import *  # noqa
 from ray.cloudpickle.cloudpickle_fast import CloudPickler, dumps, dump  # noqa
+from ray.util.annotations import DeveloperAPI
 
 
 # Conform to the convention used by python serialization libraries, which
@@ -21,6 +22,7 @@ def _warn_msg(obj, method, exc):
         "in scope, re-run the ray script with 'RAY_PICKLE_VERBOSE_DEBUG=1'.")
 
 
+@DeveloperAPI
 def dump_debug(obj, *args, **kwargs):
     try:
         return dump(obj, *args, **kwargs)
@@ -34,6 +36,7 @@ def dump_debug(obj, *args, **kwargs):
             raise type(exc)(msg)
 
 
+@DeveloperAPI
 def dumps_debug(obj, *args, **kwargs):
     try:
         return dumps(obj, *args, **kwargs)

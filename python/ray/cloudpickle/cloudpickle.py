@@ -131,14 +131,14 @@ def _lookup_class_or_track(class_tracker_id, class_def):
     return class_def
 
 
-def register_pickle_by_value(module):
+def _register_pickle_by_value(module):
     """Register a module to make it functions and classes picklable by value.
 
     By default, functions and classes that are attributes of an importable
     module are to be pickled by reference, that is relying on re-importing
     the attribute from the module at load time.
 
-    If `register_pickle_by_value(module)` is called, all its functions and
+    If `_register_pickle_by_value(module)` is called, all its functions and
     classes are subsequently to be pickled by value, meaning that they can
     be loaded in Python processes where the module is not importable.
 
@@ -170,7 +170,7 @@ def register_pickle_by_value(module):
     _PICKLE_BY_VALUE_MODULES.add(module.__name__)
 
 
-def unregister_pickle_by_value(module):
+def _unregister_pickle_by_value(module):
     """Unregister that the input module should be pickled by value."""
     if not isinstance(module, types.ModuleType):
         raise ValueError(f"Input should be a module object, got {str(module)} instead")
@@ -180,7 +180,7 @@ def unregister_pickle_by_value(module):
         _PICKLE_BY_VALUE_MODULES.remove(module.__name__)
 
 
-def list_registry_pickle_by_value():
+def _list_registry_pickle_by_value():
     return _PICKLE_BY_VALUE_MODULES.copy()
 
 
@@ -400,7 +400,7 @@ def _find_imported_submodules(code, top_level_dependencies):
     return subimports
 
 
-def cell_set(cell, value):
+def _do_cell_set(cell, value):
     """Set the value of a closure cell.
 
     The point of this function is to set the cell_contents attribute of a cell
@@ -610,7 +610,7 @@ else:
     _create_parametrized_type_hint = None
 
 
-def parametrized_type_hint_getinitargs(obj):
+def _parametrized_type_hint_getinitargs(obj):
     # The distorted type check sematic for typing construct becomes:
     # ``type(obj) is type(TypeHint)``, which means "obj is a
     # parametrized TypeHint"
@@ -665,7 +665,7 @@ def parametrized_type_hint_getinitargs(obj):
 # Tornado support
 
 
-def is_tornado_coroutine(func):
+def _is_tornado_coroutine(func):
     """
     Return whether *func* is a Tornado coroutine function.
     Running coroutines are not supported.
@@ -690,7 +690,7 @@ load = pickle.load
 loads = pickle.loads
 
 
-def subimport(name):
+def _subimport(name):
     # We cannot do simply: `return __import__(name)`: Indeed, if ``name`` is
     # the name of a submodule, __import__ will return the top-level root module
     # of this submodule. For instance, __import__('os.path') returns the `os`
@@ -699,7 +699,7 @@ def subimport(name):
     return sys.modules[name]
 
 
-def dynamic_subimport(name, vars):
+def _dynamic_subimport(name, vars):
     mod = types.ModuleType(name)
     mod.__dict__.update(vars)
     mod.__dict__["__builtins__"] = builtins.__dict__
@@ -722,7 +722,7 @@ def _get_cell_contents(cell):
         return _empty_cell_value
 
 
-def instance(cls):
+def _instance(cls):
     """Create a new instance of a class.
 
     Parameters
@@ -738,7 +738,7 @@ def instance(cls):
     return cls()
 
 
-@instance
+@_instance
 class _empty_cell_value(object):
     """sentinel for empty closures"""
 
@@ -807,7 +807,7 @@ def _fill_function(*args):
     if cells is not None:
         for cell, value in zip(cells, state["closure_values"]):
             if value is not _empty_cell_value:
-                cell_set(cell, value)
+                _do_cell_set(cell, value)
 
     return func
 
@@ -824,7 +824,7 @@ def _make_empty_cell():
 def _make_cell(value=_empty_cell_value):
     cell = _make_empty_cell()
     if value is not _empty_cell_value:
-        cell_set(cell, value)
+        _do_cell_set(cell, value)
     return cell
 
 
