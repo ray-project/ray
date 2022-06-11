@@ -5,26 +5,26 @@ import numpy as np
 import re
 from typing import Any, DefaultDict, Dict
 
-from ray.rllib.agents.trainer import Trainer
+from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.utils.numpy import softmax
-from ray.rllib.utils.typing import PolicyID, TrainerConfigDict, ResultDict
+from ray.rllib.utils.typing import PolicyID, AlgorithmConfigDict, ResultDict
 
 logger = logging.getLogger(__name__)
 
 
 @ExperimentalAPI
 class LeagueBuilder(metaclass=ABCMeta):
-    def __init__(self, trainer: Trainer, trainer_config: TrainerConfigDict):
+    def __init__(self, trainer: Algorithm, trainer_config: AlgorithmConfigDict):
         """Initializes a LeagueBuilder instance.
 
         Args:
-            trainer: The Trainer object by which this league builder is used.
-                Trainer calls `build_league()` after each training step.
+            trainer: The Algorithm object by which this league builder is used.
+                Algorithm calls `build_league()` after each training step.
             trainer_config: The (not yet validated) config dict to be
-                used on the Trainer. Child classes of `LeagueBuilder`
+                used on the Algorithm. Child classes of `LeagueBuilder`
                 should preprocess this to add e.g. multiagent settings
                 to this config.
         """
@@ -67,8 +67,8 @@ class NoLeagueBuilder(LeagueBuilder):
 class AlphaStarLeagueBuilder(LeagueBuilder):
     def __init__(
         self,
-        trainer: Trainer,
-        trainer_config: TrainerConfigDict,
+        trainer: Algorithm,
+        trainer_config: AlgorithmConfigDict,
         num_random_policies: int = 2,
         num_learning_league_exploiters: int = 4,
         num_learning_main_exploiters: int = 4,
@@ -86,11 +86,11 @@ class AlphaStarLeagueBuilder(LeagueBuilder):
         M: Main self-play (main vs main).
 
         Args:
-            trainer: The Trainer object by which this league builder is used.
-                Trainer calls `build_league()` after each training step to reconfigure
+            trainer: The Algorithm object by which this league builder is used.
+                Algorithm calls `build_league()` after each training step to reconfigure
                 the league structure (e.g. to add/remove policies).
             trainer_config: The (not yet validated) config dict to be
-                used on the Trainer. Child classes of `LeagueBuilder`
+                used on the Algorithm. Child classes of `LeagueBuilder`
                 should preprocess this to add e.g. multiagent settings
                 to this config.
             num_random_policies: The number of random policies to add to the

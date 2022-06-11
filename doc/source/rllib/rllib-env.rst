@@ -16,12 +16,13 @@ RLlib works with several different types of environments, including `OpenAI Gym 
 Configuring Environments
 ------------------------
 
-You can pass either a string name or a Python class to specify an environment. By default, strings will be interpreted as a gym `environment name <https://www.gymlibrary.ml/>`__. Custom env classes passed directly to the trainer must take a single ``env_config`` parameter in their constructor:
+You can pass either a string name or a Python class to specify an environment. By default, strings will be interpreted as a gym `environment name <https://www.gymlibrary.ml/>`__.
+Custom env classes passed directly to the algorithm must take a single ``env_config`` parameter in their constructor:
 
 .. code-block:: python
 
     import gym, ray
-    from ray.rllib.agents import ppo
+    from ray.rllib.algorithms import ppo
 
     class MyEnv(gym.Env):
         def __init__(self, env_config):
@@ -33,12 +34,12 @@ You can pass either a string name or a Python class to specify an environment. B
             return <obs>, <reward: float>, <done: bool>, <info: dict>
 
     ray.init()
-    trainer = ppo.PPO(env=MyEnv, config={
+    algo = ppo.PPO(env=MyEnv, config={
         "env_config": {},  # config to pass to env class
     })
 
     while True:
-        print(trainer.train())
+        print(algo.train())
 
 You can also register a custom env creator function with a string name. This function must take a single ``env_config`` (dict) parameter and return an env instance:
 
@@ -50,7 +51,7 @@ You can also register a custom env creator function with a string name. This fun
         return MyEnv(...)  # return an env instance
 
     register_env("my_env", env_creator)
-    trainer = ppo.PPO(env="my_env")
+    algo = ppo.PPO(env="my_env")
 
 For a full runnable code example using the custom environment API, see `custom_env.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__.
 
@@ -58,7 +59,10 @@ For a full runnable code example using the custom environment API, see `custom_e
 
    The gym registry is not compatible with Ray. Instead, always use the registration flows documented above to ensure Ray workers can access the environment.
 
-In the above example, note that the ``env_creator`` function takes in an ``env_config`` object. This is a dict containing options passed in through your trainer. You can also access ``env_config.worker_index`` and ``env_config.vector_index`` to get the worker id and env id within the worker (if ``num_envs_per_worker > 0``). This can be useful if you want to train over an ensemble of different environments, for example:
+In the above example, note that the ``env_creator`` function takes in an ``env_config`` object.
+This is a dict containing options passed in through your algorithm.
+You can also access ``env_config.worker_index`` and ``env_config.vector_index`` to get the worker id and env id within the worker (if ``num_envs_per_worker > 0``).
+This can be useful if you want to train over an ensemble of different environments, for example:
 
 .. code-block:: python
 
@@ -225,12 +229,12 @@ If all the agents will be using the same algorithm class to train, then you can 
 
 .. code-block:: python
 
-    trainer = pg.PGAgent(env="my_multiagent_env", config={
+    algo = pg.PGAgent(env="my_multiagent_env", config={
         "multiagent": {
             "policies": {
                 # Use the PolicySpec namedtuple to specify an individual policy:
                 "car1": PolicySpec(
-                    policy_class=None,  # infer automatically from Trainer
+                    policy_class=None,  # infer automatically from Algorithm
                     observation_space=None,  # infer automatically from env
                     action_space=None,  # infer automatically from env
                     config={"gamma": 0.85},  # use main config plus <- this override here
@@ -238,7 +242,7 @@ If all the agents will be using the same algorithm class to train, then you can 
 
                 # Deprecated way: Tuple specifying class, obs-/action-spaces,
                 # config-overrides for each policy as a tuple.
-                # If class is None -> Uses Trainer's default policy class.
+                # If class is None -> Uses Algorithm's default policy class.
                 "car2": (None, car_obs_space, car_act_space, {"gamma": 0.99}),
 
                 # New way: Use PolicySpec() with keywords: `policy_class`,
@@ -257,7 +261,7 @@ If all the agents will be using the same algorithm class to train, then you can 
     })
 
     while True:
-        print(trainer.train())
+        print(algo.train())
 
 To exclude some policies in your ``multiagent.policies`` dictionary, you can use the ``multiagent.policies_to_train`` setting.
 For example, you may want to have one or more random (non learning) policies interact with your learning ones:
@@ -275,7 +279,7 @@ For example, you may want to have one or more random (non learning) policies int
         # (start player) and sometimes player2 (player to move 2nd).
         return "learning_policy" if episode.episode_id % 2 == agent_idx else "random_policy"
 
-    trainer = pg.PGAgent(env="two_player_game", config={
+    algo = pg.PGAgent(env="two_player_game", config={
         "multiagent": {
             "policies": {
                 "learning_policy": PolicySpec(),  # <- use default class & infer obs-/act-spaces from env.
@@ -505,11 +509,11 @@ External Application Clients
 
 For applications that are running entirely outside the Ray cluster (i.e., cannot be packaged into a Python environment of any form), RLlib provides the ``PolicyServerInput`` application connector, which can be connected to over the network using ``PolicyClient`` instances.
 
-You can configure any Trainer to launch a policy server with the following config:
+You can configure any Algorithm to launch a policy server with the following config:
 
 .. code-block:: python
 
-    trainer_config = {
+    config = {
         # An environment class is still required, but it doesn't need to be runnable.
         # You only need to define its action and observation space attributes.
         # See examples/serving/unity3d_server.py for an example using a RandomMultiAgentEnv stub.
@@ -518,13 +522,16 @@ You can configure any Trainer to launch a policy server with the following confi
         "input": (
             lambda ioctx: PolicyServerInput(ioctx, SERVER_ADDRESS, SERVER_PORT)
         ),
-        # Use the existing trainer process to run the server.
+        # Use the existing algorithm process to run the server.
         "num_workers": 0,
         # Disable OPE, since the rollouts are coming from online clients.
         "off_policy_estimation_methods": {},
     }
 
-Clients can then connect in either *local* or *remote* inference mode. In local inference mode, copies of the policy are downloaded from the server and cached on the client for a configurable period of time. This allows actions to be computed by the client without requiring a network round trip each time. In remote inference mode, each computed action requires a network call to the server.
+Clients can then connect in either *local* or *remote* inference mode.
+In local inference mode, copies of the policy are downloaded from the server and cached on the client for a configurable period of time.
+This allows actions to be computed by the client without requiring a network round trip each time.
+In remote inference mode, each computed action requires a network call to the server.
 
 Example:
 

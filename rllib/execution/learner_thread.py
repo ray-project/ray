@@ -98,7 +98,7 @@ class LearnerThread(threading.Thread):
         self.learner_queue_size.push(self.inqueue.qsize())
 
     def add_learner_metrics(self, result: Dict, overwrite_learner_info=True) -> Dict:
-        """Add internal metrics to a trainer result dict."""
+        """Add internal metrics to a result dict."""
 
         def timer_to_ms(timer):
             return round(1000 * timer.mean, 3)
