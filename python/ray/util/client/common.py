@@ -13,7 +13,7 @@ import os
 import uuid
 import inspect
 import pickle
-from ray.util.inspect import (
+from ray._private.inspect import (
     is_cython,
     is_class_method,
     is_function_or_method,

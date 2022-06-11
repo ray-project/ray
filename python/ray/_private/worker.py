@@ -81,7 +81,7 @@ from ray._private.function_manager import FunctionActorManager, make_function_ta
 from ray._private.ray_logging import setup_logger
 from ray._private.ray_logging import global_worker_stdstream_dispatcher
 from ray._private.utils import check_oversized_function
-from ray.util.inspect import is_cython
+from ray._private.inspect import is_cython
 from ray.experimental.internal_kv import (
     _internal_kv_initialized,
     _initialize_internal_kv,

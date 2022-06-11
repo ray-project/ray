@@ -33,6 +33,7 @@ class _Printer:
 _printer = _Printer()
 
 
+@DeveloperAPI
 class FailureTuple:
     """Represents the serialization 'frame'.
 
