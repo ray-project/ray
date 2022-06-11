@@ -5,8 +5,8 @@ import unittest
 import uuid
 
 import ray
-from ray.rllib.algorithms.dqn import DQNTrainer
-from ray.rllib.algorithms.pg import PGTrainer
+from ray.rllib.algorithms.dqn import DQN
+from ray.rllib.algorithms.pg import PG
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.evaluation.tests.test_rollout_worker import BadPolicy, MockPolicy
@@ -177,7 +177,7 @@ class TestExternalEnv(unittest.TestCase):
             "exploration_config": {"epsilon_timesteps": 100},
         }
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            dqn = DQNTrainer(env="test3", config=config)
+            dqn = DQN(env="test3", config=config)
             reached = False
             for i in range(50):
                 result = dqn.train()
@@ -196,7 +196,7 @@ class TestExternalEnv(unittest.TestCase):
         register_env("test", lambda _: SimpleServing(gym.make("CartPole-v0")))
         config = {"num_workers": 0}
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            pg = PGTrainer(env="test", config=config)
+            pg = PG(env="test", config=config)
             reached = False
             for i in range(80):
                 result = pg.train()
@@ -215,7 +215,7 @@ class TestExternalEnv(unittest.TestCase):
         register_env("test2", lambda _: MultiServing(lambda: gym.make("CartPole-v0")))
         config = {"num_workers": 0}
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            pg = PGTrainer(env="test2", config=config)
+            pg = PG(env="test2", config=config)
             reached = False
             for i in range(80):
                 result = pg.train()

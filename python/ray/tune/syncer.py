@@ -1,5 +1,4 @@
 from typing import (
-    Any,
     Callable,
     Dict,
     List,
@@ -21,10 +20,9 @@ from shlex import quote
 
 import ray
 import yaml
-from ray.ml.utils.remote_storage import get_fs_and_path, fs_hint
+from ray.air._internal.remote_storage import get_fs_and_path, fs_hint
 from ray.tune import TuneError
 from ray.tune.callback import Callback
-from ray.tune.checkpoint_manager import _TuneCheckpoint
 from ray.tune.result import NODE_IP
 from ray.util import get_node_ip_address
 from ray.util.debug import log_once
@@ -38,6 +36,7 @@ from ray.tune.sync_client import (
     RemoteTaskClient,
 )
 from ray.util.annotations import PublicAPI, DeveloperAPI
+from ray.util.ml_utils.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 
 if TYPE_CHECKING:
     from ray.tune.trial import Trial
@@ -79,55 +78,6 @@ def set_sync_periods(sync_config: "SyncConfig"):
     """Sets sync period from config."""
     global SYNC_PERIOD
     SYNC_PERIOD = int(sync_config.sync_period)
-
-
-def validate_sync_config(sync_config: "SyncConfig"):
-    if sync_config.node_sync_period >= 0 or sync_config.cloud_sync_period >= 0:
-        # Until fully deprecated, try to consolidate
-        if sync_config.node_sync_period >= 0 and sync_config.cloud_sync_period >= 0:
-            sync_period = min(
-                sync_config.node_sync_period, sync_config.cloud_sync_period
-            )
-        else:
-            sync_period = max(
-                sync_config.node_sync_period, sync_config.cloud_sync_period
-            )
-
-        sync_config.sync_period = sync_period
-        sync_config.node_sync_period = -1
-        sync_config.cloud_sync_period = -1
-
-        # Deprecated: Remove in Ray > 1.13
-        raise DeprecationWarning(
-            "The `node_sync_period` and "
-            "`cloud_sync_period` properties of `tune.SyncConfig` are "
-            "deprecated. Pass the `sync_period` property instead. "
-            "\nFor now, the lower of the two values (if provided) will "
-            f"be used as the sync_period. This value is: {sync_period}"
-        )
-
-    if sync_config.sync_to_cloud or sync_config.sync_to_driver:
-        if bool(sync_config.upload_dir):
-            syncer = sync_config.sync_to_cloud
-            help = "set"
-        else:
-            syncer = sync_config.sync_to_driver
-            help = "not set"
-
-        sync_config.syncer = syncer
-        sync_config.sync_to_cloud = None
-        sync_config.sync_to_driver = None
-
-        # Deprecated: Remove in Ray > 1.13
-        raise DeprecationWarning(
-            "The `sync_to_cloud` and `sync_to_driver` properties of "
-            "`tune.SyncConfig` are deprecated. Pass the `syncer` property "
-            "instead. Presence of an `upload_dir` decides if checkpoints "
-            "are synced to cloud or not. Syncing to driver is "
-            "automatically disabled if an `upload_dir` is given."
-            f"\nFor now, as the upload dir is {help}, the respective "
-            f"syncer is used. This value is: {syncer}"
-        )
 
 
 def get_rsync_template_if_available(options: str = ""):
@@ -196,16 +146,6 @@ class SyncConfig:
 
     sync_on_checkpoint: bool = True
     sync_period: int = 300
-
-    # Deprecated arguments
-    # Deprecated: Remove in Ray > 1.13
-    sync_to_cloud: Any = None
-    sync_to_driver: Any = None
-    node_sync_period: int = -1
-    cloud_sync_period: int = -1
-
-    def __post_init__(self):
-        validate_sync_config(self)
 
 
 @DeveloperAPI
@@ -531,8 +471,8 @@ class SyncerCallback(Callback):
     def _remove_trial_syncer(self, trial: "Trial"):
         self._syncers.pop(trial, None)
 
-    def _sync_trial_checkpoint(self, trial: "Trial", checkpoint: _TuneCheckpoint):
-        if checkpoint.storage == _TuneCheckpoint.MEMORY:
+    def _sync_trial_checkpoint(self, trial: "Trial", checkpoint: _TrackedCheckpoint):
+        if checkpoint.storage_mode == CheckpointStorage.MEMORY:
             return
 
         trial_syncer = self._get_trial_syncer(trial)
@@ -571,7 +511,7 @@ class SyncerCallback(Callback):
                     # shouldn't track it with the checkpoint_manager.
                     raise e
             if not trial.uses_cloud_checkpointing:
-                if not os.path.exists(checkpoint.value):
+                if not os.path.exists(checkpoint.dir_or_data):
                     raise TuneError(
                         "Trial {}: Checkpoint path {} not "
                         "found after successful sync down. "
@@ -581,7 +521,9 @@ class SyncerCallback(Callback):
                         "You'll need to use cloud-checkpointing "
                         "if that's the case, see instructions "
                         "here: {} .".format(
-                            trial, checkpoint.value, CLOUD_CHECKPOINTING_URL
+                            trial,
+                            checkpoint.dir_or_data,
+                            CLOUD_CHECKPOINTING_URL,
                         )
                     )
 
@@ -621,7 +563,7 @@ class SyncerCallback(Callback):
         iteration: int,
         trials: List["Trial"],
         trial: "Trial",
-        checkpoint: _TuneCheckpoint,
+        checkpoint: _TrackedCheckpoint,
         **info,
     ):
         self._sync_trial_checkpoint(trial, checkpoint)

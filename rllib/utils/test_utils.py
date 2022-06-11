@@ -14,11 +14,11 @@ import ray
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED, NUM_ENV_STEPS_TRAINED
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.typing import PartialTrainerConfigDict
+from ray.rllib.utils.typing import PartialAlgorithmConfigDict
 from ray.tune import CLIReporter, run_experiments
 
 if TYPE_CHECKING:
-    from ray.rllib.agents.trainer_config import TrainerConfig
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 jax, _ = try_import_jax()
 tf1, tf, tfv = try_import_tf()
@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 
 def framework_iterator(
-    config: Optional[Union["TrainerConfig", PartialTrainerConfigDict]] = None,
+    config: Optional[Union["AlgorithmConfig", PartialAlgorithmConfigDict]] = None,
     frameworks: Sequence[str] = ("tf2", "tf", "tfe", "torch"),
     session: bool = False,
     with_eager_tracing: bool = False,
@@ -47,7 +47,7 @@ def framework_iterator(
     as the correct eager/non-eager contexts for tfe/tf.
 
     Args:
-        config: An optional config dict or TrainerConfig object. This will be modified
+        config: An optional config dict or AlgorithmConfig object. This will be modified
             (value for "framework" changed) depending on the iteration.
         frameworks: A list/tuple of the frameworks to be tested.
             Allowed are: "tf2", "tf", "tfe", "torch", and None.
@@ -162,17 +162,17 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
     after the floating point. Uses assertions.
 
     Args:
-        x (any): The value to be compared (to the expectation: `y`). This
+        x: The value to be compared (to the expectation: `y`). This
             may be a Tensor.
-        y (any): The expected value to be compared to `x`. This must not
+        y: The expected value to be compared to `x`. This must not
             be a tf-Tensor, but may be a tfe/torch-Tensor.
-        decimals (int): The number of digits after the floating point up to
+        decimals: The number of digits after the floating point up to
             which all numeric values have to match.
-        atol (float): Absolute tolerance of the difference between x and y
+        atol: Absolute tolerance of the difference between x and y
             (overrides `decimals` if given).
-        rtol (float): Relative tolerance of the difference between x and y
+        rtol: Relative tolerance of the difference between x and y
             (overrides `decimals` if given).
-        false (bool): Whether to check that x and y are NOT the same.
+        false: Whether to check that x and y are NOT the same.
     """
     # A dict type.
     if isinstance(x, dict):
@@ -282,12 +282,12 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
 
 
 def check_compute_single_action(
-    trainer, include_state=False, include_prev_action_reward=False
+    algorithm, include_state=False, include_prev_action_reward=False
 ):
-    """Tests different combinations of args for trainer.compute_single_action.
+    """Tests different combinations of args for algorithm.compute_single_action.
 
     Args:
-        trainer: The Trainer object to test.
+        algorithm: The Algorithm object to test.
         include_state: Whether to include the initial state of the Policy's
             Model in the `compute_single_action` call.
         include_prev_action_reward: Whether to include the prev-action and
@@ -299,15 +299,15 @@ def check_compute_single_action(
     # Have to import this here to avoid circular dependency.
     from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 
-    # Some Trainers may not abide to the standard API.
+    # Some Algorithms may not abide to the standard API.
     pid = DEFAULT_POLICY_ID
     try:
         # Multi-agent: Pick any learnable policy (or DEFAULT_POLICY if it's the only
         # one).
-        pid = next(iter(trainer.workers.local_worker().get_policies_to_train()))
-        pol = trainer.get_policy(pid)
+        pid = next(iter(algorithm.workers.local_worker().get_policies_to_train()))
+        pol = algorithm.get_policy(pid)
     except AttributeError:
-        pol = trainer.policy
+        pol = algorithm.policy
     # Get the policy's model.
     model = pol.model
 
@@ -317,7 +317,7 @@ def check_compute_single_action(
         what, method_to_test, obs_space, full_fetch, explore, timestep, unsquash, clip
     ):
         call_kwargs = {}
-        if what is trainer:
+        if what is algorithm:
             call_kwargs["full_fetch"] = full_fetch
             call_kwargs["policy_id"] = pid
 
@@ -402,15 +402,15 @@ def check_compute_single_action(
         if clip is None:
             clip = what.config["clip_actions"]
 
-        # Test whether unsquash/clipping works on the Trainer's
+        # Test whether unsquash/clipping works on the Algorithm's
         # compute_single_action method: Both flags should force the action
         # to be within the space's bounds.
-        if method_to_test == "single" and what == trainer:
+        if method_to_test == "single" and what == algorithm:
             if not action_space.contains(action) and (
                 clip or unsquash or not isinstance(action_space, Box)
             ):
                 raise ValueError(
-                    f"Returned action ({action}) of trainer/policy {what} "
+                    f"Returned action ({action}) of algorithm/policy {what} "
                     f"not in Env's action_space {action_space}"
                 )
             # We are operating in normalized space: Expect only smaller action
@@ -422,21 +422,21 @@ def check_compute_single_action(
                 and np.any(np.abs(action) > 15.0)
             ):
                 raise ValueError(
-                    f"Returned action ({action}) of trainer/policy {what} "
+                    f"Returned action ({action}) of algorithm/policy {what} "
                     "should be in normalized space, but seems too large/small "
                     "for that!"
                 )
 
-    # Loop through: Policy vs Trainer; Different API methods to calculate
+    # Loop through: Policy vs Algorithm; Different API methods to calculate
     # actions; unsquash option; clip option; full fetch or not.
-    for what in [pol, trainer]:
-        if what is trainer:
+    for what in [pol, algorithm]:
+        if what is algorithm:
             # Get the obs-space from Workers.env (not Policy) due to possible
             # pre-processor up front.
-            worker_set = getattr(trainer, "workers", None)
+            worker_set = getattr(algorithm, "workers", None)
             assert worker_set
             if isinstance(worker_set, list):
-                obs_space = trainer.get_policy(pid).observation_space
+                obs_space = algorithm.get_policy(pid).observation_space
             else:
                 obs_space = worker_set.local_worker().for_policy(
                     lambda p: p.observation_space, policy_id=pid
@@ -447,7 +447,7 @@ def check_compute_single_action(
 
         for method_to_test in ["single"] + (["input_dict"] if what is pol else []):
             for explore in [True, False]:
-                for full_fetch in [False, True] if what is trainer else [False]:
+                for full_fetch in [False, True] if what is algorithm else [False]:
                     timestep = random.randint(0, 100000)
                     for unsquash in [True, False, None]:
                         for clip in [False] if unsquash else [True, False, None]:
@@ -555,7 +555,7 @@ def check_learning_achieved(tune_results, min_reward, evaluation=False):
 
     Args:
         tune_results: The tune.run returned results object.
-        min_reward (float): The min reward that must be reached.
+        min_reward: The min reward that must be reached.
 
     Raises:
         ValueError: If `min_reward` not reached.
@@ -577,7 +577,7 @@ def check_learning_achieved(tune_results, min_reward, evaluation=False):
 
 
 def check_train_results(train_results):
-    """Checks proper structure of a Trainer.train() returned dict.
+    """Checks proper structure of a Algorithm.train() returned dict.
 
     Args:
         train_results: The train results dict to check.
@@ -725,7 +725,7 @@ def run_learning_tests_from_yaml(
                 # 0sec for each(!) experiment/trial.
                 # This is such that if there are many experiments/trials
                 # in a test (e.g. rllib_learning_test), each one can at least
-                # create its trainer and run a first iteration.
+                # create its Algorithm and run a first iteration.
                 e["stop"]["time_total_s"] = 0
             else:
                 check_eval = should_check_eval(e)
@@ -856,7 +856,7 @@ def run_learning_tests_from_yaml(
                     [t.last_result["time_total_s"] for t in trials_for_experiment]
                 )
 
-                # TODO(jungong) : track trainer and env throughput separately.
+                # TODO(jungong) : track training- and env throughput separately.
                 throughput = timesteps_total / (total_time_s or 1.0)
                 # TODO(jungong) : enable throughput check again after
                 #   TD3_HalfCheetahBulletEnv is fixed and verified.

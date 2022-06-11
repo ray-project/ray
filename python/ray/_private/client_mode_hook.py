@@ -77,18 +77,18 @@ def enable_client_mode():
         _explicitly_disable_client_mode()
 
 
-def client_mode_hook(func=None, *, auto_init: bool):
+def client_mode_hook(func: callable = None, *, auto_init: bool):
     """Decorator for whether to use the 'regular' ray version of a function,
     or the Ray Client version of that function.
 
     Args:
-    func (callable): This function. This is set when this function is used
-        as a decorator.
-    auto_init (bool): Whether `ray.init()` should be transparently called when
-        the wrapped function is called. This should be `True` for functions
-        that are *NOT* part of the initialization path (e.g. `init` or
-        `is_initialized`) or for functions that do not require Ray to be
-        initialized (e.g., KV operations, `shutdown`).
+        func: This function. This is set when this function is used
+            as a decorator.
+        auto_init: Whether `ray.init()` should be transparently called when
+            the wrapped function is called. This should be `True` for functions
+            that are *NOT* part of the initialization path (e.g. `init` or
+            `is_initialized`) or for functions that do not require Ray to be
+            initialized (e.g., KV operations, `shutdown`).
     """
     if func is None:
         return partial(client_mode_hook, auto_init=auto_init)

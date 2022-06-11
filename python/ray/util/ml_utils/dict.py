@@ -26,6 +26,7 @@ def deep_update(
     new_keys_allowed: bool = False,
     allow_new_subkey_list: Optional[List[str]] = None,
     override_all_if_type_changes: Optional[List[str]] = None,
+    override_all_key_list: Optional[List[str]] = None,
 ) -> dict:
     """Updates original dict with values from new_dict recursively.
 
@@ -34,25 +35,32 @@ def deep_update(
     in the allow_new_subkey_list, then new subkeys can be introduced.
 
     Args:
-        original (dict): Dictionary with default values.
-        new_dict (dict): Dictionary with values to be updated
-        new_keys_allowed (bool): Whether new keys are allowed.
-        allow_new_subkey_list (Optional[List[str]]): List of keys that
+        original: Dictionary with default values.
+        new_dict: Dictionary with values to be updated
+        new_keys_allowed: Whether new keys are allowed.
+        allow_new_subkey_list: List of keys that
             correspond to dict values where new subkeys can be introduced.
             This is only at the top level.
-        override_all_if_type_changes(Optional[List[str]]): List of top level
+        override_all_if_type_changes: List of top level
             keys with value=dict, for which we always simply override the
             entire value (dict), iff the "type" key in that value dict changes.
+        override_all_key_list: List of top level keys
+            for which we override the entire value if the key is in the new_dict.
     """
     allow_new_subkey_list = allow_new_subkey_list or []
     override_all_if_type_changes = override_all_if_type_changes or []
+    override_all_key_list = override_all_key_list or []
 
     for k, value in new_dict.items():
         if k not in original and not new_keys_allowed:
             raise Exception("Unknown config parameter `{}` ".format(k))
 
         # Both orginal value and new one are dicts.
-        if isinstance(original.get(k), dict) and isinstance(value, dict):
+        if (
+            isinstance(original.get(k), dict)
+            and isinstance(value, dict)
+            and k not in override_all_key_list
+        ):
             # Check old type vs old one. If different, override entire value.
             if (
                 k in override_all_if_type_changes
@@ -63,10 +71,20 @@ def deep_update(
                 original[k] = value
             # Allowed key -> ok to add new subkeys.
             elif k in allow_new_subkey_list:
-                deep_update(original[k], value, True)
+                deep_update(
+                    original[k],
+                    value,
+                    True,
+                    override_all_key_list=override_all_key_list,
+                )
             # Non-allowed key.
             else:
-                deep_update(original[k], value, new_keys_allowed)
+                deep_update(
+                    original[k],
+                    value,
+                    new_keys_allowed,
+                    override_all_key_list=override_all_key_list,
+                )
         # Original value not a dict OR new value not a dict:
         # Override entire value.
         else:
@@ -161,9 +179,9 @@ def unflatten_list_dict(dt: Dict[str, T], delimiter: str = "/") -> Dict[str, T]:
     please also improve the unit test. See #14487 for more details.
 
     Args:
-        dt (dict): Flattened dictionary that is originally nested by multiple
+        dt: Flattened dictionary that is originally nested by multiple
             list and dict.
-        delimiter (str): Delimiter of keys.
+        delimiter: Delimiter of keys.
 
     Example:
         >>> dt = {"aaa/0/bb": 12, "aaa/1/cc": 56, "aaa/1/dd": 92}

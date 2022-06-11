@@ -162,6 +162,12 @@ class ServerCallImpl : public ServerCall {
     start_time_ = absl::GetCurrentTimeNanos();
     ray::stats::STATS_grpc_server_req_handling.Record(1.0, call_name_);
     if (!io_service_.stopped()) {
+      if (factory_.GetMaxActiveRPCs() == -1) {
+        // Create a new `ServerCall` as completion queue tag before handling the request
+        // when no back pressure limit is set, so that new requests can continue to be
+        // pulled from the completion queue before this request is done.
+        factory_.CreateCall();
+      }
       io_service_.post([this] { HandleRequestImpl(); }, call_name_);
     } else {
       // Handle service for rpc call has stopped, we must handle the call here
@@ -173,16 +179,6 @@ class ServerCallImpl : public ServerCall {
 
   void HandleRequestImpl() {
     state_ = ServerCallState::PROCESSING;
-    // NOTE(hchen): This `factory` local variable is needed. Because `SendReply` runs in
-    // a different thread, and will cause `this` to be deleted.
-    const auto &factory = factory_;
-    if (factory.GetMaxActiveRPCs() == -1) {
-      // Create a new `ServerCall` to accept the next incoming request.
-      // We create this before handling the request only when no back pressure limit is
-      // set. So that the it can be populated by the completion queue in the background if
-      // a new request comes in.
-      factory.CreateCall();
-    }
     (service_handler_.*handle_request_function_)(
         request_,
         reply_,
@@ -377,7 +373,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
 
   /// Maximum request number to handle at the same time.
   /// -1 means no limit.
-  uint64_t max_active_rpcs_;
+  int64_t max_active_rpcs_;
 };
 
 }  // namespace rpc

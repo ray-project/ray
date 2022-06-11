@@ -139,7 +139,7 @@ class SimpleReplayBuffer:
         """Initialize SimpleReplayBuffer.
 
         Args:
-            num_slots (int): Number of batches to store in total.
+            num_slots: Number of batches to store in total.
         """
         self.num_slots = num_slots
         self.replay_batches = []
@@ -175,8 +175,8 @@ class MixInReplay:
         """Initialize MixInReplay.
 
         Args:
-            num_slots (int): Number of batches to store in total.
-            replay_proportion (float): The input batch will be returned
+            num_slots: Number of batches to store in total.
+            replay_proportion: The input batch will be returned
                 and an additional number of batches proportional to this value
                 will be added as well.
 

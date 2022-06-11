@@ -54,8 +54,8 @@ class MixInMultiAgentReplayBuffer:
         """Initializes MixInReplay instance.
 
         Args:
-            capacity (int): Number of batches to store in total.
-            replay_ratio (float): Ratio of replayed samples in the returned
+            capacity: Number of batches to store in total.
+            replay_ratio: Ratio of replayed samples in the returned
                 batches. E.g. a ratio of 0.0 means only return new samples
                 (no replay), a ratio of 0.5 means always return newest sample
                 plus one old one (1:1), a ratio of 0.66 means always return

@@ -28,7 +28,7 @@ from ray.rllib.utils.tf_utils import (
     minimize_and_clip,
     reduce_mean_ignore_inf,
 )
-from ray.rllib.utils.typing import ModelGradients, TensorType, TrainerConfigDict
+from ray.rllib.utils.typing import ModelGradients, TensorType, AlgorithmConfigDict
 
 tf1, tf, tfv = try_import_tf()
 
@@ -150,15 +150,15 @@ def build_q_model(
     policy: Policy,
     obs_space: gym.spaces.Space,
     action_space: gym.spaces.Space,
-    config: TrainerConfigDict,
+    config: AlgorithmConfigDict,
 ) -> ModelV2:
     """Build q_model and target_model for DQN
 
     Args:
-        policy (Policy): The Policy, which will use the model for optimization.
+        policy: The Policy, which will use the model for optimization.
         obs_space (gym.spaces.Space): The policy's observation space.
         action_space (gym.spaces.Space): The policy's action space.
-        config (TrainerConfigDict):
+        config (AlgorithmConfigDict):
 
     Returns:
         ModelV2: The Model for the Policy to use.
@@ -239,9 +239,9 @@ def build_q_losses(policy: Policy, model, _, train_batch: SampleBatch) -> Tensor
     """Constructs the loss for DQNTFPolicy.
 
     Args:
-        policy (Policy): The Policy to calculate the loss for.
+        policy: The Policy to calculate the loss for.
         model (ModelV2): The Model to calculate the loss for.
-        train_batch (SampleBatch): The training data.
+        train_batch: The training data.
 
     Returns:
         TensorType: A single loss tensor.
@@ -326,7 +326,7 @@ def build_q_losses(policy: Policy, model, _, train_batch: SampleBatch) -> Tensor
 
 
 def adam_optimizer(
-    policy: Policy, config: TrainerConfigDict
+    policy: Policy, config: AlgorithmConfigDict
 ) -> "tf.keras.optimizers.Optimizer":
     if policy.config["framework"] in ["tf2", "tfe"]:
         return tf.keras.optimizers.Adam(
@@ -370,7 +370,7 @@ def setup_late_mixins(
     policy: Policy,
     obs_space: gym.spaces.Space,
     action_space: gym.spaces.Space,
-    config: TrainerConfigDict,
+    config: AlgorithmConfigDict,
 ) -> None:
     TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
 

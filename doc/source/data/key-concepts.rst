@@ -118,9 +118,25 @@ You can also change the partitioning of a Dataset using :meth:`ds.random_shuffle
 
 ..
   https://docs.google.com/drawings/d/132jhE3KXZsf29ho1yUdPrCHB9uheHBWHJhDQMXqIVPA/edit
+  
+Fault tolerance
+===============
 
+Datasets relies on :ref:`task-based fault tolerance <task-fault-tolerance>` in Ray core. Specifically, a ``Dataset`` will be automatically recovered by Ray in case of failures. This works through **lineage reconstruction**: a Dataset is a collection of Ray objects stored in shared memory, and if any of these objects are lost, then Ray will recreate them by re-executing the task(s) that created them.
+
+There are a few cases that are not currently supported:
+1. If the original creator of the ``Dataset`` dies. This is because the creator stores the metadata for the :ref:`objects <object-fault-tolerance>` that comprise the ``Dataset``.
+2. For a :meth:`DatasetPipeline.split() <ray.data.DatasetPipeline.split>`, we do not support recovery for a consumer failure. When there are multiple consumers, they must all read the split pipeline in lockstep. To recover from this case, the pipeline and all consumers must be restarted together.
+3. The ``compute=actors`` option for transformations.
+
+Execution and Memory Management
+===============================
+
+See :ref:`Execution and Memory Management <data_advanced>` for more details about how Datasets manages memory and optimizations such as lazy vs eager execution.
+
+-------------------------
 Resource Allocation Model
-=========================
+-------------------------
 
 Unlike other libraries in Ray's ML ecosystem, such as Tune and Train, Datasets does not
 natively use placement groups to allocate resources for Datasets workloads (tasks and
@@ -136,172 +152,38 @@ scheduled within a placement group by specifying a placement group as the global
 scheduling strategy for all Datasets tasks/actors, using the global
 :class:`DatasetContext <ray.data.DatasetContext>`.
 
-.. note::
+Example: Datasets in Tune
+=========================
 
-  This is an experimental feature subject to change as we work to improve our
-  resource allocation model for Datasets.
+.. _datasets_tune:
 
-.. literalinclude:: ./doc_code/key_concepts.py
-  :language: python
-  :start-after: __resource_allocation_begin__
-  :end-before: __resource_allocation_end__
+Here's an example of how you can configure Datasets to run within Tune trials, which
+is the typical case of when you'd encounter placement groups with Datasets. Two
+scenarios are shown: running outside the trial group, and running within the trial placement group.
 
-Memory Management
-=================
+.. tabbed:: Outside Trial Placement Group
 
-This section deals with how Datasets manages execution and object store memory.
+    By default, Dataset tasks escape the trial placement group. This means they will use
+    spare cluster resources for execution, which can be problematic since the availability
+    of such resources is not guaranteed.
 
-Execution Memory
-~~~~~~~~~~~~~~~~
+    .. literalinclude:: ./doc_code/key_concepts.py
+      :language: python
+      :start-after: __resource_allocation_1_begin__
+      :end-before: __resource_allocation_1_end__
 
-During execution, certain types of intermediate data must fit in memory. This includes the input block of a task, as well as at least one of the output blocks of the task (when a task has multiple output blocks, only one needs to fit in memory at any given time). The input block consumes object stored shared memory (Python heap memory for non-Arrow data). The output blocks consume Python heap memory (prior to putting in the object store) as well as object store memory (after being put in the object store).
+.. tabbed:: Inside Trial Placement Group
 
-This means that large block sizes can lead to potential out-of-memory situations. To
-avoid OOM errors, Datasets can split blocks during map and read tasks into pieces
-smaller than the target max block size. In some cases, this splitting is not possible
-(e.g., if a single item in a block is extremely large, or the function given to
-:meth:`ds.map_batches() <ray.data.Dataset.map_batches>` returns a very large batch). To
-avoid these issues, make sure no single item in your Datasets is too large, and always
-call :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` with batch size small enough such that the output batch can comfortably fit into memory.
+    Datasets can be configured to use resources within the trial's placement group. This
+    requires you to explicitly reserve resource bundles in the placement group for
+    use by Datasets.
 
-.. note::
+    .. literalinclude:: ./doc_code/key_concepts.py
+      :language: python
+      :start-after: __resource_allocation_2_begin__
+      :end-before: __resource_allocation_2_end__
 
-  Block splitting is off by default. See the :ref:`performance section <data_performance_tips>` on how to enable block splitting (beta).
+    .. note::
 
-Object Store Memory
-~~~~~~~~~~~~~~~~~~~
-
-Datasets uses the Ray object store to store data blocks, which means it inherits the memory management features of the Ray object store. This section discusses the relevant features:
-
-**Object Spilling**: Since Datasets uses the Ray object store to store data blocks, any blocks that can't fit into object store memory are automatically spilled to disk. The objects are automatically reloaded when needed by downstream compute tasks:
-
-.. image:: images/dataset-spill.svg
-   :width: 650px
-   :align: center
-
-..
-  https://docs.google.com/drawings/d/1H_vDiaXgyLU16rVHKqM3rEl0hYdttECXfxCj8YPrbks/edit
-
-**Locality Scheduling**: Ray will preferentially schedule compute tasks on nodes that already have a local copy of the object, reducing the need to transfer objects between nodes in the cluster.
-
-**Reference Counting**: Dataset blocks are kept alive by object store reference counting as long as there is any Dataset that references them. To free memory, delete any Python references to the Dataset object.
-
-**Load Balancing**: Datasets uses Ray scheduling hints to spread read tasks out across the cluster to balance memory usage.
-
-Lazy Execution Mode
-===================
-
-.. note::
-
-  Lazy execution mode is experimental. If you run into any issues, please reach
-  out on `Discourse <https://discuss.ray.io/>`__ or open an issue on the
-  `Ray GitHub repo <https://github.com/ray-project/ray>`__.
-
-By default, all Datasets operations are eager (except for data reading, which is
-semi-lazy; see the :ref:`deferred reading docs <dataset_deferred_reading>`), executing
-each stage synchronously. This provides a simpler iterative development and debugging
-experience, allowing you to inspect up-to-date metadata (schema, row count, etc.) after
-each operation, greatly improving the typical "Getting Started" experience.
-
-However, this eager execution mode can result in less optimal (i.e. slower) execution
-and increased memory utilization compared to what's possible with a lazy execution mode.
-That's why Datasets offers a lazy execution mode, which you can transition to after
-you're done prototyping your Datasets pipeline.
-
-Lazy execution mode can be enabled by calling
-:meth:`ds = ds.experimental_lazy() <ray.data.Dataset.experimental_lazy()>`, which
-returns a dataset whose all subsequent operations will be **lazy**. These operations
-won't be executed until the dataset is consumed (e.g. via
-:meth:`ds.take() <ray.data.Dataset.take>`,
-:meth:`ds.iter_batches() <ray.data.Dataset.iter_batches>`,
-:meth:`ds.to_torch() <ray.data.Dataset.to_torch>`, etc.) or if
-:meth:`ds.fully_executed() <ray.data.Dataset.fully_executed>` is called to manually
-trigger execution.
-
-The big optimizations that lazy execution enables are **automatic stage fusion** and
-**block move semantics**.
-
-Automatic Stage Fusion
-~~~~~~~~~~~~~~~~~~~~~~
-
-Automatic fusion of stages/operations can significantly lower the Ray task overhead of
-Datasets workloads, since a chain of reading and many map-like transformations will be
-condensed into a single stage of Ray tasks; this results in less data needing to be put
-into Ray's object store and transferred across nodes, and therefore resulting in lower
-memory utilization and faster task execution.
-
-Datasets will automatically fuse together lazy operations that are compatible:
-
-* Same compute pattern: embarrassingly parallel map vs. all-to-all shuffle
-* Same compute strategy: Ray tasks vs Ray actors
-* Same resource specification, e.g. ``num_cpus`` or ``num_cpus`` requests
-
-Read and subsequent map-like transformations
-(e.g. :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`,
-:meth:`ds.filter() <ray.data.Dataset.filter>`, etc.) will usually be fused together.
-All-to-all transformations such as
-:meth:`ds.random_shuffle() <ray.data.Dataset.random_shuffle>` can be fused with earlier
-map-like stages, but not later stages.
-
-.. note::
-
-  For eager mode Datasets, reads are semi-lazy, so the transformation stage right after
-  the read stage (that triggers the full data read) will fuse with the read stage. Note
-  that this currently incurs re-reading of any already-read blocks (a fix for this is
-  currently in progress.)
-
-
-You can tell if stage fusion is enabled by checking the :ref:`Dataset stats <data_performance_tips>` and looking for fused stages (e.g., ``read->map_batches``).
-
-.. code-block::
-
-    Stage N read->map_batches->shuffle_map: N/N blocks executed in T
-    * Remote wall time: T min, T max, T mean, T total
-    * Remote cpu time: T min, T max, T mean, T total
-    * Output num rows: N min, N max, N mean, N total
-
-Block Move Semantics
-~~~~~~~~~~~~~~~~~~~~
-
-In addition to fusing together stages, lazy execution mode further optimizes memory
-utilization by eagerly releasing the data produced by intermediate operations in a
-chain.
-
-For example, if you have a chain of ``read_parquet() -> map_batches() -> filter()`` operations:
-
-.. literalinclude:: ./doc_code/key_concepts.py
-  :language: python
-  :start-after: __block_move_begin__
-  :end-before: __block_move_end__
-
-that, for the sake of this example, aren't fused together, Datasets can eagerly release
-the outputs of the ``read_parquet()`` stage and the ``map_batches()`` stage before the
-subsequent stage (``map_batches()`` and ``filter()``, respectively) have finished. This
-was not possible in eager mode, since every operation materialized the data and returned
-the references back to the user. But in lazy execution mode, we know that the outputs of
-the ``read_parquet()`` and ``map_batches()`` stages are only going to be used by the
-downstream stages, so we can more aggressively release them.
-
-Dataset Pipelines Execution Model
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-To avoid unnecessary data movement in the distributed setting,
-:class:`DatasetPipelines <ray.data.dataset_pipelines.DatasetPipeline>` will always use
-these lazy execution optimizations (stage fusion and block move semantics)
-under-the-hood. Because a ``DatasetPipeline`` doesn't support creating more than one
-``DatasetPipeline`` from a ``DatasetPipeline`` (i.e. no fan-out), we can clear block
-data extra aggressively.
-
-.. note::
-
-  When creating a pipeline (i.e. calling :meth:`ds.window() <ray.data.Dataset.window>`
-  or :meth:`ds.repeat() <ray.data.Dataset.repeat>`) immediately after a read stage, any
-  already read data will be dropped, and the read stage will be absorbed into the
-  pipeline and be made fully lazy. This allows you to easily create ML ingest pipelines
-  that re-read data from storage on every epoch, as well as streaming batch inference
-  pipelines that window all the way down to the file reading.
-
-.. literalinclude:: ./doc_code/key_concepts.py
-  :language: python
-  :start-after: __dataset_pipelines_execution_begin__
-  :end-before: __dataset_pipelines_execution_end__
+      This is an experimental feature subject to change as we work to improve our
+      resource allocation model for Datasets.

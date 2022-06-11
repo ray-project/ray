@@ -29,7 +29,7 @@ from ray.rllib.utils.typing import (
     ModelGradients,
     TensorStructType,
     TensorType,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
 )
 
 if TYPE_CHECKING:
@@ -72,7 +72,7 @@ class TFPolicy(Policy):
         self,
         observation_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
-        config: TrainerConfigDict,
+        config: AlgorithmConfigDict,
         sess: "tf1.Session",
         obs_input: TensorType,
         sampled_action: TensorType,
@@ -649,7 +649,7 @@ class TFPolicy(Policy):
         requested, an error is raised.
 
         Args:
-            name (str): The name of the placeholder to return. One of
+            name: The name of the placeholder to return. One of
                 SampleBatch.CUR_OBS|PREV_ACTION/REWARD or a valid key from
                 `self._loss_input_dict`.
 
@@ -1145,8 +1145,8 @@ class TFPolicy(Policy):
         """Return a feed dict from a batch.
 
         Args:
-            train_batch (SampleBatch): batch of data to derive inputs from.
-            shuffle (bool): whether to shuffle batch sequences. Shuffle may
+            train_batch: batch of data to derive inputs from.
+            shuffle: whether to shuffle batch sequences. Shuffle may
                 be done in-place. This only makes sense if you're further
                 applying minibatch SGD after getting the outputs.
 

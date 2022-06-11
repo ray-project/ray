@@ -176,11 +176,11 @@ class ClientAPI:
         retried (max_retries will not be respected).
 
         Args:
-            object_ref (ObjectRef): ObjectRef returned by the task
+            object_ref: ObjectRef returned by the task
                 that should be canceled.
-            force (boolean): Whether to force-kill a running task by killing
+            force: Whether to force-kill a running task by killing
                 the worker that is running the task.
-            recursive (boolean): Whether to try to cancel tasks submitted by
+            recursive: Whether to try to cancel tasks submitted by
                 the task specified.
         """
         return self.worker.terminate_task(obj, force, recursive)
