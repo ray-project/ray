@@ -821,9 +821,12 @@ def from_pandas_refs(
     context = DatasetContext.get_current()
     if context.enable_pandas_block:
         get_metadata = cached_remote_fn(_get_metadata)
-        metadata = [get_metadata.remote(df) for df in dfs]
+        metadata = ray.get([get_metadata.remote(df) for df in dfs])
         return Dataset(
-            ExecutionPlan(BlockList(dfs, ray.get(metadata)), DatasetStats.TODO()),
+            ExecutionPlan(
+                BlockList(dfs, metadata),
+                DatasetStats(stages={"from_pandas_refs": metadata}, parent=None),
+            ),
             0,
             False,
         )
@@ -831,10 +834,11 @@ def from_pandas_refs(
     df_to_block = cached_remote_fn(_df_to_block, num_returns=2)
 
     res = [df_to_block.remote(df) for df in dfs]
-    blocks, metadata = zip(*res)
+    blocks, metadata = map(list, zip(*res))
+    metadata = ray.get(metadata)
     return Dataset(
         ExecutionPlan(
-            BlockList(blocks, ray.get(list(metadata))),
+            BlockList(blocks, metadata),
             DatasetStats(stages={"from_pandas_refs": metadata}, parent=None),
         ),
         0,
@@ -888,11 +892,12 @@ def from_numpy_refs(
     ndarray_to_block = cached_remote_fn(_ndarray_to_block, num_returns=2)
 
     res = [ndarray_to_block.remote(ndarray) for ndarray in ndarrays]
-    blocks, metadata = zip(*res)
+    blocks, metadata = map(list, zip(*res))
+    metadata = ray.get(metadata)
     return Dataset(
         ExecutionPlan(
-            BlockList(blocks, ray.get(list(metadata))),
-            DatasetStats(stages={"from_numpy": metadata}, parent=None),
+            BlockList(blocks, metadata),
+            DatasetStats(stages={"from_numpy_refs": metadata}, parent=None),
         ),
         0,
         False,
@@ -939,10 +944,10 @@ def from_arrow_refs(
         tables = [tables]
 
     get_metadata = cached_remote_fn(_get_metadata)
-    metadata = [get_metadata.remote(t) for t in tables]
+    metadata = ray.get([get_metadata.remote(t) for t in tables])
     return Dataset(
         ExecutionPlan(
-            BlockList(tables, ray.get(metadata)),
+            BlockList(tables, metadata),
             DatasetStats(stages={"from_arrow_refs": metadata}, parent=None),
         ),
         0,

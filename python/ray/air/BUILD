@@ -162,6 +162,14 @@ py_test(
 )
 
 py_test(
+    name = "test_batch_predictor",
+    size = "small",
+    srcs = ["tests/test_batch_predictor.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
     name = "test_batchpredictor_runtime",
     size = "medium",
     srcs = ["tests/test_batchpredictor_runtime.py"],
@@ -178,9 +186,9 @@ py_test(
 )
 
 py_test(
-    name = "test_data_parallel_trainer",
-    size = "medium",
-    srcs = ["tests/test_data_parallel_trainer.py"],
+    name = "test_data_batch_conversion",
+    size = "small",
+    srcs = ["tests/test_data_batch_conversion.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
@@ -202,14 +210,6 @@ py_test(
 )
 
 py_test(
-    name = "test_horovod_trainer",
-    size = "large",
-    srcs = ["tests/test_horovod_trainer.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test(
     name = "test_huggingface_predictor",
     size = "medium",
     srcs = ["tests/test_huggingface_predictor.py"],
@@ -218,25 +218,9 @@ py_test(
 )
 
 py_test(
-    name = "test_huggingface_trainer",
-    size = "medium",
-    srcs = ["tests/test_huggingface_trainer.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test(
     name = "test_lightgbm_predictor",
     size = "small",
     srcs = ["tests/test_lightgbm_predictor.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test(
-    name = "test_lightgbm_trainer",
-    size = "medium",
-    srcs = ["tests/test_lightgbm_trainer.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
@@ -258,6 +242,14 @@ py_test(
 )
 
 py_test(
+    name = "test_remote_storage",
+    size = "small",
+    srcs = ["tests/test_remote_storage.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
     name = "test_rl_predictor",
     size = "small",
     srcs = ["tests/test_rl_predictor.py"],
@@ -274,25 +266,9 @@ py_test(
 )
 
 py_test(
-    name = "test_sklearn_trainer",
-    size = "medium",
-    srcs = ["tests/test_sklearn_trainer.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test(
     name = "test_tensorflow_predictor",
     size = "small",
     srcs = ["tests/test_tensorflow_predictor.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test(
-    name = "test_tensorflow_trainer",
-    size = "medium",
-    srcs = ["tests/test_tensorflow_trainer.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
@@ -314,14 +290,6 @@ py_test(
 )
 
 py_test(
-    name = "test_torch_trainer",
-    size = "medium",
-    srcs = ["tests/test_torch_trainer.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test(
     name = "test_torch_utils",
     size = "small",
     srcs = ["tests/test_torch_utils.py"],
@@ -330,25 +298,9 @@ py_test(
 )
 
 py_test(
-    name = "test_trainer",
-    size = "medium",
-    srcs = ["tests/test_trainer.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test(
     name = "test_xgboost_predictor",
     size = "small",
     srcs = ["tests/test_xgboost_predictor.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test(
-    name = "test_xgboost_trainer",
-    size = "medium",
-    srcs = ["tests/test_xgboost_trainer.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )

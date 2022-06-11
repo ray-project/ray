@@ -411,7 +411,9 @@ class OneToOneStage(Stage):
     def can_fuse(self, prev: Stage):
         if not isinstance(prev, OneToOneStage):
             return False
-        if prev.compute != self.compute:
+        # Allow fusing tasks->actors if the resources are compatible (read->map), but
+        # not the other way around. The latter will be used as the compute if fused.
+        if self.compute == "tasks" and prev.compute != self.compute:
             return False
         if not _are_remote_args_compatible(prev.ray_remote_args, self.ray_remote_args):
             return False
@@ -431,7 +433,7 @@ class OneToOneStage(Stage):
                 for tmp2 in fn2(tmp1):
                     yield tmp2
 
-        return OneToOneStage(name, block_fn, prev.compute, prev.ray_remote_args)
+        return OneToOneStage(name, block_fn, self.compute, prev.ray_remote_args)
 
     def __call__(
         self, blocks: BlockList, clear_input_blocks: bool

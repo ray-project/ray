@@ -23,10 +23,11 @@ PREFETCHER_ACTOR_NAMESPACE = "ray.dataset"
 
 
 def batch_blocks(
-    blocks: Iterator[Block],
+    blocks: Iterator[ObjectRef[Block]],
     stats: Union[DatasetStats, DatasetPipelineStats],
     *,
     prefetch_blocks: int = 0,
+    clear_block_after_read: bool = False,
     batch_size: Optional[int] = None,
     batch_format: str = "native",
     drop_last: bool = False,
@@ -41,6 +42,11 @@ def batch_blocks(
     Args:
         prefetch_blocks: The number of blocks to prefetch ahead of the
             current block during the scan.
+        clear_block_after_read: Whether to clear the block from object store
+            manually (i.e. without waiting for Python's automatic GC) after it
+            is read. Doing so will reclaim memory faster and hence reduce the
+            memory footprint. However, the caller has to ensure the safety, i.e.
+            the block will never be accessed again.
         batch_size: Record batch size, or None to let the system pick.
         batch_format: The format in which to return each batch.
             Specify "native" to use the current block format (promoting
@@ -74,7 +80,9 @@ def batch_blocks(
         prefetcher = ActorBlockPrefetcher()
     else:
         prefetcher = WaitBlockPrefetcher()
-    for block_window in _sliding_window(blocks, prefetch_blocks + 1):
+    for block_window in _sliding_window(
+        blocks, prefetch_blocks + 1, clear_block_after_read
+    ):
         block_window = list(block_window)
         with stats.iter_wait_s.timer():
             prefetcher.prefetch_blocks(block_window)
@@ -109,7 +117,7 @@ def _format_batch(batch: Block, batch_format: str) -> BatchType:
     return batch
 
 
-def _sliding_window(iterable: Iterable, n: int):
+def _sliding_window(iterable: Iterable, n: int, clear_block_after_read: bool = False):
     """Creates an iterator consisting of n-width sliding windows over
     iterable. The sliding windows are constructed lazily such that an
     element on the base iterator (iterable) isn't consumed until the
@@ -122,6 +130,11 @@ def _sliding_window(iterable: Iterable, n: int):
         iterable: The iterable on which the sliding window will be
             created.
         n: The width of the sliding window.
+        clear_block_after_read: Whether to clear the leftmost block
+            from object store manually (i.e. without waiting for Python's
+            automatic GC) when it's out of the sliding window (i.e. been
+            consumed), so as to reclaim memory faster. The caller has to
+            ensure safety, i.e. the block will never be accessed again.
 
     Returns:
         An iterator of n-width windows over iterable.
@@ -133,6 +146,9 @@ def _sliding_window(iterable: Iterable, n: int):
     if len(window) > 0:
         yield tuple(window)
     for elem in it:
+        block_ref = window.popleft()
+        if clear_block_after_read:
+            ray.internal.internal_api.free(block_ref, local_only=False)
         window.append(elem)
         yield tuple(window)
 
