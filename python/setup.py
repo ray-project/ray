@@ -553,7 +553,7 @@ def build(build_python, build_java, build_cpp):
     if setup_spec.build_type == BuildType.DEBUG:
         bazel_flags.extend(["--config", "debug"])
     if setup_spec.build_type == BuildType.ASAN:
-        bazel_flags.extend(["--config=asan-build"])
+        bazel_flags.extend(["--config=asan"])
     if setup_spec.build_type == BuildType.TSAN:
         bazel_flags.extend(["--config=tsan"])
 
