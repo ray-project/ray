@@ -1,28 +1,52 @@
 from typing import Optional
 
+import torch
 import torch.nn as nn
-from torch.distributions import Distribution
 from torch import TensorType
 from dataclasses import dataclass
 
 from rllib2.utils import NNOutput
 
 """
-class Distribution:
+class PiDistribution:
     
-    def rsample(shape): # can compute gradients in backward()
+    # all sampling operations preserve the backpropagation. So if that's not intended 
+    # user needs to wrap the method call in with torch.no_grad()
+    def behavioral_sample(self, shape):
         pass
     
-    def sample(shape): # used in inference
+    def target_sample(self, shape):
         pass
     
-    def log_prob(value):
+    def log_prob(self, value):
         pass
         
-    def entropy():
+    def entropy(self):
         pass
-        
-"""
+
+class DeterministicDist(PiDistribution):
+    
+    def behavioral_sample(self, shape):
+        return self.action_logtis
+    
+    def target_sample(self, shape):
+        return self.action_logits
+    
+    def log_prob(self, value):
+        raise ValueError
+    
+    def entropy(self):
+        return torch.zeros_like(self.action_logits)
+
+
+class SquashedDeterministicDist(DeterministicDist):
+
+    def behavioral_sample(self, shape):
+        return super().behavioral_sample(shape).tanh()
+
+    def target_sample(self, shape):
+        return super().target_sample(shape).tanh()
+# """
 
 """
 Example:
@@ -43,25 +67,25 @@ Example:
 
 @dataclass
 class PiOutput(NNOutput):
-    action_dist: Optional[Distribution] = None
+    action_dist: Optional[PiDistribution] = None
     # TODO: Not sure if we want these. Most use-cases should be supported by outputting a action_dist directly
     action_logits: Optional[TensorType] = None
     action_sampled: Optional[TensorType] = None
     log_p: Optional[TensorType] = None
 
-    def behavioral_sample(self, shape=()):
+    def behavioral_sample(self, shape=(), **kwargs):
         """
         Sample from behavioral policy (exploration on)
         """
         pass
 
-    def target_sample(self, shape=()):
+    def target_sample(self, shape=(), **kwargs):
         """
         Sample from target policy (exploration off)
         """
         pass
 
-    def log_prob(self, value:TensorType) -> TensorType:
+    def log_prob(self, value: TensorType) -> TensorType:
         pass
 
     def entropy(self) -> TensorType:
@@ -83,23 +107,89 @@ class Pi(nn.Module):
         * for deterministic entropy would be zero
     * Should support arbitrary encoders (encode observations / history to s_t)
         * Encoder would be part of the model attributes
+        * TODO: Should we just create an encoder attribute and have the user encode themselves?
+            or should we also take care of the encoding during __call__ method?
     * Support both Continuous and Discrete actions
         * For continuous you should output a continuous dist that can be sampled
         * For discrete you should output a categorical dist that can be sampled
+        * Support composable output distribution heads for cases where we have a mixture
+            of cont. and disc. action spaces
+        * TODO: How do we support auto-regressive action spaces?
+        * TODO: How do we support Recurrent Policies?
+        * TODO: How do we support action-space masking?
     * Should be able to switch between exploration = on / off
         * target_sample is used for inference (exploration = off)
         * behavioral_sample is used for sampling during training (exploration = true)
         * behavioral / target would be used based on the requirement of computing
         the algorithm's loss function during training
+
+    * Should be able to save/load very easily for serving (if needed)
+    * Should be able to create copies efficiently and perform arbitrary parameter updates in target_updates
     """
 
-    def __init__(self):
+    def __init__(self, encoder: nn.Module):
         super().__init__()
+        self.encoder = encoder
+
+    def __call__(self, batch, **kwargs):
+        if self.encoder:
+            output = self.encoder(batch, kwargs)
+        else:
+            output = batch
+        return super().__call__(output)
 
     def forward(self, batch: SampleBatch, **kwargs) -> PiOutput:
         """
-        Runs pi in inference mode, Pi(input_dict) -> P
-        Returns:
-
+        Runs pi, Pi(input_dict) -> Pi(s_t)
         """
+        pass
+
+
+class DetermnisticPi(Pi):
+    """
+    Both target and behavioral policy output a Deterministic distribution
+    """
+
+    def __init__(self, action_shape, encoder, squash_actions=False, **kwargs):
+        super().__init__(encoder)
+        self.policy_head = nn.Linear(encoder.num_features, action_shape)
+
+    def forward(self, batch: SampleBatch, **kwargs) -> PiOutput:
+        s = batch['rl_state']
+        logits = self.policy_head(s)
+        if self.squash_actions:
+            dist = SquashedDeterministicDist(logits)
+        else:
+            dist = DeterministicDist(logits)
+        return PiOutput(action_dist=dist)
+
+
+class NormalPi(Pi):
+    """
+    Behavioral Sample is sampled from Normal
+    Target sample is the mean of the Normal
+    """
+
+    def __init__(self, action_shape, encoder, squash_actions=False,
+                 log_std=None, use_parameter_log_std=False, **kwargs):
+        super().__init__(encoder)
+
+        output_shape = ...
+        self.policy_head = nn.Linear(encoder.num_features, output_shape)
+
+    def forward(self, batch: SampleBatch, **kwargs) -> PiOutput:
+        s = batch['rl_state']
+        logits = self.policy_head(s)
+        mean, std = ...
+
+        if self.squash_actions:
+            dist = SquashedNormalDist(mean, std)
+        else:
+            dist = NormalDist(mean, std)
+        return PiOutput(action_dist=dist)
+
+
+class CategoricalPi(Pi):
+
+    def __init__(self, action_classes):
         pass
