@@ -560,6 +560,13 @@ class Trainable:
             if checkpoint:
                 checkpoint.to_directory(checkpoint_path)
 
+        if not os.path.exists(checkpoint_path):
+            raise ValueError(
+                f"Could not recover from checkpoint as it does not exist on local "
+                f"disk and was not available on cloud storage or another Ray node. "
+                f"Got checkpoint path: {checkpoint_path} and IP {checkpoint_node_ip}"
+            )
+
         with open(checkpoint_path + ".tune_metadata", "rb") as f:
             metadata = pickle.load(f)
         self._experiment_id = metadata["experiment_id"]
