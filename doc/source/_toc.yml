@@ -254,6 +254,7 @@ parts:
 
   - caption: Developer Guides
     chapters:
+      - file: ray-contribute/stability
       - file: ray-contribute/getting-involved
         sections:
           - file: ray-contribute/development
