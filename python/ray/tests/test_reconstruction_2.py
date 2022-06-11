@@ -11,7 +11,7 @@ from ray._private.test_utils import (
     SignalActor,
     Semaphore,
 )
-from ray.internal.internal_api import memory_summary
+from ray._private.internal_api import memory_summary
 import ray._private.ray_constants as ray_constants
 
 # Task status.

@@ -37,7 +37,7 @@ from ray._private.gcs_pubsub import (
 from ray._private.tls_utils import generate_self_signed_tls_certs
 from ray.util.queue import Queue, _QueueActor, Empty
 from ray.scripts.scripts import main as ray_main
-from ray.internal.internal_api import memory_summary
+from ray._private.internal_api import memory_summary
 
 try:
     from prometheus_client.parser import text_string_to_metric_families

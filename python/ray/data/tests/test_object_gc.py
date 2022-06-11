@@ -5,7 +5,7 @@ import pytest
 import ray
 from ray.tests.conftest import *  # noqa
 
-from ray.internal.internal_api import memory_summary
+from ray._private.internal_api import memory_summary
 
 
 def check_no_spill(ctx, pipe, prefetch_blocks: int = 0):

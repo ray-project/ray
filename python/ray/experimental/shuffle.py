@@ -310,7 +310,7 @@ def run(
 
     time.sleep(0.5)
     print()
-    print(ray.internal.internal_api.memory_summary(stats_only=True))
+    print(ray._private.internal_api.memory_summary(stats_only=True))
     print()
     print(
         "Shuffled", int(sum(output_sizes) / (1024 * 1024)), "MiB in", delta, "seconds"

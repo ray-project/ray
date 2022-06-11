@@ -23,7 +23,7 @@ def some_func2(x):
 
 
 def test_delete(workflow_start_regular):
-    from ray.internal.storage import _storage_uri
+    from ray._private.storage import _storage_uri
 
     # Try deleting a random workflow that never existed.
     with pytest.raises(WorkflowNotFoundError):
@@ -149,7 +149,7 @@ def test_workflow_storage(workflow_start_regular):
 
     # test s3 path
     # here we hardcode the path to make sure s3 path is parsed correctly
-    from ray.internal.storage import _storage_uri
+    from ray._private.storage import _storage_uri
 
     if _storage_uri.startswith("s3://"):
         assert wf_storage._get("steps/outputs.json", True) == root_output_metadata

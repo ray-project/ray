@@ -150,7 +150,7 @@ if __name__ == "__main__":
     try:
         print(
             "Memory stats at end of ingest:\n\n{}".format(
-                ray.internal.internal_api.memory_summary(stats_only=True)
+                ray._private.internal_api.memory_summary(stats_only=True)
             )
         )
     except Exception:

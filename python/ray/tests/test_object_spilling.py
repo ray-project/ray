@@ -15,7 +15,7 @@ from ray.tests.conftest import (
 )
 from ray._private.external_storage import create_url_with_offset, parse_url_with_offset
 from ray._private.test_utils import wait_for_condition
-from ray.internal.internal_api import memory_summary
+from ray._private.internal_api import memory_summary
 from ray._raylet import GcsClientOptions
 
 

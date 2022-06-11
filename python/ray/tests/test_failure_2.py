@@ -161,7 +161,7 @@ def test_raylet_crash_when_get(ray_start_regular):
         ray._private.worker._global_node.kill_raylet()
 
     object_ref = ray.put(np.zeros(200 * 1024, dtype=np.uint8))
-    ray.internal.free(object_ref)
+    ray._private.free(object_ref)
 
     thread = threading.Thread(target=sleep_to_kill_raylet)
     thread.start()
@@ -192,7 +192,7 @@ def test_eviction(ray_start_cluster):
     obj = large_object.remote()
     assert isinstance(ray.get(obj), np.ndarray)
     # Evict the object.
-    ray.internal.free([obj])
+    ray._private.free([obj])
     # ray.get throws an exception.
     with pytest.raises(ray.exceptions.ReferenceCountingAssertionError):
         ray.get(obj)

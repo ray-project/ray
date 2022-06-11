@@ -12,7 +12,7 @@ import logging
 import ray
 from ray import cloudpickle
 from ray._private import signature
-from ray.internal import storage
+from ray._private import storage
 from ray.workflow.common import (
     Workflow,
     StepID,

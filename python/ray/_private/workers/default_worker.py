@@ -195,7 +195,7 @@ if __name__ == "__main__":
     # external storage is intialized.
     if mode == ray.RESTORE_WORKER_MODE or mode == ray.SPILL_WORKER_MODE:
         from ray._private import external_storage
-        from ray.internal import storage
+        from ray._private import storage
 
         storage._init_storage(args.storage, is_head=False)
         if args.object_spilling_config:

@@ -34,8 +34,8 @@ from typing import (
 # Ray modules
 import ray.cloudpickle as pickle
 import ray._private.memory_monitor as memory_monitor
-import ray.internal.storage as storage
-from ray.internal.storage import _load_class
+import ray._private.storage as storage
+from ray._private.storage import _load_class
 import ray._private.node
 import ray.job_config
 import ray._private.parameter

@@ -391,7 +391,7 @@ def sort_main(args: Args):
             writer = csv.writer(fout)
             writer.writerows(reducer_results)
 
-    logging.info(ray.internal.internal_api.memory_summary(stats_only=True))
+    logging.info(ray._private.internal_api.memory_summary(stats_only=True))
 
 
 # ------------------------------------------------------------

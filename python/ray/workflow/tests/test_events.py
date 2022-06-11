@@ -165,7 +165,7 @@ def test_crash_during_event_checkpointing(workflow_start_regular_shared):
     """Ensure that if the cluster dies while the event is being checkpointed, we
     properly re-poll for the event."""
 
-    from ray.internal import storage
+    from ray._private import storage
 
     storage_uri = storage._storage_uri
 
@@ -229,7 +229,7 @@ def test_crash_after_commit(workflow_start_regular_shared):
     checkpointing.
     """
 
-    from ray.internal import storage
+    from ray._private import storage
 
     storage_uri = storage._storage_uri
 

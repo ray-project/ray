@@ -370,7 +370,7 @@ class ExternalStorageRayStorageImpl(ExternalStorage):
         # Override the storage config for unit tests.
         _force_storage_for_testing: Optional[str] = None,
     ):
-        from ray.internal import storage
+        from ray._private import storage
 
         if _force_storage_for_testing:
             storage._reset()

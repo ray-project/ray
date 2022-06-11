@@ -43,14 +43,14 @@ def test_internal_free(shutdown_only):
     # Free deletes from in-memory store.
     obj_ref = sampler.sample.remote()
     ray.get(obj_ref)
-    ray.internal.free(obj_ref)
+    ray._private.free(obj_ref)
     with pytest.raises(ReferenceCountingAssertionError):
         ray.get(obj_ref)
 
     # Free deletes big objects from plasma store.
     big_id = sampler.sample_big.remote()
     ray.get(big_id)
-    ray.internal.free(big_id)
+    ray._private.free(big_id)
     time.sleep(1)  # wait for delete RPC to propagate
     with pytest.raises(ReferenceCountingAssertionError):
         ray.get(big_id)

@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 
 import ray
-from ray.internal.internal_api import memory_summary
+from ray._private.internal_api import memory_summary
 import ray.util.accelerators
 import ray.cluster_utils
 from ray._private.test_utils import fetch_prometheus

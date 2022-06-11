@@ -173,7 +173,7 @@ def test_embedded_objectrefs(workflow_start_regular):
         def __init__(self, refs):
             self.refs = refs
 
-    from ray.internal.storage import _storage_uri
+    from ray._private.storage import _storage_uri
 
     wrapped = ObjectRefsWrapper([ray.put(1), ray.put(2)])
 

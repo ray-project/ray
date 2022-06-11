@@ -38,8 +38,8 @@ from ray.autoscaler._private.commands import (
 from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
 from ray.autoscaler._private.kuberay.run_autoscaler import run_kuberay_autoscaler
-from ray.internal.internal_api import memory_summary
-from ray.internal.storage import _load_class
+from ray._private.internal_api import memory_summary
+from ray._private.storage import _load_class
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cli_logger, cf
 from ray.dashboard.modules.job.cli import job_cli_group
 from ray.experimental.state.state_cli import list_state_cli_group
@@ -2078,7 +2078,7 @@ def global_gc(address):
     address = services.canonicalize_bootstrap_address(address)
     logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address)
-    ray.internal.internal_api.global_gc()
+    ray._private.internal_api.global_gc()
     print("Triggered gc.collect() on all workers.")
 
 

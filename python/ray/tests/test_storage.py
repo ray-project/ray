@@ -6,7 +6,7 @@ import pytest
 import subprocess
 
 import ray
-import ray.internal.storage as storage
+import ray._private.storage as storage
 from ray.tests.conftest import *  # noqa
 from ray._private.test_utils import simulate_storage
 
@@ -157,7 +157,7 @@ def test_connecting_to_cluster(shutdown_only, storage_type):
         try:
             subprocess.check_call(["ray", "start", "--head", "--storage", storage_uri])
             ray.init(address="auto")
-            from ray.internal.storage import _storage_uri
+            from ray._private.storage import _storage_uri
 
             # make sure driver is using the same storage when connecting to a cluster
             assert _storage_uri == storage_uri

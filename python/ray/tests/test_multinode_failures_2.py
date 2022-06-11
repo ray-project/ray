@@ -58,7 +58,7 @@ def test_object_reconstruction(ray_start_cluster):
         # node.
         for x in xs:
             ray.get(x)
-            ray.internal.free([x], local_only=True)
+            ray._private.free([x], local_only=True)
 
         # Kill a component on one of the nodes.
         process.terminate()
