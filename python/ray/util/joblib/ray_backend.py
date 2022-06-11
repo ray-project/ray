@@ -69,7 +69,7 @@ class RayBackend(MultiprocessingBackend):
                 else:
                     logger.info("Starting local ray cluster")
                 ray.init()
-            ray_cpus = int(ray.state.cluster_resources()["CPU"])
+            ray_cpus = int(ray._private.state.cluster_resources()["CPU"])
             n_jobs = ray_cpus
 
         eff_n_jobs = super(RayBackend, self).configure(
@@ -87,6 +87,6 @@ class RayBackend(MultiprocessingBackend):
     def effective_n_jobs(self, n_jobs):
         eff_n_jobs = super(RayBackend, self).effective_n_jobs(n_jobs)
         if n_jobs == -1:
-            ray_cpus = int(ray.state.cluster_resources()["CPU"])
+            ray_cpus = int(ray._private.state.cluster_resources()["CPU"])
             eff_n_jobs = ray_cpus
         return eff_n_jobs

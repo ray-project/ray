@@ -354,7 +354,7 @@ def test_cuda_visible_devices_multiple(ray_2_node_4_gpu, worker_results):
 
 def get_node_id_set():
     node_id_set = set()
-    for actor_info in ray.state.actors().values():
+    for actor_info in ray._private.state.actors().values():
         node_id = actor_info["Address"]["NodeID"]
         node_id_set.add(node_id)
     return node_id_set

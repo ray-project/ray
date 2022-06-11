@@ -157,7 +157,7 @@ def test_placement_group_pack(ray_start_cluster, connect_to_client):
         ray.get(actor_2.value.remote())
 
         # Get all actors.
-        actor_infos = ray.state.actors()
+        actor_infos = ray._private.state.actors()
 
         # Make sure all actors in counter_list are collocated in one node.
         actor_info_1 = actor_infos.get(actor_1._actor_id.hex())
@@ -213,7 +213,7 @@ def test_placement_group_strict_pack(ray_start_cluster, connect_to_client):
         ray.get(actor_2.value.remote())
 
         # Get all actors.
-        actor_infos = ray.state.actors()
+        actor_infos = ray._private.state.actors()
 
         # Make sure all actors in counter_list are collocated in one node.
         actor_info_1 = actor_infos.get(actor_1._actor_id.hex())
@@ -263,7 +263,7 @@ def test_placement_group_spread(ray_start_cluster, connect_to_client):
         [ray.get(actor.value.remote()) for actor in actors]
 
         # Get all actors.
-        actor_infos = ray.state.actors()
+        actor_infos = ray._private.state.actors()
 
         # Make sure all actors in counter_list are located in separate nodes.
         actor_info_objs = [actor_infos.get(actor._actor_id.hex()) for actor in actors]
@@ -309,7 +309,7 @@ def test_placement_group_strict_spread(ray_start_cluster, connect_to_client):
         [ray.get(actor.value.remote()) for actor in actors]
 
         # Get all actors.
-        actor_infos = ray.state.actors()
+        actor_infos = ray._private.state.actors()
 
         # Make sure all actors in counter_list are located in separate nodes.
         actor_info_objs = [actor_infos.get(actor._actor_id.hex()) for actor in actors]

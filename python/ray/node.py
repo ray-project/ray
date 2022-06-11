@@ -1118,7 +1118,7 @@ class Node:
             gcs_options = ray._raylet.GcsClientOptions.from_gcs_address(
                 self.gcs_address
             )
-            global_state = ray.state.GlobalState()
+            global_state = ray._private.state.GlobalState()
             global_state._initialize_global_state(gcs_options)
             new_config = global_state.get_system_config()
             assert self._config.items() <= new_config.items(), (

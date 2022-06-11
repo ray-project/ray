@@ -382,7 +382,7 @@ def wait_for_node(
             the node appears in the client table.
     """
     gcs_options = GcsClientOptions.from_gcs_address(gcs_address)
-    global_state = ray.state.GlobalState()
+    global_state = ray._private.state.GlobalState()
     global_state._initialize_global_state(gcs_options)
     start_time = time.time()
     while time.time() - start_time < timeout:
@@ -401,7 +401,7 @@ def get_node_to_connect_for_driver(
     redis_address, gcs_address, node_ip_address, redis_password=None
 ):
     # Get node table from global state accessor.
-    global_state = ray.state.GlobalState()
+    global_state = ray._private.state.GlobalState()
     gcs_options = _get_gcs_client_options(redis_address, redis_password, gcs_address)
     global_state._initialize_global_state(gcs_options)
     return global_state.get_node_to_connect_for_driver(node_ip_address)

@@ -147,7 +147,7 @@ def test_ray_address_environment_variable(ray_start_cluster):
     # RAY_ADDRESS is set to the cluster address.
     os.environ["RAY_ADDRESS"] = address
     ray.init()
-    assert "CPU" not in ray.state.cluster_resources()
+    assert "CPU" not in ray._private.state.cluster_resources()
     ray.shutdown()
     del os.environ["RAY_ADDRESS"]
 
@@ -155,7 +155,7 @@ def test_ray_address_environment_variable(ray_start_cluster):
     # RAY_ADDRESS is set to "auto".
     os.environ["RAY_ADDRESS"] = "auto"
     ray.init()
-    assert "CPU" not in ray.state.cluster_resources()
+    assert "CPU" not in ray._private.state.cluster_resources()
     ray.shutdown()
     del os.environ["RAY_ADDRESS"]
 
@@ -163,13 +163,13 @@ def test_ray_address_environment_variable(ray_start_cluster):
     # when `address` is not `auto`.
     os.environ["RAY_ADDRESS"] = "test"
     ray.init(address=address)
-    assert "CPU" not in ray.state.cluster_resources()
+    assert "CPU" not in ray._private.state.cluster_resources()
     ray.shutdown()
     del os.environ["RAY_ADDRESS"]
 
     # Make sure we start a new cluster if RAY_ADDRESS is not set.
     ray.init()
-    assert "CPU" in ray.state.cluster_resources()
+    assert "CPU" in ray._private.state.cluster_resources()
     ray.shutdown()
 
 

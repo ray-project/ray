@@ -240,7 +240,7 @@ async def test_asyncio_exit_actor(ray_start_regular_shared):
     @ray.remote
     def check_actor_gone_now():
         def cond():
-            return ray.state.actors()[a._ray_actor_id.hex()]["State"] != 2
+            return ray._private.state.actors()[a._ray_actor_id.hex()]["State"] != 2
 
         wait_for_condition(cond)
 

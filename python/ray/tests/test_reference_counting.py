@@ -525,7 +525,7 @@ def test_basic_nested_ids(one_worker_100MiB):
 def _all_actors_dead():
     return all(
         actor["State"] == convert_actor_state(gcs_utils.ActorTableData.DEAD)
-        for actor in list(ray.state.actors().values())
+        for actor in list(ray._private.state.actors().values())
     )
 
 

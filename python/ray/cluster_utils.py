@@ -124,7 +124,7 @@ class Cluster:
         self.redis_address = None
         self.connected = False
         # Create a new global state accessor for fetching GCS table.
-        self.global_state = ray.state.GlobalState()
+        self.global_state = ray._private.state.GlobalState()
         self._shutdown_at_exit = shutdown_at_exit
         if not initialize_head and connect:
             raise RuntimeError("Cannot connect to uninitialized cluster.")

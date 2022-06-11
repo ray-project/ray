@@ -178,7 +178,7 @@ def test_intelligent_scale_down(ray_cluster):
         pass
 
     def get_actor_distributions():
-        actors = ray.state.actors()
+        actors = ray._private.state.actors()
         node_to_actors = defaultdict(list)
         for actor in actors.values():
             if "RayServeWrappedReplica" not in actor["ActorClassName"]:

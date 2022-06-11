@@ -215,7 +215,7 @@ def test_delete_actor_on_disconnect(ray_start_cluster):
         def test_cond():
             alive_actors = [
                 v
-                for v in real_ray.state.actors().values()
+                for v in real_ray._private.state.actors().values()
                 if v["State"] != ActorTableData.DEAD
             ]
             return len(alive_actors) == 0

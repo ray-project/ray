@@ -66,7 +66,7 @@ def test_placement_group_bin_packing_priority(
         [ray.get(actor.value.remote()) for actor in actors]
 
         # Get all actors.
-        actor_infos = ray.state.actors()
+        actor_infos = ray._private.state.actors()
 
         # Make sure all actors in counter_list are located in separate nodes.
         actor_info_objs = [actor_infos.get(actor._actor_id.hex()) for actor in actors]

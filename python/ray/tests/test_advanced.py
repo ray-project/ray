@@ -284,7 +284,7 @@ def test_object_transfer_dump(ray_start_cluster_enabled):
     # The profiling information only flushes once every second.
     time.sleep(1.1)
 
-    transfer_dump = ray.state.object_transfer_timeline()
+    transfer_dump = ray._private.state.object_transfer_timeline()
     # Make sure the transfer dump can be serialized with JSON.
     json.loads(json.dumps(transfer_dump))
     assert len(transfer_dump) >= num_nodes ** 2

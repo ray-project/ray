@@ -211,7 +211,7 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
         gcs_client_options = ray._raylet.GcsClientOptions.from_gcs_address(gcs_address)
         self.gcs_address = gcs_address
 
-        ray.state.state._initialize_global_state(gcs_client_options)
+        ray._private.state.state._initialize_global_state(gcs_client_options)
         self.temp_dir = temp_dir
         self.default_service_discovery_flush_period = 5
         super().__init__()

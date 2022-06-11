@@ -19,7 +19,7 @@ from typing import Union
 from ray import cloudpickle
 from ray.job_config import JobConfig
 import ray
-import ray.state
+import ray._private.state
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 import time

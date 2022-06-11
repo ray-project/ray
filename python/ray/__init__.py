@@ -132,7 +132,7 @@ from ray._raylet import (  # noqa: E402
 
 _config = _Config()
 
-from ray.state import (  # noqa: E402
+from ray._private.state import (  # noqa: E402
     nodes,
     timeline,
     cluster_resources,

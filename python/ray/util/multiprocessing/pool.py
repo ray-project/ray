@@ -617,7 +617,7 @@ class Pool:
                 logger.info("Starting local ray cluster")
                 ray.init(num_cpus=processes)
 
-        ray_cpus = int(ray.state.cluster_resources()["CPU"])
+        ray_cpus = int(ray._private.state.cluster_resources()["CPU"])
         if processes is None:
             processes = ray_cpus
         if processes <= 0:

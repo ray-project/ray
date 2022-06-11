@@ -117,7 +117,7 @@ def _get_bundle_cache(pg_id: PlacementGroupID) -> List[Dict]:
     worker = ray._private.worker.global_worker
     worker.check_connected()
 
-    return list(ray.state.state.placement_group_table(pg_id)["bundles"].values())
+    return list(ray._private.state.state.placement_group_table(pg_id)["bundles"].values())
 
 
 @PublicAPI
@@ -220,7 +220,7 @@ def get_placement_group(placement_group_name: str) -> PlacementGroup:
         raise ValueError("Please supply a non-empty value to get_placement_group")
     worker = ray._private.worker.global_worker
     worker.check_connected()
-    placement_group_info = ray.state.state.get_placement_group_by_name(
+    placement_group_info = ray._private.state.state.get_placement_group_by_name(
         placement_group_name, worker.namespace
     )
     if placement_group_info is None:
@@ -243,7 +243,7 @@ def placement_group_table(placement_group: PlacementGroup = None) -> dict:
     worker = ray._private.worker.global_worker
     worker.check_connected()
     placement_group_id = placement_group.id if (placement_group is not None) else None
-    return ray.state.state.placement_group_table(placement_group_id)
+    return ray._private.state.state.placement_group_table(placement_group_id)
 
 
 @PublicAPI

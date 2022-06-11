@@ -219,7 +219,7 @@ def test_del_actor_after_gcs_server_restart(ray_start_regular_with_external_redi
     del actor
 
     def condition():
-        actor_status = ray.state.actors(actor_id=actor_id)
+        actor_status = ray._private.state.actors(actor_id=actor_id)
         if actor_status["State"] == convert_actor_state(gcs_utils.ActorTableData.DEAD):
             return True
         else:

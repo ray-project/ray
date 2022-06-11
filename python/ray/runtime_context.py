@@ -135,7 +135,7 @@ class RuntimeContext(object):
         assert (
             not self.actor_id.is_nil()
         ), "This method should't be called inside Ray tasks."
-        actor_info = ray.state.actors(self.actor_id.hex())
+        actor_info = ray._private.state.actors(self.actor_id.hex())
         return actor_info and actor_info["NumRestarts"] != 0
 
     @property

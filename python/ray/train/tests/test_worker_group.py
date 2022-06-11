@@ -38,7 +38,7 @@ def test_worker_shutdown(ray_start_2_cpus):
     wg = WorkerGroup(num_workers=2)
     time.sleep(1)
     assert "CPU" not in ray.available_resources()
-    assert len(ray.state.actors()) == 2
+    assert len(ray._private.state.actors()) == 2
     wg.shutdown()
     time.sleep(1)
     assert ray.available_resources()["CPU"] == 2

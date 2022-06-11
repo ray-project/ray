@@ -1294,7 +1294,7 @@ def exit_actor():
         # raylet won't push an error message to the driver.
         ray._private.worker.disconnect()
         # Disconnect global state from GCS.
-        ray.state.state.disconnect()
+        ray._private.state.state.disconnect()
 
         # In asyncio actor mode, we can't raise SystemExit because it will just
         # quit the asycnio event loop thread, not the main thread. Instead, we

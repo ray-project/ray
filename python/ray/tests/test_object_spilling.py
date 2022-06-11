@@ -40,7 +40,7 @@ def is_dir_empty(temp_folder, append_path=ray.ray_constants.DEFAULT_OBJECT_PREFI
 
 
 def assert_no_thrashing(address):
-    state = ray.state.GlobalState()
+    state = ray._private.state.GlobalState()
     options = GcsClientOptions.from_gcs_address(address)
     state._initialize_global_state(options)
     summary = memory_summary(address=address, stats_only=True)

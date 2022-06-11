@@ -351,18 +351,18 @@ def test_node_id_resource(ray_start_cluster):
     cluster.add_node(num_cpus=3)
     ray.init(address=cluster.address)
 
-    local_node = ray.state.current_node_id()
+    local_node = ray._private.state.current_node_id()
 
     # Note that these will have the same IP in the test cluster
-    assert len(ray.state.node_ids()) == 2
-    assert local_node in ray.state.node_ids()
+    assert len(ray._private.state.node_ids()) == 2
+    assert local_node in ray._private.state.node_ids()
 
     @ray.remote(resources={local_node: 1})
     def f():
-        return ray.state.current_node_id()
+        return ray._private.state.current_node_id()
 
     # Check the node id resource is automatically usable for scheduling.
-    assert ray.get(f.remote()) == ray.state.current_node_id()
+    assert ray.get(f.remote()) == ray._private.state.current_node_id()
 
 
 def test_two_custom_resources(ray_start_cluster):

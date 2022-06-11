@@ -195,7 +195,7 @@ def test_heartbeats_single(ray_start_cluster_head):
     """
     cluster = ray_start_cluster_head
     monitor = setup_monitor(cluster.gcs_address)
-    total_cpus = ray.state.cluster_resources()["CPU"]
+    total_cpus = ray._private.state.cluster_resources()["CPU"]
     verify_load_metrics(monitor, ({"CPU": 0.0}, {"CPU": total_cpus}))
 
     @ray.remote

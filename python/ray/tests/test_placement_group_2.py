@@ -390,7 +390,7 @@ def test_capture_child_actors(ray_start_cluster, connect_to_client):
         # Make sure all the actors are scheduled on the same node.
         # (why? The placement group has STRICT_PACK strategy).
         node_id_set = set()
-        for actor_info in ray.state.actors().values():
+        for actor_info in ray._private.state.actors().values():
             if actor_info["State"] == convert_actor_state(
                 gcs_utils.ActorTableData.ALIVE
             ):
@@ -415,7 +415,7 @@ def test_capture_child_actors(ray_start_cluster, connect_to_client):
         # It is because the child tasks are not scheduled on the same
         # placement group.
         node_id_set = set()
-        for actor_info in ray.state.actors().values():
+        for actor_info in ray._private.state.actors().values():
             if actor_info["State"] == convert_actor_state(
                 gcs_utils.ActorTableData.ALIVE
             ):
@@ -440,7 +440,7 @@ def test_capture_child_actors(ray_start_cluster, connect_to_client):
         # It is because the child tasks are not scheduled on the same
         # placement group.
         node_id_set = set()
-        for actor_info in ray.state.actors().values():
+        for actor_info in ray._private.state.actors().values():
             if actor_info["State"] == convert_actor_state(
                 gcs_utils.ActorTableData.ALIVE
             ):
@@ -590,7 +590,7 @@ ray.shutdown()
 
     # Wait until the driver is reported as dead by GCS.
     def is_job_done():
-        jobs = ray.state.jobs()
+        jobs = ray._private.state.jobs()
         for job in jobs:
             if job["IsDead"]:
                 return True
@@ -666,7 +666,7 @@ ray.shutdown()
 
     # Wait until the driver is reported as dead by GCS.
     def is_job_done():
-        jobs = ray.state.jobs()
+        jobs = ray._private.state.jobs()
         for job in jobs:
             if job["IsDead"]:
                 return True

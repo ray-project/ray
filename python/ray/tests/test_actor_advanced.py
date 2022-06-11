@@ -752,13 +752,13 @@ def test_detached_actor_cleanup(ray_start_regular):
         detached_actor = ray.get_actor(dup_actor_name)
         ray.kill(detached_actor)
         # Wait until actor dies.
-        actor_status = ray.state.actors(actor_id=detached_actor._actor_id.hex())
+        actor_status = ray._private.state.actors(actor_id=detached_actor._actor_id.hex())
         max_wait_time = 10
         wait_time = 0
         while actor_status["State"] != convert_actor_state(
             gcs_utils.ActorTableData.DEAD
         ):
-            actor_status = ray.state.actors(actor_id=detached_actor._actor_id.hex())
+            actor_status = ray._private.state.actors(actor_id=detached_actor._actor_id.hex())
             time.sleep(1.0)
             wait_time += 1
             if wait_time >= max_wait_time:
@@ -790,11 +790,11 @@ detached_actor = DetachedActor.options(lifetime="detached", name="{}").remote()
 assert ray.get(detached_actor.ping.remote()) == "pong"
 ray.kill(detached_actor)
 # Wait until actor dies.
-actor_status = ray.state.actors(actor_id=detached_actor._actor_id.hex())
+actor_status = ray._private.state.actors(actor_id=detached_actor._actor_id.hex())
 max_wait_time = 10
 wait_time = 0
 while actor_status["State"] != convert_actor_state(gcs_utils.ActorTableData.DEAD): # noqa
-    actor_status = ray.state.actors(actor_id=detached_actor._actor_id.hex())
+    actor_status = ray._private.state.actors(actor_id=detached_actor._actor_id.hex())
     time.sleep(1.0)
     wait_time += 1
     if wait_time >= max_wait_time:
@@ -865,13 +865,13 @@ def test_detached_actor_cleanup_due_to_failure(ray_start_cluster):
     node_failure_actor_name = "node_failure_actor_name"
 
     def wait_until_actor_dead(handle):
-        actor_status = ray.state.actors(actor_id=handle._actor_id.hex())
+        actor_status = ray._private.state.actors(actor_id=handle._actor_id.hex())
         max_wait_time = 10
         wait_time = 0
         while actor_status["State"] != convert_actor_state(
             gcs_utils.ActorTableData.DEAD
         ):
-            actor_status = ray.state.actors(actor_id=handle._actor_id.hex())
+            actor_status = ray._private.state.actors(actor_id=handle._actor_id.hex())
             time.sleep(1.0)
             wait_time += 1
             if wait_time >= max_wait_time:
@@ -1206,11 +1206,11 @@ def test_actor_timestamps(ray_start_regular):
         actor = Foo.remote()
         actor_id = ray.get(actor.get_id.remote())
 
-        state_after_starting = ray.state.actors()[actor_id]
+        state_after_starting = ray._private.state.actors()[actor_id]
         time.sleep(1)
         del actor
         time.sleep(1)
-        state_after_ending = ray.state.actors()[actor_id]
+        state_after_ending = ray._private.state.actors()[actor_id]
 
         assert state_after_starting["StartTime"] == state_after_ending["StartTime"]
 
@@ -1225,11 +1225,11 @@ def test_actor_timestamps(ray_start_regular):
         actor = Foo.remote()
         actor_id = ray.get(actor.get_id.remote())
 
-        state_after_starting = ray.state.actors()[actor_id]
+        state_after_starting = ray._private.state.actors()[actor_id]
         time.sleep(1)
         actor.kill_self.remote()
         time.sleep(1)
-        state_after_ending = ray.state.actors()[actor_id]
+        state_after_ending = ray._private.state.actors()[actor_id]
 
         assert state_after_starting["StartTime"] == state_after_ending["StartTime"]
 
@@ -1244,13 +1244,13 @@ def test_actor_timestamps(ray_start_regular):
         actor = Foo.options(max_restarts=1, max_task_retries=-1).remote()
         actor_id = ray.get(actor.get_id.remote())
 
-        state_after_starting = ray.state.actors()[actor_id]
+        state_after_starting = ray._private.state.actors()[actor_id]
         time.sleep(1)
         actor.kill_self.remote()
         time.sleep(1)
         actor.kill_self.remote()
         time.sleep(1)
-        state_after_ending = ray.state.actors()[actor_id]
+        state_after_ending = ray._private.state.actors()[actor_id]
 
         assert state_after_starting["StartTime"] == state_after_ending["StartTime"]
 

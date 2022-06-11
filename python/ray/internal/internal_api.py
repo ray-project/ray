@@ -4,7 +4,7 @@ import ray._private.worker
 import ray._private.profiling as profiling
 import ray._private.utils as utils
 from ray import ray_constants
-from ray.state import GlobalState
+from ray._private.state import GlobalState
 from ray._raylet import GcsClientOptions
 
 __all__ = ["free", "global_gc"]

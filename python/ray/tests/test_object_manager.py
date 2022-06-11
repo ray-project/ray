@@ -106,7 +106,7 @@ def test_object_broadcast(ray_start_cluster_with_resource):
 
     # Wait for profiling information to be pushed to the profile table.
     time.sleep(1)
-    transfer_events = ray.state.object_transfer_timeline()
+    transfer_events = ray._private.state.object_transfer_timeline()
 
     # Make sure that each object was transferred a reasonable number of times.
     for x_id in object_refs:
@@ -189,7 +189,7 @@ def test_actor_broadcast(ray_start_cluster_with_resource):
     # Wait for profiling information to be pushed to the profile table.
     time.sleep(1)
     # TODO(Sang): Re-enable it after event is introduced.
-    # transfer_events = ray.state.object_transfer_timeline()
+    # transfer_events = ray._private.state.object_transfer_timeline()
 
     # # Make sure that each object was transferred a reasonable number of times. # noqa
     # for x_id in object_refs:

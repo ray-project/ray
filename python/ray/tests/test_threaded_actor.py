@@ -6,7 +6,7 @@ import pytest
 import numpy as np
 import ray
 
-from ray.state import available_resources
+from ray._private.state import available_resources
 import ray._private.test_utils as test_utils
 
 

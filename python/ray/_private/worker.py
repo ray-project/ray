@@ -61,7 +61,7 @@ from ray._private import ray_option_utils
 import ray
 import colorama
 import setproctitle
-import ray.state
+import ray._private.state
 
 from ray import (
     ActorID,
@@ -1390,7 +1390,7 @@ def shutdown(_exiting_interpreter: bool = False):
     # We need to reset function actor manager to clear the context
     global_worker.function_actor_manager = FunctionActorManager(global_worker)
     # Disconnect global state from GCS.
-    ray.state.state.disconnect()
+    ray._private.state.state.disconnect()
 
     # Shut down the Ray processes.
     global _global_node
@@ -1435,8 +1435,8 @@ def custom_excepthook(type, value, tb):
         worker_type = gcs_utils.DRIVER
         worker_info = {"exception": error_message}
 
-        ray.state.state._check_connected()
-        ray.state.state.add_worker(worker_id, worker_type, worker_info)
+        ray._private.state.state._check_connected()
+        ray._private.state.state.add_worker(worker_id, worker_type, worker_info)
     # Call the normal excepthook.
     normal_excepthook(type, value, tb)
 
@@ -1684,7 +1684,7 @@ def connect(
     worker.gcs_client = node.get_gcs_client()
     assert worker.gcs_client is not None
     _initialize_internal_kv(worker.gcs_client)
-    ray.state.state._initialize_global_state(
+    ray._private.state.state._initialize_global_state(
         ray._raylet.GcsClientOptions.from_gcs_address(node.gcs_address)
     )
     worker.gcs_publisher = GcsPublisher(address=worker.gcs_client.address)
@@ -1702,7 +1702,7 @@ def connect(
     else:
         # This is the code path of driver mode.
         if job_id is None:
-            job_id = ray.state.next_job_id()
+            job_id = ray._private.state.next_job_id()
 
     if mode is not SCRIPT_MODE and mode is not LOCAL_MODE and setproctitle:
         process_name = ray_constants.WORKER_PROCESS_TYPE_IDLE_WORKER
@@ -2118,10 +2118,10 @@ def put(
     if _owner is None:
         serialize_owner_address = None
     elif isinstance(_owner, ray.actor.ActorHandle):
-        # Ensure `ray.state.state.global_state_accessor` is not None
-        ray.state.state._check_connected()
+        # Ensure `ray._private.state.state.global_state_accessor` is not None
+        ray._private.state.state._check_connected()
         owner_address = gcs_utils.ActorTableData.FromString(
-            ray.state.state.global_state_accessor.get_actor_info(_owner._actor_id)
+            ray._private.state.state.global_state_accessor.get_actor_info(_owner._actor_id)
         ).address
         if len(owner_address.worker_id) == 0:
             raise RuntimeError(f"{_owner} is not alive, it's worker_id is empty!")

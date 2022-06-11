@@ -169,7 +169,7 @@ ray.shutdown()
 
     # Wait until the driver is reported as dead by GCS.
     def is_job_done():
-        jobs = ray.state.jobs()
+        jobs = ray._private.state.jobs()
         for job in jobs:
             if job["IsDead"]:
                 return True
@@ -184,7 +184,7 @@ ray.shutdown()
 
     def assert_alive_num_actor(expected_num_actor):
         alive_num_actor = 0
-        for actor_info in ray.state.actors().values():
+        for actor_info in ray._private.state.actors().values():
             if actor_info["State"] == convert_actor_state(
                 gcs_utils.ActorTableData.ALIVE
             ):
@@ -274,7 +274,7 @@ ray.shutdown()
 
     # Wait until the driver is reported as dead by GCS.
     def is_job_done():
-        jobs = ray.state.jobs()
+        jobs = ray._private.state.jobs()
         for job in jobs:
             if job["IsDead"]:
                 return True
