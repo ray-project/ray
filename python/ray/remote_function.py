@@ -296,7 +296,7 @@ class RemoteFunction:
 
         def invocation(args, kwargs):
             if self._is_cross_language:
-                list_args = cross_language.format_args(worker, args, kwargs)
+                list_args = cross_language._format_args(worker, args, kwargs)
             elif not args and not kwargs and not self._function_signature:
                 list_args = []
             else:

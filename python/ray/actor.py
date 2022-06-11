@@ -808,7 +808,7 @@ class ActorClass:
             actor_placement_resources = resources.copy()
             actor_placement_resources["CPU"] += 1
         if meta.is_cross_language:
-            creation_args = cross_language.format_args(worker, args, kwargs)
+            creation_args = cross_language._format_args(worker, args, kwargs)
         else:
             function_signature = meta.method_meta.signatures["__init__"]
             creation_args = signature.flatten_args(function_signature, args, kwargs)
@@ -885,7 +885,7 @@ class ActorClass:
             if meta.language == Language.CPP:
                 func_name = meta.actor_creation_function_descriptor.function_name
             meta.actor_creation_function_descriptor = (
-                cross_language.get_function_descriptor_for_actor_method(
+                cross_language._get_function_descriptor_for_actor_method(
                     meta.language,
                     meta.actor_creation_function_descriptor,
                     func_name,
@@ -1063,8 +1063,8 @@ class ActorHandle:
         args = args or []
         kwargs = kwargs or {}
         if self._ray_is_cross_language:
-            list_args = cross_language.format_args(worker, args, kwargs)
-            function_descriptor = cross_language.get_function_descriptor_for_actor_method(  # noqa: E501
+            list_args = cross_language._format_args(worker, args, kwargs)
+            function_descriptor = cross_language._get_function_descriptor_for_actor_method(  # noqa: E501
                 self._ray_actor_language,
                 self._ray_actor_creation_function_descriptor,
                 method_name,
