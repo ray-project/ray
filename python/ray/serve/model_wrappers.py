@@ -1,3 +1,4 @@
+from collections import defaultdict
 from typing import Callable, Dict, List, Optional, Tuple, Type, Union
 import numpy as np
 
@@ -45,16 +46,71 @@ def collate_array(
     def unpack(output_arr):
         if isinstance(output_arr, list):
             return output_arr
-        assert isinstance(
-            output_arr, np.ndarray
-        ), f"The output should be np.ndarray but Serve got {type(output_arr)}."
-        assert len(output_arr) == batch_size, (
-            f"The output array should have shape of ({batch_size}, ...) "
-            f"but Serve got {output_arr.shape}"
-        )
+        if not isinstance(output_arr, np.ndarray):
+            raise TypeError(
+                f"The output should be np.ndarray but Serve got {type(output_arr)}."
+            )
+        if len(output_arr) != batch_size:
+            raise ValueError(
+                f"The output array should have shape of ({batch_size}, ...) "
+                f"because the input has {batch_size} entries "
+                f"but Serve got {output_arr.shape}"
+            )
         return [arr.squeeze(axis=0) for arr in np.split(output_arr, batch_size, axis=0)]
 
     return batched, unpack
+
+
+def collate_dict_array(
+    input_list: List[Dict[str, np.ndarray]]
+) -> Tuple[
+    Dict[str, np.ndarray],
+    Callable[[Dict[str, np.ndarray]], List[Dict[str, np.ndarray]]],
+]:
+    batch_size = len(input_list)
+
+    # Check all input has the same dict keys.
+    input_keys = [set(item.keys()) for item in input_list]
+    batch_has_same_keys = input_keys.count(input_keys[0]) == batch_size
+    if not batch_has_same_keys:
+        raise ValueError(
+            f"The input batch contains dictionary of different keys: {input_keys}"
+        )
+
+    # Turn list[dict[str, array]] to dict[str, List[array]]
+    key_to_list = defaultdict(list)
+    for single_dict in input_list:
+        for key, arr in single_dict.items():
+            key_to_list[key].append(arr)
+
+    # Turn dict[str, List[array]] to dict[str, array]
+    batched_dict = {}
+    unpack_dict = {}
+    for key, list_of_arr in key_to_list.items():
+        arr, unpack_func = collate_array(list_of_arr)
+        batched_dict[key] = arr
+        unpack_dict[key] = unpack_func
+
+    def unpack(output_dict: Dict[str, np.ndarray]):
+        # short circuit behavior, assume users already unpacked the output for us.
+        if isinstance(output_dict, list):
+            return output_dict
+
+        if not isinstance(output_dict, Dict):
+            raise TypeError(
+                f"The output should be a dictionary but Serve got {type(output_dict)}."
+            )
+
+        split_list_of_dict = [{} for _ in range(batch_size)]
+        for key, arr_unpack_func in unpack_dict.items():
+            arr_list = arr_unpack_func(output_dict[key])
+            # in place update each dictionary with the split array chunk.
+            for item, arr in zip(split_list_of_dict, arr_list):
+                item[key] = arr
+
+        return split_list_of_dict
+
+    return batched_dict, unpack
 
 
 @require_packages(["pandas"])
@@ -69,13 +125,17 @@ def collate_dataframe(
     def unpack(output_df):
         if isinstance(output_df, list):
             return output_df
-        assert isinstance(
-            output_df, pd.DataFrame
-        ), f"The output should be a Pandas DataFrame but Serve got {type(output_df)}"
-        assert len(output_df) % batch_size == 0, (
-            f"The output dataframe should have length divisible by {batch_size}, "
-            f"but Serve got length {len(output_df)}."
-        )
+        if not isinstance(output_df, pd.DataFrame):
+            raise TypeError(
+                "The output should be a Pandas DataFrame but Serve got "
+                f"{type(output_df)}"
+            )
+        if len(output_df) % batch_size != 0:
+            raise ValueError(
+                f"The output dataframe should have length divisible by {batch_size}, "
+                f"because the input from {batch_size} different requests "
+                f"but Serve got length {len(output_df)}."
+            )
         return [df.reset_index(drop=True) for df in np.split(output_df, batch_size)]
 
     return batched, unpack
