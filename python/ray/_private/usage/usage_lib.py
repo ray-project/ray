@@ -184,10 +184,7 @@ def record_library_usage(library_usage: str):
         # This happens if the library is imported before ray.init
         return
 
-    # Only report library usage from driver to reduce
-    # the load to kv store.
-    if ray.worker.global_worker.mode == ray.SCRIPT_MODE:
-        _put_library_usage(library_usage)
+    _put_library_usage(library_usage)
 
 
 def _put_pre_init_library_usages():
