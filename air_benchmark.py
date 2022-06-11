@@ -1,3 +1,5 @@
+import numpy as np
+import time
 import argparse
 
 import ray
@@ -6,6 +8,7 @@ from ray.air.batch_predictor import BatchPredictor
 from ray.air.predictor import Predictor
 from ray.air.util.check_ingest import DummyTrainer
 from ray.air.config import DatasetConfig
+from ray.air.checkpoint import Checkpoint
 
 
 class DummyPredictor(Predictor):
@@ -14,7 +17,7 @@ class DummyPredictor(Predictor):
         return DummyPredictor()
 
     def predict(self, data, **kwargs):
-        return [42] * len(data)
+        return np.array([42] * len(data))
 
 
 def make_ds(size_gb: int):
@@ -56,6 +59,7 @@ def run_ingest_streaming(dataset, num_workers):
 
 
 def run_infer_bulk(dataset, num_workers):
+    start = time.time()
     checkpoint = Checkpoint.from_dict({"dummy": 1})
     predictor = BatchPredictor(checkpoint, DummyPredictor)
     predictor.predict(
@@ -65,6 +69,7 @@ def run_infer_bulk(dataset, num_workers):
         max_scoring_workers=num_workers,
         num_cpus_per_worker=1,
     )
+    print("Total runtime", time.time() - start)
 
 
 def run_infer_streaming(dataset, num_workers):
