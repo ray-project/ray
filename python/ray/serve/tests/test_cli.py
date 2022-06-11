@@ -25,10 +25,13 @@ def ping_endpoint(endpoint: str, params: str = ""):
     except requests.exceptions.ConnectionError:
         return CONNECTION_ERROR_MSG
 
+
 def assert_deployments_live(names: List[str]):
     """Checks if all deployments named in names have at least 1 living replica."""
 
-    running_actor_names = [actor["name"] for actor in ray.util.list_named_actors(all_namespaces=True)]
+    running_actor_names = [
+        actor["name"] for actor in ray.util.list_named_actors(all_namespaces=True)
+    ]
 
     all_deployments_live, nonliving_deployment = True, ""
     for deployment_name in names:
@@ -86,9 +89,7 @@ def test_deploy(ray_start_stop):
         print(f"*** Starting Iteration {iteration}/{num_iterations} ***\n")
 
         print("Deploying pizza config.")
-        deploy_response = subprocess.check_output(
-            ["serve", "deploy", pizza_file_name]
-        )
+        deploy_response = subprocess.check_output(["serve", "deploy", pizza_file_name])
         assert success_message_fragment in deploy_response
         print("Deploy request sent successfully.")
 
@@ -104,7 +105,13 @@ def test_deploy(ray_start_stop):
         )
         print("Deployments are reachable over HTTP.")
 
-        deployment_names = ["DAGDriver", "create_order", "Router", "Multiplier", "Adder"]
+        deployment_names = [
+            "DAGDriver",
+            "create_order",
+            "Router",
+            "Multiplier",
+            "Adder",
+        ]
         assert_deployments_live(deployment_names)
         print("All deployments are live.\n")
 
@@ -418,7 +425,7 @@ def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
     """Check that CLI is idempotent even if controller dies."""
 
     config_file_name = os.path.join(
-        os.path.dirname(__file__), "test_config_files", "two_deployments.yaml"
+        os.path.dirname(__file__), "test_config_files", "basic_graph.yaml"
     )
     success_message_fragment = b"Sent deploy request successfully!"
     deploy_response = subprocess.check_output(["serve", "deploy", config_file_name])
@@ -426,7 +433,9 @@ def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
 
     ray.init(address="auto", namespace="serve")
     serve.start(detached=True)
-    assert len(serve.list_deployments()) == 2
+    wait_for_condition(
+        lambda: len(ray.util.list_named_actors(all_namespaces=True)) == 4, timeout=15
+    )
 
     # Kill controller
     if use_command:
@@ -434,18 +443,19 @@ def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
     else:
         serve.shutdown()
 
-    info_response = subprocess.check_output(["serve", "config"])
-    info = yaml.safe_load(info_response)
+    status_response = subprocess.check_output(["serve", "status"])
+    status_info = yaml.safe_load(status_response)
 
-    assert "deployments" in info
-    assert len(info["deployments"]) == 0
+    assert len(status_info["deployment_statuses"]) == 0
 
     deploy_response = subprocess.check_output(["serve", "deploy", config_file_name])
     assert success_message_fragment in deploy_response
 
     # Restore testing controller
     serve.start(detached=True)
-    assert len(serve.list_deployments()) == 2
+    wait_for_condition(
+        lambda: len(ray.util.list_named_actors(all_namespaces=True)) == 4, timeout=15
+    )
     serve.shutdown()
     ray.shutdown()
 
