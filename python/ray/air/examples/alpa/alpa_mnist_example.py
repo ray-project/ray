@@ -60,7 +60,7 @@ def get_dataset(dataset_name="mnist"):
     return train_dataset, test_dataset
 
 
-def train_func(config: Dict):
+def train_func(datasets: ray.data.Dataset, config: Dict):
     import jax
     import jax.numpy as jnp
     from flax import linen as nn
@@ -127,7 +127,7 @@ def train_func(config: Dict):
     num_epochs = config["num_epochs"]
 
     # Create datasets
-    train_ds = train.get_dataset_shard("train")
+    train_ds = datasets.pop('train')
 
     rng = jax.random.PRNGKey(0)
     rng, init_rng = jax.random.split(rng)

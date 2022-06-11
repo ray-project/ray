@@ -120,6 +120,8 @@ class AlpaTrainer(BaseTrainer):
             dataset_config=self._dataset_config,
         )
         
+        self._datasets = self._datasets
+        
         super(AlpaTrainer, self).__init__(
             scaling_config=scaling_config,
             run_config=run_config,
@@ -129,19 +131,5 @@ class AlpaTrainer(BaseTrainer):
         )
 
     def training_loop(self) -> None:
-        self._train_loop(self._train_loop_config)
-
-
-    def preprocess_datasets(self) -> None:
-        # Evaluate all datasets.
-        self.datasets = {k: d() if callable(d) else d for k, d in self.datasets.items()}
-        print(self.datasets)
-        self.datasets = self._ingest_spec.preprocess_datasets(
-            self.preprocessor, self.datasets
-        )
-    def get_dataset_config(self) -> Dict[str, DatasetConfig]:
-        """Return a copy of this Trainer's final dataset configs.
-        Returns:
-            The merged default + user-supplied dataset config.
-        """
-        return self._dataset_config.copy()
+        self._train_loop(self._datasets, self._train_loop_config)
+        
