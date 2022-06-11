@@ -42,9 +42,9 @@ from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.typing import (
     EnvType,
-    PartialTrainerConfigDict,
+    PartialAlgorithmConfigDict,
     ResultDict,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
 )
 from ray.tune.logger import Logger
 from ray.tune.syncer import Syncer
@@ -53,7 +53,7 @@ logger = logging.getLogger(__name__)
 
 
 class DDPPOConfig(PPOConfig):
-    """Defines a configuration class from which a DDPPO Trainer can be built.
+    """Defines a configuration class from which a DDPPO Algorithm can be built.
 
     Example:
         >>> from ray.rllib.algorithms.ddppo import DDPPOConfig
@@ -61,7 +61,7 @@ class DDPPOConfig(PPOConfig):
         ...             .resources(num_gpus=1)\
         ...             .rollouts(num_workers=10)
         >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> # Build a Algorithm object from the config and run 1 training iteration.
         >>> trainer = config.build(env="CartPole-v1")
         >>> trainer.train()
 
@@ -84,9 +84,9 @@ class DDPPOConfig(PPOConfig):
         ... )
     """
 
-    def __init__(self, trainer_class=None):
+    def __init__(self, algo_class=None):
         """Initializes a DDPPOConfig instance."""
-        super().__init__(trainer_class=trainer_class or DDPPO)
+        super().__init__(algo_class=algo_class or DDPPO)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -94,7 +94,7 @@ class DDPPOConfig(PPOConfig):
         self.keep_local_weights_in_sync = True
         self.torch_distributed_backend = "gloo"
 
-        # Override some of PPO/Trainer's default values with DDPPO-specific values.
+        # Override some of PPO/Algorithm's default values with DDPPO-specific values.
         # During the sampling phase, each rollout worker will collect a batch
         # `rollout_fragment_length * num_envs_per_worker` steps in size.
         self.rollout_fragment_length = 100
@@ -145,7 +145,7 @@ class DDPPOConfig(PPOConfig):
                 distributed.
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
@@ -161,7 +161,7 @@ class DDPPOConfig(PPOConfig):
 class DDPPO(PPO):
     def __init__(
         self,
-        config: Optional[PartialTrainerConfigDict] = None,
+        config: Optional[PartialAlgorithmConfigDict] = None,
         env: Optional[Union[str, EnvType]] = None,
         logger_creator: Optional[Callable[[], Logger]] = None,
         remote_checkpoint_dir: Optional[str] = None,
@@ -197,12 +197,12 @@ class DDPPO(PPO):
 
     @classmethod
     @override(PPO)
-    def get_default_config(cls) -> TrainerConfigDict:
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return DDPPOConfig().to_dict()
 
     @override(PPO)
     def validate_config(self, config):
-        """Validates the Trainer's config dict.
+        """Validates the Algorithm's config dict.
 
         Args:
             config: The Trainer's config to check.
@@ -252,7 +252,7 @@ class DDPPO(PPO):
             raise ValueError("DDPPO doesn't support KL penalties like PPO-1")
 
     @override(PPO)
-    def setup(self, config: PartialTrainerConfigDict):
+    def setup(self, config: PartialAlgorithmConfigDict):
         super().setup(config)
 
         # Initialize torch process group for

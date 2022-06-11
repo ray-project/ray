@@ -31,7 +31,7 @@ from ray.rllib.utils.torch_utils import (
     huber_loss,
     sequence_mask,
 )
-from ray.rllib.utils.typing import TensorType, TrainerConfigDict
+from ray.rllib.utils.typing import TensorType, AlgorithmConfigDict
 
 torch, nn = try_import_torch()
 F = None
@@ -43,7 +43,7 @@ def build_r2d2_model_and_distribution(
     policy: Policy,
     obs_space: gym.spaces.Space,
     action_space: gym.spaces.Space,
-    config: TrainerConfigDict,
+    config: AlgorithmConfigDict,
 ) -> Tuple[ModelV2, TorchDistributionWrapper]:
     """Build q_model and target_model for DQN
 
@@ -51,7 +51,7 @@ def build_r2d2_model_and_distribution(
         policy: The policy, which will use the model for optimization.
         obs_space (gym.spaces.Space): The policy's observation space.
         action_space (gym.spaces.Space): The policy's action space.
-        config (TrainerConfigDict):
+        config (AlgorithmConfigDict):
 
     Returns:
         (q_model, TorchCategorical)
@@ -282,7 +282,7 @@ def build_q_stats(policy: Policy, batch: SampleBatch) -> Dict[str, TensorType]:
 
 
 def setup_early_mixins(
-    policy: Policy, obs_space, action_space, config: TrainerConfigDict
+    policy: Policy, obs_space, action_space, config: AlgorithmConfigDict
 ) -> None:
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
 
@@ -291,7 +291,7 @@ def before_loss_init(
     policy: Policy,
     obs_space: gym.spaces.Space,
     action_space: gym.spaces.Space,
-    config: TrainerConfigDict,
+    config: AlgorithmConfigDict,
 ) -> None:
     ComputeTDErrorMixin.__init__(policy)
     TargetNetworkMixin.__init__(policy)

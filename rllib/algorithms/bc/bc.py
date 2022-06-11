@@ -1,7 +1,7 @@
 from ray.rllib.algorithms.marwil.marwil import MARWIL, MARWILConfig
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
-from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.typing import AlgorithmConfigDict
 
 
 class BCConfig(MARWILConfig):
@@ -38,8 +38,8 @@ class BCConfig(MARWILConfig):
         ... )
     """
 
-    def __init__(self, trainer_class=None):
-        super().__init__(trainer_class=trainer_class or BC)
+    def __init__(self, algo_class=None):
+        super().__init__(algo_class=algo_class or BC)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -62,11 +62,11 @@ class BC(MARWIL):
 
     @classmethod
     @override(MARWIL)
-    def get_default_config(cls) -> TrainerConfigDict:
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return BCConfig().to_dict()
 
     @override(MARWIL)
-    def validate_config(self, config: TrainerConfigDict) -> None:
+    def validate_config(self, config: AlgorithmConfigDict) -> None:
         # Call super's validation method.
         super().validate_config(config)
 
