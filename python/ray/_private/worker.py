@@ -2386,7 +2386,7 @@ def _make_remote(function_or_class, options):
 
     if inspect.isclass(function_or_class):
         ray_option_utils.validate_actor_options(options, in_options=False)
-        return ray.actor.make_actor(function_or_class, options)
+        return ray.actor._make_actor(function_or_class, options)
 
     raise TypeError(
         "The @ray.remote decorator must be applied to either a function or a class."

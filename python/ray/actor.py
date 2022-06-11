@@ -947,6 +947,7 @@ class ActorClass:
         )
 
 
+@PublicAPI
 class ActorHandle:
     """A handle to an actor.
 
@@ -1220,7 +1221,7 @@ class ActorHandle:
         return ActorHandle._deserialization_helper, state
 
 
-def modify_class(cls):
+def _modify_class(cls):
     # cls has been modified.
     if hasattr(cls, "__ray_actor_class__"):
         return cls
@@ -1259,8 +1260,8 @@ def modify_class(cls):
     return Class
 
 
-def make_actor(cls, actor_options):
-    Class = modify_class(cls)
+def _make_actor(cls, actor_options):
+    Class = _modify_class(cls)
     _inject_tracing_into_class(Class)
 
     if "max_restarts" in actor_options:
@@ -1278,6 +1279,7 @@ def make_actor(cls, actor_options):
     )
 
 
+@PublicAPI
 def exit_actor():
     """Intentionally exit the current actor.
 
