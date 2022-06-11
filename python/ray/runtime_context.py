@@ -7,7 +7,7 @@ from ray.util.annotations import PublicAPI
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI
 class RuntimeContext(object):
     """A class used for getting runtime context."""
 
@@ -207,7 +207,7 @@ class RuntimeContext(object):
 _runtime_context = None
 
 
-@PublicAPI(stability="beta")
+@PublicAPI
 @client_mode_hook(auto_init=False)
 def get_runtime_context():
     """Get the runtime context of the current driver/worker.

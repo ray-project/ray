@@ -13,6 +13,7 @@ from ray._private.client_mode_hook import client_mode_should_convert
 from ray.util.placement_group import _configure_placement_group_based_on_context
 import ray._private.signature
 from ray._private.utils import get_runtime_env_info, parse_runtime_env
+from ray.util.annotations import PublicAPI
 from ray.util.tracing.tracing_helper import (
     _tracing_task_invocation,
     _inject_tracing_into_function,
@@ -26,6 +27,7 @@ logger = logging.getLogger(__name__)
 _task_launch_hook = None
 
 
+@PublicAPI
 class RemoteFunction:
     """A remote function.
 
