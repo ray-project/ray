@@ -14,10 +14,8 @@ from ray.autoscaler._private.gcp.config import (
 # The logic has been abstracted away here to allow for different GCP resources
 # (API endpoints), which can differ widely, making it impossible to use
 # the same logic for everything.
+from ray.autoscaler._private.gcp.node import GCPTPU  # noqa
 from ray.autoscaler._private.gcp.node import (
-    GCPTPU,  # noqa
-    INSTANCE_NAME_MAX_LEN,
-    INSTANCE_NAME_UUID_LEN,
     GCPCompute,
     GCPNode,
     GCPNodeType,
