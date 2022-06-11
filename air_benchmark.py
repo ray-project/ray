@@ -19,6 +19,8 @@ class DummyPredictor(Predictor):
         return DummyPredictor()
 
     def predict(self, data, **kwargs):
+        # For 20k records (200GiB), this amounts to 400 seconds of work.
+        time.sleep(len(data) * 0.02)
         return np.array([42] * len(data))
 
 
@@ -59,23 +61,32 @@ def run_ingest_streaming(dataset, num_workers):
     trainer.fit()
 
 
-def run_infer_bulk(dataset, num_workers):
+def run_infer_bulk(dataset, num_workers, post=None):
     start = time.time()
     checkpoint = Checkpoint.from_dict({"dummy": 1})
+    # TODO: add preprocessor here
     predictor = BatchPredictor(checkpoint, DummyPredictor)
-    predictor.predict(
+    result = predictor.predict(
         dataset,
         batch_size=1024 // 8,
         min_scoring_workers=num_workers,
         max_scoring_workers=num_workers,
         num_cpus_per_worker=1,
     )
+    if post:
+        post(result)
+    print(result.stats())
     print("Total runtime", time.time() - start)
 
 
 def run_infer_streaming(dataset, num_workers):
-    dataset = dataset.window(bytes_per_window=num_workers * GiB)
-    return run_infer_bulk(dataset, num_workers)
+    dataset = dataset.window(bytes_per_window=num_workers * GiB // 4)
+
+    def post(result):
+        for b in result.iter_batches():
+            pass
+
+    return run_infer_bulk(dataset, num_workers, post)
 
 
 if __name__ == "__main__":
