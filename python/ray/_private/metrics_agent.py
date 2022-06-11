@@ -253,7 +253,9 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
     def get_temp_file_name(self):
         return os.path.join(
             self.temp_dir,
-            "{}_{}".format("tmp", ray._private.ray_constants.PROMETHEUS_SERVICE_DISCOVERY_FILE),
+            "{}_{}".format(
+                "tmp", ray._private.ray_constants.PROMETHEUS_SERVICE_DISCOVERY_FILE
+            ),
         )
 
     def run(self):

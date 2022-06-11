@@ -321,7 +321,9 @@ class Monitor:
         """Fetches resource requests from the internal KV and updates load."""
         if not _internal_kv_initialized():
             return
-        data = _internal_kv_get(ray._private.ray_constants.AUTOSCALER_RESOURCE_REQUEST_CHANNEL)
+        data = _internal_kv_get(
+            ray._private.ray_constants.AUTOSCALER_RESOURCE_REQUEST_CHANNEL
+        )
         if data:
             try:
                 resource_request = json.loads(data)

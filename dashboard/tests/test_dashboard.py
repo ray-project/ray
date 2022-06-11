@@ -25,7 +25,10 @@ from ray._private.test_utils import (
     init_error_pubsub,
     get_error_message,
 )
-from ray._private.ray_constants import DEBUG_AUTOSCALING_STATUS_LEGACY, DEBUG_AUTOSCALING_ERROR
+from ray._private.ray_constants import (
+    DEBUG_AUTOSCALING_STATUS_LEGACY,
+    DEBUG_AUTOSCALING_ERROR,
+)
 from ray.dashboard import dashboard
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils

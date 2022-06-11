@@ -27,7 +27,9 @@ def run_basic_workload():
     ray.get(ray.put(arr))
 
 
-def is_dir_empty(temp_folder, append_path=ray._private.ray_constants.DEFAULT_OBJECT_PREFIX):
+def is_dir_empty(
+    temp_folder, append_path=ray._private.ray_constants.DEFAULT_OBJECT_PREFIX
+):
     # append_path is used because the file based spilling will append
     # new directory path.
     num_files = 0
