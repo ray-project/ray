@@ -147,55 +147,21 @@ def test_config(ray_start_stop):
     # response
 
     config_file_name = os.path.join(
-        os.path.dirname(__file__), "test_config_files", "two_deployments.yaml"
+        os.path.dirname(__file__), "test_config_files", "basic_graph.yaml"
     )
     success_message_fragment = b"Sent deploy request successfully!"
+
+    with open(config_file_name, "r") as config_file:
+        config = yaml.safe_load(config_file)
+
     deploy_response = subprocess.check_output(["serve", "deploy", config_file_name])
     assert success_message_fragment in deploy_response
 
+    # Config should be immediately ready
     info_response = subprocess.check_output(["serve", "config"])
     info = yaml.safe_load(info_response)
 
-    assert "deployments" in info
-    assert len(info["deployments"]) == 2
-
-    # Validate non-default information about shallow deployment
-    shallow_info = None
-    for deployment_info in info["deployments"]:
-        if deployment_info["name"] == "shallow":
-            shallow_info = deployment_info
-
-    assert shallow_info is not None
-    assert shallow_info["import_path"] == "test_env.shallow_import.ShallowClass"
-    assert shallow_info["num_replicas"] == 3
-    assert shallow_info["route_prefix"] == "/shallow"
-    assert (
-        "https://github.com/shrekris-anyscale/test_deploy_group/archive/HEAD.zip"
-        in shallow_info["ray_actor_options"]["runtime_env"]["py_modules"]
-    )
-    assert (
-        "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
-        in shallow_info["ray_actor_options"]["runtime_env"]["py_modules"]
-    )
-
-    # Validate non-default information about one deployment
-    one_info = None
-    for deployment_info in info["deployments"]:
-        if deployment_info["name"] == "one":
-            one_info = deployment_info
-
-    assert one_info is not None
-    assert one_info["import_path"] == "test_module.test.one"
-    assert one_info["num_replicas"] == 2
-    assert one_info["route_prefix"] == "/one"
-    assert (
-        "https://github.com/shrekris-anyscale/test_deploy_group/archive/HEAD.zip"
-        in one_info["ray_actor_options"]["runtime_env"]["py_modules"]
-    )
-    assert (
-        "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
-        in one_info["ray_actor_options"]["runtime_env"]["py_modules"]
-    )
+    assert config == info
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
