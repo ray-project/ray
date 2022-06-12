@@ -36,6 +36,8 @@ IN_KUBERNETES_POD = "KUBERNETES_SERVICE_HOST" in os.environ
 ENABLE_K8S_DISK_USAGE = os.environ.get("RAY_DASHBOARD_ENABLE_K8S_DISK_USAGE") == "1"
 # Try to determine if we're in a container.
 IN_DOCKER_CONTAINER = os.path.exists("/sys/fs/cgroup")
+# Using existence of /sys/fs/cgroup as the criterion is consistent with
+# Ray's existing resource logic, see e.g. ray._private.utils.get_num_cpus().
 
 try:
     import gpustat.core as gpustat
@@ -213,7 +215,9 @@ class ReporterAgent(
             # psutil does not give a meaningful logical cpu count when in a K8s pod, or
             # in a Docker container in general.
             # Use ray._private.utils for this instead.
-            logical_cpu_count = ray._private.utils.get_num_cpus(override_docker_warning=True)
+            logical_cpu_count = ray._private.utils.get_num_cpus(
+                override_docker_warning=True
+            )
             # (Override the docker warning to avoid dashboard log spam.)
 
             # The dashboard expects a physical CPU count as well.
