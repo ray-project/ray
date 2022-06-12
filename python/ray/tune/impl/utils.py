@@ -1,14 +1,17 @@
 from ray.data import Dataset
+from ray.air.config import ScalingConfig
 from ray.tune.sample import Categorical
 
+_SCALING_CONFIG_KEY = "scaling_config"
 
-def execute_dataset(config_dict: dict):
+
+def process_dataset_param(config_dict: dict):
     """Going through config dict (params space) and fully execute any Dataset
     if necessary.
     """
     for k, v in config_dict.items():
         if isinstance(v, dict):
-            execute_dataset(v)
+            process_dataset_param(v)
         elif isinstance(v, Dataset):
             config_dict[k] = v.fully_executed()
         # TODO(xwjiang): Consider CV config for beta.
@@ -26,3 +29,13 @@ def execute_dataset(config_dict: dict):
                     config_dict[k].categories = [
                         _item.fully_executed() for _item in _list
                     ]
+
+
+def process_scaling_config(params_space: dict):
+    """Convert ``params_space["scaling_config"]`` back to a dict so that
+    it can be used to generate search space.
+    """
+    scaling_config = params_space.get(_SCALING_CONFIG_KEY, None)
+    if not isinstance(scaling_config, ScalingConfigDataClass):
+        return
+    params_space[_SCALING_CONFIG_KEY] = scaling_config.__dict__.copy()

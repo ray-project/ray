@@ -6,7 +6,7 @@ import ray.cloudpickle as pickle
 from ray.air.config import RunConfig
 from ray.air.trainer import Trainer
 from ray.tune import Experiment, TuneError, ExperimentAnalysis
-from ray.tune.impl.utils import execute_dataset
+from ray.tune.impl.utils import process_dataset_param, process_scaling_config
 from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
 from ray.tune.tune import run
@@ -100,6 +100,7 @@ class TunerInternal:
         # Not used for restored Tuner.
         self._param_space = param_space or {}
         self._process_dataset_param()
+        self._process_scaling_config()
 
         # This needs to happen before `tune.run()` is kicked in.
         # This is because currently tune does not exit gracefully if
@@ -123,7 +124,10 @@ class TunerInternal:
             "train_dataset": tune.grid_search([ds1, ds2]),
         },
         """
-        execute_dataset(self._param_space)
+        process_dataset_param(self._param_space)
+
+    def _process_scaling_config(self) -> None:
+        process_scaling_config(self._param_space)
 
     def _setup_create_experiment_checkpoint_dir(
         self, run_config: Optional[RunConfig]
