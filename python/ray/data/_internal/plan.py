@@ -39,6 +39,10 @@ class Stage:
         """Execute this stage against the given blocks."""
         raise NotImplementedError
 
+    def finalize(self, next_stage: Optional["Stage"]) -> "Stage":
+        """Give each stage a chance to replace itself during optimization."""
+        return self
+
     def can_fuse(self, other: "Stage") -> bool:
         """Return whether this can be fused with another stage."""
         raise NotImplementedError
@@ -317,6 +321,8 @@ class ExecutionPlan:
         """
         context = DatasetContext.get_current()
         blocks, stats, stages = self._get_source_blocks_and_stages()
+        stages = [s1.finalize(s2) for s1, s2 in zip(stages, stages[1:] + [None])]
+        stages = [s for s in stages if s is not None]
         if context.optimize_fuse_stages:
             if context.optimize_fuse_read_stages:
                 # If using a lazy datasource, rewrite read stage into one-to-one stage
@@ -444,6 +450,32 @@ class OneToOneStage(Stage):
         )
         assert isinstance(blocks, BlockList), blocks
         return blocks, {}
+
+
+class GenerateStage(Stage):
+    """A stage that creates another when finalized."""
+
+    def __init__(
+        self,
+        name: str,
+        gen_stage: Callable[[Optional[Stage]], Optional[Stage]],
+    ):
+        super().__init__(name, -1)
+        self.gen_stage = gen_stage
+
+    def finalize(self, next_stage):
+        return self.gen_stage(next_stage)
+
+    def can_fuse(self, prev: Stage):
+        raise AssertionError("should be replaced prior to optimization")
+
+    def fuse(self, prev: Stage):
+        raise AssertionError("should be replaced prior to optimization")
+
+    def __call__(
+        self, blocks: BlockList, clear_input_blocks: bool
+    ) -> Tuple[BlockList, dict]:
+        raise AssertionError("should be replaced prior to optimization")
 
 
 class AllToAllStage(Stage):

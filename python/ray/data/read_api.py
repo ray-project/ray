@@ -202,6 +202,7 @@ def read_datasource(
     datasource: Datasource[T],
     *,
     parallelism: int = 200,
+    auto_repartition: bool = True,
     ray_remote_args: Dict[str, Any] = None,
     **read_args,
 ) -> Dataset[T]:

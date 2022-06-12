@@ -71,9 +71,20 @@ from ray.data.random_access_dataset import RandomAccessDataset
 from ray.data._internal.table_block import VALUE_COL_NAME
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.block_batching import batch_blocks, BatchType
-from ray.data._internal.plan import ExecutionPlan, OneToOneStage, AllToAllStage
+from ray.data._internal.plan import (
+    ExecutionPlan,
+    Stage,
+    GenerateStage,
+    OneToOneStage,
+    AllToAllStage,
+)
 from ray.data._internal.stats import DatasetStats
-from ray.data._internal.compute import cache_wrapper, CallableClass, ComputeStrategy
+from ray.data._internal.compute import (
+    cache_wrapper,
+    CallableClass,
+    ComputeStrategy,
+    ActorPoolStrategy,
+)
 from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.shuffle_and_partition import (
@@ -159,6 +170,7 @@ class Dataset(Generic[T]):
         plan: ExecutionPlan,
         epoch: int,
         lazy: bool,
+        force_lazy: bool = False,
     ):
         """Construct a Dataset (internal API).
 
@@ -173,7 +185,7 @@ class Dataset(Generic[T]):
         self._epoch = epoch
         self._lazy = lazy
 
-        if not lazy:
+        if not lazy and not force_lazy:
             self._plan.execute(allow_clear_input_blocks=False)
 
     @staticmethod
@@ -539,7 +551,8 @@ class Dataset(Generic[T]):
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            num_blocks: The number of blocks.
+            num_blocks: The number of blocks, or -1 for the system to choose an
+                ideal partitioning level to maximize parallelism.
             shuffle: Whether to perform a distributed shuffle during the
                 repartition. When shuffle is enabled, each output block
                 contains a subset of data rows from each input block, which
@@ -552,50 +565,101 @@ class Dataset(Generic[T]):
         """
 
         if shuffle:
+            return self._repartition_shuffle(num_blocks)
 
-            def do_shuffle(
-                block_list, clear_input_blocks: bool, block_udf, remote_args
-            ):
-                if clear_input_blocks:
-                    blocks = block_list.copy()
-                    block_list.clear()
-                else:
-                    blocks = block_list
-                context = DatasetContext.get_current()
-                if context.use_push_based_shuffle:
-                    shuffle_op_cls = PushBasedShufflePartitionOp
-                else:
-                    shuffle_op_cls = SimpleShufflePartitionOp
-                shuffle_op = shuffle_op_cls(block_udf, random_shuffle=False)
-                return shuffle_op.execute(
-                    blocks,
-                    num_blocks,
-                    clear_input_blocks,
-                    map_ray_remote_args=remote_args,
-                    reduce_ray_remote_args=remote_args,
-                )
+        return self._repartition_fast(num_blocks)
 
-            plan = self._plan.with_stage(
-                AllToAllStage(
-                    "repartition", num_blocks, do_shuffle, supports_block_udf=True
-                )
+    def _repartition_shuffle(self, num_blocks: int) -> "Dataset[T]":
+        if num_blocks <= 0:
+            raise ValueError("`num_blocks` must be positive when shuffle=True.")
+
+        def do_shuffle(block_list, clear_input_blocks: bool, block_udf, remote_args):
+            if clear_input_blocks:
+                blocks = block_list.copy()
+                block_list.clear()
+            else:
+                blocks = block_list
+            context = DatasetContext.get_current()
+            if context.use_push_based_shuffle:
+                shuffle_op_cls = PushBasedShufflePartitionOp
+            else:
+                shuffle_op_cls = SimpleShufflePartitionOp
+            shuffle_op = shuffle_op_cls(block_udf, random_shuffle=False)
+            return shuffle_op.execute(
+                blocks,
+                num_blocks,
+                clear_input_blocks,
+                map_ray_remote_args=remote_args,
+                reduce_ray_remote_args=remote_args,
             )
 
-        else:
+        plan = self._plan.with_stage(
+            AllToAllStage(
+                "repartition", num_blocks, do_shuffle, supports_block_udf=True
+            )
+        )
+        return Dataset(plan, self._epoch, self._lazy)
 
+    def _repartition_fast(self, num_blocks: int) -> "Dataset[T]":
+        cur_num_blocks = self.num_blocks()
+
+        def make_transform(num_blocks, name="Repartition"):
             def do_fast_repartition(block_list, clear_input_blocks: bool, *_):
                 if clear_input_blocks:
                     blocks = block_list.copy()
                     block_list.clear()
                 else:
                     blocks = block_list
-                return fast_repartition(blocks, num_blocks)
+                return fast_repartition(blocks, num_blocks, name)
 
+            return do_fast_repartition
+
+        if num_blocks <= 0:
+            if num_blocks != -1:
+                raise ValueError(
+                    "`num_blocks` must either be `-1` or a positive integer."
+                )
+
+            def gen_stage(next_stage: Optional[Stage]) -> Optional[Stage]:
+                print("NEXT STAGE", next_stage)
+                if not next_stage:
+                    logger.info("auto repartition skip (no parallelism downstream)")
+                    return None
+                if isinstance(next_stage, OneToOneStage) and isinstance(
+                    next_stage.compute, ActorPoolStrategy
+                ):
+                    max_downstream_parallelism = next_stage.compute.max_size
+                else:
+                    max_downstream_parallelism = float("inf")
+                max_parallelism = min(
+                    max_downstream_parallelism, _estimate_available_parallelism()
+                )
+                ideal_num_blocks = max_parallelism * 2
+                logger.info(
+                    "auto repartition ideal={} cur={}".format(
+                        ideal_num_blocks, cur_num_blocks
+                    )
+                )
+                if cur_num_blocks < 0.4 * ideal_num_blocks:
+                    logger.info("auto repartition engaged")
+                    return AllToAllStage(
+                        "auto_repartition",
+                        ideal_num_blocks,
+                        make_transform(ideal_num_blocks, "AutoRepartition"),
+                    )
+                else:
+                    logger.info("auto repartition skip")
+                    return None
+
+            plan = self._plan.with_stage(GenerateStage("auto_repartition", gen_stage))
+            force_lazy = True
+        else:
             plan = self._plan.with_stage(
-                AllToAllStage("repartition", num_blocks, do_fast_repartition)
+                AllToAllStage("repartition", num_blocks, make_transform(num_blocks))
             )
+            force_lazy = False
 
-        return Dataset(plan, self._epoch, self._lazy)
+        return Dataset(plan, self._epoch, self._lazy, force_lazy=force_lazy)
 
     def random_shuffle(
         self,
@@ -3576,3 +3640,8 @@ def _do_write(
     write_args = _unwrap_arrow_serialization_workaround(write_args)
     DatasetContext._set_current(ctx)
     return ds.do_write(blocks, meta, ray_remote_args=ray_remote_args, **write_args)
+
+
+def _estimate_available_parallelism():
+    # TODO: if in tune, use placement group to estimate this
+    return int(ray.available_resources().get("CPU", 1))

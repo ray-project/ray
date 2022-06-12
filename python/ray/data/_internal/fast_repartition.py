@@ -9,7 +9,7 @@ from ray.data._internal.shuffle_and_partition import _ShufflePartitionOp
 from ray.data._internal.stats import DatasetStats
 
 
-def fast_repartition(blocks, num_blocks):
+def fast_repartition(blocks, num_blocks, name="Repartition"):
     from ray.data.dataset import Dataset
 
     wrapped_ds = Dataset(
@@ -33,7 +33,7 @@ def fast_repartition(blocks, num_blocks):
 
     # Coalesce each split into a single block.
     reduce_task = cached_remote_fn(_ShufflePartitionOp.reduce).options(num_returns=2)
-    reduce_bar = ProgressBar("Repartition", position=0, total=len(splits))
+    reduce_bar = ProgressBar(name, position=0, total=len(splits))
     reduce_out = [
         reduce_task.remote(False, None, *s.get_internal_block_refs())
         for s in splits
