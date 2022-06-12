@@ -2591,8 +2591,8 @@ class Dataset(Generic[T]):
             ):
                 if label_column:
                     targets = convert_pandas_to_tf_tensor(batch[[label_column]])
-                    assert targets.ndim == 2
-                    targets = tf.squeeze(targets, axis=1)
+                    if targets.ndim == 2 and targets.shape[1] == 1:
+                        targets = tf.squeeze(targets, axis=1)
                     batch.pop(label_column)
 
                 features = None
@@ -3434,6 +3434,17 @@ class Dataset(Generic[T]):
 
     def __str__(self) -> str:
         return repr(self)
+
+    def __bool__(self) -> bool:
+        # Prevents `__len__` from being called to check if it is None
+        # see: issue #25152
+        return True
+
+    def __len__(self) -> int:
+        raise AttributeError(
+            "Use `ds.count()` to compute the length of a distributed Dataset. "
+            "This may be an expensive operation."
+        )
 
     def _block_num_rows(self) -> List[int]:
         get_num_rows = cached_remote_fn(_get_num_rows)

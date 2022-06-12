@@ -21,7 +21,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_mixins import TargetNetworkMixin
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import concat_multi_gpu_td_errors, huber_loss
-from ray.rllib.utils.typing import TensorType, TrainerConfigDict
+from ray.rllib.utils.typing import TensorType, AlgorithmConfigDict
 
 torch, nn = try_import_torch()
 F = None
@@ -34,7 +34,7 @@ def build_q_model_and_distribution(
     policy: Policy,
     obs_space: gym.spaces.Space,
     action_space: gym.spaces.Space,
-    config: TrainerConfigDict,
+    config: AlgorithmConfigDict,
 ) -> Tuple[ModelV2, TorchDistributionWrapper]:
     return build_q_models(policy, obs_space, action_space, config), TorchCategorical
 
@@ -117,7 +117,7 @@ def setup_late_mixins(
     policy: Policy,
     obs_space: gym.spaces.Space,
     action_space: gym.spaces.Space,
-    config: TrainerConfigDict,
+    config: AlgorithmConfigDict,
 ) -> None:
     """Call all mixin classes' constructors before SimpleQTorchPolicy
     initialization.

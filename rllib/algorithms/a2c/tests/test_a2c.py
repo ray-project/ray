@@ -39,7 +39,7 @@ class TestA2C(unittest.TestCase):
         config = (
             a2c.A2CConfig()
             .environment(env="CartPole-v0")
-            .reporting(min_time_s_per_reporting=0)
+            .reporting(min_time_s_per_iteration=0)
         )
 
         for _ in framework_iterator(config):
@@ -54,7 +54,7 @@ class TestA2C(unittest.TestCase):
         config = (
             a2c.A2CConfig()
             .environment(env="CartPole-v0")
-            .reporting(min_time_s_per_reporting=0)
+            .reporting(min_time_s_per_iteration=0)
             .training(microbatch_size=10)
         )
 

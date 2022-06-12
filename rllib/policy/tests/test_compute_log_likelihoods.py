@@ -42,9 +42,9 @@ def do_test_log_likelihood(
 
     # Test against all frameworks.
     for fw in framework_iterator(config):
-        trainer = run(config=config, env=env)
+        algo = run(config=config, env=env)
 
-        policy = trainer.get_policy()
+        policy = algo.get_policy()
         vars = policy.get_weights()
         # Sample n actions, then roughly check their logp against their
         # counts.
@@ -53,7 +53,7 @@ def do_test_log_likelihood(
         for _ in range(num_actions):
             # Single action from single obs.
             actions.append(
-                trainer.compute_single_action(
+                algo.compute_single_action(
                     obs_batch[0],
                     prev_action=prev_a,
                     prev_reward=prev_r,
