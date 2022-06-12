@@ -507,7 +507,7 @@ def get_num_cpus(override_docker_warning: bool = False) -> int:
     Depending on the situation, use multiprocessing.cpu_count() or cgroups.
 
     Args:
-        override_docker_warning: An extra Flag to explicitly turn off the Docker
+        override_docker_warning: An extra flag to explicitly turn off the Docker
             warning. Setting this flag True has the same effect as setting the env
             RAY_DISABLE_DOCKER_CPU_WARNING.
     """
