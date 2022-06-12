@@ -170,6 +170,7 @@ def convert_to_numpy(
     # to the CPU beforehand).
     def mapping(item):
         if torch and isinstance(item, torch.Tensor):
+            # print(f"<<<< Converting {item} to numpy, {item.size()}")
             ret = (
                 item.cpu().item()
                 if len(item.size()) == 0
