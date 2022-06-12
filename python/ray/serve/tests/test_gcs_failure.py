@@ -24,6 +24,7 @@ def serve_ha(external_redis, monkeypatch):  # noqa: F811
     ray.shutdown()
 
 
+
 def test_ray_internal_kv_timeout(serve_ha):  # noqa: F811
     # Firstly make sure it's workin
     kv1 = RayInternalKVStore()
@@ -54,11 +55,10 @@ def test_controller_gcs_failure(serve_ha, use_handle):  # noqa: F811
             ret = requests.get("http://localhost:8000/d").text
         print(ret)
         return ret.split("|")[0], ret.split("|")[1]
-
     d.deploy()
     val1, pid1 = call()
-    assert val1 == "1"
 
+    assert val1 == "1"
     # Killfg the GCS
     ray.worker._global_node.kill_gcs_server()
 
@@ -76,18 +76,18 @@ def test_controller_gcs_failure(serve_ha, use_handle):  # noqa: F811
 
     # Bring GCS back
     ray.worker._global_node.start_gcs_server()
+    print("GCS IS BACK")
     # Make sure nothing changed even after GCS is back
 
     with pytest.raises(Exception):
         # TODO: We also need to check PID, but there is
         # a bug in ray core which will restart the actor
         # when GCS restarts.
-        wait_for_condition(lambda: call()[1] != val1)
+        wait_for_condition(lambda: call()[0] != val1, timeout=4)
 
     # Redeploy again
     d.options(version="2").deploy()
-    val2, pid2 = call()
-    assert val2 == "2"
+    wait_for_condition(lambda: call()[0] == "2", timeout=30)
 
 
 if __name__ == "__main__":
