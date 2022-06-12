@@ -113,7 +113,7 @@ def test_demand_report_when_scale_up(shutdown_only):
 
     cluster.start()
 
-    info = ray.init(cluster.address)
+    info = ray.init("auto")
 
     @ray.remote
     def f():

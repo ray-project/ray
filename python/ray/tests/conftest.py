@@ -198,6 +198,7 @@ def ray_start_10_cpus(request, maybe_external_redis):
 
 @contextmanager
 def _ray_start_cluster(**kwargs):
+    ray.ray_constants.DEFAULT_DASHBOARD_PORT = 0
     cluster_not_supported_ = kwargs.pop("skip_cluster", cluster_not_supported)
     if cluster_not_supported_:
         pytest.skip("Cluster not supported")
