@@ -133,7 +133,7 @@ class VersionActor:
 
 check_remote_client_conda = """
 import ray
-context = (ray.client("localhost:24001")
+context = (ray.client("{address}")
               .env({{"conda" : "package-{package_version}"}})
               .connect())
 @ray.remote
@@ -156,13 +156,13 @@ context.disconnect()
 )
 @pytest.mark.parametrize(
     "call_ray_start",
-    ["ray start --head --ray-client-server-port 24001 --port 0"],
+    [("ray start --head --port 0", True)],
     indirect=True,
 )
 def test_client_tasks_and_actors_inherit_from_driver(conda_envs, call_ray_start):
     for i, package_version in enumerate(REQUEST_VERSIONS):
         runtime_env = {"conda": f"package-{package_version}"}
-        with ray.client("localhost:24001").env(runtime_env).connect():
+        with ray.client(call_ray_start[1]).env(runtime_env).connect():
             assert ray.get(get_requests_version.remote()) == package_version
             actor_handle = VersionActor.remote()
             assert (
@@ -173,7 +173,9 @@ def test_client_tasks_and_actors_inherit_from_driver(conda_envs, call_ray_start)
             # conda environment.
             other_package_version = REQUEST_VERSIONS[(i + 1) % 2]
             run_string_as_driver(
-                check_remote_client_conda.format(package_version=other_package_version)
+                check_remote_client_conda.format(
+                    address=call_ray_start[1], package_version=other_package_version
+                )
             )
 
 
@@ -404,7 +406,7 @@ def test_inject_dependencies():
 )
 @pytest.mark.parametrize(
     "call_ray_start",
-    ["ray start --head --ray-client-server-port 24001 --port 0"],
+    [("ray start --head --port 0", True)],
     indirect=True,
 )
 def test_conda_create_ray_client(call_ray_start):
@@ -420,13 +422,13 @@ def test_conda_create_ray_client(call_ray_start):
 
         return True
 
-    with ray.client("localhost:24001").env(runtime_env).connect():
+    with ray.client(call_ray_start[1]).env(runtime_env).connect():
         with pytest.raises(ModuleNotFoundError):
             # Ensure pip-install-test is not installed on the test machine
             import pip_install_test  # noqa
         assert ray.get(f.remote())
 
-    with ray.client("localhost:24001").connect():
+    with ray.client(call_ray_start[1]).connect():
         with pytest.raises(ModuleNotFoundError):
             # Ensure pip-install-test is not installed in a client that doesn't
             # use the runtime_env
@@ -583,7 +585,7 @@ def test_experimental_package_github(shutdown_only):
 )
 @pytest.mark.parametrize(
     "call_ray_start",
-    ["ray start --head --ray-client-server-port 24001 --port 0"],
+    [("ray start --head --port 0", True)],
     indirect=True,
 )
 def test_client_working_dir_filepath(call_ray_start, tmp_path):
@@ -611,14 +613,15 @@ def test_client_working_dir_filepath(call_ray_start, tmp_path):
 
         return True
 
-    with ray.client("localhost:24001").connect():
+    print(call_ray_start)
+    with ray.client(call_ray_start[1]).connect():
         with pytest.raises(ModuleNotFoundError):
             # Ensure pip-install-test is not installed in a client that doesn't
             # use the runtime_env
             ray.get(f.remote())
 
     for runtime_env in [runtime_env_pip, runtime_env_conda]:
-        with ray.client("localhost:24001").env(runtime_env).connect():
+        with ray.client(call_ray_start[1]).env(runtime_env).connect():
             with pytest.raises(ModuleNotFoundError):
                 # Ensure pip-install-test is not installed on the test machine
                 import pip_install_test  # noqa
@@ -632,7 +635,7 @@ def test_client_working_dir_filepath(call_ray_start, tmp_path):
 )
 @pytest.mark.parametrize(
     "call_ray_start",
-    ["ray start --head --ray-client-server-port 24001 --port 0"],
+    [("ray start --head --port 0", True)],
     indirect=True,
 )
 def test_conda_pip_filepaths_remote(call_ray_start, tmp_path):
@@ -660,7 +663,7 @@ def test_conda_pip_filepaths_remote(call_ray_start, tmp_path):
 
         return True
 
-    with ray.client("localhost:24001").connect():
+    with ray.client(call_ray_start[1]).connect():
         with pytest.raises(ModuleNotFoundError):
             # Ensure pip-install-test is not installed in a client that doesn't
             # use the runtime_env
@@ -679,7 +682,7 @@ def test_conda_pip_filepaths_remote(call_ray_start, tmp_path):
     # Test with and without a working_dir.
     client_envs = [{}, {"working_dir": str(working_dir)}]
     for runtime_env in client_envs:
-        with ray.client("localhost:24001").env(runtime_env).connect():
+        with ray.client(call_ray_start[1]).env(runtime_env).connect():
             with pytest.raises(ModuleNotFoundError):
                 # Ensure pip-install-test is not installed on the test machine
                 import pip_install_test  # noqa
@@ -690,7 +693,7 @@ def test_conda_pip_filepaths_remote(call_ray_start, tmp_path):
 install_env_script = """
 import ray
 import time
-ray.init(address="auto", runtime_env={env})
+ray.init(address="{address}", runtime_env={env})
 @ray.remote
 def f():
     return "hello"
@@ -708,7 +711,7 @@ def test_env_installation_nonblocking(shutdown_only):
     """Test fix for https://github.com/ray-project/ray/issues/16226."""
     env1 = {"pip": ["pip-install-test==0.5"]}
 
-    ray.init(runtime_env=env1)
+    address = ray.init(runtime_env=env1).address_info["address"]
 
     @ray.remote
     def f():
@@ -736,7 +739,9 @@ def test_env_installation_nonblocking(shutdown_only):
     # Check that installing env2 above does not block tasks using env1.
     assert_tasks_finish_quickly()
 
-    proc = run_string_as_driver_nonblocking(install_env_script.format(env=env1))
+    proc = run_string_as_driver_nonblocking(
+        install_env_script.format(env=env1, address=address)
+    )
     # Check that installing env1 in a new worker in the script above does not
     # block other tasks that use env1.
     assert_tasks_finish_quickly(total_sleep_s=5)
@@ -777,9 +782,6 @@ def test_simultaneous_install(shutdown_only):
     assert ray.get(worker_2.get.remote()) == (2, "2.3.0")
 
 
-CLIENT_SERVER_PORT = 24001
-
-
 @pytest.mark.skipif(_WIN32, reason="Fails on windows")
 @pytest.mark.skipif(
     os.environ.get("CI") and sys.platform != "linux",
@@ -787,7 +789,7 @@ CLIENT_SERVER_PORT = 24001
 )
 @pytest.mark.parametrize(
     "call_ray_start",
-    [f"ray start --head --ray-client-server-port {CLIENT_SERVER_PORT} --port 0"],
+    [("ray start --head --port 0", True)],
     indirect=True,
 )
 def test_e2e_complex(call_ray_start, tmp_path):
@@ -803,7 +805,7 @@ def test_e2e_complex(call_ray_start, tmp_path):
     specific_path = tmp_path / "test"
     specific_path.write_text("Hello")
 
-    with ray.client(f"localhost:{CLIENT_SERVER_PORT}").env(
+    with ray.client(call_ray_start[1]).env(
         {"working_dir": str(tmp_path), "pip": ["pip-install-test"]}
     ).connect():
 
@@ -852,7 +854,7 @@ def test_e2e_complex(call_ray_start, tmp_path):
     )
 
     # Start a new job on the same cluster using the Summit 2021 requirements.
-    with ray.client(f"localhost:{CLIENT_SERVER_PORT}").env(
+    with ray.client(call_ray_start[1]).env(
         {"working_dir": str(tmp_path), "pip": str(requirement_path)}
     ).connect():
 
@@ -932,7 +934,7 @@ def test_runtime_env_override(call_ray_start):
     # https://github.com/ray-project/ray/issues/16481
 
     with tempfile.TemporaryDirectory() as tmpdir, chdir(tmpdir):
-        ray.init(address="auto", namespace="test")
+        ray.init(address=call_ray_start, namespace="test")
 
         @ray.remote
         class Child:
@@ -962,7 +964,7 @@ def test_runtime_env_override(call_ray_start):
             f.write("world")
 
         job_config = ray.job_config.JobConfig(runtime_env={"working_dir": "."})
-        ray.init(address="auto", namespace="test", job_config=job_config)
+        ray.init(address=call_ray_start, namespace="test", job_config=job_config)
 
         os.remove("hello")
 

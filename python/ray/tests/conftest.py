@@ -297,11 +297,21 @@ def call_ray_start(request):
         "param",
         "ray start --head --num-cpus=1 --min-worker-port=0 " "--max-worker-port=0",
     )
+    if isinstance(parameter, tuple):
+        with_client_server = parameter[1]
+        parameter = parameter[0]
+    else:
+        with_client_server = False
+
     command_args = parameter.split(" ")
 
     command_args += ["--block"]
     port = str(find_free_port())
     command_args += ["--port", port]
+
+    if with_client_server is True:
+        client_server_port = find_free_port()
+        command_args += [f"--ray-client-server-port={client_server_port}"]
 
     address = f"localhost:{port}"
 
@@ -316,7 +326,10 @@ def call_ray_start(request):
         else:
             proc.kill()
             raise Exception("Failed to start ray cluster")
-        yield address
+        if with_client_server is True:
+            yield (address, f"localhost:{client_server_port}")
+        else:
+            yield address
         # Disconnect from the Ray cluster.
         ray.shutdown()
         proc.kill()

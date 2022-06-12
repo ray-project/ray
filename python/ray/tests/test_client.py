@@ -12,9 +12,11 @@ from ray.util.client.common import OBJECT_TRANSFER_CHUNK_SIZE
 
 import ray.util.client.server.server as ray_client_server
 from ray.tests.client_test_utils import create_remote_signal_actor
-from ray.tests.client_test_utils import run_wrapped_actor_creation
+
+# from ray.tests.client_test_utils import run_wrapped_actor_creation
 from ray.util.client.common import ClientObjectRef
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
+
 from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.util.client.ray_client_helpers import ray_start_client_server_pair
 from ray._private.client_mode_hook import client_mode_should_convert
@@ -611,6 +613,7 @@ def test_startup_retry(ray_start_regular_shared):
 
 def test_dataclient_server_drop(ray_start_regular_shared):
     from ray.util.client import ray as ray_client
+
     port = find_free_port()
     ray_client._inside_client_test = True
 
@@ -694,7 +697,9 @@ def test_object_ref_cleanup():
     # object_ref_cleanup_script
     # See https://github.com/ray-project/ray/issues/17968 for details
     with ray_start_client_server_pair() as (_, server):
-        result = run_string_as_driver(object_ref_cleanup_script.format(port=server.port))
+        result = run_string_as_driver(
+            object_ref_cleanup_script.format(port=server.port)
+        )
         assert "Error in sys.excepthook:" not in result
         assert "AttributeError: 'NoneType' object has no " not in result
         assert "Exception ignored in" not in result

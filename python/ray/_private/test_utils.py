@@ -149,6 +149,7 @@ def find_free_port():
         s.bind(("", 0))
         return s.getsockname()[1]
 
+
 def wait_for_pid_to_exit(pid, timeout=20):
     start_time = time.time()
     while time.time() - start_time < timeout:
