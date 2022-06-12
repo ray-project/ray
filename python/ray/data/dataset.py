@@ -3152,6 +3152,9 @@ class Dataset(Generic[T]):
                 )
             )
         if auto_repartition:
+            # A bit hacky: calculate whether we need to repartition(-1) up-front, since
+            # the dummy will have num blocks 0. However the rest of the repartition(-1)
+            # logic is needed.
             nblocks = [s.initial_num_blocks() for s in it._splits]
             if len(nblocks) > 1:
                 nblocks = sorted(nblocks)[1:]  # Trim off the last one.
@@ -3163,7 +3166,7 @@ class Dataset(Generic[T]):
                     "Warning: this may indicate you need to run the initial read with higher parallelism, which would avoid this step and can increase read parallelism."
                 )
                 print("TODO: can we re-run the read with higher p automatically?")
-                pipe = pipe.repartition_each_window(max_P * 2)
+                pipe = pipe.repartition_each_window(-1)
         return pipe
 
     def fully_executed(self) -> "Dataset[T]":

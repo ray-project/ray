@@ -794,6 +794,7 @@ class DatasetPipeline(Generic[T]):
                 )
             )
         self._optimized_stages = optimized_stages
+        print("DUMMYDS END")
 
     def _peek(self) -> Dataset[T]:
         if self._first_dataset is None:
