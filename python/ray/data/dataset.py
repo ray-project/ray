@@ -3014,6 +3014,7 @@ class Dataset(Generic[T]):
         *,
         blocks_per_window: Optional[int] = None,
         bytes_per_window: Optional[int] = None,
+        auto_repartition: bool = True,
     ) -> "DatasetPipeline[T]":
         """Convert this into a DatasetPipeline by windowing over data blocks.
 
@@ -3064,6 +3065,7 @@ class Dataset(Generic[T]):
                 This will be treated as an upper bound for the window size, but each
                 window will still include at least one block. This is mutually
                 exclusive with ``blocks_per_window``.
+            auto_repartition: Whether to auto repartition to improve parallelism.
         """
         from ray.data.dataset_pipeline import DatasetPipeline
         from ray.data._internal.plan import _rewrite_read_stage
@@ -3071,8 +3073,8 @@ class Dataset(Generic[T]):
         if blocks_per_window is not None and bytes_per_window is not None:
             raise ValueError("Only one windowing scheme can be specified.")
 
-        if blocks_per_window is None:
-            blocks_per_window = 10
+        if blocks_per_window is None and bytes_per_window is None:
+            raise ValueError("A windowing scheme must be specified.")
 
         ctx = DatasetContext.get_current()
         if self._plan.is_read_stage() and ctx.optimize_fuse_read_stages:
@@ -3149,6 +3151,19 @@ class Dataset(Generic[T]):
                     ds._plan.with_stage(read_stage), ds._epoch, True
                 )
             )
+        if auto_repartition:
+            nblocks = [s.initial_num_blocks() for s in it._splits]
+            if len(nblocks) > 1:
+                nblocks = sorted(nblocks)[1:]  # Trim off the last one.
+            max_P = estimate_available_parallelism()
+            print("maxP vs nblocks", max_P, nblocks)
+            if min(nblocks) < max_P * 0.8:
+                print("Trigger auto repartition")
+                print(
+                    "Warning: this may indicate you need to run the initial read with higher parallelism, which would avoid this step and can increase read parallelism."
+                )
+                print("TODO: can we re-run the read with higher p automatically?")
+                pipe = pipe.repartition_each_window(max_P * 2)
         return pipe
 
     def fully_executed(self) -> "Dataset[T]":
