@@ -10,6 +10,8 @@ from ray.air._internal.checkpointing import (
     load_preprocessor_from_dir,
     save_preprocessor_to_dir,
 )
+from ray.air.result import Result
+
 from ray.tune import Trainable, PlacementGroupFactory
 from ray.tune.logger import Logger
 from ray.tune.registry import get_trainable_cls
@@ -133,3 +135,8 @@ class AlpaTrainer(BaseTrainer):
     def training_loop(self) -> None:
         self._train_loop(self._datasets, self._train_loop_config)
         
+    @PublicAPI(stability="alpha")
+    def fit(self) -> Result:
+        self.setup()
+        self.preprocess_datasets()
+        self.training_loop()
