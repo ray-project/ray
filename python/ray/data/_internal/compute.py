@@ -315,6 +315,11 @@ def get_compute(compute_spec: Union[str, ComputeStrategy]) -> ComputeStrategy:
         raise ValueError("compute must be one of [`tasks`, `actors`, ComputeStrategy]")
 
 
+def is_task_compute(compute_spec: Union[str, ComputeStrategy]) -> bool:
+    return not compute_spec or compute_spec == "tasks" or \
+        isinstance(compute_spec, TaskPoolStrategy)
+
+
 def _map_block_split(block: Block, fn: Any, input_files: List[str]) -> BlockPartition:
     output = []
     stats = BlockExecStats.builder()
