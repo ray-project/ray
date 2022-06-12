@@ -521,15 +521,15 @@ class Impala(Trainer):
         else:
             # Create our local mixin buffer if the num of aggregation workers is 0.
             self.local_mixin_buffer = MultiAgentMixInReplayBuffer(
-                    capacity=(
-                        self.config["replay_buffer_num_slots"]
-                        if self.config["replay_buffer_num_slots"] > 0
-                        else 1
-                    ),
-                    replay_ratio=self.config["replay_ratio"],
-                    storage_unit="fragments",
-                    learning_starts=0,
-                )
+                capacity=(
+                    self.config["replay_buffer_num_slots"]
+                    if self.config["replay_buffer_num_slots"] > 0
+                    else 1
+                ),
+                replay_ratio=self.config["replay_ratio"],
+                storage_unit="fragments",
+                learning_starts=0,
+            )
 
         self._sampling_actor_manager = AsyncRequestsManager(
             self.workers.remote_workers(),
@@ -647,10 +647,14 @@ class Impala(Trainer):
         while self.batches_to_place_on_learner:
             batch = self.batches_to_place_on_learner[0]
             if len(batch) == 0:
+                self.batches_to_place_on_learner.pop(0)
                 return
             try:
                 self._learner_thread.inqueue.put(batch, block=False)
                 self.batches_to_place_on_learner.pop(0)
+                for i in range(4):
+                    print("1:" + str(self.batches_to_place_on_learner))
+                    print(batch)
                 self._counters[NUM_ENV_STEPS_SAMPLED] += batch.count
                 self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
                 self._counters["num_samples_added_to_queue"] = batch.count
@@ -729,7 +733,7 @@ class Impala(Trainer):
         for ready_sub_batches in waiting_processed_sample_batches.values():
             ready_processed_batches.extend(ready_sub_batches)
 
-        return ready_processed_batches
+        return SampleBatch.concat_samples(ready_processed_batches)
 
     def update_workers_if_necessary(self) -> None:
         # Only need to update workers if there are remote workers.

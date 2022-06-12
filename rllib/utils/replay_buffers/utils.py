@@ -129,7 +129,6 @@ def sample_min_n_steps_from_buffer(
         train_batch_size += batch_len
     if len(train_batches) == 0:
         return MultiAgentBatch({}, 0)
-    # All batch types are the same type, hence we can use any concat_samples()
     train_batch = SampleBatch.concat_samples(train_batches)
     return train_batch
 

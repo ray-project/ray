@@ -4,7 +4,6 @@ import numpy as np
 import logging
 from typing import Optional, Dict, Any
 
-from ray.rllib.policy.rnn_sequencing import timeslice_along_seq_lens_with_overlap
 from ray.rllib.policy.sample_batch import (
     DEFAULT_POLICY_ID,
     SampleBatch,
