@@ -53,15 +53,13 @@ class TestEnvsThatCrash(unittest.TestCase):
                 },
             )
         )
-        # Pre-checking disables, so building the Trainer is save.
-        trainer = config.build()
+        # Pre-checking disables, so building the Algorithm is save.
+        algo = config.build()
         # Expect EnvError due to the sub-env(s) crashing on the different workers
         # and `ignore_worker_failures=False` (so the original EnvError should
-        # just be bubbled up by RLlib Trainer and tune.Trainable during the `step()`
+        # just be bubbled up by RLlib Algorithm and tune.Trainable during the `step()`
         # call).
-        self.assertRaisesRegex(
-            EnvError, "Simulated env crash!", lambda: trainer.train()
-        )
+        self.assertRaisesRegex(EnvError, "Simulated env crash!", lambda: algo.train())
 
     def test_crash_only_one_worker_during_sampling_but_ignore(self):
         """Expect some sub-envs to fail (and not recover), but ignore."""
@@ -85,14 +83,14 @@ class TestEnvsThatCrash(unittest.TestCase):
                 },
             )
         )
-        # Pre-checking disables, so building the Trainer is save.
-        trainer = config.build()
+        # Pre-checking disables, so building the Algorithm is save.
+        algo = config.build()
         # Expect some errors being logged here, but in general, should continue
         # as we ignore worker failures.
-        trainer.train()
+        algo.train()
         # One worker has been removed -> Only one left.
-        self.assertTrue(len(trainer.workers.remote_workers()) == 1)
-        trainer.stop()
+        self.assertTrue(len(algo.workers.remote_workers()) == 1)
+        algo.stop()
 
     def test_crash_only_one_worker_during_sampling_but_recreate(self):
         """Expect some sub-envs to fail (and not recover), but re-create worker."""
@@ -118,18 +116,18 @@ class TestEnvsThatCrash(unittest.TestCase):
                 },
             )
         )
-        # Pre-checking disables, so building the Trainer is save.
-        trainer = config.build()
+        # Pre-checking disables, so building the Algorithm is save.
+        algo = config.build()
         # Try to re-create for infinite amount of times.
         # The worker recreation/ignore tolerance used to be hard-coded to 3, but this
         # has now been
         for _ in range(10):
             # Expect some errors being logged here, but in general, should continue
             # as we recover from all worker failures.
-            trainer.train()
+            algo.train()
             # One worker has been removed, then re-created -> Still 2 left.
-            self.assertTrue(len(trainer.workers.remote_workers()) == 2)
-        trainer.stop()
+            self.assertTrue(len(algo.workers.remote_workers()) == 2)
+        algo.stop()
 
     def test_crash_sub_envs_during_sampling_but_restart_sub_envs(self):
         """Expect sub-envs to fail (and not recover), but re-start them individually."""
@@ -156,18 +154,18 @@ class TestEnvsThatCrash(unittest.TestCase):
                 },
             )
         )
-        # Pre-checking disables, so building the Trainer is save.
-        trainer = config.build()
+        # Pre-checking disables, so building the Algorithm is save.
+        algo = config.build()
         # Try to re-create the sub-env for infinite amount of times.
         # The worker recreation/ignore tolerance used to be hard-coded to 3, but this
         # has now been
         for _ in range(10):
             # Expect some errors being logged here, but in general, should continue
             # as we recover from all sub-env failures.
-            trainer.train()
+            algo.train()
             # No worker has been removed. Still 2 left.
-            self.assertTrue(len(trainer.workers.remote_workers()) == 2)
-        trainer.stop()
+            self.assertTrue(len(algo.workers.remote_workers()) == 2)
+        algo.stop()
 
 
 if __name__ == "__main__":

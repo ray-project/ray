@@ -42,7 +42,7 @@ from ray.rllib.utils.typing import (
     LocalOptimizer,
     ModelInputDict,
     TensorType,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
 )
 
 torch, nn = try_import_torch()
@@ -52,14 +52,14 @@ logger = logging.getLogger(__name__)
 
 
 def _get_dist_class(
-    policy: Policy, config: TrainerConfigDict, action_space: gym.spaces.Space
+    policy: Policy, config: AlgorithmConfigDict, action_space: gym.spaces.Space
 ) -> Type[TorchDistributionWrapper]:
     """Helper function to return a dist class based on config and action space.
 
     Args:
         policy: The policy for which to return the action
             dist class.
-        config: The Trainer's config dict.
+        config: The Algorithm's config dict.
         action_space (gym.spaces.Space): The action space used.
 
     Returns:
@@ -92,7 +92,7 @@ def build_sac_model_and_action_dist(
     policy: Policy,
     obs_space: gym.spaces.Space,
     action_space: gym.spaces.Space,
-    config: TrainerConfigDict,
+    config: AlgorithmConfigDict,
 ) -> Tuple[ModelV2, Type[TorchDistributionWrapper]]:
     """Constructs the necessary ModelV2 and action dist class for the Policy.
 
@@ -385,7 +385,7 @@ def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
     }
 
 
-def optimizer_fn(policy: Policy, config: TrainerConfigDict) -> Tuple[LocalOptimizer]:
+def optimizer_fn(policy: Policy, config: AlgorithmConfigDict) -> Tuple[LocalOptimizer]:
     """Creates all necessary optimizers for SAC learning.
 
     The 3 or 4 (twin_q=True) optimizers returned here correspond to the
@@ -393,7 +393,7 @@ def optimizer_fn(policy: Policy, config: TrainerConfigDict) -> Tuple[LocalOptimi
 
     Args:
         policy: The policy object to be trained.
-        config: The Trainer's config dict.
+        config: The Algorithm's config dict.
 
     Returns:
         Tuple[LocalOptimizer]: The local optimizers to use for policy training.
@@ -506,7 +506,7 @@ def setup_late_mixins(
     policy: Policy,
     obs_space: gym.spaces.Space,
     action_space: gym.spaces.Space,
-    config: TrainerConfigDict,
+    config: AlgorithmConfigDict,
 ) -> None:
     """Call mixin classes' constructors after Policy initialization.
 

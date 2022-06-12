@@ -72,7 +72,12 @@ class TestMixInMultiAgentReplayBuffer(unittest.TestCase):
         """Test sampling of sequences."""
         # 50% replay ratio.
         buffer = MultiAgentMixInReplayBuffer(
-            capacity=100, storage_unit="sequences", replay_ratio=0.5, learning_starts=0
+            capacity=100,
+            storage_unit="sequences",
+            replay_ratio=0.5,
+            learning_starts=0,
+            replay_sequence_length=2,
+            replay_sequence_override=True,
         )
 
         # If we insert and replay n times, expect roughly return batches of
