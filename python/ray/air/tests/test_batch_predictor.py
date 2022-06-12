@@ -46,14 +46,15 @@ def test_batch_prediction():
         Checkpoint.from_dict({"factor": 2.0}), DummyPredictor
     )
 
-    test_dataset = ray.data.from_items([1.0, 2.0, 3.0, 4.0])
-    assert batch_predictor.predict(
-        test_dataset
-    ).to_pandas().to_numpy().squeeze().tolist() == [
+    test_dataset = ray.data.range(4)
+    ds = batch_predictor.predict(test_dataset)
+    # Check fusion occurred.
+    assert "read->map_batches" in ds.stats(), ds.stats()
+    assert ds.to_pandas().to_numpy().squeeze().tolist() == [
+        0.0,
         4.0,
         8.0,
         12.0,
-        16.0,
     ]
 
 
