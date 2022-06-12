@@ -68,12 +68,12 @@ class BatchPredictor:
             ...     def predict(self, data, **kwargs):
             ...         return pd.DataFrame({"a": [42] * len(data)})
             >>> # Create a batch predictor for this dummy predictor.
-            >>> batch_pred = BatchPredictor(
+            >>> batch_pred = BatchPredictor( # doctest: +SKIP
             ...     Checkpoint.from_dict({"x": 0}), DummyPredictor)
             >>> # Create a dummy dataset.
-            >>> ds = ray.data.range_tensor(1000, parallelism=4)
+            >>> ds = ray.data.range_tensor(1000, parallelism=4) # doctest: +SKIP
             >>> # Execute batch prediction using this predictor.
-            >>> print(batch_pred.predict(ds))
+            >>> print(batch_pred.predict(ds)) # doctest: +SKIP
             Dataset(num_blocks=4, num_rows=1000, schema={a: int64})
 
         Args:
@@ -151,12 +151,13 @@ class BatchPredictor:
             ...     def predict(self, data, **kwargs):
             ...         return pd.DataFrame({"a": [42] * len(data)})
             >>> # Create a batch predictor for this dummy predictor.
-            >>> batch_pred = BatchPredictor(
+            >>> batch_pred = BatchPredictor( # doctest: +SKIP
             ...     Checkpoint.from_dict({"x": 0}), DummyPredictor)
             >>> # Create a dummy dataset.
-            >>> ds = ray.data.range_tensor(1000, parallelism=4)
+            >>> ds = ray.data.range_tensor(1000, parallelism=4) # doctest: +SKIP
             >>> # Setup a prediction pipeline.
-            >>> print(batch_pred.predict_pipelined(ds, blocks_per_window=1))
+            >>> print(batch_pred.predict_pipelined( # doctest: +SKIP
+            ...     ds, blocks_per_window=1))
             DatasetPipeline(num_windows=4, num_stages=3)
 
         Args:
