@@ -34,7 +34,7 @@ from ray.rllib.utils.typing import (
     PolicyID,
     SampleBatchType,
     TensorType,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
 )
 from ray.tune.registry import registry_contains_input, registry_get_input
 
@@ -59,7 +59,7 @@ class WorkerSet:
         env_creator: Optional[EnvCreator] = None,
         validate_env: Optional[Callable[[EnvType], None]] = None,
         policy_class: Optional[Type[Policy]] = None,
-        trainer_config: Optional[TrainerConfigDict] = None,
+        trainer_config: Optional[AlgorithmConfigDict] = None,
         num_workers: int = 0,
         local_worker: bool = True,
         logdir: Optional[str] = None,
@@ -72,10 +72,10 @@ class WorkerSet:
             validate_env: Optional callable to validate the generated
                 environment (only on worker=0).
             policy_class: An optional Policy class. If None, PolicySpecs can be
-                generated automatically by using the Trainer's default class
+                generated automatically by using the Algorithm's default class
                 of via a given multi-agent policy config dict.
             trainer_config: Optional dict that extends the common config of
-                the Trainer class.
+                the Algorithm class.
             num_workers: Number of remote rollout workers to create.
             local_worker: Whether to create a local (non @ray.remote) worker
                 in the returned set as well (default: True). If `num_workers`
@@ -85,7 +85,7 @@ class WorkerSet:
         """
 
         if not trainer_config:
-            from ray.rllib.agents.trainer import COMMON_CONFIG
+            from ray.rllib.algorithms.algorithm import COMMON_CONFIG
 
             trainer_config = COMMON_CONFIG
 
@@ -265,7 +265,7 @@ class WorkerSet:
         # Validate here, whether all remote workers have been constructed properly
         # and are "up and running". If not, the following will throw a RayError
         # which needs to be handled by this WorkerSet's owner (usually
-        # a RLlib Trainer instance).
+        # a RLlib Algorithm instance).
         if validate:
             self.foreach_worker_with_index(
                 lambda w, i: w.policy_map and w.input_reader and w.output_writer
@@ -537,7 +537,7 @@ class WorkerSet:
         worker_index: int,
         num_workers: int,
         recreated_worker: bool = False,
-        config: TrainerConfigDict,
+        config: AlgorithmConfigDict,
         spaces: Optional[
             Dict[PolicyID, Tuple[gym.spaces.Space, gym.spaces.Space]]
         ] = None,

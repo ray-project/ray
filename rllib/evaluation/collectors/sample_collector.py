@@ -9,7 +9,7 @@ from ray.rllib.utils.typing import AgentID, EnvID, EpisodeID, PolicyID, TensorTy
 from ray.rllib.utils.annotations import PublicAPI
 
 if TYPE_CHECKING:
-    from ray.rllib.agents.callbacks import DefaultCallbacks
+    from ray.rllib.algorithms.callbacks import DefaultCallbacks
 
 logger = logging.getLogger(__name__)
 

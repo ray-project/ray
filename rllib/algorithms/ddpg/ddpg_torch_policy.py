@@ -28,7 +28,7 @@ from ray.rllib.utils.torch_utils import (
     l2_loss,
 )
 from ray.rllib.utils.typing import (
-    TrainerConfigDict,
+    AlgorithmConfigDict,
     TensorType,
     LocalOptimizer,
     GradInfoDict,
@@ -43,7 +43,7 @@ def build_ddpg_models_and_action_dist(
     policy: Policy,
     obs_space: gym.spaces.Space,
     action_space: gym.spaces.Space,
-    config: TrainerConfigDict,
+    config: AlgorithmConfigDict,
 ) -> Tuple[ModelV2, ActionDistribution]:
     model = build_ddpg_models(policy, obs_space, action_space, config)
 
@@ -202,7 +202,7 @@ def ddpg_actor_critic_loss(
 
 
 def make_ddpg_optimizers(
-    policy: Policy, config: TrainerConfigDict
+    policy: Policy, config: AlgorithmConfigDict
 ) -> Tuple[LocalOptimizer]:
     """Create separate optimizers for actor & critic losses."""
 
@@ -248,7 +248,7 @@ def before_init_fn(
     policy: Policy,
     obs_space: gym.spaces.Space,
     action_space: gym.spaces.Space,
-    config: TrainerConfigDict,
+    config: AlgorithmConfigDict,
 ) -> None:
     # Create global step for counting the number of update operations.
     policy.global_step = 0
@@ -285,7 +285,7 @@ def setup_late_mixins(
     policy: Policy,
     obs_space: gym.spaces.Space,
     action_space: gym.spaces.Space,
-    config: TrainerConfigDict,
+    config: AlgorithmConfigDict,
 ) -> None:
     ComputeTDErrorMixin.__init__(policy, ddpg_actor_critic_loss)
     TargetNetworkMixin.__init__(policy)

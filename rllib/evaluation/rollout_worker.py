@@ -72,7 +72,7 @@ from ray.rllib.utils.typing import (
     ModelGradients,
     ModelWeights,
     MultiAgentPolicyConfigDict,
-    PartialTrainerConfigDict,
+    PartialAlgorithmConfigDict,
     PolicyID,
     PolicyState,
     SampleBatchType,
@@ -84,7 +84,7 @@ from ray.util.iter import ParallelIteratorWorker
 if TYPE_CHECKING:
     from ray.rllib.evaluation.episode import Episode
     from ray.rllib.evaluation.observation_function import ObservationFunction
-    from ray.rllib.agents.callbacks import DefaultCallbacks  # noqa
+    from ray.rllib.algorithms.callbacks import DefaultCallbacks  # noqa
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -242,7 +242,7 @@ class RolloutWorker(ParallelIteratorWorker):
         clip_actions: bool = False,
         env_config: Optional[EnvConfigDict] = None,
         model_config: Optional[ModelConfigDict] = None,
-        policy_config: Optional[PartialTrainerConfigDict] = None,
+        policy_config: Optional[PartialAlgorithmConfigDict] = None,
         worker_index: int = 0,
         num_workers: int = 0,
         recreated_worker: bool = False,
@@ -339,7 +339,7 @@ class RolloutWorker(ParallelIteratorWorker):
             num_workers: For remote workers, how many workers altogether
                 have been created?
             recreated_worker: Whether this worker is a recreated one. Workers are
-                recreated by a Trainer (via WorkerSet) in case
+                recreated by an Algorithm (via WorkerSet) in case
                 `recreate_failed_workers=True` and one of the original workers (or an
                 already recreated one) has failed. They don't differ from original
                 workers other than the value of this flag (`self.recreated_worker`).
@@ -452,11 +452,11 @@ class RolloutWorker(ParallelIteratorWorker):
             recreated_worker=recreated_worker,
         )
         self.env_context = env_context
-        self.policy_config: PartialTrainerConfigDict = policy_config
+        self.policy_config: PartialAlgorithmConfigDict = policy_config
         if callbacks:
             self.callbacks: "DefaultCallbacks" = callbacks()
         else:
-            from ray.rllib.agents.callbacks import DefaultCallbacks  # noqa
+            from ray.rllib.algorithms.callbacks import DefaultCallbacks  # noqa
 
             self.callbacks: DefaultCallbacks = DefaultCallbacks()
         self.worker_index: int = worker_index
@@ -1235,7 +1235,7 @@ class RolloutWorker(ParallelIteratorWorker):
         policy_cls: Type[Policy],
         observation_space: Optional[Space] = None,
         action_space: Optional[Space] = None,
-        config: Optional[PartialTrainerConfigDict] = None,
+        config: Optional[PartialAlgorithmConfigDict] = None,
         policy_state: Optional[PolicyState] = None,
         policy_mapping_fn: Optional[Callable[[AgentID, "Episode"], PolicyID]] = None,
         policies_to_train: Optional[
@@ -1759,7 +1759,7 @@ class RolloutWorker(ParallelIteratorWorker):
     def _build_policy_map(
         self,
         policy_dict: MultiAgentPolicyConfigDict,
-        policy_config: PartialTrainerConfigDict,
+        policy_config: PartialAlgorithmConfigDict,
         session_creator: Optional[Callable[[], "tf1.Session"]] = None,
         seed: Optional[int] = None,
     ) -> None:
@@ -1920,7 +1920,7 @@ def _determine_spaces_for_multi_agent_dict(
     multi_agent_policies_dict: MultiAgentPolicyConfigDict,
     env: Optional[EnvType] = None,
     spaces: Optional[Dict[PolicyID, Tuple[Space, Space]]] = None,
-    policy_config: Optional[PartialTrainerConfigDict] = None,
+    policy_config: Optional[PartialAlgorithmConfigDict] = None,
 ) -> MultiAgentPolicyConfigDict:
     """Infers the observation- and action spaces in a multi-agent policy dict.
 

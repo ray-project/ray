@@ -42,7 +42,7 @@ import os
 from gym.spaces import Box, Discrete
 import ray
 from ray import tune
-from ray.rllib.agents import ppo
+from ray.rllib.algorithms import ppo
 from ray.rllib.examples.env.action_mask_env import ActionMaskEnv
 from ray.rllib.examples.models.action_mask_model import (
     ActionMaskModel,

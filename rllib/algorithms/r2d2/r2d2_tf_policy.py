@@ -24,7 +24,7 @@ from ray.rllib.policy.tf_mixins import (
 )
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import huber_loss
-from ray.rllib.utils.typing import ModelInputDict, TensorType, TrainerConfigDict
+from ray.rllib.utils.typing import ModelInputDict, TensorType, AlgorithmConfigDict
 
 tf1, tf, tfv = try_import_tf()
 
@@ -33,7 +33,7 @@ def build_r2d2_model(
     policy: Policy,
     obs_space: gym.spaces.Space,
     action_space: gym.spaces.Space,
-    config: TrainerConfigDict,
+    config: AlgorithmConfigDict,
 ) -> Tuple[ModelV2, ActionDistribution]:
     """Build q_model and target_model for DQN
 
@@ -41,7 +41,7 @@ def build_r2d2_model(
         policy: The policy, which will use the model for optimization.
         obs_space (gym.spaces.Space): The policy's observation space.
         action_space (gym.spaces.Space): The policy's action space.
-        config (TrainerConfigDict):
+        config (AlgorithmConfigDict):
 
     Returns:
         q_model
@@ -293,7 +293,7 @@ def get_distribution_inputs_and_class(
 
 
 def adam_optimizer(
-    policy: Policy, config: TrainerConfigDict
+    policy: Policy, config: AlgorithmConfigDict
 ) -> "tf.keras.optimizers.Optimizer":
     return tf1.train.AdamOptimizer(
         learning_rate=policy.cur_lr, epsilon=config["adam_epsilon"]
@@ -310,7 +310,7 @@ def build_q_stats(policy: Policy, batch) -> Dict[str, TensorType]:
 
 
 def setup_early_mixins(
-    policy: Policy, obs_space, action_space, config: TrainerConfigDict
+    policy: Policy, obs_space, action_space, config: AlgorithmConfigDict
 ) -> None:
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
 
@@ -319,7 +319,7 @@ def before_loss_init(
     policy: Policy,
     obs_space: gym.spaces.Space,
     action_space: gym.spaces.Space,
-    config: TrainerConfigDict,
+    config: AlgorithmConfigDict,
 ) -> None:
     ComputeTDErrorMixin.__init__(policy)
     TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
