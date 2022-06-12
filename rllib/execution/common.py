@@ -37,5 +37,5 @@ def _check_sample_batch_type(batch: SampleBatchType) -> None:
 def _get_shared_metrics() -> MetricsContext:
     """Return shared metrics for the training workflow.
 
-    This only applies if this trainer has an execution plan."""
+    This only applies if this algorithm has an execution plan."""
     return LocalIterator.get_metrics()

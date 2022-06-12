@@ -50,7 +50,7 @@ from ray.rllib.utils.typing import (
     ModelWeights,
     TensorType,
     TensorStructType,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
 )
 
 if TYPE_CHECKING:
@@ -70,7 +70,7 @@ class TorchPolicyV2(Policy):
         self,
         observation_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
-        config: TrainerConfigDict,
+        config: AlgorithmConfigDict,
         *,
         max_seq_len: int = 20,
     ):

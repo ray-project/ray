@@ -43,7 +43,7 @@ observation space. Thereby, the following simple rules apply:
   observations: ``dict_or_tuple_obs = restore_original_dimensions(input_dict["obs"], self.obs_space, "tf|torch")``
 
 For Atari observation spaces, RLlib defaults to using the `DeepMind preprocessors <https://github.com/ray-project/ray/blob/master/rllib/env/wrappers/atari_wrappers.py>`__
-(``preprocessor_pref=deepmind``). However, if the Trainer's config key ``preprocessor_pref`` is set to "rllib",
+(``preprocessor_pref=deepmind``). However, if the Algorithm's config key ``preprocessor_pref`` is set to "rllib",
 the following mappings apply for Atari-type observation spaces:
 
 - Images of shape ``(210, 160, 3)`` are downscaled to ``dim x dim``, where
@@ -75,7 +75,7 @@ and some special options for Atari environments:
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
 
-The dict above (or an overriding sub-set) is handed to the Trainer via the ``model`` key within
+The dict above (or an overriding sub-set) is handed to the Algorithm via the ``model`` key within
 the main config dict like so:
 
 .. code-block:: python
@@ -90,7 +90,7 @@ the main config dict like so:
             "fcnet_activation": "relu",
         },
 
-        # ... other Trainer config keys, e.g. "lr" ...
+        # ... other Algorithm config keys, e.g. "lr" ...
         "lr": 0.00001,
     }
 
@@ -107,7 +107,7 @@ based on simple heuristics:
 - A fully connected network (`TF <https://github.com/ray-project/ray/blob/master/rllib/models/tf/fcnet.py>`__ or `Torch <https://github.com/ray-project/ray/blob/master/rllib/models/torch/fcnet.py>`__)
   for everything else.
 
-These default model types can further be configured via the ``model`` config key inside your Trainer config (as discussed above).
+These default model types can further be configured via the ``model`` config key inside your Algorithm config (as discussed above).
 Available settings are `listed above <#default-model-config-settings>`__ and also documented in the `model catalog file <https://github.com/ray-project/ray/blob/master/rllib/models/catalog.py>`__.
 
 Note that for the vision network case, you'll probably have to configure ``conv_filters``, if your environment observations
@@ -227,7 +227,7 @@ Once implemented, your TF model can then be registered and used in place of a bu
     ModelCatalog.register_custom_model("my_tf_model", MyModelClass)
 
     ray.init()
-    trainer = ppo.PPO(env="CartPole-v0", config={
+    algo = ppo.PPO(env="CartPole-v0", config={
         "model": {
             "custom_model": "my_tf_model",
             # Extra kwargs to be passed to your model's c'tor.
@@ -270,7 +270,7 @@ Once implemented, your PyTorch model can then be registered and used in place of
     import torch.nn as nn
 
     import ray
-    from ray.rllib.agents import ppo
+    from ray.rllib.algorithms import ppo
     from ray.rllib.models import ModelCatalog
     from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 
@@ -282,7 +282,7 @@ Once implemented, your PyTorch model can then be registered and used in place of
     ModelCatalog.register_custom_model("my_torch_model", CustomTorchModel)
 
     ray.init()
-    trainer = ppo.PPO(env="CartPole-v0", config={
+    algo = ppo.PPO(env="CartPole-v0", config={
         "framework": "torch",
         "model": {
             "custom_model": "my_torch_model",
@@ -368,7 +368,7 @@ Custom Model APIs (on Top of Default- or Custom Models)
 ```````````````````````````````````````````````````````
 
 So far we talked about a) the default models that are built into RLlib and are being provided
-automatically if you don't specify anything in your Trainer's config and b) custom Models through
+automatically if you don't specify anything in your Algorithm's config and b) custom Models through
 which you can define any arbitrary forward passes.
 
 Another typical situation in which you would have to customize a model would be to
@@ -508,7 +508,7 @@ Similar to custom models and preprocessors, you can also specify a custom action
     ModelCatalog.register_custom_action_dist("my_dist", MyActionDist)
 
     ray.init()
-    trainer = ppo.PPO(env="CartPole-v0", config={
+    algo = ppo.PPO(env="CartPole-v0", config={
         "model": {
             "custom_action_dist": "my_dist",
         },

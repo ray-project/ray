@@ -10,7 +10,7 @@ from typing import (
     Union,
 )
 
-from ray.rllib.agents import TrainerConfig
+from ray.rllib.algorithms import AlgorithmConfig
 from ray.rllib.algorithms.crr.torch import CRRModel
 from ray.rllib.algorithms.ddpg.noop_model import TorchNoopModel
 from ray.rllib.algorithms.sac.sac_torch_policy import TargetNetworkMixin
@@ -384,6 +384,6 @@ if __name__ == "__main__":
 
     obs_space = gym.spaces.Box(np.array((-1, -1)), np.array((1, 1)))
     act_space = gym.spaces.Box(np.array((-1, -1)), np.array((1, 1)))
-    config = TrainerConfig().framework(framework="torch").to_dict()
+    config = AlgorithmConfig().framework(framework="torch").to_dict()
     print(config["framework"])
     CRRTorchPolicy(obs_space, act_space, config=config)

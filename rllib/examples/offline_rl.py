@@ -20,7 +20,7 @@ Use the generated file(s) as "input" in the CQL config below
 import numpy as np
 import os
 
-from ray.rllib.agents import cql as cql
+from ray.rllib.algorithms import cql as cql
 from ray.rllib.utils.framework import try_import_torch
 
 torch, _ = try_import_torch()
