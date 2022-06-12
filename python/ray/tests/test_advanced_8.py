@@ -302,7 +302,7 @@ def test_get_system_memory():
         )
     # cgroups v2, set
     with tempfile.NamedTemporaryFile("w") as memory_max_file:
-        memory_max_file.write("100")
+        memory_max_file.write("100\n")
         memory_max_file.flush()
         assert (
             ray._private.utils.get_system_memory(

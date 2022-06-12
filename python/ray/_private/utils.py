@@ -413,10 +413,11 @@ def get_system_memory(
     docker_limit = None
     if os.path.exists(memory_limit_filename):
         with open(memory_limit_filename, "r") as f:
-            docker_limit = int(f.read())
+            docker_limit = int(f.read().strip())
     elif os.path.exists(memory_limit_filename_v2):
         with open(memory_limit_filename_v2, "r") as f:
-            max_file = f.read()
+            # Don't forget to strip() the newline:
+            max_file = f.read().strip()
             if max_file.isnumeric():
                 docker_limit = int(max_file)
             else:
