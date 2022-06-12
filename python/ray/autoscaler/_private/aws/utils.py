@@ -4,6 +4,7 @@ from functools import lru_cache
 import boto3
 from boto3.exceptions import ResourceNotExistsError
 from botocore.config import Config
+
 from ray.autoscaler._private.cli_logger import cf, cli_logger
 from ray.autoscaler._private.constants import BOTO_MAX_RETRIES
 

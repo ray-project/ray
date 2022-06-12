@@ -11,6 +11,7 @@ from shlex import quote
 from typing import Dict, List
 
 import click
+
 from ray.autoscaler._private.cli_logger import cf, cli_logger
 from ray.autoscaler._private.constants import (
     AUTOSCALER_NODE_SSH_INTERVAL_S,

@@ -3,6 +3,7 @@ import logging
 from typing import Any, Dict, List, Tuple
 
 import requests
+
 from ray.autoscaler._private.constants import (
     DISABLE_LAUNCH_CONFIG_CHECK_KEY,
     DISABLE_NODE_UPDATERS_KEY,

@@ -9,6 +9,7 @@ from azure.mgmt.compute import ComputeManagementClient
 from azure.mgmt.network import NetworkManagementClient
 from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.resource.resources.models import DeploymentMode
+
 from ray.autoscaler._private._azure.config import (
     bootstrap_azure,
     get_azure_sdk_function,

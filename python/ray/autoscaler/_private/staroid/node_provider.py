@@ -7,11 +7,12 @@ from uuid import uuid4
 
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
+from staroid import Staroid
+
 from ray.autoscaler._private.staroid import log_prefix
 from ray.autoscaler._private.staroid.command_runner import StaroidCommandRunner
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME
-from staroid import Staroid
 
 logger = logging.getLogger(__name__)
 

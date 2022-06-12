@@ -5,6 +5,7 @@ from threading import RLock
 from typing import Dict, List, Tuple
 
 import googleapiclient
+
 from ray.autoscaler._private.gcp.config import (
     bootstrap_gcp,
     construct_clients_from_provider_config,

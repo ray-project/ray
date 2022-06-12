@@ -17,11 +17,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import click
 import yaml
 
-try:  # py3
-    from shlex import quote
-except ImportError:  # py2
-    from pipes import quote
-
+import ray
 import ray._private.services as services
 from ray._private.usage import usage_lib
 from ray.autoscaler._private import subprocess_output_util as cmd_output_util
@@ -76,7 +72,11 @@ from ray.experimental.internal_kv import _internal_kv_put
 from ray.util.debug import log_once
 from ray.worker import global_worker  # type: ignore
 
-import ray
+try:  # py3
+    from shlex import quote
+except ImportError:  # py2
+    from pipes import quote
+
 
 logger = logging.getLogger(__name__)
 

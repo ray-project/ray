@@ -10,13 +10,13 @@ import time
 from typing import Any, Dict, Optional
 
 import yaml
+
+import ray
 from ray.autoscaler._private.fake_multi_node.node_provider import (
     FAKE_DOCKER_DEFAULT_CLIENT_PORT,
     FAKE_DOCKER_DEFAULT_GCS_PORT,
 )
 from ray.util.ml_utils.dict import deep_update
-
-import ray
 
 logger = logging.getLogger(__name__)
 

@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 import boto3
 import botocore
+
 from ray.autoscaler._private.aws.cloudwatch.cloudwatch_helper import (
     CloudwatchHelper as cwh,
 )

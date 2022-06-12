@@ -10,6 +10,8 @@ from types import ModuleType
 from typing import Any, Dict, Optional
 
 import yaml
+
+import ray
 from ray.autoscaler._private.fake_multi_node.command_runner import (
     FakeDockerCommandRunner,
 )
@@ -25,8 +27,6 @@ from ray.autoscaler.tags import (
     TAG_RAY_USER_NODE_TYPE,
 )
 from ray.ray_constants import DEFAULT_PORT
-
-import ray
 
 logger = logging.getLogger(__name__)
 

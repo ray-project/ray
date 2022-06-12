@@ -13,11 +13,7 @@ from typing import Any, Callable, Dict, FrozenSet, List, Optional, Set, Tuple, U
 
 import grpc
 import yaml
-
-try:
-    from urllib3.exceptions import MaxRetryError
-except ImportError:
-    MaxRetryError = None
+from six.moves import queue
 
 from ray.autoscaler._private.constants import (
     AUTOSCALER_HEARTBEAT_TIMEOUT_S,
@@ -74,7 +70,12 @@ from ray.autoscaler.tags import (
     TAG_RAY_USER_NODE_TYPE,
 )
 from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
-from six.moves import queue
+
+try:
+    from urllib3.exceptions import MaxRetryError
+except ImportError:
+    MaxRetryError = None
+
 
 logger = logging.getLogger(__name__)
 

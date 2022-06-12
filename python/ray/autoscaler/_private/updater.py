@@ -5,6 +5,7 @@ import time
 from threading import Thread
 
 import click
+
 from ray._private.usage import usage_constants, usage_lib
 from ray.autoscaler._private import subprocess_output_util as cmd_output_util
 from ray.autoscaler._private.cli_logger import cf, cli_logger

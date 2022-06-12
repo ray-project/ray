@@ -5,6 +5,7 @@ import socket
 from threading import RLock
 
 from filelock import FileLock
+
 from ray.autoscaler._private.local.config import (
     LOCAL_CLUSTER_NODE_TYPE,
     bootstrap_local,

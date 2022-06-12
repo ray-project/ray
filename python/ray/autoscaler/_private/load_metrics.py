@@ -5,6 +5,7 @@ from functools import reduce
 from typing import Dict, List
 
 import numpy as np
+
 import ray.ray_constants
 from ray._private.gcs_utils import PlacementGroupTableData
 from ray.autoscaler._private.constants import (
