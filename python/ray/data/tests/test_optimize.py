@@ -364,6 +364,8 @@ def test_optimize_equivalent_remote_args(ray_start_regular_shared):
 
     equivalent_kwargs = [
         {},
+        {"resources": {"blah": 0}},
+        {"resources": {"blah": None}},
         {"num_cpus": None},
         {"num_cpus": 1},
         {"num_cpus": 1, "num_gpus": 0},
