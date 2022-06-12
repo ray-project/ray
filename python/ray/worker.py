@@ -1035,6 +1035,9 @@ def init(
             arguments is passed in.
     """
 
+    os.environ["LD_PRELOAD"] = "/usr/lib/gcc/x86_64-linux-gnu/10/libtsan.so"
+    os.environ["TSAN_OPTIONS"] = "report_atomic_races=0"
+
     # Parse the hidden options:
     _enable_object_reconstruction: bool = kwargs.pop(
         "_enable_object_reconstruction", False

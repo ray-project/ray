@@ -561,6 +561,9 @@ def start(
 ):
     """Start Ray processes manually on the local machine."""
 
+    os.environ["LD_PRELOAD"] = "/usr/lib/gcc/x86_64-linux-gnu/10/libtsan.so"
+    os.environ["TSAN_OPTIONS"] = "report_atomic_races=0"
+
     if gcs_server_port is not None:
         cli_logger.error(
             "`{}` is deprecated and ignored. Use {} to specify "
