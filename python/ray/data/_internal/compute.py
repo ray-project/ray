@@ -316,8 +316,11 @@ def get_compute(compute_spec: Union[str, ComputeStrategy]) -> ComputeStrategy:
 
 
 def is_task_compute(compute_spec: Union[str, ComputeStrategy]) -> bool:
-    return not compute_spec or compute_spec == "tasks" or \
-        isinstance(compute_spec, TaskPoolStrategy)
+    return (
+        not compute_spec
+        or compute_spec == "tasks"
+        or isinstance(compute_spec, TaskPoolStrategy)
+    )
 
 
 def _map_block_split(block: Block, fn: Any, input_files: List[str]) -> BlockPartition:

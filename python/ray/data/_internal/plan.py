@@ -17,9 +17,8 @@ if TYPE_CHECKING:
 import ray
 from ray.data.context import DatasetContext
 from ray.data.block import Block
-from ray.data.compute import is_task_compute
 from ray.data._internal.block_list import BlockList
-from ray.data._internal.compute import get_compute
+from ray.data._internal.compute import get_compute, is_task_compute
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.lazy_block_list import LazyBlockList
 
