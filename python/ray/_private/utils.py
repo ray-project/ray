@@ -500,7 +500,16 @@ def _get_docker_cpus(
     return cpu_quota or cpuset_num
 
 
-def get_num_cpus() -> int:
+def get_num_cpus(override_docker_warning: bool = False) -> int:
+    """
+    Get the number of CPUs available on this node.
+    Depending on the situation, use multiprocessing.cpu_count() or cgroups.
+
+    Args:
+        override_docker_warning: An extra Flag to explicitly turn off the Docker
+            warning. Setting this flag True has the same effect as setting the env
+            RAY_DISABLE_DOCKER_CPU_WARNING.
+    """
     cpu_count = multiprocessing.cpu_count()
     if os.environ.get("RAY_USE_MULTIPROCESSING_CPU_COUNT"):
         logger.info(
@@ -521,6 +530,7 @@ def get_num_cpus() -> int:
             if (
                 "RAY_DISABLE_DOCKER_CPU_WARNING" not in os.environ
                 and "KUBERNETES_SERVICE_HOST" not in os.environ
+                and not override_docker_warning
             ):
                 logger.warning(
                     "Detecting docker specified CPUs. In "
