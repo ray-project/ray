@@ -109,10 +109,6 @@ class TestOPE(unittest.TestCase):
         # Test OPE methods on COBS MountainCar
         pass
 
-    def test_input_evaluation_backwards_compatible(self):
-        # Test with deprecated `input_evaluation` config key
-        pass
-
     def test_multiple_input_sources(self):
         # Test multiple input sources e.g. input = {data_file : 0.5, "sampler": 0.5}
         pass
