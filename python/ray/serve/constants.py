@@ -104,6 +104,7 @@ HANDLE_METRIC_PUSH_INTERVAL_S = 10
 # Timeout for GCS internal KV service
 RAY_SERVE_KV_TIMEOUT_S = float(os.environ.get("RAY_SERVE_KV_TIMEOUT_S", "5"))
 
+
 class ServeHandleType(str, Enum):
     SYNC = "SYNC"
     ASYNC = "ASYNC"

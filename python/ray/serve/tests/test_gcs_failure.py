@@ -24,7 +24,6 @@ def serve_ha(external_redis, monkeypatch):  # noqa: F811
     ray.shutdown()
 
 
-
 def test_ray_internal_kv_timeout(serve_ha):  # noqa: F811
     # Firstly make sure it's workin
     kv1 = RayInternalKVStore()
@@ -55,6 +54,7 @@ def test_controller_gcs_failure(serve_ha, use_handle):  # noqa: F811
             ret = requests.get("http://localhost:8000/d").text
         print(ret)
         return ret.split("|")[0], ret.split("|")[1]
+
     d.deploy()
     val1, pid1 = call()
 
