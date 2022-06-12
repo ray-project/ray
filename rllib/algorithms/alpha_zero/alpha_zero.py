@@ -4,6 +4,10 @@ from typing import List, Optional, Type, Union
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.agents.trainer import Trainer
 from ray.rllib.agents.trainer_config import TrainerConfig
+from ray.rllib.evaluation.worker_set import WorkerSet
+from ray.rllib.execution.replay_ops import (
+    SimpleReplayBuffer,
+)
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
@@ -359,7 +363,6 @@ class AlphaZero(Trainer):
 
         # Return all collected metrics for the iteration.
         return train_results
-
 
 # Deprecated: Use ray.rllib.algorithms.alpha_zero.AlphaZeroConfig instead!
 class _deprecated_default_config(dict):
