@@ -234,6 +234,7 @@ def get_current_node_resource_key() -> str:
                 if key.startswith("node:"):
                     return key
     else:
+        print(">>>> DBG", current_node_id, ray.nodes())
         raise ValueError("Cannot found the node dictionary for current node.")
 
 

@@ -41,7 +41,7 @@ def test_ray_internal_kv_timeout(serve_ha):  # noqa: F811
     )
 
 
-@pytest.mark.parametrize("use_handle", [True, False])
+@pytest.mark.parametrize("use_handle", [False, True])
 def test_controller_gcs_failure(serve_ha, use_handle):  # noqa: F811
     @serve.deployment(version="1")
     def d(*args):
@@ -52,7 +52,7 @@ def test_controller_gcs_failure(serve_ha, use_handle):  # noqa: F811
             ret = ray.get(d.get_handle().remote())
         else:
             ret = requests.get("http://localhost:8000/d").text
-        print(ret)
+        print("RET=", ret)
         return ret.split("|")[0], ret.split("|")[1]
 
     d.deploy()
@@ -60,6 +60,7 @@ def test_controller_gcs_failure(serve_ha, use_handle):  # noqa: F811
 
     assert val1 == "1"
     # Killfg the GCS
+    print("Kill GCS")
     ray.worker._global_node.kill_gcs_server()
 
     # Make sure it's still working even GCS is killed
@@ -73,10 +74,10 @@ def test_controller_gcs_failure(serve_ha, use_handle):  # noqa: F811
     # Make sure nothing changed
     val1, pid1 = call()
     assert val1 == "1"
-
+    print("Start GCS")
     # Bring GCS back
     ray.worker._global_node.start_gcs_server()
-    print("GCS IS BACK")
+
     # Make sure nothing changed even after GCS is back
 
     with pytest.raises(Exception):
@@ -85,9 +86,14 @@ def test_controller_gcs_failure(serve_ha, use_handle):  # noqa: F811
         # when GCS restarts.
         wait_for_condition(lambda: call()[0] != val1, timeout=4)
 
-    # Redeploy again
-    d.options(version="2").deploy()
-    wait_for_condition(lambda: call()[0] == "2", timeout=30)
+    @serve.deployment(version="2")
+    def d(*args):
+        return f"2|{os.getpid()}"
+
+    # Redeploying with the same version and new code should do nothing.
+    d.deploy()
+
+    assert call()[0] == "2"
 
 
 if __name__ == "__main__":

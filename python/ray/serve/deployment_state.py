@@ -1098,16 +1098,19 @@ class DeploymentState:
                 and existing_info.version == deployment_info.version
             ):
                 return False
+        orig = self.__dict__
+        self._set_deployment_goal(deployment_info)
+        try:
+            # NOTE(edoakes): we must write a checkpoint before starting new
+            # or pushing the updated config to avoid inconsistent state if we
+            # crash while making the change.
+            self._save_checkpoint_func()
+        except Exception:
+            self.__dict__ = orig
+            raise
 
         # Reset constructor retry counter.
         self._replica_constructor_retry_counter = 0
-
-        self._set_deployment_goal(deployment_info)
-
-        # NOTE(edoakes): we must write a checkpoint before starting new
-        # or pushing the updated config to avoid inconsistent state if we
-        # crash while making the change.
-        self._save_checkpoint_func()
 
         return True
 
