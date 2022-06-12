@@ -61,7 +61,8 @@ from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
-from ray.data._internal.util import _lazy_import_pyarrow_dataset
+from ray.data._internal.util import _lazy_import_pyarrow_dataset, \
+    estimate_available_parallelism
 
 T = TypeVar("T")
 
@@ -201,8 +202,7 @@ def range_tensor(
 def read_datasource(
     datasource: Datasource[T],
     *,
-    parallelism: int = 200,
-    auto_repartition: bool = True,
+    parallelism: int = -1,
     ray_remote_args: Dict[str, Any] = None,
     **read_args,
 ) -> Dataset[T]:
@@ -211,7 +211,9 @@ def read_datasource(
     Args:
         datasource: The datasource to read data from.
         parallelism: The requested parallelism of the read. Parallelism may be
-            limited by the available partitioning of the datasource.
+            limited by the available partitioning of the datasource. If set to -1,
+            parallelism will be automatically chosen, and the dataset will be
+            automatically repartitioned as needed to improve parallelism.
         read_args: Additional kwargs to pass to the datasource impl.
         ray_remote_args: kwargs passed to ray.remote in the read tasks.
 
@@ -231,6 +233,15 @@ def read_datasource(
             )
             force_local = True
 
+    if parallelism <= 0:
+        if parallelism != -1:
+            raise ValueError("`parallelism` must be either -1 or a positive integer.")
+        parallelism = estimate_available_parallelism() * 2
+        auto_repartition = True
+    else:
+        parallelism = 200
+        auto_repartition = False
+
     if force_local:
         read_tasks = datasource.prepare_read(parallelism, **read_args)
     else:
@@ -248,16 +259,6 @@ def read_datasource(
             )
         )
 
-    if len(read_tasks) < parallelism and (
-        len(read_tasks) < ray.available_resources().get("CPU", 1) // 2
-    ):
-        logger.warning(
-            "The number of blocks in this dataset ({}) limits its parallelism to {} "
-            "concurrent tasks. This is much less than the number of available "
-            "CPU slots in the cluster. Use `.repartition(n)` to increase the number of "
-            "dataset blocks.".format(len(read_tasks), len(read_tasks))
-        )
-
     if ray_remote_args is None:
         ray_remote_args = {}
     if (
@@ -270,11 +271,22 @@ def read_datasource(
     block_list.compute_first_block()
     block_list.ensure_metadata_for_first_block()
 
-    return Dataset(
+    ds = Dataset(
         ExecutionPlan(block_list, block_list.stats()),
         0,
         False,
     )
+    if len(read_tasks) < parallelism:
+        if auto_repartition:
+            ds = ds.repartition(-1)
+        elif len(read_tasks) < estimate_available_parallelism() // 2:
+            logger.warning(
+                "The number of blocks in this dataset ({}) limits its parallelism to {} "
+                "concurrent tasks. This is much less than the number of available "
+                "CPU slots in the cluster. Use `.repartition(n)` to increase the number of "
+                "dataset blocks.".format(len(read_tasks), len(read_tasks))
+            )
+    return ds
 
 
 @PublicAPI
@@ -283,7 +295,7 @@ def read_parquet(
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     columns: Optional[List[str]] = None,
-    parallelism: int = 200,
+    parallelism: int = -1,
     ray_remote_args: Dict[str, Any] = None,
     tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
     meta_provider: ParquetMetadataProvider = DefaultParquetMetadataProvider(),

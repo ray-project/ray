@@ -2,6 +2,8 @@ import logging
 from typing import Union
 from types import ModuleType
 
+import ray
+
 logger = logging.getLogger(__name__)
 
 MIN_PYARROW_VERSION = (6, 0, 1)
@@ -51,3 +53,8 @@ def _check_pyarrow_version():
             )
         else:
             _VERSION_VALIDATED = True
+
+
+def estimate_available_parallelism():
+    # TODO: if in tune, use placement group to estimate this
+    return int(ray.available_resources().get("CPU", 1))

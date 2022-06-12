@@ -93,6 +93,7 @@ from ray.data._internal.shuffle_and_partition import (
 )
 from ray.data._internal.fast_repartition import fast_repartition
 from ray.data._internal.sort import sort_impl
+from ray.data._internal.util import estimate_available_parallelism
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
@@ -632,7 +633,7 @@ class Dataset(Generic[T]):
                 else:
                     max_downstream_parallelism = float("inf")
                 max_parallelism = min(
-                    max_downstream_parallelism, _estimate_available_parallelism()
+                    max_downstream_parallelism, estimate_available_parallelism()
                 )
                 ideal_num_blocks = max_parallelism * 2
                 logger.info(
@@ -645,7 +646,7 @@ class Dataset(Generic[T]):
                     return AllToAllStage(
                         "auto_repartition",
                         ideal_num_blocks,
-                        make_transform(ideal_num_blocks, "AutoRepartition"),
+                        make_transform(ideal_num_blocks, "Auto_Repartition"),
                     )
                 else:
                     logger.info("auto repartition skip")
@@ -3640,8 +3641,3 @@ def _do_write(
     write_args = _unwrap_arrow_serialization_workaround(write_args)
     DatasetContext._set_current(ctx)
     return ds.do_write(blocks, meta, ray_remote_args=ray_remote_args, **write_args)
-
-
-def _estimate_available_parallelism():
-    # TODO: if in tune, use placement group to estimate this
-    return int(ray.available_resources().get("CPU", 1))
