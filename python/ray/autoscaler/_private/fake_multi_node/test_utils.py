@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from typing import Dict, Any, Optional
 import yaml
@@ -16,6 +17,7 @@ from ray.autoscaler._private.fake_multi_node.node_provider import (
     FAKE_DOCKER_DEFAULT_GCS_PORT,
 )
 from ray.util.ml_utils.dict import deep_update
+from ray.util.queue import Queue, Empty
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +55,10 @@ class DockerCluster:
             os.path.dirname(__file__), "docker_monitor.py"
         )
         self._monitor_process = None
+
+        self._execution_process = None
+        self._execution_event = threading.Event()
+        self._execution_queue = None
 
     @property
     def config_file(self):
@@ -115,6 +121,26 @@ class DockerCluster:
             ray.cluster_resources()
         except Exception as e:
             raise RuntimeError(f"Timed out connecting to Ray: {e}")
+
+        if client:
+            self._start_execution_process()
+
+    def _start_execution_process(self):
+        self._execution_queue = Queue(actor_options={"num_cpus": 0})
+        stop_event = self._execution_event
+
+        def entrypoint():
+            while not stop_event.is_set():
+                try:
+                    cmd, kwargs = self._execution_queue.get(timeout=1)
+                except Empty:
+                    continue
+
+                if cmd == "kill_node":
+                    self.kill_node(**kwargs)
+
+        self._execution_process = threading.Thread(target=entrypoint)
+        self._execution_process.start()
 
     @staticmethod
     def wait_for_resources(resources: Dict[str, float], timeout: int = 60):
@@ -268,6 +294,7 @@ class DockerCluster:
         )
 
         self._stop_monitor()
+        self._execution_event.set()
 
     def _update_nodes(self):
         with open(self._nodes_file, "rt") as f:
@@ -321,11 +348,18 @@ class DockerCluster:
 
         return node_status["Name"]
 
+    def _execute_docker_cmd(self, cmd: str):
+        if self._execution_process:
+            self._execution_queue.put(cmd)
+        else:
+            subprocess.check_output(cmd, shell=True)
+
     def kill_node(
         self,
         node_id: Optional[str] = None,
         num: Optional[int] = None,
         rand: Optional[str] = None,
+        _use_queue: bool = False,
     ):
         """Kill node.
 
@@ -337,6 +371,17 @@ class DockerCluster:
         If ``rand`` is given (as either ``worker`` or ``any``), kill a random
         node.
         """
+        if _use_queue:
+            self._execution_queue.put(
+                "kill_node", dict(node_id=node_id, num=num, rand=rand)
+            )
+            return
+
         node_id = self._get_node(node_id=node_id, num=num, rand=rand)
         container = self._get_docker_container(node_id=node_id)
         subprocess.check_output(f"docker kill {container}", shell=True)
+
+    def __getstate__(self):
+        state = self.__dict__
+        state.pop("_execution_process", None)
+        state.pop("_execution_event", None)

@@ -150,7 +150,7 @@ class MultiNodeSyncTest(unittest.TestCase):
                     and len(trials) == 3
                     and all(trial.status == Trial.RUNNING for trial in trials)
                 ):
-                    self._cluster.kill_node(num=2)
+                    self._cluster.kill_node(num=2, _use_queue=True)
                     self._killed = True
 
         tune.run(
@@ -159,10 +159,6 @@ class MultiNodeSyncTest(unittest.TestCase):
             resources_per_trial={"cpu": 4},
             max_failures=1,
             callbacks=[FailureInjectionCallback(self.cluster)],
-            # The following two are to be removed once we have proper setup
-            # for killing nodes while in ray client mode.
-            _remote=False,
-            local_dir="/tmp/ray_results/",
         )
 
     def testCheckpointSync(self):
