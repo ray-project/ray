@@ -29,6 +29,7 @@ from ray._private.services import (
 from ray._private.test_utils import (
     init_error_pubsub,
     init_log_pubsub,
+    find_free_port,
     setup_tls,
     teardown_tls,
     get_and_run_node_killer,
@@ -56,12 +57,6 @@ def get_default_fixture_ray_kwargs():
         "_system_config": system_config,
     }
     return ray_kwargs
-
-
-def find_free_port():
-    with socket.socket() as s:
-        s.bind(("", 0))
-        return s.getsockname()[1]
 
 
 @contextmanager

@@ -22,9 +22,9 @@ def ray_start_client_server_pair(metadata=None, ray_connect_handler=None, **kwar
     with disable_client_hook():
         assert not ray.is_initialized()
     server = ray_client_server.serve(
-        "127.0.0.1:50051", ray_connect_handler=ray_connect_handler
+        "127.0.0.1:0", ray_connect_handler=ray_connect_handler
     )
-    ray.connect("127.0.0.1:50051", metadata=metadata, **kwargs)
+    ray.connect(f"127.0.0.1:{server.port}", metadata=metadata, **kwargs)
     try:
         yield ray, server
     finally:

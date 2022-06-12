@@ -144,6 +144,11 @@ def check_call_ray(args, capture_stdout=False, capture_stderr=False):
     check_call_subprocess(["ray"] + args, capture_stdout, capture_stderr)
 
 
+def find_free_port():
+    with socket.socket() as s:
+        s.bind(("", 0))
+        return s.getsockname()[1]
+
 def wait_for_pid_to_exit(pid, timeout=20):
     start_time = time.time()
     while time.time() - start_time < timeout:

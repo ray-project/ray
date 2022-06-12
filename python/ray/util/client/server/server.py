@@ -741,12 +741,13 @@ def serve(connection_str, ray_connect_handler=None):
     ray_client_pb2_grpc.add_RayletDriverServicer_to_server(task_servicer, server)
     ray_client_pb2_grpc.add_RayletDataStreamerServicer_to_server(data_servicer, server)
     ray_client_pb2_grpc.add_RayletLogStreamerServicer_to_server(logs_servicer, server)
-    add_port_to_grpc_server(server, connection_str)
+    port = add_port_to_grpc_server(server, connection_str)
     current_handle = ClientServerHandle(
         task_servicer=task_servicer,
         data_servicer=data_servicer,
         logs_servicer=logs_servicer,
         grpc_server=server,
+        port=port,
     )
     server.start()
     return current_handle

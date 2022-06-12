@@ -666,6 +666,7 @@ class ClientServerHandle:
     data_servicer: ray_client_pb2_grpc.RayletDataStreamerServicer
     logs_servicer: ray_client_pb2_grpc.RayletLogStreamerServicer
     grpc_server: grpc.Server
+    port: int
 
     def stop(self, grace: int) -> None:
         # The data servicer might be sleeping while waiting for clients to
