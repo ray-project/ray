@@ -28,7 +28,6 @@ import java.util.function.Function;
 import org.apache.commons.lang3.builder.ReflectionToStringBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.testng.Assert;
 
 /** The long poll client factory that holds a asynchronous singleton thread. */
 public class LongPollClientFactory {
