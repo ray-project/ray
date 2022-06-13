@@ -9,7 +9,7 @@ from ray.air.predictor import Predictor, DataBatchType
 from ray.train.xgboost import load_checkpoint
 
 if TYPE_CHECKING:
-    from ray.air.preprocessor import Preprocessor
+    from ray.data.preprocessor import Preprocessor
 
 
 class XGBoostPredictor(Predictor):

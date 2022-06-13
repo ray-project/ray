@@ -3,7 +3,7 @@ from typing import List
 import numpy as np
 import pandas as pd
 
-from ray.air.preprocessor import Preprocessor
+from ray.data.preprocessor import Preprocessor
 
 
 class Normalizer(Preprocessor):

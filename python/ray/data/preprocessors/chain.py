@@ -1,5 +1,9 @@
+from typing import TYPE_CHECKING
 from ray.data import Dataset
-from ray.air.preprocessor import Preprocessor, DataBatchType
+from ray.data.preprocessor import Preprocessor
+
+if TYPE_CHECKING:
+    from ray.air.data_batch_type import DataBatchType
 
 
 class Chain(Preprocessor):
@@ -61,7 +65,7 @@ class Chain(Preprocessor):
         self._transform_stats = preprocessor.transform_stats()
         return ds
 
-    def _transform_batch(self, df: DataBatchType) -> DataBatchType:
+    def _transform_batch(self, df: "DataBatchType") -> "DataBatchType":
         for preprocessor in self.preprocessors:
             df = preprocessor.transform_batch(df)
         return df

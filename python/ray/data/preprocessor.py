@@ -6,9 +6,9 @@ from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     import pandas as pd
+    from ray.air.data_batch_type import DataBatchType
 
 from ray.data import Dataset
-from ray.air.data_batch_type import DataBatchType
 
 
 @PublicAPI(stability="alpha")
@@ -134,7 +134,7 @@ class Preprocessor(abc.ABC):
         self._transform_stats = transformed_ds.stats()
         return transformed_ds
 
-    def transform_batch(self, df: DataBatchType) -> DataBatchType:
+    def transform_batch(self, df: "DataBatchType") -> "DataBatchType":
         """Transform a single batch of data.
 
         Args:
@@ -171,7 +171,7 @@ class Preprocessor(abc.ABC):
         # The default may be too small for some datasets and too large for others.
         return dataset.map_batches(self._transform_pandas, batch_format="pandas")
 
-    def _transform_batch(self, df: DataBatchType) -> DataBatchType:
+    def _transform_batch(self, df: "DataBatchType") -> "DataBatchType":
         import pandas as pd
 
         # TODO(matt): Add `_transform_arrow` to use based on input type.
