@@ -99,6 +99,7 @@ Ray with cloud providers
 
 
     Azure Node Provider Maintainers (GitHub handles): gramhagen, eisber, ijrsvt
+    .. note:: The Azure Node Provider is community-maintained. It is maintained by its authors, not the Ray team.
 
 .. tabbed:: GCP
 
@@ -147,6 +148,9 @@ Ray with cloud providers
         $ ray down ray/python/ray/autoscaler/aliyun/example-full.yaml
 
     Aliyun Node Provider Maintainers (GitHub handles): zhuangzhuang131419, chenk008
+
+    .. note:: The Aliyun Node Provider is community-maintained. It is maintained by its authors, not the Ray team.
+
 
 .. tabbed:: Custom
 

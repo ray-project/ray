@@ -16,8 +16,9 @@ done so often), but the real power is using Ray on a cluster of machines.
 
 Ray can automatically interact with the cloud provider to request or release
 instances. You can specify :ref:`a configuration <cluster-config>` to launch
-clusters on :ref:`AWS, GCP, Azure, Kubernetes, Aliyun, on-premise, or even on
-your custom node provider <cluster-cloud>`. Your cluster can have a fixed size
+clusters on :ref:`AWS, GCP, Azure (community-maintained), Aliyun (community-maintained), on-premise, or even on
+your custom node provider <cluster-cloud>`. Ray can also be run on :ref:`Kubernetes <ray-k8s-deploy>` infrastructure.
+Your cluster can have a fixed size
 or :ref:`automatically scale up and down<cluster-autoscaler>` depending on the
 demands of your application.
 
