@@ -112,7 +112,7 @@ def _should_explain(format: AvailableFormat):
     help=(
         "A key value pair to filter the result. "
         "For example, specify --filter [column] [value] "
-        "to filter out data that satsifies column==value."
+        "to filter out data that satisfies column==value."
     ),
     nargs=2,
     type=click.Tuple([str, str]),
