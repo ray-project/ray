@@ -1097,8 +1097,8 @@ class DeploymentState:
                 and existing_info.version == deployment_info.version
             ):
                 return False
-        # Save the current status
-        orig = { k: v for (k, v) in self.__dict__.items() }
+        # Save the current status so we can revert in case of failure
+        orig = {k: v for (k, v) in self.__dict__.items()}
         self._set_deployment_goal(deployment_info)
         try:
             # NOTE(edoakes): we must write a checkpoint before starting new
@@ -1106,6 +1106,7 @@ class DeploymentState:
             # crash while making the change.
             self._save_checkpoint_func()
         except Exception:
+            # Revert if failed to write to DB.
             self.__dict__ = orig
             raise
 
