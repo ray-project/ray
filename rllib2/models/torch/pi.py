@@ -11,6 +11,8 @@ from .pi_distribution import (
     ...
 )
 
+from .encoder import Encoder, WithEncoderMixin
+
 from rllib2.utils import NNOutput
 
 
@@ -63,14 +65,14 @@ class RecurrentPiOutput(PiOutput):
     last_state: Optional[TensorType] = None
 
 
-class Pi(nn.Module):
+class Pi(WithEncoderMixin):
     """
     Design requirements:
     * Should support both stochastic and deterministic pi`s under one roof
         * Deterministic dists are just special case of stochastic dists with delta func.
         * log_prob would just not be implemented and would raise an error.
         * Under the hood, behavioral and target sample would behave the same
-        * for deterministic entropy would be zero
+        * for deterministic pis entropy would be zero
     * Should support arbitrary encoders (encode observations / history to s_t)
         * Encoder would be part of the model attributes
         * TODO: Should we just create an encoder attribute and have the user encode themselves?
@@ -98,18 +100,10 @@ class Pi(nn.Module):
     """
 
     def __init__(self, encoder: Encoder):
-        super().__init__()
-        self.encoder = encoder
-
-    def __call__(self, batch, encode: bool = True, **kwargs):
-        encoded_batch = kwargs.pop('encoded_batch')
-        if self.encoder and encode:
-            encoded_batch = self.encoder(batch, **kwargs)
-        return super().__call__(batch, encoded_batch=encoded_batch)
+        WithEncoderMixin.__init__(self, encoder)
 
     def forward(self, batch: SampleBatch, encoded_batch: Optional[EncoderOutput] = None, **kwargs) -> PiOutput:
-        """
-        Runs pi, Pi(input_dict) -> Pi(s_t)
+        """Runs pi, Pi(input_dict) -> Pi(s_t)
         """
         pass
 
