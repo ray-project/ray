@@ -13,7 +13,6 @@ import ray
 from ray import serve
 from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
 from ray._private.test_utils import wait_for_condition
-from ray.serve.application import Application
 from ray.serve.constants import SERVE_NAMESPACE
 from ray.serve.deployment_graph import RayServeDAGHandle
 
@@ -224,40 +223,50 @@ def parrot(request):
     return request.query_params["sound"]
 
 
-parrot_app = Application([parrot])
+parrot_node = parrot.bind()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_run_application(ray_start_stop):
-    # Deploys valid config file and import path via serve run
+    """Deploys valid config file and import path via `serve run`."""
 
     # Deploy via config file
     config_file_name = os.path.join(
-        os.path.dirname(__file__), "test_config_files", "two_deployments.yaml"
+        os.path.dirname(__file__), "test_config_files", "arithmetic.yaml"
     )
 
+    print('Running config file "arithmetic.yaml".')
     p = subprocess.Popen(["serve", "run", "--address=auto", config_file_name])
-    wait_for_condition(lambda: ping_endpoint("one") == "2", timeout=10)
     wait_for_condition(
-        lambda: ping_endpoint("shallow") == "Hello shallow world!", timeout=10
+        lambda: requests.post("http://localhost:8000/", json=["ADD", 0]).json() == 1,
+        timeout=15,
     )
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8000/", json=["SUB", 5]).json() == 3,
+        timeout=15,
+    )
+    print("Run successful! Deployments are live and reachable over HTTP. Killing run.")
 
     p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
     p.wait()
-    assert ping_endpoint("one") == CONNECTION_ERROR_MSG
-    assert ping_endpoint("shallow") == CONNECTION_ERROR_MSG
+    with pytest.raises(requests.exceptions.ConnectionError):
+        requests.post("http://localhost:8000/", json=["ADD", 0]).json()
+    print("Kill successful! Deployments are not reachable over HTTP.")
 
+    print('Running node at import path "ray.serve.tests.test_cli.parrot_node".')
     # Deploy via import path
     p = subprocess.Popen(
-        ["serve", "run", "--address=auto", "ray.serve.tests.test_cli.parrot_app"]
+        ["serve", "run", "--address=auto", "ray.serve.tests.test_cli.parrot_node"]
     )
     wait_for_condition(
-        lambda: ping_endpoint("parrot", params="?sound=squawk") == "squawk", timeout=10
+        lambda: ping_endpoint("parrot", params="?sound=squawk") == "squawk"
     )
+    print("Run successful! Deployment is live and reachable over HTTP. Killing run.")
 
     p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
     p.wait()
     assert ping_endpoint("parrot", params="?sound=squawk") == CONNECTION_ERROR_MSG
+    print("Kill successful! Deployment is not reachable over HTTP.")
 
 
 @serve.deployment
