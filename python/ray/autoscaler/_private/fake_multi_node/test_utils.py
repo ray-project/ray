@@ -56,7 +56,7 @@ class DockerCluster:
         )
         self._monitor_process = None
 
-        self._execution_process = None
+        self._execution_thread = None
         self._execution_event = threading.Event()
         self._execution_queue = None
 
@@ -137,8 +137,8 @@ class DockerCluster:
                 if cmd == "kill_node":
                     self.kill_node(**kwargs)
 
-        self._execution_process = threading.Thread(target=entrypoint)
-        self._execution_process.start()
+        self._execution_thread = threading.Thread(target=entrypoint)
+        self._execution_thread.start()
 
         return RemoteAPI(self._execution_queue)
 
@@ -374,6 +374,9 @@ class RemoteAPI:
 
     This API uses a Ray queue to interact with an execution thread on the
     host machine that will execute commands passed to the queue.
+
+    Instances of this class can be serialized and passed to Ray remote actors
+    to interact with cluster state (but they can also be used outside actors).
 
     The API subset is limited to specific commands.
 
