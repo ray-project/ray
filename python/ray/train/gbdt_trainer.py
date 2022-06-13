@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 
 def _convert_scaling_config_to_ray_params(
-    scaling_config: ScalingConfigDataClass,
+    scaling_config: ScalingConfig,
     ray_params_cls: Type["xgboost_ray.RayParams"],
     default_ray_params: Optional[Dict[str, Any]] = None,
 ) -> "xgboost_ray.RayParams":
