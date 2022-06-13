@@ -267,9 +267,7 @@ class WorkerSet:
         # which needs to be handled by this WorkerSet's owner (usually
         # a RLlib Algorithm instance).
         if validate:
-            self.foreach_worker_with_index(
-                lambda w, i: w.policy_map and w.input_reader and w.output_writer
-            )
+            self.foreach_worker(lambda w: w.assert_healthiness())
 
     def reset(self, new_remote_workers: List[ActorHandle]) -> None:
         """Hard overrides the remote workers in this set with the given one.
