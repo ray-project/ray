@@ -13,6 +13,11 @@ Framework-specific Examples
 - :doc:`/ray-air/examples/sklearn_example`: Integrating with Scikit-Learn (non-distributed)
 
 
+Starter guides
+--------------
+- :doc:`/ray-air/examples/convert_existing_pytorch_code_to_ray_air`
+
+
 Tabular Data
 ------------
 - :doc:`/ray-air/examples/tfx_tabular_train_to_serve`: How to use Ray AIR to train a Keras model on tabular data and serve it.

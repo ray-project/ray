@@ -25,6 +25,7 @@ parts:
     - file: ray-air/examples/index
       sections:
         - file: ray-air/examples/torch_image_example
+        - file: ray-air/examples/convert_existing_pytorch_code_to_ray_air
         - file: ray-air/examples/tfx_tabular_train_to_serve
         - file: ray-air/examples/huggingface_text_classification
         - file: ray-air/examples/sklearn_example
