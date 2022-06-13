@@ -1,4 +1,4 @@
-from typing import Optional, List, Union
+from typing import Optional, List, Union, TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
@@ -6,8 +6,10 @@ import lightgbm
 
 from ray.air.checkpoint import Checkpoint
 from ray.air.predictor import Predictor, DataBatchType
-from ray.air.preprocessor import Preprocessor
-from ray.air.train.integrations.lightgbm import load_checkpoint
+from ray.train.lightgbm import load_checkpoint
+
+if TYPE_CHECKING:
+    from ray.data.preprocessor import Preprocessor
 
 
 class LightGBMPredictor(Predictor):
@@ -20,7 +22,7 @@ class LightGBMPredictor(Predictor):
     """
 
     def __init__(
-        self, model: lightgbm.Booster, preprocessor: Optional[Preprocessor] = None
+        self, model: lightgbm.Booster, preprocessor: Optional["Preprocessor"] = None
     ):
         self.model = model
         self.preprocessor = preprocessor

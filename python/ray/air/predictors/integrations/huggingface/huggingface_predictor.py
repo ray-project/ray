@@ -1,4 +1,4 @@
-from typing import Optional, Type, Union, List
+from typing import Optional, Type, Union, List, TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -9,9 +9,11 @@ from transformers.pipelines.table_question_answering import (
 )
 
 from ray.air.predictor import DataBatchType, Predictor
-from ray.air.preprocessor import Preprocessor
 from ray.air.checkpoint import Checkpoint
 from ray.air._internal.checkpointing import load_preprocessor_from_dir
+
+if TYPE_CHECKING:
+    from ray.data.preprocessor import Preprocessor
 
 
 class HuggingFacePredictor(Predictor):
@@ -28,7 +30,7 @@ class HuggingFacePredictor(Predictor):
     def __init__(
         self,
         pipeline: Optional[Pipeline] = None,
-        preprocessor: Optional[Preprocessor] = None,
+        preprocessor: Optional["Preprocessor"] = None,
     ):
         self.pipeline = pipeline
         self.preprocessor = preprocessor

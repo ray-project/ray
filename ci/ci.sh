@@ -525,7 +525,7 @@ lint_bazel() {
 lint_bazel_pytest() {
   pip install yq
   cd "${WORKSPACE_DIR}"
-  for team in "team:ml" "team:serve"; do
+  for team in "team:ml" "team:rllib" "team:serve"; do
     # this does the following:
     # - find all py_test rules in bazel that have the specified team tag EXCEPT ones with "no_main" tag and outputs them as xml
     # - converts the xml to json

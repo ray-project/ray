@@ -3,9 +3,11 @@ import collections
 from typing import Any, Dict, Optional
 from enum import Enum
 
-from ray.rllib.utils.replay_buffers.replay_buffer import _ALL_POLICIES
+from ray.rllib.utils.replay_buffers.replay_buffer import (
+    _ALL_POLICIES,
+)
 from ray.rllib.policy.rnn_sequencing import timeslice_along_seq_lens_with_overlap
-from ray.rllib.policy.sample_batch import MultiAgentBatch
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBuffer
 from ray.rllib.utils.timer import TimerStat
@@ -66,6 +68,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         num_shards: int = 1,
         learning_starts: int = 1000,
         replay_mode: str = "independent",
+        replay_sequence_override: bool = True,
         replay_sequence_length: int = 1,
         replay_burn_in: int = 0,
         replay_zero_init_states: bool = True,
@@ -84,6 +87,10 @@ class MultiAgentReplayBuffer(ReplayBuffer):
                 `sample()` will yield samples (before that, `sample()` will
                 return None).
             capacity: The capacity of the buffer, measured in `storage_unit`.
+            replay_sequence_override: If True, ignore sequences found in incoming
+                batches, slicing them into sequences as specified by
+                `replay_sequence_length` and `replay_sequence_burn_in`. This only has
+                an effect if storage_unit is `sequences`.
             replay_mode: One of "independent" or "lockstep". Determines,
                 whether batches are sampled independently or to an equal
                 amount.
@@ -101,7 +108,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
             underlying_buffer_config: A config that contains all necessary
                 constructor arguments and arguments for methods to call on
                 the underlying buffers.
-            **kwargs: Forward compatibility kwargs.
+            ``**kwargs``: Forward compatibility kwargs.
         """
         shard_capacity = capacity // num_shards
         ReplayBuffer.__init__(self, capacity, storage_unit)
@@ -113,16 +120,17 @@ class MultiAgentReplayBuffer(ReplayBuffer):
             self.underlying_buffer_call_args = self.underlying_buffer_config
         else:
             self.underlying_buffer_call_args = {}
-
+        self.replay_sequence_override = replay_sequence_override
         self.replay_starts = learning_starts // num_shards
         self.replay_mode = replay_mode
         self.replay_sequence_length = replay_sequence_length
         self.replay_burn_in = replay_burn_in
         self.replay_zero_init_states = replay_zero_init_states
+        self.replay_sequence_override = replay_sequence_override
 
         if (
             replay_sequence_length > 1
-            and self._storage_unit is not StorageUnit.SEQUENCES
+            and self.storage_unit is not StorageUnit.SEQUENCES
         ):
             logger.warning(
                 "MultiAgentReplayBuffer configured with "
@@ -133,7 +141,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
             )
             self.replay_sequence_length = 1
 
-        if replay_sequence_length == 1 and self._storage_unit is StorageUnit.SEQUENCES:
+        if replay_sequence_length == 1 and self.storage_unit is StorageUnit.SEQUENCES:
             logger.warning(
                 "MultiAgentReplayBuffer configured with "
                 "`replay_sequence_length={}`, but `storage_unit={}`. "
@@ -144,7 +152,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
 
         if replay_mode in ["lockstep", ReplayMode.LOCKSTEP]:
             self.replay_mode = ReplayMode.LOCKSTEP
-            if self._storage_unit in [StorageUnit.EPISODES, StorageUnit.SEQUENCES]:
+            if self.storage_unit in [StorageUnit.EPISODES, StorageUnit.SEQUENCES]:
                 raise ValueError(
                     "MultiAgentReplayBuffer does not support "
                     "lockstep mode with storage unit `episodes`"
@@ -205,7 +213,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
 
         Args:
             batch : The batch to be added.
-            **kwargs: Forward compatibility kwargs.
+            ``**kwargs``: Forward compatibility kwargs.
         """
         if batch is None:
             if log_once("empty_batch_added_to_buffer"):
@@ -246,7 +254,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
             policy_id: ID of the policy that corresponds to the underlying
             buffer
             batch: SampleBatch to add to the underlying buffer
-            **kwargs: Forward compatibility kwargs.
+            ``**kwargs``: Forward compatibility kwargs.
         """
         # Merge kwargs, overwriting standard call arguments
         kwargs = merge_dicts_with_warning(self.underlying_buffer_call_args, kwargs)
@@ -254,26 +262,42 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         # For the storage unit `timesteps`, the underlying buffer will
         # simply store the samples how they arrive. For sequences and
         # episodes, the underlying buffer may split them itself.
-        if self._storage_unit is StorageUnit.TIMESTEPS:
+        if self.storage_unit is StorageUnit.TIMESTEPS:
             timeslices = batch.timeslices(1)
-            for time_slice in timeslices:
-                self.replay_buffers[policy_id].add(time_slice, **kwargs)
-        elif self._storage_unit is StorageUnit.SEQUENCES:
-            if self.replay_sequence_length == 1:
-                timeslices = batch.timeslices(1)
-            else:
-                timeslices = timeslice_along_seq_lens_with_overlap(
-                    sample_batch=batch,
-                    zero_pad_max_seq_len=self.replay_sequence_length,
-                    pre_overlap=self.replay_burn_in,
-                    zero_init_states=self.replay_zero_init_states,
-                )
-            for time_slice in timeslices:
-                self.replay_buffers[policy_id].add(time_slice, **kwargs)
-        elif self._storage_unit in [StorageUnit.FRAGMENTS, StorageUnit.EPISODES]:
-            self.replay_buffers[policy_id].add(batch, **kwargs)
+        elif self.storage_unit is StorageUnit.SEQUENCES:
+            timeslices = timeslice_along_seq_lens_with_overlap(
+                sample_batch=batch,
+                seq_lens=batch.get(SampleBatch.SEQ_LENS)
+                if self.replay_sequence_override
+                else None,
+                zero_pad_max_seq_len=self.replay_sequence_length,
+                pre_overlap=self.replay_burn_in,
+                zero_init_states=self.replay_zero_init_states,
+            )
+        elif self.storage_unit == StorageUnit.EPISODES:
+            timeslices = []
+            for eps in batch.split_by_episode():
+                if (
+                    eps.get(SampleBatch.T)[0] == 0
+                    and eps.get(SampleBatch.DONES)[-1] == True  # noqa E712
+                ):
+                    # Only add full episodes to the buffer
+                    timeslices.append(eps)
+                else:
+                    if log_once("only_full_episodes"):
+                        logger.info(
+                            "This buffer uses episodes as a storage "
+                            "unit and thus allows only full episodes "
+                            "to be added to it. Some samples may be "
+                            "dropped."
+                        )
+        elif self.storage_unit == StorageUnit.FRAGMENTS:
+            timeslices = [batch]
         else:
-            raise ValueError("Unknown `storage_unit={}`".format(self._storage_unit))
+            raise ValueError("Unknown `storage_unit={}`".format(self.storage_unit))
+
+        for slice in timeslices:
+            self.replay_buffers[policy_id].add(slice, **kwargs)
 
     @DeveloperAPI
     @override(ReplayBuffer)
@@ -289,12 +313,12 @@ class MultiAgentReplayBuffer(ReplayBuffer):
 
         Args:
             num_items: Number of items to sample from a policy's buffer.
-            policy_id: ID of the policy that created the experiences we sample.
-                If none is given, sample from all policies.
+            policy_id: ID of the policy that created the experiences we sample. If
+            none is given, sample from all policies.
 
         Returns:
             Concatenated MultiAgentBatch of items.
-            **kwargs: Forward compatibility kwargs.
+            ``**kwargs``: Forward compatibility kwargs.
         """
         # Merge kwargs, overwriting standard call arguments
         kwargs = merge_dicts_with_warning(self.underlying_buffer_call_args, kwargs)

@@ -6,8 +6,9 @@ import pickle
 import random
 import string
 import time
-from typing import Iterable, List, Tuple
+from typing import Iterable, List, Dict, Tuple
 import os
+import copy
 import traceback
 from enum import Enum
 import __main__
@@ -325,6 +326,53 @@ def parse_import_path(import_path: str):
         )
 
     return ".".join(nodes[:-1]), nodes[-1]
+
+
+def override_runtime_envs_except_env_vars(parent_env: Dict, child_env: Dict) -> Dict:
+    """Creates a runtime_env dict by merging a parent and child environment.
+
+    This method is not destructive. It leaves the parent and child envs
+    the same.
+
+    The merge is a shallow update where the child environment inherits the
+    parent environment's settings. If the child environment specifies any
+    env settings, those settings take precdence over the parent.
+        - Note: env_vars are a special case. The child's env_vars are combined
+            with the parent.
+
+    Args:
+        parent_env: The environment to inherit settings from.
+        child_env: The environment with override settings.
+
+    Returns: A new dictionary containing the merged runtime_env settings.
+
+    Raises:
+        TypeError: If a dictionary is not passed in for parent_env or child_env.
+    """
+
+    if not isinstance(parent_env, Dict):
+        raise TypeError(
+            f'Got unexpected type "{type(parent_env)}" for parent_env. '
+            "parent_env must be a dictionary."
+        )
+    if not isinstance(child_env, Dict):
+        raise TypeError(
+            f'Got unexpected type "{type(child_env)}" for child_env. '
+            "child_env must be a dictionary."
+        )
+
+    defaults = copy.deepcopy(parent_env)
+    overrides = copy.deepcopy(child_env)
+
+    default_env_vars = defaults.get("env_vars", {})
+    override_env_vars = overrides.get("env_vars", {})
+
+    defaults.update(overrides)
+    default_env_vars.update(override_env_vars)
+
+    defaults["env_vars"] = default_env_vars
+
+    return defaults
 
 
 class JavaActorHandleProxy:

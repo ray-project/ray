@@ -7,8 +7,8 @@ from ray.data import Dataset, DatasetPipeline
 from ray.air.config import DatasetConfig
 from ray import train
 
-from ray.air.train.data_parallel_trainer import DataParallelTrainer
-from ray.air.preprocessors import BatchMapper
+from ray.train.data_parallel_trainer import DataParallelTrainer
+from ray.data.preprocessors import BatchMapper
 
 
 @pytest.fixture

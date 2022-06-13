@@ -7,7 +7,7 @@
 
 # ==== Documentation ====
 
-/doc/ @maxpumperla @pcmoritz @richardliaw @edoakes @simon-mo
+/doc/ @maxpumperla @pcmoritz @richardliaw @edoakes @simon-mo @ericl
 
 # ==== Ray core ====
 
@@ -81,7 +81,7 @@
 /doc/source/train/ @richardliaw @krfricke @xwjiang2010 @amogkam @matthewdeng @Yard1 @maxpumperla
 
 # Serve (docs)
-/doc/source/serve/ @edoakes @simon-mo @jiaodong
+/doc/source/serve/ @edoakes @simon-mo @jiaodong @shrekris-anyscale
 
 # AIR (docs)
 /doc/source/air/ @richardliaw @gjoliver @krfricke @xwjiang2010 @amogkam @matthewdeng @Yard1 @maxpumperla
