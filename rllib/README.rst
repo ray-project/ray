@@ -174,9 +174,9 @@ Quick First Experiment
             return self.cur_obs, reward, done, {}
 
 
-    # Create an RLlib Trainer instance to learn how to act in the above
+    # Create an RLlib Algorithm instance to learn how to act in the above
     # environment.
-    trainer = PPO(
+    algo = PPO(
         config={
             # Env class to use (here: our gym.Env sub-class from above).
             "env": ParrotEnv,
@@ -193,7 +193,7 @@ Quick First Experiment
     # (exact match between observation and action value),
     # we can expect to reach an optimal episode reward of 0.0.
     for i in range(5):
-        results = trainer.train()
+        results = algo.train()
         print(f"Iter: {i}; avg. reward={results['episode_reward_mean']}")
 
 
@@ -220,7 +220,7 @@ and `attention nets <https://github.com/ray-project/ray/blob/master/rllib/exampl
     while not done:
         # Compute a single action, given the current observation
         # from the environment.
-        action = trainer.compute_single_action(obs)
+        action = algo.compute_single_action(obs)
         # Apply the computed action in the environment.
         obs, reward, done, info = env.step(action)
         # Sum up rewards for reporting purposes.
