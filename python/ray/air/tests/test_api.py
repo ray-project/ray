@@ -2,13 +2,10 @@ import pytest
 
 import ray
 from ray.air import Checkpoint
-from ray.air.config import ScalingConfigDataClass
+from ray.air.config import ScalingConfig
 from ray.train import BaseTrainer
 from ray.air.preprocessor import Preprocessor
-from ray.air._internal.config import (
-    ensure_only_allowed_dataclass_keys_updated,
-    ensure_only_allowed_dict_keys_set,
-)
+from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
 
 
 class DummyTrainer(BaseTrainer):
@@ -51,8 +48,11 @@ def test_scaling_config():
     with pytest.raises(ValueError):
         DummyTrainer(scaling_config=True)
 
+    with pytest.raises(ValueError):
+        DummyTrainer(scaling_config={})
+
     # Succeed
-    DummyTrainer(scaling_config={})
+    DummyTrainer(scaling_config=ScalingConfig())
 
     # Succeed
     DummyTrainer(scaling_config=None)
@@ -61,13 +61,8 @@ def test_scaling_config():
 def test_scaling_config_validate_config_valid_class():
     scaling_config = {"num_workers": 2}
     ensure_only_allowed_dataclass_keys_updated(
-        ScalingConfigDataClass(**scaling_config), ["num_workers"]
+        ScalingConfig(**scaling_config), ["num_workers"]
     )
-
-
-def test_scaling_config_validate_config_valid_dict():
-    scaling_config = {"num_workers": 2}
-    ensure_only_allowed_dict_keys_set(scaling_config, ["num_workers"])
 
 
 def test_scaling_config_validate_config_prohibited_class():
@@ -75,17 +70,7 @@ def test_scaling_config_validate_config_prohibited_class():
     scaling_config = {"num_workers": 2}
     with pytest.raises(ValueError):
         ensure_only_allowed_dataclass_keys_updated(
-            ScalingConfigDataClass(**scaling_config),
-            ["trainer_resources"],
-        )
-
-
-def test_scaling_config_validate_config_prohibited_dict():
-    # Check for prohibited keys
-    scaling_config = {"num_workers": 2}
-    with pytest.raises(ValueError):
-        ensure_only_allowed_dict_keys_set(
-            scaling_config,
+            ScalingConfig(**scaling_config),
             ["trainer_resources"],
         )
 

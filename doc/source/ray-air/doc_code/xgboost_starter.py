@@ -26,6 +26,7 @@ preprocessor = StandardScaler(columns=columns_to_scale)
 
 # __air_xgb_train_start__
 from ray.train.xgboost import XGBoostTrainer
+from ray.air.config import ScalingConfig
 
 # XGBoost specific params
 params = {
@@ -38,10 +39,7 @@ num_workers = 2
 use_gpu = False  # use GPUs if detected.
 
 trainer = XGBoostTrainer(
-    scaling_config={
-        "num_workers": num_workers,
-        "use_gpu": use_gpu,
-    },
+    scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
     label_column="target",
     params=params,
     datasets={"train": train_dataset, "valid": valid_dataset},

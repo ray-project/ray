@@ -8,7 +8,7 @@ import sys
 import ray
 from ray import train
 from ray.air.preprocessors import Chain, BatchMapper
-from ray.air.config import DatasetConfig
+from ray.air.config import DatasetConfig, ScalingConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.util.annotations import DeveloperAPI
 
@@ -26,14 +26,14 @@ class DummyTrainer(DataParallelTrainer):
     def __init__(
         self,
         *args,
-        scaling_config: dict = None,
+        scaling_config: Optional[ScalingConfig] = None,
         runtime_seconds: int = 30,
         prefetch_blocks: int = 1,
         batch_size: Optional[int] = None,
         **kwargs
     ):
         if not scaling_config:
-            scaling_config = {"num_workers": 1}
+            scaling_config = ScalingConfig(num_workers=1)
         super().__init__(
             train_loop_per_worker=DummyTrainer.make_train_loop(
                 runtime_seconds, prefetch_blocks, batch_size
@@ -134,7 +134,7 @@ if __name__ == "__main__":
     # Setup the dummy trainer that prints ingest stats.
     # Run and print ingest stats.
     trainer = DummyTrainer(
-        scaling_config={"num_workers": 1, "use_gpu": False},
+        scaling_config=ScalingConfig(num_workers=1, use_gpu=False),
         datasets={"train": dataset},
         preprocessor=preprocessor,
         runtime_seconds=30,  # Stop after this amount or time or 1 epoch is read.

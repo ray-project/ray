@@ -14,6 +14,7 @@ from torch_geometric.nn import SAGEConv
 
 from ray import train
 from ray.train.torch import TorchTrainer
+from ray.air.config import ScalingConfig
 from torch_geometric.transforms import RandomNodeSplit
 
 
@@ -177,7 +178,7 @@ def train_gnn(
             if dataset == "reddit"
             else gen_fake_dataset(),
         },
-        scaling_config={"num_workers": num_workers, "use_gpu": use_gpu},
+        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
     )
     result = trainer.fit()
     print(result.metrics)

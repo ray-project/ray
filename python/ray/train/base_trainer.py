@@ -1,22 +1,15 @@
 import abc
 import inspect
 import logging
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Union
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Type, Union
 
 import ray
 from ray.util import PublicAPI
 from ray.air.checkpoint import Checkpoint
 from ray.train.constants import TRAIN_DATASET_KEY
-from ray.air.config import (
-    RunConfig,
-    ScalingConfig,
-    ScalingConfigDataClass,
-)
+from ray.air.config import RunConfig, ScalingConfig
 from ray.air.result import Result
-from ray.air._internal.config import (
-    ensure_only_allowed_dataclass_keys_updated,
-    ensure_only_allowed_dict_keys_set,
-)
+from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
 from ray.tune import Trainable
 from ray.tune.error import TuneError
 from ray.tune.function_runner import wrap_function
@@ -152,7 +145,9 @@ class BaseTrainer(abc.ABC):
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
 
-        self.scaling_config = scaling_config if scaling_config is not None else {}
+        self.scaling_config = (
+            scaling_config if scaling_config is not None else ScalingConfig()
+        )
         self.run_config = run_config if run_config is not None else RunConfig()
         self.datasets = datasets if datasets is not None else {}
         self.preprocessor = preprocessor
@@ -180,11 +175,10 @@ class BaseTrainer(abc.ABC):
                 f"found {type(self.run_config)} with value `{self.run_config}`."
             )
         # Scaling config
-        # Todo: move to ray.air.ScalingConfig
-        if not isinstance(self.scaling_config, dict):
+        if not isinstance(self.scaling_config, ScalingConfig):
             raise ValueError(
-                f"`scaling_config` should be an instance of `dict`, "
-                f"found {type(self.run_config)} with value `{self.run_config}`."
+                f"`scaling_config` should be an instance of `ScalingConfig`, "
+                f"found {type(self.scaling_config)} with value `{self.scaling_config}`."
             )
         # Datasets
         if not isinstance(self.datasets, dict):
@@ -220,23 +214,13 @@ class BaseTrainer(abc.ABC):
             )
 
     @classmethod
-    def _validate_and_get_scaling_config_data_class(
-        cls, dataclass_or_dict: Union[ScalingConfigDataClass, Dict[str, Any]]
-    ) -> ScalingConfigDataClass:
+    def _validate_scaling_config(cls, dataclass: ScalingConfig) -> ScalingConfig:
         """Return scaling config dataclass after validating updated keys."""
-        if isinstance(dataclass_or_dict, dict):
-            ensure_only_allowed_dict_keys_set(
-                dataclass_or_dict, cls._scaling_config_allowed_keys
-            )
-            scaling_config_dataclass = ScalingConfigDataClass(**dataclass_or_dict)
-
-            return scaling_config_dataclass
-
         ensure_only_allowed_dataclass_keys_updated(
-            dataclass=dataclass_or_dict,
+            dataclass=dataclass,
             allowed_keys=cls._scaling_config_allowed_keys,
         )
-        return dataclass_or_dict
+        return dataclass
 
     def setup(self) -> None:
         """Called during fit() to perform initial setup on the Trainer.
@@ -387,11 +371,9 @@ class BaseTrainer(abc.ABC):
             @classmethod
             def default_resource_request(cls, config):
                 updated_scaling_config = config.get("scaling_config", scaling_config)
-                scaling_config_dataclass = (
-                    trainer_cls._validate_and_get_scaling_config_data_class(
-                        updated_scaling_config
-                    )
+                validated_scaling_config = trainer_cls._validate_scaling_config(
+                    updated_scaling_config
                 )
-                return scaling_config_dataclass.as_placement_group_factory()
+                return validated_scaling_config.as_placement_group_factory()
 
         return TrainTrainable

@@ -48,6 +48,7 @@ print(batch_transformed)
 import ray
 
 from ray.train.xgboost import XGBoostTrainer
+from ray.air.config import ScalingConfig
 from ray.air.preprocessors import MinMaxScaler
 
 train_dataset = ray.data.from_items([{"x": x, "y": 2 * x} for x in range(0, 32, 3)])
@@ -58,7 +59,7 @@ preprocessor = MinMaxScaler(["x"])
 trainer = XGBoostTrainer(
     label_column="y",
     params={"objective": "reg:squarederror"},
-    scaling_config={"num_workers": 2},
+    scaling_config=ScalingConfig(num_workers=2),
     datasets={"train": train_dataset, "valid": valid_dataset},
     preprocessor=preprocessor,
 )

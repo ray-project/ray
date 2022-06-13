@@ -62,6 +62,7 @@ tuner.fit()
 import ray
 from ray.air.preprocessors import Chain, BatchMapper
 from ray.air.util.check_ingest import DummyTrainer
+from ray.air.config import ScalingConfig
 
 # Generate a synthetic dataset of ~10GiB of float64 data. The dataset is sharded
 # into 100 blocks (parallelism=100).
@@ -78,7 +79,7 @@ preprocessor = Chain(
 # Setup the dummy trainer that prints ingest stats.
 # Run and print ingest stats.
 trainer = DummyTrainer(
-    scaling_config={"num_workers": 1, "use_gpu": False},
+    scaling_config=ScalingConfig(num_workers=1, use_gpu=False),
     datasets={"train": dataset},
     preprocessor=preprocessor,
     runtime_seconds=1,  # Stop after this amount or time or 1 epoch is read.
@@ -91,7 +92,7 @@ trainer.fit()
 # __config_1__
 import ray
 from ray.train.torch import TorchTrainer
-from ray.air.config import DatasetConfig
+from ray.air.config import ScalingConfig, DatasetConfig
 
 train_ds = ray.data.range_tensor(1000)
 valid_ds = ray.data.range_tensor(100)
@@ -99,7 +100,7 @@ test_ds = ray.data.range_tensor(100)
 
 my_trainer = TorchTrainer(
     lambda: None,  # No-op training loop.
-    scaling_config={"num_workers": 2},
+    scaling_config=ScalingConfig(num_workers=2),
     datasets={
         "train": train_ds,
         "valid": valid_ds,
@@ -119,14 +120,14 @@ print(my_trainer.get_dataset_config())
 # __config_2__
 import ray
 from ray.train.torch import TorchTrainer
-from ray.air.config import DatasetConfig
+from ray.air.config import ScalingConfig, DatasetConfig
 
 train_ds = ray.data.range_tensor(1000)
 side_ds = ray.data.range_tensor(10)
 
 my_trainer = TorchTrainer(
     lambda: None,  # No-op training loop.
-    scaling_config={"num_workers": 2},
+    scaling_config=ScalingConfig(num_workers=2),
     datasets={
         "train": train_ds,
         "side": side_ds,
@@ -145,7 +146,7 @@ import ray
 from ray import train
 from ray.data import Dataset
 from ray.train.torch import TorchTrainer
-from ray.air.config import DatasetConfig
+from ray.air.config import ScalingConfig
 
 
 def train_loop_per_worker():
@@ -163,7 +164,7 @@ def train_loop_per_worker():
 
 my_trainer = TorchTrainer(
     train_loop_per_worker,
-    scaling_config={"num_workers": 1},
+    scaling_config=ScalingConfig(num_workers=1),
     datasets={
         "train": ray.data.range_tensor(1000),
     },
@@ -176,7 +177,7 @@ import ray
 from ray import train
 from ray.data import DatasetPipeline
 from ray.train.torch import TorchTrainer
-from ray.air.config import DatasetConfig
+from ray.air.config import ScalingConfig, DatasetConfig
 
 
 def train_loop_per_worker():
@@ -197,7 +198,7 @@ N = 200
 
 my_trainer = TorchTrainer(
     train_loop_per_worker,
-    scaling_config={"num_workers": 1},
+    scaling_config=ScalingConfig(num_workers=1),
     datasets={
         "train": ray.data.range_tensor(1000),
     },
