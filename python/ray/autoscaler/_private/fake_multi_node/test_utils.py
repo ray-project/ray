@@ -374,11 +374,6 @@ class DockerCluster:
         container = self._get_docker_container(node_id=node_id)
         subprocess.check_output(f"docker kill {container}", shell=True)
 
-    def __getstate__(self):
-        state = self.__dict__
-        state.pop("_execution_process", None)
-        state.pop("_execution_event", None)
-
 
 class RemoteAPI:
     """Remote API to control cluster state from within cluster tasks.
