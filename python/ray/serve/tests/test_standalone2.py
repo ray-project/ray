@@ -557,6 +557,50 @@ class TestDeployApp:
             == "3 pizzas please!"
         )
 
+    def test_controller_recover_and_deploy(self, client: ServeControllerClient):
+        """Ensure that in-progress deploy can finish even after controller dies."""
+
+        config = ServeApplicationSchema.parse_obj(self.get_test_config())
+        client.deploy_app(config)
+
+        # Wait for app to deploy
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
+            == "4 pizzas please!"
+        )
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/", json=["MUL", 3]).json()
+            == "9 pizzas please!"
+        )
+        deployment_timestamp = client.get_serve_status().app_status.deployment_timestamp
+
+        # Delete all deployments, but don't update config
+        client.delete_deployments(
+            ["Router", "Multiplier", "Adder", "create_order", "DAGDriver"]
+        )
+
+        ray.kill(client._controller, no_restart=False)
+
+        # When controller restarts, it should redeploy config automatically
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
+            == "4 pizzas please!"
+        )
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/", json=["MUL", 3]).json()
+            == "9 pizzas please!"
+        )
+        assert (
+            deployment_timestamp
+            == client.get_serve_status().app_status.deployment_timestamp
+        )
+
+        serve.shutdown()
+        client = serve.start(detached=True)
+
+        # Ensure config checkpoint has been deleted
+        assert client.get_serve_status().app_status.deployment_timestamp == 0
+
 
 def test_controller_recover_and_delete():
     """Ensure that in-progress deletion can finish even after controller dies."""
