@@ -1,4 +1,4 @@
-from ray.util.client.ray_client_helpers import ray_start_client_server, ray_start_client_server_pair
+from ray.util.client.ray_client_helpers import ray_start_client_server_pair
 from unittest.mock import Mock, patch
 import pytest
 import os
@@ -11,7 +11,7 @@ def test_dataclient_disconnect_on_request():
     # checking new connection data.
     with patch.dict(
         os.environ, {"RAY_CLIENT_RECONNECT_GRACE_PERIOD": "5"}
-    ), ray_start_client_server_pair() as ray, server:
+    ), ray_start_client_server_pair() as (ray, server):
         assert ray.is_connected()
 
         @ray.remote
@@ -39,7 +39,7 @@ def test_dataclient_disconnect_before_request():
     # checking new connection data.
     with patch.dict(
         os.environ, {"RAY_CLIENT_RECONNECT_GRACE_PERIOD": "5"}
-    ), ray_start_client_server_pair() as ray, server:
+    ), ray_start_client_server_pair() as (ray, server):
         assert ray.is_connected()
 
         @ray.remote
