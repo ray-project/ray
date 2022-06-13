@@ -183,13 +183,14 @@ These batches are wrapped up together in a ``MultiAgentBatch``,
 serving as a container for the individual agents' sample batches.
 
 
-Training Step Method
--------------------------
+Training Step Method (``Algorithm.training_step()``)
+----------------------------------------------------
 
-.. TODO all four execution plan snippets below must be tested
+.. TODO all training_step snippets below must be tested
 .. note::
     It's important to have a good understanding of the basic :ref:`ray core methods <core-walkthrough>` before reading this section.
-    Furthermore, we utilize concepts such as the ``SampleBatch``, ``RolloutWorker``, and ``Trainer``, which can be read about on this page
+    Furthermore, we utilize concepts such as the ``SampleBatch`` (and its more advanced sibling: the ``MultiAgentBatch``),
+    ``RolloutWorker``, and ``Algorithm``, which can be read about on this page
     and the :ref:`rollout worker reference docs <rolloutworker-reference-docs>`.
 
     Finally, developers who are looking to implement custom algorithms should familiarize themselves with the :ref:`Policy <rllib-policy-walkthrough>` and
@@ -198,56 +199,69 @@ Training Step Method
 What is it?
 ~~~~~~~~~~~
 
-The ``training_step`` method is an attribute of ``Algorithm`` that dictates the execution logic of your algorithm. Specifically, it is used to express how you want to
-coordinate the movement of samples and policy data across your distributed workers.
+The ``training_step()`` method of the ``Algorithm`` class defines the repeatable
+execution logic that sits at the core of any algorithm. Think of it as the python implementation
+of an algorithm's pseudocode you can find in research papers.
+You can use ``training_step()`` to express how you want to
+coordinate the collection of samples from the environment(s), the movement of this data to other
+parts of the algorithm, and the updates and management of your policy's weights
+across the different distributed components.
 
-**A developer will need to modify this attribute of an algorithm if they want to
-make some custom changes to an algorithm or write their own from scratch if they are implementing a new algorithm.**
+**In short, a developer will need to override/modify the ``training_step`` method if they want to
+make custom changes to an existing algorithm, write their own algo from scratch, or implement some algorithm from a paper.**
 
-When is it invoked?
-~~~~~~~~~~~~~~~~~~~
+When is ``training_step()`` invoked?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-``training_step`` is called in 2 ways:
+The ``Algorithm``'s ``training_step()`` method is called:
 
- 1. The ``train()`` method of ``Trainer`` is called.
- 2. An RLlib trainer is being used with ray tune and ``training_step`` will be continuously called till the
+ 1. when the ``train()`` method of ``Algorithm`` is called (e.g. "manually" by a user that has constructed an ``Algorithm`` instance).
+ 2. when an RLlib Algorithm is being run by Ray Tune. ``training_step()`` will be continuously called till the
     :ref:`ray tune stop criteria <tune-run-ref>` is met.
 
 Key Subconcepts
 ~~~~~~~~~~~~~~~
 
-The vanilla policy gradient algorithm can be thought of as a sequence of repeating steps, or *dataflow*, of:
+In the following, using the example of VPG ("vanilla policy gradient"), we will try to illustrate
+how to use the ``training_step()`` method to implement this algorithm in RLlib.
+The "vanilla policy gradient" algo can be thought of as a sequence of repeating steps, or *dataflow*, of:
 
- 1. Sampling (to collect data from an env or offline data store)
- 2. Updating (to learn a behavior).
- 3. Broadcasting (to make sure all distributed units have the same weights again)
- 4. Metrics reporting (returning relevant stats from the previous operations with regards to performance and runtime)
+ 1. Sampling (to collect data from an env)
+ 2. Updating the Policy (to learn a behavior)
+ 3. Broadcasting the updated Policy's weights (to make sure all distributed units have the same weights again)
+ 4. Metrics reporting (returning relevant stats from all the above operations with regards to performance and runtime)
+
+An example implementation of VPG could look like the following:
 
 .. code-block:: python
 
     def training_step(self) -> ResultDict:
-        # type: SampleBatchType
+        # 1. Sampling.
         train_batch = synchronous_parallel_sample(
                         worker_set=self.workers,
                         max_env_steps=self.config["train_batch_size"]
                     )
 
-        # type: ResultDict
+        # 2. Updating the Policy.
         train_results = train_one_step(self, train_batch)
 
-        # Update worker weights with the weights from the trained
-        # policy on the local worker.
+        # 3. Synchronize worker weights.
         self.workers.sync_weights()
 
+        # 4. Return results.
         return train_results
 
 .. note::
-    Note that the training iteration method is framework agnostic. This means that you don’t need to implement torch
-    or tensorflow code inside this module. This allows the training iteration method / algorithm to support different frameworks.
-    Within the :ref:`Policy <rllib-policy-walkthrough>` and :ref:`Model <rllib-models-walkthrough>` classes, we leverage the
-    framework-specific operations and modules.
+    Note that the ``training_step`` method is deep learning framework agnostic.
+    This means that you should not write PyTorch- or TensorFlow specific code inside this module,
+    allowing for a strict separation of concerns and enabling us to use the same ``training_step()``
+    method for both TF- and PyTorch versions of your algorithms.
+    DL framework specific code should only be added to the
+    :ref:`Policy <rllib-policy-walkthrough>` (e.g. in its loss function(s)) and
+    :ref:`Model <rllib-models-walkthrough>` (e.g. tf.keras or torch.nn neural network code) classes.
 
-Breaking that ``training_step`` code down:
+Let's further break down our above ``training_step()`` code.
+In the first step, we collect trajectory data from the environment(s):
 
 .. code-block:: python
 
@@ -256,26 +270,41 @@ Breaking that ``training_step`` code down:
                         max_env_steps=self.config["train_batch_size"]
                     )
 
-``self.workers`` is a set of ``RolloutWorkers`` that are created for developers in ``Trainer``'s ``setup`` method.
-This set is covered in greater depth on the :ref:`WorkerSet documentation page<workerset-reference-docs>`.
-The method ``synchronous_parallel_sample`` is an RLlib utility that can be used for sampling in a blocking parallel
-fashion across multiple rollout workers. RLlib includes other utilities, such as the ``AsyncRequestsManager``, for
-facilitating the dataflow between various components in parallelizable fashion. They are covered in the :ref:`parallel
-requests documentation <parallel-requests-docs>`.
+Here, ``self.workers`` is a set of ``RolloutWorkers`` that are created in the ``Algorithm``'s ``setup()`` method
+(prior to calling ``training_step()``).
+This ``WorkerSet`` is covered in greater depth on the :ref:`WorkerSet documentation page<workerset-reference-docs>`.
+The utilify function ``synchronous_parallel_sample`` can be used for parallel sampling in a blocking
+fashion across multiple rollout workers (returns once all rollout workers are sone sampling).
+It returns one final MultiAgentBatch resulting from concatenating n smaller MultiagentBatches
+(exactly one from each remote rollout worker).
+
+RLlib includes other utilities, such as the ``AsyncRequestsManager``,
+for facilitating the dataflow between various components in parallel, asyncronous fashion.
+These utilities are covered in the :ref:`parallel requests documentation <parallel-requests-docs>`.
+
+The ``train_batch`` is then passed to another utility function: ``train_one_step``.
 
 .. code-block:: python
 
     train_results = train_one_step(self, train_batch)
 
-Methods like ``train_one_step`` and ``multi_gpu_train_one_step`` can be used for training a policy. Further documentation
-with examples on them can be found on the :ref:`train ops documentation page <train-ops-docs>`.
+Methods like ``train_one_step`` and ``multi_gpu_train_one_step`` are used for training our Policy.
+Further documentation with examples can be found on the :ref:`train ops documentation page <train-ops-docs>`.
+
+The training updates on the policy are only applied to its version inside ``self.workers.local_worker``.
+Note that each WorkerSet has n remote workers and exactly one "local worker" and that each worker (remote and local ones)
+holds a copy of the policy.
+
+Now that we updated the local policy (the copy in self.workers.local_worker), we need to make sure
+that the copies in all remote workers (self.workers.remote_workers) have their weights synchronized
+(from the local one):
 
 .. code-block:: python
 
     self.workers.sync_weights()
 
-The training updates on the policy are applied to ``self.workers.local_worker``. By calling ``self.workers.sync_weights()``,
-weights are broadcasted from the local worker to the remote workers if there are remote workers. See :ref:`rollout worker
+By calling ``self.workers.sync_weights()``,
+weights are broadcasted from the local worker to the remote workers. See :ref:`rollout worker
 reference docs <rolloutworker-reference-docs>` for further details.
 
 .. code-block:: python
@@ -283,38 +312,41 @@ reference docs <rolloutworker-reference-docs>` for further details.
     return train_results
 
 A dictionary is expected to be returned that contains the results of the training update.
-It's generally recommended that the dictionary map keys of type ``str`` to values that are
-of type ``float`` or to dictionaries of the same form, allowing for a nested structure.
+It maps keys of type ``str`` to values that are of type ``float`` or to dictionaries of
+the same form, allowing for a nested structure.
 
 For example, a results dictionary could map policy_ids to learning and sampling statistics for that policy:
 
 .. code-block:: python
 
      {
-        'agent_1': {
+        'policy_1': {
                       'learner_stats': {'policy_loss': 6.7291455},
-                      'num_agent_steps_trained': 32.0},
-        'agent_2': {
+                      'num_agent_steps_trained': 32
+                   },
+        'policy_2': {
                      'learner_stats': {'policy_loss': 3.554927},
-                     'num_agent_steps_trained': 32.0
-                   }
+                     'num_agent_steps_trained': 32
+                   },
      }
 
 Training Step Method Utilities
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 RLlib provides a collection of utilities that abstract away common tasks in RL training.
+In particular, if you would like to work with the various ``training_step`` methods or implement your
+own, it's recommended to familiarize yourself first with these following concepts here:
 
 `Sample Batch <core-concepts.html#sample-batches>`__:
-``SampleBatch`` and ``MultiAgentBatch`` are the two datatypes that we use for containing timesteps in RLlib. All of our
-RLlib abstractions (policies, replay buffers, etc.) operate using these types.
+``SampleBatch`` and ``MultiAgentBatch`` are the two types that we use for storing trajectory data in RLlib. All of our
+RLlib abstractions (policies, replay buffers, etc.) operate on these two types.
 
 :ref:`Rollout Workers <rolloutworker-reference-docs>`:
 Rollout workers are an abstraction that wraps a policy (or policies in the case of multi-agent) and an environment.
 From a high level, we can use rollout workers to collect experiences from the environment by calling
-their ``sample`` method and we can train their policies by calling their ``learn_on_batch`` method.
-By default, in RLlib, we create a set of workers that can be used for sampling and training. We create a ``WorkerSet``
-object inside of ``setup`` which is called when an RLlib algorithm is created. The ``WorkerSet`` has a ``local_worker``
+their ``sample()`` method and we can train their policies by calling their ``learn_on_batch()`` method.
+By default, in RLlib, we create a set of workers that can be used for sampling and training.
+We create a ``WorkerSet`` object inside of ``setup`` which is called when an RLlib algorithm is created. The ``WorkerSet`` has a ``local_worker``
 and ``remote_workers`` if ``num_workers > 0`` in the experiment config. In RLlib we use typically use ``local_worker``
 for training and ``remote_workers`` for sampling.
 

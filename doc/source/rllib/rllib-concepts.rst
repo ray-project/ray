@@ -237,8 +237,10 @@ First, check out the `PPO definition <https://github.com/ray-project/ray/blob/ma
 Besides some boilerplate for defining the PPO configuration and some warnings, the most important method to take note of is the ``training_step``.
 
 The algorithm's `training step method <core-concepts.html#training-step-method>`__ defines the distributed training workflow.
-Depending on the ``simple_optimizer`` trainer config,
-PPO can switch between a simple synchronous optimizer, or a multi-GPU plan that implements minibatch SGD (the default):
+Depending on the ``simple_optimizer`` config setting,
+PPO can switch between a simple, synchronous optimizer, or a multi-GPU one that implements
+pre-loading of the batch to the GPU for higher performance on repeated minibatch updates utilizing
+the same pre-loaded batch:
 
 .. code-block:: python
 
@@ -280,10 +282,6 @@ PPO can switch between a simple synchronous optimizer, or a multi-GPU plan that 
             # for each (possibly multiagent) policy we are training
             kl_divergence = policy_info[LEARNER_STATS_KEY].get("kl")
             self.get_policy(policy_id).update_kl(kl_divergence)
-    from ray.rllib.algorithms.ppo import PPO
-    from ray.rllib.execution.rollout_ops import AsyncGradients
-    from ray.rllib.execution.train_ops import ApplyGradients
-    from ray.rllib.execution.metric_ops import StandardMetricsReporting
 
         # Update global vars on local worker as well.
         self.workers.local_worker().set_global_vars(global_vars)

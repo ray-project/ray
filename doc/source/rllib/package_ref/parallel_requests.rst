@@ -1,7 +1,7 @@
 .. _parallel-requests-docs:
 
-Parallel Requests API
-=====================
+Parallel Requests Utilities
+===========================
 
 .. automodule:: ray.rllib.execution.parallel_requests
     :members:
