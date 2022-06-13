@@ -4,7 +4,7 @@
 # __preprocessor_setup_start__
 import pandas as pd
 import ray
-from ray.air.preprocessors import MinMaxScaler
+from ray.data.preprocessors import MinMaxScaler
 
 # Generate two simple datasets.
 dataset = ray.data.range_table(8)
@@ -47,9 +47,9 @@ print(batch_transformed)
 # __trainer_start__
 import ray
 
+from ray.data.preprocessors import MinMaxScaler
 from ray.train.xgboost import XGBoostTrainer
 from ray.air.config import ScalingConfig
-from ray.air.preprocessors import MinMaxScaler
 
 train_dataset = ray.data.from_items([{"x": x, "y": 2 * x} for x in range(0, 32, 3)])
 valid_dataset = ray.data.from_items([{"x": x, "y": 2 * x} for x in range(1, 32, 3)])
@@ -107,7 +107,7 @@ print(predicted_labels.to_pandas())
 
 # __chain_start__
 import ray
-from ray.air.preprocessors import Chain, MinMaxScaler, SimpleImputer
+from ray.data.preprocessors import Chain, MinMaxScaler, SimpleImputer
 
 # Generate one simple dataset.
 dataset = ray.data.from_items(
@@ -126,7 +126,7 @@ print(dataset_transformed.take())
 
 # __custom_stateless_start__
 import ray
-from ray.air.preprocessors import BatchMapper
+from ray.data.preprocessors import BatchMapper
 
 # Generate a simple dataset.
 dataset = ray.data.range_table(4)
@@ -145,7 +145,7 @@ print(dataset_transformed.take())
 from typing import Dict
 import ray
 from pandas import DataFrame
-from ray.air.preprocessors import CustomStatefulPreprocessor
+from ray.data.preprocessors import CustomStatefulPreprocessor
 from ray.data import Dataset
 from ray.data.aggregate import Max
 

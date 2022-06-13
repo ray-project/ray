@@ -46,7 +46,7 @@ from ray.tune.trainable import Trainable
 from ray.tune.utils.file_transfer import delete_on_node, sync_dir_between_nodes
 
 if TYPE_CHECKING:
-    from ray.air.preprocessor import Preprocessor
+    from ray.data.preprocessor import Preprocessor
 
 # This trainer uses a special checkpoint syncing logic.
 # Because HF checkpoints are very large dirs (at least several GBs),
@@ -255,7 +255,7 @@ class HuggingFaceTrainer(TorchTrainer):
         scaling_config: Configuration for how to scale data parallel training.
         dataset_config: Configuration for dataset ingest.
         run_config: Configuration for the execution of the training run.
-        preprocessor: A ray.air.preprocessor.Preprocessor to preprocess the
+        preprocessor: A ray.data.Preprocessor to preprocess the
             provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
     """

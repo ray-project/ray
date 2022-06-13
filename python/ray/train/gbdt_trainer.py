@@ -13,11 +13,11 @@ from ray.train.constants import MODEL_KEY, TRAIN_DATASET_KEY
 
 if TYPE_CHECKING:
     import xgboost_ray
-    from ray.air.preprocessor import Preprocessor
+    from ray.data.preprocessor import Preprocessor
 
 
 def _convert_scaling_config_to_ray_params(
-    scaling_config: ScalingConfig,
+    scaling_config: ScalingConfigDataClass,
     ray_params_cls: Type["xgboost_ray.RayParams"],
     default_ray_params: Optional[Dict[str, Any]] = None,
 ) -> "xgboost_ray.RayParams":
@@ -58,7 +58,7 @@ class GBDTTrainer(BaseTrainer):
             :class:`xgboost_ray.RayDMatrix` initializations.
         scaling_config: Configuration for how to scale data parallel training.
         run_config: Configuration for the execution of the training run.
-        preprocessor: A ray.air.preprocessor.Preprocessor to preprocess the
+        preprocessor: A ray.data.Preprocessor to preprocess the
             provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
         **train_kwargs: Additional kwargs passed to framework ``train()`` function.
@@ -66,11 +66,9 @@ class GBDTTrainer(BaseTrainer):
 
     _scaling_config_allowed_keys = BaseTrainer._scaling_config_allowed_keys + [
         "num_workers",
-        "num_cpus_per_worker",
-        "num_gpus_per_worker",
         "resources_per_worker",
-        "additional_resources_per_worker",
         "use_gpu",
+        "placement_strategy",
     ]
     _dmatrix_cls: type
     _ray_params_cls: type
@@ -142,8 +140,11 @@ class GBDTTrainer(BaseTrainer):
 
     @property
     def _ray_params(self) -> "xgboost_ray.RayParams":
+        scaling_config_dataclass = self._validate_and_get_scaling_config_data_class(
+            self.scaling_config
+        )
         return _convert_scaling_config_to_ray_params(
-            self.scaling_config, self._ray_params_cls, self._default_ray_params
+            scaling_config_dataclass, self._ray_params_cls, self._default_ray_params
         )
 
     def preprocess_datasets(self) -> None:
@@ -196,6 +197,7 @@ class GBDTTrainer(BaseTrainer):
 
     def as_trainable(self) -> Type[Trainable]:
         trainable_cls = super().as_trainable()
+        trainer_cls = self.__class__
         scaling_config = self.scaling_config
         ray_params_cls = self._ray_params_cls
         default_ray_params = self._default_ray_params
@@ -213,8 +215,13 @@ class GBDTTrainer(BaseTrainer):
             @classmethod
             def default_resource_request(cls, config):
                 updated_scaling_config = config.get("scaling_config", scaling_config)
+                scaling_config_dataclass = (
+                    trainer_cls._validate_and_get_scaling_config_data_class(
+                        updated_scaling_config
+                    )
+                )
                 return _convert_scaling_config_to_ray_params(
-                    updated_scaling_config, ray_params_cls, default_ray_params
+                    scaling_config_dataclass, ray_params_cls, default_ray_params
                 ).get_tune_resources()
 
         return GBDTTrainable

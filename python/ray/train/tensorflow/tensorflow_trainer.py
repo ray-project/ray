@@ -9,7 +9,7 @@ from ray.air.checkpoint import Checkpoint
 from ray.util import PublicAPI
 
 if TYPE_CHECKING:
-    from ray.air.preprocessor import Preprocessor
+    from ray.data.preprocessor import Preprocessor
 
 
 @PublicAPI(stability="alpha")
@@ -154,7 +154,7 @@ class TensorflowTrainer(DataParallelTrainer):
             dataset. If a ``preprocessor`` is provided and has not already been fit,
             it will be fit on the training dataset. All datasets will be transformed
             by the ``preprocessor`` if one is provided.
-        preprocessor: A ray.air.preprocessor.Preprocessor to preprocess the
+        preprocessor: A ray.data.Preprocessor to preprocess the
             provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
     """

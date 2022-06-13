@@ -8,7 +8,7 @@ from ray.air.config import DatasetConfig, ScalingConfig
 from ray import train
 
 from ray.train.data_parallel_trainer import DataParallelTrainer
-from ray.air.preprocessors import BatchMapper
+from ray.data.preprocessors import BatchMapper
 
 
 @pytest.fixture

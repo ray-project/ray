@@ -18,7 +18,7 @@ from ray.util.ml_utils.dict import merge_dicts
 
 if TYPE_CHECKING:
     from ray.data import Dataset
-    from ray.air.preprocessor import Preprocessor
+    from ray.data.preprocessor import Preprocessor
 
 # A type representing either a ray.data.Dataset or a function that returns a
 # ray.data.Dataset and accepts no arguments.
@@ -53,7 +53,7 @@ class BaseTrainer(abc.ABC):
           specified here.
         - ``trainer.preprocess_datasets()``: The provided
           ray.data.Dataset are preprocessed with the provided
-          ray.air.preprocessor.
+          ray.data.Preprocessor.
         - ``trainer.train_loop()``: Executes the main training logic.
         - Calling ``trainer.fit()`` will return a ``ray.result.Result``
           object where you can access metrics from your training run, as well
@@ -197,10 +197,10 @@ class BaseTrainer(abc.ABC):
             )
         # Preprocessor
         if self.preprocessor is not None and not isinstance(
-            self.preprocessor, ray.air.preprocessor.Preprocessor
+            self.preprocessor, ray.data.Preprocessor
         ):
             raise ValueError(
-                f"`preprocessor` should be an instance of `ray.air.Preprocessor`, "
+                f"`preprocessor` should be an instance of `ray.data.Preprocessor`, "
                 f"found {type(self.preprocessor)} with value `{self.preprocessor}`."
             )
 
