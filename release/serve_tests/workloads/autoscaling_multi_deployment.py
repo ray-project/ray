@@ -31,6 +31,7 @@ import logging
 import math
 import random
 
+from python.ray.serve import constants as serve_constants
 import ray
 from ray import serve
 from serve_test_utils import (
@@ -69,6 +70,9 @@ DEFAULT_FULL_TEST_NUM_DEPLOYMENTS = 10  # 100 replicas each
 DEFAULT_SMOKE_TEST_TRIAL_LENGTH = "15s"
 DEFAULT_FULL_TEST_TRIAL_LENGTH = "10m"
 
+# Magic number to use for speed up scale from 0 replica
+serve_constants.HANDLE_METRIC_PUSH_INTERVAL_S = 1
+
 
 def setup_multi_deployment_replicas(min_replicas, max_replicas, num_deployments):
     max_replicas_per_deployment = max_replicas // num_deployments
@@ -80,7 +84,7 @@ def setup_multi_deployment_replicas(min_replicas, max_replicas, num_deployments)
             "min_replicas": min_replicas,
             "max_replicas": max_replicas_per_deployment,
             "look_back_period_s": 0.2,
-            "downscale_delay_s": 0.2,
+            "downscale_delay_s": 10,
             "upscale_delay_s": 0.2,
         },
         version="v1",
