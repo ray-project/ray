@@ -34,6 +34,7 @@ enum class SchedulingType {
   BUNDLE_SPREAD = 5,
   BUNDLE_STRICT_PACK = 6,
   BUNDLE_STRICT_SPREAD = 7,
+  AFFINITY_WITH_BUNDLE = 8
 };
 
 // Options that controls the scheduling behavior.
@@ -112,6 +113,18 @@ struct SchedulingOptions {
                              /*require_node_available*/ true,
                              /*avoid_gpu_nodes*/ false,
                              /*scheduling_context*/ std::move(scheduling_context));
+  }
+
+  // construct option for affinity with bundle scheduling policy.
+  static SchedulingOptions AffinityWithBundle(const BundleID &bundle_id) {
+    auto scheduling_context =
+        std::make_unique<AffinityWithBundleSchedulingContext>(bundle_id);
+    return SchedulingOptions(SchedulingType::AFFINITY_WITH_BUNDLE,
+                             /*spread_threshold*/ 0,
+                             /*avoid_local_node*/ false,
+                             /*require_node_available*/ true,
+                             /*avoid_gpu_nodes*/ false,
+                             std::move(scheduling_context));
   }
 
   SchedulingType scheduling_type;

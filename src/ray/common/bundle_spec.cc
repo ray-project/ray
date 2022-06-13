@@ -154,4 +154,43 @@ std::string GetDebugStringForBundles(
   return debug_info.str();
 };
 
+std::unordered_map<std::string, double> AddPlacementGroupConstraint(
+    const std::unordered_map<std::string, double> &resources,
+    const PlacementGroupID &placement_group_id,
+    int64_t bundle_index) {
+  std::unordered_map<std::string, double> new_resources;
+  if (!placement_group_id.IsNil()) {
+    RAY_CHECK((bundle_index == -1 || bundle_index >= 0))
+        << "Invalid bundle index " << bundle_index;
+    for (auto iter = resources.begin(); iter != resources.end(); iter++) {
+      auto wildcard_name =
+          FormatPlacementGroupResource(iter->first, placement_group_id, -1);
+      new_resources[wildcard_name] = iter->second;
+      if (bundle_index >= 0) {
+        auto index_name =
+            FormatPlacementGroupResource(iter->first, placement_group_id, bundle_index);
+        new_resources[index_name] = iter->second;
+      }
+    }
+    return new_resources;
+  }
+  return resources;
+}
+
+std::unordered_map<std::string, double> AddPlacementGroupConstraint(
+    const std::unordered_map<std::string, double> &resources,
+    const rpc::SchedulingStrategy &scheduling_strategy) {
+  auto placement_group_id = PlacementGroupID::Nil();
+  auto bundle_index = -1;
+  if (scheduling_strategy.scheduling_strategy_case() ==
+      rpc::SchedulingStrategy::SchedulingStrategyCase::
+          kPlacementGroupSchedulingStrategy) {
+    placement_group_id = PlacementGroupID::FromBinary(
+        scheduling_strategy.placement_group_scheduling_strategy().placement_group_id());
+    bundle_index = scheduling_strategy.placement_group_scheduling_strategy()
+                       .placement_group_bundle_index();
+  }
+  return AddPlacementGroupConstraint(resources, placement_group_id, bundle_index);
+}
+
 }  // namespace ray

@@ -270,6 +270,11 @@ void ClusterResourceManager::DebugString(std::stringstream &buffer) const {
     buffer << "node id: " << node.first.ToInt();
     buffer << node.second.GetLocalView().DebugString();
   }
+  buffer << bundle_location_index_.DebugString();
+}
+
+BundleLocationIndex &ClusterResourceManager::GetBundleLocationIndex() {
+  return bundle_location_index_;
 }
 
 }  // namespace ray

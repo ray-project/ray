@@ -2448,6 +2448,19 @@ cc_test(
 )
 
 cc_test(
+    name = "bundle_location_index_test",
+    srcs = [
+        "src/ray/common/test/bundle_location_index_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":ray_common",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "callback_reply_test",
     size = "small",
     srcs = ["src/ray/gcs/test/callback_reply_test.cc"],
