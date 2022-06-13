@@ -3,9 +3,9 @@ from typing import List
 
 import pandas as pd
 
-from ray.air.preprocessor import Preprocessor
+from ray.data.preprocessor import Preprocessor
 
-from ray.air.preprocessors.utils import simple_hash
+from ray.data.preprocessors.utils import simple_hash
 
 
 class FeatureHasher(Preprocessor):

@@ -13,7 +13,7 @@ from ray.util.joblib import register_ray
 from sklearn.base import BaseEstimator
 
 if TYPE_CHECKING:
-    from ray.air.preprocessor import Preprocessor
+    from ray.data.preprocessor import Preprocessor
 
 
 class SklearnPredictor(Predictor):
