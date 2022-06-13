@@ -1,11 +1,11 @@
 from ray.rllib.algorithms.alpha_star.alpha_star import (
+    AlphaStar,
     AlphaStarConfig,
-    AlphaStarTrainer,
     DEFAULT_CONFIG,
 )
 
 __all__ = [
+    "AlphaStar",
     "AlphaStarConfig",
-    "AlphaStarTrainer",
     "DEFAULT_CONFIG",
 ]

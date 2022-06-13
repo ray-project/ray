@@ -2,8 +2,11 @@ import logging
 from typing import Dict, List, Type, Union
 
 import ray
-from ray.rllib.agents.ppo.ppo_tf_policy import validate_config
-from ray.rllib.evaluation.postprocessing import Postprocessing
+from ray.rllib.algorithms.ppo.ppo_tf_policy import validate_config
+from ray.rllib.evaluation.postprocessing import (
+    Postprocessing,
+    compute_gae_for_sample_batch,
+)
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.models.utils import get_activation_fn
@@ -11,9 +14,10 @@ from ray.rllib.policy.dynamic_tf_policy_v2 import DynamicTFPolicyV2
 from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_mixins import (
-    ComputeAndClipGradsMixIn,
-    ComputeGAEMixIn,
+    LocalOptimizer,
+    ModelGradients,
     ValueNetworkMixin,
+    compute_gradients,
 )
 from ray.rllib.utils import try_import_tf
 from ray.rllib.utils.annotations import override
@@ -361,12 +365,10 @@ def get_maml_tf_policy(base: type) -> type:
         base: Base class for this policy. DynamicTFPolicyV2 or EagerTFPolicyV2.
 
     Returns:
-        A TF Policy to be used with MAMLTrainer.
+        A TF Policy to be used with MAML.
     """
 
-    class MAMLTFPolicy(
-        ComputeGAEMixIn, ComputeAndClipGradsMixIn, KLCoeffMixin, ValueNetworkMixin, base
-    ):
+    class MAMLTFPolicy(KLCoeffMixin, ValueNetworkMixin, base):
         def __init__(
             self,
             obs_space,
@@ -379,7 +381,7 @@ def get_maml_tf_policy(base: type) -> type:
             base.enable_eager_execution_if_necessary()
 
             config = dict(ray.rllib.algorithms.maml.maml.DEFAULT_CONFIG, **config)
-            validate_config(self, obs_space, action_space, config)
+            validate_config(config)
 
             # Initialize base class.
             base.__init__(
@@ -391,8 +393,6 @@ def get_maml_tf_policy(base: type) -> type:
                 existing_model=existing_model,
             )
 
-            ComputeGAEMixIn.__init__(self)
-            ComputeAndClipGradsMixIn.__init__(self)
             KLCoeffMixin.__init__(self, config)
             ValueNetworkMixin.__init__(self, config)
 
@@ -498,8 +498,23 @@ def get_maml_tf_policy(base: type) -> type:
                     "entropy": self.loss_obj.mean_entropy,
                 }
 
+        @override(base)
+        def postprocess_trajectory(
+            self, sample_batch, other_agent_batches=None, episode=None
+        ):
+            sample_batch = super().postprocess_trajectory(sample_batch)
+            return compute_gae_for_sample_batch(
+                self, sample_batch, other_agent_batches, episode
+            )
+
+        @override(base)
+        def compute_gradients_fn(
+            self, optimizer: LocalOptimizer, loss: TensorType
+        ) -> ModelGradients:
+            return compute_gradients(self, optimizer, loss)
+
     return MAMLTFPolicy
 
 
-MAMLDynamicTFPolicy = get_maml_tf_policy(DynamicTFPolicyV2)
+MAMLStaticGraphTFPolicy = get_maml_tf_policy(DynamicTFPolicyV2)
 MAMLEagerTFPolicy = get_maml_tf_policy(EagerTFPolicyV2)

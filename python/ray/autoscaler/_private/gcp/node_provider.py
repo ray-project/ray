@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, List, Tuple
 from functools import wraps
 from threading import RLock
 import time
@@ -164,14 +164,22 @@ class GCPNodeProvider(NodeProvider):
             return ip
 
     @_retry
-    def create_node(self, base_config: dict, tags: dict, count: int) -> None:
+    def create_node(self, base_config: dict, tags: dict, count: int) -> Dict[str, dict]:
+        """Creates instances.
+
+        Returns dict mapping instance id to each create operation result for the created
+        instances.
+        """
         with self.lock:
             labels = tags  # gcp uses "labels" instead of aws "tags"
 
             node_type = get_node_type(base_config)
             resource = self.resources[node_type]
 
-            resource.create_instances(base_config, labels, count)
+            results = resource.create_instances(
+                base_config, labels, count
+            )  # type: List[Tuple[dict, str]]
+            return {instance_id: result for result, instance_id in results}
 
     @_retry
     def terminate_node(self, node_id: str):

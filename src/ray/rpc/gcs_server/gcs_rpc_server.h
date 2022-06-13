@@ -66,6 +66,9 @@ namespace rpc {
 #define INTERNAL_KV_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER(InternalKVGcsService, HANDLER, -1)
 
+#define RUNTIME_ENV_SERVICE_RPC_HANDLER(HANDLER) \
+  RPC_SERVICE_HANDLER(RuntimeEnvGcsService, HANDLER, -1)
+
 // Unlimited max active RPCs, because of long poll.
 #define INTERNAL_PUBSUB_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER(InternalPubSubGcsService, HANDLER, -1)
@@ -542,6 +545,33 @@ class InternalKVGrpcService : public GrpcService {
   InternalKVGcsServiceHandler &service_handler_;
 };
 
+class RuntimeEnvGcsServiceHandler {
+ public:
+  virtual ~RuntimeEnvGcsServiceHandler() = default;
+  virtual void HandlePinRuntimeEnvURI(const PinRuntimeEnvURIRequest &request,
+                                      PinRuntimeEnvURIReply *reply,
+                                      SendReplyCallback send_reply_callback) = 0;
+};
+
+class RuntimeEnvGrpcService : public GrpcService {
+ public:
+  explicit RuntimeEnvGrpcService(instrumented_io_context &io_service,
+                                 RuntimeEnvGcsServiceHandler &handler)
+      : GrpcService(io_service), service_handler_(handler) {}
+
+ protected:
+  grpc::Service &GetGrpcService() override { return service_; }
+  void InitServerCallFactories(
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
+    RUNTIME_ENV_SERVICE_RPC_HANDLER(PinRuntimeEnvURI);
+  }
+
+ private:
+  RuntimeEnvGcsService::AsyncService service_;
+  RuntimeEnvGcsServiceHandler &service_handler_;
+};
+
 class InternalPubSubGcsServiceHandler {
  public:
   virtual ~InternalPubSubGcsServiceHandler() = default;
@@ -591,6 +621,7 @@ using WorkerInfoHandler = WorkerInfoGcsServiceHandler;
 using PlacementGroupInfoHandler = PlacementGroupInfoGcsServiceHandler;
 using InternalKVHandler = InternalKVGcsServiceHandler;
 using InternalPubSubHandler = InternalPubSubGcsServiceHandler;
+using RuntimeEnvHandler = RuntimeEnvGcsServiceHandler;
 
 }  // namespace rpc
 }  // namespace ray

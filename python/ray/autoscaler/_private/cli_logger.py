@@ -405,7 +405,7 @@ class _CliLogger:
         """Proxy for printing messages.
 
         Args:
-            msg (str): Message to print.
+            msg: Message to print.
             linefeed (bool):
                 If `linefeed` is `False` no linefeed is printed at the
                 end of the message.
@@ -497,7 +497,7 @@ class _CliLogger:
         """Displays a key-value pair with special formatting.
 
         Args:
-            key (str): Label that is prepended to the message.
+            key: Label that is prepended to the message.
 
         For other arguments, see `_format_msg`.
         """
@@ -613,7 +613,7 @@ class _CliLogger:
         """Handle assertion without throwing a scary exception.
 
         Args:
-            val (bool): Value to check.
+            val: Value to check.
 
         For other arguments, see `_format_msg`.
         """
@@ -647,7 +647,7 @@ class _CliLogger:
         Valid answers are "y/yes/true/1" and "n/no/false/0".
 
         Args:
-            yes (bool): If `yes` is `True` the dialog will default to "yes"
+            yes: If `yes` is `True` the dialog will default to "yes"
                         and continue without waiting for user input.
             _abort (bool):
                 If `_abort` is `True`,
@@ -772,7 +772,7 @@ class _CliLogger:
         """Prompt the user for some text input.
 
         Args:
-            msg (str): The mesage to display to the user before the prompt.
+            msg: The mesage to display to the user before the prompt.
 
         Returns:
             The string entered by the user.

@@ -11,7 +11,7 @@ freezegun==1.1.0
 gluoncv==0.10.1.post0
 gpy==1.10.0
 autorom[accept-rom-license]
-gym[atari]==0.21.0; python_version >= '3.7'
+gym>=0.21.0,<0.24.0; python_version >= '3.7'
 gym[atari]==0.19.0; python_version < '3.7'
 h5py==3.1.0
 hpbandster==0.7.4

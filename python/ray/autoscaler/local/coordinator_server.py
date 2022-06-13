@@ -28,7 +28,7 @@ def runner_handler(node_provider):
             """Sends the header portion of the HTTP response.
 
             Args:
-                response_code (int): Standard HTTP response code
+                response_code: Standard HTTP response code
                 headers (list[tuples]): Standard HTTP response headers
             """
             if headers is None:

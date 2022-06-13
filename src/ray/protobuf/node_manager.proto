@@ -169,7 +169,11 @@ message PinObjectIDsRequest {
   repeated bytes object_ids = 2;
 }
 
-message PinObjectIDsReply {}
+message PinObjectIDsReply {
+  // Whether pinning the corresponding object succeeded or not.
+  // Pin can fail if the object is already evicted.
+  repeated bool successes = 1;
+}
 
 message GetNodeStatsRequest {
   // Whether to include memory stats. This could be large since it includes
@@ -289,14 +293,6 @@ message UpdateResourceUsageRequest {
 message UpdateResourceUsageReply {
 }
 
-message GetGcsServerAddressRequest {
-}
-
-message GetGcsServerAddressReply {
-  string ip = 1;
-  int32 port = 2;
-}
-
 message GetTasksInfoRequest {}
 
 message GetTasksInfoReply {
@@ -382,8 +378,6 @@ service NodeManagerService {
       returns (ReleaseUnusedBundlesReply);
   // Get the system config.
   rpc GetSystemConfig(GetSystemConfigRequest) returns (GetSystemConfigReply);
-  // Get gcs server address.
-  rpc GetGcsServerAddress(GetGcsServerAddressRequest) returns (GetGcsServerAddressReply);
   // [State API] Get the all task information of the node.
   rpc GetTasksInfo(GetTasksInfoRequest) returns (GetTasksInfoReply);
   // [State API] Get the all object information of the node.

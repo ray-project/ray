@@ -12,11 +12,13 @@ import ray.cloudpickle as pickle
 from ray.tune.registry import _ParameterRegistry
 from ray.tune.utils import detect_checkpoint_function
 from ray.util import placement_group
+from ray.util.annotations import DeveloperAPI
 from six import string_types
 
 logger = logging.getLogger(__name__)
 
 
+@DeveloperAPI
 class TrainableUtil:
     @staticmethod
     def process_checkpoint(
@@ -239,6 +241,7 @@ class TrainableUtil:
         return chkpt_df
 
 
+@DeveloperAPI
 class PlacementGroupUtil:
     @staticmethod
     def get_remote_worker_options(

@@ -5,10 +5,12 @@ from ray.tune import trial_runner
 from ray.tune.schedulers.trial_scheduler import TrialScheduler
 from ray.tune.schedulers.hyperband import HyperBandScheduler
 from ray.tune.trial import Trial
+from ray.util import PublicAPI
 
 logger = logging.getLogger(__name__)
 
 
+@PublicAPI
 class HyperBandForBOHB(HyperBandScheduler):
     """Extends HyperBand early stopping algorithm for BOHB.
 

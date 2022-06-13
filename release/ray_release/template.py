@@ -136,10 +136,10 @@ def populate_cluster_env_variables(test: Test, ray_wheels_url: str) -> Dict:
 
     env[
         "RAY_IMAGE_NIGHTLY_CPU"
-    ] = f"anyscale/ray:nightly-py{python_version_str(python_version)}"
+    ] = f"anyscale/ray:1.12.1-py{python_version_str(python_version)}"
     env[
         "RAY_IMAGE_ML_NIGHTLY_GPU"
-    ] = f"anyscale/ray-ml:nightly-py{python_version_str(python_version)}-gpu"
+    ] = f"anyscale/ray-ml:1.12.1-py{python_version_str(python_version)}-gpu"
 
     return env
 

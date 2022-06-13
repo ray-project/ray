@@ -10,7 +10,7 @@ import ray
 from ray.types import ObjectRef
 from ray.data.block import T, BlockAccessor
 from ray.data.context import DatasetContext, DEFAULT_SCHEDULING_STRATEGY
-from ray.data.impl.remote_fn import cached_remote_fn
+from ray.data._internal.remote_fn import cached_remote_fn
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:

@@ -18,7 +18,6 @@ from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
 from ray.tune.experiment import Experiment, convert_to_experiment_list
-from ray.tune.logger import Logger
 from ray.tune.progress_reporter import (
     RemoteReporterMixin,
     detect_reporter,
@@ -161,8 +160,6 @@ def run(
     max_concurrent_trials: Optional[int] = None,
     # == internal only ==
     _experiment_checkpoint_dir: Optional[str] = None,
-    # Deprecated args
-    loggers: Optional[Sequence[Type[Logger]]] = None,
     _remote: Optional[bool] = None,
 ) -> ExperimentAnalysis:
     """Executes training.
@@ -420,14 +417,6 @@ def run(
     del remote_run_kwargs
 
     all_start = time.time()
-
-    if loggers:
-        # Deprecated: Remove in Ray > 1.13
-        raise DeprecationWarning(
-            "The `loggers` argument is deprecated. Please pass the respective "
-            "`LoggerCallback` classes to the `callbacks` argument instead. "
-            "See https://docs.ray.io/en/latest/tune/api_docs/logging.html"
-        )
 
     if mode and mode not in ["min", "max"]:
         raise ValueError(
@@ -783,7 +772,6 @@ def run_experiments(
     trial_executor: Optional[RayTrialExecutor] = None,
     raise_on_failed_trial: bool = True,
     concurrent: bool = True,
-    # Deprecated args.
     callbacks: Optional[Sequence[Callback]] = None,
     _remote: Optional[bool] = None,
 ):

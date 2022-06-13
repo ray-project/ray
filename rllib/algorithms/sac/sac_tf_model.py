@@ -19,9 +19,9 @@ class SACTFModel(TFModelV2):
 
     To customize, do one of the following:
     - sub-class SACTFModel and override one or more of its methods.
-    - Use SAC's `Q_model` and `policy_model` keys to tweak the default model
+    - Use SAC's `q_model_config` and `policy_model` keys to tweak the default model
       behaviors (e.g. fcnet_hiddens, conv_filters, etc..).
-    - Use SAC's `Q_model->custom_model` and `policy_model->custom_model` keys
+    - Use SAC's `q_model_config->custom_model` and `policy_model->custom_model` keys
       to specify your own custom Q-model(s) and policy-models, which will be
       created within this SACTFModel (see `build_policy_model` and
       `build_q_model`.
@@ -53,13 +53,13 @@ class SACTFModel(TFModelV2):
         """Initialize a SACTFModel instance.
 
         Args:
-            policy_model_config (ModelConfigDict): The config dict for the
+            policy_model_config: The config dict for the
                 policy network.
-            q_model_config (ModelConfigDict): The config dict for the
+            q_model_config: The config dict for the
                 Q-network(s) (2 if twin_q=True).
-            twin_q (bool): Build twin Q networks (Q-net and target) for more
+            twin_q: Build twin Q networks (Q-net and target) for more
                 stable Q-learning.
-            initial_alpha (float): The initial value for the to-be-optimized
+            initial_alpha: The initial value for the to-be-optimized
                 alpha parameter (default: 1.0).
             target_entropy (Optional[float]): A target entropy value for
                 the to-be-optimized alpha parameter. If None, will use the
@@ -160,7 +160,7 @@ class SACTFModel(TFModelV2):
 
         Override this method in a sub-class of SACTFModel to implement your
         own Q-nets. Alternatively, simply set `custom_model` within the
-        top level SAC `Q_model` config key to make this default implementation
+        top level SAC `q_model_config` config key to make this default implementation
         of `build_q_model` use your custom Q-nets.
 
         Returns:
@@ -200,7 +200,7 @@ class SACTFModel(TFModelV2):
         Q(s) -> [Q-values for all actions] for the discrete case.
 
         Args:
-            model_out (TensorType): Feature outputs from the model layers
+            model_out: Feature outputs from the model layers
                 (result of doing `self.__call__(obs)`).
             actions (Optional[TensorType]): Continuous action batch to return
                 Q-values for. Shape: [BATCH_SIZE, action_dim]. If None
@@ -219,7 +219,7 @@ class SACTFModel(TFModelV2):
         This implements the twin Q(s, a).
 
         Args:
-            model_out (TensorType): Feature outputs from the model layers
+            model_out: Feature outputs from the model layers
                 (result of doing `self.__call__(obs)`).
             actions (Optional[Tensor]): Actions to return the Q-values for.
                 Shape: [BATCH_SIZE, action_dim]. If None (discrete action
@@ -271,10 +271,10 @@ class SACTFModel(TFModelV2):
         distribution.
 
         Args:
-            model_out (TensorType): Feature outputs from the model layers
+            model_out: Feature outputs from the model layers
                 (result of doing `model(obs)`).
             state_in List(TensorType): State input for recurrent cells
-            seq_lens (TensorType): Sequence lengths of input- and state
+            seq_lens: Sequence lengths of input- and state
                 sequences
 
         Returns:

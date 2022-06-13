@@ -37,10 +37,10 @@ class CollectorService:
         """Initialize the collector service.
 
         Args:
-            log_dir (str): Directory of the logs about trials' information.
-            reload_interval (int): Sleep time period after each polling round.
-            standalone (boolean): The service will not stop and if True.
-            log_level (str): Level of logging.
+            log_dir: Directory of the logs about trials' information.
+            reload_interval: Sleep time period after each polling round.
+            standalone: The service will not stop and if True.
+            log_level: Level of logging.
         """
         self.logger = self.init_logger(log_level)
         self.standalone = standalone
@@ -83,11 +83,11 @@ class Collector(Thread):
         """Initialize collector worker thread.
 
         Args
-            reload_interval (int): Time period to sleep after each round
+            reload_interval: Time period to sleep after each round
                                    of polling.
-            logdir (str): Directory path to save the status information of
+            logdir: Directory path to save the status information of
                           jobs and trials.
-            logger (Logger): Logger for collector thread.
+            logger: Logger for collector thread.
         """
         super(Collector, self).__init__()
         self._is_finished = False
@@ -199,7 +199,7 @@ class Collector(Thread):
         be saved in db backend.
 
         Args:
-            job_dir (str): Directory path of the job.
+            job_dir: Directory path of the job.
         """
         meta = self._build_job_meta(job_dir)
 
@@ -216,7 +216,7 @@ class Collector(Thread):
         in db backend will be updated.
 
         Args:
-            job_dir (str): Directory path of the job.
+            job_dir: Directory path of the job.
 
         Return:
             Updated dict of job meta info
@@ -237,7 +237,7 @@ class Collector(Thread):
         will be saved in db backend.
 
         Args:
-            expr_dir (str): Directory path of the experiment.
+            expr_dir: Directory path of the experiment.
         """
         meta = self._build_trial_meta(expr_dir)
 
@@ -293,7 +293,7 @@ class Collector(Thread):
         """Build meta file for job.
 
         Args:
-            job_dir (str): Directory path of the job.
+            job_dir: Directory path of the job.
 
         Return:
             A dict of job meta info.
@@ -324,7 +324,7 @@ class Collector(Thread):
         """Build meta file for trial.
 
         Args:
-            expr_dir (str): Directory path of the experiment.
+            expr_dir: Directory path of the experiment.
 
         Return:
             A dict of trial meta info.
@@ -365,8 +365,8 @@ class Collector(Thread):
         """Add a list of results into db.
 
         Args:
-            results (list): A list of json results.
-            trial_id (str): Id of the trial.
+            results: A list of json results.
+            trial_id: Id of the trial.
         """
         for result in results:
             self.logger.debug("Appending result: %s" % result)

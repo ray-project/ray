@@ -1,12 +1,12 @@
 import logging
 from typing import List, Optional, Type
 
-from ray.rllib.algorithms.dqn.simple_q import SimpleQConfig, SimpleQTrainer
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.simple_q.simple_q import SimpleQ, SimpleQConfig
 from ray.rllib.algorithms.ddpg.ddpg_tf_policy import DDPGTFPolicy
-from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.typing import AlgorithmConfigDict
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.deprecation import Deprecated
 
@@ -14,14 +14,14 @@ logger = logging.getLogger(__name__)
 
 
 class DDPGConfig(SimpleQConfig):
-    """Defines a configuration class from which a DDPGTrainer can be built.
+    """Defines a configuration class from which a DDPG Trainer can be built.
 
     Example:
         >>> from ray.rllib.algorithms.ddpg.ddpg import DDPGConfig
         >>> config = DDPGConfig().training(lr=0.01).resources(num_gpus=1)
         >>> print(config.to_dict())
         >>> # Build a Trainer object from the config and run one training iteration.
-        >>> trainer = config.build(env="CartPole-v1")
+        >>> trainer = config.build(env="Pendulum-v1")
         >>> trainer.train()
 
     Example:
@@ -29,12 +29,12 @@ class DDPGConfig(SimpleQConfig):
         >>> from ray import tune
         >>> config = DDPGConfig()
         >>> # Print out some default values.
-        >>> print(config.lr)
-            0.0004
+        >>> print(config.lr) # doctest: +SKIP
+        0.0004
         >>> # Update the config object.
         >>> config.training(lr=tune.grid_search([0.001, 0.0001]))
         >>> # Set the config object's env.
-        >>> config.environment(env="CartPole-v1")
+        >>> config.environment(env="Pendulum-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
         >>> tune.run(
@@ -44,9 +44,9 @@ class DDPGConfig(SimpleQConfig):
         ... )
     """
 
-    def __init__(self, trainer_class=None):
+    def __init__(self, algo_class=None):
         """Initializes a DDPGConfig instance."""
-        super().__init__(trainer_class=trainer_class or DDPGTrainer)
+        super().__init__(algo_class=algo_class or DDPG)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -71,9 +71,6 @@ class DDPGConfig(SimpleQConfig):
         self.use_huber = False
         self.huber_threshold = 1.0
         self.l2_reg = 1e-6
-
-        # __sphinx_doc_end__
-        # fmt: on
 
         # Override some of SimpleQ's default values with DDPG-specific values.
         # .exploration()
@@ -124,10 +121,15 @@ class DDPGConfig(SimpleQConfig):
 
         # .rollouts()
         self.rollout_fragment_length = 1
-        self.worker_side_prioritization = False
         self.compress_observations = False
 
-    @override(TrainerConfig)
+        # __sphinx_doc_end__
+        # fmt: on
+
+        # Deprecated.
+        self.worker_side_prioritization = DEPRECATED_VALUE
+
+    @override(AlgorithmConfig)
     def training(
         self,
         *,
@@ -148,7 +150,6 @@ class DDPGConfig(SimpleQConfig):
         use_huber: Optional[bool] = None,
         huber_threshold: Optional[float] = None,
         l2_reg: Optional[float] = None,
-        worker_side_prioritization: Optional[bool] = None,
         training_intensity: Optional[float] = None,
         **kwargs,
     ) -> "DDPGConfig":
@@ -190,7 +191,6 @@ class DDPGConfig(SimpleQConfig):
             use_huber: Conventionally, no need to clip gradients if using a huber loss
             huber_threshold: Threshold of a huber loss
             l2_reg: Weights for L2 regularization
-            worker_side_prioritization: Whether to compute priorities on workers.
             training_intensity: The intensity with which to update the model
                 (vs collecting samples from
                 the env). If None, uses the "natural" value of:
@@ -205,7 +205,8 @@ class DDPGConfig(SimpleQConfig):
                     -> natural value = 250 / 1 = 250.0
                     -> will make sure that replay+train op will be executed 4x as
                     often as rollout+insert op (4 * 250 = 1000).
-                See: rllib/agents/dqn/dqn.py::calculate_rr_weights for further details.
+                See: rllib/algorithms/dqn/dqn.py::calculate_rr_weights for further
+                details.
 
         Returns:
             This updated DDPGConfig object.
@@ -246,23 +247,21 @@ class DDPGConfig(SimpleQConfig):
             self.huber_threshold = huber_threshold
         if l2_reg is not None:
             self.l2_reg = l2_reg
-        if worker_side_prioritization is not None:
-            self.worker_side_prioritization = worker_side_prioritization
         if training_intensity is not None:
             self.training_intensity = training_intensity
 
         return self
 
 
-class DDPGTrainer(SimpleQTrainer):
+class DDPG(SimpleQ):
     @classmethod
-    @override(SimpleQTrainer)
-    # TODO make this return a TrainerConfig
-    def get_default_config(cls) -> TrainerConfigDict:
+    @override(SimpleQ)
+    # TODO make this return a AlgorithmConfig
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return DDPGConfig().to_dict()
 
-    @override(SimpleQTrainer)
-    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
+    @override(SimpleQ)
+    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.ddpg.ddpg_torch_policy import DDPGTorchPolicy
 
@@ -270,8 +269,8 @@ class DDPGTrainer(SimpleQTrainer):
         else:
             return DDPGTFPolicy
 
-    @override(SimpleQTrainer)
-    def validate_config(self, config: TrainerConfigDict) -> None:
+    @override(SimpleQ)
+    def validate_config(self, config: AlgorithmConfigDict) -> None:
 
         # Call super's validation method.
         super().validate_config(config)

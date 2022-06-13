@@ -1,16 +1,18 @@
 import asyncio
 from collections import defaultdict
-from copy import copy
 import json
 import logging
+import traceback
 import time
 import os
 from typing import Dict, Iterable, List, Optional, Tuple, Any
 
 import ray
+from ray.types import ObjectRef
 from ray.actor import ActorHandle
+from ray._private.utils import import_attr
+from ray.exceptions import RayTaskError
 
-from ray.serve.autoscaling_metrics import InMemoryMetricsStore
 from ray.serve.autoscaling_policy import BasicAutoscalingPolicy
 from ray.serve.common import (
     DeploymentInfo,
@@ -18,6 +20,9 @@ from ray.serve.common import (
     EndpointInfo,
     NodeId,
     RunningReplicaInfo,
+    ApplicationStatus,
+    ApplicationStatusInfo,
+    StatusOverview,
 )
 from ray.serve.config import DeploymentConfig, HTTPOptions, ReplicaConfig
 from ray.serve.constants import (
@@ -32,6 +37,7 @@ from ray.serve.logging_utils import configure_component_logger
 from ray.serve.long_poll import LongPollHost
 from ray.serve.storage.checkpoint_path import make_kv_store
 from ray.serve.storage.kv_store import RayInternalKVStore
+from ray.serve.utils import override_runtime_envs_except_env_vars
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -116,8 +122,11 @@ class ServeController:
             _override_controller_namespace=_override_controller_namespace,
         )
 
-        # TODO(simon): move autoscaling related stuff into a manager.
-        self.autoscaling_metrics_store = InMemoryMetricsStore()
+        # Reference to Ray task executing most recent deployment request
+        self.config_deployment_request_ref: ObjectRef = None
+
+        # Unix timestamp of latest config deployment request. Defaults to 0.
+        self.deployment_timestamp = 0
 
         asyncio.get_event_loop().create_task(self.run_control_loop())
 
@@ -125,11 +134,17 @@ class ServeController:
         """No-op to check if this controller is alive."""
         return
 
+    def get_pid(self) -> int:
+        return os.getpid()
+
     def record_autoscaling_metrics(self, data: Dict[str, float], send_timestamp: float):
-        self.autoscaling_metrics_store.add_metrics_point(data, send_timestamp)
+        self.deployment_state_manager.record_autoscaling_metrics(data, send_timestamp)
+
+    def record_handle_metrics(self, data: Dict[str, float], send_timestamp: float):
+        self.deployment_state_manager.record_handle_metrics(data, send_timestamp)
 
     def _dump_autoscaling_metrics_for_testing(self):
-        return self.autoscaling_metrics_store.data
+        return self.deployment_state_manager.get_autoscaling_metrics()
 
     def _dump_replica_states_for_testing(self, deployment_name):
         return self.deployment_state_manager._deployment_states[
@@ -171,58 +186,11 @@ class ServeController:
         )
         return actor_name_list.SerializeToString()
 
-    def autoscale(self) -> None:
-        """Updates autoscaling deployments with calculated num_replicas."""
-        for deployment_name, (
-            deployment_info,
-            route_prefix,
-        ) in self.list_deployments_internal().items():
-            deployment_config = deployment_info.deployment_config
-            autoscaling_policy = deployment_info.autoscaling_policy
-
-            if autoscaling_policy is None:
-                continue
-
-            replicas = self.deployment_state_manager._deployment_states[
-                deployment_name
-            ]._replicas
-            running_replicas = replicas.get([ReplicaState.RUNNING])
-
-            current_num_ongoing_requests = []
-            for replica in running_replicas:
-                replica_tag = replica.replica_tag
-                num_ongoing_requests = self.autoscaling_metrics_store.window_average(
-                    replica_tag,
-                    time.time() - autoscaling_policy.config.look_back_period_s,
-                )
-                if num_ongoing_requests is not None:
-                    current_num_ongoing_requests.append(num_ongoing_requests)
-
-            if len(current_num_ongoing_requests) == 0:
-                continue
-
-            new_deployment_config = deployment_config.copy()
-
-            decision_num_replicas = autoscaling_policy.get_decision_num_replicas(
-                current_num_ongoing_requests=current_num_ongoing_requests,
-                curr_target_num_replicas=deployment_config.num_replicas,
-            )
-            new_deployment_config.num_replicas = decision_num_replicas
-
-            new_deployment_info = copy(deployment_info)
-            new_deployment_info.deployment_config = new_deployment_config
-
-            self.deployment_state_manager.deploy(deployment_name, new_deployment_info)
-
     async def run_control_loop(self) -> None:
         # NOTE(edoakes): we catch all exceptions here and simply log them,
         # because an unhandled exception would cause the main control loop to
         # halt, which should *never* happen.
         while True:
-            try:
-                self.autoscale()
-            except Exception:
-                logger.exception("Exception in autoscaling.")
 
             async with self.write_lock:
                 try:
@@ -251,7 +219,7 @@ class ServeController:
             entry["name"] = deployment_name
             entry["namespace"] = ray.get_runtime_context().namespace
             entry["ray_job_id"] = deployment_info.deployer_job_id.hex()
-            entry["class_name"] = deployment_info.replica_config.func_or_class_name
+            entry["class_name"] = deployment_info.replica_config.deployment_def_name
             entry["version"] = deployment_info.version
             entry["http_route"] = route_prefix
             entry["start_time"] = deployment_info.start_time_ms
@@ -359,7 +327,6 @@ class ServeController:
 
         deployment_info = DeploymentInfo(
             actor_name=name,
-            serialized_deployment_def=replica_config.serialized_deployment_def,
             version=version,
             deployment_config=deployment_config,
             replica_config=replica_config,
@@ -390,6 +357,39 @@ class ServeController:
         """
 
         return [self.deploy(**args) for args in deployment_args_list]
+
+    def deploy_app(
+        self,
+        import_path: str,
+        runtime_env: Dict,
+        deployment_override_options: List[Dict],
+    ) -> None:
+        """Kicks off a task that deploys a Serve application.
+
+        Cancels any previous in-progress task that is deploying a Serve
+        application.
+
+        Args:
+            import_path: Serve deployment graph's import path
+            runtime_env: runtime_env to run the deployment graph in
+            deployment_override_options: All dictionaries should
+                contain argument-value options that can be passed directly
+                into a set_options() call. Overrides deployment options set
+                in the graph itself.
+        """
+
+        if self.config_deployment_request_ref is not None:
+            ray.cancel(self.config_deployment_request_ref)
+            logger.info(
+                "Received new config deployment request. Cancelling "
+                "previous request."
+            )
+
+        self.config_deployment_request_ref = run_graph.options(
+            runtime_env=runtime_env
+        ).remote(import_path, runtime_env, deployment_override_options)
+
+        self.deployment_timestamp = time.time()
 
     def delete_deployment(self, name: str):
         self.endpoint_state.delete_endpoint(name)
@@ -477,22 +477,80 @@ class ServeController:
             )
         return deployment_route_list.SerializeToString()
 
-    def get_deployment_statuses(self) -> bytes:
-        """Gets the current status information about all deployments.
+    async def get_serve_status(self) -> bytes:
 
-        Returns:
-            DeploymentStatusInfoList's protobuf serialized bytes
-        """
-        from ray.serve.generated.serve_pb2 import DeploymentStatusInfoList
+        serve_app_status = ApplicationStatus.RUNNING
+        serve_app_message = ""
+        deployment_timestamp = self.deployment_timestamp
 
-        deployment_status_info_list = DeploymentStatusInfoList()
-        for (
-            name,
-            deployment_status_info,
-        ) in self.deployment_state_manager.get_deployment_statuses().items():
-            deployment_status_info_proto = deployment_status_info.to_proto()
-            deployment_status_info_proto.name = name
-            deployment_status_info_list.deployment_status_infos.append(
-                deployment_status_info_proto
+        if self.config_deployment_request_ref:
+            finished, pending = ray.wait(
+                [self.config_deployment_request_ref], timeout=0
             )
-        return deployment_status_info_list.SerializeToString()
+
+            if pending:
+                serve_app_status = ApplicationStatus.DEPLOYING
+            else:
+                try:
+                    await finished[0]
+                except RayTaskError:
+                    serve_app_status = ApplicationStatus.DEPLOY_FAILED
+                    serve_app_message = f"Deployment failed:\n{traceback.format_exc()}"
+
+        app_status = ApplicationStatusInfo(
+            serve_app_status, serve_app_message, deployment_timestamp
+        )
+        deployment_statuses = self.deployment_state_manager.get_deployment_statuses()
+
+        status_info = StatusOverview(
+            app_status=app_status,
+            deployment_statuses=deployment_statuses,
+        )
+
+        return status_info.to_proto().SerializeToString()
+
+
+@ray.remote(max_calls=1)
+def run_graph(
+    import_path: str, graph_env: dict, deployment_override_options: List[Dict]
+):
+    """Deploys a Serve application to the controller's Ray cluster."""
+    try:
+        from ray import serve
+        from ray.serve.api import build
+
+        # Import and build the graph
+        graph = import_attr(import_path)
+        app = build(graph)
+
+        # Override options for each deployment
+        for options in deployment_override_options:
+            name = options["name"]
+
+            # Merge graph-level and deployment-level runtime_envs
+            if "ray_actor_options" in options:
+                # If specified, get ray_actor_options from config
+                ray_actor_options = options["ray_actor_options"]
+            else:
+                # Otherwise, get options from graph code (and default to {} if code
+                # sets options to None)
+                ray_actor_options = app.deployments[name].ray_actor_options or {}
+
+            deployment_env = ray_actor_options.get("runtime_env", {})
+            merged_env = override_runtime_envs_except_env_vars(
+                graph_env, deployment_env
+            )
+
+            ray_actor_options.update({"runtime_env": merged_env})
+            options["ray_actor_options"] = ray_actor_options
+
+            # Update the deployment's options
+            app.deployments[name].set_options(**options)
+
+        # Run the graph locally on the cluster
+        serve.start(_override_controller_namespace="serve")
+        serve.run(app)
+    except KeyboardInterrupt:
+        # Error is raised when this task is canceled with ray.cancel(), which
+        # happens when deploy_app() is called.
+        logger.debug("Existing config deployment request terminated.")

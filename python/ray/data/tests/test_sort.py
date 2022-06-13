@@ -11,7 +11,7 @@ import ray
 from ray.tests.conftest import *  # noqa
 from ray.data.block import BlockAccessor
 from ray.data.tests.conftest import *  # noqa
-from ray.data.impl.push_based_shuffle import PushBasedShufflePlan
+from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
 
 
 @pytest.mark.parametrize("use_push_based_shuffle", [False, True])
@@ -154,7 +154,7 @@ def test_sort_arrow_with_empty_blocks(ray_start_regular, use_push_based_shuffle)
         ds = ray.data.range_table(10).filter(lambda r: r["value"] > 10)
         assert (
             len(
-                ray.data.impl.sort.sample_boundaries(
+                ray.data._internal.sort.sample_boundaries(
                     ds._plan.execute().get_blocks(), "value", 3
                 )
             )
@@ -210,6 +210,45 @@ def test_push_based_shuffle_schedule():
     _test(20, 3, {"node1": 100})
     _test(100, 3, {"node1": 10, "node2": 10, "node3": 10})
     _test(100, 10, {"node1": 10, "node2": 10, "node3": 10})
+
+
+def test_push_based_shuffle_stats(ray_start_cluster):
+    ctx = ray.data.context.DatasetContext.get_current()
+    try:
+        original = ctx.use_push_based_shuffle
+        ctx.use_push_based_shuffle = True
+
+        cluster = ray_start_cluster
+        cluster.add_node(
+            resources={"bar:1": 100},
+            num_cpus=10,
+            _system_config={"max_direct_call_object_size": 0},
+        )
+        cluster.add_node(resources={"bar:2": 100}, num_cpus=10)
+        cluster.add_node(resources={"bar:3": 100}, num_cpus=0)
+
+        ray.init(cluster.address)
+
+        parallelism = 100
+        ds = ray.data.range(1000, parallelism=parallelism).random_shuffle()
+        assert "random_shuffle_merge" in ds.stats()
+        # Check all nodes used.
+        assert "2 nodes used" in ds.stats()
+        assert "1 nodes used" not in ds.stats()
+
+        # Check all merge tasks are included in stats.
+        internal_stats = ds._plan.stats()
+        num_merge_tasks = len(internal_stats.stages["random_shuffle_merge"])
+        # Merge factor is 2 for random_shuffle ops.
+        merge_factor = 2
+        assert (
+            parallelism // (merge_factor + 1)
+            <= num_merge_tasks
+            <= parallelism // merge_factor
+        )
+
+    finally:
+        ctx.use_push_based_shuffle = original
 
 
 if __name__ == "__main__":
