@@ -14,7 +14,7 @@ config = {
     "env": "CartPole-v0",
     # Use 4 environment workers (aka "rollout workers") that parallelly
     # collect samples from their own environment clone(s).
-    "num_workers": 3,
+    "num_workers": 7,
     # Change this to "framework: torch", if you are using PyTorch.
     # Also, use "framework: tf2" for tf2.x eager execution.
     "framework": "torch",
@@ -81,7 +81,7 @@ print(init_results)
 # )
 # print(f">>>>> results: {results}")
 
-for _ in range(5):
+for _ in range(100):
     print(ray.get(trainer_actor.train.remote()))
 
 # Evaluate the trained Trainer (and render each timestep to the shell's

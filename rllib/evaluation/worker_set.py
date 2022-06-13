@@ -258,13 +258,13 @@ class WorkerSet:
         )
         print(f">>>> \n\n Time spent on policy_map_to_buffer_list: {(time.time() - start)*1000}ms \n\n")
         start = time.time()
+
+        remote_worker_refs = [
+            w.broadcast.remote(src_rank=local_worker_rank, group_name="device_mesh")
+            for w in self.remote_workers()
+        ]
         ray.get(
-            [
-                self_actor.broadcast.remote(src_rank=local_worker_rank, group_name="device_mesh"),
-                self.remote_workers()[0].broadcast.remote(src_rank=local_worker_rank, group_name="device_mesh"),
-                self.remote_workers()[1].broadcast.remote(src_rank=local_worker_rank, group_name="device_mesh"),
-                self.remote_workers()[2].broadcast.remote(src_rank=local_worker_rank, group_name="device_mesh")
-            ]
+            [self_actor.broadcast.remote(src_rank=local_worker_rank, group_name="device_mesh")] + remote_worker_refs
         )
         print(f">>>> \n\n Time spent on broadcasting: {(time.time() - start)*1000}ms \n\n")
         start = time.time()
