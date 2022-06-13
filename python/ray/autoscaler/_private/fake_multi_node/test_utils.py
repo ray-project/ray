@@ -348,12 +348,6 @@ class DockerCluster:
 
         return node_status["Name"]
 
-    def _execute_docker_cmd(self, cmd: str):
-        if self._execution_process:
-            self._execution_queue.put(cmd)
-        else:
-            subprocess.check_output(cmd, shell=True)
-
     def kill_node(
         self,
         node_id: Optional[str] = None,
