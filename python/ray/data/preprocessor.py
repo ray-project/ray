@@ -1,15 +1,16 @@
 import abc
 import warnings
 from enum import Enum
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
+
+from ray.data import Dataset
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     import pandas as pd
     import pyarrow
-    from ray.air.data_batch_type import DataBatchType
 
-from ray.data import Dataset
+    from ray.air.data_batch_type import DataBatchType
 
 
 @PublicAPI(stability="alpha")
@@ -236,7 +237,7 @@ class Preprocessor(abc.ABC):
         else:
             raise ValueError(
                 "Invalid transform type returned from _determine_transform_to_use; "
-                f"\"pandas\" and \"arrow\" allowed, but got: {transform_type}"
+                f'"pandas" and "arrow" allowed, but got: {transform_type}'
             )
 
     def _transform_batch(self, df: "DataBatchType") -> "DataBatchType":

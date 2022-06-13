@@ -1,8 +1,7 @@
 from dataclasses import dataclass
-from typing import Optional, Union, Dict, Callable, List, TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Union
 
 from ray.actor import ActorHandle
-
 from ray.air.config import DatasetConfig
 
 if TYPE_CHECKING:

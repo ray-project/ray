@@ -1,14 +1,14 @@
-import pytest
 import random
 from typing import Optional
 
-import ray
-from ray.data import Dataset, DatasetPipeline
-from ray.air.config import DatasetConfig
-from ray import train
+import pytest
 
-from ray.train.data_parallel_trainer import DataParallelTrainer
+import ray
+from ray import train
+from ray.air.config import DatasetConfig
+from ray.data import Dataset, DatasetPipeline
 from ray.data.preprocessors import BatchMapper
+from ray.train.data_parallel_trainer import DataParallelTrainer
 
 
 @pytest.fixture
@@ -296,7 +296,8 @@ def test_global_shuffle(ray_start_4_cpus):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))
