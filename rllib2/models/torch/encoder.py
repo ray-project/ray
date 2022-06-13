@@ -13,3 +13,6 @@ class Encoder(nn.Module):
 
     def forward(self, batch: SampleBatch) -> EncoderOutput:
         raise NotImplementedError
+
+    def freeze(self):
+        pass

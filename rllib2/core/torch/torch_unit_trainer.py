@@ -8,6 +8,9 @@ from rllib2.data.sample_batch import SampleBatch
 
 from .torch_rl_module import TorchRLModule
 
+config = {
+    'rl_module_class': 'kourosh.rllmodule'
+}
 
 class UnitTrainer:
 
@@ -15,7 +18,7 @@ class UnitTrainer:
         self._config = config
 
         # register the RLModule model
-        self._model = self.make_model()
+        self._model = self._make_model()
 
         # register optimizers
         self._optimizers: Dict[str, Optimizer] = self.make_optimizer()
@@ -32,13 +35,24 @@ class UnitTrainer:
     def optimizers(self):
         return self._optimizers
 
+    @property
+    def default_rl_module(self) -> str:
+        return ''
+
     @abc.abstractmethod
     def make_optimizer(self) -> Dict[str, Optimizer]:
         raise NotImplementedError
 
     @abc.abstractmethod
-    def make_model(self) -> TorchRLModule:
-        raise NotImplementedError
+    def _make_model(self) -> TorchRLModule:
+        config = self.config
+        rl_module_class = config.get('rl_module_class', self.default_rl_module())
+        rl_module_config = config['rl_module_config']
+
+        # import rl_module_class with rl_module_config
+        # TODO
+        rl_module: TorchRLModule = None
+        return rl_module
 
     @abc.abstractmethod
     def loss(self, train_batch: SampleBatch, fwd_train_dict) -> Dict[str, torch.Tensor]:

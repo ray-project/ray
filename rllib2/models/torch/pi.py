@@ -21,7 +21,7 @@ Example:
     # during training
         pi_output = pi(sample_batch)
         sampled_actions = pi_output.behavioral_sample(10)
-        logp_sampled_actions = pi_output.log_prob(samlped_actions)
+        logp_sampled_actions = pi_output.log_prob(sampled_actions)
         selected_inds = logp_sampled_actions.argmax(-1)
         selected_actions = sampled_actions[selected_inds]
     
@@ -81,9 +81,10 @@ class Pi(nn.Module):
         * Support composable output distribution heads for cases where we have a mixture
             of cont. and disc. action spaces
         * TODO: [x] How do we support mixed action spaces? Example below.
-        * TODO: [] How do we support auto-regressive action spaces?
+        * TODO: [x] How do we support auto-regressive action spaces? Example below.
         * TODO: [x] How do we support goal-conditioned policies? Example below.
         * TODO: [] How do we support Recurrent Policies?
+        * TODO: [] Can we support Decision Transformers?
         * TODO: [] How do we support action-space masking?
     * Support Goal conditioned policies?
     * Should be able to switch between exploration = on / off
@@ -96,7 +97,7 @@ class Pi(nn.Module):
     * Should be able to create copies efficiently and perform arbitrary parameter updates in target_updates
     """
 
-    def __init__(self, encoder: nn.Module):
+    def __init__(self, encoder: Encoder):
         super().__init__()
         self.encoder = encoder
 
@@ -233,7 +234,7 @@ class GoalConditionedPi(NormalPi):
 
 class MixturePi(Pi):
 
-    def __init__(self, encoder, pi_dict: Dict[Pi]):
+    def __init__(self, encoder, pi_dict: Dict[str, Pi]):
         super().__init__(encoder)
         self.pis = nn.ModuleDict(pi_dict)
 
@@ -247,7 +248,57 @@ class MixturePi(Pi):
         return PiOutput(action_dist=MixDistribution(act_dist_dict))
 
 
+###################################################################
+########### Auto-regressive action space policy
+# action_space = {'torques': Box(-1, 1)^6, 'gripper': Discrete(n=2)}
+# a ~ MixedDistribution({
+#   'torques' ~ squashedNorm(mu(s), std(s)),
+#   'gripper' ~ Categorical([p1(s, torques), p2(s, torques)])
+# })
+# example usage of the mixed_dist with autoregressive outputs
+# >>> actor_loss = mixed_dist.log_prob(a)
+# >>> {'torques': Tensor(0.63), 'gripper': Tensor(0.63)}
+###################################################################
+
+class _GripperPi(CategoricalPi):
+    def __init__(self, encoder: VectorGoalObsEncoder, *args, **kwargs):
+        super().__init__(encoder, *args, **kwargs)
+
+
+class CustomAutoregressivePi(Pi):
+
+    def __init__(self, encoder, action_space, obs_space):
+        super().__init__(encoder)
+
+        self.torques = NormalPi(action_space=action_space['torques'])
+        self.gripper = _GripperPi(encoder=VectorGoalObsEncoder({'obs_dim': obs_space, 'goal_dim': self.torques.output_dim}))
+
+
+    def forward(self, batch: SampleBatch, encoded_batch: Optional[EncoderOutput] = None, **kwargs) -> PiOutput:
+
+        torque_output = self.torques(batch, encoded_batch=encoded_batch, encode=False)
+        torque_actions = torque_output.sample()
+
+        sample_batch = {'obs': batch.obs, 'goal': torque_actions}
+        gripper_actions = self.gripper(sample_batch, encoded_batch, encoded_batch, encode=False)
+
+        ...
+
+        return PiOutput(action_dist=..., action_sampled=...)
+
+
+###################################################################
+########### Decision Transformer # TODO
+###################################################################
 
 
 
+###################################################################
+########### Recurrent Policies # TODO
+###################################################################
 
+
+
+###################################################################
+########### Action space masking # TODO
+###################################################################
