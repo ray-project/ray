@@ -58,6 +58,7 @@ class BackendExecutor:
     def __init__(
         self,
         backend_config: BackendConfig,
+        logdir: str,
         num_workers: int = 1,
         num_cpus_per_worker: float = 1,
         num_gpus_per_worker: float = 0,
@@ -76,6 +77,8 @@ class BackendExecutor:
         self._num_failures = 0
         self._initialization_hook = None
         self._placement_group = None
+
+        self._logdir = logdir
 
         self.worker_group = InactiveWorkerGroup()
         self.dataset_shards = None

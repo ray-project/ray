@@ -151,7 +151,7 @@ class Session(abc.ABC):
 
 def get_session() -> Optional[Session]:
     from ray.tune.session import _session_v2 as tune_session
-    from ray.train.session import _session_v2 as train_session
+    from ray.train._internal.session import _session_v2 as train_session
 
     if train_session and tune_session:
         logger.warning(
