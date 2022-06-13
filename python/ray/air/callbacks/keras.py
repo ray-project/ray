@@ -117,7 +117,21 @@ class Callback(_Callback):
         on: Union[str, List[str]] = "epoch_end",
         frequency: Union[int, List[int]] = 1,
     ):
-        """TODO(xwjiang): Add doc string
+        """
+        Args:
+            metrics: Metrics to report. If this is a list, each item describes
+            the metric key reported to Keras, and it will reported under the
+            same name. If this is a dict, each key will be the name reported
+            and the respective value will be the metric key reported to Keras.
+            If this is None, all Keras logs will be reported.
+        on: When to report metrics. Must be one of
+            the Keras event hooks (less the ``on_``), e.g.
+            "train_start", or "predict_end". Defaults to "epoch_end".
+        frequency: Checkpoint frequency. If this is an integer `n`,
+            checkpoints are saved every `n` times each hook was called. If
+            this is a list, it specifies the checkpoint frequencies for each
+            hook individually.
+
         You can use this in both TuneSession and TrainSession.
 
         Example:
