@@ -28,7 +28,7 @@ import os
 
 import ray
 from ray import tune
-from ray.rllib.agents.registry import get_trainer_class
+from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.rllib.env.policy_server_input import PolicyServerInput
 from ray.rllib.examples.custom_metrics_and_callbacks import MyCallbacks
 from ray.tune.logger import pretty_print
@@ -150,10 +150,10 @@ if __name__ == "__main__":
         else:
             return None
 
-    # Trainer config. Note that this config is sent to the client only in case
+    # Algorithm config. Note that this config is sent to the client only in case
     # the client needs to create its own policy copy for local inference.
     config = {
-        # Indicate that the Trainer we setup here doesn't need an actual env.
+        # Indicate that the Algorithm we setup here doesn't need an actual env.
         # Allow spaces to be determined by user (see below).
         "env": None,
         # TODO: (sven) make these settings unnecessary and get the information
@@ -181,7 +181,7 @@ if __name__ == "__main__":
         config.update(
             {
                 "replay_buffer_config": {"learning_starts": 100},
-                "min_sample_timesteps_per_reporting": 200,
+                "min_sample_timesteps_per_iteration": 200,
                 "n_step": 3,
                 "rollout_fragment_length": 4,
                 "train_batch_size": 8,
@@ -222,19 +222,19 @@ if __name__ == "__main__":
 
     # Manual training loop (no Ray tune).
     if args.no_tune:
-        trainer_cls = get_trainer_class(args.run)
-        trainer = trainer_cls(config=config)
+        algo_cls = get_algorithm_class(args.run)
+        algo = algo_cls(config=config)
 
         if checkpoint_path:
             print("Restoring from checkpoint path", checkpoint_path)
-            trainer.restore(checkpoint_path)
+            algo.restore(checkpoint_path)
 
         # Serving and training loop.
         ts = 0
         for _ in range(args.stop_iters):
-            results = trainer.train()
+            results = algo.train()
             print(pretty_print(results))
-            checkpoint = trainer.save()
+            checkpoint = algo.save()
             print("Last checkpoint", checkpoint)
             with open(checkpoint_path, "w") as f:
                 f.write(checkpoint)
@@ -245,7 +245,7 @@ if __name__ == "__main__":
                 break
             ts += results["timesteps_total"]
 
-    # Run with Tune for auto env and trainer creation and TensorBoard.
+    # Run with Tune for auto env and algo creation and TensorBoard.
     else:
         stop = {
             "training_iteration": args.stop_iters,

@@ -31,7 +31,7 @@ import argparse
 import os
 
 import ray
-from ray.rllib.agents.registry import get_trainer_class
+from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.rllib.env.policy_server_input import PolicyServerInput
 from ray.rllib.env.wrappers.unity3d_env import Unity3DEnv
 
@@ -146,24 +146,24 @@ if __name__ == "__main__":
     }
 
     # Create the Trainer used for Policy serving.
-    trainer = get_trainer_class(args.run)(config=config)
+    algo = get_algorithm_class(args.run)(config=config)
 
     # Attempt to restore from checkpoint if possible.
     checkpoint_path = CHECKPOINT_FILE.format(args.env)
     if not args.no_restore and os.path.exists(checkpoint_path):
         checkpoint_path = open(checkpoint_path).read()
         print("Restoring from checkpoint path", checkpoint_path)
-        trainer.restore(checkpoint_path)
+        algo.restore(checkpoint_path)
 
     # Serving and training loop.
     count = 0
     while True:
         # Calls to train() will block on the configured `input` in the Trainer
         # config above (PolicyServerInput).
-        print(trainer.train())
+        print(algo.train())
         if count % args.checkpoint_freq == 0:
             print("Saving learning progress to checkpoint file.")
-            checkpoint = trainer.save()
+            checkpoint = algo.save()
             # Write the latest checkpoint location to CHECKPOINT_FILE,
             # so we can pick up from the latest one after a server re-start.
             with open(checkpoint_path, "w") as f:

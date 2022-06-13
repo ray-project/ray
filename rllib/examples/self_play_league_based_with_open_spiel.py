@@ -39,7 +39,7 @@ import re
 
 import ray
 from ray import tune
-from ray.rllib.agents.callbacks import DefaultCallbacks
+from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPO
 from ray.rllib.examples.self_play_with_open_spiel import ask_user_for_action
 from ray.rllib.examples.policy.random_policy import RandomPolicy
@@ -110,7 +110,7 @@ class LeagueBasedSelfPlayCallback(DefaultCallbacks):
         # Store the win rates for league overview printouts.
         self.win_rates = {}
 
-    def on_train_result(self, *, trainer, result, **kwargs):
+    def on_train_result(self, *, algorithm, result, **kwargs):
         # Get the win rate for the train batch.
         # Note that normally, one should set up a proper evaluation config,
         # such that evaluation always happens on the already updated policy,
@@ -134,7 +134,7 @@ class LeagueBasedSelfPlayCallback(DefaultCallbacks):
                 continue
 
             print(
-                f"Iter={trainer.iteration} {policy_id}'s " f"win-rate={win_rate} -> ",
+                f"Iter={algorithm.iteration} {policy_id}'s " f"win-rate={win_rate} -> ",
                 end="",
             )
 
@@ -229,14 +229,14 @@ class LeagueBasedSelfPlayCallback(DefaultCallbacks):
 
                 # Set the weights of the new polic(y/ies).
                 if initializing_exploiters:
-                    main_state = trainer.get_policy("main").get_state()
-                    pol_map = trainer.workers.local_worker().policy_map
+                    main_state = algorithm.get_policy("main").get_state()
+                    pol_map = algorithm.workers.local_worker().policy_map
                     pol_map["main_0"].set_state(main_state)
                     pol_map["league_exploiter_1"].set_state(main_state)
                     pol_map["main_exploiter_1"].set_state(main_state)
                     # We need to sync the just copied local weights to all the
                     # remote workers as well.
-                    trainer.workers.sync_weights(
+                    algorithm.workers.sync_weights(
                         policies=["main_0", "league_exploiter_1", "main_exploiter_1"]
                     )
 
@@ -244,19 +244,19 @@ class LeagueBasedSelfPlayCallback(DefaultCallbacks):
                         worker.set_policy_mapping_fn(policy_mapping_fn)
                         worker.set_policies_to_train(self.trainable_policies)
 
-                    trainer.workers.foreach_worker(_set)
+                    algorithm.workers.foreach_worker(_set)
                 else:
-                    new_policy = trainer.add_policy(
+                    new_policy = algorithm.add_policy(
                         policy_id=new_pol_id,
-                        policy_cls=type(trainer.get_policy(policy_id)),
+                        policy_cls=type(algorithm.get_policy(policy_id)),
                         policy_mapping_fn=policy_mapping_fn,
                         policies_to_train=self.trainable_policies,
                     )
-                    main_state = trainer.get_policy(policy_id).get_state()
+                    main_state = algorithm.get_policy(policy_id).get_state()
                     new_policy.set_state(main_state)
                     # We need to sync the just copied local weights to all the
                     # remote workers as well.
-                    trainer.workers.sync_weights(policies=[new_pol_id])
+                    algorithm.workers.sync_weights(policies=[new_pol_id])
 
                 self._print_league()
 

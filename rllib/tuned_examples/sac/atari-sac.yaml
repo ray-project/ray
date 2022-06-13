@@ -40,7 +40,7 @@ atari-sac-tf-and-torch:
           prioritized_replay_beta: 0.4
           prioritized_replay_eps: 1e-6
         train_batch_size: 64
-        min_sample_timesteps_per_reporting: 4
+        min_sample_timesteps_per_iteration: 4
         # Paper uses 20k random timesteps, which is not exactly the same, but
         # seems to work nevertheless. We use 100k here for the longer Atari
         # runs (DQN style: filling up the buffer a bit before learning).

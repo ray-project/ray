@@ -231,7 +231,7 @@ class CCPPOTorchPolicy(CentralizedValueMixin, PPOTorchPolicy):
         )
 
 
-class CCTrainer(PPO):
+class CentralizedCritic(PPO):
     @override(PPO)
     def get_default_policy_class(self, config):
         if config["framework"] == "torch":
@@ -292,7 +292,7 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run(CCTrainer, config=config, stop=stop, verbose=1)
+    results = tune.run(CentralizedCritic, config=config, stop=stop, verbose=1)
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)
