@@ -116,14 +116,15 @@ class RayServeHandle:
         )
         deployment_info = DeploymentInfo.from_proto(deployment_route.deployment_info)
 
-        self._stop_event = None
-        self._pusher = None
+        self._stop_event: Optional[threading.Event] = None
+        self._pusher: Optional[threading.Thread] = None
+        remote_func = self.controller_handle.record_handle_metrics.remote
         if deployment_info.deployment_config.autoscaling_config:
             self._stop_event = threading.Event()
             self._pusher = start_metrics_pusher(
                 interval_s=HANDLE_METRIC_PUSH_INTERVAL_S,
                 collection_callback=self._collect_handle_queue_metrics,
-                metrics_process_func=self.controller_handle.record_handle_metrics.remote,
+                metrics_process_func=remote_func,
                 stop_event=self._stop_event,
             )
 
