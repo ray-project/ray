@@ -4,7 +4,7 @@ from pathlib import Path
 
 import ray
 from ray import tune
-from ray.rllib.agents.registry import get_trainer_class
+from ray.rllib.algorithms.registry import get_algorithm_class
 
 # from ray.rllib.examples.env.repeat_after_me_env import RepeatAfterMeEnv
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
@@ -86,13 +86,13 @@ if __name__ == "__main__":
 
     checkpoint_config["explore"] = False
 
-    agent = get_trainer_class("RNNSAC")(
+    algo = get_algorithm_class("RNNSAC")(
         env=config["config"]["env"], config=checkpoint_config
     )
-    agent.restore(best_checkpoint)
+    algo.restore(best_checkpoint)
 
-    env = agent.env_creator({})
-    state = agent.get_policy().get_initial_state()
+    env = algo.env_creator({})
+    state = algo.get_policy().get_initial_state()
     prev_action = 0
     prev_reward = 0
     obs = env.reset()
@@ -100,7 +100,7 @@ if __name__ == "__main__":
     eps = 0
     ep_reward = 0
     while eps < 10:
-        action, state, info_trainer = agent.compute_single_action(
+        action, state, info_algo = algo.compute_single_action(
             obs,
             state=state,
             prev_action=prev_action,
@@ -119,7 +119,7 @@ if __name__ == "__main__":
             eps += 1
             print("Episode {}: {}".format(eps, ep_reward))
             ep_reward = 0
-            state = agent.get_policy().get_initial_state()
+            state = algo.get_policy().get_initial_state()
             prev_action = 0
             prev_reward = 0
             obs = env.reset()

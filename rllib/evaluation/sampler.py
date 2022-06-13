@@ -53,7 +53,7 @@ from ray.rllib.utils.typing import (
 
 if TYPE_CHECKING:
     from gym.envs.classic_control.rendering import SimpleImageViewer
-    from ray.rllib.agents.callbacks import DefaultCallbacks
+    from ray.rllib.algorithms.callbacks import DefaultCallbacks
     from ray.rllib.evaluation.observation_function import ObservationFunction
     from ray.rllib.evaluation.rollout_worker import RolloutWorker
 

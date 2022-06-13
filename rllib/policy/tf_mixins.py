@@ -14,7 +14,7 @@ from ray.rllib.utils.typing import (
     LocalOptimizer,
     ModelGradients,
     TensorType,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
 )
 
 logger = logging.getLogger(__name__)
@@ -125,7 +125,7 @@ class EntropyCoeffSchedule:
 class KLCoeffMixin:
     """Assigns the `update_kl()` and other KL-related methods to a TFPolicy.
 
-    This is used in Trainers to update the KL coefficient after each
+    This is used in Algorithms to update the KL coefficient after each
     learning step based on `config.kl_target` and the measured KL value
     (from the train_batch).
     """
@@ -288,7 +288,7 @@ class TargetNetworkMixin:
         self,
         obs_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
-        config: TrainerConfigDict,
+        config: AlgorithmConfigDict,
     ):
         @make_tf_callable(self.get_session())
         def do_update():
