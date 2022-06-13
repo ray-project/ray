@@ -232,6 +232,8 @@ class StateAPIManager:
         result = []
         for message in reply.node_info_list:
             data = self._message_to_dict(message=message, fields_to_decode=["node_id"])
+            data["node_ip"] = data["node_manager_address"]
+            data = filter_fields(data, NodeState)
             result.append(data)
 
         result = self._filter(result, option.filters, NodeState)

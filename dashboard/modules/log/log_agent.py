@@ -99,7 +99,7 @@ class LogAgentV1Grpc(
                     bytes, end = tail(f, lines)
                     yield reporter_pb2.StreamLogReply(data=bytes + b"\n")
                 if request.keep_alive:
-                    interval = request.interval if request.interval else 0.5
+                    interval = request.interval if request.interval else 1
                     f.seek(end)
                     while not context.done():
                         await asyncio.sleep(interval)
