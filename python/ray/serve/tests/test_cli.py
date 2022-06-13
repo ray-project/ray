@@ -427,7 +427,7 @@ def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
 
     # Kill controller
     if use_command:
-        subprocess.check_output(["serve", "shutdown"])
+        subprocess.check_output(["serve", "shutdown", "-y"])
     else:
         serve.shutdown()
 
