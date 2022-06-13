@@ -677,7 +677,7 @@ class TrainingIterator:
         train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
         dataset_spec: RayDatasetSpec,
         checkpoint_manager: CheckpointManager,
-        checkpoint: Optional[Union[Dict, str, Path, Checkpoint]],
+        checkpoint: Optional[Checkpoint],
         checkpoint_strategy: Optional[CheckpointStrategy],
         run_dir: Optional[Path] = None,
     ):
