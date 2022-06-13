@@ -301,9 +301,11 @@ def list_logs(
         )
     return response["data"]["result"]
 
+
 """
 Summary APIs
 """
+
 
 def _summary(
     resource_name: str,

@@ -367,7 +367,7 @@ class StateAPIManager:
 
         unresponsive_nodes = 0
         worker_stats = []
-        for reply, node_id in zip(replies, raylet_ids):
+        for reply, _ in zip(replies, raylet_ids):
             if isinstance(reply, DataSourceUnavailable):
                 unresponsive_nodes += 1
                 continue
@@ -547,6 +547,7 @@ class StateAPIManager:
 
         summary = {}
         objects = result.result
+        logger.info(objects)
         for object in objects.values():
             if object["call_site"] not in summary:
                 summary[object["call_site"]] = {
@@ -554,9 +555,9 @@ class StateAPIManager:
                     "ref_type_counts": defaultdict(int),
                     "count": 0,
                     "size_mb": 0,
-                    "unkonwn_size_count": 0,
                     "num_workers": set(),
                     "num_nodes": set(),
+                    "type": object["type"],
                 }
             object_summary = summary[object["call_site"]]
             object_summary["state_counts"][object["task_status"]] += 1
@@ -566,8 +567,6 @@ class StateAPIManager:
             # unknown.
             if object["object_size"] != -1:
                 object_summary["size_mb"] += object["object_size"] / 1024 ** 2
-            else:
-                object_summary["unkonwn_size_count"] += 1
             object_summary["num_workers"].add(object["pid"])
             object_summary["num_nodes"].add(object["node_ip_address"])
 
