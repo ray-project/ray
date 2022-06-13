@@ -157,7 +157,7 @@ cc_test(
         "counter.so",
         "plus.so",
         "ray_cpp_pkg",
-        "src/ray/test/cluster/ray-test-SNAPSHOT.jar",
+        "//java:libio_ray_ray_test.jar",
         "src/ray/test/cluster/test_cross_language_invocation.py",
     ],
     linkstatic = True,
