@@ -101,12 +101,15 @@ def test_basic_actors(shutdown_only, pipelined):
     # Test setting custom max inflight tasks.
     ds = ray.data.range(10, parallelism=5)
     ds = maybe_pipeline(ds, pipelined)
-    assert sorted(
-        ds.map(
-            lambda x: x + 1,
-            compute=ray.data.ActorPoolStrategy(max_tasks_in_flight_per_actor=3),
-        ).take()
-    ) == list(range(1, 11))
+    assert (
+        sorted(
+            ds.map(
+                lambda x: x + 1,
+                compute=ray.data.ActorPoolStrategy(max_tasks_in_flight_per_actor=3),
+            ).take()
+        )
+        == list(range(1, 11))
+    )
 
     # Test invalid max tasks inflight arg.
     with pytest.raises(ValueError):
@@ -391,11 +394,7 @@ def test_arrow_block_slice_copy():
 
     n = 20
     df = pd.DataFrame(
-        {
-            "one": list(range(n)),
-            "two": ["a"] * n,
-            "three": [np.nan] + [1.5] * (n - 1),
-        }
+        {"one": list(range(n)), "two": ["a"] * n, "three": [np.nan] + [1.5] * (n - 1)}
     )
     table = pa.Table.from_pandas(df)
     a, b = 5, 10
@@ -791,16 +790,14 @@ def test_tensor_array_boolean_slice_pandas_roundtrip(init_with_pandas, test_data
     table2 = block_accessor.slice(a, b, False)
     np.testing.assert_array_equal(table2["one"].chunk(0).to_numpy(), test_arr[a:b, :])
     pd.testing.assert_frame_equal(
-        table2.to_pandas().reset_index(drop=True),
-        df[a:b].reset_index(drop=True),
+        table2.to_pandas().reset_index(drop=True), df[a:b].reset_index(drop=True)
     )
 
     # Test with copy.
     table2 = block_accessor.slice(a, b, True)
     np.testing.assert_array_equal(table2["one"].chunk(0).to_numpy(), test_arr[a:b, :])
     pd.testing.assert_frame_equal(
-        table2.to_pandas().reset_index(drop=True),
-        df[a:b].reset_index(drop=True),
+        table2.to_pandas().reset_index(drop=True), df[a:b].reset_index(drop=True)
     )
 
 
@@ -914,10 +911,7 @@ def test_tensors_in_tables_parquet_with_schema(ray_start_regular_shared, tmp_pat
     schema = pa.schema(
         [
             ("one", pa.int32()),
-            (
-                "two",
-                ArrowTensorType(inner_shape, pa.from_numpy_dtype(arr.dtype)),
-            ),
+            ("two", ArrowTensorType(inner_shape, pa.from_numpy_dtype(arr.dtype))),
         ]
     )
     ds = ray.data.read_parquet(str(tmp_path), schema=schema)
@@ -1024,10 +1018,7 @@ def test_tensors_in_tables_parquet_bytes_manual_serde_udf(
     arr = np.arange(num_items).reshape(shape)
     tensor_col_name = "two"
     df = pd.DataFrame(
-        {
-            "one": list(range(outer_dim)),
-            tensor_col_name: [a.tobytes() for a in arr],
-        }
+        {"one": list(range(outer_dim)), tensor_col_name: [a.tobytes() for a in arr]}
     )
     ds = ray.data.from_pandas([df])
     ds.write_parquet(str(tmp_path))
@@ -1069,10 +1060,7 @@ def test_tensors_in_tables_parquet_bytes_manual_serde_col_schema(
     arr = np.arange(num_items).reshape(shape)
     tensor_col_name = "two"
     df = pd.DataFrame(
-        {
-            "one": list(range(outer_dim)),
-            tensor_col_name: [a.tobytes() for a in arr],
-        }
+        {"one": list(range(outer_dim)), tensor_col_name: [a.tobytes() for a in arr]}
     )
     ds = ray.data.from_pandas([df])
     ds.write_parquet(str(tmp_path))
@@ -1119,10 +1107,7 @@ def test_tensors_in_tables_parquet_bytes_with_schema(
     schema = pa.schema(
         [
             ("one", pa.int32()),
-            (
-                "two",
-                ArrowTensorType(inner_shape, pa.from_numpy_dtype(arr.dtype)),
-            ),
+            ("two", ArrowTensorType(inner_shape, pa.from_numpy_dtype(arr.dtype))),
         ]
     )
     ds = ray.data.read_parquet(str(tmp_path), schema=schema)
@@ -1140,11 +1125,7 @@ def test_tensors_in_tables_to_torch(ray_start_regular_shared, pipelined):
     num_items = np.prod(np.array(shape))
     arr = np.arange(num_items).reshape(shape)
     df1 = pd.DataFrame(
-        {
-            "one": TensorArray(arr),
-            "two": TensorArray(arr + 1),
-            "label": [1.0, 2.0, 3.0],
-        }
+        {"one": TensorArray(arr), "two": TensorArray(arr + 1), "label": [1.0, 2.0, 3.0]}
     )
     arr2 = np.arange(num_items, 2 * num_items).reshape(shape)
     df2 = pd.DataFrame(
@@ -2090,9 +2071,7 @@ def test_to_tf_feature_columns_dict(ray_start_regular_shared):
     }
     batch_size = 2
     dataset = ds.to_tf(
-        feature_columns=feature_columns,
-        output_signature=output_signature,
-        batch_size=2,
+        feature_columns=feature_columns, output_signature=output_signature, batch_size=2
     )
 
     batches = list(dataset.as_numpy_iterator())
@@ -2190,12 +2169,7 @@ def test_to_torch_feature_columns(
         }
     )
     df3 = pd.DataFrame(
-        {
-            "one": [7, 8],
-            "two": [7.0, 8.0],
-            "three": [10.0, 11.0],
-            "label": [7.0, 8.0],
-        }
+        {"one": [7, 8], "two": [7.0, 8.0], "three": [10.0, 11.0], "label": [7.0, 8.0]}
     )
     df = pd.concat([df1, df2, df3]).drop("three", axis=1)
     ds = ray.data.from_pandas([df1, df2, df3])
@@ -3098,11 +3072,7 @@ def test_groupby_simple(ray_start_regular_shared):
         )
     )
     assert agg_ds.count() == 3
-    assert agg_ds.sort(key=lambda r: r[0]).take(3) == [
-        ("A", 5),
-        ("B", 15),
-        ("C", 7),
-    ]
+    assert agg_ds.sort(key=lambda r: r[0]).take(3) == [("A", 5), ("B", 15), ("C", 7)]
 
     # Test None row
     parallelism = 2
@@ -3152,11 +3122,7 @@ def test_groupby_simple_count(ray_start_regular_shared, num_parts):
         ray.data.from_items(xs).repartition(num_parts).groupby(lambda x: x % 3).count()
     )
     assert agg_ds.count() == 3
-    assert agg_ds.sort(key=lambda r: r[0]).take(3) == [
-        (0, 34),
-        (1, 33),
-        (2, 33),
-    ]
+    assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 34), (1, 33), (2, 33)]
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -3171,11 +3137,7 @@ def test_groupby_simple_sum(ray_start_regular_shared, num_parts):
         ray.data.from_items(xs).repartition(num_parts).groupby(lambda x: x % 3).sum()
     )
     assert agg_ds.count() == 3
-    assert agg_ds.sort(key=lambda r: r[0]).take(3) == [
-        (0, 1683),
-        (1, 1617),
-        (2, 1650),
-    ]
+    assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 1683), (1, 1617), (2, 1650)]
 
     # Test built-in sum aggregation with nans
     nan_grouped_ds = (
@@ -3376,19 +3338,11 @@ def test_groupby_simple_min(ray_start_regular_shared, num_parts):
     )
     nan_agg_ds = nan_grouped_ds.min()
     assert nan_agg_ds.count() == 3
-    assert nan_agg_ds.sort(key=lambda r: r[0]).take(3) == [
-        (0, 0),
-        (1, 1),
-        (2, 2),
-    ]
+    assert nan_agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 0), (1, 1), (2, 2)]
     # Test ignore_nulls=False
     nan_agg_ds = nan_grouped_ds.min(ignore_nulls=False)
     assert nan_agg_ds.count() == 3
-    assert nan_agg_ds.sort(key=lambda r: r[0]).take(3) == [
-        (0, None),
-        (1, 1),
-        (2, 2),
-    ]
+    assert nan_agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, None), (1, 1), (2, 2)]
     # Test all nans
     nan_agg_ds = (
         ray.data.from_items([None] * len(xs))
@@ -3425,11 +3379,7 @@ def test_groupby_simple_max(ray_start_regular_shared, num_parts):
         ray.data.from_items(xs).repartition(num_parts).groupby(lambda x: x % 3).max()
     )
     assert agg_ds.count() == 3
-    assert agg_ds.sort(key=lambda r: r[0]).take(3) == [
-        (0, 99),
-        (1, 97),
-        (2, 98),
-    ]
+    assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 99), (1, 97), (2, 98)]
 
     # Test built-in max aggregation with nans
     nan_grouped_ds = (
@@ -3439,19 +3389,11 @@ def test_groupby_simple_max(ray_start_regular_shared, num_parts):
     )
     nan_agg_ds = nan_grouped_ds.max()
     assert nan_agg_ds.count() == 3
-    assert nan_agg_ds.sort(key=lambda r: r[0]).take(3) == [
-        (0, 99),
-        (1, 97),
-        (2, 98),
-    ]
+    assert nan_agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 99), (1, 97), (2, 98)]
     # Test ignore_nulls=False
     nan_agg_ds = nan_grouped_ds.max(ignore_nulls=False)
     assert nan_agg_ds.count() == 3
-    assert nan_agg_ds.sort(key=lambda r: r[0]).take(3) == [
-        (0, None),
-        (1, 97),
-        (2, 98),
-    ]
+    assert nan_agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, None), (1, 97), (2, 98)]
     # Test all nans
     nan_agg_ds = (
         ray.data.from_items([None] * len(xs))
@@ -3488,11 +3430,7 @@ def test_groupby_simple_mean(ray_start_regular_shared, num_parts):
         ray.data.from_items(xs).repartition(num_parts).groupby(lambda x: x % 3).mean()
     )
     assert agg_ds.count() == 3
-    assert agg_ds.sort(key=lambda r: r[0]).take(3) == [
-        (0, 49.5),
-        (1, 49.0),
-        (2, 50.0),
-    ]
+    assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 49.5), (1, 49.0), (2, 50.0)]
 
     # Test built-in mean aggregation with nans
     nan_grouped_ds = (
@@ -3618,8 +3556,7 @@ def test_groupby_simple_std(ray_start_regular_shared, num_parts):
 
     # Test built-in global std aggregation
     assert math.isclose(
-        ray.data.from_items(xs).repartition(num_parts).std(),
-        pd.Series(xs).std(),
+        ray.data.from_items(xs).repartition(num_parts).std(), pd.Series(xs).std()
     )
     # ddof of 0
     assert math.isclose(

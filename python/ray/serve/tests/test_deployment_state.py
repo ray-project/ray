@@ -206,8 +206,7 @@ class MockTimer:
 def mock_deployment_state() -> Tuple[DeploymentState, Mock, Mock]:
     timer = MockTimer()
     with patch(
-        "ray.serve.deployment_state.ActorReplicaWrapper",
-        new=MockReplicaActorWrapper,
+        "ray.serve.deployment_state.ActorReplicaWrapper", new=MockReplicaActorWrapper
     ), patch("time.time", new=timer.time), patch(
         "ray.serve.long_poll.LongPollHost"
     ) as mock_long_poll:
@@ -277,15 +276,13 @@ class TestReplicaStateContainer:
         )
         assert (
             c.count(
-                exclude_version=DeploymentVersion("1"),
-                states=[ReplicaState.STARTING],
+                exclude_version=DeploymentVersion("1"), states=[ReplicaState.STARTING]
             )
             == 1
         )
         assert (
             c.count(
-                exclude_version=DeploymentVersion("3"),
-                states=[ReplicaState.STARTING],
+                exclude_version=DeploymentVersion("3"), states=[ReplicaState.STARTING]
             )
             == 2
         )
@@ -395,40 +392,49 @@ class TestReplicaStateContainer:
         c.add(ReplicaState.RUNNING, r3)
         c.add(ReplicaState.RUNNING, r4)
         assert not c.pop(
-            exclude_version=DeploymentVersion("1"),
-            states=[ReplicaState.STOPPING],
+            exclude_version=DeploymentVersion("1"), states=[ReplicaState.STOPPING]
         )
-        assert c.pop(
-            exclude_version=DeploymentVersion("1"),
-            states=[ReplicaState.RUNNING],
-            max_replicas=1,
-        ) == [r3]
-        assert c.pop(
-            exclude_version=DeploymentVersion("1"),
-            states=[ReplicaState.RUNNING],
-            max_replicas=1,
-        ) == [r4]
+        assert (
+            c.pop(
+                exclude_version=DeploymentVersion("1"),
+                states=[ReplicaState.RUNNING],
+                max_replicas=1,
+            )
+            == [r3]
+        )
+        assert (
+            c.pop(
+                exclude_version=DeploymentVersion("1"),
+                states=[ReplicaState.RUNNING],
+                max_replicas=1,
+            )
+            == [r4]
+        )
         c.add(ReplicaState.RUNNING, r3)
         c.add(ReplicaState.RUNNING, r4)
         assert c.pop(
-            exclude_version=DeploymentVersion("1"),
-            states=[ReplicaState.RUNNING],
+            exclude_version=DeploymentVersion("1"), states=[ReplicaState.RUNNING]
         ) == [r3, r4]
         assert c.pop(
-            exclude_version=DeploymentVersion("1"),
-            states=[ReplicaState.STARTING],
+            exclude_version=DeploymentVersion("1"), states=[ReplicaState.STARTING]
         ) == [r2]
         c.add(ReplicaState.STARTING, r2)
         c.add(ReplicaState.RUNNING, r3)
         c.add(ReplicaState.RUNNING, r4)
-        assert c.pop(
-            exclude_version=DeploymentVersion("1"),
-            states=[ReplicaState.RUNNING, ReplicaState.STARTING],
-        ) == [r3, r4, r2]
-        assert c.pop(
-            exclude_version=DeploymentVersion("nonsense"),
-            states=[ReplicaState.STOPPING],
-        ) == [r1]
+        assert (
+            c.pop(
+                exclude_version=DeploymentVersion("1"),
+                states=[ReplicaState.RUNNING, ReplicaState.STARTING],
+            )
+            == [r3, r4, r2]
+        )
+        assert (
+            c.pop(
+                exclude_version=DeploymentVersion("nonsense"),
+                states=[ReplicaState.STOPPING],
+            )
+            == [r1]
+        )
 
 
 def check_counts(
@@ -1043,10 +1049,7 @@ def test_new_version_deploy_throttling(mock_deployment_state):
             deployment_state,
             version=b_version_2,
             total=new_replicas + 2,
-            by_state=[
-                (ReplicaState.RUNNING, new_replicas),
-                (ReplicaState.STARTING, 2),
-            ],
+            by_state=[(ReplicaState.RUNNING, new_replicas), (ReplicaState.STARTING, 2)],
         )
 
         # Set both ready.
@@ -1932,8 +1935,7 @@ def test_deploy_with_transient_constructor_failure(mock_deployment_state):
 def mock_deployment_state_manager() -> Tuple[DeploymentStateManager, Mock]:
     timer = MockTimer()
     with patch(
-        "ray.serve.deployment_state.ActorReplicaWrapper",
-        new=MockReplicaActorWrapper,
+        "ray.serve.deployment_state.ActorReplicaWrapper", new=MockReplicaActorWrapper
     ), patch("time.time", new=timer.time), patch(
         "ray.serve.long_poll.LongPollHost"
     ) as mock_long_poll:
@@ -2002,9 +2004,7 @@ def test_shutdown(mock_deployment_state_manager):
     assert len(deployment_state_manager.get_deployment_statuses()) == 0
 
 
-def test_resume_deployment_state_from_replica_tags(
-    mock_deployment_state_manager,
-):
+def test_resume_deployment_state_from_replica_tags(mock_deployment_state_manager):
     deployment_state_manager, timer = mock_deployment_state_manager
 
     tag = "test"
@@ -2050,10 +2050,7 @@ def test_resume_deployment_state_from_replica_tags(
     deployment_state = deployment_state_manager._deployment_states[tag]
     # Ensure recovering replica begin with no version assigned
     check_counts(
-        deployment_state,
-        total=1,
-        version=None,
-        by_state=[(ReplicaState.RECOVERING, 1)],
+        deployment_state, total=1, version=None, by_state=[(ReplicaState.RECOVERING, 1)]
     )
     deployment_state._replicas.get()[0]._actor.set_ready()
     deployment_state._replicas.get()[0]._actor.set_starting_version(b_version_1)
