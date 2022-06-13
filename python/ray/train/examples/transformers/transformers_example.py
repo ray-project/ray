@@ -20,14 +20,12 @@ import logging
 import math
 import os
 import random
-from typing import Dict, Any
+from typing import Any, Dict
 
 import datasets
-import ray
 import transformers
 from accelerate import Accelerator
 from datasets import load_dataset, load_metric
-from ray.train import Trainer
 from torch.utils.data.dataloader import DataLoader
 from tqdm.auto import tqdm
 from transformers import (
@@ -43,6 +41,9 @@ from transformers import (
     set_seed,
 )
 from transformers.utils.versions import require_version
+
+import ray
+from ray.train.torch import TorchTrainer
 
 logger = logging.getLogger(__name__)
 
@@ -612,9 +613,13 @@ def main():
         else:
             # Connect to a Ray cluster for distributed training.
             ray.init(address=args.address)
-        trainer = Trainer("torch", num_workers=args.num_workers, use_gpu=args.use_gpu)
-        trainer.start()
-        trainer.run(train_func, config)
+        trainer = TorchTrainer(
+            train_func,
+            train_loop_config=config,
+            scaling_config={"num_workers": args.num_workers, "use_gpu": args.use_gpu},
+        )
+        results = trainer.fit()
+        print(results)
     else:
         # Run training locally.
         train_func(config)

@@ -10,7 +10,7 @@ import tensorflow as tf
 from tensorflow.keras.callbacks import Callback
 
 import ray.train as train
-from ray.train import Trainer
+from ray.train.tensorflow import TensorflowTrainer
 
 
 class TrainReportCallback(Callback):
@@ -81,12 +81,12 @@ def train_func(config):
 
 
 def train_tensorflow_mnist(num_workers=2, use_gpu=False, epochs=4):
-    trainer = Trainer(backend="tensorflow", num_workers=num_workers, use_gpu=use_gpu)
-    trainer.start()
-    results = trainer.run(
-        train_func=train_func, config={"lr": 1e-3, "batch_size": 64, "epochs": epochs}
+    trainer = TensorflowTrainer(
+        train_func,
+        train_loop_config={"lr": 1e-3, "batch_size": 64, "epochs": epochs},
+        scaling_config={"num_workers": num_workers, "use_gpu": use_gpu},
     )
-    trainer.shutdown()
+    results = trainer.fit()
     print(f"Results: {results[0]}")
 
 

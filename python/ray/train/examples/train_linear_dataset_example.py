@@ -8,8 +8,7 @@ import ray
 import ray.train as train
 from ray.data import Dataset
 from ray.data.dataset_pipeline import DatasetPipeline
-from ray.train import Trainer
-from ray.train.callbacks import JsonLoggerCallback, TBXLoggerCallback
+from ray.train.torch import TorchTrainer
 
 
 def get_datasets(a=5, b=10, size=1000, split=0.8) -> Dict[str, DatasetPipeline]:
@@ -120,16 +119,14 @@ def train_func(config):
 def train_linear(num_workers=2, use_gpu=False):
     datasets = get_datasets()
 
-    trainer = Trainer("torch", num_workers=num_workers, use_gpu=use_gpu)
     config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": 3}
-    trainer.start()
-    results = trainer.run(
+    trainer = TorchTrainer(
         train_func,
-        config,
-        dataset=datasets,
-        callbacks=[JsonLoggerCallback(), TBXLoggerCallback()],
+        train_loop_config=config,
+        datasets=datasets,
+        scaling_config={"num_workers": num_workers, "use_gpu": use_gpu},
     )
-    trainer.shutdown()
+    results = trainer.fit()
     print(results)
     return results
 

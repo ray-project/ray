@@ -83,16 +83,6 @@ py_test(
 )
 
 py_test(
-    name = "tune_linear_dataset_example",
-    size = "medium",
-    main = "examples/tune_linear_dataset_example.py",
-    srcs = ["examples/tune_linear_dataset_example.py"],
-    tags = ["team:ml", "exclusive", "gpu_only", "tune"],
-    deps = [":train_lib"],
-    args = ["--smoke-test", "--use-gpu"]
-)
-
-py_test(
     name = "tune_linear_example",
     size = "medium",
     main = "examples/tune_linear_example.py",

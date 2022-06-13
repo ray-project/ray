@@ -3,9 +3,9 @@ import argparse
 import numpy as np
 import torch
 import torch.nn as nn
+
 import ray.train as train
-from ray.train import Trainer
-from ray.train.callbacks import JsonLoggerCallback, TBXLoggerCallback
+from ray.train.torch import TorchTrainer
 
 
 class LinearDataset(torch.utils.data.Dataset):
@@ -86,13 +86,13 @@ def train_func(config):
 
 
 def train_linear(num_workers=2, use_gpu=False, epochs=3):
-    trainer = Trainer(backend="torch", num_workers=num_workers, use_gpu=use_gpu)
     config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": epochs}
-    trainer.start()
-    results = trainer.run(
-        train_func, config, callbacks=[JsonLoggerCallback(), TBXLoggerCallback()]
+    trainer = TorchTrainer(
+        train_func,
+        train_loop_config=config,
+        scaling_config={"num_workers": num_workers, "use_gpu": use_gpu},
     )
-    trainer.shutdown()
+    results = trainer.fit()
 
     print(results)
     return results

@@ -62,7 +62,7 @@ Ray Datasets Integration Examples
 * :doc:`/train/examples/train_linear_dataset_example`:
   Simple example for training a linear PyTorch model.
 
-* :doc:`/train/examples/tune_linear_dataset_example`:
+* :doc:`/air/examples/tune_torch_linear_dataset_example`:
   Simple example for tuning a linear PyTorch model.
 
 

@@ -4,6 +4,10 @@
 # __torch_setup_begin__
 import torch
 import torch.nn as nn
+import torch.optim as optim
+
+import ray.train.torch
+from ray import train
 
 num_samples = 20
 input_size = 10
@@ -28,7 +32,6 @@ labels = torch.randn(num_samples, output_size)
 
 # __torch_single_begin__
 
-import torch.optim as optim
 
 def train_func():
     num_epochs = 3
@@ -48,8 +51,6 @@ def train_func():
 
 # __torch_distributed_begin__
 
-from ray import train
-import ray.train.torch
 
 def train_func_distributed():
     num_epochs = 3
@@ -78,15 +79,13 @@ if __name__ == "__main__":
 
     # __torch_trainer_begin__
 
-    from ray.train import Trainer
-
-    trainer = Trainer(backend="torch", num_workers=4)
+    from ray.train.torch import TorchTrainer
 
     # For GPU Training, set `use_gpu` to True.
-    # trainer = Trainer(backend="torch", num_workers=4, use_gpu=True)
+    use_gpu = False
 
-    trainer.start()
-    results = trainer.run(train_func_distributed)
-    trainer.shutdown()
+    trainer = TorchTrainer(train_func_distributed, scaling_config={"num_workers":4, "use_gpu":use_gpu})
+
+    results = trainer.fit()
 
     # __torch_trainer_end__

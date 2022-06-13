@@ -2,10 +2,11 @@ import os
 from typing import Optional, Union
 
 import pandas as pd
-from ray.cloudpickle import cloudpickle
-from ray.exceptions import RayTaskError
+
 from ray.air.checkpoint import Checkpoint
 from ray.air.result import Result
+from ray.cloudpickle import cloudpickle
+from ray.exceptions import RayTaskError
 from ray.tune import ExperimentAnalysis
 from ray.tune.error import TuneError
 from ray.tune.trial import Trial
@@ -177,5 +178,6 @@ class ResultGrid:
             checkpoint=checkpoint,
             metrics=trial.last_result.copy(),
             error=self._populate_exception(trial),
+            log_dir=trial.logdir,
         )
         return result

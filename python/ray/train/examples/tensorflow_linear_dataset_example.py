@@ -7,8 +7,7 @@ import ray
 import ray.train as train
 from ray.data import Dataset
 from ray.data.dataset_pipeline import DatasetPipeline
-from ray.train import Trainer
-from ray.train.tensorflow import prepare_dataset_shard
+from ray.train.tensorflow import TensorflowTrainer, prepare_dataset_shard
 
 
 class TrainReportCallback(Callback):
@@ -55,7 +54,7 @@ def train_func(config):
         # Model building/compiling need to be within `strategy.scope()`.
         multi_worker_model = build_and_compile_model(config)
 
-    dataset_pipeline = train.get_dataset_shard()
+    dataset_pipeline = train.get_dataset_shard("train")
     dataset_iterator = dataset_pipeline.iter_epochs()
 
     results = []
@@ -78,14 +77,13 @@ def train_func(config):
 
 def train_tensorflow_linear(num_workers=2, use_gpu=False):
     dataset_pipeline = get_dataset_pipeline()
-    trainer = Trainer(backend="tensorflow", num_workers=num_workers, use_gpu=use_gpu)
-    trainer.start()
-    results = trainer.run(
-        train_func=train_func,
-        dataset=dataset_pipeline,
-        config={"lr": 1e-3, "batch_size": 32, "epochs": 4},
+    trainer = TensorflowTrainer(
+        train_func,
+        train_loop_config={"lr": 1e-3, "batch_size": 32, "epochs": 4},
+        datasets={"train": dataset_pipeline},
+        scaling_config={"num_workers": num_workers, "use_gpu": use_gpu},
     )
-    trainer.shutdown()
+    results = trainer.fit()
     print(f"Results: {results[0]}")
     return results
 

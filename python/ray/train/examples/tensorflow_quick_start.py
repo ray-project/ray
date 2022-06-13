@@ -3,6 +3,9 @@
 
 # __tf_setup_begin__
 
+import json
+import os
+
 import numpy as np
 import tensorflow as tf
 
@@ -47,8 +50,6 @@ def train_func():
 
 # __tf_distributed_begin__
 
-import json
-import os
 
 def train_func_distributed():
     per_worker_batch_size = 64
@@ -78,15 +79,13 @@ if __name__ == "__main__":
 
     # __tf_trainer_begin__
 
-    from ray.train import Trainer
-
-    trainer = Trainer(backend="tensorflow", num_workers=4)
+    from ray.train.tensorflow import TensorflowTrainer
 
     # For GPU Training, set `use_gpu` to True.
-    # trainer = Trainer(backend="tensorflow", num_workers=4, use_gpu=True)
+    use_gpu = False
 
-    trainer.start()
-    results = trainer.run(train_func_distributed)
-    trainer.shutdown()
+    trainer = TensorflowTrainer(train_func_distributed, scaling_config={"num_workers":4, "use_gpu":use_gpu})
+
+    trainer.fit()
 
     # __tf_trainer_end__
