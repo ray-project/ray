@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import Dict, List, Optional, Type, Union
 import numpy as np
 
 from ray._private.utils import import_attr
@@ -73,7 +73,8 @@ class BatchingManager:
     ) -> List["pd.DataFrame"]:
         if not isinstance(output_df, pd.DataFrame):
             raise TypeError(
-                f"The output should be a Pandas DataFrame but Serve got {type(output_df)}"
+                "The output should be a Pandas DataFrame but Serve got "
+                f"{type(output_df)}"
             )
         if len(output_df) % batch_size != 0:
             raise ValueError(
