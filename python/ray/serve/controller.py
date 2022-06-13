@@ -386,7 +386,9 @@ class ServeController:
         else:
             autoscaling_policy = None
         if isinstance(deployer_job_id, bytes):
-            deployer_job_id = ray.JobID.from_int(int.from_bytes(deployer_job_id, "little"))
+            deployer_job_id = ray.JobID.from_int(
+                int.from_bytes(deployer_job_id, "little")
+            )
         deployment_info = DeploymentInfo(
             actor_name=name,
             serialized_deployment_def=replica_config.serialized_deployment_def,
@@ -525,6 +527,7 @@ class ServeController:
         )
 
         return status_info.to_proto().SerializeToString()
+
 
 @ray.remote(num_cpus=0)
 class ServeControllerAvatar:

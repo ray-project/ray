@@ -187,7 +187,7 @@ class DeploymentConfig(BaseModel):
                 if api_lang == DeploymentLanguage.PYTHON:
                     data["user_config"] = cloudpickle.loads(proto.user_config)
                 else:
-                    # after MessageToDict, bytes data has been deal with base64.b64encode(value).decode('utf-8')
+                    # after MessageToDict, bytes data has been deal with base64
                     data["user_config"] = proto.user_config
             else:
                 data["user_config"] = None

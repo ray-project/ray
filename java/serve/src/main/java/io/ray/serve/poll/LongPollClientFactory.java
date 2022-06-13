@@ -109,7 +109,7 @@ public class LongPollClientFactory {
           }
         },
         0L,
-      6L,
+        6L,
         TimeUnit.SECONDS);
     inited = true;
     LOGGER.info("LongPollClient was initialized");

@@ -23,7 +23,8 @@ public class Router {
 
   private LongPollClient longPollClient;
 
-  public Router(BaseActorHandle controllerHandle, String deploymentName, String controllerNamespace) {
+  public Router(
+      BaseActorHandle controllerHandle, String deploymentName, String controllerNamespace) {
     this.replicaSet = new ReplicaSet(deploymentName, controllerNamespace);
 
     RayServeMetrics.execute(

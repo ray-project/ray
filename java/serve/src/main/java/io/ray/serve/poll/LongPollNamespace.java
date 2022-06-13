@@ -9,7 +9,7 @@ public enum LongPollNamespace {
   ROUTE_TABLE;
 
   public static LongPollNamespace parseFrom(String key) {
-    for (LongPollNamespace namespace: LongPollNamespace.values()) {
+    for (LongPollNamespace namespace : LongPollNamespace.values()) {
       if (StringUtils.equals(key, namespace.name())) {
         return namespace;
       }

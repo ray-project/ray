@@ -4,11 +4,10 @@ import io.ray.api.Ray;
 import io.ray.serve.api.Serve;
 import io.ray.serve.deployment.Deployment;
 import io.ray.serve.deployment.DeploymentRoute;
+import io.ray.serve.util.ExampleEchoDeployment;
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-
-import io.ray.serve.util.ExampleEchoDeployment;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -58,16 +57,16 @@ public class ServeDemo extends BaseServeTest {
     String deploymentName = "exampleEcho";
 
     Deployment deployment =
-      Serve.deployment()
-        .setName(deploymentName)
-        .setDeploymentDef(ExampleEchoDeployment.class.getName())
-        .setNumReplicas(1)
-        .setInitArgs(new Object[] {"echo_"})
-        .create();
+        Serve.deployment()
+            .setName(deploymentName)
+            .setDeploymentDef(ExampleEchoDeployment.class.getName())
+            .setNumReplicas(1)
+            .setInitArgs(new Object[] {"echo_"})
+            .create();
 
     deployment.deploy(true);
     Assert.assertEquals("echo_6", Ray.get(deployment.getHandle().method("call").remote(6)));
     TimeUnit.MINUTES.sleep(10);
-    Assert.assertTrue((boolean)Ray.get(deployment.getHandle().method("checkHealth").remote()));
+    Assert.assertTrue((boolean) Ray.get(deployment.getHandle().method("checkHealth").remote()));
   }
 }
