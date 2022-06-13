@@ -22,6 +22,7 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.ml_utils.filelock import TempFileLock
 
 _DICT_CHECKPOINT_FILE_NAME = "dict_checkpoint.pkl"
+_METADATA_CHECKPOINT_FILE_NAME = "metadata_checkpoint.pkl"
 _FS_CHECKPOINT_KEY = "fs_checkpoint"
 _BYTES_DATA_KEY = "bytes_data"
 _CHECKPOINT_DIR_PREFIX = "checkpoint_tmp_"
@@ -29,7 +30,7 @@ _CHECKPOINT_DIR_PREFIX = "checkpoint_tmp_"
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI
+@PublicAPI(stability="alpha")
 class Checkpoint:
     """Ray ML Checkpoint.
 
@@ -254,11 +255,21 @@ class Checkpoint:
                     with open(checkpoint_data_path, "rb") as f:
                         checkpoint_data = pickle.load(f)
                 else:
+                    # First, deal with metadata
+                    metadata_path = os.path.join(
+                        local_path, _METADATA_CHECKPOINT_FILE_NAME
+                    )
+                    metadata = {}
+                    if os.path.exists(metadata_path):
+                        with open(metadata_path, "rb") as f:
+                            metadata = pickle.load(f)
+
                     data = _pack(local_path)
 
                     checkpoint_data = {
                         _FS_CHECKPOINT_KEY: data,
                     }
+                    checkpoint_data.update(metadata)
                 return checkpoint_data
         else:
             raise RuntimeError(f"Empty data for checkpoint {self}")
@@ -331,6 +342,17 @@ class Checkpoint:
             # This is a object ref or dict
             data_dict = self.to_dict()
             if _FS_CHECKPOINT_KEY in data_dict:
+                # On top of that, there may be some dict data.
+                metadata = {}
+                for key in data_dict.keys():
+                    if key == _FS_CHECKPOINT_KEY:
+                        pass
+                    else:
+                        metadata[key] = data_dict[key]
+                if metadata:
+                    metadata_path = os.path.join(path, _METADATA_CHECKPOINT_FILE_NAME)
+                    with open(metadata_path, "wb") as f:
+                        pickle.dump(metadata, f)
                 # This used to be a true fs checkpoint, so restore
                 _unpack(data_dict[_FS_CHECKPOINT_KEY], path)
             else:
@@ -567,8 +589,15 @@ def _temporary_checkpoint_dir() -> str:
 def _pack(path: str) -> bytes:
     """Pack directory in ``path`` into an archive, return as bytes string."""
     stream = io.BytesIO()
+
+    def filter_function(tarinfo):
+        if tarinfo.name == os.path.join(path, _METADATA_CHECKPOINT_FILE_NAME):
+            return None
+        else:
+            return tarinfo
+
     with tarfile.open(fileobj=stream, mode="w", format=tarfile.PAX_FORMAT) as tar:
-        tar.add(path, arcname="")
+        tar.add(path, arcname="", filter=filter_function)
 
     return stream.getvalue()
 
