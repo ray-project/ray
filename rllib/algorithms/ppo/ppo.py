@@ -39,6 +39,7 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
     WORKER_UPDATE_TIMER,
+    SYNCH_WORKER_WEIGHTS_COLLECTIVE_TIMER,
 )
 
 logger = logging.getLogger(__name__)
@@ -396,6 +397,17 @@ class PPO(Algorithm):
 
             return PPOTF2Policy
 
+    def broadcast(self, src_rank=0, group_name="default"):
+        # collective.broadcast(local_worker.buffer, src_rank, group_name)
+        # return True
+        return self.workers.local_worker().broadcast(src_rank=src_rank, group_name=group_name)
+
+    def policy_map_to_buffer_list(self):
+        return self.workers.local_worker().policy_map_to_buffer_list()
+
+    def buffer_list_to_policy_map(self):
+        return self.workers.local_worker().buffer_list_to_policy_map()
+
     @ExperimentalAPI
     def training_step(self) -> ResultDict:
         # Collect SampleBatches from sample workers until we have a full batch.
@@ -426,8 +438,10 @@ class PPO(Algorithm):
         # Update weights - after learning on the local worker - on all remote
         # workers.
         if self.workers.remote_workers():
-            with self._timers[WORKER_UPDATE_TIMER]:
-                self.workers.sync_weights(global_vars=global_vars)
+            # with self._timers[WORKER_UPDATE_TIMER]:
+            #     self.workers.sync_weights(global_vars=global_vars)
+            with self._timers[SYNCH_WORKER_WEIGHTS_COLLECTIVE_TIMER]:
+                self.workers.sync_weights_collective(global_vars=global_vars)
 
         # For each policy: update KL scale and warn about possible issues
         for policy_id, policy_info in train_results.items():

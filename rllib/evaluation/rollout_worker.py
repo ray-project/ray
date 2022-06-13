@@ -1243,7 +1243,6 @@ class RolloutWorker(ParallelIteratorWorker):
             The policy under the given ID (or None if not found).
         """
         obj = self.policy_map.get(policy_id)
-        print(f">>>>>>> Type of policy obj: {type(obj)}")
         return obj
 
     @DeveloperAPI

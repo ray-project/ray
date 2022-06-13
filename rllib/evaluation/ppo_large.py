@@ -2,7 +2,7 @@
 
 # Import the RL algorithm (Trainer) we would like to use.
 import ray
-from ray.rllib.agents.ppo import PPOTrainer
+from ray.rllib.algorithms.ppo import PPO
 from ray.util.collective.types import Backend
 
 # ray.init(address="auto")
@@ -46,7 +46,7 @@ config = {
 # tune.run(PPOTrainer, config=config)
 # Create our RLlib Trainer.
 # trainer = PPOTrainer(config=config)
-trainer_actor = ray.remote(PPOTrainer).options(num_gpus=1, max_concurrency=10).remote(config=config)
+trainer_actor = ray.remote(PPO).options(num_gpus=1, max_concurrency=10).remote(config=config)
 # print(f">>>>>>> {trainer_actor}")
 
 # Run it for n training iterations. A training iteration includes
@@ -81,7 +81,7 @@ print(init_results)
 # )
 # print(f">>>>> results: {results}")
 
-for _ in range(100):
+for _ in range(5):
     print(ray.get(trainer_actor.train.remote()))
 
 # Evaluate the trained Trainer (and render each timestep to the shell's

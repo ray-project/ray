@@ -95,7 +95,7 @@ def collect_metrics(
 
 @DeveloperAPI
 def collect_episodes(
-    local_worker: Optional[ActorHandle] = None,
+    local_worker: Optional["RolloutWorker"] = None,
     remote_workers: Optional[List[ActorHandle]] = None,
     to_be_collected: Optional[List[ObjectRef]] = None,
     timeout_seconds: int = 180,
@@ -123,7 +123,7 @@ def collect_episodes(
         metric_lists = []
 
     if local_worker:
-        metric_lists.append(ray.get(local_worker.get_metrics.remote()))
+        metric_lists.append(local_worker.get_metrics())
     episodes = []
     for metrics in metric_lists:
         episodes.extend(metrics)
