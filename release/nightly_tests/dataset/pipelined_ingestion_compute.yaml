@@ -20,6 +20,9 @@ worker_node_types:
       min_workers: 20
       max_workers: 20
       use_spot: false
+      resources:
+        cpu: 8
+        gpu: 0
     - name: gpu_node
       instance_type: m5.4xlarge
       min_workers: 4
