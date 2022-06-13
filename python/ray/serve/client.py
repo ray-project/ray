@@ -356,7 +356,7 @@ class ServeControllerClient:
 
     @_ensure_connected
     def get_app_config(self) -> Dict:
-        """Returns the last requests Serve config."""
+        """Returns the most recently requested Serve config."""
         return ray.get(self._controller.get_app_config.remote())
 
     @_ensure_connected
