@@ -51,11 +51,8 @@ def ray_start_stop():
 
 
 def test_start_shutdown(ray_start_stop):
-    with pytest.raises(subprocess.CalledProcessError):
-        subprocess.check_output(["serve", "shutdown"])
-
     subprocess.check_output(["serve", "start"])
-    subprocess.check_output(["serve", "shutdown"])
+    subprocess.check_output(["serve", "shutdown", "-y"])
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -135,8 +132,7 @@ def test_deploy(ray_start_stop):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_config(ray_start_stop):
-    # Deploys valid config file and checks that serve info returns correct
-    # response
+    """Deploys config and checks that `serve config` returns correct response."""
 
     config_file_name = os.path.join(
         os.path.dirname(__file__), "test_config_files", "basic_graph.yaml"
@@ -158,7 +154,7 @@ def test_config(ray_start_stop):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_status(ray_start_stop):
-    # Deploys a config file and checks its status
+    """Deploys a config file and checks its status."""
 
     config_file_name = os.path.join(
         os.path.dirname(__file__), "test_config_files", "arithmetic.yaml"
@@ -190,8 +186,8 @@ def test_status(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_delete(ray_start_stop):
-    # Deploys a config file and deletes it
+def test_shutdown(ray_start_stop):
+    """Deploys a config file and shuts down the Serve application."""
 
     def num_live_deployments():
         status_response = subprocess.check_output(["serve", "status"])
@@ -213,7 +209,7 @@ def test_delete(ray_start_stop):
         print("Deployment successful. Deployments are live.")
 
         print("Deleting Serve app.")
-        subprocess.check_output(["serve", "delete", "-y"])
+        subprocess.check_output(["serve", "shutdown", "-y"])
         wait_for_condition(lambda: num_live_deployments() == 0, timeout=15)
         print("Deletion successful. All deployments have shut down.\n")
 

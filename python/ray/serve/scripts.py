@@ -108,24 +108,6 @@ def start(
     )
 
 
-@cli.command(help="Shut down the running Serve app on the Ray cluster.")
-@click.option(
-    "--address",
-    "-a",
-    default=os.environ.get("RAY_ADDRESS", "auto"),
-    required=False,
-    type=str,
-    help=RAY_INIT_ADDRESS_HELP_STR,
-)
-def shutdown(address: str):
-    ray.init(
-        address=address,
-        namespace=SERVE_NAMESPACE,
-    )
-    serve.context._connect()
-    serve.shutdown()
-
-
 @cli.command(
     short_help="Deploy a Serve app from a YAML config file.",
     help=(
@@ -342,7 +324,7 @@ def status(address: str):
 
 
 @cli.command(
-    help="Deletes all deployments in the Serve app.",
+    help="Deletes the Serve app.",
     hidden=True,
 )
 @click.option(
@@ -354,7 +336,7 @@ def status(address: str):
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
 )
 @click.option("--yes", "-y", is_flag=True, help="Bypass confirmation prompt.")
-def delete(address: str, yes: bool):
+def shutdown(address: str, yes: bool):
     if not yes:
         click.confirm(
             f"\nThis will shutdown the Serve application at address "
