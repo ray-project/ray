@@ -1,36 +1,34 @@
 import copy
-import threading
-from collections import defaultdict, OrderedDict
 import logging
+import threading
 import time
+from collections import OrderedDict, defaultdict
 from typing import Any, Dict, List
 
 import botocore
 
+import ray.ray_constants as ray_constants
+from ray.autoscaler._private.aws.cloudwatch.cloudwatch_helper import (
+    CLOUDWATCH_AGENT_INSTALLED_AMI_TAG,
+    CLOUDWATCH_AGENT_INSTALLED_TAG,
+    CloudwatchHelper,
+)
+from ray.autoscaler._private.aws.config import bootstrap_aws
+from ray.autoscaler._private.aws.utils import (
+    boto_exception_handler,
+    client_cache,
+    resource_cache,
+)
+from ray.autoscaler._private.cli_logger import cf, cli_logger
+from ray.autoscaler._private.constants import BOTO_CREATE_MAX_RETRIES, BOTO_MAX_RETRIES
+from ray.autoscaler._private.log_timer import LogTimer
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import (
     TAG_RAY_CLUSTER_NAME,
-    TAG_RAY_NODE_NAME,
     TAG_RAY_LAUNCH_CONFIG,
     TAG_RAY_NODE_KIND,
+    TAG_RAY_NODE_NAME,
     TAG_RAY_USER_NODE_TYPE,
-)
-from ray.autoscaler._private.constants import BOTO_MAX_RETRIES, BOTO_CREATE_MAX_RETRIES
-from ray.autoscaler._private.aws.config import bootstrap_aws
-from ray.autoscaler._private.log_timer import LogTimer
-
-from ray.autoscaler._private.aws.utils import (
-    boto_exception_handler,
-    resource_cache,
-    client_cache,
-)
-from ray.autoscaler._private.cli_logger import cli_logger, cf
-import ray.ray_constants as ray_constants
-
-from ray.autoscaler._private.aws.cloudwatch.cloudwatch_helper import (
-    CloudwatchHelper,
-    CLOUDWATCH_AGENT_INSTALLED_AMI_TAG,
-    CLOUDWATCH_AGENT_INSTALLED_TAG,
 )
 
 logger = logging.getLogger(__name__)
@@ -494,7 +492,6 @@ class AWSNodeProvider(NodeProvider):
         # asyncrhonous or error, which would result in a use after free error.
         # If this leak becomes bad, we can garbage collect the tag cache when
         # the node cache is updated.
-        pass
 
     def _check_ami_cwa_installation(self, config):
         response = self.ec2.meta.client.describe_images(ImageIds=[config["ImageId"]])

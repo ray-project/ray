@@ -7,20 +7,20 @@ Supports color, bold text, italics, underlines, etc.
 (depending on TTY features)
 as well as indentation and other structured output.
 """
-from contextlib import contextmanager
-from functools import wraps
 import inspect
 import logging
 import os
 import sys
 import time
-from typing import Any, Callable, Dict, Tuple, Optional, List
+from contextlib import contextmanager
+from functools import wraps
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import click
+import colorama
 
 # Import ray first to use the bundled colorama
 import ray  # noqa: F401
-import colorama
 
 if sys.platform == "win32":
     import msvcrt

@@ -1,7 +1,3 @@
-from getpass import getuser
-from shlex import quote
-from typing import Dict, List
-import click
 import hashlib
 import json
 import logging
@@ -10,30 +6,33 @@ import subprocess
 import sys
 import time
 import warnings
+from getpass import getuser
+from shlex import quote
+from typing import Dict, List
 
-from ray.autoscaler.command_runner import CommandRunnerInterface
+import click
+
+from ray.autoscaler._private.cli_logger import cf, cli_logger
 from ray.autoscaler._private.constants import (
     AUTOSCALER_NODE_SSH_INTERVAL_S,
+    AUTOSCALER_NODE_START_WAIT_S,
     DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES,
     DEFAULT_OBJECT_STORE_MEMORY_PROPORTION,
-    AUTOSCALER_NODE_START_WAIT_S,
 )
 from ray.autoscaler._private.docker import (
     check_bind_mounts_cmd,
-    check_docker_running_cmd,
     check_docker_image,
+    check_docker_running_cmd,
     docker_start_cmds,
     with_docker_exec,
 )
 from ray.autoscaler._private.log_timer import LogTimer
-
 from ray.autoscaler._private.subprocess_output_util import (
-    run_cmd_redirected,
     ProcessRunnerError,
     is_output_redirected,
+    run_cmd_redirected,
 )
-
-from ray.autoscaler._private.cli_logger import cli_logger, cf
+from ray.autoscaler.command_runner import CommandRunnerInterface
 from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)

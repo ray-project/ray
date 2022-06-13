@@ -27,9 +27,9 @@ import os
 import shutil
 import subprocess
 import time
+from typing import Any, Dict, List, Optional
 
 import yaml
-from typing import Any, List, Dict, Optional
 
 
 def _read_yaml(path: str):
