@@ -20,7 +20,7 @@ from typing import (
 from inspect import Parameter
 
 from ray.runtime_context import get_runtime_context
-from ray._private.inspect import (
+from ray._private.inspect_util import (
     is_class_method,
     is_function_or_method,
     is_static_method,

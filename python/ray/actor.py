@@ -21,7 +21,7 @@ from ray._private.client_mode_hook import client_mode_hook
 from ray._private.client_mode_hook import client_mode_should_convert
 from ray._private.client_mode_hook import client_mode_convert_actor
 from ray import cross_language
-from ray._private.inspect import (
+from ray._private.inspect_util import (
     is_function_or_method,
     is_class_method,
     is_static_method,

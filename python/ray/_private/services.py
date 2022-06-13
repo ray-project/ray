@@ -1281,6 +1281,7 @@ def start_log_monitor(
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",
     ]
+    print(command)
     if redirect_logging:
         # Avoid hanging due to fd inheritance.
         stdout_file = subprocess.DEVNULL
@@ -1300,10 +1301,11 @@ def start_log_monitor(
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_LOG_MONITOR,
-        stdout_file=stdout_file,
-        stderr_file=stderr_file,
+        stdout_file=sys.stdout,
+        stderr_file=sys.stderr,
         fate_share=fate_share,
     )
+    print(process_info)
     return process_info
 
 

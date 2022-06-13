@@ -26,7 +26,7 @@ from ray._private.utils import (
     format_error_message,
 )
 from ray._private.ray_constants import KV_NAMESPACE_FUNCTION_TABLE
-from ray._private.inspect import (
+from ray._private.inspect_util import (
     is_function_or_method,
     is_class_method,
     is_static_method,
