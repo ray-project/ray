@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 import os
 import sys
 import shutil
@@ -25,12 +26,16 @@ def get_current_usage():
     return 1.0 - 1.0 * usage.free / usage.total
 
 
+@contextmanager
 def create_tmp_file(bytes):
     tmp_dir = tempfile.mkdtemp(dir="/tmp")
     tmp_path = os.path.join(tmp_dir, "test.txt")
     with open(tmp_path, "wb") as f:
         f.write(os.urandom(bytes))
-    return tmp_path
+    try:
+        yield tmp_path
+    finally:
+        os.remove(tmp_path)
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Not targeting Windows")
@@ -50,13 +55,13 @@ def test_put_out_of_disk(shutdown_only):
     # create a temp file so that the disk size is over the threshold.
     # ray.put doesn't work is that fallback allocation uses mmaped file
     # that doesn't neccssary allocate disk spaces.
-    tmp_file = create_tmp_file(250 * 1024 * 1024)
-    assert get_current_usage() > local_fs_capacity_threshold
-    time.sleep(1)
-    with pytest.raises(ray.exceptions.OutOfDiskError):
-        ray.put(np.random.rand(20 * 1024 * 1024))
-    # delete tmp file to reclaim space back.
-    os.remove(tmp_file)
+    with create_tmp_file(250 * 1024 * 1024):
+        assert get_current_usage() > local_fs_capacity_threshold
+        time.sleep(1)
+        with pytest.raises(ray.exceptions.OutOfDiskError):
+            ray.put(np.random.rand(20 * 1024 * 1024))
+        # delete tmp file to reclaim space back.
+
     assert get_current_usage() < local_fs_capacity_threshold
     time.sleep(1)
     ray.put(np.random.rand(20 * 1024 * 1024))
@@ -77,19 +82,17 @@ def test_task_returns(shutdown_only):
     # create a temp file so that the disk size is over the threshold.
     # ray.put doesn't work is that fallback allocation uses mmaped file
     # that doesn't neccssary allocate disk spaces.
-    tmp_file = create_tmp_file(50 * 1024 * 1024)
-    assert get_current_usage() > local_fs_capacity_threshold
-    time.sleep(1)
-
-    @ray.remote
-    def foo():
+    with create_tmp_file(250 * 1024 * 1024):
+        assert get_current_usage() > local_fs_capacity_threshold
         time.sleep(1)
-        return np.random.rand(20 * 1024 * 1024)  # 160 MB data
 
-    with pytest.raises(ray.exceptions.RayTaskError):
-        ray.get(foo.remote())
+        @ray.remote
+        def foo():
+            time.sleep(1)
+            return np.random.rand(20 * 1024 * 1024)  # 160 MB data
 
-    os.remove(tmp_file)
+        with pytest.raises(ray.exceptions.RayTaskError):
+            ray.get(foo.remote())
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Not targeting Windows")
@@ -107,17 +110,17 @@ def test_task_put(shutdown_only):
     # create a temp file so that the disk size is over the threshold.
     # ray.put doesn't work is that fallback allocation uses mmaped file
     # that doesn't neccssary allocate disk spaces.
-    tmp_file = create_tmp_file(50 * 1024 * 1024)
-    assert get_current_usage() > local_fs_capacity_threshold
-    time.sleep(1)
+    with create_tmp_file(250 * 1024 * 1024):
+        assert get_current_usage() > local_fs_capacity_threshold
+        time.sleep(1)
 
-    @ray.remote
-    def foo():
-        ref = ray.put(np.random.rand(20 * 1024 * 1024))  # 160 MB data
-        return ref
+        @ray.remote
+        def foo():
+            ref = ray.put(np.random.rand(20 * 1024 * 1024))  # 160 MB data
+            return ref
 
-    with pytest.raises(ray.exceptions.RayTaskError):
-        ray.get(foo.remote())
+        with pytest.raises(ray.exceptions.RayTaskError):
+            ray.get(foo.remote())
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Not targeting Windows")

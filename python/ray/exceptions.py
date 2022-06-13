@@ -334,11 +334,17 @@ class OutOfDiskError(RayError):
     """
 
     def __str__(self):
+        # TODO(scv119): expose more disk usage information and link to a doc.
         return super(OutOfDiskError, self).__str__() + (
             "\n"
             "The local object store is full and local disk is also full."
-            "Tip: Use the `ray memory` command "
-            "to list active objects in the cluster."
+            "Tip: Run `df` command to check the disk usage; "
+            "Use the `ray memory` command to check the plasma memory usage."
+            "You can adjust plasma memory capacity by calling "
+            "`ray.init(object_store_memory=...)`;"
+            "You can also try to spread out of disk usage across multiple "
+            "physical devices, following"
+            " https://docs.ray.io/en/master/ray-core/objects/object-spilling.html"
         )
 
 
