@@ -51,6 +51,9 @@ win32_job = None
 win32_AssignProcessToJobObject = None
 
 
+ENV_DISABLE_DOCKER_CPU_WARNING = "RAY_DISABLE_DOCKER_CPU_WARNING" in os.environ
+
+
 def get_user_temp_dir():
     if "RAY_TMPDIR" in os.environ:
         return os.environ["RAY_TMPDIR"]
@@ -501,14 +504,18 @@ def _get_docker_cpus(
     return cpu_quota or cpuset_num
 
 
-def get_num_cpus(override_docker_warning: bool = False) -> int:
+def get_num_cpus(
+    override_docker_cpu_warning: bool = ENV_DISABLE_DOCKER_CPU_WARNING,
+) -> int:
     """
     Get the number of CPUs available on this node.
     Depending on the situation, use multiprocessing.cpu_count() or cgroups.
 
     Args:
-        override_docker_warning: An extra flag to explicitly turn off the Docker
+        override_docker_cpu_warning: An extra flag to explicitly turn off the Docker
             warning. Setting this flag True has the same effect as setting the env
+            RAY_DISABLE_DOCKER_CPU_WARNING. By default, whether or not to log
+            the warning is determined by the env variable
             RAY_DISABLE_DOCKER_CPU_WARNING.
     """
     cpu_count = multiprocessing.cpu_count()
@@ -529,9 +536,9 @@ def get_num_cpus(override_docker_warning: bool = False) -> int:
             # Don't log this warning if we're on K8s or if the warning is
             # explicitly disabled.
             if (
-                "RAY_DISABLE_DOCKER_CPU_WARNING" not in os.environ
-                and "KUBERNETES_SERVICE_HOST" not in os.environ
-                and not override_docker_warning
+                "KUBERNETES_SERVICE_HOST" not in os.environ
+                and not ENV_DISABLE_DOCKER_CPU_WARNING
+                and not override_docker_cpu_warning
             ):
                 logger.warning(
                     "Detecting docker specified CPUs. In "
