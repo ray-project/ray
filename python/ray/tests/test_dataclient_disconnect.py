@@ -1,4 +1,4 @@
-from ray.util.client.ray_client_helpers import ray_start_client_server
+from ray.util.client.ray_client_helpers import ray_start_client_server, ray_start_client_server_pair
 from unittest.mock import Mock, patch
 import pytest
 import os
@@ -11,7 +11,7 @@ def test_dataclient_disconnect_on_request():
     # checking new connection data.
     with patch.dict(
         os.environ, {"RAY_CLIENT_RECONNECT_GRACE_PERIOD": "5"}
-    ), ray_start_client_server() as ray:
+    ), ray_start_client_server_pair() as ray, server:
         assert ray.is_connected()
 
         @ray.remote
@@ -28,7 +28,7 @@ def test_dataclient_disconnect_on_request():
 
         # Test that a new connection can be made
         time.sleep(5)  # Give server time to clean up old connection
-        connection_data = ray.connect("localhost:50051")
+        connection_data = ray.connect(f"localhost:{server.port}")
         assert connection_data["num_clients"] == 1
         assert ray.get(f.remote()) == 42
 
@@ -39,7 +39,7 @@ def test_dataclient_disconnect_before_request():
     # checking new connection data.
     with patch.dict(
         os.environ, {"RAY_CLIENT_RECONNECT_GRACE_PERIOD": "5"}
-    ), ray_start_client_server() as ray:
+    ), ray_start_client_server_pair() as ray, server:
         assert ray.is_connected()
 
         @ray.remote
@@ -75,7 +75,7 @@ def test_dataclient_disconnect_before_request():
 
         # Test that a new connection can be made
         time.sleep(5)  # Give server time to clean up old connection
-        connection_data = ray.connect("localhost:50051")
+        connection_data = ray.connect(f"localhost:{server.port}")
         assert connection_data["num_clients"] == 1
         assert ray.get(f.remote()) == 42
 
