@@ -19,6 +19,8 @@ public class Constants {
 
   public static final String SERVE_CONTROLLER_NAME = "SERVE_CONTROLLER_ACTOR";
 
+  public static final String SERVE_NAMESPACE = "serve";
+
   public static final String CALL_METHOD = "call";
 
   public static final String UTF8 = "UTF-8";

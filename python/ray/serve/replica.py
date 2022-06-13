@@ -25,6 +25,7 @@ from ray.serve.constants import (
     RECONFIGURE_METHOD,
     DEFAULT_LATENCY_BUCKET_MS,
     SERVE_LOGGER_NAME,
+    SERVE_NAMESPACE,
 )
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
@@ -56,7 +57,6 @@ def create_replica_wrapper(name: str):
             deployment_config_proto_bytes: bytes,
             version: DeploymentVersion,
             controller_name: str,
-            controller_namespace: str,
             detached: bool,
         ):
             configure_component_logger(
@@ -110,14 +110,13 @@ def create_replica_wrapper(name: str):
                 deployment_name,
                 replica_tag,
                 controller_name,
-                controller_namespace,
                 servable_object=None,
             )
 
             assert controller_name, "Must provide a valid controller_name"
 
             controller_handle = ray.get_actor(
-                controller_name, namespace=controller_namespace
+                controller_name, namespace=SERVE_NAMESPACE
             )
 
             # This closure initializes user code and finalizes replica
@@ -142,7 +141,6 @@ def create_replica_wrapper(name: str):
                     deployment_name,
                     replica_tag,
                     controller_name,
-                    controller_namespace,
                     servable_object=_callable,
                 )
 

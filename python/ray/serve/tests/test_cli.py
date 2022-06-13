@@ -13,6 +13,7 @@ from ray import serve
 from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
 from ray._private.test_utils import wait_for_condition
 from ray.serve.application import Application
+from ray.serve.constants import SERVE_NAMESPACE
 from ray.serve.deployment_graph import RayServeDAGHandle
 
 
@@ -38,20 +39,12 @@ def test_start_shutdown(ray_start_stop):
     subprocess.check_output(["serve", "shutdown"])
 
 
-def test_start_shutdown_in_namespace(ray_start_stop):
-    with pytest.raises(subprocess.CalledProcessError):
-        subprocess.check_output(["serve", "shutdown", "-n", "test"])
-
-    subprocess.check_output(["serve", "start", "-n", "test"])
-    subprocess.check_output(["serve", "shutdown", "-n", "test"])
-
-
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_deploy(ray_start_stop):
     # Deploys some valid config files and checks that the deployments work
 
     # Initialize serve in test to enable calling serve.list_deployments()
-    ray.init(address="auto", namespace="serve")
+    ray.init(address="auto", namespace=SERVE_NAMESPACE)
     serve.start(detached=True)
 
     # Create absolute file names to YAML config files
@@ -439,7 +432,7 @@ def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
     deploy_response = subprocess.check_output(["serve", "deploy", config_file_name])
     assert success_message_fragment in deploy_response
 
-    ray.init(address="auto", namespace="serve")
+    ray.init(address="auto", namespace=SERVE_NAMESPACE)
     serve.start(detached=True)
     assert len(serve.list_deployments()) == 2
 

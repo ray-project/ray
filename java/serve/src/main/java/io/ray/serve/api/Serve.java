@@ -74,7 +74,7 @@ public class Serve {
             ? INTERNAL_REPLICA_CONTEXT.getInternalControllerName()
             : Constants.SERVE_CONTROLLER_NAME;
 
-    Optional<BaseActorHandle> optional = Ray.getActor(controllerName);
+    Optional<BaseActorHandle> optional = Ray.getActor(controllerName, Constants.SERVE_NAMESPACE);
     Preconditions.checkState(
         optional.isPresent(),
         LogUtil.format(

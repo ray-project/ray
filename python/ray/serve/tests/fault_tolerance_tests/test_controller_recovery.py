@@ -7,7 +7,7 @@ import time
 
 import ray
 from ray import serve
-from ray.serve.constants import SERVE_CONTROLLER_NAME, SERVE_PROXY_NAME
+from ray.serve.constants import SERVE_CONTROLLER_NAME, SERVE_PROXY_NAME, SERVE_NAMESPACE
 from ray.serve.tests.test_failure import request_with_retries
 from ray._private.test_utils import SignalActor
 from ray.serve.utils import get_random_letters
@@ -54,17 +54,18 @@ def test_recover_start_from_replica_actor_names(serve_instance):
     # 'SERVE_CONTROLLER_ACTOR',
     # 'TransientConstructorFailureDeployment#NosHNA',
     # 'SERVE_CONTROLLER_ACTOR:SERVE_PROXY_ACTOR-node:192.168.86.165-0']
-    all_actor_names = ray.util.list_named_actors()
-    all_replica_names = [
-        actor_name
-        for actor_name in all_actor_names
+    actor_infos = ray.util.list_named_actors(all_namespaces=True)
+    replica_names = [
+        actor_info["name"]
+        for actor_info in actor_infos
         if (
-            SERVE_CONTROLLER_NAME not in actor_name
-            and SERVE_PROXY_NAME not in actor_name
+            SERVE_NAMESPACE == actor_info["namespace"]
+            and SERVE_CONTROLLER_NAME not in actor_info["name"]
+            and SERVE_PROXY_NAME not in actor_info["name"]
         )
     ]
     assert (
-        len(all_replica_names) == 2
+        len(replica_names) == 2
     ), "Should have two running replicas fetched from ray API."
 
     # Kill controller and wait for endpoint to be available again
@@ -76,22 +77,23 @@ def test_recover_start_from_replica_actor_names(serve_instance):
         assert response.text == "hii"
 
     # Ensure recovered replica names are the same
-    recovered_all_actor_names = ray.util.list_named_actors()
-    recovered_all_replica_names = [
-        actor_name
-        for actor_name in recovered_all_actor_names
+    recovered_actor_infos = ray.util.list_named_actors(all_namespaces=True)
+    recovered_replica_names = [
+        actor_info["name"]
+        for actor_info in recovered_actor_infos
         if (
-            SERVE_CONTROLLER_NAME not in actor_name
-            and SERVE_PROXY_NAME not in actor_name
+            SERVE_NAMESPACE == actor_info["namespace"]
+            and SERVE_CONTROLLER_NAME not in actor_info["name"]
+            and SERVE_PROXY_NAME not in actor_info["name"]
         )
     ]
     assert (
-        recovered_all_replica_names == all_replica_names
+        recovered_replica_names == replica_names
     ), "Running replica actor names after recovery must match"
 
     # Ensure recovered replica version has are the same
-    for replica_name in recovered_all_replica_names:
-        actor_handle = ray.get_actor(replica_name)
+    for replica_name in recovered_replica_names:
+        actor_handle = ray.get_actor(replica_name, namespace=SERVE_NAMESPACE)
         ref = actor_handle.get_metadata.remote()
         _, version = ray.get(ref)
         assert replica_version_hash == hash(

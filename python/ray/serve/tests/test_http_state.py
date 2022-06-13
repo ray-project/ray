@@ -6,14 +6,7 @@ from ray.serve.config import DeploymentMode, HTTPOptions
 from ray.serve.http_state import HTTPState
 
 
-@pytest.fixture
-def patch_get_namespace():
-    with patch("ray.serve.client.get_controller_namespace") as func:
-        func.return_value = "dummy_namespace"
-        yield
-
-
-def test_node_selection(patch_get_namespace):
+def test_node_selection():
     def _make_http_state(http_options):
         return HTTPState(
             "mock_controller_name",

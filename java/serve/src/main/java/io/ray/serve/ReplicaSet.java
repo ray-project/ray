@@ -52,7 +52,9 @@ public class ReplicaSet {
     if (!CollectionUtil.isEmpty(actorNames)) {
       actorNames.forEach(
           name ->
-              workerReplicas.add((ActorHandle<RayServeWrappedReplica>) Ray.getActor(name).get()));
+              workerReplicas.add(
+                  (ActorHandle<RayServeWrappedReplica>)
+                      Ray.getActor(name, Constants.SERVE_NAMESPACE).get()));
     }
 
     Set<ActorHandle<RayServeWrappedReplica>> added =

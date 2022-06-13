@@ -101,7 +101,9 @@ public class LongPollClientFactory {
 
     LongPollClientFactory.hostActor =
         Optional.ofNullable(hostActor)
-            .orElse(Ray.getActor(replicaContext.getInternalControllerName()).get());
+            .orElse(
+                Ray.getActor(replicaContext.getInternalControllerName(), Constants.SERVE_NAMESPACE)
+                    .get());
 
     scheduledExecutorService =
         Executors.newSingleThreadScheduledExecutor(

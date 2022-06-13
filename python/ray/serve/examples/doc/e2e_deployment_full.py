@@ -12,7 +12,7 @@ def summarize(text):
     return summary
 
 
-ray.init(address="auto", namespace="serve")
+ray.init(address="auto")
 serve.start(detached=True)
 
 
