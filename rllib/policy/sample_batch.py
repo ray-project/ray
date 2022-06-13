@@ -1243,12 +1243,13 @@ class MultiAgentBatch:
 
 @PublicAPI
 def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
-    """
-    Concatenates n SampleBatches or MultiAgentBatches.
-    If all items in samples are SampleBatche types, the output will be
+    """Concatenates a list of  SampleBatches or MultiAgentBatches.
+    If all items in the list are or SampleBatch typ4, the output will be
     a SampleBatch type. Otherwise, the output will be a MultiAgentBatch type.
-    The output will still be a MultiAgentBatch object even if all
-    MultiAgentBatches are empty. Empty samples are simply ignored.
+    If input is a mixture of SampleBatch and MultiAgentBatch types, it will treat
+    SampleBatch objects as MultiAgentBatch types with 'default_policy' key and
+    concatenate it with th rest of MultiAgentBatch objects.
+    Empty samples are simply ignored.
 
     Args:
         samples: List of SampleBatches or MultiAgentBatches to be
@@ -1266,6 +1267,16 @@ def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
         ...                   "b": np.array([12])})
         >>> print(concat_samples([b1, b2])) # doctest: +SKIP
         {"a": np.array([1, 2, 3]), "b": np.array([10, 11, 12])}
+
+        >>> c1 = MultiAgentBatch({'default_policy': { # doctest: +SKIP
+        ...                                 "a": np.array([1, 2]),
+        ...                                 "b": np.array([10, 11])
+        ...                                 }}, env_steps=2)
+        >>> c2 = SampleBatch({"a": np.array([3]), # doctest: +SKIP
+        ...                   "b": np.array([12])})
+        >>> print(concat_samples([b1, b2])) # doctest: +SKIP
+        MultiAgentBatch = {'default_policy': {"a": np.array([1, 2, 3]),
+                                              "b": np.array([10, 11, 12])}}
     """
 
     if any([isinstance(s, MultiAgentBatch) for s in samples]):
@@ -1344,8 +1355,7 @@ def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
 
 @PublicAPI
 def concat_samples_into_ma_batch(samples: List[SampleBatchType]) -> "MultiAgentBatch":
-    """
-    Concatenates a list of SampleBatchTypes to a single MultiAgentBatch type.
+    """Concatenates a list of SampleBatchTypes to a single MultiAgentBatch type.
     This function, as opposed to concat_samples() forces the output to always be
     MultiAgentBatch which is more generic than SampleBatch.
 
@@ -1359,8 +1369,10 @@ def concat_samples_into_ma_batch(samples: List[SampleBatchType]) -> "MultiAgentB
     Examples:
         >>> import numpy as np
         >>> from ray.rllib.policy.sample_batch import SampleBatch
-        >>> b1 = MultiAgentBatch({"a": np.array([1, 2]), # doctest: +SKIP
-        ...                       "b": np.array([10, 11])}, env_steps=2)
+        >>> b1 = MultiAgentBatch({'default_policy': { # doctest: +SKIP
+        ...                                 "a": np.array([1, 2]),
+        ...                                 "b": np.array([10, 11])
+        ...                                 }}, env_steps=2)
         >>> b2 = SampleBatch({"a": np.array([3]), # doctest: +SKIP
         ...                   "b": np.array([12])})
         >>> print(concat_samples([b1, b2])) # doctest: +SKIP
@@ -1384,7 +1396,7 @@ def concat_samples_into_ma_batch(samples: List[SampleBatchType]) -> "MultiAgentB
             # Otherwise: Error.
             raise ValueError(
                 "`concat_samples_into_ma_batch` can only concat "
-                "SampleBatchType objects, not {}!".format(type(s).__name__)
+                "SampleBatch|MultiAgentBatch objects, not {}!".format(type(s).__name__)
             )
 
         for key, batch in s.policy_batches.items():
