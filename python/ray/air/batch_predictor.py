@@ -130,7 +130,7 @@ class BatchPredictor:
         blocks_per_window: Optional[int] = None,
         bytes_per_window: Optional[int] = None,
         **kwargs,
-    ) -> ray.data.Dataset:
+    ) -> ray.data.DatasetPipeline:
         """Setup a prediction pipeline for batch scoring.
 
         Unlike `predict()`, this generates a DatasetPipeline object and does not
