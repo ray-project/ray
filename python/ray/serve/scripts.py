@@ -169,7 +169,7 @@ def deploy(config_file_name: str, address: str):
     short_help="Run a Serve app.",
     help=(
         "Runs the Serve app from the specified import path or YAML config.\n"
-        "Any import path must lead to an Application or ClassNode object. "
+        "Any import path must lead to a FunctionNode or ClassNode object. "
         "By default, this will block and periodically log status. If you "
         "Ctrl-C the command, it will tear down the app."
     ),
