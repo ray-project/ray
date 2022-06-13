@@ -64,7 +64,6 @@ def deserialize_pieces(
     serialized_pieces: str,
 ) -> List["pyarrow._dataset.ParquetFileFragment"]:
     from ray import cloudpickle
-    import random
 
     min_interval = 0
     final_exception = None
@@ -78,6 +77,7 @@ def deserialize_pieces(
         except Exception as e:
             import traceback
             import time
+            import random
 
             tb_str = traceback.format_exception(
                 etype=type(e), value=e, tb=e.__traceback__
