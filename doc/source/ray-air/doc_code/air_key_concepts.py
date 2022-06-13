@@ -73,11 +73,18 @@ from ray.air.predictors.integrations.xgboost import XGBoostPredictor
 
 batch_predictor = BatchPredictor.from_checkpoint(result.checkpoint, XGBoostPredictor)
 
+# Bulk batch prediction.
 predicted_labels = (
     batch_predictor.predict(test_dataset)
     .map_batches(lambda df: (df > 0.5).astype(int), batch_format="pandas")
     .to_pandas(limit=float("inf"))
 )
+
+# Pipelined batch prediction: instead of processing the data in bulk, process it
+# incrementally in windows of the given size.
+pipeline = batch_predictor.predict_pipelined(test_dataset, bytes_per_window=1048576)
+for batch in pipeline.iter_batches():
+    print("Pipeline result", batch)
 
 # __air_batch_predictor_end__
 
