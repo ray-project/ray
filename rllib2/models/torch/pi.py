@@ -80,9 +80,11 @@ class Pi(nn.Module):
         * For discrete you should output a categorical dist that can be sampled
         * Support composable output distribution heads for cases where we have a mixture
             of cont. and disc. action spaces
-        * TODO: How do we support auto-regressive action spaces?
-        * TODO: How do we support Recurrent Policies?
-        * TODO: How do we support action-space masking?
+        * TODO: [x] How do we support mixed action spaces? Example below.
+        * TODO: [] How do we support auto-regressive action spaces?
+        * TODO: [x] How do we support goal-conditioned policies? Example below.
+        * TODO: [] How do we support Recurrent Policies?
+        * TODO: [] How do we support action-space masking?
     * Support Goal conditioned policies?
     * Should be able to switch between exploration = on / off
         * target_sample is used for inference (exploration = off)
@@ -98,18 +100,25 @@ class Pi(nn.Module):
         super().__init__()
         self.encoder = encoder
 
-    def __call__(self, batch, **kwargs):
-        if self.encoder:
-            output = self.encoder(batch, kwargs)
-        else:
-            output = batch
-        return super().__call__(output)
+    def __call__(self, batch, encode: bool = True, **kwargs):
+        encoded_batch = kwargs.pop('encoded_batch')
+        if self.encoder and encode:
+            encoded_batch = self.encoder(batch, **kwargs)
+        return super().__call__(batch, encoded_batch=encoded_batch)
 
-    def forward(self, batch: SampleBatch, **kwargs) -> PiOutput:
+    def forward(self, batch: SampleBatch, encoded_batch: Optional[EncoderOutput] = None, **kwargs) -> PiOutput:
         """
         Runs pi, Pi(input_dict) -> Pi(s_t)
         """
         pass
+
+"""
+Some examples of pre-defined RLlib standard policies
+"""
+
+#######################################################
+########### Deterministic Continuous Policy a = Pi(s)
+#######################################################
 
 
 class DetermnisticPi(Pi):
@@ -121,8 +130,12 @@ class DetermnisticPi(Pi):
         super().__init__(encoder)
         self.policy_head = nn.Linear(encoder.num_features, action_shape)
 
-    def forward(self, batch: SampleBatch, **kwargs) -> PiOutput:
-        s = batch['rl_state']
+    def forward(self, batch: SampleBatch, encoded_batch: Optional[EncoderOutput] = None, **kwargs) -> PiOutput:
+        if encoded_batch:
+            s = encoded_batch.out
+        else:
+            s = batch.obs
+
         logits = self.policy_head(s)
         if self.squash_actions:
             dist = SquashedDeterministicDist(logits)
@@ -131,13 +144,17 @@ class DetermnisticPi(Pi):
         return PiOutput(action_dist=dist)
 
 
+###########################################################
+########### Stochastic Continuous Policy a ~ N(mu(s), std(s))
+###########################################################
+
 class NormalPi(Pi):
     """
     Behavioral Sample is sampled from Normal
     Target sample is the mean of the Normal
     """
 
-    def __init__(self, action_shape, encoder, squash_actions=False,
+    def __init__(self, encoder, action_shape, squash_actions=False,
                  log_std=None, use_parameter_log_std=False, **kwargs):
         super().__init__(encoder)
 
@@ -145,8 +162,11 @@ class NormalPi(Pi):
         self.policy_head = nn.Linear(encoder.num_features, output_shape)
 
 
-    def forward(self, batch: SampleBatch, **kwargs) -> PiOutput:
-        s = batch['rl_state']
+    def forward(self, batch: SampleBatch, encoded_batch: Optional[EncoderOutput] = None, **kwargs) -> PiOutput:
+        if encoded_batch:
+            s = encoded_batch.out
+        else:
+            s = batch.obs
         logits = self.policy_head(s)
         mean, std = ...
 
@@ -157,7 +177,77 @@ class NormalPi(Pi):
         return PiOutput(action_dist=dist)
 
 
+######################################################################
+########### Stochastic Discrete Policy a ~ Categorical([p1, ..., pk](s))
+######################################################################
+
 class CategoricalPi(Pi):
 
-    def __init__(self, action_classes):
+    def __init__(self, encoder, action_classes):
         pass
+
+
+###################################################################
+########### Goal Conditioned Normal Policy a ~ N(mu(s,g), std(s, g))
+###################################################################
+from .encoder import Encoder
+
+class VectorGoalObsEncoder(Encoder):
+
+    def __init__(self, encoder_config):
+        super().__init__()
+        self.net = MLP(
+            in_channels=encoder_config.obs_dim + encoder_config.goal_dim,
+            out_channels=encoder_config.latent_dim,
+            hidden_dim = 256,
+            n_layers = 3,
+            activation = 'Relu'
+        )
+
+    def forward(self, batch: SampleBatch) -> EncoderOutput:
+        obs = batch.obs
+        goal = batch.goal
+        obs_goal = torch.cat([obs, goal], -1)
+        latent = self.net(obs_goal)
+        return EncoderOutput(out=latent)
+
+
+class GoalConditionedPi(NormalPi):
+
+    def __init__(self, encoder: VectorGoalObsEncoder, *args, **kwargs):
+        super().__init__(encoder, *args, **kwargs)
+
+
+###################################################################
+########### Mixed action space policy
+# action_space = {'torques': Box(-1, 1)^6, 'gripper': Discrete(n=2)}
+# a ~ MixedDistribution({
+#   'torques' ~ squashedNorm(mu(s), std(s)),
+#   'gripper' ~ Categorical([p1(s), p2(s)])
+# })
+# example usage of the mixed_dist output
+# >>> actor_loss = mixed_dist.log_prob(a)
+# >>> {'torques': Tensor(0.63), 'gripper': Tensor(0.63)}
+###################################################################
+
+
+class MixturePi(Pi):
+
+    def __init__(self, encoder, pi_dict: Dict[Pi]):
+        super().__init__(encoder)
+        self.pis = nn.ModuleDict(pi_dict)
+
+
+    def forward(self, batch: SampleBatch, encoded_batch: Optional[EncoderOutput] = None, **kwargs) -> PiOutput:
+        pi_outputs = {}
+        for pi_key, pi in self.pis.items():
+            pi_outputs[pi_key] = pi(batch, encoded_batch=encoded_batch, encode=False)
+
+        act_dist_dict = {k: v.action_dist for k, v in pi_output.items()}
+        return PiOutput(action_dist=MixDistribution(act_dist_dict))
+
+
+
+
+
+
