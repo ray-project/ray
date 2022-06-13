@@ -122,10 +122,8 @@ class DockerCluster:
         except Exception as e:
             raise RuntimeError(f"Timed out connecting to Ray: {e}")
 
-        if client:
-            self._start_execution_process()
-
-    def _start_execution_process(self):
+    def remote_execution_api(self) -> "RemoteAPI":
+        """Create an object to control cluster state from within the cluster."""
         self._execution_queue = Queue(actor_options={"num_cpus": 0})
         stop_event = self._execution_event
 
@@ -141,6 +139,8 @@ class DockerCluster:
 
         self._execution_process = threading.Thread(target=entrypoint)
         self._execution_process.start()
+
+        return RemoteAPI(self._execution_queue)
 
     @staticmethod
     def wait_for_resources(resources: Dict[str, float], timeout: int = 60):
@@ -359,7 +359,6 @@ class DockerCluster:
         node_id: Optional[str] = None,
         num: Optional[int] = None,
         rand: Optional[str] = None,
-        _use_queue: bool = False,
     ):
         """Kill node.
 
@@ -371,12 +370,6 @@ class DockerCluster:
         If ``rand`` is given (as either ``worker`` or ``any``), kill a random
         node.
         """
-        if _use_queue:
-            self._execution_queue.put(
-                "kill_node", dict(node_id=node_id, num=num, rand=rand)
-            )
-            return
-
         node_id = self._get_node(node_id=node_id, num=num, rand=rand)
         container = self._get_docker_container(node_id=node_id)
         subprocess.check_output(f"docker kill {container}", shell=True)
@@ -385,3 +378,28 @@ class DockerCluster:
         state = self.__dict__
         state.pop("_execution_process", None)
         state.pop("_execution_event", None)
+
+
+class RemoteAPI:
+    """Remote API to control cluster state from within cluster tasks.
+
+    This API uses a Ray queue to interact with an execution thread on the
+    host machine that will execute commands passed to the queue.
+
+    The API subset is limited to specific commands.
+
+    Args:
+        queue: Ray queue to push command instructions to.
+
+    """
+
+    def __init__(self, queue: Queue):
+        self._queue = queue
+
+    def kill_node(
+        self,
+        node_id: Optional[str] = None,
+        num: Optional[int] = None,
+        rand: Optional[str] = None,
+    ):
+        self._queue.put(("kill_node", dict(node_id=node_id, num=num, rand=rand)))

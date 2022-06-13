@@ -134,6 +134,7 @@ class MultiNodeSyncTest(unittest.TestCase):
         )
         self.cluster.start()
         self.cluster.connect(client=True, timeout=120)
+        remote_api = self.cluster.remote_execution_api()
 
         def train(config):
             time.sleep(120)
@@ -150,7 +151,7 @@ class MultiNodeSyncTest(unittest.TestCase):
                     and len(trials) == 3
                     and all(trial.status == Trial.RUNNING for trial in trials)
                 ):
-                    self._cluster.kill_node(num=2, _use_queue=True)
+                    remote_api.kill_node(num=2)
                     self._killed = True
 
         tune.run(
