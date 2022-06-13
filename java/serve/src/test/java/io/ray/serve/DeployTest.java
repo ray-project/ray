@@ -11,7 +11,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-public class ServeDemo extends BaseServeTest {
+public class DeployTest extends BaseServeTest {
 
   public static class Counter {
 
@@ -26,7 +26,7 @@ public class ServeDemo extends BaseServeTest {
     }
   }
 
-  @Test
+  @Test(enabled = false)
   public static void testDepoly() throws IOException {
     // Deploy deployment.
     String deploymentName = "counter";
