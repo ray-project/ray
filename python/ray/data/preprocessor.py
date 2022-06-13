@@ -7,9 +7,9 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 if TYPE_CHECKING:
     import pandas as pd
     import pyarrow
+    from ray.air.data_batch_type import DataBatchType
 
 from ray.data import Dataset
-from ray.air.data_batch_type import DataBatchType
 
 
 @PublicAPI(stability="alpha")
@@ -143,7 +143,7 @@ class Preprocessor(abc.ABC):
         self._transform_stats = transformed_ds.stats()
         return transformed_ds
 
-    def transform_batch(self, df: DataBatchType) -> DataBatchType:
+    def transform_batch(self, df: "DataBatchType") -> "DataBatchType":
         """Transform a single batch of data.
 
         The data will be converted to the format supported by the Preprocessor,
@@ -239,7 +239,7 @@ class Preprocessor(abc.ABC):
                 f"\"pandas\" and \"arrow\" allowed, but got: {transform_type}"
             )
 
-    def _transform_batch(self, df: DataBatchType) -> DataBatchType:
+    def _transform_batch(self, df: "DataBatchType") -> "DataBatchType":
         import pandas as pd
 
         try:

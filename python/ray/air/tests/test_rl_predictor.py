@@ -7,7 +7,7 @@ import pytest
 import tempfile
 
 from ray.air.predictors.integrations.rl.rl_predictor import RLPredictor
-from ray.air.preprocessor import Preprocessor
+from ray.data.preprocessor import Preprocessor
 from ray.air.checkpoint import Checkpoint
 from ray.train.rl import RLTrainer
 

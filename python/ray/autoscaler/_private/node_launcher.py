@@ -1,22 +1,22 @@
-from typing import Any, Optional, Dict
 import copy
 import logging
 import operator
 import threading
-import traceback
 import time
+import traceback
+from typing import Any, Dict, Optional
 
-from ray.autoscaler.tags import (
-    TAG_RAY_LAUNCH_CONFIG,
-    TAG_RAY_NODE_STATUS,
-    TAG_RAY_NODE_KIND,
-    TAG_RAY_NODE_NAME,
-    TAG_RAY_USER_NODE_TYPE,
-    STATUS_UNINITIALIZED,
-    NODE_KIND_WORKER,
-)
 from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from ray.autoscaler._private.util import hash_launch_conf
+from ray.autoscaler.tags import (
+    NODE_KIND_WORKER,
+    STATUS_UNINITIALIZED,
+    TAG_RAY_LAUNCH_CONFIG,
+    TAG_RAY_NODE_KIND,
+    TAG_RAY_NODE_NAME,
+    TAG_RAY_NODE_STATUS,
+    TAG_RAY_USER_NODE_TYPE,
+)
 
 logger = logging.getLogger(__name__)
 
