@@ -373,12 +373,12 @@ TestBuildFNode = global_f.bind()
 TestBuildDagNode = NoArgDriver.bind(TestBuildFNode)
 
 
-# TODO(Shreyas): Add TestBuildDagNode back once serve build new PRs out.
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-@pytest.mark.parametrize("node", ["TestBuildFNode"])
+@pytest.mark.parametrize("node", ["TestBuildFNode", "TestBuildDagNode"])
 def test_build(ray_start_stop, node):
     with NamedTemporaryFile(mode="w+", suffix=".yaml") as tmp:
 
+        print(f'Building node "{node}".')
         # Build an app
         subprocess.check_output(
             [
@@ -389,10 +389,17 @@ def test_build(ray_start_stop, node):
                 tmp.name,
             ]
         )
+        print("Build succeeded! Deploying node.")
+
         subprocess.check_output(["serve", "deploy", tmp.name])
-        assert ping_endpoint("") == "wonderful world"
+        wait_for_condition(lambda: ping_endpoint("") == "wonderful world", timeout=15)
+        print("Deploy succeeded! Node is live and reachable over HTTP. Deleting node.")
+
         subprocess.check_output(["serve", "delete", "-y"])
-        assert ping_endpoint("") == CONNECTION_ERROR_MSG
+        wait_for_condition(
+            lambda: ping_endpoint("") == CONNECTION_ERROR_MSG, timeout=15
+        )
+        print("Delete succeeded! Node is not reachable over HTTP.")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")

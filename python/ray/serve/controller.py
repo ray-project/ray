@@ -561,7 +561,7 @@ def run_graph(
             # Merge graph-level and deployment-level runtime_envs
             if "ray_actor_options" in options:
                 # If specified, get ray_actor_options from config
-                ray_actor_options = options["ray_actor_options"]
+                ray_actor_options = options["ray_actor_options"] or {}
             else:
                 # Otherwise, get options from graph code (and default to {} if code
                 # sets options to None)
