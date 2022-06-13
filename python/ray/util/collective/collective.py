@@ -69,7 +69,7 @@ class GroupManager(object):
             self._name_group_map[group_name] = g
             self._group_name_map[g] = group_name
         elif backend == types.Backend.NCCL:
-            logger.debug("Creating NCCL group: '{}'...".format(group_name))
+            logger.info(f">>>>>> Creating NCCL group: {group_name}, world_size={world_size}, rank={rank}")
             g = NCCLGroup(world_size, rank, group_name)
             self._name_group_map[group_name] = g
             self._group_name_map[g] = group_name
@@ -168,6 +168,7 @@ def create_collective_group(
     Returns:
         None
     """
+    print(f">>>>>> Called with actors: {actors}, world_size: {world_size}, ranks: {ranks}")
     backend = types.Backend(backend)
     _check_backend_availability(backend)
 

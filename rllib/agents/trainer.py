@@ -7,6 +7,7 @@ import gym
 import logging
 import math
 import numpy as np
+import cupy as cp
 import os
 from packaging import version
 import pickle
@@ -28,6 +29,9 @@ from typing import (
 
 import ray
 from ray.actor import ActorHandle
+import ray.util.collective as collective
+from ray.util.collective.types import Backend
+
 from ray.exceptions import RayActorError, RayError
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.agents.trainer_config import TrainerConfig
@@ -43,7 +47,6 @@ from ray.rllib.evaluation.metrics import (
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer
-from ray.rllib.execution.common import WORKER_UPDATE_TIMER
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
@@ -78,6 +81,7 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_TRAINED,
     NUM_AGENT_STEPS_TRAINED,
+    SYNCH_WORKER_WEIGHTS_TIMER,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.pre_checks.multi_agent import check_multi_agent
@@ -117,7 +121,7 @@ def with_common_config(extra_config: PartialTrainerConfigDict) -> TrainerConfigD
     """Returns the given config dict merged with common agent confs.
 
     Args:
-        extra_config (PartialTrainerConfigDict): A user defined partial config
+        extra_config: A user defined partial config
             which will get merged with a default TrainerConfig() object and returned
             as plain python dict.
 
@@ -420,7 +424,7 @@ class Trainer(Trainable):
             # unpreprocessed spaces).
             self.config["multiagent"][
                 "policies"
-            ] = ray.get(self.workers.local_worker().get_policy_dict.remote())
+            ] = self.workers.local_worker().policy_dict
 
         # Evaluation WorkerSet setup.
         # User would like to setup a separate evaluation worker set.
@@ -508,6 +512,7 @@ class Trainer(Trainable):
 
         # Run any callbacks after trainer initialization is done.
         self.callbacks.on_trainer_init(trainer=self)
+        # self.init_buffers()
 
     # TODO: Deprecated: In your sub-classes of Trainer, override `setup()`
     #  directly and call super().setup() from within it if you would like the
@@ -516,6 +521,20 @@ class Trainer(Trainable):
     #  simply do not call super().setup() from your overridden method.
     def _init(self, config: TrainerConfigDict, env_creator: EnvCreator) -> None:
         raise NotImplementedError
+
+    def init_group(self, world_size, rank, backend=Backend.NCCL, group_name="default"):
+        print(">>>> Init group for trainer called")
+        collective.init_collective_group(world_size, rank, backend, group_name)
+        return True
+
+    # def init_buffers(self):
+    #     self.buffer_key_list = ["default"] * 12
+    #     self.buffer_list = [cp.ones([500, 500], dtype=cp.float32)] * 12
+    #     self.buffer = cp.ones([500,500], dtype=cp.float32)
+    #     cp.cuda.Stream.null.synchronize()
+
+    def get_remote_workers(self):
+        return self.workers.remote_workers()
 
     @OverrideToImplementCustomLogic
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
@@ -776,7 +795,7 @@ class Trainer(Trainable):
         else:
             if (
                 self.evaluation_workers is None
-                and ray.get(self.workers.local_worker().get_input_reader.remote()) is None
+                and self.workers.local_worker().input_reader is None
             ):
                 raise ValueError(
                     "Cannot evaluate w/o an evaluation worker set in "
@@ -824,7 +843,7 @@ class Trainer(Trainable):
                 # `rollout_fragment_length` is exactly the desired ts.
                 iters = duration if unit == "episodes" else 1
                 for _ in range(iters):
-                    num_ts_run += len(ray.get(self.workers.local_worker().sample.remote()))
+                    num_ts_run += len(self.workers.local_worker().sample())
                 metrics = collect_metrics(
                     self.workers.local_worker(),
                     keep_custom_metrics=self.config["keep_per_episode_custom_metrics"],
@@ -838,7 +857,7 @@ class Trainer(Trainable):
                 # `rollout_fragment_length` is exactly the desired ts.
                 iters = duration if unit == "episodes" else 1
                 for _ in range(iters):
-                    num_ts_run += len(ray.get(self.evaluation_workers.local_worker().sample.remote()))
+                    num_ts_run += len(self.evaluation_workers.local_worker().sample())
 
             # Evaluation worker set has n remote workers.
             else:
@@ -935,10 +954,12 @@ class Trainer(Trainable):
         global_vars = {
             "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
         }
-        with self._timers[WORKER_UPDATE_TIMER]:
+
+        with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
             self.workers.sync_weights(global_vars=global_vars)
 
         return train_results
+
 
     @staticmethod
     def execution_plan(workers, config, **kwargs):
@@ -1265,7 +1286,7 @@ class Trainer(Trainable):
         Args:
             policy_id: ID of the policy to return.
         """
-        return ray.get(self.workers.local_worker().get_policy.remote(policy_id))
+        return self.workers.local_worker().get_policy(policy_id)
 
     @PublicAPI
     def get_weights(self, policies: Optional[List[PolicyID]] = None) -> dict:
@@ -1275,7 +1296,7 @@ class Trainer(Trainable):
             policies: Optional list of policies to return weights for,
                 or None for all policies.
         """
-        return ray.get(self.workers.local_worker().get_weights.remote(policies))
+        return self.workers.local_worker().get_weights(policies)
 
     @PublicAPI
     def set_weights(self, weights: Dict[PolicyID, dict]):
@@ -1284,7 +1305,7 @@ class Trainer(Trainable):
         Args:
             weights: Map of policy ids to weights to set.
         """
-        ray.get(self.workers.local_worker().set_weights.remote(weights))
+        self.workers.local_worker().set_weights(weights)
 
     @PublicAPI
     def add_policy(
@@ -1668,13 +1689,13 @@ class Trainer(Trainable):
     def _sync_filters_if_needed(self, workers: WorkerSet):
         if self.config.get("observation_filter", "NoFilter") != "NoFilter":
             FilterManager.synchronize(
-                ray.get(workers.local_worker().get_filters.remote()),
+                workers.local_worker().filters,
                 workers.remote_workers(),
                 update_remote=self.config["synchronize_filters"],
             )
-            # logger.debug(
-            #     "synchronized filters: {}".format(workers.local_worker().filters)
-            # )
+            logger.debug(
+                "synchronized filters: {}".format(workers.local_worker().filters)
+            )
 
     @DeveloperAPI
     def _sync_weights_to_workers(
@@ -1687,7 +1708,7 @@ class Trainer(Trainable):
         assert worker_set is not None
         # Broadcast the new policy weights to all evaluation workers.
         logger.info("Synchronizing weights to workers.")
-        weights = ray.put(ray.get(self.workers.local_worker().save.remote()))
+        weights = ray.put(self.workers.local_worker().save())
         worker_set.foreach_worker(lambda w: w.restore(ray.get(weights)))
 
     def _exec_plan_or_training_iteration_fn(self):
@@ -2149,7 +2170,7 @@ class Trainer(Trainable):
         Note: Currently, only h5 files are supported.
 
         Args:
-            import_file (str): The file to import the model from.
+            import_file: The file to import the model from.
 
         Returns:
             A dict that maps ExportFormats to successfully exported models.
@@ -2173,7 +2194,7 @@ class Trainer(Trainable):
     def __getstate__(self) -> dict:
         state = {}
         if hasattr(self, "workers"):
-            state["worker"] = ray.get(self.workers.local_worker().save.remote())
+            state["worker"] = self.workers.local_worker().save()
         # TODO: Experimental functionality: Store contents of replay buffer
         #  to checkpoint, only if user has configured this.
         if self.local_replay_buffer is not None and self.config.get(
@@ -2188,7 +2209,7 @@ class Trainer(Trainable):
 
     def __setstate__(self, state: dict):
         if hasattr(self, "workers") and "worker" in state:
-            ray.get(self.workers.local_worker().restore.remote(state["worker"]))
+            self.workers.local_worker().restore(state["worker"])
             remote_state = ray.put(state["worker"])
             for r in self.workers.remote_workers():
                 r.restore.remote(remote_state)

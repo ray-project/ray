@@ -33,8 +33,13 @@ from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
+    SYNCH_WORKER_WEIGHTS_COLLECTIVE_TIMER,
+    SYNCH_WORKER_WEIGHTS_TIMER,
     WORKER_UPDATE_TIMER,
 )
+import ray.util.collective as collective
+from ray.util.collective.types import Backend
+import cupy as cp
 
 logger = logging.getLogger(__name__)
 
@@ -377,6 +382,20 @@ class PPOTrainer(Trainer):
 
             return PPOEagerTFPolicy
 
+    # def init_buffers(self):
+    #     self.workers.local_worker().init_buffers()
+
+    def broadcast(self, src_rank=0, group_name="default"):
+        # collective.broadcast(local_worker.buffer, src_rank, group_name)
+        # return True
+        return self.workers.local_worker().broadcast(src_rank=src_rank, group_name=group_name)
+
+    def policy_map_to_buffer_list(self):
+        return self.workers.local_worker().policy_map_to_buffer_list()
+
+    def buffer_list_to_policy_map(self):
+        return self.workers.local_worker().buffer_list_to_policy_map()
+
     @ExperimentalAPI
     def training_iteration(self) -> ResultDict:
         # Collect SampleBatches from sample workers until we have a full batch.
@@ -406,11 +425,14 @@ class PPOTrainer(Trainer):
             "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
         }
 
+        print(f">>>>> Iteration: {self.iteration}")
         # Update weights - after learning on the local worker - on all remote
         # workers.
         if self.workers.remote_workers():
-            with self._timers[WORKER_UPDATE_TIMER]:
-                self.workers.sync_weights(global_vars=global_vars)
+            # with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+            #     self.workers.sync_weights(global_vars=global_vars)
+            with self._timers[SYNCH_WORKER_WEIGHTS_COLLECTIVE_TIMER]:
+                self.workers.sync_weights_collective(global_vars=global_vars)
 
         # For each policy: update KL scale and warn about possible issues
         for policy_id, policy_info in train_results.items():

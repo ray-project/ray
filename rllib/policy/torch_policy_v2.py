@@ -41,7 +41,7 @@ from ray.rllib.utils.annotations import (
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
-from ray.rllib.utils.numpy import convert_to_numpy, convert_to_cupy
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
@@ -418,7 +418,7 @@ class TorchPolicyV2(Policy):
         New columns can be added to sample_batch and existing ones may be altered.
 
         Args:
-            sample_batch (SampleBatch): The SampleBatch to postprocess.
+            sample_batch: The SampleBatch to postprocess.
             other_agent_batches (Optional[Dict[PolicyID, SampleBatch]]): Optional
                 dict of AgentIDs mapping to other agents' trajectory data (from the
                 same episode). NOTE: The other agents use the same policy.
@@ -535,9 +535,9 @@ class TorchPolicyV2(Policy):
                 }
             )
             if prev_action_batch is not None:
-                input_dict[SampleBatch.PREV_ACTIONS] = cp.asarray(prev_action_batch)
+                input_dict[SampleBatch.PREV_ACTIONS] = np.asarray(prev_action_batch)
             if prev_reward_batch is not None:
-                input_dict[SampleBatch.PREV_REWARDS] = cp.asarray(prev_reward_batch)
+                input_dict[SampleBatch.PREV_REWARDS] = np.asarray(prev_reward_batch)
             state_batches = [
                 convert_to_torch_tensor(s, self.device) for s in (state_batches or [])
             ]
@@ -706,6 +706,8 @@ class TorchPolicyV2(Policy):
     @override(Policy)
     @DeveloperAPI
     def learn_on_loaded_batch(self, offset: int = 0, buffer_index: int = 0):
+        # print(f">>>> self.devices : {self.devices}")
+        # print(f">>>> len(self.model_gpu_towers): {len(self.model_gpu_towers)}")
         if not self._loaded_batches[buffer_index]:
             raise ValueError(
                 "Must call Policy.load_batch_into_buffer() before "
@@ -737,10 +739,12 @@ class TorchPolicyV2(Policy):
             # Copy weights of main model (tower-0) to all other towers.
             state_dict = self.model.state_dict()
             # Just making sure tower-0 is really the same as self.model.
+
             assert self.model_gpu_towers[0] is self.model
             for tower in self.model_gpu_towers[1:]:
                 tower.load_state_dict(state_dict)
 
+        # start = time.time()
         if device_batch_size >= sum(len(s) for s in self._loaded_batches[buffer_index]):
             device_batches = self._loaded_batches[buffer_index]
         else:
@@ -757,17 +761,23 @@ class TorchPolicyV2(Policy):
                 policy=self, train_batch=batch, result=custom_metrics
             )
             batch_fetches[f"tower_{i}"] = {"custom_metrics": custom_metrics}
+        # print(f">>>> device_batch: {(time.time() - start)*1000}ms")
 
+        # start = time.time()
         # Do the (maybe parallelized) gradient calculation step.
         tower_outputs = self._multi_gpu_parallel_grad_calc(device_batches)
+        # torch.cuda.synchronize()
+        # print(f">>>> grad calc: {(time.time() - start)*1000}ms")
 
         # Mean-reduce gradients over GPU-towers (do this on CPU: self.device).
         all_grads = []
+        # start = time.time()
         for i in range(len(tower_outputs[0][0])):
+            # print(f"?????? self.device: {self.device}")
             if tower_outputs[0][0][i] is not None:
                 all_grads.append(
                     torch.mean(
-                        torch.stack([t[0][i].to(self.device) for t in tower_outputs]),
+                        torch.stack([t[0][i].to(self.device, non_blocking=True) for t in tower_outputs]),
                         dim=0,
                     )
                 )
@@ -776,19 +786,31 @@ class TorchPolicyV2(Policy):
         # Set main model's grads to mean-reduced values.
         for i, p in enumerate(self.model.parameters()):
             p.grad = all_grads[i]
-
+        # torch.cuda.synchronize()
+        # print(f">>>> Mean-reduce gradients: {(time.time() - start)*1000}ms")
+        # start = time.time()
         self.apply_gradients(_directStepOptimizerSingleton)
+        # torch.cuda.synchronize()
+        # print(f">>>> apply_gradients: {(time.time() - start)*1000}ms")
 
         for i, (model, batch) in enumerate(zip(self.model_gpu_towers, device_batches)):
+            # start = time.time()
             batch_fetches[f"tower_{i}"].update(
                 {
                     LEARNER_STATS_KEY: self.stats_fn(batch),
+                }
+            )
+            # print(f">>>> batch_fetches - stats_fn {(time.time() - start)*1000}ms")
+            # start = time.time()
+            batch_fetches[f"tower_{i}"].update(
+                {
                     "model": model.metrics(),
                 }
             )
-
+            # print(f">>>> batch_fetches -  model.metrics {(time.time() - start)*1000}ms")
+        # start = time.time()
         batch_fetches.update(self.extra_compute_grad_fetches())
-
+        # print(f">>>> batch_fetches - extra_compute_grad_fetches: {(time.time() - start)*1000}ms")
         return batch_fetches
 
     @with_lock
@@ -835,11 +857,9 @@ class TorchPolicyV2(Policy):
             for g, p in zip(gradients, self.model.parameters()):
                 if g is not None:
                     if torch.is_tensor(g):
-                        p.grad = g.to(self.device)
+                        p.grad = g.to(self.device, non_blocking=True)
                     else:
-
-                        # p.grad = torch.from_numpy(g).to(self.device)
-                        p.grad = torch.as_tensor(g, device=self.device)
+                        p.grad = torch.from_numpy(g).to(self.device, non_blocking=True)
 
             self._optimizers[0].step()
 
@@ -860,13 +880,15 @@ class TorchPolicyV2(Policy):
             of the tower's `tower_stats` dicts.
         """
         data = []
+        start = time.time()
         for tower in self.model_gpu_towers:
             if stats_name in tower.tower_stats:
                 data.append(
                     tree.map_structure(
-                        lambda s: s.to(self.device), tower.tower_stats[stats_name]
+                        lambda s: s.to(self.device, non_blocking=True).detach(), tower.tower_stats[stats_name]
                     )
                 )
+        # print(f">>>>> get_tower_stats for {stats_name}: {(time.time() - start)*1000}ms")
         assert len(data) > 0, (
             f"Stats `{stats_name}` not found in any of the towers (you have "
             f"{len(self.model_gpu_towers)} towers in total)! Make "
@@ -878,7 +900,8 @@ class TorchPolicyV2(Policy):
     @DeveloperAPI
     def get_weights(self) -> ModelWeights:
         # return {k: v.cpu().detach().numpy() for k, v in self.model.state_dict().items()}
-        return {k: cp.asarray(v) for k, v in self.model.state_dict().items()}
+        # return {k: cp.asarray(v) for k, v in self.model.state_dict().items()}
+        return {k: v for k, v in self.model.state_dict().items()}
 
     @override(Policy)
     @DeveloperAPI
@@ -899,7 +922,7 @@ class TorchPolicyV2(Policy):
     @override(Policy)
     @DeveloperAPI
     def get_initial_state(self) -> List[TensorType]:
-        return [cp.asarray(s) for s in self.model.get_initial_state()]
+        return [s.detach().cpu().numpy() for s in self.model.get_initial_state()]
 
     @override(Policy)
     @DeveloperAPI
@@ -907,7 +930,8 @@ class TorchPolicyV2(Policy):
         state = super().get_state()
         state["_optimizer_variables"] = []
         for i, o in enumerate(self._optimizers):
-            optim_state_dict = convert_to_cupy(o.state_dict())
+            print(f"\n\n\n !!!!! Converting optimizer to numpy \n\n\n")
+            optim_state_dict = convert_to_numpy(o.state_dict())
             state["_optimizer_variables"].append(optim_state_dict)
         # Add exploration state.
         state["_exploration_state"] = self.exploration.get_state()
@@ -1077,7 +1101,7 @@ class TorchPolicyV2(Policy):
         # Update our global timestep by the batch size.
         self.global_timestep += len(input_dict[SampleBatch.CUR_OBS])
 
-        return convert_to_cupy((actions, state_out, extra_fetches))
+        return convert_to_numpy((actions, state_out, extra_fetches))
 
     def _lazy_tensor_dict(self, postprocessed_batch: SampleBatch, device=None):
         # TODO: (sven): Keep for a while to ensure backward compatibility.
@@ -1195,6 +1219,7 @@ class TorchPolicyV2(Policy):
         # Single device (GPU) or fake-GPU case (serialize for better
         # debugging).
         if len(self.devices) == 1 or self.config["_fake_gpus"]:
+            # print(f">>> One GPU _multi_gpu_parallel_grad_calc, model_gpu_towers num: {len(self.model_gpu_towers)}")
             for shard_idx, (model, sample_batch, device) in enumerate(
                 zip(self.model_gpu_towers, sample_batches, self.devices)
             ):
