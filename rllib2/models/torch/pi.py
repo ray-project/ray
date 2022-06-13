@@ -4,49 +4,15 @@ import torch
 import torch.nn as nn
 from torch import TensorType
 from dataclasses import dataclass
+from .pi_distribution import (
+    PiDistribution,
+    DeterministicDist,
+    SquashedDeterministicDist,
+    ...
+)
 
 from rllib2.utils import NNOutput
 
-"""
-class PiDistribution:
-    
-    # all sampling operations preserve the backpropagation. So if that's not intended 
-    # user needs to wrap the method call in with torch.no_grad()
-    def behavioral_sample(self, shape):
-        pass
-    
-    def target_sample(self, shape):
-        pass
-    
-    def log_prob(self, value):
-        pass
-        
-    def entropy(self):
-        pass
-
-class DeterministicDist(PiDistribution):
-    
-    def behavioral_sample(self, shape):
-        return self.action_logtis
-    
-    def target_sample(self, shape):
-        return self.action_logits
-    
-    def log_prob(self, value):
-        raise ValueError
-    
-    def entropy(self):
-        return torch.zeros_like(self.action_logits)
-
-
-class SquashedDeterministicDist(DeterministicDist):
-
-    def behavioral_sample(self, shape):
-        return super().behavioral_sample(shape).tanh()
-
-    def target_sample(self, shape):
-        return super().target_sample(shape).tanh()
-# """
 
 """
 Example:
@@ -117,6 +83,7 @@ class Pi(nn.Module):
         * TODO: How do we support auto-regressive action spaces?
         * TODO: How do we support Recurrent Policies?
         * TODO: How do we support action-space masking?
+    * Support Goal conditioned policies?
     * Should be able to switch between exploration = on / off
         * target_sample is used for inference (exploration = off)
         * behavioral_sample is used for sampling during training (exploration = true)
@@ -176,6 +143,7 @@ class NormalPi(Pi):
 
         output_shape = ...
         self.policy_head = nn.Linear(encoder.num_features, output_shape)
+
 
     def forward(self, batch: SampleBatch, **kwargs) -> PiOutput:
         s = batch['rl_state']
