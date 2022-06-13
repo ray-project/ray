@@ -31,9 +31,9 @@ import logging
 import math
 import random
 
-from python.ray.serve import constants as serve_constants
 import ray
 from ray import serve
+from ray.serve import constants as serve_constants
 from serve_test_utils import (
     aggregate_all_metrics,
     run_wrk_on_all_nodes,
