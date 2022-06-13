@@ -191,7 +191,7 @@ format_files() {
     local name
     for name in "$@"; do
       local base="${name%.*}"
-      local suffix="${name#${base}}"
+      local suffix="${name#"${base}"}"
 
       local shebang=""
       read -r shebang < "${name}" || true
