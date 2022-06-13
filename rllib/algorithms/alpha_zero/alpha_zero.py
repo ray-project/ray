@@ -360,6 +360,7 @@ class AlphaZero(Algorithm):
         # Return all collected metrics for the iteration.
         return train_results
 
+
 # Deprecated: Use ray.rllib.algorithms.alpha_zero.AlphaZeroConfig instead!
 class _deprecated_default_config(dict):
     def __init__(self):
