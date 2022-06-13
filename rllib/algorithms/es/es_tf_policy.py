@@ -1,10 +1,11 @@
 # Code in this file is copied and adapted from
 # https://github.com/openai/evolution-strategies-starter.
 
+from typing import Optional
+
 import gym
 import numpy as np
 import tree  # pip install dm_tree
-from typing import Optional
 
 import ray
 import ray.experimental.tf_utils

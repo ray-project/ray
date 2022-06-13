@@ -1,5 +1,6 @@
-from gym.spaces import Box
 import unittest
+
+from gym.spaces import Box
 
 import ray
 import ray.rllib.algorithms.dreamer as dreamer
@@ -44,7 +45,8 @@ class TestDreamer(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

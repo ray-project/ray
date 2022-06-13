@@ -1,5 +1,5 @@
-import sys
 import logging
+import sys
 
 logger = logging.getLogger(__name__)
 
@@ -7,7 +7,7 @@ TuneSearchCV = None
 TuneGridSearchCV = None
 
 try:
-    from tune_sklearn import TuneSearchCV, TuneGridSearchCV
+    from tune_sklearn import TuneGridSearchCV, TuneSearchCV
 except ImportError as exc:
     # Changed in 1.5.0 -- Raises an exception instead of returning None.
     tb = sys.exc_info()[2]

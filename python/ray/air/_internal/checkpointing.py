@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import Optional, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional, Union
 
 import ray.cloudpickle as cpickle
 from ray.air.constants import PREPROCESSOR_KEY

@@ -1,10 +1,11 @@
 import random
 
 import numpy as np
-from ray.rllib.examples.env.coin_game_non_vectorized_env import CoinGame, AsymCoinGame
+
 from ray.rllib.env.wrappers.uncertainty_wrappers import (
     add_RewardUncertaintyEnvClassWrapper,
 )
+from ray.rllib.examples.env.coin_game_non_vectorized_env import AsymCoinGame, CoinGame
 
 
 def init_env(max_steps, env_class, seed=None, grid_size=3):

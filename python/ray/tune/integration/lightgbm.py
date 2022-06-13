@@ -1,11 +1,11 @@
-from typing import Dict, List, Union, Callable, Optional
-from ray import tune
-
 import os
+from typing import Callable, Dict, List, Optional, Union
 
-from ray.tune.utils import flatten_dict
-from lightgbm.callback import CallbackEnv
 from lightgbm.basic import Booster
+from lightgbm.callback import CallbackEnv
+
+from ray import tune
+from ray.tune.utils import flatten_dict
 
 
 class TuneCallback:

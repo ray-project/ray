@@ -1,5 +1,5 @@
-import numpy as np
 import gym
+import numpy as np
 
 from ray.rllib.utils.annotations import PublicAPI
 

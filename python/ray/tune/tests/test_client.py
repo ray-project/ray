@@ -1,8 +1,8 @@
 import os
+import sys
 import tempfile
 
 import pytest
-import sys
 
 import ray
 from ray.util.client.ray_client_helpers import ray_start_client_server
@@ -80,7 +80,7 @@ def test_xgboost_dynamic_resources_example(start_client_server):
 
 def test_mlflow_example(start_client_server):
     assert ray.util.client.ray.is_connected()
-    from ray.tune.examples.mlflow_example import tune_function, tune_decorated
+    from ray.tune.examples.mlflow_example import tune_decorated, tune_function
 
     mlflow_tracking_uri = os.path.join(tempfile.gettempdir(), "mlruns")
     tune_function(mlflow_tracking_uri, finish_fast=True)

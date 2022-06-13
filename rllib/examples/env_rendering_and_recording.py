@@ -1,9 +1,10 @@
 import argparse
+
 import gym
 import numpy as np
-import ray
 from gym.spaces import Box, Discrete
 
+import ray
 from ray import tune
 from ray.rllib.env.multi_agent_env import make_multi_agent
 

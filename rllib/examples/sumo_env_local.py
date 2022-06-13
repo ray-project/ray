@@ -10,15 +10,14 @@
 """
 
 import argparse
-from copy import deepcopy
 import logging
 import os
 import pathlib
+from copy import deepcopy
 from pprint import pformat
 
 import ray
 from ray import tune
-
 from ray.rllib.algorithms.ppo import ppo
 from ray.rllib.examples.simulators.sumo import marlenvironment
 from ray.rllib.utils.test_utils import check_learning_achieved

@@ -1,11 +1,12 @@
 import os
-import pytest
 from timeit import default_timer as timer
 
+import pytest
 import torch
+import torchvision
+from test_tune import torch_fashion_mnist, tune_tensorflow_mnist
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader, DistributedSampler
-import torchvision
 
 import ray
 import ray.train as train
@@ -20,7 +21,6 @@ from ray.train.examples.train_fashion_mnist_example import (
     train_func as fashion_mnist_train_func,
 )
 from ray.train.examples.train_linear_example import LinearDataset
-from test_tune import torch_fashion_mnist, tune_tensorflow_mnist
 
 
 @pytest.fixture
@@ -376,8 +376,8 @@ def test_tensorflow_linear_dataset_gpu(ray_start_4_cpus_2_gpus):
 def test_auto_transfer_data_from_host_to_device(
     ray_start_1_cpu_1_gpu, device_choice, auto_transfer
 ):
-    import torch
     import numpy as np
+    import torch
 
     def compute_average_runtime(func):
         device = torch.device(device_choice)
@@ -417,7 +417,8 @@ def test_auto_transfer_data_from_host_to_device(
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", "-s", __file__]))

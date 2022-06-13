@@ -5,10 +5,9 @@ import time
 
 import pytest
 
-import ray.cluster_utils
-import ray._private.test_utils
-
 import ray
+import ray._private.test_utils
+import ray.cluster_utils
 
 logger = logging.getLogger(__name__)
 

@@ -1,8 +1,9 @@
 import pytest
-import ray
 from filelock import FileLock
-from ray._private.test_utils import SignalActor
+
+import ray
 from ray import workflow
+from ray._private.test_utils import SignalActor
 from ray.tests.conftest import *  # noqa
 
 

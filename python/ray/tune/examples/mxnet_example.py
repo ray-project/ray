@@ -1,6 +1,6 @@
 import mxnet as mx
 
-from ray import tune, logger
+from ray import logger, tune
 from ray.tune.integration.mxnet import TuneCheckpointCallback, TuneReportCallback
 from ray.tune.schedulers import ASHAScheduler
 

@@ -23,8 +23,9 @@ You may connect more than one policy client to any open listen port.
 """
 
 import argparse
-import gym
 import os
+
+import gym
 
 import ray
 from ray import tune

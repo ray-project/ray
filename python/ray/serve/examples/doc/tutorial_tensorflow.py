@@ -1,12 +1,14 @@
+import os
+import tempfile
+
+import numpy as np
+import requests
+
 # fmt: off
 import ray
 # __doc_import_begin__
 from ray import serve
 
-import os
-import tempfile
-import numpy as np
-import requests
 # __doc_import_end__
 # fmt: on
 

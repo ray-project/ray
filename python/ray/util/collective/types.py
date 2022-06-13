@@ -1,7 +1,7 @@
 """Types conversion between different backends."""
-from enum import Enum
 from dataclasses import dataclass
 from datetime import timedelta
+from enum import Enum
 
 _NUMPY_AVAILABLE = True
 _TORCH_AVAILABLE = True

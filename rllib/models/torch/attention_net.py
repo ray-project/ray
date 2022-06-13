@@ -8,11 +8,12 @@
       Z. Dai, Z. Yang, et al. - Carnegie Mellon U - 2019.
       https://www.aclweb.org/anthology/P19-1285.pdf
 """
+from typing import Dict, Optional, Union
+
 import gym
-from gym.spaces import Box, Discrete, MultiDiscrete
 import numpy as np
 import tree  # pip install dm_tree
-from typing import Dict, Optional, Union
+from gym.spaces import Box, Discrete, MultiDiscrete
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.misc import SlimFC
@@ -29,7 +30,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.torch_utils import flatten_inputs_to_1d_tensor, one_hot
-from ray.rllib.utils.typing import ModelConfigDict, TensorType, List
+from ray.rllib.utils.typing import List, ModelConfigDict, TensorType
 
 torch, nn = try_import_torch()
 

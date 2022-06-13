@@ -3,7 +3,8 @@
 import unittest
 
 import numpy as np
-from gym.spaces import Box, Discrete, MultiDiscrete, MultiBinary, Tuple, Dict
+from gym.spaces import Box, Dict, Discrete, MultiBinary, MultiDiscrete, Tuple
+
 from ray.rllib.utils.spaces.space_utils import (
     convert_element_to_space_type,
     get_base_struct_from_space,
@@ -71,7 +72,8 @@ class TestSpaceUtils(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

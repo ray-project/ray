@@ -1,9 +1,11 @@
-import gym
-from gym.spaces import Tuple, Dict
-import numpy as np
-from ray.rllib.utils.annotations import DeveloperAPI
-import tree  # pip install dm_tree
 from typing import Any, List, Optional, Union
+
+import gym
+import numpy as np
+import tree  # pip install dm_tree
+from gym.spaces import Dict, Tuple
+
+from ray.rllib.utils.annotations import DeveloperAPI
 
 
 @DeveloperAPI

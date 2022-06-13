@@ -1,11 +1,11 @@
-from typing import Callable, Dict, List, Union, Optional
-from collections import OrderedDict
-from ray import tune
-
 import os
+from collections import OrderedDict
+from typing import Callable, Dict, List, Optional, Union
 
-from ray.tune.utils import flatten_dict
 from xgboost.core import Booster
+
+from ray import tune
+from ray.tune.utils import flatten_dict
 
 try:
     from xgboost.callback import TrainingCallback

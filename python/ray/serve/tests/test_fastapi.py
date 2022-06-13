@@ -1,35 +1,35 @@
+import inspect
+import tempfile
 import time
 from typing import Any, List, Optional
-import tempfile
-import numpy as np
 
+import numpy as np
 import pytest
-import inspect
 import requests
+import starlette.responses
 from fastapi import (
+    APIRouter,
+    BackgroundTasks,
     Cookie,
     Depends,
     FastAPI,
     Header,
     Query,
     Request,
-    APIRouter,
-    BackgroundTasks,
     Response,
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from starlette.applications import Starlette
-import starlette.responses
 from starlette.routing import Route
 
 import ray
 from ray import serve
+from ray._private.test_utils import SignalActor
 from ray.exceptions import GetTimeoutError
 from ray.serve.http_util import make_fastapi_class_based_view
 from ray.serve.utils import DEFAULT
-from ray._private.test_utils import SignalActor
 
 
 def test_fastapi_function(serve_instance):

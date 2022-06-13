@@ -1,14 +1,14 @@
 import sys
+
 import pytest
 
-from python.ray.serve import constants as serve_constants
-
 import ray
+from python.ray.serve import constants as serve_constants
 from ray import serve
-from ray.serve.drivers import DAGDriver
+from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.experimental.dag.input_node import InputNode
 from ray.serve.deployment_state import ReplicaState
-from ray._private.test_utils import SignalActor, wait_for_condition
+from ray.serve.drivers import DAGDriver
 
 # Magic number to use for speed up scale from 0 replica
 serve_constants.HANDLE_METRIC_PUSH_INTERVAL_S = 1

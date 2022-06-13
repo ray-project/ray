@@ -1,9 +1,10 @@
+from fastapi import FastAPI
+from transformers import pipeline
+
 # __fastapi_start__
 # File name: serve_with_fastapi.py
 import ray
 from ray import serve
-from fastapi import FastAPI
-from transformers import pipeline
 
 app = FastAPI()
 

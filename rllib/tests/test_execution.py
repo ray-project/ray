@@ -1,32 +1,33 @@
-import numpy as np
-import time
-import gym
 import queue
+import time
 import unittest
+
+import gym
+import numpy as np
 
 import ray
 from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
-from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
+from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, STEPS_TRAINED_COUNTER
-from ray.rllib.execution.concurrency_ops import Concurrently, Enqueue, Dequeue
+from ray.rllib.execution.concurrency_ops import Concurrently, Dequeue, Enqueue
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
-from ray.rllib.execution.replay_ops import StoreToReplayBuffer, Replay
+from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
 from ray.rllib.execution.rollout_ops import (
-    ParallelRollouts,
     AsyncGradients,
     ConcatBatches,
+    ParallelRollouts,
     StandardizeFields,
 )
 from ray.rllib.execution.train_ops import (
-    TrainOneStep,
-    ComputeGradients,
     AverageGradients,
+    ComputeGradients,
+    TrainOneStep,
 )
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import (
     MultiAgentReplayBuffer,
 )
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.util.iter import LocalIterator, from_range
 from ray.util.iter_metrics import SharedMetrics
 
@@ -254,7 +255,8 @@ class TestExecution(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

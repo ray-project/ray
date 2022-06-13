@@ -3,12 +3,13 @@
 # __tutorial_imports_begin__
 import argparse
 import os
+
 import numpy as np
 import torch
 import torch.optim as optim
-from ray.tune.examples.mnist_pytorch import train, test, ConvNet, get_data_loaders
 
 from ray import tune
+from ray.tune.examples.mnist_pytorch import ConvNet, get_data_loaders, test, train
 from ray.tune.schedulers import PopulationBasedTraining
 from ray.tune.trial import ExportFormat
 

@@ -1,10 +1,11 @@
-import numpy as np
 import unittest
 
+import numpy as np
+
 import ray
-from ray.rllib.utils.filter import RunningStat, MeanStdFilter
-from ray.rllib.utils import FilterManager
 from ray.rllib.tests.mock_worker import _MockWorker
+from ray.rllib.utils import FilterManager
+from ray.rllib.utils.filter import MeanStdFilter, RunningStat
 
 
 class RunningStatTest(unittest.TestCase):
@@ -103,7 +104,8 @@ class FilterManagerTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

@@ -1,16 +1,16 @@
 import abc
 import logging
 import os
-import shutil
 import random
+import shutil
 import time
 import urllib
 from collections import namedtuple
-from typing import List, IO, Tuple, Optional
+from typing import IO, List, Optional, Tuple
 
 import ray
-from ray.ray_constants import DEFAULT_OBJECT_PREFIX
 from ray._raylet import ObjectRef
+from ray.ray_constants import DEFAULT_OBJECT_PREFIX
 
 ParsedURL = namedtuple("ParsedURL", "base_url, offset, size")
 logger = logging.getLogger(__name__)

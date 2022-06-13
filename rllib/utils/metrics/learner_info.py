@@ -1,10 +1,11 @@
 from collections import defaultdict
-import numpy as np
-import tree  # pip install dm_tree
 from typing import Dict
 
-from ray.rllib.utils.annotations import DeveloperAPI
+import numpy as np
+import tree  # pip install dm_tree
+
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.typing import PolicyID
 
 # Instant metrics (keys for metrics.info).

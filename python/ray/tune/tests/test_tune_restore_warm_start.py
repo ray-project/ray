@@ -4,30 +4,30 @@ import shutil
 import tempfile
 import unittest
 
-import skopt
 import numpy as np
+import skopt
+from hebo.design_space.design_space import DesignSpace as HEBODesignSpace
 from hyperopt import hp
 from nevergrad.optimization import optimizerlib
 from zoopt import ValueType
-from hebo.design_space.design_space import DesignSpace as HEBODesignSpace
 
 import ray
 from ray import tune
 from ray.rllib import _register_all
+from ray.tune.schedulers.hb_bohb import HyperBandForBOHB
 from ray.tune.suggest import ConcurrencyLimiter
-from ray.tune.suggest.hyperopt import HyperOptSearch
-from ray.tune.suggest.dragonfly import DragonflySearch
+from ray.tune.suggest.ax import AxSearch
 from ray.tune.suggest.bayesopt import BayesOptSearch
+from ray.tune.suggest.bohb import TuneBOHB
+from ray.tune.suggest.dragonfly import DragonflySearch
 from ray.tune.suggest.flaml import CFO, BlendSearch
-from ray.tune.suggest.skopt import SkOptSearch
+from ray.tune.suggest.hebo import HEBOSearch
+from ray.tune.suggest.hyperopt import HyperOptSearch
 from ray.tune.suggest.nevergrad import NevergradSearch
 from ray.tune.suggest.optuna import OptunaSearch
 from ray.tune.suggest.sigopt import SigOptSearch
+from ray.tune.suggest.skopt import SkOptSearch
 from ray.tune.suggest.zoopt import ZOOptSearch
-from ray.tune.suggest.hebo import HEBOSearch
-from ray.tune.suggest.ax import AxSearch
-from ray.tune.suggest.bohb import TuneBOHB
-from ray.tune.schedulers.hb_bohb import HyperBandForBOHB
 
 
 class AbstractWarmStartTest:
@@ -287,9 +287,9 @@ class OptunaWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
 
 class DragonflyWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
     def set_basic_conf(self):
-        from dragonfly.opt.gp_bandit import EuclideanGPBandit
-        from dragonfly.exd.experiment_caller import EuclideanFunctionCaller
         from dragonfly import load_config
+        from dragonfly.exd.experiment_caller import EuclideanFunctionCaller
+        from dragonfly.opt.gp_bandit import EuclideanGPBandit
 
         def cost(space, reporter):
             height, width = space["point"]
@@ -479,7 +479,8 @@ class BOHBWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__] + sys.argv[1:]))

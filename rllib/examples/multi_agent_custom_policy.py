@@ -18,11 +18,11 @@ import os
 
 import ray
 from ray import tune
-from ray.tune.registry import register_env
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.test_utils import check_learning_achieved
+from ray.tune.registry import register_env
 
 parser = argparse.ArgumentParser()
 parser.add_argument(

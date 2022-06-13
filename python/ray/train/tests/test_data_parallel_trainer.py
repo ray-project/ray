@@ -3,9 +3,8 @@ import pytest
 import ray
 from ray import train, tune
 from ray.air.checkpoint import Checkpoint
-from ray.train.constants import PREPROCESSOR_KEY
-
 from ray.data.preprocessor import Preprocessor
+from ray.train.constants import PREPROCESSOR_KEY
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
@@ -173,7 +172,8 @@ def test_tune(ray_start_4_cpus):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))

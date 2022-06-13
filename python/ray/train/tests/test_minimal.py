@@ -1,13 +1,13 @@
-from typing import List, Dict
+from typing import Dict, List
 
 import pytest
 
 import ray
 import ray.train as train
 from ray.train import Trainer
-from ray.train.backend import BackendConfig, Backend
-from ray.train.callbacks import TrainingCallback
 from ray.train._internal.worker_group import WorkerGroup
+from ray.train.backend import Backend, BackendConfig
+from ray.train.callbacks import TrainingCallback
 
 
 @pytest.fixture
@@ -89,7 +89,8 @@ def test_failure():
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))

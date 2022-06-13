@@ -1,16 +1,16 @@
 import inspect
 from abc import abstractmethod
 from typing import Any, Callable, Optional, Type, Union
-from pydantic import BaseModel
-from ray.serve.utils import install_serve_encoders_to_fastapi
 
 import starlette
 from fastapi import Body, Depends, FastAPI
+from pydantic import BaseModel
 
+from ray import serve
 from ray._private.utils import import_attr
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.http_util import ASGIHTTPSender
-from ray import serve
+from ray.serve.utils import install_serve_encoders_to_fastapi
 
 DEFAULT_HTTP_ADAPTER = "ray.serve.http_adapters.starlette_request"
 HTTPAdapterFn = Callable[[Any], Any]

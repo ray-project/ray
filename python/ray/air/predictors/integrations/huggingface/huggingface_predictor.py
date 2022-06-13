@@ -1,16 +1,16 @@
-from typing import Optional, Type, Union, List, TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Optional, Type, Union
 
 import numpy as np
 import pandas as pd
-
-from transformers.pipelines import Pipeline, pipeline as pipeline_factory
+from transformers.pipelines import Pipeline
+from transformers.pipelines import pipeline as pipeline_factory
 from transformers.pipelines.table_question_answering import (
     TableQuestionAnsweringPipeline,
 )
 
-from ray.air.predictor import DataBatchType, Predictor
-from ray.air.checkpoint import Checkpoint
 from ray.air._internal.checkpointing import load_preprocessor_from_dir
+from ray.air.checkpoint import Checkpoint
+from ray.air.predictor import DataBatchType, Predictor
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor

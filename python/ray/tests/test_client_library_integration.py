@@ -3,8 +3,8 @@ import sys
 import pytest
 
 from ray import tune
+from ray._private.client_mode_hook import client_mode_should_convert, enable_client_mode
 from ray.util.client.ray_client_helpers import ray_start_client_server
-from ray._private.client_mode_hook import enable_client_mode, client_mode_should_convert
 
 
 @pytest.mark.skip(reason="KV store is not working properly.")

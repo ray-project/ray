@@ -1,10 +1,10 @@
-from abc import ABC
 import pickle
+from abc import ABC
 from typing import Any, Optional
 from zlib import crc32
 
-from ray.serve.utils import get_random_letters
 from ray.serve.generated.serve_pb2 import DeploymentVersion as DeploymentVersionProto
+from ray.serve.utils import get_random_letters
 
 
 class DeploymentVersion:

@@ -1,7 +1,7 @@
-import sys
 import asyncio
-import time
 import os
+import sys
+import time
 from typing import Dict
 
 import pytest

@@ -2,11 +2,11 @@ from typing import Any
 
 import numpy as np
 
-from ray.data.block import Block, DataBatch, T, BlockAccessor
+from ray.data._internal.arrow_block import ArrowBlockBuilder, ArrowRow
 from ray.data._internal.block_builder import BlockBuilder
+from ray.data._internal.pandas_block import PandasBlockBuilder, PandasRow
 from ray.data._internal.simple_block import SimpleBlockBuilder
-from ray.data._internal.arrow_block import ArrowRow, ArrowBlockBuilder
-from ray.data._internal.pandas_block import PandasRow, PandasBlockBuilder
+from ray.data.block import Block, BlockAccessor, DataBatch, T
 
 
 class DelegatingBlockBuilder(BlockBuilder[T]):

@@ -1,6 +1,7 @@
 import os
-import pytest
 import sys
+
+import pytest
 
 import ray
 

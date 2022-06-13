@@ -5,37 +5,38 @@ Adapted from VTraceTFPolicy to use the PPO surrogate loss.
 Keep in sync with changes to VTraceTFPolicy.
 """
 
-import gym
-import numpy as np
 import logging
 from typing import Any, Dict, List, Optional, Type, Union
 
+import gym
+import numpy as np
+
 import ray
-from ray.rllib.algorithms.appo.appo_tf_policy import make_appo_model
 import ray.rllib.algorithms.impala.vtrace_torch as vtrace
+from ray.rllib.algorithms.appo.appo_tf_policy import make_appo_model
 from ray.rllib.algorithms.impala.impala_torch_policy import (
-    make_time_major,
     VTraceOptimizer,
+    make_time_major,
 )
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import (
-    compute_gae_for_sample_batch,
     Postprocessing,
+    compute_gae_for_sample_batch,
 )
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import (
-    TorchDistributionWrapper,
     TorchCategorical,
+    TorchDistributionWrapper,
 )
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_mixins import (
     EntropyCoeffSchedule,
-    LearningRateSchedule,
     KLCoeffMixin,
-    ValueNetworkMixin,
+    LearningRateSchedule,
     TargetNetworkMixin,
+    ValueNetworkMixin,
 )
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils.annotations import override

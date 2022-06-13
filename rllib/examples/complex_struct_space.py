@@ -12,12 +12,12 @@ import os
 
 import ray
 from ray import tune
-from ray.rllib.models import ModelCatalog
 from ray.rllib.examples.env.simple_rpg import SimpleRPG
 from ray.rllib.examples.models.simple_rpg_model import (
-    CustomTorchRPGModel,
     CustomTFRPGModel,
+    CustomTorchRPGModel,
 )
+from ray.rllib.models import ModelCatalog
 
 parser = argparse.ArgumentParser()
 parser.add_argument(

@@ -1,8 +1,8 @@
-from gym.spaces import Discrete, MultiDiscrete, Space
-import numpy as np
 from typing import Optional, Tuple, Union
 
-from ray.rllib.utils.annotations import PublicAPI
+import numpy as np
+from gym.spaces import Discrete, MultiDiscrete, Space
+
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -15,11 +15,12 @@ from ray.rllib.models.torch.torch_action_dist import (
 from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import NullContextManager
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import PublicAPI, override
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
-from ray.rllib.utils.tf_utils import get_placeholder, one_hot as tf_one_hot
+from ray.rllib.utils.tf_utils import get_placeholder
+from ray.rllib.utils.tf_utils import one_hot as tf_one_hot
 from ray.rllib.utils.torch_utils import one_hot
 from ray.rllib.utils.typing import FromConfigSpec, ModelConfigDict, TensorType
 

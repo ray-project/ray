@@ -2,20 +2,21 @@ import csv
 import glob
 import json
 import os
-from collections import namedtuple
-import unittest
-import tempfile
 import shutil
-import numpy as np
-from ray.cloudpickle import cloudpickle
+import tempfile
+import unittest
+from collections import namedtuple
 
+import numpy as np
+
+from ray.cloudpickle import cloudpickle
 from ray.tune.logger import (
-    CSVLoggerCallback,
-    JsonLoggerCallback,
-    JsonLogger,
     CSVLogger,
-    TBXLoggerCallback,
+    CSVLoggerCallback,
+    JsonLogger,
+    JsonLoggerCallback,
     TBXLogger,
+    TBXLoggerCallback,
 )
 from ray.tune.result import (
     EXPR_PARAM_FILE,
@@ -265,7 +266,8 @@ class LoggerSuite(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__] + sys.argv[1:]))

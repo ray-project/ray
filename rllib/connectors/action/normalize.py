@@ -1,8 +1,8 @@
 from typing import Any, List
 
 from ray.rllib.connectors.connector import (
-    ConnectorContext,
     ActionConnector,
+    ConnectorContext,
     register_connector,
 )
 from ray.rllib.utils.annotations import DeveloperAPI

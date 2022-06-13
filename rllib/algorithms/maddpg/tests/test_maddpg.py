@@ -4,10 +4,7 @@ import ray
 import ray.rllib.algorithms.maddpg as maddpg
 from ray.rllib.examples.env.two_step_game import TwoStepGame
 from ray.rllib.policy.policy import PolicySpec
-from ray.rllib.utils.test_utils import (
-    check_train_results,
-    framework_iterator,
-)
+from ray.rllib.utils.test_utils import check_train_results, framework_iterator
 
 
 class TestMADDPG(unittest.TestCase):
@@ -55,7 +52,8 @@ class TestMADDPG(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

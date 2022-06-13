@@ -1,5 +1,7 @@
 from random import random
+
 import requests
+
 import ray
 from ray import serve
 

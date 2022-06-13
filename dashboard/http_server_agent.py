@@ -1,10 +1,8 @@
 import asyncio
 import logging
-
 from distutils.version import LooseVersion
 
 import ray.dashboard.optional_utils as dashboard_optional_utils
-
 from ray.dashboard.optional_deps import aiohttp, aiohttp_cors, hdrs
 
 logger = logging.getLogger(__name__)

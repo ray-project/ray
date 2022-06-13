@@ -1,14 +1,12 @@
 import copy
 import functools
-import gym
 import logging
 import math
-import numpy as np
 import os
 import threading
 import time
-import tree  # pip install dm_tree
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
@@ -18,8 +16,11 @@ from typing import (
     Tuple,
     Type,
     Union,
-    TYPE_CHECKING,
 )
+
+import gym
+import numpy as np
+import tree  # pip install dm_tree
 
 import ray
 from ray.rllib.models.catalog import ModelCatalog
@@ -29,7 +30,7 @@ from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils import force_list, NullContextManager
+from ray.rllib.utils import NullContextManager, force_list
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
@@ -39,12 +40,12 @@ from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import (
+    AlgorithmConfigDict,
     GradInfoDict,
     ModelGradients,
     ModelWeights,
-    TensorType,
     TensorStructType,
-    AlgorithmConfigDict,
+    TensorType,
 )
 
 if TYPE_CHECKING:

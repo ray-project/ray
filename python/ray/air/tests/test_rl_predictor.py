@@ -1,18 +1,17 @@
+import tempfile
 from typing import Optional
 
 import gym
 import numpy as np
 import pandas as pd
 import pytest
-import tempfile
 
+from ray.air.checkpoint import Checkpoint
 from ray.air.predictors.integrations.rl.rl_predictor import RLPredictor
 from ray.data.preprocessor import Preprocessor
-from ray.air.checkpoint import Checkpoint
-from ray.train.rl import RLTrainer
-
 from ray.rllib.algorithms import Algorithm
 from ray.rllib.policy import Policy
+from ray.train.rl import RLTrainer
 from ray.tune.utils.trainable import TrainableUtil
 
 

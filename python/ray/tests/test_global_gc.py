@@ -4,7 +4,6 @@ import logging
 import weakref
 
 import numpy as np
-
 import pytest
 
 import ray

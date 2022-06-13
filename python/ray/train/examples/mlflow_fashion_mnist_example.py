@@ -1,8 +1,8 @@
 import argparse
 
 from ray.train import Trainer
-from ray.train.examples.train_fashion_mnist_example import train_func
 from ray.train.callbacks.logging import MLflowLoggerCallback
+from ray.train.examples.train_fashion_mnist_example import train_func
 
 
 def main(num_workers=2, use_gpu=False):

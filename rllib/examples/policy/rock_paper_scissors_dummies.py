@@ -1,6 +1,8 @@
+import random
+
 import gym
 import numpy as np
-import random
+
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.view_requirement import ViewRequirement
 

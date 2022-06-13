@@ -1,6 +1,7 @@
-import pytest
 import time
+
 import numpy as np
+import pytest
 
 import ray
 
@@ -102,7 +103,8 @@ def test_cache(ray_start_regular):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

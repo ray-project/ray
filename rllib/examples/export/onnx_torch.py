@@ -1,12 +1,13 @@
+import os
+import shutil
 from distutils.version import LooseVersion
 
 import numpy as np
+import onnxruntime
+import torch
+
 import ray
 import ray.rllib.algorithms.ppo as ppo
-import onnxruntime
-import os
-import shutil
-import torch
 
 # Configure our PPO.
 config = ppo.DEFAULT_CONFIG.copy()

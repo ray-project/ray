@@ -1,16 +1,17 @@
-from typing import Dict
-import tempfile
-import pytest
-import sys
 import os
-import yaml
+import sys
+import tempfile
+from typing import Dict
+
+import pytest
 import requests
+import yaml
 
 import ray
 from ray import serve
-from ray.serve.application import Application
-from ray.serve.api import build as build_app
 from ray._private.test_utils import wait_for_condition
+from ray.serve.api import build as build_app
+from ray.serve.application import Application
 
 
 class TestApplicationConstruction:

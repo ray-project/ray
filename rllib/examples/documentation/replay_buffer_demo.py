@@ -1,18 +1,18 @@
 # Demonstration of RLlib's ReplayBuffer workflow
 
-from typing import Optional
 import random
+from typing import Optional
+
 import numpy as np
 
 from ray import tune
-from ray.rllib.utils.replay_buffers import ReplayBuffer, StorageUnit
-from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import SampleBatchType
-from ray.rllib.utils.replay_buffers.utils import validate_buffer_config
+from ray.rllib.algorithms.dqn.dqn import DQNConfig
 from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.algorithms.dqn.dqn import DQNConfig
-
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.replay_buffers import ReplayBuffer, StorageUnit
+from ray.rllib.utils.replay_buffers.utils import validate_buffer_config
+from ray.rllib.utils.typing import SampleBatchType
 
 # __sphinx_doc_replay_buffer_type_specification__begin__
 config = DQNConfig().training(replay_buffer_config={"type": ReplayBuffer}).to_dict()

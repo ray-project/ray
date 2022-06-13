@@ -4,16 +4,15 @@ It also checks that it is usable with a separate scheduler.
 
 Requires the Dragonfly library to be installed (`pip install dragonfly-opt`).
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 
-import numpy as np
 import time
 
+import numpy as np
+
 from ray import tune
-from ray.tune.suggest import ConcurrencyLimiter
 from ray.tune.schedulers import AsyncHyperBandScheduler
+from ray.tune.suggest import ConcurrencyLimiter
 from ray.tune.suggest.dragonfly import DragonflySearch
 
 

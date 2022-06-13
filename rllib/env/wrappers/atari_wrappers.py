@@ -1,10 +1,11 @@
 from collections import deque
+
 import gym
-from gym import spaces
 import numpy as np
+from gym import spaces
 
 from ray.rllib.utils.annotations import Deprecated, PublicAPI
-from ray.rllib.utils.images import rgb2gray, resize
+from ray.rllib.utils.images import resize, rgb2gray
 
 
 @PublicAPI

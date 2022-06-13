@@ -1,43 +1,39 @@
 import asyncio
+import fnmatch
 import functools
 import io
-import fnmatch
+import logging
+import math
 import os
 import pathlib
+import socket
 import subprocess
 import sys
+import tempfile
 import time
 import timeit
-import socket
-import math
 import traceback
-from typing import Optional, Any, List, Dict
-from contextlib import redirect_stdout, redirect_stderr, contextmanager
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
+from typing import Any, Dict, List, Optional
 
-import yaml
-import logging
-import tempfile
 import grpc
-from grpc._channel import _InactiveRpcError
 import numpy as np
+import psutil  # We must import psutil after ray because we bundle it with ray.
+import yaml
+from grpc._channel import _InactiveRpcError
 
 import ray
-import ray._private.services
-import ray._private.utils
 import ray._private.gcs_utils as gcs_utils
 import ray._private.memory_monitor as memory_monitor
-from ray._raylet import GcsClientOptions, GlobalStateAccessor
-from ray.core.generated import gcs_pb2
-from ray.core.generated import node_manager_pb2
-from ray.core.generated import node_manager_pb2_grpc
-from ray._private.gcs_pubsub import (
-    GcsErrorSubscriber,
-    GcsLogSubscriber,
-)
+import ray._private.services
+import ray._private.utils
+from ray._private.gcs_pubsub import GcsErrorSubscriber, GcsLogSubscriber
 from ray._private.tls_utils import generate_self_signed_tls_certs
-from ray.util.queue import Queue, _QueueActor, Empty
-from ray.scripts.scripts import main as ray_main
+from ray._raylet import GcsClientOptions, GlobalStateAccessor
+from ray.core.generated import gcs_pb2, node_manager_pb2, node_manager_pb2_grpc
 from ray.internal.internal_api import memory_summary
+from ray.scripts.scripts import main as ray_main
+from ray.util.queue import Empty, Queue, _QueueActor
 
 try:
     from prometheus_client.parser import text_string_to_metric_families
@@ -45,9 +41,6 @@ except (ImportError, ModuleNotFoundError):
 
     def text_string_to_metric_families(*args, **kwargs):
         raise ModuleNotFoundError("`prometheus_client` not found")
-
-
-import psutil  # We must import psutil after ray because we bundle it with ray.
 
 
 class RayTestTimeoutException(Exception):
@@ -1306,7 +1299,9 @@ def simulate_storage(storage_type, root=None):
             yield "file://" + root
     elif storage_type == "s3":
         import uuid
+
         from moto import mock_s3
+
         from ray.tests.mock_s3_server import start_service, stop_process
 
         @contextmanager

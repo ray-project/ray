@@ -3,9 +3,11 @@ import inspect
 import io
 import logging
 import os
-import pandas as pd
 import shutil
-from typing import Any, Dict, Union, Optional
+from typing import Any, Dict, Optional, Union
+
+import pandas as pd
+from six import string_types
 
 import ray
 import ray.cloudpickle as pickle
@@ -13,7 +15,6 @@ from ray.tune.registry import _ParameterRegistry
 from ray.tune.utils import detect_checkpoint_function
 from ray.util import placement_group
 from ray.util.annotations import DeveloperAPI
-from six import string_types
 
 logger = logging.getLogger(__name__)
 

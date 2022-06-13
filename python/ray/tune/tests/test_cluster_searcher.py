@@ -1,13 +1,13 @@
-import time
 import os
-
-import pytest
 import subprocess
 import sys
+import time
+
+import pytest
 
 import ray
-from ray.rllib import _register_all
 from ray.cluster_utils import Cluster
+from ray.rllib import _register_all
 from ray.tune import register_trainable
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner

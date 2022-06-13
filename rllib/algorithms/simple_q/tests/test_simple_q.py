@@ -1,5 +1,6 @@
-import numpy as np
 import unittest
+
+import numpy as np
 
 import ray
 import ray.rllib.algorithms.simple_q as simple_q
@@ -9,7 +10,7 @@ from ray.rllib.algorithms.simple_q.simple_q_torch_policy import (
 )
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.numpy import fc, one_hot, huber_loss
+from ray.rllib.utils.numpy import fc, huber_loss, one_hot
 from ray.rllib.utils.test_utils import (
     check,
     check_compute_single_action,
@@ -145,7 +146,8 @@ class TestSimpleQ(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

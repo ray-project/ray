@@ -1,30 +1,30 @@
 import os
 import re
-import sys
-import time
-
-from unittest.mock import MagicMock
-from collections import defaultdict, Counter
-from pathlib import Path
 import subprocess
+import sys
 import tempfile
+import time
+from collections import Counter, defaultdict
+from pathlib import Path
+from unittest.mock import MagicMock
+
 import pytest
 
 import ray
-from ray.cross_language import java_actor_class
 from ray import ray_constants
-from ray._private.test_utils import (
-    get_log_batch,
-    wait_for_condition,
-    init_log_pubsub,
-    get_log_message,
-    run_string_as_driver,
-)
 from ray._private.log_monitor import (
-    LogMonitor,
     LOG_NAME_UPDATE_INTERVAL_S,
     RAY_LOG_MONITOR_MANY_FILES_THRESHOLD,
+    LogMonitor,
 )
+from ray._private.test_utils import (
+    get_log_batch,
+    get_log_message,
+    init_log_pubsub,
+    run_string_as_driver,
+    wait_for_condition,
+)
+from ray.cross_language import java_actor_class
 
 
 def set_logging_config(monkeypatch, max_bytes, backup_count):

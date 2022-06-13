@@ -1,17 +1,18 @@
-import os
-import yaml
-import ray
 import copy
+import os
 
+import yaml
+
+import ray
 from ray.autoscaler._private.aws.node_provider import AWSNodeProvider
+from ray.autoscaler._private.commands import prepare_config, validate_config
 from ray.autoscaler.tags import (
-    TAG_RAY_NODE_KIND,
     NODE_KIND_HEAD,
     NODE_KIND_WORKER,
-    TAG_RAY_USER_NODE_TYPE,
     TAG_RAY_CLUSTER_NAME,
+    TAG_RAY_NODE_KIND,
+    TAG_RAY_USER_NODE_TYPE,
 )
-from ray.autoscaler._private.commands import prepare_config, validate_config
 from ray.tests.aws.utils.constants import (
     DEFAULT_CLUSTER_NAME,
     DEFAULT_NODE_PROVIDER_INSTANCE_TAGS,

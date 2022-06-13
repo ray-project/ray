@@ -1,28 +1,27 @@
 import csv
 import json
 import logging
-import numpy as np
 import os
+from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, TextIO, Type
+
+import numpy as np
 import yaml
 
-from typing import Iterable, TYPE_CHECKING, Dict, List, Optional, TextIO, Type
-
 import ray.cloudpickle as cloudpickle
-
 from ray.tune.callback import Callback
-from ray.tune.utils.util import SafeFallbackEncoder
-from ray.util.debug import log_once
 from ray.tune.result import (
-    TRAINING_ITERATION,
-    TIME_TOTAL_S,
-    TIMESTEPS_TOTAL,
     EXPR_PARAM_FILE,
     EXPR_PARAM_PICKLE_FILE,
     EXPR_PROGRESS_FILE,
     EXPR_RESULT_FILE,
+    TIME_TOTAL_S,
+    TIMESTEPS_TOTAL,
+    TRAINING_ITERATION,
 )
 from ray.tune.utils import flatten_dict
-from ray.util.annotations import PublicAPI, DeveloperAPI
+from ray.tune.utils.util import SafeFallbackEncoder
+from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.debug import log_once
 
 if TYPE_CHECKING:
     from ray.tune.trial import Trial  # noqa: F401

@@ -4,28 +4,27 @@ import sys
 import tempfile
 import time
 import unittest
-from unittest.mock import patch
 from collections import OrderedDict
+from unittest.mock import patch
 
 import ray
 from ray import tune
 from ray.rllib import _register_all
-from ray.tune.logger import DEFAULT_LOGGERS, LoggerCallback, LegacyLoggerCallback
+from ray.tune import Callback
+from ray.tune.callback import warnings
+from ray.tune.experiment import Experiment
+from ray.tune.logger import DEFAULT_LOGGERS, LegacyLoggerCallback, LoggerCallback
 from ray.tune.ray_trial_executor import (
+    RayTrialExecutor,
     _ExecutorEvent,
     _ExecutorEventType,
-    RayTrialExecutor,
 )
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.syncer import SyncConfig, SyncerCallback
-
-from ray.tune.callback import warnings
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
-from ray.tune import Callback
 from ray.tune.utils.callback import create_default_callbacks
-from ray.tune.experiment import Experiment
-from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
+from ray.util.ml_utils.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 
 
 class TestCallback(Callback):

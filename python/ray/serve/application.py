@@ -1,20 +1,9 @@
-import yaml
-from typing import (
-    Dict,
-    Optional,
-    TextIO,
-    Union,
-    List,
-)
+from typing import Dict, List, Optional, TextIO, Union
 
-from ray.serve.deployment import (
-    Deployment,
-    schema_to_deployment,
-    deployment_to_schema,
-)
-from ray.serve.schema import (
-    ServeApplicationSchema,
-)
+import yaml
+
+from ray.serve.deployment import Deployment, deployment_to_schema, schema_to_deployment
+from ray.serve.schema import ServeApplicationSchema
 
 
 class ImmutableDeploymentDict(dict):

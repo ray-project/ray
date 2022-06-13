@@ -1,16 +1,15 @@
-from contextlib import contextmanager
 import json
 import logging
-from pathlib import Path
-import tempfile
 import os
-from unittest import mock
-import yaml
+import tempfile
+from contextlib import contextmanager
+from pathlib import Path
 from typing import Optional
-
-from click.testing import CliRunner
+from unittest import mock
 
 import pytest
+import yaml
+from click.testing import CliRunner
 
 from ray.dashboard.modules.job.cli import job_cli_group
 

@@ -1,20 +1,20 @@
 import json
-import tempfile
-import numpy as np
 import os
-import sys
 import subprocess
-import pytest
+import sys
+import tempfile
 
+import numpy as np
+import pytest
 from fastapi.encoders import jsonable_encoder
 
 import ray
 from ray import serve
 from ray.serve.utils import (
-    serve_encoders,
     get_deployment_import_path,
     node_id_to_ip_addr,
     override_runtime_envs_except_env_vars,
+    serve_encoders,
 )
 
 

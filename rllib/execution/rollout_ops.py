@@ -1,28 +1,28 @@
 import logging
 import time
-from typing import Container, List, Optional, Tuple, TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, Container, List, Optional, Tuple, Union
 
 import ray
 from ray.rllib.evaluation.rollout_worker import get_global_worker
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import (
     AGENT_STEPS_SAMPLED_COUNTER,
-    STEPS_SAMPLED_COUNTER,
-    SAMPLE_TIMER,
     GRAD_WAIT_TIMER,
+    SAMPLE_TIMER,
+    STEPS_SAMPLED_COUNTER,
     _check_sample_batch_type,
     _get_shared_metrics,
 )
 from ray.rllib.policy.sample_batch import (
-    SampleBatch,
     DEFAULT_POLICY_ID,
     MultiAgentBatch,
+    SampleBatch,
 )
 from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
 from ray.rllib.utils.sgd import standardized
-from ray.rllib.utils.typing import PolicyID, SampleBatchType, ModelGradients
-from ray.util.iter import from_actors, LocalIterator
+from ray.rllib.utils.typing import ModelGradients, PolicyID, SampleBatchType
+from ray.util.iter import LocalIterator, from_actors
 from ray.util.iter_metrics import SharedMetrics
 
 if TYPE_CHECKING:

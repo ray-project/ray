@@ -1,9 +1,10 @@
-from functools import partial
-from gym.spaces import Box, Dict, Tuple
-import numpy as np
-from scipy.stats import beta, norm
-import tree  # pip install dm_tree
 import unittest
+from functools import partial
+
+import numpy as np
+import tree  # pip install dm_tree
+from gym.spaces import Box, Dict, Tuple
+from scipy.stats import beta, norm
 
 from ray.rllib.models.jax.jax_action_dist import JAXCategorical
 from ray.rllib.models.tf.tf_action_dist import (
@@ -25,11 +26,11 @@ from ray.rllib.models.torch.torch_action_dist import (
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import (
-    MIN_LOG_NN_OUTPUT,
-    MAX_LOG_NN_OUTPUT,
-    softmax,
-    SMALL_NUMBER,
     LARGE_INTEGER,
+    MAX_LOG_NN_OUTPUT,
+    MIN_LOG_NN_OUTPUT,
+    SMALL_NUMBER,
+    softmax,
 )
 from ray.rllib.utils.test_utils import check, framework_iterator
 
@@ -705,7 +706,8 @@ class TestDistributions(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

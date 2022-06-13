@@ -1,24 +1,24 @@
 from ray.workflow.api import (
-    step,
-    init,
+    cancel,
+    continuation,
+    create,
+    delete,
+    get_metadata,
     get_output,
     get_status,
-    get_metadata,
-    resume,
-    cancel,
+    init,
     list_all,
-    resume_all,
-    wait_for_event,
-    sleep,
-    delete,
-    wait,
-    create,
-    continuation,
     options,
+    resume,
+    resume_all,
+    sleep,
+    step,
+    wait,
+    wait_for_event,
 )
-from ray.workflow.workflow_access import WorkflowExecutionError
 from ray.workflow.common import WorkflowStatus
 from ray.workflow.event_listener import EventListener
+from ray.workflow.workflow_access import WorkflowExecutionError
 
 __all__ = [
     "step",

@@ -1,19 +1,19 @@
 import os
 import tempfile
-import pytest
 
 import numpy as np
 import pandas as pd
+import pytest
 from sklearn.ensemble import RandomForestClassifier
 
 import ray
 import ray.cloudpickle as cpickle
-from ray.air.predictors.integrations.sklearn import SklearnPredictor, to_air_checkpoint
-from ray.data.preprocessor import Preprocessor
+from ray.air._internal.checkpointing import save_preprocessor_to_dir
+from ray.air.batch_predictor import BatchPredictor
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import MODEL_KEY
-from ray.air.batch_predictor import BatchPredictor
-from ray.air._internal.checkpointing import save_preprocessor_to_dir
+from ray.air.predictors.integrations.sklearn import SklearnPredictor, to_air_checkpoint
+from ray.data.preprocessor import Preprocessor
 
 
 @pytest.fixture

@@ -1,14 +1,14 @@
 import os
-import numpy as np
 import random
 import unittest
 
-import ray
-from ray.rllib import _register_all
+import numpy as np
 
+import ray
 from ray import tune
+from ray.rllib import _register_all
 from ray.tune.result import DEFAULT_RESULTS_DIR
-from ray.tune.suggest import grid_search, BasicVariantGenerator
+from ray.tune.suggest import BasicVariantGenerator, grid_search
 from ray.tune.suggest.variant_generator import (
     RecursiveDependencyError,
     resolve_nested_dict,
@@ -361,7 +361,8 @@ class VariantGeneratorTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

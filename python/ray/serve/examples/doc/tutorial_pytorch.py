@@ -1,15 +1,16 @@
+from io import BytesIO
+
+import requests
+import torch
+from PIL import Image
+from torchvision import transforms
+from torchvision.models import resnet18
+
 # fmt: off
 import ray
 # __doc_import_begin__
 from ray import serve
 
-from io import BytesIO
-from PIL import Image
-import requests
-
-import torch
-from torchvision import transforms
-from torchvision.models import resnet18
 # __doc_import_end__
 # fmt: on
 

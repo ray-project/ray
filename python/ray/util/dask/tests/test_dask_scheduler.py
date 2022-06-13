@@ -4,15 +4,15 @@ import unittest
 import dask
 import dask.array as da
 import dask.dataframe as dd
-import pytest
 import numpy as np
 import pandas as pd
+import pytest
 
 import ray
-from ray.util.client.common import ClientObjectRef
-from ray.util.dask.callbacks import ProgressBarCallback
-from ray.util.dask import ray_dask_get, enable_dask_on_ray, disable_dask_on_ray
 from ray.tests.conftest import *  # noqa: F403, F401
+from ray.util.client.common import ClientObjectRef
+from ray.util.dask import disable_dask_on_ray, enable_dask_on_ray, ray_dask_get
+from ray.util.dask.callbacks import ProgressBarCallback
 
 
 @pytest.fixture

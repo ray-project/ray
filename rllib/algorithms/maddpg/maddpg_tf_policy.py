@@ -1,18 +1,19 @@
+import logging
+
+import numpy as np
+from gym.spaces import Box, Discrete
+
 import ray
 from ray.rllib.algorithms.dqn.dqn_tf_policy import minimize_and_clip
 from ray.rllib.evaluation.postprocessing import adjust_nstep
 from ray.rllib.models import ModelCatalog
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
-from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
-
-import logging
-from gym.spaces import Box, Discrete
-import numpy as np
 
 logger = logging.getLogger(__name__)
 

@@ -3,6 +3,7 @@ import errno
 import functools
 import hashlib
 import importlib
+import inspect
 import logging
 import multiprocessing
 import os
@@ -12,28 +13,28 @@ import sys
 import tempfile
 import threading
 import time
-from typing import Optional, Sequence, Tuple, Any, Union, Dict
 import uuid
-import grpc
 import warnings
+from inspect import signature
+from pathlib import Path
+from typing import Any, Dict, Optional, Sequence, Tuple, Union
+
+import grpc
+import numpy as np
+
+# Import psutil after ray so the packaged version is used.
+import psutil
+
+import ray
+import ray.ray_constants as ray_constants
+from ray._private.tls_utils import load_certs_from_env
+from ray.core.generated.gcs_pb2 import ErrorTableData
 
 try:
     from grpc import aio as aiogrpc
 except ImportError:
     from grpc.experimental import aio as aiogrpc
 
-import inspect
-from inspect import signature
-from pathlib import Path
-import numpy as np
-
-import ray
-from ray.core.generated.gcs_pb2 import ErrorTableData
-import ray.ray_constants as ray_constants
-from ray._private.tls_utils import load_certs_from_env
-
-# Import psutil after ray so the packaged version is used.
-import psutil
 
 pwd = None
 if sys.platform != "win32":
@@ -670,7 +671,7 @@ def detect_fate_sharing_support_win32():
         import ctypes
 
         try:
-            from ctypes.wintypes import BOOL, DWORD, HANDLE, LPVOID, LPCWSTR
+            from ctypes.wintypes import BOOL, DWORD, HANDLE, LPCWSTR, LPVOID
 
             kernel32 = ctypes.WinDLL("kernel32")
             kernel32.CreateJobObjectW.argtypes = (LPVOID, LPCWSTR)
@@ -752,7 +753,7 @@ def detect_fate_sharing_support_linux():
     global linux_prctl
     if linux_prctl is None and sys.platform.startswith("linux"):
         try:
-            from ctypes import c_int, c_ulong, CDLL
+            from ctypes import CDLL, c_int, c_ulong
 
             prctl = CDLL(None).prctl
             prctl.restype = c_int

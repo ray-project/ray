@@ -1,9 +1,10 @@
 """PyTorch policy class used for SlateQ."""
 
-import gym
 import logging
-import numpy as np
 from typing import Dict, Tuple, Type
+
+import gym
+import numpy as np
 
 import ray
 from ray.rllib.algorithms.sac.sac_torch_policy import TargetNetworkMixin
@@ -23,7 +24,7 @@ from ray.rllib.utils.torch_utils import (
     convert_to_torch_tensor,
     huber_loss,
 )
-from ray.rllib.utils.typing import TensorType, AlgorithmConfigDict
+from ray.rllib.utils.typing import AlgorithmConfigDict, TensorType
 
 torch, nn = try_import_torch()
 logger = logging.getLogger(__name__)

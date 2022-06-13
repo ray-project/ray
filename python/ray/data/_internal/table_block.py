@@ -1,12 +1,12 @@
 import collections
-from typing import Dict, Iterator, List, Union, Any, TypeVar, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, TypeVar, Union
 
 import numpy as np
 
-from ray.data.block import Block, BlockAccessor
-from ray.data.row import TableRow
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.size_estimator import SizeEstimator
+from ray.data.block import Block, BlockAccessor
+from ray.data.row import TableRow
 
 if TYPE_CHECKING:
     from ray.data._internal.sort import SortKeyT

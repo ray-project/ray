@@ -1,15 +1,16 @@
 import json
-import unittest
-import shutil
-import tempfile
 import os
 import random
+import shutil
+import tempfile
+import unittest
+
+import numpy as np
 import pandas as pd
 import pytest
-import numpy as np
 
 import ray
-from ray.tune import run, Trainable, sample_from, ExperimentAnalysis, grid_search
+from ray.tune import ExperimentAnalysis, Trainable, grid_search, run, sample_from
 from ray.tune.result import DEBUG_METRICS
 from ray.tune.trial import Trial
 from ray.tune.utils.mock_trainable import MyTrainableClass

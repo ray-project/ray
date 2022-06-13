@@ -6,10 +6,6 @@ Source: https://github.com/Kaggle/kaggle-environments
 from copy import deepcopy
 from typing import Any, Dict, Optional, Tuple
 
-try:
-    import kaggle_environments
-except (ImportError, ModuleNotFoundError):
-    pass
 import numpy as np
 from gym.spaces import Box
 from gym.spaces import Dict as DictSpace
@@ -17,7 +13,12 @@ from gym.spaces import Discrete, MultiBinary, MultiDiscrete, Space
 from gym.spaces import Tuple as TupleSpace
 
 from ray.rllib.env import MultiAgentEnv
-from ray.rllib.utils.typing import MultiAgentDict, AgentID
+from ray.rllib.utils.typing import AgentID, MultiAgentDict
+
+try:
+    import kaggle_environments
+except (ImportError, ModuleNotFoundError):
+    pass
 
 
 class KaggleFootballMultiAgentEnv(MultiAgentEnv):

@@ -1,16 +1,16 @@
-import os
-import sys
 import json
+import os
+import subprocess
+import sys
 import time
+from typing import Dict, List, Set
+
 import pytest
 import requests
-import subprocess
-from typing import List, Dict, Set
 
 import ray
 from ray import serve
 from ray._private.test_utils import wait_for_condition
-
 
 GET_OR_PUT_URL = "http://localhost:8265/api/serve/deployments/"
 STATUS_URL = "http://localhost:8265/api/serve/deployments/status"

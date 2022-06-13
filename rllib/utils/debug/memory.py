@@ -1,15 +1,15 @@
-from collections import defaultdict, namedtuple
-import numpy as np
 import os
 import re
-import scipy
 import tracemalloc
-import tree  # pip install dm_tree
+from collections import defaultdict, namedtuple
 from typing import Callable, DefaultDict, List, Optional, Set
 
-from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+import numpy as np
+import scipy
+import tree  # pip install dm_tree
 
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+from ray.rllib.utils.annotations import DeveloperAPI
 
 # A suspicious memory-allocating stack-trace that we should re-test
 # to make sure it's not a false positive.

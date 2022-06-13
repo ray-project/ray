@@ -1,12 +1,12 @@
-from abc import abstractmethod, ABCMeta
 import logging
-from typing import Dict, List, Optional, TYPE_CHECKING, Union
+from abc import ABCMeta, abstractmethod
+from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
-from ray.rllib.utils.typing import AgentID, EnvID, EpisodeID, PolicyID, TensorType
 from ray.rllib.utils.annotations import PublicAPI
+from ray.rllib.utils.typing import AgentID, EnvID, EpisodeID, PolicyID, TensorType
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.callbacks import DefaultCallbacks

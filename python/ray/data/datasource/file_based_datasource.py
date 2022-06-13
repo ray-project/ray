@@ -1,39 +1,39 @@
 import logging
 import pathlib
 import posixpath
+import urllib.parse
 from typing import (
+    TYPE_CHECKING,
+    Any,
     Callable,
-    Optional,
+    Dict,
+    Iterable,
+    Iterator,
     List,
+    Optional,
     Tuple,
     Union,
-    Any,
-    Dict,
-    Iterator,
-    Iterable,
-    TYPE_CHECKING,
 )
-import urllib.parse
 
-from ray.data.datasource.partitioning import PathPartitionFilter
-
-if TYPE_CHECKING:
-    import pyarrow
-
-from ray.types import ObjectRef
-from ray.data.block import Block, BlockAccessor
-from ray.data.context import DatasetContext
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.block_list import BlockMetadata
 from ray.data._internal.output_buffer import BlockOutputBuffer
+from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data._internal.util import _check_pyarrow_version
+from ray.data.block import Block, BlockAccessor
+from ray.data.context import DatasetContext
 from ray.data.datasource.datasource import Datasource, ReadTask, WriteResult
 from ray.data.datasource.file_meta_provider import (
     BaseFileMetadataProvider,
     DefaultFileMetadataProvider,
 )
+from ray.data.datasource.partitioning import PathPartitionFilter
+from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI
-from ray.data._internal.util import _check_pyarrow_version
-from ray.data._internal.remote_fn import cached_remote_fn
+
+if TYPE_CHECKING:
+    import pyarrow
+
 
 logger = logging.getLogger(__name__)
 
@@ -391,8 +391,8 @@ def _resolve_paths_and_filesystem(
     import pyarrow as pa
     from pyarrow.fs import (
         FileSystem,
-        PyFileSystem,
         FSSpecHandler,
+        PyFileSystem,
         _resolve_filesystem_and_path,
     )
 

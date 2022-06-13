@@ -1,10 +1,11 @@
-import gym
 import unittest
 
-from ray.rllib.models.catalog import ModelCatalog, MODEL_DEFAULTS
+import gym
+
+from ray.rllib.models.catalog import MODEL_DEFAULTS, ModelCatalog
 from ray.rllib.models.tf.visionnet import VisionNetwork
 from ray.rllib.models.torch.visionnet import VisionNetwork as TorchVision
-from ray.rllib.utils.framework import try_import_torch, try_import_tf
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import framework_iterator
 
 torch, nn = try_import_torch()
@@ -46,7 +47,8 @@ class TestConv2DDefaultStacks(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

@@ -1,16 +1,16 @@
-import subprocess
-from contextlib import redirect_stdout, redirect_stderr
 import copy
-from datetime import datetime
 import logging
 import os
 import platform
 import shutil
+import subprocess
 import sys
 import tempfile
 import time
-from typing import Any, Dict, Optional, Union, Callable, List
 import uuid
+from contextlib import redirect_stderr, redirect_stdout
+from datetime import datetime
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import ray
 import ray.cloudpickle as pickle
@@ -21,34 +21,34 @@ from ray.tune.resources import Resources
 from ray.tune.result import (
     DEBUG_METRICS,
     DEFAULT_RESULTS_DIR,
+    DONE,
+    EPISODES_THIS_ITER,
+    EPISODES_TOTAL,
     HOSTNAME,
     NODE_IP,
     PID,
+    RESULT_DUPLICATE,
     SHOULD_CHECKPOINT,
+    STDERR_FILE,
+    STDOUT_FILE,
     TIME_THIS_ITER_S,
     TIME_TOTAL_S,
     TIMESTEPS_THIS_ITER,
-    DONE,
     TIMESTEPS_TOTAL,
-    EPISODES_THIS_ITER,
-    EPISODES_TOTAL,
     TRAINING_ITERATION,
-    RESULT_DUPLICATE,
     TRIAL_ID,
     TRIAL_INFO,
-    STDOUT_FILE,
-    STDERR_FILE,
 )
-from ray.tune.sync_client import get_sync_client, get_cloud_sync_client
+from ray.tune.sync_client import get_cloud_sync_client, get_sync_client
 from ray.tune.utils import UtilMonitor
+from ray.tune.utils.log import disable_ipython
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.tune.utils.trainable import TrainableUtil
-from ray.tune.utils.log import disable_ipython
 from ray.tune.utils.util import (
     Tee,
-    retry_fn,
-    get_checkpoint_from_remote_node,
     delete_external_checkpoint,
+    get_checkpoint_from_remote_node,
+    retry_fn,
 )
 from ray.util.annotations import PublicAPI
 

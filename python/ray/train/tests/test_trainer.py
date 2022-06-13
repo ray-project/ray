@@ -10,16 +10,15 @@ import torch
 import ray
 import ray.train as train
 from ray._private.test_utils import wait_for_condition
-from ray.train import Trainer, CheckpointStrategy
-from ray.train.backend import BackendConfig, Backend
-from ray.train.constants import TRAIN_ENABLE_WORKER_SPREAD_ENV
-from ray.train.torch import TorchConfig
-from ray.train.tensorflow import TensorflowConfig
-
-from ray.train.horovod import HorovodConfig
-from ray.train.callbacks.callback import TrainingCallback
-from ray.train._internal.worker_group import WorkerGroup
+from ray.train import CheckpointStrategy, Trainer
 from ray.train._internal.backend_executor import BackendExecutor
+from ray.train._internal.worker_group import WorkerGroup
+from ray.train.backend import Backend, BackendConfig
+from ray.train.callbacks.callback import TrainingCallback
+from ray.train.constants import TRAIN_ENABLE_WORKER_SPREAD_ENV
+from ray.train.horovod import HorovodConfig
+from ray.train.tensorflow import TensorflowConfig
+from ray.train.torch import TorchConfig
 
 
 @pytest.fixture
@@ -1305,7 +1304,8 @@ def test_to_worker_group(ray_start_2_cpus):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))

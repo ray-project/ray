@@ -1,5 +1,6 @@
-import pytest
 import time
+
+import pytest
 
 import ray
 from ray.util.actor_group import ActorGroup

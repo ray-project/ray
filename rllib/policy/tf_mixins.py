@@ -1,20 +1,21 @@
-import gym
 import logging
 from typing import Dict, List, Union
+
+import gym
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.utils.annotations import DeveloperAPI, override
-from ray.rllib.utils.framework import try_import_tf, get_variable
+from ray.rllib.utils.framework import get_variable, try_import_tf
 from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.rllib.utils.tf_utils import make_tf_callable
 from ray.rllib.utils.typing import (
+    AlgorithmConfigDict,
     LocalOptimizer,
     ModelGradients,
     TensorType,
-    AlgorithmConfigDict,
 )
 
 logger = logging.getLogger(__name__)

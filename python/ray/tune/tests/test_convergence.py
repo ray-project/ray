@@ -1,12 +1,13 @@
 import math
-import numpy as np
+import unittest
 
+import numpy as np
 import pytest
+
 import ray
 from ray import tune
 from ray.tune.stopper import ExperimentPlateauStopper
 from ray.tune.suggest import ConcurrencyLimiter
-import unittest
 
 
 def loss(config, reporter):
@@ -125,8 +126,9 @@ class ConvergenceTest(unittest.TestCase):
         assert math.isclose(analysis.best_config["x"], 0, abs_tol=1e-2)
 
     def testConvergenceNevergrad(self):
-        from ray.tune.suggest.nevergrad import NevergradSearch
         import nevergrad as ng
+
+        from ray.tune.suggest.nevergrad import NevergradSearch
 
         np.random.seed(0)
         searcher = NevergradSearch(optimizer=ng.optimizers.PSO)

@@ -1,15 +1,16 @@
-import numpy as np
-import os
 import gc
-import pytest
+import os
 import shutil
 import time
 from pathlib import Path
 from typing import Type
 
+import numpy as np
+import pytest
+
 import ray
-from ray.air.checkpoint import Checkpoint
 from ray.air.batch_predictor import BatchPredictor
+from ray.air.checkpoint import Checkpoint
 from ray.air.predictor import Predictor
 
 NUM_REPEATS = 3
@@ -129,7 +130,8 @@ def test_batchpredictor_runtime(
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

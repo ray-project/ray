@@ -1,8 +1,8 @@
 import time
 
 import ray
-from ray._private.test_utils import wait_for_condition
 from ray import serve
+from ray._private.test_utils import wait_for_condition
 from ray.serve.autoscaling_metrics import InMemoryMetricsStore
 
 
@@ -99,6 +99,7 @@ def test_e2e(serve_instance):
 
 if __name__ == "__main__":
     import sys
+
     import pytest
 
     sys.exit(pytest.main(["-v", "-s", __file__]))

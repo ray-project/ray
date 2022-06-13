@@ -1,12 +1,13 @@
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 import numpy as np
 import pandas as pd
+
 from ray.air.checkpoint import Checkpoint
-from ray.air.predictor import Predictor, DataBatchType
-from ray.train.rl import load_checkpoint
+from ray.air.predictor import DataBatchType, Predictor
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.typing import EnvType
+from ray.train.rl import load_checkpoint
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor

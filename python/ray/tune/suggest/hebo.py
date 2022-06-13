@@ -15,10 +15,11 @@ from ray.tune.sample import (
     Quantized,
     Uniform,
 )
+from ray.tune.suggest import Searcher
 from ray.tune.suggest.suggestion import (
-    UNRESOLVED_SEARCH_SPACE,
     UNDEFINED_METRIC_MODE,
     UNDEFINED_SEARCH_SPACE,
+    UNRESOLVED_SEARCH_SPACE,
 )
 from ray.tune.suggest.variant_generator import parse_spec_vars
 from ray.tune.utils.util import is_nan_or_inf, unflatten_dict, validate_warmstart
@@ -29,7 +30,6 @@ try:  # Python 3 only -- needed for lint test.
 except ImportError:
     hebo = None
 
-from ray.tune.suggest import Searcher
 
 logger = logging.getLogger(__name__)
 

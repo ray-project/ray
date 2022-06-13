@@ -1,10 +1,10 @@
 import argparse
 
+from train_linear_example import train_func
+
 import ray
 from ray import tune
 from ray.train import Trainer
-
-from train_linear_example import train_func
 
 
 def tune_linear(num_workers, num_samples):

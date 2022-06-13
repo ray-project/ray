@@ -1,4 +1,4 @@
-from ray.rllib.algorithms.ars.ars import ARS, ARSConfig, DEFAULT_CONFIG
+from ray.rllib.algorithms.ars.ars import ARS, DEFAULT_CONFIG, ARSConfig
 from ray.rllib.algorithms.ars.ars_tf_policy import ARSTFPolicy
 from ray.rllib.algorithms.ars.ars_torch_policy import ARSTorchPolicy
 

@@ -4,18 +4,18 @@
 ##########
 
 import copy
+import logging
 from collections import Iterable
+from typing import Dict, Optional
 
 import gym
-import logging
 import numpy as np
 from gym.spaces import Discrete
 from gym.utils import seeding
-from ray.rllib.env.multi_agent_env import MultiAgentEnv
-from ray.rllib.utils import override
-from typing import Dict, Optional
 
+from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.examples.env.utils.interfaces import InfoAccumulationInterface
+from ray.rllib.utils import override
 
 logger = logging.getLogger(__name__)
 

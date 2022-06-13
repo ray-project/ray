@@ -9,12 +9,13 @@ For an example of using a Tune search space, see
 """
 import time
 
+from hyperopt import hp
+
 import ray
 from ray import tune
-from ray.tune.suggest import ConcurrencyLimiter
 from ray.tune.schedulers import AsyncHyperBandScheduler
+from ray.tune.suggest import ConcurrencyLimiter
 from ray.tune.suggest.hyperopt import HyperOptSearch
-from hyperopt import hp
 
 
 def f_unpack_dict(dct):

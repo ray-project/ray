@@ -1,16 +1,17 @@
+import logging
+import re
 from abc import ABCMeta
 from collections import defaultdict
-import logging
-import numpy as np
-import re
 from typing import Any, DefaultDict, Dict
+
+import numpy as np
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.utils.numpy import softmax
-from ray.rllib.utils.typing import PolicyID, AlgorithmConfigDict, ResultDict
+from ray.rllib.utils.typing import AlgorithmConfigDict, PolicyID, ResultDict
 
 logger = logging.getLogger(__name__)
 

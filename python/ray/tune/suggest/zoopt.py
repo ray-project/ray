@@ -6,10 +6,11 @@ import ray
 import ray.cloudpickle as pickle
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import Categorical, Domain, Float, Integer, Quantized, Uniform
+from ray.tune.suggest import Searcher
 from ray.tune.suggest.suggestion import (
-    UNRESOLVED_SEARCH_SPACE,
     UNDEFINED_METRIC_MODE,
     UNDEFINED_SEARCH_SPACE,
+    UNRESOLVED_SEARCH_SPACE,
 )
 from ray.tune.suggest.variant_generator import parse_spec_vars
 from ray.tune.utils.util import unflatten_dict
@@ -21,7 +22,6 @@ except ImportError:
     zoopt = None
     Solution = ValueType = None
 
-from ray.tune.suggest import Searcher
 
 logger = logging.getLogger(__name__)
 

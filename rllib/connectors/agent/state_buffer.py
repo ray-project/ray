@@ -1,21 +1,19 @@
 from collections import defaultdict
-import numpy as np
-import tree  # dm_tree
 from typing import Any, List
 
+import numpy as np
+import tree  # dm_tree
+
 from ray.rllib.connectors.connector import (
-    ConnectorContext,
     AgentConnector,
+    ConnectorContext,
     register_connector,
 )
-from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
-from ray.rllib.utils.typing import (
-    AgentConnectorDataType,
-    PolicyOutputType,
-)
+from ray.rllib.utils.typing import AgentConnectorDataType, PolicyOutputType
 
 
 @DeveloperAPI

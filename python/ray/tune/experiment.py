@@ -1,13 +1,14 @@
 import copy
-from functools import partial
-import grpc
 import inspect
 import logging
 import os
+import traceback
+from functools import partial
 from pathlib import Path
 from pickle import PicklingError
-import traceback
-from typing import Any, Dict, Optional, Sequence, Union, Callable, Type, List
+from typing import Any, Callable, Dict, List, Optional, Sequence, Type, Union
+
+import grpc
 
 from ray.tune.error import TuneError
 from ray.tune.registry import register_trainable
@@ -16,7 +17,6 @@ from ray.tune.sample import Domain
 from ray.tune.stopper import CombinedStopper, FunctionStopper, Stopper, TimeoutStopper
 from ray.tune.syncer import SyncConfig
 from ray.tune.utils import date_str, detect_checkpoint_function
-
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)

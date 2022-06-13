@@ -1,18 +1,19 @@
 import sys
 import threading
 
+import pytest
+
 from ray._private.gcs_pubsub import (
-    GcsPublisher,
-    GcsErrorSubscriber,
-    GcsLogSubscriber,
-    GcsFunctionKeySubscriber,
-    GcsAioPublisher,
     GcsAioErrorSubscriber,
     GcsAioLogSubscriber,
+    GcsAioPublisher,
     GcsAioResourceUsageSubscriber,
+    GcsErrorSubscriber,
+    GcsFunctionKeySubscriber,
+    GcsLogSubscriber,
+    GcsPublisher,
 )
 from ray.core.generated.gcs_pb2 import ErrorTableData
-import pytest
 
 
 def test_publish_and_subscribe_error_info(ray_start_regular):

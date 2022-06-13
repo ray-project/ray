@@ -2,15 +2,16 @@ import argparse
 import json
 import os
 
-# For compatibility under py2 to consider unicode as str
-from ray.tune.utils.serialization import TuneFunctionEncoder
 from six import string_types
 
 from ray.tune import TuneError
-from ray.tune.trial import Trial
 from ray.tune.resources import json_to_resources
 from ray.tune.syncer import SyncConfig
+from ray.tune.trial import Trial
 from ray.tune.utils.placement_groups import PlacementGroupFactory
+
+# For compatibility under py2 to consider unicode as str
+from ray.tune.utils.serialization import TuneFunctionEncoder
 from ray.tune.utils.util import SafeFallbackEncoder
 
 

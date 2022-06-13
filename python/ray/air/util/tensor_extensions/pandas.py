@@ -30,23 +30,23 @@
 # - Miscellaneous small bug fixes and optimizations.
 
 import numbers
-from typing import Sequence, Any, Union, Tuple, Optional, Callable
+from typing import Any, Callable, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 from pandas._typing import Dtype
 from pandas.compat import set_function_name
 from pandas.core.dtypes.generic import ABCDataFrame, ABCSeries
+from pandas.core.indexers import check_array_indexer, validate_indices
+
+from ray.util.annotations import PublicAPI
 
 try:
     from pandas.core.dtypes.generic import ABCIndex
 except ImportError:
     # ABCIndexClass changed to ABCIndex in Pandas 1.3
     from pandas.core.dtypes.generic import ABCIndexClass as ABCIndex
-from pandas.core.indexers import check_array_indexer, validate_indices
-import pyarrow as pa
-
-from ray.util.annotations import PublicAPI
 
 
 @PublicAPI(stability="beta")

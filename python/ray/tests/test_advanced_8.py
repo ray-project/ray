@@ -8,21 +8,18 @@ import time
 from unittest import mock
 
 import numpy as np
-import pytest
 import psutil
+import pytest
 
 import ray
-from ray.dashboard import k8s_utils
+import ray._private.gcs_utils as gcs_utils
+import ray._private.resource_spec as resource_spec
+import ray._private.utils
+import ray.cluster_utils
 import ray.ray_constants as ray_constants
 import ray.util.accelerators
-import ray._private.utils
-import ray._private.gcs_utils as gcs_utils
-import ray.cluster_utils
-import ray._private.resource_spec as resource_spec
-
-from ray._private.test_utils import (
-    wait_for_condition,
-)
+from ray._private.test_utils import wait_for_condition
+from ray.dashboard import k8s_utils
 from ray.runtime_env import RuntimeEnv
 
 logger = logging.getLogger(__name__)

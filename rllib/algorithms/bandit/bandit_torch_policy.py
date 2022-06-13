@@ -1,22 +1,23 @@
 import logging
 import time
+
 from gym import spaces
 
 import ray
 from ray.rllib.algorithms.bandit.bandit_torch_model import (
+    DiscreteLinearModel,
     DiscreteLinearModelThompsonSampling,
     DiscreteLinearModelUCB,
-    DiscreteLinearModel,
     ParametricLinearModelThompsonSampling,
     ParametricLinearModelUCB,
 )
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import restore_original_dimensions
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.util.debug import log_once
-from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 
 logger = logging.getLogger(__name__)
 

@@ -1,8 +1,8 @@
 import asyncio
 import os
 
-import requests
 import pytest
+import requests
 import starlette.responses
 
 import ray

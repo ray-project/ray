@@ -1,9 +1,9 @@
+import json
+
 from django.shortcuts import HttpResponse
 
 from ray.tune.automlboard.models.models import JobRecord, TrialRecord
 from ray.tune.trial import Trial
-
-import json
 
 
 def query_job(request):

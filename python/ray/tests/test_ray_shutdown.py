@@ -1,13 +1,12 @@
+import platform
 import sys
 import time
-import platform
-
-import pytest
-import ray
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
+import pytest
 
-from ray._private.test_utils import wait_for_condition, run_string_as_driver_nonblocking
+import ray
+from ray._private.test_utils import run_string_as_driver_nonblocking, wait_for_condition
 
 
 def get_all_ray_worker_processes():

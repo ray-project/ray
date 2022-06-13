@@ -1,6 +1,7 @@
-import pytest
-import numpy as np
 import sys
+
+import numpy as np
+import pytest
 
 import ray
 

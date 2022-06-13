@@ -1,4 +1,4 @@
-from ray.rllib.algorithms.ddppo.ddppo import DDPPOConfig, DDPPO, DEFAULT_CONFIG
+from ray.rllib.algorithms.ddppo.ddppo import DDPPO, DEFAULT_CONFIG, DDPPOConfig
 
 __all__ = [
     "DDPPOConfig",

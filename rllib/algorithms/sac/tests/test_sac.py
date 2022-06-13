@@ -1,11 +1,13 @@
-from gym import Env
-from gym.spaces import Box, Dict, Discrete, Tuple
-from gym.envs.registration import EnvSpec
-import numpy as np
 import re
 import unittest
 
+import numpy as np
+from gym import Env
+from gym.envs.registration import EnvSpec
+from gym.spaces import Box, Dict, Discrete, Tuple
+
 import ray
+from ray import tune
 from ray.rllib.algorithms import sac
 from ray.rllib.algorithms.sac.sac_tf_policy import sac_actor_critic_loss as tf_loss
 from ray.rllib.algorithms.sac.sac_torch_policy import actor_critic_loss as loss_torch
@@ -20,6 +22,7 @@ from ray.rllib.models.torch.torch_action_dist import TorchDirichlet
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import fc, huber_loss, relu
+from ray.rllib.utils.replay_buffers.utils import patch_buffer_with_fake_sampling_method
 from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.test_utils import (
     check,
@@ -28,8 +31,6 @@ from ray.rllib.utils.test_utils import (
     framework_iterator,
 )
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
-from ray import tune
-from ray.rllib.utils.replay_buffers.utils import patch_buffer_with_fake_sampling_method
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -735,7 +736,8 @@ class TestSAC(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

@@ -1,18 +1,19 @@
+import json
+import os
+import pickle
+import tempfile
+
+import numpy as np
+import requests
+from sklearn.datasets import load_iris
+from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.metrics import mean_squared_error
+
 # fmt: off
 import ray
 # __doc_import_begin__
 from ray import serve
 
-import pickle
-import json
-import numpy as np
-import requests
-import os
-import tempfile
-
-from sklearn.datasets import load_iris
-from sklearn.ensemble import GradientBoostingClassifier
-from sklearn.metrics import mean_squared_error
 # __doc_import_end__
 # fmt: on
 

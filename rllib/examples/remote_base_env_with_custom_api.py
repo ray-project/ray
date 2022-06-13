@@ -7,14 +7,15 @@ one a ray Actor.
 You can access your Env's API via a custom callback as shown below.
 """
 import argparse
-import gym
 import os
 
+import gym
+
 import ray
+from ray import tune
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.env.apis.task_settable_env import TaskSettableEnv
 from ray.rllib.utils.test_utils import check_learning_achieved
-from ray import tune
 
 parser = argparse.ArgumentParser()
 parser.add_argument(

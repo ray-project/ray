@@ -1,6 +1,7 @@
+import unittest
+
 import gym
 import numpy as np
-import unittest
 
 from ray.rllib.connectors.action.clip import ClipActionsConnector
 from ray.rllib.connectors.action.lambdas import (
@@ -9,10 +10,7 @@ from ray.rllib.connectors.action.lambdas import (
 )
 from ray.rllib.connectors.action.normalize import NormalizeActionsConnector
 from ray.rllib.connectors.action.pipeline import ActionConnectorPipeline
-from ray.rllib.connectors.connector import (
-    ConnectorContext,
-    get_connector,
-)
+from ray.rllib.connectors.connector import ConnectorContext, get_connector
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import ActionConnectorDataType
 
@@ -121,7 +119,8 @@ class TestActionConnector(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

@@ -1,7 +1,7 @@
 import unittest
 
 from ray.autoscaler._private.command_runner import KUBECTL_RSYNC
-from ray.tune.integration.kubernetes import KubernetesSyncer, KubernetesSyncClient
+from ray.tune.integration.kubernetes import KubernetesSyncClient, KubernetesSyncer
 from ray.tune.syncer import NodeSyncer
 
 
@@ -108,7 +108,8 @@ class KubernetesIntegrationTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

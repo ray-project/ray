@@ -1,20 +1,15 @@
-from functools import partial
-import gym
-from gym.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 import logging
-import numpy as np
-import tree  # pip install dm_tree
+from functools import partial
 from typing import List, Optional, Type, Union
 
-from ray.tune.registry import (
-    RLLIB_MODEL,
-    RLLIB_PREPROCESSOR,
-    RLLIB_ACTION_DIST,
-    _global_registry,
-)
+import gym
+import numpy as np
+import tree  # pip install dm_tree
+from gym.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
+
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.models.preprocessors import get_preprocessor, Preprocessor
+from ray.rllib.models.preprocessors import Preprocessor, get_preprocessor
 from ray.rllib.models.tf.tf_action_dist import (
     Categorical,
     Deterministic,
@@ -32,8 +27,8 @@ from ray.rllib.models.torch.torch_action_dist import (
 )
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.deprecation import (
-    Deprecated,
     DEPRECATED_VALUE,
+    Deprecated,
     deprecation_warning,
 )
 from ray.rllib.utils.error import UnsupportedSpaceException
@@ -42,6 +37,12 @@ from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.spaces.space_utils import flatten_space
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
+from ray.tune.registry import (
+    RLLIB_ACTION_DIST,
+    RLLIB_MODEL,
+    RLLIB_PREPROCESSOR,
+    _global_registry,
+)
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -495,8 +496,8 @@ class ModelCatalog:
                         Keras_AttentionWrapper,
                     )
                     from ray.rllib.models.tf.recurrent_net import (
-                        LSTMWrapper,
                         Keras_LSTMWrapper,
+                        LSTMWrapper,
                     )
 
                     wrapped_cls = model_cls
@@ -673,8 +674,8 @@ class ModelCatalog:
                     Keras_AttentionWrapper,
                 )
                 from ray.rllib.models.tf.recurrent_net import (
-                    LSTMWrapper,
                     Keras_LSTMWrapper,
+                    LSTMWrapper,
                 )
 
                 wrapped_cls = v2_class
@@ -902,23 +903,23 @@ class ModelCatalog:
         Keras_VisionNet = None
 
         if framework in ["tf2", "tf", "tfe"]:
-            from ray.rllib.models.tf.fcnet import (
-                FullyConnectedNetwork as FCNet,
-                Keras_FullyConnectedNetwork as Keras_FCNet,
-            )
-            from ray.rllib.models.tf.visionnet import (
-                VisionNetwork as VisionNet,
-                Keras_VisionNetwork as Keras_VisionNet,
-            )
             from ray.rllib.models.tf.complex_input_net import (
                 ComplexInputNetwork as ComplexNet,
             )
+            from ray.rllib.models.tf.fcnet import FullyConnectedNetwork as FCNet
+            from ray.rllib.models.tf.fcnet import (
+                Keras_FullyConnectedNetwork as Keras_FCNet,
+            )
+            from ray.rllib.models.tf.visionnet import (
+                Keras_VisionNetwork as Keras_VisionNet,
+            )
+            from ray.rllib.models.tf.visionnet import VisionNetwork as VisionNet
         elif framework == "torch":
-            from ray.rllib.models.torch.fcnet import FullyConnectedNetwork as FCNet
-            from ray.rllib.models.torch.visionnet import VisionNetwork as VisionNet
             from ray.rllib.models.torch.complex_input_net import (
                 ComplexInputNetwork as ComplexNet,
             )
+            from ray.rllib.models.torch.fcnet import FullyConnectedNetwork as FCNet
+            from ray.rllib.models.torch.visionnet import VisionNetwork as VisionNet
         elif framework == "jax":
             from ray.rllib.models.jax.fcnet import FullyConnectedNetwork as FCNet
         else:

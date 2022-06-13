@@ -1,13 +1,13 @@
-import ray
 import time
-import pytest
-from ray.tests.conftest import *  # noqa
 
 import numpy as np
-from ray import workflow
-from ray.workflow.tests import utils
-from ray.exceptions import RaySystemError
+import pytest
 
+import ray
+from ray import workflow
+from ray.exceptions import RaySystemError
+from ray.tests.conftest import *  # noqa
+from ray.workflow.tests import utils
 
 SIZE = 2 ** 15
 

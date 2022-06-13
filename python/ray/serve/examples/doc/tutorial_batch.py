@@ -1,7 +1,8 @@
+import time
+
 # fmt: off
 # __doc_import_begin__
 from typing import List
-import time
 
 import numpy as np
 import requests
@@ -9,6 +10,7 @@ from starlette.requests import Request
 
 import ray
 from ray import serve
+
 # __doc_import_end__
 # fmt: on
 

@@ -1,7 +1,8 @@
 import logging
-from gym.envs.classic_control import CartPoleEnv
-import numpy as np
 import time
+
+import numpy as np
+from gym.envs.classic_control import CartPoleEnv
 
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import EnvError

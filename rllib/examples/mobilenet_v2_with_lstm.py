@@ -3,9 +3,10 @@
 # https://github.com/ray-project/ray/issues/6732
 
 import argparse
-from gym.spaces import Discrete, Box
-import numpy as np
 import os
+
+import numpy as np
+from gym.spaces import Box, Discrete
 
 from ray import tune
 from ray.rllib.examples.env.random_env import RandomEnv

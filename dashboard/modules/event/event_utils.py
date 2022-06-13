@@ -1,12 +1,12 @@
+import asyncio
+import collections
+import fnmatch
+import itertools
+import json
+import logging.handlers
+import mmap
 import os
 import time
-import mmap
-import json
-import fnmatch
-import asyncio
-import itertools
-import collections
-import logging.handlers
 
 from ray.dashboard.modules.event import event_consts
 from ray.dashboard.utils import async_loop_forever, create_task

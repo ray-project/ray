@@ -7,9 +7,10 @@ import ray
 # their original habit.
 def _update_modules():
     try:
+        import sys
+
         import raystreaming
         import raystreaming.context
-        import sys
 
         ray_streaming_module_name = raystreaming.__name__
         ray_streaming_modules = {}

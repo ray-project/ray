@@ -11,8 +11,8 @@ $ python custom_loss.py --input-files=/tmp/cartpole
 """
 
 import argparse
-from pathlib import Path
 import os
+from pathlib import Path
 
 import ray
 from ray import tune

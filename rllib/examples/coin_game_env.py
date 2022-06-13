@@ -8,7 +8,7 @@ import os
 import ray
 from ray import tune
 from ray.rllib.algorithms.ppo import PPO
-from ray.rllib.examples.env.coin_game_non_vectorized_env import CoinGame, AsymCoinGame
+from ray.rllib.examples.env.coin_game_non_vectorized_env import AsymCoinGame, CoinGame
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--tf", action="store_true")

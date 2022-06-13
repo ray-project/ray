@@ -1,17 +1,8 @@
+import uuid
+from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
+
 import ray
 from ray.experimental.dag.py_obj_scanner import _PyObjScanner
-
-from typing import (
-    Optional,
-    Union,
-    List,
-    Tuple,
-    Dict,
-    Any,
-    TypeVar,
-    Callable,
-)
-import uuid
 
 T = TypeVar("T")
 

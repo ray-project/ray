@@ -8,6 +8,7 @@ and set the `exploration_config` with RE3 configs.
 config["exploration_config"] = {"type": "RE3"}
 """
 from functools import partial
+
 import ray
 from ray.rllib.algorithms import sac
 from ray.rllib.algorithms.callbacks import MultiCallbacks, RE3UpdateCallbacks

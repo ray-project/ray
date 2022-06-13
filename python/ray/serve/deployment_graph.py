@@ -1,12 +1,12 @@
-from contextlib import contextmanager
 import json
+from contextlib import contextmanager
 
+import ray.serve.client
+from ray.experimental.dag import DAGNode  # noqa: F401
 from ray.experimental.dag.class_node import ClassNode  # noqa: F401
 from ray.experimental.dag.function_node import FunctionNode  # noqa: F401
 from ray.experimental.dag.input_node import InputNode  # noqa: F401
-from ray.experimental.dag import DAGNode  # noqa: F401
 from ray.util.annotations import PublicAPI
-import ray.serve.client
 
 
 @contextmanager

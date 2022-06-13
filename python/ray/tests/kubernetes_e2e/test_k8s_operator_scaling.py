@@ -8,25 +8,27 @@ Tests scaling behavior of Kubernetes operator.
 (4) Verify scale-up, task execution, and scale down.
 """
 import copy
-import kubernetes
 import subprocess
 import sys
 import tempfile
 import time
 import unittest
 
+import kubernetes
 import pytest
 import yaml
+from test_k8s_operator_basic import (
+    IMAGE,
+    NAMESPACE,
+    PULL_POLICY,
+    client_connect_to_k8s,
+    get_component_config_path,
+    get_crd_path,
+    retry_until_true,
+    wait_for_pods,
+)
 
 import ray
-from test_k8s_operator_basic import client_connect_to_k8s
-from test_k8s_operator_basic import get_crd_path
-from test_k8s_operator_basic import get_component_config_path
-from test_k8s_operator_basic import retry_until_true
-from test_k8s_operator_basic import wait_for_pods
-from test_k8s_operator_basic import IMAGE
-from test_k8s_operator_basic import PULL_POLICY
-from test_k8s_operator_basic import NAMESPACE
 
 
 def submit_scaling_job(num_actors):

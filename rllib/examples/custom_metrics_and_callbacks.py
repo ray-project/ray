@@ -4,10 +4,11 @@ Here we use callbacks to track the average CartPole pole angle magnitude as a
 custom metric.
 """
 
-from typing import Dict, Tuple
 import argparse
-import numpy as np
 import os
+from typing import Dict, Tuple
+
+import numpy as np
 
 import ray
 from ray import tune

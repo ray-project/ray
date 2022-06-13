@@ -1,7 +1,9 @@
 import argparse
+
 import numpy as np
 
 import ray
+from ray import tune
 from ray.rllib.algorithms.ppo import PPO
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
 from ray.rllib.examples.models.trajectory_view_utilizing_models import (
@@ -11,7 +13,6 @@ from ray.rllib.examples.models.trajectory_view_utilizing_models import (
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check_learning_achieved
-from ray import tune
 
 tf1, tf, tfv = try_import_tf()
 

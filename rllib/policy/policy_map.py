@@ -1,19 +1,20 @@
-from collections import deque
-import gym
 import os
 import pickle
 import threading
-from typing import Callable, Dict, Optional, Set, Type, TYPE_CHECKING
+from collections import deque
+from typing import TYPE_CHECKING, Callable, Dict, Optional, Set, Type
+
+import gym
 
 from ray.rllib.policy.policy import PolicySpec
-from ray.rllib.utils.annotations import override, PublicAPI
+from ray.rllib.utils.annotations import PublicAPI, override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import get_tf_eager_cls_if_necessary
 from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.typing import (
+    AlgorithmConfigDict,
     PartialAlgorithmConfigDict,
     PolicyID,
-    AlgorithmConfigDict,
 )
 from ray.tune.utils.util import merge_dicts
 

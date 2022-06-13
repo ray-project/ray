@@ -1,32 +1,30 @@
 #!/usr/bin/env python
 import os
+import pathlib
 import sys
 import time
-import yaml
-import click
-import pathlib
 from typing import Optional, Union
 
+import click
+import yaml
+
 import ray
-from ray._private.utils import import_attr
-from ray.serve.config import DeploymentMode
 from ray import serve
+from ray._private.utils import import_attr
+from ray.autoscaler._private.cli_logger import cli_logger
+from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
+from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
+from ray.serve.api import build as build_app
+from ray.serve.application import Application
+from ray.serve.config import DeploymentMode
 from ray.serve.constants import (
     DEFAULT_CHECKPOINT_PATH,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
     SERVE_NAMESPACE,
 )
+from ray.serve.deployment_graph import ClassNode, FunctionNode
 from ray.serve.schema import ServeApplicationSchema
-from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
-from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
-from ray.autoscaler._private.cli_logger import cli_logger
-from ray.serve.api import build as build_app
-from ray.serve.application import Application
-from ray.serve.deployment_graph import (
-    FunctionNode,
-    ClassNode,
-)
 
 APP_DIR_HELP_STR = (
     "Local directory to look for the IMPORT_PATH (will be inserted into "

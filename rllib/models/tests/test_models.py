@@ -1,12 +1,13 @@
-from gym.spaces import Box
-import numpy as np
 import unittest
+
+import numpy as np
+from gym.spaces import Box
 
 import ray
 import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.examples.models.modelv3 import RNNModel
-from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.fcnet import FullyConnectedNetwork
+from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.utils.framework import try_import_tf
 
 tf1, tf, tfv = try_import_tf()
@@ -78,7 +79,8 @@ class TestModels(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

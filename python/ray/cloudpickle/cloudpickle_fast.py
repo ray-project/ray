@@ -10,34 +10,51 @@ Note that the C Pickler subclassing API is CPython-specific. Therefore, some
 guards present in cloudpickle.py that were written to handle PyPy specificities
 are not present in cloudpickle_fast.py
 """
-import _collections_abc
 import abc
 import copyreg
 import io
 import itertools
 import logging
-import sys
 import struct
+import sys
 import types
-import weakref
 import typing
-
-from enum import Enum
+import weakref
 from collections import ChainMap, OrderedDict
+from enum import Enum
 
-from .compat import pickle, Pickler
+import _collections_abc
+
 from .cloudpickle import (
-    _extract_code_globals, _BUILTIN_TYPE_NAMES, DEFAULT_PROTOCOL,
-    _find_imported_submodules, _get_cell_contents, _should_pickle_by_reference,
-    _builtin_type, _get_or_create_tracker_id,  _make_skeleton_class,
-    _make_skeleton_enum, _extract_class_dict, dynamic_subimport, subimport,
-    _typevar_reduce, _get_bases, _make_cell, _make_empty_cell, CellType,
-    _is_parametrized_type_hint, PYPY, cell_set,
-    parametrized_type_hint_getinitargs, _create_parametrized_type_hint,
+    _BUILTIN_TYPE_NAMES,
+    DEFAULT_PROTOCOL,
+    PYPY,
+    CellType,
+    _builtin_type,
+    _create_parametrized_type_hint,
+    _extract_class_dict,
+    _extract_code_globals,
+    _find_imported_submodules,
+    _get_bases,
+    _get_cell_contents,
+    _get_or_create_tracker_id,
+    _is_parametrized_type_hint,
+    _make_cell,
+    _make_dict_items,
+    _make_dict_keys,
+    _make_dict_values,
+    _make_empty_cell,
+    _make_skeleton_class,
+    _make_skeleton_enum,
+    _should_pickle_by_reference,
+    _typevar_reduce,
     builtin_code_type,
-    _make_dict_keys, _make_dict_values, _make_dict_items,
+    cell_set,
+    dynamic_subimport,
+    parametrized_type_hint_getinitargs,
+    subimport,
 )
-
+from .compat import Pickler, pickle
 
 if pickle.HIGHEST_PROTOCOL >= 5 and not PYPY:
     # Shorthands similar to pickle.dump/pickle.dumps
@@ -551,8 +568,9 @@ class CloudPickler(Pickler):
     # TODO(suquark): Remove this patch when we use numpy >= 1.20.0 by default.
     # We import 'numpy.core' here, so numpy would register the
     # ufunc serializer to 'copyreg.dispatch_table' before we override it.
-    import numpy.core
     import numpy
+    import numpy.core
+
     # Override the original numpy ufunc serializer.
     dispatch_table[numpy.ufunc] = _ufunc_reduce
 

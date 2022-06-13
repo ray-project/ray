@@ -1,13 +1,14 @@
-import numpy as np
 from typing import Any, List
 
+import numpy as np
+
 from ray.rllib.connectors.connector import (
-    ConnectorContext,
     AgentConnector,
+    ConnectorContext,
     register_connector,
 )
-from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.typing import AgentConnectorDataType
 
 

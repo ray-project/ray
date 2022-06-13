@@ -1,28 +1,28 @@
-import gym
-import numpy as np
 import random
 import unittest
 
+import gym
+import numpy as np
+
 import ray
-from ray.tune.registry import register_env
 from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.algorithms.pg import PG
+from ray.rllib.env.multi_agent_env import MultiAgentEnvWrapper
 from ray.rllib.evaluation.episode import Episode
-from ray.rllib.evaluation.rollout_worker import get_global_worker
-from ray.rllib.examples.policy.random_policy import RandomPolicy
+from ray.rllib.evaluation.rollout_worker import RolloutWorker, get_global_worker
+from ray.rllib.evaluation.tests.test_rollout_worker import MockPolicy
 from ray.rllib.examples.env.multi_agent import (
-    MultiAgentCartPole,
     BasicMultiAgent,
     EarlyDoneMultiAgent,
     FlexAgentsMultiAgent,
+    MultiAgentCartPole,
     RoundRobinMultiAgent,
 )
-from ray.rllib.evaluation.rollout_worker import RolloutWorker
-from ray.rllib.evaluation.tests.test_rollout_worker import MockPolicy
-from ray.rllib.env.multi_agent_env import MultiAgentEnvWrapper
+from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.numpy import one_hot
 from ray.rllib.utils.test_utils import check
+from ray.tune.registry import register_env
 
 
 class TestMultiAgentEnv(unittest.TestCase):
@@ -449,7 +449,8 @@ class TestMultiAgentEnv(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

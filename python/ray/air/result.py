@@ -1,5 +1,5 @@
-from typing import Any, Dict, Optional
 from dataclasses import dataclass
+from typing import Any, Dict, Optional
 
 from ray.air.checkpoint import Checkpoint
 from ray.util.annotations import PublicAPI

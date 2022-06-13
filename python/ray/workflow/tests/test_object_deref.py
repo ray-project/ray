@@ -1,14 +1,11 @@
-from typing import List, Dict
-
-from ray.tests.conftest import *  # noqa
-
-import pytest
+from typing import Dict, List
 
 import numpy as np
+import pytest
 
 import ray
-from ray import ObjectRef
-from ray import workflow
+from ray import ObjectRef, workflow
+from ray.tests.conftest import *  # noqa
 
 
 def test_objectref_inputs(workflow_start_regular_shared):

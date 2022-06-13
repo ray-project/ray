@@ -23,13 +23,14 @@ using --flat in this example.
 """
 
 import argparse
-from gym.spaces import Discrete, Tuple
 import logging
 import os
 
+from gym.spaces import Discrete, Tuple
+
 import ray
 from ray import tune
-from ray.rllib.examples.env.windy_maze_env import WindyMazeEnv, HierarchicalWindyMazeEnv
+from ray.rllib.examples.env.windy_maze_env import HierarchicalWindyMazeEnv, WindyMazeEnv
 from ray.rllib.utils.test_utils import check_learning_achieved
 
 parser = argparse.ArgumentParser()

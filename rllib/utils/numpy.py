@@ -1,14 +1,15 @@
 from collections import OrderedDict
-from gym.spaces import Discrete, MultiDiscrete
-import numpy as np
-import tree  # pip install dm_tree
 from types import MappingProxyType
 from typing import List, Optional
+
+import numpy as np
+import tree  # pip install dm_tree
+from gym.spaces import Discrete, MultiDiscrete
 
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.typing import SpaceStruct, TensorType, TensorStructType, Union
+from ray.rllib.utils.typing import SpaceStruct, TensorStructType, TensorType, Union
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()

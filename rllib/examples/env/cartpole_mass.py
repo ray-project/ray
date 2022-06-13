@@ -1,6 +1,6 @@
+import numpy as np
 from gym.envs.classic_control.cartpole import CartPoleEnv
 from gym.utils import EzPickle
-import numpy as np
 
 from ray.rllib.env.apis.task_settable_env import TaskSettableEnv
 

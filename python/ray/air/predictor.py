@@ -4,8 +4,8 @@ from typing import Dict, Type
 import numpy as np
 import pandas as pd
 
-from ray.air.data_batch_type import DataBatchType
 from ray.air.checkpoint import Checkpoint
+from ray.air.data_batch_type import DataBatchType
 from ray.air.util.data_batch_conversion import (
     DataType,
     convert_batch_type_to_pandas,

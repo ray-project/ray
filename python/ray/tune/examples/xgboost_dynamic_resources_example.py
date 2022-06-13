@@ -1,21 +1,21 @@
-from typing import Union, Dict, Any, Optional
+import os
+import pickle
+from typing import Any, Dict, Optional, Union
+
 import sklearn.datasets
 import sklearn.metrics
-import os
-from sklearn.model_selection import train_test_split
 import xgboost as xgb
+from sklearn.model_selection import train_test_split
 from xgboost.core import Booster
-import pickle
 
 import ray
 from ray import tune
-from ray.tune.schedulers import ResourceChangingScheduler, ASHAScheduler
-from ray.tune import Trainable
-from ray.tune.resources import Resources
-from ray.tune.utils.placement_groups import PlacementGroupFactory
-from ray.tune.trial import Trial
-from ray.tune import trial_runner
+from ray.tune import Trainable, trial_runner
 from ray.tune.integration.xgboost import TuneReportCheckpointCallback
+from ray.tune.resources import Resources
+from ray.tune.schedulers import ASHAScheduler, ResourceChangingScheduler
+from ray.tune.trial import Trial
+from ray.tune.utils.placement_groups import PlacementGroupFactory
 
 CHECKPOINT_FILENAME = "model.xgb"
 

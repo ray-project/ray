@@ -4,8 +4,9 @@ It also checks that it is usable with a separate scheduler.
 
 Requires the Ax library to be installed (`pip install ax-platform sqlalchemy`).
 """
-import numpy as np
 import time
+
+import numpy as np
 
 from ray import tune
 from ray.tune.schedulers import AsyncHyperBandScheduler

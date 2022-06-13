@@ -1,13 +1,12 @@
-from collections import defaultdict
 import logging
 import os
 import random
 import time
-from typing import Dict
 import uuid
+from collections import defaultdict
+from typing import Dict
 
 import ray._private.utils
-
 from ray.rllib.algorithms.mock import _MockTrainer
 from ray.tune import Trainable
 from ray.tune.callback import Callback
@@ -108,6 +107,7 @@ class FailureInjectorCallback(Callback):
             return
         self.last_fail_check = time.monotonic()
         import click
+
         from ray.autoscaler._private.commands import kill_node
 
         failures = 0

@@ -1,10 +1,11 @@
 """Common pre-checks for all RLlib experiments."""
-from copy import copy
 import logging
+import traceback
+from copy import copy
+from typing import TYPE_CHECKING, Set
+
 import gym
 import numpy as np
-import traceback
-from typing import TYPE_CHECKING, Set
 
 from ray.actor import ActorHandle
 from ray.rllib.utils.annotations import DeveloperAPI
@@ -31,11 +32,11 @@ def check_env(env: EnvType) -> None:
     """
     from ray.rllib.env import (
         BaseEnv,
+        ExternalEnv,
+        ExternalMultiAgentEnv,
         MultiAgentEnv,
         RemoteBaseEnv,
         VectorEnv,
-        ExternalMultiAgentEnv,
-        ExternalEnv,
     )
 
     if hasattr(env, "_skip_env_checking") and env._skip_env_checking:

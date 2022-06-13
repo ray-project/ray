@@ -1,6 +1,7 @@
 import logging
-import numpy as np
 import time
+
+import numpy as np
 
 from ray.rllib.models.jax.jax_modelv2 import JAXModelV2
 from ray.rllib.models.jax.misc import SlimFC

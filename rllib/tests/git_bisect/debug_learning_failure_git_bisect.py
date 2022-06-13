@@ -27,9 +27,10 @@ $ python debug_learning_failure_git_bisect.py -f [yaml file] --stop-reward=180
 import argparse
 import importlib
 import json
-import numpy as np
 import os
 import subprocess
+
+import numpy as np
 import yaml
 
 parser = argparse.ArgumentParser()

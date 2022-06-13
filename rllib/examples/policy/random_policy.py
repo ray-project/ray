@@ -1,7 +1,8 @@
-from gym.spaces import Box
-import numpy as np
 import random
+
+import numpy as np
 import tree  # pip install dm_tree
+from gym.spaces import Box
 
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch

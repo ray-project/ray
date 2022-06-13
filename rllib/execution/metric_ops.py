@@ -1,9 +1,9 @@
-from typing import Any, Dict, List, Optional
 import time
+from typing import Any, Dict, List, Optional
 
 from ray.actor import ActorHandle
-from ray.util.iter import LocalIterator
 from ray.rllib.evaluation.metrics import collect_episodes, summarize_episodes
+from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import (
     AGENT_STEPS_SAMPLED_COUNTER,
     STEPS_SAMPLED_COUNTER,
@@ -11,7 +11,7 @@ from ray.rllib.execution.common import (
     STEPS_TRAINED_THIS_ITER_COUNTER,
     _get_shared_metrics,
 )
-from ray.rllib.evaluation.worker_set import WorkerSet
+from ray.util.iter import LocalIterator
 
 
 def StandardMetricsReporting(

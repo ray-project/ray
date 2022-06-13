@@ -1,18 +1,23 @@
 import copy
-from collections import OrderedDict
 import os
-import pytest
-import sys
 import shutil
+import sys
 import unittest
+from collections import OrderedDict
 from unittest.mock import patch
+
+import pytest
 
 import ray
 import ray._private.utils
 import ray.cloudpickle as cloudpickle
-from ray.tune.utils.util import wait_for_gpu
-from ray.tune.utils.util import flatten_dict, unflatten_dict, unflatten_list_dict
 from ray.tune.utils.trainable import TrainableUtil
+from ray.tune.utils.util import (
+    flatten_dict,
+    unflatten_dict,
+    unflatten_list_dict,
+    wait_for_gpu,
+)
 
 
 @pytest.mark.parametrize(

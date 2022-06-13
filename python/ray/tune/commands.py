@@ -1,22 +1,22 @@
-from typing import Optional, List
-
-import click
 import logging
 import operator
 import os
 import shutil
 import subprocess
 from datetime import datetime
+from typing import List, Optional
 
+import click
 import pandas as pd
-from pandas.api.types import is_string_dtype, is_numeric_dtype
+from pandas.api.types import is_numeric_dtype, is_string_dtype
+
+from ray.tune import TuneError
+from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.result import (
+    CONFIG_PREFIX,
     DEFAULT_EXPERIMENT_INFO_KEYS,
     DEFAULT_RESULT_KEYS,
-    CONFIG_PREFIX,
 )
-from ray.tune.analysis import ExperimentAnalysis
-from ray.tune import TuneError
 
 try:
     from tabulate import tabulate

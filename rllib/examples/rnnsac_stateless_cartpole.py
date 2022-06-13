@@ -9,7 +9,6 @@ from ray.rllib.algorithms.registry import get_algorithm_class
 # from ray.rllib.examples.env.repeat_after_me_env import RepeatAfterMeEnv
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
 
-
 config = {
     "name": "RNNSAC_example",
     "local_dir": str(Path(__file__).parent / "example_out"),

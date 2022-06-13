@@ -1,17 +1,13 @@
 import os
-import sys
 import signal
-
-import ray
+import sys
+import time
 
 import numpy as np
 import pytest
-import time
 
-from ray._private.test_utils import (
-    SignalActor,
-    wait_for_pid_to_exit,
-)
+import ray
+from ray._private.test_utils import SignalActor, wait_for_pid_to_exit
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 

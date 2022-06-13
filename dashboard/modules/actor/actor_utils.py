@@ -1,5 +1,5 @@
-import time
 import re
+import time
 from collections import defaultdict
 
 PYCLASSNAME_RE = re.compile(r"(.+?)\(")

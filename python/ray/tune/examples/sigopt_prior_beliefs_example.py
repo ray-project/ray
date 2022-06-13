@@ -6,8 +6,8 @@ Requires the SigOpt library to be installed (`pip install sigopt`).
 import sys
 
 import numpy as np
-from ray import tune
 
+from ray import tune
 from ray.tune.suggest.sigopt import SigOptSearch
 
 np.random.seed(0)
@@ -40,6 +40,7 @@ def easy_objective(config):
 if __name__ == "__main__":
     import argparse
     import os
+
     from sigopt import Connection
 
     parser = argparse.ArgumentParser()

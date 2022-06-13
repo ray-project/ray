@@ -1,6 +1,6 @@
 from ray.rllib.offline.estimators.off_policy_estimator import (  # noqa: F401
-    OffPolicyEstimator,
     OffPolicyEstimate,
+    OffPolicyEstimator,
 )
 from ray.rllib.utils.deprecation import deprecation_warning
 

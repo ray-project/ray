@@ -4,7 +4,7 @@ from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_jax, try_import_tfp
-from ray.rllib.utils.typing import TensorType, List
+from ray.rllib.utils.typing import List, TensorType
 
 jax, flax = try_import_jax()
 tfp = try_import_tfp()

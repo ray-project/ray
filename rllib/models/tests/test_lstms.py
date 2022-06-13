@@ -1,5 +1,6 @@
-from gym.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 import unittest
+
+from gym.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 
 import ray
 from ray import tune
@@ -56,7 +57,8 @@ class TestLSTMs(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

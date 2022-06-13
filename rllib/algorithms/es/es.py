@@ -1,12 +1,13 @@
 # Code in this file is copied and adapted from
 # https://github.com/openai/evolution-strategies-starter.
 
-from collections import namedtuple
 import logging
-import numpy as np
 import random
 import time
+from collections import namedtuple
 from typing import Optional
+
+import numpy as np
 
 import ray
 from ray.rllib.algorithms import Algorithm, AlgorithmConfig

@@ -1,32 +1,33 @@
+import collections
 from typing import (
+    TYPE_CHECKING,
+    Any,
     Callable,
     Dict,
-    List,
-    Tuple,
-    Union,
     Iterator,
-    Any,
-    TypeVar,
+    List,
     Optional,
-    TYPE_CHECKING,
+    Tuple,
+    TypeVar,
+    Union,
 )
 
-import collections
 import numpy as np
 
-from ray.data.block import BlockAccessor, BlockMetadata, KeyFn, U
-from ray.data.row import TableRow
+from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data._internal.table_block import (
+    VALUE_COL_NAME,
     TableBlockAccessor,
     TableBlockBuilder,
-    VALUE_COL_NAME,
 )
-from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data.aggregate import AggregateFn
+from ray.data.block import BlockAccessor, BlockMetadata, KeyFn, U
+from ray.data.row import TableRow
 
 if TYPE_CHECKING:
-    import pyarrow
     import pandas
+    import pyarrow
+
     from ray.data._internal.sort import SortKeyT
 
 T = TypeVar("T")

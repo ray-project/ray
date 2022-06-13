@@ -1,8 +1,9 @@
+from transformers import pipeline
+
 # __deployment_class_start__
 # File name: summarizer_on_ray_serve.py
 import ray
 from ray import serve
-from transformers import pipeline
 
 ray.init(address="auto")
 serve.start(detached=True)

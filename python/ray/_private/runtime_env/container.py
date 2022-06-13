@@ -1,6 +1,5 @@
-import os
 import logging
-
+import os
 from typing import Optional
 
 from ray._private.runtime_env.context import RuntimeEnvContext

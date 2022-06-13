@@ -1,13 +1,14 @@
 from collections import defaultdict
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
+
 import numpy as np
 
+import ray
+from ray import serve
 from ray._private.utils import import_attr
 from ray.air.checkpoint import Checkpoint
 from ray.air.predictor import Predictor
 from ray.serve.drivers import HTTPAdapterFn, SimpleSchemaIngress
-import ray
-from ray import serve
 from ray.serve.utils import require_packages
 
 try:

@@ -1,9 +1,8 @@
 from typing import Any
 
-from ray.workflow.common import WORKFLOW_OPTIONS, WorkflowStepRuntimeOptions, StepType
-
 from ray.experimental.dag import DAGNode, FunctionNode, InputNode
-from ray.experimental.dag.input_node import InputAttributeNode, DAGInputData
+from ray.experimental.dag.input_node import DAGInputData, InputAttributeNode
+from ray.workflow.common import WORKFLOW_OPTIONS, StepType, WorkflowStepRuntimeOptions
 
 
 def _make_workflow_step_function(node: FunctionNode):

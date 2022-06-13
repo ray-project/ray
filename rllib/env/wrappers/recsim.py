@@ -8,13 +8,14 @@ https://github.com/google-research/recsim
 """
 
 from collections import OrderedDict
+from typing import Callable, List, Optional, Type
+
 import gym
-from gym.spaces import Dict, Discrete, MultiDiscrete
 import numpy as np
+from gym.spaces import Dict, Discrete, MultiDiscrete
 from recsim.document import AbstractDocumentSampler
 from recsim.simulator import environment, recsim_gym
-from recsim.user import AbstractUserModel, AbstractResponse
-from typing import Callable, List, Optional, Type
+from recsim.user import AbstractResponse, AbstractUserModel
 
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.utils.error import UnsupportedSpaceException

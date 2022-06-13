@@ -42,13 +42,13 @@ import ray
 from ray import tune
 from ray.rllib.algorithms import ppo
 from ray.rllib.examples.env.correlated_actions_env import CorrelatedActionsEnv
-from ray.rllib.examples.models.autoregressive_action_model import (
-    AutoregressiveActionModel,
-    TorchAutoregressiveActionModel,
-)
 from ray.rllib.examples.models.autoregressive_action_dist import (
     BinaryAutoregressiveDistribution,
     TorchBinaryAutoregressiveDistribution,
+)
+from ray.rllib.examples.models.autoregressive_action_model import (
+    AutoregressiveActionModel,
+    TorchAutoregressiveActionModel,
 )
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.test_utils import check_learning_achieved

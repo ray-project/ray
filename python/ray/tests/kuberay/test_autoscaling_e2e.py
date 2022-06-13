@@ -2,34 +2,32 @@ import copy
 import logging
 import os
 import pathlib
+import subprocess
 import tempfile
 import unittest
-import subprocess
-
 from typing import Any, Dict
 
 import yaml
-
-from ray.tests.kuberay.utils import (
-    get_pod,
-    get_pod_names,
-    get_raycluster,
-    ray_client_port_forward,
-    ray_job_submit,
-    kubectl_exec_python_script,
-    kubectl_logs,
-    kubectl_patch,
-    kubectl_delete,
-    wait_for_pods,
-    wait_for_pod_to_start,
-    wait_for_ray_health,
-    wait_for_crd,
-)
 
 from ray.tests.kuberay.scripts import (
     gpu_actor_placement,
     gpu_actor_validation,
     non_terminated_nodes_count,
+)
+from ray.tests.kuberay.utils import (
+    get_pod,
+    get_pod_names,
+    get_raycluster,
+    kubectl_delete,
+    kubectl_exec_python_script,
+    kubectl_logs,
+    kubectl_patch,
+    ray_client_port_forward,
+    ray_job_submit,
+    wait_for_crd,
+    wait_for_pod_to_start,
+    wait_for_pods,
+    wait_for_ray_health,
 )
 
 logger = logging.getLogger(__name__)
@@ -430,7 +428,8 @@ class KubeRayAutoscalingTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-vv", __file__]))

@@ -1,9 +1,9 @@
-from dataclasses import dataclass
 import os
 import sys
 import time
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
-from unittest.mock import patch, Mock
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -14,19 +14,19 @@ from ray.serve.common import (
     DeploymentInfo,
     DeploymentStatus,
     ReplicaConfig,
-    ReplicaTag,
     ReplicaName,
+    ReplicaTag,
 )
 from ray.serve.deployment_state import (
+    CHECKPOINT_KEY,
+    DeploymentReplica,
     DeploymentState,
     DeploymentStateManager,
     DeploymentVersion,
-    DeploymentReplica,
     ReplicaStartupStatus,
     ReplicaState,
     ReplicaStateContainer,
     VersionedReplica,
-    CHECKPOINT_KEY,
     rank_replicas_for_stopping,
 )
 from ray.serve.storage.kv_store import RayLocalKVStore

@@ -2,7 +2,6 @@ import pytest
 
 import ray
 import ray.data
-
 from ray.air import train_test_split
 
 

@@ -1,7 +1,8 @@
-import gym
-from gym.spaces import Box, Dict, Discrete
-import numpy as np
 import random
+
+import gym
+import numpy as np
+from gym.spaces import Box, Dict, Discrete
 
 
 class ParametricActionsCartPole(gym.Env):

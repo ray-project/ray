@@ -3,8 +3,8 @@ import unittest
 
 import ray
 from ray import tune
+from ray.rllib.algorithms.pg import DEFAULT_CONFIG, PG
 from ray.tune import Callback
-from ray.rllib.algorithms.pg import PG, DEFAULT_CONFIG
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.trial import Trial
 from ray.tune.utils.placement_groups import PlacementGroupFactory
@@ -126,7 +126,8 @@ class TestPlacementGroups(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

@@ -1,31 +1,29 @@
 import collections
-import random
-import numpy as np
 import logging
-from typing import Optional, Dict, Any
+import random
+from typing import Any, Dict, Optional
 
+import numpy as np
+
+from ray.rllib.policy.rnn_sequencing import timeslice_along_seq_lens_with_overlap
 from ray.rllib.policy.sample_batch import (
     DEFAULT_POLICY_ID,
-    SampleBatch,
     MultiAgentBatch,
+    SampleBatch,
 )
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.replay_buffers.multi_agent_prioritized_replay_buffer import (
     MultiAgentPrioritizedReplayBuffer,
 )
-from ray.rllib.utils.replay_buffers.replay_buffer import (
-    StorageUnit,
-)
 from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import (
-    merge_dicts_with_warning,
     MultiAgentReplayBuffer,
     ReplayMode,
+    merge_dicts_with_warning,
 )
+from ray.rllib.utils.replay_buffers.replay_buffer import _ALL_POLICIES, StorageUnit
 from ray.rllib.utils.typing import PolicyID, SampleBatchType
-from ray.rllib.utils.replay_buffers.replay_buffer import _ALL_POLICIES
-from ray.util.debug import log_once
 from ray.util.annotations import DeveloperAPI
-from ray.rllib.policy.rnn_sequencing import timeslice_along_seq_lens_with_overlap
+from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
 

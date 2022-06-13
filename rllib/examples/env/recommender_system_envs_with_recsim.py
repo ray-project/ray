@@ -5,11 +5,9 @@ Source: https://github.com/google-research/recsim
 """
 
 from recsim import choice_model
-from recsim.environments import (
-    long_term_satisfaction as lts,
-    interest_evolution as iev,
-    interest_exploration as iex,
-)
+from recsim.environments import interest_evolution as iev
+from recsim.environments import interest_exploration as iex
+from recsim.environments import long_term_satisfaction as lts
 
 from ray.rllib.env.wrappers.recsim import make_recsim_env
 from ray.tune import register_env

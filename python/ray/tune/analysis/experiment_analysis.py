@@ -8,10 +8,26 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 from ray.air.checkpoint import Checkpoint
 from ray.tune.cloud import TrialCheckpoint
+from ray.tune.error import TuneError
+from ray.tune.result import (
+    CONFIG_PREFIX,
+    DEFAULT_METRIC,
+    EXPR_PARAM_FILE,
+    EXPR_PROGRESS_FILE,
+    EXPR_RESULT_FILE,
+    TRAINING_ITERATION,
+)
 from ray.tune.syncer import SyncConfig
+from ray.tune.trial import Trial
+from ray.tune.trial_runner import (
+    find_newest_experiment_checkpoint,
+    load_trial_from_checkpoint,
+)
 from ray.tune.utils import flatten_dict
 from ray.tune.utils.serialization import TuneFunctionDecoder
-from ray.tune.utils.util import is_nan_or_inf, is_nan
+from ray.tune.utils.trainable import TrainableUtil
+from ray.tune.utils.util import is_nan, is_nan_or_inf, unflattened_lookup
+from ray.util.annotations import PublicAPI
 
 try:
     import pandas as pd
@@ -20,24 +36,6 @@ except ImportError:
     pd = None
     DataFrame = None
 
-from ray.tune.error import TuneError
-from ray.tune.result import (
-    DEFAULT_METRIC,
-    EXPR_PROGRESS_FILE,
-    EXPR_RESULT_FILE,
-    EXPR_PARAM_FILE,
-    CONFIG_PREFIX,
-    TRAINING_ITERATION,
-)
-from ray.tune.trial import Trial
-from ray.tune.trial_runner import (
-    find_newest_experiment_checkpoint,
-    load_trial_from_checkpoint,
-)
-from ray.tune.utils.trainable import TrainableUtil
-from ray.tune.utils.util import unflattened_lookup
-
-from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
 

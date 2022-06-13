@@ -2,22 +2,20 @@
 A multi-agent, distributed multi-GPU, league-capable asynch. PPO
 ================================================================
 """
-import gym
-import tree
 from typing import Any, Dict, Optional, Type
 
+import gym
+import tree
 
 import ray
+import ray.rllib.algorithms.appo.appo as appo
 from ray.actor import ActorHandle
+from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.alpha_star.distributed_learners import DistributedLearners
 from ray.rllib.algorithms.alpha_star.league_builder import AlphaStarLeagueBuilder
-from ray.rllib.algorithms.algorithm import Algorithm
-import ray.rllib.algorithms.appo.appo as appo
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
-from ray.rllib.execution.parallel_requests import (
-    AsyncRequestsManager,
-)
 from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
+from ray.rllib.execution.parallel_requests import AsyncRequestsManager
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
@@ -36,10 +34,10 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import (
+    AlgorithmConfigDict,
     PartialAlgorithmConfigDict,
     PolicyID,
     PolicyState,
-    AlgorithmConfigDict,
     ResultDict,
 )
 from ray.tune.utils.placement_groups import PlacementGroupFactory

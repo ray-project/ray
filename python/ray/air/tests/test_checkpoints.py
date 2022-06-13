@@ -6,8 +6,8 @@ import unittest
 from typing import Any
 
 import ray
+from ray.air._internal.remote_storage import _ensure_directory, delete_at_uri
 from ray.air.checkpoint import Checkpoint
-from ray.air._internal.remote_storage import delete_at_uri, _ensure_directory
 
 
 class CheckpointsConversionTest(unittest.TestCase):
@@ -369,7 +369,8 @@ class CheckpointsSerdeTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

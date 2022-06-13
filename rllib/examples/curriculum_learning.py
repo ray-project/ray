@@ -11,8 +11,9 @@ This example shows:
 You can visualize experiment results in ~/ray_results using TensorBoard.
 """
 import argparse
-import numpy as np
 import os
+
+import numpy as np
 
 import ray
 from ray import tune

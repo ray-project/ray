@@ -2,12 +2,10 @@ import io
 import os
 import shutil
 import tarfile
-
-from typing import Optional, Tuple, Dict, Generator, Union
+from typing import Dict, Generator, Optional, Tuple, Union
 
 import ray
 from ray.util.ml_utils.filelock import TempFileLock
-
 
 _DEFAULT_CHUNK_SIZE_BYTES = 500 * 1024 * 1024  # 500 MiB
 _DEFAULT_MAX_SIZE_BYTES = 1 * 1024 * 1024 * 1024  # 1 GiB

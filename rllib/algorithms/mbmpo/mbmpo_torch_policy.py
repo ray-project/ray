@@ -1,6 +1,7 @@
-from gym.spaces import Box, Discrete
 import logging
 from typing import Tuple, Type
+
+from gym.spaces import Box, Discrete
 
 import ray
 from ray.rllib.algorithms.maml.maml_torch_policy import MAMLTorchPolicy

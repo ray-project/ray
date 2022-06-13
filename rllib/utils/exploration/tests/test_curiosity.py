@@ -1,16 +1,17 @@
+import sys
+import unittest
 from collections import deque
+
 import gym
 import gym_minigrid
 import numpy as np
-import sys
-import unittest
 
 import ray
+import ray.rllib.algorithms.ppo as ppo
 from ray import tune
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-import ray.rllib.algorithms.ppo as ppo
-from ray.rllib.utils.test_utils import check_learning_achieved, framework_iterator
 from ray.rllib.utils.numpy import one_hot
+from ray.rllib.utils.test_utils import check_learning_achieved, framework_iterator
 from ray.tune import register_env
 
 

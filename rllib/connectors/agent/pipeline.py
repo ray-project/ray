@@ -1,16 +1,17 @@
-import gym
 from typing import Any, List
 
+import gym
+
+from ray.rllib.connectors.agent.clip_reward import ClipRewardAgentConnector
+from ray.rllib.connectors.agent.lambdas import FlattenDataAgentConnector
 from ray.rllib.connectors.connector import (
+    AgentConnector,
     Connector,
     ConnectorContext,
     ConnectorPipeline,
-    AgentConnector,
-    register_connector,
     get_connector,
+    register_connector,
 )
-from ray.rllib.connectors.agent.clip_reward import ClipRewardAgentConnector
-from ray.rllib.connectors.agent.lambdas import FlattenDataAgentConnector
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.typing import (
     ActionConnectorDataType,

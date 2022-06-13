@@ -1,6 +1,7 @@
-import numpy as np
 import re
 import unittest
+
+import numpy as np
 
 import ray
 import ray.rllib.algorithms.ddpg as ddpg
@@ -11,6 +12,7 @@ from ray.rllib.algorithms.sac.tests.test_sac import SimpleEnv
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import fc, huber_loss, l2_loss, relu, sigmoid
+from ray.rllib.utils.replay_buffers.utils import patch_buffer_with_fake_sampling_method
 from ray.rllib.utils.test_utils import (
     check,
     check_compute_single_action,
@@ -18,7 +20,6 @@ from ray.rllib.utils.test_utils import (
     framework_iterator,
 )
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
-from ray.rllib.utils.replay_buffers.utils import patch_buffer_with_fake_sampling_method
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -579,7 +580,8 @@ class TestDDPG(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

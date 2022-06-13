@@ -1,7 +1,6 @@
 from ray.rllib.agents import with_common_config
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
-
 DEFAULT_CONFIG = with_common_config(
     {
         "use_critic": True,

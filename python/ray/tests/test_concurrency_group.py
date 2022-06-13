@@ -2,9 +2,11 @@
 import asyncio
 import sys
 import threading
-import pytest
-import ray
 import time
+
+import pytest
+
+import ray
 
 
 # This tests the methods are executed in the correct eventloop.

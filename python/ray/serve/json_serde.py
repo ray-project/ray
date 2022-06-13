@@ -1,33 +1,29 @@
-from typing import Any, Union
-from importlib import import_module
-
 import json
+from importlib import import_module
+from typing import Any, Union
 
 from ray.experimental.dag import (
-    DAGNode,
-    ClassNode,
-    FunctionNode,
-    InputNode,
-    InputAttributeNode,
     DAGNODE_TYPE_KEY,
+    ClassNode,
+    DAGNode,
+    FunctionNode,
+    InputAttributeNode,
+    InputNode,
 )
+from ray.serve.constants import SERVE_HANDLE_JSON_KEY
 from ray.serve.deployment_executor_node import DeploymentExecutorNode
-from ray.serve.deployment_method_executor_node import DeploymentMethodExecutorNode
 from ray.serve.deployment_function_executor_node import DeploymentFunctionExecutorNode
-
-from ray.serve.schema import (
-    DeploymentSchema,
-)
-from ray.serve.utils import parse_import_path
+from ray.serve.deployment_graph import RayServeDAGHandle
+from ray.serve.deployment_method_executor_node import DeploymentMethodExecutorNode
 from ray.serve.handle import (
     HandleOptions,
     RayServeHandle,
     RayServeLazySyncHandle,
-    serve_handle_to_json_dict,
     serve_handle_from_json_dict,
+    serve_handle_to_json_dict,
 )
-from ray.serve.constants import SERVE_HANDLE_JSON_KEY
-from ray.serve.deployment_graph import RayServeDAGHandle
+from ray.serve.schema import DeploymentSchema
+from ray.serve.utils import parse_import_path
 
 
 def convert_to_json_safe_obj(obj: Any, *, err_key: str) -> Any:

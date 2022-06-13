@@ -1,11 +1,11 @@
 import copy
 import logging
+import random
 import re
 from collections.abc import Mapping
 from typing import Any, Dict, Generator, Iterable, List, Optional, Tuple
 
 import numpy
-import random
 
 from ray.tune.sample import Categorical, Domain, Function, RandomState
 from ray.util.annotations import DeveloperAPI

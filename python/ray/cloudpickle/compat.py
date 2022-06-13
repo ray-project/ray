@@ -24,4 +24,5 @@ elif sys.version_info < (3, 8):
         from pickle import _Pickler as Pickler  # noqa: F401
 else:
     import pickle  # noqa: F401
+
     from _pickle import Pickler  # noqa: F401

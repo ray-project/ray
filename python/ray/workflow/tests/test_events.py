@@ -1,12 +1,13 @@
-from ray.tests.conftest import *  # noqa
-import pytest
-
 import asyncio
-import ray
-from ray import workflow
-from ray.workflow.tests import utils
 import subprocess
 import time
+
+import pytest
+
+import ray
+from ray import workflow
+from ray.tests.conftest import *  # noqa
+from ray.workflow.tests import utils
 
 
 def test_sleep(workflow_start_regular_shared):

@@ -1,12 +1,12 @@
 import random
 from typing import Any, Dict, List, Optional
+
 import numpy as np
+import psutil  # noqa E402
 
 # Import ray before psutil will make sure we use psutil's bundled version
 import ray  # noqa F401
-import psutil  # noqa E402
-
-from ray.rllib.execution.segment_tree import SumSegmentTree, MinSegmentTree
+from ray.rllib.execution.segment_tree import MinSegmentTree, SumSegmentTree
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics.window_stat import WindowStat

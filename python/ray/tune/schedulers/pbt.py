@@ -10,12 +10,12 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 from ray.tune import trial_runner
 from ray.tune.error import TuneError
 from ray.tune.result import DEFAULT_METRIC, TRAINING_ITERATION
-from ray.tune.suggest import SearchGenerator
-from ray.tune.utils.util import SafeFallbackEncoder
 from ray.tune.sample import Domain, Function
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
+from ray.tune.suggest import SearchGenerator
 from ray.tune.suggest.variant_generator import format_vars
 from ray.tune.trial import Trial
+from ray.tune.utils.util import SafeFallbackEncoder
 from ray.util import PublicAPI
 from ray.util.debug import log_once
 from ray.util.ml_utils.checkpoint_manager import CheckpointStorage

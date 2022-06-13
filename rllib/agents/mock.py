@@ -3,7 +3,6 @@ from ray.rllib.algorithms.mock import (  # noqa
     _ParameterTuningTrainer,
     _SigmoidFakeData,
 )
-
 from ray.rllib.utils.deprecation import deprecation_warning
 
 deprecation_warning(

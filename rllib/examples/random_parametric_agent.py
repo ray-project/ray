@@ -1,13 +1,12 @@
 from abc import ABC
 
-import ray
-
 import numpy as np
 
+import ray
 from ray.rllib import Policy
 from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.examples.env.parametric_actions_cartpole import ParametricActionsCartPole
+from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.models.modelv2 import restore_original_dimensions
 from ray.rllib.utils import override
 from ray.rllib.utils.typing import ResultDict

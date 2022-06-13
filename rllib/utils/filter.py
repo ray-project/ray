@@ -1,11 +1,12 @@
 import logging
-import numpy as np
 import threading
+
+import numpy as np
 import tree  # pip install dm_tree
 
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.numpy import SMALL_NUMBER
 from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.numpy import SMALL_NUMBER
 from ray.rllib.utils.typing import TensorStructType
 
 logger = logging.getLogger(__name__)

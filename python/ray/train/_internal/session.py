@@ -3,28 +3,27 @@ import platform
 import queue
 import threading
 import time
-from datetime import datetime
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum, auto
-from typing import Callable
-from typing import Optional, Dict, Type, Union
+from typing import Callable, Dict, Optional, Type, Union
 
 import ray
 from ray.data import Dataset, DatasetPipeline
 from ray.train._internal.accelerator import Accelerator
-from ray.train.constants import (
-    DETAILED_AUTOFILLED_KEYS,
-    TIME_THIS_ITER_S,
-    PID,
-    TIMESTAMP,
-    TIME_TOTAL_S,
-    NODE_IP,
-    TRAINING_ITERATION,
-    HOSTNAME,
-    DATE,
-    RESULT_FETCH_TIMEOUT,
-)
 from ray.train._internal.utils import PropagatingThread
+from ray.train.constants import (
+    DATE,
+    DETAILED_AUTOFILLED_KEYS,
+    HOSTNAME,
+    NODE_IP,
+    PID,
+    RESULT_FETCH_TIMEOUT,
+    TIME_THIS_ITER_S,
+    TIME_TOTAL_S,
+    TIMESTAMP,
+    TRAINING_ITERATION,
+)
 from ray.train.error import SessionMisuseError
 
 

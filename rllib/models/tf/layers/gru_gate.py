@@ -1,5 +1,5 @@
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.typing import TensorType, TensorShape
+from ray.rllib.utils.typing import TensorShape, TensorType
 
 tf1, tf, tfv = try_import_tf()
 

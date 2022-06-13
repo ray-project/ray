@@ -23,23 +23,21 @@ ServerUnpickler loads stubs from the server into their client counterparts.
 
 import io
 import sys
-
-from typing import NamedTuple
-from typing import Any
-from typing import Dict
-from typing import Optional
+from typing import Any, Dict, NamedTuple, Optional
 
 import ray.cloudpickle as cloudpickle
-from ray.util.client import RayAPIStub
-from ray.util.client.common import ClientObjectRef
-from ray.util.client.common import ClientActorHandle
-from ray.util.client.common import ClientActorRef
-from ray.util.client.common import ClientActorClass
-from ray.util.client.common import ClientRemoteFunc
-from ray.util.client.common import ClientRemoteMethod
-from ray.util.client.common import OptionWrapper
-from ray.util.client.common import InProgressSentinel
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
+from ray.util.client import RayAPIStub
+from ray.util.client.common import (
+    ClientActorClass,
+    ClientActorHandle,
+    ClientActorRef,
+    ClientObjectRef,
+    ClientRemoteFunc,
+    ClientRemoteMethod,
+    InProgressSentinel,
+    OptionWrapper,
+)
 
 if sys.version_info < (3, 8):
     try:

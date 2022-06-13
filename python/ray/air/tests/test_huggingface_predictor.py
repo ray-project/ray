@@ -1,17 +1,13 @@
 import os
+
 import pandas as pd
 import pytest
-
-from transformers import (
-    AutoConfig,
-    AutoModelForCausalLM,
-    AutoTokenizer,
-)
+from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 from transformers.pipelines import pipeline
 
 import ray
-from ray.data.preprocessor import Preprocessor
 from ray.air.predictors.integrations.huggingface import HuggingFacePredictor
+from ray.data.preprocessor import Preprocessor
 
 prompts = pd.DataFrame(
     ["Complete me", "And me", "Please complete"], columns=["sentences"]

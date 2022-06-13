@@ -7,8 +7,8 @@ import kubernetes
 import pytest
 import yaml
 
-from ray.autoscaler._private._kubernetes.node_provider import KubernetesNodeProvider
 from ray.autoscaler import sdk
+from ray.autoscaler._private._kubernetes.node_provider import KubernetesNodeProvider
 
 IMAGE_ENV = "KUBERNETES_CLUSTER_LAUNCHER_TEST_IMAGE"
 

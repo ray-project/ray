@@ -1,5 +1,6 @@
-import gym
 from typing import Any, List
+
+import gym
 
 from ray.rllib.connectors.connector import (
     ActionConnector,
@@ -10,10 +11,7 @@ from ray.rllib.connectors.connector import (
     register_connector,
 )
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.typing import (
-    ActionConnectorDataType,
-    TrainerConfigDict,
-)
+from ray.rllib.utils.typing import ActionConnectorDataType, TrainerConfigDict
 
 
 @DeveloperAPI

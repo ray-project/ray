@@ -9,10 +9,10 @@ import os
 
 import ray
 import ray.tune as tune
-from ray.tune import sample_from
 from ray.rllib.examples.env.fast_image_env import FastImageEnv
 from ray.rllib.examples.models.fast_model import FastModel, TorchFastModel
 from ray.rllib.models import ModelCatalog
+from ray.tune import sample_from
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--num-cpus", type=int, default=4)

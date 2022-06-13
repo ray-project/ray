@@ -1,22 +1,17 @@
 import inspect
-from typing import Any, Callable, Dict, Optional, List, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from ray.experimental.dag import DAGNode
-from ray.serve.deployment_executor_node import DeploymentExecutorNode
-from ray.serve.deployment_function_executor_node import (
-    DeploymentFunctionExecutorNode,
-)
-from ray.serve.deployment_method_executor_node import (
-    DeploymentMethodExecutorNode,
-)
-from ray.serve.handle import RayServeLazySyncHandle
-
-from ray.serve.deployment_method_node import DeploymentMethodNode
-from ray.serve.deployment_function_node import DeploymentFunctionNode
 from ray.experimental.dag.constants import PARENT_CLASS_NODE_KEY
 from ray.experimental.dag.format_utils import get_dag_node_str
-from ray.serve.deployment import Deployment, schema_to_deployment
 from ray.serve.config import DeploymentConfig
+from ray.serve.deployment import Deployment, schema_to_deployment
+from ray.serve.deployment_executor_node import DeploymentExecutorNode
+from ray.serve.deployment_function_executor_node import DeploymentFunctionExecutorNode
+from ray.serve.deployment_function_node import DeploymentFunctionNode
+from ray.serve.deployment_method_executor_node import DeploymentMethodExecutorNode
+from ray.serve.deployment_method_node import DeploymentMethodNode
+from ray.serve.handle import RayServeLazySyncHandle
 from ray.serve.schema import DeploymentSchema
 
 

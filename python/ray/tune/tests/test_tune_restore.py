@@ -1,14 +1,15 @@
-# coding: utf-8
-import signal
-from collections import Counter
 import multiprocessing
 import os
 import shutil
+
+# coding: utf-8
+import signal
 import tempfile
 import threading
 import time
-from typing import List
 import unittest
+from collections import Counter
+from typing import List
 
 import ray
 from ray import tune
@@ -17,8 +18,8 @@ from ray.exceptions import RayTaskError
 from ray.rllib import _register_all
 from ray.tune import TuneError
 from ray.tune.callback import Callback
-from ray.tune.suggest.basic_variant import BasicVariantGenerator
 from ray.tune.suggest import Searcher
+from ray.tune.suggest.basic_variant import BasicVariantGenerator
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.utils import validate_save_restore
@@ -458,16 +459,18 @@ class TuneExampleTest(unittest.TestCase):
         _register_all()
 
     def testPBTKeras(self):
-        from ray.tune.examples.pbt_tune_cifar10_with_keras import Cifar10Model
         from tensorflow.python.keras.datasets import cifar10
+
+        from ray.tune.examples.pbt_tune_cifar10_with_keras import Cifar10Model
 
         cifar10.load_data()
         validate_save_restore(Cifar10Model)
         validate_save_restore(Cifar10Model, use_object_store=True)
 
     def testPyTorchMNIST(self):
-        from ray.tune.examples.mnist_pytorch_trainable import TrainMNIST
         from torchvision import datasets
+
+        from ray.tune.examples.mnist_pytorch_trainable import TrainMNIST
 
         datasets.MNIST("~/data", train=True, download=True)
         validate_save_restore(TrainMNIST)
@@ -571,7 +574,8 @@ class ResourceExhaustedTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__] + sys.argv[1:]))

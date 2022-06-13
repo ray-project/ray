@@ -3,25 +3,34 @@
 Example of training DCGAN on MNIST using PBT with Tune's Trainable Class
 API.
 """
-import ray
-from ray import tune
-from ray.tune.trial import ExportFormat
-from ray.tune.schedulers import PopulationBasedTraining
-
 import argparse
 import os
-from filelock import FileLock
 import random
+
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.parallel
 import torch.optim as optim
 import torch.utils.data
-import numpy as np
+from common import (
+    MODEL_PATH,
+    Discriminator,
+    Generator,
+    Net,
+    beta1,
+    demo_gan,
+    get_data_loader,
+    plot_images,
+    train,
+    weights_init,
+)
+from filelock import FileLock
 
-from common import beta1, MODEL_PATH
-from common import demo_gan, get_data_loader, plot_images, train, weights_init
-from common import Discriminator, Generator, Net
+import ray
+from ray import tune
+from ray.tune.schedulers import PopulationBasedTraining
+from ray.tune.trial import ExportFormat
 
 
 # __Trainable_begin__

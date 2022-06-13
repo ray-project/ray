@@ -4,8 +4,8 @@ import time
 import unittest
 
 import ray
-from ray import tune, logger
-from ray.tune import Trainable, run_experiments, register_trainable
+from ray import logger, tune
+from ray.tune import Trainable, register_trainable, run_experiments
 from ray.tune.error import TuneError
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 

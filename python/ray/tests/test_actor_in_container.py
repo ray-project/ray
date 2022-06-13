@@ -1,14 +1,15 @@
+import sys
+
 import pytest
+
+import ray
+import ray.cluster_utils
+import ray.job_config
 
 try:
     import pytest_timeout
 except ImportError:
     pytest_timeout = None
-import sys
-
-import ray
-import ray.job_config
-import ray.cluster_utils
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")

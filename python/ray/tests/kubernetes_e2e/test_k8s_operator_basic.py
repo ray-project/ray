@@ -1,13 +1,12 @@
 """Tests launch, teardown, and update of multiple Ray clusters using Kubernetes
 operator. Also tests submission of jobs via Ray client."""
 import copy
-import sys
 import os
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
-
 from contextlib import contextmanager
 
 import kubernetes
@@ -15,7 +14,6 @@ import pytest
 import yaml
 
 import ray
-
 from ray.autoscaler._private._kubernetes.node_provider import KubernetesNodeProvider
 
 IMAGE_ENV = "KUBERNETES_OPERATOR_TEST_IMAGE"

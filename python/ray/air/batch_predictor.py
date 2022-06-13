@@ -1,4 +1,4 @@
-from typing import Type, Optional, Dict, Any
+from typing import Any, Dict, Optional, Type
 
 import ray
 from ray.air import Checkpoint

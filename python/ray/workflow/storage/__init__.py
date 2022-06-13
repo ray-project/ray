@@ -1,5 +1,9 @@
-from ray.workflow.storage.base import Storage
-from ray.workflow.storage.base import DataLoadError, DataSaveError, KeyNotFoundError
+from ray.workflow.storage.base import (
+    DataLoadError,
+    DataSaveError,
+    KeyNotFoundError,
+    Storage,
+)
 
 __all__ = (
     "Storage",

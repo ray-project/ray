@@ -1,11 +1,11 @@
 import pytest
 
 from ray.train._internal.results_preprocessors import (
+    AverageResultsPreprocessor,
     ExcludedKeysResultsPreprocessor,
     IndexedResultsPreprocessor,
-    SequentialResultsPreprocessor,
-    AverageResultsPreprocessor,
     MaxResultsPreprocessor,
+    SequentialResultsPreprocessor,
     WeightedAverageResultsPreprocessor,
 )
 
@@ -46,6 +46,7 @@ def test_sequential_results_preprocessor():
 
 def test_average_results_preprocessor():
     from copy import deepcopy
+
     import numpy as np
 
     results = [{"a": 1, "b": 2}, {"a": 3, "b": 4}, {"a": 5, "b": 6}, {"a": 7, "b": 8}]
@@ -66,6 +67,7 @@ def test_average_results_preprocessor():
 
 def test_max_results_preprocessor():
     from copy import deepcopy
+
     import numpy as np
 
     results = [{"a": 1, "b": 2}, {"a": 3, "b": 4}, {"a": 5, "b": 6}, {"a": 7, "b": 8}]
@@ -86,6 +88,7 @@ def test_max_results_preprocessor():
 
 def test_weighted_average_results_preprocessor():
     from copy import deepcopy
+
     import numpy as np
 
     results = [{"a": 1, "b": 2}, {"a": 3, "b": 4}, {"a": 5, "b": 6}, {"a": 7, "b": 8}]
@@ -115,6 +118,7 @@ def test_warning_in_aggregate_results_preprocessors(
 ):
     import logging
     from copy import deepcopy
+
     from ray.util import debug
 
     caplog.at_level(logging.WARNING)
@@ -211,7 +215,8 @@ def test_warning_in_weighted_average_results_preprocessors(caplog):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))

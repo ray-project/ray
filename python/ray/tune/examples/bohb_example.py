@@ -8,8 +8,8 @@ Requires the HpBandSter and ConfigSpace libraries to be installed
 
 import argparse
 import json
-import time
 import os
+import time
 
 import numpy as np
 

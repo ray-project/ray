@@ -1,5 +1,6 @@
-import gym
 import random
+
+import gym
 
 from ray.rllib.env.apis.task_settable_env import TaskSettableEnv
 from ray.rllib.env.env_context import EnvContext

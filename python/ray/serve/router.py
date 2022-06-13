@@ -1,20 +1,19 @@
 import asyncio
-from dataclasses import dataclass
 import itertools
 import logging
 import pickle
 import random
 import sys
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 import ray
 from ray.actor import ActorHandle
-from ray.util import metrics
-
 from ray.serve.common import RunningReplicaInfo
 from ray.serve.constants import SERVE_LOGGER_NAME
 from ray.serve.long_poll import LongPollClient, LongPollNamespace
 from ray.serve.utils import compute_iterable_delta
+from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 

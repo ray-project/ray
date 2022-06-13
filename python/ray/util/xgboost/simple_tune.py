@@ -35,8 +35,9 @@ def train_model(config):
 
 # __load_begin__
 def load_best_model(best_logdir):
-    import xgboost as xgb
     import os
+
+    import xgboost as xgb
 
     best_bst = xgb.Booster()
     best_bst.load_model(os.path.join(best_logdir, "model.xgb"))

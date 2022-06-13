@@ -1,13 +1,12 @@
-import gym
-from typing import Optional, List, Dict
+from typing import Dict, List, Optional
 
-from ray.rllib.algorithms.sac.sac_torch_model import (
-    SACTorchModel,
-)
+import gym
+
+from ray.rllib.algorithms.sac.sac_torch_model import SACTorchModel
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
-from ray.rllib.utils import override, force_list
+from ray.rllib.utils import force_list, override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
 

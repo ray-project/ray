@@ -1,21 +1,21 @@
 import os
 import shutil
-from typing import Optional
 import unittest
+from typing import Optional
 
 from sklearn.datasets import load_breast_cancer
 from sklearn.utils import shuffle
 
 from ray import tune
-from ray.data import from_pandas, read_datasource, Dataset, Datasource, ReadTask
-from ray.data.block import BlockMetadata
 from ray.air.config import RunConfig
 from ray.air.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
 )
+from ray.data import Dataset, Datasource, ReadTask, from_pandas, read_datasource
+from ray.data.block import BlockMetadata
+from ray.train import BaseTrainer
 from ray.train.torch import TorchTrainer
 from ray.train.xgboost import XGBoostTrainer
-from ray.train import BaseTrainer
 from ray.tune import Callback, TuneError
 from ray.tune.cloud import TrialCheckpoint
 from ray.tune.result import DEFAULT_RESULTS_DIR
@@ -245,7 +245,8 @@ class TunerTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__] + sys.argv[1:]))

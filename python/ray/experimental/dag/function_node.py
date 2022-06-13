@@ -1,10 +1,9 @@
 from typing import Any, Dict, List
 
-
 import ray
+from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
 from ray.experimental.dag.dag_node import DAGNode
 from ray.experimental.dag.format_utils import get_dag_node_str
-from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
 
 
 class FunctionNode(DAGNode):

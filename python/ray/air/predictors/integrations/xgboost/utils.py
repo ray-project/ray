@@ -1,13 +1,11 @@
-from typing import Optional, TYPE_CHECKING
-
 import os
+from typing import TYPE_CHECKING, Optional
+
 import xgboost
 
+from ray.air._internal.checkpointing import save_preprocessor_to_dir
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import MODEL_KEY
-from ray.air._internal.checkpointing import (
-    save_preprocessor_to_dir,
-)
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor

@@ -1,15 +1,13 @@
-import pytest
 import time
 
 import pandas as pd
+import pytest
 
 import ray
 from ray.air import Preprocessor
-from ray.air.checkpoint import Checkpoint
-from ray.air.predictor import (
-    Predictor,
-)
 from ray.air.batch_predictor import BatchPredictor
+from ray.air.checkpoint import Checkpoint
+from ray.air.predictor import Predictor
 
 
 class DummyPreprocessor(Preprocessor):

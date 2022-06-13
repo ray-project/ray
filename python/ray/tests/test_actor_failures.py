@@ -1,19 +1,20 @@
 import asyncio
 import collections
-import numpy as np
 import os
-import pytest
 import signal
 import sys
 import time
 
+import numpy as np
+import pytest
+
 import ray
 import ray.cluster_utils
 from ray._private.test_utils import (
+    SignalActor,
+    generate_system_config_map,
     wait_for_condition,
     wait_for_pid_to_exit,
-    generate_system_config_map,
-    SignalActor,
 )
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM

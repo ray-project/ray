@@ -1,6 +1,7 @@
+import requests
+
 import ray
 from ray import workflow
-import requests
 
 
 @ray.remote

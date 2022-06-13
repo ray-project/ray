@@ -1,10 +1,11 @@
-import ray
 import os
 import signal
-import time
 import sys
+import time
+
 import pytest
 
+import ray
 from ray._private.test_utils import SignalActor
 
 

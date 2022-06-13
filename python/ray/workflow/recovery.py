@@ -1,18 +1,16 @@
-from typing import List, Any, Union, Dict, Callable, Optional
-from collections import deque, defaultdict
+from collections import defaultdict, deque
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import ray
-from ray.workflow import workflow_context
-from ray.workflow import serialization
+from ray.workflow import serialization, workflow_context, workflow_storage
 from ray.workflow.common import (
-    Workflow,
     StepID,
+    StepType,
+    Workflow,
+    WorkflowExecutionResult,
     WorkflowRef,
     WorkflowStaticRef,
-    WorkflowExecutionResult,
-    StepType,
 )
-from ray.workflow import workflow_storage
 
 
 class WorkflowStepNotRecoverableError(Exception):

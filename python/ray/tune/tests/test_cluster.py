@@ -1,34 +1,33 @@
 import inspect
-import time
 import os
-
-import pytest
 import shutil
 import sys
+import time
+from typing import Callable, Optional, Union
 from unittest.mock import MagicMock, patch
 
-from typing import Callable, Union, Optional
+import pytest
 
 import ray
 from ray import tune
-from ray.rllib import _register_all
-from ray.cluster_utils import Cluster
 from ray._private.test_utils import run_string_as_driver_nonblocking
+from ray.cluster_utils import Cluster
+from ray.rllib import _register_all
 from ray.tune import register_trainable
-from ray.tune.experiment import Experiment
 from ray.tune.error import TuneError
+from ray.tune.experiment import Experiment
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.syncer import CloudSyncer, SyncerCallback, get_node_syncer
-from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.utils.mock import (
-    MockDurableTrainer,
-    MockRemoteTrainer,
-    MockNodeSyncer,
-    mock_storage_client,
     MOCK_REMOTE_DIR,
+    MockDurableTrainer,
+    MockNodeSyncer,
+    MockRemoteTrainer,
+    mock_storage_client,
 )
+from ray.tune.utils.trainable import TrainableUtil
 
 
 def _check_trial_running(trial):

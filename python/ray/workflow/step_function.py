@@ -1,17 +1,16 @@
 import functools
-from typing import Callable, Dict, Any, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
 from ray._private import signature
-from ray.workflow import serialization_context
+from ray.util.annotations import PublicAPI
+from ray.workflow import serialization_context, workflow_context
 from ray.workflow.common import (
+    StepType,
     Workflow,
     WorkflowData,
-    StepType,
     WorkflowStepRuntimeOptions,
     validate_user_metadata,
 )
-from ray.workflow import workflow_context
-from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.workflow.common import CheckpointModeType

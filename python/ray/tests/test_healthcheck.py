@@ -1,11 +1,12 @@
 # coding: utf-8
 import logging
-import pytest
 import signal
 import subprocess
 import sys
 import time
+
 import psutil
+import pytest
 
 import ray
 from ray import ray_constants

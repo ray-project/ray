@@ -1,13 +1,12 @@
-import pytest
-
 import numpy as np
 import pandas as pd
+import pytest
 import torch
 
+from ray.air.checkpoint import Checkpoint
+from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY
 from ray.air.predictors.integrations.torch import TorchPredictor, to_air_checkpoint
 from ray.data.preprocessor import Preprocessor
-from ray.air.checkpoint import Checkpoint
-from ray.air.constants import PREPROCESSOR_KEY, MODEL_KEY
 
 
 class DummyPreprocessor(Preprocessor):
@@ -124,7 +123,8 @@ def test_predict_array_no_training(model):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))

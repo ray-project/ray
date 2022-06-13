@@ -1,5 +1,6 @@
+from typing import TYPE_CHECKING, Dict, List, Optional, Union
+
 from gym.spaces import Space
-from typing import Dict, List, Optional, Union, TYPE_CHECKING
 
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.models.action_dist import ActionDistribution
@@ -7,8 +8,8 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.deprecation import Deprecated
-from ray.rllib.utils.framework import try_import_torch, TensorType
-from ray.rllib.utils.typing import LocalOptimizer, AlgorithmConfigDict
+from ray.rllib.utils.framework import TensorType, try_import_torch
+from ray.rllib.utils.typing import AlgorithmConfigDict, LocalOptimizer
 
 if TYPE_CHECKING:
     from ray.rllib.policy.policy import Policy

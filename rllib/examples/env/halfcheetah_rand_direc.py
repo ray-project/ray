@@ -1,6 +1,6 @@
+import numpy as np
 from gym.envs.mujoco.mujoco_env import MujocoEnv
 from gym.utils import EzPickle
-import numpy as np
 
 from ray.rllib.env.apis.task_settable_env import TaskSettableEnv
 

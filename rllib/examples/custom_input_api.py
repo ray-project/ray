@@ -15,7 +15,7 @@ import os
 
 import ray
 from ray import tune
-from ray.rllib.offline import JsonReader, ShuffledInput, IOContext, InputReader
+from ray.rllib.offline import InputReader, IOContext, JsonReader, ShuffledInput
 from ray.tune.registry import register_input
 
 parser = argparse.ArgumentParser()

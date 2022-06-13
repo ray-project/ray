@@ -1,10 +1,11 @@
-import gym
 import unittest
 
+import gym
+
+from ray.rllib.env.wrappers.recsim import MultiDiscreteToDiscreteActionWrapper
 from ray.rllib.examples.env.recommender_system_envs_with_recsim import (
     InterestEvolutionRecSimEnv,
 )
-from ray.rllib.env.wrappers.recsim import MultiDiscreteToDiscreteActionWrapper
 from ray.rllib.utils.error import UnsupportedSpaceException
 
 
@@ -41,6 +42,7 @@ class TestRecSimWrapper(unittest.TestCase):
 
 if __name__ == "__main__":
     import sys
+
     import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

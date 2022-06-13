@@ -1,16 +1,17 @@
+from unittest import mock
+
 import dask
 import dask.dataframe as dd
-from dask.dataframe.shuffle import SimpleShuffleLayer
-from unittest import mock
 import numpy as np
 import pandas as pd
 import pytest
+from dask.dataframe.shuffle import SimpleShuffleLayer
 
 from ray.tests.conftest import *  # noqa
 from ray.util.dask import dataframe_optimize
 from ray.util.dask.optimizations import (
-    rewrite_simple_shuffle_layer,
     MultipleReturnSimpleShuffleLayer,
+    rewrite_simple_shuffle_layer,
 )
 
 

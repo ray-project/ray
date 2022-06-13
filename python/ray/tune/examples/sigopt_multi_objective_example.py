@@ -7,6 +7,7 @@ import sys
 import time
 
 import numpy as np
+
 from ray import tune
 from ray.tune.suggest.sigopt import SigOptSearch
 

@@ -1,6 +1,7 @@
+import random
+
 import gym
 import numpy as np
-import random
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv, make_multi_agent
 from ray.rllib.examples.env.mock_env import MockEnv, MockEnv2

@@ -3,6 +3,7 @@
 from typing import Dict, List, Tuple
 
 import gym
+
 import ray
 from ray.rllib.algorithms.dqn.dqn_tf_policy import (
     PRIO_WEIGHTS,
@@ -20,22 +21,19 @@ from ray.rllib.models.torch.torch_action_dist import (
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_mixins import (
-    LearningRateSchedule,
-    TargetNetworkMixin,
-)
+from ray.rllib.policy.torch_mixins import LearningRateSchedule, TargetNetworkMixin
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.exploration.parameter_noise import ParameterNoise
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import (
+    FLOAT_MIN,
     apply_grad_clipping,
     concat_multi_gpu_td_errors,
-    FLOAT_MIN,
     huber_loss,
     reduce_mean_ignore_inf,
     softmax_cross_entropy_with_logits,
 )
-from ray.rllib.utils.typing import TensorType, AlgorithmConfigDict
+from ray.rllib.utils.typing import AlgorithmConfigDict, TensorType
 
 torch, nn = try_import_torch()
 F = None

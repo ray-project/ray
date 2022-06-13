@@ -1,14 +1,14 @@
+from typing import Any, Dict, List, Optional, Tuple
+
 import ray
-from ray.experimental.dag.dag_node import DAGNode
-from ray.experimental.dag.input_node import InputNode
-from ray.experimental.dag.format_utils import get_dag_node_str
 from ray.experimental.dag.constants import (
+    DAGNODE_TYPE_KEY,
     PARENT_CLASS_NODE_KEY,
     PREV_CLASS_METHOD_CALL_KEY,
-    DAGNODE_TYPE_KEY,
 )
-
-from typing import Any, Dict, List, Optional, Tuple
+from ray.experimental.dag.dag_node import DAGNode
+from ray.experimental.dag.format_utils import get_dag_node_str
+from ray.experimental.dag.input_node import InputNode
 
 
 class ClassNode(DAGNode):

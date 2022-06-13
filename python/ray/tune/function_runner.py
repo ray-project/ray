@@ -1,34 +1,33 @@
+import inspect
 import logging
 import os
-import sys
-import time
-import inspect
 import shutil
+import sys
 import threading
+import time
 import uuid
 from functools import partial
 from numbers import Number
-
 from typing import Any, Callable, Optional
 
-from ray.util.annotations import DeveloperAPI
 from six.moves import queue
 
-from ray.util.debug import log_once
 from ray.tune import TuneError, session
-from ray.tune.trainable import Trainable, TrainableUtil
 from ray.tune.result import (
     DEFAULT_METRIC,
-    TIME_THIS_ITER_S,
     RESULT_DUPLICATE,
     SHOULD_CHECKPOINT,
+    TIME_THIS_ITER_S,
 )
+from ray.tune.trainable import Trainable, TrainableUtil
 from ray.tune.utils import (
     detect_checkpoint_function,
     detect_config_single,
     detect_reporter,
 )
 from ray.tune.utils.trainable import with_parameters  # noqa: F401
+from ray.util.annotations import DeveloperAPI
+from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
 

@@ -1,5 +1,4 @@
-from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.framework import TensorType
+from ray.rllib.utils.framework import TensorType, try_import_torch
 
 torch, nn = try_import_torch()
 

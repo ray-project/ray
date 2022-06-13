@@ -1,4 +1,4 @@
-from typing import List, Callable, Any
+from typing import Any, Callable, List
 
 import ray
 from ray.util.annotations import PublicAPI

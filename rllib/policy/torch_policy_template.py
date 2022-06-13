@@ -1,5 +1,6 @@
-import gym
 from typing import Callable, Dict, List, Optional, Tuple, Type, Union
+
+import gym
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
@@ -9,7 +10,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.typing import ModelGradients, TensorType, AlgorithmConfigDict
+from ray.rllib.utils.typing import AlgorithmConfigDict, ModelGradients, TensorType
 
 torch, _ = try_import_torch()
 

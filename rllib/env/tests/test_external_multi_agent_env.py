@@ -1,6 +1,7 @@
+import unittest
+
 import gym
 import numpy as np
-import unittest
 
 import ray
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
@@ -66,7 +67,8 @@ class TestExternalMultiAgentEnv(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

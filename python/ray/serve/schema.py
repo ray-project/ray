@@ -1,11 +1,9 @@
-from pydantic import BaseModel, Field, Extra, root_validator, validator
-from typing import Union, Tuple, List, Dict
+from typing import Dict, List, Tuple, Union
+
+from pydantic import BaseModel, Extra, Field, root_validator, validator
+
 from ray._private.runtime_env.packaging import parse_uri
-from ray.serve.common import (
-    DeploymentStatusInfo,
-    ApplicationStatusInfo,
-    StatusOverview,
-)
+from ray.serve.common import ApplicationStatusInfo, DeploymentStatusInfo, StatusOverview
 from ray.serve.utils import DEFAULT
 
 

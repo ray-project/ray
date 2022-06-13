@@ -1,13 +1,12 @@
-# fmt: off
-from typing import Callable, Generic, Optional, TypeVar, Union, overload, Any
 from types import FunctionType
+# fmt: off
+from typing import Any, Callable, Generic, Optional, TypeVar, Union, overload
 
 from ray._raylet import ObjectRef
-from ray.remote_function import RemoteFunction
-from ray.workflow.storage import Storage
-from ray.workflow.common import WorkflowStatus
-
 from ray.experimental.dag import DAGNode
+from ray.remote_function import RemoteFunction
+from ray.workflow.common import WorkflowStatus
+from ray.workflow.storage import Storage
 
 T0 = TypeVar("T0")
 T1 = TypeVar("T1")

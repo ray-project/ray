@@ -1,6 +1,5 @@
 import glob
 import json
-import numpy as np
 import os
 import random
 import shutil
@@ -8,26 +7,28 @@ import tempfile
 import time
 import unittest
 
+import numpy as np
+
 import ray
-from ray.tune.registry import (
-    register_env,
-    register_input,
-    registry_get_input,
-    registry_contains_input,
-)
 from ray.rllib.algorithms.pg import PG
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.offline import (
-    IOContext,
-    JsonWriter,
-    JsonReader,
-    InputReader,
-    ShuffledInput,
     DatasetWriter,
+    InputReader,
+    IOContext,
+    JsonReader,
+    JsonWriter,
+    ShuffledInput,
 )
 from ray.rllib.offline.json_writer import _to_json
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.test_utils import framework_iterator
+from ray.tune.registry import (
+    register_env,
+    register_input,
+    registry_contains_input,
+    registry_get_input,
+)
 
 SAMPLES = SampleBatch(
     {
@@ -474,7 +475,8 @@ class JsonIOTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

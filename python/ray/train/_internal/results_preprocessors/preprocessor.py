@@ -1,6 +1,6 @@
 import abc
 import warnings
-from typing import List, Dict
+from typing import Dict, List
 
 from ray.util.annotations import Deprecated
 

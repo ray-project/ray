@@ -2,8 +2,8 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 
-from ray.data.extensions import TensorArray
 from ray.air._internal.tensorflow_utils import convert_pandas_to_tf_tensor
+from ray.data.extensions import TensorArray
 
 
 def test_convert_simple_df_to_tensor():
@@ -38,7 +38,8 @@ def test_convert_image_df_to_tensor():
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))

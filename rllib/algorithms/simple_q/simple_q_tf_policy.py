@@ -4,6 +4,7 @@ import logging
 from typing import List, Tuple, Type
 
 import gym
+
 import ray
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -17,7 +18,7 @@ from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import huber_loss
-from ray.rllib.utils.typing import TensorType, AlgorithmConfigDict
+from ray.rllib.utils.typing import AlgorithmConfigDict, TensorType
 
 tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)

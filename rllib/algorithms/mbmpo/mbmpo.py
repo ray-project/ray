@@ -1,12 +1,13 @@
 import logging
-import numpy as np
 from typing import List, Optional, Type
 
+import numpy as np
+
 import ray
-from ray.rllib.algorithms.mbmpo.model_ensemble import DynamicsEnsembleCustomModel
-from ray.rllib.algorithms.mbmpo.utils import calculate_gae_advantages, MBMPOExploration
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.mbmpo.model_ensemble import DynamicsEnsembleCustomModel
+from ray.rllib.algorithms.mbmpo.utils import MBMPOExploration, calculate_gae_advantages
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.wrappers.model_vector_env import model_vector_env
 from ray.rllib.evaluation.metrics import (
@@ -29,8 +30,8 @@ from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.sgd import standardized
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
-from ray.rllib.utils.typing import EnvType, AlgorithmConfigDict
-from ray.util.iter import from_actors, LocalIterator
+from ray.rllib.utils.typing import AlgorithmConfigDict, EnvType
+from ray.util.iter import LocalIterator, from_actors
 
 logger = logging.getLogger(__name__)
 

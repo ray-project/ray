@@ -1,18 +1,20 @@
-import numpy as np
 from typing import Any, List, Tuple
+
+import numpy as np
+
 from ray.rllib.models.torch.misc import Reshape
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
-from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.framework import TensorType
+from ray.rllib.utils.framework import TensorType, try_import_torch
 
 torch, nn = try_import_torch()
 if torch:
     from torch import distributions as td
+
     from ray.rllib.algorithms.dreamer.utils import (
-        Linear,
         Conv2d,
         ConvTranspose2d,
         GRUCell,
+        Linear,
         TanhBijector,
     )
 

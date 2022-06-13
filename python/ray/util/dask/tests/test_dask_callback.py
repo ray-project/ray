@@ -2,7 +2,7 @@ import dask
 import pytest
 
 import ray
-from ray.util.dask import ray_dask_get, RayDaskCallback
+from ray.util.dask import RayDaskCallback, ray_dask_get
 
 
 @pytest.fixture

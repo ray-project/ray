@@ -1,9 +1,9 @@
-from typing import List, Optional, Any
 import queue
+from typing import Any, List, Optional
 
+from ray.rllib.utils.typing import SampleBatchType
 from ray.util.iter import LocalIterator, _NextValueNotReady
 from ray.util.iter_metrics import SharedMetrics
-from ray.rllib.utils.typing import SampleBatchType
 
 
 def Concurrently(

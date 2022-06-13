@@ -2,17 +2,17 @@ import glob
 import os
 import time
 
-import ray
-
+from lightgbm.callback import CallbackEnv
 from lightgbm_ray import (
-    train,
+    RayDeviceQuantileDMatrix,
     RayDMatrix,
     RayFileType,
     RayParams,
-    RayDeviceQuantileDMatrix,
+    train,
 )
 from lightgbm_ray.tune import _TuneLGBMRank0Mixin
-from lightgbm.callback import CallbackEnv
+
+import ray
 
 if "OMP_NUM_THREADS" in os.environ:
     del os.environ["OMP_NUM_THREADS"]

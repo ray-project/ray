@@ -1,11 +1,11 @@
-from typing import Optional, List, Union, Dict, Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+
 import numpy as np
 import pandas as pd
-
 import xgboost
 
 from ray.air.checkpoint import Checkpoint
-from ray.air.predictor import Predictor, DataBatchType
+from ray.air.predictor import DataBatchType, Predictor
 from ray.train.xgboost import load_checkpoint
 
 if TYPE_CHECKING:

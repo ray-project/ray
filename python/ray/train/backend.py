@@ -1,5 +1,5 @@
 import logging
-from typing import TypeVar, Dict
+from typing import Dict, TypeVar
 
 from ray.train._internal.utils import Singleton
 from ray.train._internal.worker_group import WorkerGroup

@@ -1,6 +1,6 @@
-import ray
 import cupy as cp
 
+import ray
 import ray.util.collective as collective
 
 

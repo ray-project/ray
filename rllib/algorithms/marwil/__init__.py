@@ -1,8 +1,4 @@
-from ray.rllib.algorithms.marwil.marwil import (
-    DEFAULT_CONFIG,
-    MARWIL,
-    MARWILConfig,
-)
+from ray.rllib.algorithms.marwil.marwil import DEFAULT_CONFIG, MARWIL, MARWILConfig
 from ray.rllib.algorithms.marwil.marwil_tf_policy import (
     MARWILTF1Policy,
     MARWILTF2Policy,

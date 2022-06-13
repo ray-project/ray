@@ -5,16 +5,15 @@ import random
 
 import mxnet as mx
 import numpy as np
-
-from mxnet import gluon, init
+from gluoncv.data import transforms as gcv_transforms
+from gluoncv.model_zoo import get_model
 from mxnet import autograd as ag
+from mxnet import gluon, init
 from mxnet.gluon import nn
 from mxnet.gluon.data.vision import transforms
-from gluoncv.model_zoo import get_model
-from gluoncv.data import transforms as gcv_transforms
 
-from ray.tune.schedulers import create_scheduler
 from ray import tune
+from ray.tune.schedulers import create_scheduler
 
 # Training settings
 parser = argparse.ArgumentParser(description="CIFAR-10 Example")

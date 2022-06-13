@@ -1,9 +1,7 @@
 import logging
-from typing import Dict, List, Optional
 import warnings
+from typing import Dict, List, Optional
 
-from ray.util.annotations import Deprecated
-from ray.train._internal.results_preprocessors.preprocessor import ResultsPreprocessor
 from ray.train._internal.results_preprocessors.aggregate.aggregate_fn import (
     AggregateFn,
     Average,
@@ -14,6 +12,8 @@ from ray.train._internal.results_preprocessors.aggregate.aggregate_fn import (
 from ray.train._internal.results_preprocessors.aggregate.aggregate_utils import (
     _get_metrics_from_results,
 )
+from ray.train._internal.results_preprocessors.preprocessor import ResultsPreprocessor
+from ray.util.annotations import Deprecated
 
 logger = logging.getLogger(__name__)
 

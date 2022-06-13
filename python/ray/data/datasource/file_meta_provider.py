@@ -1,18 +1,12 @@
 import logging
-from typing import (
-    List,
-    Optional,
-    Union,
-    TYPE_CHECKING,
-    Tuple,
-    Any,
-)
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union
+
+from ray.data.block import BlockMetadata
+from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     import pyarrow
 
-from ray.data.block import BlockMetadata
-from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
@@ -155,6 +149,7 @@ class DefaultFileMetadataProvider(BaseFileMetadataProvider):
         filesystem: "pyarrow.fs.FileSystem",
     ) -> Tuple[List[str], List[Optional[int]]]:
         from pyarrow.fs import FileType
+
         from ray.data.datasource.file_based_datasource import _expand_directory
 
         if len(paths) > 1:
@@ -316,8 +311,8 @@ class DefaultParquetMetadataProvider(ParquetMetadataProvider):
     ) -> Optional[List["pyarrow.parquet.FileMetaData"]]:
         from ray.data.datasource.parquet_datasource import (
             PARALLELIZE_META_FETCH_THRESHOLD,
-            _fetch_metadata_remotely,
             _fetch_metadata,
+            _fetch_metadata_remotely,
         )
 
         if len(pieces) > PARALLELIZE_META_FETCH_THRESHOLD:

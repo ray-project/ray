@@ -1,6 +1,7 @@
-from typing import Dict, Optional
-from copy import deepcopy
 import logging
+from copy import deepcopy
+from typing import Dict, Optional
+
 import numpy as np
 import pandas as pd
 
@@ -24,12 +25,12 @@ GPy, has_sklearn = import_pb2_dependencies()
 
 if GPy and has_sklearn:
     from ray.tune.schedulers.pb2_utils import (
+        UCB,
+        TV_SquaredExp,
         normalize,
         optimize_acq,
         select_length,
-        UCB,
         standardize,
-        TV_SquaredExp,
     )
 
 logger = logging.getLogger(__name__)

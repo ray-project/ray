@@ -12,10 +12,10 @@ from ray.data.preprocessors.hasher import FeatureHasher
 from ray.data.preprocessors.imputer import SimpleImputer
 from ray.data.preprocessors.normalizer import Normalizer
 from ray.data.preprocessors.scaler import (
-    StandardScaler,
-    MinMaxScaler,
     MaxAbsScaler,
+    MinMaxScaler,
     RobustScaler,
+    StandardScaler,
 )
 from ray.data.preprocessors.tokenizer import Tokenizer
 from ray.data.preprocessors.transformer import PowerTransformer

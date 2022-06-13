@@ -1,31 +1,30 @@
-import time
-from collections import Counter
 import os
 import pickle
 import shutil
 import sys
 import tempfile
+import time
 import unittest
+from collections import Counter
 from unittest.mock import patch
 
 import ray
 from ray.rllib import _register_all
-
 from ray.tune import TuneError
-from ray.tune.ray_trial_executor import RayTrialExecutor
-from ray.tune.result import TRAINING_ITERATION
-from ray.tune.schedulers import TrialScheduler, FIFOScheduler
 from ray.tune.experiment import Experiment
-from ray.tune.suggest import BasicVariantGenerator
-from ray.tune.trial import Trial
-from ray.tune.trial_runner import TrialRunner
+from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.resources import Resources, json_to_resources, resources_to_json
-from ray.tune.suggest.repeater import Repeater
+from ray.tune.result import TRAINING_ITERATION
+from ray.tune.schedulers import FIFOScheduler, TrialScheduler
+from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.suggest._mock import _MockSuggestionAlgorithm
-from ray.tune.suggest.suggestion import Searcher, ConcurrencyLimiter
+from ray.tune.suggest.repeater import Repeater
 from ray.tune.suggest.search_generator import SearchGenerator
+from ray.tune.suggest.suggestion import ConcurrencyLimiter, Searcher
 from ray.tune.syncer import SyncConfig
 from ray.tune.tests.utils_for_test_trial_runner import TrialResultObserver
+from ray.tune.trial import Trial
+from ray.tune.trial_runner import TrialRunner
 
 
 class TrialRunnerTest3(unittest.TestCase):

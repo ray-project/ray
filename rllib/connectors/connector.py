@@ -2,11 +2,11 @@
 """
 
 import abc
-import gym
 import logging
 from typing import Any, Dict, List, Tuple
 
-from ray.tune.registry import RLLIB_CONNECTOR, _global_registry
+import gym
+
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import DeveloperAPI
@@ -16,6 +16,7 @@ from ray.rllib.utils.typing import (
     TensorType,
     TrainerConfigDict,
 )
+from ray.tune.registry import RLLIB_CONNECTOR, _global_registry
 
 logger = logging.getLogger(__name__)
 

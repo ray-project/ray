@@ -1,6 +1,7 @@
-from libcpp cimport bool as c_bool
-from libcpp.string cimport string as c_string
-from libc.stdint cimport uint8_t, uint32_t, int64_t
+from libc.stdint import int64_t, uint8_t, uint32_t
+from libcpp import bool as c_bool
+from libcpp.string import string as c_string
+
 
 cdef extern from "ray/common/id.h" namespace "ray" nogil:
     cdef cppclass CBaseID[T]:

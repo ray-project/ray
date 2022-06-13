@@ -7,9 +7,9 @@ import asyncio
 import pytest
 
 import ray
+from ray._private.test_utils import SignalActor
 from ray.serve.common import RunningReplicaInfo
 from ray.serve.router import Query, ReplicaSet, RequestMetadata
-from ray._private.test_utils import SignalActor
 
 pytestmark = pytest.mark.asyncio
 

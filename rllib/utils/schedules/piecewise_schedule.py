@@ -1,6 +1,6 @@
 from typing import Callable, List, Optional, Tuple
 
-from ray.rllib.utils.annotations import override, PublicAPI
+from ray.rllib.utils.annotations import PublicAPI, override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.schedules.schedule import Schedule
 from ray.rllib.utils.typing import TensorType

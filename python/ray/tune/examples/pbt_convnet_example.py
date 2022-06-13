@@ -6,18 +6,19 @@
 # __tutorial_imports_begin__
 import argparse
 import os
+
 import numpy as np
 import torch
 import torch.optim as optim
 from torchvision import datasets
-from ray.tune.examples.mnist_pytorch import train, test, ConvNet,\
-    get_data_loaders
 
 import ray
 from ray import tune
+from ray.tune.examples.mnist_pytorch import ConvNet, get_data_loaders, test, train
 from ray.tune.schedulers import PopulationBasedTraining
-from ray.tune.utils import validate_save_restore
 from ray.tune.trial import ExportFormat
+from ray.tune.utils import validate_save_restore
+
 # __tutorial_imports_end__
 
 

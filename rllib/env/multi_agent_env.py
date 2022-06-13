@@ -1,13 +1,14 @@
-import gym
 import logging
-from typing import Callable, Dict, List, Tuple, Optional, Union, Set, Type
+from typing import Callable, Dict, List, Optional, Set, Tuple, Type, Union
+
+import gym
 
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.utils.annotations import (
-    ExperimentalAPI,
-    override,
-    PublicAPI,
     DeveloperAPI,
+    ExperimentalAPI,
+    PublicAPI,
+    override,
 )
 from ray.rllib.utils.typing import (
     AgentID,
@@ -301,8 +302,7 @@ class MultiAgentEnv(gym.Env):
             ... }) # doctest: +SKIP
         """
 
-        from ray.rllib.env.wrappers.group_agents_wrapper import \
-            GroupAgentsWrapper
+        from ray.rllib.env.wrappers.group_agents_wrapper import GroupAgentsWrapper
         return GroupAgentsWrapper(self, groups, obs_space, act_space)
 
     # __grouping_doc_end__

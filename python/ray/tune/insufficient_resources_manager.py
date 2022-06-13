@@ -1,10 +1,10 @@
 import logging
-from functools import lru_cache
 import os
-import ray
 import time
+from functools import lru_cache
 from typing import Dict
 
+import ray
 from ray.tune.cluster_info import is_ray_cluster
 from ray.tune.trial import Trial
 

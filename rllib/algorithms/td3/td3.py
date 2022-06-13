@@ -5,9 +5,8 @@ TD3 paper.
 """
 from ray.rllib.algorithms.ddpg.ddpg import DDPG, DDPGConfig
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, Deprecated
 from ray.rllib.utils.typing import AlgorithmConfigDict
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 
 class TD3Config(DDPGConfig):

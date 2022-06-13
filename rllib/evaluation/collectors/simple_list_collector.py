@@ -1,25 +1,26 @@
 import collections
-from gym.spaces import Space
 import logging
 import math
+from typing import TYPE_CHECKING, Any, Dict, List, Tuple, Union
+
 import numpy as np
 import tree  # pip install dm_tree
-from typing import Any, Dict, List, Tuple, TYPE_CHECKING, Union
+from gym.spaces import Space
 
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_map import PolicyMap
-from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
-from ray.rllib.utils.annotations import override, PublicAPI
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
+from ray.rllib.utils.annotations import PublicAPI, override
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.spaces.space_utils import get_dummy_batch_for_space
 from ray.rllib.utils.typing import (
     AgentID,
-    EpisodeID,
     EnvID,
+    EpisodeID,
     PolicyID,
     TensorType,
     ViewRequirementsDict,

@@ -8,13 +8,15 @@ from google.protobuf.json_format import MessageToDict
 from pydantic import (
     BaseModel,
     NonNegativeFloat,
-    PositiveFloat,
     NonNegativeInt,
+    PositiveFloat,
     PositiveInt,
     validator,
 )
 
 from ray import cloudpickle
+from ray._private import ray_option_utils
+from ray._private.utils import resources_from_ray_options
 from ray.serve.constants import (
     DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S,
     DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S,
@@ -23,14 +25,10 @@ from ray.serve.constants import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
 )
-from ray.serve.generated.serve_pb2 import (
-    DeploymentConfig as DeploymentConfigProto,
-    DeploymentLanguage,
-    AutoscalingConfig as AutoscalingConfigProto,
-    ReplicaConfig as ReplicaConfigProto,
-)
-from ray._private import ray_option_utils
-from ray._private.utils import resources_from_ray_options
+from ray.serve.generated.serve_pb2 import AutoscalingConfig as AutoscalingConfigProto
+from ray.serve.generated.serve_pb2 import DeploymentConfig as DeploymentConfigProto
+from ray.serve.generated.serve_pb2 import DeploymentLanguage
+from ray.serve.generated.serve_pb2 import ReplicaConfig as ReplicaConfigProto
 
 
 class AutoscalingConfig(BaseModel):

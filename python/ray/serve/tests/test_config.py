@@ -2,14 +2,13 @@ import pytest
 from pydantic import ValidationError
 
 from ray import cloudpickle
-
 from ray.serve.config import (
+    AutoscalingConfig,
     DeploymentConfig,
     DeploymentMode,
     HTTPOptions,
     ReplicaConfig,
 )
-from ray.serve.config import AutoscalingConfig
 
 
 def test_autoscaling_config_validation():

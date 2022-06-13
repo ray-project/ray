@@ -1,8 +1,7 @@
-from ray.rllib.algorithms.dreamer.dreamer import (
-    DreamerConfig,
-    Dreamer as DREAMERTrainer,
-    DEFAULT_CONFIG,
-)
+from ray.rllib.algorithms.dreamer.dreamer import DEFAULT_CONFIG
+from ray.rllib.algorithms.dreamer.dreamer import Dreamer as DREAMERTrainer
+from ray.rllib.algorithms.dreamer.dreamer import DreamerConfig
+from ray.rllib.utils.deprecation import deprecation_warning
 
 __all__ = [
     "DreamerConfig",
@@ -10,8 +9,6 @@ __all__ = [
     "DEFAULT_CONFIG",
 ]
 
-
-from ray.rllib.utils.deprecation import deprecation_warning
 
 deprecation_warning(
     "ray.rllib.agents.dreamer", "ray.rllib.algorithms.dreamer", error=False

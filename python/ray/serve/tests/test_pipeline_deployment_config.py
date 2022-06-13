@@ -1,11 +1,12 @@
-import pytest
 import os
 import sys
 from typing import Any
 
+import pytest
+
 from ray import serve
-from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.dag import InputNode
+from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.deployment_graph_build import build as pipeline_build
 
 

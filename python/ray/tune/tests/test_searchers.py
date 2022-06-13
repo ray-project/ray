@@ -1,7 +1,7 @@
-import unittest
-import tempfile
-import shutil
 import os
+import shutil
+import tempfile
+import unittest
 from copy import deepcopy
 
 import numpy as np
@@ -54,8 +54,9 @@ class InvalidValuesTest(unittest.TestCase):
         ray.shutdown()
 
     def testAx(self):
-        from ray.tune.suggest.ax import AxSearch
         from ax.service.ax_client import AxClient
+
+        from ray.tune.suggest.ax import AxSearch
 
         converted_config = AxSearch.convert_search_space(self.config)
         # At least one nan, inf, -inf and float
@@ -213,8 +214,9 @@ class InvalidValuesTest(unittest.TestCase):
         self.assertLessEqual(best_trial.config["report"], 2.0)
 
     def testNevergrad(self):
-        from ray.tune.suggest.nevergrad import NevergradSearch
         import nevergrad as ng
+
+        from ray.tune.suggest.nevergrad import NevergradSearch
 
         np.random.seed(2020)  # At least one nan, inf, -inf and float
 
@@ -231,8 +233,9 @@ class InvalidValuesTest(unittest.TestCase):
         self.assertLessEqual(best_trial.config["report"], 2.0)
 
     def testOptuna(self):
-        from ray.tune.suggest.optuna import OptunaSearch
         from optuna.samplers import RandomSampler
+
+        from ray.tune.suggest.optuna import OptunaSearch
 
         np.random.seed(1000)  # At least one nan, inf, -inf and float
 
@@ -250,8 +253,9 @@ class InvalidValuesTest(unittest.TestCase):
         self.assertLessEqual(best_trial.config["report"], 2.0)
 
     def testOptunaReportTooOften(self):
-        from ray.tune.suggest.optuna import OptunaSearch
         from optuna.samplers import RandomSampler
+
+        from ray.tune.suggest.optuna import OptunaSearch
 
         searcher = OptunaSearch(
             sampler=RandomSampler(seed=1234),
@@ -395,8 +399,9 @@ class AddEvaluatedPointTest(unittest.TestCase):
         self.run_add_evaluated_trials(searcher, get_len_X, get_len_y)
 
     def testOptuna(self):
-        from ray.tune.suggest.optuna import OptunaSearch
         from optuna.trial import TrialState
+
+        from ray.tune.suggest.optuna import OptunaSearch
 
         searcher = OptunaSearch(
             space=self.space,
@@ -548,8 +553,9 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         )
 
     def testAx(self):
-        from ray.tune.suggest.ax import AxSearch
         from ax.service.ax_client import AxClient
+
+        from ray.tune.suggest.ax import AxSearch
 
         converted_config = AxSearch.convert_search_space(self.config)
         client = AxClient()
@@ -658,8 +664,9 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         self._restore(searcher)
 
     def testNevergrad(self):
-        from ray.tune.suggest.nevergrad import NevergradSearch
         import nevergrad as ng
+
+        from ray.tune.suggest.nevergrad import NevergradSearch
 
         searcher = NevergradSearch(
             space=self.config,
@@ -745,8 +752,9 @@ class MultiObjectiveTest(unittest.TestCase):
         ray.shutdown()
 
     def testOptuna(self):
-        from ray.tune.suggest.optuna import OptunaSearch
         from optuna.samplers import RandomSampler
+
+        from ray.tune.suggest.optuna import OptunaSearch
 
         np.random.seed(1000)
 
@@ -771,7 +779,8 @@ class MultiObjectiveTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

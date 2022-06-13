@@ -1,8 +1,8 @@
-from gym.spaces import Box, Discrete
 import numpy as np
+from gym.spaces import Box, Discrete
 
-from rllib.models.tf.attention_net import TrXLNet
 from ray.rllib.utils.framework import try_import_tf
+from rllib.models.tf.attention_net import TrXLNet
 
 tf1, tf, tfv = try_import_tf()
 

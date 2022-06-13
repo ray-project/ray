@@ -3,16 +3,15 @@ import unittest
 import numpy as np
 
 from ray.rllib.policy.sample_batch import (
-    SampleBatch,
-    MultiAgentBatch,
     DEFAULT_POLICY_ID,
+    MultiAgentBatch,
+    SampleBatch,
 )
-
 from ray.rllib.utils.replay_buffers.multi_agent_prioritized_replay_buffer import (
     MultiAgentPrioritizedReplayBuffer,
 )
-from ray.rllib.utils.test_utils import check
 from ray.rllib.utils.replay_buffers.replay_buffer import _ALL_POLICIES
+from ray.rllib.utils.test_utils import check
 
 
 class TestMultiAgentPrioritizedReplayBuffer(unittest.TestCase):
@@ -231,7 +230,8 @@ class TestMultiAgentPrioritizedReplayBuffer(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

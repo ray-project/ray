@@ -13,11 +13,12 @@ from typing import Dict, Optional
 import numpy as np
 from gym.spaces import Discrete
 from gym.utils import seeding
+
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.examples.env.utils.interfaces import InfoAccumulationInterface
 from ray.rllib.examples.env.utils.mixins import (
-    TwoPlayersTwoActionsInfoMixin,
     NPlayersNDiscreteActionsInfoMixin,
+    TwoPlayersTwoActionsInfoMixin,
 )
 
 logger = logging.getLogger(__name__)

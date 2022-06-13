@@ -5,9 +5,8 @@ https://stable-baselines.readthedocs.io/en/master/guide/quickstart.html
 Equivalent script with RLlib: sb2rllib_rllib_example.py
 """
 import gym
-
-from stable_baselines.common.policies import MlpPolicy
 from stable_baselines import PPO2
+from stable_baselines.common.policies import MlpPolicy
 
 # settings used for both stable baselines and rllib
 env_name = "CartPole-v1"

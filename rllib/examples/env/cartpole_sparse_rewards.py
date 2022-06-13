@@ -2,7 +2,7 @@ from copy import deepcopy
 
 import gym
 import numpy as np
-from gym.spaces import Discrete, Dict, Box
+from gym.spaces import Box, Dict, Discrete
 
 
 class CartPoleSparseRewards(gym.Env):

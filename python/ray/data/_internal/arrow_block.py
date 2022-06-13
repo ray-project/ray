@@ -1,45 +1,47 @@
 import collections
-import random
 import heapq
+import random
 from typing import (
+    TYPE_CHECKING,
+    Any,
     Callable,
     Dict,
-    List,
-    Tuple,
-    Union,
     Iterator,
-    Any,
-    TypeVar,
+    List,
     Optional,
-    TYPE_CHECKING,
+    Tuple,
+    TypeVar,
+    Union,
 )
 
 import numpy as np
+
+from ray.data._internal.table_block import (
+    VALUE_COL_NAME,
+    TableBlockAccessor,
+    TableBlockBuilder,
+)
+from ray.data.aggregate import AggregateFn
+from ray.data.block import (
+    Block,
+    BlockAccessor,
+    BlockExecStats,
+    BlockMetadata,
+    KeyFn,
+    KeyType,
+    U,
+)
+from ray.data.row import TableRow
 
 try:
     import pyarrow
 except ImportError:
     pyarrow = None
 
-from ray.data.block import (
-    Block,
-    BlockAccessor,
-    BlockMetadata,
-    BlockExecStats,
-    U,
-    KeyFn,
-    KeyType,
-)
-from ray.data.row import TableRow
-from ray.data._internal.table_block import (
-    TableBlockAccessor,
-    TableBlockBuilder,
-    VALUE_COL_NAME,
-)
-from ray.data.aggregate import AggregateFn
 
 if TYPE_CHECKING:
     import pandas
+
     from ray.data._internal.sort import SortKeyT
 
 T = TypeVar("T")
@@ -114,6 +116,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
     @staticmethod
     def numpy_to_block(batch: np.ndarray) -> "pyarrow.Table":
         import pyarrow as pa
+
         from ray.data.extensions.tensor_extension import ArrowTensorArray
 
         return pa.Table.from_pydict(

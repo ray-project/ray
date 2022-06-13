@@ -1,12 +1,10 @@
-from typing import Dict, Callable, Optional, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable, Dict, Optional, Union
 
-from ray.air.config import ScalingConfig, RunConfig, DatasetConfig
-from ray.train.trainer import GenDataset
 from ray.air.checkpoint import Checkpoint
-
-
+from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.horovod.config import HorovodConfig
+from ray.train.trainer import GenDataset
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor

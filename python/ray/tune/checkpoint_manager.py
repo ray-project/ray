@@ -4,13 +4,15 @@ from typing import Callable, Optional
 
 from ray.tune.result import TRAINING_ITERATION
 from ray.util.ml_utils.checkpoint_manager import (
-    CheckpointStrategy,
-    MIN,
     MAX,
-    _CheckpointManager as CommonCheckpointManager,
-    _TrackedCheckpoint,
+    MIN,
     CheckpointStorage,
+    CheckpointStrategy,
 )
+from ray.util.ml_utils.checkpoint_manager import (
+    _CheckpointManager as CommonCheckpointManager,
+)
+from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint
 
 logger = logging.getLogger(__name__)
 

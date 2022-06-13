@@ -1,7 +1,7 @@
-from typing import Callable, TYPE_CHECKING, Dict
+from typing import TYPE_CHECKING, Callable, Dict
 
-from ray.data.preprocessor import Preprocessor
 from ray.data import Dataset
+from ray.data.preprocessor import Preprocessor
 
 if TYPE_CHECKING:
     import pandas

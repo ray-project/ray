@@ -1,7 +1,8 @@
-from python.ray.util.collective.types import Backend
+import time
+
 import ray
 import ray.util.collective as col
-import time
+from python.ray.util.collective.types import Backend
 
 
 @ray.remote
@@ -40,7 +41,8 @@ def test_failure_when_initializing(shutdown_only):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))

@@ -1,13 +1,13 @@
 from typing import Any, Dict, Optional, Union
 
+from ray.dashboard.modules.dashboard_sdk import SubmissionClient
+
 try:
     import aiohttp
     import requests
 except ImportError:
     aiohttp = None
     requests = None
-
-from ray.dashboard.modules.dashboard_sdk import SubmissionClient
 
 
 DEPLOY_PATH = "/api/serve/deployments/"

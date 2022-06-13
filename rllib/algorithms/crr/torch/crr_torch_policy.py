@@ -1,14 +1,7 @@
+from typing import Dict, List, Tuple, Type, Union, cast
+
 import gym
 import numpy as np
-
-from typing import (
-    cast,
-    Dict,
-    List,
-    Tuple,
-    Type,
-    Union,
-)
 
 from ray.rllib.algorithms import AlgorithmConfig
 from ray.rllib.algorithms.crr.torch import CRRModel
@@ -17,14 +10,11 @@ from ray.rllib.algorithms.sac.sac_torch_policy import TargetNetworkMixin
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
-from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import (
-    TrainerConfigDict,
-    TensorType,
-)
+from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.typing import TensorType, TrainerConfigDict
 
 torch, nn = try_import_torch()
 

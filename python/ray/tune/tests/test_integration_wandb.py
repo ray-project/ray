@@ -1,20 +1,20 @@
 import os
 import tempfile
+import unittest
 from collections import namedtuple
 from multiprocessing import Queue
-import unittest
 
 import numpy as np
 
 from ray.tune import Trainable
 from ray.tune.function_runner import wrap_function
 from ray.tune.integration.wandb import (
-    WandbLoggerCallback,
-    _WandbLoggingProcess,
     WANDB_ENV_VAR,
+    WandbLoggerCallback,
     WandbTrainableMixin,
-    wandb_mixin,
     _QueueItem,
+    _WandbLoggingProcess,
+    wandb_mixin,
 )
 from ray.tune.result import TRIAL_INFO
 from ray.tune.trial import _TrialInfo
@@ -363,7 +363,8 @@ class WandbIntegrationTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

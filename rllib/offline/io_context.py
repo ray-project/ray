@@ -1,12 +1,12 @@
 import os
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.typing import AlgorithmConfigDict
 
 if TYPE_CHECKING:
-    from ray.rllib.evaluation.sampler import SamplerInput
     from ray.rllib.evaluation.rollout_worker import RolloutWorker
+    from ray.rllib.evaluation.sampler import SamplerInput
 
 
 @PublicAPI

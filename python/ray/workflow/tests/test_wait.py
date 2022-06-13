@@ -1,12 +1,13 @@
-from ray.tests.conftest import *  # noqa
-
 import time
+
 import pytest
+
 import ray
 from ray import workflow
+from ray.exceptions import RaySystemError
+from ray.tests.conftest import *  # noqa
 from ray.workflow.common import Workflow
 from ray.workflow.tests import utils
-from ray.exceptions import RaySystemError
 
 
 @workflow.step

@@ -1,22 +1,21 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 
 import inspect
 import logging
+from typing import Dict, List, Optional, Union
+
 import numpy as np
 
 # use cloudpickle instead of pickle to make lambda funcs
 # in dragonfly pickleable
 from ray import cloudpickle
-from typing import Dict, List, Optional, Union
-
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import Domain, Float, Quantized
 from ray.tune.suggest.suggestion import (
-    UNRESOLVED_SEARCH_SPACE,
     UNDEFINED_METRIC_MODE,
     UNDEFINED_SEARCH_SPACE,
+    UNRESOLVED_SEARCH_SPACE,
+    Searcher,
 )
 from ray.tune.suggest.variant_generator import parse_spec_vars
 from ray.tune.utils.util import flatten_dict, is_nan_or_inf, unflatten_dict
@@ -28,7 +27,6 @@ except ImportError:
     dragonfly = None
     BlackboxOptimiser = None
 
-from ray.tune.suggest.suggestion import Searcher
 
 logger = logging.getLogger(__name__)
 
@@ -216,12 +214,12 @@ class DragonflySearch(Searcher):
             EuclideanFunctionCaller,
         )
         from dragonfly.opt.blackbox_optimiser import BlackboxOptimiser
+        from dragonfly.opt.cp_ga_optimiser import CPGAOptimiser
+        from dragonfly.opt.gp_bandit import CPGPBandit, EuclideanGPBandit
         from dragonfly.opt.random_optimiser import (
             CPRandomOptimiser,
             EuclideanRandomOptimiser,
         )
-        from dragonfly.opt.cp_ga_optimiser import CPGAOptimiser
-        from dragonfly.opt.gp_bandit import CPGPBandit, EuclideanGPBandit
 
         if not self._space:
             raise ValueError(

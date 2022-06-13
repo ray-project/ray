@@ -1,18 +1,19 @@
 import collections
-import numpy as np
-import sys
 import itertools
-import tree  # pip install dm_tree
+import sys
 from typing import Dict, Iterator, List, Optional, Set, Union
 
-from ray.util import log_once
+import numpy as np
+import tree  # pip install dm_tree
+
 from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI, PublicAPI
-from ray.rllib.utils.compression import pack, unpack, is_compressed
+from ray.rllib.utils.compression import is_compressed, pack, unpack
 from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import concat_aligned
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import PolicyID, TensorType, ViewRequirementsDict
+from ray.util import log_once
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()

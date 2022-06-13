@@ -1,5 +1,6 @@
-import pytest
 import unittest
+
+import pytest
 
 import ray
 import ray.rllib.algorithms.apex_dqn.apex_dqn as apex_dqn

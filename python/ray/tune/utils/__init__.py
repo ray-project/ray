@@ -1,17 +1,17 @@
 from ray.tune.utils.util import (
-    deep_update,
+    UtilMonitor,
     date_str,
+    deep_update,
+    detect_checkpoint_function,
+    detect_config_single,
+    detect_reporter,
+    diagnose_serialization,
     flatten_dict,
     merge_dicts,
     unflattened_lookup,
-    UtilMonitor,
     validate_save_restore,
-    warn_if_slow,
-    diagnose_serialization,
-    detect_checkpoint_function,
-    detect_reporter,
-    detect_config_single,
     wait_for_gpu,
+    warn_if_slow,
 )
 
 __all__ = [

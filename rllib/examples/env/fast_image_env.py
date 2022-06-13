@@ -1,6 +1,6 @@
 import gym
-from gym.spaces import Box, Discrete
 import numpy as np
+from gym.spaces import Box, Discrete
 
 
 class FastImageEnv(gym.Env):

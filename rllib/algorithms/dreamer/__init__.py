@@ -1,8 +1,4 @@
-from ray.rllib.algorithms.dreamer.dreamer import (
-    Dreamer,
-    DreamerConfig,
-    DEFAULT_CONFIG,
-)
+from ray.rllib.algorithms.dreamer.dreamer import DEFAULT_CONFIG, Dreamer, DreamerConfig
 
 __all__ = [
     "Dreamer",

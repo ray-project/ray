@@ -1,18 +1,16 @@
-import numpy as np
-import tree  # dm_tree
 from typing import Any, Callable, Dict, List, Type
 
+import numpy as np
+import tree  # dm_tree
+
 from ray.rllib.connectors.connector import (
-    ConnectorContext,
     AgentConnector,
+    ConnectorContext,
     register_connector,
 )
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.typing import (
-    AgentConnectorDataType,
-    TensorStructType,
-)
+from ray.rllib.utils.typing import AgentConnectorDataType, TensorStructType
 
 
 @DeveloperAPI

@@ -1,11 +1,12 @@
+import copy
+import logging
+import pickle
+from functools import partial
 from typing import Any, Dict, List, Optional
 
 import numpy as np
-import copy
-import logging
-from functools import partial
-import pickle
 
+from ray.tune.error import TuneError
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import (
     Categorical,
@@ -17,10 +18,11 @@ from ray.tune.sample import (
     Quantized,
     Uniform,
 )
+from ray.tune.suggest import Searcher
 from ray.tune.suggest.suggestion import (
-    UNRESOLVED_SEARCH_SPACE,
     UNDEFINED_METRIC_MODE,
     UNDEFINED_SEARCH_SPACE,
+    UNRESOLVED_SEARCH_SPACE,
 )
 from ray.tune.suggest.variant_generator import assign_value, parse_spec_vars
 from ray.tune.utils import flatten_dict
@@ -32,8 +34,6 @@ try:
 except ImportError:
     hpo = None
 
-from ray.tune.error import TuneError
-from ray.tune.suggest import Searcher
 
 logger = logging.getLogger(__name__)
 

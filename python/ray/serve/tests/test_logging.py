@@ -1,11 +1,11 @@
-from contextlib import redirect_stderr
 import io
 import logging
-import time
 import sys
+import time
+from contextlib import redirect_stderr
 
-import requests
 import pytest
+import requests
 
 import ray
 from ray import serve

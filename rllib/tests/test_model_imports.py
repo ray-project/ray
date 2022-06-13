@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 
+import unittest
+from pathlib import Path
+
 import h5py
 import numpy as np
-from pathlib import Path
-import unittest
 
 import ray
 from ray.rllib.algorithms.registry import get_algorithm_class
@@ -214,7 +215,8 @@ class TestModelImport(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

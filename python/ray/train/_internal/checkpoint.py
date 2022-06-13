@@ -1,22 +1,21 @@
 import logging
 from pathlib import Path
-from typing import List, Optional, Dict, Union, Callable
+from typing import Callable, Dict, List, Optional, Union
 
 from ray.air import Checkpoint
+from ray.train._internal.session import TrainingResult
+from ray.train._internal.utils import construct_path
 from ray.train.constants import (
     TIMESTAMP,
     TRAIN_CHECKPOINT_SUBDIR,
     TUNE_CHECKPOINT_ID,
     TUNE_INSTALLED,
 )
-from ray.train._internal.session import TrainingResult
-from ray.train._internal.utils import construct_path
+from ray.util.ml_utils.checkpoint_manager import CheckpointStorage, CheckpointStrategy
 from ray.util.ml_utils.checkpoint_manager import (
     _CheckpointManager as CommonCheckpointManager,
-    _TrackedCheckpoint,
-    CheckpointStrategy,
-    CheckpointStorage,
 )
+from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint
 
 if TUNE_INSTALLED:
     from ray import tune

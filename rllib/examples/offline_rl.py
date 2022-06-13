@@ -17,8 +17,9 @@ Use the generated file(s) as "input" in the CQL config below
 (`config["input"] = [list of your json files]`), then run this script.
 """
 
-import numpy as np
 import os
+
+import numpy as np
 
 from ray.rllib.algorithms import cql as cql
 from ray.rllib.utils.framework import try_import_torch

@@ -1,32 +1,34 @@
-from dataclasses import dataclass
 import time
+from dataclasses import dataclass
 from typing import (
-    TypeVar,
-    List,
+    TYPE_CHECKING,
+    Any,
+    Callable,
     Dict,
     Generic,
     Iterator,
-    Tuple,
-    Any,
-    Union,
+    List,
     Optional,
-    Callable,
-    TYPE_CHECKING,
+    Tuple,
+    TypeVar,
+    Union,
 )
 
 import numpy as np
 
+import ray
+from ray.data._internal.util import _check_pyarrow_version
+from ray.types import ObjectRef
+from ray.util.annotations import DeveloperAPI
+
 if TYPE_CHECKING:
     import pandas
     import pyarrow
+
+    from ray.data import Dataset
     from ray.data._internal.block_builder import BlockBuilder
     from ray.data.aggregate import AggregateFn
-    from ray.data import Dataset
 
-import ray
-from ray.types import ObjectRef
-from ray.util.annotations import DeveloperAPI
-from ray.data._internal.util import _check_pyarrow_version
 
 T = TypeVar("T")
 U = TypeVar("U")
@@ -279,8 +281,8 @@ class BlockAccessor(Generic[T]):
     def for_block(block: Block) -> "BlockAccessor[T]":
         """Create a block accessor for the given block."""
         _check_pyarrow_version()
-        import pyarrow
         import pandas
+        import pyarrow
 
         if isinstance(block, pyarrow.Table):
             from ray.data._internal.arrow_block import ArrowBlockAccessor

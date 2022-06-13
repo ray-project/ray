@@ -7,7 +7,7 @@ HorovodRayPlugin = None
 RayShardedPlugin = None
 
 try:
-    from ray_lightning import RayPlugin, HorovodRayPlugin, RayShardedPlugin
+    from ray_lightning import HorovodRayPlugin, RayPlugin, RayShardedPlugin
 except ImportError:
     logger.info(
         "ray_lightning is not installed. Please run `pip install ray-lightning`."

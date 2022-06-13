@@ -1,11 +1,11 @@
 import signal
 import sys
-import pytest
-import ray
 
 # Import psutil after ray so the packaged version is used.
 import psutil
+import pytest
 
+import ray
 from ray._private.test_utils import wait_for_condition
 
 

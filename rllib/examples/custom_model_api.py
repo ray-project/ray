@@ -1,14 +1,15 @@
 import argparse
-from gym.spaces import Box, Discrete
+
 import numpy as np
+from gym.spaces import Box, Discrete
 
 from ray.rllib.examples.models.custom_model_api import (
-    DuelingQModel,
-    TorchDuelingQModel,
     ContActionQModel,
+    DuelingQModel,
     TorchContActionQModel,
+    TorchDuelingQModel,
 )
-from ray.rllib.models.catalog import ModelCatalog, MODEL_DEFAULTS
+from ray.rllib.models.catalog import MODEL_DEFAULTS, ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 

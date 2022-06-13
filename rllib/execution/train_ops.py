@@ -1,7 +1,8 @@
 import logging
-import numpy as np
 import math
-from typing import Dict, List, Tuple, Any
+from typing import Any, Dict, List, Tuple
+
+import numpy as np
 
 import ray
 from ray.rllib.evaluation.worker_set import WorkerSet
@@ -25,10 +26,10 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.metrics import NUM_ENV_STEPS_TRAINED, NUM_AGENT_STEPS_TRAINED
-from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder, LEARNER_INFO
+from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED, NUM_ENV_STEPS_TRAINED
+from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LearnerInfoBuilder
 from ray.rllib.utils.sgd import do_minibatch_sgd
-from ray.rllib.utils.typing import PolicyID, SampleBatchType, ModelGradients
+from ray.rllib.utils.typing import ModelGradients, PolicyID, SampleBatchType
 
 tf1, tf, tfv = try_import_tf()
 

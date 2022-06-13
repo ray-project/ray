@@ -1,10 +1,10 @@
 import argparse
 
+from tensorflow_mnist_example import train_func
+
 import ray
 from ray import tune
 from ray.train import Trainer
-
-from tensorflow_mnist_example import train_func
 
 
 def tune_tensorflow_mnist(num_workers, num_samples):

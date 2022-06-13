@@ -1,6 +1,6 @@
-import ray
-
 from typing import Callable, List
+
+import ray
 
 ray.workflow.init()
 """

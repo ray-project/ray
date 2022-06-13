@@ -4,10 +4,9 @@ import errno
 import io
 import json
 import logging
+import mmap
 import multiprocessing
 import os
-from pathlib import Path
-import mmap
 import random
 import shutil
 import signal
@@ -15,19 +14,20 @@ import socket
 import subprocess
 import sys
 import time
-from typing import Optional, List
 import uuid
-
-# Ray modules
-import ray
-import ray.ray_constants as ray_constants
-from ray._raylet import GcsClientOptions
-from ray._private.gcs_utils import GcsClient
-from ray.core.generated.common_pb2 import Language
+from pathlib import Path
+from typing import List, Optional
 
 # Import psutil and colorama after ray so the packaged version is used.
 import colorama
 import psutil
+
+# Ray modules
+import ray
+import ray.ray_constants as ray_constants
+from ray._private.gcs_utils import GcsClient
+from ray._raylet import GcsClientOptions
+from ray.core.generated.common_pb2 import Language
 
 resource = None
 if sys.platform != "win32":

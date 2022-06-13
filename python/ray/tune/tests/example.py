@@ -13,6 +13,7 @@
 # __quick_start_begin__
 from ray import tune
 
+
 # 1. Define an objective function.
 def objective(config):
     score = config["a"] ** 2 + config["b"]

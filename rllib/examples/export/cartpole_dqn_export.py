@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
 import os
-import ray
 
+import ray
 from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.rllib.utils.framework import try_import_tf
 

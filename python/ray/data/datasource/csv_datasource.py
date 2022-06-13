@@ -1,14 +1,14 @@
-from typing import TYPE_CHECKING, Any, Dict, Callable, Iterator
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator
 
-if TYPE_CHECKING:
-    import pyarrow
-
-from ray.data.block import BlockAccessor, Block
+from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.file_based_datasource import (
     FileBasedDatasource,
     _resolve_kwargs,
 )
 from ray.util.annotations import PublicAPI
+
+if TYPE_CHECKING:
+    import pyarrow
 
 
 @PublicAPI

@@ -6,9 +6,10 @@ import copy
 import random
 
 import numpy as np
+
 from ray.rllib.examples.env.coin_game_vectorized_env import (
-    VectorizedCoinGame,
     AsymVectorizedCoinGame,
+    VectorizedCoinGame,
 )
 from ray.rllib.examples.env.tests.test_coin_game_non_vectorized_env import (
     assert_obs_is_symmetrical,

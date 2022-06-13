@@ -3,15 +3,15 @@ import glob
 import logging
 import os
 import warnings
-from typing import Dict, Optional, List, Union, Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from ray.tune.suggest.util import set_search_properties_backwards_compatible
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
-    from ray.tune.trial import Trial
     from ray.tune.analysis import ExperimentAnalysis
+    from ray.tune.trial import Trial
 
 logger = logging.getLogger(__name__)
 
@@ -238,9 +238,9 @@ class Searcher:
             raise NotImplementedError
 
         # lazy imports to avoid circular dependencies
-        from ray.tune.trial import Trial
         from ray.tune.analysis import ExperimentAnalysis
         from ray.tune.result import DONE
+        from ray.tune.trial import Trial
 
         if isinstance(trials_or_analysis, Trial):
             trials_or_analysis = [trials_or_analysis]

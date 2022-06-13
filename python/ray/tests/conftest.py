@@ -27,14 +27,14 @@ from ray._private.services import (
     wait_for_redis_to_start,
 )
 from ray._private.test_utils import (
+    get_and_run_node_killer,
     init_error_pubsub,
     init_log_pubsub,
     setup_tls,
     teardown_tls,
-    get_and_run_node_killer,
     test_external_redis,
 )
-from ray.cluster_utils import Cluster, AutoscalingCluster, cluster_not_supported
+from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
 
 
 def get_default_fixure_system_config():

@@ -5,10 +5,10 @@
 import random
 
 from ray.rllib.examples.env.matrix_sequential_social_dilemma import (
-    IteratedPrisonersDilemma,
-    IteratedChicken,
-    IteratedStagHunt,
     IteratedBoS,
+    IteratedChicken,
+    IteratedPrisonersDilemma,
+    IteratedStagHunt,
 )
 
 ENVS = [IteratedPrisonersDilemma, IteratedChicken, IteratedStagHunt, IteratedBoS]

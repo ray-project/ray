@@ -2,7 +2,7 @@ import random
 import unittest
 
 from ray.tune import register_trainable
-from ray.tune.automl import SearchSpace, DiscreteSpace, GridSearch
+from ray.tune.automl import DiscreteSpace, GridSearch, SearchSpace
 
 
 def next_trials(searcher):
@@ -83,7 +83,8 @@ class AutoMLSearcherTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

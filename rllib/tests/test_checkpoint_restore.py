@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
-import numpy as np
 import unittest
+
+import numpy as np
 
 import ray
 from ray.rllib.algorithms.registry import get_algorithm_class
@@ -208,8 +209,9 @@ class TestCheckpointRestoreEvolutionAlgos(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     # One can specify the specific TestCase class to run.
     # None for all unittest.TestCase classes in this file.

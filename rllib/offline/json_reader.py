@@ -1,20 +1,16 @@
 import glob
 import json
 import logging
-import numpy as np
 import os
-from pathlib import Path
 import random
 import re
-import tree  # pip install dm_tree
-from typing import List, Optional, TYPE_CHECKING, Union
-from urllib.parse import urlparse
 import zipfile
+from pathlib import Path
+from typing import TYPE_CHECKING, List, Optional, Union
+from urllib.parse import urlparse
 
-try:
-    from smart_open import smart_open
-except ImportError:
-    smart_open = None
+import numpy as np
+import tree  # pip install dm_tree
 
 from ray.rllib.offline.input_reader import InputReader
 from ray.rllib.offline.io_context import IOContext
@@ -24,10 +20,16 @@ from ray.rllib.policy.sample_batch import (
     MultiAgentBatch,
     SampleBatch,
 )
-from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
+from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI, override
 from ray.rllib.utils.compression import unpack_if_needed
 from ray.rllib.utils.spaces.space_utils import clip_action, normalize_action
 from ray.rllib.utils.typing import Any, FileType, SampleBatchType
+
+try:
+    from smart_open import smart_open
+except ImportError:
+    smart_open = None
+
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation import RolloutWorker

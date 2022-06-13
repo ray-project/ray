@@ -1,15 +1,16 @@
-import kubernetes
 import os
 import subprocess
 import sys
 import unittest
 
+import kubernetes
 import pytest
-
-from test_k8s_operator_basic import get_kubernetes_config_path
-from test_k8s_operator_basic import IMAGE
-from test_k8s_operator_basic import NAMESPACE
-from test_k8s_operator_basic import wait_for_pods
+from test_k8s_operator_basic import (
+    IMAGE,
+    NAMESPACE,
+    get_kubernetes_config_path,
+    wait_for_pods,
+)
 
 
 def helm(namespace, command, release, **options):

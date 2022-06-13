@@ -1,6 +1,7 @@
-from libcpp.string cimport string as c_string
-from libcpp.unordered_map cimport unordered_map
-from libcpp.vector cimport vector as c_vector
+from libcpp.string import string as c_string
+from libcpp.unordered_map import unordered_map
+from libcpp.vector import vector as c_vector
+
 
 cdef extern from "opencensus/tags/tag_key.h" nogil:
     cdef cppclass CTagKey "opencensus::tags::TagKey":

@@ -1,6 +1,7 @@
-import numpy as np
 import pickle
 import unittest
+
+import numpy as np
 
 import ray
 from ray.rllib.algorithms.ppo import PPO
@@ -325,7 +326,8 @@ class TestRNNSequencing(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

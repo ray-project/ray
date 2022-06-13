@@ -14,12 +14,11 @@ import os
 import sys
 from pprint import pformat
 
+import gym
 from numpy.random import RandomState
 
-import gym
-from ray.rllib.env import MultiAgentEnv
-
 from ray.rllib.contrib.sumo.utils import SUMOUtils, sumo_default_config
+from ray.rllib.env import MultiAgentEnv
 
 # """ Import SUMO library """
 if "SUMO_HOME" in os.environ:

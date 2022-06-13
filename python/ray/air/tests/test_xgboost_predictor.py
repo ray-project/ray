@@ -1,15 +1,16 @@
-import os
-from ray.air.predictors.integrations.xgboost import XGBoostPredictor, to_air_checkpoint
-from ray.data.preprocessor import Preprocessor
-from ray.air.checkpoint import Checkpoint
-from ray.air.constants import MODEL_KEY
 import json
+import os
+import tempfile
 
 import numpy as np
 import pandas as pd
-from ray.air._internal.checkpointing import save_preprocessor_to_dir
 import xgboost as xgb
-import tempfile
+
+from ray.air._internal.checkpointing import save_preprocessor_to_dir
+from ray.air.checkpoint import Checkpoint
+from ray.air.constants import MODEL_KEY
+from ray.air.predictors.integrations.xgboost import XGBoostPredictor, to_air_checkpoint
+from ray.data.preprocessor import Preprocessor
 
 
 class DummyPreprocessor(Preprocessor):
@@ -100,7 +101,8 @@ def test_predict_no_preprocessor_no_training():
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-sv", __file__]))

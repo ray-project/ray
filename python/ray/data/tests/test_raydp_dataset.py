@@ -1,7 +1,8 @@
 import pytest
-import ray
 import raydp
 import torch
+
+import ray
 
 
 @pytest.fixture(scope="function")

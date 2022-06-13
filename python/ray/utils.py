@@ -1,11 +1,12 @@
-from typing import Dict, Union, Optional
+from typing import Dict, Optional, Union
+
 from google.protobuf import json_format
 
 import ray._private.utils as private_utils
-from ray.runtime_env import RuntimeEnv, RuntimeEnvConfig
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvInfo as ProtoRuntimeEnvInfo,
 )
+from ray.runtime_env import RuntimeEnv, RuntimeEnvConfig
 
 deprecated = private_utils.deprecated(
     "If you need to use this function, open a feature request issue on GitHub.",

@@ -1,17 +1,17 @@
-from copy import deepcopy
-import numpy as np
 import logging
-from typing import Dict, Any, List, Optional, Set, Tuple, Union, Callable
-
 import pickle
 import warnings
+from copy import deepcopy
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
-from ray.util.annotations import PublicAPI
+import numpy as np
+
 from ray.tune import trial_runner
 from ray.tune.resources import Resources
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.trial import Trial
 from ray.tune.utils.placement_groups import PlacementGroupFactory
+from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
 

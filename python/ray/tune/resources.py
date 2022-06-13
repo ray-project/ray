@@ -1,16 +1,16 @@
-from collections import namedtuple
-import logging
 import json
+import logging
+from collections import namedtuple
 from numbers import Number
 
 # For compatibility under py2 to consider unicode as str
 from typing import Optional
 
-from ray.util.annotations import Deprecated
 from six import string_types
 
 from ray._private.resource_spec import NODE_ID_PREFIX
 from ray.tune import TuneError
+from ray.util.annotations import Deprecated
 
 logger = logging.getLogger(__name__)
 

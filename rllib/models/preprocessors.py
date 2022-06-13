@@ -1,14 +1,15 @@
-from collections import OrderedDict
 import logging
-import numpy as np
-import gym
+from collections import OrderedDict
 from typing import Any, List
 
-from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
-from ray.rllib.utils.spaces.repeated import Repeated
-from ray.rllib.utils.typing import TensorType
+import gym
+import numpy as np
+
+from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI, override
 from ray.rllib.utils.images import resize
+from ray.rllib.utils.spaces.repeated import Repeated
 from ray.rllib.utils.spaces.space_utils import convert_element_to_space_type
+from ray.rllib.utils.typing import TensorType
 
 ATARI_OBS_SHAPE = (210, 160, 3)
 ATARI_RAM_OBS_SHAPE = (128,)

@@ -2,13 +2,14 @@ import argparse
 from typing import Dict
 
 import torch
-import ray.train as train
-from ray.train.trainer import Trainer
-from ray.train.callbacks import JsonLoggerCallback
 from torch import nn
 from torch.utils.data import DataLoader
 from torchvision import datasets
 from torchvision.transforms import ToTensor
+
+import ray.train as train
+from ray.train.callbacks import JsonLoggerCallback
+from ray.train.trainer import Trainer
 
 # Download training data from open datasets.
 training_data = datasets.FashionMNIST(

@@ -1,19 +1,16 @@
-import base64
 import asyncio
-import json
-
-from ray import cloudpickle
-from collections import deque
-from enum import Enum, unique
+import base64
 import hashlib
+import json
 import re
-from typing import Dict, Generic, List, Optional, Callable, Set, TypeVar, Iterator, Any
 import unicodedata
-
+from collections import deque
 from dataclasses import dataclass
+from enum import Enum, unique
+from typing import Any, Callable, Dict, Generic, Iterator, List, Optional, Set, TypeVar
 
 import ray
-from ray import ObjectRef
+from ray import ObjectRef, cloudpickle
 from ray.util.annotations import PublicAPI
 
 # Alias types
@@ -552,8 +549,8 @@ class Workflow(Generic[T]):
 
         """
         # TODO(suquark): avoid cyclic importing
-        from ray.workflow.execution import run
         from ray.workflow.api import _ensure_workflow_initialized
+        from ray.workflow.execution import run
 
         _ensure_workflow_initialized()
 

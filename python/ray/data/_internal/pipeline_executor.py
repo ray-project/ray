@@ -1,13 +1,13 @@
-from typing import Any, Callable, List, Optional, TYPE_CHECKING
-import time
 import concurrent.futures
 import logging
+import time
+from typing import TYPE_CHECKING, Any, Callable, List, Optional
 
 import ray
+from ray.data._internal import progress_bar
+from ray.data._internal.progress_bar import ProgressBar
 from ray.data.context import DatasetContext
 from ray.data.dataset import Dataset, T
-from ray.data._internal.progress_bar import ProgressBar
-from ray.data._internal import progress_bar
 
 logger = logging.getLogger(__name__)
 

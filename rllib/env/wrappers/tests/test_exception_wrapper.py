@@ -2,6 +2,7 @@ import random
 import unittest
 
 import gym
+
 from ray.rllib.env.wrappers.exception_wrapper import (
     ResetOnExceptionWrapper,
     TooManyResetAttemptsException,
@@ -56,6 +57,7 @@ class TestResetOnExceptionWrapper(unittest.TestCase):
 
 if __name__ == "__main__":
     import sys
+
     import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

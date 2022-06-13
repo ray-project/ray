@@ -1,13 +1,5 @@
 import logging
-from typing import (
-    Dict,
-    Any,
-    Callable,
-    TYPE_CHECKING,
-)
-
-if TYPE_CHECKING:
-    import pyarrow
+from typing import TYPE_CHECKING, Any, Callable, Dict
 
 from ray.data.block import BlockAccessor
 from ray.data.datasource.file_based_datasource import (
@@ -15,6 +7,10 @@ from ray.data.datasource.file_based_datasource import (
     _resolve_kwargs,
 )
 from ray.util.annotations import PublicAPI
+
+if TYPE_CHECKING:
+    import pyarrow
+
 
 logger = logging.getLogger(__name__)
 

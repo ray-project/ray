@@ -1,21 +1,21 @@
 import enum
 import os
 import pickle
+import urllib
 from collections.abc import Sequence
 from multiprocessing import Process, Queue
 from numbers import Number
 from typing import Any, Callable, Dict, List, Optional, Tuple
+
 import numpy as np
-import urllib
+import yaml
 
 from ray import logger
 from ray.tune import Trainable
 from ray.tune.function_runner import FunctionRunner
 from ray.tune.logger import LoggerCallback
-from ray.tune.utils import flatten_dict
 from ray.tune.trial import Trial
-
-import yaml
+from ray.tune.utils import flatten_dict
 
 try:
     import wandb

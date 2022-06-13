@@ -1,7 +1,7 @@
-from libcpp cimport bool as c_bool
-from libc.stdint cimport int64_t, uint64_t, uint32_t
-from libcpp.string cimport string as c_string
-from libcpp.unordered_map cimport unordered_map
+from libc.stdint import int64_t, uint32_t, uint64_t
+from libcpp import bool as c_bool
+from libcpp.string import string as c_string
+from libcpp.unordered_map import unordered_map
 
 
 cdef extern from "ray/common/ray_config.h" nogil:

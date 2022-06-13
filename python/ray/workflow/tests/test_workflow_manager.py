@@ -1,7 +1,8 @@
 import pytest
+from filelock import FileLock
+
 import ray
 from ray import workflow
-from filelock import FileLock
 
 
 def test_workflow_manager_simple(workflow_start_regular):

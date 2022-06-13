@@ -6,14 +6,15 @@ https://docs.ray.io/en/master/serve/tutorials/rllib.html
 """
 
 import argparse
+
 import gym
 import requests
 from starlette.requests import Request
 
 import ray
 import ray.rllib.algorithms.dqn as dqn
-from ray.rllib.env.wrappers.atari_wrappers import FrameStack, WarpFrame
 from ray import serve
+from ray.rllib.env.wrappers.atari_wrappers import FrameStack, WarpFrame
 
 parser = argparse.ArgumentParser()
 parser.add_argument(

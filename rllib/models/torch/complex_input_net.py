@@ -1,15 +1,14 @@
-from gym.spaces import Box, Discrete, MultiDiscrete
 import numpy as np
 import tree  # pip install dm_tree
+from gym.spaces import Box, Discrete, MultiDiscrete
+
+from ray.rllib.models.catalog import ModelCatalog
+from ray.rllib.models.modelv2 import ModelV2, restore_original_dimensions
 
 # TODO (sven): add IMPALA-style option.
 # from ray.rllib.examples.models.impala_vision_nets import TorchImpalaVisionNet
-from ray.rllib.models.torch.misc import (
-    normc_initializer as torch_normc_initializer,
-    SlimFC,
-)
-from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.models.modelv2 import ModelV2, restore_original_dimensions
+from ray.rllib.models.torch.misc import SlimFC
+from ray.rllib.models.torch.misc import normc_initializer as torch_normc_initializer
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.utils import get_filter_config
 from ray.rllib.policy.sample_batch import SampleBatch

@@ -1,6 +1,7 @@
-import pytest
 import sys
 import time
+
+import pytest
 
 import ray
 from ray import ray_constants

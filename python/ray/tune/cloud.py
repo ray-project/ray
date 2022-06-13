@@ -1,11 +1,7 @@
 import os
 from typing import Optional
 
-from ray.air.checkpoint import (
-    Checkpoint,
-    _get_local_path,
-    _get_external_path,
-)
+from ray.air.checkpoint import Checkpoint, _get_external_path, _get_local_path
 from ray.util.annotations import Deprecated
 
 

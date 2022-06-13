@@ -1,4 +1,5 @@
 import logging
+
 import numpy as np
 
 from ray.tune.automl.search_policy import AutoMLSearcher

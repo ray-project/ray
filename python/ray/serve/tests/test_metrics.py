@@ -1,7 +1,7 @@
 import os
 
-import requests
 import pytest
+import requests
 
 import ray
 from ray import serve

@@ -2,53 +2,46 @@
 # distutils: language = c++
 # cython: embedsignature = True
 
-from libc.stdint cimport int64_t, uint64_t
-from libcpp cimport bool as c_bool
-from libcpp.memory cimport shared_ptr, unique_ptr
-from libcpp.pair cimport pair as c_pair
-from libcpp.string cimport string as c_string
-from libcpp.unordered_map cimport unordered_map
-from libcpp.utility cimport pair
-from libcpp.vector cimport vector as c_vector
+from libc.stdint import int64_t, uint64_t
+from libcpp import bool as c_bool
+from libcpp.memory import shared_ptr, unique_ptr
+from libcpp.pair import pair as c_pair
+from libcpp.string import string as c_string
+from libcpp.unordered_map import unordered_map
+from libcpp.utility import pair
+from libcpp.vector import vector as c_vector
 
-from ray.includes.unique_ids cimport (
-    CActorID,
-    CNodeID,
-    CJobID,
-    CTaskID,
-    CObjectID,
-    CPlacementGroupID,
-    CWorkerID,
-)
-
-from ray.includes.common cimport (
-    CAddress,
-    CObjectReference,
+from ray.includes.common import (
     CActorCreationOptions,
+    CAddress,
     CBuffer,
-    CPlacementGroupCreationOptions,
+    CConcurrencyGroup,
+    CGcsClientOptions,
+    CJobConfig,
+    CLanguage,
     CObjectLocation,
     CObjectReference,
+    CPlacementGroupCreationOptions,
     CRayFunction,
     CRayObject,
     CRayStatus,
+    CSchedulingStrategy,
     CTaskArg,
     CTaskOptions,
     CTaskType,
     CWorkerType,
-    CLanguage,
-    CGcsClientOptions,
     LocalMemoryBuffer,
-    CJobConfig,
-    CConcurrencyGroup,
-    CSchedulingStrategy,
 )
-from ray.includes.function_descriptor cimport (
-    CFunctionDescriptor,
-)
-
-from ray.includes.optional cimport (
-    optional
+from ray.includes.function_descriptor import CFunctionDescriptor
+from ray.includes.optional import optional
+from ray.includes.unique_ids import (
+    CActorID,
+    CJobID,
+    CNodeID,
+    CObjectID,
+    CPlacementGroupID,
+    CTaskID,
+    CWorkerID,
 )
 
 ctypedef unordered_map[c_string, c_vector[pair[int64_t, double]]] \

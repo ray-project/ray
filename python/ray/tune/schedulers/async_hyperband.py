@@ -1,8 +1,8 @@
 import logging
+import pickle
 from typing import Dict, Optional, Union
 
 import numpy as np
-import pickle
 
 from ray.tune import trial_runner
 from ray.tune.result import DEFAULT_METRIC

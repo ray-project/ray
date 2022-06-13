@@ -1,10 +1,10 @@
 import logging
+import os
 from typing import Dict, List, Optional, Union
 
-from pytorch_lightning import Callback, Trainer, LightningModule
-from ray import tune
+from pytorch_lightning import Callback, LightningModule, Trainer
 
-import os
+from ray import tune
 
 logger = logging.getLogger(__name__)
 

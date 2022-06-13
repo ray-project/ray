@@ -1,14 +1,14 @@
 import collections
+import logging
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
-import logging
 
 from ray.tune import trial_runner
+from ray.tune.error import TuneError
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.trial import Trial
-from ray.tune.error import TuneError
 from ray.util import PublicAPI
 
 logger = logging.getLogger(__name__)

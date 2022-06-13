@@ -1,7 +1,7 @@
 import logging
 import socket
 from dataclasses import dataclass
-from typing import Callable, List, TypeVar, Optional, Dict, Type, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
 import ray
 from ray.actor import ActorHandle

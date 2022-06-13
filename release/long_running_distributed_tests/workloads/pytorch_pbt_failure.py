@@ -4,15 +4,13 @@ import sys
 import numpy as np
 
 import ray
-
 from ray import tune
-from ray.tune.schedulers import PopulationBasedTraining
-from ray.tune.utils.mock import FailureInjectorCallback
-from ray.tune.utils.release_test_util import ProgressCallback
-
 from ray.train import Trainer
 from ray.train.examples.tune_cifar_pytorch_pbt_example import train_func
 from ray.train.torch import TorchConfig
+from ray.tune.schedulers import PopulationBasedTraining
+from ray.tune.utils.mock import FailureInjectorCallback
+from ray.tune.utils.release_test_util import ProgressCallback
 
 parser = argparse.ArgumentParser()
 parser.add_argument(

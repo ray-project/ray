@@ -1,5 +1,6 @@
+from typing import Any, List
+
 import gym
-from typing import List, Any
 
 TaskType = Any  # Can be different types depending on env, e.g., int or dict
 

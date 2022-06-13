@@ -1,5 +1,6 @@
-import pytest
 import sys
+
+import pytest
 
 import ray
 from ray._private.test_utils import wait_for_condition

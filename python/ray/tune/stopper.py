@@ -1,7 +1,8 @@
 import datetime
-from typing import Dict, Optional, Callable, Union
 import time
 from collections import defaultdict, deque
+from typing import Callable, Dict, Optional, Union
+
 import numpy as np
 
 from ray import logger

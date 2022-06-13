@@ -1,15 +1,12 @@
 from typing import Any, List
 
 from ray.rllib.connectors.connector import (
-    ConnectorContext,
     ActionConnector,
+    ConnectorContext,
     register_connector,
 )
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.spaces.space_utils import (
-    clip_action,
-    get_base_struct_from_space,
-)
+from ray.rllib.utils.spaces.space_utils import clip_action, get_base_struct_from_space
 from ray.rllib.utils.typing import ActionConnectorDataType
 
 

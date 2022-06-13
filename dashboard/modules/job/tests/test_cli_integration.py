@@ -1,9 +1,9 @@
-from contextlib import contextmanager
 import json
-import os
 import logging
-import sys
+import os
 import subprocess
+import sys
+from contextlib import contextmanager
 from typing import Optional, Tuple
 
 import pytest

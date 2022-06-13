@@ -1,11 +1,11 @@
-from gym.spaces import Discrete, MultiDiscrete, Space
-from typing import Union, Optional
+from typing import Optional, Union
 
-from ray.rllib.utils.annotations import PublicAPI
+from gym.spaces import Discrete, MultiDiscrete, Space
+
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import PublicAPI, override
 from ray.rllib.utils.exploration.stochastic_sampling import StochasticSampling
 from ray.rllib.utils.framework import TensorType
 

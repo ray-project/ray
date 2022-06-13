@@ -1,7 +1,8 @@
-from ray import tune
-from ray.tune.registry import register_env
-from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
 from pettingzoo.sisl import waterworld_v3
+
+from ray import tune
+from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
+from ray.tune.registry import register_env
 
 # Based on code from github.com/parametersharingmadrl/parametersharingmadrl
 

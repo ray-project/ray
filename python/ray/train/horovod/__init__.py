@@ -1,3 +1,6 @@
+from ray.train.horovod.config import HorovodConfig
+from ray.train.horovod.horovod_trainer import HorovodTrainer
+
 try:
     import horovod  # noqa: F401
 except ModuleNotFoundError:
@@ -7,7 +10,5 @@ except ModuleNotFoundError:
         "run 'pip install 'horovod[tensorflow]''."
     )
 
-from ray.train.horovod.horovod_trainer import HorovodTrainer
-from ray.train.horovod.config import HorovodConfig
 
 __all__ = ["HorovodConfig", "HorovodTrainer"]

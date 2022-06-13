@@ -10,9 +10,10 @@ This example shows:
     (in the model).
 """
 import argparse
-from gym.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
-import numpy as np
 import os
+
+import numpy as np
+from gym.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 
 import ray
 from ray import tune

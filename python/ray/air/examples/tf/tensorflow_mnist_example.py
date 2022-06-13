@@ -6,11 +6,11 @@ import json
 import os
 
 import numpy as np
-from ray.air.result import Result
 import tensorflow as tf
 from tensorflow.keras.callbacks import Callback
 
 import ray.train as train
+from ray.air.result import Result
 from ray.train.tensorflow import TensorflowTrainer
 
 

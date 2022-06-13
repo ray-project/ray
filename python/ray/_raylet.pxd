@@ -3,38 +3,24 @@
 # cython: embedsignature = True
 # cython: language_level = 3
 
-from cpython.pystate cimport PyThreadState_Get
+from cpython.pystate import PyThreadState_Get
+from libc.stdint import int64_t
+from libcpp import bool as c_bool
+from libcpp.memory import shared_ptr, unique_ptr
+from libcpp.string import string as c_string
+from libcpp.vector import vector as c_vector
 
-from libc.stdint cimport (
-    int64_t,
-)
-from libcpp cimport bool as c_bool
-from libcpp.string cimport string as c_string
-from libcpp.vector cimport vector as c_vector
-from libcpp.memory cimport (
-    shared_ptr,
-    unique_ptr
-)
-from ray.includes.common cimport (
-    CBuffer,
-    CRayObject,
+from ray.includes.common import (
     CAddress,
+    CBuffer,
     CConcurrencyGroup,
+    CRayObject,
     CSchedulingStrategy,
 )
-from ray.includes.libcoreworker cimport (
-    ActorHandleSharedPtr,
-    CActorHandle,
-    CFiberEvent,
-)
+from ray.includes.function_descriptor import CFunctionDescriptor
+from ray.includes.libcoreworker import ActorHandleSharedPtr, CActorHandle, CFiberEvent
+from ray.includes.unique_ids import CActorID, CObjectID
 
-from ray.includes.unique_ids cimport (
-    CObjectID,
-    CActorID
-)
-from ray.includes.function_descriptor cimport (
-    CFunctionDescriptor,
-)
 
 cdef extern from *:
     """

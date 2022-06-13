@@ -1,7 +1,9 @@
 import logging
+
+import requests
+
 import ray
 from ray import serve
-import requests
 
 ray.init(address="auto")
 

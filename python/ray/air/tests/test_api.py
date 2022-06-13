@@ -2,10 +2,10 @@ import pytest
 
 import ray
 from ray.air import Checkpoint
-from ray.air.config import ScalingConfigDataClass
-from ray.train import BaseTrainer
-from ray.data.preprocessor import Preprocessor
 from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
+from ray.air.config import ScalingConfigDataClass
+from ray.data.preprocessor import Preprocessor
+from ray.train import BaseTrainer
 
 
 class DummyTrainer(BaseTrainer):

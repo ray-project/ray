@@ -1,11 +1,11 @@
 import pytest
 
 import ray
-from ray.tests.conftest import *  # noqa
+from ray._private.test_utils import run_string_as_driver_nonblocking, wait_for_condition
 from ray.data.block import BlockMetadata
 from ray.data.context import DatasetContext
 from ray.data.datasource import Datasource, ReadTask
-from ray._private.test_utils import run_string_as_driver_nonblocking, wait_for_condition
+from ray.tests.conftest import *  # noqa
 
 
 def test_read(ray_start_regular_shared):

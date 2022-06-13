@@ -1,11 +1,11 @@
-import pytest
 import sys
 import time
+
+import pytest
 
 import ray
 from ray.exceptions import RuntimeEnvSetupError
 from ray.runtime_env import RuntimeEnv, RuntimeEnvConfig
-
 
 bad_runtime_env_cache_ttl_seconds = 10
 

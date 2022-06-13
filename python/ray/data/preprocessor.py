@@ -1,14 +1,15 @@
 import abc
 import warnings
 from enum import Enum
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
+
+from ray.data import Dataset
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     import pandas as pd
-    from ray.air.data_batch_type import DataBatchType
 
-from ray.data import Dataset
+    from ray.air.data_batch_type import DataBatchType
 
 
 @PublicAPI(stability="alpha")

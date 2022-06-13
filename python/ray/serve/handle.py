@@ -1,24 +1,20 @@
 import asyncio
 import concurrent.futures
+import threading
 from dataclasses import dataclass
 from typing import Coroutine, Dict, Optional, Union
-import threading
-
-from ray.actor import ActorHandle
 
 from ray import serve
+from ray.actor import ActorHandle
+from ray.serve.autoscaling_metrics import start_metrics_pusher
 from ray.serve.common import EndpointTag
 from ray.serve.constants import (
+    HANDLE_METRIC_PUSH_INTERVAL_S,
     SERVE_HANDLE_JSON_KEY,
     ServeHandleType,
 )
-from ray.serve.utils import (
-    get_random_letters,
-    DEFAULT,
-)
-from ray.serve.autoscaling_metrics import start_metrics_pusher
-from ray.serve.constants import HANDLE_METRIC_PUSH_INTERVAL_S
-from ray.serve.router import Router, RequestMetadata
+from ray.serve.router import RequestMetadata, Router
+from ray.serve.utils import DEFAULT, get_random_letters
 from ray.util import metrics
 
 _global_async_loop = None

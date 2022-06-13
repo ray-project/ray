@@ -1,13 +1,13 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
-from abc import ABCMeta
 import warnings
+from abc import ABCMeta
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-from ray.util.annotations import PublicAPI, DeveloperAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint
 
 if TYPE_CHECKING:
-    from ray.tune.trial import Trial
     from ray.tune.stopper import Stopper
+    from ray.tune.trial import Trial
 
 
 class _CallbackMeta(ABCMeta):

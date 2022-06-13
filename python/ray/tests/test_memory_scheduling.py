@@ -1,5 +1,6 @@
-import numpy as np
 import time
+
+import numpy as np
 
 import ray
 from ray._private.test_utils import wait_for_condition
@@ -74,7 +75,8 @@ def test_object_store_memory_reporting_task():
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

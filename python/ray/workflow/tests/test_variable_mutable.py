@@ -1,8 +1,8 @@
-from ray.tests.conftest import *  # noqa
+import pytest
 
 import ray
 from ray import workflow
-import pytest
+from ray.tests.conftest import *  # noqa
 
 
 @pytest.mark.skip(reason="Variable mutable is not supported right now.")

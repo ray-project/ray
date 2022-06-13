@@ -1,5 +1,5 @@
-from typing import List, Dict, Optional, Iterable
 import warnings
+from typing import Dict, Iterable, List, Optional
 
 from ray.train._internal.results_preprocessors.preprocessor import (
     ResultsPreprocessor,

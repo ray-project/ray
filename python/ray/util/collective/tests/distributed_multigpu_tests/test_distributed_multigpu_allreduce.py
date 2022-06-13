@@ -1,12 +1,12 @@
 """Test the collective allreduice API on a distributed Ray cluster."""
-import pytest
 import logging
 
 import cupy as cp
+import pytest
 
 import ray
-from ray.util.collective.types import ReduceOp
 from ray.util.collective.tests.util import create_collective_multigpu_workers
+from ray.util.collective.types import ReduceOp
 
 logger = logging.getLogger(__name__)
 logger.setLevel("DEBUG")

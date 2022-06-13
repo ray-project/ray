@@ -1,10 +1,10 @@
 import argparse
 
+from train_linear_dataset_example import get_datasets, train_func
+
 import ray
 from ray import tune
 from ray.train import Trainer
-
-from train_linear_dataset_example import train_func, get_datasets
 
 
 def tune_linear(num_workers, num_samples, use_gpu):

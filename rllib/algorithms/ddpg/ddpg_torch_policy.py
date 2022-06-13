@@ -1,6 +1,7 @@
 import logging
-import gym
 from typing import Dict, Tuple
+
+import gym
 
 import ray
 from ray.rllib.algorithms.ddpg.ddpg_tf_policy import (
@@ -9,8 +10,8 @@ from ray.rllib.algorithms.ddpg.ddpg_tf_policy import (
     validate_spaces,
 )
 from ray.rllib.algorithms.dqn.dqn_tf_policy import (
-    postprocess_nstep_and_prio,
     PRIO_WEIGHTS,
+    postprocess_nstep_and_prio,
 )
 from ray.rllib.algorithms.sac.sac_torch_policy import TargetNetworkMixin
 from ray.rllib.models.action_dist import ActionDistribution
@@ -29,9 +30,9 @@ from ray.rllib.utils.torch_utils import (
 )
 from ray.rllib.utils.typing import (
     AlgorithmConfigDict,
-    TensorType,
-    LocalOptimizer,
     GradInfoDict,
+    LocalOptimizer,
+    TensorType,
 )
 
 torch, nn = try_import_torch()

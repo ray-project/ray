@@ -1,16 +1,17 @@
 import copy
 import logging
-import numpy as np
 import pickle
-from typing import Dict, List, Optional, Tuple, Union, Any
+from typing import Any, Dict, List, Optional, Tuple, Union
+
+import numpy as np
 
 from ray.tune.result import DEFAULT_METRIC
-from ray.tune.sample import Categorical, Domain, Float, Integer, Quantized, LogUniform
+from ray.tune.sample import Categorical, Domain, Float, Integer, LogUniform, Quantized
 from ray.tune.suggest import Searcher
 from ray.tune.suggest.suggestion import (
-    UNRESOLVED_SEARCH_SPACE,
     UNDEFINED_METRIC_MODE,
     UNDEFINED_SEARCH_SPACE,
+    UNRESOLVED_SEARCH_SPACE,
 )
 from ray.tune.suggest.variant_generator import parse_spec_vars
 from ray.tune.utils import flatten_dict

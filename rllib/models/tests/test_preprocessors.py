@@ -1,19 +1,20 @@
-import gym
-from gym.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
-import numpy as np
 import unittest
+
+import gym
+import numpy as np
+from gym.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 
 import ray
 import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.preprocessors import (
-    DictFlatteningPreprocessor,
-    get_preprocessor,
-    NoPreprocessor,
-    TupleFlatteningPreprocessor,
-    OneHotPreprocessor,
     AtariRamPreprocessor,
+    DictFlatteningPreprocessor,
     GenericPixelPreprocessor,
+    NoPreprocessor,
+    OneHotPreprocessor,
+    TupleFlatteningPreprocessor,
+    get_preprocessor,
 )
 from ray.rllib.utils.test_utils import (
     check,
@@ -156,7 +157,8 @@ class TestPreprocessors(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

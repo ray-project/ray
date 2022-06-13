@@ -1,8 +1,9 @@
+from transformers import pipeline
+
 # __deployment_full_start__
 # File name: model_on_ray_serve.py
 import ray
 from ray import serve
-from transformers import pipeline
 
 
 def summarize(text):

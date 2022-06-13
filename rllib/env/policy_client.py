@@ -7,8 +7,8 @@ inference is faster but causes more compute to be done on the client.
 import logging
 import threading
 import time
-from typing import Union, Optional
 from enum import Enum
+from typing import Optional, Union
 
 import ray.cloudpickle as pickle
 from ray.rllib.env.external_env import ExternalEnv
@@ -18,10 +18,10 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.pre_checks.multi_agent import check_multi_agent
 from ray.rllib.utils.typing import (
-    MultiAgentDict,
+    EnvActionType,
     EnvInfoDict,
     EnvObsType,
-    EnvActionType,
+    MultiAgentDict,
 )
 
 logger = logging.getLogger(__name__)

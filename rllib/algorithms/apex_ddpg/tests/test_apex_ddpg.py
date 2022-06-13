@@ -1,5 +1,6 @@
-import pytest
 import unittest
+
+import pytest
 
 import ray
 import ray.rllib.algorithms.apex_ddpg.apex_ddpg as apex_ddpg

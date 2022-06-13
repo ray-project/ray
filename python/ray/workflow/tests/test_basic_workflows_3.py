@@ -1,6 +1,7 @@
+from pathlib import Path
+
 import pytest
 from filelock import FileLock
-from pathlib import Path
 
 import ray
 from ray import workflow

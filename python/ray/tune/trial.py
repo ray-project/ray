@@ -1,19 +1,20 @@
-from collections import deque
 import copy
 import json
 import logging
-from numbers import Number
 import os
-from pathlib import Path
 import platform
 import re
 import shutil
 import time
-from typing import Dict, Optional, Sequence, Union, Callable, List
 import uuid
+from collections import deque
+from numbers import Number
+from pathlib import Path
+from typing import Callable, Dict, List, Optional, Sequence, Union
 
 import ray
 import ray.cloudpickle as cloudpickle
+from ray._private.utils import binary_to_hex, hex_to_binary
 from ray.exceptions import RayActorError, RayTaskError
 from ray.tune import TuneError
 from ray.tune.checkpoint_manager import _CheckpointManager
@@ -22,27 +23,26 @@ from ray.tune.checkpoint_manager import _CheckpointManager
 # need because there are cyclic imports that may cause specific names to not
 # have been defined yet. See https://github.com/ray-project/ray/issues/1716.
 from ray.tune.registry import get_trainable_cls, validate_trainable
+from ray.tune.resources import Resources
 from ray.tune.result import (
+    DEBUG_METRICS,
     DEFAULT_RESULTS_DIR,
     DONE,
     NODE_IP,
     PID,
     TRAINING_ITERATION,
     TRIAL_ID,
-    DEBUG_METRICS,
 )
-from ray.tune.resources import Resources
+from ray.tune.utils import date_str, flatten_dict
 from ray.tune.utils.placement_groups import (
     PlacementGroupFactory,
     resource_dict_to_pg_factory,
 )
 from ray.tune.utils.serialization import TuneFunctionEncoder
 from ray.tune.utils.trainable import TrainableUtil
-from ray.tune.utils import date_str, flatten_dict
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
-from ray._private.utils import binary_to_hex, hex_to_binary
-from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
+from ray.util.ml_utils.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 
 DEBUG_PRINT_INTERVAL = 5
 logger = logging.getLogger(__name__)

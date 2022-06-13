@@ -24,7 +24,10 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
+import numpy as np
 from gym import core, spaces
+
+from ray.rllib.utils.annotations import PublicAPI
 
 try:
     from dm_env import specs
@@ -38,9 +41,6 @@ try:
     from dm_control import suite
 except (ImportError, OSError):
     suite = None
-import numpy as np
-
-from ray.rllib.utils.annotations import PublicAPI
 
 
 def _spec_to_box(spec):

@@ -1,12 +1,13 @@
 import argparse
 import os
+
+import pytorch_lightning as pl
 import torch
-from torch import nn
 import torch.nn.functional as F
-from torchvision.datasets import MNIST
+from torch import nn
 from torch.utils.data import DataLoader, random_split
 from torchvision import transforms
-import pytorch_lightning as pl
+from torchvision.datasets import MNIST
 
 from ray.util.ray_lightning import RayPlugin
 

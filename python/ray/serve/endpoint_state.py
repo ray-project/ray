@@ -1,12 +1,11 @@
 import logging
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 from ray import cloudpickle
 from ray.serve.common import EndpointInfo, EndpointTag
 from ray.serve.constants import SERVE_LOGGER_NAME
-from ray.serve.long_poll import LongPollNamespace
+from ray.serve.long_poll import LongPollHost, LongPollNamespace
 from ray.serve.storage.kv_store import KVStoreBase
-from ray.serve.long_poll import LongPollHost
 
 CHECKPOINT_KEY = "serve-endpoint-state-checkpoint"
 

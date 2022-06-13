@@ -20,9 +20,10 @@ Importance Weighted Actor-Learner Architectures"
 by Espeholt, Soyer, Munos et al.
 """
 
-from gym.spaces import Box
-import numpy as np
 import unittest
+
+import numpy as np
+from gym.spaces import Box
 
 from ray.rllib.algorithms.impala import vtrace_tf as vtrace_tf
 from ray.rllib.algorithms.impala import vtrace_torch as vtrace_torch

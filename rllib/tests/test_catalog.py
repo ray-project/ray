@@ -1,11 +1,12 @@
-from functools import partial
-import gym
-from gym.spaces import Box, Dict, Discrete
-import numpy as np
 import unittest
+from functools import partial
+
+import gym
+import numpy as np
+from gym.spaces import Box, Dict, Discrete
 
 import ray
-from ray.rllib.models import ActionDistribution, ModelCatalog, MODEL_DEFAULTS
+from ray.rllib.models import MODEL_DEFAULTS, ActionDistribution, ModelCatalog
 from ray.rllib.models.preprocessors import NoPreprocessor, Preprocessor
 from ray.rllib.models.tf.tf_action_dist import (
     MultiActionDistribution,
@@ -204,7 +205,8 @@ class TestModelCatalog(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

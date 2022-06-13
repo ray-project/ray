@@ -1,6 +1,7 @@
+import time
+
 import numpy as np
 import pytest
-import time
 
 import ray
 

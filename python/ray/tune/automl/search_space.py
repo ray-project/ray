@@ -1,5 +1,6 @@
-import random
 import logging
+import random
+
 import numpy as np
 
 from ray.tune import grid_search

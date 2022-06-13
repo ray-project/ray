@@ -1,18 +1,14 @@
-import ray
 import os
-import time
 import signal
 import sys
+import time
+
 import pytest
 
-from ray.job_config import JobConfig
-
-from ray._private.test_utils import (
-    wait_for_condition,
-    wait_for_pid_to_exit,
-)
-
+import ray
+from ray._private.test_utils import wait_for_condition, wait_for_pid_to_exit
 from ray.exceptions import RayActorError
+from ray.job_config import JobConfig
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
@@ -81,7 +77,8 @@ def test_default_actor_lifetime(default_actor_lifetime, child_actor_lifetime):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

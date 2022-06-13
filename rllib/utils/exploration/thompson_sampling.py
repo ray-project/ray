@@ -1,13 +1,9 @@
 from typing import Union
 
-from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.models.action_dist import ActionDistribution
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import PublicAPI, override
 from ray.rllib.utils.exploration.exploration import Exploration
-from ray.rllib.utils.framework import (
-    TensorType,
-    try_import_tf,
-)
+from ray.rllib.utils.framework import TensorType, try_import_tf
 
 tf1, tf, tfv = try_import_tf()
 

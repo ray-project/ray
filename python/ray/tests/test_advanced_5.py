@@ -7,11 +7,7 @@ import numpy as np
 import pytest
 
 import ray.cluster_utils
-
-from ray._private.test_utils import (
-    client_test_enabled,
-    SignalActor,
-)
+from ray._private.test_utils import SignalActor, client_test_enabled
 
 if client_test_enabled():
     from ray.util.client import ray

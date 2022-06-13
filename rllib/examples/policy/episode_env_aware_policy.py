@@ -1,5 +1,5 @@
-from gym.spaces import Box
 import numpy as np
+from gym.spaces import Box
 
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.policy.policy import Policy

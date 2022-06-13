@@ -1,7 +1,7 @@
 import unittest
 from typing import Optional
 
-from ray.tune.integration.docker import DockerSyncer, DockerSyncClient
+from ray.tune.integration.docker import DockerSyncClient, DockerSyncer
 from ray.tune.sync_client import SyncClient
 from ray.tune.syncer import NodeSyncer
 
@@ -102,7 +102,8 @@ class DockerIntegrationTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

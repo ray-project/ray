@@ -1,8 +1,9 @@
-import ray
-
-import uuid
 import io
 import sys
+import uuid
+from typing import TYPE_CHECKING, Any, Dict, List, TypeVar
+
+import ray
 
 # For python < 3.8 we need to explicitly use pickle5 to support protocol 5
 if sys.version_info < (3, 8):
@@ -13,7 +14,6 @@ if sys.version_info < (3, 8):
 else:
     import pickle  # noqa: F401
 
-from typing import List, Dict, Any, TypeVar, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ray.experimental.dag.dag_node import DAGNode
@@ -43,19 +43,19 @@ class _PyObjScanner(ray.cloudpickle.CloudPickler):
         self._uuid = uuid.uuid4().hex
         _PyObjScanner._instances[self._uuid] = self
         # Register pickler override for DAGNode types.
+        from ray.experimental.dag.class_node import ClassMethodNode, ClassNode
         from ray.experimental.dag.function_node import FunctionNode
-        from ray.experimental.dag.class_node import ClassNode, ClassMethodNode
-        from ray.experimental.dag.input_node import InputNode, InputAttributeNode
-        from ray.serve.deployment_node import DeploymentNode
-        from ray.serve.deployment_method_node import DeploymentMethodNode
-        from ray.serve.deployment_function_node import DeploymentFunctionNode
+        from ray.experimental.dag.input_node import InputAttributeNode, InputNode
         from ray.serve.deployment_executor_node import DeploymentExecutorNode
-        from ray.serve.deployment_method_executor_node import (
-            DeploymentMethodExecutorNode,
-        )
         from ray.serve.deployment_function_executor_node import (
             DeploymentFunctionExecutorNode,
         )
+        from ray.serve.deployment_function_node import DeploymentFunctionNode
+        from ray.serve.deployment_method_executor_node import (
+            DeploymentMethodExecutorNode,
+        )
+        from ray.serve.deployment_method_node import DeploymentMethodNode
+        from ray.serve.deployment_node import DeploymentNode
 
         self.dispatch_table[FunctionNode] = self._reduce_dag_node
         self.dispatch_table[ClassNode] = self._reduce_dag_node

@@ -1,27 +1,21 @@
-from typing import (
-    List,
-    Tuple,
-    Union,
-)
-
 import logging
-import ray
+from typing import Dict, List, Optional, Tuple, Union
+
 import numpy as np
-from typing import Dict, Optional
 
-
+import ray
 from ray.rllib.algorithms.dreamer.utils import FreezeParameters
 from ray.rllib.evaluation.episode import Episode
+from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
+from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import apply_grad_clipping
 from ray.rllib.utils.typing import AgentID, TensorType
-from ray.rllib.utils.annotations import override
-from ray.rllib.models.action_dist import ActionDistribution
-from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 
 torch, nn = try_import_torch()
 if torch:

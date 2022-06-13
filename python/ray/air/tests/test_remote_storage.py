@@ -1,12 +1,10 @@
 import os
-import pytest
 import shutil
 import tempfile
 
-from ray.air._internal.remote_storage import (
-    upload_to_uri,
-    download_from_uri,
-)
+import pytest
+
+from ray.air._internal.remote_storage import download_from_uri, upload_to_uri
 
 
 @pytest.fixture

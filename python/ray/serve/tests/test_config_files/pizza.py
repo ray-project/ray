@@ -1,11 +1,12 @@
 from enum import Enum
-from typing import List, Dict, TypeVar
+from typing import Dict, List, TypeVar
+
+import starlette.requests
 
 import ray
 from ray import serve
-import starlette.requests
-from ray.serve.drivers import DAGDriver
 from ray.serve.deployment_graph import InputNode
+from ray.serve.drivers import DAGDriver
 
 RayHandleLike = TypeVar("RayHandleLike")
 

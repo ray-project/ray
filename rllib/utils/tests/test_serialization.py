@@ -1,11 +1,9 @@
-import gym
-import numpy as np
 import unittest
 
-from ray.rllib.utils.serialization import (
-    gym_space_from_dict,
-    gym_space_to_dict,
-)
+import gym
+import numpy as np
+
+from ray.rllib.utils.serialization import gym_space_from_dict, gym_space_to_dict
 
 
 def _assert_array_equal(eq, a1, a2, margin=None):
@@ -99,7 +97,8 @@ class TestGymCheckEnv(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

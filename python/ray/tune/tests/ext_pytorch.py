@@ -48,16 +48,18 @@ Setup / Imports
 ---------------
 Let's start with the imports:
 """
-from functools import partial
-import numpy as np
 import os
+from functools import partial
+
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from torch.utils.data import random_split
 import torchvision
 import torchvision.transforms as transforms
+from torch.utils.data import random_split
+
 import ray
 from ray import tune
 from ray.tune import CLIReporter

@@ -1,9 +1,10 @@
-import os
 import argparse
+import os
+
 from ray import tune
 from ray.tune import run
-from ray.tune.utils.mock_trainable import MyTrainableClass
 from ray.tune.suggest.suggestion import ConcurrencyLimiter
+from ray.tune.utils.mock_trainable import MyTrainableClass
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="PyTorch Example (FOR TEST ONLY)")

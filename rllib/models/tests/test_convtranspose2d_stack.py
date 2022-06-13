@@ -1,12 +1,13 @@
+import os
+import unittest
+from pathlib import Path
+
 import gym
 import numpy as np
-import os
-from pathlib import Path
-import unittest
 
 from ray.rllib.models.preprocessors import GenericPixelPreprocessor
 from ray.rllib.models.torch.modules.convtranspose2d_stack import ConvTranspose2DStack
-from ray.rllib.utils.framework import try_import_torch, try_import_tf
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.images import imread
 
 torch, nn = try_import_torch()
@@ -57,7 +58,8 @@ class TestConvTranspose2DStack(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

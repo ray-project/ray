@@ -1,16 +1,17 @@
 import copy
-import gym
-from gym.spaces import Box, Discrete
-import numpy as np
 import unittest
 
+import gym
+import numpy as np
+from gym.spaces import Box, Discrete
+
 import ray
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
 import ray.rllib.algorithms.dqn as dqn
 import ray.rllib.algorithms.ppo as ppo
+from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.examples.env.debug_counter_env import MultiAgentDebugCounterEnv
 from ray.rllib.examples.env.multi_agent import MultiAgentPendulum
-from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.examples.policy.episode_env_aware_policy import (
     EpisodeEnvAwareAttentionPolicy,
     EpisodeEnvAwareLSTMPolicy,
@@ -20,7 +21,7 @@ from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.test_utils import framework_iterator, check
+from ray.rllib.utils.test_utils import check, framework_iterator
 
 
 class MyCallbacks(DefaultCallbacks):
@@ -667,7 +668,8 @@ def analyze_rnn_batch(batch, max_seq_len, view_requirements):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

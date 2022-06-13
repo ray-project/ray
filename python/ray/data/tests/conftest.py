@@ -1,15 +1,14 @@
 import os
 import posixpath
 
-import pytest
-import pyarrow as pa
 import pandas as pd
+import pyarrow as pa
+import pytest
 
 import ray
-
 from ray.data.block import BlockAccessor
-from ray.data.tests.mock_server import *  # noqa
 from ray.data.datasource.file_based_datasource import BlockWritePathProvider
+from ray.data.tests.mock_server import *  # noqa
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
 from ray.tests.conftest import pytest_runtest_makereport  # noqa

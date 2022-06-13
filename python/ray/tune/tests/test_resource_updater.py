@@ -38,6 +38,7 @@ def test_resource_updater(ray_start_cluster):
 
 if __name__ == "__main__":
     import sys
+
     import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

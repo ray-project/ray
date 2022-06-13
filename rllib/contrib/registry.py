@@ -8,10 +8,7 @@ def _import_random_agent():
 
 
 def _import_alphazero():
-    from ray.rllib.algorithms.alpha_zero.alpha_zero import (
-        AlphaZero,
-        DEFAULT_CONFIG,
-    )
+    from ray.rllib.algorithms.alpha_zero.alpha_zero import DEFAULT_CONFIG, AlphaZero
 
     return AlphaZero, DEFAULT_CONFIG
 

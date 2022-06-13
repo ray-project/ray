@@ -1,7 +1,7 @@
 import os
+import threading
 from contextlib import contextmanager
 from functools import partial, wraps
-import threading
 
 # Attr set on func defs to mark they have been converted to client mode.
 RAY_CLIENT_MODE_ATTR = "__ray_client_mode_key__"

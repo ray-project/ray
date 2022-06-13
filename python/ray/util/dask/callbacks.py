@@ -1,6 +1,5 @@
 import contextlib
-
-from collections import namedtuple, defaultdict
+from collections import defaultdict, namedtuple
 from datetime import datetime
 
 from dask.callbacks import Callback

@@ -1,10 +1,11 @@
 import time
-import pytest
-from ray.tests.conftest import *  # noqa
 
 import numpy as np
+import pytest
+
 import ray
 from ray import workflow
+from ray.tests.conftest import *  # noqa
 
 
 def test_simple_large_intermediate(workflow_start_regular_shared):

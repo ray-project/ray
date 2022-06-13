@@ -5,14 +5,14 @@ import time
 import pytest
 
 import ray
-from ray.exceptions import (
-    TaskCancelledError,
-    RayTaskError,
-    GetTimeoutError,
-    WorkerCrashedError,
-    ObjectLostError,
-)
 from ray._private.test_utils import SignalActor
+from ray.exceptions import (
+    GetTimeoutError,
+    ObjectLostError,
+    RayTaskError,
+    TaskCancelledError,
+    WorkerCrashedError,
+)
 
 
 def valid_exceptions(use_force):

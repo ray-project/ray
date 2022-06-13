@@ -1,12 +1,11 @@
 import ray
-
-from ray.data.block import BlockAccessor
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.shuffle_and_partition import _ShufflePartitionOp
 from ray.data._internal.stats import DatasetStats
+from ray.data.block import BlockAccessor
 
 
 def fast_repartition(blocks, num_blocks):

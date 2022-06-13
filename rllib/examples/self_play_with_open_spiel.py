@@ -19,18 +19,19 @@ be played by the user against the "main" agent on the command line.
 """
 
 import argparse
-import numpy as np
 import os
+import sys
+
+import numpy as np
 import pyspiel
 from open_spiel.python.rl_environment import Environment
-import sys
 
 import ray
 from ray import tune
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPO
-from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
+from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.policy.policy import PolicySpec
 from ray.tune import CLIReporter, register_env
 

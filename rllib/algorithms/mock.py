@@ -1,11 +1,12 @@
 import os
 import pickle
+
 import numpy as np
 
-from ray.tune import result as tune_result
 from ray.rllib.algorithms.algorithm import Algorithm, with_common_config
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import AlgorithmConfigDict
+from ray.tune import result as tune_result
 
 
 class _MockTrainer(Algorithm):

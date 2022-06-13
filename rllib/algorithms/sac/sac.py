@@ -1,5 +1,5 @@
 import logging
-from typing import Type, Dict, Any, Optional, Union
+from typing import Any, Dict, Optional, Type, Union
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.dqn.dqn import DQN
@@ -8,8 +8,8 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
-    deprecation_warning,
     Deprecated,
+    deprecation_warning,
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.typing import AlgorithmConfigDict

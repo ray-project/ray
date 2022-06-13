@@ -1,16 +1,17 @@
-import unittest
-import shutil
-import tempfile
-import random
 import os
 import pickle
+import random
+import shutil
+import tempfile
+import unittest
+
 import pandas as pd
 from numpy import nan
 
 import ray
+import ray.tune.registry
 from ray import tune
 from ray.tune import ExperimentAnalysis
-import ray.tune.registry
 from ray.tune.utils.mock_trainable import MyTrainableClass
 from ray.tune.utils.util import is_nan
 
@@ -424,7 +425,8 @@ class ExperimentAnalysisStubSuite(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

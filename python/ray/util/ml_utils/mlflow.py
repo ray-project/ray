@@ -1,7 +1,7 @@
-from copy import deepcopy
-import os
 import logging
-from typing import Dict, Optional, TYPE_CHECKING
+import os
+from copy import deepcopy
+from typing import TYPE_CHECKING, Dict, Optional
 
 if TYPE_CHECKING:
     from mlflow.entities import Run

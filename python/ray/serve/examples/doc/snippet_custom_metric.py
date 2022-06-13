@@ -1,8 +1,8 @@
+import time
+
 import ray
 from ray import serve
 from ray.util import metrics
-
-import time
 
 ray.init(address="auto")
 serve.start()

@@ -1,13 +1,15 @@
 import copy
+import logging
 import pickle
 from typing import Dict, List, Optional, Union
 
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import Categorical, Float, Integer, LogUniform, Quantized, Uniform
+from ray.tune.suggest import Searcher
 from ray.tune.suggest.suggestion import (
-    UNRESOLVED_SEARCH_SPACE,
     UNDEFINED_METRIC_MODE,
     UNDEFINED_SEARCH_SPACE,
+    UNRESOLVED_SEARCH_SPACE,
 )
 from ray.tune.suggest.variant_generator import parse_spec_vars
 from ray.tune.utils.util import flatten_dict, unflatten_dict
@@ -25,9 +27,6 @@ try:
 except ImportError:
     MaxParallelismReachedException = DataRequiredError = Exception
 
-import logging
-
-from ray.tune.suggest import Searcher
 
 logger = logging.getLogger(__name__)
 

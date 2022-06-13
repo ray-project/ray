@@ -1,10 +1,10 @@
 import ray
-from ray.job_config import JobConfig
 from ray import serve
-from ray.serve.config import ReplicaConfig, DeploymentConfig
-from ray.serve.utils import msgpack_serialize
+from ray.job_config import JobConfig
+from ray.serve.config import DeploymentConfig, ReplicaConfig
 from ray.serve.generated.serve_pb2 import JAVA, RequestMetadata, RequestWrapper
-from ray.tests.conftest import shutdown_only, maybe_external_redis  # noqa: F401
+from ray.serve.utils import msgpack_serialize
+from ray.tests.conftest import maybe_external_redis, shutdown_only  # noqa: F401
 
 
 def test_controller_starts_java_replica(shutdown_only):  # noqa: F811
@@ -59,7 +59,8 @@ def test_controller_starts_java_replica(shutdown_only):  # noqa: F811
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-s", __file__]))

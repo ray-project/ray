@@ -11,17 +11,16 @@ import numpy as np
 import pytest
 
 import ray
-from ray.internal.internal_api import memory_summary
-import ray.util.accelerators
 import ray.cluster_utils
-from ray._private.test_utils import fetch_prometheus
-
+import ray.util.accelerators
 from ray._private.test_utils import (
-    wait_for_condition,
     Semaphore,
-    object_memory_usage,
     SignalActor,
+    fetch_prometheus,
+    object_memory_usage,
+    wait_for_condition,
 )
+from ray.internal.internal_api import memory_summary
 
 logger = logging.getLogger(__name__)
 

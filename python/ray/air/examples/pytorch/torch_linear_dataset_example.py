@@ -7,11 +7,11 @@ import torch.nn as nn
 
 import ray
 import ray.train as train
-from ray.data import Dataset
 from ray.air import train_test_split
 from ray.air.batch_predictor import BatchPredictor
 from ray.air.predictors.integrations.torch import TorchPredictor
 from ray.air.result import Result
+from ray.data import Dataset
 from ray.train.torch import TorchTrainer
 
 

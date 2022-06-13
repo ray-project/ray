@@ -1,11 +1,12 @@
-import gym
 import logging
-import numpy as np
-import tree  # pip install dm_tree
 from typing import Dict, List, Optional, Tuple
 
+import gym
+import numpy as np
+import tree  # pip install dm_tree
+
 import ray
-from ray.rllib.algorithms.qmix.mixers import VDNMixer, QMixer
+from ray.rllib.algorithms.qmix.mixers import QMixer, VDNMixer
 from ray.rllib.algorithms.qmix.model import RNNModel, _get_size
 from ray.rllib.env.multi_agent_env import ENV_STATE
 from ray.rllib.env.wrappers.group_agents_wrapper import GROUP_REWARDS
@@ -18,8 +19,8 @@ from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
-from ray.rllib.utils.typing import TensorType
 from ray.rllib.utils.torch_utils import apply_grad_clipping
+from ray.rllib.utils.typing import TensorType
 
 # Torch must be installed.
 torch, nn = try_import_torch(error=True)

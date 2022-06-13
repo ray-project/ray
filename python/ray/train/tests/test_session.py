@@ -4,25 +4,25 @@ import pytest
 
 import ray
 from ray.train._internal.accelerator import Accelerator
-from ray.train.constants import SESSION_MISUSE_LOG_ONCE_KEY
 from ray.train._internal.session import (
-    init_session,
-    shutdown_session,
-    get_session,
     TrainingResultType,
     get_accelerator,
+    get_session,
+    init_session,
     set_accelerator,
+    shutdown_session,
 )
+from ray.train.constants import SESSION_MISUSE_LOG_ONCE_KEY
+from ray.train.error import SessionMisuseError
 from ray.train.train_loop_utils import (
-    world_rank,
+    get_dataset_shard,
+    load_checkpoint,
     local_rank,
     report,
     save_checkpoint,
-    load_checkpoint,
-    get_dataset_shard,
+    world_rank,
     world_size,
 )
-from ray.train.error import SessionMisuseError
 
 
 @pytest.fixture(scope="function")
@@ -311,7 +311,8 @@ def test_set_accelerator_raises_error_outside_session():
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))

@@ -1,15 +1,16 @@
+import unittest
+
 import gym
 import numpy as np
 from pettingzoo.butterfly import pistonball_v6
-from supersuit import normalize_obs_v0, dtype_v0, color_reduction_v0
-import unittest
+from supersuit import color_reduction_v0, dtype_v0, normalize_obs_v0
 
 import ray
-from ray.rllib.algorithms.pg import pg
-from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
 
 # from ray.rllib.examples.env.random_env import RandomEnv
 from ray import tune
+from ray.rllib.algorithms.pg import pg
+from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
 
 
 # Function that outputs the environment you wish to register.
@@ -93,7 +94,8 @@ class TestRemoteWorkerEnvSetting(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

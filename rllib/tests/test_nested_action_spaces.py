@@ -1,13 +1,14 @@
-from gym.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
-import numpy as np
 import os
 import shutil
-import tree  # pip install dm_tree
 import unittest
+
+import numpy as np
+import tree  # pip install dm_tree
+from gym.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 
 import ray
 from ray.rllib.algorithms.bc import BC
-from ray.rllib.algorithms.pg import PG, DEFAULT_CONFIG
+from ray.rllib.algorithms.pg import DEFAULT_CONFIG, PG
 from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.offline.json_reader import JsonReader
 from ray.rllib.utils.test_utils import framework_iterator
@@ -116,7 +117,8 @@ class NestedActionSpacesTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

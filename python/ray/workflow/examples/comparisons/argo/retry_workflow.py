@@ -1,4 +1,4 @@
-from typing import Any, Tuple, Optional
+from typing import Any, Optional, Tuple
 
 import ray
 from ray import workflow

@@ -1,9 +1,9 @@
 import abc
-from typing import List, Dict
+from typing import Dict, List
 
 from ray.train._internal.results_preprocessors import (
-    ResultsPreprocessor,
     ExcludedKeysResultsPreprocessor,
+    ResultsPreprocessor,
     SequentialResultsPreprocessor,
 )
 from ray.train.constants import ALL_RESERVED_KEYS

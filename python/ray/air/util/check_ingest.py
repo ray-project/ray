@@ -1,14 +1,15 @@
 #!/usr/bin/env python
 
-import time
-import numpy as np
-from typing import Optional
 import sys
+import time
+from typing import Optional
+
+import numpy as np
 
 import ray
 from ray import train
-from ray.data.preprocessors import Chain, BatchMapper
 from ray.air.config import DatasetConfig
+from ray.data.preprocessors import BatchMapper, Chain
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.util.annotations import DeveloperAPI
 

@@ -1,12 +1,11 @@
-from typing import Dict, List, Union, Optional
-
-from ray import tune
+import os
+from typing import Dict, List, Optional, Union
 
 import mxnet
-from mxnet.model import save_checkpoint, BatchEndParam
 import numpy as np
+from mxnet.model import BatchEndParam, save_checkpoint
 
-import os
+from ray import tune
 
 
 class TuneCallback:

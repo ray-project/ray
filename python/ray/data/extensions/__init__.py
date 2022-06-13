@@ -1,8 +1,8 @@
 from ray.data.extensions.tensor_extension import (
-    TensorDtype,
-    TensorArray,
-    ArrowTensorType,
     ArrowTensorArray,
+    ArrowTensorType,
+    TensorArray,
+    TensorDtype,
 )
 
 __all__ = [

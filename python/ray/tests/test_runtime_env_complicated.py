@@ -1,35 +1,35 @@
 import os
-from pathlib import Path
-import pytest
 import subprocess
 import sys
 import tempfile
 import time
+from pathlib import Path
 from typing import List
 from unittest import mock
+
+import pytest
 import yaml
 
 import ray
-from ray.runtime_env import RuntimeEnv
 from ray._private.runtime_env.conda import (
-    inject_dependencies,
+    _current_py_version,
     _inject_ray_to_conda_site,
     _resolve_install_from_source_ray_dependencies,
-    _current_py_version,
+    inject_dependencies,
 )
-
 from ray._private.runtime_env.conda_utils import get_conda_env_list
 from ray._private.test_utils import (
+    chdir,
     run_string_as_driver,
     run_string_as_driver_nonblocking,
     wait_for_condition,
-    chdir,
 )
 from ray._private.utils import (
-    get_conda_env_dir,
     get_conda_bin_executable,
+    get_conda_env_dir,
     try_to_create_directory,
 )
+from ray.runtime_env import RuntimeEnv
 
 if not os.environ.get("CI"):
     # This flags turns on the local development that link against current ray
@@ -818,6 +818,7 @@ def test_e2e_complex(call_ray_start, tmp_path):
         @ray.remote
         def test_pip():
             import pip_install_test  # noqa
+
             import ray  # noqa
 
             return Path("./test").read_text()
@@ -865,11 +866,12 @@ def test_e2e_complex(call_ray_start, tmp_path):
         # Check that a task has the job's pip requirements and working_dir.
         @ray.remote
         def test_import():
+            import typer  # noqa
+            import xgboost_ray  # noqa
+
             import ray  # noqa
             from ray import serve  # noqa
             from ray import tune  # noqa
-            import typer  # noqa
-            import xgboost_ray  # noqa
 
             return Path("./test").read_text()
 
@@ -879,11 +881,12 @@ def test_e2e_complex(call_ray_start, tmp_path):
         @ray.remote
         class TestActor:
             def test(self):
+                import typer  # noqa
+                import xgboost_ray  # noqa
+
                 import ray  # noqa
                 from ray import serve  # noqa
                 from ray import tune  # noqa
-                import typer  # noqa
-                import xgboost_ray  # noqa
 
                 return Path("./test").read_text()
 

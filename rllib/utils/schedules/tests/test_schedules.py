@@ -1,13 +1,13 @@
 import unittest
 
-from ray.rllib.utils.schedules import (
-    ConstantSchedule,
-    LinearSchedule,
-    ExponentialSchedule,
-    PiecewiseSchedule,
-)
 from ray.rllib.utils import check, framework_iterator, try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
+from ray.rllib.utils.schedules import (
+    ConstantSchedule,
+    ExponentialSchedule,
+    LinearSchedule,
+    PiecewiseSchedule,
+)
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -121,7 +121,8 @@ class TestSchedules(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

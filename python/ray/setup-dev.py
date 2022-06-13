@@ -4,10 +4,11 @@ Ray.
 See https://docs.ray.io/en/master/development.html#building-ray-python-only"""
 
 import argparse
-import click
 import os
 import shutil
 import subprocess
+
+import click
 
 import ray
 

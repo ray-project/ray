@@ -1,7 +1,6 @@
 from typing import Any
 
 import ray
-
 from ray.data.context import DatasetContext
 
 CACHED_FUNCTIONS = {}

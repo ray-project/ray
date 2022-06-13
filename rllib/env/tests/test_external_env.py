@@ -1,14 +1,15 @@
-import gym
-import numpy as np
 import random
 import unittest
 import uuid
 
+import gym
+import numpy as np
+
 import ray
 from ray.rllib.algorithms.dqn import DQN
 from ray.rllib.algorithms.pg import PG
-from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.env.external_env import ExternalEnv
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.tests.test_rollout_worker import BadPolicy, MockPolicy
 from ray.rllib.examples.env.mock_env import MockEnv
 from ray.rllib.utils.test_utils import framework_iterator
@@ -242,7 +243,8 @@ class TestExternalEnv(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

@@ -1,12 +1,9 @@
 import copy
-import gym
-from gym.spaces import Discrete, MultiDiscrete, Space
 import logging
-import numpy as np
-import platform
 import os
-import tree  # pip install dm_tree
+import platform
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Container,
@@ -16,49 +13,50 @@ from typing import (
     Set,
     Tuple,
     Type,
-    TYPE_CHECKING,
     Union,
 )
+
+import gym
+import numpy as np
+import tree  # pip install dm_tree
+from gym.spaces import Discrete, MultiDiscrete, Space
 
 import ray
 from ray import ObjectRef
 from ray import cloudpickle as pickle
 from ray.rllib.env.base_env import BaseEnv, convert_to_base_env
 from ray.rllib.env.env_context import EnvContext
-from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
-from ray.rllib.env.wrappers.atari_wrappers import wrap_deepmind, is_atari
-from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
+from ray.rllib.env.multi_agent_env import MultiAgentEnv
+from ray.rllib.env.wrappers.atari_wrappers import is_atari, wrap_deepmind
 from ray.rllib.evaluation.metrics import RolloutMetrics
+from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.preprocessors import Preprocessor
-from ray.rllib.offline import NoopOutput, IOContext, OutputWriter, InputReader
+from ray.rllib.offline import InputReader, IOContext, NoopOutput, OutputWriter
 from ray.rllib.offline.estimators import (
-    OffPolicyEstimate,
-    OffPolicyEstimator,
-    ImportanceSampling,
-    WeightedImportanceSampling,
     DirectMethod,
     DoublyRobust,
+    ImportanceSampling,
+    OffPolicyEstimate,
+    OffPolicyEstimator,
+    WeightedImportanceSampling,
 )
-from ray.rllib.policy.sample_batch import MultiAgentBatch, DEFAULT_POLICY_ID
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.policy_map import PolicyMap
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
-from ray.rllib.utils import force_list, merge_dicts, check_env
+from ray.rllib.utils import check_env, force_list, merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI
 from ray.rllib.utils.debug import summarize, update_global_seed_if_necessary
-from ray.rllib.utils.deprecation import (
-    Deprecated,
-    deprecation_warning,
-)
+from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.error import ERR_MSG_NO_GPUS, HOWTO_CHANGE_CONFIG
-from ray.rllib.utils.filter import get_filter, Filter
+from ray.rllib.utils.filter import Filter, get_filter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.sgd import do_minibatch_sgd
-from ray.rllib.utils.tf_utils import get_gpu_devices as get_tf_gpu_devices
 from ray.rllib.utils.tf_run_builder import _TFRunBuilder
+from ray.rllib.utils.tf_utils import get_gpu_devices as get_tf_gpu_devices
 from ray.rllib.utils.typing import (
     AgentID,
     EnvConfigDict,
@@ -74,13 +72,13 @@ from ray.rllib.utils.typing import (
     SampleBatchType,
     T,
 )
-from ray.util.debug import log_once, disable_log_once_globally, enable_periodic_logging
+from ray.util.debug import disable_log_once_globally, enable_periodic_logging, log_once
 from ray.util.iter import ParallelIteratorWorker
 
 if TYPE_CHECKING:
+    from ray.rllib.algorithms.callbacks import DefaultCallbacks  # noqa
     from ray.rllib.evaluation.episode import Episode
     from ray.rllib.evaluation.observation_function import ObservationFunction
-    from ray.rllib.algorithms.callbacks import DefaultCallbacks  # noqa
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()

@@ -2,13 +2,13 @@
 # number of replicas, and with intermediate serve handles (to simulate ensemble
 # models) either on or off.
 
-import aiohttp
 import asyncio
 import logging
 import time
-import requests
 
+import aiohttp
 import numpy as np
+import requests
 
 import ray
 from ray import serve

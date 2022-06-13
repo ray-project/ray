@@ -1,19 +1,18 @@
 import asyncio
-import socket
-from dataclasses import dataclass
 import inspect
 import json
 import logging
+import socket
+from dataclasses import dataclass
 from typing import Any, Dict, Type
 
-import starlette.responses
 import starlette.requests
-from starlette.types import Send, ASGIApp
+import starlette.responses
 from fastapi.encoders import jsonable_encoder
+from starlette.types import ASGIApp, Send
 
-from ray.serve.exceptions import RayServeException
 from ray.serve.constants import SERVE_LOGGER_NAME
-
+from ray.serve.exceptions import RayServeException
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -177,7 +176,7 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
     >>> # now app can be run properly
     """
     # Delayed import to prevent ciruclar imports in workers.
-    from fastapi import Depends, APIRouter
+    from fastapi import APIRouter, Depends
     from fastapi.routing import APIRoute
 
     def get_current_servable_instance():

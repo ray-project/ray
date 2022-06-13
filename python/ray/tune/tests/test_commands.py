@@ -1,20 +1,21 @@
-import click
 import os
-import pytest
 import subprocess
 import sys
 import time
 
-try:
-    from cStringIO import StringIO
-except ImportError:
-    from io import StringIO
+import click
+import pytest
 
 import ray
 from ray import tune
 from ray.rllib import _register_all
 from ray.tune import commands
 from ray.tune.result import CONFIG_PREFIX
+
+try:
+    from cStringIO import StringIO
+except ImportError:
+    from io import StringIO
 
 
 class Capturing:

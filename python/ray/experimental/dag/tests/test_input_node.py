@@ -3,11 +3,12 @@ Tests to ensure ray DAG can correctly mark its input(s) to take user
 request, for all DAGNode types.
 """
 
-import pytest
-from ray.experimental.dag.input_node import InputNode
 from typing import Any, TypeVar
 
+import pytest
+
 import ray
+from ray.experimental.dag.input_node import InputNode
 
 RayHandleLike = TypeVar("RayHandleLike")
 

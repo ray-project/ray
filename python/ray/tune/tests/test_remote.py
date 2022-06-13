@@ -3,9 +3,9 @@ import unittest
 from unittest.mock import patch
 
 import ray
-from ray.tune import register_trainable, run_experiments, run, choice
-from ray.tune.result import TIMESTEPS_TOTAL
+from ray.tune import choice, register_trainable, run, run_experiments
 from ray.tune.experiment import Experiment
+from ray.tune.result import TIMESTEPS_TOTAL
 from ray.tune.suggest.hyperopt import HyperOptSearch
 from ray.tune.trial import Trial
 from ray.util.client.ray_client_helpers import ray_start_client_server
@@ -122,7 +122,8 @@ class RemoteTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

@@ -1,8 +1,6 @@
-from ray.rllib.connectors.connector import (
-    Connector,
-    get_connector,
-)
 from typing import Dict
+
+from ray.rllib.connectors.connector import Connector, get_connector
 
 
 def get_connectors_from_cfg(config: dict) -> Dict[str, Connector]:

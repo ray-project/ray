@@ -1,8 +1,9 @@
-from abc import ABCMeta, abstractmethod
-from gym.spaces import Discrete
-import numpy as np
-from pathlib import Path
 import unittest
+from abc import ABCMeta, abstractmethod
+from pathlib import Path
+
+import numpy as np
+from gym.spaces import Discrete
 
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -170,7 +171,8 @@ class TestFrameWorkAgnosticComponents(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

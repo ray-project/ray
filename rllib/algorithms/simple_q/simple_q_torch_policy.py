@@ -4,6 +4,7 @@ import logging
 from typing import Dict, Tuple
 
 import gym
+
 import ray
 from ray.rllib.algorithms.simple_q.simple_q_tf_policy import (
     build_q_models,
@@ -21,7 +22,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_mixins import TargetNetworkMixin
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import concat_multi_gpu_td_errors, huber_loss
-from ray.rllib.utils.typing import TensorType, AlgorithmConfigDict
+from ray.rllib.utils.typing import AlgorithmConfigDict, TensorType
 
 torch, nn = try_import_torch()
 F = None

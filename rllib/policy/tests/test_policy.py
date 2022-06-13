@@ -1,7 +1,7 @@
 import unittest
 
 import ray
-from ray.rllib.algorithms.dqn import DQN, DEFAULT_CONFIG
+from ray.rllib.algorithms.dqn import DEFAULT_CONFIG, DQN
 from ray.rllib.utils.test_utils import check, framework_iterator
 
 
@@ -36,7 +36,8 @@ class TestPolicy(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

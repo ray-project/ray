@@ -1,11 +1,5 @@
 from pathlib import Path
 
-try:
-    TUNE_INSTALLED = True
-    from ray import tune  # noqa: F401
-except ImportError:
-    TUNE_INSTALLED = False
-
 from ray.air.constants import (  # noqa: F401
     EVALUATION_DATASET_KEY,
     MODEL_KEY,
@@ -13,6 +7,13 @@ from ray.air.constants import (  # noqa: F401
     TRAIN_DATASET_KEY,
     WILDCARD_KEY,
 )
+
+try:
+    TUNE_INSTALLED = True
+    from ray import tune  # noqa: F401
+except ImportError:
+    TUNE_INSTALLED = False
+
 
 # Autofilled train.report() metrics. Keys should be consistent with Tune.
 TIMESTAMP = "_timestamp"

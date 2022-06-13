@@ -4,13 +4,14 @@ from __future__ import print_function
 
 import argparse
 import os
+
 import torch
 import torch.optim as optim
 
 import ray
 from ray import tune
+from ray.tune.examples.mnist_pytorch import ConvNet, get_data_loaders, test, train
 from ray.tune.schedulers import ASHAScheduler
-from ray.tune.examples.mnist_pytorch import train, test, get_data_loaders, ConvNet
 
 # Change these values if you want the training to run quicker or slower.
 EPOCH_SIZE = 512

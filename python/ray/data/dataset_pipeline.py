@@ -3,33 +3,33 @@ import itertools
 import logging
 import time
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
-    List,
-    Iterator,
-    Iterable,
     Generic,
-    Union,
+    Iterable,
+    Iterator,
+    List,
     Optional,
-    TYPE_CHECKING,
+    Union,
 )
 
 import ray
-from ray.data.context import DatasetContext
-from ray.data.dataset import Dataset, T, U
+from ray.data._internal import progress_bar
+from ray.data._internal.block_batching import BatchType, batch_blocks
+from ray.data._internal.block_list import BlockList
 from ray.data._internal.pipeline_executor import (
     PipelineExecutor,
     PipelineSplitExecutorCoordinator,
 )
-from ray.data.block import Block
-from ray.data.row import TableRow
-from ray.types import ObjectRef
-from ray.data._internal import progress_bar
-from ray.data._internal.block_batching import batch_blocks, BatchType
-from ray.data._internal.block_list import BlockList
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
-from ray.util.annotations import PublicAPI, DeveloperAPI
+from ray.data.block import Block
+from ray.data.context import DatasetContext
+from ray.data.dataset import Dataset, T, U
+from ray.data.row import TableRow
+from ray.types import ObjectRef
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     import pyarrow

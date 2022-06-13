@@ -1,10 +1,9 @@
-from ray.tests.conftest import *  # noqa
-
 import pytest
 
 import ray
 from ray import workflow
 from ray.experimental.dag import InputNode
+from ray.tests.conftest import *  # noqa
 
 
 def test_dag_to_workflow_execution(workflow_start_regular_shared):

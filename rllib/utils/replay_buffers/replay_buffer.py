@@ -1,21 +1,20 @@
 import logging
 import platform
-from typing import Any, Dict, List, Optional, Callable, Union
-
-import numpy as np
 import random
 from enum import Enum
+from typing import Any, Callable, Dict, List, Optional, Union
+
+import numpy as np
+import psutil  # noqa E402
 
 # Import ray before psutil will make sure we use psutil's bundled version
 import ray  # noqa F401
-import psutil  # noqa E402
-
-from ray.util.debug import log_once
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics.window_stat import WindowStat
 from ray.rllib.utils.typing import SampleBatchType, T
 from ray.util.annotations import DeveloperAPI
+from ray.util.debug import log_once
 from ray.util.iter import ParallelIteratorWorker
 
 # Constant that represents all policies in lockstep replay mode.

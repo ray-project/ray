@@ -1,7 +1,7 @@
+import logging
 import weakref
 from dataclasses import dataclass
-import logging
-from typing import List, TypeVar, Optional, Dict, Type, Tuple
+from typing import Dict, List, Optional, Tuple, Type, TypeVar
 
 import ray
 from ray.actor import ActorHandle

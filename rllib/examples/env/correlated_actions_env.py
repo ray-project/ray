@@ -1,6 +1,7 @@
+import random
+
 import gym
 from gym.spaces import Discrete, Tuple
-import random
 
 
 class CorrelatedActionsEnv(gym.Env):

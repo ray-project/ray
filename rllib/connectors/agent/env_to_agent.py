@@ -1,8 +1,8 @@
 from typing import Any, List
 
 from ray.rllib.connectors.connector import (
-    ConnectorContext,
     AgentConnector,
+    ConnectorContext,
     register_connector,
 )
 from ray.rllib.policy.sample_batch import SampleBatch

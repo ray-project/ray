@@ -1,7 +1,8 @@
 import logging
-from typing import Callable, Tuple, Optional, List, Dict, Any, TYPE_CHECKING, Union, Set
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 import gym
+
 import ray
 from ray.rllib.utils.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.rllib.utils.typing import AgentID, EnvID, EnvType, MultiAgentDict, MultiEnvDict
@@ -433,9 +434,9 @@ def convert_to_base_env(
         The resulting BaseEnv object.
     """
 
-    from ray.rllib.env.remote_base_env import RemoteBaseEnv
     from ray.rllib.env.external_env import ExternalEnv
     from ray.rllib.env.multi_agent_env import MultiAgentEnv
+    from ray.rllib.env.remote_base_env import RemoteBaseEnv
     from ray.rllib.env.vector_env import VectorEnv, VectorEnvWrapper
 
     if remote_envs and num_envs == 1:

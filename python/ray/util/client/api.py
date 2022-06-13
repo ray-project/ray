@@ -1,21 +1,19 @@
 """This file defines the interface between the ray client worker
 and the overall ray module API.
 """
-from concurrent.futures import Future
 import json
 import logging
+from concurrent.futures import Future
+from typing import TYPE_CHECKING, Any, Callable, List, Optional
 
-from ray.util.client.runtime_context import ClientWorkerPropertyAPI
 from ray._private import ray_option_utils
-from typing import Any, Callable, List, Optional, TYPE_CHECKING
+from ray.util.client.runtime_context import ClientWorkerPropertyAPI
 
 if TYPE_CHECKING:
     from ray.actor import ActorClass
-    from ray.remote_function import RemoteFunction
-    from ray.util.client.common import ClientStub
-    from ray.util.client.common import ClientActorHandle
-    from ray.util.client.common import ClientObjectRef
     from ray.core.generated.ray_client_pb2 import DataResponse
+    from ray.remote_function import RemoteFunction
+    from ray.util.client.common import ClientActorHandle, ClientObjectRef, ClientStub
 
 logger = logging.getLogger(__name__)
 

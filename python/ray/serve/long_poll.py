@@ -1,12 +1,12 @@
 import asyncio
+import logging
+import os
+import random
 from asyncio.events import AbstractEventLoop
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum, auto
-import logging
-import os
-import random
-from typing import Any, Tuple, Callable, DefaultDict, Dict, Set, Union
+from typing import Any, Callable, DefaultDict, Dict, Set, Tuple, Union
 
 import ray
 from ray.serve.constants import SERVE_LOGGER_NAME

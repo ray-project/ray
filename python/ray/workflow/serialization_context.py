@@ -1,10 +1,9 @@
 import contextlib
-from typing import List, Any, Dict
+from typing import Any, Dict, List
 
 import ray
 import ray.cloudpickle
-from ray.util.serialization import register_serializer, deregister_serializer
-
+from ray.util.serialization import deregister_serializer, register_serializer
 from ray.workflow.common import Workflow, WorkflowInputs, WorkflowRef
 
 

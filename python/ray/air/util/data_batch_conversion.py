@@ -3,8 +3,8 @@ from enum import Enum, auto
 import numpy as np
 import pandas as pd
 
-from ray.air.data_batch_type import DataBatchType
 from ray.air.constants import TENSOR_COLUMN_NAME
+from ray.air.data_batch_type import DataBatchType
 from ray.util.annotations import DeveloperAPI
 
 try:

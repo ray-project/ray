@@ -1,7 +1,8 @@
-from gym.spaces import Box, Discrete, MultiDiscrete
+import unittest
+
 import numpy as np
 import tree  # pip install dm_tree
-import unittest
+from gym.spaces import Box, Discrete, MultiDiscrete
 
 import ray
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -62,8 +63,9 @@ class TestUtils(unittest.TestCase):
         ray.shutdown()
 
     def test_make_action_immutable(self):
-        import gym
         from types import MappingProxyType
+
+        import gym
 
         # Test Box space.
         space = gym.spaces.Box(low=-1.0, high=1.0, shape=(8,), dtype=np.float32)
@@ -545,7 +547,8 @@ class TestUtils(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

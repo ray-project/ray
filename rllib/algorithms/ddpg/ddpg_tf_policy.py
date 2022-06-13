@@ -1,9 +1,10 @@
-from gym.spaces import Box
-from functools import partial
 import logging
-import numpy as np
+from functools import partial
+from typing import Dict, List, Tuple
+
 import gym
-from typing import Dict, Tuple, List
+import numpy as np
+from gym.spaces import Box
 
 import ray
 import ray.experimental.tf_utils
@@ -11,28 +12,28 @@ from ray.rllib.algorithms.ddpg.ddpg_tf_model import DDPGTFModel
 from ray.rllib.algorithms.ddpg.ddpg_torch_model import DDPGTorchModel
 from ray.rllib.algorithms.ddpg.noop_model import NoopModel, TorchNoopModel
 from ray.rllib.algorithms.dqn.dqn_tf_policy import (
-    postprocess_nstep_and_prio,
     PRIO_WEIGHTS,
+    postprocess_nstep_and_prio,
 )
-from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.action_dist import ActionDistribution
+from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import Deterministic, Dirichlet
 from ray.rllib.models.torch.torch_action_dist import TorchDeterministic, TorchDirichlet
-from ray.rllib.utils.annotations import override
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.tf_policy_template import build_tf_policy
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.framework import get_variable, try_import_tf
 from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.tf_utils import huber_loss, make_tf_callable
 from ray.rllib.utils.typing import (
     AlgorithmConfigDict,
-    TensorType,
     LocalOptimizer,
     ModelGradients,
+    TensorType,
 )
 from ray.util.debug import log_once
 

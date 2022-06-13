@@ -1,13 +1,8 @@
-from pickle import (
-    _Pickler,
-    _Unpickler as Unpickler,
-    _loads as loads,
-    _load as load,
-    PickleError,
-    PicklingError,
-    UnpicklingError,
-    HIGHEST_PROTOCOL,
-)
+from pickle import HIGHEST_PROTOCOL, PickleError, PicklingError, UnpicklingError
+from pickle import _load as load
+from pickle import _loads as loads
+from pickle import _Pickler
+from pickle import _Unpickler as Unpickler
 
 __all__ = [
     "PickleError",

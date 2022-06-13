@@ -1,30 +1,30 @@
 import contextlib
 from functools import partial
 
-from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
-from ray.rllib.utils.framework import try_import_tf, try_import_tfp, try_import_torch
+from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI, override
 from ray.rllib.utils.deprecation import deprecation_warning
-from ray.rllib.utils.filter_manager import FilterManager
 from ray.rllib.utils.filter import Filter
+from ray.rllib.utils.filter_manager import FilterManager
+from ray.rllib.utils.framework import try_import_tf, try_import_tfp, try_import_torch
 from ray.rllib.utils.numpy import (
-    sigmoid,
-    softmax,
-    relu,
-    one_hot,
+    LARGE_INTEGER,
+    MAX_LOG_NN_OUTPUT,
+    MIN_LOG_NN_OUTPUT,
+    SMALL_NUMBER,
     fc,
     lstm,
-    SMALL_NUMBER,
-    LARGE_INTEGER,
-    MIN_LOG_NN_OUTPUT,
-    MAX_LOG_NN_OUTPUT,
+    one_hot,
+    relu,
+    sigmoid,
+    softmax,
 )
 from ray.rllib.utils.pre_checks.env import check_env
 from ray.rllib.utils.schedules import (
+    ConstantSchedule,
+    ExponentialSchedule,
     LinearSchedule,
     PiecewiseSchedule,
     PolynomialSchedule,
-    ExponentialSchedule,
-    ConstantSchedule,
 )
 from ray.rllib.utils.test_utils import (
     check,
@@ -32,7 +32,7 @@ from ray.rllib.utils.test_utils import (
     check_train_results,
     framework_iterator,
 )
-from ray.tune.utils import merge_dicts, deep_update
+from ray.tune.utils import deep_update, merge_dicts
 
 
 @DeveloperAPI

@@ -1,15 +1,15 @@
 import math
+import os
 
+import pytorch_lightning as pl
 import torch
 from filelock import FileLock
+from pl_bolts.datamodules.mnist_datamodule import MNISTDataModule
 from torch.nn import functional as F
 from torchmetrics import Accuracy
-import pytorch_lightning as pl
-from pl_bolts.datamodules.mnist_datamodule import MNISTDataModule
-import os
-from ray.tune.integration.pytorch_lightning import TuneReportCallback
 
 from ray import tune
+from ray.tune.integration.pytorch_lightning import TuneReportCallback
 
 
 class LightningMNISTClassifier(pl.LightningModule):

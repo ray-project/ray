@@ -1,7 +1,8 @@
-import pytest
-import ray
 import sys
 
+import pytest
+
+import ray
 from ray._private.test_utils import Semaphore, client_test_enabled, wait_for_condition
 from ray.experimental.internal_kv import _internal_kv_list
 

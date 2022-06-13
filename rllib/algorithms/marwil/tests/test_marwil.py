@@ -1,7 +1,8 @@
-import numpy as np
 import os
-from pathlib import Path
 import unittest
+from pathlib import Path
+
+import numpy as np
 
 import ray
 import ray.rllib.algorithms.marwil as marwil
@@ -231,7 +232,8 @@ class TestMARWIL(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

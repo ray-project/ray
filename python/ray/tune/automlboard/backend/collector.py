@@ -1,7 +1,6 @@
 import logging
 import os
 import time
-
 from threading import Thread
 
 from ray.tune.automlboard.common.exception import CollectorError
@@ -10,13 +9,13 @@ from ray.tune.automlboard.common.utils import (
     parse_multiple_json,
     timestamp2date,
 )
-from ray.tune.automlboard.models.models import JobRecord, TrialRecord, ResultRecord
+from ray.tune.automlboard.models.models import JobRecord, ResultRecord, TrialRecord
 from ray.tune.result import (
     DEFAULT_RESULTS_DIR,
-    JOB_META_FILE,
+    EXPR_META_FILE,
     EXPR_PARAM_FILE,
     EXPR_RESULT_FILE,
-    EXPR_META_FILE,
+    JOB_META_FILE,
 )
 
 

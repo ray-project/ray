@@ -1,17 +1,17 @@
 import argparse
 import base64
 import json
-import time
-import sys
 import os
+import sys
+import time
 
 import ray
+import ray._private.utils
 import ray.actor
 import ray.node
 import ray.ray_constants as ray_constants
-import ray._private.utils
 from ray._private.parameter import RayParams
-from ray._private.ray_logging import get_worker_log_file_name, configure_log_file
+from ray._private.ray_logging import configure_log_file, get_worker_log_file_name
 
 parser = argparse.ArgumentParser(
     description=("Parse addresses for the worker to connect to.")

@@ -8,31 +8,30 @@ import tarfile
 import tempfile
 import time
 import unittest
+from collections import deque
 from unittest.mock import patch
+
 import yaml
 
-from collections import deque
-
 import ray
+from ray import tune
 from ray.exceptions import RayTaskError
 from ray.rllib import _register_all
-
-from ray import tune
 from ray.tune import TuneError
 from ray.tune.integration.docker import DockerSyncer
 from ray.tune.integration.kubernetes import KubernetesSyncer
 from ray.tune.sync_client import NOOP, RemoteTaskClient
 from ray.tune.syncer import (
     CommandBasedClient,
+    SyncerCallback,
     detect_cluster_syncer,
     get_cloud_sync_client,
-    SyncerCallback,
 )
 from ray.tune.utils.callback import create_default_callbacks
 from ray.tune.utils.file_transfer import (
-    delete_on_node,
-    _sync_dir_on_same_node,
     _sync_dir_between_different_nodes,
+    _sync_dir_on_same_node,
+    delete_on_node,
 )
 
 

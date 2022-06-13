@@ -1,11 +1,12 @@
 import argparse
-from filelock import FileLock
-import horovod.torch as hvd
 import os
+
+import horovod.torch as hvd
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import torch.utils.data.distributed
+from filelock import FileLock
 from torchvision import datasets, transforms
 
 import ray

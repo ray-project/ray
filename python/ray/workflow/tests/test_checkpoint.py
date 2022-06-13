@@ -1,9 +1,9 @@
-import ray
-import pytest
-from ray.tests.conftest import *  # noqa
-
 import numpy as np
+import pytest
+
+import ray
 from ray import workflow
+from ray.tests.conftest import *  # noqa
 from ray.workflow import workflow_storage
 
 

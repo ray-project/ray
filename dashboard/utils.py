@@ -9,12 +9,11 @@ import pkgutil
 from abc import ABCMeta, abstractmethod
 from base64 import b64decode
 from collections import namedtuple
-from collections.abc import MutableMapping, Mapping, Sequence
+from collections.abc import Mapping, MutableMapping, Sequence
 
 import aiosignal  # noqa: F401
-
-from google.protobuf.json_format import MessageToDict
 from frozenlist import FrozenList  # noqa: F401
+from google.protobuf.json_format import MessageToDict
 
 from ray._private.utils import binary_to_hex, check_dashboard_dependencies_installed
 

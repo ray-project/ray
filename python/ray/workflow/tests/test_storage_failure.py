@@ -1,14 +1,15 @@
-from hashlib import sha1
 import tempfile
+from hashlib import sha1
 
 import pytest
+
 import ray
 from ray import workflow
-from ray.workflow.storage.debug import DebugStorage
-from ray.workflow.workflow_storage import STEP_OUTPUTS_METADATA
 from ray.workflow.common import asyncio_run
+from ray.workflow.storage.debug import DebugStorage
 from ray.workflow.storage.filesystem import FilesystemStorageImpl
 from ray.workflow.tests.utils import _alter_storage
+from ray.workflow.workflow_storage import STEP_OUTPUTS_METADATA
 
 
 @ray.remote

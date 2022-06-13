@@ -9,8 +9,9 @@ This demonstrates running the following policies in competition:
 
 import argparse
 import os
-from pettingzoo.classic import rps_v2
 import random
+
+from pettingzoo.classic import rps_v2
 
 import ray
 from ray import tune
@@ -23,8 +24,8 @@ from ray.rllib.algorithms.pg import (
 from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.rllib.env import PettingZooEnv
 from ray.rllib.examples.policy.rock_paper_scissors_dummies import (
-    BeatLastHeuristic,
     AlwaysSameHeuristic,
+    BeatLastHeuristic,
 )
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.framework import try_import_tf, try_import_torch

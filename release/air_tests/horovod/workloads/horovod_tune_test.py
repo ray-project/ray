@@ -1,23 +1,19 @@
+import numpy as np
 import torch
 import torch.nn as nn
-import numpy as np
 import torchvision
-from ray.air import RunConfig
-from ray.train.horovod import HorovodTrainer
-from ray.tune.tune_config import TuneConfig
-from ray.tune.tuner import Tuner
+import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 
-import torchvision.transforms as transforms
-
 import ray
-from ray import tune
-from ray import train
+from ray import train, tune
+from ray.air import RunConfig
+from ray.train.horovod import HorovodTrainer
 from ray.tune.schedulers import create_scheduler
-
-from ray.util.ml_utils.resnet import ResNet18
-
+from ray.tune.tune_config import TuneConfig
+from ray.tune.tuner import Tuner
 from ray.tune.utils.release_test_util import ProgressCallback
+from ray.util.ml_utils.resnet import ResNet18
 
 CIFAR10_STATS = {
     "mean": (0.4914, 0.4822, 0.4465),

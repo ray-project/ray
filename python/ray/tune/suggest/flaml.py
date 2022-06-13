@@ -1,5 +1,5 @@
 try:
-    from flaml import BlendSearch, CFO
+    from flaml import CFO, BlendSearch
 except ImportError:
 
     class _DummyErrorRaiser:

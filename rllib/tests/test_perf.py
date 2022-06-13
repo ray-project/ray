@@ -1,6 +1,7 @@
-import gym
 import time
 import unittest
+
+import gym
 
 import ray
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -36,7 +37,8 @@ class TestPerf(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

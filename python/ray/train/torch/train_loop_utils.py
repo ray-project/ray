@@ -1,33 +1,31 @@
-import tempfile
 import logging
 import os
 import random
+import tempfile
 import types
 import warnings
-
 from pathlib import Path
 from typing import Any, Dict, Optional
+
+import numpy as np
+import torch
+from torch.cuda.amp import GradScaler, autocast
+from torch.nn.parallel import DistributedDataParallel
+from torch.optim import Optimizer
+from torch.utils.data import (
+    DataLoader,
+    DistributedSampler,
+    IterableDataset,
+    RandomSampler,
+    SequentialSampler,
+)
 
 import ray
 from ray import train
 from ray.train._internal.accelerator import Accelerator
-from ray.train.constants import PYTORCH_PROFILER_KEY
-from torch.optim import Optimizer
 from ray.train._internal.session import get_accelerator, set_accelerator
-from ray.util.annotations import PublicAPI, Deprecated
-
-import numpy as np
-
-import torch
-from torch.cuda.amp import autocast, GradScaler
-from torch.nn.parallel import DistributedDataParallel
-from torch.utils.data import (
-    DistributedSampler,
-    DataLoader,
-    IterableDataset,
-    SequentialSampler,
-    RandomSampler,
-)
+from ray.train.constants import PYTORCH_PROFILER_KEY
+from ray.util.annotations import Deprecated, PublicAPI
 
 try:
     from torch.profiler import profile

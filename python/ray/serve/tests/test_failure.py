@@ -1,9 +1,10 @@
 import os
-import requests
 import sys
 import time
 
 import pytest
+import requests
+
 import ray
 from ray import serve
 from ray._private.test_utils import wait_for_condition

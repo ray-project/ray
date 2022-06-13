@@ -5,13 +5,12 @@ from typing import Any, Callable, Dict, Optional, Type, Union
 import ray.cloudpickle as pickle
 from ray.air.config import RunConfig
 from ray.train.trainer import BaseTrainer
-from ray.tune import Experiment, TuneError, ExperimentAnalysis
+from ray.tune import Experiment, ExperimentAnalysis, TuneError
 from ray.tune.impl.utils import execute_dataset
 from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
 from ray.tune.tune import run
 from ray.tune.tune_config import TuneConfig
-
 
 _TRAINABLE_PKL = "trainable.pkl"
 _TUNER_PKL = "tuner.pkl"

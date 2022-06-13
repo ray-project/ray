@@ -1,14 +1,15 @@
-import requests
+import json
 import socket
 import subprocess
 import unittest
-import json
+
+import requests
 
 import ray
 from ray.rllib import _register_all
-from ray.tune.trial import Trial, Resources
-from ray.tune.web_server import TuneClient
+from ray.tune.trial import Resources, Trial
 from ray.tune.trial_runner import TrialRunner
+from ray.tune.web_server import TuneClient
 
 
 def get_valid_port():
@@ -156,7 +157,8 @@ class TuneServerSuite(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

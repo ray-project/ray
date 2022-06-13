@@ -6,10 +6,9 @@ import logging
 import numbers
 import os
 import shutil
-
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Dict, Union, Callable, Tuple, List, Any
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import ray
 from ray.air import Checkpoint

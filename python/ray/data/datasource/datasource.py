@@ -1,23 +1,23 @@
 import builtins
-from typing import Any, Generic, List, Dict, Callable, Union, Tuple, Iterable
+from typing import Any, Callable, Dict, Generic, Iterable, List, Tuple, Union
 
 import numpy as np
 
 import ray
-from ray.types import ObjectRef
+from ray.data._internal.arrow_block import ArrowRow
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import (
     Block,
     BlockAccessor,
     BlockMetadata,
-    T,
     BlockPartition,
     BlockPartitionMetadata,
     MaybeBlockPartition,
+    T,
 )
 from ray.data.context import DatasetContext
-from ray.data._internal.arrow_block import ArrowRow
-from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data._internal.util import _check_pyarrow_version
+from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 WriteResult = Any

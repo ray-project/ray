@@ -34,8 +34,9 @@ def train_model(config):
 
 # __load_begin__
 def load_best_model(best_logdir):
-    import lightgbm as lgbm
     import os
+
+    import lightgbm as lgbm
 
     best_bst = lgbm.Booster(model_file=os.path.join(best_logdir, "model.lgbm"))
     return best_bst

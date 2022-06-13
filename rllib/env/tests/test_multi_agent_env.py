@@ -1,4 +1,5 @@
 import pytest
+
 from ray.rllib.env.multi_agent_env import make_multi_agent
 from ray.rllib.tests.test_nested_observation_spaces import NestedMultiAgentEnv
 

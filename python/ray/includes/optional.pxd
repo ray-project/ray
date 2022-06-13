@@ -1,6 +1,7 @@
 # Currently Cython does not support std::optional.
 # See: https://github.com/cython/cython/pull/3294
-from libcpp cimport bool
+from libcpp import bool
+
 
 cdef extern from "<optional>" namespace "std" nogil:
     cdef cppclass nullopt_t:

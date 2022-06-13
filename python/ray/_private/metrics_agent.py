@@ -7,25 +7,24 @@ import traceback
 from collections import namedtuple
 from typing import List
 
+from opencensus.metrics.export.value import ValueDouble
 from opencensus.stats import aggregation
 from opencensus.stats import measure as measure_module
 from opencensus.stats import stats as stats_module
-from opencensus.stats.view import View
-from opencensus.stats.view_data import ViewData
 from opencensus.stats.aggregation_data import (
     CountAggregationData,
     DistributionAggregationData,
     LastValueAggregationData,
 )
-from opencensus.metrics.export.value import ValueDouble
+from opencensus.stats.view import View
+from opencensus.stats.view_data import ViewData
 from opencensus.tags import tag_key as tag_key_module
 from opencensus.tags import tag_map as tag_map_module
 from opencensus.tags import tag_value as tag_value_module
 
 import ray
-from ray._private.gcs_utils import GcsClient
-
 import ray._private.prometheus_exporter as prometheus_exporter
+from ray._private.gcs_utils import GcsClient
 from ray.core.generated.metrics_pb2 import Metric
 
 logger = logging.getLogger(__name__)

@@ -1,8 +1,8 @@
+import platform
 from pathlib import Path
 from typing import Any, Dict, Optional
 from unittest import mock
 
-import platform
 import pytest
 import yaml
 
@@ -256,7 +256,8 @@ def test_cr_image_consistency():
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

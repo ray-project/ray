@@ -1,11 +1,11 @@
+import argparse
 import logging
 import os
 import re
-import django
-import argparse
 
-from django.core.management import execute_from_command_line
+import django
 from common.exception import DatabaseError
+from django.core.management import execute_from_command_line
 
 root_path = os.path.dirname(os.path.abspath(__file__))
 logger = logging.getLogger(__name__)

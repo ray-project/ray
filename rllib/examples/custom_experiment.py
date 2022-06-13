@@ -2,8 +2,8 @@
 import argparse
 
 import ray
-from ray import tune
 import ray.rllib.algorithms.ppo as ppo
+from ray import tune
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--train-iterations", type=int, default=10)

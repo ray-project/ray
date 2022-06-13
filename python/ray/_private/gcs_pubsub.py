@@ -1,27 +1,30 @@
 import asyncio
-from collections import deque
 import logging
 import random
 import threading
-from typing import Optional, Tuple
 import time
+from collections import deque
+from typing import Optional, Tuple
 
 import grpc
 from grpc._channel import _InactiveRpcError
+
+import ray._private.gcs_utils as gcs_utils
+import ray._private.logging_utils as logging_utils
+from ray.core.generated import (
+    dependency_pb2,
+    gcs_service_pb2,
+    gcs_service_pb2_grpc,
+    pubsub_pb2,
+    reporter_pb2,
+)
+from ray.core.generated.gcs_pb2 import ErrorTableData
 
 try:
     from grpc import aio as aiogrpc
 except ImportError:
     from grpc.experimental import aio as aiogrpc
 
-import ray._private.gcs_utils as gcs_utils
-import ray._private.logging_utils as logging_utils
-from ray.core.generated.gcs_pb2 import ErrorTableData
-from ray.core.generated import dependency_pb2
-from ray.core.generated import gcs_service_pb2_grpc
-from ray.core.generated import gcs_service_pb2
-from ray.core.generated import reporter_pb2
-from ray.core.generated import pubsub_pb2
 
 logger = logging.getLogger(__name__)
 

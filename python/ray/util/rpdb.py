@@ -12,11 +12,13 @@ import select
 import socket
 import sys
 import time
+import traceback
 import uuid
 from pdb import Pdb
-import setproctitle
-import traceback
 from typing import Callable
+
+import setproctitle
+
 import ray
 from ray import ray_constants
 from ray.experimental.internal_kv import _internal_kv_del, _internal_kv_put

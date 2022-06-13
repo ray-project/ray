@@ -6,19 +6,22 @@ from unittest.mock import patch
 import numpy as np
 import pandas as pd
 import pytest
-import ray
 from pandas import DataFrame
+
+import ray
+from ray.data import Dataset
+from ray.data.aggregate import Max
 from ray.data.preprocessor import PreprocessorNotFittedException
 from ray.data.preprocessors import (
     BatchMapper,
-    StandardScaler,
-    MinMaxScaler,
-    OrdinalEncoder,
-    OneHotEncoder,
-    LabelEncoder,
-    SimpleImputer,
     Chain,
     CustomStatefulPreprocessor,
+    LabelEncoder,
+    MinMaxScaler,
+    OneHotEncoder,
+    OrdinalEncoder,
+    SimpleImputer,
+    StandardScaler,
 )
 from ray.data.preprocessors.encoder import Categorizer, MultiHotEncoder
 from ray.data.preprocessors.hasher import FeatureHasher
@@ -26,10 +29,8 @@ from ray.data.preprocessors.normalizer import Normalizer
 from ray.data.preprocessors.scaler import MaxAbsScaler, RobustScaler
 from ray.data.preprocessors.tokenizer import Tokenizer
 from ray.data.preprocessors.transformer import PowerTransformer
-from ray.data.preprocessors.utils import simple_split_tokenizer, simple_hash
+from ray.data.preprocessors.utils import simple_hash, simple_split_tokenizer
 from ray.data.preprocessors.vectorizer import CountVectorizer, HashingVectorizer
-from ray.data import Dataset
-from ray.data.aggregate import Max
 
 
 def test_standard_scaler():

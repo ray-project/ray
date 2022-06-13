@@ -3,11 +3,12 @@ TensorFlow policy class used for SAC.
 """
 
 import copy
+import logging
+from functools import partial
+from typing import Dict, List, Optional, Tuple, Type, Union
+
 import gym
 from gym.spaces import Box, Discrete
-from functools import partial
-import logging
-from typing import Dict, List, Optional, Tuple, Type, Union
 
 import ray
 import ray.experimental.tf_utils
@@ -16,13 +17,13 @@ from ray.rllib.algorithms.ddpg.ddpg_tf_policy import (
     TargetNetworkMixin,
 )
 from ray.rllib.algorithms.dqn.dqn_tf_policy import (
-    postprocess_nstep_and_prio,
     PRIO_WEIGHTS,
+    postprocess_nstep_and_prio,
 )
 from ray.rllib.algorithms.sac.sac_tf_model import SACTFModel
 from ray.rllib.algorithms.sac.sac_torch_model import SACTorchModel
 from ray.rllib.evaluation.episode import Episode
-from ray.rllib.models import ModelCatalog, MODEL_DEFAULTS
+from ray.rllib.models import MODEL_DEFAULTS, ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import (
     Beta,
@@ -41,10 +42,10 @@ from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.tf_utils import huber_loss
 from ray.rllib.utils.typing import (
     AgentID,
+    AlgorithmConfigDict,
     LocalOptimizer,
     ModelGradients,
     TensorType,
-    AlgorithmConfigDict,
 )
 
 tf1, tf, tfv = try_import_tf()

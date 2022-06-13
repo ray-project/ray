@@ -1,20 +1,24 @@
-import numpy as np
 import os
 import tracemalloc
-from typing import Dict, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, Optional, Tuple
+
+import numpy as np
+
+# Import psutil after ray so the packaged version is used.
+import psutil
 
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
-from ray.rllib.policy import Policy
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import Postprocessing
+from ray.rllib.policy import Policy
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import (
-    is_overridden,
     OverrideToImplementCustomLogic,
     PublicAPI,
+    is_overridden,
 )
-from ray.rllib.utils.deprecation import deprecation_warning, Deprecated
+from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.exploration.random_encoder import (
     _MovingMeanStd,
     compute_states_entropy,
@@ -22,9 +26,6 @@ from ray.rllib.utils.exploration.random_encoder import (
 )
 from ray.rllib.utils.typing import AgentID, EnvType, PolicyID
 from ray.tune.callback import _CallbackMeta
-
-# Import psutil after ray so the packaged version is used.
-import psutil
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm import Algorithm

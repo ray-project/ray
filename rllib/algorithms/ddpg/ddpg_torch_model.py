@@ -1,6 +1,7 @@
-import numpy as np
+from typing import Dict, List, Optional, Union
+
 import gym
-from typing import List, Dict, Union, Optional
+import numpy as np
 
 from ray.rllib.models.torch.misc import SlimFC
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2

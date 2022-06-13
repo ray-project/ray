@@ -3,6 +3,7 @@ import os
 import urllib.parse
 from typing import List, Optional, Tuple
 
+from ray import logger
 from ray.util.ml_utils.filelock import TempFileLock
 
 try:
@@ -32,7 +33,6 @@ except (ImportError, ModuleNotFoundError):
     pyarrow = None
     _CustomGCSHandler = None
 
-from ray import logger
 
 # We keep these constants for legacy compatibility with Tune's sync client
 # After Tune fully moved to using pyarrow.fs we can remove these.

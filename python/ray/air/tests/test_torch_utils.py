@@ -1,7 +1,6 @@
-import pytest
-
 import numpy as np
 import pandas as pd
+import pytest
 import torch
 
 from ray.air._internal.torch_utils import (

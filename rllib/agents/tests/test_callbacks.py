@@ -1,8 +1,8 @@
 import unittest
 
 import ray
-from ray.rllib.algorithms.callbacks import DefaultCallbacks, MultiCallbacks
 import ray.rllib.algorithms.dqn as dqn
+from ray.rllib.algorithms.callbacks import DefaultCallbacks, MultiCallbacks
 from ray.rllib.utils.test_utils import framework_iterator
 
 
@@ -104,7 +104,8 @@ class TestCallbacks(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

@@ -1,8 +1,9 @@
 """Deprecated API; see custom_metrics_and_callbacks.py instead."""
 
 import argparse
-import numpy as np
 import os
+
+import numpy as np
 
 import ray
 from ray import tune

@@ -1,11 +1,12 @@
-from gym.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
-import numpy as np
 import unittest
 
+import numpy as np
+from gym.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
+
 import ray
-from ray.tune import register_env
 from ray.rllib.algorithms.qmix import QMixConfig
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
+from ray.tune import register_env
 
 
 class AvailActionsTestEnv(MultiAgentEnv):
@@ -116,7 +117,8 @@ class TestQMix(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

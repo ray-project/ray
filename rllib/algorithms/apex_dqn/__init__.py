@@ -1,7 +1,7 @@
 from ray.rllib.algorithms.apex_dqn.apex_dqn import (
+    APEX_DEFAULT_CONFIG,
     ApexDQN,
     ApexDQNConfig,
-    APEX_DEFAULT_CONFIG,
 )
 
 __all__ = [

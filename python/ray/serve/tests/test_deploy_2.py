@@ -1,15 +1,15 @@
-from concurrent.futures.thread import ThreadPoolExecutor
 import functools
 import os
 import sys
 import time
+from concurrent.futures.thread import ThreadPoolExecutor
 
 import pytest
 import requests
 
 import ray
-from ray._private.test_utils import SignalActor, wait_for_condition
 from ray import serve
+from ray._private.test_utils import SignalActor, wait_for_condition
 
 
 class TestGetDeployment:

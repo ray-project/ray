@@ -1,6 +1,8 @@
-import ray
 import unittest
+
 import numpy as np
+
+import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -135,7 +137,8 @@ class TestEpisodeLastValues(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

@@ -2,29 +2,30 @@
 PyTorch policy class used for SAC.
 """
 
-import gym
-from gym.spaces import Box, Discrete
 import logging
-import tree  # pip install dm_tree
 from typing import Dict, List, Optional, Tuple, Type, Union
+
+import gym
+import tree  # pip install dm_tree
+from gym.spaces import Box, Discrete
 
 import ray
 import ray.experimental.tf_utils
+from ray.rllib.algorithms.dqn.dqn_tf_policy import PRIO_WEIGHTS
 from ray.rllib.algorithms.sac.sac_tf_policy import (
     build_sac_model,
     postprocess_trajectory,
     validate_spaces,
 )
-from ray.rllib.algorithms.dqn.dqn_tf_policy import PRIO_WEIGHTS
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import (
-    TorchCategorical,
-    TorchDistributionWrapper,
-    TorchDirichlet,
-    TorchSquashedGaussian,
-    TorchDiagGaussian,
     TorchBeta,
+    TorchCategorical,
+    TorchDiagGaussian,
+    TorchDirichlet,
+    TorchDistributionWrapper,
+    TorchSquashedGaussian,
 )
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
@@ -39,10 +40,10 @@ from ray.rllib.utils.torch_utils import (
     huber_loss,
 )
 from ray.rllib.utils.typing import (
+    AlgorithmConfigDict,
     LocalOptimizer,
     ModelInputDict,
     TensorType,
-    AlgorithmConfigDict,
 )
 
 torch, nn = try_import_torch()

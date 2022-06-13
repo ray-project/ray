@@ -5,12 +5,12 @@ import os
 
 import ray
 from ray import tune
-from ray.tune.registry import register_env
 from ray.rllib.examples.env.repeat_after_me_env import RepeatAfterMeEnv
 from ray.rllib.examples.env.repeat_initial_obs_env import RepeatInitialObsEnv
 from ray.rllib.examples.models.rnn_model import RNNModel, TorchRNNModel
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.test_utils import check_learning_achieved
+from ray.tune.registry import register_env
 
 parser = argparse.ArgumentParser()
 parser.add_argument(

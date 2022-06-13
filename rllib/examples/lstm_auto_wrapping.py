@@ -2,8 +2,8 @@ import numpy as np
 
 import ray
 import ray.rllib.algorithms.ppo as ppo
-from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.catalog import ModelCatalog
+from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.utils.framework import try_import_torch
 
 torch, _ = try_import_torch()

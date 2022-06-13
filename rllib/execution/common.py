@@ -1,20 +1,20 @@
-from ray.util.iter import LocalIterator
-from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
-from ray.rllib.utils.typing import Dict, SampleBatchType
-from ray.util.iter_metrics import MetricsContext
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 
 # Backward compatibility.
 from ray.rllib.utils.metrics import (  # noqa: F401
-    LAST_TARGET_UPDATE_TS,
-    NUM_TARGET_UPDATES,
     APPLY_GRADS_TIMER,
     COMPUTE_GRADS_TIMER,
-    WORKER_UPDATE_TIMER,
     GRAD_WAIT_TIMER,
-    SAMPLE_TIMER,
+    LAST_TARGET_UPDATE_TS,
     LEARN_ON_BATCH_TIMER,
     LOAD_BATCH_TIMER,
+    NUM_TARGET_UPDATES,
+    SAMPLE_TIMER,
+    WORKER_UPDATE_TIMER,
 )
+from ray.rllib.utils.typing import Dict, SampleBatchType
+from ray.util.iter import LocalIterator
+from ray.util.iter_metrics import MetricsContext
 
 STEPS_SAMPLED_COUNTER = "num_steps_sampled"
 AGENT_STEPS_SAMPLED_COUNTER = "num_agent_steps_sampled"

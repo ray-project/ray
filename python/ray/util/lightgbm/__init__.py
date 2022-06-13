@@ -12,13 +12,13 @@ RayLGBMRegressor = None
 
 try:
     from lightgbm_ray import (
-        train,
-        predict,
-        RayParams,
         RayDMatrix,
         RayFileType,
         RayLGBMClassifier,
         RayLGBMRegressor,
+        RayParams,
+        predict,
+        train,
     )
 except ImportError:
     logger.info(

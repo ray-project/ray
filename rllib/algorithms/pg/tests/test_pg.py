@@ -1,9 +1,11 @@
-from gym.spaces import Box, Dict, Discrete, Tuple
-import numpy as np
 import unittest
+
+import numpy as np
+from gym.spaces import Box, Dict, Discrete, Tuple
 
 import ray
 import ray.rllib.algorithms.pg as pg
+from ray import tune
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.models.tf.tf_action_dist import Categorical
@@ -16,7 +18,6 @@ from ray.rllib.utils.test_utils import (
     check_train_results,
     framework_iterator,
 )
-from ray import tune
 
 
 class TestPG(unittest.TestCase):
@@ -177,7 +178,8 @@ class TestPG(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

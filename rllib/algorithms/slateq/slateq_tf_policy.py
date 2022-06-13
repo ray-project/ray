@@ -1,10 +1,11 @@
 """TensorFlow policy class used for SlateQ."""
 
 import functools
-import gym
 import logging
-import numpy as np
 from typing import Dict
+
+import gym
+import numpy as np
 
 import ray
 from ray.rllib.algorithms.dqn.dqn_tf_policy import clip_gradients
@@ -13,12 +14,12 @@ from ray.rllib.algorithms.slateq.slateq_tf_model import SlateQTFModel
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import SlateMultiCategorical
 from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_mixins import LearningRateSchedule
 from ray.rllib.policy.tf_policy_template import build_tf_policy
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import huber_loss
-from ray.rllib.utils.typing import TensorType, AlgorithmConfigDict
+from ray.rllib.utils.typing import AlgorithmConfigDict, TensorType
 
 tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)

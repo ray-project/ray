@@ -1,14 +1,15 @@
 import argparse
-from gym.spaces import Dict, Tuple, Box, Discrete
 import os
+
+from gym.spaces import Box, Dict, Discrete, Tuple
 
 import ray
 import ray.tune as tune
-from ray.tune.registry import register_env
 from ray.rllib.examples.env.nested_space_repeat_after_me_env import (
     NestedSpaceRepeatAfterMeEnv,
 )
 from ray.rllib.utils.test_utils import check_learning_achieved
+from ray.tune.registry import register_env
 
 parser = argparse.ArgumentParser()
 parser.add_argument(

@@ -1,11 +1,11 @@
 import os
 import time
 
-from ray.tests.conftest import *  # noqa
-
 import pytest
+
 import ray
 from ray import workflow
+from ray.tests.conftest import *  # noqa
 from ray.workflow import workflow_access
 
 

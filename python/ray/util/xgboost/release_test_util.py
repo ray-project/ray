@@ -2,18 +2,18 @@ import glob
 import os
 import time
 
-import ray
-
-from xgboost_ray import (
-    train,
-    RayDMatrix,
-    RayFileType,
-    RayDeviceQuantileDMatrix,
-    RayParams,
-)
-from xgboost_ray.session import get_actor_rank, put_queue
 from xgboost.callback import TrainingCallback
 from xgboost.rabit import get_world_size
+from xgboost_ray import (
+    RayDeviceQuantileDMatrix,
+    RayDMatrix,
+    RayFileType,
+    RayParams,
+    train,
+)
+from xgboost_ray.session import get_actor_rank, put_queue
+
+import ray
 
 if "OMP_NUM_THREADS" in os.environ:
     del os.environ["OMP_NUM_THREADS"]

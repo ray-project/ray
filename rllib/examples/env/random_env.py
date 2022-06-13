@@ -1,7 +1,8 @@
 import copy
+
 import gym
-from gym.spaces import Discrete, Tuple
 import numpy as np
+from gym.spaces import Discrete, Tuple
 
 from ray.rllib.examples.env.multi_agent import make_multi_agent
 

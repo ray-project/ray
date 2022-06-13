@@ -4,11 +4,11 @@ import sklearn.metrics
 from sklearn.model_selection import train_test_split
 
 from ray import tune
-from ray.tune.schedulers import ASHAScheduler
 from ray.tune.integration.lightgbm import (
-    TuneReportCheckpointCallback,
     TuneReportCallback,
+    TuneReportCheckpointCallback,
 )
+from ray.tune.schedulers import ASHAScheduler
 
 
 def train_breast_cancer(config: dict):

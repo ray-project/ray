@@ -1,5 +1,6 @@
-from gym.spaces import Space
 from typing import Optional
+
+from gym.spaces import Space
 
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.exploration.gaussian_noise import GaussianNoise

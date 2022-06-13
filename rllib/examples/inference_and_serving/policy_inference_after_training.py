@@ -6,8 +6,9 @@ Includes options for LSTM-based models (--use-lstm), attention-net models
 (--use-attention), and plain (non-recurrent) models.
 """
 import argparse
-import gym
 import os
+
+import gym
 
 import ray
 from ray import tune

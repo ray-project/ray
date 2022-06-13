@@ -1,8 +1,9 @@
-import pytest
-import ray
 import mars
 import mars.dataframe as md
 import pyarrow as pa
+import pytest
+
+import ray
 
 
 @pytest.fixture(scope="module")

@@ -1,8 +1,7 @@
-from ray.rllib.algorithms.maddpg.maddpg import (
-    MADDPG as MADDPGTrainer,
-    MADDPGTFPolicy,
-    DEFAULT_CONFIG,
-)
+from ray.rllib.algorithms.maddpg.maddpg import DEFAULT_CONFIG
+from ray.rllib.algorithms.maddpg.maddpg import MADDPG as MADDPGTrainer
+from ray.rllib.algorithms.maddpg.maddpg import MADDPGTFPolicy
+from ray.rllib.utils.deprecation import deprecation_warning
 
 __all__ = [
     "MADDPGTrainer",
@@ -10,7 +9,6 @@ __all__ = [
     "DEFAULT_CONFIG",
 ]
 
-from ray.rllib.utils.deprecation import deprecation_warning
 
 deprecation_warning(
     "ray.rllib.agents.maddpg",

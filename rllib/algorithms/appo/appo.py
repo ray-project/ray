@@ -9,8 +9,8 @@ See `appo_[tf|torch]_policy.py` for the definition of the policy loss.
 Detailed documentation:
 https://docs.ray.io/en/master/rllib-algorithms.html#appo
 """
-from typing import Optional, Type
 import logging
+from typing import Optional, Type
 
 from ray.rllib.algorithms.impala.impala import Impala, ImpalaConfig
 from ray.rllib.policy.policy import Policy
@@ -24,9 +24,9 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import (
+    AlgorithmConfigDict,
     PartialAlgorithmConfigDict,
     ResultDict,
-    AlgorithmConfigDict,
 )
 
 logger = logging.getLogger(__name__)

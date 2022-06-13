@@ -1,12 +1,12 @@
 import logging
-from pathlib import Path
-from typing import List, Dict, Optional, Union
 import warnings
+from pathlib import Path
+from typing import Dict, List, Optional, Union
 
+from ray.train._internal.results_preprocessors import IndexedResultsPreprocessor
 from ray.train.callbacks import TrainingCallback
 from ray.train.callbacks.callback import _deprecation_msg
 from ray.train.callbacks.logging import _TrainCallbackLogdirManager
-from ray.train._internal.results_preprocessors import IndexedResultsPreprocessor
 from ray.train.constants import PYTORCH_PROFILER_KEY
 from ray.util.annotations import Deprecated
 

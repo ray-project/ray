@@ -4,8 +4,8 @@ from typing import Dict, List, Optional, Type, Union
 import ray
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import (
-    compute_gae_for_sample_batch,
     Postprocessing,
+    compute_gae_for_sample_batch,
 )
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
@@ -13,10 +13,10 @@ from ray.rllib.policy.dynamic_tf_policy_v2 import DynamicTFPolicyV2
 from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_mixins import (
-    compute_gradients,
     EntropyCoeffSchedule,
     LearningRateSchedule,
     ValueNetworkMixin,
+    compute_gradients,
 )
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated

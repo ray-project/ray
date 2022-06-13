@@ -2,14 +2,15 @@ import argparse
 import os
 
 import horovod.torch as hvd
-import ray
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import torch.utils.data.distributed
 from filelock import FileLock
-from ray.train import Trainer
 from torchvision import datasets, transforms
+
+import ray
+from ray.train import Trainer
 
 
 def metric_average(val, name):

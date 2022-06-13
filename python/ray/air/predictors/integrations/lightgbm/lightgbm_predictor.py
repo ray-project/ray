@@ -1,11 +1,11 @@
-from typing import Optional, List, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Optional, Union
+
+import lightgbm
 import numpy as np
 import pandas as pd
 
-import lightgbm
-
 from ray.air.checkpoint import Checkpoint
-from ray.air.predictor import Predictor, DataBatchType
+from ray.air.predictor import DataBatchType, Predictor
 from ray.train.lightgbm import load_checkpoint
 
 if TYPE_CHECKING:

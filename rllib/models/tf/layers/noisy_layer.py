@@ -2,10 +2,10 @@ import numpy as np
 
 from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.utils.framework import (
+    TensorShape,
+    TensorType,
     get_variable,
     try_import_tf,
-    TensorType,
-    TensorShape,
 )
 
 tf1, tf, tfv = try_import_tf()

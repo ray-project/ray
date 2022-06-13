@@ -12,49 +12,46 @@ from unittest.mock import patch
 
 import gym
 import numpy as np
+
 import ray
 from ray import tune
 from ray.air._internal.remote_storage import _ensure_directory
 from ray.rllib import _register_all
 from ray.tune import (
+    Stopper,
+    Trainable,
+    TuneError,
     register_env,
     register_trainable,
     run,
     run_experiments,
-    Trainable,
-    TuneError,
-    Stopper,
 )
 from ray.tune.callback import Callback
 from ray.tune.experiment import Experiment
 from ray.tune.function_runner import wrap_function
-from ray.tune.logger import Logger, LegacyLoggerCallback
+from ray.tune.logger import LegacyLoggerCallback, Logger
 from ray.tune.ray_trial_executor import noop_logger_creator
 from ray.tune.resources import Resources
 from ray.tune.result import (
-    TIMESTEPS_TOTAL,
     DONE,
+    EPISODES_TOTAL,
+    EXPERIMENT_TAG,
     HOSTNAME,
     NODE_IP,
     PID,
-    EPISODES_TOTAL,
-    TRAINING_ITERATION,
-    TIMESTEPS_THIS_ITER,
     TIME_THIS_ITER_S,
     TIME_TOTAL_S,
+    TIMESTEPS_THIS_ITER,
+    TIMESTEPS_TOTAL,
+    TRAINING_ITERATION,
     TRIAL_ID,
-    EXPERIMENT_TAG,
 )
-from ray.tune.schedulers import (
-    TrialScheduler,
-    FIFOScheduler,
-    AsyncHyperBandScheduler,
-)
+from ray.tune.schedulers import AsyncHyperBandScheduler, FIFOScheduler, TrialScheduler
 from ray.tune.schedulers.pb2 import PB2
 from ray.tune.stopper import (
+    ExperimentPlateauStopper,
     MaximumIterationStopper,
     TrialPlateauStopper,
-    ExperimentPlateauStopper,
 )
 from ray.tune.suggest import BasicVariantGenerator, grid_search
 from ray.tune.suggest._mock import _MockSuggestionAlgorithm
@@ -1148,6 +1145,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
     def testLogToFile(self):
         def train(config, reporter):
             import sys
+
             from ray import logger
 
             for i in range(10):
@@ -1202,8 +1200,9 @@ class TrainableFunctionApiTest(unittest.TestCase):
             self.assertIn("LOG_STDERR", content)
 
     def testTimeout(self):
-        from ray.tune.stopper import TimeoutStopper
         import datetime
+
+        from ray.tune.stopper import TimeoutStopper
 
         def train(config):
             for i in range(20):

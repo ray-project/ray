@@ -1,6 +1,7 @@
-from copy import deepcopy
-import numpy as np
 import unittest
+from copy import deepcopy
+
+import numpy as np
 
 import ray
 import ray.rllib.algorithms.dqn as dqn
@@ -122,7 +123,8 @@ class TestDQN(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

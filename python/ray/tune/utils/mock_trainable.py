@@ -1,6 +1,7 @@
 import json
-import numpy as np
 import os
+
+import numpy as np
 
 from ray.tune import Trainable
 

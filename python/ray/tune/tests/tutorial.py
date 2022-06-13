@@ -1,18 +1,26 @@
 # flake8: noqa
 # Original Code: https://github.com/pytorch/examples/blob/master/mnist/main.py
 
+# __run_analysis_begin__
+import os
+
 # fmt: off
 # __tutorial_imports_begin__
 import numpy as np
 import torch
-import torch.optim as optim
 import torch.nn as nn
-from torchvision import datasets, transforms
-from torch.utils.data import DataLoader
 import torch.nn.functional as F
+import torch.optim as optim
+# __run_searchalg_begin__
+from hyperopt import hp
+from torch.utils.data import DataLoader
+from torchvision import datasets, transforms
 
 from ray import tune
+from ray.tune.examples.mnist_pytorch_trainable import TrainMNIST
 from ray.tune.schedulers import ASHAScheduler
+from ray.tune.suggest.hyperopt import HyperOptSearch
+
 # __tutorial_imports_end__
 # fmt: on
 
@@ -154,9 +162,6 @@ for d in dfs.values():
 # __plot_scheduler_end__
 # fmt: on
 
-# __run_searchalg_begin__
-from hyperopt import hp
-from ray.tune.suggest.hyperopt import HyperOptSearch
 
 space = {
     "lr": hp.loguniform("lr", 1e-10, 0.1),
@@ -173,8 +178,6 @@ analysis = tune.run(train_mnist, num_samples=10, search_alg=hyperopt_search)
 
 # __run_searchalg_end__
 
-# __run_analysis_begin__
-import os
 
 df = analysis.results_df
 logdir = analysis.get_best_logdir("mean_accuracy", mode="max")
@@ -184,7 +187,6 @@ model = ConvNet()
 model.load_state_dict(state_dict)
 # __run_analysis_end__
 
-from ray.tune.examples.mnist_pytorch_trainable import TrainMNIST
 
 # __trainable_run_begin__
 search_space = {

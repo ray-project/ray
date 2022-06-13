@@ -1,5 +1,6 @@
-import pyspiel
 import unittest
+
+import pyspiel
 
 import ray
 import ray.rllib.algorithms.alpha_star as alpha_star
@@ -62,7 +63,8 @@ class TestAlphaStar(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

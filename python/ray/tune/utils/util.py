@@ -9,27 +9,24 @@ import uuid
 from collections import defaultdict
 from datetime import datetime
 from threading import Thread
-from typing import Dict, List, Union, Type, Callable, Any
-from typing import Optional
+from typing import Any, Callable, Dict, List, Optional, Type, Union
 
 import numpy as np
 import psutil
+
 import ray
-from ray.air.checkpoint import Checkpoint
 from ray.air._internal.remote_storage import delete_at_uri
+from ray.air.checkpoint import Checkpoint
 from ray.util.ml_utils.dict import (  # noqa: F401
-    merge_dicts,
     deep_update,
     flatten_dict,
+    merge_dicts,
     unflatten_dict,
     unflatten_list_dict,
     unflattened_lookup,
 )
 from ray.util.ml_utils.json import SafeFallbackEncoder  # noqa
-from ray.util.ml_utils.util import (  # noqa: F401
-    is_nan,
-    is_nan_or_inf,
-)
+from ray.util.ml_utils.util import is_nan, is_nan_or_inf  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -316,7 +313,7 @@ def diagnose_serialization(trainable: Callable):
         assert diagnose_serialization(test) is True
 
     """
-    from ray.tune.registry import register_trainable, check_serializability
+    from ray.tune.registry import check_serializability, register_trainable
 
     def check_variables(objects, failure_set, printer):
         for var_name, variable in objects.items():

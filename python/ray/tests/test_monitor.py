@@ -1,6 +1,6 @@
-from ray.autoscaler._private.monitor import parse_resource_demands
-import ray._private.gcs_utils as gcs_utils
 import ray
+import ray._private.gcs_utils as gcs_utils
+from ray.autoscaler._private.monitor import parse_resource_demands
 
 ray.experimental.internal_kv.redis = False
 
@@ -49,6 +49,7 @@ def test_parse_resource_demands():
 
 if __name__ == "__main__":
     import sys
+
     import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

@@ -1,46 +1,46 @@
-from typing import Any, List, Mapping, Optional, Union
-
-import click
-from datetime import datetime
 import json
 import logging
 import os
 import time
 import traceback
 import warnings
+from datetime import datetime
+from typing import Any, List, Mapping, Optional, Union
+
+import click
 
 import ray
 from ray.exceptions import RayTaskError
-from ray.tune.error import _TuneStopTrialError
-from ray.tune.impl.out_of_band_serialize_dataset import out_of_band_serialize_dataset
-from ray.util import get_node_ip_address
 from ray.tune import TuneError
-from ray.tune.callback import CallbackList, Callback
+from ray.tune.callback import Callback, CallbackList
+from ray.tune.error import _TuneStopTrialError
 from ray.tune.experiment import Experiment
+from ray.tune.impl.out_of_band_serialize_dataset import out_of_band_serialize_dataset
 from ray.tune.insufficient_resources_manager import _InsufficientResourcesManager
 from ray.tune.ray_trial_executor import (
     RayTrialExecutor,
-    _ExecutorEventType,
     _ExecutorEvent,
+    _ExecutorEventType,
 )
 from ray.tune.result import (
     DEBUG_METRICS,
     DEFAULT_METRIC,
     DONE,
-    TIME_THIS_ITER_S,
     RESULT_DUPLICATE,
     SHOULD_CHECKPOINT,
+    TIME_THIS_ITER_S,
 )
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.stopper import NoopStopper, Stopper
 from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm
-from ray.tune.syncer import CloudSyncer, get_cloud_syncer, SyncConfig
+from ray.tune.syncer import CloudSyncer, SyncConfig, get_cloud_syncer
 from ray.tune.trial import Trial
-from ray.tune.utils import warn_if_slow, flatten_dict
+from ray.tune.utils import flatten_dict, warn_if_slow
 from ray.tune.utils.log import Verbosity, has_verbosity
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.tune.utils.serialization import TuneFunctionDecoder, TuneFunctionEncoder
 from ray.tune.web_server import TuneServer
+from ray.util import get_node_ip_address
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
 from ray.util.ml_utils.checkpoint_manager import CheckpointStorage

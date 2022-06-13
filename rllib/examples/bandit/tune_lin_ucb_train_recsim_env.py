@@ -1,13 +1,13 @@
 """Example of using LinUCB on a RecSim environment. """
 
 import argparse
-from matplotlib import pyplot as plt
-import pandas as pd
 import time
 
-from ray import tune
-import ray.rllib.examples.env.recommender_system_envs_with_recsim  # noqa
+import pandas as pd
+from matplotlib import pyplot as plt
 
+import ray.rllib.examples.env.recommender_system_envs_with_recsim  # noqa
+from ray import tune
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

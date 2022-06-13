@@ -1,26 +1,25 @@
-import numpy as np
 import os
 import pickle
 import random
-import unittest
 import sys
 import time
+import unittest
 from unittest.mock import MagicMock
 
-
-import ray
-from ray import tune
-from ray.tune import Trainable
-from ray.tune.trial import Trial
-from ray.tune.trial_runner import TrialRunner
-from ray.tune.ray_trial_executor import RayTrialExecutor
-from ray.tune.schedulers import PopulationBasedTraining
-from ray._private.test_utils import object_memory_usage
-
+import numpy as np
 
 # Import psutil after ray so the packaged version is used.
 import psutil
-from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
+
+import ray
+from ray import tune
+from ray._private.test_utils import object_memory_usage
+from ray.tune import Trainable
+from ray.tune.ray_trial_executor import RayTrialExecutor
+from ray.tune.schedulers import PopulationBasedTraining
+from ray.tune.trial import Trial
+from ray.tune.trial_runner import TrialRunner
+from ray.util.ml_utils.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 
 MB = 1024 ** 2
 

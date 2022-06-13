@@ -2,11 +2,11 @@ import argparse
 import os
 
 import ray
+from ray import tune
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.examples.policy.bare_metal_policy_with_custom_view_reqs import (
     BareMetalPolicyWithCustomViewReqs,
 )
-from ray import tune
 
 
 def get_cli_args():

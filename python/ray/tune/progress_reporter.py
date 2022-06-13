@@ -1,35 +1,34 @@
 from __future__ import print_function
 
+import collections
 import datetime
 import numbers
-from typing import Any, Dict, List, Optional, Union
-
-import collections
 import os
 import sys
-import numpy as np
 import time
+from typing import Any, Dict, List, Optional, Union
 
-from ray.util.annotations import PublicAPI, DeveloperAPI
-from ray.util.queue import Queue
+import numpy as np
 
 from ray.tune.callback import Callback
-from ray.tune.logger import pretty_print, logger
+from ray.tune.logger import logger, pretty_print
 from ray.tune.result import (
+    AUTO_RESULT_KEYS,
     DEFAULT_METRIC,
     EPISODE_REWARD_MEAN,
     MEAN_ACCURACY,
     MEAN_LOSS,
     NODE_IP,
     PID,
-    TRAINING_ITERATION,
     TIME_TOTAL_S,
     TIMESTEPS_TOTAL,
-    AUTO_RESULT_KEYS,
+    TRAINING_ITERATION,
 )
 from ray.tune.trial import DEBUG_PRINT_INTERVAL, Trial, _Location
 from ray.tune.utils import unflattened_lookup
 from ray.tune.utils.log import Verbosity, has_verbosity
+from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.queue import Queue
 
 try:
     from collections.abc import Mapping, MutableMapping
@@ -546,7 +545,7 @@ class JupyterNotebookReporter(TuneReporterBase, RemoteReporterMixin):
             self.display(progress_str)
 
     def display(self, string: str) -> None:
-        from IPython.display import display, HTML, clear_output
+        from IPython.display import HTML, clear_output, display
 
         if not self._display_handle:
             if self._overwrite:
@@ -633,8 +632,9 @@ class CLIReporter(TuneReporterBase):
 
 def memory_debug_str():
     try:
-        import ray  # noqa F401
         import psutil
+
+        import ray  # noqa F401
 
         total_gb = psutil.virtual_memory().total / (1024 ** 3)
         used_gb = total_gb - psutil.virtual_memory().available / (1024 ** 3)

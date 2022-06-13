@@ -1,4 +1,5 @@
 import sys
+
 import pytest
 from pkg_resources import Requirement
 

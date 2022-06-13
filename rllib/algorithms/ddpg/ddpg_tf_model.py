@@ -1,6 +1,7 @@
-import numpy as np
-import gym
 from typing import List, Optional
+
+import gym
+import numpy as np
 
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.utils.framework import try_import_tf

@@ -4,10 +4,7 @@ import ray
 import ray.rllib.algorithms.alpha_zero as az
 from ray.rllib.algorithms.alpha_zero.models.custom_torch_models import DenseModel
 from ray.rllib.examples.env.cartpole_sparse_rewards import CartPoleSparseRewards
-from ray.rllib.utils.test_utils import (
-    check_train_results,
-    framework_iterator,
-)
+from ray.rllib.utils.test_utils import check_train_results, framework_iterator
 
 
 class TestAlphaZero(unittest.TestCase):
@@ -38,7 +35,8 @@ class TestAlphaZero(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

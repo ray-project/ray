@@ -1,14 +1,14 @@
 import unittest
 
 from ray.tune import PlacementGroupFactory
-from ray.tune.schedulers.trial_scheduler import TrialScheduler
-from ray.tune.trial import Trial
 from ray.tune.schedulers.resource_changing_scheduler import (
-    ResourceChangingScheduler,
     DistributeResources,
     DistributeResourcesToTopJob,
+    ResourceChangingScheduler,
 )
-from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
+from ray.tune.schedulers.trial_scheduler import TrialScheduler
+from ray.tune.trial import Trial
+from ray.util.ml_utils.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 
 
 class MockResourceUpdater:
@@ -639,7 +639,8 @@ class TestTopJobResourceAllocationAddBundles(TestTopJobResourceAllocation):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

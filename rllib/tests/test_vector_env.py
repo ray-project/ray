@@ -1,5 +1,6 @@
-import gym
 import unittest
+
+import gym
 
 from ray.rllib.env.vector_env import VectorEnv
 
@@ -29,7 +30,8 @@ class TestExternalEnv(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

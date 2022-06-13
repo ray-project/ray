@@ -23,6 +23,15 @@ The following functions are also imported:
 """
 from __future__ import unicode_literals
 
+# Load pattern implementations.
+from . import patterns
+from .pathspec import PathSpec
+from .pattern import Pattern, RegexPattern
+# Expose `GitIgnorePattern` class in the root module for backward
+# compatibility with v0.4.
+from .patterns.gitwildmatch import GitIgnorePattern
+from .util import RecursionError, iter_tree, lookup_pattern, match_files
+
 __author__ = "Caleb P. Burns"
 __copyright__ = "Copyright © 2013-2020 Caleb P. Burns"
 __created__ = "2013-10-12"
@@ -56,14 +65,3 @@ __project__ = "pathspec"
 __status__ = "Development"
 __updated__ = "2020-11-07"
 __version__ = "0.8.1"
-
-from .pathspec import PathSpec
-from .pattern import Pattern, RegexPattern
-from .util import iter_tree, lookup_pattern, match_files, RecursionError
-
-# Load pattern implementations.
-from . import patterns
-
-# Expose `GitIgnorePattern` class in the root module for backward
-# compatibility with v0.4.
-from .patterns.gitwildmatch import GitIgnorePattern

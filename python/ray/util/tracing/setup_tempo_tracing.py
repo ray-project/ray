@@ -1,13 +1,10 @@
 # This file is intended for examples exporting traces to a local OTLP listener
 from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (  # noqa
     OTLPSpanExporter,
-)  # noqa
-from opentelemetry.sdk.trace.export import (
-    ConsoleSpanExporter,
-    SimpleSpanProcessor,
 )
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import ConsoleSpanExporter, SimpleSpanProcessor
 
 
 def setup_tracing() -> None:

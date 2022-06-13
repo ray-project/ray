@@ -1,19 +1,13 @@
-from libc.stdint cimport uint8_t, uint64_t
-from libcpp cimport bool as c_bool
-from libcpp.memory cimport unique_ptr, shared_ptr
-from libcpp.string cimport string as c_string
-from libcpp.unordered_map cimport unordered_map
-from libcpp.vector cimport vector as c_vector
+from libc.stdint import uint8_t, uint64_t
+from libcpp import bool as c_bool
+from libcpp.memory import shared_ptr, unique_ptr
+from libcpp.string import string as c_string
+from libcpp.unordered_map import unordered_map
+from libcpp.vector import vector as c_vector
 
-from ray.includes.common cimport (
-    CLanguage,
-)
-from ray.includes.unique_ids cimport (
-    CActorID,
-    CJobID,
-    CObjectID,
-    CTaskID,
-)
+from ray.includes.common import CLanguage
+from ray.includes.unique_ids import CActorID, CJobID, CObjectID, CTaskID
+
 
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef cppclass CFunctionDescriptorType \

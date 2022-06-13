@@ -2,9 +2,9 @@ import pytest
 
 import ray
 from ray.train import Trainer
+from ray.train.examples.horovod.horovod_example import HorovodTrainClass
 from ray.train.examples.horovod.horovod_example import (
     train_func as horovod_torch_train_func,
-    HorovodTrainClass,
 )
 from ray.train.examples.tensorflow_mnist_example import (
     train_func as tensorflow_mnist_train_func,
@@ -183,7 +183,8 @@ def test_horovod_torch_mnist_stateful(ray_start_2_cpus):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))

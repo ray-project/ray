@@ -3,7 +3,6 @@ import os
 import sys
 import threading
 from logging.handlers import RotatingFileHandler
-
 from typing import Callable
 
 import ray

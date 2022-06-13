@@ -1,5 +1,6 @@
-import concurrent.futures
 import asyncio
+import concurrent.futures
+
 import pytest
 import requests
 
@@ -248,6 +249,7 @@ def test_handle_across_loops(serve_instance):
 
 if __name__ == "__main__":
     import sys
+
     import pytest
 
     sys.exit(pytest.main(["-v", "-s", __file__]))

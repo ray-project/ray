@@ -2,28 +2,22 @@ from typing import Optional, Type
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.utils.replay_buffers.utils import validate_buffer_config
-from ray.rllib.execution.rollout_ops import (
-    synchronous_parallel_sample,
-)
-from ray.rllib.execution.train_ops import (
-    multi_gpu_train_one_step,
-    train_one_step,
-)
+from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
+from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
 from ray.rllib.offline.estimators import ImportanceSampling, WeightedImportanceSampling
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated, DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, Deprecated
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
     WORKER_UPDATE_TIMER,
 )
-from ray.rllib.utils.typing import (
-    ResultDict,
-    AlgorithmConfigDict,
+from ray.rllib.utils.replay_buffers.utils import (
+    sample_min_n_steps_from_buffer,
+    validate_buffer_config,
 )
-from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
+from ray.rllib.utils.typing import AlgorithmConfigDict, ResultDict
 
 
 class MARWILConfig(AlgorithmConfig):
@@ -240,9 +234,7 @@ class MARWIL(Algorithm):
 
             return MARWILTorchPolicy
         elif config["framework"] == "tf":
-            from ray.rllib.algorithms.marwil.marwil_tf_policy import (
-                MARWILTF1Policy,
-            )
+            from ray.rllib.algorithms.marwil.marwil_tf_policy import MARWILTF1Policy
 
             return MARWILTF1Policy
         else:

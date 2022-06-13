@@ -1,13 +1,14 @@
 import gym
-from gym.spaces import Discrete, Box
 import numpy as np
-from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
-from ray.rllib.utils.framework import try_import_torch
+from gym.spaces import Box, Discrete
+
 from ray.rllib.evaluation.rollout_worker import get_global_worker
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER
-from ray.rllib.utils.typing import SampleBatchType
+from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
+from ray.rllib.utils.typing import SampleBatchType
 
 torch, nn = try_import_torch()
 

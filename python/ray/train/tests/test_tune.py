@@ -1,12 +1,13 @@
 import os
 
 import pytest
+
 import ray
 import ray.train as train
 from ray import tune
 from ray.air import Checkpoint
-from ray.tune import TuneError
 from ray.train import Trainer
+from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
 from ray.train.examples.tensorflow_mnist_example import (
     train_func as tensorflow_mnist_train_func,
@@ -14,7 +15,7 @@ from ray.train.examples.tensorflow_mnist_example import (
 from ray.train.examples.train_fashion_mnist_example import (
     train_func as fashion_mnist_train_func,
 )
-from ray.train._internal.worker_group import WorkerGroup
+from ray.tune import TuneError
 
 
 @pytest.fixture
@@ -173,7 +174,8 @@ def test_retry(ray_start_2_cpus):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))

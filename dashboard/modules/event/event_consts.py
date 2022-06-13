@@ -1,5 +1,5 @@
-from ray.ray_constants import env_integer
 from ray.core.generated import event_pb2
+from ray.ray_constants import env_integer
 
 LOG_ERROR_EVENT_STRING_LENGTH_LIMIT = 1000
 RETRY_CONNECT_TO_DASHBOARD_INTERVAL_SECONDS = 2

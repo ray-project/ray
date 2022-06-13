@@ -61,8 +61,9 @@ class TestKaggleFootballMultiAgentEnv(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    from kaggle_environments.utils import structify
     import sys
+
     import pytest
+    from kaggle_environments.utils import structify
 
     sys.exit(pytest.main(["-v", __file__]))

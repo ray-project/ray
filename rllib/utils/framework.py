@@ -1,8 +1,9 @@
 import logging
-import numpy as np
 import os
 import sys
 from typing import Any, Optional
+
+import numpy as np
 
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.deprecation import Deprecated
@@ -29,8 +30,8 @@ def try_import_jax(error: bool = False):
         return None
 
     try:
-        import jax
         import flax
+        import jax
     except ImportError:
         if error:
             raise ImportError(

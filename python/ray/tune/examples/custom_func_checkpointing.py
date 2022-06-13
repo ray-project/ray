@@ -1,11 +1,12 @@
+import argparse
+import json
+
 # If want to use checkpointing with a custom training function (not a Ray
 # integration like PyTorch or Tensorflow), you must expose a
 # ``checkpoint_dir`` argument in the function signature, and call
 # ``tune.checkpoint_dir``:
 import os
 import time
-import json
-import argparse
 
 from ray import tune
 

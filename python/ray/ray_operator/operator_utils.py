@@ -3,13 +3,10 @@ import logging
 import os
 import re
 import time
-from typing import Any
-from typing import Dict
-from typing import Iterator
-from typing import List
+from typing import Any, Dict, Iterator, List
 
-from kubernetes.watch import Watch
 from kubernetes.client.rest import ApiException
+from kubernetes.watch import Watch
 
 from ray import ray_constants
 from ray.autoscaler._private._kubernetes import custom_objects_api

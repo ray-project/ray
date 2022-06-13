@@ -1,16 +1,16 @@
-from typing import Dict
 from threading import RLock
-import pytest
+from typing import Dict
 from unittest.mock import MagicMock, patch
 
+import pytest
+
+from python.ray.autoscaler._private.gcp.node_provider import GCPNodeProvider
 from ray.autoscaler._private.gcp.node import (
     GCPCompute,
     GCPNode,
     GCPNodeType,
     GCPResource,
 )
-
-from python.ray.autoscaler._private.gcp.node_provider import GCPNodeProvider
 
 _PROJECT_NAME = "project-one"
 _AZ = "us-west1-b"

@@ -1,4 +1,4 @@
-from ray.rllib.algorithms.mbmpo.mbmpo import MBMPO, MBMPOConfig, DEFAULT_CONFIG
+from ray.rllib.algorithms.mbmpo.mbmpo import DEFAULT_CONFIG, MBMPO, MBMPOConfig
 
 __all__ = [
     "MBMPO",

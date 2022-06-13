@@ -1,5 +1,6 @@
-import numpy as np
 import pickle
+
+import numpy as np
 
 import ray
 from ray.rllib.models.modelv2 import ModelV2

@@ -9,10 +9,7 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray._private.test_utils import (
-    RayTestTimeoutException,
-    wait_for_condition,
-)
+from ray._private.test_utils import RayTestTimeoutException, wait_for_condition
 
 logger = logging.getLogger(__name__)
 

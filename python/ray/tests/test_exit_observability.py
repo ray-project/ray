@@ -1,13 +1,12 @@
 import os
-import sys
 import signal
-
-import ray
+import sys
 
 import pytest
 
+import ray
+from ray._private.test_utils import run_string_as_driver, wait_for_condition
 from ray.experimental.state.api import list_workers
-from ray._private.test_utils import wait_for_condition, run_string_as_driver
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 

@@ -1,17 +1,18 @@
+import os
 from typing import Dict, List
+
+import numpy as np
 import sklearn.datasets
 import sklearn.metrics
-import os
-import numpy as np
-from ray.tune.schedulers import ASHAScheduler
-from sklearn.model_selection import train_test_split
 import xgboost as xgb
+from sklearn.model_selection import train_test_split
 
 from ray import tune
 from ray.tune.integration.xgboost import (
-    TuneReportCheckpointCallback,
     TuneReportCallback,
+    TuneReportCheckpointCallback,
 )
+from ray.tune.schedulers import ASHAScheduler
 
 
 def train_breast_cancer(config: dict):

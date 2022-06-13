@@ -1,19 +1,20 @@
 import json
-import re
 import platform
-import sys
-import zlib
-import shutil
-import time
-from collections import defaultdict
 import random
+import re
+import shutil
+import sys
+import time
+import zlib
+from collections import defaultdict
 
 import numpy as np
 import pytest
+
 import ray
 from ray._private.test_utils import wait_for_condition
-from ray.tests.test_object_spilling import is_dir_empty, assert_no_thrashing
 from ray.cluster_utils import Cluster, cluster_not_supported
+from ray.tests.test_object_spilling import assert_no_thrashing, is_dir_empty
 
 
 @pytest.mark.skipif(platform.system() in ["Windows"], reason="Failing on Windows.")

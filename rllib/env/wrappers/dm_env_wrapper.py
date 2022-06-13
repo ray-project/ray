@@ -1,14 +1,13 @@
 import gym
+import numpy as np
 from gym import spaces
 
-import numpy as np
+from ray.rllib.utils.annotations import PublicAPI
 
 try:
     from dm_env import specs
 except ImportError:
     specs = None
-
-from ray.rllib.utils.annotations import PublicAPI
 
 
 def _convert_spec_to_space(spec):

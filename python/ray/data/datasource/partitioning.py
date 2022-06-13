@@ -1,17 +1,11 @@
 import posixpath
 from enum import Enum
-from typing import (
-    Optional,
-    List,
-    Callable,
-    Dict,
-    TYPE_CHECKING,
-)
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional
+
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     import pyarrow
-
-from ray.util.annotations import DeveloperAPI, PublicAPI
 
 
 @DeveloperAPI

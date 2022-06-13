@@ -1,32 +1,32 @@
 # coding: utf-8
 
 import os
-import pytest
 import time
 import unittest
+from unittest.mock import patch
+
+import pytest
 
 import ray
 from ray import tune
+from ray.cluster_utils import Cluster
 from ray.rllib import _register_all
 from ray.tune import Trainable
 from ray.tune.callback import Callback
 from ray.tune.ray_trial_executor import (
+    RayTrialExecutor,
     _ExecutorEvent,
     _ExecutorEventType,
-    RayTrialExecutor,
 )
-from ray.tune.registry import _global_registry, TRAINABLE_CLASS, register_trainable
+from ray.tune.registry import TRAINABLE_CLASS, _global_registry, register_trainable
+from ray.tune.resources import Resources
 from ray.tune.result import PID, TRAINING_ITERATION, TRIAL_ID
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.trial import Trial
-from ray.tune.resources import Resources
-from ray.cluster_utils import Cluster
 from ray.tune.utils.placement_groups import (
     PlacementGroupFactory,
     _PlacementGroupManager,
 )
-from unittest.mock import patch
-
 from ray.util.ml_utils.checkpoint_manager import CheckpointStorage
 
 

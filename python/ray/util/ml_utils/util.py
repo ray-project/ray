@@ -1,5 +1,6 @@
-from contextlib import closing
 import socket
+from contextlib import closing
+
 import numpy as np
 
 

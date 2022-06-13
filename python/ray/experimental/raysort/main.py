@@ -9,19 +9,16 @@ import tempfile
 from typing import Callable, Dict, Iterable, List
 
 import numpy as np
-import ray
 
-from ray.experimental.raysort import constants
-from ray.experimental.raysort import logging_utils
-from ray.experimental.raysort import sortlib
-from ray.experimental.raysort import tracing_utils
+import ray
+from ray.experimental.raysort import constants, logging_utils, sortlib, tracing_utils
 from ray.experimental.raysort.types import (
     BlockInfo,
     ByteCount,
-    RecordCount,
     PartId,
     PartInfo,
     Path,
+    RecordCount,
 )
 
 Args = argparse.Namespace

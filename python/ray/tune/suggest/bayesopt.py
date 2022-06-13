@@ -1,18 +1,20 @@
-from collections import defaultdict
+import json
 import logging
 import pickle
-import json
-from typing import Dict, List, Optional, Tuple, Any
+from collections import defaultdict
+from typing import Any, Dict, List, Optional, Tuple
 
 from ray.tune import ExperimentAnalysis
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import Domain, Float, Quantized
+from ray.tune.suggest import Searcher
 from ray.tune.suggest.suggestion import (
-    UNRESOLVED_SEARCH_SPACE,
     UNDEFINED_METRIC_MODE,
     UNDEFINED_SEARCH_SPACE,
+    UNRESOLVED_SEARCH_SPACE,
 )
 from ray.tune.suggest.variant_generator import parse_spec_vars
+from ray.tune.utils import flatten_dict
 from ray.tune.utils.util import is_nan_or_inf, unflatten_dict
 
 try:  # Python 3 only -- needed for lint test.
@@ -20,8 +22,6 @@ try:  # Python 3 only -- needed for lint test.
 except ImportError:
     byo = None
 
-from ray.tune.suggest import Searcher
-from ray.tune.utils import flatten_dict
 
 logger = logging.getLogger(__name__)
 

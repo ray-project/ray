@@ -1,13 +1,17 @@
+# Mute the warning because Serve sometimes intentionally calls
+# ray.get inside async actors.
+import ray.worker
+
 try:
     from ray.serve.api import (
-        start,
-        get_replica_context,
-        shutdown,
-        ingress,
         deployment,
         get_deployment,
+        get_replica_context,
+        ingress,
         list_deployments,
         run,
+        shutdown,
+        start,
     )
     from ray.serve.batching import batch
     from ray.serve.config import HTTPOptions
@@ -18,9 +22,6 @@ except ModuleNotFoundError as e:
     )
     raise e
 
-# Mute the warning because Serve sometimes intentionally calls
-# ray.get inside async actors.
-import ray.worker
 
 ray.worker.blocking_get_inside_async_warned = True
 

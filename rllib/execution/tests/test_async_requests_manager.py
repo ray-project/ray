@@ -1,10 +1,10 @@
 import random
-import pytest
+import time
 import unittest
 
-import ray
-import time
+import pytest
 
+import ray
 from ray.rllib.execution.parallel_requests import AsyncRequestsManager
 
 

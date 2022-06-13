@@ -2,10 +2,10 @@
 import unittest
 
 import ray
-from ray.tune import run_experiments
-from ray.tune.registry import register_env
 from ray.rllib.examples.env.multi_agent import MultiAgentPendulum
 from ray.rllib.utils.test_utils import framework_iterator
+from ray.tune import run_experiments
+from ray.tune.registry import register_env
 
 
 class TestMultiAgentPendulum(unittest.TestCase):
@@ -64,7 +64,8 @@ class TestMultiAgentPendulum(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

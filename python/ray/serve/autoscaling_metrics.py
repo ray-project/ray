@@ -1,16 +1,14 @@
-import threading
 import bisect
-from collections import defaultdict
 import logging
-from threading import Event
-from typing import Type
+import threading
 import time
-from typing import Callable, DefaultDict, Dict, List, Optional
+from collections import defaultdict
 from dataclasses import dataclass, field
+from threading import Event
+from typing import Callable, DefaultDict, Dict, List, Optional, Type
 
 import ray
 from ray.serve.constants import SERVE_LOGGER_NAME
-
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 

@@ -1,4 +1,4 @@
-from typing import Optional, Any
+from typing import Any, Optional
 
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import TensorType

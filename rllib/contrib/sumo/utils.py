@@ -9,15 +9,15 @@
 """
 
 import collections
-from copy import deepcopy
 import logging
 import os
-from pprint import pformat
 import sys
+from copy import deepcopy
+from pprint import pformat
 
 from lxml import etree
 
-from ray.rllib.contrib.sumo.connector import SUMOConnector, DEFAULT_CONFIG
+from ray.rllib.contrib.sumo.connector import DEFAULT_CONFIG, SUMOConnector
 
 # """ Import SUMO library """
 if "SUMO_HOME" in os.environ:

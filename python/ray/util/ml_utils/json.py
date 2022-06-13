@@ -1,6 +1,7 @@
 import json
-import numpy as np
 import numbers
+
+import numpy as np
 
 
 class SafeFallbackEncoder(json.JSONEncoder):

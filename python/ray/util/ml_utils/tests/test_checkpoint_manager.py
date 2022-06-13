@@ -1,8 +1,9 @@
 import pytest
+
 from ray.util.ml_utils.checkpoint_manager import (
-    _CheckpointManager,
     CheckpointStorage,
     CheckpointStrategy,
+    _CheckpointManager,
     _TrackedCheckpoint,
 )
 

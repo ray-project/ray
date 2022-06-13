@@ -1,20 +1,19 @@
 import json
-import pytest
 import posixpath
 
+import pytest
 from pyarrow.fs import FileType
 from pytest_lazyfixture import lazy_fixture
-from ray.data.datasource.file_based_datasource import _resolve_paths_and_filesystem
 
-from ray.data.datasource.partitioning import PathPartitionScheme, PathPartitionFilter
-
-from ray.tests.conftest import *  # noqa
 from ray.data.datasource import (
-    PathPartitionParser,
-    PathPartitionEncoder,
     PartitionStyle,
+    PathPartitionEncoder,
+    PathPartitionParser,
 )
+from ray.data.datasource.file_based_datasource import _resolve_paths_and_filesystem
+from ray.data.datasource.partitioning import PathPartitionFilter, PathPartitionScheme
 from ray.data.tests.conftest import *  # noqa
+from ray.tests.conftest import *  # noqa
 
 
 def _verify_resolved_paths_and_filesystem(scheme: PathPartitionScheme):

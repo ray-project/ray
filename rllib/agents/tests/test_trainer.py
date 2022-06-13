@@ -1,18 +1,19 @@
 import copy
-import gym
-import numpy as np
 import os
-from pathlib import Path
-from random import choice
 import time
 import unittest
+from pathlib import Path
+from random import choice
+
+import gym
+import numpy as np
 
 import ray
 import ray.rllib.algorithms.a3c as a3c
 import ray.rllib.algorithms.dqn as dqn
-from ray.rllib.algorithms.bc import BC, BCConfig
 import ray.rllib.algorithms.pg as pg
 from ray.rllib.algorithms.algorithm import COMMON_CONFIG
+from ray.rllib.algorithms.bc import BC, BCConfig
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.examples.parallel_evaluation_and_training import AssertEvalCallback
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
@@ -349,7 +350,8 @@ class TestAlgorithm(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

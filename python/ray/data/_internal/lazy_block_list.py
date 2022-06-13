@@ -1,11 +1,14 @@
 import math
-from typing import List, Iterator, Tuple, Optional, Dict, Any
 import uuid
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import numpy as np
 
 import ray
-from ray.types import ObjectRef
+from ray.data._internal.block_list import BlockList
+from ray.data._internal.progress_bar import ProgressBar
+from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data._internal.stats import DatasetStats, _get_or_create_stats_actor
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -16,10 +19,7 @@ from ray.data.block import (
 )
 from ray.data.context import DatasetContext
 from ray.data.datasource import ReadTask
-from ray.data._internal.block_list import BlockList
-from ray.data._internal.progress_bar import ProgressBar
-from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.stats import DatasetStats, _get_or_create_stats_actor
+from ray.types import ObjectRef
 
 
 class LazyBlockList(BlockList):

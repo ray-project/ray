@@ -3,6 +3,9 @@
 
 # __tf_setup_begin__
 
+import json
+import os
+
 import numpy as np
 import tensorflow as tf
 
@@ -47,8 +50,6 @@ def train_func():
 
 # __tf_distributed_begin__
 
-import json
-import os
 
 def train_func_distributed():
     per_worker_batch_size = 64

@@ -4,11 +4,11 @@ https://gist.github.com/xwjiang2010/13e6df091e5938aff5b44769bec8ffb8,
 change your pytest running directory to ray/python/ray/tune/tests/
 """
 
+import unittest
 from collections import defaultdict
 from unittest.mock import patch
 
 import numpy as np
-import unittest
 
 import ray
 import ray.tune.sample
@@ -447,8 +447,9 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertSequenceEqual(choices_1, choices_2)
 
     def testConvertAx(self):
-        from ray.tune.suggest.ax import AxSearch
         from ax.service.ax_client import AxClient
+
+        from ray.tune.suggest.ax import AxSearch
 
         # Grid search not supported, should raise ValueError
         with self.assertRaises(ValueError):
@@ -512,13 +513,14 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(8 <= config["b"] <= 9)
 
     def testSampleBoundsAx(self):
-        from ray.tune.suggest.ax import AxSearch
-        from ax.service.ax_client import AxClient
-        from ax.modelbridge.generation_strategy import (
-            GenerationStrategy,
-            GenerationStep,
-        )
         from ax import Models
+        from ax.modelbridge.generation_strategy import (
+            GenerationStep,
+            GenerationStrategy,
+        )
+        from ax.service.ax_client import AxClient
+
+        from ray.tune.suggest.ax import AxSearch
 
         ignore = [
             "func",
@@ -658,8 +660,9 @@ class SearchSpaceTest(unittest.TestCase):
         self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
     def testConvertBOHB(self):
-        from ray.tune.suggest.bohb import TuneBOHB
         import ConfigSpace
+
+        from ray.tune.suggest.bohb import TuneBOHB
 
         # Grid search not supported, should raise ValueError
         with self.assertRaises(ValueError):
@@ -847,9 +850,10 @@ class SearchSpaceTest(unittest.TestCase):
         self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
     def testConvertHEBO(self):
-        from ray.tune.suggest.hebo import HEBOSearch
-        from hebo.design_space.design_space import DesignSpace
         import torch
+        from hebo.design_space.design_space import DesignSpace
+
+        from ray.tune.suggest.hebo import HEBOSearch
 
         # Grid search not supported, should raise ValueError
         with self.assertRaises(ValueError):
@@ -927,8 +931,9 @@ class SearchSpaceTest(unittest.TestCase):
         self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
     def testConvertHyperOpt(self):
-        from ray.tune.suggest.hyperopt import HyperOptSearch
         from hyperopt import hp
+
+        from ray.tune.suggest.hyperopt import HyperOptSearch
 
         # Grid search not supported, should raise ValueError
         with self.assertRaises(ValueError):
@@ -983,8 +988,9 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(8 <= config["b"] <= 9)
 
     def testConvertHyperOptChooseFromListOfList(self):
-        from ray.tune.suggest.hyperopt import HyperOptSearch
         from hyperopt import hp
+
+        from ray.tune.suggest.hyperopt import HyperOptSearch
 
         config = {
             "a": tune.choice([[1, 2], [3, 4]]),
@@ -1088,8 +1094,9 @@ class SearchSpaceTest(unittest.TestCase):
         self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
     def testConvertNevergrad(self):
-        from ray.tune.suggest.nevergrad import NevergradSearch
         import nevergrad as ng
+
+        from ray.tune.suggest.nevergrad import NevergradSearch
 
         # Grid search not supported, should raise ValueError
         with self.assertRaises(ValueError):
@@ -1160,8 +1167,9 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(8 <= config["b"] <= 9)
 
     def testSampleBoundsNevergrad(self):
-        from ray.tune.suggest.nevergrad import NevergradSearch
         import nevergrad as ng
+
+        from ray.tune.suggest.nevergrad import NevergradSearch
 
         ignore = [
             "func",
@@ -1190,9 +1198,10 @@ class SearchSpaceTest(unittest.TestCase):
         self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
     def testConvertOptuna(self):
-        from ray.tune.suggest.optuna import OptunaSearch
         import optuna
         from optuna.samplers import RandomSampler
+
+        from ray.tune.suggest.optuna import OptunaSearch
 
         # Grid search not supported, should raise ValueError
         with self.assertRaises(ValueError):
@@ -1387,8 +1396,9 @@ class SearchSpaceTest(unittest.TestCase):
         self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
     def testConvertSkOpt(self):
+        from skopt.space import Categorical, Integer, Real
+
         from ray.tune.suggest.skopt import SkOptSearch
-        from skopt.space import Real, Integer, Categorical
 
         # Grid search not supported, should raise ValueError
         with self.assertRaises(ValueError):
@@ -1469,8 +1479,9 @@ class SearchSpaceTest(unittest.TestCase):
         self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
     def testConvertZOOpt(self):
-        from ray.tune.suggest.zoopt import ZOOptSearch
         from zoopt import ValueType
+
+        from ray.tune.suggest.zoopt import ZOOptSearch
 
         # Grid search not supported, should raise ValueError
         with self.assertRaises(ValueError):
@@ -1711,8 +1722,9 @@ class SearchSpaceTest(unittest.TestCase):
             "c": tune.sample.Float(1e-4, 1e-1).loguniform(),
         }
 
-        from ray.tune.suggest.nevergrad import NevergradSearch
         import nevergrad as ng
+
+        from ray.tune.suggest.nevergrad import NevergradSearch
 
         return self._testPointsToEvaluate(
             NevergradSearch, config, exact=False, optimizer=ng.optimizers.OnePlusOne
@@ -1798,7 +1810,6 @@ class SearchSpaceTest(unittest.TestCase):
         # grid_1 * grid_2 are 3 * 4 = 12 variants per complete grid search
         # However if one grid var is set by preset variables, that run
         # is excluded from grid search.
-
         # Point 1 overwrites grid_1, so the first trial only grid searches
         # over grid_2 (3 trials).
         # The remaining 5 trials search over the whole space (5 * 12 trials)
@@ -1994,7 +2005,8 @@ class SearchSpaceTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__] + sys.argv[1:]))

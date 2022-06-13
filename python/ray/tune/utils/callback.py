@@ -1,21 +1,19 @@
-from typing import List, Optional
-
 import logging
 import os
+from typing import List, Optional
 
 from ray.tune.callback import Callback
-from ray.tune.progress_reporter import TrialProgressCallback
-from ray.tune.syncer import SyncConfig, detect_cluster_syncer
 from ray.tune.logger import (
-    CSVLoggerCallback,
     CSVLogger,
-    JsonLoggerCallback,
+    CSVLoggerCallback,
     JsonLogger,
+    JsonLoggerCallback,
     LegacyLoggerCallback,
-    TBXLoggerCallback,
     TBXLogger,
+    TBXLoggerCallback,
 )
-from ray.tune.syncer import SyncerCallback
+from ray.tune.progress_reporter import TrialProgressCallback
+from ray.tune.syncer import SyncConfig, SyncerCallback, detect_cluster_syncer
 
 logger = logging.getLogger(__name__)
 

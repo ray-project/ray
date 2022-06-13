@@ -1,18 +1,20 @@
+import os
 import unittest
+from pathlib import Path
+
+import gym
+import numpy as np
+
 import ray
 from ray import tune
 from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.offline.estimators import (
-    ImportanceSampling,
-    WeightedImportanceSampling,
     DirectMethod,
     DoublyRobust,
+    ImportanceSampling,
+    WeightedImportanceSampling,
 )
 from ray.rllib.offline.json_reader import JsonReader
-from pathlib import Path
-import os
-import numpy as np
-import gym
 
 
 class TestOPE(unittest.TestCase):
@@ -194,7 +196,8 @@ class TestOPE(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

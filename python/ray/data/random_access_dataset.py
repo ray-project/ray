@@ -3,14 +3,15 @@ import logging
 import random
 import time
 from collections import defaultdict
+from typing import TYPE_CHECKING, Any, Generic, List, Optional
+
 import numpy as np
-from typing import List, Any, Generic, Optional, TYPE_CHECKING
 
 import ray
-from ray.types import ObjectRef
-from ray.data.block import T, BlockAccessor
-from ray.data.context import DatasetContext, DEFAULT_SCHEDULING_STRATEGY
 from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data.block import BlockAccessor, T
+from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, DatasetContext
+from ray.types import ObjectRef
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:

@@ -1,26 +1,25 @@
-import pytest
+import logging
+import os
 import posixpath
 import urllib.parse
-import os
-import logging
 
-import pyarrow as pa
 import pandas as pd
+import pyarrow as pa
 import pyarrow.parquet as pq
+import pytest
 from pytest_lazyfixture import lazy_fixture
-from ray.data.datasource.file_based_datasource import _resolve_paths_and_filesystem
 
-from ray.tests.conftest import *  # noqa
 from ray.data.datasource import (
-    FileMetadataProvider,
     BaseFileMetadataProvider,
-    ParquetMetadataProvider,
     DefaultFileMetadataProvider,
     DefaultParquetMetadataProvider,
     FastFileMetadataProvider,
+    FileMetadataProvider,
+    ParquetMetadataProvider,
 )
-
+from ray.data.datasource.file_based_datasource import _resolve_paths_and_filesystem
 from ray.data.tests.conftest import *  # noqa
+from ray.tests.conftest import *  # noqa
 
 
 def _get_parquet_file_meta_size_bytes(file_metas):

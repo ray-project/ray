@@ -3,24 +3,28 @@
 
 # __import_lightning_begin__
 import math
-
-import torch
-import pytorch_lightning as pl
-from filelock import FileLock
-from torch.utils.data import DataLoader, random_split
-from torch.nn import functional as F
-from torchvision.datasets import MNIST
-from torchvision import transforms
 import os
-# __import_lightning_end__
 
+import pytorch_lightning as pl
+import torch
+from filelock import FileLock
 # __import_tune_begin__
 from pytorch_lightning.loggers import TensorBoardLogger
+from torch.nn import functional as F
+from torch.utils.data import DataLoader, random_split
+from torchvision import transforms
+from torchvision.datasets import MNIST
+
 from ray import tune
 from ray.tune import CLIReporter
+from ray.tune.integration.pytorch_lightning import (
+    TuneReportCallback,
+    TuneReportCheckpointCallback,
+)
 from ray.tune.schedulers import ASHAScheduler, PopulationBasedTraining
-from ray.tune.integration.pytorch_lightning import TuneReportCallback, \
-    TuneReportCheckpointCallback
+
+# __import_lightning_end__
+
 # __import_tune_end__
 
 

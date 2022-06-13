@@ -10,9 +10,10 @@ Control the number of agents and policies via --num-agents and --num-policies.
 """
 
 import argparse
-import gym
 import os
 import random
+
+import gym
 
 import ray
 from ray import tune

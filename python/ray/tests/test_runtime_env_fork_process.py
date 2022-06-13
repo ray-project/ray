@@ -1,7 +1,8 @@
+import json
+
 # coding: utf-8
 import os
 import sys
-import json
 
 import pytest
 

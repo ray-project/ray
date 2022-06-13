@@ -1,12 +1,12 @@
 import base64
-import gym
 import io
-import numpy as np
-from typing import Dict
 import zlib
+from typing import Dict
+
+import gym
+import numpy as np
 
 from ray.rllib.utils.annotations import DeveloperAPI
-
 
 # TODO(jungong) : We need to handle RLlib custom space types,
 # FlexDict, Repeated, and Simplex.

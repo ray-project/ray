@@ -7,6 +7,7 @@ This example shows:
 import argparse
 
 import numpy as np
+
 import ray
 from ray import tune
 from ray.rllib.utils.filter import Filter

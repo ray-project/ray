@@ -1,7 +1,7 @@
 from typing import Union
 
-from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.models.torch.misc import SlimFC
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import sequence_mask
 from ray.rllib.utils.typing import TensorType
 

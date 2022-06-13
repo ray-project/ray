@@ -1,7 +1,8 @@
-import ray
-from ray.util.dask import enable_dask_on_ray
 import dask
 import dask.array as da
+
+import ray
+from ray.util.dask import enable_dask_on_ray
 
 # Start Ray.
 # Tip: If connecting to an existing cluster, use ray.init(address="auto").

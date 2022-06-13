@@ -2,7 +2,6 @@ import pytest
 
 import ray
 from ray import tune
-
 from ray.data.preprocessor import Preprocessor
 from ray.train.trainer import BaseTrainer
 from ray.util.placement_group import get_current_placement_group
@@ -171,7 +170,8 @@ def test_fail(ray_start_4_cpus):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))

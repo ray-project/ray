@@ -3,23 +3,24 @@ import glob
 import itertools
 import os
 import uuid
-from typing import Dict, List, Optional, Union
 import warnings
+from typing import Dict, List, Optional, Union
+
 import numpy as np
 
+from ray.tune.config_parser import create_trial_from_spec, make_parser
 from ray.tune.error import TuneError
 from ray.tune.experiment import Experiment, convert_to_experiment_list
-from ray.tune.config_parser import make_parser, create_trial_from_spec
-from ray.tune.sample import np_random_generator, _BackwardsCompatibleNumpyRng
+from ray.tune.sample import _BackwardsCompatibleNumpyRng, np_random_generator
+from ray.tune.suggest.search import SearchAlgorithm
 from ray.tune.suggest.variant_generator import (
-    count_variants,
     count_spec_samples,
-    generate_variants,
-    format_vars,
+    count_variants,
     flatten_resolved_vars,
+    format_vars,
+    generate_variants,
     get_preset_variants,
 )
-from ray.tune.suggest.search import SearchAlgorithm
 from ray.tune.utils.util import atomic_save, load_newest_checkpoint
 from ray.util import PublicAPI
 

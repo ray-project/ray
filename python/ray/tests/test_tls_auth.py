@@ -1,8 +1,8 @@
 # coding: utf-8
 import logging
 import os
-import sys
 import subprocess
+import sys
 
 import pytest
 
@@ -152,7 +152,8 @@ print(ray.is_initialized())
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

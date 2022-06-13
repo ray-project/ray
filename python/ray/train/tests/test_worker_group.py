@@ -1,5 +1,6 @@
-import pytest
 import time
+
+import pytest
 
 import ray
 from ray.train._internal.worker_group import WorkerGroup
@@ -121,7 +122,8 @@ def test_placement_group(ray_start_2_cpus):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))

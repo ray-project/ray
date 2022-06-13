@@ -1,21 +1,17 @@
+import unittest
+
 import gym
 import numpy as np
-import unittest
 
 from ray.rllib.connectors.agent.clip_reward import ClipRewardAgentConnector
 from ray.rllib.connectors.agent.env_to_agent import EnvToAgentDataConnector
 from ray.rllib.connectors.agent.lambdas import FlattenDataAgentConnector
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
 from ray.rllib.connectors.agent.pipeline import AgentConnectorPipeline
-from ray.rllib.connectors.connector import (
-    ConnectorContext,
-    get_connector,
-)
+from ray.rllib.connectors.connector import ConnectorContext, get_connector
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
-from ray.rllib.utils.typing import (
-    AgentConnectorDataType,
-)
+from ray.rllib.utils.typing import AgentConnectorDataType
 
 
 class TestAgentConnector(unittest.TestCase):
@@ -180,7 +176,8 @@ class TestAgentConnector(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

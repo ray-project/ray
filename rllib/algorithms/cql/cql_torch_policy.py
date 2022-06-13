@@ -1,11 +1,12 @@
 """
 PyTorch policy class used for CQL.
 """
-import numpy as np
-import gym
 import logging
-import tree
 from typing import Dict, List, Tuple, Type, Union
+
+import gym
+import numpy as np
+import tree
 
 import ray
 import ray.experimental.tf_utils
@@ -14,28 +15,28 @@ from ray.rllib.algorithms.sac.sac_tf_policy import (
     validate_spaces,
 )
 from ray.rllib.algorithms.sac.sac_torch_policy import (
-    _get_dist_class,
-    stats,
-    build_sac_model_and_action_dist,
-    optimizer_fn,
     ComputeTDErrorMixin,
     TargetNetworkMixin,
-    setup_late_mixins,
+    _get_dist_class,
     action_distribution_fn,
+    build_sac_model_and_action_dist,
+    optimizer_fn,
+    setup_late_mixins,
+    stats,
 )
-from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
-from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
-from ray.rllib.utils.typing import LocalOptimizer, TensorType, AlgorithmConfigDict
 from ray.rllib.utils.torch_utils import (
     apply_grad_clipping,
-    convert_to_torch_tensor,
     concat_multi_gpu_td_errors,
+    convert_to_torch_tensor,
 )
+from ray.rllib.utils.typing import AlgorithmConfigDict, LocalOptimizer, TensorType
 
 torch, nn = try_import_torch()
 F = nn.functional

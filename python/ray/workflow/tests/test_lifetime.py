@@ -1,14 +1,16 @@
 import os
-import ray
 import time
+from unittest.mock import patch
+
 import pytest
+
+import ray
+from ray import workflow
 from ray._private.test_utils import (
-    run_string_as_driver_nonblocking,
     run_string_as_driver,
+    run_string_as_driver_nonblocking,
 )
 from ray.tests.conftest import *  # noqa
-from ray import workflow
-from unittest.mock import patch
 
 driver_script = """
 import time

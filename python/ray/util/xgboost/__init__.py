@@ -14,15 +14,15 @@ RayXGBRFRegressor = None
 
 try:
     from xgboost_ray import (
-        train,
-        predict,
-        RayParams,
         RayDMatrix,
         RayFileType,
+        RayParams,
         RayXGBClassifier,
         RayXGBRegressor,
         RayXGBRFClassifier,
         RayXGBRFRegressor,
+        predict,
+        train,
     )
 except ImportError:
     logger.info(

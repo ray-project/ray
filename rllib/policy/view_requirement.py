@@ -1,12 +1,10 @@
-import gym
 from typing import Dict, List, Optional, Union
+
+import gym
 
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.serialization import (
-    gym_space_to_dict,
-    gym_space_from_dict,
-)
+from ray.rllib.utils.serialization import gym_space_from_dict, gym_space_to_dict
 
 torch, _ = try_import_torch()
 

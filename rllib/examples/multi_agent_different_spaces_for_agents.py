@@ -12,8 +12,9 @@ Run this example with defaults (using Tune):
 """
 
 import argparse
-import gym
 import os
+
+import gym
 
 import ray
 from ray import tune

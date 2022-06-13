@@ -1,5 +1,5 @@
-from typing import Any, Tuple
 import queue
+from typing import Any, Tuple
 
 
 class MinibatchBuffer:

@@ -1,25 +1,23 @@
 import sys
 import time
-
-import pytest
+from typing import Iterable, List
 from unittest import mock
 
-from typing import List, Iterable
+import pytest
 
+import ray
+from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve.autoscaling_policy import (
     BasicAutoscalingPolicy,
     calculate_desired_num_replicas,
 )
 from ray.serve.common import DeploymentInfo
-from ray.serve.deployment_state import ReplicaState
 from ray.serve.config import AutoscalingConfig
 from ray.serve.constants import CONTROL_LOOP_PERIOD_S
 from ray.serve.controller import ServeController
 from ray.serve.deployment import Deployment
-
-import ray
-from ray import serve
+from ray.serve.deployment_state import ReplicaState
 from ray.serve.generated.serve_pb2 import DeploymentRouteList
 
 
@@ -882,6 +880,7 @@ def test_e2e_raise_min_replicas(serve_instance):
 
 if __name__ == "__main__":
     import sys
+
     import pytest
 
     sys.exit(pytest.main(["-v", "-s", __file__]))

@@ -7,7 +7,7 @@ from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.actors import create_colocated_actors
 from ray.rllib.utils.tf_utils import get_tf_eager_cls_if_necessary
-from ray.rllib.utils.typing import PolicyID, AlgorithmConfigDict
+from ray.rllib.utils.typing import AlgorithmConfigDict, PolicyID
 
 
 class DistributedLearners:

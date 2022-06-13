@@ -1,13 +1,13 @@
-from gym.spaces import Box, Discrete, Space
-import numpy as np
 from typing import List, Optional, Union
 
-from ray.rllib.utils.annotations import PublicAPI
+import numpy as np
+from gym.spaces import Box, Discrete, Space
+
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import PublicAPI, override
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.from_config import from_config

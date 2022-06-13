@@ -4,7 +4,7 @@ The following is adapted from Dask release 2021.03.1:
 """
 
 import os
-from queue import Queue, Empty
+from queue import Empty, Queue
 
 from dask import config
 from dask.callbacks import local_callbacks, unpack_callbacks

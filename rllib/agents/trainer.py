@@ -1,6 +1,6 @@
 from ray.rllib.algorithms.algorithm import (  # noqa
-    Algorithm,
     COMMON_CONFIG,
+    Algorithm,
     with_common_config,
 )
 from ray.rllib.utils.deprecation import deprecation_warning

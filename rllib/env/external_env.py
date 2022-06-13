@@ -1,11 +1,12 @@
-from six.moves import queue
-import gym
 import threading
 import uuid
-from typing import Callable, Tuple, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable, Optional, Tuple
+
+import gym
+from six.moves import queue
 
 from ray.rllib.env.base_env import BaseEnv
-from ray.rllib.utils.annotations import override, PublicAPI
+from ray.rllib.utils.annotations import PublicAPI, override
 from ray.rllib.utils.typing import (
     EnvActionType,
     EnvInfoDict,

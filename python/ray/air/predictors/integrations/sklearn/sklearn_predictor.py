@@ -1,16 +1,15 @@
-from typing import Optional, List, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Optional, Union
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 from joblib import parallel_backend
-
-from ray.air.checkpoint import Checkpoint
-from ray.air.predictor import Predictor, DataBatchType
-from ray.train.sklearn import load_checkpoint
-from ray.air._internal.sklearn_utils import set_cpu_params
-from ray.util.joblib import register_ray
-
 from sklearn.base import BaseEstimator
+
+from ray.air._internal.sklearn_utils import set_cpu_params
+from ray.air.checkpoint import Checkpoint
+from ray.air.predictor import DataBatchType, Predictor
+from ray.train.sklearn import load_checkpoint
+from ray.util.joblib import register_ray
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor

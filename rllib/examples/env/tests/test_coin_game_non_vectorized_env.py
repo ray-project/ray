@@ -5,7 +5,8 @@
 import random
 
 import numpy as np
-from ray.rllib.examples.env.coin_game_non_vectorized_env import CoinGame, AsymCoinGame
+
+from ray.rllib.examples.env.coin_game_non_vectorized_env import AsymCoinGame, CoinGame
 
 # TODO add tests for grid_size != 3
 

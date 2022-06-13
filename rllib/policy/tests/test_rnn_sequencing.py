@@ -1,16 +1,16 @@
-import numpy as np
 import unittest
+
+import numpy as np
 
 import ray
 from ray.rllib.policy.rnn_sequencing import (
-    pad_batch_to_sequences_of_same_size,
     add_time_dimension,
+    pad_batch_to_sequences_of_same_size,
 )
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import check
-
 
 tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
@@ -145,7 +145,8 @@ class TestRNNSequencing(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

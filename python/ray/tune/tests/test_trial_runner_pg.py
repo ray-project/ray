@@ -1,19 +1,20 @@
-import sys
 import os
+import sys
 import time
-import numpy as np
 import unittest
+
+import numpy as np
 
 import ray
 from ray import tune
+from ray.cluster_utils import Cluster
+from ray.rllib import _register_all
+from ray.tune import Callback
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.trial import Trial
-from ray.tune import Callback
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.util import placement_group_table
-from ray.cluster_utils import Cluster
-from ray.rllib import _register_all
 
 
 class TrialRunnerPlacementGroupTest(unittest.TestCase):

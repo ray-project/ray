@@ -1,8 +1,9 @@
+from typing import TYPE_CHECKING, Any, Callable, List, Optional, Type, Union
+
 import gym
-from gym.spaces import Discrete, MultiDiscrete
 import numpy as np
 import tree  # pip install dm_tree
-from typing import Any, Callable, List, Optional, Type, TYPE_CHECKING, Union
+from gym.spaces import Discrete, MultiDiscrete
 
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.framework import try_import_tf
@@ -246,9 +247,9 @@ def get_tf_eager_cls_if_necessary(
     if framework in ["tf2", "tfe"]:
         assert tf1.executing_eagerly()
 
-        from ray.rllib.policy.tf_policy import TFPolicy
         from ray.rllib.policy.eager_tf_policy import EagerTFPolicy
         from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
+        from ray.rllib.policy.tf_policy import TFPolicy
 
         # Create eager-class (if not already one).
         if hasattr(orig_cls, "as_eager") and not issubclass(orig_cls, EagerTFPolicy):

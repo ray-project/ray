@@ -1,5 +1,5 @@
-import gym
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
@@ -9,9 +9,10 @@ from typing import (
     Tuple,
     Type,
     TypeVar,
-    TYPE_CHECKING,
     Union,
 )
+
+import gym
 
 from ray.rllib.utils.annotations import DeveloperAPI
 
@@ -20,7 +21,7 @@ if TYPE_CHECKING:
     from ray.rllib.policy.dynamic_tf_policy_v2 import DynamicTFPolicyV2
     from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
     from ray.rllib.policy.policy import PolicySpec
-    from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
+    from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
     from ray.rllib.policy.view_requirement import ViewRequirement
     from ray.rllib.utils import try_import_tf, try_import_torch
 

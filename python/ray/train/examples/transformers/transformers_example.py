@@ -20,14 +20,12 @@ import logging
 import math
 import os
 import random
-from typing import Dict, Any
+from typing import Any, Dict
 
 import datasets
-import ray
 import transformers
 from accelerate import Accelerator
 from datasets import load_dataset, load_metric
-from ray.train import Trainer
 from torch.utils.data.dataloader import DataLoader
 from tqdm.auto import tqdm
 from transformers import (
@@ -43,6 +41,9 @@ from transformers import (
     set_seed,
 )
 from transformers.utils.versions import require_version
+
+import ray
+from ray.train import Trainer
 
 logger = logging.getLogger(__name__)
 

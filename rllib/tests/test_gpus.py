@@ -1,10 +1,10 @@
 import unittest
 
 import ray
+from ray import tune
 from ray.rllib.algorithms.a2c.a2c import A2C, A2C_DEFAULT_CONFIG
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.test_utils import framework_iterator
-from ray import tune
 
 torch, _ = try_import_torch()
 
@@ -106,7 +106,8 @@ class TestGPUs(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

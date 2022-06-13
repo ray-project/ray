@@ -1,7 +1,7 @@
+import time
+
 import ray
 from ray import serve
-
-import time
 
 ray.init(address="auto")
 serve.start()

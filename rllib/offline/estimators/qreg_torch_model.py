@@ -1,14 +1,15 @@
-from ray.rllib.models.utils import get_initializer
-from ray.rllib.policy import Policy
 from typing import List, Union
+
 import numpy as np
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
+from ray.rllib.models.utils import get_initializer
+from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.typing import TensorType, ModelConfigDict
+from ray.rllib.utils.typing import ModelConfigDict, TensorType
 
 torch, nn = try_import_torch()
 

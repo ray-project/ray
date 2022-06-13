@@ -1,26 +1,25 @@
 import json
-from typing import List
 from collections import OrderedDict
-
-from ray.serve.deployment import Deployment
-from ray.serve.deployment_graph import RayServeDAGHandle
-from ray.serve.deployment_method_node import DeploymentMethodNode
-from ray.serve.deployment_node import DeploymentNode
-from ray.serve.deployment_function_node import DeploymentFunctionNode
-from ray.serve.deployment_executor_node import DeploymentExecutorNode
-from ray.serve.deployment_method_executor_node import DeploymentMethodExecutorNode
-from ray.serve.deployment_function_executor_node import DeploymentFunctionExecutorNode
-from ray.serve.json_serde import DAGNodeEncoder
+from typing import List
 
 from ray.experimental.dag import (
-    DAGNode,
-    ClassNode,
-    ClassMethodNode,
     PARENT_CLASS_NODE_KEY,
+    ClassMethodNode,
+    ClassNode,
+    DAGNode,
 )
 from ray.experimental.dag.function_node import FunctionNode
 from ray.experimental.dag.input_node import InputNode
 from ray.experimental.dag.utils import DAGNodeNameGenerator
+from ray.serve.deployment import Deployment
+from ray.serve.deployment_executor_node import DeploymentExecutorNode
+from ray.serve.deployment_function_executor_node import DeploymentFunctionExecutorNode
+from ray.serve.deployment_function_node import DeploymentFunctionNode
+from ray.serve.deployment_graph import RayServeDAGHandle
+from ray.serve.deployment_method_executor_node import DeploymentMethodExecutorNode
+from ray.serve.deployment_method_node import DeploymentMethodNode
+from ray.serve.deployment_node import DeploymentNode
+from ray.serve.json_serde import DAGNodeEncoder
 
 
 def build(ray_dag_root_node: DAGNode) -> List[Deployment]:

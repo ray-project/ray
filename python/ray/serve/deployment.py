@@ -1,31 +1,17 @@
-from copy import copy
 import inspect
 import logging
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    Optional,
-    Tuple,
-    Union,
-)
+from copy import copy
+from typing import Any, Callable, Dict, Optional, Tuple, Union
 
-from ray.serve.context import get_global_client
 from ray.experimental.dag.class_node import ClassNode
 from ray.experimental.dag.function_node import FunctionNode
-from ray.serve.config import (
-    AutoscalingConfig,
-    DeploymentConfig,
-)
+from ray.serve.config import AutoscalingConfig, DeploymentConfig
 from ray.serve.constants import SERVE_LOGGER_NAME
+from ray.serve.context import get_global_client
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
+from ray.serve.schema import DeploymentSchema, RayActorOptionsSchema
 from ray.serve.utils import DEFAULT, get_deployment_import_path
 from ray.util.annotations import PublicAPI
-from ray.serve.schema import (
-    RayActorOptionsSchema,
-    DeploymentSchema,
-)
-
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 

@@ -18,13 +18,14 @@
 
 import argparse
 import os
-from pathlib import Path
 import sys
+from pathlib import Path
+
 import yaml
 
 import ray
-from ray.tune import run_experiments
 from ray.rllib import _register_all
+from ray.tune import run_experiments
 
 parser = argparse.ArgumentParser()
 parser.add_argument(

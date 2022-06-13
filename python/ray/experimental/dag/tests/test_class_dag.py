@@ -1,11 +1,12 @@
-import pytest
 import pickle
+
+import pytest
 
 import ray
 from ray.experimental.dag import (
-    DAGNode,
     PARENT_CLASS_NODE_KEY,
     PREV_CLASS_METHOD_CALL_KEY,
+    DAGNode,
 )
 
 

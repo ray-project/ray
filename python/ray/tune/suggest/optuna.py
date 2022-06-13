@@ -1,10 +1,11 @@
-import time
+import functools
 import logging
 import pickle
-import functools
+import time
 import warnings
-from packaging import version
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+
+from packaging import version
 
 from ray.tune.result import DEFAULT_METRIC, TRAINING_ITERATION
 from ray.tune.sample import (
@@ -16,10 +17,11 @@ from ray.tune.sample import (
     Quantized,
     Uniform,
 )
+from ray.tune.suggest import Searcher
 from ray.tune.suggest.suggestion import (
-    UNRESOLVED_SEARCH_SPACE,
     UNDEFINED_METRIC_MODE,
     UNDEFINED_SEARCH_SPACE,
+    UNRESOLVED_SEARCH_SPACE,
 )
 from ray.tune.suggest.variant_generator import parse_spec_vars
 from ray.tune.utils.util import flatten_dict, unflatten_dict, validate_warmstart
@@ -28,8 +30,8 @@ try:
     import optuna as ot
     from optuna.distributions import BaseDistribution as OptunaDistribution
     from optuna.samplers import BaseSampler
-    from optuna.trial import TrialState as OptunaTrialState
     from optuna.trial import Trial as OptunaTrial
+    from optuna.trial import TrialState as OptunaTrialState
 except ImportError:
     ot = None
     OptunaDistribution = None
@@ -37,7 +39,6 @@ except ImportError:
     OptunaTrialState = None
     OptunaTrial = None
 
-from ray.tune.suggest import Searcher
 
 logger = logging.getLogger(__name__)
 

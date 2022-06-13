@@ -1,13 +1,13 @@
 import logging
 import math
+from typing import List
 
 import ray.data
 from ray.rllib.offline.input_reader import InputReader
 from ray.rllib.offline.io_context import IOContext
 from ray.rllib.offline.json_reader import from_json_data
-from ray.rllib.utils.annotations import override, PublicAPI
-from ray.rllib.utils.typing import SampleBatchType, AlgorithmConfigDict
-from typing import List
+from ray.rllib.utils.annotations import PublicAPI, override
+from ray.rllib.utils.typing import AlgorithmConfigDict, SampleBatchType
 
 logger = logging.getLogger(__name__)
 

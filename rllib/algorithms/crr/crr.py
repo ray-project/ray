@@ -1,13 +1,11 @@
 import logging
+from typing import List, Optional, Type
+
 import numpy as np
-from typing import Type, List, Optional
 import tree
 
 from ray.rllib.algorithms.algorithm import Algorithm, AlgorithmConfig
-from ray.rllib.execution.train_ops import (
-    multi_gpu_train_one_step,
-    train_one_step,
-)
+from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
 from ray.rllib.offline.shuffled_input import ShuffledInput
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -18,9 +16,9 @@ from ray.rllib.utils.metrics import (
     TARGET_NET_UPDATE_TIMER,
 )
 from ray.rllib.utils.typing import (
+    AlgorithmConfigDict,
     PartialAlgorithmConfigDict,
     ResultDict,
-    AlgorithmConfigDict,
 )
 
 logger = logging.getLogger(__name__)

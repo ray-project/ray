@@ -1,8 +1,9 @@
 import sys
+from typing import List, Tuple
+
 import pytest
 
-from typing import List, Tuple
-from ray.dashboard.modules.runtime_env.runtime_env_agent import UriType, ReferenceTable
+from ray.dashboard.modules.runtime_env.runtime_env_agent import ReferenceTable, UriType
 from ray.runtime_env import RuntimeEnv
 
 

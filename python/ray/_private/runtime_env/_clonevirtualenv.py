@@ -2,6 +2,7 @@
 
 from __future__ import with_statement
 
+import itertools
 import logging
 import optparse
 import os
@@ -10,7 +11,6 @@ import re
 import shutil
 import subprocess
 import sys
-import itertools
 
 __version__ = "0.5.7"
 

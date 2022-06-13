@@ -9,18 +9,19 @@ See also: centralized_critic.py for an alternative approach that instead
 modifies the policy to add a centralized value function.
 """
 
-import numpy as np
-from gym.spaces import Dict, Discrete
 import argparse
 import os
 
+import numpy as np
+from gym.spaces import Dict, Discrete
+
 from ray import tune
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.examples.env.two_step_game import TwoStepGame
 from ray.rllib.examples.models.centralized_critic_models import (
     YetAnotherCentralizedCriticModel,
     YetAnotherTorchCentralizedCriticModel,
 )
-from ray.rllib.examples.env.two_step_game import TwoStepGame
 from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.test_utils import check_learning_achieved

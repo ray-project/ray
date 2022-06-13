@@ -1,19 +1,17 @@
-import pytest
 import json
-import pandas as pd
 
+import pandas as pd
+import pytest
 import xgboost as xgb
+from sklearn.datasets import load_breast_cancer
+from sklearn.model_selection import train_test_split
 
 import ray
 from ray import tune
 from ray.air.checkpoint import Checkpoint
-from ray.train.constants import TRAIN_DATASET_KEY
-
-from ray.train.xgboost import XGBoostTrainer, load_checkpoint
 from ray.data.preprocessor import Preprocessor
-
-from sklearn.datasets import load_breast_cancer
-from sklearn.model_selection import train_test_split
+from ray.train.constants import TRAIN_DATASET_KEY
+from ray.train.xgboost import XGBoostTrainer, load_checkpoint
 
 
 @pytest.fixture
@@ -167,7 +165,8 @@ def test_validation(ray_start_4_cpus):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))

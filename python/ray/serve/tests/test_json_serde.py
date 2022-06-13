@@ -1,35 +1,32 @@
-import pytest
 import json
 from typing import TypeVar
 
+import pytest
+
 import ray
+from ray import serve
 from ray.experimental.dag.dag_node import DAGNode
 from ray.experimental.dag.input_node import InputNode
-from ray import serve
 from ray.experimental.dag.utils import DAGNodeNameGenerator
+from ray.serve.deployment_graph_build import (
+    extract_deployments_from_serve_dag,
+    transform_ray_dag_to_serve_dag,
+    transform_serve_dag_to_serve_executor_dag,
+)
 from ray.serve.handle import (
     RayServeSyncHandle,
-    serve_handle_to_json_dict,
     serve_handle_from_json_dict,
+    serve_handle_to_json_dict,
 )
-from ray.serve.json_serde import (
-    DAGNodeEncoder,
-    dagnode_from_json,
-    DAGNODE_TYPE_KEY,
-)
+from ray.serve.json_serde import DAGNODE_TYPE_KEY, DAGNodeEncoder, dagnode_from_json
 from ray.serve.tests.resources.test_modules import (
+    NESTED_HANDLE_KEY,
+    ClassHello,
+    Combine,
+    Counter,
     Model,
     combine,
-    Counter,
-    ClassHello,
     fn_hello,
-    Combine,
-    NESTED_HANDLE_KEY,
-)
-from ray.serve.deployment_graph_build import (
-    transform_ray_dag_to_serve_dag,
-    extract_deployments_from_serve_dag,
-    transform_serve_dag_to_serve_executor_dag,
 )
 
 RayHandleLike = TypeVar("RayHandleLike")

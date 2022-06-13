@@ -1,22 +1,26 @@
 import json
+from dataclasses import asdict, dataclass, field
 from enum import Enum
-from dataclasses import dataclass, field, asdict
-from typing import Any, List, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import ray
 from ray.actor import ActorHandle
-from ray.serve.config import DeploymentConfig, ReplicaConfig
 from ray.serve.autoscaling_policy import AutoscalingPolicy
+from ray.serve.config import DeploymentConfig, ReplicaConfig
+from ray.serve.generated.serve_pb2 import ApplicationStatus as ApplicationStatusProto
 from ray.serve.generated.serve_pb2 import (
-    DeploymentInfo as DeploymentInfoProto,
-    DeploymentStatusInfo as DeploymentStatusInfoProto,
-    DeploymentStatus as DeploymentStatusProto,
-    DeploymentStatusInfoList as DeploymentStatusInfoListProto,
-    ApplicationStatus as ApplicationStatusProto,
     ApplicationStatusInfo as ApplicationStatusInfoProto,
-    StatusOverview as StatusOverviewProto,
-    DeploymentLanguage,
 )
+from ray.serve.generated.serve_pb2 import DeploymentInfo as DeploymentInfoProto
+from ray.serve.generated.serve_pb2 import DeploymentLanguage
+from ray.serve.generated.serve_pb2 import DeploymentStatus as DeploymentStatusProto
+from ray.serve.generated.serve_pb2 import (
+    DeploymentStatusInfo as DeploymentStatusInfoProto,
+)
+from ray.serve.generated.serve_pb2 import (
+    DeploymentStatusInfoList as DeploymentStatusInfoListProto,
+)
+from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
 
 EndpointTag = str
 ReplicaTag = str

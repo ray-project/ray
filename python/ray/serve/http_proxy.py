@@ -1,34 +1,33 @@
 import asyncio
-from asyncio.tasks import FIRST_COMPLETED
-import os
 import logging
+import os
 import pickle
 import socket
 import time
-from typing import Callable, List, Dict, Optional, Tuple
+from asyncio.tasks import FIRST_COMPLETED
+from typing import Callable, Dict, List, Optional, Tuple
 
-import uvicorn
 import starlette.responses
 import starlette.routing
+import uvicorn
 
 import ray
-from ray.exceptions import RayActorError, RayTaskError
-from ray.util import metrics
-
 from ray import serve
+from ray.exceptions import RayActorError, RayTaskError
+from ray.serve.common import EndpointInfo, EndpointTag
+from ray.serve.constants import SERVE_LOGGER_NAME, SERVE_NAMESPACE
 from ray.serve.handle import RayServeHandle
 from ray.serve.http_util import (
     HTTPRequestWrapper,
     RawASGIResponse,
-    receive_http_body,
     Response,
+    receive_http_body,
     set_socket_reuse_port,
 )
-from ray.serve.common import EndpointInfo, EndpointTag
-from ray.serve.constants import SERVE_LOGGER_NAME, SERVE_NAMESPACE
-from ray.serve.long_poll import LongPollClient, LongPollNamespace
 from ray.serve.logging_utils import access_log_msg, configure_component_logger
+from ray.serve.long_poll import LongPollClient, LongPollNamespace
 from ray.serve.utils import node_id_to_ip_addr
+from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 

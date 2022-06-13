@@ -1,6 +1,7 @@
+from typing import Dict, Optional
+
 import numpy as np
 import scipy.signal
-from typing import Dict, Optional
 
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.policy.policy import Policy

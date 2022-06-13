@@ -1,3 +1,7 @@
+from ray.train.tensorflow.config import TensorflowConfig
+from ray.train.tensorflow.tensorflow_trainer import TensorflowTrainer, load_checkpoint
+from ray.train.tensorflow.train_loop_utils import prepare_dataset_shard
+
 try:
     import tensorflow as tf  # noqa: F401
 except ModuleNotFoundError:
@@ -6,12 +10,6 @@ except ModuleNotFoundError:
         "tensorflow'."
     )
 
-from ray.train.tensorflow.config import TensorflowConfig
-from ray.train.tensorflow.train_loop_utils import prepare_dataset_shard
-from ray.train.tensorflow.tensorflow_trainer import (
-    TensorflowTrainer,
-    load_checkpoint,
-)
 
 __all__ = [
     "TensorflowConfig",

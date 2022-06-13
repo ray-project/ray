@@ -3,10 +3,11 @@
 """
 
 import argparse
-from matplotlib import pyplot as plt
+import time
+
 import numpy as np
 import pandas as pd
-import time
+from matplotlib import pyplot as plt
 
 import ray
 from ray import tune

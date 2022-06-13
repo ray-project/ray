@@ -1,9 +1,11 @@
-import numpy as np
-import ray
-import ray.rllib.algorithms.ppo as ppo
-import onnxruntime
 import os
 import shutil
+
+import numpy as np
+import onnxruntime
+
+import ray
+import ray.rllib.algorithms.ppo as ppo
 
 # Configure our PPO.
 config = ppo.DEFAULT_CONFIG.copy()

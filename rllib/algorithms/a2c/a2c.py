@@ -2,15 +2,13 @@ import logging
 import math
 from typing import Optional
 
+from ray.rllib.algorithms.a3c.a3c import A3C, A3CConfig
 from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.algorithms.a3c.a3c import A3CConfig, A3C
 from ray.rllib.execution.common import (
     STEPS_TRAINED_COUNTER,
     STEPS_TRAINED_THIS_ITER_COUNTER,
 )
-from ray.rllib.execution.rollout_ops import (
-    synchronous_parallel_sample,
-)
+from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
@@ -22,9 +20,9 @@ from ray.rllib.utils.metrics import (
     WORKER_UPDATE_TIMER,
 )
 from ray.rllib.utils.typing import (
+    AlgorithmConfigDict,
     PartialAlgorithmConfigDict,
     ResultDict,
-    AlgorithmConfigDict,
 )
 
 logger = logging.getLogger(__name__)
