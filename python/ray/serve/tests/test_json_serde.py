@@ -12,12 +12,12 @@ from ray.serve.handle import (
     serve_handle_to_json_dict,
     serve_handle_from_json_dict,
 )
-from ray.serve.pipeline.json_serde import (
+from ray.serve.json_serde import (
     DAGNodeEncoder,
     dagnode_from_json,
     DAGNODE_TYPE_KEY,
 )
-from ray.serve.pipeline.tests.resources.test_modules import (
+from ray.serve.tests.resources.test_modules import (
     Model,
     combine,
     Counter,
@@ -26,7 +26,7 @@ from ray.serve.pipeline.tests.resources.test_modules import (
     Combine,
     NESTED_HANDLE_KEY,
 )
-from ray.serve.pipeline.generate import (
+from ray.serve.deployment_graph_build import (
     transform_ray_dag_to_serve_dag,
     extract_deployments_from_serve_dag,
     transform_serve_dag_to_serve_executor_dag,
@@ -124,7 +124,7 @@ def test_simple_function_node_json_serde(serve_instance):
         executor_fn=_test_execution_function_node,
         expected_json_dict={
             DAGNODE_TYPE_KEY: "FunctionNode",
-            "import_path": "ray.serve.pipeline.tests.resources.test_modules.combine",
+            "import_path": "ray.serve.tests.resources.test_modules.combine",
             "args": [1, 2],
             "kwargs": {},
             "options": {},
@@ -139,7 +139,7 @@ def test_simple_function_node_json_serde(serve_instance):
         executor_fn=_test_execution_function_node,
         expected_json_dict={
             DAGNODE_TYPE_KEY: "FunctionNode",
-            "import_path": "ray.serve.pipeline.tests.resources.test_modules.combine",
+            "import_path": "ray.serve.tests.resources.test_modules.combine",
             "args": [1, 2],
             "kwargs": {"kwargs_output": 3},
             "options": {},
@@ -154,7 +154,7 @@ def test_simple_function_node_json_serde(serve_instance):
         executor_fn=_test_execution_function_node,
         expected_json_dict={
             DAGNODE_TYPE_KEY: "FunctionNode",
-            "import_path": "ray.serve.pipeline.tests.resources.test_modules.fn_hello",
+            "import_path": "ray.serve.tests.resources.test_modules.fn_hello",
             "args": [],
             "kwargs": {},
             "options": {},
@@ -184,7 +184,7 @@ def test_simple_class_node_json_serde(serve_instance):
         executor_fn=_test_execution_class_node_ClassHello,
         expected_json_dict={
             DAGNODE_TYPE_KEY: "ClassNode",
-            "import_path": "ray.serve.pipeline.tests.resources.test_modules.ClassHello",
+            "import_path": "ray.serve.tests.resources.test_modules.ClassHello",
             "args": [],
             "kwargs": {},
             "options": {},
@@ -199,7 +199,7 @@ def test_simple_class_node_json_serde(serve_instance):
         executor_fn=_test_execution_class_node_Model,
         expected_json_dict={
             DAGNODE_TYPE_KEY: "ClassNode",
-            "import_path": "ray.serve.pipeline.tests.resources.test_modules.Model",
+            "import_path": "ray.serve.tests.resources.test_modules.Model",
             "args": [1],
             "kwargs": {},
             "options": {},
@@ -214,7 +214,7 @@ def test_simple_class_node_json_serde(serve_instance):
         executor_fn=_test_execution_class_node_Model,
         expected_json_dict={
             DAGNODE_TYPE_KEY: "ClassNode",
-            "import_path": "ray.serve.pipeline.tests.resources.test_modules.Model",
+            "import_path": "ray.serve.tests.resources.test_modules.Model",
             "args": [1],
             "kwargs": {"ratio": 0.5},
             "options": {},
