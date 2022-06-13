@@ -148,20 +148,20 @@ In the above snippet, ``actions`` is a Tensor placeholder of shape ``[batch_size
         name="MyTFPolicy",
         loss_fn=policy_gradient_loss)
 
-We can create a `Trainer <#trainers>`__ and try running this policy on a toy env with two parallel rollout workers:
+We can create an `Algorithm <#algorithms>`__ and try running this policy on a toy env with two parallel rollout workers:
 
 .. code-block:: python
 
     import ray
     from ray import tune
-    from ray.rllib.agents.trainer import Trainer
+    from ray.rllib.algorithms.algorithm import Algorithm
 
-    class MyTrainer(Trainer):
+    class MyAlgo(Algorithm):
         def get_default_policy_class(self, config):
             return MyTFPolicy
 
     ray.init()
-    tune.run(MyTrainer, config={"env": "CartPole-v0", "num_workers": 2})
+    tune.run(MyAlgo, config={"env": "CartPole-v0", "num_workers": 2})
 
 
 If you run the above snippet `(runnable file here) <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_tf_policy.py>`__, you'll probably notice that CartPole doesn't learn so well:
@@ -204,7 +204,7 @@ Let's modify our policy loss to include rewards summed over time. To enable this
         loss_fn=policy_gradient_loss,
         postprocess_fn=postprocess_advantages)
 
-The ``postprocess_advantages()`` function above uses calls RLlib's ``compute_advantages`` function to compute advantages for each timestep. If you re-run the trainer with this improved policy, you'll find that it quickly achieves the max reward of 200.
+The ``postprocess_advantages()`` function above uses calls RLlib's ``compute_advantages`` function to compute advantages for each timestep. If you re-run the algorithm with this improved policy, you'll find that it quickly achieves the max reward of 200.
 
 You might be wondering how RLlib makes the advantages placeholder automatically available as ``train_batch[Postprocessing.ADVANTAGES]``. When building your policy, RLlib will create a "dummy" trajectory batch where all observations, actions, rewards, etc. are zeros. It then calls your ``postprocess_fn``, and generates TF placeholders based on the numpy shapes of the postprocessed batch. RLlib tracks which placeholders that ``loss_fn`` and ``stats_fn`` access, and then feeds the corresponding sample data into those placeholders during loss optimization. You can also access these placeholders via ``policy.get_placeholder(<name>)`` after loss initialization.
 
@@ -212,32 +212,31 @@ You might be wondering how RLlib makes the advantages placeholder automatically 
 
 In the above section you saw how to compose a simple policy gradient algorithm with RLlib.
 In this example, we'll dive into how PPO is defined within RLlib and how you can modify it.
-First, check out the `PPO trainer definition <https://github.com/ray-project/ray/blob/master/rllib/algorithms/ppo/ppo.py>`__:
+First, check out the `PPO definition <https://github.com/ray-project/ray/blob/master/rllib/algorithms/ppo/ppo.py>`__:
 
 .. code-block:: python
 
-    class PPO(Trainer):
+    class PPO(Algorithm):
         @classmethod
-        @override(Trainer)
-        def get_default_config(cls) -> TrainerConfigDict:
+        @override(Algorithm)
+        def get_default_config(cls) -> AlgorithmConfigDict:
             return DEFAULT_CONFIG
 
-        @override(Trainer)
-        def validate_config(self, config: TrainerConfigDict) -> None:
+        @override(Algorithm)
+        def validate_config(self, config: AlgorithmConfigDict) -> None:
             ...
 
-        @override(Trainer)
+        @override(Algorithm)
         def get_default_policy_class(self, config):
             return PPOTFPolicy
 
-        @staticmethod
-        @override(Trainer)
-        def training_step(workers, config, **kwargs):
+        @override(Algorithm)
+        def training_step(self):
             ...
 
 Besides some boilerplate for defining the PPO configuration and some warnings, the most important method to take note of is the ``training_step``.
 
-The trainer's `training iteration method <core-concepts.html#training-iteration-method>`__ defines the distributed training workflow.
+The algorithm's `training step method <core-concepts.html#training-step-method>`__ defines the distributed training workflow.
 Depending on the ``simple_optimizer`` trainer config,
 PPO can switch between a simple synchronous optimizer, or a multi-GPU plan that implements minibatch SGD (the default):
 
@@ -306,7 +305,7 @@ Now let's look at each PPO policy definition:
         before_loss_init=setup_mixins,
         mixins=[LearningRateSchedule, KLCoeffMixin, ValueNetworkMixin])
 
-``stats_fn``: The stats function returns a dictionary of Tensors that will be reported with the training results. This also includes the ``kl`` metric which is used by the trainer to adjust the KL penalty. Note that many of the values below reference ``policy.loss_obj``, which is assigned by ``loss_fn`` (not shown here since the PPO loss is quite complex). RLlib will always call ``stats_fn`` after ``loss_fn``, so you can rely on using values saved by ``loss_fn`` as part of your statistics:
+``stats_fn``: The stats function returns a dictionary of Tensors that will be reported with the training results. This also includes the ``kl`` metric which is used by the algorithm to adjust the KL penalty. Note that many of the values below reference ``policy.loss_obj``, which is assigned by ``loss_fn`` (not shown here since the PPO loss is quite complex). RLlib will always call ``stats_fn`` after ``loss_fn``, so you can rely on using values saved by ``loss_fn`` as part of your statistics:
 
 .. code-block:: python
 
@@ -454,7 +453,8 @@ Here's an example of using eager ops embedded
 Building Policies in PyTorch
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Defining a policy in PyTorch is quite similar to that for TensorFlow (and the process of defining a trainer given a Torch policy is exactly the same). Here's a simple example of a trivial torch policy `(runnable file here) <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_torch_policy.py>`__:
+Defining a policy in PyTorch is quite similar to that for TensorFlow (and the process of defining a algorithm given a Torch policy is exactly the same).
+Here's a simple example of a trivial torch policy `(runnable file here) <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_torch_policy.py>`__:
 
 .. code-block:: python
 

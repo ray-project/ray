@@ -42,30 +42,30 @@ class TestRemoteWorkerEnvSetting(unittest.TestCase):
 
         # Simple string env definition (gym.make(...)).
         config["env"] = "CartPole-v0"
-        trainer = pg.PG(config=config)
-        print(trainer.train())
-        trainer.stop()
+        algo = pg.PG(config=config)
+        print(algo.train())
+        algo.stop()
 
         # Using tune.register.
         config["env"] = "cartpole"
-        trainer = pg.PG(config=config)
-        print(trainer.train())
-        trainer.stop()
+        algo = pg.PG(config=config)
+        print(algo.train())
+        algo.stop()
 
         # Using class directly.
         # This doesn't work anymore as of gym==0.23
         # config["env"] = RandomEnv
-        # trainer = pg.PG(config=config)
-        # print(trainer.train())
-        # trainer.stop()
+        # algo = pg.PG(config=config)
+        # print(algo.train())
+        # algo.stop()
 
         # Using class directly: Sub-class of gym.Env,
         # which implements its own API.
         # This doesn't work anymore as of gym==0.23
         # config["env"] = NonVectorizedEnvToBeVectorizedIntoRemoteBaseEnv
-        # trainer = pg.PG(config=config)
-        # print(trainer.train())
-        # trainer.stop()
+        # algo = pg.PG(config=config)
+        # print(algo.train())
+        # algo.stop()
 
     def test_remote_worker_env_multi_agent(self):
         config = pg.DEFAULT_CONFIG.copy()
@@ -74,22 +74,22 @@ class TestRemoteWorkerEnvSetting(unittest.TestCase):
 
         # Full classpath provided.
         config["env"] = "ray.rllib.examples.env.random_env.RandomMultiAgentEnv"
-        trainer = pg.PG(config=config)
-        print(trainer.train())
-        trainer.stop()
+        algo = pg.PG(config=config)
+        print(algo.train())
+        algo.stop()
 
         # Using tune.register.
         config["env"] = "pistonball"
-        trainer = pg.PG(config=config)
-        print(trainer.train())
-        trainer.stop()
+        algo = pg.PG(config=config)
+        print(algo.train())
+        algo.stop()
 
         # Using class directly.
         # This doesn't work anymore as of gym==0.23.
         # config["env"] = RandomMultiAgentEnv
-        # trainer = pg.PG(config=config)
-        # print(trainer.train())
-        # trainer.stop()
+        # algo = pg.PG(config=config)
+        # print(algo.train())
+        # algo.stop()
 
 
 if __name__ == "__main__":

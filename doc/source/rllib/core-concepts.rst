@@ -2,7 +2,7 @@
 
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-.. TODO: We need trainers, environments, algorithms, policies, models here. Likely in that order.
+.. TODO: We need algorithms, environments, policies, models here. Likely in that order.
     Execution plans are not a "core" concept for users. Sample batches should probably also be left out.
 
 .. _rllib-core-concepts:
@@ -10,31 +10,59 @@
 Key Concepts
 ============
 
-On this page, we'll cover the key concepts to help you understand how RLlib works and how to use it.
-In RLlib you use `trainers` to train `algorithms`.
-These algorithms use `policies` to select actions for your agents.
-Given a policy, `evaluation` of a policy produces `sample batches` of experiences.
-You can also customize the `training_step` method of your RL experiments.
+On this page, we'll cover the key concepts to help you understand how RLlib works and
+how to use it. In RLlib you use ``Algorithm``'s to learn in problem environments.
+These algorithms use ``policies`` to select actions for your agents.
+Given a policy, ``evaluation`` of a policy produces ``sample batches`` of experiences.
+You can also customize the ``training_step``\s of your RL experiments.
 
-Trainers
---------
+Algorithms
+----------
 
-Trainers bring all RLlib components together, making algorithms accessible via RLlib's Python API and its command line interface (CLI).
-They manage algorithm configuration, setup of the rollout workers and optimizer, and collection of training metrics.
-Trainers also implement the :ref:`Tune Trainable API <tune-60-seconds>` for easy experiment management.
+Algorithms bring all RLlib components together, making learning of different tasks
+accessible via RLlib's Python API and its command line interface (CLI).
+Each ``Algorithm`` class is managed by its respective ``AlgorithmConfig``, for example to
+configure a ``PPO`` instance, you should use the ``PPOConfig`` class.
+An ``Algorithm`` sets up its rollout workers and optimizers, and collects training metrics.
+``Algorithms`` also implement the :ref:`Tune Trainable API <tune-60-seconds>` for
+easy experiment management.
 
-You have three ways to interact with a trainer. You can use the basic Python API or the command line to train it, or you
+You have three ways to interact with an algorithm. You can use the basic Python API or the command line to train it, or you
 can use Ray Tune to tune hyperparameters of your reinforcement learning algorithm.
-The following example shows three equivalent ways of interacting with the ``PPO`` Trainer,
+The following example shows three equivalent ways of interacting with ``PPO``,
 which implements the proximal policy optimization algorithm in RLlib.
 
-.. tabbed:: Basic RLlib Trainer
+.. tabbed:: Basic RLlib Algorithm
 
     .. code-block:: python
 
-        trainer = PPO(env="CartPole-v0", config={"train_batch_size": 4000})
+        # Configure.
+        from ray.rllib.algorithms import PPOConfig
+        config = PPOConfig().environment("CartPole-v0").training(train_batch_size=4000)
+
+        # Build.
+        algo = config.build()
+
+        # Train.
         while True:
-            print(trainer.train())
+            print(algo.train())
+
+
+.. tabbed:: RLlib Algorithms and Tune
+
+    .. code-block:: python
+
+        from ray import tune
+
+        # Configure.
+        from ray.rllib.algorithms import PPOConfig
+        config = PPOConfig().environment("CartPole-v0").training(train_batch_size=4000)
+
+        # Train via Ray Tune.
+        # Note that Ray Tune does not yet support AlgorithmConfig objects, hence
+        # we need to convert back to old-style config dicts.
+        tune.run("PPO", config=config.to_dict())
+
 
 .. tabbed:: RLlib Command Line
 
@@ -42,17 +70,9 @@ which implements the proximal policy optimization algorithm in RLlib.
 
         rllib train --run=PPO --env=CartPole-v0 --config='{"train_batch_size": 4000}'
 
-.. tabbed:: RLlib Tune Trainer
 
-    .. code-block:: python
-
-        from ray import tune
-        tune.run(PPO, config={"env": "CartPole-v0", "train_batch_size": 4000})
-
-
-
-RLlib `Trainer classes <rllib-concepts.html#trainers>`__ coordinate the distributed workflow of running rollouts and optimizing policies.
-Trainer classes leverage parallel iterators to implement the desired computation pattern.
+RLlib `Algorithm classes <rllib-concepts.html#algorithms>`__ coordinate the distributed workflow of running rollouts and optimizing policies.
+Algorithm classes leverage parallel iterators to implement the desired computation pattern.
 The following figure shows *synchronous sampling*, the simplest of `these patterns <rllib-algorithms.html>`__:
 
 .. figure:: images/a2c-arch.svg
@@ -178,7 +198,7 @@ Training Step Method
 What is it?
 ~~~~~~~~~~~
 
-The ``training_step`` method is an attribute of ``Trainer`` that dictates the execution logic of your algorithm. Specifically, it is used to express how you want to
+The ``training_step`` method is an attribute of ``Algorithm`` that dictates the execution logic of your algorithm. Specifically, it is used to express how you want to
 coordinate the movement of samples and policy data across your distributed workers.
 
 **A developer will need to modify this attribute of an algorithm if they want to

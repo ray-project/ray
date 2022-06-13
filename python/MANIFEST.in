@@ -1,3 +1,5 @@
 include ray/autoscaler/ray-schema.json
 include ray/py.typed
 recursive-include ray *.pyi
+global-exclude *BUILD
+global-exclude *BUILD.bazel
