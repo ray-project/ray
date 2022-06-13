@@ -62,67 +62,11 @@ cc_binary(
     srcs = glob([
         "src/ray/worker/default_worker.cc",
     ]),
-    copts = COPTS,
+    #copts = COPTS,
     linkstatic = True,
     deps = [
-        "ray_api",
+        "//:ray_cpp_lib",
     ],
-)
-
-genrule(
-    name = "ray_cpp_pkg",
-    srcs = [
-        "default_worker",
-        "ray_api",
-        "libray_api.so",
-    ],
-    outs = ["ray_cpp_pkg.out"],
-    cmd = """
-        WORK_DIR="$$(pwd)" &&
-        PY_CPP_DIR="$$WORK_DIR/python/ray/cpp" &&
-        rm -rf $$PY_CPP_DIR &&
-        BOOST_DIR="$$PY_CPP_DIR/include/boost/" &&
-        mkdir -p "$$BOOST_DIR" &&
-        mkdir -p "$$PY_CPP_DIR/lib/" &&
-        cp -f $(location default_worker) "$$PY_CPP_DIR/" &&
-        cp -f -r $$WORK_DIR/external/msgpack/include/* "$$PY_CPP_DIR/include" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/archive" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/assert" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/bind" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/callable_traits" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/concept" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/config" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/container" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/container_hash" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/core" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/detail" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/dll" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/exception" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/filesystem" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/functional" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/io" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/iterator" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/lexical_cast" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/move" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/mpl" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/optional" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/parameter" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/preprocessor" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/system" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/type_traits" "$$BOOST_DIR" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/utility" "$$BOOST_DIR" &&
-        cp -f -r $$WORK_DIR/external/boost/boost/*.hpp "$$BOOST_DIR" &&
-        cp -f $(locations libray_api.so) "$$PY_CPP_DIR/lib/" &&
-        cp -f -r "$$WORK_DIR/cpp/include/ray" "$$PY_CPP_DIR/include" &&
-        THIRDPARTY_DIR="$$WORK_DIR/cpp/example/thirdparty" &&
-        rm -rf $$THIRDPARTY_DIR &&
-        mkdir $$THIRDPARTY_DIR &&
-        cp -f -r "$$PY_CPP_DIR/include" $$THIRDPARTY_DIR &&
-        cp -f -r "$$PY_CPP_DIR/lib" $$THIRDPARTY_DIR &&
-        cp -f -r "$$WORK_DIR/cpp/example" "$$PY_CPP_DIR" &&
-        echo "$$WORK_DIR" > $@
-    """,
-    local = 1,
     visibility = ["//visibility:public"],
 )
 
@@ -156,7 +100,7 @@ cc_test(
     data = [
         "counter.so",
         "plus.so",
-        "ray_cpp_pkg",
+        "//:ray_cpp_pkg",
         "src/ray/test/cluster/test_cross_language_invocation.py",
     ],
     linkstatic = True,
@@ -178,7 +122,7 @@ cc_binary(
     linkopts = ["-shared"],
     linkstatic = True,
     deps = [
-        "ray_api",
+        "//:ray_cpp_lib",
     ],
 )
 
@@ -193,7 +137,7 @@ cc_binary(
     linkopts = ["-shared"],
     linkstatic = True,
     deps = [
-        "ray_api",
+        "//:ray_cpp_lib",
     ],
 )
 
@@ -208,7 +152,7 @@ cc_test(
     linkstatic = True,
     tags = ["team:core"],
     deps = [
-        ":ray_api",
+        "//:ray_cpp_lib",
     ],
 )
 
@@ -221,7 +165,7 @@ cc_binary(
     linkopts = ["-shared"],
     linkstatic = True,
     deps = [
-        ":ray_api",
+        "//:ray_cpp_lib",
     ],
 )
 

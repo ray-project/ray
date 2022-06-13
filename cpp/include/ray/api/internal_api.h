@@ -1,4 +1,4 @@
-// Copyright 2020-2021 The Ray Authors.
+// Copyright 2022 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,13 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <ray/api.h>
-#include <ray/api/internal_api.h>
+#pragma once
 
-int main(int argc, char **argv) {
-  ray::RayConfig config;
-  config.is_worker_ = true;
-  ray::Init(config, argc, argv);
-  ray::RunTaskExecutionLoop();
-  return 0;
-}
+namespace ray {
+
+void RunTaskExecutionLoop();
+
+}  // namespace ray

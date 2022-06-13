@@ -2716,3 +2716,105 @@ genrule(
     """,
     local = 1,
 )
+
+genrule(
+    name = "generate_ray_cpp_lib",
+    srcs = [
+        "//cpp:ray_api",
+        "//cpp:libray_api.so",
+    ],
+    outs = ["libray_api.so"],
+    cmd = """
+        WORK_DIR="$$(pwd)" &&
+        PY_CPP_DIR="$$WORK_DIR/python/ray/cpp" &&
+        rm -rf $$PY_CPP_DIR &&
+        BOOST_DIR="$$PY_CPP_DIR/include/boost/" &&
+        mkdir -p "$$BOOST_DIR" &&
+        mkdir -p "$$PY_CPP_DIR/lib/" &&
+        cp -f -r $$WORK_DIR/external/msgpack/include/* "$$PY_CPP_DIR/include" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/archive" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/assert" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/bind" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/callable_traits" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/concept" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/config" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/container" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/container_hash" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/core" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/detail" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/dll" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/exception" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/filesystem" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/functional" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/io" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/iterator" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/lexical_cast" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/move" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/mpl" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/optional" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/parameter" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/preprocessor" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/system" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/type_traits" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/utility" "$$BOOST_DIR" &&
+        cp -f -r $$WORK_DIR/external/boost/boost/*.hpp "$$BOOST_DIR" &&
+        cp -f $(locations //cpp:libray_api.so) "$$PY_CPP_DIR/lib/" &&
+        cp -f -r "$$WORK_DIR/cpp/include/ray" "$$PY_CPP_DIR/include" &&
+        THIRDPARTY_DIR="$$WORK_DIR/cpp/example/thirdparty" &&
+        rm -rf $$THIRDPARTY_DIR &&
+        mkdir $$THIRDPARTY_DIR &&
+        cp -f -r "$$PY_CPP_DIR/include" $$THIRDPARTY_DIR &&
+        cp -f -r "$$PY_CPP_DIR/lib" $$THIRDPARTY_DIR &&
+        cp -f -r "$$WORK_DIR/cpp/example" "$$PY_CPP_DIR" &&
+        cp -f $(locations //cpp:libray_api.so) $@
+    """,
+    local = 1,
+    visibility = ["//visibility:public"],
+    tags = ["no-cache"],
+)
+
+cc_library(
+    name = "ray_cpp_lib",
+    srcs = [
+        "libray_api.so",
+    ],
+    hdrs = glob([
+        "python/ray/cpp/include/**/*.h",
+        "python/ray/cpp/include/**/*.hpp",
+    ]),
+    data = [
+        "generate_ray_cpp_lib",
+    ],
+    linkopts = ["-Wl,-rpath, ./"],
+    strip_include_prefix = "python/ray/cpp/include",
+    visibility = ["//visibility:public"],
+)
+
+genrule(
+    name = "generate_ray_cpp_defult_worker",
+    srcs = [
+        "//cpp:default_worker",
+    ],
+    outs = ["generate_ray_cpp_defult_worker.out"],
+    cmd = """
+        WORK_DIR="$$(pwd)" &&
+        cp -f $(location //cpp:default_worker) "$$WORK_DIR/python/ray/cpp/default_worker" &&
+        echo "$$WORK_DIR" > $@
+    """,
+    local = 1,
+    visibility = ["//visibility:public"],
+)
+
+genrule(
+    name = "ray_cpp_pkg",
+    srcs = [
+        "generate_ray_cpp_lib",
+        "generate_ray_cpp_defult_worker",
+    ],
+    outs = ["ray_cpp_pkg.out"],
+    cmd = """
+        echo "$${PWD}" > $@
+    """,
+    local = 1,
+    visibility = ["//visibility:public"],
+)

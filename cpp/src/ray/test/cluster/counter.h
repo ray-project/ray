@@ -45,6 +45,10 @@ class Counter {
     return *val.Get();
   }
 
+  bool Initialized() {
+    return ray::IsInitialized();
+  }
+
  private:
   int count;
   bool is_restared = false;

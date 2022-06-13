@@ -16,6 +16,7 @@
 
 #include "config_internal.h"
 #include "runtime/abstract_ray_runtime.h"
+#include "ray/core_worker/core_worker.h"
 
 namespace ray {
 
@@ -42,6 +43,10 @@ void Shutdown() {
   // TODO(SongGuyang): Clean the ray runtime.
   internal::AbstractRayRuntime::DoShutdown();
   is_init_ = false;
+}
+
+void RunTaskExecutionLoop() {
+  ::ray::core::CoreWorkerProcess::RunTaskExecutionLoop();
 }
 
 }  // namespace ray
