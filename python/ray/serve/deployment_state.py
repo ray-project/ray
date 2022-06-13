@@ -1063,7 +1063,6 @@ class DeploymentState:
                 deployment_info.version,
                 user_config=deployment_info.deployment_config.user_config,
             )
-
         else:
             self._target_replicas = 0
             self._deleting = True
@@ -1098,7 +1097,8 @@ class DeploymentState:
                 and existing_info.version == deployment_info.version
             ):
                 return False
-        orig = self.__dict__
+        # Save the current status
+        orig = { k: v for (k, v) in self.__dict__.items() }
         self._set_deployment_goal(deployment_info)
         try:
             # NOTE(edoakes): we must write a checkpoint before starting new
