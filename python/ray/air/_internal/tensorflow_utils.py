@@ -58,8 +58,6 @@ def convert_pandas_to_tf_tensor(
             # don't cast any of the series and continue.
             pass
 
-
-
     def tensorize(series):
         try:
             return tf.convert_to_tensor(series, dtype=dtype)
