@@ -823,17 +823,16 @@ class RolloutWorker(ParallelIteratorWorker):
         )
 
     @DeveloperAPI
-    def assert_healthiness(self):
-        """Asserts that __init__ has been completed properly.
+    def is_healthy(self):
+        """Checks that __init__ has been completed properly.
 
         Useful in case a RolloutWorker is run as @ray.remote (Actor) and the owner
-        would like to assure healthiness of the Actor.
+        would like to make sure the worker has been properly initialized.
 
-        Raises:
-            AssertionError: If this RolloutWorker's constructor was not completed
-            properly.
+        Returns:
+            True if the worker is properly initialized
         """
-        assert self.policy_map and self.input_reader and self.output_writer
+        return bool(self.policy_map and self.input_reader and self.output_writer)
 
     @DeveloperAPI
     def sample(self) -> SampleBatchType:
