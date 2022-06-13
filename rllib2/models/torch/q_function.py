@@ -56,7 +56,7 @@ class QFunction(WithEncoderMixin):
     * Support multiple ensembles and flexible reduction strategies across ensembles
         * Should be able to get the pessimistic estimate as well as the individual
         estimates q_max = max(q_list) and also q_list?
-    * Support arbitrary target value estimations
+    * Support arbitrary target value estimations --- SEE BELOW about bootstrapping
     * Should be able to save/load very easily for serving (if needed)
     * Should be able to create copies efficiently and perform arbitrary parameter
     updates in target_updates
