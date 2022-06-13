@@ -1,12 +1,17 @@
 import asyncio
 import logging
 import random
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple
 
 import ray
 from ray.actor import ActorHandle
 from ray.serve.config import HTTPOptions, DeploymentMode
-from ray.serve.constants import ASYNC_CONCURRENCY, SERVE_LOGGER_NAME, SERVE_PROXY_NAME
+from ray.serve.constants import (
+    ASYNC_CONCURRENCY,
+    SERVE_LOGGER_NAME,
+    SERVE_PROXY_NAME,
+    SERVE_NAMESPACE,
+)
 from ray.serve.http_proxy import HTTPProxyActor
 from ray.serve.utils import (
     format_actor_name,
@@ -30,17 +35,12 @@ class HTTPState:
         controller_name: str,
         detached: bool,
         config: HTTPOptions,
-        _override_controller_namespace: Optional[str] = None,
         # Used by unit testing
         _start_proxies_on_init: bool = True,
     ):
         self._controller_name = controller_name
-        self._controller_namespace = ray.serve.client.get_controller_namespace(
-            detached, _override_controller_namespace=_override_controller_namespace
-        )
         self._detached = detached
         self._config = config
-        self._override_controller_namespace = _override_controller_namespace
         self._proxy_actors: Dict[NodeId, ActorHandle] = dict()
         self._proxy_actor_names: Dict[NodeId, str] = dict()
 
@@ -107,7 +107,7 @@ class HTTPState:
 
             name = format_actor_name(SERVE_PROXY_NAME, self._controller_name, node_id)
             try:
-                proxy = ray.get_actor(name, namespace=self._controller_namespace)
+                proxy = ray.get_actor(name, namespace=SERVE_NAMESPACE)
             except ValueError:
                 logger.info(
                     "Starting HTTP proxy with name '{}' on node '{}' "
@@ -118,7 +118,7 @@ class HTTPState:
                 proxy = HTTPProxyActor.options(
                     num_cpus=self._config.num_cpus,
                     name=name,
-                    namespace=self._controller_namespace,
+                    namespace=SERVE_NAMESPACE,
                     lifetime="detached" if self._detached else None,
                     max_concurrency=ASYNC_CONCURRENCY,
                     max_restarts=-1,
@@ -129,7 +129,6 @@ class HTTPState:
                     self._config.port,
                     self._config.root_path,
                     controller_name=self._controller_name,
-                    controller_namespace=self._controller_namespace,
                     node_id=node_id,
                     http_middlewares=self._config.middlewares,
                 )

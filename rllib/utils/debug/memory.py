@@ -49,7 +49,7 @@ def check_memory_leaks(
     un-GC'd items to memory.
 
     Args:
-        trainer: The Trainer instance to test.
+        trainer: The Algorithm instance to test.
         to_check: Set of strings to indentify components to test. Allowed strings
             are: "env", "policy", "model", "rollout_worker". By default, check all
             of these.

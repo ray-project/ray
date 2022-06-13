@@ -133,7 +133,7 @@ if __name__ == "__main__":
     }
     marl_env = marlenvironment.SUMOTestMultiAgentEnv(env_config)
 
-    # Config for the PPO trainer from the MARLEnv
+    # Config for PPO from the MARLEnv.
     policies = {}
     for agent in marl_env.get_agents():
         agent_policy_params = {}

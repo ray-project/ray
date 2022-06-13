@@ -20,13 +20,13 @@ from ray.rllib.utils.metrics import (
     SYNCH_WORKER_WEIGHTS_TIMER,
 )
 from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
-from ray.rllib.utils.typing import ResultDict, TrainerConfigDict
+from ray.rllib.utils.typing import ResultDict, AlgorithmConfigDict
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.deprecation import deprecation_warning
 
 
 class QMixConfig(SimpleQConfig):
-    """Defines a configuration class from which a QMix Trainer can be built.
+    """Defines a configuration class from which QMix can be built.
 
     Example:
         >>> from ray.rllib.examples.env.two_step_game import TwoStepGame
@@ -35,9 +35,9 @@ class QMixConfig(SimpleQConfig):
         ...             .resources(num_gpus=0)\
         ...             .rollouts(num_workers=4)
         >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run 1 training iteration.
-        >>> trainer = config.build(env=TwoStepGame)
-        >>> trainer.train()
+        >>> # Build an Algorithm object from the config and run 1 training iteration.
+        >>> algo = config.build(env=TwoStepGame)
+        >>> algo.train()
 
     Example:
         >>> from ray.rllib.examples.env.two_step_game import TwoStepGame
@@ -61,7 +61,7 @@ class QMixConfig(SimpleQConfig):
 
     def __init__(self):
         """Initializes a PPOConfig instance."""
-        super().__init__(trainer_class=QMix)
+        super().__init__(algo_class=QMix)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -73,7 +73,7 @@ class QMixConfig(SimpleQConfig):
         self.optim_eps = 0.00001
         self.grad_clip = 10
 
-        # Override some of TrainerConfig's default values with QMix-specific values.
+        # Override some of AlgorithmConfig's default values with QMix-specific values.
         # .training()
         self.lr = 0.0005
         self.train_batch_size = 32
@@ -169,7 +169,7 @@ class QMixConfig(SimpleQConfig):
             grad_norm_clipping: Depcrecated in favor of grad_clip
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
@@ -210,11 +210,11 @@ class QMixConfig(SimpleQConfig):
 class QMix(SimpleQ):
     @classmethod
     @override(SimpleQ)
-    def get_default_config(cls) -> TrainerConfigDict:
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return QMixConfig().to_dict()
 
     @override(SimpleQ)
-    def validate_config(self, config: TrainerConfigDict) -> None:
+    def validate_config(self, config: AlgorithmConfigDict) -> None:
         # Call super's validation method.
         super().validate_config(config)
 
@@ -222,7 +222,7 @@ class QMix(SimpleQ):
             raise ValueError("Only `framework=torch` supported so far for QMix!")
 
     @override(SimpleQ)
-    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
+    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
         return QMixTorchPolicy
 
     @override(SimpleQ)

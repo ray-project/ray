@@ -11,7 +11,7 @@ import ray
 from ray.actor import ActorHandle
 from ray.rllib.algorithms.alpha_star.distributed_learners import DistributedLearners
 from ray.rllib.algorithms.alpha_star.league_builder import AlphaStarLeagueBuilder
-from ray.rllib.agents.trainer import Trainer
+from ray.rllib.algorithms.algorithm import Algorithm
 import ray.rllib.algorithms.appo.appo as appo
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.execution.parallel_requests import (
@@ -36,10 +36,10 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import (
-    PartialTrainerConfigDict,
+    PartialAlgorithmConfigDict,
     PolicyID,
     PolicyState,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
     ResultDict,
 )
 from ray.tune.utils.placement_groups import PlacementGroupFactory
@@ -47,7 +47,7 @@ from ray.util.timer import _Timer
 
 
 class AlphaStarConfig(appo.APPOConfig):
-    """Defines a configuration class from which an AlphaStar Trainer can be built.
+    """Defines a configuration class from which an AlphaStar Algorithm can be built.
 
     Example:
         >>> from ray.rllib.algorithms.alpha_star import AlphaStarConfig
@@ -55,7 +55,7 @@ class AlphaStarConfig(appo.APPOConfig):
         ...     .resources(num_gpus=4)\
         ...     .rollouts(num_rollout_workers=64)
         >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> # Build a Algorithm object from the config and run 1 training iteration.
         >>> trainer = config.build(env="CartPole-v1")
         >>> trainer.train()
 
@@ -78,9 +78,9 @@ class AlphaStarConfig(appo.APPOConfig):
         ... )
     """
 
-    def __init__(self, trainer_class=None):
+    def __init__(self, algo_class=None):
         """Initializes a AlphaStarConfig instance."""
-        super().__init__(trainer_class=trainer_class or AlphaStar)
+        super().__init__(algo_class=algo_class or AlphaStar)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -141,7 +141,6 @@ class AlphaStarConfig(appo.APPOConfig):
         # values.
         self.vtrace_drop_last_ts = False
         self.min_time_s_per_iteration = 2
-        self._disable_execution_plan_api = True
         # __sphinx_doc_end__
         # fmt: on
 
@@ -194,14 +193,14 @@ class AlphaStarConfig(appo.APPOConfig):
                 `ray.rllib.algorithms.alpha_star.league_builder::AlphaStarLeagueBuilder`
                 (used by default by this algo) as an example.
             max_num_policies_to_train: The maximum number of trainable policies for this
-                Trainer. Each trainable policy will exist as a independent remote actor,
-                co-located with a replay buffer. This is besides its existence inside
-                the RolloutWorkers for training and evaluation. Set to None for
+                Algorithm. Each trainable policy will exist as a independent remote
+                actor, co-located with a replay buffer. This is besides its existence
+                inside the RolloutWorkers for training and evaluation. Set to None for
                 automatically inferring this value from the number of trainable
                 policies found in the `multiagent` config.
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
@@ -244,7 +243,7 @@ class AlphaStar(appo.APPO):
     )
 
     @classmethod
-    @override(Trainer)
+    @override(Algorithm)
     def default_resource_request(cls, config):
         cf = dict(cls.get_default_config(), **config)
         # Construct a dummy LeagueBuilder, such that it gets the opportunity to
@@ -311,11 +310,11 @@ class AlphaStar(appo.APPO):
 
     @classmethod
     @override(appo.APPO)
-    def get_default_config(cls) -> TrainerConfigDict:
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return AlphaStarConfig().to_dict()
 
     @override(appo.APPO)
-    def validate_config(self, config: TrainerConfigDict):
+    def validate_config(self, config: AlgorithmConfigDict):
         # Create the LeagueBuilder object, allowing it to build the multiagent
         # config as well.
         self.league_builder = from_config(
@@ -324,7 +323,7 @@ class AlphaStar(appo.APPO):
         super().validate_config(config)
 
     @override(appo.APPO)
-    def setup(self, config: PartialTrainerConfigDict):
+    def setup(self, config: PartialAlgorithmConfigDict):
         # Call super's setup to validate config, create RolloutWorkers
         # (train and eval), etc..
         num_gpus_saved = config["num_gpus"]
@@ -403,7 +402,7 @@ class AlphaStar(appo.APPO):
             ray_wait_timeout_s=self.config["timeout_s_learner_manager"],
         )
 
-    @override(Trainer)
+    @override(Algorithm)
     def step(self) -> ResultDict:
         # Perform a full step (including evaluation).
         result = super().step()
@@ -414,7 +413,7 @@ class AlphaStar(appo.APPO):
 
         return result
 
-    @override(Trainer)
+    @override(Algorithm)
     def training_step(self) -> ResultDict:
         # Trigger asynchronous rollouts on all RolloutWorkers.
         # - Rollout results are sent directly to correct replay buffer
@@ -495,7 +494,7 @@ class AlphaStar(appo.APPO):
 
         return train_infos
 
-    @override(Trainer)
+    @override(Algorithm)
     def add_policy(
         self,
         policy_id: PolicyID,
@@ -503,7 +502,7 @@ class AlphaStar(appo.APPO):
         *,
         observation_space: Optional[gym.spaces.Space] = None,
         action_space: Optional[gym.spaces.Space] = None,
-        config: Optional[PartialTrainerConfigDict] = None,
+        config: Optional[PartialAlgorithmConfigDict] = None,
         policy_state: Optional[PolicyState] = None,
         **kwargs,
     ) -> Policy:
@@ -536,7 +535,7 @@ class AlphaStar(appo.APPO):
 
         return new_policy
 
-    @override(Trainer)
+    @override(Algorithm)
     def cleanup(self) -> None:
         super().cleanup()
         # Stop all policy- and replay actors.

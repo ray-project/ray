@@ -2,7 +2,7 @@
 
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-.. TODO: We need trainers, environments, algorithms, policies, models here. Likely in that order.
+.. TODO: We need algorithms, environments, policies, models here. Likely in that order.
     Execution plans are not a "core" concept for users. Sample batches should probably also be left out.
 
 .. _rllib-core-concepts:
@@ -10,31 +10,59 @@
 Key Concepts
 ============
 
-On this page, we'll cover the key concepts to help you understand how RLlib works and how to use it.
-In RLlib you use `trainers` to train `algorithms`.
-These algorithms use `policies` to select actions for your agents.
-Given a policy, `evaluation` of a policy produces `sample batches` of experiences.
-You can also customize the `execution plans` of your RL experiments.
+On this page, we'll cover the key concepts to help you understand how RLlib works and
+how to use it. In RLlib you use ``algorithms`` to learn in problem environments.
+These algorithms use ``policies`` to select actions for your agents.
+Given a policy, ``evaluation`` of a policy produces ``sample batches`` of experiences.
+You can also customize the ``training_iteration``\s of your RL experiments.
 
-Trainers
---------
+Algorithms
+----------
 
-Trainers bring all RLlib components together, making algorithms accessible via RLlib's Python API and its command line interface (CLI).
-They manage algorithm configuration, setup of the rollout workers and optimizer, and collection of training metrics.
-Trainers also implement the :ref:`Tune Trainable API <tune-60-seconds>` for easy experiment management.
+Algorithms bring all RLlib components together, making learning of different tasks
+accessible via RLlib's Python API and its command line interface (CLI).
+Each ``Algorithm`` class is managed by its respective ``AlgorithmConfig``, for example to
+configure a ``PPO`` instance, you should use the ``PPOConfig`` class.
+An ``Algorithm`` sets up its rollout workers and optimizers, and collects training metrics.
+``Algorithms`` also implement the :ref:`Tune Trainable API <tune-60-seconds>` for
+easy experiment management.
 
-You have three ways to interact with a trainer. You can use the basic Python API or the command line to train it, or you
+You have three ways to interact with an algorithm. You can use the basic Python API or the command line to train it, or you
 can use Ray Tune to tune hyperparameters of your reinforcement learning algorithm.
-The following example shows three equivalent ways of interacting with the ``PPO`` Trainer,
+The following example shows three equivalent ways of interacting with ``PPO``,
 which implements the proximal policy optimization algorithm in RLlib.
 
-.. tabbed:: Basic RLlib Trainer
+.. tabbed:: Basic RLlib Algorithm
 
     .. code-block:: python
 
-        trainer = PPO(env="CartPole-v0", config={"train_batch_size": 4000})
+        # Configure.
+        from ray.rllib.algorithms import PPOConfig
+        config = PPOConfig().environment("CartPole-v0").training(train_batch_size=4000)
+
+        # Build.
+        algo = config.build()
+
+        # Train.
         while True:
-            print(trainer.train())
+            print(algo.train())
+
+
+.. tabbed:: RLlib Algorithms and Tune
+
+    .. code-block:: python
+
+        from ray import tune
+
+        # Configure.
+        from ray.rllib.algorithms import PPOConfig
+        config = PPOConfig().environment("CartPole-v0").training(train_batch_size=4000)
+
+        # Train via Ray Tune.
+        # Note that Ray Tune does not yet support AlgorithmConfig objects, hence
+        # we need to convert back to old-style config dicts.
+        tune.run("PPO", config=config.to_dict())
+
 
 .. tabbed:: RLlib Command Line
 
@@ -42,17 +70,9 @@ which implements the proximal policy optimization algorithm in RLlib.
 
         rllib train --run=PPO --env=CartPole-v0 --config='{"train_batch_size": 4000}'
 
-.. tabbed:: RLlib Tune Trainer
 
-    .. code-block:: python
-
-        from ray import tune
-        tune.run(PPO, config={"env": "CartPole-v0", "train_batch_size": 4000})
-
-
-
-RLlib `Trainer classes <rllib-concepts.html#trainers>`__ coordinate the distributed workflow of running rollouts and optimizing policies.
-Trainer classes leverage parallel iterators to implement the desired computation pattern.
+RLlib `Algorithm classes <rllib-concepts.html#algorithms>`__ coordinate the distributed workflow of running rollouts and optimizing policies.
+Algorithm classes leverage parallel iterators to implement the desired computation pattern.
 The following figure shows *synchronous sampling*, the simplest of `these patterns <rllib-algorithms.html>`__:
 
 .. figure:: images/a2c-arch.svg
@@ -180,13 +200,13 @@ of a sequence of repeating steps, or *dataflow*, of:
  2. ``ConcatBatches``: The experiences are concatenated into one batch for training.
  3. ``TrainOneStep``: Take a gradient step with respect to the policy loss, and update the worker weights.
 
-In code, this dataflow can be expressed as the following execution plan, which is a static method that can be overridden in your custom Trainer sub-classes to define new algorithms.
+In code, this dataflow can be expressed as the following execution plan, which is a static method that can be overridden in your custom Algorithm sub-classes to define new algorithms.
 It takes in a ``WorkerSet`` and config, and returns an iterator over training results:
 
 .. code-block:: python
 
     @staticmethod
-    def execution_plan(workers: WorkerSet, config: TrainerConfigDict):
+    def execution_plan(workers: WorkerSet, config: AlgorithmConfigDict):
         # type: LocalIterator[SampleBatchType]
         rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
@@ -204,7 +224,7 @@ As you can see, each step returns an *iterator* over objects (if you're unfamili
 The reason it is a ``LocalIterator`` is that, though it is based on a parallel computation, the iterator has been turned into one that can be consumed locally in sequence by the program.
 A couple other points to note:
 
- - The reason the plan returns an iterator over training results, is that ``trainer.train()`` is pulling results from this iterator to return as the result of the train call.
+ - The reason the plan returns an iterator over training results, is that ``algorithm.train()`` is pulling results from this iterator to return as the result of the train call.
  - The rollout workers have been already created ahead of time in the ``WorkerSet``, so the execution plan function is only defining a sequence of operations over the results of the rollouts.
 
 These iterators represent the infinite stream of data items that can be produced from the dataflow.
@@ -236,7 +256,8 @@ You'll see output like this on the console:
     (pid=6555) I saw <class 'ray.rllib.policy.sample_batch.SampleBatch'>
     (pid=6555) I saw <class 'ray.rllib.policy.sample_batch.SampleBatch'>
 
-It is important to understand that the iterators of an execution plan are evaluated *lazily*. This means that no computation happens until the `trainer <#trainers>`__ tries to read the next item from the iterator (i.e., get the next training result for a ``Trainer.train()`` call).
+It is important to understand that the iterators of an execution plan are evaluated *lazily*. This means that no computation happens until the `algorithm <#algorithms>`__ tries to read the next item from the iterator
+(i.e., get the next training result for a ``Algorithms.train()`` call).
 
 Execution Plan Concepts
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -282,7 +303,7 @@ Examples
 
     .. code-block:: python
 
-        def execution_plan(workers: WorkerSet, config: TrainerConfigDict):
+        def execution_plan(workers: WorkerSet, config: AlgorithmConfigDict):
             # type: LocalIterator[(ModelGradients, int)]
             grads = AsyncGradients(workers)
 
@@ -300,7 +321,7 @@ Examples
 
     .. code-block:: python
 
-        def execution_plan(workers: WorkerSet, config: TrainerConfigDict):
+        def execution_plan(workers: WorkerSet, config: AlgorithmConfigDict):
             # Construct a replay buffer.
             replay_buffer = LocalReplayBuffer(...)
 
