@@ -127,6 +127,7 @@ MYPY_FLAGS=(
 
 MYPY_FILES=(
     # Relative to python/ray
+    # test cean diff
     'autoscaler/node_provider.py'
     'autoscaler/sdk/__init__.py'
     'autoscaler/sdk/sdk.py'
