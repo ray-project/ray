@@ -18,7 +18,9 @@ class Session(abc.ABC):
     def report(self, metrics: Dict, checkpoint: Optional[Checkpoint] = None) -> None:
         """Report metrics and optionally save checkpoint.
 
-        The checkpoint is guaranteed to be saved onto Driver node.
+        TODO(xwjiang): To be able to say the following without racing.
+        By the return of this method, the checkpoint is guaranteed to be saved onto
+        Driver node or onto cloud, depending on how SyncConfig is configured.
 
         Each invocation of this method will automatically increment the underlying
         iteration number. The physical meaning of this "iteration" is defined by
@@ -47,6 +49,7 @@ class Session(abc.ABC):
                         metrics={"foo": "bar"},
                         checkpoint=Checkpoint.from_directory(temp_dir.name)
                     )
+                    # TODO(xwjiang): To be able to say the following.
                     # Air guarantees by this point, you can safely remove
                     # "my_model" directory.
                 scaling_config = {"num_workers": 2}
