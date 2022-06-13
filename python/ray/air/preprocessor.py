@@ -231,8 +231,13 @@ class Preprocessor(abc.ABC):
 
         if transform_type == "pandas":
             return dataset.map_batches(self._transform_pandas, batch_format="pandas")
-        else:
+        elif transform_type == "arrow":
             return dataset.map_batches(self._transform_arrow, batch_format="pyarrow")
+        else:
+            raise ValueError(
+                "Invalid transform type returned from _determine_transform_to_use; "
+                f"\"pandas\" and \"arrow\" allowed, but got: {transform_type}"
+            )
 
     def _transform_batch(self, df: DataBatchType) -> DataBatchType:
         import pandas as pd
