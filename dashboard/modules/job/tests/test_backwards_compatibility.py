@@ -1,11 +1,11 @@
 import logging
-
-import pytest
-import sys
 import os
 import subprocess
+import sys
 import uuid
 from contextlib import contextmanager
+
+import pytest
 
 logger = logging.getLogger(__name__)
 

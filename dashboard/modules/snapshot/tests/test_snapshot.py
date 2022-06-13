@@ -1,22 +1,19 @@
-import os
-import sys
-import json
-import jsonschema
 import hashlib
-
+import json
+import os
 import pprint
+import sys
+
+import jsonschema
 import pytest
 import requests
 
 import ray
 from ray import serve
-from ray.serve.constants import SERVE_NAMESPACE
-from ray._private.test_utils import (
-    format_web_url,
-    run_string_as_driver,
-)
+from ray._private.test_utils import format_web_url, run_string_as_driver
 from ray.dashboard import dashboard
 from ray.dashboard.tests.conftest import *  # noqa
+from ray.serve.constants import SERVE_NAMESPACE
 
 
 def test_snapshot(ray_start_with_dashboard):

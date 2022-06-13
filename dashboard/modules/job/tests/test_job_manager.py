@@ -1,24 +1,20 @@
 import asyncio
 import os
-import psutil
-import tempfile
+import signal
 import sys
+import tempfile
 import urllib.request
 from uuid import uuid4
-import signal
 
+import psutil
 import pytest
 
 import ray
-from ray.job_submission import JobStatus
-from ray.dashboard.modules.job.common import (
-    JOB_ID_METADATA_KEY,
-    JOB_NAME_METADATA_KEY,
-)
-from ray.dashboard.modules.job.job_manager import generate_job_id, JobManager
 from ray._private.test_utils import SignalActor, async_wait_for_condition
+from ray.dashboard.modules.job.common import JOB_ID_METADATA_KEY, JOB_NAME_METADATA_KEY
+from ray.dashboard.modules.job.job_manager import JobManager, generate_job_id
+from ray.job_submission import JobStatus
 from ray.ray_constants import RAY_ADDRESS_ENVIRONMENT_VARIABLE
-
 from ray.tests.conftest import call_ray_start  # noqa: F401
 
 TEST_NAMESPACE = "jobs_test_namespace"

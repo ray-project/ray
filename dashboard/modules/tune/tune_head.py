@@ -1,20 +1,22 @@
-import logging
-import datetime
 import copy
+import datetime
+import logging
 import os
+
 import aiohttp.web
 
 import ray.dashboard.modules.tune.tune_consts as tune_consts
-import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
-from ray.dashboard.utils import async_loop_forever
+import ray.dashboard.utils as dashboard_utils
 from ray.dashboard.optional_utils import rest_response
+from ray.dashboard.utils import async_loop_forever
 
 logger = logging.getLogger(__name__)
 
 try:
-    from ray.tune import ExperimentAnalysis
     from tensorboard import program
+
+    from ray.tune import ExperimentAnalysis
 # The `pip install ray` will not install pandas,
 # so `from ray.tune import ExperimentAnalysis` may raises
 # `AttributeError: module 'pandas' has no attribute 'core'`

@@ -2,6 +2,18 @@ import dataclasses
 import logging
 from typing import Any, Dict, Iterator, Optional
 
+from ray.dashboard.modules.dashboard_sdk import SubmissionClient
+from ray.dashboard.modules.job.common import (
+    JobInfo,
+    JobLogsResponse,
+    JobStatus,
+    JobStopResponse,
+    JobSubmitRequest,
+    JobSubmitResponse,
+)
+from ray.runtime_env import RuntimeEnv
+from ray.util.annotations import PublicAPI
+
 try:
     import aiohttp
     import requests
@@ -9,19 +21,6 @@ except ImportError:
     aiohttp = None
     requests = None
 
-from ray.dashboard.modules.job.common import (
-    JobStatus,
-    JobSubmitRequest,
-    JobSubmitResponse,
-    JobStopResponse,
-    JobInfo,
-    JobLogsResponse,
-)
-from ray.dashboard.modules.dashboard_sdk import SubmissionClient
-
-from ray.runtime_env import RuntimeEnv
-
-from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)

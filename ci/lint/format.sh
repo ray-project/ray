@@ -147,7 +147,8 @@ MYPY_FILES=(
 
 ISORT_PATHS=(
     # TODO: Expand this list and remove once it is applied to the entire codebase.
-    'python/ray/autoscaler/_private/'
+    'python/ray/autoscaler/'
+    'python/ray/dashboard/'
 )
 
 BLACK_EXCLUDES=(

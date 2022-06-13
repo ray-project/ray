@@ -1,10 +1,10 @@
 import pytest
 
 from ray.dashboard.modules.job.common import (
+    JobSubmitRequest,
     http_uri_components_to_uri,
     uri_to_http_components,
     validate_request_type,
-    JobSubmitRequest,
 )
 
 

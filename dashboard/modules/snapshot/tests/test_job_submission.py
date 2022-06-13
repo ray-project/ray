@@ -1,11 +1,11 @@
+import json
 import logging
 import os
+import pprint
 import sys
 import time
-import json
-import jsonschema
 
-import pprint
+import jsonschema
 import pytest
 import requests
 
