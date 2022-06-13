@@ -1,5 +1,6 @@
 import collections
 import os
+
 import pytest
 
 try:
@@ -9,8 +10,9 @@ except ImportError:
 import sys
 import time
 
-import ray
 import ray.cluster_utils
+
+import ray
 
 
 def test_actor_deletion_with_gpus(shutdown_only):

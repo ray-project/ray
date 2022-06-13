@@ -1,14 +1,15 @@
-from collections import defaultdict
 import multiprocessing
-import numpy as np
-import pytest
 import time
 import warnings
+from collections import defaultdict
 
-import ray
+import numpy as np
+import pytest
 from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.exceptions import GetTimeoutError
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
+import ray
 
 if (
     multiprocessing.cpu_count() < 40
@@ -727,7 +728,8 @@ def test_maximize_concurrent_pull_race_condition(ray_start_cluster_head):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

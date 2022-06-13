@@ -1,5 +1,6 @@
-import ray
 import os
+
+import ray
 
 
 class _NullLogSpan:

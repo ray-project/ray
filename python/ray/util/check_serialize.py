@@ -1,14 +1,14 @@
 """A utility for debugging serialization issues."""
-from typing import Any, Tuple, Set, Optional
 import inspect
-import ray.cloudpickle as cp
 from contextlib import contextmanager
+from typing import Any, Optional, Set, Tuple
+
+import colorama
+import ray.cloudpickle as cp
+from ray.util.annotations import DeveloperAPI
 
 # Import ray first to use the bundled colorama
 import ray  # noqa: F401
-from ray.util.annotations import DeveloperAPI
-
-import colorama
 
 
 @contextmanager

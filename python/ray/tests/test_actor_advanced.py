@@ -1,5 +1,6 @@
-import numpy as np
 import os
+
+import numpy as np
 import pytest
 
 try:
@@ -9,20 +10,21 @@ except ImportError:
 import sys
 import time
 
-import ray
-import ray.cluster_utils
 import ray._private.gcs_utils as gcs_utils
+import ray.cluster_utils
 from ray._private.test_utils import (
-    run_string_as_driver,
+    SignalActor,
+    convert_actor_state,
     get_non_head_nodes,
     kill_actor_and_wait_for_failure,
     make_global_state_accessor,
-    SignalActor,
+    run_string_as_driver,
     wait_for_condition,
     wait_for_pid_to_exit,
-    convert_actor_state,
 )
 from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
+
+import ray
 
 
 def test_remote_functions_not_scheduled_on_actors(ray_start_regular):

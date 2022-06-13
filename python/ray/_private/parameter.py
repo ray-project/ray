@@ -1,9 +1,8 @@
 import logging
 import os
-from typing import Optional, List, Dict
+from typing import Dict, List, Optional
 
 import numpy as np
-
 import ray._private.ray_constants as ray_constants
 
 logger = logging.getLogger(__name__)

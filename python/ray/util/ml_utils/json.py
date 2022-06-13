@@ -1,7 +1,7 @@
 import json
-import numpy as np
 import numbers
 
+import numpy as np
 from ray.util.annotations import Deprecated
 
 

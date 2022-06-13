@@ -1,6 +1,7 @@
 """Code to wrap some GLOO API calls."""
-import numpy
 import asyncio
+
+import numpy
 
 try:
     import pygloo
@@ -11,12 +12,12 @@ except ImportError:
 
 import time
 
-import ray
+import ray.experimental.internal_kv as internal_kv
+from ray._private.gcs_utils import GcsClient
 from ray.util.collective.types import ReduceOp, torch_available
 from ray.util.queue import _QueueActor
 
-import ray.experimental.internal_kv as internal_kv
-from ray._private.gcs_utils import GcsClient
+import ray
 
 GLOO_REDUCE_OP_MAP = {
     ReduceOp.SUM: pygloo.ReduceOp.SUM,

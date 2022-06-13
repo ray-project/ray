@@ -3,11 +3,10 @@ import logging
 import math
 import re
 
+import ray._private.ray_constants as ray_constants
 from kubernetes import client
 from kubernetes.client.rest import ApiException
-
 from ray.autoscaler._private._kubernetes import auth_api, core_api, log_prefix
-import ray._private.ray_constants as ray_constants
 
 logger = logging.getLogger(__name__)
 

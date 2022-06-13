@@ -4,14 +4,13 @@ import unittest
 from collections import namedtuple
 from unittest.mock import patch
 
+from mlflow.tracking import MlflowClient
 from ray.tune.function_runner import wrap_function
 from ray.tune.integration.mlflow import (
     MLflowLoggerCallback,
-    mlflow_mixin,
     MLflowTrainableMixin,
+    mlflow_mixin,
 )
-
-from mlflow.tracking import MlflowClient
 from ray.util.ml_utils.mlflow import _MLflowLoggerUtil
 
 
@@ -226,7 +225,8 @@ class MLflowTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

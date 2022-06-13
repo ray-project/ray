@@ -1,5 +1,6 @@
 import asyncio
 import logging
+
 import aiohttp.web
 import ray._private.utils
 from ray.dashboard.modules.actor import actor_utils
@@ -9,20 +10,21 @@ try:
 except ImportError:
     from grpc.experimental import aio as aiogrpc
 
-from ray._private.gcs_pubsub import GcsAioActorSubscriber
 import ray._private.ray_constants as ray_constants
-import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
-from ray.dashboard.optional_utils import rest_response
+import ray.dashboard.utils as dashboard_utils
+from ray._private.gcs_pubsub import GcsAioActorSubscriber
+from ray.core.generated import (
+    core_worker_pb2,
+    core_worker_pb2_grpc,
+    gcs_service_pb2,
+    gcs_service_pb2_grpc,
+    node_manager_pb2_grpc,
+)
+from ray.dashboard.datacenter import DataOrganizer, DataSource
 from ray.dashboard.modules.actor import actor_consts
 from ray.dashboard.modules.actor.actor_utils import actor_classname_from_func_descriptor
-from ray.core.generated import node_manager_pb2_grpc
-from ray.core.generated import gcs_service_pb2
-from ray.core.generated import gcs_service_pb2_grpc
-from ray.core.generated import core_worker_pb2
-from ray.core.generated import core_worker_pb2_grpc
-from ray.dashboard.datacenter import DataSource, DataOrganizer
-
+from ray.dashboard.optional_utils import rest_response
 
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.ClassMethodRouteTable

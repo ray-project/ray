@@ -1,38 +1,38 @@
-import os
-import sys
-import copy
-import json
-import time
-import logging
 import asyncio
-import ipaddress
-import subprocess
 import collections
+import copy
+import ipaddress
+import json
+import logging
+import os
+import subprocess
+import sys
+import time
 
 import numpy as np
-import ray
 import psutil
 import pytest
+import ray.dashboard.consts as dashboard_consts
+import ray.dashboard.modules
+import ray.dashboard.utils as dashboard_utils
 import requests
-
 from ray._private import ray_constants
+from ray._private.ray_constants import (
+    DEBUG_AUTOSCALING_ERROR,
+    DEBUG_AUTOSCALING_STATUS_LEGACY,
+)
 from ray._private.test_utils import (
     format_web_url,
+    get_error_message,
+    init_error_pubsub,
+    run_string_as_driver,
     wait_for_condition,
     wait_until_server_available,
-    run_string_as_driver,
     wait_until_succeeded_without_exception,
-    init_error_pubsub,
-    get_error_message,
-)
-from ray._private.ray_constants import (
-    DEBUG_AUTOSCALING_STATUS_LEGACY,
-    DEBUG_AUTOSCALING_ERROR,
 )
 from ray.dashboard import dashboard
-import ray.dashboard.consts as dashboard_consts
-import ray.dashboard.utils as dashboard_utils
-import ray.dashboard.modules
+
+import ray
 
 try:
     import aiohttp.web

@@ -1,22 +1,22 @@
 import json
+import os
 import pathlib
 from pprint import pformat
-import os
 from unittest.mock import MagicMock
 
 import pytest
-
-import ray
-from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
-from ray._private.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
 from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
-from ray.util.metrics import Counter, Histogram, Gauge
+from ray._private.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
 from ray._private.test_utils import (
-    wait_for_condition,
     SignalActor,
     fetch_prometheus,
     get_log_batch,
+    wait_for_condition,
 )
+from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
+from ray.util.metrics import Counter, Gauge, Histogram
+
+import ray
 
 os.environ["RAY_event_stats"] = "1"
 

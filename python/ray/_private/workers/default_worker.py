@@ -1,17 +1,18 @@
 import argparse
 import base64
 import json
-import time
-import sys
 import os
+import sys
+import time
 
-import ray
-import ray.actor
 import ray._private.node
 import ray._private.ray_constants as ray_constants
 import ray._private.utils
+import ray.actor
 from ray._private.parameter import RayParams
-from ray._private.ray_logging import get_worker_log_file_name, configure_log_file
+from ray._private.ray_logging import configure_log_file, get_worker_log_file_name
+
+import ray
 
 parser = argparse.ArgumentParser(
     description=("Parse addresses for the worker to connect to.")
@@ -194,8 +195,7 @@ if __name__ == "__main__":
     # connect to raylet. Otherwise we may receive requests before the
     # external storage is intialized.
     if mode == ray.RESTORE_WORKER_MODE or mode == ray.SPILL_WORKER_MODE:
-        from ray._private import external_storage
-        from ray._private import storage
+        from ray._private import external_storage, storage
 
         storage._init_storage(args.storage, is_head=False)
         if args.object_spilling_config:

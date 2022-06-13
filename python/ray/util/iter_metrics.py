@@ -1,8 +1,8 @@
 import collections
 from typing import List
 
-from ray.util.timer import _Timer
 from ray.util.annotations import Deprecated
+from ray.util.timer import _Timer
 
 
 @Deprecated

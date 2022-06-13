@@ -2,17 +2,17 @@ import logging
 import os
 import time
 from typing import (
-    List,
+    TYPE_CHECKING,
     Any,
     Callable,
-    Iterator,
-    Iterable,
-    Generic,
     Dict,
+    Generic,
+    Iterable,
+    Iterator,
+    List,
     Optional,
-    Union,
-    TYPE_CHECKING,
     Tuple,
+    Union,
 )
 from uuid import uuid4
 
@@ -31,61 +31,62 @@ if TYPE_CHECKING:
 
 import collections
 import itertools
-import numpy as np
 
-import ray
+import numpy as np
 import ray.cloudpickle as pickle
-from ray.types import ObjectRef
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray._private.usage import usage_lib
+from ray.data._internal.block_batching import BatchType, batch_blocks
+from ray.data._internal.block_list import BlockList
+from ray.data._internal.compute import CallableClass, ComputeStrategy, cache_wrapper
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.fast_repartition import fast_repartition
+from ray.data._internal.lazy_block_list import LazyBlockList
+from ray.data._internal.output_buffer import BlockOutputBuffer
+from ray.data._internal.plan import AllToAllStage, ExecutionPlan, OneToOneStage
+from ray.data._internal.progress_bar import ProgressBar
+from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data._internal.shuffle_and_partition import (
+    PushBasedShufflePartitionOp,
+    SimpleShufflePartitionOp,
+)
+from ray.data._internal.sort import sort_impl
+from ray.data._internal.stats import DatasetStats
+from ray.data._internal.table_block import VALUE_COL_NAME
+from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum
 from ray.data.block import (
     Block,
     BlockAccessor,
+    BlockExecStats,
     BlockMetadata,
-    T,
-    U,
     BlockPartition,
     BlockPartitionMetadata,
-    BlockExecStats,
     KeyFn,
+    T,
+    U,
     _validate_key_fn,
 )
 from ray.data.context import DatasetContext
 from ray.data.datasource import (
-    Datasource,
+    BlockWritePathProvider,
     CSVDatasource,
+    Datasource,
+    DefaultBlockWritePathProvider,
     JSONDatasource,
     NumpyDatasource,
     ParquetDatasource,
-    BlockWritePathProvider,
-    DefaultBlockWritePathProvider,
     ReadTask,
     WriteResult,
 )
 from ray.data.datasource.file_based_datasource import (
-    _wrap_arrow_serialization_workaround,
     _unwrap_arrow_serialization_workaround,
+    _wrap_arrow_serialization_workaround,
 )
-from ray.data.row import TableRow
-from ray.data.aggregate import AggregateFn, Sum, Max, Min, Mean, Std
 from ray.data.random_access_dataset import RandomAccessDataset
-from ray.data._internal.table_block import VALUE_COL_NAME
-from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.block_batching import batch_blocks, BatchType
-from ray.data._internal.plan import ExecutionPlan, OneToOneStage, AllToAllStage
-from ray.data._internal.stats import DatasetStats
-from ray.data._internal.compute import cache_wrapper, CallableClass, ComputeStrategy
-from ray.data._internal.output_buffer import BlockOutputBuffer
-from ray.data._internal.progress_bar import ProgressBar
-from ray.data._internal.shuffle_and_partition import (
-    SimpleShufflePartitionOp,
-    PushBasedShufflePartitionOp,
-)
-from ray.data._internal.fast_repartition import fast_repartition
-from ray.data._internal.sort import sort_impl
-from ray.data._internal.block_list import BlockList
-from ray.data._internal.lazy_block_list import LazyBlockList
-from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray._private.usage import usage_lib
+from ray.data.row import TableRow
+from ray.types import ObjectRef
+from ray.util.annotations import DeveloperAPI, PublicAPI
+
+import ray
 
 logger = logging.getLogger(__name__)
 
@@ -316,8 +317,8 @@ class Dataset(Generic[T]):
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
-        import pyarrow as pa
         import pandas as pd
+        import pyarrow as pa
 
         if batch_size is not None and batch_size < 1:
             raise ValueError("Batch size cannot be negative or 0")
@@ -722,8 +723,9 @@ class Dataset(Generic[T]):
             Returns a Dataset containing the sampled elements.
         """
         import random
-        import pyarrow as pa
+
         import pandas as pd
+        import pyarrow as pa
 
         if self.num_blocks() == 0:
             raise ValueError("Cannot sample from an empty dataset.")
@@ -2413,9 +2415,8 @@ class Dataset(Generic[T]):
             A torch IterableDataset.
         """
         import torch
-
-        from ray.data._internal.torch_iterable_dataset import TorchIterableDataset
         from ray.air._internal.torch_utils import convert_pandas_to_torch_tensor
+        from ray.data._internal.torch_iterable_dataset import TorchIterableDataset
 
         # If an empty collection is passed in, treat it the same as None
         if not feature_columns:
@@ -2887,8 +2888,8 @@ class Dataset(Generic[T]):
             times: The number of times to loop over this dataset, or None
                 to repeat indefinitely.
         """
-        from ray.data.dataset_pipeline import DatasetPipeline
         from ray.data._internal.plan import _rewrite_read_stage
+        from ray.data.dataset_pipeline import DatasetPipeline
 
         ctx = DatasetContext.get_current()
         if self._plan.is_read_stage() and ctx.optimize_fuse_read_stages:
@@ -3000,8 +3001,8 @@ class Dataset(Generic[T]):
                 window will still include at least one block. This is mutually
                 exclusive with ``blocks_per_window``.
         """
-        from ray.data.dataset_pipeline import DatasetPipeline
         from ray.data._internal.plan import _rewrite_read_stage
+        from ray.data.dataset_pipeline import DatasetPipeline
 
         if blocks_per_window is not None and bytes_per_window is not None:
             raise ValueError("Only one windowing scheme can be specified.")

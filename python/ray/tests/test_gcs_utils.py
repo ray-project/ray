@@ -1,10 +1,12 @@
-import os
-import sys
 import contextlib
+import os
 import signal
-import pytest
+import sys
+
 import grpc
+import pytest
 import ray._private.gcs_utils as gcs_utils
+
 import ray
 
 
@@ -112,7 +114,8 @@ async def test_kv_timeout_aio(ray_start_regular):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-sv", __file__]))

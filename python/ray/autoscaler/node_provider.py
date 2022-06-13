@@ -2,8 +2,8 @@ import logging
 from types import ModuleType
 from typing import Any, Dict, List, Optional
 
+from ray.autoscaler._private.command_runner import DockerCommandRunner, SSHCommandRunner
 from ray.autoscaler.command_runner import CommandRunnerInterface
-from ray.autoscaler._private.command_runner import SSHCommandRunner, DockerCommandRunner
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)

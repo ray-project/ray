@@ -1,7 +1,7 @@
-from contextlib import closing
 import socket
-import numpy as np
+from contextlib import closing
 
+import numpy as np
 from ray.util.annotations import Deprecated
 
 

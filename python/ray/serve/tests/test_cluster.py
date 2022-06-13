@@ -1,17 +1,16 @@
-from collections import defaultdict
 import os
 import sys
 import time
+from collections import defaultdict
 
 import pytest
 import requests
+from ray._private.test_utils import SignalActor, wait_for_condition
+from ray.cluster_utils import Cluster
+from ray.serve.deployment_state import ReplicaStartupStatus, ReplicaState
 
 import ray
 from ray import serve
-from ray.cluster_utils import Cluster
-
-from ray.serve.deployment_state import ReplicaStartupStatus, ReplicaState
-from ray._private.test_utils import SignalActor, wait_for_condition
 
 
 @pytest.fixture

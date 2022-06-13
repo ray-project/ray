@@ -1,11 +1,12 @@
-import ray
-import ray._private.services as services
-import ray._private.worker
 import ray._private.profiling as profiling
+import ray._private.services as services
 import ray._private.utils as utils
+import ray._private.worker
 from ray._private import ray_constants
 from ray._private.state import GlobalState
 from ray._raylet import GcsClientOptions
+
+import ray
 
 __all__ = ["free", "global_gc"]
 MAX_MESSAGE_LENGTH = ray._config.max_grpc_message_size()
@@ -45,8 +46,7 @@ def memory_summary(
 def get_store_stats(state, node_manager_address=None, node_manager_port=None):
     """Returns a formatted string describing memory usage in the cluster."""
 
-    from ray.core.generated import node_manager_pb2
-    from ray.core.generated import node_manager_pb2_grpc
+    from ray.core.generated import node_manager_pb2, node_manager_pb2_grpc
 
     # We can ask any Raylet for the global memory info, that Raylet internally
     # asks all nodes in the cluster for memory stats.
@@ -85,8 +85,7 @@ def node_stats(
 ):
     """Returns NodeStats object describing memory usage in the cluster."""
 
-    from ray.core.generated import node_manager_pb2
-    from ray.core.generated import node_manager_pb2_grpc
+    from ray.core.generated import node_manager_pb2, node_manager_pb2_grpc
 
     # We can ask any Raylet for the global memory info.
     assert node_manager_address is not None and node_manager_port is not None

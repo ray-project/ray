@@ -4,13 +4,13 @@ import logging
 import os
 import sys
 import time
-import pytest
 
+import pytest
 import ray.cluster_utils
 from ray._private.test_utils import (
-    wait_for_pid_to_exit,
     client_test_enabled,
     run_string_as_driver,
+    wait_for_pid_to_exit,
 )
 
 import ray

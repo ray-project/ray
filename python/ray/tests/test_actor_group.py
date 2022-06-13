@@ -1,8 +1,9 @@
-import pytest
 import time
 
-import ray
+import pytest
 from ray.util.actor_group import ActorGroup
+
+import ray
 
 
 class DummyActor:

@@ -1,17 +1,19 @@
+import subprocess
+import time
+
 import pytest
-import ray
 from ray._private import signature
 from ray.tests.conftest import *  # noqa
-from ray import workflow
 from ray.workflow import workflow_storage
 from ray.workflow.common import (
     StepType,
-    WorkflowStepRuntimeOptions,
     WorkflowNotFoundError,
+    WorkflowStepRuntimeOptions,
 )
 from ray.workflow.tests import utils
-import subprocess
-import time
+
+import ray
+from ray import workflow
 
 
 def some_func(x):

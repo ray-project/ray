@@ -1,11 +1,12 @@
-import pytest
 import platform
-import numpy as np
 import re
 
-import ray
+import numpy as np
+import pytest
 from ray._private.test_utils import wait_for_condition
 from ray.cluster_utils import AutoscalingCluster
+
+import ray
 
 
 # Triggers the addition of a worker node.

@@ -1,6 +1,6 @@
 import inspect
-from inspect import Parameter
 import logging
+from inspect import Parameter
 
 from ray._private.inspect_util import is_cython
 

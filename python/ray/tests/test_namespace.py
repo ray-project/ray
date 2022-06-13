@@ -1,8 +1,7 @@
-import pytest
 import sys
 import time
 
-import ray
+import pytest
 from ray._private import ray_constants
 from ray._private.test_utils import (
     get_error_message,
@@ -10,6 +9,8 @@ from ray._private.test_utils import (
     run_string_as_driver,
 )
 from ray.cluster_utils import Cluster
+
+import ray
 
 
 def test_isolation(shutdown_only):

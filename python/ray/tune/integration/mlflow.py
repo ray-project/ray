@@ -1,12 +1,13 @@
-from typing import Dict, Callable, Optional
 import logging
+from typing import Callable, Dict, Optional
 
-import ray
-from ray.tune.trainable import Trainable
 from ray.tune.logger import LoggerCallback
-from ray.tune.result import TRAINING_ITERATION, TIMESTEPS_TOTAL
+from ray.tune.result import TIMESTEPS_TOTAL, TRAINING_ITERATION
+from ray.tune.trainable import Trainable
 from ray.tune.trial import Trial
 from ray.util.ml_utils.mlflow import _MLflowLoggerUtil
+
+import ray
 
 logger = logging.getLogger(__name__)
 

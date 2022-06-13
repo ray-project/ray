@@ -1,19 +1,19 @@
-from typing import Callable, Iterable, List, Tuple, Optional, Any, Dict, Hashable
-import logging
-from multiprocessing import TimeoutError
-import os
-import time
 import collections
-import threading
-import queue
 import copy
 import gc
-import sys
 import itertools
+import logging
+import os
+import queue
+import sys
+import threading
+import time
+from multiprocessing import TimeoutError
+from typing import Any, Callable, Dict, Hashable, Iterable, List, Optional, Tuple
 
 try:
-    from joblib.parallel import BatchedCalls, parallel_backend
     from joblib._parallel_backends import SafeFunction
+    from joblib.parallel import BatchedCalls, parallel_backend
 except ImportError:
     BatchedCalls = None
     parallel_backend = None

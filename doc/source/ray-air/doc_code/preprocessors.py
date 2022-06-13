@@ -3,8 +3,9 @@
 
 # __preprocessor_setup_start__
 import pandas as pd
-import ray
 from ray.air.preprocessors import MinMaxScaler
+
+import ray
 
 # Generate two simple datasets.
 dataset = ray.data.range_table(8)
@@ -44,11 +45,11 @@ print(batch_transformed)
 # __preprocessor_transform_batch_end__
 
 
+from ray.air.preprocessors import MinMaxScaler
+from ray.train.xgboost import XGBoostTrainer
+
 # __trainer_start__
 import ray
-
-from ray.train.xgboost import XGBoostTrainer
-from ray.air.preprocessors import MinMaxScaler
 
 train_dataset = ray.data.from_items([{"x": x, "y": 2 * x} for x in range(0, 32, 3)])
 valid_dataset = ray.data.from_items([{"x": x, "y": 2 * x} for x in range(1, 32, 3)])
@@ -69,6 +70,7 @@ result = trainer.fit()
 # __checkpoint_start__
 import os
 import pickle
+
 from ray.air.constants import PREPROCESSOR_KEY
 
 checkpoint = result.checkpoint
@@ -104,9 +106,10 @@ print(predicted_labels.to_pandas())
 # __predictor_end__
 
 
+from ray.air.preprocessors import Chain, MinMaxScaler, SimpleImputer
+
 # __chain_start__
 import ray
-from ray.air.preprocessors import Chain, MinMaxScaler, SimpleImputer
 
 # Generate one simple dataset.
 dataset = ray.data.from_items(
@@ -123,9 +126,10 @@ print(dataset_transformed.take())
 # __chain_end__
 
 
+from ray.air.preprocessors import BatchMapper
+
 # __custom_stateless_start__
 import ray
-from ray.air.preprocessors import BatchMapper
 
 # Generate a simple dataset.
 dataset = ray.data.range_table(4)
@@ -142,11 +146,13 @@ print(dataset_transformed.take())
 
 # __custom_stateful_start__
 from typing import Dict
-import ray
+
 from pandas import DataFrame
 from ray.air.preprocessors import CustomStatefulPreprocessor
 from ray.data import Dataset
 from ray.data.aggregate import Max
+
+import ray
 
 
 def get_max(ds: Dataset):

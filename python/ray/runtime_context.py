@@ -1,5 +1,6 @@
-import ray._private.worker
 import logging
+
+import ray._private.worker
 from ray._private.client_mode_hook import client_mode_hook
 from ray.runtime_env import RuntimeEnv
 from ray.util.annotations import PublicAPI

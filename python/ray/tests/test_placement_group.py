@@ -1,12 +1,11 @@
-import pytest
 import sys
 
-import ray
+import pytest
 import ray.cluster_utils
-from ray._private.test_utils import (
-    placement_group_assert_no_leak,
-)
+from ray._private.test_utils import placement_group_assert_no_leak
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
+
+import ray
 
 
 def are_pairwise_unique(g):

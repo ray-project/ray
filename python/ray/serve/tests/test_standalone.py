@@ -10,33 +10,32 @@ import sys
 from tempfile import mkstemp
 from typing import Optional
 
-import pytest
 import pydantic
-from ray.serve.http_util import set_socket_reuse_port
-import requests
-
-import ray
+import pytest
 import ray._private.gcs_utils as gcs_utils
+import requests
 from ray._private.services import new_port
 from ray._private.test_utils import (
+    convert_actor_state,
     run_string_as_driver,
     wait_for_condition,
-    convert_actor_state,
 )
 from ray.cluster_utils import Cluster, cluster_not_supported
-
-from ray import serve
-from ray.serve.context import get_global_client
 from ray.serve.config import HTTPOptions
-from ray.serve.constants import SERVE_ROOT_URL_ENV_KEY, SERVE_PROXY_NAME
+from ray.serve.constants import SERVE_PROXY_NAME, SERVE_ROOT_URL_ENV_KEY
+from ray.serve.context import get_global_client
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import ActorNameList
-from ray.serve.utils import block_until_http_ready, get_all_node_ids, format_actor_name
+from ray.serve.http_util import set_socket_reuse_port
+from ray.serve.utils import block_until_http_ready, format_actor_name, get_all_node_ids
 
 # Explicitly importing it here because it is a ray core tests utility (
 # not in the tree)
-from ray.tests.conftest import ray_start_with_dashboard  # noqa: F401
 from ray.tests.conftest import maybe_external_redis  # noqa: F401
+from ray.tests.conftest import ray_start_with_dashboard  # noqa: F401
+
+import ray
+from ray import serve
 
 
 @pytest.fixture

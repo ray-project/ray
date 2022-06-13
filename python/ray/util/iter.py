@@ -1,13 +1,14 @@
-from contextlib import contextmanager
 import collections
 import random
 import threading
 import time
-from typing import TypeVar, Generic, Iterable, List, Callable, Any
+from contextlib import contextmanager
+from typing import Any, Callable, Generic, Iterable, List, TypeVar
+
+from ray.util.annotations import Deprecated
+from ray.util.iter_metrics import MetricsContext, SharedMetrics
 
 import ray
-from ray.util.iter_metrics import MetricsContext, SharedMetrics
-from ray.util.annotations import Deprecated
 
 # The type of an iterator element.
 T = TypeVar("T")

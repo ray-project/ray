@@ -1,28 +1,29 @@
-import pytest
 import sys
 import time
+
+import pytest
 
 try:
     import pytest_timeout
 except ImportError:
     pytest_timeout = None
 
-import ray
-import ray.cluster_utils
 import ray._private.gcs_utils as gcs_utils
-
+import ray.cluster_utils
 from ray._private.test_utils import (
-    get_other_nodes,
+    convert_actor_state,
     generate_system_config_map,
+    get_error_message,
+    get_other_nodes,
     kill_actor_and_wait_for_failure,
+    placement_group_assert_no_leak,
     run_string_as_driver,
     wait_for_condition,
-    get_error_message,
-    placement_group_assert_no_leak,
-    convert_actor_state,
 )
-from ray.util.placement_group import get_current_placement_group
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
+from ray.util.placement_group import get_current_placement_group
+
+import ray
 
 
 @ray.remote
@@ -283,8 +284,8 @@ def test_mini_integration(ray_start_cluster, connect_to_client):
 
         @ray.remote(num_cpus=0, num_gpus=1)
         def random_tasks():
-            import time
             import random
+            import time
 
             sleep_time = random.uniform(0.1, 0.2)
             time.sleep(sleep_time)

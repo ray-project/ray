@@ -1,30 +1,32 @@
-import random
-import pytest
-import numpy as np
 import os
-from ray import cloudpickle as pickle
+import random
+
+import numpy as np
+import pytest
 from ray._private import ray_constants
 from ray.actor import ActorClassInheritanceException
+
+from ray import cloudpickle as pickle
 
 try:
     import pytest_timeout
 except ImportError:
     pytest_timeout = None
+import datetime
 import sys
 import tempfile
-import datetime
 
+# NOTE: We have to import setproctitle after ray because we bundle setproctitle
+# with ray.
+import setproctitle  # noqa
 from ray._private.test_utils import (
     client_test_enabled,
     wait_for_condition,
     wait_for_pid_to_exit,
 )
 from ray.tests.client_test_utils import create_remote_signal_actor
-import ray
 
-# NOTE: We have to import setproctitle after ray because we bundle setproctitle
-# with ray.
-import setproctitle  # noqa
+import ray
 
 
 @pytest.mark.parametrize("set_enable_auto_connect", ["1", "0"], indirect=True)

@@ -1,8 +1,9 @@
-import numpy as np
-import platform
-import pytest
 import os
+import platform
 import sys
+
+import numpy as np
+import pytest
 
 import ray
 

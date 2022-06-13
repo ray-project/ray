@@ -2,12 +2,12 @@ import os
 import signal
 import sys
 import time
-import numpy as np
 
+import numpy as np
 import pytest
+from ray._private.test_utils import SignalActor, run_string_as_driver_nonblocking
 
 import ray
-from ray._private.test_utils import run_string_as_driver_nonblocking, SignalActor
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 

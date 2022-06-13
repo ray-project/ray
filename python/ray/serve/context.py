@@ -7,12 +7,13 @@ import logging
 from dataclasses import dataclass
 from typing import Callable, Optional
 
-import ray
 from ray.exceptions import RayActorError
+from ray.serve.client import ServeControllerClient, get_controller_namespace
 from ray.serve.common import ReplicaTag
 from ray.serve.constants import SERVE_CONTROLLER_NAME
 from ray.serve.exceptions import RayServeException
-from ray.serve.client import ServeControllerClient, get_controller_namespace
+
+import ray
 
 logger = logging.getLogger(__file__)
 

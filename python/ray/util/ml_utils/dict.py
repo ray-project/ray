@@ -1,7 +1,7 @@
-from typing import Dict, List, Union, Optional, TypeVar
 import copy
 from collections import deque
 from collections.abc import Mapping, Sequence
+from typing import Dict, List, Optional, TypeVar, Union
 
 from ray.util.annotations import Deprecated
 

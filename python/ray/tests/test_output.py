@@ -1,17 +1,17 @@
-import subprocess
-import sys
-import pytest
+import os
 import re
 import signal
+import subprocess
+import sys
 import time
-import os
+
+import pytest
+from ray._private.test_utils import (
+    run_string_as_driver,
+    run_string_as_driver_nonblocking,
+)
 
 import ray
-
-from ray._private.test_utils import (
-    run_string_as_driver_nonblocking,
-    run_string_as_driver,
-)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")

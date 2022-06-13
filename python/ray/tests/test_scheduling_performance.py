@@ -4,9 +4,8 @@ import sys
 import time
 
 import pytest
-
-import ray.cluster_utils
 import ray._private.test_utils
+import ray.cluster_utils
 
 import ray
 

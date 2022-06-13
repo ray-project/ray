@@ -1,6 +1,7 @@
-import ray
 import ray.cloudpickle as pickle
-from ray.util.annotations import PublicAPI, DeveloperAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
+
+import ray
 
 
 @PublicAPI

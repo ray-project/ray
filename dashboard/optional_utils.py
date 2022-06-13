@@ -2,7 +2,6 @@
 Optional utils module contains utility methods
 that require optional dependencies.
 """
-from aiohttp.web import Response
 import asyncio
 import collections
 import functools
@@ -15,9 +14,11 @@ import traceback
 from collections import namedtuple
 from typing import Any, Callable
 
-import ray
 import ray.dashboard.consts as dashboard_consts
+from aiohttp.web import Response
 from ray._private.ray_constants import env_bool
+
+import ray
 
 try:
     create_task = asyncio.create_task
@@ -27,8 +28,8 @@ except AttributeError:
 # All third-party dependencies that are not included in the minimal Ray
 # installation must be included in this file. This allows us to determine if
 # the agent has the necessary dependencies to be started.
-from ray.dashboard.optional_deps import aiohttp, hdrs, PathLike, RouteDef
-from ray.dashboard.utils import to_google_style, CustomEncoder
+from ray.dashboard.optional_deps import PathLike, RouteDef, aiohttp, hdrs
+from ray.dashboard.utils import CustomEncoder, to_google_style
 
 logger = logging.getLogger(__name__)
 

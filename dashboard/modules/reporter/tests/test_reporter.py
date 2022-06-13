@@ -1,23 +1,24 @@
+import logging
 import os
 import sys
-import logging
-from mock import patch
-import requests
 import time
 
 import pytest
-import ray
+import requests
 from ray._private import ray_constants
+from ray._private.test_utils import (
+    RayTestTimeoutException,
+    fetch_prometheus,
+    format_web_url,
+    wait_for_condition,
+    wait_until_server_available,
+)
+from ray.dashboard.modules.reporter.reporter_agent import ReporterAgent
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.dashboard.utils import Bunch
-from ray.dashboard.modules.reporter.reporter_agent import ReporterAgent
-from ray._private.test_utils import (
-    format_web_url,
-    RayTestTimeoutException,
-    wait_until_server_available,
-    wait_for_condition,
-    fetch_prometheus,
-)
+
+import ray
+from mock import patch
 
 try:
     import prometheus_client

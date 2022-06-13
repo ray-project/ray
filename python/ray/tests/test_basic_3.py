@@ -5,7 +5,6 @@ import time
 
 import numpy as np
 import pytest
-
 import ray.cluster_utils
 from ray._private.test_utils import dicts_equal
 

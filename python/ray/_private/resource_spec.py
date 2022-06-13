@@ -1,14 +1,15 @@
 import importlib.util
-from collections import namedtuple
 import logging
 import os
 import re
 import subprocess
 import sys
+from collections import namedtuple
 from typing import Optional
 
-import ray
 import ray._private.ray_constants as ray_constants
+
+import ray
 
 try:
     import GPUtil

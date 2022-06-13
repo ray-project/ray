@@ -1,19 +1,18 @@
 # coding: utf-8
 import logging
+import subprocess
 import sys
 import time
-import subprocess
+from pathlib import Path
 
 import numpy as np
+import psutil
 import pytest
-
 import ray.cluster_utils
 from ray._private.test_utils import wait_for_condition
 from ray.autoscaler._private.constants import RAY_PROCESSES
-from pathlib import Path
 
 import ray
-import psutil
 
 logger = logging.getLogger(__name__)
 
@@ -138,8 +137,8 @@ def test_fork_support(shutdown_only):
 
     @ray.remote
     def pool_factorial():
-        import multiprocessing
         import math
+        import multiprocessing
 
         ctx = multiprocessing.get_context("fork")
         with ctx.Pool(processes=4) as pool:

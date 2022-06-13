@@ -1,6 +1,8 @@
-import ray
-from ray._raylet import ObjectRef
 from typing import Any, Dict, List
+
+from ray._raylet import ObjectRef
+
+import ray
 
 
 def get_object_locations(

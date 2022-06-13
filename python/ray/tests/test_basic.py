@@ -7,12 +7,11 @@ import time
 
 import numpy as np
 import pytest
-
 import ray.cluster_utils
 from ray._private.test_utils import (
+    SignalActor,
     client_test_enabled,
     get_error_message,
-    SignalActor,
     run_string_as_driver,
 )
 
@@ -249,6 +248,7 @@ def test_invalid_arguments():
 def test_options():
     """General test of option keywords in Ray."""
     import re
+
     from ray._private import ray_option_utils
 
     def f():

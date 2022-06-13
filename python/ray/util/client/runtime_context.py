@@ -2,8 +2,8 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ray.runtime_context import RuntimeContext
-    from ray import JobID
-    from ray import NodeID
+
+    from ray import JobID, NodeID
 
 
 class _ClientWorkerPropertyAPI:

@@ -1,5 +1,6 @@
-import ray
 from ray._private.test_utils import run_string_as_driver
+
+import ray
 from ray import serve
 
 
@@ -26,6 +27,7 @@ driver.deploy()
 
 if __name__ == "__main__":
     import sys
+
     import pytest
 
     sys.exit(pytest.main(["-v", "-s", __file__]))

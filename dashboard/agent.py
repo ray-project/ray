@@ -1,32 +1,31 @@
 import argparse
 import asyncio
 import io
+import json
 import logging
 import logging.handlers
 import os
 import sys
-import json
 
 try:
     from grpc import aio as aiogrpc
 except ImportError:
     from grpc.experimental import aio as aiogrpc
 
-import ray
-import ray.experimental.internal_kv as internal_kv
-import ray.dashboard.consts as dashboard_consts
-import ray.dashboard.utils as dashboard_utils
+# Import psutil after ray so the packaged version is used.
+import psutil
 import ray._private.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
+import ray.dashboard.consts as dashboard_consts
+import ray.dashboard.utils as dashboard_utils
+import ray.experimental.internal_kv as internal_kv
+from ray._private.gcs_pubsub import GcsAioPublisher, GcsPublisher
 from ray._private.gcs_utils import GcsClient
-from ray._private.gcs_pubsub import GcsPublisher, GcsAioPublisher
-from ray.core.generated import agent_manager_pb2
-from ray.core.generated import agent_manager_pb2_grpc
 from ray._private.ray_logging import setup_component_logger
+from ray.core.generated import agent_manager_pb2, agent_manager_pb2_grpc
 
-# Import psutil after ray so the packaged version is used.
-import psutil
+import ray
 
 # Publishes at most this number of lines of Raylet logs, when the Raylet dies
 # unexpectedly.

@@ -1,24 +1,25 @@
-from enum import Enum
-from tempfile import TemporaryDirectory
-from filelock import FileLock
 import hashlib
 import logging
 import os
-from pathlib import Path
 import shutil
+from enum import Enum
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Callable, List, Optional, Tuple
 from urllib.parse import urlparse
 from zipfile import ZipFile
-from ray.experimental.internal_kv import (
-    _internal_kv_put,
-    _internal_kv_get,
-    _internal_kv_exists,
-    _pin_runtime_env_uri,
-)
-from ray._private.thirdparty.pathspec import PathSpec
+
+from filelock import FileLock
 from ray._private.ray_constants import (
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT,
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR,
+)
+from ray._private.thirdparty.pathspec import PathSpec
+from ray.experimental.internal_kv import (
+    _internal_kv_exists,
+    _internal_kv_get,
+    _internal_kv_put,
+    _pin_runtime_env_uri,
 )
 
 default_logger = logging.getLogger(__name__)
@@ -590,8 +591,8 @@ def download_and_unpack_package(
 
                 if protocol == Protocol.S3:
                     try:
-                        from smart_open import open as open_file
                         import boto3
+                        from smart_open import open as open_file
                     except ImportError:
                         raise ImportError(
                             "You must `pip install smart_open` and "
@@ -601,8 +602,8 @@ def download_and_unpack_package(
                     tp = {"client": boto3.client("s3")}
                 elif protocol == Protocol.GS:
                     try:
-                        from smart_open import open as open_file
                         from google.cloud import storage  # noqa: F401
+                        from smart_open import open as open_file
                     except ImportError:
                         raise ImportError(
                             "You must `pip install smart_open` and "

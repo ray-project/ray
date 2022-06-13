@@ -1,25 +1,25 @@
-from contextlib import contextmanager
-import sys
 import os
-import time
 import subprocess
+import sys
+import time
+from contextlib import contextmanager
 from tempfile import NamedTemporaryFile
-import requests
 from typing import Dict
 
 import pytest
+import ray._private.state
+import requests
+from ray._private.test_utils import wait_for_condition
 from ray.cluster_utils import AutoscalingCluster
 from ray.exceptions import RayActorError
-
-import ray
-import ray._private.state
-from ray import serve
-from ray.serve.context import get_global_client
-from ray.serve.schema import ServeApplicationSchema
 from ray.serve.client import ServeControllerClient
 from ray.serve.common import ApplicationStatus
-from ray._private.test_utils import wait_for_condition
+from ray.serve.context import get_global_client
+from ray.serve.schema import ServeApplicationSchema
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
+
+import ray
+from ray import serve
 
 
 @pytest.fixture
@@ -239,9 +239,10 @@ def test_controller_deserialization_deployment_def(start_and_shutdown_ray_cli_fu
     @ray.remote
     def run_graph():
         """Deploys a Serve application to the controller's Ray cluster."""
-        from ray import serve
-        from ray.serve.api import build
         from ray._private.utils import import_attr
+        from ray.serve.api import build
+
+        from ray import serve
 
         # Import and build the graph
         graph = import_attr("test_config_files.pizza.serve_dag")

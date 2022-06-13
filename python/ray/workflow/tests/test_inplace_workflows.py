@@ -1,7 +1,7 @@
-import ray
+import pytest
 from ray.tests.conftest import *  # noqa
 
-import pytest
+import ray
 from ray import workflow
 
 

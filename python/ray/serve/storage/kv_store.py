@@ -9,12 +9,12 @@ try:
 except ImportError:
     boto3 = None
 
-import ray
 from ray._private import ray_constants
 from ray._private.gcs_utils import GcsClient
-
-from ray.serve.constants import SERVE_LOGGER_NAME, RAY_SERVE_KV_TIMEOUT_S
+from ray.serve.constants import RAY_SERVE_KV_TIMEOUT_S, SERVE_LOGGER_NAME
 from ray.serve.storage.kv_store_base import KVStoreBase
+
+import ray
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 

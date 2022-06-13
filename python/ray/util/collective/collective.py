@@ -4,8 +4,9 @@ import os
 from typing import List
 
 import numpy as np
-import ray
 from ray.util.collective import types
+
+import ray
 
 _NCCL_AVAILABLE = True
 _GLOO_AVAILABLE = True

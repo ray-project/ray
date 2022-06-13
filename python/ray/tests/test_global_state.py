@@ -1,4 +1,5 @@
 import os
+
 import pytest
 
 try:
@@ -7,14 +8,15 @@ except ImportError:
     pytest_timeout = None
 import time
 
-import ray
-import ray._private.ray_constants
 import ray._private.gcs_utils as gcs_utils
+import ray._private.ray_constants
 from ray._private.test_utils import (
-    wait_for_condition,
     convert_actor_state,
     make_global_state_accessor,
+    wait_for_condition,
 )
+
+import ray
 
 # TODO(rliaw): The proper way to do this is to have the pytest config setup.
 
@@ -401,7 +403,8 @@ def test_next_job_id(ray_start_regular):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

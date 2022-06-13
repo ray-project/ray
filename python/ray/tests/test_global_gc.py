@@ -4,13 +4,12 @@ import logging
 import weakref
 
 import numpy as np
-
 import pytest
+import ray.cluster_utils
+from ray._private.internal_api import global_gc
+from ray._private.test_utils import wait_for_condition
 
 import ray
-import ray.cluster_utils
-from ray._private.test_utils import wait_for_condition
-from ray._private.internal_api import global_gc
 
 logger = logging.getLogger(__name__)
 

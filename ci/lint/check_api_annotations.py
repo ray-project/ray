@@ -2,8 +2,9 @@
 
 import inspect
 
-import ray
 from ray.util.annotations import _is_annotated
+
+import ray
 
 IGNORE_PATHS = {
     ".impl.",
@@ -85,8 +86,8 @@ if __name__ == "__main__":
     import ray.data
     import ray.rllib
     import ray.serve
-    import ray.tune
     import ray.train
+    import ray.tune
     import ray.workflow
 
     output = set()

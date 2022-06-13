@@ -1,33 +1,33 @@
-import jsonschema
+import copy
 import logging
-import mock
 import os
 import sys
 import tempfile
 import unittest
 import urllib
-import yaml
-import copy
 from unittest.mock import MagicMock, Mock, patch
-import pytest
-from click.exceptions import ClickException
 
+import jsonschema
+import pytest
+import yaml
+from click.exceptions import ClickException
+from ray._private.test_utils import load_test_config, recursive_fnmatch
 from ray.autoscaler._private._azure.config import (
     _configure_key_pair as _azure_configure_key_pair,
 )
+from ray.autoscaler._private._kubernetes.node_provider import KubernetesNodeProvider
 from ray.autoscaler._private.gcp import config as gcp_config
+from ray.autoscaler._private.providers import _NODE_PROVIDERS
 from ray.autoscaler._private.util import (
+    _get_default_config,
+    fill_node_type_min_max_workers,
+    merge_setup_commands,
     prepare_config,
     validate_config,
-    _get_default_config,
-    merge_setup_commands,
-    fill_node_type_min_max_workers,
 )
-from ray.autoscaler._private.providers import _NODE_PROVIDERS
-from ray.autoscaler._private._kubernetes.node_provider import KubernetesNodeProvider
 from ray.autoscaler.tags import NODE_TYPE_LEGACY_HEAD, NODE_TYPE_LEGACY_WORKER
 
-from ray._private.test_utils import load_test_config, recursive_fnmatch
+import mock
 
 RAY_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 CONFIG_PATHS = recursive_fnmatch(os.path.join(RAY_PATH, "autoscaler"), "*.yaml")
@@ -724,7 +724,8 @@ class AutoscalingConfigTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

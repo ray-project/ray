@@ -1,18 +1,18 @@
-import ray
-import numpy as np
-import time
-import os
-import psutil
-import resource
 import json
+import os
+import resource
+import time
 from typing import List
 
+import numpy as np
+import psutil
+from ray._private.internal_api import memory_summary
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import Block, BlockMetadata
-
 from ray.data.datasource import Datasource, ReadTask
-from ray._private.internal_api import memory_summary
+
+import ray
 
 
 class RandomIntRowDatasource(Datasource[ArrowRow]):

@@ -1,21 +1,21 @@
 import collections
 import itertools
-from typing import Iterator, Iterable, Union, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Iterable, Iterator, Optional, Union
 
 if TYPE_CHECKING:
     import pyarrow
     import pandas
 
 import numpy as np
-
-import ray
 from ray.actor import ActorHandle
-from ray.types import ObjectRef
+from ray.data._internal.batcher import Batcher
+from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DatasetContext
-from ray.data._internal.batcher import Batcher
-from ray.data._internal.stats import DatasetStats, DatasetPipelineStats
+from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
+import ray
 
 # An output type of iter_batches() determined by the batch_format parameter.
 BatchType = Union["pandas.DataFrame", "pyarrow.Table", np.ndarray, list]
