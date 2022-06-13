@@ -17,7 +17,6 @@ from ray.experimental.state.common import (
     ListApiOptions,
     StateResource,
 )
-from ray._private.gcs_utils import use_gcs_for_bootstrap
 from ray._private.gcs_utils import GcsClient
 
 logger = logging.getLogger(__name__)
@@ -61,7 +60,7 @@ def get_api_server_url() -> str:
                 "still alive."
             )
         )
-    
+
     api_server_url = f"http://{api_server_url.decode()}"
     return api_server_url
 

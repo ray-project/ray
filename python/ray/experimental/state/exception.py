@@ -13,6 +13,6 @@ class RayStateApiException(Exception):
 
 
 class ServerUnavailable(RayStateApiException):
-    """Thrown when dashboard server not available
-    """
+    """Thrown when dashboard server not available"""
+
     pass
