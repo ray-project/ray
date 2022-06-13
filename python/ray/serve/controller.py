@@ -531,12 +531,11 @@ class ServeController:
 
 @ray.remote(num_cpus=0)
 class ServeControllerAvatar:
-    """Responsible for managing the state of the serving system.
-
-    The controller implements fault tolerance by persisting its state in
-    a new checkpoint each time a state change is made. If the actor crashes,
-    the latest checkpoint is loaded and the state is recovered. Checkpoints
-    are written/read using a provided KV-store interface.
+    """
+    Java api can not support python async actor. If we use java api create python async actor.
+    The async init method won't be executed. The async method will fail with pickle error.
+    And the run_control_loop of controller actor can't be executed too.
+    We use this proxy actor create python async actor to avoid the above problem.
     """
 
     def __init__(
