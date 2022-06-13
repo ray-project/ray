@@ -277,6 +277,15 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         elif self.storage_unit == StorageUnit.EPISODES:
             timeslices = []
             for eps in batch.split_by_episode():
+                # Only add full episodes to the buffer
+                assert eps.get(SampleBatch.T) is not None, (
+                    "Trying to add an episode to "
+                    "this buffer without "
+                    "specifying the timestep T. "
+                    "SampleBatch={} does not "
+                    "contain this "
+                    "information.".format(eps)
+                )
                 if (
                     eps.get(SampleBatch.T)[0] == 0
                     and eps.get(SampleBatch.DONES)[-1] == True  # noqa E712

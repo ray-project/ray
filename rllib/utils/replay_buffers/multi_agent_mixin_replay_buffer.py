@@ -201,7 +201,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
                 for policy_id, sample_batch in batch.policy_batches.items():
                     for eps in sample_batch.split_by_episode():
                         # Only add full episodes to the buffer
-                        assert eps.get(SampleBatch.T), (
+                        assert eps.get(SampleBatch.T) is not None, (
                             "Trying to add an episode to "
                             "this buffer without "
                             "specifying the timestep T. "
