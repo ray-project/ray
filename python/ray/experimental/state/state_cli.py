@@ -42,6 +42,30 @@ def _get_available_resources() -> List[str]:
     return [e.value.replace("_", "-") for e in StateResource]
 
 
+def get_api_server_url() -> str:
+    address = services.canonicalize_bootstrap_address(None)
+    gcs_client = GcsClient(address=address, nums_reconnect_retry=0)
+    ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
+    api_server_url = ray._private.utils.internal_kv_get_with_retry(
+        gcs_client,
+        ray_constants.DASHBOARD_ADDRESS,
+        namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+        num_retries=20,
+    )
+
+    if api_server_url is None:
+        raise ValueError(
+            (
+                "Couldn't obtain the API server address from GCS. It is likely that "
+                "the GCS server is down. Check gcs_server.[out | err] to see if it is "
+                "still alive."
+            )
+        )
+    
+    api_server_url = f"http://{api_server_url.decode()}"
+    return api_server_url
+
+
 def get_state_api_output_to_print(
     state_data: Union[dict, list], *, format: AvailableFormat = AvailableFormat.DEFAULT
 ):
@@ -73,31 +97,6 @@ def _should_explain(format: AvailableFormat):
     # If the format is json or yaml, it should not print stats because
     # users don't want additional strings.
     return format == AvailableFormat.DEFAULT or format == AvailableFormat.TABLE
-
-
-def _get_state_api_server_address() -> str:
-    address = services.canonicalize_bootstrap_address(None)
-    gcs_client = GcsClient(address=address, nums_reconnect_retry=0)
-    ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
-    api_server_url = ray._private.utils.internal_kv_get_with_retry(
-        gcs_client,
-        ray_constants.DASHBOARD_ADDRESS,
-        namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-        num_retries=20,
-    )
-    if api_server_url is None:
-        raise ValueError(
-            (
-                "Couldn't obtain the API server address from GCS. It is likely that "
-                "the GCS server is down. Check gcs_server.[out | err] to see if it is "
-                "still alive."
-            )
-        )
-
-    assert use_gcs_for_bootstrap()
-    api_server_url = f"http://{api_server_url.decode()}"
-
-    return api_server_url
 
 
 @click.command()
@@ -152,7 +151,7 @@ def list(
     format = AvailableFormat(format)
 
     # Get the state API server address from ray if not provided by user
-    api_server_address = address if address else _get_state_api_server_address()
+    api_server_address = address if address else get_api_server_url()
 
     # Create the State API server and put it into context
     logger.debug(f"Create StateApiClient at {api_server_address}...")
