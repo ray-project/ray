@@ -83,17 +83,16 @@ class ServeController:
         http_config: HTTPOptions,
         checkpoint_path: str,
         detached: bool = False,
-        _override_controller_namespace: Optional[str] = None,
     ):
         configure_component_logger(
             component_name="controller", component_id=str(os.getpid())
         )
 
         # Used to read/write checkpoints.
-        self.controller_namespace = ray.get_runtime_context().namespace
+        self.ray_worker_namespace = ray.get_runtime_context().namespace
         self.controller_name = controller_name
         self.checkpoint_path = checkpoint_path
-        kv_store_namespace = f"{self.controller_name}-{self.controller_namespace}"
+        kv_store_namespace = f"{self.controller_name}-{self.ray_worker_namespace}"
         self.kv_store = make_kv_store(checkpoint_path, namespace=kv_store_namespace)
         self.snapshot_store = RayInternalKVStore(namespace=kv_store_namespace)
 
@@ -110,7 +109,6 @@ class ServeController:
             controller_name,
             detached,
             http_config,
-            _override_controller_namespace=_override_controller_namespace,
         )
         self.endpoint_state = EndpointState(self.kv_store, self.long_poll_host)
         # Fetch all running actors in current cluster as source of current
@@ -122,7 +120,6 @@ class ServeController:
             self.kv_store,
             self.long_poll_host,
             all_current_actor_names,
-            _override_controller_namespace=_override_controller_namespace,
         )
 
         # Reference to Ray task executing most recent deployment request
@@ -582,7 +579,7 @@ def run_graph(
             app.deployments[name].set_options(**options)
 
         # Run the graph locally on the cluster
-        serve.start(_override_controller_namespace="serve")
+        serve.start()
         serve.run(app)
     except KeyboardInterrupt:
         # Error is raised when this task is canceled with ray.cancel(), which

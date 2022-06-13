@@ -36,7 +36,7 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
         from ray.serve.context import get_global_client
         from ray.serve.schema import serve_status_to_schema
 
-        client = get_global_client(_override_controller_namespace="serve")
+        client = get_global_client()
 
         serve_status_schema = serve_status_to_schema(client.get_serve_status())
         return Response(
@@ -63,7 +63,7 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
         config = ServeApplicationSchema.parse_obj(await req.json())
 
         if config.import_path is not None:
-            client = get_global_client(_override_controller_namespace="serve")
+            client = get_global_client()
             client.deploy_app(config)
         else:
             # TODO (shrekris-anyscale): Remove this conditional path
