@@ -115,7 +115,6 @@ class MultiNodeSyncTest(unittest.TestCase):
 
         When `max_failures` is set to larger than zero.
         """
-
         self.cluster.update_config(
             {
                 "provider": {"head_resources": {"CPU": 4, "GPU": 0}},
@@ -141,8 +140,7 @@ class MultiNodeSyncTest(unittest.TestCase):
             tune.report(1.0)
 
         class FailureInjectionCallback(Callback):
-            def __init__(self, cluster):
-                self._cluster = cluster
+            def __init__(self):
                 self._killed = False
 
             def on_step_begin(self, iteration, trials, **info):
@@ -159,7 +157,7 @@ class MultiNodeSyncTest(unittest.TestCase):
             num_samples=3,
             resources_per_trial={"cpu": 4},
             max_failures=1,
-            callbacks=[FailureInjectionCallback(self.cluster)],
+            callbacks=[FailureInjectionCallback()],
         )
 
     def testCheckpointSync(self):
