@@ -129,4 +129,4 @@ def test_placement_group_remove_stress(ray_start_cluster, execution_number):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-n", "auto", "--boxed", "-v", __file__]))
+    sys.exit(pytest.main(["-vs", __file__]))
