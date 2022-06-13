@@ -5,8 +5,8 @@ from typing import List, Optional, Type
 import ray
 from ray.rllib.algorithms.mbmpo.model_ensemble import DynamicsEnsembleCustomModel
 from ray.rllib.algorithms.mbmpo.utils import calculate_gae_advantages, MBMPOExploration
-from ray.rllib.agents.trainer import Trainer
-from ray.rllib.agents.trainer_config import TrainerConfig
+from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.wrappers.model_vector_env import model_vector_env
 from ray.rllib.evaluation.metrics import (
@@ -29,14 +29,14 @@ from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.sgd import standardized
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
-from ray.rllib.utils.typing import EnvType, TrainerConfigDict
+from ray.rllib.utils.typing import EnvType, AlgorithmConfigDict
 from ray.util.iter import from_actors, LocalIterator
 
 logger = logging.getLogger(__name__)
 
 
-class MBMPOConfig(TrainerConfig):
-    """Defines a configuration class from which an MBMPO Trainer can be built.
+class MBMPOConfig(AlgorithmConfig):
+    """Defines a configuration class from which an MBMPO Algorithm can be built.
 
     Example:
         >>> from ray.rllib.algorithms.mbmpo import MBMPOConfig
@@ -44,7 +44,7 @@ class MBMPOConfig(TrainerConfig):
         ...     .resources(num_gpus=4)\
         ...     .rollouts(num_rollout_workers=64)
         >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> # Build a Algorithm object from the config and run 1 training iteration.
         >>> trainer = config.build(env="CartPole-v1")
         >>> trainer.train()
 
@@ -67,9 +67,9 @@ class MBMPOConfig(TrainerConfig):
         ... )
     """
 
-    def __init__(self, trainer_class=None):
+    def __init__(self, algo_class=None):
         """Initializes a MBMPOConfig instance."""
-        super().__init__(trainer_class=trainer_class or MBMPO)
+        super().__init__(algo_class=algo_class or MBMPO)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -127,7 +127,7 @@ class MBMPOConfig(TrainerConfig):
         # How many iterations through MAML per MBMPO iteration.
         self.num_maml_steps = 10
 
-        # Override some of TrainerConfig's default values with MBMPO-specific
+        # Override some of AlgorithmConfig's default values with MBMPO-specific
         # values.
         self.batch_mode = "complete_episodes"
         # Size of batches collected from each worker.
@@ -149,7 +149,7 @@ class MBMPOConfig(TrainerConfig):
         self.vf_share_layers = DEPRECATED_VALUE
         self._disable_execution_plan_api = False
 
-    @override(TrainerConfig)
+    @override(AlgorithmConfig)
     def training(
         self,
         *,
@@ -198,7 +198,7 @@ class MBMPOConfig(TrainerConfig):
             num_maml_steps: How many iterations through MAML per MBMPO iteration.
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
@@ -360,7 +360,7 @@ def inner_adaptation(workers: WorkerSet, samples: List[SampleBatch]):
     """Performs one gradient descend step on each remote worker.
 
     Args:
-        workers: The WorkerSet of the Trainer.
+        workers: The WorkerSet of the Algorithm.
         samples (List[SampleBatch]): The list of SampleBatches to perform
             a training step on (one for each remote worker).
     """
@@ -422,7 +422,7 @@ def sync_stats(workers: WorkerSet) -> None:
             e.foreach_policy.remote(set_func, normalizations=normalization_dict)
 
 
-def post_process_samples(samples, config: TrainerConfigDict):
+def post_process_samples(samples, config: AlgorithmConfigDict):
     # Instead of using NN for value function, we use regression
     split_lst = []
     for sample in samples:
@@ -446,10 +446,10 @@ def post_process_samples(samples, config: TrainerConfigDict):
     return samples, split_lst
 
 
-class MBMPO(Trainer):
-    """Model-Based Meta Policy Optimization (MB-MPO) Trainer.
+class MBMPO(Algorithm):
+    """Model-Based Meta Policy Optimization (MB-MPO) Algorithm.
 
-    This file defines the distributed Trainer class for model-based meta
+    This file defines the distributed Algorithm class for model-based meta
     policy optimization.
     See `mbmpo_[tf|torch]_policy.py` for the definition of the policy loss.
 
@@ -458,12 +458,12 @@ class MBMPO(Trainer):
     """
 
     @classmethod
-    @override(Trainer)
-    def get_default_config(cls) -> TrainerConfigDict:
+    @override(Algorithm)
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return DEFAULT_CONFIG
 
-    @override(Trainer)
-    def validate_config(self, config: TrainerConfigDict) -> None:
+    @override(Algorithm)
+    def validate_config(self, config: AlgorithmConfigDict) -> None:
         # Call super's validation method.
         super().validate_config(config)
 
@@ -491,16 +491,16 @@ class MBMPO(Trainer):
                 "(local) worker! Set `create_env_on_driver` to True."
             )
 
-    @override(Trainer)
-    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
+    @override(Algorithm)
+    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
         from ray.rllib.algorithms.mbmpo.mbmpo_torch_policy import MBMPOTorchPolicy
 
         return MBMPOTorchPolicy
 
     @staticmethod
-    @override(Trainer)
+    @override(Algorithm)
     def execution_plan(
-        workers: WorkerSet, config: TrainerConfigDict, **kwargs
+        workers: WorkerSet, config: AlgorithmConfigDict, **kwargs
     ) -> LocalIterator[dict]:
         assert (
             len(kwargs) == 0
@@ -576,7 +576,7 @@ class MBMPO(Trainer):
         return train_op
 
     @staticmethod
-    @override(Trainer)
+    @override(Algorithm)
     def validate_env(env: EnvType, env_context: EnvContext) -> None:
         """Validates the local_worker's env object (after creation).
 

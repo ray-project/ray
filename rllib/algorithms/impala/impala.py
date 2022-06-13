@@ -8,7 +8,8 @@ from typing import Optional, Type, List, Dict, Union, Callable, Any
 import ray
 from ray.actor import ActorHandle
 from ray.rllib import SampleBatch
-from ray.rllib.agents.trainer import Trainer, TrainerConfig
+from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.utils.replay_buffers import MultiAgentMixInReplayBuffer
 from ray.rllib.execution.learner_thread import LearnerThread
 from ray.rllib.execution.multi_gpu_learner_thread import MultiGPULearnerThread
@@ -31,9 +32,9 @@ from ray.rllib.utils.metrics import (
 )
 
 from ray.rllib.utils.typing import (
-    PartialTrainerConfigDict,
+    PartialAlgorithmConfigDict,
     ResultDict,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
     SampleBatchType,
     T,
 )
@@ -48,7 +49,7 @@ from ray.types import ObjectRef
 logger = logging.getLogger(__name__)
 
 
-class ImpalaConfig(TrainerConfig):
+class ImpalaConfig(AlgorithmConfig):
     """Defines a configuration class from which an Impala can be built.
 
     Example:
@@ -57,7 +58,7 @@ class ImpalaConfig(TrainerConfig):
         ...     .resources(num_gpus=4)\
         ...     .rollouts(num_rollout_workers=64)
         >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> # Build a Algorithm object from the config and run 1 training iteration.
         >>> trainer = config.build(env="CartPole-v1")
         >>> trainer.train()
 
@@ -80,9 +81,9 @@ class ImpalaConfig(TrainerConfig):
         ... )
     """
 
-    def __init__(self, trainer_class=None):
+    def __init__(self, algo_class=None):
         """Initializes a ImpalaConfig instance."""
-        super().__init__(trainer_class=trainer_class or Impala)
+        super().__init__(algo_class=algo_class or Impala)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -120,7 +121,7 @@ class ImpalaConfig(TrainerConfig):
         self._lr_vf = 0.0005
         self.after_train_step = None
 
-        # Override some of TrainerConfig's default values with ARS-specific values.
+        # Override some of AlgorithmConfig's default values with ARS-specific values.
         self.rollout_fragment_length = 50
         self.train_batch_size = 500
         self.num_workers = 2
@@ -133,7 +134,7 @@ class ImpalaConfig(TrainerConfig):
         # Deprecated value.
         self.num_data_loader_buffers = DEPRECATED_VALUE
 
-    @override(TrainerConfig)
+    @override(AlgorithmConfig)
     def training(
         self,
         *,
@@ -259,7 +260,7 @@ class ImpalaConfig(TrainerConfig):
             in flight, or enable compression in your experiment of timesteps.
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
@@ -371,7 +372,7 @@ def make_learner_thread(local_worker, config):
     return learner_thread
 
 
-class Impala(Trainer):
+class Impala(Algorithm):
     """Importance weighted actor/learner architecture (IMPALA) Trainer
 
     == Overview of data flow in IMPALA ==
@@ -386,13 +387,13 @@ class Impala(Trainer):
     """
 
     @classmethod
-    @override(Trainer)
-    def get_default_config(cls) -> TrainerConfigDict:
+    @override(Algorithm)
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return ImpalaConfig().to_dict()
 
-    @override(Trainer)
+    @override(Algorithm)
     def get_default_policy_class(
-        self, config: PartialTrainerConfigDict
+        self, config: PartialAlgorithmConfigDict
     ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             if config["vtrace"]:
@@ -426,7 +427,7 @@ class Impala(Trainer):
 
                 return A3CTFPolicy
 
-    @override(Trainer)
+    @override(Algorithm)
     def validate_config(self, config):
         # Call the super class' validation method first.
         super().validate_config(config)
@@ -474,8 +475,8 @@ class Impala(Trainer):
                 )
                 config["_tf_policy_handles_more_than_one_loss"] = True
 
-    @override(Trainer)
-    def setup(self, config: PartialTrainerConfigDict):
+    @override(Algorithm)
+    def setup(self, config: PartialAlgorithmConfigDict):
         super().setup(config)
 
         # Create extra aggregation workers and assign each rollout worker to
@@ -547,7 +548,7 @@ class Impala(Trainer):
         self._learner_thread.start()
         self.workers_that_need_updates = set()
 
-    @override(Trainer)
+    @override(Algorithm)
     def training_step(self) -> ResultDict:
         unprocessed_sample_batches = self.get_samples_from_workers()
 
@@ -569,7 +570,7 @@ class Impala(Trainer):
         return train_results
 
     @classmethod
-    @override(Trainer)
+    @override(Algorithm)
     def default_resource_request(cls, config):
         cf = dict(cls.get_default_config(), **config)
 
@@ -652,9 +653,6 @@ class Impala(Trainer):
             try:
                 self._learner_thread.inqueue.put(batch, block=False)
                 self.batches_to_place_on_learner.pop(0)
-                for i in range(4):
-                    print("1:" + str(self.batches_to_place_on_learner))
-                    print(batch)
                 self._counters[NUM_ENV_STEPS_SAMPLED] += batch.count
                 self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
                 self._counters["num_samples_added_to_queue"] = batch.count
@@ -757,7 +755,7 @@ class Impala(Trainer):
         # Update global vars of the local worker.
         self.workers.local_worker().set_global_vars(global_vars)
 
-    @override(Trainer)
+    @override(Algorithm)
     def on_worker_failures(
         self, removed_workers: List[ActorHandle], new_workers: List[ActorHandle]
     ):
@@ -770,7 +768,7 @@ class Impala(Trainer):
         self._sampling_actor_manager.remove_workers(removed_workers)
         self._sampling_actor_manager.add_workers(new_workers)
 
-    @override(Trainer)
+    @override(Algorithm)
     def _compile_iteration_results(self, *, step_ctx, iteration_results=None):
         result = super()._compile_iteration_results(
             step_ctx=step_ctx, iteration_results=iteration_results
@@ -785,7 +783,7 @@ class Impala(Trainer):
 class AggregatorWorker:
     """A worker for doing tree aggregation of collected episodes"""
 
-    def __init__(self, config: TrainerConfigDict, count_by_gent_steps):
+    def __init__(self, config: AlgorithmConfigDict, count_by_gent_steps):
         self.config = config
         self._mixin_buffer = MultiAgentMixInReplayBuffer(
             capacity=(
