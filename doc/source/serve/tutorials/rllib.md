@@ -42,12 +42,12 @@ def train_ppo_model():
     config = ppo.PPOConfig()\
         .framework("torch")\
         .rollouts(num_rollout_workers=0)
-    # Create a `PPO` Trainer instance from the config.
-    trainer = config.build(env="CartPole-v0")
+    # Create a `PPO` instance from the config.
+    algo = config.build(env="CartPole-v0")
     # Train for one iteration.
-    trainer.train()
-    # Save state of the trained Trainer in a checkpoint.
-    trainer.save("/tmp/rllib_checkpoint")
+    algo.train()
+    # Save state of the trained Algorithm in a checkpoint.
+    algo.save("/tmp/rllib_checkpoint")
     return "/tmp/rllib_checkpoint/checkpoint_000001/checkpoint-1"
 
 
@@ -57,14 +57,14 @@ checkpoint_path = train_ppo_model()
 You create deployments with Ray Serve by using the `@serve.deployment` on a class that implements two methods:
 
 - The `__init__` call creates the deployment instance and loads your data once.
-  In the below example we restore our `PPO` Trainer from the checkpoint we just created.
+  In the below example we restore our `PPO` Algorithm from the checkpoint we just created.
 - The `__call__` method will be invoked every request.
   For each incoming request, this method has access to a `request` object,
   which is a [Starlette Request](https://www.starlette.io/requests/).
 
 We can load the request body as a JSON object and, assuming there is a key called `observation`,
 in your deployment you can use `request.json()["observation"]` to retrieve observations (`obs`) and
-pass them into the restored `trainer` using the `compute_single_action` method.
+pass them into the restored `Algorithm` using the `compute_single_action` method.
 
 
 ```{code-cell} python3
@@ -75,24 +75,27 @@ from starlette.requests import Request
 @serve.deployment(route_prefix="/cartpole-ppo")
 class ServePPOModel:
     def __init__(self, checkpoint_path) -> None:
+        # Re-create the originally used config.
         config = ppo.PPOConfig()\
             .framework("torch")\
             .rollouts(num_rollout_workers=0)
-        self.trainer = config.build(env="CartPole-v0")
-        self.trainer.restore(checkpoint_path)
+        # Build the Algorithm instance using the config.
+        self.algorithm = config.build(env="CartPole-v0")
+        # Restore the algo's state from the checkpoint.
+        self.algorithm.restore(checkpoint_path)
 
     async def __call__(self, request: Request):
         json_input = await request.json()
         obs = json_input["observation"]
 
-        action = self.trainer.compute_single_action(obs)
+        action = self.algorithm.compute_single_action(obs)
         return {"action": int(action)}
 ```
 
 :::{tip}
-Although we used a single input and `trainer.compute_single_action(...)` here, you
+Although we used a single input and `Algorithm.compute_single_action(...)` here, you
 can process a batch of input using Ray Serve's [batching](serve-batching) feature
-and use `trainer.compute_actions(...)` to process a batch of inputs.
+and use `Algorithm.compute_actions(...)` to process a batch of inputs.
 :::
 
 Now that we've defined our `ServePPOModel` service, let's deploy it to Ray Serve.
@@ -141,12 +144,12 @@ In this example the client used the `requests` library to send a request to the 
 We defined a `json` object with an `observation` key and a Python list of observations (`obs.tolist()`).
 Since `obs = env.reset()` is a `numpy.ndarray`, we used `tolist()` for conversion.
 On the server side, we used `obs = json_input["observation"]` to retrieve the observations again, which has `list` type.
-In the simple case of an RLlib trainer with a simple observation space, it's possible to pass this
-`obs` list to the `trainer.compute_single_action(...)` method.
-We could also have created a `numpy` array from it first and then passed it into the `trainer`.
+In the simple case of an RLlib algorithm with a simple observation space, it's possible to pass this
+`obs` list to the `Algorithm.compute_single_action(...)` method.
+We could also have created a `numpy` array from it first and then passed it into the `Algorithm`.
 
 In more complex cases with tuple or dict observation spaces, you will have to do some preprocessing of
-your `json_input` before passing it to your `trainer` instance.
+your `json_input` before passing it to your `Algorithm` instance.
 The exact way to process your input depends on how you serialize your observations on the client.
 :::
 
