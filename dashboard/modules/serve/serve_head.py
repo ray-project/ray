@@ -23,7 +23,7 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
     async def get_all_deployments(self, req: Request) -> Response:
         from ray.serve.context import get_global_client
 
-        client = get_global_client(_override_controller_namespace="serve")
+        client = get_global_client()
 
         return Response(
             text=json.dumps(client.get_app_config()),
