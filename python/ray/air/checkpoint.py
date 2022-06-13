@@ -22,7 +22,7 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.ml_utils.filelock import TempFileLock
 
 _DICT_CHECKPOINT_FILE_NAME = "dict_checkpoint.pkl"
-_METADATA_CHECKPOINT_FILE_NAME = "metadata_checkpoint.pkl"
+_METADATA_CHECKPOINT_SUFFIX = ".meta.pkl"
 _FS_CHECKPOINT_KEY = "fs_checkpoint"
 _BYTES_DATA_KEY = "bytes_data"
 _CHECKPOINT_DIR_PREFIX = "checkpoint_tmp_"
@@ -47,6 +47,10 @@ class Checkpoint:
     obj ref --> directory) will recover the original checkpoint data.
     There are no guarantees made about compatibility of intermediate
     representations.
+
+    New data can be added to Checkpoint during conversion. Consider the
+    following conversion: directory --> dict (adding dict["foo"] = "bar")
+    --> directory --> dict (expect to see dict["foo"] = "bar").
 
     Examples:
 
@@ -255,14 +259,18 @@ class Checkpoint:
                     with open(checkpoint_data_path, "rb") as f:
                         checkpoint_data = pickle.load(f)
                 else:
-                    # First, deal with metadata
-                    metadata_path = os.path.join(
-                        local_path, _METADATA_CHECKPOINT_FILE_NAME
-                    )
+                    files = [
+                        f
+                        for f in os.listdir(local_path)
+                        if os.path.isfile(os.path.join(local_path, f))
+                        and f.endswith(_METADATA_CHECKPOINT_SUFFIX)
+                    ]
                     metadata = {}
-                    if os.path.exists(metadata_path):
-                        with open(metadata_path, "rb") as f:
-                            metadata = pickle.load(f)
+                    for file in files:
+                        with open(os.path.join(local_path, file), "rb") as f:
+                            key = file[: -len(_METADATA_CHECKPOINT_SUFFIX)]
+                            value = pickle.load(f)
+                            metadata[key] = value
 
                     data = _pack(local_path)
 
@@ -342,17 +350,14 @@ class Checkpoint:
             # This is a object ref or dict
             data_dict = self.to_dict()
             if _FS_CHECKPOINT_KEY in data_dict:
-                # On top of that, there may be some dict data.
-                metadata = {}
                 for key in data_dict.keys():
                     if key == _FS_CHECKPOINT_KEY:
-                        pass
-                    else:
-                        metadata[key] = data_dict[key]
-                if metadata:
-                    metadata_path = os.path.join(path, _METADATA_CHECKPOINT_FILE_NAME)
+                        continue
+                    metadata_path = os.path.join(
+                        path, f"{key}{_METADATA_CHECKPOINT_SUFFIX}"
+                    )
                     with open(metadata_path, "wb") as f:
-                        pickle.dump(metadata, f)
+                        pickle.dump(data_dict[key], f)
                 # This used to be a true fs checkpoint, so restore
                 _unpack(data_dict[_FS_CHECKPOINT_KEY], path)
             else:
@@ -591,7 +596,7 @@ def _pack(path: str) -> bytes:
     stream = io.BytesIO()
 
     def filter_function(tarinfo):
-        if tarinfo.name == os.path.join(path, _METADATA_CHECKPOINT_FILE_NAME):
+        if tarinfo.name.endswith(_METADATA_CHECKPOINT_SUFFIX):
             return None
         else:
             return tarinfo
