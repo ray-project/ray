@@ -10,7 +10,7 @@ from ray.experimental.state.common import (
     SupportedFilterType,
     StateResource,
 )
-from ray.experimental.state.exception import RayStateApiException
+from ray.experimental.state.exception import RayStateApiException, ServerUnavailable
 from ray.dashboard.modules.dashboard_sdk import SubmissionClient
 
 """
@@ -121,6 +121,7 @@ class StateApiClient(SubmissionClient):
                     "log for details. Make sure dependencies are installed with "
                     "`pip install ray[default]`."
                 )
+                raise ServerUnavailable(err_str)
 
             if response is not None:
                 err_str += f"Response(url={response.url},status={response.status_code})"
