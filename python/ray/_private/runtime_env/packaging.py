@@ -299,8 +299,8 @@ def _store_package_in_gcs(
     """Stores package data in the Global Control Store (GCS).
 
     Args:
-        pkg_uri (str): The GCS key to store the data in.
-        data (bytes): The serialized package's bytes to store in the GCS.
+        pkg_uri: The GCS key to store the data in.
+        data: The serialized package's bytes to store in the GCS.
         logger (Optional[logging.Logger]): The logger used by this function.
 
     Return:
@@ -347,9 +347,9 @@ def _zip_directory(
 ) -> None:
     """Zip the target directory and write it to the output_path.
 
-    directory (str): The directory to zip.
+    directory: The directory to zip.
     excludes (List(str)): The directories or file to be excluded.
-    output_path (str): The output path for the zip file.
+    output_path: The output path for the zip file.
     include_parent_dir: If true, includes the top-level directory as a
         directory inside the zip file.
     """
@@ -383,7 +383,7 @@ def package_exists(pkg_uri: str) -> bool:
     """Check whether the package with given URI exists or not.
 
     Args:
-        pkg_uri (str): The uri of the package
+        pkg_uri: The uri of the package
 
     Return:
         True for package existing and False for not.
@@ -427,7 +427,7 @@ def get_uri_for_directory(directory: str, excludes: Optional[List[str]] = None) 
         .... _ray_pkg_af2734982a741.zip
 
     Args:
-        directory (str): The directory.
+        directory: The directory.
         excludes (list[str]): The dir or files that should be excluded.
 
     Returns:
@@ -739,7 +739,7 @@ def delete_package(pkg_uri: str, base_directory: str) -> Tuple[bool, int]:
     """Deletes a specific URI from the local filesystem.
 
     Args:
-        pkg_uri (str): URI to delete.
+        pkg_uri: URI to delete.
 
     Returns:
         bool: True if the URI was successfully deleted, else False.

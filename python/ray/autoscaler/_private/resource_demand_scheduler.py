@@ -907,7 +907,7 @@ def get_bin_pack_residual(
         node_resources (List[ResourceDict]): List of resources per node.
         resource_demands (List[ResourceDict]): List of resource bundles that
             need to be bin packed onto the nodes.
-        strict_spread (bool): If true, each element in resource_demands must be
+        strict_spread: If true, each element in resource_demands must be
             placed on a different entry in `node_resources`.
 
     Returns:

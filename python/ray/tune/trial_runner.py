@@ -35,7 +35,7 @@ from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.stopper import NoopStopper, Stopper
 from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm
 from ray.tune.syncer import CloudSyncer, get_cloud_syncer, SyncConfig
-from ray.tune.trial import _TuneCheckpoint, Trial
+from ray.tune.trial import Trial
 from ray.tune.utils import warn_if_slow, flatten_dict
 from ray.tune.utils.log import Verbosity, has_verbosity
 from ray.tune.utils.placement_groups import PlacementGroupFactory
@@ -43,6 +43,7 @@ from ray.tune.utils.serialization import TuneFunctionDecoder, TuneFunctionEncode
 from ray.tune.web_server import TuneServer
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
+from ray.util.ml_utils.checkpoint_manager import CheckpointStorage
 
 MAX_DEBUG_TRIALS = 20
 
@@ -61,6 +62,14 @@ def find_newest_experiment_checkpoint(ckpt_dir) -> Optional[str]:
     return max(full_paths)
 
 
+def load_trial_from_checkpoint(trial_cp: dict, stub: bool = False, **kwargs):
+    new_trial = Trial(
+        trial_cp["trainable_name"], stub=stub, _setup_default_resource=False, **kwargs
+    )
+    new_trial.__setstate__(trial_cp)
+    return new_trial
+
+
 def load_trials_from_experiment_checkpoint(
     experiment_checkpoint: Mapping[str, Any], stub: bool = False
 ) -> List[Trial]:
@@ -75,11 +84,7 @@ def load_trials_from_experiment_checkpoint(
 
     trials = []
     for trial_cp in checkpoints:
-        new_trial = Trial(
-            trial_cp["trainable_name"], stub=stub, _setup_default_resource=False
-        )
-        new_trial.__setstate__(trial_cp)
-        trials.append(new_trial)
+        trials.append(load_trial_from_checkpoint(trial_cp, stub=stub))
 
     return trials
 
@@ -1110,7 +1115,7 @@ class TrialRunner:
         logger.debug("Trial %s: Processing trial save.", trial)
 
         try:
-            trial.saving_to.value = checkpoint_value
+            trial.saving_to.dir_or_data = checkpoint_value
             self._callbacks.on_checkpoint(
                 iteration=self._iteration,
                 trials=self._trials,
@@ -1118,7 +1123,7 @@ class TrialRunner:
                 checkpoint=trial.saving_to,
             )
             trial.on_checkpoint(trial.saving_to)
-            if trial.checkpoint.storage != _TuneCheckpoint.MEMORY:
+            if trial.checkpoint.storage_mode != CheckpointStorage.MEMORY:
                 self.trial_executor.mark_trial_to_checkpoint(trial)
         except Exception:
             logger.exception(
@@ -1205,7 +1210,7 @@ class TrialRunner:
         if trial.should_checkpoint() or force:
             # Save trial runtime if possible.
             if trial.runner:
-                self.trial_executor.save(trial, storage=_TuneCheckpoint.PERSISTENT)
+                self.trial_executor.save(trial, storage=CheckpointStorage.PERSISTENT)
 
     def _try_recover(self, trial: Trial, exc: Union[TuneError, RayTaskError]):
         """Tries to recover trial.

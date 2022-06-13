@@ -1,5 +1,6 @@
 from copy import copy
 import inspect
+import logging
 from typing import (
     Any,
     Callable,
@@ -16,6 +17,7 @@ from ray.serve.config import (
     AutoscalingConfig,
     DeploymentConfig,
 )
+from ray.serve.constants import SERVE_LOGGER_NAME
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve.utils import DEFAULT, get_deployment_import_path
 from ray.util.annotations import PublicAPI
@@ -23,6 +25,9 @@ from ray.serve.schema import (
     RayActorOptionsSchema,
     DeploymentSchema,
 )
+
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 @PublicAPI
@@ -82,15 +87,6 @@ class Deployment:
             init_args = ()
         if init_kwargs is None:
             init_kwargs = {}
-
-        # TODO(architkulkarni): Enforce that autoscaling_config and
-        # user-provided num_replicas should be mutually exclusive.
-        if version is None and config.autoscaling_config is not None:
-            # TODO(architkulkarni): Remove this restriction.
-            raise ValueError(
-                "Currently autoscaling is only supported for "
-                "versioned deployments. Try @serve.deployment(version=...)."
-            )
 
         self._func_or_class = func_or_class
         self._name = name
@@ -221,9 +217,9 @@ class Deployment:
         """Deploy or update this deployment.
 
         Args:
-            init_args (optional): args to pass to the class __init__
+            init_args: args to pass to the class __init__
                 method. Not valid if this deployment wraps a function.
-            init_kwargs (optional): kwargs to pass to the class __init__
+            init_kwargs: kwargs to pass to the class __init__
                 method. Not valid if this deployment wraps a function.
         """
         if len(init_args) == 0 and self._init_args is not None:
@@ -258,7 +254,7 @@ class Deployment:
         """Get a ServeHandle to this deployment to invoke it from Python.
 
         Args:
-            sync (bool): If true, then Serve will return a ServeHandle that
+            sync: If true, then Serve will return a ServeHandle that
                 works everywhere. Otherwise, Serve will return an
                 asyncio-optimized ServeHandle that's only usable in an asyncio
                 loop.
@@ -295,6 +291,16 @@ class Deployment:
         unchanged from the existing deployment.
         """
         new_config = self._config.copy()
+
+        if num_replicas is not None and _autoscaling_config is not None:
+            raise ValueError(
+                "Manually setting num_replicas is not allowed when "
+                "_autoscaling_config is provided."
+            )
+
+        if num_replicas == 0:
+            raise ValueError("num_replicas is expected to larger than 0")
+
         if num_replicas is not None:
             new_config.num_replicas = num_replicas
         if user_config is not None:
@@ -456,7 +462,11 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
         ),
         init_args=(),
         init_kwargs={},
-        num_replicas=d.num_replicas,
+        # TODO(Sihan) DeploymentConfig num_replicas and auto_config can be set together
+        # because internally we use these two field for autoscale and deploy.
+        # We can improve the code after we separate the user faced deployment config and
+        # internal deployment config.
+        num_replicas=None if d._config.autoscaling_config else d.num_replicas,
         route_prefix=d.route_prefix,
         max_concurrent_queries=d.max_concurrent_queries,
         user_config=d.user_config,

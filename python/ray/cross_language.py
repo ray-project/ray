@@ -35,7 +35,7 @@ def format_args(worker, args, kwargs):
 
 
 def get_function_descriptor_for_actor_method(
-    language, actor_creation_function_descriptor, method_name, signature: str
+    language: str, actor_creation_function_descriptor, method_name: str, signature: str
 ):
     """Get function descriptor for cross language actor method call.
 
@@ -69,12 +69,12 @@ def get_function_descriptor_for_actor_method(
 
 
 @PublicAPI(stability="beta")
-def java_function(class_name, function_name):
+def java_function(class_name: str, function_name: str):
     """Define a Java function.
 
     Args:
-        class_name (str): Java class name.
-        function_name (str): Java function name.
+        class_name: Java class name.
+        function_name: Java function name.
     """
     from ray.remote_function import RemoteFunction
 
@@ -87,11 +87,11 @@ def java_function(class_name, function_name):
 
 
 @PublicAPI(stability="beta")
-def cpp_function(function_name):
+def cpp_function(function_name: str):
     """Define a Cpp function.
 
     Args:
-        function_name (str): Cpp function name.
+        function_name: Cpp function name.
     """
     from ray.remote_function import RemoteFunction
 
@@ -104,11 +104,11 @@ def cpp_function(function_name):
 
 
 @PublicAPI(stability="beta")
-def java_actor_class(class_name):
+def java_actor_class(class_name: str):
     """Define a Java actor class.
 
     Args:
-        class_name (str): Java class name.
+        class_name: Java class name.
     """
     from ray.actor import ActorClass
 
@@ -120,12 +120,12 @@ def java_actor_class(class_name):
 
 
 @PublicAPI(stability="beta")
-def cpp_actor_class(create_function_name, class_name):
+def cpp_actor_class(create_function_name: str, class_name: str):
     """Define a Cpp actor class.
 
     Args:
-        create_function_name (str): Create cpp class function name.
-        class_name (str): Cpp class name.
+        create_function_name: Create cpp class function name.
+        class_name: Cpp class name.
     """
     from ray.actor import ActorClass
 

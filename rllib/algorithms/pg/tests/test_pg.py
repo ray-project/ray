@@ -29,7 +29,7 @@ class TestPG(unittest.TestCase):
         ray.shutdown()
 
     def test_pg_compilation(self):
-        """Test whether a PGTrainer can be built with all frameworks."""
+        """Test whether PG can be built with all frameworks."""
         config = pg.PGConfig()
         # Test with filter to see whether they work w/o preprocessing.
         config.rollouts(
@@ -141,8 +141,9 @@ class TestPG(unittest.TestCase):
                     feed_dict=policy._get_loss_inputs_dict(train_batch_, shuffle=False),
                 )
             else:
-                results = (pg.pg_tf_loss if fw in ["tf2", "tfe"] else pg.pg_torch_loss)(
-                    policy, policy.model, dist_class=dist_cls, train_batch=train_batch_
+
+                results = policy.loss(
+                    policy.model, dist_class=dist_cls, train_batch=train_batch_
                 )
 
             # Calculate expected results.

@@ -159,6 +159,7 @@ def test_memory_release_lazy(shutdown_only):
     assert "Spilled" not in meminfo, meminfo
 
 
+@pytest.mark.skip(reason="Flaky, see https://github.com/ray-project/ray/issues/24757")
 def test_memory_release_lazy_shuffle(shutdown_only):
     # TODO(ekl) why is this flaky? Due to eviction delay?
     error = None
@@ -255,25 +256,6 @@ def test_spread_hint_inherit(ray_start_regular_shared):
     _, _, optimized_stages = ds._plan._optimize()
     assert len(optimized_stages) == 1, optimized_stages
     assert optimized_stages[0].ray_remote_args == {"scheduling_strategy": "SPREAD"}
-
-
-def test_execution_preserves_original(ray_start_regular_shared):
-    ds = ray.data.range(10).map(lambda x: x + 1).experimental_lazy()
-    ds1 = ds.map(lambda x: x + 1)
-    assert ds1._plan._snapshot_blocks is not None
-    assert len(ds1._plan._stages_after_snapshot) == 1
-    ds2 = ds1.fully_executed()
-    # Confirm that snapshot blocks and stages on original lazy dataset have not changed.
-    assert ds1._plan._snapshot_blocks is not None
-    assert len(ds1._plan._stages_after_snapshot) == 1
-    # Confirm that UUID on executed dataset is properly set.
-    assert ds2._get_uuid() == ds1._get_uuid()
-    # Check content.
-    assert ds2.take() == list(range(2, 12))
-    # Check original lazy dataset content.
-    assert ds1.take() == list(range(2, 12))
-    # Check source lazy dataset content.
-    assert ds.take() == list(range(1, 11))
 
 
 def _assert_has_stages(stages, stage_names):
@@ -381,16 +363,17 @@ def test_optimize_incompatible_stages(ray_start_regular_shared):
     context.optimize_fuse_shuffle_stages = True
 
     pipe = ray.data.range(3).repeat(2)
+    # Should get fused as long as their resource types are compatible.
     pipe = pipe.map_batches(lambda x: x, compute="actors")
+    # Cannot fuse actors->tasks.
     pipe = pipe.map_batches(lambda x: x, compute="tasks")
     pipe = pipe.random_shuffle_each_window()
     pipe.take()
     expect_stages(
         pipe,
-        3,
+        2,
         [
-            "read",
-            "map_batches",
+            "read->map_batches",
             "map_batches->random_shuffle_map",
             "random_shuffle_reduce",
         ],

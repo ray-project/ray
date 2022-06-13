@@ -32,7 +32,7 @@ while Ray Tune trainable "actors" run on any node (either on the same node or on
 
 The driver spawns parallel worker processes (:ref:`Ray actors <actor-guide>`)
 that are responsible for evaluating each trial using its hyperparameter configuration and the provided trainable
-(see the `trial executor source code <https://github.com/ray-project/ray/blob/master/python/ray/tune/trial_executor.py>`__).
+(see the `ray trial executor source code <https://github.com/ray-project/ray/blob/master/python/ray/tune/ray_trial_executor.py>`__).
 
 While the Trainable is executing (:ref:`trainable-execution`), the Tune Driver communicates with each actor
 via actor methods to receive intermediate training results and pause/stop actors (see :ref:`trial-lifecycle`).
@@ -152,12 +152,11 @@ the following states: ``"PENDING"``, ``"RUNNING"``, ``"PAUSED"``, ``"ERRORED"``,
 
 See the docstring at :ref:`trial-docstring`.
 
-TrialExecutor
-~~~~~~~~~~~~~
-[`source code <https://github.com/ray-project/ray/blob/master/python/ray/tune/trial_executor.py>`__]
-The TrialExecutor is a component that interacts with the underlying execution framework.
-It also manages resources to ensure the cluster isn't overloaded. By default,
-the TrialExecutor uses Ray to execute trials.
+RayTrialExecutor
+~~~~~~~~~~~~~~~~
+[`source code <https://github.com/ray-project/ray/blob/master/python/ray/tune/ray_trial_executor.py>`__]
+The RayTrialExecutor is a component that interacts with the underlying execution framework.
+It also manages resources to ensure the cluster isn't overloaded.
 
 See the docstring at :ref:`raytrialexecutor-docstring`.
 

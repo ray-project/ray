@@ -88,7 +88,11 @@ message StreamLogReply {
   bytes data = 1;
 }
 
-message ListLogsRequest {}
+message ListLogsRequest {
+  // The glob filter.
+  // The result will be filtered by this given glob.
+  string glob_filter = 1;
+}
 
 message ListLogsReply {
   // The file names of all the log files in this node's

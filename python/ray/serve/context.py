@@ -40,7 +40,7 @@ def get_global_client(
     Args:
         _override_controller_namespace (Optional[str]): If None and there's no
             cached client, searches for the controller in this namespace.
-        _health_check_controller (bool): If True, run a health check on the
+        _health_check_controller: If True, run a health check on the
             cached controller if it exists. If the check fails, try reconnecting
             to the controller.
 

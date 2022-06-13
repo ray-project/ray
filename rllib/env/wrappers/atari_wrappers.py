@@ -307,9 +307,9 @@ def wrap_deepmind(env, dim=84, framestack=True):
     Note that we assume reward clipping is done outside the wrapper.
 
     Args:
-        env (EnvType): The env object to wrap.
-        dim (int): Dimension to resize observations to (dim x dim).
-        framestack (bool): Whether to framestack observations.
+        env: The env object to wrap.
+        dim: Dimension to resize observations to (dim x dim).
+        framestack: Whether to framestack observations.
     """
     env = MonitorEnv(env)
     env = NoopResetEnv(env, noop_max=30)
