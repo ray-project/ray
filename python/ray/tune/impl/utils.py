@@ -36,6 +36,6 @@ def process_scaling_config(params_space: dict):
     it can be used to generate search space.
     """
     scaling_config = params_space.get(_SCALING_CONFIG_KEY, None)
-    if not isinstance(scaling_config, ScalingConfigDataClass):
+    if not isinstance(scaling_config, ScalingConfig):
         return
     params_space[_SCALING_CONFIG_KEY] = scaling_config.__dict__.copy()
