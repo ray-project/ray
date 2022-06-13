@@ -46,9 +46,9 @@ class _PyObjScanner(ray.cloudpickle.CloudPickler):
         from ray.dag.function_node import FunctionNode
         from ray.dag.class_node import ClassNode, ClassMethodNode
         from ray.dag.input_node import InputNode, InputAttributeNode
-        from ray.serve.pipeline.deployment_node import DeploymentNode
-        from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
-        from ray.serve.pipeline.deployment_function_node import DeploymentFunctionNode
+        from ray.serve.deployment_node import DeploymentNode
+        from ray.serve.deployment_method_node import DeploymentMethodNode
+        from ray.serve.deployment_function_node import DeploymentFunctionNode
         from ray.serve.deployment_executor_node import DeploymentExecutorNode
         from ray.serve.deployment_method_executor_node import (
             DeploymentMethodExecutorNode,

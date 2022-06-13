@@ -19,7 +19,9 @@ parts:
         - file: ray-air/examples/analyze_tuning_results
         - file: ray-air/examples/upload_to_comet_ml
         - file: ray-air/examples/upload_to_wandb
+        - file: ray-air/examples/serving_guide
         - file: ray-air/deployment
+        - file: ray-air/use-pretrained-model
     - file: ray-air/examples/index
       sections:
         - file: ray-air/examples/torch_image_example
@@ -32,6 +34,7 @@ parts:
         - file: ray-air/examples/rl_serving_example
         - file: ray-air/examples/rl_online_example
         - file: ray-air/examples/rl_offline_example
+        - file: ray-air/examples/feast_example
     - file: ray-air/package-ref
 
   - caption: AIR Libraries
@@ -185,21 +188,11 @@ parts:
               - file: rllib/rllib-models
               - file: rllib/rllib-concepts
               - file: rllib/rllib-sample-collection
+              - file: rllib/rllib-replay-buffers
               - file: rllib/rllib-offline
               - file: rllib/rllib-dev
           - file: rllib/rllib-examples
           - file: rllib/package_ref/index
-
-      - file: workflows/concepts
-        title: Ray Workflows
-        sections:
-          - file: workflows/basics
-          - file: workflows/management
-          - file: workflows/metadata
-          - file: workflows/events
-          - file: workflows/comparison
-          - file: workflows/advanced
-          - file: workflows/package-ref
 
       - file: ray-more-libs/index
         title: More Libraries
@@ -213,6 +206,16 @@ parts:
           - file: ray-more-libs/xgboost-ray
           - file: ray-core/examples/dask_xgboost/dask_xgboost
           - file: ray-core/examples/modin_xgboost/modin_xgboost
+          - file: workflows/concepts
+            title: Ray Workflows
+            sections:
+              - file: workflows/basics
+              - file: workflows/management
+              - file: workflows/metadata
+              - file: workflows/events
+              - file: workflows/comparison
+              - file: workflows/advanced
+              - file: workflows/package-ref
 
   - caption: Ray Core
     chapters:
@@ -230,6 +233,7 @@ parts:
           - file: ray-core/examples/plot_hyperparameter
           - file: ray-core/examples/plot_parameter_server
           - file: ray-core/examples/plot_pong_example
+          - file: ray-core/examples/highly_parallel
       - file: ray-core/package-ref
 
   - caption: Ray Clusters
@@ -249,6 +253,7 @@ parts:
 
   - caption: Developer Guides
     chapters:
+      - file: ray-contribute/stability
       - file: ray-contribute/getting-involved
         sections:
           - file: ray-contribute/development

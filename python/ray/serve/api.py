@@ -50,7 +50,7 @@ from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle
 from ray.serve.http_util import ASGIHTTPSender, make_fastapi_class_based_view
 from ray.serve.logging_utils import LoggingContext
-from ray.serve.pipeline.api import (
+from ray.serve.deployment_graph_build import (
     build as pipeline_build,
     get_and_validate_ingress_deployment,
 )

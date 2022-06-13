@@ -5,19 +5,22 @@ from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.from_config import from_config
-from ray.rllib.utils.typing import MultiAgentPolicyConfigDict, PartialTrainerConfigDict
+from ray.rllib.utils.typing import (
+    MultiAgentPolicyConfigDict,
+    PartialAlgorithmConfigDict,
+)
 
 logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
 def check_multi_agent(
-    config: PartialTrainerConfigDict,
+    config: PartialAlgorithmConfigDict,
 ) -> Tuple[MultiAgentPolicyConfigDict, bool]:
     """Checks, whether a (partial) config defines a multi-agent setup.
 
     Args:
-        config: The user/Trainer/Policy config to check for multi-agent.
+        config: The user/Algorithm/Policy config to check for multi-agent.
 
     Returns:
         Tuple consisting of the resulting (all fixed) multi-agent policy
@@ -40,7 +43,7 @@ def check_multi_agent(
     policies = multiagent_config.get("policies")
 
     # Check for invalid sub-keys of multiagent config.
-    from ray.rllib.agents.trainer import COMMON_CONFIG
+    from ray.rllib.algorithms.algorithm import COMMON_CONFIG
 
     allowed = list(COMMON_CONFIG["multiagent"].keys())
     if any(k not in allowed for k in multiagent_config.keys()):

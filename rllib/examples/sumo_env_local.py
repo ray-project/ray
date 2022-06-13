@@ -85,7 +85,7 @@ if __name__ == "__main__":
     config["lambda"] = 0.95
     config["log_level"] = "WARN"
     config["lr"] = 0.001
-    config["min_time_s_per_reporting"] = 5
+    config["min_time_s_per_iteration"] = 5
     config["num_gpus"] = int(os.environ.get("RLLIB_NUM_GPUS", "0"))
     config["num_workers"] = args.num_workers
     config["rollout_fragment_length"] = 200
@@ -133,7 +133,7 @@ if __name__ == "__main__":
     }
     marl_env = marlenvironment.SUMOTestMultiAgentEnv(env_config)
 
-    # Config for the PPO trainer from the MARLEnv
+    # Config for PPO from the MARLEnv.
     policies = {}
     for agent in marl_env.get_agents():
         agent_policy_params = {}

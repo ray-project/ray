@@ -2,7 +2,7 @@
 
 # __shared_dataset_start__
 import ray
-from ray.air.utils.check_ingest import DummyTrainer
+from ray.air.util.check_ingest import DummyTrainer
 from ray.tune.tuner import Tuner, TuneConfig
 
 ray.init(num_cpus=5)
@@ -26,7 +26,7 @@ ray.shutdown()
 # __indep_dataset_start__
 import ray
 from ray import tune
-from ray.air.utils.check_ingest import DummyTrainer
+from ray.air.util.check_ingest import DummyTrainer
 from ray.tune.tuner import Tuner, TuneConfig
 
 ray.init(num_cpus=5)
@@ -61,7 +61,7 @@ tuner.fit()
 # __check_ingest_1__
 import ray
 from ray.air.preprocessors import Chain, BatchMapper
-from ray.air.utils.check_ingest import DummyTrainer
+from ray.air.util.check_ingest import DummyTrainer
 
 # Generate a synthetic dataset of ~10GiB of float64 data. The dataset is sharded
 # into 100 blocks (parallelism=100).
@@ -90,7 +90,7 @@ trainer.fit()
 
 # __config_1__
 import ray
-from ray.air.train.integrations.torch import TorchTrainer
+from ray.train.torch import TorchTrainer
 from ray.air.config import DatasetConfig
 
 train_ds = ray.data.range_tensor(1000)
@@ -118,7 +118,7 @@ print(my_trainer.get_dataset_config())
 
 # __config_2__
 import ray
-from ray.air.train.integrations.torch import TorchTrainer
+from ray.train.torch import TorchTrainer
 from ray.air.config import DatasetConfig
 
 train_ds = ray.data.range_tensor(1000)
@@ -144,7 +144,7 @@ print(my_trainer.get_dataset_config())
 import ray
 from ray import train
 from ray.data import Dataset
-from ray.air.train.integrations.torch import TorchTrainer
+from ray.train.torch import TorchTrainer
 from ray.air.config import DatasetConfig
 
 
@@ -175,7 +175,7 @@ my_trainer.fit()
 import ray
 from ray import train
 from ray.data import DatasetPipeline
-from ray.air.train.integrations.torch import TorchTrainer
+from ray.train.torch import TorchTrainer
 from ray.air.config import DatasetConfig
 
 
