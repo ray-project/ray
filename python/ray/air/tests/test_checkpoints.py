@@ -194,6 +194,33 @@ class CheckpointsConversionTest(unittest.TestCase):
 
         self._assert_fs_checkpoint(checkpoint)
 
+    def test_metadata(self):
+        """Test conversion with metadata involved.
+
+        a. from fs to dict checkpoint;
+        b. drop some marker to dict checkpoint;
+        c. convert back to fs checkpoint;
+        d. convert back to dict checkpoint.
+
+        Assert that the marker should still be there."""
+        checkpoint = self._prepare_fs_checkpoint()
+
+        # Convert into dict checkpoint
+        data_dict = checkpoint.to_dict()
+        self.assertIsInstance(data_dict, dict)
+
+        data_dict["my_marker"] = "marked"
+
+        # Create from dict
+        checkpoint = Checkpoint.from_dict(data_dict)
+        self.assertTrue(checkpoint._data_dict)
+
+        self._assert_fs_checkpoint(checkpoint)
+
+        # Convert back to dict
+        data_dict_2 = Checkpoint.from_directory(checkpoint.to_directory()).to_dict()
+        assert data_dict_2["my_marker"] == "marked"
+
     def test_fs_checkpoint_fs(self):
         """Test conversion from fs to fs checkpoint and back."""
         checkpoint = self._prepare_fs_checkpoint()
