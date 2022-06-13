@@ -374,6 +374,7 @@ def delete(address: str, yes: bool):
     ),
     hidden=True,
 )
+@click.argument("import_path")
 @click.option(
     "--app-dir",
     "-d",
@@ -391,8 +392,7 @@ def delete(address: str, yes: bool):
         "If not provided, the config will be printed to STDOUT."
     ),
 )
-@click.argument("import_path")
-def build(app_dir: str, output_path: Optional[str], import_path: str):
+def build(import_path: str, app_dir: str, output_path: Optional[str]):
     sys.path.insert(0, app_dir)
 
     node: Union[ClassNode, FunctionNode] = import_attr(import_path)
@@ -403,12 +403,20 @@ def build(app_dir: str, output_path: Optional[str], import_path: str):
         )
 
     app = build_app(node)
+    config = app.to_dict()
+    config["import_path"] = import_path
+
+    deprecated_config_properties = {"init_args", "init_kwargs", "import_path"}
+    for deployment in config["deployments"]:
+        for property in deprecated_config_properties:
+            if property in deployment:
+                del deployment[property]
 
     if output_path is not None:
         if not output_path.endswith(".yaml"):
             raise ValueError("FILE_PATH must end with '.yaml'.")
 
         with open(output_path, "w") as f:
-            app.to_yaml(f)
+            yaml.safe_dump(config, stream=f, default_flow_style=False, sort_keys=False)
     else:
-        print(app.to_yaml(), end="")
+        print(yaml.safe_dump(config, default_flow_style=False, sort_keys=False), end="")
