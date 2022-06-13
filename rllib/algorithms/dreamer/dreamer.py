@@ -6,7 +6,7 @@ from typing import Optional
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.dreamer.dreamer_torch_policy import DreamerTorchPolicy
-from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, _get_shared_metrics
+from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.algorithms.dreamer.dreamer_model import DreamerModel
 from ray.rllib.execution.rollout_ops import (
