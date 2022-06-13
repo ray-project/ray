@@ -44,7 +44,8 @@ public class ClientTest {
 
       // Client.
       ServeControllerClient client =
-          new ServeControllerClient(controllerHandle, controllerName, true, null);
+          new ServeControllerClient(
+              controllerHandle, controllerName, true, Ray.getRuntimeContext().getNamespace());
 
       // Get handle.
       RayServeHandle rayServeHandle = client.getHandle(endpointName, false);
