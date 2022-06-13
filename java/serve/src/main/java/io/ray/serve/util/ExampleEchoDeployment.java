@@ -18,4 +18,8 @@ public class ExampleEchoDeployment {
   public boolean checkHealth() {
     return true;
   }
+
+  public Object reconfigure(Object userConfig) {
+    return null;
+  }
 }

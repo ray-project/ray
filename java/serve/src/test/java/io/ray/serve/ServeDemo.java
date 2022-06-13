@@ -2,15 +2,17 @@ package io.ray.serve;
 
 import io.ray.api.Ray;
 import io.ray.serve.api.Serve;
-import io.ray.serve.api.ServeControllerClient;
 import io.ray.serve.deployment.Deployment;
 import io.ray.serve.deployment.DeploymentRoute;
 import java.io.IOException;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+
+import io.ray.serve.util.ExampleEchoDeployment;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-public class ServeDemo {
+public class ServeDemo extends BaseServeTest {
 
   public static class Counter {
 
@@ -27,12 +29,6 @@ public class ServeDemo {
 
   @Test
   public static void testDepoly() throws IOException {
-
-    Ray.init();
-
-    // Start serve.
-    ServeControllerClient client = Serve.start(true, false, null, null, null);
-
     // Deploy deployment.
     String deploymentName = "counter";
 
@@ -54,9 +50,24 @@ public class ServeDemo {
     // TODO Assert.assertEquals(16, Ray.get(deployment.getHandle().method("f",
     // "signature").remote(6)));
     Assert.assertEquals(26, Ray.get(client.getHandle(deploymentName, false).remote(10)));
+  }
 
-    Serve.shutdown();
-    client.shutdown();
-    Ray.shutdown();
+  @Test
+  public static void testDepoly2() throws InterruptedException {
+    // Deploy deployment.
+    String deploymentName = "exampleEcho";
+
+    Deployment deployment =
+      Serve.deployment()
+        .setName(deploymentName)
+        .setDeploymentDef(ExampleEchoDeployment.class.getName())
+        .setNumReplicas(1)
+        .setInitArgs(new Object[] {"echo_"})
+        .create();
+
+    deployment.deploy(true);
+    Assert.assertEquals("echo_6", Ray.get(deployment.getHandle().method("call").remote(6)));
+    TimeUnit.MINUTES.sleep(10);
+    Assert.assertTrue((boolean)Ray.get(deployment.getHandle().method("checkHealth").remote()));
   }
 }

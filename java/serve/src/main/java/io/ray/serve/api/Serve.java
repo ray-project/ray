@@ -1,10 +1,8 @@
 package io.ray.serve.api;
 
-import io.ray.api.ActorHandle;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.PyActorHandle;
 import io.ray.api.Ray;
-import io.ray.api.call.PyActorCreator;
 import io.ray.api.exception.RayActorException;
 import io.ray.api.exception.RayTimeoutException;
 import io.ray.api.function.PyActorClass;
@@ -16,7 +14,6 @@ import io.ray.serve.deployment.DeploymentCreator;
 import io.ray.serve.deployment.DeploymentRoute;
 import io.ray.serve.exception.RayServeException;
 import io.ray.serve.generated.ActorNameList;
-import io.ray.serve.proxy.ProxyActor;
 import io.ray.serve.replica.ReplicaContext;
 import io.ray.serve.util.CollectionUtil;
 import io.ray.serve.util.CommonUtil;
@@ -73,7 +70,10 @@ public class Serve {
       System.setProperty("ray.job.namespace", "serve");
       Ray.init();
     }
-
+    // TODO:(yangxiaofeng) Delete this code when Java supports setting the namespace
+    if (StringUtils.isBlank(overrideControllerNamespace)) {
+      overrideControllerNamespace = Ray.getRuntimeContext().getNamespace();
+    }
     String controllerNamespace = getControllerNamespace(detached, overrideControllerNamespace);
 
     try {
@@ -96,33 +96,55 @@ public class Serve {
     }
     // TODO The namespace, max_task_retries and dispatching on head node is not supported in Java
     // now.
-    PyActorCreator controllerCreator =
+    // PyActorCreator controllerCreator =
+    //    Ray.actor(
+    //            PyActorClass.of("ray.serve.controller", "ServeController"),
+    //            controllerName,
+    //            null, // http_config TODO change it nullable or define protobuf.
+    //            checkpointPath,
+    //            detached,
+    //            overrideControllerNamespace)
+    //        .setName(controllerName)
+    //        .setLifetime(detached ? ActorLifetime.DETACHED : ActorLifetime.NON_DETACHED)
+    //        .setMaxRestarts(-1)
+    //        .setMaxConcurrency(Constants.CONTROLLER_MAX_CONCURRENCY);
+    // if (dedicatedCpu) {
+    //  controllerCreator.setResource("CPU", 1.0);
+    // }
+
+    PyActorHandle controllerAvatar =
         Ray.actor(
-                PyActorClass.of("ray.serve.controller", "ServeController"),
+                PyActorClass.of("ray.serve.controller", "ServeControllerAvatar"),
                 controllerName,
-                null, // http_config TODO change it nullable or define protobuf.
+                null,
                 checkpointPath,
                 detached,
-                overrideControllerNamespace)
-            .setName(controllerName)
+                overrideControllerNamespace,
+                dedicatedCpu)
+            .setName(controllerName + "_AVATAR")
             .setLifetime(detached ? ActorLifetime.DETACHED : ActorLifetime.NON_DETACHED)
             .setMaxRestarts(-1)
-            .setMaxConcurrency(Constants.CONTROLLER_MAX_CONCURRENCY);
-    if (dedicatedCpu) {
-      controllerCreator.setResource("CPU", 1.0);
-    }
-    PyActorHandle controller = controllerCreator.remote();
+            .setMaxConcurrency(1)
+            .remote();
+
+    controllerAvatar.task(PyActorMethod.of("check_alive")).remote().get();
+
+    PyActorHandle controller =
+        (PyActorHandle) Ray.getActor(controllerName, controllerNamespace).get();
 
     ActorNameList actorNameList =
         ServeProtoUtil.bytesToProto(
             (byte[]) controller.task(PyActorMethod.of("get_http_proxy_names")).remote().get(),
-            bytes -> ActorNameList.parseFrom(bytes));
+            ActorNameList::parseFrom);
     if (actorNameList != null && !CollectionUtil.isEmpty(actorNameList.getNamesList())) {
       try {
         for (String name : actorNameList.getNamesList()) {
-          ActorHandle<ProxyActor> proxyActorHandle =
-              (ActorHandle<ProxyActor>) Ray.getActor(name).get();
-          proxyActorHandle.task(ProxyActor::ready).remote().get(Constants.PROXY_TIMEOUT * 1000);
+          PyActorHandle proxyActorHandle =
+              (PyActorHandle) Ray.getActor(name, controllerNamespace).get();
+          proxyActorHandle
+              .task(PyActorMethod.of("ready"))
+              .remote()
+              .get(Constants.PROXY_TIMEOUT * 1000);
         }
       } catch (RayTimeoutException e) {
         String errMsg = LogUtil.format("Proxies not available after {}s.", Constants.PROXY_TIMEOUT);

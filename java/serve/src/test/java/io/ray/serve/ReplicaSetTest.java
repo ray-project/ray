@@ -26,7 +26,7 @@ public class ReplicaSetTest {
 
   @Test
   public void updateWorkerReplicasTest() {
-    ReplicaSet replicaSet = new ReplicaSet(deploymentName);
+    ReplicaSet replicaSet = new ReplicaSet(deploymentName, null);
     ActorNameList.Builder builder = ActorNameList.newBuilder();
 
     replicaSet.updateWorkerReplicas(builder.build());
@@ -76,7 +76,7 @@ public class ReplicaSetTest {
       Assert.assertTrue(replicaHandle.task(RayServeWrappedReplica::checkHealth).remote().get());
 
       // ReplicaSet
-      ReplicaSet replicaSet = new ReplicaSet(deploymentName);
+      ReplicaSet replicaSet = new ReplicaSet(deploymentName, null);
       ActorNameList.Builder builder = ActorNameList.newBuilder();
       builder.addNames(actorName);
       replicaSet.updateWorkerReplicas(builder.build());

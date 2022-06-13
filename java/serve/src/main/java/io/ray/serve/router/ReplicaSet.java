@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.commons.lang3.RandomUtils;
 import org.slf4j.Logger;
@@ -35,8 +36,13 @@ public class ReplicaSet {
 
   private Gauge numQueuedQueriesGauge;
 
-  public ReplicaSet(String deploymentName) {
+  private boolean hasPullReplica = false;
+
+  private String controllerNamespace;
+
+  public ReplicaSet(String deploymentName, String controllerNamespace) {
     this.inFlightQueries = new ConcurrentHashMap<>();
+    this.controllerNamespace = controllerNamespace;
     RayServeMetrics.execute(
         () ->
             this.numQueuedQueriesGauge =
@@ -55,7 +61,7 @@ public class ReplicaSet {
     if (!CollectionUtil.isEmpty(actorNames)) {
       actorNames.forEach(
           name ->
-              workerReplicas.add((ActorHandle<RayServeWrappedReplica>) Ray.getActor(name).get()));
+              workerReplicas.add((ActorHandle<RayServeWrappedReplica>) Ray.getActor(name, controllerNamespace).get()));
     }
 
     Set<ActorHandle<RayServeWrappedReplica>> added =
@@ -69,6 +75,7 @@ public class ReplicaSet {
     if (added.size() > 0 || removed.size() > 0) {
       LOGGER.info("ReplicaSet: +{}, -{} replicas.", added.size(), removed.size());
     }
+    hasPullReplica = true;
   }
 
   /**
@@ -106,7 +113,15 @@ public class ReplicaSet {
    * @return ray.ObjectRef
    */
   private ObjectRef<Object> tryAssignReplica(Query query) {
-
+    int loopCount = 0;
+    while (!hasPullReplica && loopCount < 50) {
+      try {
+        TimeUnit.MICROSECONDS.sleep(20);
+      } catch (InterruptedException e) {
+        e.printStackTrace();
+      }
+      loopCount++;
+    }
     List<ActorHandle<RayServeWrappedReplica>> handles = new ArrayList<>(inFlightQueries.keySet());
     if (CollectionUtil.isEmpty(handles)) {
       throw new RayServeException("ReplicaSet found no replica.");

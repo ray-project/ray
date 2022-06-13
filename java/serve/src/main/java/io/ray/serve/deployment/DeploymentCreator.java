@@ -84,7 +84,7 @@ public class DeploymentCreator {
   public Deployment create() {
 
     Preconditions.checkArgument(
-        numReplicas != null && autoscalingConfig != null,
+        numReplicas == null || numReplicas == 0 || autoscalingConfig == null,
         "Manually setting num_replicas is not allowed when autoscalingConfig is provided.");
 
     DeploymentConfig config =

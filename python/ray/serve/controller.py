@@ -5,7 +5,7 @@ import json
 import logging
 import time
 import os
-from typing import Dict, Iterable, List, Optional, Tuple, Any
+from typing import Dict, Iterable, List, Optional, Tuple, Any, Union
 
 import ray
 from ray.actor import ActorHandle
@@ -27,6 +27,7 @@ from ray.serve.constants import (
     CONTROL_LOOP_PERIOD_S,
     SERVE_ROOT_URL_ENV_KEY,
     SERVE_LOGGER_NAME,
+    CONTROLLER_MAX_CONCURRENCY,
 )
 from ray.serve.deployment_state import ReplicaState, DeploymentStateManager
 from ray.serve.endpoint_state import EndpointState
@@ -35,6 +36,11 @@ from ray.serve.logging_utils import configure_component_logger
 from ray.serve.long_poll import LongPollHost
 from ray.serve.storage.checkpoint_path import make_kv_store
 from ray.serve.storage.kv_store import RayInternalKVStore
+from ray.serve.utils import get_current_node_resource_key
+from ray.serve.generated.serve_pb2 import (
+    EndpointSet,
+    EndpointInfo as EndpointInfoProto,
+)
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -171,6 +177,15 @@ class ServeController:
     def get_all_endpoints(self) -> Dict[EndpointTag, Dict[str, Any]]:
         """Returns a dictionary of deployment name to config."""
         return self.endpoint_state.get_endpoints()
+
+    def get_all_endpoints_xlang(self) -> bytes:
+        """Returns a dictionary of deployment name to config."""
+        endpoints = self.get_all_endpoints()
+        data = {
+            endpoint_tag: EndpointInfoProto(route=endppint_dict["route"])
+            for endpoint_tag, endppint_dict in endpoints.items()
+        }
+        return EndpointSet(endpoints=data).SerializeToString()
 
     def get_http_proxies(self) -> Dict[NodeId, ActorHandle]:
         """Returns a dictionary of node ID to http_proxy actor handles."""
@@ -332,7 +347,7 @@ class ServeController:
         deployment_config_proto_bytes: bytes,
         replica_config_proto_bytes: bytes,
         route_prefix: Optional[str],
-        deployer_job_id: "ray._raylet.JobID",
+        deployer_job_id: Union["ray._raylet.JobID", bytes],
     ) -> bool:
         if route_prefix is not None:
             assert route_prefix.startswith("/")
@@ -370,7 +385,8 @@ class ServeController:
             autoscaling_policy = BasicAutoscalingPolicy(autoscaling_config)
         else:
             autoscaling_policy = None
-
+        if isinstance(deployer_job_id, bytes):
+            deployer_job_id = ray.JobID.from_int(int.from_bytes(deployer_job_id, "little"))
         deployment_info = DeploymentInfo(
             actor_name=name,
             serialized_deployment_def=replica_config.serialized_deployment_def,
@@ -509,3 +525,44 @@ class ServeController:
         )
 
         return status_info.to_proto().SerializeToString()
+
+@ray.remote(num_cpus=0)
+class ServeControllerAvatar:
+    """Responsible for managing the state of the serving system.
+
+    The controller implements fault tolerance by persisting its state in
+    a new checkpoint each time a state change is made. If the actor crashes,
+    the latest checkpoint is loaded and the state is recovered. Checkpoints
+    are written/read using a provided KV-store interface.
+    """
+
+    def __init__(
+        self,
+        controller_name: str,
+        http_config: HTTPOptions,
+        checkpoint_path: str,
+        detached: bool = False,
+        _override_controller_namespace: str = None,
+        dedicated_cpu: bool = False,
+    ):
+        self._controller = ServeController.options(
+            num_cpus=1 if dedicated_cpu else 0,
+            name=controller_name,
+            lifetime="detached" if detached else None,
+            max_restarts=-1,
+            max_task_retries=-1,
+            # Pin Serve controller on the head node.
+            resources={get_current_node_resource_key(): 0.01},
+            namespace=_override_controller_namespace,
+            max_concurrency=CONTROLLER_MAX_CONCURRENCY,
+        ).remote(
+            controller_name,
+            http_config,
+            checkpoint_path,
+            detached=detached,
+            _override_controller_namespace=_override_controller_namespace,
+        )
+
+    def check_alive(self) -> None:
+        """No-op to check if this actor is alive."""
+        return

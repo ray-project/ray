@@ -92,7 +92,7 @@ public class ServeControllerClient {
           ServeProtoUtil.parseEndpointSet(
               (byte[])
                   ((PyActorHandle) controller)
-                      .task(PyActorMethod.of("get_all_endpoints"))
+                      .task(PyActorMethod.of("get_all_endpoints_xlang"))
                       .remote()
                       .get()); // TODO-0528 endpoint list
     } else {
@@ -109,7 +109,13 @@ public class ServeControllerClient {
       throw new RayServeException(LogUtil.format("Endpoint {} does not exist.", endpointName));
     }
 
-    RayServeHandle handle = new RayServeHandle(controller, endpointName, null, null);
+    RayServeHandle handle =
+        new RayServeHandle(
+            controller,
+            endpointName,
+            null,
+            null,
+            Serve.getControllerNamespace(detached, overrideControllerNamespace));
     handleCache.put(cacheKey, handle);
     return handle;
   }
@@ -154,7 +160,7 @@ public class ServeControllerClient {
                     deploymentConfig.toProtoBytes(),
                     replicaConfig.toProtoBytes(),
                     routePrefix,
-                    Ray.getRuntimeContext().getCurrentJobId())
+                    Ray.getRuntimeContext().getCurrentJobId().getBytes())
                 .remote()
                 .get();
 
@@ -192,6 +198,7 @@ public class ServeControllerClient {
    */
   private void waitForDeploymentHealthy(String name, long timeoutS) {
     long start = System.currentTimeMillis();
+    boolean isTimeout = true;
     while (System.currentTimeMillis() - start < timeoutS * 1000 || timeoutS < 0) {
 
       DeploymentStatusInfo status = getDeploymentStatus(name);
@@ -202,6 +209,7 @@ public class ServeControllerClient {
       }
 
       if (status.getStatus() == DeploymentStatus.HEALTHY) {
+        isTimeout = false;
         break;
       } else if (status.getStatus() == DeploymentStatus.UNHEALTHY) {
         throw new RayServeException(
@@ -216,8 +224,10 @@ public class ServeControllerClient {
       } catch (InterruptedException e) {
       }
     }
-    throw new RayServeException(
-        LogUtil.format("Deployment {} did not become HEALTHY after {}s.", name, timeoutS));
+    if (isTimeout) {
+      throw new RayServeException(
+          LogUtil.format("Deployment {} did not become HEALTHY after {}s.", name, timeoutS));
+    }
   }
 
   /**

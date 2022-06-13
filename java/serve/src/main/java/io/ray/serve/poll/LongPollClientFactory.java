@@ -1,27 +1,23 @@
 package io.ray.serve.poll;
 
+import com.google.common.base.Preconditions;
 import com.google.protobuf.InvalidProtocolBufferException;
 import io.ray.api.ActorHandle;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.PyActorHandle;
-import io.ray.api.Ray;
 import io.ray.api.exception.RayActorException;
 import io.ray.api.exception.RayTaskException;
 import io.ray.api.function.PyActorMethod;
-import io.ray.serve.api.Serve;
 import io.ray.serve.common.Constants;
-import io.ray.serve.config.RayServeConfig;
 import io.ray.serve.controller.ServeController;
 import io.ray.serve.exception.RayServeException;
 import io.ray.serve.generated.ActorNameList;
-import io.ray.serve.replica.ReplicaContext;
 import io.ray.serve.util.CollectionUtil;
 import io.ray.serve.util.LogUtil;
 import io.ray.serve.util.ServeProtoUtil;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
@@ -32,6 +28,7 @@ import java.util.function.Function;
 import org.apache.commons.lang3.builder.ReflectionToStringBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.testng.Assert;
 
 /** The long poll client factory that holds a asynchronous singleton thread. */
 public class LongPollClientFactory {
@@ -86,20 +83,8 @@ public class LongPollClientFactory {
       return;
     }
 
-    ReplicaContext replicaContext = Serve.getReplicaContext();
-    boolean enabled =
-        Optional.ofNullable(replicaContext.getConfig())
-            .map(config -> config.get(RayServeConfig.LONG_POOL_CLIENT_ENABLED))
-            .map(longPollClientEnabled -> Boolean.valueOf(longPollClientEnabled))
-            .orElse(true);
-    if (!enabled) {
-      LOGGER.info("LongPollClient is disabled.");
-      return;
-    }
-
-    LongPollClientFactory.hostActor =
-        Optional.ofNullable(hostActor)
-            .orElse(Ray.getActor(replicaContext.getInternalControllerName()).get());
+    Preconditions.checkNotNull(hostActor);
+    LongPollClientFactory.hostActor = hostActor;
 
     scheduledExecutorService =
         Executors.newSingleThreadScheduledExecutor(
@@ -111,11 +96,6 @@ public class LongPollClientFactory {
                 return thread;
               }
             });
-    long intervalS =
-        Optional.ofNullable(replicaContext.getConfig())
-            .map(config -> config.get(RayServeConfig.LONG_POOL_CLIENT_INTERVAL))
-            .map(longPollClientInterval -> Long.valueOf(longPollClientInterval))
-            .orElse(10L);
     scheduledExecutorService.scheduleAtFixedRate(
         () -> {
           try {
@@ -129,11 +109,11 @@ public class LongPollClientFactory {
             LOGGER.error("LongPollClient failed to update object of key {}", SNAPSHOT_IDS, e);
           }
         },
-        intervalS,
-        intervalS,
+        0L,
+      6L,
         TimeUnit.SECONDS);
     inited = true;
-    LOGGER.info("LongPollClient was initialized with interval {}s.", intervalS);
+    LOGGER.info("LongPollClient was initialized");
   }
 
   /** Poll the updates. */

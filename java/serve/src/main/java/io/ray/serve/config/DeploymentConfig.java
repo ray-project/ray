@@ -196,21 +196,24 @@ public class DeploymentConfig {
   }
 
   public byte[] toProtoBytes() {
-    return io.ray.serve.generated.DeploymentConfig.newBuilder()
-        .setNumReplicas(numReplicas)
-        .setMaxConcurrentQueries(maxConcurrentQueries)
-        .setUserConfig(
-            ByteString.copyFrom(MessagePackSerializer.encode(userConfig).getKey())) // TODO-xlang
-        .setGracefulShutdownWaitLoopS(gracefulShutdownWaitLoopS)
-        .setGracefulShutdownTimeoutS(gracefulShutdownTimeoutS)
-        .setHealthCheckPeriodS(healthCheckPeriodS)
-        .setHealthCheckTimeoutS(healthCheckTimeoutS)
-        .setAutoscalingConfig(autoscalingConfig != null ? autoscalingConfig.toProto() : null)
-        .setIsCrossLanguage(isCrossLanguage)
-        .setDeploymentLanguage(deploymentLanguage)
-        .setApiLanguage(apiLanguage)
-        .build()
-        .toByteArray();
+    io.ray.serve.generated.DeploymentConfig.Builder builder =
+        io.ray.serve.generated.DeploymentConfig.newBuilder()
+            .setNumReplicas(numReplicas)
+            .setMaxConcurrentQueries(maxConcurrentQueries)
+            .setUserConfig(
+                ByteString.copyFrom(
+                    MessagePackSerializer.encode(userConfig).getKey())) // TODO-xlang
+            .setGracefulShutdownWaitLoopS(gracefulShutdownWaitLoopS)
+            .setGracefulShutdownTimeoutS(gracefulShutdownTimeoutS)
+            .setHealthCheckPeriodS(healthCheckPeriodS)
+            .setHealthCheckTimeoutS(healthCheckTimeoutS)
+            .setIsCrossLanguage(isCrossLanguage)
+            .setDeploymentLanguage(deploymentLanguage)
+            .setApiLanguage(apiLanguage);
+    if (null != autoscalingConfig) {
+      builder.setAutoscalingConfig(autoscalingConfig.toProto());
+    }
+    return builder.build().toByteArray();
   }
 
   public static DeploymentConfig fromProto(io.ray.serve.generated.DeploymentConfig proto) {
