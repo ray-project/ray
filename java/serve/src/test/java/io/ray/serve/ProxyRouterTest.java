@@ -35,7 +35,7 @@ public class ProxyRouterTest {
 
       // Controller
       ActorHandle<DummyServeController> controllerHandle =
-          Ray.actor(DummyServeController::new).setName(controllerName).remote();
+          Ray.actor(DummyServeController::new, "", "").setName(controllerName).remote();
       Map<String, EndpointInfo> endpointInfos = new HashMap<>();
       endpointInfos.put(
           endpointName1,

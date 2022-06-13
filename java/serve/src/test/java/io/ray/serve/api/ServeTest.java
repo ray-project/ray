@@ -4,6 +4,7 @@ import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
 import io.ray.serve.DummyServeController;
 import io.ray.serve.common.Constants;
+import io.ray.serve.exception.RayServeException;
 import io.ray.serve.replica.ReplicaContext;
 import io.ray.serve.util.CommonUtil;
 import org.apache.commons.lang3.RandomStringUtils;
@@ -45,7 +46,7 @@ public class ServeTest {
       try {
         client = Serve.getGlobalClient();
         Assert.assertTrue(false, "Expect IllegalStateException here!");
-      } catch (IllegalStateException e) {
+      } catch (RayServeException e) {
       }
       Assert.assertNull(client);
 
@@ -53,7 +54,7 @@ public class ServeTest {
           CommonUtil.formatActorName(
               Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
       ActorHandle<DummyServeController> actorHandle =
-          Ray.actor(DummyServeController::new).setName(controllerName).remote();
+          Ray.actor(DummyServeController::new, "", "").setName(controllerName).remote();
       Serve.setInternalReplicaContext(null, null, controllerName, null, null, null);
       client = Serve.getGlobalClient();
       Assert.assertNotNull(client);

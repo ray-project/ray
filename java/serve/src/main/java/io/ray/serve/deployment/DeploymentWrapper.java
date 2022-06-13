@@ -6,7 +6,7 @@ import java.util.Map;
 
 public class DeploymentWrapper implements Serializable {
 
-  private static final long serialVersionUID = 1L;
+  private static final long serialVersionUID = -5366203408463039652L;
 
   private String name;
 

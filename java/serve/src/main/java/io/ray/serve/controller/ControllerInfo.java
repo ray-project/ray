@@ -4,7 +4,7 @@ import java.io.Serializable;
 
 public class ControllerInfo implements Serializable {
 
-  private static final long serialVersionUID = 1L;
+  private static final long serialVersionUID = 3511790838979680633L;
 
   private String controllerName;
 

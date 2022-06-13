@@ -12,8 +12,10 @@ import io.ray.serve.generated.ActorNameList;
 import io.ray.serve.generated.DeploymentLanguage;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.replica.RayServeWrappedReplica;
+import io.ray.serve.replica.ReplicaContext;
 import io.ray.serve.router.Query;
 import io.ray.serve.router.ReplicaSet;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import org.apache.commons.lang3.RandomStringUtils;
@@ -43,26 +45,35 @@ public class ReplicaSetTest {
 
     try {
       String controllerName = deploymentName + "_controller";
+      String controllerNameSpace = "serve";
       String replicaTag = deploymentName + "_replica";
       String actorName = replicaTag;
       String version = "v1";
 
       // Controller
       ActorHandle<DummyServeController> controllerHandle =
-          Ray.actor(DummyServeController::new).setName(controllerName).remote();
+          Ray.actor(DummyServeController::new, "", "").setName(controllerName).remote();
 
       // Replica
       DeploymentConfig deploymentConfig =
           new DeploymentConfig().setDeploymentLanguage(DeploymentLanguage.JAVA);
 
-      Object[] initArgs = new Object[] {deploymentName, replicaTag, controllerName, new Object()};
+      Object[] initArgs =
+          new Object[] {
+            deploymentName,
+            replicaTag,
+            controllerName,
+            controllerNameSpace,
+            new Object(),
+            new HashMap<>()
+          };
 
       DeploymentWrapper deploymentWrapper =
           new DeploymentWrapper()
               .setName(deploymentName)
               .setDeploymentConfig(deploymentConfig)
               .setDeploymentVersion(new DeploymentVersion(version))
-              .setDeploymentDef("io.ray.serve.ReplicaContext")
+              .setDeploymentDef(ReplicaContext.class.getName())
               .setInitArgs(initArgs);
 
       ActorHandle<RayServeWrappedReplica> replicaHandle =

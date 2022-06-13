@@ -14,6 +14,7 @@ import io.ray.serve.generated.ActorNameList;
 import io.ray.serve.generated.DeploymentLanguage;
 import io.ray.serve.handle.RayServeHandle;
 import io.ray.serve.replica.RayServeWrappedReplica;
+import io.ray.serve.replica.ReplicaContext;
 import io.ray.serve.util.CommonUtil;
 import java.util.HashMap;
 import java.util.Map;
@@ -33,6 +34,7 @@ public class RayServeHandleTest {
       String controllerName =
           CommonUtil.formatActorName(
               Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
+      String controllerNameSpace = "serve";
       String replicaTag = deploymentName + "_replica";
       String actorName = replicaTag;
       String version = "v1";
@@ -41,7 +43,7 @@ public class RayServeHandleTest {
 
       // Controller
       ActorHandle<DummyServeController> controllerHandle =
-          Ray.actor(DummyServeController::new).setName(controllerName).remote();
+          Ray.actor(DummyServeController::new, "", "").setName(controllerName).remote();
 
       // Set ReplicaContext
       Serve.setInternalReplicaContext(null, null, controllerName, null, null, config);
@@ -50,14 +52,22 @@ public class RayServeHandleTest {
       DeploymentConfig deploymentConfig =
           new DeploymentConfig().setDeploymentLanguage(DeploymentLanguage.JAVA);
 
-      Object[] initArgs = new Object[] {deploymentName, replicaTag, controllerName, new Object()};
+      Object[] initArgs =
+          new Object[] {
+            deploymentName,
+            replicaTag,
+            controllerName,
+            controllerNameSpace,
+            new Object(),
+            new HashMap<>()
+          };
 
       DeploymentWrapper deploymentWrapper =
           new DeploymentWrapper()
               .setName(deploymentName)
               .setDeploymentConfig(deploymentConfig)
               .setDeploymentVersion(new DeploymentVersion(version))
-              .setDeploymentDef("io.ray.serve.ReplicaContext")
+              .setDeploymentDef(ReplicaContext.class.getName())
               .setInitArgs(initArgs)
               .setConfig(config);
 

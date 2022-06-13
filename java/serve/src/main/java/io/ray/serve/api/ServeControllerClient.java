@@ -52,6 +52,7 @@ public class ServeControllerClient {
 
   private String checkpointPath;
 
+  @SuppressWarnings("unchecked")
   public ServeControllerClient(
       BaseActorHandle controller,
       String controllerName,
@@ -62,11 +63,22 @@ public class ServeControllerClient {
     this.detached = detached;
     this.overrideControllerNamespace = overrideControllerNamespace;
     this.rootUrl =
-        (String) ((PyActorHandle) controller).task(PyActorMethod.of("get_root_url")).remote().get();
+        controller instanceof PyActorHandle
+            ? (String)
+                ((PyActorHandle) controller).task(PyActorMethod.of("get_root_url")).remote().get()
+            : ((ActorHandle<ServeController>) controller)
+                .task(ServeController::getRootUrl)
+                .remote()
+                .get();
     this.checkpointPath =
-        (String)
-            ((PyActorHandle) controller)
-                .task(PyActorMethod.of("get_checkpoint_path"))
+        controller instanceof PyActorHandle
+            ? (String)
+                ((PyActorHandle) controller)
+                    .task(PyActorMethod.of("get_checkpoint_path"))
+                    .remote()
+                    .get()
+            : ((ActorHandle<ServeController>) controller)
+                .task(ServeController::getCheckpointPath)
                 .remote()
                 .get();
   }

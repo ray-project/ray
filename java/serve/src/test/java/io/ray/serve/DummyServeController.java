@@ -13,6 +13,15 @@ public class DummyServeController implements ServeController {
 
   private LongPollResult longPollResult;
 
+  private String rootUrl;
+
+  private String checkpointPath;
+
+  public DummyServeController(String rootUrl, String checkpointPath) {
+    this.rootUrl = rootUrl;
+    this.checkpointPath = checkpointPath;
+  }
+
   @Override
   public byte[] getAllEndpoints() {
     EndpointSet.Builder builder = EndpointSet.newBuilder();
@@ -32,5 +41,19 @@ public class DummyServeController implements ServeController {
   @Override
   public LongPollResult listenForChange(LongPollRequest longPollRequest) {
     return longPollResult;
+  }
+
+  @Override
+  public String getRootUrl() {
+    return rootUrl;
+  }
+
+  public void setRootUrl(String rootUrl) {
+    this.rootUrl = rootUrl;
+  }
+
+  @Override
+  public String getCheckpointPath() {
+    return checkpointPath;
   }
 }
