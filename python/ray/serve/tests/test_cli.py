@@ -400,7 +400,7 @@ def test_build(ray_start_stop, node):
         wait_for_condition(lambda: ping_endpoint("") == "wonderful world", timeout=15)
         print("Deploy succeeded! Node is live and reachable over HTTP. Deleting node.")
 
-        subprocess.check_output(["serve", "delete", "-y"])
+        subprocess.check_output(["serve", "shutdown", "-y"])
         wait_for_condition(
             lambda: ping_endpoint("") == CONNECTION_ERROR_MSG, timeout=15
         )
