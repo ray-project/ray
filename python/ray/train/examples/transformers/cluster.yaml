@@ -19,6 +19,7 @@ available_node_types:
     ray.head.default:
         min_workers: 0
         max_workers: 0
+        resources: {}
         node_config:
             InstanceType: g3.8xlarge
             ImageId: latest_dlami
@@ -33,6 +34,7 @@ available_node_types:
     ray.worker.default:
         min_workers: 3
         max_workers: 3
+        resources: {}
         node_config:
             InstanceType: g3.8xlarge
             ImageId: latest_dlami

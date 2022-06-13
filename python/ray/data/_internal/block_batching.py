@@ -23,7 +23,7 @@ PREFETCHER_ACTOR_NAMESPACE = "ray.dataset"
 
 
 def batch_blocks(
-    blocks: Iterator[Block],
+    blocks: Iterator[ObjectRef[Block]],
     stats: Union[DatasetStats, DatasetPipelineStats],
     *,
     prefetch_blocks: int = 0,

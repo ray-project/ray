@@ -53,6 +53,12 @@ def json_to_ndarray(payload: NdArray) -> np.ndarray:
 
 
 @PublicAPI(stability="beta")
+def json_to_multi_ndarray(payload: Dict[str, NdArray]) -> Dict[str, np.ndarray]:
+    """Accepts a JSON of shape {str_key: NdArray} and converts it to dict of arrays."""
+    return {key: json_to_ndarray(arr_obj) for key, arr_obj in payload.items()}
+
+
+@PublicAPI(stability="beta")
 def starlette_request(
     request: starlette.requests.Request,
 ) -> starlette.requests.Request:

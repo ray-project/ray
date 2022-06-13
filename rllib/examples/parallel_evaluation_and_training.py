@@ -1,7 +1,7 @@
 import argparse
 import os
 
-from ray.rllib.agents.callbacks import DefaultCallbacks
+from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.utils.test_utils import check_learning_achieved
 
 parser = argparse.ArgumentParser()
@@ -68,32 +68,34 @@ parser.add_argument(
 
 
 class AssertEvalCallback(DefaultCallbacks):
-    def on_train_result(self, *, trainer, result, **kwargs):
+    def on_train_result(self, *, algorithm, result, **kwargs):
         # Make sure we always run exactly the given evaluation duration,
         # no matter what the other settings are (such as
         # `evaluation_num_workers` or `evaluation_parallel_to_training`).
         if "evaluation" in result and "hist_stats" in result["evaluation"]:
             hist_stats = result["evaluation"]["hist_stats"]
             # We count in episodes.
-            if trainer.config["evaluation_duration_unit"] == "episodes":
+            if algorithm.config["evaluation_duration_unit"] == "episodes":
                 num_episodes_done = len(hist_stats["episode_lengths"])
                 # Compare number of entries in episode_lengths (this is the
                 # number of episodes actually run) with desired number of
                 # episodes from the config.
-                if isinstance(trainer.config["evaluation_duration"], int):
-                    assert num_episodes_done == trainer.config["evaluation_duration"]
+                if isinstance(algorithm.config["evaluation_duration"], int):
+                    assert num_episodes_done == algorithm.config["evaluation_duration"]
                 # If auto-episodes: Expect at least as many episode as workers
                 # (each worker's `sample()` is at least called once).
                 else:
-                    assert trainer.config["evaluation_duration"] == "auto"
-                    assert num_episodes_done >= trainer.config["evaluation_num_workers"]
+                    assert algorithm.config["evaluation_duration"] == "auto"
+                    assert (
+                        num_episodes_done >= algorithm.config["evaluation_num_workers"]
+                    )
                 print(
                     "Number of run evaluation episodes: " f"{num_episodes_done} (ok)!"
                 )
             # We count in timesteps.
             else:
                 num_timesteps_reported = result["evaluation"]["timesteps_this_iter"]
-                num_timesteps_wanted = trainer.config["evaluation_duration"]
+                num_timesteps_wanted = algorithm.config["evaluation_duration"]
                 if num_timesteps_wanted != "auto":
                     delta = num_timesteps_wanted - num_timesteps_reported
                     # Expect roughly the same (desired // num-eval-workers).
@@ -132,7 +134,7 @@ if __name__ == "__main__":
         # evaluation will run on a local worker and block (no parallelism).
         "evaluation_num_workers": args.evaluation_num_workers,
         # Evaluate every other training iteration (together
-        # with every other call to Trainer.train()).
+        # with every other call to Algorithm.train()).
         "evaluation_interval": args.evaluation_interval,
         # Run for n episodes/timesteps (properly distribute load amongst
         # all eval workers). The longer it takes to evaluate, the more sense

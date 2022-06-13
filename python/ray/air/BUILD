@@ -162,6 +162,14 @@ py_test(
 )
 
 py_test(
+    name = "test_batch_predictor",
+    size = "small",
+    srcs = ["tests/test_batch_predictor.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
     name = "test_batchpredictor_runtime",
     size = "medium",
     srcs = ["tests/test_batchpredictor_runtime.py"],
@@ -173,6 +181,14 @@ py_test(
     name = "test_checkpoints",
     size = "small",
     srcs = ["tests/test_checkpoints.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_data_batch_conversion",
+    size = "small",
+    srcs = ["tests/test_data_batch_conversion.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
@@ -221,6 +237,14 @@ py_test(
     name = "test_preprocessors",
     size = "small",
     srcs = ["tests/test_preprocessors.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_remote_storage",
+    size = "small",
+    srcs = ["tests/test_remote_storage.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )

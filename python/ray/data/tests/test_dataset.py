@@ -604,6 +604,43 @@ def test_tensor_array_ops(ray_start_regular_shared):
     np.testing.assert_equal(apply_logical_ops(arr), apply_logical_ops(df["two"]))
 
 
+def test_tensor_array_array_protocol(ray_start_regular_shared):
+    outer_dim = 3
+    inner_shape = (2, 2, 2)
+    shape = (outer_dim,) + inner_shape
+    num_items = np.prod(np.array(shape))
+    arr = np.arange(num_items).reshape(shape)
+
+    t_arr = TensorArray(arr)
+
+    np.testing.assert_array_equal(
+        np.asarray(t_arr, dtype=np.float32), arr.astype(np.float32)
+    )
+
+    t_arr_elem = t_arr[0]
+
+    np.testing.assert_array_equal(
+        np.asarray(t_arr_elem, dtype=np.float32), arr[0].astype(np.float32)
+    )
+
+
+def test_tensor_array_scalar_cast(ray_start_regular_shared):
+    outer_dim = 3
+    inner_shape = (1,)
+    shape = (outer_dim,) + inner_shape
+    num_items = np.prod(np.array(shape))
+    arr = np.arange(num_items).reshape(shape)
+
+    t_arr = TensorArray(arr)
+
+    for t_arr_elem, arr_elem in zip(t_arr, arr):
+        assert float(t_arr_elem) == float(arr_elem)
+
+    arr = np.arange(1).reshape((1, 1, 1))
+    t_arr = TensorArray(arr)
+    assert float(t_arr) == float(arr)
+
+
 def test_tensor_array_reductions(ray_start_regular_shared):
     outer_dim = 3
     inner_shape = (2, 2, 2)
@@ -3647,6 +3684,12 @@ def test_column_name_type_check(ray_start_regular_shared):
     df = pd.DataFrame({1: np.random.rand(10), "a": np.random.rand(10)})
     with pytest.raises(ValueError):
         ray.data.from_pandas(df)
+
+
+def test_len(ray_start_regular_shared):
+    ds = ray.data.range(1)
+    with pytest.raises(AttributeError):
+        len(ds)
 
 
 def test_random_sample(ray_start_regular_shared):

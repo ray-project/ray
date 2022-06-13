@@ -4,18 +4,18 @@ import ray
 from ray import serve
 from ray.experimental.dag import InputNode
 from ray.serve.handle import RayServeLazySyncHandle
-from ray.serve.pipeline.generate import (
+from ray.serve.deployment_graph_build import (
     transform_ray_dag_to_serve_dag,
     extract_deployments_from_serve_dag,
     transform_serve_dag_to_serve_executor_dag,
     get_pipeline_input_node,
 )
-from ray.serve.pipeline.tests.resources.test_modules import (
+from ray.serve.tests.resources.test_modules import (
     Model,
     NESTED_HANDLE_KEY,
     combine,
 )
-from ray.serve.pipeline.tests.resources.test_dags import (
+from ray.serve.tests.resources.test_dags import (
     get_simple_class_with_class_method_dag,
     get_func_class_with_class_method_dag,
     get_multi_instantiation_class_deployment_in_init_args_dag,

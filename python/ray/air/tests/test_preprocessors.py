@@ -1,12 +1,13 @@
 import warnings
 from collections import Counter
+from typing import Dict
 from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
 import pytest
-
 import ray
+from pandas import DataFrame
 from ray.data.preprocessor import PreprocessorNotFittedException
 from ray.data.preprocessors import (
     BatchMapper,
@@ -17,6 +18,7 @@ from ray.data.preprocessors import (
     LabelEncoder,
     SimpleImputer,
     Chain,
+    CustomStatefulPreprocessor,
 )
 from ray.data.preprocessors.encoder import Categorizer, MultiHotEncoder
 from ray.data.preprocessors.hasher import FeatureHasher
@@ -26,6 +28,8 @@ from ray.data.preprocessors.tokenizer import Tokenizer
 from ray.data.preprocessors.transformer import PowerTransformer
 from ray.data.preprocessors.utils import simple_split_tokenizer, simple_hash
 from ray.data.preprocessors.vectorizer import CountVectorizer, HashingVectorizer
+from ray.data import Dataset
+from ray.data.aggregate import Max
 
 
 def test_standard_scaler():
@@ -1094,6 +1098,62 @@ def test_batch_mapper():
     )
 
     assert out_df.equals(expected_df)
+
+
+def test_custom_stateful_preprocessor():
+    """Tests basic CustomStatefulPreprocessor functionality."""
+
+    items = [
+        {"A": 1, "B": 10, "C": 1},
+        {"A": 2, "B": 20, "C": 2},
+        {"A": 3, "B": 30, "C": 3},
+    ]
+
+    ds = ray.data.from_items(items)
+
+    def get_max_a(ds: Dataset):
+        # Calculate max value for column A.
+        max_a = ds.aggregate(Max("A"))
+        return max_a
+
+    def subtract_max_a_from_a_and_add_max_a_to_b(df: DataFrame, stats: Dict):
+        # Subtract max A value from column A and subtract it from B.
+        max_a = stats["max(A)"]
+        df["A"] = df["A"] - max_a
+        df["B"] = df["B"] + max_a
+        return df
+
+    preprocessor = CustomStatefulPreprocessor(
+        get_max_a, subtract_max_a_from_a_and_add_max_a_to_b
+    )
+    preprocessor.fit(ds)
+    transformed_ds = preprocessor.transform(ds)
+
+    expected_items = [
+        {"A": -2, "B": 13, "C": 1},
+        {"A": -1, "B": 23, "C": 2},
+        {"A": 0, "B": 33, "C": 3},
+    ]
+    expected_ds = ray.data.from_items(expected_items)
+
+    assert transformed_ds.take(3) == expected_ds.take(3)
+
+    batch = pd.DataFrame(
+        {
+            "A": [5, 6],
+            "B": [10, 10],
+            "C": [5, 10],
+        }
+    )
+    transformed_batch = preprocessor.transform_batch(batch)
+    expected_batch = pd.DataFrame(
+        {
+            "A": [2, 3],
+            "B": [13, 13],
+            "C": [5, 10],
+        }
+    )
+    assert transformed_batch.equals(expected_batch)
 
 
 def test_power_transformer():

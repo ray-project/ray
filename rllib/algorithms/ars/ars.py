@@ -10,7 +10,7 @@ import time
 from typing import Optional
 
 import ray
-from ray.rllib.agents import Trainer, TrainerConfig
+from ray.rllib.algorithms import Algorithm, AlgorithmConfig
 from ray.rllib.algorithms.ars.ars_tf_policy import ARSTFPolicy
 from ray.rllib.algorithms.es import optimizers, utils
 from ray.rllib.algorithms.es.es_tf_policy import rollout
@@ -26,7 +26,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_TRAINED,
 )
 from ray.rllib.utils.torch_utils import set_torch_seed
-from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.typing import AlgorithmConfigDict
 
 logger = logging.getLogger(__name__)
 
@@ -43,8 +43,8 @@ Result = namedtuple(
 )
 
 
-class ARSConfig(TrainerConfig):
-    """Defines a configuration class from which an ARS Trainer can be built.
+class ARSConfig(AlgorithmConfig):
+    """Defines a configuration class from which an ARS Algorithm can be built.
 
     Example:
         >>> from ray.rllib.algorithms.ars import ARSConfig
@@ -52,7 +52,7 @@ class ARSConfig(TrainerConfig):
         ...     .resources(num_gpus=0)\
         ...     .rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> # Build a Algorithm object from the config and run 1 training iteration.
         >>> trainer = config.build(env="CartPole-v1")
         >>> trainer.train()
 
@@ -77,7 +77,7 @@ class ARSConfig(TrainerConfig):
 
     def __init__(self):
         """Initializes a ARSConfig instance."""
-        super().__init__(trainer_class=ARS)
+        super().__init__(algo_class=ARS)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -93,10 +93,10 @@ class ARSConfig(TrainerConfig):
         self.report_length = 10
         self.offset = 0
 
-        # Override some of TrainerConfig's default values with ARS-specific values.
+        # Override some of AlgorithmConfig's default values with ARS-specific values.
         self.num_workers = 2
         self.observation_filter = "MeanStdFilter"
-        # ARS will use Trainer's evaluation WorkerSet (if evaluation_interval > 0).
+        # ARS will use Algorithm's evaluation WorkerSet (if evaluation_interval > 0).
         # Therefore, we must be careful not to use more than 1 env per eval worker
         # (would break ARSPolicy's compute_single_action method) and to not do
         # obs-filtering.
@@ -106,7 +106,7 @@ class ARSConfig(TrainerConfig):
         # __sphinx_doc_end__
         # fmt: on
 
-    @override(TrainerConfig)
+    @override(AlgorithmConfig)
     def training(
         self,
         *,
@@ -139,7 +139,7 @@ class ARSConfig(TrainerConfig):
                 from humanoid) during rollouts.
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
@@ -312,16 +312,16 @@ def get_policy_class(config):
     return policy_cls
 
 
-class ARS(Trainer):
+class ARS(Algorithm):
     """Large-scale implementation of Augmented Random Search in Ray."""
 
     @classmethod
-    @override(Trainer)
-    def get_default_config(cls) -> TrainerConfigDict:
+    @override(Algorithm)
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return ARSConfig().to_dict()
 
-    @override(Trainer)
-    def validate_config(self, config: TrainerConfigDict) -> None:
+    @override(Algorithm)
+    def validate_config(self, config: AlgorithmConfigDict) -> None:
         # Call super's validation method.
         super().validate_config(config)
 
@@ -341,7 +341,7 @@ class ARS(Trainer):
                 "`NoFilter` for ARS!"
             )
 
-    @override(Trainer)
+    @override(Algorithm)
     def setup(self, config):
         # Setup our config: Merge the user-supplied config (which could
         # be a partial config dict with the class' default).
@@ -387,7 +387,7 @@ class ARS(Trainer):
         self.reward_list = []
         self.tstart = time.time()
 
-    @override(Trainer)
+    @override(Algorithm)
     def get_policy(self, policy=DEFAULT_POLICY_ID):
         if policy != DEFAULT_POLICY_ID:
             raise ValueError(
@@ -396,8 +396,8 @@ class ARS(Trainer):
             )
         return self.policy
 
-    @override(Trainer)
-    def step_attempt(self):
+    @override(Algorithm)
+    def step(self):
         config = self.config
 
         theta = self.policy.get_flat_weights()
@@ -505,20 +505,20 @@ class ARS(Trainer):
 
         return result
 
-    @override(Trainer)
+    @override(Algorithm)
     def cleanup(self):
         # workaround for https://github.com/ray-project/ray/issues/1516
         for w in self.workers:
             w.__ray_terminate__.remote()
 
-    @override(Trainer)
+    @override(Algorithm)
     def compute_single_action(self, observation, *args, **kwargs):
         action, _, _ = self.policy.compute_actions([observation], update=True)
         if kwargs.get("full_fetch"):
             return action[0], [], {}
         return action[0]
 
-    @override(Trainer)
+    @override(Algorithm)
     def _sync_weights_to_workers(self, *, worker_set=None, workers=None):
         # Broadcast the new policy weights to all evaluation workers.
         assert worker_set is not None
