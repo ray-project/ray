@@ -398,7 +398,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
             script_name="scale_up_custom.py",
             head_service=HEAD_SERVICE,
         )
-        assert job_logs == "Submitted custom scale request!\n"
+        assert "Submitted custom scale request!" in job_logs, job_logs
 
         logger.info("Confirming two workers have scaled up.")
         wait_for_pods(goal_num_pods=3, namespace=RAY_CLUSTER_NAMESPACE)
