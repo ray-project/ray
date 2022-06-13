@@ -120,7 +120,6 @@ class NonTerminatedNodes:
                 self.head_id = node
 
         # Note: For typical use-cases,
-        # clean
         # self.all_node_ids == self.worker_ids + [self.head_id]
 
     def remove_terminating_nodes(self, terminating_nodes: List[NodeID]) -> None:
