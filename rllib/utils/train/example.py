@@ -26,6 +26,8 @@ def train_func(config):
 
     optimizer = torch.optim.SGD(model.parameters(), lr=1e-2)
 
+    train.report(x=1, y=2)
+
     while True:
         train_torch_dataset = dataset_shard.to_torch(
             label_column="y",
@@ -57,21 +59,31 @@ def train_func(config):
 
         result = {"test_key": "test_value"}
         print("reporting ...")
-        train.report(**result)
+
         print("done")
+
+        train.report(**result)
 
 
 if __name__ == "__main__":
     ray.init(num_cpus=12)
 
+    # Use 2 workers per TorchTrainer.
     scaling_config = {"num_workers": 2, "use_gpu": False}
 
+    # Algorithm.workers.local_worker().train_unit_map (maps IDs to TorchTrainer)
+    # in training_step() ->
+    # train_one_step:
+    #   for id, train_unit in train_unit_map.items():
+    #      train_unit.update([some policy specific data])
+
+    # Policy -> TorchTrainer (`learn_on_batch`)
     trainer1 = TorchTrainer(
         train_loop_per_worker=train_func,
         scaling_config=scaling_config,
         datasets={"dataset": get_dataset(size=6)},
     )
-    trainable_cls1 = ray.remote(num_cpus=1)(trainer1.as_trainable())
+    trainable_cls1 = ray.remote(num_cpus=0.1)(trainer1.as_trainable())
     trainable1 = trainable_cls1.remote()
 
     trainer2 = TorchTrainer(
