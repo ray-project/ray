@@ -9,16 +9,6 @@ Workflows is built on top of Ray, and offers a mostly consistent subset of its A
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 With Ray tasks, ``func.remote`` will submit a remote task to run eagerly. In Ray workflows, ``func.bind`` is used to create a DAG, and the DAG is converted into a workflow. Execution of the workflow is deferred until ``.run(workflow_id="id")`` or ``.run_async(workflow_id="id")`` is called on the ``Workflow``. Specifying the workflow id allows for resuming of the workflow by its id in case of cluster failure.
 
-``Actor.remote`` vs ``Actor.get_or_create``
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-With Ray actors, ``Actor.remote`` will submit an actor creation task and create an actor process in the cluster. In Ray workflows, virtual actors are created by ``Actor.get_or_create``. The actor state is tracked as a dynamic workflow (durably logged) instead of in a running process. This means that the actor uses no resources when inactive, and can be used even after cluster restarts.
-
-``actor.func.remote`` vs ``actor.func.run``
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-With Ray actors, ``actor.func.remote`` will submit a remote task to run which is similar as ``func.remote``. On the other hand ``actor.func.run`` on a virtual actor will read the actor state from storage, execute a step, and then write the new state back to storage. If the ``actor.func`` is decorated with ``workflow.virtual_actor.readonly``, its result will not be logged.
-
 Other Workflow Engines
 ----------------------
 

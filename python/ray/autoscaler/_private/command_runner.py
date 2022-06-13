@@ -66,7 +66,7 @@ def is_using_login_shells():
     return _config["use_login_shells"]
 
 
-def set_using_login_shells(val):
+def set_using_login_shells(val: bool):
     """Choose between login and non-interactive shells.
 
     Non-interactive shells have the benefit of receiving less output from
@@ -81,7 +81,7 @@ def set_using_login_shells(val):
     and non-robust tool to work.
 
     Args:
-        val (bool): If true, login shells will be used to run all commands.
+        val: If true, login shells will be used to run all commands.
     """
     _config["use_login_shells"] = val
 
@@ -90,7 +90,7 @@ def _with_environment_variables(cmd: str, environment_variables: Dict[str, objec
     """Prepend environment variables to a shell command.
 
     Args:
-        cmd (str): The base command.
+        cmd: The base command.
         environment_variables (Dict[str, object]): The set of environment
             variables. If an environment variable value is a dict, it will
             automatically be converted to a one line yaml string.

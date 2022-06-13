@@ -52,12 +52,15 @@ def apply_grad_clipping(
             # clip_grad_norm_. Would fail otherwise.
             params = list(filter(lambda p: p.grad is not None, param_group["params"]))
             if params:
-                grad_gnorm = nn.utils.clip_grad_norm_(
-                    params, policy.config["grad_clip"]
-                )
-                if isinstance(grad_gnorm, torch.Tensor):
-                    grad_gnorm = grad_gnorm.cpu().numpy()
-                info["grad_gnorm"] = grad_gnorm
+                # PyTorch clips gradients inplace and returns the norm before clipping
+                # We therefore need to compute grad_gnorm further down (fixes #4965)
+                clip_value = policy.config["grad_clip"]
+                global_norm = nn.utils.clip_grad_norm_(params, clip_value)
+
+                if isinstance(global_norm, torch.Tensor):
+                    global_norm = global_norm.cpu().numpy()
+
+                info["grad_gnorm"] = min(global_norm, clip_value)
     return info
 
 
@@ -103,7 +106,7 @@ def convert_to_non_torch_type(stats: TensorStructType) -> TensorStructType:
     """Converts values in `stats` to non-Tensor numpy or python types.
 
     Args:
-        stats (any): Any (possibly nested) struct, the values in which will be
+        stats: Any (possibly nested) struct, the values in which will be
             converted and returned as a new struct with all torch tensors
             being converted to numpy types.
 
@@ -130,7 +133,7 @@ def convert_to_non_torch_type(stats: TensorStructType) -> TensorStructType:
 def convert_to_torch_tensor(x: TensorStructType, device: Optional[str] = None):
     """Converts any struct to torch.Tensors.
 
-    x (any): Any (possibly nested) struct, the values in which will be
+    x: Any (possibly nested) struct, the values in which will be
         converted and returned as a new struct with all leaves converted
         to torch tensors.
 

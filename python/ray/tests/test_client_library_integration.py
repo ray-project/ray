@@ -26,7 +26,7 @@ def test_rllib_integration(ray_start_regular_shared):
             # Test with compression.
             config["compress_observations"] = True
             num_iterations = 2
-            trainer = dqn.SimpleQTrainer(config=config, env="CartPole-v1")
+            trainer = dqn.SimpleQ(config=config, env="CartPole-v1")
             rw = trainer.workers.local_worker()
             for i in range(num_iterations):
                 sb = rw.sample()

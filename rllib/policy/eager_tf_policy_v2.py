@@ -42,7 +42,7 @@ from ray.rllib.utils.typing import (
     LocalOptimizer,
     ModelGradients,
     TensorType,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
 )
 
 tf1, tf, tfv = try_import_tf()
@@ -60,7 +60,7 @@ class EagerTFPolicyV2(Policy):
         self,
         observation_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
-        config: TrainerConfigDict,
+        config: AlgorithmConfigDict,
         **kwargs,
     ):
         self.framework = config.get("framework", "tf2")
@@ -136,7 +136,7 @@ class EagerTFPolicyV2(Policy):
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic
-    def get_default_config(self) -> TrainerConfigDict:
+    def get_default_config(self) -> AlgorithmConfigDict:
         return {}
 
     @DeveloperAPI
@@ -145,7 +145,7 @@ class EagerTFPolicyV2(Policy):
         self,
         obs_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
-        config: TrainerConfigDict,
+        config: AlgorithmConfigDict,
     ):
         return {}
 
@@ -226,11 +226,11 @@ class EagerTFPolicyV2(Policy):
         """Gradients computing function (from loss tensor, using local optimizer).
 
         Args:
-            policy (Policy): The Policy object that generated the loss tensor and
+            policy: The Policy object that generated the loss tensor and
                 that holds the given local optimizer.
-            optimizer (LocalOptimizer): The tf (local) optimizer object to
+            optimizer: The tf (local) optimizer object to
                 calculate the gradients with.
-            loss (TensorType): The loss tensor for which gradients should be
+            loss: The loss tensor for which gradients should be
                 calculated.
 
         Returns:
@@ -250,11 +250,11 @@ class EagerTFPolicyV2(Policy):
         """Gradients computing function (from loss tensor, using local optimizer).
 
         Args:
-            policy (Policy): The Policy object that generated the loss tensor and
+            policy: The Policy object that generated the loss tensor and
                 that holds the given local optimizer.
-            optimizer (LocalOptimizer): The tf (local) optimizer object to
+            optimizer: The tf (local) optimizer object to
                 calculate the gradients with.
-            grads (ModelGradients): The gradient tensor to be applied.
+            grads: The gradient tensor to be applied.
 
         Returns:
             "tf.Operation": TF operation that applies supplied gradients.

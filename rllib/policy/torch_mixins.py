@@ -156,7 +156,7 @@ class ValueNetworkMixin:
             state_batches (List[TensorType]): List of state tensors (empty for
                 non-RNNs).
             model (ModelV2): The Model object of the Policy.
-            action_dist (TorchDistributionWrapper): The instantiated distribution
+            action_dist: The instantiated distribution
                 object, resulting from the model's outputs and the given
                 distribution class.
 

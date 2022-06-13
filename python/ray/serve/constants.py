@@ -1,3 +1,5 @@
+import os
+
 from enum import Enum
 import re
 
@@ -95,6 +97,12 @@ CLIENT_POLLING_INTERVAL_S: float = 1
 ANONYMOUS_NAMESPACE_PATTERN = re.compile(
     "[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89aAbB][a-f0-9]{3}-[a-f0-9]{12}"
 )
+
+# Handle metric push interval. (This interval will affect the cold start time period)
+HANDLE_METRIC_PUSH_INTERVAL_S = 10
+
+# Timeout for GCS internal KV service
+RAY_SERVE_KV_TIMEOUT_S = float(os.environ.get("RAY_SERVE_KV_TIMEOUT_S", "0")) or None
 
 
 class ServeHandleType(str, Enum):

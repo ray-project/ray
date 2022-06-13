@@ -1,14 +1,25 @@
 import abc
 from typing import List, Dict
 
-from ray.train.callbacks.results_preprocessors import (
+from ray.train._internal.results_preprocessors import (
     ResultsPreprocessor,
     ExcludedKeysResultsPreprocessor,
     SequentialResultsPreprocessor,
 )
 from ray.train.constants import ALL_RESERVED_KEYS
+from ray.util.annotations import Deprecated
+
+_deprecation_msg = (
+    "`ray.train.callbacks` and the `ray.train.Trainer` API are deprecated in Ray "
+    "2.0, and is replaced by Ray AI Runtime (Ray AIR). Ray AIR "
+    "(https://docs.ray.io/en/latest/ray-air/getting-started.html) "
+    "will provide greater functionality and a unified API "
+    "compared to the current Ray Train API. "
+    "This class will be removed in the future."
+)
 
 
+@Deprecated
 class TrainingCallback(abc.ABC):
     """Abstract Train callback class."""
 
@@ -22,9 +33,9 @@ class TrainingCallback(abc.ABC):
         """Called once on training start.
 
         Args:
-            logdir (str): Path to the file directory where logs
+            logdir: Path to the file directory where logs
                 should be persisted.
-            config (Dict): The config dict passed into ``trainer.run()``.
+            config: The config dict passed into ``trainer.run()``.
             **info: kwargs dict for forward compatibility.
         """
         results_to_exclude = ALL_RESERVED_KEYS.difference(self.RESERVED_KEYS)
@@ -90,7 +101,7 @@ class TrainingCallback(abc.ABC):
         """Called once after training is over.
 
         Args:
-            error (bool): If True, there was an exception during training.
+            error: If True, there was an exception during training.
             **info: kwargs dict for forward compatibility.
         """
         pass

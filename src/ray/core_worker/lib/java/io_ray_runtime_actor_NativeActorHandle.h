@@ -59,12 +59,11 @@ Java_io_ray_runtime_actor_NativeActorHandle_nativeDeserialize(JNIEnv *,
 /*
  * Class:     io_ray_runtime_actor_NativeActorHandle
  * Method:    nativeRemoveActorHandleReference
- * Signature: ([B[B)V
+ * Signature: ([B)V
  */
 JNIEXPORT void JNICALL
 Java_io_ray_runtime_actor_NativeActorHandle_nativeRemoveActorHandleReference(JNIEnv *,
                                                                              jclass,
-                                                                             jbyteArray,
                                                                              jbyteArray);
 
 #ifdef __cplusplus

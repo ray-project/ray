@@ -169,7 +169,7 @@ class EpsilonGreedy(Exploration):
         """Torch method to produce an epsilon exploration action.
 
         Args:
-            action_distribution (ActionDistribution): The instantiated
+            action_distribution: The instantiated
                 ActionDistribution object to work with when creating
                 exploration actions.
 

@@ -26,6 +26,7 @@ from typing import (
     Type,
     Union,
 )
+from ray.rllib.utils.deprecation import deprecation_warning
 
 import ray
 from ray.actor import ActorHandle
@@ -2471,6 +2472,5 @@ class Trainer(Trainable):
         return trainer_or_none.validate_config(config)
 
 
-# TODO: Create a dict that throw a deprecation warning once we have fully moved
-#  to TrainerConfig() objects (some algos still missing).
-COMMON_CONFIG: TrainerConfigDict = TrainerConfig(Trainer).to_dict()
+# Alias.
+Trainer = Algorithm

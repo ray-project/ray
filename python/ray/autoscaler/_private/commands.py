@@ -159,7 +159,7 @@ def request_resources(
     ray.remote calls to ensure that resources rapidly become available.
 
     Args:
-        num_cpus (int): Scale the cluster to ensure this number of CPUs are
+        num_cpus: Scale the cluster to ensure this number of CPUs are
             available. This request is persistent until another call to
             request_resources() is made.
         bundles (List[ResourceDict]): Scale the cluster to ensure this set of
@@ -863,8 +863,8 @@ def _should_create_new_head(
 
     Args:
         head_node_id (Optional[str]): head node id if a head exists, else None
-        new_launch_hash (str): hash of current user-submitted head config
-        new_head_node_type (str): current user-submitted head node-type key
+        new_launch_hash: hash of current user-submitted head config
+        new_head_node_type: current user-submitted head node-type key
 
     Returns:
         bool: True if a new Ray head node should be launched, False otherwise
@@ -1188,9 +1188,9 @@ def rsync(
         target: target dir
         override_cluster_name: set the name of the cluster
         down: whether we're syncing remote -> local
-        ip_address (str): Address of node. Raise Exception
+        ip_address: Address of node. Raise Exception
             if both ip_address and 'all_nodes' are provided.
-        use_internal_ip (bool): Whether the provided ip_address is
+        use_internal_ip: Whether the provided ip_address is
             public or private.
         all_nodes: whether to sync worker nodes in addition to the head node
         should_bootstrap: whether to bootstrap cluster config before syncing
@@ -1331,12 +1331,12 @@ def _get_running_head_node(
     """Get a valid, running head node.
     Args:
         config (Dict[str, Any]): Cluster Config dictionary
-        printable_config_file (str): Used for printing formatted CLI commands.
-        override_cluster_name (str): Passed to `get_or_create_head_node` to
+        printable_config_file: Used for printing formatted CLI commands.
+        override_cluster_name: Passed to `get_or_create_head_node` to
             override the cluster name present in `config`.
-        create_if_needed (bool): Create a head node if one is not present.
-        _provider (NodeProvider): [For testing], a Node Provider to use.
-        _allow_uninitialized_state (bool): Whether to return a head node that
+        create_if_needed: Create a head node if one is not present.
+        _provider: [For testing], a Node Provider to use.
+        _allow_uninitialized_state: Whether to return a head node that
             is not 'UP TO DATE'. This is used to allow `ray attach` and
             `ray exec` to debug a cluster in a bad state.
 

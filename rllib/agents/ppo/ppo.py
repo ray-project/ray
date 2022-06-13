@@ -1,22 +1,8 @@
-"""
-Proximal Policy Optimization (PPO)
-==================================
-
-This file defines the distributed Trainer class for proximal policy
-optimization.
-See `ppo_[tf|torch]_policy.py` for the definition of the policy loss.
-
-Detailed documentation: https://docs.ray.io/en/master/rllib-algorithms.html#ppo
-"""
-
-import logging
-from typing import List, Optional, Type, Union
-
-from ray.util.debug import log_once
-from ray.rllib.agents.trainer import Trainer
-from ray.rllib.agents.trainer_config import TrainerConfig
-from ray.rllib.execution.rollout_ops import (
-    standardize_fields,
+from ray.rllib.algorithms.ppo import (  # noqa
+    ppo_tf_policy,
+    ppo_torch_policy,
+    PPO as PPOTrainer,
+    DEFAULT_CONFIG,
 )
 from ray.rllib.execution.train_ops import (
     train_one_step,

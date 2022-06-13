@@ -1,28 +1,28 @@
 import numpy as np
 
-from ray.rllib.agents.trainer import Trainer, with_common_config
+from ray.rllib.algorithms.algorithm import Algorithm, with_common_config
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.typing import AlgorithmConfigDict
 
 
 # fmt: off
 # __sphinx_doc_begin__
-class RandomAgent(Trainer):
-    """Trainer that produces random actions and never learns."""
+class RandomAgent(Algorithm):
+    """Algo that produces random actions and never learns."""
 
     @classmethod
-    @override(Trainer)
-    def get_default_config(cls) -> TrainerConfigDict:
+    @override(Algorithm)
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return with_common_config({
             "rollouts_per_iteration": 10,
             "framework": "tf",  # not used
         })
 
-    @override(Trainer)
+    @override(Algorithm)
     def _init(self, config, env_creator):
         self.env = env_creator(config["env_config"])
 
-    @override(Trainer)
+    @override(Algorithm)
     def step(self):
         rewards = []
         steps = 0
@@ -47,8 +47,8 @@ class RandomAgent(Trainer):
 
 
 if __name__ == "__main__":
-    trainer = RandomAgent(
+    algo = RandomAgent(
         env="CartPole-v0", config={"rollouts_per_iteration": 10})
-    result = trainer.train()
+    result = algo.train()
     assert result["episode_reward_mean"] > 10, result
     print("Test: OK")
