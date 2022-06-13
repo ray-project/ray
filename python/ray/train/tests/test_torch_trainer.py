@@ -43,7 +43,7 @@ def test_torch_e2e(ray_start_4_cpus):
         model = torch.nn.Linear(1, 1)
         train.save_checkpoint(model=model)
 
-    scaling_config = {"num_workers": 2}
+    scaling_config = ScalingConfig(num_workers=2)
     trainer = TorchTrainer(
         train_loop_per_worker=train_func, scaling_config=scaling_config
     )
