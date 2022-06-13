@@ -288,7 +288,7 @@ molly_macaw = Macaw.bind("green", name="Molly")
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_run_deployment_node(ray_start_stop):
-    # Tests serve run with specified args and kwargs
+    """Test `serve run` with bound args and kwargs."""
 
     # Deploy via import path
     p = subprocess.Popen(
@@ -316,7 +316,7 @@ metal_detector_node = MetalDetector.bind()
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_run_runtime_env(ray_start_stop):
-    # Test serve run with runtime_env passed in
+    """Test `serve run` with runtime_env passed in."""
 
     # With import path
     p = subprocess.Popen(
@@ -354,12 +354,12 @@ def test_run_runtime_env(ray_start_stop):
             ),
             "--working-dir",
             (
-                "https://github.com/ray-project/test_module/archive/"
-                "aa6f366f7daa78c98408c27d917a983caa9f888b.zip"
+                "https://github.com/ray-project/test_dag/archive/"
+                "76a741f6de31df78411b1f302071cde46f098418.zip"
             ),
         ]
     )
-    wait_for_condition(lambda: ping_endpoint("one") == "2", timeout=10)
+    wait_for_condition(lambda: ping_endpoint("") == "wonderful world", timeout=15)
     p.send_signal(signal.SIGINT)
     p.wait()
 
