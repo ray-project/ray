@@ -13,10 +13,7 @@ from ray.air.config import (
     ScalingConfigDataClass,
 )
 from ray.air.result import Result
-from ray.air._internal.config import (
-    ensure_only_allowed_dataclass_keys_updated,
-    ensure_only_allowed_dict_keys_set,
-)
+from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
 from ray.tune import Trainable
 from ray.tune.error import TuneError
 from ray.tune.function_runner import wrap_function
@@ -225,12 +222,7 @@ class BaseTrainer(abc.ABC):
     ) -> ScalingConfigDataClass:
         """Return scaling config dataclass after validating updated keys."""
         if isinstance(dataclass_or_dict, dict):
-            ensure_only_allowed_dict_keys_set(
-                dataclass_or_dict, cls._scaling_config_allowed_keys
-            )
-            scaling_config_dataclass = ScalingConfigDataClass(**dataclass_or_dict)
-
-            return scaling_config_dataclass
+            dataclass_or_dict = ScalingConfigDataClass(**dataclass_or_dict)
 
         ensure_only_allowed_dataclass_keys_updated(
             dataclass=dataclass_or_dict,
