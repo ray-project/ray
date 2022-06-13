@@ -126,6 +126,7 @@ py_test_module_list(
     "test_shuffle.py",
     "test_state_api.py",
     "test_state_api_log.py",
+    "test_state_api_summary.py",
     "test_stress.py",
     "test_storage.py",
     "test_stress_sharded.py",

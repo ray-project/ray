@@ -496,10 +496,6 @@ class StateAPIManager:
                 timeout=option.timeout, limit=DEFAULT_LIMIT, filters=[]
             )
         )
-        if result.partial_failure_warning:
-            return SummaryApiResponse(
-                result=None, partial_failure_warning=result.partial_failure_warning
-            )
 
         summary = {}
         tasks = result.result
@@ -514,7 +510,9 @@ class StateAPIManager:
             task_summary = summary[task["func_or_class_name"]]
             task_summary["state_counts"][task["scheduling_state"]] += 1
 
-        return SummaryApiResponse(result=summary)
+        return SummaryApiResponse(
+            result=summary, partial_failure_warning=result.partial_failure_warning
+        )
 
     async def summarize_actors(self, option: SummaryApiOptions) -> SummaryApiResponse:
         result = await self.list_actors(
@@ -522,10 +520,6 @@ class StateAPIManager:
                 timeout=option.timeout, limit=DEFAULT_LIMIT, filters=[]
             )
         )
-        if result.partial_failure_warning:
-            return SummaryApiResponse(
-                result=None, partial_failure_warning=result.partial_failure_warning
-            )
 
         summary = {}
         actors = result.result
@@ -538,7 +532,51 @@ class StateAPIManager:
             task_summary = summary[actor["class_name"]]
             task_summary["state_counts"][actor["state"]] += 1
 
-        return SummaryApiResponse(result=summary)
+        return SummaryApiResponse(
+            result=summary, partial_failure_warning=result.partial_failure_warning
+        )
+
+    async def summarize_objects(self, option: SummaryApiOptions) -> SummaryApiResponse:
+        result = await self.list_objects(
+            option=ListApiOptions(
+                timeout=option.timeout, limit=DEFAULT_LIMIT, filters=[]
+            )
+        )
+
+        summary = {}
+        objects = result.result
+        for object in objects.values():
+            if object["call_site"] not in summary:
+                summary[object["call_site"]] = {
+                    "state_counts": defaultdict(int),
+                    "ref_type_counts": defaultdict(int),
+                    "count": 0,
+                    "size_mb": 0,
+                    "unkonwn_size_count": 0,
+                    "num_workers": set(),
+                    "num_nodes": set(),
+                }
+            object_summary = summary[object["call_site"]]
+            object_summary["state_counts"][object["task_status"]] += 1
+            object_summary["ref_type_counts"][object["reference_type"]] += 1
+            object_summary["count"] += 1
+            # object_size's unit is byte by default. It is -1, if the size is
+            # unknown.
+            if object["object_size"] != -1:
+                object_summary["size_mb"] += object["object_size"] / 1024 ** 2
+            else:
+                object_summary["unkonwn_size_count"] += 1
+            object_summary["num_workers"].add(object["pid"])
+            object_summary["num_nodes"].add(object["node_ip_address"])
+
+        # Convert set of pid & node ips to length.
+        for s in summary.values():
+            s["num_workers"] = len(s["num_workers"])
+            s["num_nodes"] = len(s["num_nodes"])
+
+        return SummaryApiResponse(
+            result=summary, partial_failure_warning=result.partial_failure_warning
+        )
 
     def _message_to_dict(
         self,

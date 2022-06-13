@@ -260,3 +260,16 @@ def summarize_actors(
         api_server_url=api_server_url,
         _explain=_explain,
     )
+
+
+def summarize_objects(
+    api_server_url: str = None,
+    timeout: int = DEFAULT_RPC_TIMEOUT,
+    _explain: bool = False,
+):
+    return _summary(
+        "objects",
+        options=SummaryApiOptions(timeout=timeout),
+        api_server_url=api_server_url,
+        _explain=_explain,
+    )

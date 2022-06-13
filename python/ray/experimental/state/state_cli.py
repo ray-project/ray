@@ -23,6 +23,7 @@ from ray.experimental.state.api import (
     list_runtime_envs,
     summarize_tasks,
     summarize_actors,
+    summarize_objects,
 )
 
 
@@ -302,6 +303,21 @@ def actor_summary(ctx):
     print(
         get_state_api_output_to_print(
             summarize_actors(
+                api_server_url=url,
+                _explain=True,
+            ),
+            format=AvailableFormat.YAML,
+        )
+    )
+
+
+@summary_state_cli_group.command(name="objects")
+@click.pass_context
+def object_summary(ctx):
+    url = ctx.obj["api_server_url"]
+    print(
+        get_state_api_output_to_print(
+            summarize_objects(
                 api_server_url=url,
                 _explain=True,
             ),
