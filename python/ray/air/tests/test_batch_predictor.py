@@ -57,6 +57,16 @@ def test_batch_prediction():
         12.0,
     ]
 
+    test_dataset = ray.data.from_items([1.0, 2.0, 3.0, 4.0])
+    assert next(
+        batch_predictor.predict_pipelined(
+            test_dataset, blocks_per_window=2
+        ).iter_datasets()
+    ).to_pandas().to_numpy().squeeze().tolist() == [
+        4.0,
+        8.0,
+    ]
+
 
 def test_batch_prediction_fs():
     batch_predictor = BatchPredictor.from_checkpoint(
