@@ -93,12 +93,12 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
 
  private:
   Options options_;
-  pid_t reported_agent_id_ = 0;
-  int reported_agent_port_ = 0;
+  pid_t agent_pid_ = 0;
+  int agent_port_ = 0;
   /// Whether or not we intend to start the agent.  This is false if we
   /// are missing Ray Dashboard dependencies, for example.
   bool should_start_agent_ = true;
-  std::string reported_agent_ip_address_;
+  std::string agent_ip_address_;
   DelayExecutorFn delay_executor_;
   RuntimeEnvAgentClientFactoryFn runtime_env_agent_client_factory_;
   std::shared_ptr<rpc::RuntimeEnvAgentClientInterface> runtime_env_agent_client_;
