@@ -212,7 +212,7 @@ class TunerTest(unittest.TestCase):
         )
         # The following two should be tunable.
         config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": 10}
-        scaling_config = {"num_workers": 1, "use_gpu": False}
+        scaling_config = ScalingConfig(num_workers=1, use_gpu=False)
         trainer = TorchTrainer(
             train_loop_per_worker=linear_train_func,
             train_loop_config=config,
