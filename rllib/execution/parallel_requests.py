@@ -33,7 +33,7 @@ class AsyncRequestsManager:
         >>> import ray # doctest: +SKIP
         >>> from ray.rllib.execution.parallel_requests import ( # doctest: +SKIP
         ...    AsyncRequestsManager # doctest: +SKIP
-        >>> # doctest: +SKIP
+        ... ) # doctest: +SKIP
         >>> @ray.remote # doctest: +SKIP
         ... class MyActor: # doctest: +SKIP
         ...    def apply(self, fn, *args, **kwargs): # doctest: +SKIP

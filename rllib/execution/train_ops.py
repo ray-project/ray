@@ -41,7 +41,8 @@ def train_one_step(algorithm, train_batch, policies_to_train=None) -> Dict:
 
     Examples:
         >>> from ray.rllib.execution.parallel_requests import (
-        ...     synchronous_parallel_sample)
+        ...     synchronous_parallel_sample
+        ... )
         >>> algo = [...] # doctest: +SKIP
         >>> train_batch = synchronous_parallel_sample(algo.workers) # doctest: +SKIP
         >>> # This trains the policy on one batch.
@@ -97,7 +98,8 @@ def multi_gpu_train_one_step(algorithm, train_batch) -> Dict:
 
     Examples:
         >>> from ray.rllib.execution.parallel_requests import ( # doctest: +SKIP
-        ...    synchronous_parallel_sample) # doctest: +SKIP
+        ...    synchronous_parallel_sample
+        ... ) # doctest: +SKIP
         >>> algo = [...] # doctest: +SKIP
         >>> train_batch = synchronous_parallel_sample(algo.workers) # doctest: +SKIP
         >>> # This trains the policy on one batch.
@@ -178,7 +180,7 @@ def multi_gpu_train_one_step(algorithm, train_batch) -> Dict:
     load_timer.push_units_processed(train_batch.count)
     learn_timer.push_units_processed(train_batch.count)
 
-    # TODO: Move this into Algorithms's `training_step` method for
+    # TODO: Move this into Algorithms's `training_step()` method for
     #  better transparency.
     algorithm._counters[NUM_ENV_STEPS_TRAINED] += train_batch.count
     algorithm._counters[NUM_AGENT_STEPS_TRAINED] += train_batch.agent_steps()
