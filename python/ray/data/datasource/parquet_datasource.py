@@ -61,33 +61,37 @@ def _deregister_parquet_file_fragment_serialization():
 # request expecially when simutaneously running many hyper parameter tuning jobs
 # with ray.data parallelism setting at high value like the default 200
 def deserialize_pieces(
-    serialized_pieces: str
+    serialized_pieces: str,
 ) -> List["pyarrow._dataset.ParquetFileFragment"]:
     from ray import cloudpickle
     import random
-    # to make retries of different process hit hdfs server
-    # at slightly different time
-    min_interval = 1 + random.random()
+
+    min_interval = 0
     final_exception = None
     # retry at most 8 times
     for i in range(8):
         try:
-            pieces: List[
-                "pyarrow._dataset.ParquetFileFragment"
-            ] = cloudpickle.loads(serialized_pieces)
+            pieces: List["pyarrow._dataset.ParquetFileFragment"] = cloudpickle.loads(
+                serialized_pieces
+            )
             return pieces
         except Exception as e:
             import traceback
             import time
+
             tb_str = traceback.format_exception(
                 etype=type(e), value=e, tb=e.__traceback__
             )
-            err_msg_str = f'{type(e)}:{str(e)}'
-            retry_timing = "" if i == 7 else (f' Retry after {min_interval} sec. ')
-            log_only_show_in_1st_retry = "" if i else (
-                f"If earlier hdfsBuilderConnect threw java.net.UnknownHostException"
-                f", It may or may not be an issue depends on these retries "
-                f"succeed or not. serialized_pieces:{serialized_pieces}"
+            err_msg_str = f"{type(e)}:{str(e)}"
+            retry_timing = "" if i == 7 else (f" Retry after {min_interval} sec. ")
+            log_only_show_in_1st_retry = (
+                ""
+                if i
+                else (
+                    f"If earlier hdfsBuilderConnect threw java.net.UnknownHostException"
+                    f", It may or may not be an issue depends on these retries "
+                    f"succeed or not. serialized_pieces:{serialized_pieces}"
+                )
             )
             logger.error(
                 f"{i + 1}th attempt to deserialize ParquetFileFragment failed "
@@ -95,6 +99,10 @@ def deserialize_pieces(
                 f"{retry_timing}"
                 f"{log_only_show_in_1st_retry}"
             )
+            if not min_interval:
+                # to make retries of different process hit hdfs server
+                # at slightly different time
+                min_interval = 1 + random.random()
             # exponential backoff at
             # 1, 2, 4, 8, 16, 32, 64
             time.sleep(min_interval)
