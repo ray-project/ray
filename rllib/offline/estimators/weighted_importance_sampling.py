@@ -1,12 +1,14 @@
 from typing import List, Optional
+
+import numpy as np
+
 from ray.rllib.offline.estimators.off_policy_estimator import (
-    OffPolicyEstimator,
     OffPolicyEstimate,
+    OffPolicyEstimator,
 )
 from ray.rllib.policy import Policy
-from ray.rllib.utils.annotations import override, ExperimentalAPI
+from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.utils.typing import SampleBatchType
-import numpy as np
 
 
 @ExperimentalAPI

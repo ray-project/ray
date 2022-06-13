@@ -1,14 +1,7 @@
 import copy
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type, Union
+
 import gym
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    Optional,
-    Type,
-    TYPE_CHECKING,
-    Union,
-)
 
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.env.env_context import EnvContext
@@ -18,11 +11,11 @@ from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.utils import deep_update, merge_dicts
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.typing import (
+    AlgorithmConfigDict,
     EnvConfigDict,
     EnvType,
     PartialAlgorithmConfigDict,
     ResultDict,
-    AlgorithmConfigDict,
 )
 from ray.tune.logger import Logger
 

@@ -1,12 +1,13 @@
-from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimate
-from ray.rllib.offline.estimators.direct_method import DirectMethod
-from ray.rllib.utils.annotations import ExperimentalAPI, override
-from ray.rllib.utils.typing import SampleBatchType
-from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.numpy import convert_to_numpy
+from typing import Optional
+
 import numpy as np
 
-from typing import Optional
+from ray.rllib.offline.estimators.direct_method import DirectMethod
+from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimate
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.annotations import ExperimentalAPI, override
+from ray.rllib.utils.numpy import convert_to_numpy
+from ray.rllib.utils.typing import SampleBatchType
 
 
 @ExperimentalAPI

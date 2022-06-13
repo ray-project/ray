@@ -1,18 +1,20 @@
 from typing import Optional
+
+import numpy as np
+from gym.spaces import Discrete
+
+from ray.rllib.offline.estimators.fqe_torch_model import FQETorchModel
 from ray.rllib.offline.estimators.off_policy_estimator import (
-    OffPolicyEstimator,
     OffPolicyEstimate,
+    OffPolicyEstimator,
 )
+from ray.rllib.offline.estimators.qreg_torch_model import QRegTorchModel
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import SampleBatchType
-from ray.rllib.offline.estimators.fqe_torch_model import FQETorchModel
-from ray.rllib.offline.estimators.qreg_torch_model import QRegTorchModel
-from gym.spaces import Discrete
-import numpy as np
 
 torch, nn = try_import_torch()
 

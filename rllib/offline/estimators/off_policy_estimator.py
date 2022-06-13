@@ -1,13 +1,13 @@
-from collections import namedtuple
 import logging
-from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
-from ray.rllib.policy import Policy
-from ray.rllib.utils.annotations import ExperimentalAPI
+from collections import namedtuple
+from typing import Generator, List, Optional, Tuple, Union
+
 from ray.rllib.offline.io_context import IOContext
-from ray.rllib.utils.annotations import Deprecated
+from ray.rllib.policy import Policy
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
+from ray.rllib.utils.annotations import Deprecated, ExperimentalAPI
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.typing import TensorType, SampleBatchType
-from typing import List, Optional, Generator, Tuple, Union
+from ray.rllib.utils.typing import SampleBatchType, TensorType
 
 logger = logging.getLogger(__name__)
 

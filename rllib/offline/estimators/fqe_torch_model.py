@@ -1,9 +1,9 @@
-from ray.rllib.models.utils import get_initializer
-from ray.rllib.policy import Policy
 from typing import List, Union
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
+from ray.rllib.models.utils import get_initializer
+from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.framework import try_import_torch

@@ -1,26 +1,20 @@
 import logging
-import numpy as np
 from typing import Optional, Type
+
+import numpy as np
 
 from ray.rllib.algorithms.cql.cql_tf_policy import CQLTFPolicy
 from ray.rllib.algorithms.cql.cql_torch_policy import CQLTorchPolicy
-from ray.rllib.algorithms.sac.sac import (
-    SAC,
-    SACConfig,
-)
-from ray.rllib.execution.train_ops import (
-    multi_gpu_train_one_step,
-    train_one_step,
-)
-from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
+from ray.rllib.algorithms.sac.sac import SAC, SACConfig
+from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
 from ray.rllib.offline.shuffled_input import ShuffledInput
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
-    deprecation_warning,
     Deprecated,
+    deprecation_warning,
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.metrics import (
@@ -28,11 +22,14 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_TRAINED,
     NUM_ENV_STEPS_TRAINED,
     NUM_TARGET_UPDATES,
-    TARGET_NET_UPDATE_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
+    TARGET_NET_UPDATE_TIMER,
 )
-from ray.rllib.utils.replay_buffers.utils import update_priorities_in_replay_buffer
-from ray.rllib.utils.typing import ResultDict, AlgorithmConfigDict
+from ray.rllib.utils.replay_buffers.utils import (
+    sample_min_n_steps_from_buffer,
+    update_priorities_in_replay_buffer,
+)
+from ray.rllib.utils.typing import AlgorithmConfigDict, ResultDict
 
 tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()

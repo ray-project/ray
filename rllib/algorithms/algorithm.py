@@ -1,18 +1,14 @@
-from collections import defaultdict
 import concurrent
 import copy
-from datetime import datetime
 import functools
-import gym
 import logging
 import math
-import numpy as np
 import os
-from packaging import version
 import pickle
-import pkg_resources
 import tempfile
 import time
+from collections import defaultdict
+from datetime import datetime
 from typing import (
     Callable,
     Container,
@@ -25,6 +21,11 @@ from typing import (
     Type,
     Union,
 )
+
+import gym
+import numpy as np
+import pkg_resources
+from packaging import version
 
 import ray
 from ray.actor import ActorHandle
@@ -41,35 +42,29 @@ from ray.rllib.evaluation.metrics import (
 )
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer
 from ray.rllib.execution.common import WORKER_UPDATE_TIMER
-from ray.rllib.execution.rollout_ops import (
-    synchronous_parallel_sample,
-)
-from ray.rllib.execution.train_ops import (
-    train_one_step,
-    multi_gpu_train_one_step,
-)
+from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
+from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
 from ray.rllib.offline import get_offline_io_resource_bundles
 from ray.rllib.offline.estimators.off_policy_estimator import train_test_split
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
-from ray.rllib.utils import deep_update, FilterManager, merge_dicts
+from ray.rllib.utils import FilterManager, deep_update, merge_dicts
 from ray.rllib.utils.annotations import (
     DeveloperAPI,
     ExperimentalAPI,
-    override,
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
     PublicAPI,
+    override,
 )
 from ray.rllib.utils.debug import update_global_seed_if_necessary
 from ray.rllib.utils.deprecation import (
+    DEPRECATED_VALUE,
     Deprecated,
     deprecation_warning,
-    DEPRECATED_VALUE,
 )
-from ray.rllib.utils.error import EnvError, ERR_MSG_INVALID_ENV_DESCRIPTOR
+from ray.rllib.utils.error import ERR_MSG_INVALID_ENV_DESCRIPTOR, EnvError
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.metrics import (
@@ -83,9 +78,11 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.pre_checks.multi_agent import check_multi_agent
+from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer
 from ray.rllib.utils.spaces import space_utils
 from ray.rllib.utils.typing import (
     AgentID,
+    AlgorithmConfigDict,
     EnvCreator,
     EnvInfoDict,
     EnvType,
@@ -97,7 +94,6 @@ from ray.rllib.utils.typing import (
     SampleBatchType,
     TensorStructType,
     TensorType,
-    AlgorithmConfigDict,
 )
 from ray.tune.logger import Logger, UnifiedLogger
 from ray.tune.registry import ENV_CREATOR, _global_registry
