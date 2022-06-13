@@ -548,23 +548,30 @@ class ServeControllerAvatar:
         _override_controller_namespace: str = None,
         dedicated_cpu: bool = False,
     ):
-        self._controller = ServeController.options(
-            num_cpus=1 if dedicated_cpu else 0,
-            name=controller_name,
-            lifetime="detached" if detached else None,
-            max_restarts=-1,
-            max_task_retries=-1,
-            # Pin Serve controller on the head node.
-            resources={get_current_node_resource_key(): 0.01},
-            namespace=_override_controller_namespace,
-            max_concurrency=CONTROLLER_MAX_CONCURRENCY,
-        ).remote(
-            controller_name,
-            http_config,
-            checkpoint_path,
-            detached=detached,
-            _override_controller_namespace=_override_controller_namespace,
-        )
+        try:
+            self._controller = ray.get_actor(
+                controller_name, namespace=_override_controller_namespace
+            )
+        except ValueError:
+            self._controller = None
+        if self._controller is None:
+            self._controller = ServeController.options(
+                num_cpus=1 if dedicated_cpu else 0,
+                name=controller_name,
+                lifetime="detached" if detached else None,
+                max_restarts=-1,
+                max_task_retries=-1,
+                # Pin Serve controller on the head node.
+                resources={get_current_node_resource_key(): 0.01},
+                namespace=_override_controller_namespace,
+                max_concurrency=CONTROLLER_MAX_CONCURRENCY,
+            ).remote(
+                controller_name,
+                http_config,
+                checkpoint_path,
+                detached=detached,
+                _override_controller_namespace=_override_controller_namespace,
+            )
 
     def check_alive(self) -> None:
         """No-op to check if this actor is alive."""
