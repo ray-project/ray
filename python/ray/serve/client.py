@@ -1,48 +1,26 @@
 import asyncio
 import atexit
-import random
 import logging
+import random
 import time
 from functools import wraps
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    Optional,
-    Tuple,
-    Type,
-    Union,
-    List,
-    Iterable,
-)
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Type, Union
 
 import ray
 from ray.actor import ActorHandle
-from ray.serve.common import (
-    DeploymentInfo,
-    DeploymentStatus,
-    StatusOverview,
-)
-from ray.serve.config import (
-    DeploymentConfig,
-    HTTPOptions,
-    ReplicaConfig,
-)
-from ray.serve.schema import ServeApplicationSchema
+from ray.serve.common import DeploymentInfo, DeploymentStatus, StatusOverview
+from ray.serve.config import DeploymentConfig, HTTPOptions, ReplicaConfig
 from ray.serve.constants import (
-    SERVE_NAMESPACE,
-    MAX_CACHED_HANDLES,
     CLIENT_POLLING_INTERVAL_S,
+    MAX_CACHED_HANDLES,
+    SERVE_NAMESPACE,
 )
 from ray.serve.controller import ServeController
 from ray.serve.exceptions import RayServeException
-from ray.serve.generated.serve_pb2 import (
-    DeploymentRoute,
-    DeploymentRouteList,
-    StatusOverview as StatusOverviewProto,
-)
+from ray.serve.generated.serve_pb2 import DeploymentRoute, DeploymentRouteList
+from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-
+from ray.serve.schema import ServeApplicationSchema
 
 logger = logging.getLogger(__file__)
 # Whether to issue warnings about using sync handles in async context

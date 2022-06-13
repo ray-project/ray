@@ -1,9 +1,10 @@
-from aiohttp.web import Request, Response
 import json
 import logging
 
-import ray.dashboard.utils as dashboard_utils
+from aiohttp.web import Request, Response
+
 import ray.dashboard.optional_utils as optional_utils
+import ray.dashboard.utils as dashboard_utils
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -56,9 +57,9 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def put_all_deployments(self, req: Request) -> Response:
         from ray import serve
+        from ray.serve.application import Application
         from ray.serve.context import get_global_client
         from ray.serve.schema import ServeApplicationSchema
-        from ray.serve.application import Application
 
         config = ServeApplicationSchema.parse_obj(await req.json())
 

@@ -1,14 +1,14 @@
-import sys
 import copy
+import subprocess
+import sys
+from typing import Dict
+
 import pytest
 import requests
-import subprocess
-from typing import Dict
 
 import ray
 from ray import serve
 from ray._private.test_utils import wait_for_condition
-
 
 GET_OR_PUT_URL = "http://localhost:8265/api/serve/deployments/"
 STATUS_URL = "http://localhost:8265/api/serve/deployments/status"
