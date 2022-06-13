@@ -21,6 +21,7 @@ from ray.experimental.state.common import (
     SummaryApiOptions,
     SummaryApiResponse,
     DEFAULT_RPC_TIMEOUT,
+    DEFAULT_LIMIT,
 )
 from ray.experimental.state.exception import DataSourceUnavailable
 from ray.experimental.state.state_manager import StateDataSourceClient
@@ -217,38 +218,43 @@ class StateHead(dashboard_utils.DashboardHeadModule):
 
     @routes.get("/api/v0/logs/{media_type}")
     async def get_logs(self, req: aiohttp.web.Request):
-        """
-        If `media_type = stream`, creates HTTP stream which is either kept alive while
-        the HTTP connection is not closed. Else, if `media_type = file`, the stream
-        ends once all the lines in the file requested are transmitted.
-        """
+        # TODO(sang): We need a better error handling for streaming
+        # when we refactor the server framework.
         options = GetLogOptions(
-            timeout=req.query.get("timeout", DEFAULT_RPC_TIMEOUT),
-            node_id=req.query.get("node_id"),
-            node_ip=req.query.get("node_ip"),
+            timeout=int(req.query.get("timeout", DEFAULT_RPC_TIMEOUT)),
+            node_id=req.query.get("node_id", None),
+            node_ip=req.query.get("node_ip", None),
             media_type=req.match_info.get("media_type", "file"),
-            filename=req.query.get("filename"),
-            actor_id=req.query.get("actor_id"),
-            task_id=req.query.get("task_id"),
-            pid=req.query.get("pid"),
-            lines=req.query.get("lines", 1000),
-            interval=req.query.get("interval"),
+            filename=req.query.get("filename", None),
+            actor_id=req.query.get("actor_id", None),
+            task_id=req.query.get("task_id", None),
+            pid=req.query.get("pid", None),
+            lines=req.query.get("lines", DEFAULT_LIMIT),
+            interval=req.query.get("interval", None),
         )
 
         response = aiohttp.web.StreamResponse()
         response.content_type = "text/plain"
         await response.prepare(req)
 
-        # try-except here in order to properly handle ongoing HTTP stream
+        # NOTE: The first byte indicates the success / failure of individual
+        # stream. If the first byte is b"1", it means the stream was successful.
+        # If it is b"0", it means it is failed.
         try:
             async for logs_in_bytes in self._log_api.stream_logs(options):
-                await response.write(logs_in_bytes)
+                logs_to_stream = bytearray(b"1")
+                logs_to_stream.extend(logs_in_bytes)
+                await response.write(bytes(logs_to_stream))
             await response.write_eof()
             return response
         except Exception as e:
             logger.exception(e)
-            await response.write(b"Closing HTTP stream due to internal server error:\n")
-            await response.write(str(e).encode())
+            error_msg = bytearray(b"0")
+            error_msg.extend(
+                f"Closing HTTP stream due to internal server error.\n{e}".encode()
+            )
+
+            await response.write(bytes(error_msg))
             await response.write_eof()
             return response
 
