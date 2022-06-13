@@ -6,7 +6,7 @@ from ray.air.predictors.integrations.tensorflow import (
     TensorflowPredictor,
     to_air_checkpoint,
 )
-from ray.air.preprocessor import Preprocessor
+from ray.data.preprocessor import Preprocessor
 
 import numpy as np
 import pandas as pd

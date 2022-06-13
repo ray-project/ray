@@ -5,7 +5,7 @@ from ray.air.predictors.integrations.lightgbm import (
     LightGBMPredictor,
     to_air_checkpoint,
 )
-from ray.air.preprocessor import Preprocessor
+from ray.data.preprocessor import Preprocessor
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import MODEL_KEY
 from ray.air._internal.checkpointing import save_preprocessor_to_dir

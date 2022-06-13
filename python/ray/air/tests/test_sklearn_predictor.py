@@ -9,7 +9,7 @@ from sklearn.ensemble import RandomForestClassifier
 import ray
 import ray.cloudpickle as cpickle
 from ray.air.predictors.integrations.sklearn import SklearnPredictor, to_air_checkpoint
-from ray.air.preprocessor import Preprocessor
+from ray.data.preprocessor import Preprocessor
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import MODEL_KEY
 from ray.air.batch_predictor import BatchPredictor

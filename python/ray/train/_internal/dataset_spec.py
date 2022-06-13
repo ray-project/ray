@@ -7,7 +7,7 @@ from ray.air.config import DatasetConfig
 
 if TYPE_CHECKING:
     from ray.data import Dataset, DatasetPipeline
-    from ray.air.preprocessor import Preprocessor
+    from ray.data.preprocessor import Preprocessor
 
 RayDataset = Union["Dataset", "DatasetPipeline"]
 

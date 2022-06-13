@@ -4,7 +4,7 @@ import ray
 from ray.air import Checkpoint
 from ray.air.config import ScalingConfigDataClass
 from ray.train import BaseTrainer
-from ray.air.preprocessor import Preprocessor
+from ray.data.preprocessor import Preprocessor
 from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
 
 

@@ -6,7 +6,7 @@ import pandas as pd
 import pandas.api.types
 
 from ray.data import Dataset
-from ray.air.preprocessor import Preprocessor
+from ray.data.preprocessor import Preprocessor
 
 
 class OrdinalEncoder(Preprocessor):
@@ -25,7 +25,7 @@ class OrdinalEncoder(Preprocessor):
     .. code-block:: python
 
         import ray.data
-        from ray.air.preprocessors import OrdinalEncoder
+        from ray.data.preprocessors import OrdinalEncoder
         import pandas as pd
         batch = pd.DataFrame(
             {
@@ -202,7 +202,7 @@ class MultiHotEncoder(Preprocessor):
     .. code-block:: python
 
         import ray.data
-        from ray.air.preprocessors import MultiHotEncoder
+        from ray.data.preprocessors import MultiHotEncoder
         import pandas as pd
         mhe = MultiHotEncoder(columns=["A", "B"])
         batch = pd.DataFrame(

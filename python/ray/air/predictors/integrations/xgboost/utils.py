@@ -10,7 +10,7 @@ from ray.air._internal.checkpointing import (
 )
 
 if TYPE_CHECKING:
-    from ray.air.preprocessor import Preprocessor
+    from ray.data.preprocessor import Preprocessor
 
 
 def to_air_checkpoint(

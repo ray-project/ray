@@ -13,7 +13,7 @@ from ray.air.checkpoint import Checkpoint
 from ray.air._internal.checkpointing import load_preprocessor_from_dir
 
 if TYPE_CHECKING:
-    from ray.air.preprocessor import Preprocessor
+    from ray.data.preprocessor import Preprocessor
 
 
 class HuggingFacePredictor(Predictor):

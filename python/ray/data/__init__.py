@@ -29,6 +29,7 @@ from ray.data.dataset import Dataset
 from ray.data.dataset_pipeline import DatasetPipeline
 from ray.data._internal.progress_bar import set_progress_bars
 from ray.data._internal.compute import ActorPoolStrategy
+from ray.data.preprocessor import Preprocessor
 
 # Module-level cached global functions (for impl/compute). It cannot be defined
 # in impl/compute since it has to be process-global across cloudpickled funcs.
@@ -65,4 +66,5 @@ __all__ = [
     "read_parquet",
     "read_parquet_bulk",
     "set_progress_bars",
+    "Preprocessor",
 ]
