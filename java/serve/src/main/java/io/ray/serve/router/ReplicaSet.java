@@ -22,6 +22,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.commons.lang3.RandomUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -42,7 +43,11 @@ public class ReplicaSet {
 
   public ReplicaSet(String deploymentName, String controllerNamespace) {
     this.inFlightQueries = new ConcurrentHashMap<>();
-    this.controllerNamespace = controllerNamespace;
+    if (StringUtils.isBlank(controllerNamespace)) {
+      this.controllerNamespace = Ray.getRuntimeContext().getNamespace();
+    } else {
+      this.controllerNamespace = controllerNamespace;
+    }
     RayServeMetrics.execute(
         () ->
             this.numQueuedQueriesGauge =

@@ -19,7 +19,7 @@ import org.testng.annotations.Test;
 
 public class LongPollClientTest {
 
-  @Test
+  @Test(enabled = false)
   public void disableTest() throws Throwable {
     Map<String, String> config = new HashMap<>();
     config.put(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false");
@@ -70,7 +70,7 @@ public class LongPollClientTest {
                   ((Map<String, EndpointInfo>) object).get(endpointName1).getEndpointName());
 
       // Register.
-      LongPollClient longPollClient = new LongPollClient(null, keyListeners);
+      LongPollClient longPollClient = new LongPollClient(controllerHandle, keyListeners);
       Assert.assertTrue(LongPollClientFactory.isInitialized());
 
       // Construct updated object.

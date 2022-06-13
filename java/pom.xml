@@ -77,6 +77,10 @@
             <groupId>org.yaml</groupId>
             <artifactId>snakeyaml</artifactId>
           </exclusion>
+          <exclusion>
+            <groupId>com.google.guava</groupId>
+            <artifactId>guava</artifactId>
+          </exclusion>
         </exclusions>
       </dependency>
     </dependencies>

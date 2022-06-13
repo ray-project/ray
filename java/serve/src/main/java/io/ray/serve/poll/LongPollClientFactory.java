@@ -52,7 +52,7 @@ public class LongPollClientFactory {
       new HashMap<>();
 
   static {
-    DESERIALIZERS.put(LongPollNamespace.ROUTE_TABLE, body -> ServeProtoUtil.parseEndpointSet(body));
+    DESERIALIZERS.put(LongPollNamespace.ROUTE_TABLE, ServeProtoUtil::parseEndpointSet);
     DESERIALIZERS.put(
         LongPollNamespace.RUNNING_REPLICAS,
         body -> {

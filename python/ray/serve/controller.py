@@ -532,10 +532,11 @@ class ServeController:
 @ray.remote(num_cpus=0)
 class ServeControllerAvatar:
     """
-    Java api can not support python async actor. If we use java api create python async actor.
-    The async init method won't be executed. The async method will fail with pickle error.
-    And the run_control_loop of controller actor can't be executed too.
-    We use this proxy actor create python async actor to avoid the above problem.
+    Java api can not support python async actor. If we use java api create
+    python async actor. The async init method won't be executed. The async
+    method will fail with pickle error. And the run_control_loop of controller
+    actor can't be executed too. We use this proxy actor create python async
+    actor to avoid the above problem.
     """
 
     def __init__(

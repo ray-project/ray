@@ -264,12 +264,12 @@ class LongPollHost:
             keys_to_snapshot_ids_bytes (Dict[str, int]): the protobuf bytes of
               keys_to_snapshot_ids (Dict[str, int]).
         """
-        keys_to_snapshot_ids_proto = LongPollRequest.FromString(
+        request_proto = LongPollRequest.FromString(
             keys_to_snapshot_ids_bytes
         )
         keys_to_snapshot_ids = {
-            self._parse_xlang_key(xlang_key): snapshot_id for xlang_key, snapshot_id in
-            keys_to_snapshot_ids_proto.keys_to_snapshot_ids.items()
+            self._parse_xlang_key(xlang_key): snapshot_id
+            for xlang_key, snapshot_id in request_proto.keys_to_snapshot_ids.items()
         }
         keys_to_updated_objects = await self.listen_for_change(keys_to_snapshot_ids)
         return self._listen_result_to_proto_bytes(keys_to_updated_objects)
