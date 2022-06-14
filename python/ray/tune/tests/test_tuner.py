@@ -134,9 +134,7 @@ class TunerTest(unittest.TestCase):
         # prep_v1 = StandardScaler(["worst radius", "worst area"])
         # prep_v2 = StandardScaler(["worst concavity", "worst smoothness"])
         param_space = {
-            "scaling_config": {
-                "num_workers": tune.grid_search([1, 2]),
-            },
+            "scaling_config": ScalingConfig(num_workers=tune.grid_search([1, 2])),
             # "preprocessor": tune.grid_search([prep_v1, prep_v2]),
             "datasets": {
                 "train": tune.grid_search(
@@ -189,9 +187,7 @@ class TunerTest(unittest.TestCase):
     def test_tuner_trainer_fail(self):
         trainer = DummyTrainer()
         param_space = {
-            "scaling_config": {
-                "num_workers": tune.grid_search([1, 2]),
-            }
+            "scaling_config": ScalingConfig(num_workers=tune.grid_search([1, 2]))
         }
         tuner = Tuner(
             trainable=trainer,
@@ -218,9 +214,7 @@ class TunerTest(unittest.TestCase):
             scaling_config=scaling_config,
         )
         param_space = {
-            "scaling_config": {
-                "num_workers": tune.grid_search([1, 2]),
-            },
+            "scaling_config": ScalingConfig(num_workers=tune.grid_search([1, 2])),
             "train_loop_config": {
                 "batch_size": tune.grid_search([4, 8]),
                 "epochs": tune.grid_search([5, 10]),
