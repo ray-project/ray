@@ -18,7 +18,7 @@ import ray
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.modules
 import ray.dashboard.utils as dashboard_utils
-from ray import ray_constants
+from ray._private import ray_constants
 from ray._private.test_utils import (
     format_web_url,
     get_error_message,
