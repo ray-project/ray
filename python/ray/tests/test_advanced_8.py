@@ -380,7 +380,7 @@ def test_get_num_cpus(
             # Got the docker count of 128 CPUs in the giant mock container.
             assert num_cpus == 128
         else:
-            # Failed to get docker count and fell back to cpu count.
+            # Failed to get docker count and fell back to multiprocessing count.
             assert num_cpus == multiprocessing.cpu_count()
         if should_not_log:
             mocks["logger"].warning.assert_not_called()
