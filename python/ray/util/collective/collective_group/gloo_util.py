@@ -18,8 +18,6 @@ except ImportError:
     )
 
 
-
-
 GLOO_REDUCE_OP_MAP = {
     ReduceOp.SUM: pygloo.ReduceOp.SUM,
     ReduceOp.PRODUCT: pygloo.ReduceOp.PRODUCT,

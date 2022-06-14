@@ -25,8 +25,6 @@ except ImportError:
     pytest_timeout = None
 
 
-
-
 @ray.remote
 class Increase:
     def method(self, x):

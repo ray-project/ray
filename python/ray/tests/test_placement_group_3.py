@@ -27,8 +27,6 @@ except ImportError:
     pytest_timeout = None
 
 
-
-
 def get_ray_status_output(address):
     gcs_client = gcs_utils.GcsClient(address=address)
     internal_kv._initialize_internal_kv(gcs_client)

@@ -20,6 +20,7 @@ from ray.tune.progress_reporter import (
 )
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.registry import get_trainable_cls, is_function_trainable
+
 # Must come last to avoid circular imports
 from ray.tune.schedulers import (
     FIFOScheduler,
@@ -34,6 +35,7 @@ from ray.tune.schedulers.util import (
 from ray.tune.stopper import Stopper
 from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm, SearchGenerator
 from ray.tune.suggest.suggestion import ConcurrencyLimiter, Searcher
+
 # Turn off black here, as it will format the lines to be longer than 88 chars
 # fmt: off
 from ray.tune.suggest.util import (

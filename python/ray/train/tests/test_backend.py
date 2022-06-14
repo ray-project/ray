@@ -7,6 +7,7 @@ import pytest
 import ray
 import ray.train as train
 from ray.cluster_utils import Cluster
+
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
 from ray.tests.conftest import pytest_runtest_makereport  # noqa
 from ray.train._internal.backend_executor import (
