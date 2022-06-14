@@ -9,7 +9,7 @@ For a majority of Ray users, installing Ray via the latest wheels or pip package
 
   If you are only editing Python files, follow instructions for :ref:`python-develop` to avoid long build times.
 
-  If you already followed the instructions in :ref:`python-develop` and want to switch to the Full build in this section, you will need to first delete the symlinks and uninstall Ray.
+  If you already followed the instructions in :ref:`python-develop` and want to switch to the Full build in this section, you will need to first uninstall.
 
 .. contents::
   :local:
