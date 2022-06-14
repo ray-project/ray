@@ -339,7 +339,7 @@ def test_get_num_cpus(
     monkeypatch,
 ):
     """Tests
-    - Conditions under which ray._private.utils.get_num_cpus logs a warning about docker
+    - Conditions under which ray._private.utils.get_num_cpus logs a warning about docker.
     - Fallback to multiprocessing.cpu_count if there's no docker count available.
     """
     # Shouldn't get the log warning if we're in K8s, the env variable is set,
