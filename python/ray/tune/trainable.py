@@ -39,7 +39,6 @@ from ray.tune.result import (
     TRIAL_ID,
     TRIAL_INFO,
 )
-from ray.tune.sync_client import get_cloud_sync_client, get_sync_client
 from ray.tune.syncer import Syncer
 from ray.tune.utils import UtilMonitor
 from ray.tune.utils.log import disable_ipython

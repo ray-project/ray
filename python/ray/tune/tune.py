@@ -39,14 +39,7 @@ from ray.tune.suggest.util import (
     set_search_properties_backwards_compatible as searcher_set_search_props,
 )
 from ray.tune.suggest.variant_generator import has_unresolved_values
-from ray.tune.syncer import (
-    SyncConfig,
-    set_sync_periods,
-    validate_upload_dir,
-    wait_for_sync,
-    _validate_upload_dir,
-    SyncerCallback,
-)
+from ray.tune.syncer import SyncConfig, SyncerCallback, _validate_upload_dir
 from ray.tune.trainable import Trainable
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner

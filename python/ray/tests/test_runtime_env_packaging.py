@@ -1,6 +1,5 @@
 import os
 import random
-from shutil import copytree, rmtree, make_archive
 import shutil
 import socket
 import string
