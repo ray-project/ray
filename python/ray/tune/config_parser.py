@@ -9,7 +9,7 @@ from six import string_types
 from ray.tune import TuneError
 from ray.tune.trial import Trial
 from ray.tune.resources import json_to_resources
-from ray.tune.syncer import SyncConfig
+from ray.tune.syncer import SyncConfig, Syncer
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.tune.utils.util import SafeFallbackEncoder
 
@@ -211,16 +211,20 @@ def create_trial_from_spec(
     remote_checkpoint_dir = spec.get("remote_checkpoint_dir")
 
     sync_config = spec.get("sync_config", SyncConfig())
-    if sync_config.syncer is None or isinstance(sync_config.syncer, str):
-        sync_function_tpl = sync_config.syncer
-    elif not isinstance(sync_config.syncer, str):
-        # If a syncer was specified, but not a template, it is a function.
-        # Functions cannot be used for trial checkpointing on remote nodes,
-        # so we set the remote checkpoint dir to None to disable this.
-        sync_function_tpl = None
-        remote_checkpoint_dir = None
+    if (
+        sync_config.syncer is None
+        or sync_config.syncer == "auto"
+        or isinstance(sync_config.syncer, Syncer)
+    ):
+        custom_syncer = sync_config.syncer
     else:
-        sync_function_tpl = None  # Auto-detect
+        raise ValueError(
+            f"Unknown syncer type passed in SyncConfig: {type(sync_config.syncer)}. "
+            f"Note that custom sync functions and templates have been deprecated. "
+            f"Instead you can implement you own `Syncer` class. "
+            f"Please leave a comment on GitHub if you run into any issues with this: "
+            f"https://github.com/ray-project/ray/issues"
+        )
 
     return Trial(
         # Submitting trial via server in py2.7 creates Unicode, which does not
@@ -232,7 +236,7 @@ def create_trial_from_spec(
         # json.load leads to str -> unicode in py2.7
         stopping_criterion=spec.get("stop", {}),
         remote_checkpoint_dir=remote_checkpoint_dir,
-        sync_function_tpl=sync_function_tpl,
+        custom_syncer=custom_syncer,
         checkpoint_freq=args.checkpoint_freq,
         checkpoint_at_end=args.checkpoint_at_end,
         sync_on_checkpoint=sync_config.sync_on_checkpoint,
@@ -246,5 +250,5 @@ def create_trial_from_spec(
         log_to_file=spec.get("log_to_file"),
         # str(None) doesn't create None
         max_failures=args.max_failures,
-        **trial_kwargs
+        **trial_kwargs,
     )

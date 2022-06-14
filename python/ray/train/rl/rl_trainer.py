@@ -17,6 +17,7 @@ from ray.tune import Trainable, PlacementGroupFactory
 from ray.tune.logger import Logger
 from ray.tune.registry import get_trainable_cls
 from ray.tune.resources import Resources
+from ray.tune.syncer import Syncer
 from ray.util.annotations import PublicAPI
 from ray.util.ml_utils.dict import merge_dicts
 
@@ -204,7 +205,7 @@ class RLTrainer(BaseTrainer):
                 env: Optional[Union[str, EnvType]] = None,
                 logger_creator: Optional[Callable[[], Logger]] = None,
                 remote_checkpoint_dir: Optional[str] = None,
-                sync_function_tpl: Optional[str] = None,
+                custom_syncer: Optional[Syncer] = None,
             ):
                 resolved_config = merge_dicts(base_config, config or {})
                 param_dict["config"] = resolved_config
@@ -217,7 +218,7 @@ class RLTrainer(BaseTrainer):
                     env=env,
                     logger_creator=logger_creator,
                     remote_checkpoint_dir=remote_checkpoint_dir,
-                    sync_function_tpl=sync_function_tpl,
+                    custom_syncer=custom_syncer,
                 )
 
             def save_checkpoint(self, checkpoint_dir: str):

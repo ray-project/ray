@@ -137,22 +137,6 @@ py_test(
 )
 
 py_test(
-    name = "test_integration_docker",
-    size = "small",
-    srcs = ["tests/test_integration_docker.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "tests_dir_I"],
-)
-
-py_test(
-    name = "test_integration_kubernetes",
-    size = "small",
-    srcs = ["tests/test_integration_kubernetes.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "tests_dir_I"],
-)
-
-py_test(
     name = "test_integration_pytorch_lightning",
     size = "small",
     srcs = ["tests/test_integration_pytorch_lightning.py"],
@@ -281,9 +265,25 @@ py_test(
 )
 
 py_test(
-    name = "test_sync",
+    name = "test_util_file_transfer",
     size = "medium",
-    srcs = ["tests/test_sync.py"],
+    srcs = ["tests/test_util_file_transfer.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_S"],
+)
+
+py_test(
+    name = "test_syncer",
+    size = "medium",
+    srcs = ["tests/test_syncer.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_S"],
+)
+
+py_test(
+    name = "test_syncer_callback",
+    size = "medium",
+    srcs = ["tests/test_syncer_callback.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "tests_dir_S"],
 )

@@ -34,7 +34,7 @@ from ray.tune.result import (
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.stopper import NoopStopper, Stopper
 from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm
-from ray.tune.syncer import CloudSyncer, get_cloud_syncer, SyncConfig
+from ray.tune.syncer import SyncConfig, get_node_to_storage_syncer, Syncer
 from ray.tune.trial import Trial
 from ray.tune.utils import warn_if_slow, flatten_dict
 from ray.tune.utils.log import Verbosity, has_verbosity
@@ -110,8 +110,10 @@ class _ExperimentCheckpointManager:
         checkpoint_period: Union[int, float, str],
         start_time: float,
         session_str: str,
-        syncer: CloudSyncer,
-        sync_trial_checkpoints: bool = True,
+        syncer: Syncer,
+        sync_trial_checkpoints: bool,
+        local_dir: str,
+        remote_dir: str,
     ):
         self._checkpoint_dir = checkpoint_dir
         self._auto_checkpoint_enabled = checkpoint_period == "auto"
@@ -125,6 +127,8 @@ class _ExperimentCheckpointManager:
 
         self._syncer = syncer
         self._sync_trial_checkpoints = sync_trial_checkpoints
+        self._local_dir = local_dir
+        self._remote_dir = remote_dir
 
         self._last_checkpoint_time = 0.0
 
@@ -183,12 +187,22 @@ class _ExperimentCheckpointManager:
         else:
             exclude = ["*/checkpoint_*"]
 
-        if force:
-            # Wait until previous sync command finished
-            self._syncer.wait()
-            self._syncer.sync_up(exclude=exclude)
-        else:
-            self._syncer.sync_up_if_needed(exclude=exclude)
+        if self._syncer:
+            if force:
+                # Wait until previous sync command finished
+                self._syncer.wait()
+                self._syncer.sync_up(
+                    local_dir=self._local_dir,
+                    remote_dir=self._remote_dir,
+                    exclude=exclude,
+                )
+            else:
+                self._syncer.sync_up_if_needed(
+                    local_dir=self._local_dir,
+                    remote_dir=self._remote_dir,
+                    exclude=exclude,
+                )
+
         checkpoint_time_taken = time.monotonic() - checkpoint_time_start
 
         if self._auto_checkpoint_enabled:
@@ -359,9 +373,8 @@ class TrialRunner:
 
         sync_config = sync_config or SyncConfig()
         self._remote_checkpoint_dir = remote_checkpoint_dir
-        self._syncer = get_cloud_syncer(
-            local_checkpoint_dir, remote_checkpoint_dir, sync_config.syncer
-        )
+
+        self._syncer = get_node_to_storage_syncer(sync_config)
         self._stopper = stopper or NoopStopper()
         self._resumed = False
 
@@ -438,6 +451,8 @@ class TrialRunner:
             session_str=self._session_str,
             syncer=self._syncer,
             sync_trial_checkpoints=sync_trial_checkpoints,
+            local_dir=self._local_checkpoint_dir,
+            remote_dir=self._remote_checkpoint_dir,
         )
 
     @property
@@ -471,10 +486,12 @@ class TrialRunner:
         )
         # Not clear if we need this assertion, since we should always have a
         # local checkpoint dir.
-        assert self._local_checkpoint_dir or self._remote_checkpoint_dir
+        assert self._local_checkpoint_dir or (
+            self._remote_checkpoint_dir and self._syncer
+        )
 
         if resume_type == "AUTO":
-            if self._remote_checkpoint_dir:
+            if self._remote_checkpoint_dir and self._syncer:
                 logger.info(
                     f"Trying to find and download experiment checkpoint at "
                     f"{self._remote_checkpoint_dir}"
@@ -482,7 +499,10 @@ class TrialRunner:
                 # Todo: This syncs the entire experiment including trial
                 # checkpoints. We should exclude these in the future.
                 try:
-                    self._syncer.sync_down_if_needed()
+                    self._syncer.sync_down_if_needed(
+                        remote_dir=self._remote_checkpoint_dir,
+                        local_dir=self._local_checkpoint_dir,
+                    )
                     self._syncer.wait()
                 except TuneError as e:
                     logger.warning(
@@ -548,9 +568,10 @@ class TrialRunner:
                 f"({self._remote_checkpoint_dir})"
             ):
                 return False
-            if not self._remote_checkpoint_dir:
+            if not self._remote_checkpoint_dir or not self._syncer:
                 raise ValueError(
-                    "Called resume from remote without remote directory. "
+                    "Called resume from remote without remote directory or "
+                    "without valid syncer. "
                     "Fix this by passing a `SyncConfig` object with "
                     "`upload_dir` set to `tune.run(sync_config=...)`."
                 )
@@ -566,7 +587,11 @@ class TrialRunner:
                 exclude = ["*/checkpoint_*"]
 
             try:
-                self._syncer.sync_down_if_needed(exclude=exclude)
+                self._syncer.sync_down_if_needed(
+                    remote_dir=self._remote_checkpoint_dir,
+                    local_dir=self._local_checkpoint_dir,
+                    exclude=exclude,
+                )
                 self._syncer.wait()
             except TuneError as e:
                 raise RuntimeError(

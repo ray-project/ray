@@ -5,13 +5,14 @@ import os
 
 from ray.tune.callback import Callback
 from ray.tune.progress_reporter import TrialProgressCallback
-from ray.tune.syncer import SyncConfig, detect_cluster_syncer
+from ray.tune.syncer import SyncConfig
 from ray.tune.logger import (
     CSVLoggerCallback,
     CSVLogger,
     JsonLoggerCallback,
     JsonLogger,
     LegacyLoggerCallback,
+    LoggerCallback,
     TBXLoggerCallback,
     TBXLogger,
 )
@@ -69,7 +70,6 @@ def create_default_callbacks(
     # Check if we have a CSV, JSON and TensorboardX logger
     for i, callback in enumerate(callbacks):
         if isinstance(callback, LegacyLoggerCallback):
-            last_logger_index = i
             if CSVLogger in callback.logger_classes:
                 has_csv_logger = True
             if JsonLogger in callback.logger_classes:
@@ -78,16 +78,16 @@ def create_default_callbacks(
                 has_tbx_logger = True
         elif isinstance(callback, CSVLoggerCallback):
             has_csv_logger = True
-            last_logger_index = i
         elif isinstance(callback, JsonLoggerCallback):
             has_json_logger = True
-            last_logger_index = i
         elif isinstance(callback, TBXLoggerCallback):
             has_tbx_logger = True
-            last_logger_index = i
         elif isinstance(callback, SyncerCallback):
             syncer_index = i
             has_syncer_callback = True
+
+        if isinstance(callback, LoggerCallback):
+            last_logger_index = i
 
     # If CSV, JSON or TensorboardX loggers are missing, add
     if os.environ.get("TUNE_DISABLE_AUTO_CALLBACK_LOGGERS", "0") != "1":
@@ -114,11 +114,9 @@ def create_default_callbacks(
         not has_syncer_callback
         and os.environ.get("TUNE_DISABLE_AUTO_CALLBACK_SYNCER", "0") != "1"
     ):
-
-        # Detect Docker and Kubernetes environments
-        _cluster_syncer = detect_cluster_syncer(sync_config)
-
-        syncer_callback = SyncerCallback(sync_function=_cluster_syncer)
+        syncer_callback = SyncerCallback(
+            enabled=bool(sync_config.syncer), sync_period=sync_config.sync_period
+        )
         callbacks.append(syncer_callback)
         syncer_index = len(callbacks) - 1
 
@@ -127,18 +125,9 @@ def create_default_callbacks(
         and last_logger_index is not None
         and syncer_index < last_logger_index
     ):
-        if not has_csv_logger or not has_json_logger or not has_tbx_logger:
-            raise ValueError(
-                "The `SyncerCallback` you passed to `tune.run()` came before "
-                "at least one `LoggerCallback`. Syncing should be done "
-                "after writing logs. Please re-order the callbacks so that "
-                "the `SyncerCallback` comes after any `LoggerCallback`."
-            )
-        else:
-            # If these loggers were automatically created. just re-order
-            # the callbacks
-            syncer_obj = callbacks[syncer_index]
-            callbacks.pop(syncer_index)
-            callbacks.insert(last_logger_index, syncer_obj)
+        # Re-order callbacks
+        syncer_obj = callbacks[syncer_index]
+        callbacks.pop(syncer_index)
+        callbacks.insert(last_logger_index, syncer_obj)
 
     return callbacks

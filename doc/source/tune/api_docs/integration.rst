@@ -8,14 +8,6 @@ External library integrations (tune.integration)
     :depth: 1
 
 
-.. _tune-integration-docker:
-
-Docker (tune.integration.docker)
---------------------------------
-
-.. autofunction:: ray.tune.integration.docker.DockerSyncer
-
-
 .. _tune-integration-keras:
 
 Keras (tune.integration.keras)
@@ -25,12 +17,6 @@ Keras (tune.integration.keras)
 
 .. autoclass:: ray.tune.integration.keras.TuneReportCheckpointCallback
 
-.. _tune-integration-kubernetes:
-
-Kubernetes (tune.integration.kubernetes)
-----------------------------------------
-
-.. autofunction:: ray.tune.integration.kubernetes.NamespacedKubernetesSyncer
 
 .. _tune-integration-mlflow:
 
