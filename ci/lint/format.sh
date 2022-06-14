@@ -324,9 +324,8 @@ format_changed() {
 
     if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.py' "${ISORT_GIT_LS_EXCLUDES[@]}" &>/dev/null; then
         git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' "${ISORT_GIT_LS_EXCLUDES[@]}" | xargs -P 5 \
-        isort
+            isort
     fi
-
 
     if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.py' &>/dev/null; then
         git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
