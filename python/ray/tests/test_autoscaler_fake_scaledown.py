@@ -3,10 +3,10 @@ import re
 
 import numpy as np
 import pytest
-from ray._private.test_utils import wait_for_condition
-from ray.cluster_utils import AutoscalingCluster
 
 import ray
+from ray._private.test_utils import wait_for_condition
+from ray.cluster_utils import AutoscalingCluster
 
 
 # Triggers the addition of a worker node.

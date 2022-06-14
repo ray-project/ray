@@ -4,10 +4,9 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, List, Optional
 
+import ray
 from ray._private.ray_logging import configure_log_file, get_worker_log_file_name
 from ray.workflow.common import WorkflowStatus
-
-import ray
 
 logger = logging.getLogger(__name__)
 

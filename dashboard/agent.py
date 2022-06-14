@@ -7,13 +7,10 @@ import logging.handlers
 import os
 import sys
 
-try:
-    from grpc import aio as aiogrpc
-except ImportError:
-    from grpc.experimental import aio as aiogrpc
-
 # Import psutil after ray so the packaged version is used.
 import psutil
+
+import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
@@ -25,7 +22,11 @@ from ray._private.gcs_utils import GcsClient
 from ray._private.ray_logging import setup_component_logger
 from ray.core.generated import agent_manager_pb2, agent_manager_pb2_grpc
 
-import ray
+try:
+    from grpc import aio as aiogrpc
+except ImportError:
+    from grpc.experimental import aio as aiogrpc
+
 
 # Publishes at most this number of lines of Raylet logs, when the Raylet dies
 # unexpectedly.

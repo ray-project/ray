@@ -7,12 +7,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
+
 from ray._private.ray_constants import DEFAULT_PORT
 from ray.autoscaler._private._kubernetes.node_provider import KubernetesNodeProvider
 from ray.autoscaler._private.providers import _get_default_config
 from ray.autoscaler._private.updater import NodeUpdaterThread
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import NODE_KIND_HEAD, TAG_RAY_NODE_KIND
+from ray.ray_operator.operator import RayCluster  # noqa: E402
 from ray.ray_operator.operator_utils import (
     check_redis_password_not_specified,
     cr_to_config,
@@ -21,7 +23,6 @@ from ray.ray_operator.operator_utils import (
 )
 
 sys.modules["kopf"] = MagicMock()
-from ray.ray_operator.operator import RayCluster  # noqa: E402
 
 """
 Tests that, when the K8s operator launches a cluster, no files are mounted onto

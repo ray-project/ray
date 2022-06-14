@@ -7,6 +7,7 @@ import ray._private.ray_constants as ray_constants
 import ray._private.signature as signature
 import ray._private.worker
 import ray._raylet
+from ray import ActorClassID, Language, cross_language
 from ray._private import ray_option_utils
 from ray._private.client_mode_hook import (
     client_mode_convert_actor,
@@ -32,9 +33,6 @@ from ray.util.tracing.tracing_helper import (
     _tracing_actor_creation,
     _tracing_actor_method_invocation,
 )
-
-from ray import ActorClassID, Language, cross_language
-
 
 logger = logging.getLogger(__name__)
 

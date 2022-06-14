@@ -5,6 +5,9 @@ import time
 
 import pytest
 import requests
+
+import ray
+from mock import patch
 from ray._private import ray_constants
 from ray._private.test_utils import (
     RayTestTimeoutException,
@@ -16,9 +19,6 @@ from ray._private.test_utils import (
 from ray.dashboard.modules.reporter.reporter_agent import ReporterAgent
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.dashboard.utils import Bunch
-
-import ray
-from mock import patch
 
 try:
     import prometheus_client

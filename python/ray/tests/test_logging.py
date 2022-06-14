@@ -9,6 +9,8 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+
+import ray
 from ray._private import ray_constants
 from ray._private.log_monitor import (
     LOG_NAME_UPDATE_INTERVAL_S,
@@ -23,8 +25,6 @@ from ray._private.test_utils import (
     wait_for_condition,
 )
 from ray.cross_language import java_actor_class
-
-import ray
 
 
 def set_logging_config(monkeypatch, max_bytes, backup_count):

@@ -6,6 +6,7 @@ from collections import OrderedDict, defaultdict
 from typing import Any, Dict, List
 
 import botocore
+
 import ray._private.ray_constants as ray_constants
 from ray.autoscaler._private.aws.cloudwatch.cloudwatch_helper import (
     CLOUDWATCH_AGENT_INSTALLED_AMI_TAG,

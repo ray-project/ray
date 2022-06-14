@@ -4,11 +4,11 @@ from contextlib import contextmanager
 from typing import Dict, List, Optional, Set, Tuple, Union
 
 import numpy as np
+
+import ray
 from ray.data._internal.block_list import BlockList
 from ray.data.block import BlockMetadata
 from ray.data.context import DatasetContext
-
-import ray
 
 
 def fmt(seconds: float) -> str:

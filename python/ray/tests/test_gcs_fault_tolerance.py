@@ -3,6 +3,8 @@ from time import sleep
 
 import psutil
 import pytest
+
+import ray
 import ray._private.gcs_utils as gcs_utils
 from ray._private.test_utils import (
     convert_actor_state,
@@ -10,8 +12,6 @@ from ray._private.test_utils import (
     wait_for_condition,
     wait_for_pid_to_exit,
 )
-
-import ray
 
 
 @ray.remote

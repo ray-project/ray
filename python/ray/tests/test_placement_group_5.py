@@ -1,10 +1,10 @@
 import sys
 
 import pytest
-from ray.tests.test_placement_group import are_pairwise_unique
-from ray.util.client.ray_client_helpers import connect_to_client_or_not
 
 import ray
+from ray.tests.test_placement_group import are_pairwise_unique
+from ray.util.client.ray_client_helpers import connect_to_client_or_not
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])

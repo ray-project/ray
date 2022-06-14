@@ -10,6 +10,8 @@ from unittest import mock
 import numpy as np
 import psutil
 import pytest
+
+import ray
 import ray._private.gcs_utils as gcs_utils
 import ray._private.ray_constants as ray_constants
 import ray._private.resource_spec as resource_spec
@@ -19,8 +21,6 @@ import ray.util.accelerators
 from ray._private.test_utils import wait_for_condition
 from ray.dashboard import k8s_utils
 from ray.runtime_env import RuntimeEnv
-
-import ray
 
 logger = logging.getLogger(__name__)
 

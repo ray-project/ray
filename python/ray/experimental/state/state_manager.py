@@ -5,8 +5,10 @@ from functools import wraps
 from typing import Dict, List, Optional
 
 import grpc
-import ray.dashboard.modules.log.log_consts as log_consts
 from grpc.aio._call import UnaryStreamCall
+
+import ray
+import ray.dashboard.modules.log.log_consts as log_consts
 from ray._private import ray_constants
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated.gcs_service_pb2 import (
@@ -39,8 +41,6 @@ from ray.core.generated.runtime_env_agent_pb2 import (
 from ray.core.generated.runtime_env_agent_pb2_grpc import RuntimeEnvServiceStub
 from ray.dashboard.modules.job.common import JobInfo, JobInfoStorageClient
 from ray.experimental.state.exception import DataSourceUnavailable
-
-import ray
 
 logger = logging.getLogger(__name__)
 

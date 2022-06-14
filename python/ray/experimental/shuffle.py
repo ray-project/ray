@@ -26,10 +26,9 @@ This will print out some statistics on the shuffle execution such as:
 import time
 from typing import Any, Callable, Iterable, List, Tuple, Union
 
-from ray.cluster_utils import Cluster
-
 import ray
 from ray import ObjectRef
+from ray.cluster_utils import Cluster
 
 # TODO(ekl) why doesn't TypeVar() deserialize properly in Ray?
 # The type produced by the input reader function.

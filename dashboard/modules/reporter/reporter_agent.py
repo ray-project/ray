@@ -10,6 +10,8 @@ import traceback
 import warnings
 
 import psutil
+
+import ray
 import ray._private.services
 import ray._private.utils
 import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
@@ -20,8 +22,6 @@ from ray._private.ray_constants import DEBUG_AUTOSCALING_STATUS
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
 from ray.dashboard import k8s_utils
 from ray.util.debug import log_once
-
-import ray
 
 logger = logging.getLogger(__name__)
 

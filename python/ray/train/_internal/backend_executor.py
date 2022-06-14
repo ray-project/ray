@@ -3,6 +3,7 @@ import os
 from collections import defaultdict
 from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar
 
+import ray
 from ray._private.ray_constants import env_integer
 from ray.exceptions import RayActorError
 from ray.train._internal.dataset_spec import RayDatasetSpec
@@ -22,8 +23,6 @@ from ray.train.constants import (
     TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
 )
 from ray.util.placement_group import get_current_placement_group, remove_placement_group
-
-import ray
 
 T = TypeVar("T")
 

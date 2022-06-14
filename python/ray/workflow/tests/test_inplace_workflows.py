@@ -1,8 +1,8 @@
 import pytest
-from ray.tests.conftest import *  # noqa
 
 import ray
 from ray import workflow
+from ray.tests.conftest import *  # noqa
 
 
 @ray.remote

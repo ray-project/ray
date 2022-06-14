@@ -6,8 +6,10 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 import gym
 import numpy as np
-import ray.experimental.tf_utils
 import tree  # pip install dm_tree
+
+import ray
+import ray.experimental.tf_utils
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
@@ -29,8 +31,6 @@ from ray.rllib.utils.typing import (
     TensorType,
 )
 from ray.util.debug import log_once
-
-import ray
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation import Episode

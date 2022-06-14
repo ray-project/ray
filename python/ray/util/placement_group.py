@@ -1,12 +1,11 @@
 from typing import Dict, List, Optional, Union
 
+import ray
 from ray._private.client_mode_hook import client_mode_should_convert, client_mode_wrap
 from ray._private.ray_constants import to_memory_units
 from ray._private.utils import hex_to_binary
 from ray._raylet import PlacementGroupID
 from ray.util.annotations import DeveloperAPI, PublicAPI
-
-import ray
 
 bundle_reservation_check = None
 BUNDLE_RESOURCE_LABEL = "bundle"

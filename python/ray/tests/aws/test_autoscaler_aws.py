@@ -2,9 +2,10 @@ import copy
 from unittest.mock import Mock, patch
 
 import pytest
+from click.exceptions import ClickException
+
 import ray.tests.aws.utils.helpers as helpers
 import ray.tests.aws.utils.stubs as stubs
-from click.exceptions import ClickException
 from ray.autoscaler._private.aws.config import (
     DEFAULT_AMI,
     _configure_subnet,

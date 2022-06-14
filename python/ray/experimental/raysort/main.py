@@ -9,6 +9,8 @@ import tempfile
 from typing import Callable, Dict, Iterable, List
 
 import numpy as np
+
+import ray
 from ray.experimental.raysort import constants, logging_utils, sortlib, tracing_utils
 from ray.experimental.raysort.types import (
     BlockInfo,
@@ -18,8 +20,6 @@ from ray.experimental.raysort.types import (
     Path,
     RecordCount,
 )
-
-import ray
 
 Args = argparse.Namespace
 

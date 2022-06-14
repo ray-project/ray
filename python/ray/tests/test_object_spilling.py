@@ -7,6 +7,8 @@ from datetime import datetime, timedelta
 
 import numpy as np
 import pytest
+
+import ray
 from ray._private.external_storage import create_url_with_offset, parse_url_with_offset
 from ray._private.internal_api import memory_summary
 from ray._private.test_utils import wait_for_condition
@@ -16,8 +18,6 @@ from ray.tests.conftest import (
     file_system_object_spilling_config,
     mock_distributed_fs_object_spilling_config,
 )
-
-import ray
 
 
 def run_basic_workload():

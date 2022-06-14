@@ -7,6 +7,7 @@ import time
 
 import numpy as np
 import pytest
+
 import ray._private.profiling as profiling
 import ray.cluster_utils
 from ray._private.test_utils import RayTestTimeoutException, client_test_enabled

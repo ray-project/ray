@@ -18,12 +18,12 @@ import subprocess
 import tempfile
 
 import yaml
+
+import ray
 from ray._private.runtime_env.packaging import (
     get_uri_for_directory,
     upload_package_if_needed,
 )
-
-import ray
 
 
 def load_package(config_path: str) -> "_RuntimePackage":

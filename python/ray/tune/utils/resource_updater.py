@@ -3,11 +3,10 @@ import os
 import time
 from typing import Any, Dict, Optional
 
+import ray
 from ray._private import ray_constants
 from ray._private.resource_spec import NODE_ID_PREFIX
 from ray.tune.resources import Resources
-
-import ray
 
 logger = logging.getLogger(__name__)
 

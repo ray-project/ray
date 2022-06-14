@@ -3,12 +3,14 @@ import logging
 import os
 
 import aiohttp.web
+import yaml
+
+import ray
 import ray._private.services
 import ray._private.utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 import ray.experimental.internal_kv as internal_kv
-import yaml
 from ray._private.gcs_pubsub import GcsAioResourceUsageSubscriber
 from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
 from ray._private.ray_constants import (
@@ -19,8 +21,6 @@ from ray._private.ray_constants import (
 )
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
 from ray.dashboard.datacenter import DataSource
-
-import ray
 
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.ClassMethodRouteTable

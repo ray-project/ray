@@ -3,10 +3,10 @@ import time
 
 import numpy as np
 import pytest
-import ray._private.ray_constants as ray_constants
-from ray._private.test_utils import get_other_nodes
 
 import ray
+import ray._private.ray_constants as ray_constants
+from ray._private.test_utils import get_other_nodes
 
 
 @pytest.mark.skip(reason="No reconstruction for objects placed in plasma yet")

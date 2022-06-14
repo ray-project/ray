@@ -21,6 +21,8 @@ from typing import (
 import gym
 import numpy as np
 import tree  # pip install dm_tree
+
+import ray
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
@@ -45,8 +47,6 @@ from ray.rllib.utils.typing import (
     TensorStructType,
     TensorType,
 )
-
-import ray
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation import Episode  # noqa

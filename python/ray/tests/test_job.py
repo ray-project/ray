@@ -4,6 +4,7 @@ import sys
 import tempfile
 import time
 
+import ray
 import ray._private.gcs_utils as gcs_utils
 from ray._private.test_utils import (
     run_string_as_driver,
@@ -12,8 +13,6 @@ from ray._private.test_utils import (
     wait_for_num_actors,
 )
 from ray.job_config import JobConfig
-
-import ray
 
 
 def test_job_isolation(call_ray_start):

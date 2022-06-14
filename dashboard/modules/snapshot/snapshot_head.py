@@ -5,6 +5,8 @@ import json
 from typing import Any, Dict, List, Optional
 
 import aiohttp.web
+
+import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray._private import ray_constants
@@ -17,8 +19,6 @@ from ray.experimental.internal_kv import (
 )
 from ray.job_submission import JobInfo
 from ray.runtime_env import RuntimeEnv
-
-import ray
 
 routes = dashboard_optional_utils.ClassMethodRouteTable
 

@@ -10,8 +10,10 @@ from time import sleep
 from unittest import mock
 
 import pytest
-import ray._private.ray_constants
 import yaml
+
+import ray
+import ray._private.ray_constants
 from ray._private.gcs_utils import PlacementGroupTableData
 from ray._private.test_utils import same_elements
 from ray.autoscaler._private.autoscaler import AutoscalerSummary
@@ -57,8 +59,6 @@ from ray.tests.test_autoscaler import (
     fill_in_raylet_ids,
     mock_raylet_id,
 )
-
-import ray
 
 GET_DEFAULT_METHOD = "ray.autoscaler._private.util._get_default_config"
 

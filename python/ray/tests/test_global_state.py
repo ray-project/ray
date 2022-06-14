@@ -1,13 +1,9 @@
 import os
+import time
 
 import pytest
 
-try:
-    import pytest_timeout
-except ImportError:
-    pytest_timeout = None
-import time
-
+import ray
 import ray._private.gcs_utils as gcs_utils
 import ray._private.ray_constants
 from ray._private.test_utils import (
@@ -16,7 +12,11 @@ from ray._private.test_utils import (
     wait_for_condition,
 )
 
-import ray
+try:
+    import pytest_timeout
+except ImportError:
+    pytest_timeout = None
+
 
 # TODO(rliaw): The proper way to do this is to have the pytest config setup.
 

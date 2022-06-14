@@ -3,9 +3,10 @@ from traceback import format_exception
 from typing import Optional, Union
 
 import colorama
+import setproctitle
+
 import ray._private.ray_constants as ray_constants
 import ray.cloudpickle as pickle
-import setproctitle
 from ray._raylet import ActorID, TaskID, WorkerID
 from ray.core.generated.common_pb2 import (
     PYTHON,

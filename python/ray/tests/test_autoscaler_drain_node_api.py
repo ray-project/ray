@@ -3,6 +3,8 @@ import platform
 import time
 
 import pytest
+
+import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.test_utils import (
     get_error_message,
@@ -11,8 +13,6 @@ from ray._private.test_utils import (
 )
 from ray.autoscaler._private.fake_multi_node.node_provider import FakeMultiNodeProvider
 from ray.cluster_utils import AutoscalingCluster
-
-import ray
 
 logger = logging.getLogger(__name__)
 

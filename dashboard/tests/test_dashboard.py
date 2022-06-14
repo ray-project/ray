@@ -12,10 +12,12 @@ import time
 import numpy as np
 import psutil
 import pytest
+import requests
+
+import ray
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.modules
 import ray.dashboard.utils as dashboard_utils
-import requests
 from ray._private import ray_constants
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_ERROR,
@@ -32,10 +34,9 @@ from ray._private.test_utils import (
 )
 from ray.dashboard import dashboard
 
-import ray
-
 try:
     import aiohttp.web
+
     import ray.dashboard.optional_utils as dashboard_optional_utils
 
     routes = dashboard_optional_utils.ClassMethodRouteTable

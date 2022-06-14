@@ -6,15 +6,11 @@ from unittest.mock import MagicMock
 
 import pytest
 import yaml
+from click.testing import CliRunner
 
-if sys.version_info > (3, 7, 0):
-    from unittest.mock import AsyncMock
-else:
-    from asyncmock import AsyncMock
-
+import ray
 import ray._private.ray_constants as ray_constants
 import ray.dashboard.consts as dashboard_consts
-from click.testing import CliRunner
 from ray._private.test_utils import wait_for_condition
 from ray.cluster_utils import cluster_not_supported
 from ray.core.generated.common_pb2 import (
@@ -82,7 +78,11 @@ from ray.experimental.state.state_manager import IdToIpMap, StateDataSourceClien
 from ray.job_submission import JobSubmissionClient
 from ray.runtime_env import RuntimeEnv
 
-import ray
+if sys.version_info > (3, 7, 0):
+    from unittest.mock import AsyncMock
+else:
+    from asyncmock import AsyncMock
+
 
 """
 Unit tests

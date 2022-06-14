@@ -5,11 +5,11 @@ from collections import defaultdict
 
 import numpy as np
 import pytest
+
+import ray
 from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.exceptions import GetTimeoutError
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-
-import ray
 
 if (
     multiprocessing.cpu_count() < 40

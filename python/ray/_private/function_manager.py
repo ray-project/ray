@@ -12,7 +12,9 @@ import traceback
 from collections import defaultdict, namedtuple
 from typing import Optional
 
+import ray
 import ray._private.profiling as profiling
+from ray import cloudpickle as pickle
 from ray._private import ray_constants
 from ray._private.inspect_util import (
     is_class_method,
@@ -26,9 +28,6 @@ from ray._private.utils import (
     format_error_message,
 )
 from ray._raylet import JobID, PythonFunctionDescriptor
-
-import ray
-from ray import cloudpickle as pickle
 
 FunctionExecutionInfo = namedtuple(
     "FunctionExecutionInfo", ["function", "function_name", "max_calls"]

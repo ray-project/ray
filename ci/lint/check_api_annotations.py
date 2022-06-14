@@ -2,9 +2,8 @@
 
 import inspect
 
-from ray.util.annotations import _is_annotated
-
 import ray
+from ray.util.annotations import _is_annotated
 
 IGNORE_PATHS = {
     ".impl.",

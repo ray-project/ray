@@ -5,9 +5,8 @@ import threading
 from logging.handlers import RotatingFileHandler
 from typing import Callable
 
-from ray._private.utils import binary_to_hex
-
 import ray
+from ray._private.utils import binary_to_hex
 
 _default_handler = None
 

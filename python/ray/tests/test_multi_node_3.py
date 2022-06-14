@@ -6,6 +6,8 @@ from pathlib import Path
 
 import psutil
 import pytest
+
+import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.services import REDIS_EXECUTABLE, _start_redis_instance
 from ray._private.test_utils import (
@@ -19,8 +21,6 @@ from ray._private.test_utils import (
     wait_for_children_of_pid_to_exit,
 )
 from ray._private.utils import detect_fate_sharing_support
-
-import ray
 
 
 def test_calling_start_ray_head(call_ray_stop_only):

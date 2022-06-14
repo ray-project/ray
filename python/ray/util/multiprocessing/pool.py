@@ -11,6 +11,9 @@ import time
 from multiprocessing import TimeoutError
 from typing import Any, Callable, Dict, Hashable, Iterable, List, Optional, Tuple
 
+import ray
+from ray.util import log_once
+
 try:
     from joblib._parallel_backends import SafeFunction
     from joblib.parallel import BatchedCalls, parallel_backend
@@ -19,8 +22,6 @@ except ImportError:
     parallel_backend = None
     SafeFunction = None
 
-import ray
-from ray.util import log_once
 
 logger = logging.getLogger(__name__)
 

@@ -12,11 +12,7 @@ from dataclasses import asdict
 from multiprocessing.synchronize import Event
 from typing import Any, Callable, Dict, Optional, Union
 
-try:
-    import prometheus_client
-except ImportError:
-    prometheus_client = None
-
+import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.utils
 from ray._private.gcs_pubsub import GcsPublisher
@@ -42,7 +38,11 @@ from ray.experimental.internal_kv import (
     _internal_kv_put,
 )
 
-import ray
+try:
+    import prometheus_client
+except ImportError:
+    prometheus_client = None
+
 
 logger = logging.getLogger(__name__)
 

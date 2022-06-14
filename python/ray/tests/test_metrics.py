@@ -6,14 +6,14 @@ import grpc
 import psutil  # We must import psutil after ray because we bundle it with ray.
 import pytest
 import requests
+
+import ray
 from ray._private.test_utils import (
     RayTestTimeoutException,
     wait_until_succeeded_without_exception,
 )
 from ray._private.utils import init_grpc_channel
 from ray.core.generated import common_pb2, node_manager_pb2, node_manager_pb2_grpc
-
-import ray
 
 _WIN32 = os.name == "nt"
 

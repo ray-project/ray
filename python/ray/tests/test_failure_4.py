@@ -6,9 +6,12 @@ import grpc
 import numpy as np
 import psutil
 import pytest
+from grpc._channel import _InactiveRpcError
+
+import ray
 import ray._private.ray_constants as ray_constants
 import ray.experimental.internal_kv as internal_kv
-from grpc._channel import _InactiveRpcError
+from ray import NodeID
 from ray._private.test_utils import (
     SignalActor,
     get_error_message,
@@ -24,9 +27,6 @@ from ray.core.generated import (
     node_manager_pb2_grpc,
 )
 from ray.exceptions import LocalRayletDiedError
-
-import ray
-from ray import NodeID
 
 
 def search_raylet(cluster):

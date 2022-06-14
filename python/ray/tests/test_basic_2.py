@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
+
 from ray._private.ray_constants import KV_NAMESPACE_FUNCTION_TABLE
 from ray._private.test_utils import client_test_enabled
 from ray.cluster_utils import Cluster, cluster_not_supported

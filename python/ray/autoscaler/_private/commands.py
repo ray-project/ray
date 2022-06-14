@@ -17,11 +17,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import click
 import yaml
 
-try:  # py3
-    from shlex import quote
-except ImportError:  # py2
-    from pipes import quote
-
+import ray
 import ray._private.services as services
 from ray._private.usage import usage_lib
 from ray._private.worker import global_worker  # type: ignore
@@ -82,7 +78,12 @@ try:  # py3
 except ImportError:  # py2
     from pipes import quote
 
-import ray
+
+try:  # py3
+    from shlex import quote
+except ImportError:  # py2
+    from pipes import quote
+
 
 logger = logging.getLogger(__name__)
 

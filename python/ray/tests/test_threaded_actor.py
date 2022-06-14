@@ -4,10 +4,10 @@ import time
 
 import numpy as np
 import pytest
-import ray._private.test_utils as test_utils
-from ray._private.state import available_resources
 
 import ray
+import ray._private.test_utils as test_utils
+from ray._private.state import available_resources
 
 
 def ensure_cpu_returned(expected_cpus):

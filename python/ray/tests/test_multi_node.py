@@ -4,6 +4,8 @@ import time
 
 import psutil
 import pytest
+
+import ray
 from ray._private import ray_constants
 from ray._private.test_utils import (
     RayTestTimeoutException,
@@ -14,8 +16,6 @@ from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
     wait_for_condition,
 )
-
-import ray
 
 
 @pytest.mark.parametrize(

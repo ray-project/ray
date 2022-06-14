@@ -11,6 +11,8 @@ import jsonschema
 import pytest
 import yaml
 from click.exceptions import ClickException
+
+import mock
 from ray._private.test_utils import load_test_config, recursive_fnmatch
 from ray.autoscaler._private._azure.config import (
     _configure_key_pair as _azure_configure_key_pair,
@@ -26,8 +28,6 @@ from ray.autoscaler._private.util import (
     validate_config,
 )
 from ray.autoscaler.tags import NODE_TYPE_LEGACY_HEAD, NODE_TYPE_LEGACY_WORKER
-
-import mock
 
 RAY_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 CONFIG_PATHS = recursive_fnmatch(os.path.join(RAY_PATH, "autoscaler"), "*.yaml")

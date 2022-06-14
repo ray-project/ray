@@ -2,6 +2,8 @@ import logging
 import time
 
 import pytest
+
+import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.test_utils import (
     SignalActor,
@@ -12,8 +14,6 @@ from ray.autoscaler._private.monitor import Monitor
 from ray.autoscaler.sdk import request_resources
 from ray.cluster_utils import Cluster
 from ray.util.placement_group import placement_group, remove_placement_group
-
-import ray
 
 logger = logging.getLogger(__name__)
 

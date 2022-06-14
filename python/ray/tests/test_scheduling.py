@@ -9,6 +9,8 @@ import unittest
 
 import numpy as np
 import pytest
+
+import ray
 import ray.cluster_utils
 import ray.util.accelerators
 from ray._private.internal_api import memory_summary
@@ -19,8 +21,6 @@ from ray._private.test_utils import (
     object_memory_usage,
     wait_for_condition,
 )
-
-import ray
 
 logger = logging.getLogger(__name__)
 

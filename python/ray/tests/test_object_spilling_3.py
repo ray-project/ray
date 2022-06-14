@@ -10,11 +10,11 @@ from collections import defaultdict
 
 import numpy as np
 import pytest
+
+import ray
 from ray._private.test_utils import wait_for_condition
 from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.tests.test_object_spilling import assert_no_thrashing, is_dir_empty
-
-import ray
 
 
 @pytest.mark.skipif(platform.system() in ["Windows"], reason="Failing on Windows.")

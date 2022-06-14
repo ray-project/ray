@@ -5,9 +5,9 @@ import sys
 
 import grpc
 import pytest
-import ray._private.gcs_utils as gcs_utils
 
 import ray
+import ray._private.gcs_utils as gcs_utils
 
 
 @contextlib.contextmanager

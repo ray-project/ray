@@ -4,11 +4,11 @@ import traceback
 from collections import defaultdict
 
 import grpc
-import ray._private.profiling as profiling
-from ray._private import ray_constants
 
 import ray
+import ray._private.profiling as profiling
 from ray import cloudpickle as pickle
+from ray._private import ray_constants
 
 logger = logging.getLogger(__name__)
 

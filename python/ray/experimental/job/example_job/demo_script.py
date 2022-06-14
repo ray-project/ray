@@ -3,9 +3,8 @@
 import argparse
 import time
 
-import ray.experimental.internal_kv as ray_kv
-
 import ray
+import ray.experimental.internal_kv as ray_kv
 
 
 @ray.remote

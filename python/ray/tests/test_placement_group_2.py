@@ -3,11 +3,7 @@ import time
 
 import pytest
 
-try:
-    import pytest_timeout
-except ImportError:
-    pytest_timeout = None
-
+import ray
 import ray._private.gcs_utils as gcs_utils
 import ray.cluster_utils
 from ray._private.test_utils import (
@@ -23,7 +19,12 @@ from ray._private.test_utils import (
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
 from ray.util.placement_group import get_current_placement_group
 
-import ray
+try:
+    import pytest_timeout
+except ImportError:
+    pytest_timeout = None
+
+
 
 
 @ray.remote

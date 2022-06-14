@@ -12,6 +12,7 @@ from enum import Enum
 from functools import partial
 from typing import Callable, Dict, Iterable, List, Optional, Set, Union
 
+import ray
 from ray.exceptions import GetTimeoutError, RayTaskError
 from ray.tune.error import (
     TuneError,
@@ -26,12 +27,10 @@ from ray.tune.utils import warn_if_slow
 from ray.tune.utils.placement_groups import _PlacementGroupManager, get_tune_pg_prefix
 from ray.tune.utils.resource_updater import _ResourceUpdater
 from ray.tune.utils.trainable import TrainableUtil
+from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
 from ray.util.ml_utils.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 from ray.util.placement_group import PlacementGroup, remove_placement_group
-
-import ray
-from ray.util import log_once
 
 logger = logging.getLogger(__name__)
 

@@ -5,6 +5,8 @@ from unittest.mock import patch
 
 import numpy as np
 import pytest
+
+import ray
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats
@@ -12,8 +14,6 @@ from ray.data.block import BlockAccessor
 from ray.data.dataset import Dataset
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
-
-import ray
 
 
 @ray.remote

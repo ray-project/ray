@@ -7,12 +7,12 @@ import dask.dataframe as dd
 import numpy as np
 import pandas as pd
 import pytest
+
+import ray
 from ray.tests.conftest import *  # noqa: F403, F401
 from ray.util.client.common import ClientObjectRef
 from ray.util.dask import disable_dask_on_ray, enable_dask_on_ray, ray_dask_get
 from ray.util.dask.callbacks import ProgressBarCallback
-
-import ray
 
 
 @pytest.fixture

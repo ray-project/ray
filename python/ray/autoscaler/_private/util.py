@@ -11,6 +11,7 @@ from datetime import datetime
 from numbers import Number, Real
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import ray
 import ray._private.ray_constants
 import ray._private.services as services
 import ray.ray_constants
@@ -20,8 +21,6 @@ from ray.autoscaler._private.docker import validate_docker_config
 from ray.autoscaler._private.local.config import prepare_local
 from ray.autoscaler._private.providers import _get_default_config
 from ray.autoscaler.tags import NODE_TYPE_LEGACY_HEAD, NODE_TYPE_LEGACY_WORKER
-
-import ray
 
 REQUIRED, OPTIONAL = True, False
 

@@ -8,14 +8,14 @@ from unittest.mock import patch
 
 import grpc
 import pytest
+
+import ray
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.util.client.server.proxier as proxier
 from ray._private.ray_constants import REDIS_DEFAULT_PASSWORD
 from ray._private.test_utils import run_string_as_driver
 from ray.cloudpickle.compat import pickle
 from ray.job_config import JobConfig
-
-import ray
 
 
 def start_ray_and_proxy_manager(n_ports=2):

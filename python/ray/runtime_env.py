@@ -5,6 +5,8 @@ from copy import deepcopy
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 from google.protobuf import json_format
+
+import ray
 from ray._private.ray_constants import DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS
 from ray._private.runtime_env.conda import get_uri as get_conda_uri
 from ray._private.runtime_env.pip import get_uri as get_pip_uri
@@ -16,8 +18,6 @@ from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvConfig as ProtoRuntimeEnvConfig,
 )
 from ray.util.annotations import PublicAPI
-
-import ray
 
 logger = logging.getLogger(__name__)
 

@@ -5,6 +5,8 @@ from functools import wraps
 from typing import List, Optional
 
 import grpc
+
+import ray
 from ray._private import ray_constants
 from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
 from ray.core.generated.common_pb2 import ErrorType
@@ -30,8 +32,6 @@ from ray.core.generated.gcs_pb2 import (
     TablePubsub,
     WorkerTableData,
 )
-
-import ray
 
 logger = logging.getLogger(__name__)
 

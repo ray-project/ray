@@ -14,22 +14,23 @@ import traceback
 from collections import namedtuple
 from typing import Any, Callable
 
-import ray.dashboard.consts as dashboard_consts
 from aiohttp.web import Response
-from ray._private.ray_constants import env_bool
 
 import ray
-
-try:
-    create_task = asyncio.create_task
-except AttributeError:
-    create_task = asyncio.ensure_future
+import ray.dashboard.consts as dashboard_consts
+from ray._private.ray_constants import env_bool
 
 # All third-party dependencies that are not included in the minimal Ray
 # installation must be included in this file. This allows us to determine if
 # the agent has the necessary dependencies to be started.
 from ray.dashboard.optional_deps import PathLike, RouteDef, aiohttp, hdrs
 from ray.dashboard.utils import CustomEncoder, to_google_style
+
+try:
+    create_task = asyncio.create_task
+except AttributeError:
+    create_task = asyncio.ensure_future
+
 
 logger = logging.getLogger(__name__)
 

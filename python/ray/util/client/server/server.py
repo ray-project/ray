@@ -14,9 +14,12 @@ from concurrent import futures
 from typing import Any, Callable, Dict, List, Optional, Set, Union
 
 import grpc
+
+import ray
 import ray._private.state
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
+from ray import cloudpickle
 from ray._private import ray_constants
 from ray._private.client_mode_hook import disable_client_hook
 from ray._private.gcs_utils import GcsClient
@@ -37,9 +40,6 @@ from ray.util.client.server.logservicer import LogstreamServicer
 from ray.util.client.server.proxier import serve_proxier
 from ray.util.client.server.server_pickler import dumps_from_server, loads_from_client
 from ray.util.client.server.server_stubs import current_server
-
-import ray
-from ray import cloudpickle
 
 logger = logging.getLogger(__name__)
 

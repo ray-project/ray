@@ -16,6 +16,8 @@ from typing import List, Tuple
 from unittest import mock
 
 import pytest
+
+import ray
 import ray._private.ray_constants as ray_constants
 import ray.util.client.server.server as ray_client_server
 from ray._private.runtime_env.pip import PipProcessor
@@ -33,8 +35,6 @@ from ray._private.test_utils import (
     test_external_redis,
 )
 from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
-
-import ray
 
 
 def get_default_fixure_system_config():

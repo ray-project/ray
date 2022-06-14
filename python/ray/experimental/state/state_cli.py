@@ -3,9 +3,11 @@ from enum import Enum, unique
 from typing import List, Tuple, Union
 
 import click
+import yaml
+
+import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
-import yaml
 from ray._private.gcs_utils import GcsClient, use_gcs_for_bootstrap
 from ray.experimental.state.api import (
     list_actors,
@@ -17,8 +19,6 @@ from ray.experimental.state.api import (
     list_tasks,
     list_workers,
 )
-
-import ray
 
 
 @unique

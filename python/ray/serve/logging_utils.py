@@ -2,9 +2,8 @@ import logging
 import os
 from typing import Optional
 
-from ray.serve.constants import DEBUG_LOG_ENV_VAR, SERVE_LOGGER_NAME
-
 import ray
+from ray.serve.constants import DEBUG_LOG_ENV_VAR, SERVE_LOGGER_NAME
 
 COMPONENT_LOG_FMT = "%(levelname)s %(asctime)s {component_name} {component_id} %(filename)s:%(lineno)d - %(message)s"  # noqa:E501
 LOG_FILE_FMT = "{component_name}_{component_id}.log"

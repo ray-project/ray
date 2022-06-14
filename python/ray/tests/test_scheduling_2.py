@@ -5,6 +5,8 @@ import time
 
 import numpy as np
 import pytest
+
+import ray
 import ray._private.gcs_utils as gcs_utils
 import ray.experimental.internal_kv as internal_kv
 from ray._private.test_utils import make_global_state_accessor, wait_for_condition
@@ -13,8 +15,6 @@ from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     PlacementGroupSchedulingStrategy,
 )
-
-import ray
 
 
 @pytest.mark.skipif(

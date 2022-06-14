@@ -6,12 +6,12 @@ import sys
 import time
 
 import pytest
+
+import ray
 from ray._private.test_utils import (
     run_string_as_driver,
     run_string_as_driver_nonblocking,
 )
-
-import ray
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")

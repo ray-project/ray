@@ -12,6 +12,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Union
 
+import ray
 import ray.cloudpickle as pickle
 from ray.air.checkpoint import Checkpoint
 from ray.tune.cloud import TrialCheckpoint
@@ -50,8 +51,6 @@ from ray.tune.utils.util import (
     retry_fn,
 )
 from ray.util.annotations import PublicAPI
-
-import ray
 
 logger = logging.getLogger(__name__)
 

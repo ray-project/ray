@@ -21,13 +21,13 @@ from typing import List, Optional
 # Import psutil and colorama after ray so the packaged version is used.
 import colorama
 import psutil
+
+# Ray modules
+import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.gcs_utils import GcsClient
 from ray._raylet import GcsClientOptions
 from ray.core.generated.common_pb2 import Language
-
-# Ray modules
-import ray
 
 resource = None
 if sys.platform != "win32":

@@ -20,6 +20,10 @@ import gym
 import numpy as np
 import tree  # pip install dm_tree
 from gym.spaces import Discrete, MultiDiscrete, Space
+
+import ray
+from ray import ObjectRef
+from ray import cloudpickle as pickle
 from ray.rllib.env.base_env import BaseEnv, convert_to_base_env
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
@@ -70,10 +74,6 @@ from ray.rllib.utils.typing import (
 )
 from ray.util.debug import disable_log_once_globally, enable_periodic_logging, log_once
 from ray.util.iter import ParallelIteratorWorker
-
-import ray
-from ray import ObjectRef
-from ray import cloudpickle as pickle
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.callbacks import DefaultCallbacks  # noqa

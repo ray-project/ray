@@ -9,6 +9,8 @@ import os
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
+import ray
+from ray import cloudpickle
 from ray._private import signature, storage
 from ray.types import ObjectRef
 from ray.workflow import serialization, serialization_context, workflow_context
@@ -21,9 +23,6 @@ from ray.workflow.common import (
     WorkflowStepRuntimeOptions,
 )
 from ray.workflow.storage import DataLoadError, DataSaveError, KeyNotFoundError
-
-import ray
-from ray import cloudpickle
 
 logger = logging.getLogger(__name__)
 

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple, Union
 
 import numpy as np
+
 from ray.train._internal.results_preprocessors import (
     ExcludedKeysResultsPreprocessor,
     IndexedResultsPreprocessor,

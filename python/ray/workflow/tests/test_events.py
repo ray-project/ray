@@ -3,11 +3,11 @@ import subprocess
 import time
 
 import pytest
-from ray.tests.conftest import *  # noqa
-from ray.workflow.tests import utils
 
 import ray
 from ray import workflow
+from ray.tests.conftest import *  # noqa
+from ray.workflow.tests import utils
 
 
 def test_sleep(workflow_start_regular_shared):

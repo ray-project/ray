@@ -18,6 +18,8 @@ import jsonschema
 import pytest
 import yaml
 from jsonschema.exceptions import ValidationError
+
+import ray
 from ray._private.test_utils import RayTestTimeoutException
 from ray.autoscaler._private import commands
 from ray.autoscaler._private.autoscaler import NonTerminatedNodes, StandardAutoscaler
@@ -48,8 +50,6 @@ from ray.autoscaler.tags import (
     TAG_RAY_USER_NODE_TYPE,
 )
 from ray.core.generated import gcs_service_pb2
-
-import ray
 
 WORKER_FILTER = {TAG_RAY_NODE_KIND: NODE_KIND_WORKER}
 

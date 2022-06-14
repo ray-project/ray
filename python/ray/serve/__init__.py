@@ -1,3 +1,7 @@
+# Mute the warning because Serve sometimes intentionally calls
+# ray.get inside async actors.
+import ray._private.worker
+
 try:
     from ray.serve.api import (
         deployment,
@@ -18,9 +22,6 @@ except ModuleNotFoundError as e:
     )
     raise e
 
-# Mute the warning because Serve sometimes intentionally calls
-# ray.get inside async actors.
-import ray._private.worker
 
 ray._private.worker.blocking_get_inside_async_warned = True
 

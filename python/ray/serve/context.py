@@ -7,13 +7,12 @@ import logging
 from dataclasses import dataclass
 from typing import Callable
 
+import ray
 from ray.exceptions import RayActorError
 from ray.serve.client import ServeControllerClient, get_controller_namespace
 from ray.serve.common import ReplicaTag
 from ray.serve.constants import SERVE_CONTROLLER_NAME, SERVE_NAMESPACE
 from ray.serve.exceptions import RayServeException
-
-import ray
 
 logger = logging.getLogger(__file__)
 
@@ -93,13 +92,8 @@ def _connect() -> ServeControllerClient:
         RayServeException: if there is no running Serve controller actor.
     """
 
-<<<<<<< HEAD
     # Initialize ray if needed.
     ray._private.worker.global_worker.filter_logs_by_job = False
-=======
-    # Initialize Ray if needed.
-    ray.worker.global_worker.filter_logs_by_job = False
->>>>>>> e745cd0e7b7c0dd5dd4c587b7c3b135fdcaa29f9
     if not ray.is_initialized():
         ray.init(namespace=SERVE_NAMESPACE)
 

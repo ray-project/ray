@@ -3,12 +3,12 @@ import time
 
 import pytest
 from filelock import FileLock
-from ray._private.test_utils import run_string_as_driver_nonblocking
-from ray.tests.conftest import *  # noqa
-from ray.workflow import serialization, workflow_storage
 
 import ray
 from ray import workflow
+from ray._private.test_utils import run_string_as_driver_nonblocking
+from ray.tests.conftest import *  # noqa
+from ray.workflow import serialization, workflow_storage
 
 
 @ray.remote

@@ -1,9 +1,8 @@
 from __future__ import absolute_import, division, print_function
 
+from ray import Language
 from ray._raylet import CppFunctionDescriptor, JavaFunctionDescriptor
 from ray.util.annotations import PublicAPI
-
-from ray import Language
 
 __all__ = [
     "java_function",

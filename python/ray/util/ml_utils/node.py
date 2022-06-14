@@ -1,6 +1,5 @@
-from ray.util.annotations import Deprecated
-
 import ray
+from ray.util.annotations import Deprecated
 
 
 @Deprecated

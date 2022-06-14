@@ -5,9 +5,9 @@ import time
 
 import numpy as np
 import pytest
-from ray._private.test_utils import SignalActor, run_string_as_driver_nonblocking
 
 import ray
+from ray._private.test_utils import SignalActor, run_string_as_driver_nonblocking
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 

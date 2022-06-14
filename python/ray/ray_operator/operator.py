@@ -6,8 +6,9 @@ import threading
 from typing import Any, Callable, Dict, Optional, Tuple
 
 import kopf
-import ray.autoscaler._private.monitor as monitor
 import yaml
+
+import ray.autoscaler._private.monitor as monitor
 from ray._private import ray_constants, services
 from ray.autoscaler._private import commands
 from ray.ray_operator import operator_utils

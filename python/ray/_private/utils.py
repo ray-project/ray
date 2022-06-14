@@ -3,6 +3,7 @@ import errno
 import functools
 import hashlib
 import importlib
+import inspect
 import logging
 import multiprocessing
 import os
@@ -14,10 +15,24 @@ import threading
 import time
 import uuid
 import warnings
+from inspect import signature
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, Tuple, Union
 
 import grpc
+import numpy as np
+
+# Import psutil after ray so the packaged version is used.
+import psutil
 from google.protobuf import json_format
+
+import ray
+import ray._private.ray_constants as ray_constants
+from ray._private.tls_utils import load_certs_from_env
+from ray.core.generated.gcs_pb2 import ErrorTableData
+from ray.core.generated.runtime_env_common_pb2 import (
+    RuntimeEnvInfo as ProtoRuntimeEnvInfo,
+)
 
 if TYPE_CHECKING:
     from ray.runtime_env import RuntimeEnv
@@ -27,22 +42,6 @@ try:
 except ImportError:
     from grpc.experimental import aio as aiogrpc
 
-import inspect
-from inspect import signature
-from pathlib import Path
-
-import numpy as np
-
-# Import psutil after ray so the packaged version is used.
-import psutil
-import ray._private.ray_constants as ray_constants
-from ray._private.tls_utils import load_certs_from_env
-from ray.core.generated.gcs_pb2 import ErrorTableData
-from ray.core.generated.runtime_env_common_pb2 import (
-    RuntimeEnvInfo as ProtoRuntimeEnvInfo,
-)
-
-import ray
 
 pwd = None
 if sys.platform != "win32":

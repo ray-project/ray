@@ -3,9 +3,10 @@ import os
 from unittest.mock import patch
 
 import pytest
+
+import ray
 import ray.train as train
 from ray.cluster_utils import Cluster
-
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
 from ray.tests.conftest import pytest_runtest_makereport  # noqa
 from ray.train._internal.backend_executor import (
@@ -24,8 +25,6 @@ from ray.train.constants import (
 from ray.train.tensorflow import TensorflowConfig
 from ray.train.torch import TorchConfig
 from ray.util.placement_group import get_current_placement_group
-
-import ray
 
 
 @pytest.fixture

@@ -12,9 +12,10 @@ from threading import Event, Lock, RLock, Thread
 from typing import Callable, Dict, List, Optional, Tuple
 
 import grpc
-
 # Import psutil after ray so the packaged version is used.
 import psutil
+
+import ray
 import ray.core.generated.agent_manager_pb2 as agent_manager_pb2
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
@@ -37,8 +38,6 @@ from ray.util.client.common import (
     _propagate_error_in_context,
 )
 from ray.util.client.server.dataservicer import _get_reconnecting_from_context
-
-import ray
 
 logger = logging.getLogger(__name__)
 

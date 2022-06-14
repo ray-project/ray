@@ -7,6 +7,8 @@ import time
 
 import numpy as np
 import pytest
+
+import ray
 import ray.cluster_utils
 from ray._private.test_utils import (
     SignalActor,
@@ -14,8 +16,6 @@ from ray._private.test_utils import (
     get_error_message,
     run_string_as_driver,
 )
-
-import ray
 
 logger = logging.getLogger(__name__)
 

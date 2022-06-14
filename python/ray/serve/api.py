@@ -4,6 +4,12 @@ import logging
 from typing import Any, Callable, Dict, Optional, Tuple, Union, overload
 
 from fastapi import APIRouter, FastAPI
+from starlette.requests import Request
+from uvicorn.config import Config
+from uvicorn.lifespan.on import LifespanOn
+
+import ray
+from ray import cloudpickle
 from ray._private.usage import usage_lib
 from ray.experimental.dag import DAGNode
 from ray.serve.application import Application
@@ -42,12 +48,6 @@ from ray.serve.utils import (
     install_serve_encoders_to_fastapi,
 )
 from ray.util.annotations import PublicAPI
-from starlette.requests import Request
-from uvicorn.config import Config
-from uvicorn.lifespan.on import LifespanOn
-
-import ray
-from ray import cloudpickle
 
 logger = logging.getLogger(__file__)
 

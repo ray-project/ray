@@ -6,6 +6,8 @@ import gym
 import numpy as np
 import tree  # pip install dm_tree
 from gym.spaces import Discrete, MultiDiscrete
+
+import ray
 from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.utils.annotations import Deprecated, PublicAPI
 from ray.rllib.utils.framework import try_import_torch
@@ -16,8 +18,6 @@ from ray.rllib.utils.typing import (
     TensorStructType,
     TensorType,
 )
-
-import ray
 
 if TYPE_CHECKING:
     from ray.rllib.policy.torch_policy import TorchPolicy

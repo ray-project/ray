@@ -9,10 +9,10 @@ import weakref
 
 import numpy as np
 import pytest
-import ray.cluster_utils
 from numpy import log
 
 import ray
+import ray.cluster_utils
 
 logger = logging.getLogger(__name__)
 

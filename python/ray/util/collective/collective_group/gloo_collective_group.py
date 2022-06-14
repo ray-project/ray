@@ -6,6 +6,8 @@ import time
 
 import numpy
 import pygloo
+
+import ray
 from ray._private import ray_constants
 from ray.util.collective.collective_group import gloo_util
 from ray.util.collective.collective_group.base_collective_group import BaseGroup
@@ -21,8 +23,6 @@ from ray.util.collective.types import (
     ReduceScatterOptions,
     SendOptions,
 )
-
-import ray
 
 logger = logging.getLogger(__name__)
 

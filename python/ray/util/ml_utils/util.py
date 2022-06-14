@@ -2,6 +2,7 @@ import socket
 from contextlib import closing
 
 import numpy as np
+
 from ray.util.annotations import Deprecated
 
 

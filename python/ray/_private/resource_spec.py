@@ -7,9 +7,8 @@ import sys
 from collections import namedtuple
 from typing import Optional
 
-import ray._private.ray_constants as ray_constants
-
 import ray
+import ray._private.ray_constants as ray_constants
 
 try:
     import GPUtil

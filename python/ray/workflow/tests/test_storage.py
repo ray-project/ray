@@ -2,6 +2,9 @@ import subprocess
 import time
 
 import pytest
+
+import ray
+from ray import workflow
 from ray._private import signature
 from ray.tests.conftest import *  # noqa
 from ray.workflow import workflow_storage
@@ -11,9 +14,6 @@ from ray.workflow.common import (
     WorkflowStepRuntimeOptions,
 )
 from ray.workflow.tests import utils
-
-import ray
-from ray import workflow
 
 
 def some_func(x):

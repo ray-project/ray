@@ -3,9 +3,9 @@ import os
 import sys
 
 import pytest
-from ray._private.test_utils import wait_for_condition
 
 import ray
+from ray._private.test_utils import wait_for_condition
 
 
 def enable_export_loglevel(func):

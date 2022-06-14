@@ -12,6 +12,7 @@ from asyncio.tasks import FIRST_COMPLETED
 from collections import deque
 from typing import Any, Dict, Iterator, Optional, Tuple
 
+import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray.actor import ActorHandle
@@ -24,8 +25,6 @@ from ray.dashboard.modules.job.common import (
 from ray.dashboard.modules.job.utils import file_tail_iterator
 from ray.exceptions import RuntimeEnvSetupError
 from ray.job_submission import JobStatus
-
-import ray
 
 logger = logging.getLogger(__name__)
 

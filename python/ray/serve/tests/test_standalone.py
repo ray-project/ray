@@ -11,8 +11,11 @@ from tempfile import mkstemp
 
 import pydantic
 import pytest
-import ray._private.gcs_utils as gcs_utils
 import requests
+
+import ray
+import ray._private.gcs_utils as gcs_utils
+from ray import serve
 from ray._private.services import new_port
 from ray._private.test_utils import (
     convert_actor_state,
@@ -21,7 +24,11 @@ from ray._private.test_utils import (
 )
 from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.serve.config import HTTPOptions
-from ray.serve.constants import SERVE_NAMESPACE, SERVE_PROXY_NAME, SERVE_ROOT_URL_ENV_KEY
+from ray.serve.constants import (
+    SERVE_NAMESPACE,
+    SERVE_PROXY_NAME,
+    SERVE_ROOT_URL_ENV_KEY,
+)
 from ray.serve.context import get_global_client
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import ActorNameList
@@ -32,9 +39,6 @@ from ray.serve.utils import block_until_http_ready, format_actor_name, get_all_n
 # not in the tree)
 from ray.tests.conftest import maybe_external_redis  # noqa: F401
 from ray.tests.conftest import ray_start_with_dashboard  # noqa: F401
-
-import ray
-from ray import serve
 
 
 @pytest.fixture

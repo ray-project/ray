@@ -5,11 +5,6 @@ import threading
 from concurrent.futures import Future
 from queue import Queue
 
-try:
-    from grpc import aio as aiogrpc
-except ImportError:
-    from grpc.experimental import aio as aiogrpc
-
 import ray._private.services
 import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
@@ -20,6 +15,12 @@ from ray._private.gcs_pubsub import GcsAioErrorSubscriber, GcsAioLogSubscriber
 from ray._private.gcs_utils import GcsClient, check_health
 from ray.dashboard.datacenter import DataOrganizer
 from ray.dashboard.utils import async_loop_forever
+
+try:
+    from grpc import aio as aiogrpc
+except ImportError:
+    from grpc.experimental import aio as aiogrpc
+
 
 logger = logging.getLogger(__name__)
 

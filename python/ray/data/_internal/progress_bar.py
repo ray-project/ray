@@ -1,11 +1,10 @@
 import threading
 from typing import Any, List
 
+import ray
 from ray._private.ray_constants import env_integer
 from ray.types import ObjectRef
 from ray.util.annotations import PublicAPI
-
-import ray
 
 try:
     import tqdm

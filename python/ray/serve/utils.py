@@ -17,15 +17,15 @@ import fastapi.encoders
 import numpy as np
 import pydantic
 import pydantic.json
-import ray.util.serialization_addons
 import requests
+
+import ray
+import ray.util.serialization_addons
 from ray.actor import ActorHandle
 from ray.exceptions import RayTaskError
 from ray.serve.constants import HTTP_PROXY_TIMEOUT
 from ray.serve.http_util import HTTPRequestWrapper, build_starlette_request
 from ray.util.serialization import StandaloneSerializationContext
-
-import ray
 
 try:
     import pandas as pd

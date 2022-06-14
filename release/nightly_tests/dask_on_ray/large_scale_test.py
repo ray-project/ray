@@ -14,10 +14,10 @@ from typing import List, Tuple
 import dask.array
 import numpy as np
 import xarray
-from ray._private.test_utils import monitor_memory_usage
-from ray.util.dask import ray_dask_get
 
 import ray
+from ray._private.test_utils import monitor_memory_usage
+from ray.util.dask import ray_dask_get
 
 """
 We simulate a real-life usecase where we process a time-series

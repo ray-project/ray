@@ -1,10 +1,10 @@
 import time
 
 import pytest
-from ray._private.internal_api import memory_summary
-from ray.tests.conftest import *  # noqa
 
 import ray
+from ray._private.internal_api import memory_summary
+from ray.tests.conftest import *  # noqa
 
 
 def check_no_spill(ctx, pipe, prefetch_blocks: int = 0):

@@ -32,6 +32,9 @@ from typing import (
 )
 
 import colorama
+import setproctitle
+
+import ray
 import ray._private.gcs_utils as gcs_utils
 import ray._private.import_thread as import_thread
 import ray._private.memory_monitor as memory_monitor
@@ -48,7 +51,7 @@ import ray._private.storage as storage
 import ray.cloudpickle as pickle
 import ray.job_config
 import ray.remote_function
-import setproctitle
+from ray import ActorID, JobID, Language, ObjectRef
 from ray._private import ray_option_utils
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.function_manager import FunctionActorManager, make_function_table_key
@@ -75,9 +78,6 @@ from ray.experimental.internal_kv import (
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.debug import log_once
 from ray.util.tracing.tracing_helper import _import_from_string
-
-import ray
-from ray import ActorID, JobID, Language, ObjectRef
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1

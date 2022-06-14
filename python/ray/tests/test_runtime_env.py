@@ -9,6 +9,8 @@ from unittest import mock
 
 import pytest
 import requests
+
+import ray
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.runtime_env.uri_cache import URICache
@@ -29,8 +31,6 @@ from ray._private.utils import (
 )
 from ray.exceptions import RuntimeEnvSetupError
 from ray.runtime_env import RuntimeEnv
-
-import ray
 
 
 def test_get_wheel_filename():

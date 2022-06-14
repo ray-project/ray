@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 import numpy as np
 import pytest
+
 import ray.util.client.server.server as ray_client_server
 from ray._private.client_mode_hook import (
     client_mode_should_convert,

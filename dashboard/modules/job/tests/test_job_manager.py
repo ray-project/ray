@@ -8,14 +8,14 @@ from uuid import uuid4
 
 import psutil
 import pytest
+
+import ray
 from ray._private.ray_constants import RAY_ADDRESS_ENVIRONMENT_VARIABLE
 from ray._private.test_utils import SignalActor, async_wait_for_condition
 from ray.dashboard.modules.job.common import JOB_ID_METADATA_KEY, JOB_NAME_METADATA_KEY
 from ray.dashboard.modules.job.job_manager import JobManager, generate_job_id
 from ray.job_submission import JobStatus
 from ray.tests.conftest import call_ray_start  # noqa: F401
-
-import ray
 
 TEST_NAMESPACE = "jobs_test_namespace"
 

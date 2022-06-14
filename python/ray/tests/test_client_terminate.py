@@ -2,6 +2,7 @@ import sys
 import time
 
 import pytest
+
 from ray._private.test_utils import convert_actor_state, wait_for_condition
 from ray.exceptions import (
     GetTimeoutError,
@@ -22,9 +23,8 @@ def valid_exceptions(use_force):
 
 
 def _all_actors_dead(ray):
-    import ray._private.gcs_utils as gcs_utils
-
     import ray as real_ray
+    import ray._private.gcs_utils as gcs_utils
 
     def _all_actors_dead_internal():
         return all(

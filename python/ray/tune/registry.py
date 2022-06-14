@@ -4,6 +4,7 @@ from functools import partial
 from types import FunctionType
 from typing import Callable, Optional, Type, Union
 
+import ray
 import ray.cloudpickle as pickle
 from ray.experimental.internal_kv import (
     _internal_kv_get,
@@ -11,8 +12,6 @@ from ray.experimental.internal_kv import (
     _internal_kv_put,
 )
 from ray.tune.error import TuneError
-
-import ray
 
 TRAINABLE_CLASS = "trainable_class"
 ENV_CREATOR = "env_creator"

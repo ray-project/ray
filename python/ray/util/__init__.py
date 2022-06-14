@@ -1,7 +1,10 @@
 from typing import List
 
+import ray
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.services import get_node_ip_address
+from ray.util import iter
+from ray.util import rpdb as pdb
 from ray.util.actor_pool import ActorPool
 from ray.util.annotations import PublicAPI
 from ray.util.check_serialize import inspect_serializability
@@ -15,10 +18,6 @@ from ray.util.placement_group import (
     remove_placement_group,
 )
 from ray.util.serialization import deregister_serializer, register_serializer
-
-import ray
-from ray.util import iter
-from ray.util import rpdb as pdb
 
 
 @PublicAPI(stability="beta")

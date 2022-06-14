@@ -13,10 +13,12 @@ from typing import Optional, Set
 
 import click
 import psutil
+import yaml
+
+import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
 import ray._private.utils
-import yaml
 from ray._private.internal_api import memory_summary
 from ray._private.storage import _load_class
 from ray._private.usage import usage_lib
@@ -42,8 +44,6 @@ from ray.autoscaler._private.kuberay.run_autoscaler import run_kuberay_autoscale
 from ray.dashboard.modules.job.cli import job_cli_group
 from ray.experimental.state.state_cli import list_state_cli_group
 from ray.util.annotations import PublicAPI
-
-import ray
 
 logger = logging.getLogger(__name__)
 

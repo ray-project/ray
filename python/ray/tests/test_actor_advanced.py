@@ -1,15 +1,11 @@
 import os
+import sys
+import time
 
 import numpy as np
 import pytest
 
-try:
-    import pytest_timeout
-except ImportError:
-    pytest_timeout = None
-import sys
-import time
-
+import ray
 import ray._private.gcs_utils as gcs_utils
 import ray.cluster_utils
 from ray._private.test_utils import (
@@ -24,7 +20,10 @@ from ray._private.test_utils import (
 )
 from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
 
-import ray
+try:
+    import pytest_timeout
+except ImportError:
+    pytest_timeout = None
 
 
 def test_remote_functions_not_scheduled_on_actors(ray_start_regular):

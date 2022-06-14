@@ -1,3 +1,4 @@
+import ray
 import ray._private.profiling as profiling
 import ray._private.services as services
 import ray._private.utils as utils
@@ -5,8 +6,6 @@ import ray._private.worker
 from ray._private import ray_constants
 from ray._private.state import GlobalState
 from ray._raylet import GcsClientOptions
-
-import ray
 
 __all__ = ["free", "global_gc"]
 MAX_MESSAGE_LENGTH = ray._config.max_grpc_message_size()

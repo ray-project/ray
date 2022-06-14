@@ -7,9 +7,9 @@ import time
 
 import psutil
 import pytest
-from ray._private import ray_constants
 
 import ray
+from ray._private import ray_constants
 
 logger = logging.getLogger(__name__)
 

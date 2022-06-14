@@ -1,3 +1,5 @@
+import collections
+import itertools
 import logging
 import os
 import time
@@ -16,23 +18,9 @@ from typing import (
 )
 from uuid import uuid4
 
-if TYPE_CHECKING:
-    import pyarrow
-    import pandas
-    import mars
-    import modin
-    import dask
-    import pyspark
-    import torch
-    import tensorflow as tf
-    import torch.utils.data
-    from ray.data.dataset_pipeline import DatasetPipeline
-    from ray.data.grouped_dataset import GroupedDataset
-
-import collections
-import itertools
-
 import numpy as np
+
+import ray
 import ray.cloudpickle as pickle
 from ray._private.usage import usage_lib
 from ray.data._internal.block_batching import BatchType, batch_blocks
@@ -86,7 +74,20 @@ from ray.data.row import TableRow
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
-import ray
+if TYPE_CHECKING:
+    import dask
+    import mars
+    import modin
+    import pandas
+    import pyarrow
+    import pyspark
+    import tensorflow as tf
+    import torch
+    import torch.utils.data
+
+    from ray.data.dataset_pipeline import DatasetPipeline
+    from ray.data.grouped_dataset import GroupedDataset
+
 
 logger = logging.getLogger(__name__)
 
@@ -2415,6 +2416,7 @@ class Dataset(Generic[T]):
             A torch IterableDataset.
         """
         import torch
+
         from ray.air._internal.torch_utils import convert_pandas_to_torch_tensor
         from ray.data._internal.torch_iterable_dataset import TorchIterableDataset
 
@@ -2649,6 +2651,7 @@ class Dataset(Generic[T]):
         """
         import dask
         import dask.dataframe as dd
+
         from ray.util.client.common import ClientObjectRef
         from ray.util.dask import ray_dask_get
 
@@ -2684,6 +2687,7 @@ class Dataset(Generic[T]):
         import pyarrow as pa
         from mars.dataframe.datasource.read_raydataset import DataFrameReadRayDataset
         from mars.dataframe.utils import parse_index
+
         from ray.data._internal.pandas_block import PandasBlockSchema
 
         refs = self.to_pandas_refs()

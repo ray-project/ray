@@ -7,9 +7,11 @@ from dataclasses import asdict
 from pathlib import Path
 
 import pytest
+from jsonschema import validate
+
+import ray
 import ray._private.usage.usage_constants as usage_constants
 import ray._private.usage.usage_lib as ray_usage_lib
-from jsonschema import validate
 from ray._private.test_utils import (
     format_web_url,
     wait_for_condition,
@@ -17,8 +19,6 @@ from ray._private.test_utils import (
 )
 from ray._private.usage.usage_lib import ClusterConfigToReport, UsageStatsEnabledness
 from ray.autoscaler._private.cli_logger import cli_logger
-
-import ray
 
 schema = {
     "$schema": "http://json-schema.org/draft-07/schema#",
@@ -592,10 +592,9 @@ provider:
         cluster.add_node(num_cpus=3)
         ray_usage_lib._recorded_library_usages.clear()
         if os.environ.get("RAY_MINIMAL") != "1":
-            from ray.rllib.algorithms.ppo import PPO  # noqa: F401
-
             from ray import train  # noqa: F401
             from ray import tune  # noqa: F401
+            from ray.rllib.algorithms.ppo import PPO  # noqa: F401
 
         ray.init(address=cluster.address)
 
