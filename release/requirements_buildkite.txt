@@ -2,7 +2,7 @@ anyscale
 click
 boto3
 jinja2
-protobuf >= 3.12.0, <= 4.21.1
+protobuf >= 3.12.0
 pydantic
 pyyaml
 requests

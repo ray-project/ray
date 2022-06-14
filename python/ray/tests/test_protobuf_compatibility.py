@@ -3,7 +3,7 @@ import ray
 
 
 def test_protobuf_compatibility(shutdown_only):
-    protobuf_4_21_1 = {"pip": ["protobuf==4.21.1"]}
+    protobuf_4_21_0 = {"pip": ["protobuf==4.21.0"]}
     protobuf_3_12_0 = {"pip": ["protobuf==3.12.0"]}
 
     ray.init()
@@ -18,7 +18,7 @@ def test_protobuf_compatibility(shutdown_only):
 
         return google.protobuf.__version__
 
-    assert "4.21.1" == ray.get(load_ray.options(runtime_env=protobuf_4_21_1).remote())
+    assert "4.21.0" == ray.get(load_ray.options(runtime_env=protobuf_4_21_0).remote())
     assert "3.12.0" == ray.get(load_ray.options(runtime_env=protobuf_3_12_0).remote())
 
 
