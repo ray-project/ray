@@ -35,13 +35,10 @@ def deploy_and_check_config(config: Dict):
 
 def test_put_get(ray_start_stop):
     config1 = {
-        "import_path": "conditional_dag.serve_dag",
-        "runtime_env": {
-            "working_dir": (
-                "https://github.com/ray-project/test_dag/archive/"
-                "76a741f6de31df78411b1f302071cde46f098418.zip"
-            )
-        },
+        "import_path": (
+            "ray.serve.tests.test_config_files.test_dag.conditional_dag.serve_dag"
+        ),
+        "runtime_env": {},
         "deployments": [
             {
                 "name": "Multiplier",
@@ -61,28 +58,7 @@ def test_put_get(ray_start_stop):
     config2["deployments"][1]["ray_actor_options"] = {}
 
     config3 = {
-        "import_path": "dir.subdir.a.add_and_sub.serve_dag",
-        "runtime_env": {
-            "working_dir": (
-                "https://github.com/ray-project/test_dag/archive/"
-                "76a741f6de31df78411b1f302071cde46f098418.zip"
-            )
-        },
-        "deployments": [
-            {
-                "name": "Subtract",
-                "ray_actor_options": {
-                    "runtime_env": {
-                        "py_modules": [
-                            (
-                                "https://github.com/ray-project/test_module/archive/"
-                                "aa6f366f7daa78c98408c27d917a983caa9f888b.zip"
-                            )
-                        ]
-                    }
-                },
-            }
-        ],
+        "import_path": "ray.serve.tests.test_config_files.world.DagNode",
     }
 
     # Ensure the REST API is idempotent
@@ -116,13 +92,7 @@ def test_put_get(ray_start_stop):
         print("Sending PUT request for config3.")
         deploy_and_check_config(config3)
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/", json=["ADD", 1]).json()
-            == 2,
-            timeout=15,
-        )
-        wait_for_condition(
-            lambda: requests.post("http://localhost:8000/", json=["SUB", 1]).json()
-            == -1,
+            lambda: requests.post("http://localhost:8000/").text == "wonderful world",
             timeout=15,
         )
         print("Deployments are live and reachable over HTTP.\n")
@@ -208,13 +178,7 @@ def test_get_status(ray_start_stop):
     print("Status info on fresh Serve application is correct.\n")
 
     config = {
-        "import_path": "basic_dag.DagNode",
-        "runtime_env": {
-            "working_dir": (
-                "https://github.com/ray-project/test_dag/archive/"
-                "76a741f6de31df78411b1f302071cde46f098418.zip"
-            )
-        },
+        "import_path": "ray.serve.tests.test_config_files.world.DagNode",
     }
 
     print("Deploying config.")
@@ -255,13 +219,7 @@ def test_serve_namespace(ray_start_stop):
     """
 
     config = {
-        "import_path": "basic_dag.DagNode",
-        "runtime_env": {
-            "working_dir": (
-                "https://github.com/ray-project/test_dag/archive/"
-                "76a741f6de31df78411b1f302071cde46f098418.zip"
-            )
-        },
+        "import_path": "ray.serve.tests.test_config_files.world.DagNode",
     }
 
     print("Deploying config.")
