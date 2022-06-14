@@ -1,8 +1,8 @@
 import time
 
 import ray
-from ray._private.test_utils import wait_for_condition
 from ray import serve
+from ray._private.test_utils import wait_for_condition
 from ray.serve.autoscaling_metrics import InMemoryMetricsStore
 
 
@@ -36,7 +36,7 @@ class TestInMemoryMetricsStore:
             is None
         )
 
-    def test_compaction(self):
+    def test_compaction_window(self):
         s = InMemoryMetricsStore()
 
         s.add_metrics_point({"m1": 1}, timestamp=1)
@@ -48,6 +48,18 @@ class TestInMemoryMetricsStore:
         s.window_average("m1", window_start_timestamp_s=1.1, do_compact=True)
         # First record should be removed.
         assert s.window_average("m1", window_start_timestamp_s=0, do_compact=False) == 2
+
+    def test_compaction_max(self):
+        s = InMemoryMetricsStore()
+
+        s.add_metrics_point({"m1": 1}, timestamp=2)
+        s.add_metrics_point({"m1": 2}, timestamp=1)
+
+        assert s.max("m1", window_start_timestamp_s=0, do_compact=False) == 2
+
+        s.window_average("m1", window_start_timestamp_s=1.1, do_compact=True)
+
+        assert s.window_average("m1", window_start_timestamp_s=0, do_compact=False) == 1
 
     def test_multiple_metrics(self):
         s = InMemoryMetricsStore()
@@ -99,6 +111,7 @@ def test_e2e(serve_instance):
 
 if __name__ == "__main__":
     import sys
+
     import pytest
 
     sys.exit(pytest.main(["-v", "-s", __file__]))
