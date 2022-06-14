@@ -26,37 +26,45 @@ Preprocessors
 
 .. _air-trainer-ref:
 
-Trainer
-~~~~~~~
+Trainers and Predictors
+~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autoclass:: ray.train.trainer.BaseTrainer
     :members:
 
-.. automodule:: ray.train.xgboost.xgboost_trainer
+.. autoclass:: ray.train.predictor.Predictor
+    :members:
+
+.. autoclass:: ray.train.predictor.DataBatchType
+
+.. autoclass:: ray.train.batch_predictor.BatchPredictor
+    :members:
+
+.. automodule:: ray.train.xgboost
     :members:
     :show-inheritance:
 
-.. automodule:: ray.train.lightgbm.lightgbm_trainer
+.. automodule:: ray.train.lightgbm
     :members:
     :show-inheritance:
 
-.. automodule:: ray.train.tensorflow.tensorflow_trainer
+.. automodule:: ray.train.tensorflow
     :members:
     :show-inheritance:
 
-.. automodule:: ray.train.torch.torch_trainer
+.. automodule:: ray.train.torch
     :members:
     :show-inheritance:
 
-.. automodule:: ray.train.horovod.horovod_trainer
+.. automodule:: ray.train.horovod
     :members:
     :show-inheritance:
 
-.. automodule:: ray.train.huggingface.huggingface_trainer
+.. automodule:: ray.train.huggingface
     :members:
     :show-inheritance:
 
-.. automodule:: ray.train.sklearn.sklearn_trainer
+.. automodule:: ray.train.sklearn
     :members:
     :show-inheritance:
 
@@ -80,41 +88,6 @@ Tuner
 
 .. automodule:: ray.tune.result_grid
     :members:
-
-Predictors
-~~~~~~~~~~
-
-.. autoclass:: ray.train.predictor.Predictor
-    :members:
-
-.. autoclass:: ray.train.predictor.DataBatchType
-
-.. autoclass:: ray.train.batch_predictor.BatchPredictor
-    :members:
-
-.. automodule:: ray.train.xgboost.xgboost_predictor
-    :members:
-    :show-inheritance:
-
-.. automodule:: ray.train.lightgbm.lightgbm_predictor
-    :members:
-    :show-inheritance:
-
-.. automodule:: ray.train.tensorflow.tensorflow_predictor
-    :members:
-    :show-inheritance:
-
-.. automodule:: ray.train.torch.torch_predictor
-    :members:
-    :show-inheritance:
-
-.. automodule:: ray.train.sklearn.sklearn_predictor
-    :members:
-    :show-inheritance:
-
-.. automodule:: ray.train.huggingface.huggingface_predictor
-    :members:
-    :show-inheritance:
 
 .. _air-serve-integration:
 

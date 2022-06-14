@@ -1,15 +1,13 @@
 # Script used for checking changes for incremental testing cases
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 
 import argparse
 import json
 import os
-from pprint import pformat
 import re
 import subprocess
 import sys
+from pprint import pformat
 
 
 # NOTE(simon): do not add type hint here because it's ran using python2 in CI.
