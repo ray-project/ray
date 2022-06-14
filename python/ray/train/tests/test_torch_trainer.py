@@ -2,12 +2,11 @@ import pytest
 import torch
 
 import ray
-from ray.train.torch import TorchPredictor
-from ray.train.torch import TorchTrainer
 from ray import train
 from ray.air.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
 )
+from ray.train.torch import TorchPredictor, TorchTrainer
 
 
 @pytest.fixture
@@ -95,7 +94,8 @@ def test_torch_e2e_state_dict(ray_start_4_cpus):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))
