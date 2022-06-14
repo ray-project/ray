@@ -110,4 +110,5 @@ def test_drain_api(shutdown_only):
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-v", __file__]))
+    from ray._private.test_utils import run_pytest
+    run_pytest(__file__)

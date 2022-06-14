@@ -118,4 +118,5 @@ def test_dying_worker(ray_start_2_cpus):
 if __name__ == "__main__":
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__]))
+    from ray._private.test_utils import run_pytest
+    run_pytest(__file__)

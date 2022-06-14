@@ -92,4 +92,5 @@ def test_bad_resources(ray_start_2_cpus):
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-v", "-x", __file__]))
+    from ray._private.test_utils import run_pytest
+    run_pytest(__file__)

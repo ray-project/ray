@@ -96,4 +96,5 @@ def test_ray_client_init(call_ray_start):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-sv", __file__]))
+    from ray._private.test_utils import run_pytest
+    run_pytest(__file__)

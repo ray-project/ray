@@ -185,4 +185,5 @@ ray.wait([ray.ObjectRef(ray._private.utils.hex_to_binary("{}"))])
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    from ray._private.test_utils import run_pytest
+    run_pytest(__file__)

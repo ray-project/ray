@@ -684,4 +684,5 @@ def test_fractional_resources_handle_correct(ray_start_cluster):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-sv", __file__]))
+    from ray._private.test_utils import run_pytest
+    run_pytest(__file__)

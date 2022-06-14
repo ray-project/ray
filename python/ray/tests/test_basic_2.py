@@ -760,4 +760,5 @@ if __name__ == "__main__":
     import pytest
 
     # Skip test_basic_2_client_mode for now- the test suite is breaking.
-    sys.exit(pytest.main(["-v", __file__]))
+    from ray._private.test_utils import run_pytest
+    run_pytest(__file__)

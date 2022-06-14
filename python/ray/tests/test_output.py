@@ -590,4 +590,5 @@ if __name__ == "__main__":
         ray.init(num_cpus=1, object_store_memory=(100 * MB))
         ray.shutdown()
     else:
-        sys.exit(pytest.main(["-v", __file__]))
+        from ray._private.test_utils import run_pytest
+    run_pytest(__file__)

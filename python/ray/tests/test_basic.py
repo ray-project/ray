@@ -961,4 +961,5 @@ def test_failed_task(ray_start_shared_local_modes, error_pubsub):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    from ray._private.test_utils import run_pytest
+    run_pytest(__file__)

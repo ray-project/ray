@@ -1342,3 +1342,46 @@ def job_hook(**kwargs):
     cmd = " ".join(kwargs["entrypoint"])
     print(f"hook intercepted: {cmd}")
     sys.exit(0)
+
+
+def run_pytest(file_name, server_num=None, port_range=None):
+    import pytest
+    if sys.platform != "linux" or os.environ.get("CI") != "true":
+        return sys.exit(pytest.main(["-vs", file_name]))
+
+    import psutil
+    import socket
+
+    num_cpus = psutil.cpu_count()
+    import docker
+    client = docker.from_env()
+
+    containers = []
+    tx_flags = []
+    for _ in range(server_num):
+        port = None
+        while port is not None:
+            if port_range:
+                with socket.socket() as s:
+                    s.bind(("", 0))
+                    port = s.getsockname()[1]
+            else:
+                port = port_range.pop()
+                try:
+                    s.bind(("", port))
+                except Exception:
+                    port = None
+        container = client.containers.run(
+            "ray_ci:v1",
+            "python -m execnet.script.socketserver",
+            detach=True,
+            ports={"8888/tcp": port})
+        containers.append(container)
+        tx_flags+= ["--tx", f"socket=localhost:{port}"]
+
+    import pytest
+    ret = pytest.main(tx_flags + ["--forked", "-vs", "--rsyncdir", os.path.dirname(file_name), file_name])
+
+    for container in containers:
+        container.kill()
+    sys.exit(ret)

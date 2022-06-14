@@ -803,4 +803,5 @@ def test_usage_file_error_message(monkeypatch, ray_start_cluster):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    from ray._private.test_utils import run_pytest
+    run_pytest(__file__)

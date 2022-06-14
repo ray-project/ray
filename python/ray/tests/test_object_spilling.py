@@ -530,4 +530,5 @@ def test_spill_worker_failure(ray_start_regular):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-sv", __file__]))
+    from ray._private.test_utils import run_pytest
+    run_pytest(__file__)

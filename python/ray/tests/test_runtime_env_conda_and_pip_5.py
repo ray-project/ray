@@ -103,4 +103,5 @@ def test_runtime_env_cache_with_pip_check(start_cluster):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-sv", __file__]))
+    from ray._private.test_utils import run_pytest
+    run_pytest(__file__)

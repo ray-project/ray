@@ -44,4 +44,5 @@ if __name__ == "__main__":
         shutil.copy(checking_typing_good, os.getcwd())
     if os.path.exists(checking_typing_bad):
         shutil.copy(checking_typing_bad, os.getcwd())
-    sys.exit(pytest.main(["-v", __file__]))
+    from ray._private.test_utils import run_pytest
+    run_pytest(__file__)

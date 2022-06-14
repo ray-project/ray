@@ -140,6 +140,7 @@ prepare_docker() {
     tmp_dir="/tmp/prepare_docker_$RANDOM"
     mkdir -p $tmp_dir
     cp "${WORKSPACE_DIR}"/python/dist/*.whl $tmp_dir
+    cp "${WORKSPACE_DIR}"/python/requirements.txt $tmp_dir
     base_image=$(python -c "import sys; print(f'rayproject/ray-deps:nightly-py{sys.version_info[0]}{sys.version_info[1]}-cpu')")
     echo "
     FROM $base_image
@@ -147,8 +148,10 @@ prepare_docker() {
     ENV LC_ALL=C.UTF-8
     ENV LANG=C.UTF-8
     COPY ./*.whl /
+    COPY ./requirements.txt  /
     EXPOSE 8000
     EXPOSE 10001
+    RUN pip install -r /requirements.txt
     RUN pip install ray[serve] --no-index --find-links=/ && pip install redis
     RUN sudo apt update && sudo apt install curl -y
     " > $tmp_dir/Dockerfile

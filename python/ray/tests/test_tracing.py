@@ -225,4 +225,5 @@ def test_deserialization_works_without_opentelemetry(ray_start_regular):
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-v", __file__]))
+    from ray._private.test_utils import run_pytest
+    run_pytest(__file__)

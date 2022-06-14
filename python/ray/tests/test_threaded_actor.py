@@ -292,4 +292,5 @@ def test_threaded_actor_integration_test_stress(
 
 if __name__ == "__main__":
     # Test suite is timing out. Disable on windows for now.
-    sys.exit(pytest.main(["-v", __file__]))
+    from ray._private.test_utils import run_pytest
+    run_pytest(__file__)

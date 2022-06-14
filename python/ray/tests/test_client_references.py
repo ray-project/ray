@@ -326,4 +326,5 @@ if __name__ == "__main__":
     import sys
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__] + sys.argv[1:]))
+    from ray._private.test_utils import run_pytest
+    run_pytest(__file__)

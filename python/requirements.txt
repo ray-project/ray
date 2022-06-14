@@ -76,7 +76,10 @@ pexpect
 Pillow; platform_system != "Windows"
 pygments
 pyspark==3.1.2
-pytest==5.4.3
+pytest==7.0.1
+pytest-xdist<3.0.0
+pytest-forked
+pytest-reporter
 pytest-asyncio==0.16.0
 pytest-rerunfailures
 pytest-sugar
@@ -100,4 +103,5 @@ proxy.py
 myst-parser==0.15.2
 myst-nb==0.13.1
 jupytext==1.13.6
+docker[tls]
 pytest-docker-tools
