@@ -2226,7 +2226,7 @@ def global_gc(address):
     address = services.canonicalize_bootstrap_address(address)
     logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address)
-    ray.internal.internal_api.global_gc()
+    ray._private.internal_api.global_gc()
     print("Triggered gc.collect() on all workers.")
 
 
