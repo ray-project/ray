@@ -128,7 +128,7 @@ if __name__ == "__main__":
     import ray
 
     if args.smoke_test:
-        ray.init(num_cpus=2)
+        ray.init(num_cpus=4)
         train_linear()
     else:
         ray.init(address=args.address)

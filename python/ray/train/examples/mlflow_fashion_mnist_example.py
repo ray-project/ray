@@ -47,7 +47,7 @@ if __name__ == "__main__":
     import ray
 
     if args.smoke_test:
-        ray.init(num_cpus=2)
+        ray.init(num_cpus=4)
         args.num_workers = 2
         args.use_gpu = False
     else:
