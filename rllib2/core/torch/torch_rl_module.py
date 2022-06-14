@@ -71,3 +71,11 @@ class TorchRLModule(nn.Module, ModelIO):
         """Forward-pass during computing loss function"""
         pass
 
+
+class TorchMARLModule(TorchRLModule):
+
+    def forward(self, batch: MultiAgentBatch, explore=False, **kwargs) -> PiDistributionDict:
+        pass
+
+    def forward_train(self, batch: MultiAgentBatch, **kwargs) -> RLModuleOutput:
+        pass

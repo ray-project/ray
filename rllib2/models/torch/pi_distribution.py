@@ -37,3 +37,33 @@ class SquashedDeterministicDist(DeterministicDist):
 
     def target_sample(self, shape):
         return super().target_sample(shape).tanh()
+
+
+class PiDistributionDict(PiDistribution):
+
+    def __init__(self, dist_mapping: Mapping[str, PiDistribution]):
+        self._dist_mapping = dist_mapping
+
+    def behavioral_sample(self, shape):
+        samples = {}
+        for key, dist in self._dist_mapping.items():
+            samples[key] = dist.behavioral_sample(shape)
+        return samples
+
+    def target_sample(self, shape):
+        samples = {}
+        for key, dist in self._dist_mapping.items():
+            samples[key] = dist.target_sample(shape)
+        return samples
+
+    def log_prob(self, value):
+        log_probs = {}
+        for key, dist in self._dist_mapping.items():
+            log_probs[key] = dist.log_prob(value[key])
+        return log_probs
+
+    def entropy(self):
+        entropies = {}
+        for key, dist in self._dist_mapping.items():
+            entropies[key] = dist.entropy()
+        return entropies

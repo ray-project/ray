@@ -47,7 +47,7 @@ class VFunction(WithEncoderMixin, ModelIO):
         super().__init__()
         self.encoder = encoder
 
-    def forward(self, batch: SampleBatch, **kwargs) -> QFunctionOutput:
+    def forward(self, batch: SampleBatch, **kwargs) -> VFunctionOutput:
         """ Runs V(S), V({'obs': s}) -> V(s)
         """
         pass
