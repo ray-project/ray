@@ -60,7 +60,7 @@ def _deregister_parquet_file_fragment_serialization():
 # even with HA configed, hdfs service might be overloaded with parquet file read
 # request expecially when simutaneously running many hyper parameter tuning jobs
 # with ray.data parallelism setting at high value like the default 200
-def deserialize_pieces(
+def _deserialize_pieces(
     serialized_pieces: str,
 ) -> List["pyarrow._dataset.ParquetFileFragment"]:
     from ray import cloudpickle
@@ -174,7 +174,7 @@ class ParquetDatasource(ParquetBaseDatasource):
             # Deserialize after loading the filesystem class.
             try:
                 _register_parquet_file_fragment_serialization()
-                pieces = deserialize_pieces(serialized_pieces)
+                pieces = _deserialize_pieces(serialized_pieces)
             finally:
                 _deregister_parquet_file_fragment_serialization()
 
@@ -290,7 +290,7 @@ def _fetch_metadata_serialization_wrapper(
     # Deserialize after loading the filesystem class.
     try:
         _register_parquet_file_fragment_serialization()
-        pieces = deserialize_pieces(pieces)
+        pieces = _deserialize_pieces(pieces)
     finally:
         _deregister_parquet_file_fragment_serialization()
 
