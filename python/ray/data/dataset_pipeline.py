@@ -23,6 +23,7 @@ from ray.data._internal.pipeline_executor import (
 )
 from ray.data.block import Block
 from ray.data.row import TableRow
+from ray.types import ObjectRef
 from ray.data._internal import progress_bar
 from ray.data._internal.block_batching import batch_blocks, BatchType
 from ray.data._internal.block_list import BlockList
@@ -191,7 +192,7 @@ class DatasetPipeline(Generic[T]):
         )
         self._stats.iter_total_s.add(time.perf_counter() - time_start)
 
-    def _iter_blocks(self) -> Iterator[Block]:
+    def _iter_blocks(self) -> Iterator[ObjectRef[Block]]:
         ds_wait_start = time.perf_counter()
         for ds in self.iter_datasets():
             self._stats.iter_ds_wait_s.add(time.perf_counter() - ds_wait_start)
@@ -287,8 +288,9 @@ class DatasetPipeline(Generic[T]):
 
         return self._split(len(indices) + 1, lambda ds: ds.split_at_indices(indices))
 
-    def _split(self, n: int, splitter: Callable[[Dataset], "DatasetPipeline[T]"]):
-
+    def _split(
+        self, n: int, splitter: Callable[[Dataset], List["Dataset[T]"]]
+    ) -> List["DatasetPipeline[T]"]:
         resources = {}
         if not ray.util.client.ray.is_connected():
             # Pin the coordinator (and any child actors) to the local node to avoid
