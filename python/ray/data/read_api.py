@@ -1,67 +1,54 @@
-import os
 import logging
-from typing import (
-    List,
-    Any,
-    Dict,
-    Union,
-    Optional,
-    Tuple,
-    TypeVar,
-    TYPE_CHECKING,
-)
+import os
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, TypeVar, Union
 
 import numpy as np
 
-if TYPE_CHECKING:
-    import pyarrow
-    import pandas
-    import dask
-    import mars
-    import modin
-    import pyspark
-    import datasets
-
 import ray
-from ray.types import ObjectRef
-from ray.util.annotations import PublicAPI, DeveloperAPI, Deprecated
-from ray.data.block import (
-    Block,
-    BlockAccessor,
-    BlockMetadata,
-    BlockExecStats,
-)
-from ray.data.context import DatasetContext, DEFAULT_SCHEDULING_STRATEGY
-from ray.data.dataset import Dataset
-from ray.data.datasource import (
-    Datasource,
-    RangeDatasource,
-    JSONDatasource,
-    CSVDatasource,
-    ParquetDatasource,
-    BinaryDatasource,
-    NumpyDatasource,
-    ReadTask,
-    BaseFileMetadataProvider,
-    DefaultFileMetadataProvider,
-    FastFileMetadataProvider,
-    ParquetMetadataProvider,
-    DefaultParquetMetadataProvider,
-    PathPartitionFilter,
-    ParquetBaseDatasource,
-)
-from ray.data.datasource.file_based_datasource import (
-    _wrap_arrow_serialization_workaround,
-    _unwrap_arrow_serialization_workaround,
-)
-from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.block_list import BlockList
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import _lazy_import_pyarrow_dataset
+from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
+from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, DatasetContext
+from ray.data.dataset import Dataset
+from ray.data.datasource import (
+    BaseFileMetadataProvider,
+    BinaryDatasource,
+    CSVDatasource,
+    Datasource,
+    DefaultFileMetadataProvider,
+    DefaultParquetMetadataProvider,
+    FastFileMetadataProvider,
+    JSONDatasource,
+    NumpyDatasource,
+    ParquetBaseDatasource,
+    ParquetDatasource,
+    ParquetMetadataProvider,
+    PathPartitionFilter,
+    RangeDatasource,
+    ReadTask,
+)
+from ray.data.datasource.file_based_datasource import (
+    _unwrap_arrow_serialization_workaround,
+    _wrap_arrow_serialization_workaround,
+)
+from ray.types import ObjectRef
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
+
+if TYPE_CHECKING:
+    import dask
+    import datasets
+    import mars
+    import modin
+    import pandas
+    import pyarrow
+    import pyspark
+
 
 T = TypeVar("T")
 
@@ -319,7 +306,8 @@ def read_parquet(
         >>> ray.data.read_parquet(["/path/to/file1", "/path/to/file2"]) # doctest: +SKIP
 
     Args:
-        paths: A single file path or a list of file paths (or directories).
+        paths: A single file path or directory, or a list of file paths. Multiple
+            directories are not supported.
         filesystem: The filesystem implementation to read from.
         columns: A list of column names to read.
         parallelism: The requested parallelism of the read. Parallelism may be
@@ -738,6 +726,7 @@ def from_dask(df: "dask.DataFrame") -> Dataset[ArrowRow]:
         Dataset holding Arrow records read from the DataFrame.
     """
     import dask
+
     from ray.util.dask import ray_dask_get
 
     partitions = df.to_delayed()
