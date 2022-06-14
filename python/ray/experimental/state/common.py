@@ -2,6 +2,7 @@ import logging
 
 from abc import ABC
 from dataclasses import dataclass, fields
+from enum import Enum, unique
 from typing import List, Dict, Union, Tuple, Set, Optional
 
 from ray.dashboard.modules.job.common import JobInfo
@@ -21,14 +22,26 @@ def filter_fields(data: dict, state_dataclass) -> dict:
     return filtered_data
 
 
+@unique
+class StateResource(Enum):
+    ACTORS = "actors"
+    JOBS = "jobs"
+    PLACEMENT_GROUPS = "placement_groups"
+    NODES = "nodes"
+    WORKERS = "workers"
+    TASKS = "tasks"
+    OBJECTS = "objects"
+    RUNTIME_ENVS = "runtime_envs"
+
+
 SupportedFilterType = Union[str, bool, int, float]
 
 
 @dataclass(init=True)
 class ListApiOptions:
-    limit: int
-    timeout: int
-    filters: List[Tuple[str, SupportedFilterType]]
+    limit: int = DEFAULT_LIMIT
+    timeout: int = DEFAULT_RPC_TIMEOUT
+    filters: Optional[List[Tuple[str, SupportedFilterType]]] = None
     # When the request is processed on the server side,
     # we should apply multiplier so that server side can finish
     # processing a request within timeout. Otherwise,

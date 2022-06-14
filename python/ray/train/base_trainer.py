@@ -13,10 +13,7 @@ from ray.air.config import (
     ScalingConfigDataClass,
 )
 from ray.air.result import Result
-from ray.air._internal.config import (
-    ensure_only_allowed_dataclass_keys_updated,
-    ensure_only_allowed_dict_keys_set,
-)
+from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
 from ray.tune import Trainable
 from ray.tune.error import TuneError
 from ray.tune.function_runner import wrap_function
@@ -25,7 +22,7 @@ from ray.util.ml_utils.dict import merge_dicts
 
 if TYPE_CHECKING:
     from ray.data import Dataset
-    from ray.air.preprocessor import Preprocessor
+    from ray.data.preprocessor import Preprocessor
 
 # A type representing either a ray.data.Dataset or a function that returns a
 # ray.data.Dataset and accepts no arguments.
@@ -60,7 +57,7 @@ class BaseTrainer(abc.ABC):
           specified here.
         - ``trainer.preprocess_datasets()``: The provided
           ray.data.Dataset are preprocessed with the provided
-          ray.air.preprocessor.
+          ray.data.Preprocessor.
         - ``trainer.train_loop()``: Executes the main training logic.
         - Calling ``trainer.fit()`` will return a ``ray.result.Result``
           object where you can access metrics from your training run, as well
@@ -203,10 +200,10 @@ class BaseTrainer(abc.ABC):
             )
         # Preprocessor
         if self.preprocessor is not None and not isinstance(
-            self.preprocessor, ray.air.preprocessor.Preprocessor
+            self.preprocessor, ray.data.Preprocessor
         ):
             raise ValueError(
-                f"`preprocessor` should be an instance of `ray.air.Preprocessor`, "
+                f"`preprocessor` should be an instance of `ray.data.Preprocessor`, "
                 f"found {type(self.preprocessor)} with value `{self.preprocessor}`."
             )
 
@@ -225,12 +222,7 @@ class BaseTrainer(abc.ABC):
     ) -> ScalingConfigDataClass:
         """Return scaling config dataclass after validating updated keys."""
         if isinstance(dataclass_or_dict, dict):
-            ensure_only_allowed_dict_keys_set(
-                dataclass_or_dict, cls._scaling_config_allowed_keys
-            )
-            scaling_config_dataclass = ScalingConfigDataClass(**dataclass_or_dict)
-
-            return scaling_config_dataclass
+            dataclass_or_dict = ScalingConfigDataClass(**dataclass_or_dict)
 
         ensure_only_allowed_dataclass_keys_updated(
             dataclass=dataclass_or_dict,

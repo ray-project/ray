@@ -10,7 +10,7 @@ from transformers import (
 from transformers.pipelines import pipeline
 
 import ray
-from ray.air.preprocessor import Preprocessor
+from ray.data.preprocessor import Preprocessor
 from ray.air.predictors.integrations.huggingface import HuggingFacePredictor
 
 prompts = pd.DataFrame(

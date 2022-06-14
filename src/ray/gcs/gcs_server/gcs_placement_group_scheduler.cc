@@ -410,7 +410,9 @@ void GcsPlacementGroupScheduler::OnAllBundleCommitRequestReturned(
   // Add a prepared bundle locations to committed bundle locations.
   committed_bundle_location_index_.AddBundleLocations(placement_group_id,
                                                       prepared_bundle_locations);
-
+  cluster_resource_scheduler_.GetClusterResourceManager()
+      .GetBundleLocationIndex()
+      .AddOrUpdateBundleLocations(prepared_bundle_locations);
   // NOTE: If the placement group scheduling has been cancelled, we just need to destroy
   // the committed bundles. The reason is that only `RemovePlacementGroup` will mark the
   // state of placement group as `CANCELLED` and it will also destroy all prepared and
@@ -487,6 +489,9 @@ GcsPlacementGroupScheduler::GetBundlesOnNode(const NodeID &node_id) {
       bundles_on_node[bundle_placement_group_id].push_back(bundle_index);
     }
     committed_bundle_location_index_.Erase(node_id);
+    cluster_resource_scheduler_.GetClusterResourceManager()
+        .GetBundleLocationIndex()
+        .Erase(node_id);
   }
   return bundles_on_node;
 }
@@ -542,6 +547,9 @@ void GcsPlacementGroupScheduler::Initialize(
     }
     committed_bundle_location_index_.AddBundleLocations(placement_group_id,
                                                         committed_bundle_locations);
+    cluster_resource_scheduler_.GetClusterResourceManager()
+        .GetBundleLocationIndex()
+        .AddOrUpdateBundleLocations(committed_bundle_locations);
   }
 }
 
@@ -581,6 +589,9 @@ void GcsPlacementGroupScheduler::DestroyPlacementGroupCommittedBundleResources(
       CancelResourceReserve(bundle_spec, gcs_node_manager_.GetAliveNode(node_id));
     }
     committed_bundle_location_index_.Erase(placement_group_id);
+    cluster_resource_scheduler_.GetClusterResourceManager()
+        .GetBundleLocationIndex()
+        .Erase(placement_group_id);
   }
 }
 
@@ -605,104 +616,6 @@ void GcsPlacementGroupScheduler::ReturnBundleResources(
     cluster_resource_manager.AddNodeAvailableResources(
         scheduling::NodeID(bundle.second.first.Binary()),
         bundle.second.second->GetRequiredResources());
-  }
-}
-
-void BundleLocationIndex::AddBundleLocations(
-    const PlacementGroupID &placement_group_id,
-    std::shared_ptr<BundleLocations> bundle_locations) {
-  // Update `placement_group_to_bundle_locations_`.
-  // The placement group may be scheduled several times to succeed, so we need to merge
-  // `bundle_locations` instead of covering it directly.
-  auto iter = placement_group_to_bundle_locations_.find(placement_group_id);
-  if (iter == placement_group_to_bundle_locations_.end()) {
-    placement_group_to_bundle_locations_.emplace(placement_group_id, bundle_locations);
-  } else {
-    iter->second->insert(bundle_locations->begin(), bundle_locations->end());
-  }
-
-  // Update `node_to_leased_bundles_`.
-  for (auto iter : *bundle_locations) {
-    const auto &node_id = iter.second.first;
-    if (!node_to_leased_bundles_.contains(node_id)) {
-      node_to_leased_bundles_[node_id] = std::make_shared<BundleLocations>();
-    }
-    node_to_leased_bundles_[node_id]->emplace(iter.first, iter.second);
-  }
-}
-
-bool BundleLocationIndex::Erase(const NodeID &node_id) {
-  const auto leased_bundles_it = node_to_leased_bundles_.find(node_id);
-  if (leased_bundles_it == node_to_leased_bundles_.end()) {
-    return false;
-  }
-
-  const auto &bundle_locations = leased_bundles_it->second;
-  for (const auto &bundle_location : *bundle_locations) {
-    // Remove corresponding placement group id.
-    const auto &bundle_id = bundle_location.first;
-    const auto &bundle_spec = bundle_location.second.second;
-    const auto placement_group_id = bundle_spec->PlacementGroupId();
-    auto placement_group_it =
-        placement_group_to_bundle_locations_.find(placement_group_id);
-    if (placement_group_it != placement_group_to_bundle_locations_.end()) {
-      auto &pg_bundle_locations = placement_group_it->second;
-      auto pg_bundle_it = pg_bundle_locations->find(bundle_id);
-      if (pg_bundle_it != pg_bundle_locations->end()) {
-        pg_bundle_locations->erase(pg_bundle_it);
-      }
-    }
-  }
-  node_to_leased_bundles_.erase(leased_bundles_it);
-  return true;
-}
-
-bool BundleLocationIndex::Erase(const PlacementGroupID &placement_group_id) {
-  auto it = placement_group_to_bundle_locations_.find(placement_group_id);
-  if (it == placement_group_to_bundle_locations_.end()) {
-    return false;
-  }
-
-  const auto &bundle_locations = it->second;
-  // Remove bundles from node_to_leased_bundles_ because bundles are removed now.
-  for (const auto &bundle_location : *bundle_locations) {
-    const auto &bundle_id = bundle_location.first;
-    const auto &node_id = bundle_location.second.first;
-    const auto leased_bundles_it = node_to_leased_bundles_.find(node_id);
-    // node could've been already dead at this point.
-    if (leased_bundles_it != node_to_leased_bundles_.end()) {
-      leased_bundles_it->second->erase(bundle_id);
-    }
-  }
-  placement_group_to_bundle_locations_.erase(it);
-
-  return true;
-}
-
-const absl::optional<std::shared_ptr<BundleLocations> const>
-BundleLocationIndex::GetBundleLocations(const PlacementGroupID &placement_group_id) {
-  auto it = placement_group_to_bundle_locations_.find(placement_group_id);
-  if (it == placement_group_to_bundle_locations_.end()) {
-    return {};
-  }
-  return it->second;
-}
-
-const absl::optional<std::shared_ptr<BundleLocations> const>
-BundleLocationIndex::GetBundleLocationsOnNode(const NodeID &node_id) {
-  auto it = node_to_leased_bundles_.find(node_id);
-  if (it == node_to_leased_bundles_.end()) {
-    return {};
-  }
-  return it->second;
-}
-
-void BundleLocationIndex::AddNodes(
-    const absl::flat_hash_map<NodeID, std::shared_ptr<ray::rpc::GcsNodeInfo>> &nodes) {
-  for (const auto &iter : nodes) {
-    if (!node_to_leased_bundles_.contains(iter.first)) {
-      node_to_leased_bundles_[iter.first] = std::make_shared<BundleLocations>();
-    }
   }
 }
 

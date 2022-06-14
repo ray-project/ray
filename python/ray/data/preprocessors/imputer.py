@@ -6,7 +6,7 @@ import pandas as pd
 
 from ray.data import Dataset
 from ray.data.aggregate import Mean
-from ray.air.preprocessor import Preprocessor
+from ray.data.preprocessor import Preprocessor
 
 
 class SimpleImputer(Preprocessor):
