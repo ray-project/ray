@@ -452,8 +452,13 @@ build_wheels() {
         ls -a /ray-mount
         docker run --rm -v /ray:/ray-mounted ubuntu:focal ls /
         docker run --rm -v /ray:/ray-mounted ubuntu:focal ls /ray-mounted
-        docker run --rm -w /ray -v /ray:/ray "${MOUNT_BAZEL_CACHE[@]}" \
-          quay.io/pypa/manylinux2014_x86_64:2022-06-08-6ab6a6f /ray/python/build-wheel-manylinux2014.sh
+        if [[ "${RAY_DEBUG_BUILD:-}" == "asan" || "${RAY_DEBUG_BUILD:-}" == "tsan" ]]; then
+          docker run --rm -w /ray -v /ray:/ray "${MOUNT_BAZEL_CACHE[@]}" \
+            ubuntu:focal /ray/python/build-wheel-linux-san.sh
+        else
+          docker run --rm -w /ray -v /ray:/ray "${MOUNT_BAZEL_CACHE[@]}" \
+            quay.io/pypa/manylinux2014_x86_64:2022-06-08-6ab6a6f /ray/python/build-wheel-manylinux2014.sh
+        fi
         cp -rT /ray-mount /ray # copy new files back here
         find . | grep whl # testing
 
