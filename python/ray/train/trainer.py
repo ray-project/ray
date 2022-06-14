@@ -174,7 +174,7 @@ class Trainer:
 
         # Incremental unique run ID.
         self._run_id = 0
-        if logdir or logdir == None: 
+        if logdir or logdir is None: 
             self.logdir = self.create_logdir(logdir)
         else: 
             self.logdir = logdir
@@ -251,7 +251,7 @@ class Trainer:
 
     def create_run_dir(self):
         """Create rundir for the particular training run."""
-        if self.latest_run_dir == None: return
+        if self.latest_run_dir is None: return
         self.latest_run_dir.mkdir(parents=True, exist_ok=True)
         logger.info(f"Run results will be logged in: {self.latest_run_dir}")
 
@@ -445,7 +445,7 @@ class Trainer:
 
         Returns ``None`` if ``run()`` has not been called.
         """
-        if self.logdir == False: return None
+        if self.logdir is False: return None
         if self._run_id > 0:
             run_dir = Path(f"run_{self._run_id:03d}")
             return construct_path(run_dir, self.logdir)
