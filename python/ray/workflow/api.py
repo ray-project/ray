@@ -1,5 +1,6 @@
 import logging
-from typing import Dict, Set, List, Tuple, Union, Optional, Any
+import types
+from typing import Dict, Set, List, Tuple, Union, Optional, Any, TYPE_CHECKING
 import time
 
 import ray
@@ -23,6 +24,8 @@ from ray.workflow.common import (
     asyncio_run,
 )
 from ray.workflow import serialization
+from ray.workflow import workflow_context
+from ray.workflow import workflow_event_coordinator
 from ray.workflow.event_listener import EventListener, EventListenerType, TimerListener
 from ray.workflow import workflow_access
 from ray.workflow.workflow_storage import get_workflow_storage
@@ -112,7 +115,6 @@ def step(*args, **kwargs):
         ray_options=ray_options,
     )
     return make_step_decorator(options, name, metadata)
-
 
 @PublicAPI(stability="beta")
 def resume(workflow_id: str) -> ray.ObjectRef:
@@ -303,6 +305,46 @@ def wait_for_event(
         event_listener_type, get_message.bind(event_listener_type, *args, **kwargs)
     )
 
+@PublicAPI(stability="beta")
+def wait_for_event_revised(
+    event_listener_type: EventListenerType, *args, **kwargs
+) -> "DAGNode[Event]":
+    # revised to support event step suspend
+    if not issubclass(event_listener_type, EventListener):
+        raise TypeError(
+            f"Event listener type is {event_listener_type.__name__}"
+            ", which is not a subclass of workflow.EventListener"
+        )
+
+    @ray.remote
+    def set_step_type(event_listener_type, *args, **kwargs):
+        # transfer the event step ownership to the EventCoordinatorActor
+        job_id = ray.get_runtime_context().job_id.hex()
+        context = workflow_context.get_workflow_step_context()
+        workflow_id = context.workflow_id
+        outer_most_step_id = context.outer_most_step_id
+        step_id = workflow_context.get_current_step_id()
+        event_coordinator = workflow_event_coordinator.get_or_create_event_coordinator_actor()
+        event_coordinator.transferEventStepOwnership.remote(
+            job_id,
+            workflow_id,
+            step_id,
+            outer_most_step_id,
+            event_listener_type,
+            *args,
+            **kwargs
+        )
+
+    w = set_step_type.bind(event_listener_type, *args, **kwargs)
+
+    from ray.workflow.common import WORKFLOW_OPTIONS
+
+    bound_options = w._bound_options.copy()
+    workflow_options = bound_options.pop("_metadata", {}).get(WORKFLOW_OPTIONS, {})
+    workflow_options['step_is_event'] = True
+    w._bound_options['_metadata']={WORKFLOW_OPTIONS:workflow_options}
+
+    return w
 
 @PublicAPI(stability="beta")
 def sleep(duration: float) -> "DAGNode[Event]":
@@ -475,10 +517,10 @@ def wait(
     This method will issue a warning if it's running inside an async context.
 
     Args:
-        workflows: List of workflows that may
+        workflows (List[Workflow]): List of workflows that may
             or may not be ready. Note that these workflows must be unique.
-        num_returns: The number of workflows that should be returned.
-        timeout: The maximum amount of time in seconds to wait before
+        num_returns (int): The number of workflows that should be returned.
+        timeout (float): The maximum amount of time in seconds to wait before
             returning.
 
     Returns:
@@ -580,6 +622,7 @@ class options:
             "max_retries",
             "allow_inplace",
             "checkpoint",
+            "step_type",
         }
         invalid_keywords = set(workflow_options.keys()) - valid_options
         if invalid_keywords:
@@ -608,6 +651,7 @@ __all__ = (
     "step",
     "resume",
     "get_output",
+    "get_actor",
     "resume_all",
     "get_status",
     "get_metadata",

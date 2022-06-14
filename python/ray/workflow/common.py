@@ -25,7 +25,13 @@ MANAGEMENT_ACTOR_NAMESPACE = "workflow"
 MANAGEMENT_ACTOR_NAME = "WorkflowManagementActor"
 STORAGE_ACTOR_NAME = "StorageManagementActor"
 WORKFLOW_OPTIONS = "workflow.io/options"
+# introduced for event coordination
+EVENT_COORDINATOR_NAMESPACE = "workflow"
+EVENT_COORDINATOR_NAME = "EventCoordinatorActor"
 
+#Special token to return in Part 1 of _workflow_step_executor, when the step is an event step,
+#or a step which has at least one downstream steps that is an event step.
+EventToken = "EVENT_TOKEN"
 
 def asyncio_run(coro):
     try:
@@ -154,6 +160,8 @@ class WorkflowStatus(str, Enum):
     # The workflow failed with a system error, i.e., ray shutdown.
     # It can be resumed.
     RESUMABLE = "RESUMABLE"
+    # This workflow is waiting for at least one external event step
+    SUSPENDED = "SUSPENDED"
 
 
 @unique
@@ -162,7 +170,8 @@ class StepType(str, Enum):
 
     FUNCTION = "FUNCTION"
     WAIT = "WAIT"
-
+    # This workflow step waits for one external event
+    EVENT = "EVENT"
 
 CheckpointModeType = bool
 
@@ -318,7 +327,6 @@ class WorkflowExecutionResult:
 
     # Part of result to persist in a storage and pass to the next step.
     output: "WorkflowStaticRef"
-
 
 @dataclass
 class WorkflowMetaData:

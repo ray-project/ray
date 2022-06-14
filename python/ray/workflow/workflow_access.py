@@ -91,14 +91,23 @@ def _resolve_workflow_output(
                 )
         raise WorkflowExecutionError(workflow_id) from e
     if workflow_id is not None:
-        try:
-            ray.get(actor.report_success.remote(workflow_id))
-        except Exception:
-            # the actor does not exist
-            logger.warning(
-                "Could not inform the workflow management actor "
-                "about the success of the workflow."
-            )
+        if output == common.EventToken:
+            try:
+                ray.get(actor.report_suspension.remote(workflow_id))
+            except Exception:
+                logger.warning(
+                    "Could not inform the workflow management actor "
+                    "about the suspension of the workflow."
+                )
+        else:
+            try:
+                ray.get(actor.report_success.remote(workflow_id))
+            except Exception:
+                # the actor does not exist
+                logger.warning(
+                    "Could not inform the workflow management actor "
+                    "about the success of the workflow."
+                )
     return output
 
 
@@ -117,6 +126,7 @@ def cancel_job(obj: ray.ObjectRef):
 @dataclass
 class LatestWorkflowOutput:
     output: WorkflowStaticRef
+    status: "WorkflowStatus"
     workflow_id: str
     step_id: "StepID"
 
@@ -138,7 +148,7 @@ class WorkflowManagementActor:
 
     def get_cached_step_output(
         self, workflow_id: str, step_id: "StepID"
-    ) -> ray.ObjectRef:
+    ) -> Tuple["WorkflowStaticRef", "WorkflowStatus"]:
         """Get the cached result of a step.
 
         Args:
@@ -151,12 +161,14 @@ class WorkflowManagementActor:
         """
         try:
             output = self._step_output_cache[(workflow_id, step_id)].output
-            return output
+            status = self._step_output_cache[(workflow_id, step_id)].status
+            return output, status
         except Exception:
-            return None
+            return None, None
 
     def run_or_resume(
-        self, job_id: str, workflow_id: str, ignore_existing: bool = False
+        self, job_id: str, workflow_id: str, ignore_existing: bool = False,
+        is_eca_initiated: Optional[bool] = False
     ) -> "WorkflowExecutionResult":
         """Run or resume a workflow.
 
@@ -182,13 +194,19 @@ class WorkflowManagementActor:
             current_output = self._workflow_outputs[workflow_id].output
         except KeyError:
             current_output = None
+
+        # check if this is called by the EventCoordinatorActor
+        if is_eca_initiated:
+            current_output = None
+
         result = recovery.resume_workflow_step(
             job_id, workflow_id, step_id, current_output
         )
-        latest_output = LatestWorkflowOutput(result.output, workflow_id, step_id)
+
+        latest_output = LatestWorkflowOutput(result.output, common.WorkflowStatus.RUNNING, workflow_id, step_id)
         self._workflow_outputs[workflow_id] = latest_output
         logger.info(f"run_or_resume: {workflow_id}, {step_id}," f"{result.output.ref}")
-        self._step_output_cache[(workflow_id, step_id)] = latest_output
+        # self._step_output_cache[(workflow_id, step_id)] = latest_output
 
         self._update_workflow_status(workflow_id, common.WorkflowStatus.RUNNING)
 
@@ -219,14 +237,16 @@ class WorkflowManagementActor:
     ):
         # Note: For virtual actor, we could add more steps even if
         # the workflow finishes.
-
         self._step_status.setdefault(workflow_id, {})
         if status == common.WorkflowStatus.SUCCESSFUL:
             self._step_status[workflow_id].pop(step_id, None)
         else:
             self._step_status.setdefault(workflow_id, {})[step_id] = status
         remaining = len(self._step_status[workflow_id])
-        if status != common.WorkflowStatus.RUNNING:
+        if status == common.WorkflowStatus.RUNNING or status == common.WorkflowStatus.SUSPENDED:
+            latest_output = LatestWorkflowOutput(outputs[0], status, workflow_id, step_id)
+            self._step_output_cache[(workflow_id, step_id)] = latest_output
+        else:
             self._step_output_cache.pop((workflow_id, step_id), None)
 
         if status != common.WorkflowStatus.FAILED and remaining != 0:
@@ -287,7 +307,7 @@ class WorkflowManagementActor:
             step_id = wf_store.get_entrypoint_step_id()
         else:
             step_id = name
-            output = self.get_cached_step_output(workflow_id, step_id)
+            output, _ = self.get_cached_step_output(workflow_id, step_id)
             if output is not None:
                 return WorkflowStaticRef.from_output(step_id, output)
 
@@ -324,6 +344,14 @@ class WorkflowManagementActor:
         """
         logger.error(f"Workflow job [id={workflow_id}] failed.")
         self._workflow_outputs.pop(workflow_id, None)
+
+    def report_suspension(self, workflow_id: str) -> None:
+        """Report the suspendsion of a workflow_id.
+
+        Args:
+            workflow_id: The ID of the workflow.
+        """
+        logger.info(f"Workflow job [id={workflow_id}] suspended.")
 
     def report_success(self, workflow_id: str) -> None:
         """Report the success of a workflow_id.

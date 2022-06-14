@@ -16,7 +16,10 @@ from ray.workflow import workflow_storage
 from ray.workflow.workflow_access import (
     get_or_create_management_actor,
     get_management_actor,
+    WorkflowExecutionError,
 )
+from ray.workflow.workflow_event_coordinator import get_or_create_event_coordinator_actor
+
 from ray.workflow.common import (
     Workflow,
     WorkflowStatus,
@@ -26,6 +29,7 @@ from ray.workflow.common import (
     WorkflowData,
     WorkflowStaticRef,
     CheckpointMode,
+    EventToken,
 )
 
 if TYPE_CHECKING:
@@ -62,7 +66,7 @@ def _resolve_dynamic_workflow_refs(job_id, workflow_refs: "List[WorkflowRef]"):
     workflow_id = context.workflow_id
     workflow_ref_mapping = []
     for workflow_ref in workflow_refs:
-        step_ref = ray.get(
+        step_ref, _ = ray.get(
             workflow_manager.get_cached_step_output.remote(
                 workflow_id, workflow_ref.step_id
             )
@@ -92,6 +96,14 @@ def _resolve_dynamic_workflow_refs(job_id, workflow_refs: "List[WorkflowRef]"):
         workflow_ref_mapping.append(output)
     return workflow_ref_mapping
 
+def downstream_workflow_found_event_step(w):
+    if len(w.data.inputs.workflows) > 0:
+        for d_w in w.data.inputs.workflows:
+            if downstream_workflow_found_event_step(d_w):
+                return True
+    if w.data.step_options.step_type == StepType.EVENT:
+        return True
+    return False
 
 def _execute_workflow(job_id, workflow: "Workflow") -> "WorkflowExecutionResult":
     """Internal function of workflow execution."""
@@ -126,6 +138,16 @@ def _execute_workflow(job_id, workflow: "Workflow") -> "WorkflowExecutionResult"
     # further apply them to their inputs, this would eventually
     # apply to all steps except the output step. This avoids
     # detaching the output step.
+
+    # check and suspend upstream steps if an event step in its downstreams
+    downstream_event_found = False
+    if workflow.data.step_options.step_type != StepType.EVENT:
+        if downstream_workflow_found_event_step(workflow):
+            _record_step_status(workflow.step_id, WorkflowStatus.SUSPENDED, \
+                [WorkflowStaticRef.from_output(workflow.step_id, ray.put(EventToken))])
+            downstream_event_found = True
+
+
     workflow_outputs = []
     with workflow_context.fork_workflow_step_context(
         outer_most_step_id=None,
@@ -144,6 +166,15 @@ def _execute_workflow(job_id, workflow: "Workflow") -> "WorkflowExecutionResult"
                 )
             workflow_outputs.append(static_ref)
 
+    #TODO confirm WorkflowStaticRef
+    if downstream_event_found:
+        workflow_static_ref = WorkflowStaticRef.from_output(
+            workflow.step_id,
+            ray.put(EventToken)
+        )
+        result = WorkflowExecutionResult(workflow_static_ref)
+        return result
+
     baked_inputs = _BakedWorkflowInputs(
         args=inputs.args,
         workflow_outputs=workflow_outputs,
@@ -158,7 +189,8 @@ def _execute_workflow(job_id, workflow: "Workflow") -> "WorkflowExecutionResult"
         # to get the ObjectRef of the output before execution.
         # Here we use a dummy ObjectRef, because _record_step_status does not
         # even use it (?!).
-        _record_step_status(workflow.step_id, WorkflowStatus.RUNNING, [ray.put(None)])
+        wf_static_ref = WorkflowStaticRef.from_output(workflow.step_id, ray.put(None))
+        _record_step_status(workflow.step_id, WorkflowStatus.RUNNING, [wf_static_ref])
         # Note: we need to be careful about workflow context when
         # calling the executor directly.
         # TODO(suquark): We still have recursive Python calls.
@@ -183,14 +215,26 @@ def _execute_workflow(job_id, workflow: "Workflow") -> "WorkflowExecutionResult"
             executor = _workflow_step_executor_remote.options(**ray_options).remote
 
     # Stage 3: execution
-    output = executor(
-        workflow_data.func_body,
-        step_context,
-        job_id,
-        workflow.step_id,
-        baked_inputs,
-        workflow_data.step_options,
-    )
+    # TODO: change get_cached_step_output and LatestWorkflowOutput in workflow_access.py
+    # savedp, savedv should have type WorkflowStaticRef
+    # saveds should have type WorkflowStatus
+
+    workflow_manager = get_or_create_management_actor()
+    workflow_id = workflow_context.get_current_workflow_id()
+    saved_output, saved_status = ray.get(workflow_manager.get_cached_step_output.remote(workflow_id, workflow.step_id))
+    relaunched = False
+    if saved_output is None or (saved_status == WorkflowStatus.SUSPENDED and step_options.step_type != StepType.EVENT):
+        output = executor(
+            workflow_data.func_body,
+            step_context,
+            job_id,
+            workflow.step_id,
+            baked_inputs,
+            workflow_data.step_options,
+        )
+        relaunched = True
+    else:
+        output = saved_output
 
     # Stage 4: post processing outputs
     if not step_options.allow_inplace:
@@ -199,7 +243,8 @@ def _execute_workflow(job_id, workflow: "Workflow") -> "WorkflowExecutionResult"
         # confusion during development.
 
         # convert into workflow static ref for step status record.
-        _record_step_status(workflow.step_id, WorkflowStatus.RUNNING, [None])
+        if relaunched:
+            _record_step_status(workflow.step_id, WorkflowStatus.RUNNING, [output])
 
     result = WorkflowExecutionResult(output)
     workflow._result = result
@@ -350,7 +395,7 @@ def _wrap_run(
             )
     step_type = runtime_options.step_type
     if runtime_options.catch_exceptions:
-        if step_type == StepType.FUNCTION:
+        if step_type == StepType.FUNCTION or step_type == StepType.EVENT:
             if isinstance(result, Workflow):
                 # When it returns a nested workflow, catch_exception
                 # should be passed recursively.
@@ -367,7 +412,7 @@ def _wrap_run(
             _record_step_status(workflow_context.get_current_step_id(), status)
             logger.info(get_step_status_info(status))
             raise exception
-        if step_type == StepType.FUNCTION:
+        if step_type == StepType.FUNCTION or step_type == StepType.EVENT:
             output = result
         else:
             raise ValueError(f"Unknown StepType '{step_type}'")
@@ -423,6 +468,14 @@ def _workflow_step_executor(
     # Part 4: save outputs
     # TODO(suquark): Validate checkpoint options before
     # commit the step.
+    if step_type == StepType.EVENT:
+        wf_static_ref = WorkflowStaticRef.from_output(step_id, ray.put(EventToken))
+        _record_step_status(
+            step_id,
+            WorkflowStatus.SUSPENDED,
+            [wf_static_ref]
+        )
+        return wf_static_ref
     store = workflow_storage.get_workflow_storage()
     if CheckpointMode(runtime_options.checkpoint) == CheckpointMode.SYNC:
         commit_step(
@@ -651,7 +704,7 @@ class _BakedWorkflowInputs:
 def _record_step_status(
     step_id: "StepID",
     status: "WorkflowStatus",
-    outputs: Optional[List["ObjectRef"]] = None,
+    outputs: Optional[List["WorkflowStaticRef"]] = None,
 ) -> None:
     if outputs is None:
         outputs = []
