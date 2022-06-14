@@ -1,26 +1,24 @@
-import os
-import pytest
-import sys
-import ray
-import pathlib
 import json
+import os
+import pathlib
+import sys
 import time
-
 from dataclasses import asdict
 from pathlib import Path
+
+import pytest
 from jsonschema import validate
 
-import ray._private.usage.usage_lib as ray_usage_lib
+import ray
 import ray._private.usage.usage_constants as usage_constants
-from ray._private.usage.usage_lib import ClusterConfigToReport
-from ray._private.usage.usage_lib import UsageStatsEnabledness
-from ray.autoscaler._private.cli_logger import cli_logger
-
+import ray._private.usage.usage_lib as ray_usage_lib
 from ray._private.test_utils import (
     format_web_url,
     wait_for_condition,
     wait_until_server_available,
 )
+from ray._private.usage.usage_lib import ClusterConfigToReport, UsageStatsEnabledness
+from ray.autoscaler._private.cli_logger import cli_logger
 
 schema = {
     "$schema": "http://json-schema.org/draft-07/schema#",
@@ -594,9 +592,9 @@ provider:
         cluster.add_node(num_cpus=3)
         ray_usage_lib._recorded_library_usages.clear()
         if os.environ.get("RAY_MINIMAL") != "1":
+            from ray import train  # noqa: F401
             from ray import tune  # noqa: F401
             from ray.rllib.algorithms.ppo import PPO  # noqa: F401
-            from ray import train  # noqa: F401
 
         ray.init(address=cluster.address)
 
@@ -800,6 +798,55 @@ def test_usage_file_error_message(monkeypatch, ray_start_cluster):
             read_file(temp_dir, "usage_stats")["total_failed"]
             raise
         assert read_file(temp_dir, "usage_stats")["total_success"] == 0
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Test depends on runtime env feature not supported on Windows.",
+)
+def test_lib_used_from_workers(monkeypatch, ray_start_cluster):
+    """
+    Test library usage is correctly reported when they are imported from
+    workers.
+    """
+    with monkeypatch.context() as m:
+        m.setenv("RAY_USAGE_STATS_ENABLED", "1")
+        m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000/usage")
+        m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=3)
+        ray_usage_lib._recorded_library_usages.clear()
+
+        ray.init(address=cluster.address)
+
+        @ray.remote
+        class ActorWithLibImport:
+            def __init__(self):
+                from ray import train  # noqa: F401
+                from ray import tune  # noqa: F401
+                from ray.rllib.algorithms.ppo import PPO  # noqa: F401
+
+            def ready(self):
+                pass
+
+        # Use a runtime env to run tests in minimal installation.
+        a = ActorWithLibImport.options(
+            runtime_env={"pip": ["ray[rllib]", "ray[tune]"]}
+        ).remote()
+        ray.get(a.ready.remote())
+
+        """
+        Verify the usage_stats.json contains the lib usage.
+        """
+        global_node = ray.worker._global_node
+        temp_dir = pathlib.Path(global_node.get_session_dir_path())
+        wait_for_condition(lambda: file_exists(temp_dir), timeout=30)
+
+        def verify():
+            lib_usages = read_file(temp_dir, "usage_stats")["library_usages"]
+            return set(lib_usages) == set(["tune", "rllib", "train"])
+
+        wait_for_condition(verify)
 
 
 if __name__ == "__main__":
