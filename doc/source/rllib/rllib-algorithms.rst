@@ -644,10 +644,10 @@ Critic Regularized Regression (CRR)
 `[paper] <https://arxiv.org/abs/2006.15134>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/crr/crr.py>`__
 
 CRR is another offline RL algorithm based on Q-learning that can learn from an offline experience replay.
-The challenge in applying existing Q-learning algorithms to offline RL is the problem of overestimating Q-function, as well as lack of exploration beyond the observed data.
-The later become increasingly important during bootstrapping the bellman equation, where the Q-function queried for next state does not have support in the observed data.
-To mitigate these issues, CRR, implements a simple and yet powerful idea of value-filtered regression.
-Basically the key idea is to use a learned critic to filter-out the non-promising transitions from the replay dataset. For more details, please refer to the paper.
+The challenge in applying existing Q-learning algorithms to offline RL lies in the overestimation of the Q-function, as well as, the lack of exploration beyond the observed data.
+The latter becomes increasingly important during bootstrapping in the bellman equation, where the Q-function queried for the next state's Q-value(s) does not have support in the observed data.
+To mitigate these issues, CRR implements a simple and yet powerful idea of "value-filtered regression".
+The key idea is to use a learned critic to filter-out the non-promising transitions from the replay dataset. For more details, please refer to the paper (see link above).
 
 Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/crr/cartpole-v0-crr.yaml>`__, `Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/crr/pendulum-v1-crr.yaml>`__
 
