@@ -19,13 +19,14 @@ U = TypeVar("U")
 
 
 class _MergeTaskSchedule:
-    def __init__(
-            self,
-            output_num_blocks: int,
-            num_merge_tasks_per_round: int):
+    def __init__(self, output_num_blocks: int, num_merge_tasks_per_round: int):
         self.num_merge_tasks_per_round = num_merge_tasks_per_round
-        self.merge_partition_size = math.ceil(output_num_blocks / num_merge_tasks_per_round)
-        self.last_merge_partition_size = output_num_blocks - (self.merge_partition_size * (self.num_merge_tasks_per_round - 1))
+        self.merge_partition_size = math.ceil(
+            output_num_blocks / num_merge_tasks_per_round
+        )
+        self.last_merge_partition_size = output_num_blocks - (
+            self.merge_partition_size * (self.num_merge_tasks_per_round - 1)
+        )
 
     def get_num_reducers_per_merge_idx(self, merge_idx: int) -> int:
         """
@@ -40,6 +41,7 @@ class _MergeTaskSchedule:
     def get_merge_idx_for_reducer_idx(self, reducer_idx: int) -> int:
         return reducer_idx // self.merge_partition_size
 
+
 class _PushBasedShuffleStage:
     def __init__(
         self,
@@ -52,13 +54,21 @@ class _PushBasedShuffleStage:
         self.num_map_tasks_per_round = num_map_tasks_per_round
         self.num_merge_tasks_per_round = len(merge_task_placement)
 
-        node_strategies = {node_id: NodeAffinitySchedulingStrategy(node_id, soft=True) for node_id in set(merge_task_placement)}
+        node_strategies = {
+            node_id: {
+                "scheduling_strategy": NodeAffinitySchedulingStrategy(
+                    node_id, soft=True
+                )
+            }
+            for node_id in set(merge_task_placement)
+        }
         self._merge_task_options = [
-            {"scheduling_strategy": NodeAffinitySchedulingStrategy(node_id, soft=True)}
-            for node_id in merge_task_placement
+            node_strategies[node_id] for node_id in merge_task_placement
         ]
 
-        self.merge_schedule = _MergeTaskSchedule(output_num_blocks, self.num_merge_tasks_per_round)
+        self.merge_schedule = _MergeTaskSchedule(
+            output_num_blocks, self.num_merge_tasks_per_round
+        )
 
     def get_merge_task_options(self, merge_idx):
         return self._merge_task_options[merge_idx]
@@ -176,7 +186,9 @@ class PushBasedShufflePlan(ShuffleOp):
 
         def submit_merge_task(arg):
             merge_idx, map_results = arg
-            num_merge_returns = stage.merge_schedule.get_num_reducers_per_merge_idx(merge_idx)
+            num_merge_returns = stage.merge_schedule.get_num_reducers_per_merge_idx(
+                merge_idx
+            )
             merge_result = shuffle_merge.options(
                 num_returns=1 + num_merge_returns,
                 **stage.get_merge_task_options(merge_idx),
@@ -260,7 +272,7 @@ class PushBasedShufflePlan(ShuffleOp):
 
         # Execute and wait for the reduce stage.
         new_metadata, new_blocks = self._execute_reduce_stage(
-            output_num_blocks, schedule, reduce_ray_remote_args, all_merge_results
+            output_num_blocks, stage, reduce_ray_remote_args, all_merge_results
         )
 
         stats = {
@@ -274,7 +286,7 @@ class PushBasedShufflePlan(ShuffleOp):
     def _execute_reduce_stage(
         self,
         output_num_blocks: int,
-        schedule: _PushBasedShuffleTaskSchedule,
+        stage: _PushBasedShuffleStage,
         reduce_ray_remote_args: Dict[str, Any],
         all_merge_results: List[List[ObjectRef]],
     ):
@@ -282,7 +294,7 @@ class PushBasedShufflePlan(ShuffleOp):
         # Execute the final reduce stage.
         shuffle_reduce_out = []
         for reducer_idx in range(output_num_blocks):
-            merge_idx = schedule.get_merge_idx_for_reducer_idx(reducer_idx)
+            merge_idx = stage.merge_schedule.get_merge_idx_for_reducer_idx(reducer_idx)
             # Submit one partition of reduce tasks, one for each of the P
             # outputs produced by the corresponding merge task.
             # We also add the merge task arguments so that the reduce task
@@ -290,7 +302,7 @@ class PushBasedShufflePlan(ShuffleOp):
             shuffle_reduce_out.append(
                 shuffle_reduce.options(
                     **reduce_ray_remote_args,
-                    **schedule.get_merge_task_options(merge_idx),
+                    **stage.get_merge_task_options(merge_idx),
                     num_returns=2,
                 ).remote(
                     *self._reduce_args,
