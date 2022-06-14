@@ -58,7 +58,8 @@ public class ProxyActor {
         null,
         config);
 
-    Optional<BaseActorHandle> optional = Ray.getActor(controllerInfo.getControllerName());
+    Optional<BaseActorHandle> optional =
+        Ray.getActor(controllerInfo.getControllerName(), controllerInfo.getControllerNamespace());
     Preconditions.checkState(optional.isPresent(), "Controller does not exist");
 
     Map<KeyType, KeyListener> keyListeners = new HashMap<>();

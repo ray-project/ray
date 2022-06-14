@@ -312,7 +312,7 @@ public class Serve {
   }
 
   public static ServeControllerClient getGlobalClient() {
-    return getGlobalClient(null, false);
+    return getGlobalClient(Ray.getRuntimeContext().getNamespace(), false);
   }
 
   public static void setGlobalClient(ServeControllerClient client) {
