@@ -1,11 +1,11 @@
-from typing import Optional, List, Union, TYPE_CHECKING
-import numpy as np
-import pandas as pd
+from typing import TYPE_CHECKING, List, Optional, Union
 
 import lightgbm
+import pandas as pd
 
 from ray.air.checkpoint import Checkpoint
-from ray.air.predictor import Predictor, DataBatchType
+from ray.air.constants import TENSOR_COLUMN_NAME
+from ray.air.predictor import Predictor
 from ray.train.lightgbm import load_checkpoint
 
 if TYPE_CHECKING:
@@ -42,17 +42,16 @@ class LightGBMPredictor(Predictor):
         bst, preprocessor = load_checkpoint(checkpoint)
         return LightGBMPredictor(model=bst, preprocessor=preprocessor)
 
-    def predict(
+    def _predict_pandas(
         self,
-        data: DataBatchType,
+        data: "pd.DataFrame",
         feature_columns: Optional[Union[List[str], List[int]]] = None,
         **predict_kwargs,
     ) -> pd.DataFrame:
         """Run inference on data batch.
 
         Args:
-            data: A batch of input data. Either a pandas DataFrame or numpy
-                array.
+            data: A batch of input data.
             feature_columns: The names or indices of the columns in the
                 data to use as features to predict on. If None, then use
                 all columns in ``data``.
@@ -105,15 +104,14 @@ class LightGBMPredictor(Predictor):
             pd.DataFrame: Prediction result.
 
         """
+        if TENSOR_COLUMN_NAME in data:
+            data = data[TENSOR_COLUMN_NAME].to_numpy()
 
-        if self.preprocessor:
-            data = self.preprocessor.transform_batch(data)
-
-        if feature_columns:
-            if isinstance(data, np.ndarray):
+            if feature_columns:
                 data = data[:, feature_columns]
-            else:
-                data = data[feature_columns]
+        elif feature_columns:
+            data = data[feature_columns]
+
         df = pd.DataFrame(self.model.predict(data, **predict_kwargs))
         df.columns = (
             ["predictions"]
