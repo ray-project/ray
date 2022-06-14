@@ -60,7 +60,8 @@ Offline RL:
 
 - `Behavior Cloning (BC; derived from MARWIL implementation) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#bc>`__ 
 - `Conservative Q-Learning (CQL) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#cql>`__ 
-- `Importance Sampling and Weighted Importance Sampling (OPE) <https://docs.ray.io/en/latest/rllib/rllib-offline.html#is>`__ 
+- `Critic Regularized Regression (CRR) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#crr>`__
+- `Importance Sampling and Weighted Importance Sampling (OPE) <https://docs.ray.io/en/latest/rllib/rllib-offline.html#is>`__
 - `Monotonic Advantage Re-Weighted Imitation Learning (MARWIL) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#marwil>`__ 
 
 Model-free On-policy RL (for Games):
