@@ -16,6 +16,8 @@ Slurm usage with Ray can be a little bit unintuitive.
     of current limitations regarding networking.
     See :ref:`here <slurm-network-ray>` for more explanations.
 
+    SLURM support is community-maintained. Maintainer GitHub handle: tupui.
+
 This document aims to clarify how to run Ray on SLURM.
 
 .. contents::

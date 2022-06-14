@@ -10,7 +10,7 @@ from ray.data.block import (
     BlockPartition,
     BlockExecStats,
 )
-from ray.data.context import DatasetContext
+from ray.data.context import DatasetContext, DEFAULT_SCHEDULING_STRATEGY
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.progress_bar import ProgressBar
@@ -187,7 +187,12 @@ class ActorPoolStrategy(ComputeStrategy):
         if not remote_args:
             remote_args["num_cpus"] = 1
 
-        remote_args["scheduling_strategy"] = context.scheduling_strategy
+        if "scheduling_strategy" not in remote_args:
+            ctx = DatasetContext.get_current()
+            if ctx.scheduling_strategy == DEFAULT_SCHEDULING_STRATEGY:
+                remote_args["scheduling_strategy"] = "SPREAD"
+            else:
+                remote_args["scheduling_strategy"] = ctx.scheduling_strategy
 
         BlockWorker = ray.remote(**remote_args)(BlockWorker)
 
@@ -313,6 +318,14 @@ def get_compute(compute_spec: Union[str, ComputeStrategy]) -> ComputeStrategy:
         return compute_spec
     else:
         raise ValueError("compute must be one of [`tasks`, `actors`, ComputeStrategy]")
+
+
+def is_task_compute(compute_spec: Union[str, ComputeStrategy]) -> bool:
+    return (
+        not compute_spec
+        or compute_spec == "tasks"
+        or isinstance(compute_spec, TaskPoolStrategy)
+    )
 
 
 def _map_block_split(block: Block, fn: Any, input_files: List[str]) -> BlockPartition:
