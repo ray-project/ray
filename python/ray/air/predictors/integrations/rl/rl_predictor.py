@@ -9,7 +9,7 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.typing import EnvType
 
 if TYPE_CHECKING:
-    from ray.air.preprocessor import Preprocessor
+    from ray.data.preprocessor import Preprocessor
 
 
 class RLPredictor(Predictor):

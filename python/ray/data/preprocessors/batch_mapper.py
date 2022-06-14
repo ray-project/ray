@@ -1,6 +1,6 @@
 from typing import Callable, TYPE_CHECKING
 
-from ray.air.preprocessor import Preprocessor
+from ray.data.preprocessor import Preprocessor
 
 if TYPE_CHECKING:
     import pandas

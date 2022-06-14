@@ -22,7 +22,7 @@ from ray.util.annotations import PublicAPI
 from ray.util.ml_utils.dict import merge_dicts
 
 if TYPE_CHECKING:
-    from ray.air.preprocessor import Preprocessor
+    from ray.data.preprocessor import Preprocessor
 
 RL_TRAINER_CLASS_FILE = "trainer_class.pkl"
 RL_CONFIG_FILE = "config.pkl"
