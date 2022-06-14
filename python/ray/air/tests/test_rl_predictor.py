@@ -7,16 +7,16 @@ import pytest
 import tempfile
 
 from ray.air.predictors.integrations.rl.rl_predictor import RLPredictor
-from ray.air.preprocessor import Preprocessor
+from ray.data.preprocessor import Preprocessor
 from ray.air.checkpoint import Checkpoint
-from ray.air.train.integrations.rl import RLTrainer
+from ray.train.rl import RLTrainer
 
-from ray.rllib.agents import Trainer
+from ray.rllib.algorithms import Algorithm
 from ray.rllib.policy import Policy
 from ray.tune.utils.trainable import TrainableUtil
 
 
-class _DummyTrainer(Trainer):
+class _DummyAlgo(Algorithm):
     train_exec_impl = None
 
     def setup(self, config):
@@ -59,7 +59,7 @@ def create_checkpoint(
     preprocessor: Optional[Preprocessor] = None, config: Optional[dict] = None
 ) -> Checkpoint:
     rl_trainer = RLTrainer(
-        algorithm=_DummyTrainer,
+        algorithm=_DummyAlgo,
         config=config or {},
         preprocessor=preprocessor,
     )

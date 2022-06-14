@@ -246,19 +246,11 @@ check recent tests known to be flaky.
 
 .. _`CI`: https://github.com/ray-project/ray/tree/master/ci
 
-API stability
--------------
-
-Ray provides stability guarantees for its public APIs in Ray core and libraries. The level of stability provided depends on how the API is annotated.
-
-.. autofunction:: ray.util.annotations.PublicAPI
-.. autofunction:: ray.util.annotations.DeveloperAPI
-.. autofunction:: ray.util.annotations.Deprecated
-
-Undecorated functions can be generally assumed to not be part of the Ray public API.
 
 API compatibility style guide
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+-----------------------------
+
+Ray provides stability guarantees for its public APIs in Ray core and libraries, which are described in the :ref:`API Stability guide <api-stability>`.
 
 It's hard to fully capture the semantics of API compatibility into a single annotation (for example, public APIs may have "experimental" arguments). For more granular stability contracts, those can be noted in the pydoc (e.g., "the ``random_shuffle`` option is experimental"). When possible, experimental arguments should also be prefixed by underscores in Python (e.g., `_owner=`).
 
@@ -272,11 +264,13 @@ In Python APIs, consider forcing the use of kwargs instead of positional argumen
         pass
 
 For callback APIs, consider adding a ``**kwargs`` placeholder as a "forward compatibility placeholder" in case more args need to be passed to the callback in the future, e.g.:
- 
+
 .. code-block:: python
 
     def tune_user_callback(model, score, **future_kwargs):
         pass
+
+
 
 Becoming a Reviewer
 -------------------

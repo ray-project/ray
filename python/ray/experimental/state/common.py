@@ -2,6 +2,7 @@ import logging
 
 from abc import ABC
 from dataclasses import dataclass, fields
+from enum import Enum, unique
 from typing import List, Dict, Union, Tuple, Set, Optional
 
 from ray.dashboard.modules.job.common import JobInfo
@@ -21,14 +22,26 @@ def filter_fields(data: dict, state_dataclass) -> dict:
     return filtered_data
 
 
+@unique
+class StateResource(Enum):
+    ACTORS = "actors"
+    JOBS = "jobs"
+    PLACEMENT_GROUPS = "placement_groups"
+    NODES = "nodes"
+    WORKERS = "workers"
+    TASKS = "tasks"
+    OBJECTS = "objects"
+    RUNTIME_ENVS = "runtime_envs"
+
+
 SupportedFilterType = Union[str, bool, int, float]
 
 
 @dataclass(init=True)
 class ListApiOptions:
-    limit: int
-    timeout: int
-    filters: List[Tuple[str, SupportedFilterType]]
+    limit: int = DEFAULT_LIMIT
+    timeout: int = DEFAULT_RPC_TIMEOUT
+    filters: Optional[List[Tuple[str, SupportedFilterType]]] = None
     # When the request is processed on the server side,
     # we should apply multiplier so that server side can finish
     # processing a request within timeout. Otherwise,
@@ -89,14 +102,17 @@ class GetLogOptions:
             self.interval = float(self.interval)
         self.lines = int(self.lines)
 
+        if self.task_id:
+            raise NotImplementedError("task_id is not supported yet.")
+
         if self.media_type == "file":
             assert self.interval is None
         if self.media_type not in ["file", "stream"]:
             raise ValueError(f"Invalid media type: {self.media_type}")
-        if not (self.node_id or self.node_ip):
+        if not (self.node_id or self.node_ip) and not (self.actor_id or self.task_id):
             raise ValueError(
-                "Both node_id and node_ip is not given. "
-                "At least one of the should be provided."
+                "node_id or node_ip should be provided."
+                "Please provide at least one of them."
             )
         if self.node_id and self.node_ip:
             raise ValueError(
@@ -145,6 +161,7 @@ class PlacementGroupState(StateSchema):
 @dataclass(init=True)
 class NodeState(StateSchema):
     node_id: str
+    node_ip: str
     state: str
     node_name: str
     resources_total: dict

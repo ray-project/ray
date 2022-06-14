@@ -6,7 +6,7 @@ from typing import Any
 from ray import serve
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.dag import InputNode
-from ray.serve.pipeline.api import build as pipeline_build
+from ray.serve.deployment_graph_build import build as pipeline_build
 
 
 @serve.deployment(name="counter", num_replicas=2, user_config={"count": 123, "b": 2})

@@ -1,11 +1,11 @@
 from collections import defaultdict
 from functools import lru_cache
 
+import boto3
 from boto3.exceptions import ResourceNotExistsError
 from botocore.config import Config
-import boto3
 
-from ray.autoscaler._private.cli_logger import cli_logger, cf
+from ray.autoscaler._private.cli_logger import cf, cli_logger
 from ray.autoscaler._private.constants import BOTO_MAX_RETRIES
 
 

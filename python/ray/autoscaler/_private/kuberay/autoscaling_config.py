@@ -1,14 +1,14 @@
-from contextlib import suppress
+import json
 import logging
 import math
-import requests
+from contextlib import suppress
 from typing import Any, Dict, Optional
 
-import json
+import requests
 
 from ray.autoscaler._private.constants import (
-    DISABLE_NODE_UPDATERS_KEY,
     DISABLE_LAUNCH_CONFIG_CHECK_KEY,
+    DISABLE_NODE_UPDATERS_KEY,
     FOREGROUND_NODE_LAUNCH_KEY,
 )
 from ray.autoscaler._private.kuberay import node_provider
@@ -16,6 +16,10 @@ from ray.autoscaler._private.util import validate_config
 
 logger = logging.getLogger(__name__)
 
+AUTOSCALER_OPTIONS_KEY = "autoscalerOptions"
+IDLE_SECONDS_KEY = "idleTimeoutSeconds"
+UPSCALING_KEY = "upscalingMode"
+UPSCALING_VALUE_AGGRESSIVE = "Aggressive"
 
 # Logical group name for the KubeRay head group.
 # Used as the name of the "head node type" by the autoscaler.
@@ -54,7 +58,8 @@ class AutoscalingConfigProducer:
         result = requests.get(
             self._ray_cr_url, headers=self._headers, verify=self._verify
         )
-        assert result.status_code == 200
+        if not result.status_code == 200:
+            result.raise_for_status()
         ray_cr = result.json()
         return ray_cr
 
@@ -75,6 +80,17 @@ def _derive_autoscaling_config_from_ray_cr(ray_cr: Dict[str, Any]) -> Dict[str, 
     # Legacy autoscaling fields carry no information but are required for compatibility.
     legacy_autoscaling_fields = _generate_legacy_autoscaling_config_fields()
 
+    # Process autoscaler options.
+    autoscaler_options = ray_cr["spec"].get(AUTOSCALER_OPTIONS_KEY, {})
+    if IDLE_SECONDS_KEY in autoscaler_options:
+        idle_timeout_minutes = autoscaler_options[IDLE_SECONDS_KEY] / 60.0
+    else:
+        idle_timeout_minutes = 5.0
+    if autoscaler_options.get(UPSCALING_KEY) == UPSCALING_VALUE_AGGRESSIVE:
+        upscaling_speed = 1000  # i.e. big
+    else:
+        upscaling_speed = 1
+
     autoscaling_config = {
         "provider": provider_config,
         "cluster_name": ray_cr["metadata"]["name"],
@@ -83,10 +99,10 @@ def _derive_autoscaling_config_from_ray_cr(ray_cr: Dict[str, Any]) -> Dict[str, 
         "max_workers": global_max_workers,
         # Should consider exposing `idleTimeoutMinutes` in the RayCluster CRD,
         # under an `autoscaling` field.
-        "idle_timeout_minutes": 5,
+        "idle_timeout_minutes": idle_timeout_minutes,
         # Should consider exposing `upscalingSpeed` in the RayCluster CRD,
         # under an `autoscaling` field.
-        "upscaling_speed": 1,
+        "upscaling_speed": upscaling_speed,
         **legacy_autoscaling_fields,
     }
 

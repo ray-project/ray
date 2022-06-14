@@ -29,7 +29,7 @@ from ray.rllib.utils.framework import get_variable, try_import_tf
 from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.tf_utils import huber_loss, make_tf_callable
 from ray.rllib.utils.typing import (
-    TrainerConfigDict,
+    AlgorithmConfigDict,
     TensorType,
     LocalOptimizer,
     ModelGradients,
@@ -45,7 +45,7 @@ def build_ddpg_models(
     policy: Policy,
     observation_space: gym.spaces.Space,
     action_space: gym.spaces.Space,
-    config: TrainerConfigDict,
+    config: AlgorithmConfigDict,
 ) -> ModelV2:
     if policy.config["use_state_preprocessor"]:
         default_model = None  # catalog decides
@@ -379,7 +379,7 @@ def setup_early_mixins(
     policy: Policy,
     obs_space: gym.spaces.Space,
     action_space: gym.spaces.Space,
-    config: TrainerConfigDict,
+    config: AlgorithmConfigDict,
 ) -> None:
     """Call mixin classes' constructors before Policy's initialization.
 
@@ -425,13 +425,13 @@ def setup_mid_mixins(
     policy: Policy,
     obs_space: gym.spaces.Space,
     action_space: gym.spaces.Space,
-    config: TrainerConfigDict,
+    config: AlgorithmConfigDict,
 ) -> None:
     ComputeTDErrorMixin.__init__(policy, ddpg_actor_critic_loss)
 
 
 class TargetNetworkMixin:
-    def __init__(self, config: TrainerConfigDict):
+    def __init__(self, config: AlgorithmConfigDict):
         @make_tf_callable(self.get_session())
         def update_target_fn(tau):
             tau = tf.convert_to_tensor(tau, dtype=tf.float32)
@@ -466,7 +466,7 @@ def setup_late_mixins(
     policy: Policy,
     obs_space: gym.spaces.Space,
     action_space: gym.spaces.Space,
-    config: TrainerConfigDict,
+    config: AlgorithmConfigDict,
 ) -> None:
     TargetNetworkMixin.__init__(policy, config)
 
@@ -475,7 +475,7 @@ def validate_spaces(
     policy: Policy,
     observation_space: gym.spaces.Space,
     action_space: gym.spaces.Space,
-    config: TrainerConfigDict,
+    config: AlgorithmConfigDict,
 ) -> None:
     if not isinstance(action_space, Box):
         raise UnsupportedSpaceException(

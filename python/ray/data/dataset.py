@@ -659,6 +659,47 @@ class Dataset(Generic[T]):
         )
         return Dataset(plan, self._epoch, self._lazy)
 
+    def randomize_block_order(
+        self,
+        *,
+        seed: Optional[int] = None,
+    ) -> "Dataset[T]":
+        """Randomly shuffle the blocks of this dataset.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.range(100) # doctest: +SKIP
+            >>> # Randomize the block order.
+            >>> ds.randomize_block_order() # doctest: +SKIP
+            >>> # Randomize the block order with a fixed random seed.
+            >>> ds.randomize_block_order(seed=12345) # doctest: +SKIP
+
+        Args:
+            seed: Fix the random seed to use, otherwise one will be chosen
+                based on system randomness.
+
+        Returns:
+            The shuffled dataset.
+        """
+
+        def do_randomize_block_order(block_list, *_):
+            num_blocks = block_list.executed_num_blocks()  # Blocking.
+            if num_blocks == 0:
+                return block_list, {}
+
+            randomized_block_list = block_list.randomize_block_order(seed)
+
+            return randomized_block_list, {}
+
+        plan = self._plan.with_stage(
+            AllToAllStage(
+                "randomize_block_order",
+                None,
+                do_randomize_block_order,
+            )
+        )
+        return Dataset(plan, self._epoch, self._lazy)
+
     def random_sample(
         self, fraction: float, *, seed: Optional[int] = None
     ) -> "Dataset[T]":
@@ -690,7 +731,7 @@ class Dataset(Generic[T]):
         if fraction < 0 or fraction > 1:
             raise ValueError("Fraction must be between 0 and 1.")
 
-        if seed:
+        if seed is not None:
             random.seed(seed)
 
         def process_batch(batch):
@@ -2550,8 +2591,8 @@ class Dataset(Generic[T]):
             ):
                 if label_column:
                     targets = convert_pandas_to_tf_tensor(batch[[label_column]])
-                    assert targets.ndim == 2
-                    targets = tf.squeeze(targets, axis=1)
+                    if targets.ndim == 2 and targets.shape[1] == 1:
+                        targets = tf.squeeze(targets, axis=1)
                     batch.pop(label_column)
 
                 features = None
@@ -3393,6 +3434,17 @@ class Dataset(Generic[T]):
 
     def __str__(self) -> str:
         return repr(self)
+
+    def __bool__(self) -> bool:
+        # Prevents `__len__` from being called to check if it is None
+        # see: issue #25152
+        return True
+
+    def __len__(self) -> int:
+        raise AttributeError(
+            "Use `ds.count()` to compute the length of a distributed Dataset. "
+            "This may be an expensive operation."
+        )
 
     def _block_num_rows(self) -> List[int]:
         get_num_rows = cached_remote_fn(_get_num_rows)

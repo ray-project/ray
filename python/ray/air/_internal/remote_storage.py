@@ -1,6 +1,7 @@
+import fnmatch
 import os
 import urllib.parse
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 from ray.util.ml_utils.filelock import TempFileLock
 
@@ -166,7 +167,9 @@ def download_from_uri(uri: str, local_path: str, filelock: bool = True):
         pyarrow.fs.copy_files(bucket_path, local_path, source_filesystem=fs)
 
 
-def upload_to_uri(local_path: str, uri: str):
+def upload_to_uri(
+    local_path: str, uri: str, exclude: Optional[List[str]] = None
+) -> None:
     _assert_pyarrow_installed()
 
     fs, bucket_path = get_fs_and_path(uri)
@@ -177,7 +180,39 @@ def upload_to_uri(local_path: str, uri: str):
             f"Hint: {fs_hint(uri)}"
         )
 
-    pyarrow.fs.copy_files(local_path, bucket_path, destination_filesystem=fs)
+    if not exclude:
+        pyarrow.fs.copy_files(local_path, bucket_path, destination_filesystem=fs)
+        return
+
+    # Else, walk and upload
+    return _upload_to_uri_with_exclude(
+        local_path=local_path, fs=fs, bucket_path=bucket_path, exclude=exclude
+    )
+
+
+def _upload_to_uri_with_exclude(
+    local_path: str, fs: "pyarrow.fs", bucket_path: str, exclude: Optional[List[str]]
+) -> None:
+    def _should_exclude(candidate: str) -> bool:
+        for excl in exclude:
+            if fnmatch.fnmatch(candidate, excl):
+                return True
+        return False
+
+    for root, dirs, files in os.walk(local_path):
+        rel_root = os.path.relpath(root, local_path)
+        for file in files:
+            candidate = os.path.join(rel_root, file)
+
+            if _should_exclude(candidate):
+                continue
+
+            full_source_path = os.path.join(local_path, candidate)
+            full_target_path = os.path.join(bucket_path, candidate)
+
+            pyarrow.fs.copy_files(
+                full_source_path, full_target_path, destination_filesystem=fs
+            )
 
 
 def _ensure_directory(uri: str):

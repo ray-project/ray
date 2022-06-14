@@ -17,7 +17,7 @@ class TestES(unittest.TestCase):
         ray.shutdown()
 
     def test_es_compilation(self):
-        """Test whether an ESTrainer can be built on all frameworks."""
+        """Test whether ES can be built on all frameworks."""
         config = es.ESConfig()
         # Keep it simple.
         config.training(

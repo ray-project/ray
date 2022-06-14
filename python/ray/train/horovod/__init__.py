@@ -7,6 +7,7 @@ except ModuleNotFoundError:
         "run 'pip install 'horovod[tensorflow]''."
     )
 
+from ray.train.horovod.horovod_trainer import HorovodTrainer
 from ray.train.horovod.config import HorovodConfig
 
-__all__ = ["HorovodConfig"]
+__all__ = ["HorovodConfig", "HorovodTrainer"]

@@ -4,12 +4,12 @@ import numpy as np
 import pandas as pd
 from ray.air.checkpoint import Checkpoint
 from ray.air.predictor import Predictor, DataBatchType
-from ray.air.train.integrations.rl import load_checkpoint
+from ray.train.rl import load_checkpoint
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.typing import EnvType
 
 if TYPE_CHECKING:
-    from ray.air.preprocessor import Preprocessor
+    from ray.data.preprocessor import Preprocessor
 
 
 class RLPredictor(Predictor):
