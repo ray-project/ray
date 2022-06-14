@@ -3,7 +3,8 @@ cql-halfcheetahbulletenv-v0:
     run: CQL
     pass_criteria:
         evaluation/episode_reward_mean: 400.0
-        timesteps_total: 10000000
+        # Can not check throughput for offline methods.
+        # timesteps_total: 10000000
     stop:
         time_total_s: 3600
     config:

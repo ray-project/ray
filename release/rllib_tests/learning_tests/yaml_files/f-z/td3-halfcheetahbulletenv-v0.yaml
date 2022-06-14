@@ -6,7 +6,7 @@ td3-halfcheetahbulletenv-v0:
         episode_reward_mean: 400.0
         timesteps_total: 1000000
     stop:
-        time_total_s: 7200
+        time_total_s: 3600
     config:
         num_gpus: 1
         replay_buffer_config:
