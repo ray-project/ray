@@ -28,7 +28,7 @@ public class ReplicaSetTest {
 
   @Test
   public void updateWorkerReplicasTest() {
-    ReplicaSet replicaSet = new ReplicaSet(deploymentName, null);
+    ReplicaSet replicaSet = new ReplicaSet(deploymentName, "test");
     ActorNameList.Builder builder = ActorNameList.newBuilder();
 
     replicaSet.updateWorkerReplicas(builder.build());
