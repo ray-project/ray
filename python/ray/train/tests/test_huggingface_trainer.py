@@ -1,8 +1,7 @@
+from unittest.mock import patch
+
 import pandas as pd
 import pytest
-from unittest.mock import patch
-from ray.train.huggingface.huggingface_utils import TrainReportCallback
-
 from transformers import (
     AutoConfig,
     AutoModelForCausalLM,
@@ -13,10 +12,9 @@ from transformers import (
 from transformers.trainer_callback import TrainerState
 
 import ray.data
-from ray.train.huggingface import HuggingFaceTrainer
-from ray.train.huggingface import HuggingFacePredictor
 from ray.air.batch_predictor import BatchPredictor
-
+from ray.train.huggingface import HuggingFacePredictor, HuggingFaceTrainer
+from ray.train.huggingface.huggingface_utils import TrainReportCallback
 from ray.train.tests._huggingface_data import train_data, validation_data
 
 # 16 first rows of tokenized wikitext-2-raw-v1 training & validation

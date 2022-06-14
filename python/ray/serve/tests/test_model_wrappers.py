@@ -1,26 +1,26 @@
 import tempfile
 from typing import Optional
 
-from fastapi import Depends, FastAPI
-import pandas as pd
 import numpy as np
-import requests
+import pandas as pd
 import pytest
+import requests
+from fastapi import Depends, FastAPI
 
+import ray
+from ray import serve
+from ray.air.checkpoint import Checkpoint
+from ray.serve.dag import InputNode
+from ray.serve.deployment_graph import RayServeDAGHandle
+from ray.serve.deployment_graph_build import build
+from ray.serve.http_adapters import json_to_ndarray
 from ray.serve.model_wrappers import (
     ModelWrapperDeployment,
     collate_array,
     collate_dataframe,
     collate_dict_array,
 )
-from ray.air.checkpoint import Checkpoint
 from ray.train.predictor import DataBatchType, Predictor
-from ray.serve.deployment_graph_build import build
-from ray.serve.dag import InputNode
-from ray.serve.deployment_graph import RayServeDAGHandle
-from ray.serve.http_adapters import json_to_ndarray
-import ray
-from ray import serve
 
 
 class TestCollationFunctions:

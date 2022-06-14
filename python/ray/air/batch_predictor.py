@@ -1,9 +1,9 @@
-from typing import Type, Optional, Dict, Any, Union
+from typing import Any, Dict, Optional, Type, Union
 
 import ray
 from ray.air import Checkpoint
-from ray.train.predictor import Predictor
 from ray.air.util.data_batch_conversion import convert_batch_type_to_pandas
+from ray.train.predictor import Predictor
 from ray.util.annotations import PublicAPI
 
 

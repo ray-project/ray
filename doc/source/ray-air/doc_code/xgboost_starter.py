@@ -1,13 +1,18 @@
 # flake8: noqa
 
-# __air_xgb_preprocess_start__
-import ray
-from ray.data.preprocessors import StandardScaler
-
 import pandas as pd
-
 from sklearn.datasets import load_breast_cancer
 from sklearn.model_selection import train_test_split
+
+# __air_xgb_preprocess_start__
+import ray
+
+# __air_xgb_batchpred_start__
+from ray.air.batch_predictor import BatchPredictor
+from ray.data.preprocessors import StandardScaler
+
+# __air_xgb_train_start__
+from ray.train.xgboost import XGBoostPredictor, XGBoostTrainer
 
 data_raw = load_breast_cancer()
 dataset_df = pd.DataFrame(data_raw["data"], columns=data_raw["feature_names"])
@@ -23,9 +28,6 @@ columns_to_scale = ["mean radius", "mean texture"]
 preprocessor = StandardScaler(columns=columns_to_scale)
 # __air_xgb_preprocess_end__
 
-
-# __air_xgb_train_start__
-from ray.train.xgboost import XGBoostTrainer
 
 # XGBoost specific params
 params = {
@@ -52,9 +54,6 @@ result = trainer.fit()
 print(result.metrics)
 # __air_xgb_train_end__
 
-# __air_xgb_batchpred_start__
-from ray.air.batch_predictor import BatchPredictor
-from ray.air.predictors.integrations.xgboost import XGBoostPredictor
 
 batch_predictor = BatchPredictor.from_checkpoint(result.checkpoint, XGBoostPredictor)
 

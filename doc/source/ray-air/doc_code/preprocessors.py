@@ -1,10 +1,35 @@
 # flake8: noqa
 
 
+# __checkpoint_start__
+import os
+
+# __custom_stateful_start__
+from typing import Dict
+
 # __preprocessor_setup_start__
 import pandas as pd
+from pandas import DataFrame
+
+# __custom_stateless_start__
+# __chain_start__
+# __trainer_start__
 import ray
-from ray.data.preprocessors import MinMaxScaler
+import ray.cloudpickle as cpickle
+
+# __predictor_start__
+from ray.air.batch_predictor import BatchPredictor
+from ray.air.constants import PREPROCESSOR_KEY
+from ray.data import Dataset
+from ray.data.aggregate import Max
+from ray.data.preprocessors import (
+    BatchMapper,
+    Chain,
+    CustomStatefulPreprocessor,
+    MinMaxScaler,
+    SimpleImputer,
+)
+from ray.train.xgboost import XGBoostPredictor, XGBoostTrainer
 
 # Generate two simple datasets.
 dataset = ray.data.range_table(8)
@@ -44,12 +69,6 @@ print(batch_transformed)
 # __preprocessor_transform_batch_end__
 
 
-# __trainer_start__
-import ray
-
-from ray.data.preprocessors import MinMaxScaler
-from ray.train.xgboost import XGBoostTrainer
-
 train_dataset = ray.data.from_items([{"x": x, "y": 2 * x} for x in range(0, 32, 3)])
 valid_dataset = ray.data.from_items([{"x": x, "y": 2 * x} for x in range(1, 32, 3)])
 
@@ -66,11 +85,6 @@ result = trainer.fit()
 # __trainer_end__
 
 
-# __checkpoint_start__
-import os
-import ray.cloudpickle as cpickle
-from ray.air.constants import PREPROCESSOR_KEY
-
 checkpoint = result.checkpoint
 with checkpoint.as_directory() as checkpoint_path:
     path = os.path.join(checkpoint_path, PREPROCESSOR_KEY)
@@ -80,10 +94,6 @@ with checkpoint.as_directory() as checkpoint_path:
 # MixMaxScaler(columns=['x'], stats={'min(x)': 0, 'max(x)': 30})
 # __checkpoint_end__
 
-
-# __predictor_start__
-from ray.air.batch_predictor import BatchPredictor
-from ray.air.predictors.integrations.xgboost import XGBoostPredictor
 
 test_dataset = ray.data.from_items([{"x": x} for x in range(2, 32, 3)])
 
@@ -104,10 +114,6 @@ print(predicted_labels.to_pandas())
 # __predictor_end__
 
 
-# __chain_start__
-import ray
-from ray.data.preprocessors import Chain, MinMaxScaler, SimpleImputer
-
 # Generate one simple dataset.
 dataset = ray.data.from_items(
     [{"value": 0}, {"value": 1}, {"value": 2}, {"value": 3}, {"value": None}]
@@ -123,10 +129,6 @@ print(dataset_transformed.take())
 # __chain_end__
 
 
-# __custom_stateless_start__
-import ray
-from ray.data.preprocessors import BatchMapper
-
 # Generate a simple dataset.
 dataset = ray.data.range_table(4)
 print(dataset.take())
@@ -138,15 +140,6 @@ dataset_transformed = preprocessor.transform(dataset)
 print(dataset_transformed.take())
 # [{'value': 0}, {'value': 2}, {'value': 4}, {'value': 6}]
 # __custom_stateless_end__
-
-
-# __custom_stateful_start__
-from typing import Dict
-import ray
-from pandas import DataFrame
-from ray.data.preprocessors import CustomStatefulPreprocessor
-from ray.data import Dataset
-from ray.data.aggregate import Max
 
 
 def get_max(ds: Dataset):

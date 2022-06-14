@@ -5,9 +5,9 @@ import pandas as pd
 
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import TENSOR_COLUMN_NAME
-from ray.train.predictor import Predictor
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.typing import EnvType
+from ray.train.predictor import Predictor
 from ray.train.rl import load_checkpoint
 
 if TYPE_CHECKING:

@@ -1,12 +1,8 @@
 import os
+
 import pandas as pd
 import pytest
-
-from transformers import (
-    AutoConfig,
-    AutoModelForCausalLM,
-    AutoTokenizer,
-)
+from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 from transformers.pipelines import pipeline
 
 import ray

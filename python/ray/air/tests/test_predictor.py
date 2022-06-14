@@ -1,15 +1,12 @@
-import pytest
 from unittest import mock
 
 import pandas as pd
+import pytest
 
 import ray
 from ray.air import Preprocessor
 from ray.air.checkpoint import Checkpoint
-from ray.train.predictor import (
-    Predictor,
-    PredictorNotSerializableException,
-)
+from ray.train.predictor import Predictor, PredictorNotSerializableException
 
 
 class DummyPreprocessor(Preprocessor):

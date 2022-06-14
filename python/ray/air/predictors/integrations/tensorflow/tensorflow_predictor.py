@@ -1,12 +1,12 @@
-from typing import Callable, Optional, Union, List, Type, TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable, List, Optional, Type, Union
 
 import pandas as pd
 import tensorflow as tf
 
-from ray.train.predictor import Predictor, DataBatchType
+from ray.air._internal.tensorflow_utils import convert_pandas_to_tf_tensor
 from ray.air.checkpoint import Checkpoint
 from ray.train.data_parallel_trainer import _load_checkpoint
-from ray.air._internal.tensorflow_utils import convert_pandas_to_tf_tensor
+from ray.train.predictor import DataBatchType, Predictor
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor

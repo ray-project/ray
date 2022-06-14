@@ -92,11 +92,11 @@ Predictors
 .. autoclass:: ray.air.batch_predictor.BatchPredictor
     :members:
 
-.. automodule:: ray.air.predictors.integrations.xgboost
+.. automodule:: ray.train.xgboost
     :members:
     :show-inheritance:
 
-.. automodule:: ray.air.predictors.integrations.lightgbm
+.. automodule:: ray.train.lightgbm
     :members:
     :show-inheritance:
 
@@ -112,7 +112,7 @@ Predictors
     :members:
     :show-inheritance:
 
-.. automodule:: ray.air.predictors.integrations.huggingface
+.. automodule:: ray.train.huggingface
     :members:
     :show-inheritance:
 

@@ -1,13 +1,13 @@
-from typing import Optional, Union, List, TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Optional, Union
 
 import numpy as np
 import pandas as pd
 import torch
 
-from ray.train.predictor import Predictor, DataBatchType
-from ray.air.checkpoint import Checkpoint
-from ray.train.torch import load_checkpoint
 from ray.air._internal.torch_utils import convert_pandas_to_torch_tensor
+from ray.air.checkpoint import Checkpoint
+from ray.train.predictor import DataBatchType, Predictor
+from ray.train.torch import load_checkpoint
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
