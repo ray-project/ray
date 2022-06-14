@@ -9,7 +9,7 @@ This section should help you:
 
 
 ## Autoscaling architecture
-Ray Serve autoscaling feature automatically increases or decreases the number of replicas based on the load. 
+Ray Serve's autoscaling feature automatically increases or decreases a deployment's number of replicas based on its load. 
 
 ![pic](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling.svg)
 
