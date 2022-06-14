@@ -173,7 +173,7 @@ In both cases, the same dataset is shared across multiple trials when possible w
     :width: 600px
 
 ..
-  https://docs.google.com/drawings/d/1g0pv8gqgG29aPEPTcd4BC0LaRNbW1sAkv3H6W1TCp0c/edit?usp=sharing
+  https://docs.google.com/drawings/d/1g0pv8gqgG29aPEPTcd4BC0LaRNbW1sAkv3H6W1TCp0c/edit
 
 Let's look at code examples for both cases.
 
