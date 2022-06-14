@@ -33,7 +33,7 @@ Ray Serve Autoscaling allows the `min_replicas` to be 0 when starting your deplo
 - It is always recommended to load test your workloads. For example, if the use case is latency sensitive, you can lower the `target_num_ongoing_requests_per_replica` number to maintain high performance.
 - Internally, the autoscaler will compare RUNNING + PENNING tasks of each replicas and `target_num_ongoing_requests_per_replica` to decide scale up/down.
 :::
-**downscale_delay_s**: The config is to control how long the cluster need to wait before scaling down replicas.
+**downscale_delay_s**: The config is to control how long the cluster needs to wait before scaling down replicas.
 `upscale_delay_s`: The config is to control how long the cluster need to wait before scaling up replicas.
 :::{note}
 `downscale_delay_s` and `upscale_delay_s` is to control the frequency of doing autoscaling works. E.g. your use case is having long time to do initialization works, you can increase the `downscale_delay_s` to make the down scaling works slowly.
