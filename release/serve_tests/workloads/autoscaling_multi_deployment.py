@@ -60,7 +60,7 @@ DEFAULT_SMOKE_TEST_NUM_DEPLOYMENTS = 4  # 2 replicas each
 # for now, we won't get valid latency numbers from wrk at 1k replica
 # likely due to request timeout.
 DEFAULT_FULL_TEST_MIN_NUM_REPLICA = 0
-DEFAULT_FULL_TEST_MAX_NUM_REPLICA = 1000
+DEFAULT_FULL_TEST_MAX_NUM_REPLICA = 100
 # TODO(simon): we should change this back to 100. But due to long poll issue
 # we temporarily downscoped this test.
 # https://github.com/ray-project/ray/pull/20270
