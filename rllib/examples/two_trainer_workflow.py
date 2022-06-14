@@ -64,7 +64,7 @@ parser.add_argument(
 )
 
 
-# Define new Trainer with custom training_step.
+# Define new Trainer with custom execution_plan/workflow.
 class MyTrainer(Algorithm):
     @classmethod
     @override(Algorithm)
