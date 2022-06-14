@@ -6,7 +6,7 @@ impala-breakoutnoframeskip-v4:
         episode_reward_mean: 200.0
         timesteps_total: 6000000
     stop:
-        time_total_s: 3600
+        time_total_s: 1800
     config:
         rollout_fragment_length: 50
         train_batch_size: 500
