@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import torch
 
-from ray.air.predictors.integrations.torch import TorchPredictor, to_air_checkpoint
+from ray.train.torch import TorchPredictor, to_air_checkpoint
 from ray.data.preprocessor import Preprocessor
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import PREPROCESSOR_KEY, MODEL_KEY

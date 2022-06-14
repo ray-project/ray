@@ -104,7 +104,7 @@ Predictors
     :members:
     :show-inheritance:
 
-.. automodule:: ray.air.predictors.integrations.torch
+.. automodule:: ray.train.torch
     :members:
     :show-inheritance:
 

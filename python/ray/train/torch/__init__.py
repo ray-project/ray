@@ -18,6 +18,8 @@ from ray.train.torch.train_loop_utils import (
 )
 
 from ray.train.torch.torch_trainer import TorchTrainer, load_checkpoint
+from ray.train.torch.torch_predictor import TorchPredictor
+from ray.train.torch.utils import to_air_checkpoint
 
 
 __all__ = [
@@ -32,4 +34,6 @@ __all__ = [
     "backward",
     "enable_reproducibility",
     "TorchWorkerProfiler",
+    "TorchPredictor",
+    "to_air_checkpoint",
 ]

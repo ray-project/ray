@@ -2,7 +2,7 @@ import pytest
 import torch
 
 import ray
-from ray.air.predictors.integrations.torch import TorchPredictor
+from ray.train.torch import TorchPredictor
 from ray.train.torch import TorchTrainer
 from ray import train
 from ray.air.examples.pytorch.torch_linear_example import (
