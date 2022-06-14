@@ -25,12 +25,12 @@ def serve_ha(external_redis, monkeypatch):  # noqa: F811
 
 
 def test_ray_internal_kv_timeout(serve_ha):  # noqa: F811
-    # Firstly make sure it's workin
+    # Firstly make sure it's working
     kv1 = RayInternalKVStore()
     kv1.put("1", b"1")
     assert kv1.get("1") == b"1"
 
-    # Killfg the GCS
+    # Kill the GCS
     ray.worker._global_node.kill_gcs_server()
 
     with pytest.raises(KVStoreError) as e:
@@ -59,11 +59,11 @@ def test_controller_gcs_failure(serve_ha, use_handle):  # noqa: F811
     val1, pid1 = call()
 
     assert val1 == "1"
-    # Killfg the GCS
+    # Kill the GCS
     print("Kill GCS")
     ray.worker._global_node.kill_gcs_server()
 
-    # Make sure it's still working even GCS is killed
+    # Make sure it's still working even when GCS is killed
     val1, pid1 = call()
     assert val1 == "1"
 
@@ -78,7 +78,7 @@ def test_controller_gcs_failure(serve_ha, use_handle):  # noqa: F811
     # Bring GCS back
     ray.worker._global_node.start_gcs_server()
 
-    # Make sure nothing changed even after GCS is back
+    # Make sure nothing changed even when GCS is back
 
     with pytest.raises(Exception):
         # TODO: We also need to check PID, but there is
