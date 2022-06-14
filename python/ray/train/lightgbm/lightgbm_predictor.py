@@ -64,7 +64,7 @@ class LightGBMPredictor(Predictor):
 
             import numpy as np
             import lightgbm as lgbm
-            from ray.air.predictors.lightgbm import LightGBMPredictor
+            from ray.train.predictors.lightgbm import LightGBMPredictor
 
             train_X = np.array([[1, 2], [3, 4]])
             train_y = np.array([0, 1])
@@ -83,7 +83,7 @@ class LightGBMPredictor(Predictor):
 
             import pandas as pd
             import lightgbm as lgbm
-            from ray.air.predictors.lightgbm import LightGBMPredictor
+            from ray.train.predictors.lightgbm import LightGBMPredictor
 
             train_X = pd.DataFrame([[1, 2], [3, 4]], columns=["A", "B"])
             train_y = pd.Series([0, 1])

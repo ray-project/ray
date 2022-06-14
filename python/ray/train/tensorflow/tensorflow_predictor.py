@@ -85,7 +85,7 @@ class TensorflowPredictor(Predictor):
 
             import numpy as np
             import tensorflow as tf
-            from ray.air.predictors.tensorflow import TensorflowPredictor
+            from ray.train.predictors.tensorflow import TensorflowPredictor
 
             def build_model(self):
                 return tf.keras.Sequential(
@@ -104,7 +104,7 @@ class TensorflowPredictor(Predictor):
 
             import pandas as pd
             import tensorflow as tf
-            from ray.air.predictors.tensorflow import TensorflowPredictor
+            from ray.train.predictors.tensorflow import TensorflowPredictor
 
             def build_model(self):
                 return tf.keras.Sequential(

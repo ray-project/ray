@@ -12,7 +12,7 @@ from transformers import (
 from transformers.trainer_callback import TrainerState
 
 import ray.data
-from ray.air.batch_predictor import BatchPredictor
+from ray.train.batch_predictor import BatchPredictor
 from ray.train.huggingface import HuggingFacePredictor, HuggingFaceTrainer
 from ray.train.huggingface.huggingface_utils import TrainReportCallback
 from ray.train.tests._huggingface_data import train_data, validation_data

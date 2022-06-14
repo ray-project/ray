@@ -6,7 +6,7 @@ from tensorflow.keras.callbacks import Callback
 
 import ray
 import ray.train as train
-from ray.air.batch_predictor import BatchPredictor
+from ray.train.batch_predictor import BatchPredictor
 from ray.air.result import Result
 from ray.data import Dataset
 from ray.train.tensorflow import (

@@ -68,7 +68,7 @@ class XGBoostPredictor(Predictor):
 
             import numpy as np
             import xgboost as xgb
-            from ray.air.predictors.xgboost import XGBoostPredictor
+            from ray.train.predictors.xgboost import XGBoostPredictor
 
             train_X = np.array([[1, 2], [3, 4]])
             train_y = np.array([0, 1])
@@ -87,7 +87,7 @@ class XGBoostPredictor(Predictor):
 
             import pandas as pd
             import xgboost as xgb
-            from ray.air.predictors.xgboost import XGBoostPredictor
+            from ray.train.predictors.xgboost import XGBoostPredictor
 
             train_X = pd.DataFrame([[1, 2], [3, 4]], columns=["A", "B"])
             train_y = pd.Series([0, 1])

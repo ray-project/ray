@@ -91,7 +91,7 @@ print(result.metrics)
 # __air_tf_batchpred_start__
 import numpy as np
 
-from ray.air.batch_predictor import BatchPredictor
+from ray.train.batch_predictor import BatchPredictor
 from ray.train.tensorflow import TensorflowPredictor
 
 

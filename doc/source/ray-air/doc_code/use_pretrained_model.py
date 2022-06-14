@@ -3,7 +3,7 @@
 # __use_pretrained_model_start__
 import ray
 import tensorflow as tf
-from ray.air.batch_predictor import BatchPredictor
+from ray.train.batch_predictor import BatchPredictor
 from ray.train.tensorflow import (
     to_air_checkpoint,
     TensorflowPredictor,

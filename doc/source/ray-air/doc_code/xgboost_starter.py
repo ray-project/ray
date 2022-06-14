@@ -53,7 +53,7 @@ print(result.metrics)
 # __air_xgb_train_end__
 
 # __air_xgb_batchpred_start__
-from ray.air.batch_predictor import BatchPredictor
+from ray.train.batch_predictor import BatchPredictor
 from ray.train.xgboost import XGBoostPredictor
 
 batch_predictor = BatchPredictor.from_checkpoint(result.checkpoint, XGBoostPredictor)

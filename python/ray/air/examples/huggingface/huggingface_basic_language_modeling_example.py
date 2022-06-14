@@ -17,7 +17,7 @@ from transformers import (
 
 import ray
 import ray.data
-from ray.air.batch_predictor import BatchPredictor
+from ray.train.batch_predictor import BatchPredictor
 from ray.train.huggingface import HuggingFacePredictor, HuggingFaceTrainer
 
 

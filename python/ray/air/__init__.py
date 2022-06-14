@@ -1,4 +1,4 @@
-from ray.air.batch_predictor import BatchPredictor
+from ray.train.batch_predictor import BatchPredictor
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
 from ray.air.data_batch_type import DataBatchType

@@ -82,7 +82,7 @@ with checkpoint.as_directory() as checkpoint_path:
 
 
 # __predictor_start__
-from ray.air.batch_predictor import BatchPredictor
+from ray.train.batch_predictor import BatchPredictor
 from ray.train.xgboost import XGBoostPredictor
 
 test_dataset = ray.data.from_items([{"x": x} for x in range(2, 32, 3)])

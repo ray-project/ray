@@ -84,12 +84,12 @@ Tuner
 Predictors
 ~~~~~~~~~~
 
-.. autoclass:: ray.air.predictor.Predictor
+.. autoclass:: ray.train.predictor.Predictor
     :members:
 
-.. autoclass:: ray.air.predictor.DataBatchType
+.. autoclass:: ray.train.predictor.DataBatchType
 
-.. autoclass:: ray.air.batch_predictor.BatchPredictor
+.. autoclass:: ray.train.batch_predictor.BatchPredictor
     :members:
 
 .. automodule:: ray.train.xgboost

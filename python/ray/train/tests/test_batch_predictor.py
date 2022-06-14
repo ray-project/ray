@@ -5,7 +5,7 @@ import pytest
 
 import ray
 from ray.air import Preprocessor
-from ray.air.batch_predictor import BatchPredictor
+from ray.train.batch_predictor import BatchPredictor
 from ray.air.checkpoint import Checkpoint
 from ray.train.predictor import Predictor
 
