@@ -19,6 +19,10 @@ import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.modules
 import ray.dashboard.utils as dashboard_utils
 from ray._private import ray_constants
+from ray._private.ray_constants import (
+    DEBUG_AUTOSCALING_ERROR,
+    DEBUG_AUTOSCALING_STATUS_LEGACY,
+)
 from ray._private.test_utils import (
     format_web_url,
     get_error_message,
@@ -33,7 +37,6 @@ from ray.dashboard.modules.dashboard_sdk import DEFAULT_DASHBOARD_ADDRESS
 from ray.experimental.state.api import StateApiClient
 from ray.experimental.state.common import ListApiOptions, StateResource
 from ray.experimental.state.exception import ServerUnavailable
-from ray.ray_constants import DEBUG_AUTOSCALING_ERROR, DEBUG_AUTOSCALING_STATUS_LEGACY
 
 try:
     import aiohttp.web
