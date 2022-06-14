@@ -343,7 +343,7 @@ def test_get_num_cpus(
     - Fallback to multiprocessing.cpu_count if there's no docker count available.
     """
     # Shouldn't get the log warning if we're in K8s, the env variable is set,
-    # the flag arg to function, or getting docker cpus fails.
+    # the flag arg to get_num_cpus is set, or getting docker cpus fails.
     # Otherwise, should get the log message.
     should_not_log = any([in_k8s, env_disable, override_disable, not got_docker_cpus])
     expected_warning = (
