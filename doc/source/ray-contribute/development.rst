@@ -171,7 +171,7 @@ the dependencies. See :ref:`python-environment` for more details.
 
     .. code-block:: bash
 
-        conda install protobuf bazel
+        conda install protobuf grpcio bazel
 
 .. tabbed:: Bash
 
