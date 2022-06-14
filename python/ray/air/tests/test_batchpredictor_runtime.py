@@ -10,7 +10,7 @@ from typing import Type
 import ray
 from ray.air.checkpoint import Checkpoint
 from ray.air.batch_predictor import BatchPredictor
-from ray.air.predictor import Predictor
+from ray.train.predictor import Predictor
 
 NUM_REPEATS = 3
 

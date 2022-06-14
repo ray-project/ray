@@ -6,7 +6,7 @@ import pandas as pd
 import ray
 from ray.air import Preprocessor
 from ray.air.checkpoint import Checkpoint
-from ray.air.predictor import (
+from ray.train.predictor import (
     Predictor,
 )
 from ray.air.batch_predictor import BatchPredictor

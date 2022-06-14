@@ -14,7 +14,7 @@ from ray.serve.model_wrappers import (
     collate_dict_array,
 )
 from ray.air.checkpoint import Checkpoint
-from ray.air.predictor import DataBatchType, Predictor
+from ray.train.predictor import DataBatchType, Predictor
 from ray.serve.deployment_graph_build import build
 from ray.serve.dag import InputNode
 from ray.serve.deployment_graph import RayServeDAGHandle

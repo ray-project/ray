@@ -3,7 +3,7 @@ from typing import Callable, Optional, Union, List, Type, TYPE_CHECKING
 import pandas as pd
 import tensorflow as tf
 
-from ray.air.predictor import Predictor, DataBatchType
+from ray.train.predictor import Predictor, DataBatchType
 from ray.air.checkpoint import Checkpoint
 from ray.train.data_parallel_trainer import _load_checkpoint
 from ray.air._internal.tensorflow_utils import convert_pandas_to_tf_tensor

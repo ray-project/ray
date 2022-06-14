@@ -10,7 +10,7 @@ from transformers.pipelines.table_question_answering import (
 from ray.air._internal.checkpointing import load_preprocessor_from_dir
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import TENSOR_COLUMN_NAME
-from ray.air.predictor import Predictor
+from ray.train.predictor import Predictor
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor

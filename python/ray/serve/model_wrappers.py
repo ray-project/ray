@@ -4,7 +4,7 @@ import numpy as np
 
 from ray._private.utils import import_attr
 from ray.air.checkpoint import Checkpoint
-from ray.air.predictor import Predictor
+from ray.train.predictor import Predictor
 from ray.serve.drivers import HTTPAdapterFn, SimpleSchemaIngress
 import ray
 from ray import serve
@@ -146,7 +146,7 @@ class ModelWrapper(SimpleSchemaIngress):
 
     Args:
         predictor_cls: The class or path for predictor class.
-            The type must be a subclass of :class:`ray.air.predictor.Predictor`.
+            The type must be a subclass of :class:`ray.train.predictor.Predictor`.
         checkpoint: The checkpoint object or a uri to load checkpoint
             from
 

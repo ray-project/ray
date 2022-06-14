@@ -6,7 +6,7 @@ import pandas as pd
 import ray
 from ray.air import Preprocessor
 from ray.air.checkpoint import Checkpoint
-from ray.air.predictor import (
+from ray.train.predictor import (
     Predictor,
     PredictorNotSerializableException,
 )
@@ -49,11 +49,11 @@ def test_from_checkpoint():
 
 
 @mock.patch(
-    "ray.air.predictor.convert_batch_type_to_pandas",
+    "ray.train.predictor.convert_batch_type_to_pandas",
     return_value=mock.DEFAULT,
 )
 @mock.patch(
-    "ray.air.predictor.convert_pandas_to_batch_type",
+    "ray.train.predictor.convert_pandas_to_batch_type",
     return_value=mock.DEFAULT,
 )
 def test_predict(convert_from_pandas_mock, convert_to_pandas_mock):

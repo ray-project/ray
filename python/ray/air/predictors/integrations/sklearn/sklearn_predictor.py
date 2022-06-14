@@ -7,7 +7,7 @@ from sklearn.base import BaseEstimator
 from ray.air._internal.sklearn_utils import set_cpu_params
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import TENSOR_COLUMN_NAME
-from ray.air.predictor import Predictor
+from ray.train.predictor import Predictor
 from ray.train.sklearn import load_checkpoint
 from ray.util.joblib import register_ray
 
