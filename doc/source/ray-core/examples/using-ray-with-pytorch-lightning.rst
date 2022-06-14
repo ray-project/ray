@@ -57,7 +57,7 @@ Here is an example of using the ``RayPlugin`` for Distributed Data Parallel trai
 
     # Create your PyTorch Lightning model here.
     ptl_model = MNISTClassifier(...)
-    plugin = RayPlugin(num_workers=4, cpus_per_worker=1, use_gpu=True)
+    plugin = RayPlugin(num_workers=4, num_cpus_per_worker=1, use_gpu=True)
 
     # If using GPUs, set the ``gpus`` arg to a value > 0.
     # The actual number of GPUs is determined by ``num_workers``.
