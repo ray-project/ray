@@ -577,6 +577,7 @@ def run_learning_tests_from_yaml(
     yaml_files: List[str],
     *,
     max_num_repeats: int = 2,
+    use_pass_criteria_as_stop: bool = True,
     smoke_test: bool = False,
 ) -> Dict[str, Any]:
     """Runs the given experiments in yaml_files and returns results dict.
@@ -585,6 +586,8 @@ def run_learning_tests_from_yaml(
         yaml_files: List of yaml file names.
         max_num_repeats: How many times should we repeat a failed
             experiment?
+        use_pass_criteria_as_stop: Configure the Trial so that it stops
+            as soon as pass criterias are met.
         smoke_test: Whether this is just a smoke-test. If True,
             set time_total_s to 5min and don't early out due to rewards
             or timesteps reached.
@@ -635,6 +638,13 @@ def run_learning_tests_from_yaml(
             e["stop"] = e["stop"] if "stop" in e else {}
             e["pass_criteria"] = e["pass_criteria"] if "pass_criteria" in e else {}
 
+            check_eval = should_check_eval(e)
+            episode_reward_key = (
+                "episode_reward_mean"
+                if not check_eval
+                else "evaluation/episode_reward_mean"
+            )
+
             # For smoke-tests, we just run for n min.
             if smoke_test:
                 # 0sec for each(!) experiment/trial.
@@ -643,16 +653,11 @@ def run_learning_tests_from_yaml(
                 # create its Algorithm and run a first iteration.
                 e["stop"]["time_total_s"] = 0
             else:
-                check_eval = should_check_eval(e)
-                episode_reward_key = (
-                    "episode_reward_mean"
-                    if not check_eval
-                    else "evaluation/episode_reward_mean"
-                )
-                # We also stop early, once we reach the desired reward.
-                min_reward = e.get("pass_criteria", {}).get(episode_reward_key)
-                if min_reward is not None:
-                    e["stop"][episode_reward_key] = min_reward
+                if use_pass_criteria_as_stop:
+                    # We also stop early, once we reach the desired reward.
+                    min_reward = e.get("pass_criteria", {}).get(episode_reward_key)
+                    if min_reward is not None:
+                        e["stop"][episode_reward_key] = min_reward
 
             # Generate `checks` dict for all experiments
             # (tf, tf2 and/or torch).
@@ -664,7 +669,7 @@ def run_learning_tests_from_yaml(
                     ec["config"]["eager_tracing"] = True
 
                 checks[k_] = {
-                    "min_reward": ec["pass_criteria"].get("episode_reward_mean", 0.0),
+                    "min_reward": ec["pass_criteria"].get(episode_reward_key, 0.0),
                     "min_throughput": ec["pass_criteria"].get("timesteps_total", 0.0)
                     / (ec["stop"].get("time_total_s", 1.0) or 1.0),
                     "time_total_s": ec["stop"].get("time_total_s"),
@@ -676,10 +681,6 @@ def run_learning_tests_from_yaml(
 
                 # One experiment to run.
                 experiments[k_] = ec
-
-    # Print out the actual config.
-    print("== Test config ==")
-    print(yaml.dump(experiments))
 
     # Keep track of those experiments we still have to run.
     # If an experiment passes, we'll remove it from this dict.
@@ -698,6 +699,10 @@ def run_learning_tests_from_yaml(
 
         print(f"Starting learning test iteration {i}...")
 
+        # Print out the actual config.
+        print("== Test config ==")
+        print(yaml.dump(experiments_to_run))
+
         # Run remaining experiments.
         trials = run_experiments(
             experiments_to_run,
@@ -713,6 +718,7 @@ def run_learning_tests_from_yaml(
                     "episode_reward_mean": "reward_mean",
                     "evaluation/episode_reward_mean": "eval_reward_mean",
                 },
+                parameter_columns=["framework"],
                 sort_by_metric=True,
                 max_report_frequency=30,
             ),
@@ -748,22 +754,24 @@ def run_learning_tests_from_yaml(
             # Experiment finished: Check reward achieved and timesteps done
             # (throughput).
             else:
+                # Use best_result's reward to check min_reward.
                 if check_eval:
                     episode_reward_mean = np.mean(
                         [
-                            t.last_result["evaluation"]["episode_reward_mean"]
+                            t.metric_analysis["evaluation/episode_reward_mean"]["max"]
                             for t in trials_for_experiment
                         ]
                     )
                 else:
                     episode_reward_mean = np.mean(
                         [
-                            t.last_result["episode_reward_mean"]
+                            t.metric_analysis["episode_reward_mean"]["max"]
                             for t in trials_for_experiment
                         ]
                     )
                 desired_reward = checks[experiment]["min_reward"]
 
+                # Use last_result["timesteps_total"] to check throughput.
                 timesteps_total = np.mean(
                     [t.last_result["timesteps_total"] for t in trials_for_experiment]
                 )
@@ -773,8 +781,11 @@ def run_learning_tests_from_yaml(
 
                 # TODO(jungong) : track training- and env throughput separately.
                 throughput = timesteps_total / (total_time_s or 1.0)
-                # TODO(jungong) : enable throughput check again after
-                #   TD3_HalfCheetahBulletEnv is fixed and verified.
+                # Throughput verification is not working. Many algorithm, e.g. TD3,
+                # achieves the learning goal, but fails the throughput check
+                # miserably.
+                # TODO(jungong): Figure out why.
+                #
                 # desired_throughput = checks[experiment]["min_throughput"]
                 desired_throughput = None
 
@@ -803,7 +814,11 @@ def run_learning_tests_from_yaml(
                     checks[experiment]["failures"] += 1
                 # We succeeded!
                 else:
-                    print(" ... Successful: (mark ok).")
+                    print(
+                        " ... Successful: (mark ok). Actual "
+                        f"reward={episode_reward_mean}; "
+                        f"actual throughput={throughput}"
+                    )
                     checks[experiment]["passed"] = True
                     del experiments_to_run[experiment]
 

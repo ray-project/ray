@@ -163,8 +163,7 @@ class DDPPO(PPO):
         config: Optional[PartialAlgorithmConfigDict] = None,
         env: Optional[Union[str, EnvType]] = None,
         logger_creator: Optional[Callable[[], Logger]] = None,
-        remote_checkpoint_dir: Optional[str] = None,
-        sync_function_tpl: Optional[str] = None,
+        **kwargs,
     ):
         """Initializes a DDPPO instance.
 
@@ -177,9 +176,11 @@ class DDPPO(PPO):
                 the "env" key in `config`.
             logger_creator: Callable that creates a ray.tune.Logger
                 object. If unspecified, a default logger is created.
+            **kwargs: Arguments passed to the Trainable base class
+
         """
         super().__init__(
-            config, env, logger_creator, remote_checkpoint_dir, sync_function_tpl
+            config=config, env=env, logger_creator=logger_creator, **kwargs
         )
 
         if "train_batch_size" in config.keys() and config["train_batch_size"] != -1:
@@ -255,31 +256,30 @@ class DDPPO(PPO):
         super().setup(config)
 
         # Initialize torch process group for
-        if self.config["_disable_execution_plan_api"] is True:
-            self._curr_learner_info = {}
-            ip = ray.get(self.workers.remote_workers()[0].get_node_ip.remote())
-            port = ray.get(self.workers.remote_workers()[0].find_free_port.remote())
-            address = "tcp://{ip}:{port}".format(ip=ip, port=port)
-            logger.info("Creating torch process group with leader {}".format(address))
+        self._curr_learner_info = {}
+        ip = ray.get(self.workers.remote_workers()[0].get_node_ip.remote())
+        port = ray.get(self.workers.remote_workers()[0].find_free_port.remote())
+        address = "tcp://{ip}:{port}".format(ip=ip, port=port)
+        logger.info("Creating torch process group with leader {}".format(address))
 
-            # Get setup tasks in order to throw errors on failure.
-            ray.get(
-                [
-                    worker.setup_torch_data_parallel.remote(
-                        url=address,
-                        world_rank=i,
-                        world_size=len(self.workers.remote_workers()),
-                        backend=self.config["torch_distributed_backend"],
-                    )
-                    for i, worker in enumerate(self.workers.remote_workers())
-                ]
-            )
-            logger.info("Torch process group init completed")
-            self._ddppo_worker_manager = AsyncRequestsManager(
-                self.workers.remote_workers(),
-                max_remote_requests_in_flight_per_worker=1,
-                ray_wait_timeout_s=0.03,
-            )
+        # Get setup tasks in order to throw errors on failure.
+        ray.get(
+            [
+                worker.setup_torch_data_parallel.remote(
+                    url=address,
+                    world_rank=i,
+                    world_size=len(self.workers.remote_workers()),
+                    backend=self.config["torch_distributed_backend"],
+                )
+                for i, worker in enumerate(self.workers.remote_workers())
+            ]
+        )
+        logger.info("Torch process group init completed")
+        self._ddppo_worker_manager = AsyncRequestsManager(
+            self.workers.remote_workers(),
+            max_remote_requests_in_flight_per_worker=1,
+            ray_wait_timeout_s=0.03,
+        )
 
     @override(PPO)
     def training_step(self) -> ResultDict:
