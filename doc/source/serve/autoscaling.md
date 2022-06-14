@@ -4,8 +4,8 @@
 
 This section should help you:
 
-- Understand how Ray Serve autoscaling works
-- Learn how to configure the parameters for your workload
+- Understand how Ray Serve autoscaling works.
+- Learn how to configure the parameters for your workload.
 
 
 ## Autoscaling architecture
