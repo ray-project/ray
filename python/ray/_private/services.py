@@ -1301,8 +1301,8 @@ def start_log_monitor(
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_LOG_MONITOR,
-        stdout_file=sys.stdout,
-        stderr_file=sys.stderr,
+        stdout_file=stdout_file,
+        stderr_file=stderr_file,
         fate_share=fate_share,
     )
     print(process_info)

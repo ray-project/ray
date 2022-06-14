@@ -71,7 +71,6 @@ from ray.autoscaler.tags import (
 )
 from ray.experimental.internal_kv import _internal_kv_put
 from ray.util.debug import log_once
-from ray.worker import global_worker  # type: ignore
 
 try:  # py3
     from shlex import quote

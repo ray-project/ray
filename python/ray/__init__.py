@@ -15,9 +15,7 @@ from ray._private.state import available_resources  # noqa: E402
 from ray._private.state import cluster_resources, nodes, timeline
 from ray._private.worker import LOCAL_MODE  # noqa: E402,F401
 from ray._private.worker import (
-    RESTORE_WORKER_MODE,
     SCRIPT_MODE,
-    SPILL_WORKER_MODE,
     WORKER_MODE,
     cancel,
     get,
