@@ -1281,7 +1281,6 @@ def start_log_monitor(
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",
     ]
-    print(command)
     if redirect_logging:
         # Avoid hanging due to fd inheritance.
         stdout_file = subprocess.DEVNULL
@@ -1305,7 +1304,6 @@ def start_log_monitor(
         stderr_file=stderr_file,
         fate_share=fate_share,
     )
-    print(process_info)
     return process_info
 
 
