@@ -290,12 +290,6 @@ class TrialRunnerCallbacks(unittest.TestCase):
         first_logger_pos, last_logger_pos, syncer_pos = get_positions(callbacks)
         self.assertLess(last_logger_pos, syncer_pos)
 
-        # This should throw an error as the syncer comes before the logger
-        with self.assertRaises(ValueError):
-            callbacks = create_default_callbacks(
-                [SyncerCallback(None), LoggerCallback()], SyncConfig(), None
-            )
-
         # This should be reordered but preserve the regular callback order
         [mc1, mc2, mc3] = [Callback(), Callback(), Callback()]
         # Has to be legacy logger to avoid logger callback creation

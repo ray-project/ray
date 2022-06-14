@@ -44,6 +44,8 @@ from ray.tune.syncer import (
     set_sync_periods,
     validate_upload_dir,
     wait_for_sync,
+    _validate_upload_dir,
+    SyncerCallback,
 )
 from ray.tune.trainable import Trainable
 from ray.tune.trial import Trial
@@ -420,8 +422,7 @@ def run(
 
     config = config or {}
     sync_config = sync_config or SyncConfig()
-    validate_upload_dir(sync_config)
-    set_sync_periods(sync_config)
+    _validate_upload_dir(sync_config)
 
     if num_samples == -1:
         num_samples = sys.maxsize
@@ -714,7 +715,14 @@ def run(
     if has_verbosity(Verbosity.V1_EXPERIMENT):
         _report_progress(runner, progress_reporter, done=True)
 
-    wait_for_sync()
+    # Wait for syncing to finish
+    for callback in callbacks:
+        if isinstance(callback, SyncerCallback):
+            try:
+                callback.wait_for_all()
+            except TuneError as e:
+                logger.error(e)
+
     runner.cleanup()
 
     incomplete_trials = []

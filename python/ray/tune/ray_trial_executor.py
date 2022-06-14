@@ -371,7 +371,7 @@ class RayTrialExecutor:
             # We keep these kwargs separate for backwards compatibility
             # with trainables that don't provide these keyword arguments
             kwargs["remote_checkpoint_dir"] = trial.remote_checkpoint_dir
-            kwargs["sync_function_tpl"] = trial.sync_function_tpl
+            kwargs["custom_syncer"] = trial.custom_syncer
 
             # Throw a meaningful error if trainable does not use the
             # new API
@@ -381,7 +381,7 @@ class RayTrialExecutor:
             except Exception as e:
                 raise RuntimeError(
                     "Your trainable class does not accept a "
-                    "`remote_checkpoint_dir` or `sync_function_tpl` argument "
+                    "`remote_checkpoint_dir` or `custom_syncer` argument "
                     "in its constructor, but you've passed a "
                     "`upload_dir` to your SyncConfig. Without accepting "
                     "these parameters and passing them to the base trainable "
@@ -767,27 +767,31 @@ class RayTrialExecutor:
             raise RuntimeError(
                 "Trial {}: Unable to restore - no runner found.".format(trial)
             )
-        value = checkpoint.dir_or_data
+        checkpoint_dir = checkpoint.dir_or_data
         node_ip = checkpoint.node_ip
         if checkpoint.storage_mode == CheckpointStorage.MEMORY:
             logger.debug("Trial %s: Attempting restore from object", trial)
             # Note that we don't store the remote since in-memory checkpoints
             # don't guarantee fault tolerance and don't need to be waited on.
             with self._change_working_directory(trial):
-                trial.runner.restore_from_object.remote(value)
+                trial.runner.restore_from_object.remote(checkpoint_dir)
         else:
-            logger.debug("Trial %s: Attempting restore from %s", trial, value)
-            if trial.uses_cloud_checkpointing or not trial.sync_on_checkpoint:
+            logger.debug("Trial %s: Attempting restore from %s", trial, checkpoint_dir)
+            if (
+                trial.uses_cloud_checkpointing
+                or not trial.sync_on_checkpoint
+                or not os.path.exists(checkpoint_dir)
+            ):
                 # If using cloud checkpointing, trial will get cp from cloud.
                 # If not syncing to driver, assume it has access to the cp
                 # on the local fs.
                 with self._change_working_directory(trial):
-                    remote = trial.runner.restore.remote(value, node_ip)
+                    remote = trial.runner.restore.remote(checkpoint_dir, node_ip)
             elif trial.sync_on_checkpoint:
                 # This provides FT backwards compatibility in the
                 # case where no cloud checkpoints are provided.
                 logger.debug("Trial %s: Reading checkpoint into memory", trial)
-                obj = TrainableUtil.checkpoint_to_object(value)
+                obj = TrainableUtil.checkpoint_to_object(checkpoint_dir)
                 with self._change_working_directory(trial):
                     remote = trial.runner.restore_from_object.remote(obj)
             else:
