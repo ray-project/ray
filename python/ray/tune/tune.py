@@ -29,18 +29,10 @@ from ray.tune.schedulers import (
     ResourceChangingScheduler,
     TrialScheduler,
 )
-from ray.tune.schedulers.util import (
-    set_search_properties_backwards_compatible as scheduler_set_search_properties_backwards_compatible,
-)
 from ray.tune.stopper import Stopper
 from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm, SearchGenerator
 from ray.tune.suggest.suggestion import ConcurrencyLimiter, Searcher
-
-# Turn off black here, as it will format the lines to be longer than 88 chars
-# fmt: off
-from ray.tune.suggest.util import (
-    set_search_properties_backwards_compatible as searcher_set_search_properties_backwards_compatible,
-)
+from ray.tune.suggest.util import set_search_properties_backwards_compatible
 from ray.tune.suggest.variant_generator import has_unresolved_values
 from ray.tune.syncer import (
     SyncConfig,
@@ -57,9 +49,6 @@ from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.util.annotations import PublicAPI
 from ray.util.ml_utils.node import force_on_current_node
 from ray.util.queue import Empty, Queue
-
-# fmt: on
-
 
 logger = logging.getLogger(__name__)
 
@@ -585,7 +574,7 @@ def run(
     if isinstance(search_alg, Searcher):
         search_alg = SearchGenerator(search_alg)
 
-    if config and not searcher_set_search_properties_backwards_compatible(
+    if config and not set_search_properties_backwards_compatible(
         search_alg.set_search_properties,
         metric,
         mode,
@@ -601,7 +590,7 @@ def run(
                 "them in the search algorithm's search space if necessary."
             )
 
-    if not scheduler_set_search_properties_backwards_compatible(
+    if not set_search_properties_backwards_compatible(
         scheduler.set_search_properties, metric, mode, **experiments[0].public_spec
     ):
         raise ValueError(

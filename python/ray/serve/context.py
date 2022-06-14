@@ -9,7 +9,7 @@ from typing import Callable
 
 import ray
 from ray.exceptions import RayActorError
-from ray.serve.client import ServeControllerClient, get_controller_namespace
+from ray.serve.client import ServeControllerClient
 from ray.serve.common import ReplicaTag
 from ray.serve.constants import SERVE_CONTROLLER_NAME, SERVE_NAMESPACE
 from ray.serve.exceptions import RayServeException

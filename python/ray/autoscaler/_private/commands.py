@@ -78,12 +78,6 @@ except ImportError:  # py2
     from pipes import quote
 
 
-try:  # py3
-    from shlex import quote
-except ImportError:  # py2
-    from pipes import quote
-
-
 logger = logging.getLogger(__name__)
 
 redis_client = None

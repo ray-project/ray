@@ -10,6 +10,7 @@ import ray
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.cluster_utils import Cluster
+from ray.serve.constants import SERVE_NAMESPACE
 from ray.serve.deployment_state import ReplicaStartupStatus, ReplicaState
 
 

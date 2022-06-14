@@ -16,10 +16,7 @@ from ray._private.client_mode_hook import (
 from ray._private.utils import get_runtime_env_info, parse_runtime_env
 from ray._raylet import PythonFunctionDescriptor
 from ray.util.annotations import DeveloperAPI, PublicAPI
-from ray.util.placement_group import (
-    _configure_placement_group_based_on_context,
-    configure_placement_group_based_on_context,
-)
+from ray.util.placement_group import _configure_placement_group_based_on_context
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.tracing.tracing_helper import (
     _inject_tracing_into_function,

@@ -13,7 +13,7 @@ from ray import cloudpickle
 from ray._private.usage import usage_lib
 from ray.experimental.dag import DAGNode
 from ray.serve.application import Application
-from ray.serve.client import ServeControllerClient, get_controller_namespace
+from ray.serve.client import ServeControllerClient
 from ray.serve.config import AutoscalingConfig, DeploymentConfig, HTTPOptions
 from ray.serve.constants import (
     CONTROLLER_MAX_CONCURRENCY,
@@ -22,6 +22,7 @@ from ray.serve.constants import (
     DEFAULT_HTTP_PORT,
     HTTP_PROXY_TIMEOUT,
     SERVE_CONTROLLER_NAME,
+    SERVE_NAMESPACE,
 )
 from ray.serve.context import (
     ReplicaContext,

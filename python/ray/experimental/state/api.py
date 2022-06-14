@@ -15,9 +15,7 @@ from ray.experimental.state.common import (
 )
 from ray.experimental.state.exception import RayStateApiException
 
-"""
-List APIs
-"""
+
 # TODO(sang): Replace it with auto-generated methods.
 def _list(
     resource_name: str,
