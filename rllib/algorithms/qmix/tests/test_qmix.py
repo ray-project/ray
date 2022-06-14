@@ -107,13 +107,13 @@ class TestQMix(unittest.TestCase):
         )  # Test with vectorization on.
         config = add_gpu_if_necessary(config)
 
-        trainer = config.build()
+        algo = config.build()
 
         for _ in range(4):
-            trainer.train()  # OK if it doesn't trip the action assertion error
+            algo.train()  # OK if it doesn't trip the action assertion error
 
-        assert trainer.train()["episode_reward_mean"] == 30.0
-        trainer.stop()
+        assert algo.train()["episode_reward_mean"] == 30.0
+        algo.stop()
         ray.shutdown()
 
 

@@ -138,31 +138,31 @@ class TestSAC(unittest.TestCase):
                     if env == "CartPole-v0"
                     else None
                 )
-                trainer = config.build(env=env)
+                algo = config.build(env=env)
                 for i in range(num_iterations):
-                    results = trainer.train()
+                    results = algo.train()
                     check_train_results(results)
                     print(results)
-                check_compute_single_action(trainer)
+                check_compute_single_action(algo)
 
                 # Test, whether the replay buffer is saved along with
                 # a checkpoint (no point in doing it for all frameworks since
                 # this is framework agnostic).
                 if fw == "tf" and env == "CartPole-v0":
-                    checkpoint = trainer.save()
-                    new_trainer = sac.SAC(config, env=env)
-                    new_trainer.restore(checkpoint)
+                    checkpoint = algo.save()
+                    new_algo = sac.SAC(config, env=env)
+                    new_algo.restore(checkpoint)
                     # Get some data from the buffer and compare.
-                    data = trainer.local_replay_buffer.replay_buffers[
+                    data = algo.local_replay_buffer.replay_buffers[
                         "default_policy"
                     ]._storage[: 42 + 42]
-                    new_data = new_trainer.local_replay_buffer.replay_buffers[
+                    new_data = new_algo.local_replay_buffer.replay_buffers[
                         "default_policy"
                     ]._storage[: 42 + 42]
                     check(data, new_data)
-                    new_trainer.stop()
+                    new_algo.stop()
 
-                trainer.stop()
+                algo.stop()
 
     def test_sac_loss_function(self):
         """Tests SAC loss function results across all frameworks."""
@@ -249,8 +249,8 @@ class TestSAC(unittest.TestCase):
             config, frameworks=("tf", "torch"), session=True
         ):
             # Generate Algorithm and get its default Policy object.
-            trainer = config.build(env=env)
-            policy = trainer.get_policy()
+            algo = config.build(env=env)
+            policy = algo.get_policy()
             p_sess = None
             if sess:
                 p_sess = policy.get_session()
@@ -490,7 +490,7 @@ class TestSAC(unittest.TestCase):
                             )
                         else:
                             check(tf_var, torch_var, atol=0.003)
-            trainer.stop()
+            algo.stop()
 
     def test_sac_dict_obs_order(self):
         dict_space = Dict(
@@ -537,12 +537,12 @@ class TestSAC(unittest.TestCase):
         num_iterations = 1
 
         for _ in framework_iterator(config, with_eager_tracing=True):
-            trainer = config.build(env="nested")
+            algo = config.build(env="nested")
             for _ in range(num_iterations):
-                results = trainer.train()
+                results = algo.train()
                 check_train_results(results)
                 print(results)
-            check_compute_single_action(trainer)
+            check_compute_single_action(algo)
 
     def _get_batch_helper(self, obs_size, actions, batch_size):
         return SampleBatch(

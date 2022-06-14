@@ -32,9 +32,9 @@ class TestAlphaZero(unittest.TestCase):
 
         # Only working for torch right now.
         for _ in framework_iterator(config, frameworks="torch"):
-            trainer = config.build()
+            algo = config.build()
             for i in range(num_iterations):
-                results = trainer.train()
+                results = algo.train()
                 check_train_results(results)
                 print(results)
 

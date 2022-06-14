@@ -133,9 +133,9 @@ class TestPPO(unittest.TestCase):
                         )
                     )
 
-                    trainer = config.build(env=env)
-                    policy = trainer.get_policy()
-                    entropy_coeff = trainer.get_policy().entropy_coeff
+                    algo = config.build(env=env)
+                    policy = algo.get_policy()
+                    entropy_coeff = algo.get_policy().entropy_coeff
                     lr = policy.cur_lr
                     if fw == "tf":
                         entropy_coeff, lr = policy.get_session().run(
@@ -145,14 +145,14 @@ class TestPPO(unittest.TestCase):
                     check(lr, config.lr_schedule[0][1])
 
                     for i in range(num_iterations):
-                        results = trainer.train()
+                        results = algo.train()
                         check_train_results(results)
                         print(results)
 
                     check_compute_single_action(
-                        trainer, include_prev_action_reward=True, include_state=lstm
+                        algo, include_prev_action_reward=True, include_state=lstm
                     )
-                    trainer.stop()
+                    algo.stop()
 
     def test_ppo_exploration_setup(self):
         """Tests, whether PPO runs with different exploration setups."""
@@ -171,20 +171,20 @@ class TestPPO(unittest.TestCase):
         # Test against all frameworks.
         for fw in framework_iterator(config):
             # Default Agent should be setup with StochasticSampling.
-            trainer = ppo.PPO(config=config, env="FrozenLake-v1")
+            algo = ppo.PPO(config=config, env="FrozenLake-v1")
             # explore=False, always expect the same (deterministic) action.
-            a_ = trainer.compute_single_action(
+            a_ = algo.compute_single_action(
                 obs, explore=False, prev_action=np.array(2), prev_reward=np.array(1.0)
             )
             # Test whether this is really the argmax action over the logits.
             if fw != "tf":
-                last_out = trainer.get_policy().model.last_output()
+                last_out = algo.get_policy().model.last_output()
                 if fw == "torch":
                     check(a_, np.argmax(last_out.detach().cpu().numpy(), 1)[0])
                 else:
                     check(a_, np.argmax(last_out.numpy(), 1)[0])
             for _ in range(50):
-                a = trainer.compute_single_action(
+                a = algo.compute_single_action(
                     obs,
                     explore=False,
                     prev_action=np.array(2),
@@ -196,12 +196,12 @@ class TestPPO(unittest.TestCase):
             actions = []
             for _ in range(300):
                 actions.append(
-                    trainer.compute_single_action(
+                    algo.compute_single_action(
                         obs, prev_action=np.array(2), prev_reward=np.array(1.0)
                     )
                 )
             check(np.mean(actions), 1.5, atol=0.2)
-            trainer.stop()
+            algo.stop()
 
     def test_ppo_free_log_std(self):
         """Tests the free log std option works."""
@@ -222,8 +222,8 @@ class TestPPO(unittest.TestCase):
         )
 
         for fw, sess in framework_iterator(config, session=True):
-            trainer = ppo.PPO(config=config, env="CartPole-v0")
-            policy = trainer.get_policy()
+            algo = ppo.PPO(config=config, env="CartPole-v0")
+            policy = algo.get_policy()
 
             # Check the free log std var is created.
             if fw == "torch":
@@ -256,7 +256,7 @@ class TestPPO(unittest.TestCase):
             # Check the variable is updated.
             post_std = get_value()
             assert post_std != 0.0, post_std
-            trainer.stop()
+            algo.stop()
 
     def test_ppo_legacy_config(self):
         """Tests, whether the old PPO config dict is still functional."""
@@ -285,8 +285,8 @@ class TestPPO(unittest.TestCase):
         )
 
         for fw, sess in framework_iterator(config, session=True):
-            trainer = ppo.PPO(config=config, env="CartPole-v0")
-            policy = trainer.get_policy()
+            algo = ppo.PPO(config=config, env="CartPole-v0")
+            policy = algo.get_policy()
 
             # Check no free log std var by default.
             if fw == "torch":

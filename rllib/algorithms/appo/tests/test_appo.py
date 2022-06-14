@@ -30,23 +30,23 @@ class TestAPPO(unittest.TestCase):
         for _ in framework_iterator(config, with_eager_tracing=True):
             print("w/o v-trace")
             config.vtrace = False
-            trainer = config.build(env="CartPole-v0")
+            algo = config.build(env="CartPole-v0")
             for i in range(num_iterations):
-                results = trainer.train()
+                results = algo.train()
                 check_train_results(results)
                 print(results)
-            check_compute_single_action(trainer)
-            trainer.stop()
+            check_compute_single_action(algo)
+            algo.stop()
 
             print("w/ v-trace")
             config.vtrace = True
-            trainer = config.build(env="CartPole-v0")
+            algo = config.build(env="CartPole-v0")
             for i in range(num_iterations):
-                results = trainer.train()
+                results = algo.train()
                 check_train_results(results)
                 print(results)
-            check_compute_single_action(trainer)
-            trainer.stop()
+            check_compute_single_action(algo)
+            algo.stop()
 
     def test_appo_compilation_use_kl_loss(self):
         """Test whether APPO can be built with kl_loss enabled."""
@@ -57,13 +57,13 @@ class TestAPPO(unittest.TestCase):
         num_iterations = 2
 
         for _ in framework_iterator(config, with_eager_tracing=True):
-            trainer = config.build(env="CartPole-v0")
+            algo = config.build(env="CartPole-v0")
             for i in range(num_iterations):
-                results = trainer.train()
+                results = algo.train()
                 check_train_results(results)
                 print(results)
-            check_compute_single_action(trainer)
-            trainer.stop()
+            check_compute_single_action(algo)
+            algo.stop()
 
     def test_appo_two_tf_optimizers(self):
         # Not explicitly setting this should cause a warning, but not fail.
@@ -81,13 +81,13 @@ class TestAPPO(unittest.TestCase):
 
         # Only supported for tf so far.
         for _ in framework_iterator(config, frameworks=("tf2", "tf")):
-            trainer = config.build(env="CartPole-v0")
+            algo = config.build(env="CartPole-v0")
             for i in range(num_iterations):
-                results = trainer.train()
+                results = algo.train()
                 check_train_results(results)
                 print(results)
-            check_compute_single_action(trainer)
-            trainer.stop()
+            check_compute_single_action(algo)
+            algo.stop()
 
     def test_appo_entropy_coeff_schedule(self):
         # Initial lr, doesn't really matter because of the schedule below.
@@ -131,18 +131,18 @@ class TestAPPO(unittest.TestCase):
             ]
 
         for _ in framework_iterator(config):
-            trainer = config.build(env="CartPole-v0")
+            algo = config.build(env="CartPole-v0")
 
-            coeff = _step_n_times(trainer, 10)  # 200 timesteps
+            coeff = _step_n_times(algo, 10)  # 200 timesteps
             # Should be close to the starting coeff of 0.01.
             self.assertLessEqual(coeff, 0.01)
             self.assertGreaterEqual(coeff, 0.001)
 
-            coeff = _step_n_times(trainer, 20)  # 400 timesteps
+            coeff = _step_n_times(algo, 20)  # 400 timesteps
             # Should have annealed to the final coeff of 0.0001.
             self.assertLessEqual(coeff, 0.001)
 
-            trainer.stop()
+            algo.stop()
 
 
 if __name__ == "__main__":

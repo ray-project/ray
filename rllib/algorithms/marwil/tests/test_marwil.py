@@ -156,8 +156,8 @@ class TestMARWIL(unittest.TestCase):
             reader = JsonReader(inputs=[data_file])
             batch = reader.next()
 
-            trainer = config.build(env="CartPole-v0")
-            policy = trainer.get_policy()
+            algo = config.build(env="CartPole-v0")
+            policy = algo.get_policy()
             model = policy.model
 
             # Calculate our own expected values (to then compare against the
@@ -230,6 +230,8 @@ class TestMARWIL(unittest.TestCase):
                 check(policy._marwil_loss.v_loss, expected_vf_loss, decimals=4)
                 check(policy._marwil_loss.p_loss, expected_pol_loss, decimals=4)
             check(loss_out, expected_loss, decimals=3)
+
+            algo.stop()
 
 
 if __name__ == "__main__":

@@ -45,8 +45,8 @@ class MBMPOConfig(AlgorithmConfig):
         ...     .rollouts(num_rollout_workers=64)
         >>> print(config.to_dict())
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> trainer = config.build(env="CartPole-v1")
-        >>> trainer.train()
+        >>> algo = config.build(env="CartPole-v1")
+        >>> algo.train()
 
     Example:
         >>> from ray.rllib.algorithms.mbmpo import MBMPOConfig

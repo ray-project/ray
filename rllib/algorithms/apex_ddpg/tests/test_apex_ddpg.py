@@ -36,10 +36,10 @@ class TestApexDDPG(unittest.TestCase):
         num_iterations = 1
 
         for _ in framework_iterator(config, with_eager_tracing=True):
-            trainer = config.build()
+            algo = config.build()
 
             # Test per-worker scale distribution.
-            infos = trainer.workers.foreach_policy(
+            infos = algo.workers.foreach_policy(
                 lambda p, _: p.get_exploration_state()
             )
             scale = [i["cur_scale"] for i in infos]
@@ -50,20 +50,20 @@ class TestApexDDPG(unittest.TestCase):
             check(scale, [0.0] + expected)
 
             for _ in range(num_iterations):
-                results = trainer.train()
+                results = algo.train()
                 check_train_results(results)
                 print(results)
-            check_compute_single_action(trainer)
+            check_compute_single_action(algo)
 
             # Test again per-worker scale distribution
             # (should not have changed).
-            infos = trainer.workers.foreach_policy(
+            infos = algo.workers.foreach_policy(
                 lambda p, _: p.get_exploration_state()
             )
             scale = [i["cur_scale"] for i in infos]
             check(scale, [0.0] + expected)
 
-            trainer.stop()
+            algo.stop()
 
 
 if __name__ == "__main__":

@@ -1433,11 +1433,11 @@ class Algorithm(Trainable):
         Example:
             >>> from ray.rllib.algorithms.ppo import PPO
             >>> # Use a Trainer from RLlib or define your own.
-            >>> trainer = PPO(...) # doctest: +SKIP
+            >>> algo = PPO(...) # doctest: +SKIP
             >>> for _ in range(10): # doctest: +SKIP
-            >>>     trainer.train() # doctest: +SKIP
-            >>> trainer.export_policy_model("/tmp/dir") # doctest: +SKIP
-            >>> trainer.export_policy_model("/tmp/dir/onnx", onnx=1) # doctest: +SKIP
+            >>>     algo.train() # doctest: +SKIP
+            >>> algo.export_policy_model("/tmp/dir") # doctest: +SKIP
+            >>> algo.export_policy_model("/tmp/dir/onnx", onnx=1) # doctest: +SKIP
         """
         self.get_policy(policy_id).export_model(export_dir, onnx)
 
@@ -1458,10 +1458,10 @@ class Algorithm(Trainable):
         Example:
             >>> from ray.rllib.algorithms.ppo import PPO
             >>> # Use a Trainer from RLlib or define your own.
-            >>> trainer = PPO(...) # doctest: +SKIP
+            >>> algo = PPO(...) # doctest: +SKIP
             >>> for _ in range(10): # doctest: +SKIP
-            >>>     trainer.train() # doctest: +SKIP
-            >>> trainer.export_policy_checkpoint("/tmp/export_dir") # doctest: +SKIP
+            >>>     algo.train() # doctest: +SKIP
+            >>> algo.export_policy_checkpoint("/tmp/export_dir") # doctest: +SKIP
         """
         self.get_policy(policy_id).export_checkpoint(export_dir, filename_prefix)
 
@@ -1479,10 +1479,10 @@ class Algorithm(Trainable):
 
         Example:
             >>> from ray.rllib.algorithms.ppo import PPO
-            >>> trainer = PPO(...) # doctest: +SKIP
-            >>> trainer.import_policy_model_from_h5("/tmp/weights.h5") # doctest: +SKIP
+            >>> algo = PPO(...) # doctest: +SKIP
+            >>> algo.import_policy_model_from_h5("/tmp/weights.h5") # doctest: +SKIP
             >>> for _ in range(10): # doctest: +SKIP
-            >>>     trainer.train() # doctest: +SKIP
+            >>>     algo.train() # doctest: +SKIP
         """
         self.get_policy(policy_id).import_model_from_h5(import_file)
         # Sync new weights to remote workers.

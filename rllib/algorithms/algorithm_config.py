@@ -43,7 +43,7 @@ class AlgorithmConfig:
         ...              .rollouts(num_rollout_workers=4)
         ...              .callbacks(MemoryTrackingCallbacks)
         >>> # A config object can be used to construct the respective Trainer.
-        >>> rllib_trainer = config.build()
+        >>> algo = config.build()
 
     Example:
         >>> from ray import tune
