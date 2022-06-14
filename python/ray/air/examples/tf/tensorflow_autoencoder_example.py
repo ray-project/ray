@@ -3,9 +3,6 @@
 # https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras
 # https://blog.keras.io/building-autoencoders-in-keras.html
 import argparse
-import json
-import os
-
 import numpy as np
 import pandas as pd
 import ray.train as train
@@ -18,11 +15,11 @@ from ray.air.result import Result
 from ray.air.train.integrations.tensorflow import TensorflowTrainer
 from ray.train.tensorflow import prepare_dataset_shard
 from tensorflow.keras.callbacks import Callback
-from tqdm import trange
 
 import ray
 
 from ray.data.extensions import TensorArray
+
 
 class TrainCheckpointReportCallback(Callback):
     def on_epoch_end(self, epoch, logs=None):
@@ -30,8 +27,7 @@ class TrainCheckpointReportCallback(Callback):
         train.report(**logs)
 
 
-
-def get_dataset(split_type="train"): 
+def get_dataset(split_type="train"):
     def dataset_factory():
         return tfds.load("mnist", split=[split_type], as_supervised=True)[0].take(128)
 
@@ -45,8 +41,9 @@ def get_dataset(split_type="train"):
         return x
 
     def preprocess_dataset(batch):
-        return [(normalize_images(image), normalize_images(image)) for image, _ in batch]
-
+        return [
+            (normalize_images(image), normalize_images(image)) for image, _ in batch
+        ]
 
     dataset = dataset.map_batches(preprocess_dataset)
 
@@ -82,10 +79,6 @@ def train_func(config: dict):
 
     per_worker_batch_size = config.get("batch_size", 64)
     epochs = config.get("epochs", 3)
-    steps_per_epoch = config.get("steps_per_epoch", 70)
-
-    tf_config = json.loads(os.environ["TF_CONFIG"])
-    num_workers = len(tf_config["cluster"]["worker"])
 
     dataset_shard = train.get_dataset_shard("train")
 
@@ -98,7 +91,9 @@ def train_func(config: dict):
         multi_worker_model.compile(
             loss=tf.keras.losses.BinaryCrossentropy(),
             optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),
-            metrics=["binary_crossentropy",],
+            metrics=[
+                "binary_crossentropy",
+            ],
         )
 
     results = []

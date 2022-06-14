@@ -19,7 +19,9 @@ def tune_tensorflow_mnist(
     )
     tuner = Tuner(
         trainer,
-        tune_config=TuneConfig(num_samples=num_samples, metric="binary_crossentropy", mode="min"),
+        tune_config=TuneConfig(
+            num_samples=num_samples, metric="binary_crossentropy", mode="min"
+        ),
         param_space={
             "train_loop_config": {
                 "lr": tune.loguniform(1e-4, 1e-1),
