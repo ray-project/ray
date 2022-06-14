@@ -12,13 +12,13 @@ dqn-breakoutnoframeskip-v4:
         dueling: false
         num_atoms: 1
         noisy: false
-        prioritized_replay: false
         n_step: 1
         target_network_update_freq: 8000
         lr: .0000625
         adam_epsilon: .00015
         hiddens: [512]
         replay_buffer_config:
+          type: MultiAgentReplayBuffer
           capacity: 1000000
           learning_starts: 20000
           prioritized_replay_alpha: 0.5
