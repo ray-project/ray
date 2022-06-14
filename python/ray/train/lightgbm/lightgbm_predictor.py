@@ -5,8 +5,8 @@ import pandas as pd
 
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import TENSOR_COLUMN_NAME
-from ray.train.predictor import Predictor
 from ray.train.lightgbm import load_checkpoint
+from ray.train.predictor import Predictor
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
