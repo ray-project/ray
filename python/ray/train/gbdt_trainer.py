@@ -140,9 +140,7 @@ class GBDTTrainer(BaseTrainer):
 
     @property
     def _ray_params(self) -> "xgboost_ray.RayParams":
-        scaling_config_dataclass = self._validate_and_get_scaling_config_data_class(
-            self.scaling_config
-        )
+        scaling_config_dataclass = self._validate_scaling_config(self.scaling_config)
         return _convert_scaling_config_to_ray_params(
             scaling_config_dataclass, self._ray_params_cls, self._default_ray_params
         )
@@ -215,10 +213,8 @@ class GBDTTrainer(BaseTrainer):
             @classmethod
             def default_resource_request(cls, config):
                 updated_scaling_config = config.get("scaling_config", scaling_config)
-                scaling_config_dataclass = (
-                    trainer_cls._validate_and_get_scaling_config_data_class(
-                        updated_scaling_config
-                    )
+                scaling_config_dataclass = trainer_cls._validate_scaling_config(
+                    updated_scaling_config
                 )
                 return _convert_scaling_config_to_ray_params(
                     scaling_config_dataclass, ray_params_cls, default_ray_params
