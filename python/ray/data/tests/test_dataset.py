@@ -1,7 +1,6 @@
 import math
 import os
 import random
-import requests
 import time
 
 import numpy as np
@@ -9,28 +8,28 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
+import requests
 
 import ray
-
-from ray.tests.conftest import *  # noqa
-from ray.data.dataset import Dataset, _sliding_window
-from ray.data.datasource.csv_datasource import CSVDatasource
-from ray.data.block import BlockAccessor
-from ray.data.context import DatasetContext
-from ray.data.row import TableRow
+import ray.data.tests.util as util
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.pandas_block import PandasRow
-from ray.data.aggregate import AggregateFn, Count, Sum, Min, Max, Mean, Std
+from ray.data.aggregate import AggregateFn, Count, Max, Mean, Min, Std, Sum
+from ray.data.block import BlockAccessor
+from ray.data.context import DatasetContext
+from ray.data.dataset import Dataset, _sliding_window
+from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.extensions.tensor_extension import (
+    ArrowTensorArray,
+    ArrowTensorType,
     TensorArray,
     TensorDtype,
-    ArrowTensorType,
-    ArrowTensorArray,
 )
-import ray.data.tests.util as util
+from ray.data.row import TableRow
 from ray.data.tests.conftest import *  # noqa
+from ray.tests.conftest import *  # noqa
 
 
 def maybe_pipeline(ds, enabled):
@@ -622,6 +621,23 @@ def test_tensor_array_array_protocol(ray_start_regular_shared):
     np.testing.assert_array_equal(
         np.asarray(t_arr_elem, dtype=np.float32), arr[0].astype(np.float32)
     )
+
+
+def test_tensor_array_dataframe_repr(ray_start_regular_shared):
+    outer_dim = 3
+    inner_shape = (2, 2)
+    shape = (outer_dim,) + inner_shape
+    num_items = np.prod(np.array(shape))
+    arr = np.arange(num_items).reshape(shape)
+
+    t_arr = TensorArray(arr)
+    df = pd.DataFrame({"a": t_arr})
+
+    expected_repr = """                      a
+0  [[ 0,  1], [ 2,  3]]
+1  [[ 4,  5], [ 6,  7]]
+2  [[ 8,  9], [10, 11]]"""
+    assert repr(df) == expected_repr
 
 
 def test_tensor_array_scalar_cast(ray_start_regular_shared):
