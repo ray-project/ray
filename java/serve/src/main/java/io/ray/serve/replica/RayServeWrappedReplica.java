@@ -207,14 +207,13 @@ public class RayServeWrappedReplica implements RayServeReplica {
    */
   @Override
   public Object reconfigure(Object userConfig) {
+    boolean isCrossLanguage = userConfig instanceof byte[];
     DeploymentVersion deploymentVersion =
         replica.reconfigure(
-            deploymentInfo.getDeploymentConfig().isCrossLanguage() && userConfig != null
+            isCrossLanguage && userConfig != null
                 ? MessagePackSerializer.decode((byte[]) userConfig, Object.class)
                 : userConfig);
-    return deploymentInfo.getDeploymentConfig().isCrossLanguage()
-        ? deploymentVersion.toProtoBytes()
-        : deploymentVersion;
+    return deploymentVersion.toProtoBytes();
   }
 
   /**
@@ -225,9 +224,7 @@ public class RayServeWrappedReplica implements RayServeReplica {
    */
   public Object getVersion() {
     DeploymentVersion deploymentVersion = replica.getVersion();
-    return deploymentInfo.getDeploymentConfig().isCrossLanguage()
-        ? deploymentVersion.toProtoBytes()
-        : deploymentVersion;
+    return deploymentVersion.toProtoBytes();
   }
 
   public Object getCallable() {

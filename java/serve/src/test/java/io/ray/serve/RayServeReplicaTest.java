@@ -80,7 +80,7 @@ public class RayServeReplicaTest {
       // reconfigure
       ObjectRef<Object> versionRef =
           replicHandle.task(RayServeWrappedReplica::reconfigure, (Object) null).remote();
-      Assert.assertEquals(((DeploymentVersion) versionRef.get()).getCodeVersion(), version);
+      Assert.assertEquals(DeploymentVersion.fromProtoBytes((byte[]) (versionRef.get())).getCodeVersion(), version);
 
       replicHandle.task(RayServeWrappedReplica::reconfigure, new Object()).remote().get();
       resultRef =
@@ -107,7 +107,7 @@ public class RayServeReplicaTest {
 
       // get version
       versionRef = replicHandle.task(RayServeWrappedReplica::getVersion).remote();
-      Assert.assertEquals(((DeploymentVersion) versionRef.get()).getCodeVersion(), version);
+      Assert.assertEquals(DeploymentVersion.fromProtoBytes((byte[]) (versionRef.get())).getCodeVersion(), version);
 
       // prepare for shutdown
       ObjectRef<Boolean> shutdownRef =
