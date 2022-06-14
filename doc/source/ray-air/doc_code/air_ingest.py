@@ -1,62 +1,107 @@
 # flake8: noqa
 
-# __shared_dataset_start__
+# __gen_csv_dataset_start__
+import numpy as np
+from numpy import random
+import pandas as pd
+
+
+# Generate a linear 180MiB dataset.
+def generate_csv(filename: str):
+    size = 10000000
+    a = 2
+    b = 5
+    x = np.arange(0, 10, 10 / size, dtype=np.float32)
+    random.shuffle(x)
+    y = a * x + b
+    df = pd.DataFrame({"x": x, "y": y})
+    ds = ray.data.from_pandas(df)
+    ds.write_csv(filename)
+# __gen_csv_dataset_end__
+
+
+# __tuning_dataset_start__
 import ray
-from ray.air.util.check_ingest import DummyTrainer
-from ray.tune.tuner import Tuner, TuneConfig
-
-ray.init(num_cpus=5)
-
-# Generate a synthetic 100MiB tensor dataset.
-dataset = ray.data.range_tensor(500, shape=(80, 80, 4), parallelism=10)
-
-# Create an example trainer that simply loops over the data a few times.
-trainer = DummyTrainer(datasets={"train": dataset}, runtime_seconds=1)
-
-# Run the Trainer 4x in parallel with Tune.
-tuner = Tuner(
-    trainer,
-    tune_config=TuneConfig(num_samples=4),
-)
-tuner.fit()
-# __shared_dataset_end__
-
-ray.shutdown()
-
-# __indep_dataset_start__
-import ray
+from ray.train.torch import TorchTrainer
 from ray import tune
-from ray.air.util.check_ingest import DummyTrainer
-from ray.tune.tuner import Tuner, TuneConfig
+from ray.tune.tuner import Tuner, RunConfig
 
 ray.init(num_cpus=5)
 
-
-def make_ds_1():
-    """Dataset creator function 1."""
-    return ray.data.range_tensor(500, shape=(80, 80, 4), parallelism=10)
-
-
-def make_ds_2():
-    """Dataset creator function 2."""
-    return ray.data.range_tensor(50, shape=(80, 80, 4), parallelism=10)
+# Generate two random linear datasets, 180MiB each.
+generate_csv("my_data1")
+generate_csv("my_data2")
 
 
-# Create an example trainer that simply loops over the data a few times.
-trainer = DummyTrainer(datasets={}, runtime_seconds=1)
+def train_func(config):
+    assert train.get_dataset_shard("train").to_torch(label_column="y")
 
-# Run the Trainer 4x in parallel with Tune.
-# Two trials will use the dataset created by `make_ds_1`, and two trials will
-# use the dataset created by `make_ds_2`.
+
+config = {"batch_size": 4}
+scaling_config = {"num_workers": 1, "use_gpu": False}
+trainer = TorchTrainer(
+    train_loop_per_worker=train_func,
+    train_loop_config=config,
+    scaling_config=scaling_config,
+)
+
+# Run the Trainer in four trials. Like shown in Figure(b).
+param_space = {
+    "train_loop_config": {
+        "batch_size": tune.grid_search([4, 8]),
+    },
+    "datasets": tune.grid_search({"train": ray.data.read_csv("my_data1")}, {"train": ray.data.read_csv("my_data2")}),
+}
+
 tuner = Tuner(
-    trainer,
-    # Instead of passing Dataset references directly, we pass functions that
-    # generate the dataset when called.
-    param_space={"datasets": {"train": tune.grid_search([make_ds_1, make_ds_2])}},
-    tune_config=TuneConfig(num_samples=2),
+    trainable=trainer,
+    run_config=RunConfig(name="test_tuner"),
+    param_space=param_space,
 )
 tuner.fit()
-# __indep_dataset_end__
+ray.shutdown()
+# __tuning_dataset_start__
+
+# __tuning_non_dataset_start__
+import ray
+from ray.train.torch import TorchTrainer
+from ray import tune
+from ray.tune.tuner import Tuner, RunConfig
+
+ray.init(num_cpus=5)
+
+# Generate two random linear datasets, 180MiB each.
+generate_csv("my_data")
+
+
+def train_func(config):
+    assert train.get_dataset_shard("train").to_torch(label_column="y")
+
+
+config = {"batch_size": 4}
+scaling_config = {"num_workers": 1, "use_gpu": False}
+trainer = TorchTrainer(
+    train_loop_per_worker=train_func,
+    train_loop_config=config,
+    scaling_config=scaling_config,
+    datasets={"train": ray.data.read_csv("my_data")}
+)
+
+# Run the Trainer in four trials. Like shown in Figure(b).
+param_space = {
+    "train_loop_config": {
+        "batch_size": tune.grid_search([4, 8]),
+    }
+}
+
+tuner = Tuner(
+    trainable=trainer,
+    run_config=RunConfig(name="test_tuner"),
+    param_space=param_space,
+)
+tuner.fit()
+ray.shutdown()
+# __tuning_non_dataset_start__
 
 # __check_ingest_1__
 import ray

@@ -165,31 +165,35 @@ Ingest and Ray Tune
 
     Train always uses Tune as the execution backend under the hood, even when running just ``Trainer.fit()`` directly (this is treated as a single-trial experiment). This ensures consistency of execution.
 
-When using ``Ray Tune`` with AIR training jobs, you can choose to either provide an experiment-wide Dataset that is shared among all trials,
-or have per-trial datasets. Trials will always run its preprocessing separately, so Dataset sharing will only deduplicate
-the initial data reads from the external storage. The below figure illustrates. In case (a), initial blocks are shared between trials. In case (b), each trial loads its own data blocks and trials are fully independent:
+When using ``Ray Tune`` with AIR training jobs, you can choose to either tune only non-dataset parameters (a) or tune dataset together with other parameters (b),
+as shown in the below figure.
+In both cases, the same dataset is shared across multiple trials when possible without duplicating.
 
 .. figure:: images/data-sharing.svg
     :width: 600px
 
 ..
-  https://docs.google.com/drawings/d/15F_a61UhRo2fa-UZKiOfNPgSRfNpG06M0GEIhFLMxIM/edit
+  https://docs.google.com/drawings/d/1g0pv8gqgG29aPEPTcd4BC0LaRNbW1sAkv3H6W1TCp0c/edit?usp=sharing
 
-Let's look at code examples for both cases. Generally, you'd prefer to use "Experiment-Wide Datasets" if possible since this reduces memory usage and can speed up trial starts. However, in some use cases you may want to do a hyperparameter sweep over the datasets themselves, which would require configuring "Per-Trial Datasets".
+Let's look at code examples for both cases.
 
-.. tabbed:: Experiment-Wide Dataset
-
-    .. literalinclude:: doc_code/air_ingest.py
-        :language: python
-        :start-after: __shared_dataset_start__
-        :end-before: __shared_dataset_end__
-
-.. tabbed:: Per-Trial Dataset
+.. tabbed:: Tuning non-dataset parameters
 
     .. literalinclude:: doc_code/air_ingest.py
         :language: python
-        :start-after: __indep_dataset_start__
-        :end-before: __indep_dataset_end__
+        :start-after: __gen_csv_dataset_start__
+        :end-before: __gen_csv_dataset_end__
+        :start-after: __tuning_non_dataset_start__
+        :end-before: __tuning_non_dataset_end__
+
+.. tabbed:: Tuning dataset among other parameters
+
+    .. literalinclude:: doc_code/air_ingest.py
+        :language: python
+        :start-after: __gen_csv_dataset_start__
+        :end-before: __gen_csv_dataset_end__
+        :start-after: __tuning_dataset_start__
+        :end-before: __tuning_dataset_end__
 
 Placement Group Behavior
 ~~~~~~~~~~~~~~~~~~~~~~~~
