@@ -114,6 +114,8 @@ T8 = TypeVar("T8")
 T9 = TypeVar("T9")
 R = TypeVar("R")
 
+DAGNode = TypeVar("DAGNode")
+
 
 class RemoteFunctionNoArgs(Generic[R]):
     def __init__(self, function: Callable[[], R]) -> None:
@@ -122,6 +124,11 @@ class RemoteFunctionNoArgs(Generic[R]):
     def remote(
         self,
     ) -> "ObjectRef[R]":
+        ...
+
+    def bind(
+        self,
+    ) -> "DAGNode[R]":
         ...
 
 
@@ -135,6 +142,12 @@ class RemoteFunction0(Generic[R, T0]):
     ) -> "ObjectRef[R]":
         ...
 
+    def bind(
+        self,
+        __arg0: "Union[T0, DAGNode[T0]]",
+    ) -> "DAGNode[R]":
+        ...
+
 
 class RemoteFunction1(Generic[R, T0, T1]):
     def __init__(self, function: Callable[[T0, T1], R]) -> None:
@@ -145,6 +158,13 @@ class RemoteFunction1(Generic[R, T0, T1]):
         __arg0: "Union[T0, ObjectRef[T0]]",
         __arg1: "Union[T1, ObjectRef[T1]]",
     ) -> "ObjectRef[R]":
+        ...
+
+    def bind(
+        self,
+        __arg0: "Union[T0, DAGNode[T0]]",
+        __arg1: "Union[T1, DAGNode[T1]]",
+    ) -> "DAGNode[R]":
         ...
 
 
@@ -160,6 +180,14 @@ class RemoteFunction2(Generic[R, T0, T1, T2]):
     ) -> "ObjectRef[R]":
         ...
 
+    def bind(
+        self,
+        __arg0: "Union[T0, DAGNode[T0]]",
+        __arg1: "Union[T1, DAGNode[T1]]",
+        __arg2: "Union[T2, DAGNode[T2]]",
+    ) -> "DAGNode[R]":
+        ...
+
 
 class RemoteFunction3(Generic[R, T0, T1, T2, T3]):
     def __init__(self, function: Callable[[T0, T1, T2, T3], R]) -> None:
@@ -172,6 +200,15 @@ class RemoteFunction3(Generic[R, T0, T1, T2, T3]):
         __arg2: "Union[T2, ObjectRef[T2]]",
         __arg3: "Union[T3, ObjectRef[T3]]",
     ) -> "ObjectRef[R]":
+        ...
+
+    def bind(
+        self,
+        __arg0: "Union[T0, DAGNode[T0]]",
+        __arg1: "Union[T1, DAGNode[T1]]",
+        __arg2: "Union[T2, DAGNode[T2]]",
+        __arg3: "Union[T3, DAGNode[T3]]",
+    ) -> "DAGNode[R]":
         ...
 
 
@@ -189,6 +226,16 @@ class RemoteFunction4(Generic[R, T0, T1, T2, T3, T4]):
     ) -> "ObjectRef[R]":
         ...
 
+    def bind(
+        self,
+        __arg0: "Union[T0, DAGNode[T0]]",
+        __arg1: "Union[T1, DAGNode[T1]]",
+        __arg2: "Union[T2, DAGNode[T2]]",
+        __arg3: "Union[T3, DAGNode[T3]]",
+        __arg4: "Union[T4, DAGNode[T4]]",
+    ) -> "DAGNode[R]":
+        ...
+
 
 class RemoteFunction5(Generic[R, T0, T1, T2, T3, T4, T5]):
     def __init__(self, function: Callable[[T0, T1, T2, T3, T4, T5], R]) -> None:
@@ -203,6 +250,17 @@ class RemoteFunction5(Generic[R, T0, T1, T2, T3, T4, T5]):
         __arg4: "Union[T4, ObjectRef[T4]]",
         __arg5: "Union[T5, ObjectRef[T5]]",
     ) -> "ObjectRef[R]":
+        ...
+
+    def bind(
+        self,
+        __arg0: "Union[T0, DAGNode[T0]]",
+        __arg1: "Union[T1, DAGNode[T1]]",
+        __arg2: "Union[T2, DAGNode[T2]]",
+        __arg3: "Union[T3, DAGNode[T3]]",
+        __arg4: "Union[T4, DAGNode[T4]]",
+        __arg5: "Union[T5, DAGNode[T5]]",
+    ) -> "DAGNode[R]":
         ...
 
 
@@ -222,6 +280,18 @@ class RemoteFunction6(Generic[R, T0, T1, T2, T3, T4, T5, T6]):
     ) -> "ObjectRef[R]":
         ...
 
+    def bind(
+        self,
+        __arg0: "Union[T0, DAGNode[T0]]",
+        __arg1: "Union[T1, DAGNode[T1]]",
+        __arg2: "Union[T2, DAGNode[T2]]",
+        __arg3: "Union[T3, DAGNode[T3]]",
+        __arg4: "Union[T4, DAGNode[T4]]",
+        __arg5: "Union[T5, DAGNode[T5]]",
+        __arg6: "Union[T6, DAGNode[T6]]",
+    ) -> "DAGNode[R]":
+        ...
+
 
 class RemoteFunction7(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7]):
     def __init__(self, function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7], R]) -> None:
@@ -238,6 +308,19 @@ class RemoteFunction7(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7]):
         __arg6: "Union[T6, ObjectRef[T6]]",
         __arg7: "Union[T7, ObjectRef[T7]]",
     ) -> "ObjectRef[R]":
+        ...
+
+    def bind(
+        self,
+        __arg0: "Union[T0, DAGNode[T0]]",
+        __arg1: "Union[T1, DAGNode[T1]]",
+        __arg2: "Union[T2, DAGNode[T2]]",
+        __arg3: "Union[T3, DAGNode[T3]]",
+        __arg4: "Union[T4, DAGNode[T4]]",
+        __arg5: "Union[T5, DAGNode[T5]]",
+        __arg6: "Union[T6, DAGNode[T6]]",
+        __arg7: "Union[T7, DAGNode[T7]]",
+    ) -> "DAGNode[R]":
         ...
 
 
@@ -261,6 +344,20 @@ class RemoteFunction8(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8]):
     ) -> "ObjectRef[R]":
         ...
 
+    def bind(
+        self,
+        __arg0: "Union[T0, DAGNode[T0]]",
+        __arg1: "Union[T1, DAGNode[T1]]",
+        __arg2: "Union[T2, DAGNode[T2]]",
+        __arg3: "Union[T3, DAGNode[T3]]",
+        __arg4: "Union[T4, DAGNode[T4]]",
+        __arg5: "Union[T5, DAGNode[T5]]",
+        __arg6: "Union[T6, DAGNode[T6]]",
+        __arg7: "Union[T7, DAGNode[T7]]",
+        __arg8: "Union[T8, DAGNode[T8]]",
+    ) -> "DAGNode[R]":
+        ...
+
 
 class RemoteFunction9(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
     def __init__(
@@ -281,6 +378,21 @@ class RemoteFunction9(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
         __arg8: "Union[T8, ObjectRef[T8]]",
         __arg9: "Union[T9, ObjectRef[T9]]",
     ) -> "ObjectRef[R]":
+        ...
+
+    def bind(
+        self,
+        __arg0: "Union[T0, DAGNode[T0]]",
+        __arg1: "Union[T1, DAGNode[T1]]",
+        __arg2: "Union[T2, DAGNode[T2]]",
+        __arg3: "Union[T3, DAGNode[T3]]",
+        __arg4: "Union[T4, DAGNode[T4]]",
+        __arg5: "Union[T5, DAGNode[T5]]",
+        __arg6: "Union[T6, DAGNode[T6]]",
+        __arg7: "Union[T7, DAGNode[T7]]",
+        __arg8: "Union[T8, DAGNode[T8]]",
+        __arg9: "Union[T9, DAGNode[T9]]",
+    ) -> "DAGNode[R]":
         ...
 
 

@@ -7,7 +7,7 @@ from ray.rllib.utils.test_utils import check_compute_single_action, framework_it
 
 class TestES(unittest.TestCase):
     def test_es_compilation(self):
-        """Test whether an ESTrainer can be built on all frameworks."""
+        """Test whether an ESAlgorithm can be built on all frameworks."""
         ray.init(num_cpus=4)
         config = es.ESConfig()
         # Keep it simple.

@@ -67,7 +67,7 @@ To be able to run our Atari examples, you should also install:
 
 After these quick pip installs, you can start coding against RLlib.
 
-Here is an example of running a PPO Trainer on the "`Taxi domain <https://www.gymlibrary.ml/environments/toy_text/taxi/>`_"
+Here is an example of running PPO on the "`Taxi domain <https://www.gymlibrary.ml/environments/toy_text/taxi/>`_"
 for a few training iterations, then perform a single evaluation loop
 (with rendering enabled):
 

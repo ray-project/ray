@@ -44,7 +44,7 @@ from ray.rllib.utils.typing import (
     LocalOptimizer,
     ModelGradients,
     TensorType,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
 )
 
 tf1, tf, tfv = try_import_tf()
@@ -56,7 +56,7 @@ def build_sac_model(
     policy: Policy,
     obs_space: gym.spaces.Space,
     action_space: gym.spaces.Space,
-    config: TrainerConfigDict,
+    config: AlgorithmConfigDict,
 ) -> ModelV2:
     """Constructs the necessary ModelV2 for the Policy and returns it.
 
@@ -155,14 +155,14 @@ def postprocess_trajectory(
 
 
 def _get_dist_class(
-    policy: Policy, config: TrainerConfigDict, action_space: gym.spaces.Space
+    policy: Policy, config: AlgorithmConfigDict, action_space: gym.spaces.Space
 ) -> Type[TFActionDistribution]:
     """Helper function to return a dist class based on config and action space.
 
     Args:
         policy: The policy for which to return the action
             dist class.
-        config: The Trainer's config dict.
+        config: The Algorithm's config dict.
         action_space (gym.spaces.Space): The action space used.
 
     Returns:
@@ -655,7 +655,7 @@ def setup_early_mixins(
     policy: Policy,
     obs_space: gym.spaces.Space,
     action_space: gym.spaces.Space,
-    config: TrainerConfigDict,
+    config: AlgorithmConfigDict,
 ) -> None:
     """Call mixin classes' constructors before Policy's initialization.
 
@@ -674,7 +674,7 @@ def setup_mid_mixins(
     policy: Policy,
     obs_space: gym.spaces.Space,
     action_space: gym.spaces.Space,
-    config: TrainerConfigDict,
+    config: AlgorithmConfigDict,
 ) -> None:
     """Call mixin classes' constructors before Policy's loss initialization.
 
@@ -697,7 +697,7 @@ def setup_late_mixins(
     policy: Policy,
     obs_space: gym.spaces.Space,
     action_space: gym.spaces.Space,
-    config: TrainerConfigDict,
+    config: AlgorithmConfigDict,
 ) -> None:
     """Call mixin classes' constructors after Policy initialization.
 
@@ -718,7 +718,7 @@ def validate_spaces(
     policy: Policy,
     observation_space: gym.spaces.Space,
     action_space: gym.spaces.Space,
-    config: TrainerConfigDict,
+    config: AlgorithmConfigDict,
 ) -> None:
     """Validates the observation- and action spaces used for the Policy.
 

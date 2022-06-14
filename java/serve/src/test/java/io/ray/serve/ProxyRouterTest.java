@@ -16,6 +16,8 @@ public class ProxyRouterTest {
   @Test
   public void test() {
     boolean inited = Ray.isInitialized();
+    String previous_namespace = System.getProperty("ray.job.namespace");
+    System.setProperty("ray.job.namespace", Constants.SERVE_NAMESPACE);
     Ray.init();
 
     try {
@@ -62,6 +64,11 @@ public class ProxyRouterTest {
     } finally {
       if (!inited) {
         Ray.shutdown();
+      }
+      if (previous_namespace == null) {
+        System.clearProperty("ray.job.namespace");
+      } else {
+        System.setProperty("ray.job.namespace", previous_namespace);
       }
       Serve.setInternalReplicaContext(null);
       Serve.setGlobalClient(null);

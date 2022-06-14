@@ -6,7 +6,7 @@ from pathlib import Path
 import unittest
 
 import ray
-from ray.rllib.agents.registry import get_trainer_class
+from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.tf.misc import normc_initializer
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
@@ -144,7 +144,7 @@ def model_import_test(algo, config, env):
     rllib_dir = Path(__file__).parent.parent
     import_file = str(rllib_dir) + "/tests/data/model_weights/weights.h5"
 
-    agent_cls = get_trainer_class(algo)
+    agent_cls = get_algorithm_class(algo)
 
     for fw in framework_iterator(config, ["tf", "torch"]):
         config["model"]["custom_model"] = (

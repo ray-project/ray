@@ -1,16 +1,14 @@
 from typing import List, Optional
 
 from ray.actor import ActorHandle
-from ray.rllib.agents import Trainer
+from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.apex_dqn.apex_dqn import ApexDQN
 from ray.rllib.algorithms.ddpg.ddpg import DDPG, DDPGConfig
-from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import TrainerConfigDict
-from ray.rllib.utils.typing import PartialTrainerConfigDict
+from ray.rllib.utils.typing import AlgorithmConfigDict
+from ray.rllib.utils.typing import PartialAlgorithmConfigDict
 from ray.rllib.utils.typing import ResultDict
 from ray.rllib.utils.deprecation import Deprecated, DEPRECATED_VALUE
-from ray.util.iter import LocalIterator
 
 
 class ApexDDPGConfig(DDPGConfig):
@@ -44,9 +42,9 @@ class ApexDDPGConfig(DDPGConfig):
         ... )
     """
 
-    def __init__(self, trainer_class=None):
+    def __init__(self, algo_class=None):
         """Initializes an ApexDDPGConfig instance."""
-        super().__init__(trainer_class=trainer_class or ApexDDPG)
+        super().__init__(algo_class=algo_class or ApexDDPG)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -174,11 +172,11 @@ class ApexDDPGConfig(DDPGConfig):
 class ApexDDPG(DDPG, ApexDQN):
     @classmethod
     @override(DDPG)
-    def get_default_config(cls) -> TrainerConfigDict:
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return ApexDDPGConfig().to_dict()
 
     @override(DDPG)
-    def setup(self, config: PartialTrainerConfigDict):
+    def setup(self, config: PartialAlgorithmConfigDict):
         return ApexDQN.setup(self, config)
 
     @override(DDPG)
@@ -186,7 +184,7 @@ class ApexDDPG(DDPG, ApexDQN):
         """Use APEX-DQN's training iteration function."""
         return ApexDQN.training_step(self)
 
-    @override(Trainer)
+    @override(Algorithm)
     def on_worker_failures(
         self, removed_workers: List[ActorHandle], new_workers: List[ActorHandle]
     ):
@@ -198,14 +196,6 @@ class ApexDDPG(DDPG, ApexDQN):
         """
         self._sampling_actor_manager.remove_workers(removed_workers)
         self._sampling_actor_manager.add_workers(new_workers)
-
-    @staticmethod
-    @override(DDPG)
-    def execution_plan(
-        workers: WorkerSet, config: dict, **kwargs
-    ) -> LocalIterator[dict]:
-        """Use APEX-DQN's execution plan."""
-        return ApexDQN.execution_plan(workers, config, **kwargs)
 
 
 # Deprecated: Use ray.rllib.algorithms.apex_ddpg.ApexDDPGConfig instead!
