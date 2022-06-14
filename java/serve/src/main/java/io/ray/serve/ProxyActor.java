@@ -50,7 +50,7 @@ public class ProxyActor {
     Serve.setInternalReplicaContext(null, null, controllerName, null);
     Serve.getReplicaContext().setRayServeConfig(new RayServeConfig().setConfig(config));
 
-    Optional<BaseActorHandle> optional = Ray.getActor(controllerName);
+    Optional<BaseActorHandle> optional = Ray.getActor(controllerName, Constants.SERVE_NAMESPACE);
     Preconditions.checkState(optional.isPresent(), "Controller does not exist");
 
     Map<KeyType, KeyListener> keyListeners = new HashMap<>();

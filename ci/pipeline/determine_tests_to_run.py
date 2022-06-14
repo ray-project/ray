@@ -125,7 +125,7 @@ if __name__ == "__main__":
         skip_prefix_list = ["doc/", "examples/", "dev/", "kubernetes/", "site/"]
 
         for changed_file in files:
-            if changed_file.startswith("python/ray/ml"):
+            if changed_file.startswith("python/ray/air"):
                 RAY_CI_ML_AFFECTED = 1
                 RAY_CI_TRAIN_AFFECTED = 1
                 RAY_CI_TUNE_AFFECTED = 1

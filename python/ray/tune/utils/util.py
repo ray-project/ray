@@ -15,8 +15,8 @@ from typing import Optional
 import numpy as np
 import psutil
 import ray
-from ray.ml.checkpoint import Checkpoint
-from ray.ml.utils.remote_storage import delete_at_uri
+from ray.air.checkpoint import Checkpoint
+from ray.air._internal.remote_storage import delete_at_uri
 from ray.util.ml_utils.dict import (  # noqa: F401
     merge_dicts,
     deep_update,
@@ -146,7 +146,9 @@ def _serialize_checkpoint(checkpoint_path) -> bytes:
 def get_checkpoint_from_remote_node(
     checkpoint_path: str, node_ip: str, timeout: float = 300.0
 ) -> Optional[Checkpoint]:
-    if not any(node["NodeManagerAddress"] == node_ip for node in ray.nodes()):
+    if not any(
+        node["NodeManagerAddress"] == node_ip and node["Alive"] for node in ray.nodes()
+    ):
         logger.warning(
             f"Could not fetch checkpoint with path {checkpoint_path} from "
             f"node with IP {node_ip} because the node is not available "

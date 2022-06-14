@@ -10,9 +10,9 @@ spec:
   # E.g., if the task requires adding more nodes then autoscaler will gradually
   # scale up the cluster in chunks of upscaling_speed*currently_running_nodes.
   # This number should be > 0.
-  upscalingSpeed: 1.0
+  upscalingSpeed: {{ .Values.upscalingSpeed | default 1.0 }}
   # If a node is idle for this many minutes, it will be removed.
-  idleTimeoutMinutes: 5
+  idleTimeoutMinutes: {{ .Values.idleTimeoutMinutes | default 5 }}
   # Specify the pod type for the ray head node (as configured below).
   headPodType: {{ .Values.headPodType }}
   # Specify the allowed pod types for this ray cluster and the resources they provide.

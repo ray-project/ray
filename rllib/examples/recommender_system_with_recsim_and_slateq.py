@@ -14,8 +14,8 @@ from scipy.stats import sem
 
 import ray
 from ray import tune
-from ray.rllib.agents import slateq
-from ray.rllib.agents import dqn
+from ray.rllib.algorithms import slateq
+from ray.rllib.algorithms import dqn
 from ray.rllib.examples.env.recommender_system_envs_with_recsim import (
     InterestEvolutionRecSimEnv,
     InterestExplorationRecSimEnv,
@@ -179,7 +179,7 @@ def main():
     else:
         # Directly run using the trainer interface (good for debugging).
         if args.run == "DQN":
-            trainer = dqn.DQNTrainer(config=config)
+            trainer = dqn.DQN(config=config)
         else:
             trainer = slateq.SlateQTrainer(config=config)
         for i in range(10):

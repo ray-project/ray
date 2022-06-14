@@ -24,8 +24,7 @@ Now you can deploy the KubeRay operator using
 
 ```shell
 ./ray/python/ray/autoscaler/kuberay/init-config.sh
-kubectl apply -k "ray/python/ray/autoscaler/kuberay/config/default"
-kubectl apply -f "ray/python/ray/autoscaler/kuberay/kuberay-autoscaler-rbac.yaml"
+kubectl create -k "ray/python/ray/autoscaler/kuberay/config/default"
 ```
 
 You can verify that the operator has been deployed using

@@ -117,4 +117,15 @@ std::string GetOriginalResourceName(const std::string &resource);
 std::string GetDebugStringForBundles(
     const std::vector<std::shared_ptr<const BundleSpecification>> &bundles);
 
+/// Format the placement group resource set, e.g., CPU -> CPU_group_YYY_i
+std::unordered_map<std::string, double> AddPlacementGroupConstraint(
+    const std::unordered_map<std::string, double> &resources,
+    const PlacementGroupID &placement_group_id,
+    int64_t bundle_index);
+
+/// Format the placement group resource set, e.g., CPU -> CPU_group_YYY_i
+std::unordered_map<std::string, double> AddPlacementGroupConstraint(
+    const std::unordered_map<std::string, double> &resources,
+    const rpc::SchedulingStrategy &scheduling_strategy);
+
 }  // namespace ray

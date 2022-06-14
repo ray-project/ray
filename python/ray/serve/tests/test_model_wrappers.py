@@ -1,16 +1,21 @@
-import json
 import tempfile
-from fastapi import Depends, FastAPI
+from typing import Optional
 
+from fastapi import Depends, FastAPI
+import pandas as pd
 import numpy as np
 import requests
-from requests.adapters import HTTPAdapter, Retry
+import pytest
 
-from ray._private.test_utils import wait_for_condition
-from ray.ml.checkpoint import Checkpoint
-from ray.ml.predictor import DataBatchType, Predictor
-from ray.serve.model_wrappers import ModelWrapperDeployment
-from ray.serve.pipeline.api import build
+from ray.serve.model_wrappers import (
+    ModelWrapperDeployment,
+    collate_array,
+    collate_dataframe,
+    collate_dict_array,
+)
+from ray.air.checkpoint import Checkpoint
+from ray.air.predictor import DataBatchType, Predictor
+from ray.serve.deployment_graph_build import build
 from ray.serve.dag import InputNode
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.http_adapters import json_to_ndarray
@@ -18,31 +23,79 @@ import ray
 from ray import serve
 
 
+class TestCollationFunctions:
+    def test_array(self):
+        list_of_arr = [np.array([i]) for i in range(4)]
+        batched_arr = np.array([[i] for i in range(4)])
+
+        batched, unpack = collate_array(list_of_arr)
+        assert np.array_equal(batched, batched_arr)
+        for i, j in zip(unpack(batched), list_of_arr):
+            assert np.array_equal(i, j)
+
+    def test_array_error(self):
+        list_of_arr = [np.array([i]) for i in range(4)]
+        _, unpack = collate_array(list_of_arr)
+        with pytest.raises(ValueError, match="output array should have shape of"):
+            unpack(np.arange(2))
+        with pytest.raises(TypeError, match="output should be np.ndarray but"):
+            unpack("string")
+
+    def test_dict_array(self):
+        list_of_dicts = [
+            {"a": np.array([1, 2]), "b": np.array(3)},
+            {"a": np.array([3, 4]), "b": np.array(4)},
+        ]
+        batched_dict = {"a": np.array([[1, 2], [3, 4]]), "b": np.array([3, 4])}
+
+        batched, unpack = collate_dict_array(list_of_dicts)
+        assert batched.keys() == batched_dict.keys()
+        for key in batched.keys():
+            assert np.array_equal(batched[key], batched_dict[key])
+
+        for original, unpacked in zip(list_of_dicts, unpack(batched)):
+            assert original.keys() == unpacked.keys()
+            for key in original.keys():
+                assert np.array_equal(original[key], unpacked[key])
+
+    def test_dataframe(self):
+        list_of_dfs = [pd.DataFrame({"a": [i, i], "b": [i, i]}) for i in range(4)]
+        batched_df = pd.DataFrame(
+            {
+                "a": sum(([i, i] for i in range(4)), []),
+                "b": sum(([i, i] for i in range(4)), []),
+            }
+        )
+        batched, unpack = collate_dataframe(list_of_dfs)
+        assert batched.equals(batched_df)
+        assert len(unpack(batched)) == len(list_of_dfs)
+        for i, j in zip(unpack(batched), list_of_dfs):
+            assert i.equals(j)
+
+
 class AdderPredictor(Predictor):
-    def __init__(self, increment: int) -> None:
+    def __init__(self, increment: int, do_double: bool) -> None:
         self.increment = increment
+        self.do_double = do_double
 
     @classmethod
-    def from_checkpoint(cls, checkpoint: "AdderCheckpoint") -> "Predictor":
-        if checkpoint._data_dict:
-            return cls(checkpoint._data_dict["increment"])
-        elif checkpoint._local_path:  # uri case
-            with open(checkpoint._local_path) as f:
-                return cls(json.load(f))
-        raise Exception("Unreachable")
+    def from_checkpoint(
+        cls, checkpoint: Checkpoint, do_double: bool = False
+    ) -> "AdderPredictor":
+        return cls(checkpoint.to_dict()["increment"], do_double)
 
-    def predict(self, data: DataBatchType) -> DataBatchType:
+    def predict(
+        self, data: np.ndarray, override_increment: Optional[int] = None
+    ) -> DataBatchType:
+        increment = override_increment or self.increment
+        multiplier = 2 if self.do_double else 1
         return [
             {"value": val, "batch_size": len(data)}
-            for val in (np.array(data) + self.increment).tolist()
+            for val in ((data + increment) * multiplier).tolist()
         ]
 
 
-class AdderCheckpoint(Checkpoint):
-    pass
-
-
-def adder_schema(query_param_arg: int) -> DataBatchType:
+def adder_adapter(query_param_arg: int) -> DataBatchType:
     return np.array([query_param_arg])
 
 
@@ -54,16 +107,36 @@ def send_request(**requests_kargs):
 def test_simple_adder(serve_instance):
     ModelWrapperDeployment.options(name="Adder").deploy(
         predictor_cls=AdderPredictor,
-        checkpoint=AdderCheckpoint.from_dict({"increment": 2}),
+        checkpoint=Checkpoint.from_dict({"increment": 2}),
     )
     resp = ray.get(send_request.remote(json={"array": [40]}))
     assert resp == {"value": [42], "batch_size": 1}
 
 
+def test_predictor_kwargs(serve_instance):
+    ModelWrapperDeployment.options(name="Adder").deploy(
+        predictor_cls=AdderPredictor,
+        checkpoint=Checkpoint.from_dict({"increment": 2}),
+        predict_kwargs={"override_increment": 100},
+    )
+    resp = ray.get(send_request.remote(json={"array": [40]}))
+    assert resp == {"value": [140], "batch_size": 1}
+
+
+def test_predictor_from_checkpoint_kwargs(serve_instance):
+    ModelWrapperDeployment.options(name="Adder").deploy(
+        predictor_cls=AdderPredictor,
+        checkpoint=Checkpoint.from_dict({"increment": 2}),
+        do_double=True,
+    )
+    resp = ray.get(send_request.remote(json={"array": [40]}))
+    assert resp == {"value": [84], "batch_size": 1}
+
+
 def test_batching(serve_instance):
     ModelWrapperDeployment.options(name="Adder").deploy(
         predictor_cls=AdderPredictor,
-        checkpoint=AdderCheckpoint.from_dict({"increment": 2}),
+        checkpoint=Checkpoint.from_dict({"increment": 2}),
         batching_params=dict(max_batch_size=2, batch_wait_timeout_s=1000),
     )
 
@@ -87,20 +160,16 @@ class Ingress:
 
 
 def test_model_wrappers_in_pipeline(serve_instance):
-    _, path = tempfile.mkstemp()
-    with open(path, "w") as f:
-        json.dump(2, f)
+    path = tempfile.mkdtemp()
+    uri = f"file://{path}/test_uri"
+    Checkpoint.from_dict({"increment": 2}).to_uri(uri)
 
     predictor_cls = "ray.serve.tests.test_model_wrappers.AdderPredictor"
-    checkpoint_cls = "ray.serve.tests.test_model_wrappers.AdderCheckpoint"
 
     with InputNode() as dag_input:
         m1 = ModelWrapperDeployment.bind(
-            predictor_cls=predictor_cls,  # TODO: can't be the raw class right now?
-            checkpoint={  # TODO: can't be the raw object right now?
-                "checkpoint_cls": checkpoint_cls,
-                "uri": path,
-            },
+            predictor_cls=predictor_cls,
+            checkpoint=uri,
         )
         dag = m1.predict.bind(dag_input)
     deployments = build(Ingress.bind(dag))
@@ -113,48 +182,7 @@ def test_model_wrappers_in_pipeline(serve_instance):
     return resp.json() == {"value": [42], "batch_size": 1}
 
 
-# NOTE(simon): Make sure this is the last test because the REST API will start
-# controller and http proxy in another namespace.
-def test_yaml_compatibility(serve_instance):
-    _, path = tempfile.mkstemp()
-    with open(path, "w") as f:
-        json.dump(2, f)
+if __name__ == "__main__":
+    import sys
 
-    session = requests.Session()
-    retries = Retry(total=5, backoff_factor=0.1)
-    session.mount("http://", HTTPAdapter(max_retries=retries))
-
-    # TODO(simon): use ServeSubmissionClient when it's merged.
-    predictor_cls = "ray.serve.tests.test_model_wrappers.AdderPredictor"
-    checkpoint_cls = "ray.serve.tests.test_model_wrappers.AdderCheckpoint"
-    schema_func = "ray.serve.tests.test_model_wrappers.adder_schema"
-
-    resp = session.put(
-        "http://127.0.0.1:8265/api/serve/deployments/",
-        json={
-            "deployments": [
-                {
-                    "name": "Adder",
-                    "import_path": "ray.serve.model_wrappers.ModelWrapperDeployment",
-                    "init_kwargs": {
-                        "predictor_cls": predictor_cls,
-                        "checkpoint": {
-                            "checkpoint_cls": checkpoint_cls,
-                            "uri": path,
-                        },
-                        "http_adapter": schema_func,
-                        "batching_params": {"max_batch_size": 1},
-                    },
-                }
-            ]
-        },
-    )
-    resp.raise_for_status()
-
-    # Note(simon): The Serve HTTP deploy is non blocking,
-    # so we retries to make sure the deployment is up
-    def cond():
-        resp = ray.get(send_request.remote(params={"query_param_arg": 40}))
-        return resp == {"value": [42], "batch_size": 1}
-
-    wait_for_condition(cond)
+    sys.exit(pytest.main(["-v", "-s", __file__]))

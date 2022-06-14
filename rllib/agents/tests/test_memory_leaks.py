@@ -45,7 +45,7 @@ class TestMemoryLeaks(unittest.TestCase):
         config["multiagent"]["policies"] = {
             "default_policy": PolicySpec(policy_class=MemoryLeakingPolicy),
         }
-        trainer = dqn.DQNTrainer(config=config)
+        trainer = dqn.DQN(config=config)
         results = check_memory_leaks(trainer, to_check={"policy"}, repeats=300)
         assert results["policy"]
         trainer.stop()

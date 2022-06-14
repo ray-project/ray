@@ -3,47 +3,44 @@ import numpy as np
 import random
 from typing import Optional
 
-from ray.rllib.agents.trainer_config import TrainerConfig
+from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.dreamer.dreamer_torch_policy import DreamerTorchPolicy
-from ray.rllib.agents.trainer import Trainer
-from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, _get_shared_metrics
+from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
-from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.algorithms.dreamer.dreamer_model import DreamerModel
 from ray.rllib.execution.rollout_ops import (
-    ParallelRollouts,
     synchronous_parallel_sample,
 )
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
-from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.typing import (
-    PartialTrainerConfigDict,
+    PartialAlgorithmConfigDict,
     SampleBatchType,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
     ResultDict,
 )
 
 logger = logging.getLogger(__name__)
 
 
-class DREAMERConfig(TrainerConfig):
-    """Defines a configuration class from which a Dreamer Trainer can be built.
+class DreamerConfig(AlgorithmConfig):
+    """Defines a configuration class from which a Dreamer Algorithm can be built.
 
     Example:
-        >>> from ray.rllib.algorithms.dreamer import DREAMERConfig
-        >>> config = DREAMERConfig().training(gamma=0.9, lr=0.01)\
+        >>> from ray.rllib.algorithms.dreamer import DreamerConfig
+        >>> config = DreamerConfig().training(gamma=0.9, lr=0.01)\
         ...     .resources(num_gpus=0)\
         ...     .rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> # Build a Algorithm object from the config and run 1 training iteration.
         >>> trainer = config.build(env="CartPole-v1")
         >>> trainer.train()
 
     Example:
         >>> from ray import tune
-        >>> from ray.rllib.algorithms.dreamer import DREAMERConfig
-        >>> config = DREAMERConfig()
+        >>> from ray.rllib.algorithms.dreamer import DreamerConfig
+        >>> config = DreamerConfig()
         >>> # Print out some default values.
         >>> print(config.clip_param)
         >>> # Update the config object.
@@ -53,7 +50,7 @@ class DREAMERConfig(TrainerConfig):
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
         >>> tune.run(
-        ...     "DREAMER",
+        ...     "Dreamer",
         ...     stop={"episode_reward_mean": 200},
         ...     config=config.to_dict(),
         ... )
@@ -61,7 +58,7 @@ class DREAMERConfig(TrainerConfig):
 
     def __init__(self):
         """Initializes a PPOConfig instance."""
-        super().__init__(trainer_class=DREAMERTrainer)
+        super().__init__(algo_class=Dreamer)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -92,7 +89,7 @@ class DREAMERConfig(TrainerConfig):
             "action_init_std": 5.0,
         }
 
-        # Override some of TrainerConfig's default values with PPO-specific values.
+        # Override some of AlgorithmConfig's default values with PPO-specific values.
         # .rollouts()
         self.num_workers = 0
         self.num_envs_per_worker = 1
@@ -112,7 +109,7 @@ class DREAMERConfig(TrainerConfig):
         # __sphinx_doc_end__
         # fmt: on
 
-    @override(TrainerConfig)
+    @override(AlgorithmConfig)
     def training(
         self,
         *,
@@ -131,7 +128,7 @@ class DREAMERConfig(TrainerConfig):
         explore_noise: Optional[float] = None,
         dreamer_model: Optional[dict] = None,
         **kwargs,
-    ) -> "DREAMERConfig":
+    ) -> "DreamerConfig":
         """
 
         Args:
@@ -251,56 +248,14 @@ def total_sampled_timesteps(worker):
     return worker.policy_map[DEFAULT_POLICY_ID].global_timestep
 
 
-class DreamerIteration:
-    def __init__(
-        self, worker, episode_buffer, dreamer_train_iters, batch_size, act_repeat
-    ):
-        self.worker = worker
-        self.episode_buffer = episode_buffer
-        self.dreamer_train_iters = dreamer_train_iters
-        self.repeat = act_repeat
-        self.batch_size = batch_size
-
-    def __call__(self, samples):
-        # Dreamer training loop.
-        for n in range(self.dreamer_train_iters):
-            print(f"sub-iteration={n}/{self.dreamer_train_iters}")
-            batch = self.episode_buffer.sample(self.batch_size)
-            # if n == self.dreamer_train_iters - 1:
-            #     batch["log_gif"] = True
-            fetches = self.worker.learn_on_batch(batch)
-
-        # Custom Logging
-        policy_fetches = fetches[DEFAULT_POLICY_ID]["learner_stats"]
-        if "log_gif" in policy_fetches:
-            gif = policy_fetches["log_gif"]
-            policy_fetches["log_gif"] = self.postprocess_gif(gif)
-
-        # Metrics Calculation
-        metrics = _get_shared_metrics()
-        metrics.info[LEARNER_INFO] = fetches
-        metrics.counters[STEPS_SAMPLED_COUNTER] = self.episode_buffer.timesteps
-        metrics.counters[STEPS_SAMPLED_COUNTER] *= self.repeat
-        res = collect_metrics(local_worker=self.worker)
-        res["info"] = metrics.info
-        res["info"].update(metrics.counters)
-        res["timesteps_total"] = metrics.counters[STEPS_SAMPLED_COUNTER]
-
-        self.episode_buffer.add(samples)
-        return res
-
-    def postprocess_gif(self, gif: np.ndarray):
-        return _postprocess_gif(gif=gif)
-
-
-class DREAMERTrainer(Trainer):
+class Dreamer(Algorithm):
     @classmethod
-    @override(Trainer)
-    def get_default_config(cls) -> TrainerConfigDict:
-        return DREAMERConfig().to_dict()
+    @override(Algorithm)
+    def get_default_config(cls) -> AlgorithmConfigDict:
+        return DreamerConfig().to_dict()
 
-    @override(Trainer)
-    def validate_config(self, config: TrainerConfigDict) -> None:
+    @override(Algorithm)
+    def validate_config(self, config: AlgorithmConfigDict) -> None:
         # Call super's validation method.
         super().validate_config(config)
 
@@ -323,61 +278,27 @@ class DREAMERTrainer(Trainer):
         if config["action_repeat"] > 1:
             config["horizon"] = config["horizon"] / config["action_repeat"]
 
-    @override(Trainer)
-    def get_default_policy_class(self, config: TrainerConfigDict):
+    @override(Algorithm)
+    def get_default_policy_class(self, config: AlgorithmConfigDict):
         return DreamerTorchPolicy
 
-    @override(Trainer)
-    def setup(self, config: PartialTrainerConfigDict):
+    @override(Algorithm)
+    def setup(self, config: PartialAlgorithmConfigDict):
         super().setup(config)
         # `training_iteration` implementation: Setup buffer in `setup`, not
         # in `execution_plan` (deprecated).
-        if self.config["_disable_execution_plan_api"] is True:
-            self.local_replay_buffer = EpisodicBuffer(length=config["batch_length"])
-
-            # Prefill episode buffer with initial exploration (uniform sampling)
-            while (
-                total_sampled_timesteps(self.workers.local_worker())
-                < self.config["prefill_timesteps"]
-            ):
-                samples = self.workers.local_worker().sample()
-                self.local_replay_buffer.add(samples)
-
-    @staticmethod
-    @override(Trainer)
-    def execution_plan(workers, config, **kwargs):
-        assert (
-            len(kwargs) == 0
-        ), "Dreamer execution_plan does NOT take any additional parameters"
-
-        # Special replay buffer for Dreamer agent.
-        episode_buffer = EpisodicBuffer(length=config["batch_length"])
-
-        local_worker = workers.local_worker()
+        self.local_replay_buffer = EpisodicBuffer(length=config["batch_length"])
 
         # Prefill episode buffer with initial exploration (uniform sampling)
-        while total_sampled_timesteps(local_worker) < config["prefill_timesteps"]:
-            samples = local_worker.sample()
-            episode_buffer.add(samples)
+        while (
+            total_sampled_timesteps(self.workers.local_worker())
+            < self.config["prefill_timesteps"]
+        ):
+            samples = self.workers.local_worker().sample()
+            self.local_replay_buffer.add(samples)
 
-        batch_size = config["batch_size"]
-        dreamer_train_iters = config["dreamer_train_iters"]
-        act_repeat = config["action_repeat"]
-
-        rollouts = ParallelRollouts(workers)
-        rollouts = rollouts.for_each(
-            DreamerIteration(
-                local_worker,
-                episode_buffer,
-                dreamer_train_iters,
-                batch_size,
-                act_repeat,
-            )
-        )
-        return rollouts
-
-    @override(Trainer)
-    def training_iteration(self) -> ResultDict:
+    @override(Algorithm)
+    def training_step(self) -> ResultDict:
         local_worker = self.workers.local_worker()
 
         # Number of sub-iterations for Dreamer
@@ -412,20 +333,20 @@ class DREAMERTrainer(Trainer):
 
         return fetches
 
-    def _compile_step_results(self, *args, **kwargs):
-        results = super()._compile_step_results(*args, **kwargs)
+    def _compile_iteration_results(self, *args, **kwargs):
+        results = super()._compile_iteration_results(*args, **kwargs)
         results["timesteps_total"] = self._counters[STEPS_SAMPLED_COUNTER]
         return results
 
 
-# Deprecated: Use ray.rllib.algorithms.dreamer.DREAMERConfig instead!
+# Deprecated: Use ray.rllib.algorithms.dreamer.DreamerConfig instead!
 class _deprecated_default_config(dict):
     def __init__(self):
-        super().__init__(DREAMERConfig().to_dict())
+        super().__init__(DreamerConfig().to_dict())
 
     @Deprecated(
         old="ray.rllib.algorithms.dreamer.dreamer.DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.dreamer.dreamer.DREAMERConfig(...)",
+        new="ray.rllib.algorithms.dreamer.dreamer.DreamerConfig(...)",
         error=False,
     )
     def __getitem__(self, item):

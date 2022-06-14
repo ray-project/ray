@@ -9,7 +9,7 @@ import unittest
 
 import ray
 from ray.rllib.algorithms.a2c import A2C
-from ray.rllib.algorithms.pg import PGTrainer
+from ray.rllib.algorithms.pg import PG
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.metrics import collect_metrics
@@ -181,12 +181,12 @@ class TestRolloutWorker(unittest.TestCase):
     def test_no_step_on_init(self):
         register_env("fail", lambda _: FailOnStepEnv())
         for fw in framework_iterator():
-            # We expect this to fail already on Trainer init due
+            # We expect this to fail already on Algorithm init due
             # to the env sanity check right after env creation (inside
             # RolloutWorker).
             self.assertRaises(
                 Exception,
-                lambda: PGTrainer(
+                lambda: PG(
                     env="fail",
                     config={
                         "num_workers": 2,
@@ -198,7 +198,7 @@ class TestRolloutWorker(unittest.TestCase):
     def test_callbacks(self):
         for fw in framework_iterator(frameworks=("torch", "tf")):
             counts = Counter()
-            pg = PGTrainer(
+            pg = PG(
                 env="CartPole-v0",
                 config={
                     "num_workers": 0,
@@ -224,7 +224,7 @@ class TestRolloutWorker(unittest.TestCase):
     def test_query_evaluators(self):
         register_env("test", lambda _: gym.make("CartPole-v0"))
         for fw in framework_iterator(frameworks=("torch", "tf")):
-            pg = PGTrainer(
+            pg = PG(
                 env="test",
                 config={
                     "num_workers": 2,
@@ -472,7 +472,7 @@ class TestRolloutWorker(unittest.TestCase):
         self.assertEqual(sum(samples["dones"]), 3)
         ev.stop()
 
-        # A gym env's max_episode_steps is smaller than Trainer's horizon.
+        # A gym env's max_episode_steps is smaller than Algorithm's horizon.
         ev = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v0"),
             policy_spec=MockPolicy,

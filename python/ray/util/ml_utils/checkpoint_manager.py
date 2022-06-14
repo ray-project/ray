@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Optional, Dict, Union, Callable, Tuple, List, Any
 
 import ray
-from ray.ml import Checkpoint
+from ray.air import Checkpoint
 from ray.tune.result import NODE_IP
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
@@ -72,8 +72,10 @@ class _TrackedCheckpoint:
         self.metrics = metrics or {}
         self.node_ip = node_ip or self.metrics.get(NODE_IP, None)
 
-        if storage_mode == CheckpointStorage.MEMORY and not isinstance(
-            dir_or_data, (dict, ray.ObjectRef)
+        if (
+            dir_or_data is not None
+            and storage_mode == CheckpointStorage.MEMORY
+            and not isinstance(dir_or_data, (dict, ray.ObjectRef))
         ):
             raise ValueError(
                 f"Memory checkpoints only support Ray object references and dicts "
@@ -118,10 +120,10 @@ class _TrackedCheckpoint:
 
     def __repr__(self):
         if self.storage_mode == CheckpointStorage.MEMORY:
-            return f"<TrackedCheckpoint storage='MEMORY' result={self.metrics}>"
+            return f"<_TrackedCheckpoint storage='MEMORY' result={self.metrics}>"
 
         return (
-            f"<TrackedCheckpoint storage='PERSISTENT' "
+            f"<_TrackedCheckpoint storage='PERSISTENT' "
             f"dir_or_data={self.dir_or_data}>"
         )
 
@@ -210,7 +212,7 @@ class _CheckpointManager:
     keeps a configured number of checkpoints according to specified metrics.
 
     The manager supports lazy data writing by utilizing the
-    ``TrackedCheckpoint.commit()`` API, which is only invoked if the checkpoint
+    ``_TrackedCheckpoint.commit()`` API, which is only invoked if the checkpoint
     should be persisted to disk.
 
     Args:

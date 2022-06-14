@@ -1,7 +1,7 @@
 from typing import Optional, Type
 
-from ray.rllib.agents.trainer import Trainer
-from ray.rllib.agents.trainer_config import TrainerConfig
+from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.utils.replay_buffers.utils import validate_buffer_config
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
@@ -21,27 +21,27 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.typing import (
     ResultDict,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
 )
 from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
 
 
-class MARWILConfig(TrainerConfig):
-    """Defines a configuration class from which a MARWILTrainer can be built.
+class MARWILConfig(AlgorithmConfig):
+    """Defines a configuration class from which a MARWIL Algorithm can be built.
 
 
     Example:
-        >>> from ray.rllib.agents.marwil import MARWILConfig
+        >>> from ray.rllib.algorithms.marwil import MARWILConfig
         >>> # Run this from the ray directory root.
         >>> config = MARWILConfig().training(beta=1.0, lr=0.00001, gamma=0.99)\
         ...             .offline_data(input_=["./rllib/tests/data/cartpole/large.json"])
         >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> # Build a Algorithm object from the config and run 1 training iteration.
         >>> trainer = config.build()
         >>> trainer.train()
 
     Example:
-        >>> from ray.rllib.agents.marwil import MARWILConfig
+        >>> from ray.rllib.algorithms.marwil import MARWILConfig
         >>> from ray import tune
         >>> config = MARWILConfig()
         >>> # Print out some default values.
@@ -61,9 +61,9 @@ class MARWILConfig(TrainerConfig):
         ... )
     """
 
-    def __init__(self, trainer_class=None):
+    def __init__(self, algo_class=None):
         """Initializes a MARWILConfig instance."""
-        super().__init__(trainer_class=trainer_class or MARWILTrainer)
+        super().__init__(algo_class=algo_class or MARWIL)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -91,7 +91,7 @@ class MARWILConfig(TrainerConfig):
         self.vf_coeff = 1.0
         self.grad_clip = None
 
-        # Override some of TrainerConfig's default values with MARWIL-specific values.
+        # Override some of AlgorithmConfig's default values with MARWIL-specific values.
 
         # You should override input_ to point to an offline dataset
         # (see trainer.py and trainer_config.py).
@@ -103,9 +103,10 @@ class MARWILConfig(TrainerConfig):
         # the same line.
         self.input_ = "sampler"
         # Use importance sampling estimators for reward.
-        self.off_policy_estimation_methods = [
-            ImportanceSampling, WeightedImportanceSampling
-        ]
+        self.off_policy_estimation_methods = {
+            "is": {"type": ImportanceSampling},
+            "wis": {"type": WeightedImportanceSampling},
+        }
         self.postprocess_inputs = True
         self.lr = 1e-4
         self.train_batch_size = 2000
@@ -113,7 +114,7 @@ class MARWILConfig(TrainerConfig):
         # __sphinx_doc_end__
         # fmt: on
 
-    @override(TrainerConfig)
+    @override(AlgorithmConfig)
     def training(
         self,
         *,
@@ -144,7 +145,6 @@ class MARWILConfig(TrainerConfig):
                 "type": "MultiAgentReplayBuffer",
                 "learning_starts": 1000,
                 "capacity": 50000,
-                "replay_batch_size": 32,
                 "replay_sequence_length": 1,
                 }
                 - OR -
@@ -181,7 +181,7 @@ class MARWILConfig(TrainerConfig):
             grad_clip: If specified, clip the global norm of gradients by this amount.
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
@@ -206,14 +206,14 @@ class MARWILConfig(TrainerConfig):
         return self
 
 
-class MARWILTrainer(Trainer):
+class MARWIL(Algorithm):
     @classmethod
-    @override(Trainer)
-    def get_default_config(cls) -> TrainerConfigDict:
+    @override(Algorithm)
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return MARWILConfig().to_dict()
 
-    @override(Trainer)
-    def validate_config(self, config: TrainerConfigDict) -> None:
+    @override(Algorithm)
+    def validate_config(self, config: AlgorithmConfigDict) -> None:
         # Call super's validation method.
         super().validate_config(config)
 
@@ -231,8 +231,8 @@ class MARWILTrainer(Trainer):
                 "calculate accum., discounted returns)!"
             )
 
-    @override(Trainer)
-    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
+    @override(Algorithm)
+    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.marwil.marwil_torch_policy import (
                 MARWILTorchPolicy,
@@ -241,17 +241,17 @@ class MARWILTrainer(Trainer):
             return MARWILTorchPolicy
         elif config["framework"] == "tf":
             from ray.rllib.algorithms.marwil.marwil_tf_policy import (
-                MARWILStaticGraphTFPolicy,
+                MARWILTF1Policy,
             )
 
-            return MARWILStaticGraphTFPolicy
+            return MARWILTF1Policy
         else:
-            from ray.rllib.algorithms.marwil.marwil_tf_policy import MARWILEagerTFPolicy
+            from ray.rllib.algorithms.marwil.marwil_tf_policy import MARWILTF2Policy
 
-            return MARWILEagerTFPolicy
+            return MARWILTF2Policy
 
-    @override(Trainer)
-    def training_iteration(self) -> ResultDict:
+    @override(Algorithm)
+    def training_step(self) -> ResultDict:
         # Collect SampleBatches from sample workers.
         batch = synchronous_parallel_sample(worker_set=self.workers)
         batch = batch.as_multi_agent()
@@ -293,14 +293,14 @@ class MARWILTrainer(Trainer):
         return train_results
 
 
-# Deprecated: Use ray.rllib.agents.marwil.MARWILConfig instead!
+# Deprecated: Use ray.rllib.algorithms.marwil.MARWILConfig instead!
 class _deprecated_default_config(dict):
     def __init__(self):
         super().__init__(MARWILConfig().to_dict())
 
     @Deprecated(
-        old="ray.rllib.agents.marwil.marwil.DEFAULT_CONFIG",
-        new="ray.rllib.agents.marwil.marwil.MARWILConfig(...)",
+        old="ray.rllib.agents.marwil.marwil::DEFAULT_CONFIG",
+        new="ray.rllib.algorithms.marwil.marwil::MARWILConfig(...)",
         error=False,
     )
     def __getitem__(self, item):

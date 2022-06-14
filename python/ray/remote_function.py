@@ -5,6 +5,7 @@ import uuid
 import os
 
 from ray import cloudpickle as pickle
+from ray.util.annotations import DeveloperAPI
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray._raylet import PythonFunctionDescriptor
 from ray import cross_language, Language
@@ -20,6 +21,10 @@ from ray.util.tracing.tracing_helper import (
 from ray._private import ray_option_utils
 
 logger = logging.getLogger(__name__)
+
+
+# Hook to call with (fn, resources, strategy) on each local task submission.
+_task_launch_hook = None
 
 
 class RemoteFunction:
@@ -157,11 +162,11 @@ class RemoteFunction:
             def remote(self, *args, **kwargs):
                 return func_cls._remote(args=args, kwargs=kwargs, **updated_options)
 
+            @DeveloperAPI
             def bind(self, *args, **kwargs):
                 """
-                **Experimental**
-
-                For ray DAG building. Implementation and interface subject to changes.
+                For Ray DAG building that creates static graph from decorated
+                class or functions.
                 """
                 from ray.experimental.dag.function_node import FunctionNode
 
@@ -287,6 +292,9 @@ class RemoteFunction:
                 serialize=True,
             )
 
+        if _task_launch_hook:
+            _task_launch_hook(self._function_descriptor, resources, scheduling_strategy)
+
         def invocation(args, kwargs):
             if self._is_cross_language:
                 list_args = cross_language.format_args(worker, args, kwargs)
@@ -327,11 +335,11 @@ class RemoteFunction:
 
         return invocation(args, kwargs)
 
+    @DeveloperAPI
     def bind(self, *args, **kwargs):
         """
-        **Experimental**
-
-        For ray DAG building. Implementation and interface subject to changes.
+        For Ray DAG building that creates static graph from decorated
+        class or functions.
         """
 
         from ray.experimental.dag.function_node import FunctionNode

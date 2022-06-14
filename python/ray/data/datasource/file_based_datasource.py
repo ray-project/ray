@@ -23,17 +23,17 @@ if TYPE_CHECKING:
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DatasetContext
-from ray.data.impl.arrow_block import ArrowRow
-from ray.data.impl.block_list import BlockMetadata
-from ray.data.impl.output_buffer import BlockOutputBuffer
+from ray.data._internal.arrow_block import ArrowRow
+from ray.data._internal.block_list import BlockMetadata
+from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data.datasource.datasource import Datasource, ReadTask, WriteResult
 from ray.data.datasource.file_meta_provider import (
     BaseFileMetadataProvider,
     DefaultFileMetadataProvider,
 )
 from ray.util.annotations import DeveloperAPI
-from ray.data.impl.util import _check_pyarrow_version
-from ray.data.impl.remote_fn import cached_remote_fn
+from ray.data._internal.util import _check_pyarrow_version
+from ray.data._internal.remote_fn import cached_remote_fn
 
 logger = logging.getLogger(__name__)
 
