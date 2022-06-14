@@ -28,7 +28,6 @@ except ImportError:
     from grpc.experimental import aio as aiogrpc
 
 
-
 # Publishes at most this number of lines of Raylet logs, when the Raylet dies
 # unexpectedly.
 _RAYLET_LOG_MAX_PUBLISH_LINES = 20
