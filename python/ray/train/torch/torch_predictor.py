@@ -7,7 +7,7 @@ import torch
 from ray.air.checkpoint import Checkpoint
 from ray.train._internal.torch_utils import convert_pandas_to_torch_tensor
 from ray.train.predictor import DataBatchType, Predictor
-from ray.train.torch import load_checkpoint
+from ray.train.torch.torch_trainer import load_checkpoint
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
