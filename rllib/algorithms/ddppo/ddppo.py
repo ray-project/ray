@@ -163,8 +163,7 @@ class DDPPO(PPO):
         config: Optional[PartialAlgorithmConfigDict] = None,
         env: Optional[Union[str, EnvType]] = None,
         logger_creator: Optional[Callable[[], Logger]] = None,
-        remote_checkpoint_dir: Optional[str] = None,
-        sync_function_tpl: Optional[str] = None,
+        **kwargs,
     ):
         """Initializes a DDPPO instance.
 
@@ -177,9 +176,11 @@ class DDPPO(PPO):
                 the "env" key in `config`.
             logger_creator: Callable that creates a ray.tune.Logger
                 object. If unspecified, a default logger is created.
+            **kwargs: Arguments passed to the Trainable base class
+
         """
         super().__init__(
-            config, env, logger_creator, remote_checkpoint_dir, sync_function_tpl
+            config=config, env=env, logger_creator=logger_creator, **kwargs
         )
 
         if "train_batch_size" in config.keys() and config["train_batch_size"] != -1:
