@@ -25,20 +25,29 @@ trainer = TorchTrainer(
 # to MLflow and Tensorboard.
 result = trainer.fit()
 
+# For MLFLow logs:
+
+# MLFlow logs will by default be saved in an `mlflow` directory
+# in the current working directory.
+
+# $ cd mlflow
+# # View the MLflow UI.
+# $ mlflow ui
+
+# You can change the directory by setting the `tracking_uri` argument
+# in `MLflowLoggerCallback`.
+
+# For TensorBoard logs:
+
 # Print the latest run directory and keep note of it.
-# For example: /home/ubuntu/ray_results/TorchTrainer_2022-06-13_20-31-06\
-# /TorchTrainer_c02c7_00000_0_2022-06-13_20-31-06
-print("Run directory:", result.logdir)
+# For example: /home/ubuntu/ray_results/TorchTrainer_2022-06-13_20-31-06
+print("Run directory:", result.log_dir)
 
 # How to visualize the logs
 
 # Navigate to the run directory of the trainer.
-# For example `cd /home/ubuntu/ray_results/TorchTrainer_2022-06-13_20-31-06\
-# /TorchTrainer_c02c7_00000_0_2022-06-13_20-31-06`
+# For example `cd /home/ubuntu/ray_results/TorchTrainer_2022-06-13_20-31-06`
 # $ cd <TRAINER_RUN_DIR>
-#
-# # View the MLflow UI.
-# $ mlflow ui
 #
 # # View the tensorboard UI.
 # $ tensorboard --logdir .

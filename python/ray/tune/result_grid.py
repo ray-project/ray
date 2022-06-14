@@ -178,6 +178,6 @@ class ResultGrid:
             checkpoint=checkpoint,
             metrics=trial.last_result.copy(),
             error=self._populate_exception(trial),
-            log_dir=trial.logdir,
+            log_dir=trial.local_dir,
         )
         return result
