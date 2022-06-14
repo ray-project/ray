@@ -19,7 +19,9 @@ from ray.train.examples.train_fashion_mnist_example import (
     train_func as fashion_mnist_train_func,
 )
 from ray.train.examples.train_linear_example import train_func as linear_train_func
+from ray.train.tensorflow.tensorflow_trainer import TensorflowTrainer
 from ray.train.tests.test_trainer import KillCallback
+from ray.train.torch.torch_trainer import TorchTrainer
 
 
 @pytest.fixture
@@ -35,14 +37,11 @@ def test_tensorflow_mnist(ray_start_2_cpus, num_workers):
     num_workers = num_workers
     epochs = 3
 
-    trainer = Trainer("tensorflow", num_workers=num_workers)
+    trainer = TensorflowTrainer(tensorflow_mnist_train_func, config, scaling_config=dict(num_workers=num_workers))
     config = {"lr": 1e-3, "batch_size": 64, "epochs": epochs}
-    trainer.start()
-    results = trainer.run(tensorflow_mnist_train_func, config)
-    trainer.shutdown()
+    results = trainer.fit()
 
-    assert len(results) == num_workers
-    result = results[0]
+    result = results.metrics
 
     loss = result["loss"]
     assert len(loss) == epochs
@@ -56,17 +55,15 @@ def test_tensorflow_mnist(ray_start_2_cpus, num_workers):
 def test_tf_non_distributed(ray_start_2_cpus):
     """Make sure Ray Train works without TF MultiWorkerMirroredStrategy."""
 
-    trainer = Trainer(backend="torch", num_workers=1)
-    trainer.start()
-    trainer.run(tf_quick_start_train_func)
-    trainer.shutdown()
+    trainer = TorchTrainer(tf_quick_start_train_func, scaling_config=dict(num_workers=1))
+    trainer.fit()
 
 
 def test_tensorflow_mnist_fail(ray_start_2_cpus):
     """Tests if tensorflow example works even with worker failure."""
     epochs = 3
 
-    trainer = Trainer("tensorflow", num_workers=2)
+    trainer = TensorflowTrainer(tensorflow_mnist_train_func, config, scaling_config=dict(num_workers=num_workers))
     config = {"lr": 1e-3, "batch_size": 64, "epochs": epochs}
     trainer.start()
     kill_callback = KillCallback(fail_on=0, trainer=trainer)
