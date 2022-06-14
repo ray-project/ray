@@ -1,25 +1,29 @@
-from dataclasses import dataclass
 import logging
 import os
 from collections import defaultdict
-from typing import Callable, List, Optional, Dict, Type, Tuple, TypeVar
+from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar
 
 import ray
 from ray.air.checkpoint import Checkpoint
 from ray.exceptions import RayActorError
 from ray.ray_constants import env_integer
+from ray.train._internal.dataset_spec import RayDatasetSpec
+from ray.train._internal.session import (
+    TrainingResult,
+    TrialInfo,
+    get_session,
+    init_session,
+    shutdown_session,
+)
+from ray.train._internal.utils import check_for_failure
+from ray.train._internal.worker_group import WorkerGroup
+from ray.train.backend import BackendConfig
 from ray.train.constants import (
     ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
-    TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
+    TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
 )
-from ray.train.backend import BackendConfig
-from ray.train._internal.dataset_spec import RayDatasetSpec
-from ray.train._internal.session import TrainingResult
-from ray.train._internal.session import init_session, get_session, shutdown_session
-from ray.train._internal.utils import check_for_failure
-from ray.train._internal.worker_group import WorkerGroup
 from ray.util.placement_group import get_current_placement_group, remove_placement_group
 
 T = TypeVar("T")

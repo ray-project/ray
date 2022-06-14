@@ -1,23 +1,22 @@
-from contextlib import contextmanager
 import inspect
-import os
 import logging
+import os
 import traceback
+from contextlib import contextmanager
 from typing import Dict, Optional, Set
 
 import ray
 from ray.air.checkpoint import Checkpoint
 from ray.air.session import Session
-from ray.tune.utils.placement_groups import PlacementGroupFactory
-from ray.util.debug import log_once
-from ray.util.annotations import PublicAPI, DeveloperAPI
-from ray.util.placement_group import _valid_resource_shape
-from ray.util.scheduling_strategies import (
-    SchedulingStrategyT,
-    PlacementGroupSchedulingStrategy,
-)
 from ray.tune.error import TuneError
 from ray.tune.function_runner import _StatusReporter
+from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.debug import log_once
+from ray.util.placement_group import _valid_resource_shape
+from ray.util.scheduling_strategies import (
+    PlacementGroupSchedulingStrategy,
+    SchedulingStrategyT,
+)
 
 logger = logging.getLogger(__name__)
 

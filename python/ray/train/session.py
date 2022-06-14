@@ -1,13 +1,13 @@
 import warnings
-from typing import Dict, Optional, TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, Dict, Optional, Union
 
 from ray.air.checkpoint import Checkpoint
 from ray.air.session import Session
 
 if TYPE_CHECKING:
     # avoid circular import
-    from ray.train._internal.session import _TrainSession
     from ray.data import Dataset, DatasetPipeline
+    from ray.train._internal.session import _TrainSession
 
 
 class TrainSession(Session):
@@ -102,7 +102,8 @@ class TrainSession(Session):
         """
         return self._session.local_rank
 
-    def get_dataset_shard(self,
+    def get_dataset_shard(
+        self,
         dataset_name: Optional[str] = None,
     ) -> Optional[Union["Dataset", "DatasetPipeline"]]:
         """Returns the Ray Dataset or DatasetPipeline shard for this worker.

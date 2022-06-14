@@ -1,6 +1,6 @@
+from collections import Counter
 from typing import Dict, List, Optional, Union
 
-from collections import Counter
 from tensorflow.keras.callbacks import Callback as KerasCallback
 
 from ray.air.checkpoint import Checkpoint

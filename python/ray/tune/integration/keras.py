@@ -1,10 +1,9 @@
+import os
 from collections import Counter
-from typing import Dict, List, Union, Optional
+from typing import Dict, List, Optional, Union
 
 from ray import tune
 from ray.air.callbacks.keras import _Callback as TuneCallback
-
-import os
 
 
 class TuneReportCallback(TuneCallback):

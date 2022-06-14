@@ -1,18 +1,16 @@
 import argparse
+
 import numpy as np
-
-
 import tensorflow as tf
-from ray.air.batch_predictor import BatchPredictor
 
 import ray
-from ray.air.callbacks.keras import Callback
 import ray.train as train
-from ray.data import Dataset
-from ray.train.tensorflow import prepare_dataset_shard
-from ray.train.tensorflow import TensorflowTrainer
+from ray.air.batch_predictor import BatchPredictor
+from ray.air.callbacks.keras import Callback
 from ray.air.predictors.integrations.tensorflow import TensorflowPredictor
 from ray.air.result import Result
+from ray.data import Dataset
+from ray.train.tensorflow import TensorflowTrainer, prepare_dataset_shard
 
 
 def get_dataset(a=5, b=10, size=1000) -> Dataset:

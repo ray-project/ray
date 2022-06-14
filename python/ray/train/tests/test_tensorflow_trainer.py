@@ -1,19 +1,19 @@
-import pytest
-import numpy as np
 import os
+
+import numpy as np
+import pytest
 
 import ray
 from ray import train
-from ray.train.tensorflow import TensorflowTrainer
+from ray.air.checkpoint import Checkpoint
+from ray.air.examples.tf.tensorflow_linear_dataset_example import get_dataset
 from ray.air.examples.tf.tensorflow_linear_dataset_example import (
     train_func as tensorflow_linear_train_func,
-    get_dataset,
 )
 from ray.air.predictors.integrations.tensorflow import TensorflowPredictor
-from ray.train.constants import MODEL_KEY, TRAIN_DATASET_KEY
-
 from ray.air.session import get_session
-from ray.air.checkpoint import Checkpoint
+from ray.train.constants import MODEL_KEY, TRAIN_DATASET_KEY
+from ray.train.tensorflow import TensorflowTrainer
 
 
 @pytest.fixture
@@ -125,7 +125,8 @@ def test_report_and_load_using_ml_session(ray_start_4_cpus):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))
