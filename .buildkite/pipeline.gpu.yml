@@ -16,9 +16,10 @@
     - pip install -Ur ./python/requirements_ml_docker.txt
     - ./ci/env/env_info.sh
     # Test all tests in the `algorithms` dir:
+    # --jobs 1: Since we only have one GPU on the test machine we should run 1 job at a time.
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --build_tests_only
-      --jobs 1 # since we only have one GPU on the test machine we should run 1 job at a time
+      --jobs 1
       --test_tag_filters=algorithms_dir,-algorithms_dir_generic,-multi_gpu
       --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
       --test_env=RLLIB_NUM_GPUS=1
