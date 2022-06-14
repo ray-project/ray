@@ -60,7 +60,9 @@ for ((i=0; i<${#PYTHONS[@]}; ++i)); do
   git clean -f -f -x -d -e .whl -e python/ray/dashboard/client -e dashboard/client -e python/ray/jars -e .llvm-local.bazelrc
 
   "$HOME"/anaconda3/bin/conda deactivate || true
-  "$HOME"/anaconda3/bin/conda create -n "$RANDOM"
+  NAME="$RANDOM"
+  "$HOME"/anaconda3/bin/conda create -n "${NAME}"
+  "$HOME"/anaconda3/bin/conda activate "${NAME}"
   "$HOME"/anaconda3/bin/conda install python="${PYTHON}"
   
   python --version
