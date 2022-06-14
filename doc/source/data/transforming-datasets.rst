@@ -147,7 +147,10 @@ batches that are passed to the provided batch UDF.
     `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`__.
   * **Simple Datasets:** Each batch will be a Python list.
 
-  **TODO:** Add example.
+  .. literalinclude:: ./doc_code/transforming_datasets.py
+    :language: python
+    :start-after: __writing_native_udfs_begin__
+    :end-before: __writing_native_udfs_end__
 
 .. tabbed:: "pandas"
 
@@ -159,7 +162,10 @@ batches that are passed to the provided batch UDF.
   If the underlying datasets data is not already in Pandas DataFrame format, the
   batch format conversion will incur a copy for each batch.
 
-  **TODO:** Add example.
+  .. literalinclude:: ./doc_code/transforming_datasets.py
+    :language: python
+    :start-after: __writing_pandas_udfs_begin__
+    :end-before: __writing_pandas_udfs_end__
 
 .. tabbed:: "pyarrow"
 
@@ -171,7 +177,10 @@ batches that are passed to the provided batch UDF.
   If the underlying datasets data is not already in Arrow Table format, the
   batch format conversion will incur a copy for each batch.
 
-  **TODO:** Add example.
+  .. literalinclude:: ./doc_code/transforming_datasets.py
+    :language: python
+    :start-after: __writing_arrow_udfs_begin__
+    :end-before: __writing_arrow_udfs_end__
 
 .. tabbed:: "numpy"
 
@@ -200,7 +209,41 @@ batches that are passed to the provided batch UDF.
     the batch items aren't supported in the NumPy dtype system (since NumPy will create
     an ndarray of ``np.object`` pointers to the batch items in that case).
 
-  **TODO:** Add example.
+  .. literalinclude:: ./doc_code/transforming_datasets.py
+    :language: python
+    :start-after: __writing_numpy_udfs_begin__
+    :end-before: __writing_numpy_udfs_end__
+
+You should reference the `pyarrow.Table APIs
+<https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__, the
+`pandas.DataFrame APIs <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html>`__,
+or the `numpy.ndarray APIs <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`__
+when writing batch UDFs.
+
+.. tip::
+
+   Write your UDFs to leverage built-in vectorized operations on the ``pandas.DataFrame``,
+   ``pyarrow.Table``, and ``numpy.ndarray`` abstractions for better performance. For
+   example, suppose you want to compute the sum of a column in ``pandas.DataFrame``:
+   instead of iterating over each row of a batch and summing up values of that column,
+   you should use ``df_batch["col_foo"].sum()``.
+
+Callable Class UDFs
+===================
+
+When using the actor compute strategy, per-row and per-batch UDFs can also be
+**callable classes**, i.e. classes that implement the ``__call__`` magic method. The
+constructor of the class can be used for stateful setup, and will be only invoked once
+per actor worker.
+
+.. note::
+  These transformation APIs take the uninstantiated callable class as an argument,
+  **not** an instance of the class!
+
+.. literalinclude:: ./doc_code/transforming_datasets.py
+   :language: python
+   :start-after: __writing_callable_classes_udfs_begin__
+   :end-before: __writing_callable_classes_udfs_end__
 
 Batch UDF Output Types
 ======================
@@ -218,7 +261,10 @@ by Datasets when constructing its internal blocks:
   `Pandas DataFrame <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html>`__
   blocks.
 
-  **TODO:** Add example.
+  .. literalinclude:: ./doc_code/transforming_datasets.py
+    :language: python
+    :start-after: __writing_pandas_out_udfs_begin__
+    :end-before: __writing_pandas_out_udfs_end__
 
 .. tabbed:: pa.Table
 
@@ -226,7 +272,10 @@ by Datasets when constructing its internal blocks:
   `pyarrow.Table <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__
   blocks.
 
-  **TODO:** Add example.
+  .. literalinclude:: ./doc_code/transforming_datasets.py
+    :language: python
+    :start-after: __writing_arrow_out_udfs_begin__
+    :end-before: __writing_arrow_out_udfs_end__
 
 .. tabbed:: np.ndarray
 
@@ -236,7 +285,10 @@ by Datasets when constructing its internal blocks:
   :ref:`tensor extension type <dataset-tensor-extension-api>` to embed the tensor in
   these tables under a single ``"__value__"`` column.
 
-  **TODO:** Add example.
+  .. literalinclude:: ./doc_code/transforming_datasets.py
+    :language: python
+    :start-after: __writing_numpy_out_udfs_begin__
+    :end-before: __writing_numpy_out_udfs_end__
 
 .. tabbed:: Dict[str, np.ndarray]
 
@@ -250,13 +302,19 @@ by Datasets when constructing its internal blocks:
   :ref:`tensor extension type <dataset-tensor-extension-api>` to embed these
   n-dimensional tensors in the Arrow table.
 
-  **TODO:** Add example.
+  .. literalinclude:: ./doc_code/transforming_datasets.py
+    :language: python
+    :start-after: __writing_numpy_dict_out_udfs_begin__
+    :end-before: __writing_numpy_dict_out_udfs_end__
 
 .. tabbed:: list
 
   Simple dataset containing Python list blocks.
 
-  **TODO:** Add example.
+  .. literalinclude:: ./doc_code/transforming_datasets.py
+    :language: python
+    :start-after: __writing_simple_out_udfs_begin__
+    :end-before: __writing_simple_out_udfs_end__
 
 Row UDF Output Types
 ====================
@@ -278,7 +336,10 @@ when constructing its internal blocks:
   being supported by Arrow, then Datasets will fall back to a simple dataset containing
   Python list blocks.
 
-  **TODO:** Add example.
+  .. literalinclude:: ./doc_code/transforming_datasets.py
+    :language: python
+    :start-after: __writing_dict_out_row_udfs_begin__
+    :end-before: __writing_dict_out_row_udfs_end__
 
 .. tabbed:: PandasRow
 
@@ -293,7 +354,15 @@ when constructing its internal blocks:
   dictionary. See the :class:`TableRow API <ray.data.row.TableRow>` for more information
   on this row view object.
 
-  **TODO:** Add example.
+  Note that a ``PandasRow`` is immmutable, so this row mapping cannot be updated
+  in-place. If wanting to update the row, copy this zero-copy row view into a plain
+  Python dictionary with :meth:`TableRow.as_pydict() <ray.data.row.TableRow.as_pydict>`
+  and then mutate and return that dictionary.
+
+  .. literalinclude:: ./doc_code/transforming_datasets.py
+    :language: python
+    :start-after: __writing_table_row_out_row_udfs_begin__
+    :end-before: __writing_table_row_out_row_udfs_end__
 
 .. tabbed:: ArrowRow
 
@@ -309,7 +378,15 @@ when constructing its internal blocks:
   dictionary. See the :class:`TableRow API <ray.data.row.TableRow>` for more information
   on this row view object.
 
-  **TODO:** Add example.
+  Note that an ``ArrowRow`` is immmutable, so this row mapping cannot be updated
+  in-place. If wanting to update the row, copy this zero-copy row view into a plain
+  Python dictionary with :meth:`TableRow.as_pydict() <ray.data.row.TableRow.as_pydict>`
+  and then mutate and return that dictionary.
+
+  .. literalinclude:: ./doc_code/transforming_datasets.py
+    :language: python
+    :start-after: __writing_table_row_out_row_udfs_begin__
+    :end-before: __writing_table_row_out_row_udfs_end__
 
 .. tabbed:: np.ndarray
 
@@ -320,35 +397,19 @@ when constructing its internal blocks:
   these tables under a single ``"__value__"`` column. Each such ``ndarray`` will be
   treated as a row in this column.
 
-  **TODO:** Add example.
+  .. literalinclude:: ./doc_code/transforming_datasets.py
+    :language: python
+    :start-after: __writing_numpy_out_row_udfs_begin__
+    :end-before: __writing_numpy_out_row_udfs_end__
 
 .. tabbed:: Any
 
   All other return row types will result in a simple dataset containing list blocks.
 
-  **TODO:** Add example.
-
-The following are some UDF examples.
-
-.. literalinclude:: ./doc_code/transforming_datasets.py
-   :language: python
-   :start-after: __writing_udfs_begin__
-   :end-before: __writing_udfs_end__
-
-You should reference the `pyarrow.Table APIs
-<https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__, the
-`pandas.DataFrame APIs
-<https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html>__`, or the
-`numpy.ndarray APIs <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>__`
-when writing batch UDFs.
-
-.. tip::
-
-   Write your UDFs to leverage built-in vectorized operations on the ``pandas.DataFrame``,
-   ``pyarrow.Table``, and ``numpy.ndarray`` abstractions for better performance. For
-   example, suppose you want to compute the sum of a column in ``pandas.DataFrame``:
-   instead of iterating over each row of a batch and summing up values of that column,
-   you should use ``df_batch["col_foo"].sum()``.
+  .. literalinclude:: ./doc_code/transforming_datasets.py
+    :language: python
+    :start-after: __writing_simple_out_row_udfs_begin__
+    :end-before: __writing_simple_out_row_udfs_end__
 
 ----------------
 Compute Strategy
