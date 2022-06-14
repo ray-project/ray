@@ -40,15 +40,6 @@ py_test(
 )
 
 py_test(
-    name = "torch_tensorboard_profiler_example",
-    size = "small",
-    main = "examples/torch_tensorboard_profiler_example.py",
-    srcs = ["examples/torch_tensorboard_profiler_example.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":train_lib"]
-)
-
-py_test(
     name = "transformers_example_gpu",
     size = "large",
     main = "examples/transformers/transformers_example.py",
