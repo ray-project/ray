@@ -108,7 +108,7 @@ Predictors
     :members:
     :show-inheritance:
 
-.. automodule:: ray.air.predictors.integrations.sklearn
+.. automodule:: ray.train.sklearn
     :members:
     :show-inheritance:
 
