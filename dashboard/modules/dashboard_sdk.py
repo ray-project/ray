@@ -6,12 +6,6 @@ import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-try:
-    import requests
-except ImportError:
-    requests = None
-
-
 from ray._private.runtime_env.packaging import (
     create_package,
     get_uri_for_directory,
@@ -23,6 +17,12 @@ from ray.autoscaler._private.cli_logger import cli_logger
 from ray.client_builder import _split_address
 from ray.dashboard.modules.job.common import uri_to_http_components
 from ray.util.annotations import PublicAPI
+
+try:
+    import requests
+except ImportError:
+    requests = None
+
 
 try:
     import aiohttp
