@@ -58,6 +58,7 @@ def validate_epoch(dataloader, model, loss_fn):
 
 
 def train_func(config):
+    # print(config)
     epochs = config.pop("epochs", 3)
     model = ResNet18(config)
     model = train.torch.prepare_model(model)
@@ -157,14 +158,14 @@ if __name__ == "__main__":
     )
     pbt_scheduler = PopulationBasedTraining(
         time_attr="training_iteration",
-        metric="loss",
-        mode="min",
         perturbation_interval=1,
         hyperparam_mutations={
-            # distribution for resampling
-            "train_loop_config/lr": lambda: np.random.uniform(0.001, 1),
-            # allow perturbations within this set of categorical values
-            "train_loop_config/momentum": [0.8, 0.9, 0.99],
+            "train_loop_config": {
+                # distribution for resampling
+                "lr": lambda: np.random.uniform(0.001, 1),
+                # allow perturbations within this set of categorical values
+                "momentum": [0.8, 0.9, 0.99],
+            }
         },
     )
 
