@@ -174,9 +174,9 @@ class Trainer:
 
         # Incremental unique run ID.
         self._run_id = 0
-        if logdir or logdir is None: 
+        if logdir or logdir is None:
             self.logdir = self.create_logdir(logdir)
-        else: 
+        else:
             self.logdir = logdir
         # Setup executor.
         self._backend_config = self._get_backend_config(backend)
@@ -251,7 +251,8 @@ class Trainer:
 
     def create_run_dir(self):
         """Create rundir for the particular training run."""
-        if self.latest_run_dir is None: return
+        if self.latest_run_dir is None:
+            return
         self.latest_run_dir.mkdir(parents=True, exist_ok=True)
         logger.info(f"Run results will be logged in: {self.latest_run_dir}")
 
@@ -445,7 +446,8 @@ class Trainer:
 
         Returns ``None`` if ``run()`` has not been called.
         """
-        if self.logdir is False: return None
+        if self.logdir is False:
+            return None
         if self._run_id > 0:
             run_dir = Path(f"run_{self._run_id:03d}")
             return construct_path(run_dir, self.logdir)
@@ -561,8 +563,10 @@ class Trainer:
         if os.path.exists(self.logdir) and len(os.listdir(self.logdir)) == 0:
             os.rmdir(self.logdir)
             self.logdir = False
-            logging.info(f"The trainer logdir ``{self.logdir}`` is "
-                         "removed and will be redirected to Tune logdir.")
+            logging.info(
+                f"The trainer logdir ``{self.logdir}`` is "
+                "removed and will be redirected to Tune logdir."
+            )
 
         return _create_tune_trainable(
             train_func,
@@ -886,7 +890,7 @@ def _create_tune_trainable(
             num_workers=num_workers,
             use_gpu=use_gpu,
             resources_per_worker=resources_per_worker,
-            logdir=False #disable logging for trainer
+            logdir=False,  # disable logging for trainer
         )
 
         trainer.start()
