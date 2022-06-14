@@ -1,22 +1,26 @@
 #!/usr/bin/env python
 
 import argparse
+import logging
 import os
 from pathlib import Path
+
 import yaml
 
 import ray
-from ray.tune.config_parser import make_parser
-from ray.tune.result import DEFAULT_RESULTS_DIR
-from ray.tune.resources import resources_to_json
-from ray.tune.tune import run_experiments
-from ray.tune.schedulers import create_scheduler
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.tune.config_parser import make_parser
+from ray.tune.resources import resources_to_json
+from ray.tune.result import DEFAULT_RESULTS_DIR
+from ray.tune.schedulers import create_scheduler
+from ray.tune.tune import run_experiments
 
 # Try to import both backends for flag checking/warnings.
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
+
+logger = logging.getLogger(__name__)
 
 EXAMPLE_USAGE = """
 Training example via RLlib CLI:
@@ -43,20 +47,20 @@ def create_parser(parser_creator=None):
     # See also the base parser definition in ray/tune/config_parser.py
     parser.add_argument(
         "--ray-address",
-        default=None,
+        default="auto",
         type=str,
         help="Connect to an existing Ray cluster at this address instead "
         "of starting a new one.",
     )
     parser.add_argument(
-        "--ray-ui", action="store_true", help="Whether to enable the Ray web UI."
+        "--no-ray-ui", action="store_true", help="Disable Ray UI from being used."
     )
-    # Deprecated: Use --ray-ui, instead.
+    # Deprecated, use --no-ray-ui instead for disabling the UI.
     parser.add_argument(
-        "--no-ray-ui",
+        "--ray-ui",
         action="store_true",
-        help="Deprecated! Ray UI is disabled by default now. "
-        "Use `--ray-ui` to enable.",
+        help="Deprecated! Ray UI is enabled by default now. "
+        "Use `--no-ray-ui` to disable.",
     )
     parser.add_argument(
         "--local-mode",
@@ -186,9 +190,9 @@ def run(args, parser):
         }
 
     # Ray UI.
-    if args.no_ray_ui:
-        deprecation_warning(old="--no-ray-ui", new="--ray-ui", error=False)
-        args.ray_ui = False
+    if args.ray_ui:
+        deprecation_warning(old="--ray-ui", new="--no-ray-ui", error=False)
+        args.no_ray_ui = False
 
     verbose = 1
     for exp in experiments.values():
@@ -257,14 +261,30 @@ def run(args, parser):
             )
         ray.init(address=cluster.address)
     else:
-        ray.init(
-            include_dashboard=args.ray_ui,
-            address=args.ray_address,
-            object_store_memory=args.ray_object_store_memory,
-            num_cpus=args.ray_num_cpus,
-            num_gpus=args.ray_num_gpus,
-            local_mode=args.local_mode,
-        )
+        # Try connecting to given address (by default, this is "auto").
+        try:
+            ray.init(
+                include_dashboard=not args.no_ray_ui,
+                address=args.ray_address,
+                object_store_memory=args.ray_object_store_memory,
+                num_cpus=args.ray_num_cpus,
+                num_gpus=args.ray_num_gpus,
+                local_mode=args.local_mode,
+            )
+        # Last resort: Try running in a new ray cluster (address=None).
+        except ConnectionError:
+            logger.warning(
+                "Connecting to ray-address={} not successful! Trying to run in a "
+                "new ray cluster."
+            )
+            ray.init(
+                include_dashboard=not args.no_ray_ui,
+                address=None,
+                object_store_memory=args.ray_object_store_memory,
+                num_cpus=args.ray_num_cpus,
+                num_gpus=args.ray_num_gpus,
+                local_mode=args.local_mode,
+            )
 
     run_experiments(
         experiments,
