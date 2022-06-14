@@ -30,18 +30,14 @@ from ray.tune.schedulers import (
     TrialScheduler,
 )
 from ray.tune.schedulers.util import (
-    set_search_properties_backwards_compatible as scheduler_set_props,
+    set_search_properties_backwards_compatible as scheduler_set_search_props,
 )
 from ray.tune.stopper import Stopper
 from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm, SearchGenerator
 from ray.tune.suggest.suggestion import ConcurrencyLimiter, Searcher
-
-# Turn off black here, as it will format the lines to be longer than 88 chars
-# fmt: off
 from ray.tune.suggest.util import (
-    set_search_properties_backwards_compatible as searcher_set_props,
+    set_search_properties_backwards_compatible as searcher_set_search_props,
 )
-# fmt: on
 from ray.tune.suggest.variant_generator import has_unresolved_values
 from ray.tune.syncer import (
     SyncConfig,
