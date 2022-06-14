@@ -1,12 +1,13 @@
 #!/usr/bin/env python
 
 import argparse
-from collections import defaultdict
-import numpy as np
 import json
 import logging
 import os
 import time
+from collections import defaultdict
+
+import numpy as np
 
 import ray
 
