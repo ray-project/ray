@@ -15,7 +15,7 @@
 #include <gtest/gtest.h>
 #include <ray/api.h>
 
-TEST(RayClusterModeTest, JavaInvocationTest) {
+TEST(RayClusterModeXLangTest, JavaInvocationTest) {
   auto java_actor_handle =
       ray::Actor(ray::JavaActorClass{"io.ray.test.Counter"}).Remote(1);
   EXPECT_TRUE(!java_actor_handle.ID().empty());
