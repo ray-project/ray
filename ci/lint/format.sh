@@ -148,7 +148,13 @@ MYPY_FILES=(
 ISORT_PATHS=(
     # TODO: Expand this list and remove once it is applied to the entire codebase.
     'python/ray/autoscaler/_private/'
+    'doc/'
 )
+
+ISORT_GIT_LS_EXCLUDES=(
+  ':(exclude)doc/**/doc_code/*'
+)
+
 
 BLACK_EXCLUDES=(
     '--force-exclude' 'python/ray/cloudpickle/*'
@@ -316,51 +322,54 @@ format_changed() {
     # exist on both branches.
     MERGEBASE="$(git merge-base upstream/master HEAD)"
 
-    if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.py' &>/dev/null; then
-        git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
-            isort
+    echo "git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.py' '${ISORT_GIT_LS_EXCLUDES[@]}'"
+    echo "git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' '${ISORT_GIT_LS_EXCLUDES[@]}'"
+    if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.py' "${ISORT_GIT_LS_EXCLUDES[@]}" &>/dev/null; then
+        git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' "${ISORT_GIT_LS_EXCLUDES[@]}" | xargs -P 5 \
+        echo
     fi
 
-    if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.py' &>/dev/null; then
-        git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
-            black "${BLACK_EXCLUDES[@]}"
-        if which flake8 >/dev/null; then
-            git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
-                 flake8 --config=.flake8
-        fi
-    fi
 
-    if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.pyx' '*.pxd' '*.pxi' &>/dev/null; then
-        if which flake8 >/dev/null; then
-            git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.pyx' '*.pxd' '*.pxi' | xargs -P 5 \
-                 flake8 --config=.flake8 "$FLAKE8_PYX_IGNORES"
-        fi
-    fi
+    # if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.py' &>/dev/null; then
+    #     git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
+    #         black "${BLACK_EXCLUDES[@]}"
+    #     if which flake8 >/dev/null; then
+    #         git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
+    #              flake8 --config=.flake8
+    #     fi
+    # fi
 
-    if which clang-format >/dev/null; then
-        if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.cc' '*.h' &>/dev/null; then
-            git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.cc' '*.h' | xargs -P 5 \
-                 clang-format -i
-        fi
-    fi
+    # if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.pyx' '*.pxd' '*.pxi' &>/dev/null; then
+    #     if which flake8 >/dev/null; then
+    #         git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.pyx' '*.pxd' '*.pxi' | xargs -P 5 \
+    #              flake8 --config=.flake8 "$FLAKE8_PYX_IGNORES"
+    #     fi
+    # fi
 
-    if command -v java >/dev/null & [ -f "$GOOGLE_JAVA_FORMAT_JAR" ]; then
-       if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.java' &>/dev/null; then
-            git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.java' | sed -E "\:$JAVA_EXCLUDES_REGEX:d" | xargs -P 5 java -jar "$GOOGLE_JAVA_FORMAT_JAR" -i
-        fi
-    fi
+    # if which clang-format >/dev/null; then
+    #     if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.cc' '*.h' &>/dev/null; then
+    #         git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.cc' '*.h' | xargs -P 5 \
+    #              clang-format -i
+    #     fi
+    # fi
 
-    if command -v shellcheck >/dev/null; then
-        local shell_files non_shell_files
-        non_shell_files=($(git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- ':(exclude)*.sh'))
-        shell_files=($(git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.sh'))
-        if [ 0 -lt "${#non_shell_files[@]}" ]; then
-            shell_files+=($(git --no-pager grep -l -- '^#!\(/usr\)\?/bin/\(env \+\)\?\(ba\)\?sh' "${non_shell_files[@]}" || true))
-        fi
-        if [ 0 -lt "${#shell_files[@]}" ]; then
-            shellcheck_scripts "${shell_files[@]}"
-        fi
-    fi
+    # if command -v java >/dev/null & [ -f "$GOOGLE_JAVA_FORMAT_JAR" ]; then
+    #    if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.java' &>/dev/null; then
+    #         git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.java' | sed -E "\:$JAVA_EXCLUDES_REGEX:d" | xargs -P 5 java -jar "$GOOGLE_JAVA_FORMAT_JAR" -i
+    #     fi
+    # fi
+
+    # if command -v shellcheck >/dev/null; then
+    #     local shell_files non_shell_files
+    #     non_shell_files=($(git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- ':(exclude)*.sh'))
+    #     shell_files=($(git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.sh'))
+    #     if [ 0 -lt "${#non_shell_files[@]}" ]; then
+    #         shell_files+=($(git --no-pager grep -l -- '^#!\(/usr\)\?/bin/\(env \+\)\?\(ba\)\?sh' "${non_shell_files[@]}" || true))
+    #     fi
+    #     if [ 0 -lt "${#shell_files[@]}" ]; then
+    #         shellcheck_scripts "${shell_files[@]}"
+    #     fi
+    # fi
 }
 
 # This flag formats individual files. --files *must* be the first command line
