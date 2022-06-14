@@ -1,12 +1,14 @@
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 import numpy as np
 import pandas as pd
+
 from ray.air.checkpoint import Checkpoint
-from ray.air.predictor import Predictor, DataBatchType
-from ray.train.rl import load_checkpoint
+from ray.air.constants import TENSOR_COLUMN_NAME
+from ray.air.predictor import Predictor
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.typing import EnvType
+from ray.train.rl import load_checkpoint
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -51,21 +53,14 @@ class RLPredictor(Predictor):
         policy, preprocessor = load_checkpoint(checkpoint, env)
         return RLPredictor(policy=policy, preprocessor=preprocessor)
 
-    def predict(self, data: DataBatchType, **kwargs) -> DataBatchType:
-        if isinstance(data, pd.DataFrame):
-            obs = data.to_numpy()
-        elif isinstance(data, np.ndarray):
-            obs = data
-        elif isinstance(data, list):
-            obs = np.array(data)
+    def _predict_pandas(self, data: "pd.DataFrame", **kwargs) -> "pd.DataFrame":
+        if TENSOR_COLUMN_NAME in data:
+            obs = data[TENSOR_COLUMN_NAME].to_numpy()
         else:
-            raise RuntimeError("Invalid data type:", type(data))
-
-        if self.preprocessor:
-            obs = self.preprocessor.transform_batch(obs)
+            obs = data.to_numpy()
 
         actions, _outs, _info = self.policy.compute_actions_from_input_dict(
             input_dict={"obs": obs}
         )
 
-        return np.array(actions)
+        return pd.DataFrame(np.array(actions))
