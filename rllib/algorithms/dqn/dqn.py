@@ -364,7 +364,7 @@ class DQN(SimpleQ):
             self._counters[NUM_ENV_STEPS_SAMPLED] += new_sample_batch.env_steps()
 
             # Store new samples in replay buffer.
-            self.local_replay_buffer.add_batch(new_sample_batch)
+            self.local_replay_buffer.add(new_sample_batch)
 
         global_vars = {
             "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],

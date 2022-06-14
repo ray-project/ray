@@ -23,20 +23,25 @@ class TestA3C(unittest.TestCase):
 
     def test_a3c_compilation(self):
         """Test whether an A3C can be built with both frameworks."""
-        config = a3c.A3CConfig().rollouts(num_rollout_workers=2, num_envs_per_worker=2)
+        config = a3c.A3CConfig()\
+            .rollouts(num_rollout_workers=2, num_envs_per_worker=2)\
+            .training(model={
+                "fcnet_hiddens": [16],
+            })
         config = add_gpu_if_necessary(config)
+
         num_iterations = 2
 
         # Test against all frameworks.
         for _ in framework_iterator(config, with_eager_tracing=True):
-            for env in ["CartPole-v1", "Pendulum-v1", "PongDeterministic-v0"]:
-                print("env={}".format(env))
-                config.model["use_lstm"] = env == "CartPole-v1"
+            for env in ["CartPole-v1", "Pendulum-v1"]:#, "PongDeterministic-v0"]:
+                print(f"env={env}")
+                config.model["use_lstm"] = env.startswith("CartPole")
                 trainer = config.build(env=env)
                 for i in range(num_iterations):
                     results = trainer.train()
-                    check_train_results(results)
                     print(results)
+                    check_train_results(results)
                 check_compute_single_action(
                     trainer, include_state=config.model["use_lstm"]
                 )

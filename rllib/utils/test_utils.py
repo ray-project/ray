@@ -34,7 +34,7 @@ torch, _ = try_import_torch()
 logger = logging.getLogger(__name__)
 
 
-def add_gpu_if_necessary(config: "TrainerConfig"):
+def add_gpu_if_necessary(config: "AlgorithmConfig"):
     num_gpus = os.environ.get("RLLIB_NUM_GPUS")
     if num_gpus is not None:
         num_gpus = int(num_gpus)

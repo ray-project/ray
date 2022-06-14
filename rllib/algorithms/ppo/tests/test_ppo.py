@@ -69,7 +69,7 @@ class MyCallbacks(DefaultCallbacks):
     def on_train_result(self, *, algorithm, result: dict, **kwargs):
         stats = result["info"][LEARNER_INFO][DEFAULT_POLICY_ID][LEARNER_STATS_KEY]
         # Learning rate should go to 0 after 1 iter.
-        check(stats["cur_lr"], 5e-5 if algorithm.iteration == 1 else 0.0)
+        check(stats["cur_lr"], 0.1 if algorithm.iteration == 1 else 0.0)
         # Entropy coeff goes to 0.05, then 0.0 (per iter).
         check(stats["entropy_coeff"], 0.1 if algorithm.iteration == 1 else 0.05)
 
@@ -96,9 +96,15 @@ class TestPPO(unittest.TestCase):
         config = (
             ppo.PPOConfig()
             .training(
+                train_batch_size=128,
+                model=dict(
+                    # Settings in case we use an LSTM.
+                    lstm_cell_size=10,
+                    max_seq_len=20,
+                ),
                 num_sgd_iter=2,
                 # Setup lr schedule for testing.
-                lr_schedule=[[0, 5e-5], [128, 0.0]],
+                lr_schedule=[[0, 0.1], [128, 0.0]],
                 # Set entropy_coeff to a faulty value to proof that it'll get
                 # overridden by the schedule below (which is expected).
                 entropy_coeff=100.0,
@@ -108,14 +114,6 @@ class TestPPO(unittest.TestCase):
                 num_rollout_workers=1,
                 # Test with compression.
                 compress_observations=True,
-            )
-            .training(
-                train_batch_size=128,
-                model=dict(
-                    # Settings in case we use an LSTM.
-                    lstm_cell_size=10,
-                    max_seq_len=20,
-                ),
             )
             .callbacks(MyCallbacks)
         )  # For checking lr-schedule correctness.
@@ -143,8 +141,8 @@ class TestPPO(unittest.TestCase):
                         entropy_coeff, lr = policy.get_session().run(
                             [entropy_coeff, lr]
                         )
-                    check(entropy_coeff, 0.1)
-                    check(lr, config.lr)
+                    check(entropy_coeff, config.entropy_coeff_schedule[0][1])
+                    check(lr, config.lr_schedule[0][1])
 
                     for i in range(num_iterations):
                         results = trainer.train()

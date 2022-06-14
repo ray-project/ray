@@ -148,7 +148,6 @@ class SimpleQConfig(AlgorithmConfig):
 
         # `reporting()`
         self.min_time_s_per_iteration = 1
-        self.min_sample_timesteps_per_iteration = 1000
 
         # Deprecated.
         self.buffer_size = DEPRECATED_VALUE

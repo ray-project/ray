@@ -24,11 +24,7 @@ class TestSlateQ(unittest.TestCase):
 
     def test_slateq_compilation(self):
         """Test whether SlateQ can be built with both frameworks."""
-        config = (
-            slateq.SlateQConfig()
-            .environment(env=InterestEvolutionRecSimEnv)
-            .training(replay_buffer_config={"learning_starts": 1000})
-        )
+        config = slateq.SlateQConfig().environment(env=InterestEvolutionRecSimEnv)
         config = add_gpu_if_necessary(config)
 
         num_iterations = 1
