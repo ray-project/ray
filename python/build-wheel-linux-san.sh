@@ -44,8 +44,9 @@ set -x
 
 wget --quiet "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh" -O /tmp/miniconda.sh \
     && /bin/bash /tmp/miniconda.sh -b -u -p "$HOME"/anaconda3 \
+    && rm /tmp/miniconda.sh \
     && "$HOME"/anaconda3/bin/conda init bash \
-    && rm /tmp/miniconda.sh
+    && source ~/.bashrc
 
 mkdir -p .whl
 for ((i=0; i<${#PYTHONS[@]}; ++i)); do
@@ -61,9 +62,9 @@ for ((i=0; i<${#PYTHONS[@]}; ++i)); do
 
   "$HOME"/anaconda3/bin/conda deactivate || true
   NAME="$RANDOM"
-  "$HOME"/anaconda3/bin/conda create -n "${NAME}"
+  "$HOME"/anaconda3/bin/conda create -n "${NAME}" -y
   "$HOME"/anaconda3/bin/conda activate "${NAME}"
-  "$HOME"/anaconda3/bin/conda install python="${PYTHON}"
+  "$HOME"/anaconda3/bin/conda install python="${PYTHON}" -y
   
   python --version
 
