@@ -1,6 +1,15 @@
 # flake8: noqa
 
-# __gen_csv_dataset_start__
+
+# __tuning_dataset_start__
+import ray
+from ray.train.torch import TorchTrainer
+from ray import tune
+from ray.tune.tuner import Tuner, RunConfig
+
+ray.init(num_cpus=5)
+
+# Generate two random linear datasets, 180MiB each.
 import numpy as np
 from numpy import random
 import pandas as pd
@@ -17,18 +26,8 @@ def generate_csv(filename: str):
     df = pd.DataFrame({"x": x, "y": y})
     ds = ray.data.from_pandas(df)
     ds.write_csv(filename)
-# __gen_csv_dataset_end__
 
 
-# __tuning_dataset_start__
-import ray
-from ray.train.torch import TorchTrainer
-from ray import tune
-from ray.tune.tuner import Tuner, RunConfig
-
-ray.init(num_cpus=5)
-
-# Generate two random linear datasets, 180MiB each.
 generate_csv("my_data1")
 generate_csv("my_data2")
 
@@ -69,6 +68,25 @@ from ray import tune
 from ray.tune.tuner import Tuner, RunConfig
 
 ray.init(num_cpus=5)
+
+# Generate two random linear datasets, 180MiB each.
+import numpy as np
+from numpy import random
+import pandas as pd
+
+
+# Generate a linear 180MiB dataset.
+def generate_csv(filename: str):
+    size = 10000000
+    a = 2
+    b = 5
+    x = np.arange(0, 10, 10 / size, dtype=np.float32)
+    random.shuffle(x)
+    y = a * x + b
+    df = pd.DataFrame({"x": x, "y": y})
+    ds = ray.data.from_pandas(df)
+    ds.write_csv(filename)
+
 
 # Generate two random linear datasets, 180MiB each.
 generate_csv("my_data")

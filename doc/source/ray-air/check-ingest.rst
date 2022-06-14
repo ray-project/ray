@@ -181,8 +181,6 @@ Let's look at code examples for both cases.
 
     .. literalinclude:: doc_code/air_ingest.py
         :language: python
-        :start-after: __gen_csv_dataset_start__
-        :end-before: __gen_csv_dataset_end__
         :start-after: __tuning_non_dataset_start__
         :end-before: __tuning_non_dataset_end__
 
@@ -190,8 +188,6 @@ Let's look at code examples for both cases.
 
     .. literalinclude:: doc_code/air_ingest.py
         :language: python
-        :start-after: __gen_csv_dataset_start__
-        :end-before: __gen_csv_dataset_end__
         :start-after: __tuning_dataset_start__
         :end-before: __tuning_dataset_end__
 
