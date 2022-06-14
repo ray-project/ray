@@ -1,28 +1,24 @@
-from typing import Optional
-
 import logging
 import os
-
-import pytest
 import shutil
 import tempfile
+from typing import Optional
 
+import pytest
 from freezegun import freeze_time
 
+import ray.util
 from ray.tune import TuneError
 from ray.tune.result import NODE_IP
 from ray.tune.syncer import (
-    SyncerCallback,
     DEFAULT_SYNC_PERIOD,
-    _BackgroundProcess,
     SyncConfig,
+    SyncerCallback,
+    _BackgroundProcess,
 )
 from ray.tune.utils.callback import create_default_callbacks
-from ray.tune.utils.file_transfer import (
-    sync_dir_between_nodes,
-)
-import ray.util
-from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
+from ray.tune.utils.file_transfer import sync_dir_between_nodes
+from ray.util.ml_utils.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 
 
 @pytest.fixture
@@ -377,7 +373,7 @@ def test_syncer_callback_log_error(caplog, ray_start_2_cpus, temp_data_dirs):
     sync_process.should_fail = True
 
     # When the previous sync processes fails, an error is logged but sync is restarted
-    syncer_callback.on_trial_result(iteration=2, trials=[], trial=trial1, result={})
+    syncer_callback.on_trial_complete(iteration=2, trials=[], trial=trial1)
 
     assert (
         "An error occurred during the checkpoint syncing of the previous checkpoint"
