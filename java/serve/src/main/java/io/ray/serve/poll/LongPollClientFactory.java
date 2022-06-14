@@ -6,18 +6,23 @@ import io.ray.api.ActorHandle;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.PyActorHandle;
+import io.ray.api.Ray;
 import io.ray.api.exception.RayActorException;
 import io.ray.api.exception.RayTaskException;
 import io.ray.api.function.PyActorMethod;
+import io.ray.serve.api.Serve;
 import io.ray.serve.common.Constants;
+import io.ray.serve.config.RayServeConfig;
 import io.ray.serve.controller.ServeController;
 import io.ray.serve.exception.RayServeException;
 import io.ray.serve.generated.ActorNameList;
+import io.ray.serve.replica.ReplicaContext;
 import io.ray.serve.util.CollectionUtil;
 import io.ray.serve.util.LogUtil;
 import io.ray.serve.util.ServeProtoUtil;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
@@ -81,6 +86,34 @@ public class LongPollClientFactory {
     if (inited) {
       return;
     }
+    long intervalS = 6L;
+    try {
+      ReplicaContext replicaContext = Serve.getReplicaContext();
+      boolean enabled =
+          Optional.ofNullable(replicaContext.getConfig())
+              .map(config -> config.get(RayServeConfig.LONG_POOL_CLIENT_ENABLED))
+              .map(Boolean::valueOf)
+              .orElse(true);
+      if (!enabled) {
+        LOGGER.info("LongPollClient is disabled.");
+        return;
+      }
+      if (null == hostActor) {
+        hostActor =
+            Ray.getActor(
+                    replicaContext.getInternalControllerName(),
+                    replicaContext.getInternalControllerNamespace())
+                .get();
+      }
+      intervalS =
+          Optional.ofNullable(replicaContext.getConfig())
+              .map(config -> config.get(RayServeConfig.LONG_POOL_CLIENT_INTERVAL))
+              .map(Long::valueOf)
+              .orElse(10L);
+    } catch (Exception e) {
+      LOGGER.info(
+          "Serve.getReplicaContext()` may only be called from within a Ray Serve deployment.");
+    }
 
     Preconditions.checkNotNull(hostActor);
     LongPollClientFactory.hostActor = hostActor;
@@ -109,7 +142,7 @@ public class LongPollClientFactory {
           }
         },
         0L,
-        6L,
+        intervalS,
         TimeUnit.SECONDS);
     inited = true;
     LOGGER.info("LongPollClient was initialized");
