@@ -1,4 +1,1 @@
-import_path: "basic_dag.DagNode"
-
-runtime_env:
-  working_dir: "https://github.com/ray-project/test_dag/archive/76a741f6de31df78411b1f302071cde46f098418.zip"
+import_path: ray.serve.tests.test_config_files.test_dag.basic_dag.DagNode
