@@ -15,12 +15,8 @@ class Session(abc.ABC):
     """
 
     @abc.abstractmethod
-    def report(self, metrics: Dict, checkpoint: Optional[Checkpoint] = None) -> None:
+    def report(self, metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
         """Report metrics and optionally save checkpoint.
-
-        TODO(xwjiang): To be able to say the following without racing.
-        By the return of this method, the checkpoint is guaranteed to be saved onto
-        Driver node or onto cloud, depending on how SyncConfig is configured.
 
         Each invocation of this method will automatically increment the underlying
         iteration number. The physical meaning of this "iteration" is defined by
@@ -33,7 +29,13 @@ class Session(abc.ABC):
 
         There is no requirement on what is the underlying representation of the
         checkpoint.
+
         All forms are accepted and (will be) handled by AIR in an efficient way.
+
+        Specifically, if you are passing in a directory checkpoint, AIR will move
+        the content of the directory to AIR managed directory. By the return of this
+        method, one may safely write new content to the original directory without
+        interfering with AIR checkpointing flow.
 
         Example:
             .. code-block: python
@@ -49,8 +51,7 @@ class Session(abc.ABC):
                         metrics={"foo": "bar"},
                         checkpoint=Checkpoint.from_directory(temp_dir.name)
                     )
-                    # TODO(xwjiang): To be able to say the following.
-                    # Air guarantees by this point, you can safely remove
+                    # Air guarantees by this point, you can safely write new stuff to
                     # "my_model" directory.
                 scaling_config = {"num_workers": 2}
                 trainer = TensorflowTrainer(
@@ -61,19 +62,6 @@ class Session(abc.ABC):
                 content of ``model.save()`` under it.
                 # If you have `SyncConfig` configured, the content should also
                 # show up in the corresponding cloud storage path.
-
-                ######## Using it in training function loop (TuneSession) #########
-                # Currently this example is driven by `tune.run`
-                # (Session part is the same), but we need to switch to AIR API
-                # when AIR developer story is more mature.
-
-                def f(config):
-                    session = get_session()
-                    for i in range(3):
-                        checkpoint = Checkpoint.from_dict({"iter": i})
-                        session.report({"foo": "bar"}, checkpoint)
-
-                tune.run(f, num_samples=1)
 
         Args:
             metrics: The metrics you want to report.
@@ -126,29 +114,23 @@ class Session(abc.ABC):
                 resume_from_checkpoint=result.checkpoint,
             )
             result2 = trainer2.fit()
-
-            ######### Using it in training function loop (TuneSession) #########
-            def f(config):
-                session = get_session()
-                starting_iter = 0
-                loaded_checkpoint = session.loaded_checkpoint()
-                if loaded_checkpoint:
-                starting_iter = loaded_checkpoint.to_dict()["iter"] + 1
-
-                for i in range(starting_iter, starting_iter + 100):
-                time.sleep(1)
-                checkpoint = Checkpoint.from_dict({"iter": i})
-                session.report({"iter": i}, checkpoint)
-
-            # Now issue this but ctrl + C the program in the middle
-            tune.run(f, name="my_exp", num_samples=1)
-
-            # Now do
-            tune.run(f, name="my_exp", resume=True)
-
-            # You will see that the TuneSession will pick up from where it's left off.
         """
 
+        raise NotImplementedError
+
+    @property
+    def trial_name(self) -> str:
+        """Trial name for the corresponding trial."""
+        raise NotImplementedError
+
+    @property
+    def trial_id(self) -> str:
+        """Trial id for the corresponding trial."""
+        raise NotImplementedError
+
+    @property
+    def trial_resources(self) -> Dict[str, float]:
+        """Trial resources for the corresponding trial."""
         raise NotImplementedError
 
 

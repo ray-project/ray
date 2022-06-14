@@ -1,5 +1,6 @@
 import inspect
 import logging
+import os
 from pathlib import Path
 from typing import (
     Any,
@@ -15,6 +16,7 @@ from typing import (
 import ray
 from ray import tune
 from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY
+from ray.air.session import get_session
 from ray.train.constants import (
     TRAIN_DATASET_KEY,
     WILDCARD_KEY,
@@ -25,7 +27,7 @@ from ray.train.trainer import GenDataset
 from ray.air.checkpoint import Checkpoint
 from ray.train._internal.dataset_spec import DataParallelIngestSpec
 from ray.train import BackendConfig, TrainingIterator
-from ray.train._internal.backend_executor import BackendExecutor
+from ray.train._internal.backend_executor import BackendExecutor, TrialInfo
 from ray.train._internal.checkpoint import TuneCheckpointManager
 from ray.train._internal.utils import construct_train_func
 from ray.util.annotations import DeveloperAPI
@@ -268,14 +270,6 @@ class DataParallelTrainer(BaseTrainer):
             dataset_config=self._dataset_config,
         )
 
-        # Not set during initialization, as Trainer serves both as the entrypoint,
-        # as well as constructed within Trainable.
-        # If it's constructed from within Trainable, the field will be set directly
-        # by the TuneSession.
-        # The log directory that the Trainer can safely work with. Only meaningful
-        # if the Trainer is within the scope of a TuneSession.
-        self.logdir = None
-
         super(DataParallelTrainer, self).__init__(
             scaling_config=scaling_config,
             run_config=run_config,
@@ -343,9 +337,12 @@ class DataParallelTrainer(BaseTrainer):
             scaling_config_dataclass.additional_resources_per_worker
         )
 
+        session = get_session()
+        trial_info = TrialInfo(name=session.trial_name, id=session.trial_id, resources=session.trial_resources, dir=os.getcwd())
+
         backend_executor = BackendExecutor(
             backend_config=self._backend_config,
-            logdir=self.logdir,
+            trial_info=trial_info,
             num_workers=scaling_config_dataclass.num_workers,
             num_cpus_per_worker=scaling_config_dataclass.num_cpus_per_worker,
             num_gpus_per_worker=scaling_config_dataclass.num_gpus_per_worker,

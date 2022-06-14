@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import logging
 import os
 from collections import defaultdict
@@ -58,7 +59,7 @@ class BackendExecutor:
     def __init__(
         self,
         backend_config: BackendConfig,
-        logdir: str,
+        trial_info: TrialInfo,
         num_workers: int = 1,
         num_cpus_per_worker: float = 1,
         num_gpus_per_worker: float = 0,
@@ -78,7 +79,7 @@ class BackendExecutor:
         self._initialization_hook = None
         self._placement_group = None
 
-        self._logdir = logdir
+        self._trial_info = trial_info
 
         self.worker_group = InactiveWorkerGroup()
         self.dataset_shards = None
@@ -294,7 +295,7 @@ class BackendExecutor:
             world_rank,
             local_rank,
             world_size,
-            logdir,
+            trial_info,
             checkpoint,
             dataset_shard,
             encode_data_fn,
@@ -305,7 +306,7 @@ class BackendExecutor:
                     world_rank=world_rank,
                     local_rank=local_rank,
                     world_size=world_size,
-                    logdir=logdir,
+                    trial_info=trial_info,
                     dataset_shard=dataset_shard,
                     checkpoint=checkpoint,
                     encode_data_fn=encode_data_fn,
@@ -334,7 +335,7 @@ class BackendExecutor:
                     world_rank=index,
                     local_rank=local_rank_map[index],
                     world_size=len(self.worker_group),
-                    logdir=os.path.join(self._logdir, f"rank{index}"),
+                    trial_info=self._trial_info,
                     train_func=train_func,
                     dataset_shard=self.dataset_shards[index],
                     checkpoint=checkpoint,

@@ -118,7 +118,7 @@ def report(**kwargs) -> None:
     if session is None:
         _warn_session_misuse(report.__name__)
         return
-    session.report(**kwargs)
+    session._report_legacy(**kwargs)
 
 
 @PublicAPI(stability="beta")

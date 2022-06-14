@@ -36,6 +36,15 @@ class TrainingResultType(Enum):
 
 
 @dataclass
+class TrialInfo:
+    """The trial information to propagate to TrainSession."""
+    name: str
+    id: str
+    resources: Dict[str, float]
+    logdir: str
+
+
+@dataclass
 class TrainingResult:
     type: TrainingResultType
     data: Dict
@@ -50,7 +59,7 @@ class _TrainSession:
         world_rank: int,
         local_rank: int,
         world_size: int,
-        logdir: str,
+        trial_info: TrialInfo,
         dataset_shard: Optional[Union[Dataset, DatasetPipeline]] = None,
         checkpoint: Optional[Union[Dict, Checkpoint]] = None,
         encode_data_fn: Callable = None,
@@ -64,6 +73,7 @@ class _TrainSession:
         self.world_rank = world_rank
         self.local_rank = local_rank
         self.world_size = world_size
+        self.trial_info = trial_info
         self.loaded_checkpoint = checkpoint
 
         # Function to encode checkpoint dict before sending to the driver.
@@ -76,6 +86,7 @@ class _TrainSession:
         self._encode_data_fn = encode_data_fn
 
         # Change the working directory to `logdir`.
+        logdir = os.path.join(trial_info.logdir, f"rank_{self.world_rank}")
         os.makedirs(logdir, exist_ok=True)
         os.chdir(logdir)
 

@@ -32,7 +32,7 @@ class TuneSession(Session):
     def __init__(self, status_reporter: _StatusReporter):
         self._status_reporter = status_reporter
 
-    def report(self, metrics: Dict, checkpoint: Optional[Checkpoint] = None) -> None:
+    def report(self, metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
         self._status_reporter.report(metrics, checkpoint)
 
     @property
@@ -41,26 +41,15 @@ class TuneSession(Session):
 
     @property
     def trial_name(self) -> str:
-        """Trial name for the corresponding trial."""
         return self._status_reporter.trial_name
 
     @property
     def trial_id(self) -> str:
-        """Trial id for the corresponding trial."""
         return self._status_reporter.trial_id
 
     @property
-    def logdir(self) -> str:
-        """Returns the directory that the session can safely work with.
-
-        If there are further distributed computation, child sessions can
-        then have separate dirs based off of this parent logdir."""
-        return self._status_reporter.logdir
-
-    @property
-    def trial_resources(self) -> PlacementGroupFactory:
-        """Trial resources for the corresponding trial."""
-        return self._status_reporter.trial_resources
+    def trial_resources(self) -> Dict[str, float]:
+        return self._status_reporter.trial_resources.required_resources
 
 
 @PublicAPI
