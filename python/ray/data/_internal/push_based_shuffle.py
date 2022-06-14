@@ -72,6 +72,40 @@ class _PushBasedShuffleTaskSchedule:
                     self.reducer_idx_to_merge_idx.append(merge_idx)
 
 
+class MapMergeStageExecutor:
+    def __init__(self,
+            input_iter,
+            stage_fn: Callable[[], [List[ObjectRef]]],
+            progress_bar: Optional[ProgressBar],
+            ):
+        self._input_iter = input_iter
+        self._stage_fn = stage_fn
+        self._progress_bar = progress_bar
+        self._stages = [None, None]
+
+        self._stage_fn
+
+        self._input_blocks_list = input_blocks_list
+        self._schedule = schedule
+        self._map_result_refs = []
+        self._map_metadata = []
+        self._map_progress_bar = ProgressBar("Shuffle Map", position=0, total=len(input_blocks_list))
+        self._submit_map_round = submit_map_round
+
+        self._merge_result_refs = [[] for _ in range(schedule.num_merge_tasks_per_round)]
+        self._merge_metadata = []
+        self._submit_merge_round = submit_merge_round
+
+        self._stages = [None, None]
+        self._submit_map_round()
+        
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        pass
+
+
 class PushBasedShufflePlan(ShuffleOp):
     """
     Push-based shuffle merges intermediate map outputs on the reducer nodes
