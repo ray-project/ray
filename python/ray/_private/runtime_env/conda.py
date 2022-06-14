@@ -156,9 +156,9 @@ def inject_dependencies(
     """Add Ray, Python and (optionally) extra pip dependencies to a conda dict.
 
     Args:
-        conda_dict (dict): A dict representing the JSON-serialized conda
+        conda_dict: A dict representing the JSON-serialized conda
             environment YAML file.  This dict will be modified and returned.
-        py_version (str): A string representing a Python version to inject
+        py_version: A string representing a Python version to inject
             into the conda dependencies, e.g. "3.7.7"
         pip_dependencies (List[str]): A list of pip dependencies that
             will be prepended to the list of pip dependencies in

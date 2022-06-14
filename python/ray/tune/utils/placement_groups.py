@@ -235,6 +235,12 @@ class PlacementGroupFactory:
         self._bound = None
         self._bind()
 
+    def __repr__(self) -> str:
+        return (
+            f"<PlacementGroupFactory (_bound={self._bound}, "
+            f"head_bundle_is_empty={self.head_bundle_is_empty})>"
+        )
+
 
 def resource_dict_to_pg_factory(spec: Optional[Dict[str, float]]):
     spec = spec or {"cpu": 1}

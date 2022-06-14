@@ -11,7 +11,7 @@ class ActionDistribution:
     """The policy action distribution of an agent.
 
     Attributes:
-        inputs (Tensors): input vector to compute samples from.
+        inputs: input vector to compute samples from.
         model (ModelV2): reference to model producing the inputs.
     """
 
@@ -20,7 +20,7 @@ class ActionDistribution:
         """Initializes an ActionDist object.
 
         Args:
-            inputs (Tensors): input vector to compute samples from.
+            inputs: input vector to compute samples from.
             model (ModelV2): reference to model producing the inputs. This
                 is mainly useful if you want to use model variables to compute
                 action outputs (i.e., for auto-regressive action distributions,
@@ -92,7 +92,7 @@ class ActionDistribution:
             action_space (gym.Space): The action space this distribution will
                 be used for, whose shape attributes will be used to determine
                 the required shape of the input parameter tensor.
-            model_config (dict): Model's config dict (as defined in catalog.py)
+            model_config: Model's config dict (as defined in catalog.py)
 
         Returns:
             model_output_shape (int or np.ndarray of ints): size of the

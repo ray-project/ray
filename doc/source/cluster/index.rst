@@ -16,8 +16,9 @@ done so often), but the real power is using Ray on a cluster of machines.
 
 Ray can automatically interact with the cloud provider to request or release
 instances. You can specify :ref:`a configuration <cluster-config>` to launch
-clusters on :ref:`AWS, GCP, Azure, Kubernetes, Aliyun, on-premise, or even on
-your custom node provider <cluster-cloud>`. Your cluster can have a fixed size
+clusters on :ref:`AWS, GCP, Azure (community-maintained), Aliyun (community-maintained), on-premise, or even on
+your custom node provider <cluster-cloud>`. Ray can also be run on :ref:`Kubernetes <ray-k8s-deploy>` infrastructure.
+Your cluster can have a fixed size
 or :ref:`automatically scale up and down<cluster-autoscaler>` depending on the
 demands of your application.
 
@@ -29,7 +30,7 @@ Where to go from here?
     :column: col-lg-6 px-2 py-2
     :card:
 
-    Quick Start
+    **Quick Start** 
     ^^^
 
     In this quick start tutorial you will take a sample application designed to
@@ -42,7 +43,7 @@ Where to go from here?
         :classes: btn-outline-info btn-block
     ---
 
-    Key Concepts
+    **Key Concepts**
     ^^^
 
     Understand the key concepts behind Ray Clusters. Learn about the main
@@ -55,7 +56,7 @@ Where to go from here?
         :classes: btn-outline-info btn-block
     ---
 
-    Deployment Guide
+    **Deployment Guide**
     ^^^
 
     Learn how to set up a distributed Ray cluster and run your workloads on it.
@@ -67,7 +68,7 @@ Where to go from here?
         :classes: btn-outline-info btn-block
     ---
 
-    API
+    **API**
     ^^^
 
     Get more in-depth information about the various APIs to interact with Ray

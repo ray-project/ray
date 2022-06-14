@@ -27,7 +27,7 @@ from ray.tune.utils.trainable import TrainableUtil
 @pytest.mark.parametrize("logdir", ["~/tmp/exp/trial", "~/tmp/exp/trial/"])
 def test_find_rel_checkpoint_dir(checkpoint_path, logdir):
     assert (
-        TrainableUtil.find_rel_checkpoint_dir(logdir, checkpoint_path) == "checkpoint0/"
+        TrainableUtil.find_rel_checkpoint_dir(logdir, checkpoint_path) == "checkpoint0"
     )
 
 

@@ -38,12 +38,12 @@ def from_config(cls, config=None, **kwargs):
         module+class (e.g. "ray.rllib. [...] .[some class name]")
 
     Args:
-        cls (class): The class to build an instance for (from `config`).
+        cls: The class to build an instance for (from `config`).
         config (Optional[dict, str]): The config dict or type-string or
             filename.
 
     Keyword Args:
-        kwargs (any): Optional possibility to pass the constructor arguments in
+        kwargs: Optional possibility to pass the constructor arguments in
             here and use `config` as the type-only info. Then we can call
             this like: from_config([type]?, [**kwargs for constructor])
             If `config` is already a dict, then `kwargs` will be merged
@@ -216,7 +216,7 @@ def from_file(cls, filename, *args, **kwargs):
     Create object from config saved in filename. Expects json or yaml file.
 
     Args:
-        filename (str): File containing the config (json or yaml).
+        filename: File containing the config (json or yaml).
 
     Returns:
         any: The object generated from the file.
