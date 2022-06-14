@@ -1356,6 +1356,7 @@ def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
 @PublicAPI
 def concat_samples_into_ma_batch(samples: List[SampleBatchType]) -> "MultiAgentBatch":
     """Concatenates a list of SampleBatchTypes to a single MultiAgentBatch type.
+
     This function, as opposed to concat_samples() forces the output to always be
     MultiAgentBatch which is more generic than SampleBatch.
 
