@@ -10,3 +10,9 @@ class DataSourceUnavailable(Exception):
 
 class RayStateApiException(Exception):
     pass
+
+
+class ServerUnavailable(RayStateApiException):
+    """Thrown when dashboard server not available"""
+
+    pass

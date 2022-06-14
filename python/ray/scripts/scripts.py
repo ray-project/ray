@@ -42,12 +42,12 @@ from ray.internal.internal_api import memory_summary
 from ray.internal.storage import _load_class
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cli_logger, cf
 from ray.dashboard.modules.job.cli import job_cli_group
+from ray.experimental.state.state_cli import list as cli_list
 from ray.experimental.state.api import (
     get_log,
     list_logs,
 )
 from ray.experimental.state.state_cli import (
-    list_state_cli_group,
     get_api_server_url,
     get_state_api_output_to_print,
 )
@@ -2029,7 +2029,7 @@ def logs(
     if task_id is not None:
         raise NotImplementedError("--task-id is not yet supported")
 
-    api_server_url = f"http://{get_api_server_url().decode()}"
+    api_server_url = get_api_server_url()
 
     # If both id & ip are not provided, choose a head node as a default.
     if node_id is None and node_ip is None:
@@ -2480,7 +2480,7 @@ cli.add_command(cpp)
 cli.add_command(disable_usage_stats)
 cli.add_command(enable_usage_stats)
 add_command_alias(job_cli_group, name="job", hidden=True)
-add_command_alias(list_state_cli_group, name="list", hidden=True)
+cli.add_command(cli_list)
 
 try:
     from ray.serve.scripts import serve_cli

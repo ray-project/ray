@@ -30,6 +30,11 @@ from ray.dashboard import dashboard
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.modules
+from ray.dashboard.modules.dashboard_sdk import DEFAULT_DASHBOARD_ADDRESS
+
+from ray.experimental.state.exception import ServerUnavailable
+from ray.experimental.state.common import ListApiOptions, StateResource
+from ray.experimental.state.api import StateApiClient
 
 try:
     import aiohttp.web
@@ -824,6 +829,22 @@ def test_dashboard_does_not_depend_on_serve():
     response = requests.get(f"http://{ctx.dashboard_url}/api/serve/deployments/")
     assert response.status_code == 500
     assert "ModuleNotFoundError" in response.text
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") != "1",
+    reason="This test only works for minimal installation.",
+)
+def test_dashboard_requests_fail_on_missing_deps(ray_start_with_dashboard):
+    """Check that requests from client fail with minimal installation"""
+    response = None
+
+    with pytest.raises(ServerUnavailable):
+        client = StateApiClient(api_server_address=DEFAULT_DASHBOARD_ADDRESS)
+        response = client.list(StateResource.NODES, options=ListApiOptions())
+
+    # Response should not be populated
+    assert response is None
 
 
 if __name__ == "__main__":

@@ -80,7 +80,7 @@ from ray.experimental.state.common import (
 from ray.experimental.state.exception import DataSourceUnavailable, RayStateApiException
 from ray.experimental.state.state_manager import StateDataSourceClient, IdToIpMap
 from ray.experimental.state.state_cli import (
-    list_state_cli_group,
+    list as cli_list,
     get_state_api_output_to_print,
     AvailableFormat,
 )
@@ -933,7 +933,7 @@ def test_cli_apis_sanity_check(ray_start_cluster):
     pg = ray.util.placement_group(bundles=[{"CPU": 1}])  # noqa
 
     def verify_output(resource_name, necessary_substrings: List[str]):
-        result = runner.invoke(list_state_cli_group, [resource_name])
+        result = runner.invoke(cli_list, [resource_name])
         exit_code_correct = result.exit_code == 0
         substring_matched = all(
             substr in result.output for substr in necessary_substrings
@@ -1425,9 +1425,7 @@ def test_filter(shutdown_only):
     dead_actor_id = list(list_actors(filters=[("state", "DEAD")]))[0]
     alive_actor_id = list(list_actors(filters=[("state", "ALIVE")]))[0]
     runner = CliRunner()
-    result = runner.invoke(
-        list_state_cli_group, ["actors", "--filter", "state", "DEAD"]
-    )
+    result = runner.invoke(cli_list, ["actors", "--filter", "state", "DEAD"])
     assert result.exit_code == 0
     assert dead_actor_id in result.output
     assert alive_actor_id not in result.output
