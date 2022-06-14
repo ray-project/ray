@@ -102,7 +102,7 @@ def _import_dqn():
 
 
 def _import_dreamer():
-    from ray.rllib.algorithms import dreamer
+    import ray.rllib.algorithms.dreamer as dreamer
 
     return dreamer.Dreamer, dreamer.DreamerConfig().to_dict()
 
@@ -233,22 +233,26 @@ ALGORITHMS = {
 }
 
 
-def get_trainer_class(alg: str, return_config=False) -> type:
+def get_algorithm_class(alg: str, return_config=False) -> type:
     """Returns the class of a known Trainer given its name."""
 
     try:
-        return _get_trainer_class(alg, return_config=return_config)
+        return _get_algorithm_class(alg, return_config=return_config)
     except ImportError:
-        from ray.rllib.agents.mock import _trainer_import_failed
+        from ray.rllib.algorithms.mock import _algorithm_import_failed
 
-        class_ = _trainer_import_failed(traceback.format_exc())
+        class_ = _algorithm_import_failed(traceback.format_exc())
         config = class_.get_default_config()
         if return_config:
             return class_, config
         return class_
 
 
-def _get_trainer_class(alg: str, return_config=False) -> type:
+# Backward compat alias.
+get_trainer_class = get_algorithm_class
+
+
+def _get_algorithm_class(alg: str, return_config=False) -> type:
     if alg in ALGORITHMS:
         class_, config = ALGORITHMS[alg]()
     elif alg in CONTRIBUTED_ALGORITHMS:
@@ -258,15 +262,15 @@ def _get_trainer_class(alg: str, return_config=False) -> type:
 
         class_, config = script_runner.ScriptRunner, {}
     elif alg == "__fake":
-        from ray.rllib.agents.mock import _MockTrainer
+        from ray.rllib.algorithms.mock import _MockTrainer
 
         class_, config = _MockTrainer, _MockTrainer.get_default_config()
     elif alg == "__sigmoid_fake_data":
-        from ray.rllib.agents.mock import _SigmoidFakeData
+        from ray.rllib.algorithms.mock import _SigmoidFakeData
 
         class_, config = _SigmoidFakeData, _SigmoidFakeData.get_default_config()
     elif alg == "__parameter_tuning":
-        from ray.rllib.agents.mock import _ParameterTuningTrainer
+        from ray.rllib.algorithms.mock import _ParameterTuningTrainer
 
         class_, config = (
             _ParameterTuningTrainer,

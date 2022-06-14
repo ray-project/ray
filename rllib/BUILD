@@ -1797,6 +1797,13 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
+    name = "tests/backward_compat/test_backward_compat",
+    tags = ["team:rllib", "tests_dir", "tests_dir_B"],
+    size = "medium",
+    srcs = ["tests/backward_compat/test_backward_compat.py"]
+)
+
+py_test(
     name = "tests/test_algorithm_imports",
     tags = ["team:rllib", "tests_dir", "tests_dir_C"],
     size = "small",
@@ -2626,7 +2633,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "multi_gpu", "examples"],
     size = "medium",
     srcs = ["examples/deterministic_training.py"],
-    args = ["--as-test", "--stop-iters=1", "--framework=tf", "--num-gpus-trainer=1", "--num-gpus-per-worker=1"]
+    args = ["--as-test", "--stop-iters=1", "--framework=tf", "--num-gpus=1", "--num-gpus-per-worker=1"]
 )
 
 py_test(
@@ -2635,7 +2642,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "multi_gpu", "examples"],
     size = "medium",
     srcs = ["examples/deterministic_training.py"],
-    args = ["--as-test", "--stop-iters=1", "--framework=tf2", "--num-gpus-trainer=1", "--num-gpus-per-worker=1"]
+    args = ["--as-test", "--stop-iters=1", "--framework=tf2", "--num-gpus=1", "--num-gpus-per-worker=1"]
 )
 
 py_test(
@@ -2644,7 +2651,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "multi_gpu", "examples"],
     size = "medium",
     srcs = ["examples/deterministic_training.py"],
-    args = ["--as-test", "--stop-iters=1", "--framework=torch", "--num-gpus-trainer=1", "--num-gpus-per-worker=1"]
+    args = ["--as-test", "--stop-iters=1", "--framework=torch", "--num-gpus=1", "--num-gpus-per-worker=1"]
 )
 
 py_test(
@@ -3006,7 +3013,7 @@ py_test(
 
 py_test(
     name = "examples/replay_buffer_api",
-    tags = ["team:ml", "gpu"],
+    tags = ["team:rllib", "gpu"],
     size = "large",
     srcs = ["examples/replay_buffer_api.py"],
     args = ["--as-test", "--stop-reward=70"]
@@ -3205,7 +3212,7 @@ py_test(
 py_test(
     name = "examples/documentation/replay_buffer_demo",
     main = "examples/documentation/replay_buffer_demo.py",
-    tags = ["team:ml", "documentation", "no_main"],
+    tags = ["team:rllib", "documentation", "no_main"],
     size = "medium",
     srcs = ["examples/documentation/replay_buffer_demo.py"],
 )

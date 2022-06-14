@@ -10,9 +10,9 @@ from ray.air._internal.checkpointing import (
     load_preprocessor_from_dir,
     save_preprocessor_to_dir,
 )
-from ray.rllib.agents.trainer import Trainer as RLlibTrainer
+from ray.rllib.algorithms.algorithm import Algorithm as RLlibAlgo
 from ray.rllib.policy.policy import Policy
-from ray.rllib.utils.typing import PartialTrainerConfigDict, EnvType
+from ray.rllib.utils.typing import PartialAlgorithmConfigDict, EnvType
 from ray.tune import Trainable, PlacementGroupFactory
 from ray.tune.logger import Logger
 from ray.tune.registry import get_trainable_cls
@@ -21,7 +21,7 @@ from ray.util.annotations import PublicAPI
 from ray.util.ml_utils.dict import merge_dicts
 
 if TYPE_CHECKING:
-    from ray.air.preprocessor import Preprocessor
+    from ray.data.preprocessor import Preprocessor
 
 RL_TRAINER_CLASS_FILE = "trainer_class.pkl"
 RL_CONFIG_FILE = "config.pkl"
@@ -86,7 +86,7 @@ class RLTrainer(BaseTrainer):
             import ray
             from ray.air.config import RunConfig
             from ray.train.rl import RLTrainer
-            from ray.rllib.agents.marwil.bc import BCTrainer
+            from ray.rllib.algorithms.bc.bc import BC
 
             dataset = ray.data.read_json(
                 "/tmp/data-dir", parallelism=2, ray_remote_args={"num_cpus": 1}
@@ -114,7 +114,7 @@ class RLTrainer(BaseTrainer):
 
     def __init__(
         self,
-        algorithm: Union[str, Type[RLlibTrainer]],
+        algorithm: Union[str, Type[RLlibAlgo]],
         config: Optional[Dict[str, Any]] = None,
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
@@ -137,8 +137,7 @@ class RLTrainer(BaseTrainer):
         super(RLTrainer, self)._validate_attributes()
 
         if not isinstance(self._algorithm, str) and not (
-            inspect.isclass(self._algorithm)
-            and issubclass(self._algorithm, RLlibTrainer)
+            inspect.isclass(self._algorithm) and issubclass(self._algorithm, RLlibAlgo)
         ):
             raise ValueError(
                 f"`algorithm` should be either a string or a RLlib trainer class, "
@@ -201,7 +200,7 @@ class RLTrainer(BaseTrainer):
         class AIRRLTrainer(rllib_trainer):
             def __init__(
                 self,
-                config: Optional[PartialTrainerConfigDict] = None,
+                config: Optional[PartialAlgorithmConfigDict] = None,
                 env: Optional[Union[str, EnvType]] = None,
                 logger_creator: Optional[Callable[[], Logger]] = None,
                 remote_checkpoint_dir: Optional[str] = None,
@@ -241,7 +240,7 @@ class RLTrainer(BaseTrainer):
 
             @classmethod
             def default_resource_request(
-                cls, config: PartialTrainerConfigDict
+                cls, config: PartialAlgorithmConfigDict
             ) -> Union[Resources, PlacementGroupFactory]:
                 resolved_config = merge_dicts(base_config, config)
                 param_dict["config"] = resolved_config
