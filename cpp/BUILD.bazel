@@ -144,13 +144,15 @@ cc_test(
 
 cc_test(
     name = "cluster_mode_test",
-    srcs = glob([
-        "src/ray/test/cluster/*.cc",
-        "src/ray/test/cluster/*.h",
-    ],
-    exclude = [
+    srcs = glob(
+        [
+            "src/ray/test/cluster/*.cc",
+            "src/ray/test/cluster/*.h",
+        ],
+        exclude = [
             "src/ray/test/cluster/cluster_mode_xlang_test.cc",
-    ]),
+        ],
+    ),
     args = [
         "--ray_code_search_path=$(location plus.so):$(location counter.so):cpp/src/ray/test/cluster",
         "--ray_head_args '--include-dashboard false'",
