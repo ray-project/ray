@@ -165,32 +165,6 @@ Ingest and Ray Tune
 
     Train always uses Tune as the execution backend under the hood, even when running just ``Trainer.fit()`` directly (this is treated as a single-trial experiment). This ensures consistency of execution.
 
-When using ``Ray Tune`` with AIR training jobs, you can choose to either tune only non-dataset parameters (a) or tune dataset together with other parameters (b),
-as shown in the below figure.
-In both cases, the same dataset is shared across multiple trials when possible without duplicating.
-
-.. figure:: images/data-sharing.svg
-    :width: 600px
-
-..
-  https://docs.google.com/drawings/d/1g0pv8gqgG29aPEPTcd4BC0LaRNbW1sAkv3H6W1TCp0c/edit
-
-Let's look at code examples for both cases.
-
-.. tabbed:: Tuning non-dataset parameters
-
-    .. literalinclude:: doc_code/air_ingest.py
-        :language: python
-        :start-after: __tuning_non_dataset_start__
-        :end-before: __tuning_non_dataset_end__
-
-.. tabbed:: Tuning dataset among other parameters
-
-    .. literalinclude:: doc_code/air_ingest.py
-        :language: python
-        :start-after: __tuning_dataset_start__
-        :end-before: __tuning_dataset_end__
-
 Placement Group Behavior
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -201,6 +175,11 @@ Tune typically creates a placement group reserving resource for each of its tria
     If trial placement groups reserve all the CPUs in the cluster, then it may be that no CPUs are left for Datasets to use, and trials can hang. This can easily happen when using CPU-only trainers. For example, if you can change the above ingest example to use ``ray.init(num_cpus=2)``, such a hang will happen.
 
 Refer to the :ref:`Datasets in Tune Example <datasets_tune>` to understand each of these options and how to configure them. We recommend starting with the default of allowing tasks to run using spare cluster resources, and only changing this if you encounter resource contention or want more performance predictability.
+
+Dataset Sharing
+~~~~~~~~~~~~~~~
+
+When you pass Datasets to a Tuner, it is important to understand that the Datasets are executed independently per-trial. This could potentially duplicate data reads in the cluster. To share Dataset blocks between trials, call `ds = ds.fully_executed()` prior to passing the Dataset to the Tuner. This ensures that the initial read operation will not be repeated per trial.
 
 Debugging Ingest with the ``DummyTrainer``
 ------------------------------------------
