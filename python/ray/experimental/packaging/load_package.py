@@ -18,12 +18,7 @@ import subprocess
 import tempfile
 
 import yaml
-
 import ray
-from ray._private.runtime_env.packaging import (
-    get_uri_for_directory,
-    upload_package_if_needed,
-)
 
 
 def load_package(config_path: str) -> "_RuntimePackage":
@@ -59,6 +54,11 @@ def load_package(config_path: str) -> "_RuntimePackage":
         >>> @ray.remote(runtime_env=my_pkg._runtime_env)
         >>> def f(): ...
     """
+
+    from ray._private.runtime_env.packaging import (
+        get_uri_for_directory,
+        upload_package_if_needed,
+    )
 
     config_path = _download_from_github_if_needed(config_path)
 
