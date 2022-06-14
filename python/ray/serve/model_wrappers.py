@@ -38,6 +38,8 @@ def _load_predictor_cls(
 
 
 class BatchingManager:
+    """A collection of utilities for batching and splitting data."""
+
     @staticmethod
     def batch_array(input_list: List[np.ndarray]) -> np.ndarray:
         batched = np.stack(input_list)
@@ -89,12 +91,13 @@ class BatchingManager:
     ) -> Dict[str, np.ndarray]:
         batch_size = len(input_list)
 
-        # Check all input has the same dict keys.
+        # Check that all inputs have the same dict keys.
         input_keys = [set(item.keys()) for item in input_list]
         batch_has_same_keys = input_keys.count(input_keys[0]) == batch_size
         if not batch_has_same_keys:
             raise ValueError(
-                f"The input batch contains dictionary of different keys: {input_keys}"
+                "The input batch's dictoinary must contain the same keys. "
+                f"Got different keys in some dictionaries: {input_keys}."
             )
 
         # Turn list[dict[str, array]] to dict[str, List[array]]
@@ -206,7 +209,7 @@ class ModelWrapper(SimpleSchemaIngress):
                 else:
                     raise ValueError(
                         "ModelWrapper only accepts numpy array, dataframe, or dict of "
-                        "array as input "
+                        "arrays as input "
                         f"but got types {[type(i) for i in inp]}"
                     )
 
@@ -226,7 +229,8 @@ class ModelWrapper(SimpleSchemaIngress):
                     raise ValueError(
                         f"ModelWrapper only accepts list of length {batch_size}, numpy "
                         "array, dataframe, or dict of array as output "
-                        f"but got types {[type(i) for i in inp]}"
+                        f"but got types {type(out)} with length "
+                        f"{len(out) if hasattr(out, '__len__') else 'unknown'}."
                     )
 
         self.predict_impl = predict_impl
