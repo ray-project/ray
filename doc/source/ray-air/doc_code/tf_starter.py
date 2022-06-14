@@ -1,21 +1,7 @@
 # flake8: noqa
 
-# __air_tf_batchpred_start__
-import numpy as np
-
-# __air_tf_train_start__
-import tensorflow as tf
-from tensorflow.keras.callbacks import Callback
-
 # __air_tf_preprocess_start__
 import ray
-import ray.train as train
-from ray.air.batch_predictor import BatchPredictor
-from ray.train.tensorflow import (
-    TensorflowPredictor,
-    TensorflowTrainer,
-    prepare_dataset_shard,
-)
 
 a = 5
 b = 10
@@ -24,6 +10,15 @@ size = 1000
 items = [i / size for i in range(size)]
 dataset = ray.data.from_items([{"x": x, "y": a * x + b} for x in items])
 # __air_tf_preprocess_end__
+
+
+# __air_tf_train_start__
+import tensorflow as tf
+from tensorflow.keras.callbacks import Callback
+
+import ray.train as train
+from ray.train.tensorflow import prepare_dataset_shard
+from ray.train.tensorflow import TensorflowTrainer
 
 
 def build_model() -> tf.keras.Model:
@@ -92,6 +87,12 @@ trainer = TensorflowTrainer(
 result = trainer.fit()
 print(result.metrics)
 # __air_tf_train_end__
+
+# __air_tf_batchpred_start__
+import numpy as np
+
+from ray.air.batch_predictor import BatchPredictor
+from ray.train.tensorflow import TensorflowPredictor
 
 
 batch_predictor = BatchPredictor.from_checkpoint(

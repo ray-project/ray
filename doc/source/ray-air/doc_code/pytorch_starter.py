@@ -2,15 +2,8 @@
 
 # __air_pytorch_preprocess_start__
 
-# __air_pytorch_train_start__
-import torch
-from torch import nn
-from torch.utils.data import DataLoader
 from torchvision import datasets
 from torchvision.transforms import ToTensor
-
-import ray.train as train
-from ray.train.torch import TorchTrainer
 
 # Download training data from open datasets.
 training_data = datasets.FashionMNIST(
@@ -30,6 +23,12 @@ test_data = datasets.FashionMNIST(
 
 # __air_pytorch_preprocess_end__
 
+# __air_pytorch_train_start__
+import torch
+from torch import nn
+from torch.utils.data import DataLoader
+import ray.train as train
+from ray.train.torch import TorchTrainer
 
 # Define model
 class NeuralNetwork(nn.Module):

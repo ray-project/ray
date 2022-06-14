@@ -1,29 +1,12 @@
 # flake8: noqa
 
+# __air_preprocessors_start__
+import ray
 import pandas as pd
-
-# __air_inference_start__
-import requests
-from fastapi import Request
 from sklearn.datasets import load_breast_cancer
 from sklearn.model_selection import train_test_split
 
-# __air_preprocessors_start__
-import ray
-
-# __air_deploy_start__
-# __air_tuner_start__
-from ray import serve, tune
-
-# __air_batch_predictor_start__
-from ray.air.batch_predictor import BatchPredictor
 from ray.data.preprocessors import *
-from ray.serve.http_adapters import json_request
-from ray.serve.model_wrappers import ModelWrapperDeployment
-
-# __air_trainer_start__
-from ray.train.xgboost import XGBoostPredictor, XGBoostTrainer
-from ray.tune.tuner import TuneConfig, Tuner
 
 data_raw = load_breast_cancer()
 dataset_df = pd.DataFrame(data_raw["data"], columns=data_raw["feature_names"])
@@ -37,6 +20,8 @@ columns_to_scale = ["mean radius", "mean texture"]
 preprocessor = StandardScaler(columns=columns_to_scale)
 # __air_preprocessors_end__
 
+# __air_trainer_start__
+from ray.train.xgboost import XGBoostTrainer
 
 num_workers = 2
 use_gpu = False
@@ -68,6 +53,9 @@ print(result.metrics)
 print(result.checkpoint)
 # __air_trainer_output_end__
 
+# __air_tuner_start__
+from ray import tune
+from ray.tune.tuner import Tuner, TuneConfig
 
 tuner = Tuner(
     trainer,
@@ -79,6 +67,9 @@ best_result = result_grid.get_best_result()
 print(best_result)
 # __air_tuner_end__
 
+# __air_batch_predictor_start__
+from ray.air.batch_predictor import BatchPredictor
+from ray.train.xgboost import XGBoostPredictor
 
 batch_predictor = BatchPredictor.from_checkpoint(result.checkpoint, XGBoostPredictor)
 
@@ -97,6 +88,12 @@ for batch in pipeline.iter_batches():
 
 # __air_batch_predictor_end__
 
+# __air_deploy_start__
+from ray import serve
+from fastapi import Request
+from ray.serve.model_wrappers import ModelWrapperDeployment
+from ray.serve.http_adapters import json_request
+
 
 async def adapter(request: Request):
     content = await request.json()
@@ -114,6 +111,8 @@ deployment.deploy(
 print(deployment.url)
 # __air_deploy_end__
 
+# __air_inference_start__
+import requests
 
 sample_input = test_dataset.take(1)
 sample_input = dict(sample_input[0])

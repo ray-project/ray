@@ -1,11 +1,13 @@
 # flake8: noqa
 
-import tensorflow as tf
-
 # __use_pretrained_model_start__
 import ray
+import tensorflow as tf
 from ray.air.batch_predictor import BatchPredictor
-from ray.train.tensorflow import TensorflowPredictor, to_air_checkpoint
+from ray.train.tensorflow import (
+    to_air_checkpoint,
+    TensorflowPredictor,
+)
 
 
 # to simulate having a pretrained model.
