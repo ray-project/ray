@@ -3,7 +3,7 @@ import numpy as np
 from typing import Type, List, Optional
 import tree
 
-from ray.rllib.agents.trainer import Trainer, TrainerConfig
+from ray.rllib.algorithms.algorithm import Algorithm, AlgorithmConfig
 from ray.rllib.execution.train_ops import (
     multi_gpu_train_one_step,
     train_one_step,
@@ -18,17 +18,17 @@ from ray.rllib.utils.metrics import (
     TARGET_NET_UPDATE_TIMER,
 )
 from ray.rllib.utils.typing import (
-    PartialTrainerConfigDict,
+    PartialAlgorithmConfigDict,
     ResultDict,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
 )
 
 logger = logging.getLogger(__name__)
 
 
-class CRRConfig(TrainerConfig):
-    def __init__(self, trainer_class=None):
-        super().__init__(trainer_class=trainer_class or CRR)
+class CRRConfig(AlgorithmConfig):
+    def __init__(self, algo_class=None):
+        super().__init__(algo_class=algo_class or CRR)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -40,6 +40,8 @@ class CRRConfig(TrainerConfig):
         self.n_action_sample = 4
         self.twin_q = True
         self.target_update_grad_intervals = 100
+        # __sphinx_doc_end__
+        # fmt: on
         self.replay_buffer_config = {
             "type": "ReplayBuffer",
             "capacity": 50000,
@@ -57,8 +59,6 @@ class CRRConfig(TrainerConfig):
         self.critic_lr = 3e-4
         self.actor_lr = 3e-4
         self.tau = 5e-3
-        # __sphinx_doc_end__
-        # fmt: on
 
         # overriding the trainer config default
         self.num_workers = 0  # offline RL does not need rollout workers
@@ -142,13 +142,13 @@ class CRRConfig(TrainerConfig):
 NUM_GRADIENT_UPDATES = "num_grad_updates"
 
 
-class CRR(Trainer):
+class CRR(Algorithm):
 
     # TODO: we have a circular dependency for get
     #  default config. config -> Trainer -> config
     #  defining Config class in the same file for now as a workaround.
 
-    def setup(self, config: PartialTrainerConfigDict):
+    def setup(self, config: PartialAlgorithmConfigDict):
         super().setup(config)
         # initial setup for handling the offline data in form of a replay buffer
         # Add the entire dataset to Replay Buffer (global variable)
@@ -194,12 +194,12 @@ class CRR(Trainer):
         self._counters[NUM_TARGET_UPDATES] = 0
 
     @classmethod
-    @override(Trainer)
-    def get_default_config(cls) -> TrainerConfigDict:
+    @override(Algorithm)
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return CRRConfig().to_dict()
 
-    @override(Trainer)
-    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
+    @override(Algorithm)
+    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.crr.torch import CRRTorchPolicy
 
@@ -207,7 +207,7 @@ class CRR(Trainer):
         else:
             raise ValueError("Non-torch frameworks are not supported yet!")
 
-    @override(Trainer)
+    @override(Algorithm)
     def training_step(self) -> ResultDict:
 
         total_transitions = len(self.local_replay_buffer)

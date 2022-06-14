@@ -10,6 +10,7 @@ import requests
 
 import ray
 from ray import serve
+from ray.serve.constants import SERVE_NAMESPACE
 from ray._private.test_utils import (
     format_web_url,
     run_string_as_driver,
@@ -77,7 +78,7 @@ ray.get(a.ping.remote())
 
 @pytest.mark.parametrize("ray_start_with_dashboard", [{"num_cpus": 4}], indirect=True)
 def test_serve_snapshot(ray_start_with_dashboard):
-    """Test detached and nondetached Serve instances running concurrently."""
+    """Test reconnecting to detached Serve application."""
 
     detached_serve_driver_script = f"""
 import ray
@@ -106,8 +107,8 @@ my_func_deleted.delete()
     run_string_as_driver(detached_serve_driver_script)
     assert requests.get("http://127.0.0.1:8000/my_func").text == "hello"
 
-    # Use a new port to avoid clobbering the first Serve instance.
-    serve.start(http_options={"port": 8123})
+    # Connect to the running Serve application with detached=False.
+    serve.start(detached=False)
 
     @serve.deployment(version="v1")
     def my_func_nondetached(request):
@@ -115,7 +116,7 @@ my_func_deleted.delete()
 
     my_func_nondetached.deploy()
 
-    assert requests.get("http://127.0.0.1:8123/my_func_nondetached").text == "hello"
+    assert requests.get("http://127.0.0.1:8000/my_func_nondetached").text == "hello"
 
     webui_url = ray_start_with_dashboard["webui_url"]
     webui_url = format_web_url(webui_url)
@@ -135,7 +136,7 @@ my_func_deleted.delete()
     ]
     assert entry["name"] == "my_func"
     assert entry["version"] is None
-    assert entry["namespace"] == "serve"
+    assert entry["namespace"] == SERVE_NAMESPACE
     assert entry["httpRoute"] == "/my_func"
     assert entry["className"] == "my_func"
     assert entry["status"] == "RUNNING"
@@ -155,7 +156,7 @@ my_func_deleted.delete()
     ]
     assert entry_deleted["name"] == "my_func_deleted"
     assert entry_deleted["version"] == "v1"
-    assert entry_deleted["namespace"] == "serve"
+    assert entry_deleted["namespace"] == SERVE_NAMESPACE
     assert entry_deleted["httpRoute"] is None
     assert entry_deleted["className"] == "my_func_deleted"
     assert entry_deleted["status"] == "DELETED"
@@ -168,7 +169,7 @@ my_func_deleted.delete()
     ]
     assert entry_nondetached["name"] == "my_func_nondetached"
     assert entry_nondetached["version"] == "v1"
-    assert entry_nondetached["namespace"] == "default_test_namespace"
+    assert entry_nondetached["namespace"] == SERVE_NAMESPACE
     assert entry_nondetached["httpRoute"] == "/my_func_nondetached"
     assert entry_nondetached["className"] == "my_func_nondetached"
     assert entry_nondetached["status"] == "RUNNING"

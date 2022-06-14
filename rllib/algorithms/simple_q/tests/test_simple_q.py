@@ -30,7 +30,7 @@ class TestSimpleQ(unittest.TestCase):
         ray.shutdown()
 
     def test_simple_q_compilation(self):
-        """Test whether a SimpleQTrainer can be built on all frameworks."""
+        """Test whether SimpleQ can be built on all frameworks."""
         # Run locally and with compression
         config = simple_q.SimpleQConfig().rollouts(
             num_rollout_workers=0, compress_observations=True
@@ -62,7 +62,7 @@ class TestSimpleQ(unittest.TestCase):
         )
 
         for fw in framework_iterator(config):
-            # Generate Trainer and get its default Policy object.
+            # Generate Algorithm and get its default Policy object.
             trainer = simple_q.SimpleQ(config=config, env="CartPole-v0")
             policy = trainer.get_policy()
             # Batch of size=2.

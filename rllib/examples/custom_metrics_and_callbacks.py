@@ -11,7 +11,7 @@ import os
 
 import ray
 from ray import tune
-from ray.rllib.agents.callbacks import DefaultCallbacks
+from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.env import BaseEnv
 from ray.rllib.evaluation import Episode, RolloutWorker
 from ray.rllib.policy import Policy
@@ -101,10 +101,10 @@ class MyCallbacks(DefaultCallbacks):
     def on_sample_end(self, *, worker: RolloutWorker, samples: SampleBatch, **kwargs):
         print("returned sample batch of size {}".format(samples.count))
 
-    def on_train_result(self, *, trainer, result: dict, **kwargs):
+    def on_train_result(self, *, algorithm, result: dict, **kwargs):
         print(
-            "trainer.train() result: {} -> {} episodes".format(
-                trainer, result["episodes_this_iter"]
+            "Algorithm.train() result: {} -> {} episodes".format(
+                algorithm, result["episodes_this_iter"]
             )
         )
         # you can mutate the result dict to add new fields to return

@@ -2,7 +2,7 @@
 
 Here we create a number of CartPole agents, some of which are trained with
 DQN, and some of which are trained with PPO. We periodically sync weights
-between the two trainers (note that no such syncing is needed when using just
+between the two algorithms (note that no such syncing is needed when using just
 a single training method).
 
 For a simpler example, see also: multiagent_cartpole.py
@@ -77,7 +77,7 @@ if __name__ == "__main__":
         else:
             raise ValueError("Unknown algorithm: ", algorithm)
 
-    # You can also have multiple policies per trainer, but here we just
+    # You can also have multiple policies per algorithm, but here we just
     # show one each for PPO and DQN.
     policies = {
         "ppo_policy": (
@@ -100,7 +100,7 @@ if __name__ == "__main__":
         else:
             return "dqn_policy"
 
-    ppo_trainer = PPO(
+    ppo = PPO(
         env="multi_agent_cartpole",
         config={
             "multiagent": {
@@ -122,7 +122,7 @@ if __name__ == "__main__":
         },
     )
 
-    dqn_trainer = DQN(
+    dqn = DQN(
         env="multi_agent_cartpole",
         config={
             "multiagent": {
@@ -151,12 +151,12 @@ if __name__ == "__main__":
 
         # improve the DQN policy
         print("-- DQN --")
-        result_dqn = dqn_trainer.train()
+        result_dqn = dqn.train()
         print(pretty_print(result_dqn))
 
         # improve the PPO policy
         print("-- PPO --")
-        result_ppo = ppo_trainer.train()
+        result_ppo = ppo.train()
         print(pretty_print(result_ppo))
 
         # Test passed gracefully.
@@ -169,8 +169,8 @@ if __name__ == "__main__":
             quit(0)
 
         # swap weights to synchronize
-        dqn_trainer.set_weights(ppo_trainer.get_weights(["ppo_policy"]))
-        ppo_trainer.set_weights(dqn_trainer.get_weights(["dqn_policy"]))
+        dqn.set_weights(ppo.get_weights(["ppo_policy"]))
+        ppo.set_weights(dqn.get_weights(["dqn_policy"]))
 
     # Desired reward not reached.
     if args.as_test:
