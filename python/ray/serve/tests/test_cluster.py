@@ -25,7 +25,7 @@ def ray_cluster():
 def test_scale_up(ray_cluster):
     cluster = ray_cluster
     cluster.add_node(num_cpus=1)
-    cluster.connect(namespace="serve")
+    cluster.connect(namespace=SERVE_NAMESPACE)
     # By default, Serve controller and proxy actors use 0 CPUs,
     # so initially there should only be room for 1 replica.
 
@@ -76,7 +76,7 @@ def test_scale_up(ray_cluster):
 def test_node_failure(ray_cluster):
     cluster = ray_cluster
     cluster.add_node(num_cpus=3)
-    cluster.connect(namespace="serve")
+    cluster.connect(namespace=SERVE_NAMESPACE)
 
     worker_node = cluster.add_node(num_cpus=2)
 
@@ -122,7 +122,7 @@ def test_node_failure(ray_cluster):
 def test_replica_startup_status_transitions(ray_cluster):
     cluster = ray_cluster
     cluster.add_node(num_cpus=1)
-    cluster.connect(namespace="serve")
+    cluster.connect(namespace=SERVE_NAMESPACE)
     serve_instance = serve.start()
 
     signal = SignalActor.remote()
@@ -169,7 +169,7 @@ def test_intelligent_scale_down(ray_cluster):
     cluster = ray_cluster
     cluster.add_node(num_cpus=2)
     cluster.add_node(num_cpus=2)
-    cluster.connect(namespace="serve")
+    cluster.connect(namespace=SERVE_NAMESPACE)
     serve.start()
 
     @serve.deployment(version="1")

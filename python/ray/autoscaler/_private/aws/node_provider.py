@@ -491,7 +491,6 @@ class AWSNodeProvider(NodeProvider):
         # asyncrhonous or error, which would result in a use after free error.
         # If this leak becomes bad, we can garbage collect the tag cache when
         # the node cache is updated.
-        pass
 
     def _check_ami_cwa_installation(self, config):
         response = self.ec2.meta.client.describe_images(ImageIds=[config["ImageId"]])

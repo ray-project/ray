@@ -1,6 +1,6 @@
 from typing import Callable, TYPE_CHECKING, Dict
 
-from ray.air.preprocessor import Preprocessor
+from ray.data.preprocessor import Preprocessor
 from ray.data import Dataset
 
 if TYPE_CHECKING:
@@ -22,7 +22,7 @@ class CustomStatefulPreprocessor(Preprocessor):
         import pandas as pd
         import ray.data
         from pandas import DataFrame
-        from ray.air.preprocessors import CustomStatefulPreprocessor
+        from ray.data.preprocessors import CustomStatefulPreprocessor
         from ray.data import Dataset
         from ray.data.aggregate import Max
 

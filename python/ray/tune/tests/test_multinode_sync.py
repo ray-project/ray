@@ -116,7 +116,6 @@ class MultiNodeSyncTest(unittest.TestCase):
 
         When `max_failures` is set to larger than zero.
         """
-
         self.cluster.update_config(
             {
                 "provider": {"head_resources": {"CPU": 4, "GPU": 0}},
@@ -135,14 +134,14 @@ class MultiNodeSyncTest(unittest.TestCase):
         )
         self.cluster.start()
         self.cluster.connect(client=True, timeout=120)
+        remote_api = self.cluster.remote_execution_api()
 
         def train(config):
             time.sleep(120)
             tune.report(1.0)
 
         class FailureInjectionCallback(Callback):
-            def __init__(self, cluster):
-                self._cluster = cluster
+            def __init__(self):
                 self._killed = False
 
             def on_step_begin(self, iteration, trials, **info):
@@ -151,7 +150,7 @@ class MultiNodeSyncTest(unittest.TestCase):
                     and len(trials) == 3
                     and all(trial.status == Trial.RUNNING for trial in trials)
                 ):
-                    self._cluster.kill_node(num=2)
+                    remote_api.kill_node(num=2)
                     self._killed = True
 
         tune.run(
@@ -159,11 +158,7 @@ class MultiNodeSyncTest(unittest.TestCase):
             num_samples=3,
             resources_per_trial={"cpu": 4},
             max_failures=1,
-            callbacks=[FailureInjectionCallback(self.cluster)],
-            # The following two are to be removed once we have proper setup
-            # for killing nodes while in ray client mode.
-            _remote=False,
-            local_dir="/tmp/ray_results/",
+            callbacks=[FailureInjectionCallback()],
         )
 
     def testCheckpointSync(self):

@@ -4,6 +4,14 @@ import os
 import uuid
 from functools import wraps
 
+from ray import cloudpickle as pickle
+from ray.util.annotations import DeveloperAPI
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+from ray._raylet import PythonFunctionDescriptor
+from ray import cross_language, Language
+from ray._private.client_mode_hook import client_mode_convert_function
+from ray._private.client_mode_hook import client_mode_should_convert
+from ray.util.placement_group import configure_placement_group_based_on_context
 import ray._private.signature
 from ray._private import ray_option_utils
 from ray._private.client_mode_hook import (
@@ -167,11 +175,11 @@ class RemoteFunction:
             def remote(self, *args, **kwargs):
                 return func_cls._remote(args=args, kwargs=kwargs, **updated_options)
 
+            @DeveloperAPI
             def bind(self, *args, **kwargs):
                 """
-                **Experimental**
-
-                For ray DAG building. Implementation and interface subject to changes.
+                For Ray DAG building that creates static graph from decorated
+                class or functions.
                 """
                 from ray.experimental.dag.function_node import FunctionNode
 
@@ -340,11 +348,11 @@ class RemoteFunction:
 
         return invocation(args, kwargs)
 
+    @DeveloperAPI
     def bind(self, *args, **kwargs):
         """
-        **Experimental**
-
-        For ray DAG building. Implementation and interface subject to changes.
+        For Ray DAG building that creates static graph from decorated
+        class or functions.
         """
 
         from ray.experimental.dag.function_node import FunctionNode

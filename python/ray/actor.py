@@ -35,6 +35,7 @@ from ray.util.tracing.tracing_helper import (
 
 from ray import ActorClassID, Language, cross_language
 
+
 logger = logging.getLogger(__name__)
 
 # Hook to call with (actor, resources, strategy) on each local actor creation.
@@ -570,12 +571,11 @@ class ActorClass:
             def remote(self, *args, **kwargs):
                 return actor_cls._remote(args=args, kwargs=kwargs, **updated_options)
 
+            @DeveloperAPI
             def bind(self, *args, **kwargs):
                 """
-                **Experimental**
-
-                For ray DAG building. Implementation and interface subject
-                to changes.
+                For Ray DAG building that creates static graph from decorated
+                class or functions.
                 """
                 from ray.experimental.dag.class_node import ClassNode
 
@@ -935,12 +935,11 @@ class ActorClass:
 
         return actor_handle
 
+    @DeveloperAPI
     def bind(self, *args, **kwargs):
         """
-        **Experimental**
-
-        For ray DAG building. Implementation and interface subject
-        to changes.
+        For Ray DAG building that creates static graph from decorated
+        class or functions.
         """
         from ray.experimental.dag.class_node import ClassNode
 
