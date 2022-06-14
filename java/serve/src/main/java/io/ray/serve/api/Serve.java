@@ -195,7 +195,7 @@ public class Serve {
     }
 
     // Start controller in "serve" namespace if detached and currently in anonymous namespace.
-    if (ANONYMOUS_NAMESPACE_PATTERN.matcher(controllerNamespace).matches()) {
+    if (null != controllerNamespace && ANONYMOUS_NAMESPACE_PATTERN.matcher(controllerNamespace).matches()) {
       controllerNamespace = "serve";
     }
     return controllerNamespace;
