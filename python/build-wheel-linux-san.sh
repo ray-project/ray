@@ -18,9 +18,8 @@ NUMPY_VERSIONS=("1.14.5"
                 "1.14.5"
                 "1.19.3")
 
-export DEBIAN_FRONTEND=noninteractive
-export TZ=UTC
-apt update && apt install -y lsb-release wget software-properties-common unzip zip curl git
+apt update && DEBIAN_FRONTEND=noninteractive TZ=UTC apt install -y lsb-release wget \
+    software-properties-common unzip zip curl git gcc g++ cpp
 
 /ray/ci/env/install-llvm-binaries.sh
 /ray/ci/env/install-bazel.sh
@@ -43,8 +42,10 @@ popd
 set -x
 
 wget --quiet "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh" -O /tmp/miniconda.sh \
-    && /bin/bash /tmp/miniconda.sh -b -u -p /root/anaconda3 \
-    && export PATH="/root/anaconda3/bin:$PATH"
+    && /bin/bash /tmp/miniconda.sh -b -u -p /root/anaconda3
+export PATH="/root/anaconda3/bin:$PATH"
+conda init bash
+PS1="" source ~/.bashrc
 
 mkdir -p .whl
 for ((i=0; i<${#PYTHONS[@]}; ++i)); do
@@ -58,13 +59,9 @@ for ((i=0; i<${#PYTHONS[@]}; ++i)); do
   git config --global --add safe.directory /ray
   git clean -f -f -x -d -e .whl -e python/ray/dashboard/client -e dashboard/client -e python/ray/jars -e .llvm-local.bazelrc
 
-  "$HOME"/anaconda3/bin/conda deactivate || true
-  NAME="$RANDOM"
-  "$HOME"/anaconda3/bin/conda create -n "${NAME}" -y
-  "$HOME"/anaconda3/bin/conda activate "${NAME}"
-  "$HOME"/anaconda3/bin/conda install python="${PYTHON}" -y
-  
-  python --version
+  /root/anaconda3/bin/conda install python="${PYTHON}" -y
+  ln -ns /root/anaconda3/bin/python /usr/bin/python
+  ln -ns /root/anaconda3/bin/pip /usr/bin/pip
 
   pushd python
     # Fix the numpy version because this will be the oldest numpy version we can
