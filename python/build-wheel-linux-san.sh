@@ -43,8 +43,8 @@ popd
 set -x
 
 wget --quiet "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh" -O /tmp/miniconda.sh \
-    && /bin/bash /tmp/miniconda.sh -b -u -p $HOME/anaconda3 \
-    && $HOME/anaconda3/bin/conda init \ 
+    && /bin/bash /tmp/miniconda.sh -b -u -p "$HOME"/anaconda3 \
+    && "$HOME"/anaconda3/bin/conda init bash \
     && rm /tmp/miniconda.sh
 
 mkdir -p .whl
@@ -59,8 +59,9 @@ for ((i=0; i<${#PYTHONS[@]}; ++i)); do
   git config --global --add safe.directory /ray
   git clean -f -f -x -d -e .whl -e python/ray/dashboard/client -e dashboard/client -e python/ray/jars -e .llvm-local.bazelrc
 
-  $HOME/anaconda3/bin/conda deactivate && $HOME/anaconda3/bin/conda create -n $RANDOM \
-      $HOME/anaconda3/bin/conda install python=${PYTHON}
+  "$HOME"/anaconda3/bin/conda deactivate || true
+  "$HOME"/anaconda3/bin/conda create -n "$RANDOM"
+  "$HOME"/anaconda3/bin/conda install python="${PYTHON}"
   
   python --version
 
