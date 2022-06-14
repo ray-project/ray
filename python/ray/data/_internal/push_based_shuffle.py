@@ -391,6 +391,10 @@ class PushBasedShufflePlan(ShuffleOp):
         num_merge_tasks_per_round = 0
         merge_task_placement = []
         leftover_cpus = 0
+        # Compute the total number of merge tasks and their node placement.
+        # Each merge task should be grouped with `merge_factor` map tasks for
+        # pipelining. These groups should then be spread across nodes according
+        # to CPU availability for load-balancing.
         for node, num_cpus in num_cpus_per_node_map.items():
             node_parallelism = min(
                 num_cpus, num_input_blocks // len(num_cpus_per_node_map)
@@ -422,59 +426,6 @@ class PushBasedShufflePlan(ShuffleOp):
             num_map_tasks_per_round,
             merge_task_placement,
         )
-
-    @staticmethod
-    def _compute_merge_task_placement(
-        num_merge_tasks_per_round: int,
-        merge_factor: int,
-        num_cpus_per_node_map: Dict[str, int],
-    ) -> List[str]:
-        """
-        Compute the task options needed to schedule merge tasks.
-
-        Each merge task should be grouped with `merge_factor` map tasks for
-        pipelining. These groups should then be spread across nodes according
-        to CPU availability for load-balancing. Across the rounds of merge
-        tasks, we also want to make sure that the i-th task from each round is
-        colocated on the same node to reduce data movement during the final
-        reduce stage.
-
-        Args:
-            num_merge_tasks_per_round: The total number of merge tasks in each
-                round.
-            merge_factor: The ratio of map : merge tasks.
-            num_cpus_per_node_map: A map from node ID to the number of CPUs
-                available on that node.
-
-        Returns: A list with num_merge_tasks_per_round, where the i-th element
-            is the node ID where the i-th merge task should be placed.
-        """
-        merge_task_placement = []
-        merge_tasks_assigned = 0
-        node_ids = list(num_cpus_per_node_map)
-        leftover_cpu_map = {}
-        while (
-            merge_tasks_assigned < num_merge_tasks_per_round and num_cpus_per_node_map
-        ):
-            node_id = node_ids[merge_tasks_assigned % len(node_ids)]
-            # We group `merge_factor` map tasks with 1 merge task.
-            if num_cpus_per_node_map[node_id] >= merge_factor + 1:
-                num_cpus_per_node_map[node_id] -= merge_factor + 1
-                merge_task_placement.append(node_id)
-                merge_tasks_assigned += 1
-            else:
-                leftover_cpu_map[node_id] = num_cpus_per_node_map.pop(node_id)
-                node_ids.remove(node_id)
-        while merge_tasks_assigned < num_merge_tasks_per_round:
-            node_id = max(leftover_cpu_map, key=leftover_cpu_map.get)
-            # We should have enough CPUs to schedule a round of merge tasks in
-            # parallel.
-            assert leftover_cpu_map[node_id] != 0
-            assert leftover_cpu_map[node_id] <= merge_factor
-            merge_task_placement.append(node_id)
-            merge_tasks_assigned += 1
-            leftover_cpu_map[node_id] -= 1
-        return merge_task_placement
 
 
 def _execute_pipelined_stage(
