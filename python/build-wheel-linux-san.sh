@@ -43,10 +43,8 @@ popd
 set -x
 
 wget --quiet "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh" -O /tmp/miniconda.sh \
-    && /bin/bash /tmp/miniconda.sh -b -u -p "$HOME"/anaconda3 \
-    && rm /tmp/miniconda.sh \
-    && "$HOME"/anaconda3/bin/conda init bash \
-    && source ~/.bashrc
+    && /bin/bash /tmp/miniconda.sh -b -u -p /root/anaconda3 \
+    && export PATH="/root/anaconda3/bin:$PATH"
 
 mkdir -p .whl
 for ((i=0; i<${#PYTHONS[@]}; ++i)); do
