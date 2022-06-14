@@ -11,7 +11,7 @@ import gym
 import os
 
 import ray
-from ray.rllib.agents.callbacks import DefaultCallbacks
+from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.env.apis.task_settable_env import TaskSettableEnv
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray import tune
@@ -87,7 +87,7 @@ class NonVectorizedEnvToBeVectorizedIntoRemoteBaseEnv(TaskSettableEnv):
 class TaskSettingCallback(DefaultCallbacks):
     """Custom callback to verify, we can set the task on each remote sub-env."""
 
-    def on_train_result(self, *, trainer, result: dict, **kwargs) -> None:
+    def on_train_result(self, *, algorithm, result: dict, **kwargs) -> None:
         """Curriculum learning as seen in Ray docs"""
         if result["episode_reward_mean"] > 0.0:
             phase = 0
@@ -96,7 +96,7 @@ class TaskSettingCallback(DefaultCallbacks):
 
         # Sub-envs are now ray.actor.ActorHandles, so we have to add
         # `remote()` here.
-        trainer.workers.foreach_env(lambda env: env.set_task.remote(phase))
+        algorithm.workers.foreach_env(lambda env: env.set_task.remote(phase))
 
 
 if __name__ == "__main__":

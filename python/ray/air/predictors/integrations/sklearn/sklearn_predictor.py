@@ -1,17 +1,18 @@
-from typing import Optional, List, Union
+from typing import TYPE_CHECKING, List, Optional, Union
 
 import pandas as pd
-import numpy as np
 from joblib import parallel_backend
+from sklearn.base import BaseEstimator
 
+from ray.air._internal.sklearn_utils import set_cpu_params
 from ray.air.checkpoint import Checkpoint
-from ray.air.predictor import Predictor, DataBatchType
-from ray.air.preprocessor import Preprocessor
-from ray.air.train.integrations.sklearn import load_checkpoint
-from ray.air.utils.sklearn_utils import set_cpu_params
+from ray.air.constants import TENSOR_COLUMN_NAME
+from ray.air.predictor import Predictor
+from ray.train.sklearn import load_checkpoint
 from ray.util.joblib import register_ray
 
-from sklearn.base import BaseEstimator
+if TYPE_CHECKING:
+    from ray.data.preprocessor import Preprocessor
 
 
 class SklearnPredictor(Predictor):
@@ -25,7 +26,7 @@ class SklearnPredictor(Predictor):
     """
 
     def __init__(
-        self, estimator: BaseEstimator, preprocessor: Optional[Preprocessor] = None
+        self, estimator: BaseEstimator, preprocessor: Optional["Preprocessor"] = None
     ):
         self.estimator = estimator
         self.preprocessor = preprocessor
@@ -45,13 +46,13 @@ class SklearnPredictor(Predictor):
         estimator, preprocessor = load_checkpoint(checkpoint)
         return SklearnPredictor(estimator=estimator, preprocessor=preprocessor)
 
-    def predict(
+    def _predict_pandas(
         self,
-        data: DataBatchType,
+        data: "pd.DataFrame",
         feature_columns: Optional[Union[List[str], List[int]]] = None,
         num_estimator_cpus: Optional[int] = 1,
         **predict_kwargs,
-    ) -> pd.DataFrame:
+    ) -> "pd.DataFrame":
         """Run inference on data batch.
 
         Args:
@@ -108,22 +109,21 @@ class SklearnPredictor(Predictor):
 
 
         Returns:
-            pd.DataFrame: Prediction result.
+            Prediction result.
 
         """
         register_ray()
 
-        if self.preprocessor:
-            data = self.preprocessor.transform_batch(data)
-
         if num_estimator_cpus:
             set_cpu_params(self.estimator, num_estimator_cpus)
 
-        if feature_columns:
-            if isinstance(data, np.ndarray):
+        if TENSOR_COLUMN_NAME in data:
+            data = data[TENSOR_COLUMN_NAME].to_numpy()
+            if feature_columns:
                 data = data[:, feature_columns]
-            else:
-                data = data[feature_columns]
+        elif feature_columns:
+            data = data[feature_columns]
+
         with parallel_backend("ray", n_jobs=num_estimator_cpus):
             df = pd.DataFrame(self.estimator.predict(data, **predict_kwargs))
         df.columns = (

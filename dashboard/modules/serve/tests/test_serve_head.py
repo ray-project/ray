@@ -155,18 +155,22 @@ def test_put_get_success(ray_start_stop):
 
 def test_put_new_rest_api(ray_start_stop):
     config = {
-        "import_path": "ray.serve.tests.test_config_files.pizza.serve_dag",
+        "import_path": "conditional_dag.serve_dag",
+        "runtime_env": {
+            "working_dir": (
+                "https://github.com/ray-project/test_dag/archive/"
+                "cc246509ba3c9371f8450f74fdc18018428630bd.zip"
+            )
+        },
         "deployments": [
             {
                 "name": "Multiplier",
-                "user_config": {
-                    "factor": 1,
-                },
+                "user_config": {"factor": 1},
             },
             {
                 "name": "Adder",
-                "user_config": {
-                    "increment": 1,
+                "ray_actor_options": {
+                    "runtime_env": {"env_vars": {"override_increment": "1"}}
                 },
             },
         ],
@@ -177,12 +181,24 @@ def test_put_new_rest_api(ray_start_stop):
     wait_for_condition(
         lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
         == "3 pizzas please!",
-        timeout=30,
+        timeout=15,
     )
     wait_for_condition(
         lambda: requests.post("http://localhost:8000/", json=["MUL", 2]).json()
-        == "2 pizzas please!",
-        timeout=30,
+        == "-4 pizzas please!",
+        timeout=15,
+    )
+
+    # Make Adder's ray_actor_options an empty dictionary.
+    config["deployments"][1]["ray_actor_options"] = {}
+
+    # Check that Adder's empty config ray_actor_options override its code options
+    put_response = requests.put(GET_OR_PUT_URL, json=config, timeout=30)
+    assert put_response.status_code == 200
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
+        == "4 pizzas please!",
+        timeout=15,
     )
 
 

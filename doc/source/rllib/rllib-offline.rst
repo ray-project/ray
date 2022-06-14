@@ -48,7 +48,7 @@ Then, we can tell DQN to train using these previously generated experiences with
         --env=CartPole-v0 \
         --config='{
             "input": "/tmp/cartpole-out",
-            "off_policy_estimation_methods": [],
+            "off_policy_estimation_methods": {},
             "explore": false}'
 
 .. _is:
@@ -62,7 +62,14 @@ Then, we can tell DQN to train using these previously generated experiences with
         --env=CartPole-v0 \
         --config='{
             "input": "/tmp/cartpole-out",
-            "off_policy_estimation_methods": ["is", "wis"],
+            "off_policy_estimation_methods": {
+                "is": {
+                    "type": "ImportanceSampling",
+                },
+                "wis": {
+                    "type": "WeightedImportanceSampling",
+                }
+            },
             "exploration_config": {
                 "type": "SoftQ",
                 "temperature": 1.0,
@@ -76,13 +83,13 @@ This example plot shows the Q-value metric in addition to importance sampling (I
 
 .. code-block:: python
 
-    trainer = DQN(...)
+    algo = DQN(...)
     ...  # train policy offline
 
     from ray.rllib.offline.json_reader import JsonReader
     from ray.rllib.offline.wis_estimator import WeightedImportanceSamplingEstimator
 
-    estimator = WeightedImportanceSamplingEstimator(trainer.get_policy(), gamma=0.99)
+    estimator = WeightedImportanceSamplingEstimator(algo.get_policy(), gamma=0.99)
     reader = JsonReader("/path/to/data")
     for _ in range(1000):
         batch = reader.next()
@@ -239,11 +246,11 @@ Input API
 You can configure experience input for an agent using the following options:
 
 .. tip::
-    Plain python config dicts will soon be replaced by :py:class:`~ray.rllib.agents.trainer_config.TrainerConfig`
+    Plain python config dicts will soon be replaced by :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`
     objects, which have the advantage of being type safe, allowing users to set different config settings within
     meaningful sub-categories (e.g. ``my_config.offline_data(input_=[xyz])``), and offer the ability to
-    construct a Trainer instance from these config objects (via their ``.build()`` method).
-    So far, this is only supported for some Trainer classes, such as :py:class:`~ray.rllib.algorithms.ppo.ppo.PPO`,
+    construct an Algorithm instance from these config objects (via their ``.build()`` method).
+    So far, this is only supported for some Algorithm classes, such as :py:class:`~ray.rllib.algorithms.ppo.ppo.PPO`,
     but we are rolling this out right now across all RLlib.
 
 
@@ -275,10 +282,10 @@ You can configure experience input for an agent using the following options:
     #  - Any subclass of OffPolicyEstimator, e.g.
     #    ray.rllib.offline.estimators.is::ImportanceSampling or your own custom
     #    subclass.
-    "off_policy_estimation_methods": [
-        ImportanceSampling,
-        WeightedImportanceSampling,
-    ],
+    "off_policy_estimation_methods": {
+        ImportanceSampling: None,
+        WeightedImportanceSampling: None,
+    },
     # Whether to run postprocess_trajectory() on the trajectory fragments from
     # offline inputs. Note that postprocessing will be done using the *current*
     # policy, not the *behavior* policy, which is typically undesirable for
@@ -336,11 +343,11 @@ Output API
 You can configure experience output for an agent using the following options:
 
 .. tip::
-    Plain python config dicts will soon be replaced by :py:class:`~ray.rllib.agents.trainer_config.TrainerConfig`
+    Plain python config dicts will soon be replaced by :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`
     objects, which have the advantage of being type safe, allowing users to set different config settings within
     meaningful sub-categories (e.g. ``my_config.offline_data(input_=[xyz])``), and offer the ability to
-    construct a Trainer instance from these config objects (via their ``.build()`` method).
-    So far, this is only supported for some Trainer classes, such as :py:class:`~ray.rllib.algorithms.ppo.ppo.PPO`,
+    construct an Algorithm instance from these config objects (via their ``.build()`` method).
+    So far, this is only supported for some Algorithm classes, such as :py:class:`~ray.rllib.algorithms.ppo.ppo.PPO`,
     but we are rolling this out right now across all RLlib.
 
 .. code-block:: python

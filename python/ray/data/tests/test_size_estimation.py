@@ -4,8 +4,8 @@ import uuid
 
 import ray
 from ray.tests.conftest import *  # noqa
-from ray.data.impl.simple_block import SimpleBlockBuilder
-from ray.data.impl.arrow_block import ArrowBlockBuilder
+from ray.data._internal.simple_block import SimpleBlockBuilder
+from ray.data._internal.arrow_block import ArrowBlockBuilder
 
 SMALL_VALUE = "a" * 100
 LARGE_VALUE = "a" * 10000

@@ -1,9 +1,12 @@
 .. _air:
 
-Ray AI Runtime (alpha)
-======================
+Ray AI Runtime (AIR)
+====================
 
 Ray AI Runtime (AIR) is an open-source toolkit for building end-to-end ML applications. By leveraging Ray and its library ecosystem, it brings scalability and programmability to ML platforms.
+
+.. tip::
+    **Getting involved with Ray AIR.** Fill out `this short form <https://forms.gle/wCCdbaQDtgErYycT6>`__ to get involved. We'll be holding office hours, development sprints, and other activities as we get closer to the Ray AIR Beta/GA release. Join us!
 
 .. image:: images/ai_runtime.jpg
 
@@ -13,15 +16,18 @@ The main focuses of the Ray AI Runtime:
 * Ray AIR focuses on providing the compute layer for ML workloads.
 * It is designed to interoperate with other systems for storage and metadata needs.
 
+Ray AIR consists of 5 key components:
 
-Ray AIR consists of 5 key components -- Data processing (:ref:`Ray Data <datasets>`), Model Training (:ref:`Ray Train <train-docs>`), Reinforcement Learning (:ref:`Ray RLlib <rllib-index>`), Hyperparameter Tuning (:ref:`Ray Tune <tune-main>`), and Model Serving (:ref:`Ray Serve <rayserve>`).
+- Data processing (:ref:`Ray Data <datasets>`)
+- Model Training (:ref:`Ray Train <train-docs>`)
+- Reinforcement Learning (:ref:`Ray RLlib <rllib-index>`)
+- Hyperparameter Tuning (:ref:`Ray Tune <tune-main>`)
+- Model Serving (:ref:`Ray Serve <rayserve>`).
 
 Users can use these libraries interchangeably to scale different parts of standard ML workflows.
 
-To get started, install Ray AIR via `pip install -U "ray[air]"`
+To get started, install Ray AIR via ``pip install -U "ray[air]"``
 
-.. tip::
-    **Getting involved with Ray AIR.** We'll be holding office hours, development sprints, and other activities as we get closer to the Ray AIR Beta/GA release. Want to join us? Fill out `this short form <https://forms.gle/wCCdbaQDtgErYycT6>`__!
 
 Quick Start
 -----------

@@ -20,7 +20,7 @@ Use the generated file(s) as "input" in the CQL config below
 import numpy as np
 import os
 
-from ray.rllib.agents import cql as cql
+from ray.rllib.algorithms import cql as cql
 from ray.rllib.utils.framework import try_import_torch
 
 torch, _ = try_import_torch()
@@ -60,7 +60,7 @@ if __name__ == "__main__":
     }
     config["train_batch_size"] = 256
     config["target_network_update_freq"] = 1
-    config["min_train_timesteps_per_reporting"] = 1000
+    config["min_train_timesteps_per_iteration"] = 1000
     data_file = "/path/to/my/json_file.json"
     print("data_file={} exists={}".format(data_file, os.path.isfile(data_file)))
     config["input"] = [data_file]

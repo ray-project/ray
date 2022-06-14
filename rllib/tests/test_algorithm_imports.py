@@ -1,7 +1,7 @@
 import unittest
 
 import ray
-from ray.rllib.agents.registry import ALGORITHMS
+from ray.rllib.algorithms.registry import ALGORITHMS
 
 
 class TestAlgorithmImport(unittest.TestCase):

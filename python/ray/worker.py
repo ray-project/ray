@@ -114,28 +114,64 @@ T8 = TypeVar("T8")
 T9 = TypeVar("T9")
 R = TypeVar("R")
 
+DAGNode = TypeVar("DAGNode")
 
-class RemoteFunction(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
-    def __init__(
-        self, function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8, T9], R]
-    ) -> None:
+
+class RemoteFunctionNoArgs(Generic[R]):
+    def __init__(self, function: Callable[[], R]) -> None:
         pass
 
-    @overload
-    def remote(self) -> "ObjectRef[R]":
-        ...
-
-    @overload
-    def remote(self, __arg0: "Union[T0, ObjectRef[T0]]") -> "ObjectRef[R]":
-        ...
-
-    @overload
     def remote(
-        self, __arg0: "Union[T0, ObjectRef[T0]]", __arg1: "Union[T1, ObjectRef[T1]]"
+        self,
     ) -> "ObjectRef[R]":
         ...
 
-    @overload
+    def bind(
+        self,
+    ) -> "DAGNode[R]":
+        ...
+
+
+class RemoteFunction0(Generic[R, T0]):
+    def __init__(self, function: Callable[[T0], R]) -> None:
+        pass
+
+    def remote(
+        self,
+        __arg0: "Union[T0, ObjectRef[T0]]",
+    ) -> "ObjectRef[R]":
+        ...
+
+    def bind(
+        self,
+        __arg0: "Union[T0, DAGNode[T0]]",
+    ) -> "DAGNode[R]":
+        ...
+
+
+class RemoteFunction1(Generic[R, T0, T1]):
+    def __init__(self, function: Callable[[T0, T1], R]) -> None:
+        pass
+
+    def remote(
+        self,
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
+    ) -> "ObjectRef[R]":
+        ...
+
+    def bind(
+        self,
+        __arg0: "Union[T0, DAGNode[T0]]",
+        __arg1: "Union[T1, DAGNode[T1]]",
+    ) -> "DAGNode[R]":
+        ...
+
+
+class RemoteFunction2(Generic[R, T0, T1, T2]):
+    def __init__(self, function: Callable[[T0, T1, T2], R]) -> None:
+        pass
+
     def remote(
         self,
         __arg0: "Union[T0, ObjectRef[T0]]",
@@ -144,7 +180,19 @@ class RemoteFunction(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
     ) -> "ObjectRef[R]":
         ...
 
-    @overload
+    def bind(
+        self,
+        __arg0: "Union[T0, DAGNode[T0]]",
+        __arg1: "Union[T1, DAGNode[T1]]",
+        __arg2: "Union[T2, DAGNode[T2]]",
+    ) -> "DAGNode[R]":
+        ...
+
+
+class RemoteFunction3(Generic[R, T0, T1, T2, T3]):
+    def __init__(self, function: Callable[[T0, T1, T2, T3], R]) -> None:
+        pass
+
     def remote(
         self,
         __arg0: "Union[T0, ObjectRef[T0]]",
@@ -154,7 +202,20 @@ class RemoteFunction(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
     ) -> "ObjectRef[R]":
         ...
 
-    @overload
+    def bind(
+        self,
+        __arg0: "Union[T0, DAGNode[T0]]",
+        __arg1: "Union[T1, DAGNode[T1]]",
+        __arg2: "Union[T2, DAGNode[T2]]",
+        __arg3: "Union[T3, DAGNode[T3]]",
+    ) -> "DAGNode[R]":
+        ...
+
+
+class RemoteFunction4(Generic[R, T0, T1, T2, T3, T4]):
+    def __init__(self, function: Callable[[T0, T1, T2, T3, T4], R]) -> None:
+        pass
+
     def remote(
         self,
         __arg0: "Union[T0, ObjectRef[T0]]",
@@ -165,7 +226,21 @@ class RemoteFunction(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
     ) -> "ObjectRef[R]":
         ...
 
-    @overload
+    def bind(
+        self,
+        __arg0: "Union[T0, DAGNode[T0]]",
+        __arg1: "Union[T1, DAGNode[T1]]",
+        __arg2: "Union[T2, DAGNode[T2]]",
+        __arg3: "Union[T3, DAGNode[T3]]",
+        __arg4: "Union[T4, DAGNode[T4]]",
+    ) -> "DAGNode[R]":
+        ...
+
+
+class RemoteFunction5(Generic[R, T0, T1, T2, T3, T4, T5]):
+    def __init__(self, function: Callable[[T0, T1, T2, T3, T4, T5], R]) -> None:
+        pass
+
     def remote(
         self,
         __arg0: "Union[T0, ObjectRef[T0]]",
@@ -177,7 +252,22 @@ class RemoteFunction(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
     ) -> "ObjectRef[R]":
         ...
 
-    @overload
+    def bind(
+        self,
+        __arg0: "Union[T0, DAGNode[T0]]",
+        __arg1: "Union[T1, DAGNode[T1]]",
+        __arg2: "Union[T2, DAGNode[T2]]",
+        __arg3: "Union[T3, DAGNode[T3]]",
+        __arg4: "Union[T4, DAGNode[T4]]",
+        __arg5: "Union[T5, DAGNode[T5]]",
+    ) -> "DAGNode[R]":
+        ...
+
+
+class RemoteFunction6(Generic[R, T0, T1, T2, T3, T4, T5, T6]):
+    def __init__(self, function: Callable[[T0, T1, T2, T3, T4, T5, T6], R]) -> None:
+        pass
+
     def remote(
         self,
         __arg0: "Union[T0, ObjectRef[T0]]",
@@ -190,7 +280,23 @@ class RemoteFunction(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
     ) -> "ObjectRef[R]":
         ...
 
-    @overload
+    def bind(
+        self,
+        __arg0: "Union[T0, DAGNode[T0]]",
+        __arg1: "Union[T1, DAGNode[T1]]",
+        __arg2: "Union[T2, DAGNode[T2]]",
+        __arg3: "Union[T3, DAGNode[T3]]",
+        __arg4: "Union[T4, DAGNode[T4]]",
+        __arg5: "Union[T5, DAGNode[T5]]",
+        __arg6: "Union[T6, DAGNode[T6]]",
+    ) -> "DAGNode[R]":
+        ...
+
+
+class RemoteFunction7(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7]):
+    def __init__(self, function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7], R]) -> None:
+        pass
+
     def remote(
         self,
         __arg0: "Union[T0, ObjectRef[T0]]",
@@ -204,7 +310,26 @@ class RemoteFunction(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
     ) -> "ObjectRef[R]":
         ...
 
-    @overload
+    def bind(
+        self,
+        __arg0: "Union[T0, DAGNode[T0]]",
+        __arg1: "Union[T1, DAGNode[T1]]",
+        __arg2: "Union[T2, DAGNode[T2]]",
+        __arg3: "Union[T3, DAGNode[T3]]",
+        __arg4: "Union[T4, DAGNode[T4]]",
+        __arg5: "Union[T5, DAGNode[T5]]",
+        __arg6: "Union[T6, DAGNode[T6]]",
+        __arg7: "Union[T7, DAGNode[T7]]",
+    ) -> "DAGNode[R]":
+        ...
+
+
+class RemoteFunction8(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8]):
+    def __init__(
+        self, function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8], R]
+    ) -> None:
+        pass
+
     def remote(
         self,
         __arg0: "Union[T0, ObjectRef[T0]]",
@@ -219,7 +344,27 @@ class RemoteFunction(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
     ) -> "ObjectRef[R]":
         ...
 
-    @overload
+    def bind(
+        self,
+        __arg0: "Union[T0, DAGNode[T0]]",
+        __arg1: "Union[T1, DAGNode[T1]]",
+        __arg2: "Union[T2, DAGNode[T2]]",
+        __arg3: "Union[T3, DAGNode[T3]]",
+        __arg4: "Union[T4, DAGNode[T4]]",
+        __arg5: "Union[T5, DAGNode[T5]]",
+        __arg6: "Union[T6, DAGNode[T6]]",
+        __arg7: "Union[T7, DAGNode[T7]]",
+        __arg8: "Union[T8, DAGNode[T8]]",
+    ) -> "DAGNode[R]":
+        ...
+
+
+class RemoteFunction9(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
+    def __init__(
+        self, function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8, T9], R]
+    ) -> None:
+        pass
+
     def remote(
         self,
         __arg0: "Union[T0, ObjectRef[T0]]",
@@ -235,7 +380,19 @@ class RemoteFunction(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
     ) -> "ObjectRef[R]":
         ...
 
-    def remote(self, *args, **kwargs) -> "ObjectRef[R]":
+    def bind(
+        self,
+        __arg0: "Union[T0, DAGNode[T0]]",
+        __arg1: "Union[T1, DAGNode[T1]]",
+        __arg2: "Union[T2, DAGNode[T2]]",
+        __arg3: "Union[T3, DAGNode[T3]]",
+        __arg4: "Union[T4, DAGNode[T4]]",
+        __arg5: "Union[T5, DAGNode[T5]]",
+        __arg6: "Union[T6, DAGNode[T6]]",
+        __arg7: "Union[T7, DAGNode[T7]]",
+        __arg8: "Union[T8, DAGNode[T8]]",
+        __arg9: "Union[T9, DAGNode[T9]]",
+    ) -> "DAGNode[R]":
         ...
 
 
@@ -848,24 +1005,11 @@ def init(
     job_config: "ray.job_config.JobConfig" = None,
     configure_logging: bool = True,
     logging_level: int = ray_constants.LOGGER_LEVEL,
-    logging_format: str = ray_constants.LOGGER_FORMAT,
+    logging_format: Optional[str] = None,
     log_to_driver: bool = True,
     namespace: Optional[str] = None,
     runtime_env: Optional[Union[Dict[str, Any], "RuntimeEnv"]] = None,  # noqa: F821
     storage: Optional[str] = None,
-    # The following are unstable parameters and their use is discouraged.
-    _enable_object_reconstruction: bool = False,
-    _redis_max_memory: Optional[int] = None,
-    _plasma_directory: Optional[str] = None,
-    _node_ip_address: str = ray_constants.NODE_DEFAULT_IP,
-    _driver_object_store_memory: Optional[int] = None,
-    _memory: Optional[int] = None,
-    _redis_password: str = ray_constants.REDIS_DEFAULT_PASSWORD,
-    _temp_dir: Optional[str] = None,
-    _metrics_export_port: Optional[int] = None,
-    _system_config: Optional[Dict[str, str]] = None,
-    _tracing_startup_hook: Optional[Callable] = None,
-    _node_name: str = None,
     **kwargs,
 ) -> BaseContext:
     """
@@ -1002,6 +1146,33 @@ def init(
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
+
+    # Parse the hidden options:
+    _enable_object_reconstruction: bool = kwargs.pop(
+        "_enable_object_reconstruction", False
+    )
+    _redis_max_memory: Optional[int] = kwargs.pop("_redis_max_memory", None)
+    _plasma_directory: Optional[str] = kwargs.pop("_plasma_directory", None)
+    _node_ip_address: str = kwargs.pop(
+        "_node_ip_address", ray_constants.NODE_DEFAULT_IP
+    )
+    _driver_object_store_memory: Optional[int] = kwargs.pop(
+        "_driver_object_store_memory", None
+    )
+    _memory: Optional[int] = kwargs.pop("_memory", None)
+    _redis_password: str = kwargs.pop(
+        "_redis_password", ray_constants.REDIS_DEFAULT_PASSWORD
+    )
+    _temp_dir: Optional[str] = kwargs.pop("_temp_dir", None)
+    _metrics_export_port: Optional[int] = kwargs.pop("_metrics_export_port", None)
+    _system_config: Optional[Dict[str, str]] = kwargs.pop("_system_config", None)
+    _tracing_startup_hook: Optional[Callable] = kwargs.pop(
+        "_tracing_startup_hook", None
+    )
+    _node_name: str = kwargs.pop("_node_name", None)
+
+    if not logging_format:
+        logging_format = ray_constants.LOGGER_FORMAT
 
     # If available, use RAY_ADDRESS to override if the address was left
     # unspecified, or set to "auto" in the call to init
@@ -2037,7 +2208,7 @@ def get(
 @client_mode_hook(auto_init=True)
 def put(
     value: Any, *, _owner: Optional["ray.actor.ActorHandle"] = None
-) -> ray.ObjectRef:
+) -> "ray.ObjectRef":
     """Store an object in the object store.
 
     The object may not be evicted while a reference to the returned ID exists.
@@ -2089,12 +2260,12 @@ blocking_wait_inside_async_warned = False
 @PublicAPI
 @client_mode_hook(auto_init=True)
 def wait(
-    object_refs: List[ray.ObjectRef],
+    object_refs: List["ray.ObjectRef"],
     *,
     num_returns: int = 1,
     timeout: Optional[float] = None,
     fetch_local: bool = True,
-) -> Tuple[List[ray.ObjectRef], List[ray.ObjectRef]]:
+) -> Tuple[List["ray.ObjectRef"], List["ray.ObjectRef"]]:
     """Return a list of IDs that are ready and a list of IDs that are not.
 
     If timeout is set, the function returns either when the requested number of
@@ -2266,7 +2437,7 @@ def kill(actor: "ray.actor.ActorHandle", *, no_restart: bool = True):
 
 @PublicAPI
 @client_mode_hook(auto_init=True)
-def cancel(object_ref: ray.ObjectRef, *, force: bool = False, recursive: bool = True):
+def cancel(object_ref: "ray.ObjectRef", *, force: bool = False, recursive: bool = True):
     """Cancels a task according to the following conditions.
 
     If the specified task is pending execution, it will not be executed. If
@@ -2333,79 +2504,71 @@ def _make_remote(function_or_class, options):
 
 
 @overload
-def remote(
-    function: Callable[[], R]
-) -> RemoteFunction[R, None, None, None, None, None, None, None, None, None, None]:
+def remote(function: Callable[[], R]) -> RemoteFunctionNoArgs[R]:
     ...
 
 
 @overload
-def remote(
-    function: Callable[[T0], R]
-) -> RemoteFunction[R, T0, None, None, None, None, None, None, None, None, None]:
+def remote(function: Callable[[T0], R]) -> RemoteFunction0[R, T0]:
     ...
 
 
 @overload
-def remote(
-    function: Callable[[T0, T1], R]
-) -> RemoteFunction[R, T0, T1, None, None, None, None, None, None, None, None]:
+def remote(function: Callable[[T0, T1], R]) -> RemoteFunction1[R, T0, T1]:
     ...
 
 
 @overload
-def remote(
-    function: Callable[[T0, T1, T2], R]
-) -> RemoteFunction[R, T0, T1, T2, None, None, None, None, None, None, None]:
+def remote(function: Callable[[T0, T1, T2], R]) -> RemoteFunction2[R, T0, T1, T2]:
     ...
 
 
 @overload
 def remote(
     function: Callable[[T0, T1, T2, T3], R]
-) -> RemoteFunction[R, T0, T1, T2, T3, None, None, None, None, None, None]:
+) -> RemoteFunction3[R, T0, T1, T2, T3]:
     ...
 
 
 @overload
 def remote(
     function: Callable[[T0, T1, T2, T3, T4], R]
-) -> RemoteFunction[R, T0, T1, T2, T3, T4, None, None, None, None, None]:
+) -> RemoteFunction4[R, T0, T1, T2, T3, T4]:
     ...
 
 
 @overload
 def remote(
     function: Callable[[T0, T1, T2, T3, T4, T5], R]
-) -> RemoteFunction[R, T0, T1, T2, T3, T4, T5, None, None, None, None]:
+) -> RemoteFunction5[R, T0, T1, T2, T3, T4, T5]:
     ...
 
 
 @overload
 def remote(
     function: Callable[[T0, T1, T2, T3, T4, T5, T6], R]
-) -> RemoteFunction[R, T0, T1, T2, T3, T4, T5, T6, None, None, None]:
+) -> RemoteFunction6[R, T0, T1, T2, T3, T4, T5, T6]:
     ...
 
 
 @overload
 def remote(
     function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7], R]
-) -> RemoteFunction[R, T0, T1, T2, T3, T4, T5, T6, T7, None, None]:
+) -> RemoteFunction7[R, T0, T1, T2, T3, T4, T5, T6, T7]:
     ...
 
 
 @overload
 def remote(
     function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8], R]
-) -> RemoteFunction[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, None]:
+) -> RemoteFunction8[R, T0, T1, T2, T3, T4, T5, T6, T7, T8]:
     ...
 
 
 @overload
 def remote(
     function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8, T9], R]
-) -> RemoteFunction[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]:
+) -> RemoteFunction9[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]:
     ...
 
 

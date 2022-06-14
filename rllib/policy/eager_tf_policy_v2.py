@@ -42,7 +42,7 @@ from ray.rllib.utils.typing import (
     LocalOptimizer,
     ModelGradients,
     TensorType,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
 )
 
 tf1, tf, tfv = try_import_tf()
@@ -60,7 +60,7 @@ class EagerTFPolicyV2(Policy):
         self,
         observation_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
-        config: TrainerConfigDict,
+        config: AlgorithmConfigDict,
         **kwargs,
     ):
         self.framework = config.get("framework", "tf2")
@@ -136,7 +136,7 @@ class EagerTFPolicyV2(Policy):
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic
-    def get_default_config(self) -> TrainerConfigDict:
+    def get_default_config(self) -> AlgorithmConfigDict:
         return {}
 
     @DeveloperAPI
@@ -145,7 +145,7 @@ class EagerTFPolicyV2(Policy):
         self,
         obs_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
-        config: TrainerConfigDict,
+        config: AlgorithmConfigDict,
     ):
         return {}
 

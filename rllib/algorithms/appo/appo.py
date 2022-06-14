@@ -2,7 +2,7 @@
 Asynchronous Proximal Policy Optimization (APPO)
 ================================================
 
-This file defines the distributed Trainer class for the asynchronous version
+This file defines the distributed Algorithm class for the asynchronous version
 of proximal policy optimization (APPO).
 See `appo_[tf|torch]_policy.py` for the definition of the policy loss.
 
@@ -24,16 +24,16 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import (
-    PartialTrainerConfigDict,
+    PartialAlgorithmConfigDict,
     ResultDict,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
 )
 
 logger = logging.getLogger(__name__)
 
 
 class APPOConfig(ImpalaConfig):
-    """Defines a configuration class from which an APPO Trainer can be built.
+    """Defines a configuration class from which an APPO Algorithm can be built.
 
     Example:
         >>> from ray.rllib.algorithms.appo import APPOConfig
@@ -41,7 +41,7 @@ class APPOConfig(ImpalaConfig):
         ...     .resources(num_gpus=1)\
         ...     .rollouts(num_rollout_workers=16)
         >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> # Build a Algorithm object from the config and run 1 training iteration.
         >>> trainer = config.build(env="CartPole-v1")
         >>> trainer.train()
 
@@ -64,9 +64,9 @@ class APPOConfig(ImpalaConfig):
         ... )
     """
 
-    def __init__(self, trainer_class=None):
+    def __init__(self, algo_class=None):
         """Initializes a APPOConfig instance."""
-        super().__init__(trainer_class=trainer_class or APPO)
+        super().__init__(algo_class=algo_class or APPO)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -84,7 +84,7 @@ class APPOConfig(ImpalaConfig):
         # Override some of ImpalaConfig's default values with APPO-specific values.
         self.rollout_fragment_length = 50
         self.train_batch_size = 500
-        self.min_time_s_per_reporting = 10
+        self.min_time_s_per_iteration = 10
         self.num_workers = 2
         self.num_gpus = 0
         self.num_multi_gpu_tower_stacks = 1
@@ -141,7 +141,7 @@ class APPOConfig(ImpalaConfig):
                 `kl_coeff` automatically).
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
@@ -228,8 +228,8 @@ class APPO(Impala):
                 self.workers.local_worker().foreach_policy_to_train(update)
 
     @override(Impala)
-    def training_iteration(self) -> ResultDict:
-        train_results = super().training_iteration()
+    def training_step(self) -> ResultDict:
+        train_results = super().training_step()
 
         # Update KL, target network periodically.
         self.after_train_step(train_results)
@@ -238,12 +238,12 @@ class APPO(Impala):
 
     @classmethod
     @override(Impala)
-    def get_default_config(cls) -> TrainerConfigDict:
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return APPOConfig().to_dict()
 
     @override(Impala)
     def get_default_policy_class(
-        self, config: PartialTrainerConfigDict
+        self, config: PartialAlgorithmConfigDict
     ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.appo.appo_torch_policy import APPOTorchPolicy
