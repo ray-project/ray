@@ -336,6 +336,9 @@ def check_compute_single_action(
         state_in = None
         if include_state:
             state_in = model.get_initial_state()
+            # In case this is a GPU test, have to convert to CPU/numpy first.
+            if pol.config["framework"] == "torch":
+                state_in = [s.cpu().numpy() for s in state_in]
             if not state_in:
                 state_in = []
                 i = 0

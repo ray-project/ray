@@ -8,7 +8,7 @@
 #    - ./ci/env/env_info.sh
 #    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=gpu,gpu_only python/ray/tune/...
 
-- label: ":brain: RLlib: Trainer Tests (GPU)"
+- label: ":tv: :brain: RLlib: Trainer Tests (GPU)"
   conditions: ["RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT

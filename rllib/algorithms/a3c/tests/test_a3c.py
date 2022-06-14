@@ -13,8 +13,6 @@ from ray.rllib.utils.test_utils import (
 
 
 class TestA3C(unittest.TestCase):
-    """Sanity tests for A2C exec impl."""
-
     def setUp(self):
         ray.init()
 
@@ -22,11 +20,11 @@ class TestA3C(unittest.TestCase):
         ray.shutdown()
 
     def test_a3c_compilation(self):
-        """Test whether an A3C can be built with both frameworks."""
+        """Test whether A3C can be built with both frameworks."""
         config = a3c.A3CConfig()\
             .rollouts(num_rollout_workers=2, num_envs_per_worker=2)\
             .training(model={
-                "fcnet_hiddens": [16],
+                "fcnet_hiddens": [16],  # keep it simple
             })
         config = add_gpu_if_necessary(config)
 
@@ -34,7 +32,7 @@ class TestA3C(unittest.TestCase):
 
         # Test against all frameworks.
         for _ in framework_iterator(config, with_eager_tracing=True):
-            for env in ["CartPole-v1", "Pendulum-v1"]:#, "PongDeterministic-v0"]:
+            for env in ["CartPole-v1", "Pendulum-v1", "PongDeterministic-v0"]:
                 print(f"env={env}")
                 config.model["use_lstm"] = env.startswith("CartPole")
                 trainer = config.build(env=env)
