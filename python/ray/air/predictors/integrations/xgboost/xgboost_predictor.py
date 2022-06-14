@@ -105,7 +105,7 @@ class XGBoostPredictor(Predictor):
 
 
         Returns:
-            pd.DataFrame: Prediction result.
+            Prediction result.
 
         """
         dmatrix_kwargs = dmatrix_kwargs or {}

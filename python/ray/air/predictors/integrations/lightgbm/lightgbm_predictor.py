@@ -101,7 +101,7 @@ class LightGBMPredictor(Predictor):
 
 
         Returns:
-            pd.DataFrame: Prediction result.
+            Prediction result.
 
         """
         if TENSOR_COLUMN_NAME in data:
