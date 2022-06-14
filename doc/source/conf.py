@@ -7,10 +7,8 @@ from datetime import datetime
 # -*- coding: utf-8 -*-
 from pathlib import Path
 
-from custom_directives import *
-
-
 sys.path.insert(0, os.path.abspath("."))
+from custom_directives import *
 
 
 # Mocking modules allows Sphinx to work without installing Ray.
