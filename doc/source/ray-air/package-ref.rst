@@ -32,31 +32,31 @@ Trainer
 .. autoclass:: ray.train.trainer.BaseTrainer
     :members:
 
-.. automodule:: ray.train.xgboost
+.. automodule:: ray.train.xgboost.xgboost_trainer
     :members:
     :show-inheritance:
 
-.. automodule:: ray.train.lightgbm
+.. automodule:: ray.train.lightgbm.lightgbm_trainer
     :members:
     :show-inheritance:
 
-.. automodule:: ray.train.tensorflow
+.. automodule:: ray.train.tensorflow.tensorflow_trainer
     :members:
     :show-inheritance:
 
-.. automodule:: ray.train.torch
+.. automodule:: ray.train.torch.torch_trainer
     :members:
     :show-inheritance:
 
-.. automodule:: ray.train.horovod
+.. automodule:: ray.train.horovod.horovod_trainer
     :members:
     :show-inheritance:
 
-.. automodule:: ray.train.huggingface
+.. automodule:: ray.train.huggingface.huggingface_trainer
     :members:
     :show-inheritance:
 
-.. automodule:: ray.train.sklearn
+.. automodule:: ray.train.sklearn.sklearn_trainer
     :members:
     :show-inheritance:
 
@@ -92,27 +92,27 @@ Predictors
 .. autoclass:: ray.train.batch_predictor.BatchPredictor
     :members:
 
-.. automodule:: ray.train.xgboost
+.. automodule:: ray.train.xgboost.xgboost_predictor
     :members:
     :show-inheritance:
 
-.. automodule:: ray.train.lightgbm
+.. automodule:: ray.train.lightgbm.lightgbm_predictor
     :members:
     :show-inheritance:
 
-.. automodule:: ray.train.tensorflow
+.. automodule:: ray.train.tensorflow.tensorflow_predictor
     :members:
     :show-inheritance:
 
-.. automodule:: ray.train.torch
+.. automodule:: ray.train.torch.torch_predictor
     :members:
     :show-inheritance:
 
-.. automodule:: ray.train.sklearn
+.. automodule:: ray.train.sklearn.sklearn_predictor
     :members:
     :show-inheritance:
 
-.. automodule:: ray.train.huggingface
+.. automodule:: ray.train.huggingface.huggingface_predictor
     :members:
     :show-inheritance:
 
