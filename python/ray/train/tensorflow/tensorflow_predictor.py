@@ -3,8 +3,8 @@ from typing import TYPE_CHECKING, Callable, List, Optional, Type, Union
 import pandas as pd
 import tensorflow as tf
 
-from ray.air._internal.tensorflow_utils import convert_pandas_to_tf_tensor
 from ray.air.checkpoint import Checkpoint
+from ray.train._internal.tensorflow_utils import convert_pandas_to_tf_tensor
 from ray.train.data_parallel_trainer import _load_checkpoint
 from ray.train.predictor import DataBatchType, Predictor
 

@@ -301,6 +301,14 @@ py_test(
 )
 
 py_test(
+    name = "test_tensorflow_utils",
+    size = "small",
+    srcs = ["tests/test_tensorflow_utils.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_torch_predictor",
     size = "small",
     srcs = ["tests/test_torch_predictor.py"],
@@ -312,6 +320,14 @@ py_test(
     name = "test_torch_trainer",
     size = "medium",
     srcs = ["tests/test_torch_trainer.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_torch_utils",
+    size = "small",
+    srcs = ["tests/test_torch_utils.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
     deps = [":train_lib"]
 )
