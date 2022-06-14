@@ -14,7 +14,7 @@ Ray Serve's autoscaling feature automatically increases or decreases a deploymen
 ![pic](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling.svg)
 
 - Deployment handle(Client) and worker replica periodically push the stats to the autoscaler.
-- Autoscaler requires serve handle queue metrics and replicas requests metrics to make decision whether to scale (up or down) the replicas.
+- The autoscaler requires serve handle queue metrics and replicas requests metrics to make decision whether to scale (up or down) the replicas.
 - Deployment Handle(Client) keeps polling the replica stats from controller to get the updated replicas information. Serve Handle(Client) will send requests directly to the replica based on the replicas information (Round Robin).
 
 :::{note}
