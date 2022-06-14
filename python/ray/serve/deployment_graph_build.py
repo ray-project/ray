@@ -12,6 +12,7 @@ from ray.serve.deployment_method_executor_node import DeploymentMethodExecutorNo
 from ray.serve.deployment_function_executor_node import DeploymentFunctionExecutorNode
 from ray.serve.json_serde import DAGNodeEncoder
 
+
 from ray.dag import (
     DAGNode,
     ClassNode,
@@ -21,7 +22,6 @@ from ray.dag import (
 from ray.dag.function_node import FunctionNode
 from ray.dag.input_node import InputNode
 from ray.dag.utils import DAGNodeNameGenerator
-
 
 
 def build(ray_dag_root_node: DAGNode) -> List[Deployment]:
