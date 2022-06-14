@@ -260,6 +260,9 @@ texinfo_documents = [
 # Python methods should be presented in source code order
 autodoc_member_order = "bysource"
 
+# Better typehint formatting (see custom.css)
+autodoc_typehints = "signature"
+
 
 # Add a render priority for doctest
 nb_render_priority = {
@@ -303,3 +306,8 @@ def setup(app):
     app.connect("builder-inited", github_docs.write_new_docs)
     # Restore original file content after build
     app.connect("build-finished", github_docs.write_original_docs)
+
+    # Hook into the logger used by linkcheck to display a summary at the end.
+    linkcheck_summarizer = LinkcheckSummarizer()
+    app.connect("builder-inited", linkcheck_summarizer.add_handler_to_linkcheck)
+    app.connect("build-finished", linkcheck_summarizer.summarize)

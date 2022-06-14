@@ -8,7 +8,7 @@ import io.ray.api.exception.RayTaskException;
 import io.ray.api.id.JobId;
 import io.ray.api.id.TaskId;
 import io.ray.api.id.UniqueId;
-import io.ray.runtime.RayRuntimeInternal;
+import io.ray.runtime.AbstractRayRuntime;
 import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import io.ray.runtime.functionmanager.RayFunction;
 import io.ray.runtime.generated.Common.TaskType;
@@ -32,7 +32,7 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(TaskExecutor.class);
 
-  protected final RayRuntimeInternal runtime;
+  protected final AbstractRayRuntime runtime;
 
   // TODO(qwang): Use actorContext instead later.
   private final ConcurrentHashMap<UniqueId, T> actorContextMap = new ConcurrentHashMap<>();
@@ -44,7 +44,7 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
     Object currentActor = null;
   }
 
-  TaskExecutor(RayRuntimeInternal runtime) {
+  TaskExecutor(AbstractRayRuntime runtime) {
     this.runtime = runtime;
   }
 

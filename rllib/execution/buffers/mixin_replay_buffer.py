@@ -39,23 +39,14 @@ class MixInMultiAgentReplayBuffer:
         >>> buffer.add_batch(D) # doctest: +SKIP
         >>> buffer.replay() # doctest: +SKIP
         [D, A, C]
-        >>> # replay proportion 0.0 -> replay disabled:
-        >>> from ray.rllib.execution import MixInReplay
-        >>> buffer = MixInReplay(capacity=100, replay_ratio=0.0) # doctest: +SKIP
-        >>> buffer.add_batch(A) # doctest: +SKIP
-        >>> buffer.replay() # doctest: +SKIP
-        [A]
-        >>> buffer.add_batch(B) # doctest: +SKIP
-        >>> buffer.replay() # doctest: +SKIP
-        [B]
     """
 
     def __init__(self, capacity: int, replay_ratio: float):
         """Initializes MixInReplay instance.
 
         Args:
-            capacity (int): Number of batches to store in total.
-            replay_ratio (float): Ratio of replayed samples in the returned
+            capacity: Number of batches to store in total.
+            replay_ratio: Ratio of replayed samples in the returned
                 batches. E.g. a ratio of 0.0 means only return new samples
                 (no replay), a ratio of 0.5 means always return newest sample
                 plus one old one (1:1), a ratio of 0.66 means always return

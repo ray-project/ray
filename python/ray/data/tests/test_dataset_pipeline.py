@@ -109,6 +109,15 @@ def test_window_by_bytes(ray_start_regular_shared):
     )
     assert str(pipe) == "DatasetPipeline(num_windows=8, num_stages=1)"
 
+    context = DatasetContext.get_current()
+    old = context.optimize_fuse_read_stages
+    try:
+        context.optimize_fuse_read_stages = False
+        dataset = ray.data.range(10).window(bytes_per_window=1)
+        assert dataset.take(10) == list(range(10))
+    finally:
+        context.optimize_fuse_read_stages = old
+
 
 def test_epoch(ray_start_regular_shared):
     # Test dataset repeat.
@@ -120,6 +129,11 @@ def test_epoch(ray_start_regular_shared):
     pipe = ray.data.range(3).window(blocks_per_window=2).repeat(3)
     results = [p.take() for p in pipe.iter_epochs()]
     assert results == [[0, 1, 2], [0, 1, 2], [0, 1, 2]]
+
+    # Test max epochs.
+    pipe = ray.data.range(3).window(blocks_per_window=2).repeat(3)
+    results = [p.take() for p in pipe.iter_epochs(2)]
+    assert results == [[0, 1, 2], [0, 1, 2]]
 
     # Test nested repeat.
     pipe = ray.data.range(5).repeat(2).repeat(2)
@@ -429,6 +443,12 @@ def test_count_sum_on_infinite_pipeline(ray_start_regular_shared):
 
     pipe = ds.repeat(3)
     assert 9 == pipe.sum()
+
+
+def test_randomize_block_order_each_window(ray_start_regular_shared):
+    pipe = ray.data.range(12).repartition(6).window(blocks_per_window=3)
+    pipe = pipe.randomize_block_order_each_window(seed=0)
+    assert pipe.take() == [0, 1, 4, 5, 2, 3, 6, 7, 10, 11, 8, 9]
 
 
 if __name__ == "__main__":

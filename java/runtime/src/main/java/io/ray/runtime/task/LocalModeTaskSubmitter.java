@@ -14,8 +14,8 @@ import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
 import io.ray.api.options.PlacementGroupCreationOptions;
 import io.ray.api.placementgroup.PlacementGroup;
+import io.ray.runtime.AbstractRayRuntime;
 import io.ray.runtime.ConcurrencyGroupImpl;
-import io.ray.runtime.RayRuntimeInternal;
 import io.ray.runtime.actor.LocalModeActorHandle;
 import io.ray.runtime.context.LocalModeWorkerContext;
 import io.ray.runtime.functionmanager.FunctionDescriptor;
@@ -59,7 +59,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
 
   private final Map<ObjectId, Set<TaskSpec>> waitingTasks = new HashMap<>();
   private final Object taskAndObjectLock = new Object();
-  private final RayRuntimeInternal runtime;
+  private final AbstractRayRuntime runtime;
   private final TaskExecutor taskExecutor;
   private final LocalModeObjectStore objectStore;
 
@@ -169,7 +169,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   }
 
   public LocalModeTaskSubmitter(
-      RayRuntimeInternal runtime, TaskExecutor taskExecutor, LocalModeObjectStore objectStore) {
+      AbstractRayRuntime runtime, TaskExecutor taskExecutor, LocalModeObjectStore objectStore) {
     this.runtime = runtime;
     this.taskExecutor = taskExecutor;
     this.objectStore = objectStore;

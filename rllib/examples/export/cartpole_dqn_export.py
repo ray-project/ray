@@ -3,7 +3,7 @@
 import os
 import ray
 
-from ray.rllib.agents.registry import get_trainer_class
+from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.rllib.utils.framework import try_import_tf
 
 tf1, tf, tfv = try_import_tf()
@@ -12,7 +12,7 @@ ray.init(num_cpus=10)
 
 
 def train_and_export(algo_name, num_steps, model_dir, ckpt_dir, prefix):
-    cls = get_trainer_class(algo_name)
+    cls = get_algorithm_class(algo_name)
     alg = cls(config={}, env="CartPole-v0")
     for _ in range(num_steps):
         alg.train()

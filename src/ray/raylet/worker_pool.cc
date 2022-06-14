@@ -444,7 +444,9 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
   stats::NumWorkersStarted.Record(1);
   RAY_LOG(INFO) << "Started worker process with pid " << proc.GetId() << ", the token is "
                 << worker_startup_token_counter_;
-  AdjustWorkerOomScore(proc.GetId());
+  if (!IsIOWorkerType(worker_type)) {
+    AdjustWorkerOomScore(proc.GetId());
+  }
   MonitorStartingWorkerProcess(
       proc, worker_startup_token_counter_, language, worker_type);
   AddWorkerProcess(state, worker_type, proc, start, runtime_env_info);

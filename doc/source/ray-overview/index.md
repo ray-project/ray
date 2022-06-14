@@ -34,11 +34,52 @@ To use Ray in Java, first add the [ray-api](https://mvnrepository.com/artifact/i
 Want to build Ray from source or with docker? Need more details? 
 Check out our detailed [installation guide](installation.rst).
 
+## Ray AI Runtime Quick Start
 
-## Ray ML Quick Start
+`````{dropdown} Efficiently process your data into features.
+
+Preprocess your data with a ``Preprocessor``.
+
+```{literalinclude} ../ray-air/doc_code/xgboost_starter.py
+    :language: python
+    :start-after: __air_xgb_preprocess_start__
+    :end-before: __air_xgb_preprocess_end__
+```
+`````
+
+`````{dropdown} Scale out model training.
+
+Train a model with an ``XGBoostTrainer``.
+
+```{literalinclude} ../ray-air/doc_code/xgboost_starter.py
+    :language: python
+    :start-after: __air_xgb_train_start__
+    :end-before: __air_xgb_train_end__
+```
+`````
+
+`````{dropdown} Use the trained model for Batch prediction
+
+Use the trained model for batch prediction with a ``BatchPredictor``.
+
+```{literalinclude} ../ray-air/doc_code/xgboost_starter.py
+    :language: python
+    :start-after: __air_xgb_batchpred_start__
+    :end-before: __air_xgb_batchpred_end__
+```
+`````
+
+
+```{link-button} air
+:type: ref
+:text: Learn more about Ray AIR
+:classes: btn-outline-primary btn-block
+```
+
+## Ray Libraries Quick Start
 
 Ray has a rich ecosystem of libraries and frameworks built on top of it. 
-Simply click on the dropdowns below to see examples of our most popular libraries. 
+Simply click on the dropdowns below to see examples of our most popular libraries.
 
 `````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Data: Creating and Transforming Datasets
 :animate: fade-in-slide-down

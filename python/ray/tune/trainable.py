@@ -14,7 +14,7 @@ import uuid
 
 import ray
 import ray.cloudpickle as pickle
-from ray.ml.checkpoint import Checkpoint
+from ray.air.checkpoint import Checkpoint
 from ray.tune.cloud import TrialCheckpoint
 from ray.tune.logger import Logger
 from ray.tune.resources import Resources
@@ -39,7 +39,7 @@ from ray.tune.result import (
     STDOUT_FILE,
     STDERR_FILE,
 )
-from ray.tune.sync_client import get_sync_client, get_cloud_sync_client
+from ray.tune.syncer import Syncer
 from ray.tune.utils import UtilMonitor
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.tune.utils.trainable import TrainableUtil
@@ -50,7 +50,7 @@ from ray.tune.utils.util import (
     get_checkpoint_from_remote_node,
     delete_external_checkpoint,
 )
-from ray.util.annotations import Deprecated, PublicAPI
+from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
 
@@ -91,14 +91,12 @@ class Trainable:
 
     """
 
-    _sync_function_tpl = None
-
     def __init__(
         self,
         config: Dict[str, Any] = None,
         logger_creator: Callable[[Dict[str, Any]], Logger] = None,
         remote_checkpoint_dir: Optional[str] = None,
-        sync_function_tpl: Optional[str] = None,
+        custom_syncer: Optional[Syncer] = None,
     ):
         """Initialize an Trainable.
 
@@ -116,8 +114,8 @@ class Trainable:
             remote_checkpoint_dir: Upload directory (S3 or GS path).
                 This is **per trial** directory,
                 which is different from **per checkpoint** directory.
-            sync_function_tpl: Sync function template to use. Defaults
-              to `cls._sync_function` (which defaults to `None`).
+            custom_syncer: Syncer used for synchronizing data from Ray nodes
+                to external storage.
         """
 
         self._experiment_id = uuid.uuid4().hex
@@ -168,25 +166,12 @@ class Trainable:
         self._monitor = UtilMonitor(start=log_sys_usage)
 
         self.remote_checkpoint_dir = remote_checkpoint_dir
-        self.sync_function_tpl = sync_function_tpl or self._sync_function_tpl
+        self.custom_syncer = custom_syncer
         self.storage_client = None
-
-        if self.uses_cloud_checkpointing and self.sync_function_tpl:
-            # Keep this only for custom sync functions and
-            # backwards compatibility.
-            # Todo (krfricke): We should find a way to register custom
-            # syncers in Checkpoints rather than passing storage clients
-            self.storage_client = self._create_storage_client()
 
     @property
     def uses_cloud_checkpointing(self):
         return bool(self.remote_checkpoint_dir)
-
-    def _create_storage_client(self):
-        """Returns a storage client."""
-        return get_sync_client(self.sync_function_tpl) or get_cloud_sync_client(
-            self.remote_checkpoint_dir
-        )
 
     def _storage_path(self, local_path):
         """Converts a `local_path` to be based off of
@@ -463,24 +448,52 @@ class Trainable:
 
         return checkpoint_path
 
-    def _maybe_save_to_cloud(self, checkpoint_dir: str):
+    def _maybe_save_to_cloud(self, checkpoint_dir: str) -> bool:
         # Derived classes like the FunctionRunner might call this
-        if self.uses_cloud_checkpointing:
-            if self.storage_client:
-                # Keep for backwards compatibility, remove after deprecation
-                self.storage_client.sync_up(
-                    checkpoint_dir, self._storage_path(checkpoint_dir)
-                )
-                self.storage_client.wait_or_retry()
-                return
+        if not self.uses_cloud_checkpointing:
+            return False
 
-            checkpoint = Checkpoint.from_directory(checkpoint_dir)
-            retry_fn(
-                lambda: checkpoint.to_uri(self._storage_path(checkpoint_dir)),
-                subprocess.CalledProcessError,
-                num_retries=3,
-                sleep_time=1,
+        if self.custom_syncer:
+            self.custom_syncer.sync_up(
+                checkpoint_dir, self._storage_path(checkpoint_dir)
             )
+            self.custom_syncer.wait_or_retry()
+            return True
+
+        checkpoint = Checkpoint.from_directory(checkpoint_dir)
+        retry_fn(
+            lambda: checkpoint.to_uri(self._storage_path(checkpoint_dir)),
+            subprocess.CalledProcessError,
+            num_retries=3,
+            sleep_time=1,
+        )
+        return True
+
+    def _maybe_load_from_cloud(self, checkpoint_path: str) -> bool:
+        if not self.uses_cloud_checkpointing:
+            return False
+
+        rel_checkpoint_dir = TrainableUtil.find_rel_checkpoint_dir(
+            self.logdir, checkpoint_path
+        )
+        external_uri = os.path.join(self.remote_checkpoint_dir, rel_checkpoint_dir)
+        local_dir = os.path.join(self.logdir, rel_checkpoint_dir)
+
+        if self.custom_syncer:
+            # Only keep for backwards compatibility
+            self.custom_syncer.sync_down(remote_dir=external_uri, local_dir=local_dir)
+            self.custom_syncer.wait_or_retry()
+            return True
+
+        checkpoint = Checkpoint.from_uri(external_uri)
+        retry_fn(
+            lambda: checkpoint.to_directory(local_dir),
+            subprocess.CalledProcessError,
+            num_retries=3,
+            sleep_time=1,
+        )
+
+        return True
 
     def save_to_object(self):
         """Saves the current model state to a Python object.
@@ -520,11 +533,11 @@ class Trainable:
         `REMOTE_CHECKPOINT_BUCKET/exp/MyTrainable_abc`
 
         Args:
-            checkpoint_path (str): Path to restore checkpoint from. If this
+            checkpoint_path: Path to restore checkpoint from. If this
                 path does not exist on the local node, it will be fetched
                 from external (cloud) storage if available, or restored
                 from a remote node.
-            checkpoint_node_ip (Optional[str]): If given, try to restore
+            checkpoint_node_ip: If given, try to restore
                 checkpoint from this node if it doesn't exist locally or
                 on cloud storage.
 
@@ -533,26 +546,7 @@ class Trainable:
         if isinstance(checkpoint_path, TrialCheckpoint):
             checkpoint_path = checkpoint_path.local_path
 
-        if self.uses_cloud_checkpointing:
-            rel_checkpoint_dir = TrainableUtil.find_rel_checkpoint_dir(
-                self.logdir, checkpoint_path
-            )
-            external_uri = os.path.join(self.remote_checkpoint_dir, rel_checkpoint_dir)
-            local_dir = os.path.join(self.logdir, rel_checkpoint_dir)
-
-            if self.storage_client:
-                # Only keep for backwards compatibility
-                self.storage_client.sync_down(external_uri, local_dir)
-                self.storage_client.wait_or_retry()
-            else:
-                checkpoint = Checkpoint.from_uri(external_uri)
-                retry_fn(
-                    lambda: checkpoint.to_directory(local_dir),
-                    subprocess.CalledProcessError,
-                    num_retries=3,
-                    sleep_time=1,
-                )
-        elif (
+        if not self._maybe_load_from_cloud(checkpoint_path) and (
             # If a checkpoint source IP is given
             checkpoint_node_ip
             # And the checkpoint does not currently exist on the local node
@@ -565,6 +559,13 @@ class Trainable:
             )
             if checkpoint:
                 checkpoint.to_directory(checkpoint_path)
+
+        if not os.path.exists(checkpoint_path):
+            raise ValueError(
+                f"Could not recover from checkpoint as it does not exist on local "
+                f"disk and was not available on cloud storage or another Ray node. "
+                f"Got checkpoint path: {checkpoint_path} and IP {checkpoint_node_ip}"
+            )
 
         with open(checkpoint_path + ".tune_metadata", "rb") as f:
             metadata = pickle.load(f)
@@ -1045,17 +1046,3 @@ class Trainable:
 
     def _implements_method(self, key):
         return hasattr(self, key) and callable(getattr(self, key))
-
-
-@Deprecated
-class DistributedTrainable(Trainable):
-    """Common Trainable class for distributed training."""
-
-    def __init__(self, *args, **kwargs):
-        raise DeprecationWarning(
-            "Ray Tune's `DistributedTrainableCreator` has been deprecated as of Ray "
-            "2.0, and will be replaced by Ray AI Runtime (Ray AIR). Ray AIR ("
-            "https://docs.ray.io/en/latest/ray-air/getting-started.html) will "
-            "provide greater functionality than `DistributedTrainableCreator`, "
-            "and with a more flexible and easy-to-use API.",
-        )
