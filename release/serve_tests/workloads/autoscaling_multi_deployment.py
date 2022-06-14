@@ -26,28 +26,29 @@ Report:
     cluster_max_P99_latency_ms
 """
 
-import click
 import logging
 import math
 import random
+from typing import Optional
+
+import click
+from serve_test_cluster_utils import (
+    NUM_CONNECTIONS,
+    NUM_CPU_PER_NODE,
+    setup_anyscale_cluster,
+    setup_local_single_node_cluster,
+    warm_up_one_cluster,
+)
+from serve_test_utils import (
+    aggregate_all_metrics,
+    is_smoke_test,
+    run_wrk_on_all_nodes,
+    save_test_results,
+)
 
 import ray
 from ray import serve
 from ray.serve import constants as serve_constants
-from serve_test_utils import (
-    aggregate_all_metrics,
-    run_wrk_on_all_nodes,
-    save_test_results,
-    is_smoke_test,
-)
-from serve_test_cluster_utils import (
-    setup_local_single_node_cluster,
-    setup_anyscale_cluster,
-    warm_up_one_cluster,
-    NUM_CPU_PER_NODE,
-    NUM_CONNECTIONS,
-)
-from typing import Optional
 
 logger = logging.getLogger(__file__)
 
@@ -208,7 +209,8 @@ def main(
 
 if __name__ == "__main__":
     main()
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-s", __file__]))
