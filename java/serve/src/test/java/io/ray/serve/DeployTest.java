@@ -6,7 +6,6 @@ import io.ray.serve.deployment.Deployment;
 import io.ray.serve.deployment.DeploymentRoute;
 import io.ray.serve.util.ExampleEchoDeployment;
 import java.io.IOException;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -61,12 +60,12 @@ public class DeployTest extends BaseServeTest {
             .setName(deploymentName)
             .setDeploymentDef(ExampleEchoDeployment.class.getName())
             .setNumReplicas(1)
+            .setUserConfig("_test")
             .setInitArgs(new Object[] {"echo_"})
             .create();
 
     deployment.deploy(true);
-    Assert.assertEquals("echo_6", Ray.get(deployment.getHandle().method("call").remote(6)));
-    TimeUnit.MINUTES.sleep(10);
+    Assert.assertEquals("echo_6_test", Ray.get(deployment.getHandle().method("call").remote("6")));
     Assert.assertTrue((boolean) Ray.get(deployment.getHandle().method("checkHealth").remote()));
   }
 }

@@ -19,7 +19,7 @@ import org.testng.annotations.Test;
 
 public class LongPollClientTest {
 
-  @Test(enabled = false)
+  @Test
   public void disableTest() throws Throwable {
     Map<String, String> config = new HashMap<>();
     config.put(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false");
@@ -104,6 +104,7 @@ public class LongPollClientTest {
       }
       Serve.setInternalReplicaContext(null);
       LongPollClientFactory.stop();
+      LongPollClientFactory.clearAllCache();
     }
   }
 }

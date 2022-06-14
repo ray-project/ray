@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 
 public class ExampleEchoDeployment {
   String prefix;
+  String suffix = "";
   private static final Logger LOGGER = LoggerFactory.getLogger(ExampleEchoDeployment.class);
 
   public ExampleEchoDeployment(Object prefix) {
@@ -12,7 +13,7 @@ public class ExampleEchoDeployment {
   }
 
   public String call(Object input) {
-    return this.prefix + (String) input;
+    return this.prefix + input + this.suffix;
   }
 
   public boolean checkHealth() {
@@ -20,6 +21,9 @@ public class ExampleEchoDeployment {
   }
 
   public Object reconfigure(Object userConfig) {
+    if (null != userConfig) {
+      this.suffix = userConfig.toString();
+    }
     return null;
   }
 }

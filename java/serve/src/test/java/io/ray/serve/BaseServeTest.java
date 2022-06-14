@@ -3,6 +3,7 @@ package io.ray.serve;
 import io.ray.api.Ray;
 import io.ray.serve.api.Serve;
 import io.ray.serve.api.ServeControllerClient;
+import io.ray.serve.poll.LongPollClientFactory;
 import java.lang.reflect.Method;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
@@ -23,5 +24,8 @@ public abstract class BaseServeTest {
     Serve.shutdown();
     client.shutdown();
     Ray.shutdown();
+    LongPollClientFactory.clearAllCache();
+    Serve.setInternalReplicaContext(null);
+    Serve.setGlobalClient(null);
   }
 }
