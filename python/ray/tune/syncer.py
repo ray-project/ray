@@ -446,7 +446,10 @@ class SyncerCallback(Callback):
 
         sync_process = self._get_trial_sync_process(trial)
 
-        if not force and not self._should_sync(trial):
+        # Always run if force=True
+        # Otherwise, only run if we should sync (considering sync period)
+        # or if there is no sync currently still running.
+        if not force and (not self._should_sync(trial) or sync_process.is_running):
             return False
 
         if NODE_IP in trial.last_result:
