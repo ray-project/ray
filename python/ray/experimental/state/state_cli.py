@@ -7,7 +7,7 @@ from enum import Enum, unique
 from typing import Union, List, Tuple
 
 import ray
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 import ray._private.services as services
 
 from ray.experimental.state.api import StateApiClient
