@@ -175,6 +175,7 @@ from ray import workflow  # noqa: E402,F401
 # We import ClientBuilder so that modules can inherit from `ray.ClientBuilder`.
 from ray.client_builder import client, ClientBuilder  # noqa: E402
 
+
 class _WorkerDeprecationWrapper(object):
     def __init__(self, real_worker):
         self._real_worker = real_worker
@@ -186,8 +187,8 @@ class _WorkerDeprecationWrapper(object):
             self._warned.add(attr)
             logger.warning(
                 f"DeprecationWarning: `ray.worker.{attr}` is a private attribute and "
-
-                "access will be removed in a future Ray version.")
+                "access will be removed in a future Ray version."
+            )
         return value
 
 
