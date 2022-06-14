@@ -74,7 +74,11 @@ def from_items(items: List[Any], *, parallelism: int = 200) -> Dataset[Any]:
 
     Examples:
         >>> import ray
-        >>> ray.data.from_items([1, 2, 3, 4, 5]) # doctest: +SKIP
+        >>> ds = ray.data.from_items([1, 2, 3, 4, 5]) # doctest: +SKIP
+        >>> ds # doctest: +SKIP
+        Dataset(num_blocks=5, num_rows=5, schema=<class 'int'>)
+        >>> ds.take(2) # doctest: +SKIP
+        [1, 2]
 
     Args:
         items: List of local Python objects.
@@ -119,7 +123,11 @@ def range(n: int, *, parallelism: int = 200) -> Dataset[int]:
 
     Examples:
         >>> import ray
-        >>> ray.data.range(10000).map(lambda x: x * 2).show() # doctest: +SKIP
+        >>> ds = ray.data.range(10000) # doctest: +SKIP
+        >>> ds # doctest: +SKIP
+        Dataset(num_blocks=200, num_rows=10000, schema=<class 'int'>)
+        >>> ds.map(lambda x: x * 2).take(4) # doctest: +SKIP
+        [0, 2, 4, 6]
 
     Args:
         n: The upper bound of the range of integers.
@@ -141,7 +149,10 @@ def range_table(n: int, *, parallelism: int = 200) -> Dataset[ArrowRow]:
     Examples:
         >>> import ray
         >>> ds = ray.data.range_table(1000) # doctest: +SKIP
-        >>> ds.map(lambda r: {"v2": r["value"] * 2}).show() # doctest: +SKIP
+        >>> ds # doctest: +SKIP
+        Dataset(num_blocks=200, num_rows=1000, schema={value: int64})
+        >>> ds.map(lambda r: {"v2": r["value"] * 2}).take(2) # doctest: +SKIP
+        [ArrowRow({'v2': 0}), ArrowRow({'v2': 2})]
 
     This is similar to range(), but uses Arrow tables to hold the integers
     in Arrow records. The dataset elements take the form {"value": N}.
@@ -172,9 +183,18 @@ def range_tensor(
 
     Examples:
         >>> import ray
-        >>> ds = ray.data.range_tensor(1000, shape=(3, 10)) # doctest: +SKIP
-        >>> ds.map_batches( # doctest: +SKIP
-        ...     lambda arr: arr * 2).show()
+        >>> ds = ray.data.range_tensor(1000, shape=(2, 2)) # doctest: +SKIP
+        >>> ds # doctest: +SKIP
+        Dataset(
+            num_blocks=200,
+            num_rows=1000,
+            schema={__value__: <ArrowTensorType: shape=(2, 2), dtype=int64>},
+        )
+        >>> ds.map_batches(lambda arr: arr * 2).take(2) # doctest: +SKIP
+        [array([[0, 0],
+                [0, 0]]),
+        array([[2, 2],
+                [2, 2]])]
 
     This is similar to range_table(), but uses the ArrowTensorArray extension
     type. The dataset elements take the form {VALUE_COL_NAME: array(N, shape=shape)}.
