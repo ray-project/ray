@@ -30,9 +30,9 @@ from ray.serve.config import (
 )
 from ray.serve.schema import ServeApplicationSchema
 from ray.serve.constants import (
+    SERVE_NAMESPACE,
     MAX_CACHED_HANDLES,
     CLIENT_POLLING_INTERVAL_S,
-    ANONYMOUS_NAMESPACE_PATTERN,
 )
 from ray.serve.controller import ServeController
 from ray.serve.exceptions import RayServeException
@@ -66,12 +66,10 @@ class ServeControllerClient:
         controller: ActorHandle,
         controller_name: str,
         detached: bool = False,
-        _override_controller_namespace: Optional[str] = None,
     ):
         self._controller: ServeController = controller
         self._controller_name = controller_name
         self._detached = detached
-        self._override_controller_namespace = _override_controller_namespace
         self._shutdown = False
         self._http_config: HTTPOptions = ray.get(controller.get_http_config.remote())
         self._root_url = ray.get(controller.get_root_url.remote())
@@ -137,11 +135,7 @@ class ServeControllerClient:
             started = time.time()
             while True:
                 try:
-                    controller_namespace = get_controller_namespace(
-                        self._detached,
-                        self._override_controller_namespace,
-                    )
-                    ray.get_actor(self._controller_name, namespace=controller_namespace)
+                    ray.get_actor(self._controller_name, namespace=SERVE_NAMESPACE)
                     if time.time() - started > 5:
                         logger.warning(
                             "Waited 5s for Serve to shutdown gracefully but "
@@ -328,13 +322,7 @@ class ServeControllerClient:
 
     @_ensure_connected
     def deploy_app(self, config: ServeApplicationSchema) -> None:
-        ray.get(
-            self._controller.deploy_app.remote(
-                config.import_path,
-                config.runtime_env,
-                config.dict(by_alias=True, exclude_unset=True).get("deployments", []),
-            )
-        )
+        ray.get(self._controller.deploy_app.remote(config))
 
     @_ensure_connected
     def delete_deployments(self, names: Iterable[str], blocking: bool = True) -> None:
@@ -563,29 +551,3 @@ class ServeControllerClient:
             f"Deployment '{name}{':'+version if version else ''}' is ready"
             f"{url_part}. {tag}"
         )
-
-
-def get_controller_namespace(
-    detached: bool, _override_controller_namespace: Optional[str] = None
-):
-    """Gets the controller's namespace.
-
-    Args:
-        detached: Whether serve.start() was called with detached=True
-        _override_controller_namespace (Optional[str]): When set, this is the
-            controller's namespace
-    """
-
-    if _override_controller_namespace is not None:
-        return _override_controller_namespace
-
-    controller_namespace = ray.get_runtime_context().namespace
-
-    if not detached:
-        return controller_namespace
-
-    # Start controller in "serve" namespace if detached and currently
-    # in anonymous namespace.
-    if ANONYMOUS_NAMESPACE_PATTERN.fullmatch(controller_namespace) is not None:
-        controller_namespace = "serve"
-    return controller_namespace
