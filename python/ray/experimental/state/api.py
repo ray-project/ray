@@ -1,5 +1,3 @@
-import urllib
-import warnings
 import warnings
 import requests
 
@@ -8,9 +6,6 @@ import urllib
 
 from typing import List, Tuple, Optional, Dict, Generator, Union
 from dataclasses import fields
-from typing import Dict, Generator, List, Optional, Tuple
-
-import requests
 
 from ray.experimental.state.common import (
     DEFAULT_LIMIT,
@@ -53,11 +48,6 @@ class StateApiClient(SubmissionClient):
         api_server_address: The address of API server. If it is not give, it assumes
         the ray is already connected and obtains the API server address using Ray API.
     """
-    if api_server_url is None:
-        assert ray.is_initialized()
-        api_server_url = (
-            f"http://{ray._private.worker.global_worker.node.address_info['webui_url']}"
-        )
 
     def __init__(
         self,

@@ -70,11 +70,10 @@ from ray.experimental.state.common import (
 )
 from ray.experimental.state.exception import DataSourceUnavailable, RayStateApiException
 from ray.experimental.state.state_cli import (
-    list as cli_list,
-    get_state_api_output_to_print,
     AvailableFormat,
-    list_state_cli_group,
+    get_state_api_output_to_print,
 )
+from ray.experimental.state.state_cli import list as cli_list
 from ray.experimental.state.state_manager import IdToIpMap, StateDataSourceClient
 from ray.job_submission import JobSubmissionClient
 from ray.runtime_env import RuntimeEnv
