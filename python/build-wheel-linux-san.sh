@@ -11,9 +11,9 @@ EOF
 chmod +x /usr/bin/nproc
 
 NODE_VERSION="14"
-PYTHONS=("cp37-cp37m"
-         "cp38-cp38"
-         "cp39-cp39")
+PYTHONS=("3.7"
+         "3.8"
+         "3.9")
 NUMPY_VERSIONS=("1.14.5"
                 "1.14.5"
                 "1.19.3")
@@ -42,6 +42,11 @@ pushd python/ray/dashboard/client
 popd
 set -x
 
+wget --quiet "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh" -O /tmp/miniconda.sh \
+    && /bin/bash /tmp/miniconda.sh -b -u -p $HOME/anaconda3 \
+    && $HOME/anaconda3/bin/conda init \ 
+    && rm /tmp/miniconda.sh
+
 mkdir -p .whl
 for ((i=0; i<${#PYTHONS[@]}; ++i)); do
   PYTHON=${PYTHONS[i]}
@@ -49,15 +54,20 @@ for ((i=0; i<${#PYTHONS[@]}; ++i)); do
 
   # The -f flag is passed twice to also run git clean in the arrow subdirectory.
   # The -d flag removes directories. The -x flag ignores the .gitignore file,
-  # and the -e flag ensures that we don't remove the .whl directory, the
-  # dashboard directory and jars directory.
+  # and the -e flag ensures that we don't remove files needed for the build process
+  # or included in the wheels.
   git config --global --add safe.directory /ray
-  git clean -f -f -x -d -e .whl -e python/ray/dashboard/client -e dashboard/client -e python/ray/jars
+  git clean -f -f -x -d -e .whl -e python/ray/dashboard/client -e dashboard/client -e python/ray/jars -e .llvm-local.bazelrc
+
+  $HOME/anaconda3/bin/conda deactivate && $HOME/anaconda3/bin/conda create -n $RANDOM \
+      $HOME/anaconda3/bin/conda install python=${PYTHON}
+  
+  python --version
 
   pushd python
     # Fix the numpy version because this will be the oldest numpy version we can
     # support.
-    /opt/python/"${PYTHON}"/bin/pip install -q numpy=="${NUMPY_VERSION}" cython==0.29.26
+    pip install -q numpy=="${NUMPY_VERSION}" cython==0.29.26
     # Set the commit SHA in __init__.py.
     if [ -n "$TRAVIS_COMMIT" ]; then
       sed -i.bak "s/{{RAY_COMMIT_SHA}}/$TRAVIS_COMMIT/g" ray/__init__.py && rm ray/__init__.py.bak
@@ -67,8 +77,7 @@ for ((i=0; i<${#PYTHONS[@]}; ++i)); do
     fi
 
     # build ray wheel
-    PATH=/opt/python/${PYTHON}/bin:$PATH \
-    /opt/python/"${PYTHON}"/bin/python setup.py bdist_wheel
+    python setup.py bdist_wheel
     mv dist/*.whl ../.whl/
   popd
 done
