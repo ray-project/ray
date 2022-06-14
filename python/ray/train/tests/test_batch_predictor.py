@@ -4,8 +4,8 @@ import pandas as pd
 import pytest
 
 import ray
-from ray.air import Preprocessor
 from ray.air.checkpoint import Checkpoint
+from ray.data import Preprocessor
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.predictor import Predictor
 
