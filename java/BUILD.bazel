@@ -103,6 +103,8 @@ define_java_module(
 
 define_java_module(
     name = "test",
+    # For cpp x-lang tests. See //cpp:cluster_mode_test.
+    visibility = ["//cpp:__subpackages__"],
     deps = [
         ":io_ray_ray_api",
         ":io_ray_ray_runtime",

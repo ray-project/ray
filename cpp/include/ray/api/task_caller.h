@@ -76,14 +76,14 @@ ObjectRef<boost::callable_traits::return_type_t<F>> TaskCaller<F>::Remote(
 
   if constexpr (is_python_v<F>) {
     using ArgsTuple = std::tuple<Args...>;
-    Arguments::WrapArgs<ArgsTuple>(/*cross_lang=*/true,
+    Arguments::WrapArgs<ArgsTuple>(remote_function_holder_.lang_type,
                                    &args_,
                                    std::make_index_sequence<sizeof...(Args)>{},
                                    std::forward<Args>(args)...);
   } else {
     StaticCheck<F, Args...>();
     using ArgsTuple = RemoveReference_t<boost::callable_traits::args_t<F>>;
-    Arguments::WrapArgs<ArgsTuple>(/*cross_lang=*/false,
+    Arguments::WrapArgs<ArgsTuple>(remote_function_holder_.lang_type,
                                    &args_,
                                    std::make_index_sequence<sizeof...(Args)>{},
                                    std::forward<Args>(args)...);
