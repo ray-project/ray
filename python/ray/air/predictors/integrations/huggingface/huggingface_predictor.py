@@ -1,19 +1,19 @@
-from typing import Optional, Type, Union, List, TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Optional, Type, Union
 
-import numpy as np
 import pandas as pd
-
-from transformers.pipelines import Pipeline, pipeline as pipeline_factory
+from transformers.pipelines import Pipeline
+from transformers.pipelines import pipeline as pipeline_factory
 from transformers.pipelines.table_question_answering import (
     TableQuestionAnsweringPipeline,
 )
 
-from ray.air.predictor import DataBatchType, Predictor
-from ray.air.checkpoint import Checkpoint
 from ray.air._internal.checkpointing import load_preprocessor_from_dir
+from ray.air.checkpoint import Checkpoint
+from ray.air.constants import TENSOR_COLUMN_NAME
+from ray.air.predictor import Predictor
 
 if TYPE_CHECKING:
-    from ray.air.preprocessor import Preprocessor
+    from ray.data.preprocessor import Preprocessor
 
 
 class HuggingFacePredictor(Predictor):
@@ -101,12 +101,12 @@ class HuggingFacePredictor(Predictor):
             columns = columns[0]
         return columns
 
-    def predict(
+    def _predict_pandas(
         self,
-        data: DataBatchType,
+        data: "pd.DataFrame",
         feature_columns: Optional[List[str]] = None,
         **pipeline_call_kwargs,
-    ) -> DataBatchType:
+    ) -> "pd.DataFrame":
         """Run inference on data batch.
 
         The data is converted into a list (unless ``pipeline`` is a
@@ -150,14 +150,14 @@ class HuggingFacePredictor(Predictor):
 
 
         Returns:
-            DataBatchType: Prediction result.
+            Prediction result.
         """
-        if self.preprocessor:
-            data = self.preprocessor.transform_batch(data)
-
-        if isinstance(data, np.ndarray):
-            # If numpy array, then convert to pandas dataframe.
-            data = pd.DataFrame(data)
+        if TENSOR_COLUMN_NAME in data:
+            arr = data[TENSOR_COLUMN_NAME].to_numpy()
+            if feature_columns:
+                data = pd.DataFrame(arr[:, feature_columns])
+        elif feature_columns:
+            data = data[feature_columns]
 
         data = data[feature_columns] if feature_columns else data
 
