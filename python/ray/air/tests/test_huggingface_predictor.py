@@ -11,7 +11,7 @@ from transformers.pipelines import pipeline
 
 import ray
 from ray.data.preprocessor import Preprocessor
-from ray.air.predictors.integrations.huggingface import HuggingFacePredictor
+from ray.train.huggingface import HuggingFacePredictor
 
 prompts = pd.DataFrame(
     ["Complete me", "And me", "Please complete"], columns=["sentences"]

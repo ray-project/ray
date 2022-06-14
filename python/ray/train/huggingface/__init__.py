@@ -3,4 +3,6 @@ from ray.train.huggingface.huggingface_trainer import (
     load_checkpoint,
 )
 
-__all__ = ["HuggingFaceTrainer", "load_checkpoint"]
+from ray.train.huggingface.huggingface_predictor import HuggingFacePredictor
+
+__all__ = ["HuggingFacePredictor", "HuggingFaceTrainer", "load_checkpoint"]

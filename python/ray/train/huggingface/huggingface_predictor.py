@@ -129,7 +129,7 @@ class HuggingFacePredictor(Predictor):
             import pandas as pd
             from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
             from transformers.pipelines import pipeline
-            from ray.air.predictors.integrations.huggingface import HuggingFacePredictor
+            from ray.train.huggingface import HuggingFacePredictor
 
             model_checkpoint = "gpt2"
             tokenizer_checkpoint = "sgugger/gpt2-like-tokenizer"

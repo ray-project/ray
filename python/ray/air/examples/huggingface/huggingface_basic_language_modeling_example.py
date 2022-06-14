@@ -18,7 +18,7 @@ import torch
 import ray
 import ray.data
 from ray.train.huggingface import HuggingFaceTrainer
-from ray.air.predictors.integrations.huggingface import HuggingFacePredictor
+from ray.train.huggingface import HuggingFacePredictor
 from ray.air.batch_predictor import BatchPredictor
 
 
