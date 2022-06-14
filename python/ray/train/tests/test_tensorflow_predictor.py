@@ -3,10 +3,10 @@ import pandas as pd
 import tensorflow as tf
 
 import ray
-from ray.train.batch_predictor import BatchPredictor
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY
 from ray.data.preprocessor import Preprocessor
+from ray.train.batch_predictor import BatchPredictor
 from ray.train.tensorflow import TensorflowPredictor, to_air_checkpoint
 
 

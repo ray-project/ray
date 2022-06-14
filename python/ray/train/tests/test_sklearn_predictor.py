@@ -9,10 +9,10 @@ from sklearn.ensemble import RandomForestClassifier
 import ray
 import ray.cloudpickle as cpickle
 from ray.air._internal.checkpointing import save_preprocessor_to_dir
-from ray.train.batch_predictor import BatchPredictor
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import MODEL_KEY
 from ray.data.preprocessor import Preprocessor
+from ray.train.batch_predictor import BatchPredictor
 from ray.train.sklearn import SklearnPredictor, to_air_checkpoint
 
 

@@ -38,7 +38,8 @@ def test_convert_image_df_to_tensor():
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))

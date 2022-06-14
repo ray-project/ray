@@ -59,7 +59,8 @@ class BatchPredictor:
         Examples:
             >>> import pandas as pd
             >>> import ray
-            >>> from ray.train.batch_predictor import BatchPredictor, Checkpoint, Predictor
+            >>> from ray.air import Checkpoint, Predictor
+            >>> from ray.train.batch_predictor import BatchPredictor
             >>> # Create a dummy predictor that always returns `42` for each input.
             >>> class DummyPredictor(Predictor):
             ...     @classmethod
@@ -142,7 +143,8 @@ class BatchPredictor:
         Examples:
             >>> import pandas as pd
             >>> import ray
-            >>> from ray.train.batch_predictor import BatchPredictor, Checkpoint, Predictor
+            >>> from ray.air import Checkpoint, Predictor
+            >>> from ray.train.batch_predictor import BatchPredictor
             >>> # Create a dummy predictor that always returns `42` for each input.
             >>> class DummyPredictor(Predictor):
             ...     @classmethod

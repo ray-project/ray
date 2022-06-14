@@ -1,4 +1,5 @@
 # flake8: noqa
+# isort: skip_file
 
 # __use_pretrained_model_start__
 import ray

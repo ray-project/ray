@@ -1,4 +1,5 @@
 # flake8: noqa
+# isort: skip_file
 
 # __air_pytorch_preprocess_start__
 

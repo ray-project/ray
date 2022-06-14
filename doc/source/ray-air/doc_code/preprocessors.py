@@ -1,5 +1,5 @@
 # flake8: noqa
-
+# isort: skip_file
 
 # __preprocessor_setup_start__
 import pandas as pd

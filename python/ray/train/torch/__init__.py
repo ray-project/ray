@@ -1,3 +1,12 @@
+# isort: off
+try:
+    import torch  # noqa: F401, isort: skip
+except ModuleNotFoundError:
+    raise ModuleNotFoundError(
+        "PyTorch isn't installed. To install PyTorch, run 'pip install torch'"
+    )
+# isort: on
+
 from ray.train.torch.config import TorchConfig
 from ray.train.torch.torch_predictor import TorchPredictor
 from ray.train.torch.torch_trainer import TorchTrainer, load_checkpoint
@@ -12,14 +21,6 @@ from ray.train.torch.train_loop_utils import (
     prepare_optimizer,
 )
 from ray.train.torch.utils import to_air_checkpoint
-
-try:
-    import torch  # noqa: F401
-except ModuleNotFoundError:
-    raise ModuleNotFoundError(
-        "PyTorch isn't installed. To install PyTorch, run 'pip install torch'"
-    )
-
 
 __all__ = [
     "TorchTrainer",

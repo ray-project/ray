@@ -1,4 +1,5 @@
 # flake8: noqa
+# isort: skip_file
 
 # __air_tf_preprocess_start__
 import ray
