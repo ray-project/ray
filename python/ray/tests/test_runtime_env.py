@@ -612,9 +612,6 @@ def test_runtime_env_retry(set_runtime_env_retry_times, ray_start_regular):
             )
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="conda in runtime_env unsupported on Windows."
-)
 @pytest.mark.parametrize(
     "option",
     ["pip_list", "pip_dict", "conda_name", "conda_dict", "container", "plugins"],
@@ -664,9 +661,6 @@ def test_serialize_deserialize(option):
     assert cls_runtime_env_dict == runtime_env
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="conda in runtime_env unsupported on Windows."
-)
 def test_runtime_env_interface():
 
     # Test the interface related to working_dir
