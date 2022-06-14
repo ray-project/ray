@@ -18,7 +18,7 @@ from ray.autoscaler._private.fake_multi_node.node_provider import (
     FAKE_DOCKER_DEFAULT_GCS_PORT,
 )
 from ray.util.ml_utils.dict import deep_update
-from ray.util.queue import Queue, Empty
+from ray.util.queue import Empty, Queue
 
 logger = logging.getLogger(__name__)
 
