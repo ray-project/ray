@@ -1244,6 +1244,7 @@ class MultiAgentBatch:
 @PublicAPI
 def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
     """Concatenates a list of  SampleBatches or MultiAgentBatches.
+
     If all items in the list are or SampleBatch typ4, the output will be
     a SampleBatch type. Otherwise, the output will be a MultiAgentBatch type.
     If input is a mixture of SampleBatch and MultiAgentBatch types, it will treat
