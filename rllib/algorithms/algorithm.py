@@ -197,8 +197,7 @@ class Algorithm(Trainable):
         config: Optional[Union[PartialAlgorithmConfigDict, AlgorithmConfig]] = None,
         env: Optional[Union[str, EnvType]] = None,
         logger_creator: Optional[Callable[[], Logger]] = None,
-        remote_checkpoint_dir: Optional[str] = None,
-        sync_function_tpl: Optional[str] = None,
+        **kwargs,
     ):
         """Initializes an Algorithm instance.
 
@@ -211,6 +210,8 @@ class Algorithm(Trainable):
                 the "env" key in `config`.
             logger_creator: Callable that creates a ray.tune.Logger
                 object. If unspecified, a default logger is created.
+            **kwargs: Arguments passed to the Trainable base class.
+
         """
 
         # User provided (partial) config (this may be w/o the default
@@ -288,9 +289,7 @@ class Algorithm(Trainable):
             }
         }
 
-        super().__init__(
-            config, logger_creator, remote_checkpoint_dir, sync_function_tpl
-        )
+        super().__init__(config=config, logger_creator=logger_creator, **kwargs)
 
         # Check, whether `training_iteration` is still a tune.Trainable property
         # and has not been overridden by the user in the attempt to implement the
