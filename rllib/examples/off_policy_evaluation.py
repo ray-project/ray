@@ -52,10 +52,6 @@ if __name__ == "__main__":
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
         .training(gamma=args.gamma)
         .environment(env=args.env_name)
-        .offline_data(
-            input_="dataset",
-            input_config={"format": "json", "path": args.input_path},
-        )
         .exploration(
             explore=True,
             exploration_config={
