@@ -106,7 +106,7 @@ def test_basic(ray_start_with_dashboard):
     gcs_client = make_gcs_client(address_info)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
 
-    all_processes = ray.worker._global_node.all_processes
+    all_processes = ray._private.worker._global_node.all_processes
     assert ray_constants.PROCESS_TYPE_DASHBOARD in all_processes
     assert ray_constants.PROCESS_TYPE_REPORTER not in all_processes
     dashboard_proc_info = all_processes[ray_constants.PROCESS_TYPE_DASHBOARD][0]
@@ -151,7 +151,7 @@ def test_raylet_and_agent_share_fate(shutdown_only):
     ray.init(include_dashboard=True)
     p = init_error_pubsub()
 
-    node = ray.worker._global_node
+    node = ray._private.worker._global_node
     all_processes = node.all_processes
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
@@ -174,7 +174,7 @@ def test_raylet_and_agent_share_fate(shutdown_only):
     ray.shutdown()
 
     ray.init(include_dashboard=True)
-    all_processes = ray.worker._global_node.all_processes
+    all_processes = ray._private.worker._global_node.all_processes
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
     wait_for_condition(lambda: search_agent(raylet_proc.children()))
@@ -195,7 +195,7 @@ def test_agent_report_unexpected_raylet_death(shutdown_only):
     ray.init(include_dashboard=True)
     p = init_error_pubsub()
 
-    node = ray.worker._global_node
+    node = ray._private.worker._global_node
     all_processes = node.all_processes
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
@@ -229,7 +229,7 @@ def test_agent_report_unexpected_raylet_death_large_file(shutdown_only):
     ray.init(include_dashboard=True)
     p = init_error_pubsub()
 
-    node = ray.worker._global_node
+    node = ray._private.worker._global_node
     all_processes = node.all_processes
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
@@ -788,7 +788,7 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
 def test_gcs_check_alive(fast_gcs_failure_detection, ray_start_with_dashboard):
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
 
-    all_processes = ray.worker._global_node.all_processes
+    all_processes = ray._private.worker._global_node.all_processes
     dashboard_info = all_processes[ray_constants.PROCESS_TYPE_DASHBOARD][0]
     dashboard_proc = psutil.Process(dashboard_info.process.pid)
     gcs_server_info = all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER][0]

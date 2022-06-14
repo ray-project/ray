@@ -391,7 +391,7 @@ def test_job_metadata(job_sdk_client):
         'python -c"'
         "import ray;"
         "ray.init();"
-        "job_config=ray.worker.global_worker.core_worker.get_job_config();"
+        "job_config=ray._private.worker.global_worker.core_worker.get_job_config();"
         "print(dict(sorted(job_config.metadata.items())))"
         '"'
     )

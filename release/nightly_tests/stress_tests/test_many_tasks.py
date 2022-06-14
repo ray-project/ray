@@ -138,7 +138,7 @@ def stage4():
         start = time.perf_counter()
         time.sleep(1)
         end = time.perf_counter()
-        return start, end, ray.worker.global_worker.node.unique_id
+        return start, end, ray._private.worker.global_worker.node.unique_id
 
     results = ray.get([func.remote(i) for i in range(num_tasks)])
 

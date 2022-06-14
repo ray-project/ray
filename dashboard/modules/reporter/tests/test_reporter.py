@@ -149,7 +149,7 @@ def test_prometheus_physical_stats_record(enable_test_module, shutdown_only):
 
     def test_case_ip_correct():
         components_dict, metric_names, metric_samples = fetch_prometheus(prom_addresses)
-        raylet_proc = ray.worker._global_node.all_processes[
+        raylet_proc = ray._private.worker._global_node.all_processes[
             ray_constants.PROCESS_TYPE_RAYLET
         ][0]
         raylet_pid = None

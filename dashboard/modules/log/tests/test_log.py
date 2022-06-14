@@ -44,7 +44,7 @@ def test_log(disable_aiohttp_cache, ray_start_with_dashboard):
 
     test_file = "test.log"
     with open(
-        f"{ray.worker.global_worker.node.get_logs_dir_path()}/{test_file}", "w"
+        f"{ray._private.worker.global_worker.node.get_logs_dir_path()}/{test_file}", "w"
     ) as f:
         f.write(test_log_text)
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
@@ -128,7 +128,7 @@ def test_log_proxy(ray_start_with_dashboard):
     test_log_text = "test_log_text"
     test_file = "test.log"
     with open(
-        f"{ray.worker.global_worker.node.get_logs_dir_path()}/{test_file}", "w"
+        f"{ray._private.worker.global_worker.node.get_logs_dir_path()}/{test_file}", "w"
     ) as f:
         f.write(test_log_text)
     while True:

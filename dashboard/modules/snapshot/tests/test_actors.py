@@ -59,7 +59,7 @@ def test_kill_actor_gcs(ray_start_with_dashboard):
     @ray.remote
     class Actor:
         def f(self):
-            ray.worker.show_in_dashboard("test")
+            ray._private.worker.show_in_dashboard("test")
             return os.getpid()
 
         def loop(self):

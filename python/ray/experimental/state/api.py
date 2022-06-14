@@ -65,9 +65,9 @@ class StateApiClient(SubmissionClient):
     def _get_default_api_server_address(cls) -> str:
         assert (
             ray.is_initialized()
-            and ray.worker.global_worker.node.address_info["webui_url"] is not None
+            and ray._private.worker.global_worker.node.address_info["webui_url"] is not None
         )
-        return f"http://{ray.worker.global_worker.node.address_info['webui_url']}"
+        return f"http://{ray._private.worker.global_worker.node.address_info['webui_url']}"
 
     def list(
         self, resource: StateResource, options: ListApiOptions, _explain: bool = False
@@ -291,7 +291,7 @@ def get_log(
     if api_server_url is None:
         assert ray.is_initialized()
         api_server_url = (
-            f"http://{ray.worker.global_worker.node.address_info['webui_url']}"
+            f"http://{ray._private.worker.global_worker.node.address_info['webui_url']}"
         )
 
     media_type = "stream" if follow else "file"
@@ -342,7 +342,7 @@ def list_logs(
     if api_server_url is None:
         assert ray.is_initialized()
         api_server_url = (
-            f"http://{ray.worker.global_worker.node.address_info['webui_url']}"
+            f"http://{ray._private.worker.global_worker.node.address_info['webui_url']}"
         )
 
     if not glob_filter:

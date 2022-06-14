@@ -87,7 +87,7 @@ def run_actor_workload(total_num_cpus, smoke):
     if smoke:
         multiplier = 1
     TOTAL_TASKS = int(300 * multiplier)
-    current_node_ip = ray.worker.global_worker.node_ip_address
+    current_node_ip = ray._private.worker.global_worker.node_ip_address
     db_actors = [
         DBActor.options(resources={f"node:{current_node_ip}": 0.001}).remote()
         for _ in range(NUM_CPUS)

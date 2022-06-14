@@ -86,7 +86,7 @@ class JobLogStorageClient:
             /tmp/ray/session_date/logs/job-driver-{job_id}.log
         """
         return os.path.join(
-            ray.worker._global_node.get_logs_dir_path(),
+            ray._private.worker._global_node.get_logs_dir_path(),
             self.JOB_LOGS_PATH.format(job_id=job_id),
         )
 
