@@ -181,7 +181,7 @@ class PushBasedShufflePlan(ShuffleOp):
                 stage.merge_schedule,
                 *self._map_args,
             )
-            metadata_ref = map_result.pop(0)
+            metadata_ref = map_result.pop(-1)
             return metadata_ref, map_result
 
         def submit_merge_task(arg):
@@ -338,7 +338,7 @@ class PushBasedShufflePlan(ShuffleOp):
         *map_args: List[Any],
     ) -> List[Union[BlockMetadata, Block]]:
         mapper_outputs = map_fn(idx, block, output_num_blocks, *map_args)
-        meta = mapper_outputs.pop(0)
+        meta = mapper_outputs.pop(-1)
 
         parts = []
         merge_idx = 0
@@ -351,7 +351,7 @@ class PushBasedShufflePlan(ShuffleOp):
             len(parts),
             schedule.num_merge_tasks_per_round,
         )
-        return [meta] + parts
+        return parts + [meta]
 
     @staticmethod
     def _merge(
@@ -375,7 +375,7 @@ class PushBasedShufflePlan(ShuffleOp):
         meta = BlockAccessor.for_block(block).get_metadata(
             input_files=None, exec_stats=stats.build()
         )
-        return [meta] + merged_outputs
+        return merged_outputs + [meta]
 
     @staticmethod
     def _compute_shuffle_schedule(
