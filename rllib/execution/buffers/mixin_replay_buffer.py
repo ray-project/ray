@@ -39,15 +39,6 @@ class MixInMultiAgentReplayBuffer:
         >>> buffer.add_batch(D) # doctest: +SKIP
         >>> buffer.replay() # doctest: +SKIP
         [D, A, C]
-        >>> # replay proportion 0.0 -> replay disabled:
-        >>> from ray.rllib.execution import MixInReplay
-        >>> buffer = MixInReplay(capacity=100, replay_ratio=0.0) # doctest: +SKIP
-        >>> buffer.add_batch(A) # doctest: +SKIP
-        >>> buffer.replay() # doctest: +SKIP
-        [A]
-        >>> buffer.add_batch(B) # doctest: +SKIP
-        >>> buffer.replay() # doctest: +SKIP
-        [B]
     """
 
     def __init__(self, capacity: int, replay_ratio: float):
