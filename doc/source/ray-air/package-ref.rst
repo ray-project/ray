@@ -100,7 +100,7 @@ Predictors
     :members:
     :show-inheritance:
 
-.. automodule:: ray.air.predictors.integrations.tensorflow
+.. automodule:: ray.train.tensorflow
     :members:
     :show-inheritance:
 

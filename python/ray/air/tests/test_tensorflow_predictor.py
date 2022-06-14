@@ -1,16 +1,13 @@
-import ray
-from ray.air.batch_predictor import BatchPredictor
-from ray.air.checkpoint import Checkpoint
-from ray.air.constants import PREPROCESSOR_KEY, MODEL_KEY
-from ray.air.predictors.integrations.tensorflow import (
-    TensorflowPredictor,
-    to_air_checkpoint,
-)
-from ray.data.preprocessor import Preprocessor
-
 import numpy as np
 import pandas as pd
 import tensorflow as tf
+
+import ray
+from ray.air.batch_predictor import BatchPredictor
+from ray.air.checkpoint import Checkpoint
+from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY
+from ray.data.preprocessor import Preprocessor
+from ray.train.tensorflow import TensorflowPredictor, to_air_checkpoint
 
 
 class DummyPreprocessor(Preprocessor):
@@ -110,7 +107,8 @@ def test_tensorflow_predictor_no_training():
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))
