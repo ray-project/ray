@@ -390,11 +390,24 @@ class PushBasedShufflePlan(ShuffleOp):
         num_tasks_per_map_merge_group = merge_factor + 1
         num_merge_tasks_per_round = 0
         merge_task_placement = []
+        leftover_cpus = 0
         for node, num_cpus in num_cpus_per_node_map.items():
-            num_merge_tasks = num_cpus // num_tasks_per_map_merge_group
+            node_parallelism = min(
+                num_cpus, num_input_blocks // len(num_cpus_per_node_map)
+            )
+            num_merge_tasks = node_parallelism // num_tasks_per_map_merge_group
             for i in range(num_merge_tasks):
                 merge_task_placement.append(node)
             num_merge_tasks_per_round += num_merge_tasks
+
+            # Handle the case where a single node cannot fit a group of map and
+            # merge tasks, but we can spread the group across multiple distinct
+            # nodes.
+            leftover_cpus += node_parallelism % num_tasks_per_map_merge_group
+            if leftover_cpus > num_tasks_per_map_merge_group:
+                merge_task_placement.append(node)
+                num_merge_tasks_per_round += 1
+                leftover_cpus -= num_tasks_per_map_merge_group
         if num_merge_tasks_per_round == 0:
             merge_task_placement.append(list(num_cpus_per_node_map)[0])
             num_merge_tasks_per_round = 1
