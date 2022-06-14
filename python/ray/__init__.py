@@ -1,3 +1,4 @@
+# isort: skip_file
 import logging
 import os
 
@@ -156,7 +157,6 @@ from ray._private.worker import (  # noqa: E402,F401
     shutdown,
     wait,
 )
-import ray.internal  # noqa: E402
 
 # We import ray.actor because some code is run in actor.py which initializes
 # some functions in the worker.
