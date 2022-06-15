@@ -20,6 +20,7 @@ Note: config cache does not work with AWS mocks since the AWS resource ids are
 import glob
 import sys
 import tempfile
+from typing import Optional
 import uuid
 import re
 import os
@@ -111,17 +112,20 @@ def _unlink_test_ssh_key():
         pass
 
 
-def _debug_die(result):
+def _debug_die(output, assert_msg: str = ""):
     print("!!!!")
-    print(result.output)
+    print(output)
     print("!!!!")
-    assert False
+    assert False, assert_msg
+
+
+def _fail_if_false(predicate: bool, stdout: Optional[str] = "", assert_msg: Optional[str] = ""):
+    if not predicate:
+        _debug_die(stdout, assert_msg)
 
 
 def _die_on_error(result):
-    if result.exit_code == 0:
-        return
-    _debug_die(result)
+    _fail_if_false(result.exit_code == 0, result.output)
 
 
 def _debug_check_line_by_line(result, expected_lines):
@@ -132,7 +136,7 @@ def _debug_check_line_by_line(result, expected_lines):
         if i >= len(expected_lines):
             i += 1
             print("!!!!!! Expected fewer lines")
-            context = [f"CONTEXT: {line}" for line in output_lines[i - 3 : i]]
+            context = [f"CONTEXT: {line}" for line in output_lines[i - 3: i]]
             print("\n".join(context))
             extra = [f"-- {line}" for line in output_lines[i:]]
             print("\n".join(extra))
@@ -301,6 +305,87 @@ def test_ray_start_hook(configure_lang, monkeypatch, tmp_path):
     assert os.path.exists(os.path.join(temp_dir, "ray_hook_ok"))
 
     _die_on_error(runner.invoke(scripts.stop))
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
+    reason=("Mac builds don't provide proper locale support"),
+)
+def test_ray_start_block_and_stop(configure_lang, monkeypatch, tmp_path):
+    """Test `ray start` with `--block` as heads and workers and `ray stop`
+    """
+    import multiprocessing as mp
+    import time
+    import ray.ray_constants as ray_constants
+
+    monkeypatch.setenv("RAY_USAGE_STATS_CONFIG_PATH", str(tmp_path / "config.json"))
+    runner = CliRunner()
+
+    head_parent_conn, head_child_conn = mp.Pipe()
+    worker_parent_conn, worker_child_conn = mp.Pipe()
+
+    def start_ray_and_block(child_conn: mp.connection.Connection, as_head: bool):
+        args = ["--block"]
+        if as_head:
+            args.append("--head")
+        else:
+            args.append(f"--address=localhost:{ray_constants.DEFAULT_PORT}")
+
+        result = runner.invoke(
+            scripts.start,
+            args,
+        )
+        # Should be blocked until stopped by signals (SIGTERM)
+        child_conn.send(result.output)
+
+    # Run `ray start --block --head` in another process and blocks
+    head_proc = mp.Process(target=start_ray_and_block, kwargs={
+        "child_conn": head_child_conn, "as_head": True})
+
+    # Run `ray start --block --address=localhost:DEFAULT_PORT`
+    worker_proc = mp.Process(target=start_ray_and_block, kwargs={
+        "child_conn": worker_child_conn, "as_head": False
+    })
+
+    # Run
+    head_proc.start()
+    worker_proc.start()
+
+    # Give it some time to start various subprocesses and `ray stop`
+    time.sleep(2)
+    _die_on_error(runner.invoke(scripts.stop))
+
+    # Process with "--block" should be blocked forever w/o
+    # termination by signals
+    if not head_proc.is_alive():
+        # NOTE(rickyx): call recv() here is safe since the process
+        # is guaranteed to be terminated.
+        _fail_if_false(False, head_parent_conn.recv(),
+                       ("`ray start --head --block` should block forever even"
+                        " though Ray subprocesses are stopped normally. But "
+                        f"it exited with {head_proc.exitcode} early."))
+
+    if not worker_proc.is_alive():
+        _fail_if_false(False, worker_parent_conn.recv(),
+                       ("`ray start --block` should block forever even"
+                        " though Ray subprocesses are stopped normally. But"
+                        f"it exited with {worker_proc.exitcode} already."))
+
+    # Stop both worker and head with SIGTERM
+    head_proc.terminate()
+    worker_proc.terminate()
+
+    head_output = head_parent_conn.recv()
+    worker_output = worker_parent_conn.recv()
+
+    head_proc.join()
+    worker_proc.join()
+
+    _fail_if_false(head_proc.exitcode == 0, head_output,
+                   f"Head process failed unexpectedly({head_proc.exitcode})")
+
+    _fail_if_false(worker_proc.exitcode == 0, worker_output,
+                   f"Worker process failed unexpectedly({worker_proc.exitcode})")
 
 
 @pytest.mark.skipif(

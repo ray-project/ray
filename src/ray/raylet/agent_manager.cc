@@ -108,12 +108,19 @@ void AgentManager::StartAgent() {
     RAY_LOG(WARNING) << "Agent process with pid " << child.GetId()
                      << " exit, return value " << exit_code << ". ip "
                      << agent_ip_address_ << ". pid " << agent_pid_;
-    RAY_LOG(ERROR)
-        << "The raylet exited immediately because the Ray agent failed. "
-           "The raylet fate shares with the agent. This can happen because the "
-           "Ray agent was unexpectedly killed or failed. See "
-           "`dashboard_agent.log` for the root cause.";
-    QuickExit();
+
+    if (exit_code != 0) {
+      RAY_LOG(ERROR)
+          << "The raylet exited immediately because the Ray agent failed. "
+             "The raylet fate shares with the agent. This can happen because the "
+             "Ray agent was unexpectedly killed or failed. See "
+             "`dashboard_agent.log` for the root cause.";
+      QuickExit();
+    } else {
+      RAY_LOG(WARNING)
+          << "The raylet exited immediately because the Ray agent exited and "
+          << "the raylet fate shares with the agent.";
+    }
   });
   monitor_thread.detach();
 }

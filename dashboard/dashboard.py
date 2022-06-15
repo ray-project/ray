@@ -6,8 +6,7 @@ import platform
 import sys
 import traceback
 
-from signal import SIGINT, SIGTERM
-
+from signal import SIGTERM
 
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.head as dashboard_head
@@ -180,15 +179,14 @@ if __name__ == "__main__":
         )
         loop = asyncio.get_event_loop()
         main_task = loop.create_task(dashboard.run())
+        # add_signal_handler() not available on windows
         if sys.platform != "win32":
-            # add_signal_handler() not available on windows
-            for sig in [SIGINT, SIGTERM]:
-                # Cancel the task when SIGINT and SIGTERM caught.
-                # This will give the underlying head process the chance
-                # to clean up its dependencies gracefully. The clean up
-                # tasks should not block, which is achieved by a timeout
-                # on the wait of the tasks.
-                loop.add_signal_handler(sig, main_task.cancel)
+            # Cancel the task when SIGTERM caught.
+            # This will give the underlying head process the chance
+            # to clean up its dependencies gracefully. The clean up
+            # tasks should not block, which is achieved by a timeout
+            # on the wait of the tasks.
+            loop.add_signal_handler(SIGTERM, main_task.cancel)
 
         loop.run_until_complete(main_task)
     except Exception as e:

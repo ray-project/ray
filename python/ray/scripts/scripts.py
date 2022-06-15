@@ -166,7 +166,7 @@ def continue_debug_session(live_jobs: Set[str]):
                 continue
 
             print("Continuing pdb session in different process...")
-            key = b"RAY_PDB_" + active_session[len("RAY_PDB_CONTINUE_") :]
+            key = b"RAY_PDB_" + active_session[len("RAY_PDB_CONTINUE_"):]
             while True:
                 data = ray.experimental.internal_kv._internal_kv_get(
                     key, namespace=ray_constants.KV_NAMESPACE_PDB
@@ -912,7 +912,7 @@ def start(
         cli_logger.newline()
         with cli_logger.group(cf.bold("--block")):
             cli_logger.print(
-                "This command will now block until terminated by a signal."
+                "This command will now block forever until terminated by a signal."
             )
             cli_logger.print(
                 "Running subprocesses are monitored and a message will be "
@@ -929,9 +929,11 @@ def start(
             # We are explicitly expecting SIGTERM because this is how `ray stop` sends
             # shutdown signal to subprocesses, i.e. log_monitor, raylet...
             # NOTE(rickyyx): We are treating 128+15 as an expected return code since
-            # this is what autoscaler/_private/monitor.py does upon SIGTERM/SIGINT
+            # this is what autoscaler/_private/monitor.py does upon SIGTERM
             # handling.
-            expected_return_codes = [0, signal.SIGTERM, 128 + signal.SIGTERM]
+            expected_return_codes = [0, signal.SIGTERM,
+                                     -1 * signal.SIGTERM,
+                                     128 + signal.SIGTERM]
             unexpected_deceased = [
                 (process_type, process)
                 for process_type, process in deceased
