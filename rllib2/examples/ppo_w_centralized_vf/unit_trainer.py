@@ -116,6 +116,7 @@ class CentralizedVFUnitTrainer(PPOUnitTrainer):
 
 
     def update(self, train_batch: SampleBatch):
+        pass
 
 
 
@@ -157,13 +158,13 @@ for iter in range(NUM_ITER):
     dqn.update_weight('ppo_policy', ppo.get_weight('ppo_policy'))
 
 Action Items:
-1.1. Algorithm should create a dictionary of UnitTrainers:
+1.1. [x] Algorithm should create a dictionary of UnitTrainers:
     self.unit_trainer_map = {'ppo_policy': PPOTrainer(PPORLModule), 'dqn_policy': PPOTrainer(DQNRLModule)}
-1.2. Allow users to construct arbitrary RLModules inside the make_model of a unit_trainer.
+1.2. [x] Allow users to construct arbitrary RLModules inside the make_model of a unit_trainer.
 But if there is a mismatch between the type of the output of forward_train()
 and the expected output type from the UnitTrainer we should raise an error to inform
 them about the mismatch.
-1.3. Inside algorithm.update loop through the unit_trainer_map and only call .update()
+1.3. [x] Inside algorithm.update() loop through the unit_trainer_map and only call .update()
 on those policies that are included in policies_to_train
 
 Notes:
@@ -176,29 +177,117 @@ This is true for both forward() and forward_train() methods.
     1.2.2 They need to both train a share image encoder with two different algorithms?
     Very hard case. See below.
 
---> Sharing modules between different RLModules before construction
+###############
+Sharing modules between different RLModules before construction
+##############
 
 Config Schema:
 
-multi-agent: {
-    'policies': ['ppo_policy', 'dqn_policy'],
-    'policies': {
-        'ppo_policy': (PPORLModule, ppo_config),
-        'dqn_policy': (DQMRLModule, dqn_config),
-    },
-    shared_modules: {
-        'encoder': {
-            'class': Encoder,
-            'config': encoder_config,
-            'shared_between': {'ppo_policy': 'encoder', 'dqn_policy': 'embedder'} # the renaming that needs to happen inside the RLModules
+config = dict(
+    algorithm='PPO',
+    ...
+    multi_agent={
+        'policies': {
+            'ppo_policy': (PPORLModule, ppo_config),
+            'dqn_policy': (DQMRLModule, dqn_config),
         },
-        'dynamics': {
-            'class': DynamicsModel,
-            'config': dynamic_config,
-            'shared_between': {'ppo_policy': 'dynamics_mdl', 'dqn_policy': 'dynamics'}
+        'policies_to_train': {'ppo_policy'}
+        'shared_modules': {
+            'encoder': {
+                'class': Encoder,
+                'config': encoder_config,
+                'shared_between': {'ppo_policy': 'encoder', 'dqn_policy': 'embedder'} # the renaming that needs to happen inside the RLModules
+            },
+            'dynamics': {
+                'class': DynamicsModel,
+                'config': dynamic_config,
+                'shared_between': {'ppo_policy': 'dynamics_mdl', 'dqn_policy': 'dynamics'}
+            }
+    }
+)
+
+
+The algorithm will essentially create the RLModules and then pass them to the corresponding UnitTrainer.
+Each algorithm is built with a special UnitTrainer
+
+def setup():
+    ...
+    encoder = ...
+    dynamics = ...
+    ppo_rl_module = PPORLModule(ppo_config, encoder=encoder, dynamics_mdl=dynamics)
+    dqn_rl_module = DQNRLModule(dqn_config, embedder=encoder, dynamics=dynamics)
+    self.unit_trainer_map = {
+        'ppo_policy': PPOUnitTrainer(ppo_rl_module, ppo_trainer_config),
+        'dqn_policy': PPOUnitTrainer(dqn_rl_module, ppo_trainer_config)
+    }
+
+def training_step():
+    # when and what
+    train_batch: Dict[PolicyID, SampleBatch] = sample()
+    results = self.update(train_batch)
+
+def update():
+    results = {}
+    for pid in self.unit_trainer_map:
+        results[pid] = self.unit_trainer_map[pid].update(train_batch[pid])
+    return results
+
+# TODO: Changes to the design:
+1. The UnitTrainer should accept an RLModule that conforms to a specific RLModuleInterface (e.g. PPORLModule)
+2. The entity creating UnitTrainer should also create the rl_module object that it needs.
+
+2. A homogeneous MARL or a single Agent RL (i.e one policy for m agents in the env)
+This is easy to support with the design above.
+
+config = {
+    algorithm : 'PPO'
+    multi_agent: {
+        'policies': {
+            'default_policy': (PPORLModule, ppo_config),
+        },
+        'shared_between': None
+    }
+}
+
+ppo_rl_module = PPORLModule(ppo_config)
+ppo_trainer = PPOUnitTrainer(ppo_rl_module, ppo_trainer_config)
+self.unit_trainer_map = {'deafult_policy': ppo_trainer}
+
+3. Centralized Critic MARL: several policies controlled by one algorithm that share
+an encoder and a critic.
+
+config = {
+    algorithm: 'PPO',
+    multi_agent: {
+        'policies': {
+            'A': (PPORLModule, ppo_config_A),
+            'B': (PPORLModule, ppo_config_B)
+        }
+        'shared_between': {
+            'encoder': {
+                'class': Encoder,
+                'config': encoder_config,
+                'shared_between': {'A': 'encoder', 'B': 'encoder'}
+            },
+            'vf': {
+                'class': CentralizedVF,
+                'config': vf_conf,
+                'shared_between': {'A': 'vf', 'B': 'vf'}
+            }
         }
     }
 }
 
-2.2
+encoder = ...
+vf = ...
+ppo_rl_module_A = PPORLModule(ppo_config_A, encoder=encoder, vf=vf)
+ppo_rl_module_B = PPORLModule(ppo_config_B, encoder=encoder, vf=vf)
+self.unit_trainer_map = {
+    'A': PPOUnitTrainer(ppo_rl_module_A),
+    'B': PPOUnitTrainer(ppo_rl_module_B)
+}
+
+The centralized value function will use the observation of the current agent +
+other agents's states at the same time-step (which will be provided by the custom
+view_requirement) to compute vf values used in PPO.
 """
