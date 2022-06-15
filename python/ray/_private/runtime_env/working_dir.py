@@ -1,7 +1,8 @@
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, Optional
+import asyncio
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.runtime_env.context import RuntimeEnvContext
@@ -103,7 +104,10 @@ def set_pythonpath_in_context(python_path: str, context: RuntimeEnvContext):
     context.env_vars["PYTHONPATH"] = python_path
 
 
-class WorkingDirManager:
+class WorkingDirPlugin(RuntimeEnvPlugin):
+
+    name = "working_dir"
+
     def __init__(self, resources_dir: str, gcs_aio_client: GcsAioClient):
         self._resources_dir = os.path.join(resources_dir, "working_dir_files")
         self._gcs_aio_client = gcs_aio_client

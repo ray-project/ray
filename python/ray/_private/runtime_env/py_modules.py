@@ -3,6 +3,9 @@ import os
 from pathlib import Path
 from types import ModuleType
 from typing import Any, Dict, List, Optional
+from pathlib import Path
+import asyncio
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.runtime_env.conda_utils import exec_cmd_stream_to_logger
@@ -124,8 +127,11 @@ def upload_py_modules_if_needed(
     return runtime_env
 
 
-class PyModulesManager:
-    def __init__(self, resources_dir: str, gcs_aio_client: GcsAioClient):
+class PyModulesPlugin(RuntimeEnvPlugin):
+
+    name = "py_modules"
+
+    def __init__(self, resources_dir: str, gcs_client: GcsAioClient):
         self._resources_dir = os.path.join(resources_dir, "py_modules_files")
         self._gcs_aio_client = gcs_aio_client
         try_to_create_directory(self._resources_dir)

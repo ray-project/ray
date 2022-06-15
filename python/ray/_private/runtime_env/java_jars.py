@@ -1,6 +1,8 @@
 import logging
 import os
 from typing import Dict, List, Optional
+import asyncio
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.runtime_env.context import RuntimeEnvContext
@@ -16,7 +18,10 @@ from ray.experimental.internal_kv import _internal_kv_initialized
 default_logger = logging.getLogger(__name__)
 
 
-class JavaJarsManager:
+class JavaJarsPlugin(RuntimeEnvPlugin):
+
+    name = "java_jars"
+
     def __init__(self, resources_dir: str, gcs_aio_client: GcsAioClient):
         self._resources_dir = os.path.join(resources_dir, "java_jars_files")
         self._gcs_aio_client = gcs_aio_client

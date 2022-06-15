@@ -1,11 +1,15 @@
+# isort: skip_file
+
+import os
+import sys
+from datetime import datetime
+
 # -*- coding: utf-8 -*-
 from pathlib import Path
-import sys
-import os
 
 sys.path.insert(0, os.path.abspath("."))
 from custom_directives import *
-from datetime import datetime
+
 
 # Mocking modules allows Sphinx to work without installing Ray.
 mock_modules()
