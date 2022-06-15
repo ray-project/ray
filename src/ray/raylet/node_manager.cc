@@ -680,12 +680,13 @@ void NodeManager::HandleReleaseUnusedBundles(
     rpc::ReleaseUnusedBundlesReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Releasing unused bundles.";
-  std::unordered_set<BundleID, pair_hash> in_use_bundles;
+  std::unordered_set<BundleID, pair_hash> in_use_bundles_flat;
+  absl::flat_hash_map<PlacementGroupID, absl::flat_hash_set<int64_t>> in_use_bundles;
   for (int index = 0; index < request.bundles_in_use_size(); ++index) {
     const auto &bundle_id = request.bundles_in_use(index).bundle_id();
-    in_use_bundles.emplace(
-        std::make_pair(PlacementGroupID::FromBinary(bundle_id.placement_group_id()),
-                       bundle_id.bundle_index()));
+    auto pg_id = PlacementGroupID::FromBinary(bundle_id.placement_group_id());
+    in_use_bundles[pg_id].insert(bundle_id.bundle_index());
+    in_use_bundles_flat.emplace(pg_id, bundle_id.bundle_index());
   }
 
   // Kill all workers that are currently associated with the unused bundles.
@@ -697,8 +698,12 @@ void NodeManager::HandleReleaseUnusedBundles(
     auto &worker = worker_it.second;
     const auto &bundle_id = worker->GetBundleId();
     // We need to filter out the workers used by placement group.
-    if (!bundle_id.first.IsNil() && 0 == in_use_bundles.count(bundle_id)) {
-      workers_associated_with_unused_bundles.emplace_back(worker);
+    if (!bundle_id.first.IsNil()) {
+      if (auto iter = in_use_bundles.find(bundle_id.first);
+          iter == in_use_bundles.end() ||
+          (bundle_id.second != -1 && iter->second.count(bundle_id.second) == 0)) {
+        workers_associated_with_unused_bundles.emplace_back(worker);
+      }
     }
   }
 
@@ -717,7 +722,7 @@ void NodeManager::HandleReleaseUnusedBundles(
   }
 
   // Return unused bundle resources.
-  placement_group_resource_manager_->ReturnUnusedBundle(in_use_bundles);
+  placement_group_resource_manager_->ReturnUnusedBundle(in_use_bundles_flat);
 
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }

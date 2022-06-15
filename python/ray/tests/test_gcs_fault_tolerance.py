@@ -496,6 +496,7 @@ def test_pg_actor_workloads(ray_start_regular_with_external_redis):
 
         def pid(self):
             import os
+
             return os.getpid()
 
     c = Counter.options(placement_group=pg).remote()
@@ -512,6 +513,7 @@ def test_pg_actor_workloads(ray_start_regular_with_external_redis):
 
     for _ in range(100):
         assert pid == ray.get(c.pid.remote())
+
 
 if __name__ == "__main__":
     import pytest
