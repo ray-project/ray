@@ -145,6 +145,15 @@ MYPY_FILES=(
     '_private/gcs_utils.py'
 )
 
+ISORT_PATHS=(
+    # TODO: Expand this list and remove once it is applied to the entire codebase.
+    'python/ray/autoscaler/'
+    'doc/'
+)
+
+ISORT_GIT_LS_EXCLUDES=(
+  ':(exclude)doc/**/doc_code/*'
+)
 
 BLACK_EXCLUDES=(
     '--force-exclude' 'python/ray/cloudpickle/*'
