@@ -1,44 +1,36 @@
 # coding: utf-8
 import copy
 import inspect
-import random
-from collections import deque
-from enum import Enum
-from functools import partial
 import logging
 import os
+import random
 import time
 import traceback
+from collections import deque
 from contextlib import contextmanager
-from typing import (
-    Callable,
-    Dict,
-    Iterable,
-    List,
-    Optional,
-    Set,
-    Union,
-)
+from enum import Enum
+from functools import partial
+from typing import Callable, Dict, Iterable, List, Optional, Set, Union
 
 import ray
+from ray.air import Checkpoint
 from ray.exceptions import GetTimeoutError, RayTaskError
 from ray.tune.error import (
-    _AbortTrialExecution,
     TuneError,
-    _TuneStartTrialError,
+    _AbortTrialExecution,
     _TuneNoNextExecutorEventError,
+    _TuneStartTrialError,
 )
 from ray.tune.logger import NoopLogger
-from ray.tune.result import TRIAL_INFO, STDOUT_FILE, STDERR_FILE
-from ray.tune.utils.placement_groups import _PlacementGroupManager, get_tune_pg_prefix
-from ray.tune.utils.trainable import TrainableUtil
+from ray.tune.result import STDERR_FILE, STDOUT_FILE, TRIAL_INFO
 from ray.tune.trial import Trial, _Location, _TrialInfo
 from ray.tune.utils import warn_if_slow
+from ray.tune.utils.placement_groups import _PlacementGroupManager, get_tune_pg_prefix
 from ray.tune.utils.resource_updater import _ResourceUpdater
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
-from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
-from ray.util.placement_group import remove_placement_group, PlacementGroup
+from ray.util.ml_utils.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
+from ray.util.placement_group import PlacementGroup, remove_placement_group
 
 logger = logging.getLogger(__name__)
 
@@ -799,7 +791,7 @@ class RayTrialExecutor:
                 # This provides FT backwards compatibility in the
                 # case where no cloud checkpoints are provided.
                 logger.debug("Trial %s: Reading checkpoint into memory", trial)
-                obj = TrainableUtil.checkpoint_to_object(checkpoint_dir)
+                obj = Checkpoint.from_directory(checkpoint_dir).to_bytes()
                 with self._change_working_directory(trial):
                     remote = trial.runner.restore_from_object.remote(obj)
             else:

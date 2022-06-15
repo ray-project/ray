@@ -1,11 +1,12 @@
 import glob
 import inspect
-import io
 import logging
 import os
-import pandas as pd
 import shutil
-from typing import Any, Dict, Union, Optional
+from typing import Any, Dict, Optional, Union
+
+import pandas as pd
+from six import string_types
 
 import ray
 import ray.cloudpickle as pickle
@@ -13,7 +14,6 @@ from ray.tune.registry import _ParameterRegistry
 from ray.tune.utils import detect_checkpoint_function
 from ray.util import placement_group
 from ray.util.annotations import DeveloperAPI
-from six import string_types
 
 logger = logging.getLogger(__name__)
 
@@ -101,15 +101,6 @@ class TrainableUtil:
         return data_dict
 
     @staticmethod
-    def checkpoint_to_object(checkpoint_path):
-        data_dict = TrainableUtil.pickle_checkpoint(checkpoint_path)
-        out = io.BytesIO()
-        if len(data_dict) > 10e6:  # getting pretty large
-            logger.info("Checkpoint size is {} bytes".format(len(data_dict)))
-        out.write(data_dict)
-        return out.getvalue()
-
-    @staticmethod
     def find_checkpoint_dir(checkpoint_path):
         """Returns the directory containing the checkpoint path.
 
@@ -171,21 +162,6 @@ class TrainableUtil:
         # Drop marker in directory to identify it as a checkpoint dir.
         open(os.path.join(checkpoint_dir, ".is_checkpoint"), "a").close()
         return checkpoint_dir
-
-    @staticmethod
-    def create_from_pickle(obj, tmpdir):
-        info = pickle.loads(obj)
-        data = info["data"]
-        checkpoint_path = os.path.join(tmpdir, info["checkpoint_name"])
-
-        for relpath_name, file_contents in data.items():
-            path = os.path.join(tmpdir, relpath_name)
-
-            # This may be a subdirectory, hence not just using tmpdir
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-            with open(path, "wb") as f:
-                f.write(file_contents)
-        return checkpoint_path
 
     @staticmethod
     def get_checkpoints_paths(logdir):

@@ -2,10 +2,12 @@ import os
 from typing import Optional, Union
 
 import pandas as pd
-from ray.cloudpickle import cloudpickle
-from ray.exceptions import RayTaskError
+
+import ray
 from ray.air.checkpoint import Checkpoint
 from ray.air.result import Result
+from ray.cloudpickle import cloudpickle
+from ray.exceptions import RayTaskError
 from ray.tune import ExperimentAnalysis
 from ray.tune.error import TuneError
 from ray.tune.trial import Trial
@@ -165,11 +167,25 @@ class ResultGrid:
         return None
 
     def _trial_to_result(self, trial: Trial) -> Result:
-        if trial.checkpoint.dir_or_data:
-            checkpoint_dir = TrainableUtil.find_checkpoint_dir(
-                trial.checkpoint.dir_or_data
-            )
-            checkpoint = Checkpoint.from_directory(checkpoint_dir)
+        checkpoint_data = trial.checkpoint.dir_or_data
+
+        if checkpoint_data:
+            if isinstance(checkpoint_data, ray.ObjectRef):
+                checkpoint_data = ray.get(checkpoint_data)
+
+            if isinstance(checkpoint_data, str):
+                checkpoint_dir = TrainableUtil.find_checkpoint_dir(
+                    trial.checkpoint.dir_or_data
+                )
+                checkpoint = Checkpoint.from_directory(checkpoint_dir)
+            elif isinstance(checkpoint_data, bytes):
+                checkpoint = Checkpoint.from_bytes(checkpoint_data)
+            elif isinstance(checkpoint_data, dict):
+                checkpoint = Checkpoint.from_dict(checkpoint_data)
+            else:
+                raise RuntimeError(
+                    f"Unknown checkpoint data type: {type(checkpoint_data)}"
+                )
         else:
             checkpoint = None
 

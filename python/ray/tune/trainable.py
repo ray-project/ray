@@ -1,16 +1,16 @@
-import subprocess
-from contextlib import redirect_stdout, redirect_stderr
 import copy
-from datetime import datetime
 import logging
 import os
 import platform
 import shutil
+import subprocess
 import sys
 import tempfile
 import time
-from typing import Any, Dict, Optional, Union, Callable, List
 import uuid
+from contextlib import redirect_stderr, redirect_stdout
+from datetime import datetime
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import ray
 import ray.cloudpickle as pickle
@@ -21,34 +21,34 @@ from ray.tune.resources import Resources
 from ray.tune.result import (
     DEBUG_METRICS,
     DEFAULT_RESULTS_DIR,
+    DONE,
+    EPISODES_THIS_ITER,
+    EPISODES_TOTAL,
     HOSTNAME,
     NODE_IP,
     PID,
+    RESULT_DUPLICATE,
     SHOULD_CHECKPOINT,
+    STDERR_FILE,
+    STDOUT_FILE,
     TIME_THIS_ITER_S,
     TIME_TOTAL_S,
     TIMESTEPS_THIS_ITER,
-    DONE,
     TIMESTEPS_TOTAL,
-    EPISODES_THIS_ITER,
-    EPISODES_TOTAL,
     TRAINING_ITERATION,
-    RESULT_DUPLICATE,
     TRIAL_ID,
     TRIAL_INFO,
-    STDOUT_FILE,
-    STDERR_FILE,
 )
 from ray.tune.syncer import Syncer
 from ray.tune.utils import UtilMonitor
+from ray.tune.utils.log import disable_ipython
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.tune.utils.trainable import TrainableUtil
-from ray.tune.utils.log import disable_ipython
 from ray.tune.utils.util import (
     Tee,
-    retry_fn,
-    get_checkpoint_from_remote_node,
     delete_external_checkpoint,
+    get_checkpoint_from_remote_node,
+    retry_fn,
 )
 from ray.util.annotations import PublicAPI
 
@@ -503,12 +503,12 @@ class Trainable:
         Returns:
             Object holding checkpoint data.
         """
-        tmpdir = tempfile.mkdtemp("save_to_object", dir=self.logdir)
-        checkpoint_path = self.save(tmpdir)
-        # Save all files in subtree and delete the tmpdir.
-        obj = TrainableUtil.checkpoint_to_object(checkpoint_path)
-        shutil.rmtree(tmpdir)
-        return obj
+        checkpoint_path = tempfile.mkdtemp("save_to_object", dir=self.logdir)
+        self.save(checkpoint_path)
+
+        obj_ref = Checkpoint.from_directory(checkpoint_path).to_bytes()
+        shutil.rmtree(checkpoint_path)
+        return obj_ref
 
     def restore(self, checkpoint_path: str, checkpoint_node_ip: Optional[str] = None):
         """Restores training state from a given model checkpoint.
@@ -567,8 +567,14 @@ class Trainable:
                 f"Got checkpoint path: {checkpoint_path} and IP {checkpoint_node_ip}"
             )
 
-        with open(checkpoint_path + ".tune_metadata", "rb") as f:
+        if os.path.isdir(checkpoint_path):
+            metadata_file = os.path.join(checkpoint_path, ".tune_metadata")
+        else:
+            metadata_file = checkpoint_path + ".tune_metadata"
+
+        with open(metadata_file, "rb") as f:
             metadata = pickle.load(f)
+
         self._experiment_id = metadata["experiment_id"]
         self._iteration = metadata["iteration"]
         self._timesteps_total = metadata["timesteps_total"]
@@ -602,10 +608,10 @@ class Trainable:
 
         These checkpoints are returned from calls to save_to_object().
         """
-        tmpdir = tempfile.mkdtemp("restore_from_object", dir=self.logdir)
-        checkpoint_path = TrainableUtil.create_from_pickle(obj, tmpdir)
-        self.restore(checkpoint_path)
-        shutil.rmtree(tmpdir)
+        checkpoint = Checkpoint.from_bytes(obj)
+
+        with checkpoint.as_directory() as checkpoint_path:
+            self.restore(checkpoint_path)
 
     def delete_checkpoint(self, checkpoint_path: str):
         """Deletes local copy of checkpoint.
