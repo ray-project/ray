@@ -125,6 +125,7 @@ def test_runtime_env_config(start_cluster):
 
 
 if __name__ == "__main__":
+    import os
     import sys
 
     if os.environ.get("PARALLEL_CI"):

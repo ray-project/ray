@@ -48,6 +48,7 @@ def test_parse_resource_demands():
 
 
 if __name__ == "__main__":
+    import os
     import sys
     import pytest
 

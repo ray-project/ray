@@ -323,6 +323,7 @@ def test_named_actor_refcount(ray_start_regular):
 
 
 if __name__ == "__main__":
+    import os
     import sys
     import pytest
 

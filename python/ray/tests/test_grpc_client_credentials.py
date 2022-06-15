@@ -55,6 +55,7 @@ def test_grpc_client_credentials_are_generated(monkeypatch):
 
 
 if __name__ == "__main__":
+    import os
     import sys
 
     if os.environ.get("PARALLEL_CI"):

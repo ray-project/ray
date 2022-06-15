@@ -48,6 +48,7 @@ f.remote()
 
 if __name__ == "__main__":
     import pytest
+    import os
     import sys
 
     if os.environ.get("PARALLEL_CI"):

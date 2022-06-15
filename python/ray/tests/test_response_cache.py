@@ -218,6 +218,7 @@ def test_response_cache_invalidate():
 
 
 if __name__ == "__main__":
+    import os
     import sys
 
     if os.environ.get("PARALLEL_CI"):

@@ -90,6 +90,7 @@ def test_getting_many_objects(ray_start_sharded):
 
 if __name__ == "__main__":
     import pytest
+    import os
     import sys
 
     if os.environ.get("PARALLEL_CI"):

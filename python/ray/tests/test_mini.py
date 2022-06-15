@@ -63,6 +63,7 @@ def test_actor_api(ray_start_regular):
 
 if __name__ == "__main__":
     import pytest
+    import os
     import sys
 
     if os.environ.get("PARALLEL_CI"):

@@ -155,6 +155,7 @@ def test_multiple_objects(ray_start_cluster):
 
 if __name__ == "__main__":
     import pytest
+    import os
     import sys
 
     if os.environ.get("PARALLEL_CI"):

@@ -273,6 +273,7 @@ def test_pull_from_streaming_batch_queue(ray_start_regular_shared):
 
 
 if __name__ == "__main__":
+    import os
     import sys
 
     if os.environ.get("PARALLEL_CI"):

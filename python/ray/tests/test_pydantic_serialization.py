@@ -182,6 +182,7 @@ def test_serialize_nested_field(start_ray):
 
 
 if __name__ == "__main__":
+    import os
     import sys
 
     if os.environ.get("PARALLEL_CI"):

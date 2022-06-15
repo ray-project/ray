@@ -363,6 +363,7 @@ def test_multi_node_pgs(ray_start_cluster):
 
 if __name__ == "__main__":
     import pytest
+    import os
     import sys
 
     if os.environ.get("PARALLEL_CI"):

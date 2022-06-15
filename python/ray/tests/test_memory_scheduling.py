@@ -75,6 +75,7 @@ def test_object_store_memory_reporting_task():
 
 if __name__ == "__main__":
     import pytest
+    import os
     import sys
 
     if os.environ.get("PARALLEL_CI"):

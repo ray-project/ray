@@ -35,6 +35,7 @@ class LoggerSuite(unittest.TestCase):
 
 
 if __name__ == "__main__":
+    import os
     import sys
     import pytest
 

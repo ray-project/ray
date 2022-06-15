@@ -108,6 +108,7 @@ def test_drain_api(shutdown_only):
 
 
 if __name__ == "__main__":
+    import os
     import sys
 
     if os.environ.get("PARALLEL_CI"):

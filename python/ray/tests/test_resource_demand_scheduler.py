@@ -3001,6 +3001,7 @@ def test_placement_group_match_string():
 
 
 if __name__ == "__main__":
+    import os
     import sys
 
     if os.environ.get("PARALLEL_CI"):

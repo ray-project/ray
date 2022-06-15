@@ -388,6 +388,7 @@ def test_serialization_error_message(shutdown_only):
 
 if __name__ == "__main__":
     import pytest
+    import os
     import sys
 
     if os.environ.get("PARALLEL_CI"):
