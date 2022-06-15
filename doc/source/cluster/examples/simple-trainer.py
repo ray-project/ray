@@ -1,9 +1,11 @@
-# trainer.py
-from collections import Counter
 import os
 import socket
 import sys
 import time
+
+# trainer.py
+from collections import Counter
+
 import ray
 
 num_cpus = int(sys.argv[1])

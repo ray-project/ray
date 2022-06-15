@@ -1,16 +1,16 @@
 #!/usr/bin/env python3 -u
 
-import math
 import copy
+import math
 import socket
 import time
-
-import ray
+from contextlib import closing
 
 import fairseq
 from fairseq import options
 from fairseq_cli.train import main
-from contextlib import closing
+
+import ray
 
 _original_save_checkpoint = fairseq.checkpoint_utils.save_checkpoint
 

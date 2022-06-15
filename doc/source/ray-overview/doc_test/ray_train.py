@@ -1,6 +1,7 @@
+import torch
+
 import ray.train as train
 from ray.train import Trainer
-import torch
 
 
 def train_func():

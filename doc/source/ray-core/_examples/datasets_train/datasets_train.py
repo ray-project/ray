@@ -18,22 +18,23 @@ from typing import Tuple
 import boto3
 import mlflow
 import pandas as pd
-import ray
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.nn.parallel import DistributedDataParallel
+
+import ray
 from ray import train
 from ray.data.aggregate import Mean, Std
 from ray.train import Trainer
-from ray.train.callbacks.logging import MLflowLoggerCallback
 from ray.train.callbacks import TBXLoggerCallback
-from torch.nn.parallel import DistributedDataParallel
+from ray.train.callbacks.logging import MLflowLoggerCallback
 
 
 def make_and_upload_dataset(dir_path):
 
-    import random
     import os
+    import random
 
     import pandas as pd
     import sklearn.datasets

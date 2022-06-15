@@ -1,6 +1,7 @@
-from collections import Counter
 import sys
 import time
+from collections import Counter
+
 import ray
 
 """ This script is meant to be run from a pod in the same Kubernetes namespace
