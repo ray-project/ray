@@ -255,7 +255,7 @@ class LongPollHost:
                 )
             }
 
-    async def listen_for_change_xlang(
+    async def listen_for_change_java(
         self,
         keys_to_snapshot_ids_bytes: bytes,
     ) -> bytes:

@@ -160,7 +160,7 @@ class ServeController:
         """
         return await (self.long_poll_host.listen_for_change(keys_to_snapshot_ids))
 
-    async def listen_for_change_xlang(self, keys_to_snapshot_ids_bytes: bytes):
+    async def listen_for_change_java(self, keys_to_snapshot_ids_bytes: bytes):
         """Proxy long pull client's listen request.
 
         Args:
@@ -168,7 +168,7 @@ class ServeController:
               keys_to_snapshot_ids (Dict[str, int]).
         """
         return await (
-            self.long_poll_host.listen_for_change_xlang(keys_to_snapshot_ids_bytes)
+            self.long_poll_host.listen_for_change_java(keys_to_snapshot_ids_bytes)
         )
 
     def get_checkpoint_path(self) -> str:
@@ -178,7 +178,7 @@ class ServeController:
         """Returns a dictionary of deployment name to config."""
         return self.endpoint_state.get_endpoints()
 
-    def get_all_endpoints_xlang(self) -> bytes:
+    def get_all_endpoints_java(self) -> bytes:
         """Returns a dictionary of deployment name to config."""
         endpoints = self.get_all_endpoints()
         data = {

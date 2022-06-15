@@ -15,7 +15,10 @@ public class Constants {
           1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0, 200.0, 500.0, 1000.0, 2000.0, 5000.0);
 
   /** Name of controller listen_for_change method. */
-  public static final String CONTROLLER_LISTEN_FOR_CHANGE_METHOD = "listen_for_change_xlang";
+  public static final String CONTROLLER_LISTEN_FOR_CHANGE_METHOD = "listen_for_change_java";
+
+  /** Name of controller get_all_endpoints method. */
+  public static final String CONTROLLER_GET_ALL_ENDPOINTS_METHOD = "get_all_endpoints_java";
 
   public static final String SERVE_CONTROLLER_NAME = "SERVE_CONTROLLER_ACTOR";
 

@@ -6,6 +6,7 @@ import io.ray.api.BaseActorHandle;
 import io.ray.api.PyActorHandle;
 import io.ray.api.Ray;
 import io.ray.api.function.PyActorMethod;
+import io.ray.serve.common.Constants;
 import io.ray.serve.config.DeploymentConfig;
 import io.ray.serve.config.ReplicaConfig;
 import io.ray.serve.controller.ServeController;
@@ -104,7 +105,7 @@ public class ServeControllerClient {
           ServeProtoUtil.parseEndpointSet(
               (byte[])
                   ((PyActorHandle) controller)
-                      .task(PyActorMethod.of("get_all_endpoints_xlang"))
+                      .task(PyActorMethod.of(Constants.CONTROLLER_GET_ALL_ENDPOINTS_METHOD))
                       .remote()
                       .get()); // TODO-0528 endpoint list
     } else {
