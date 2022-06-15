@@ -18,34 +18,32 @@ Note: config cache does not work with AWS mocks since the AWS resource ids are
       randomized each time.
 """
 import glob
+import multiprocessing as mp
+import os
+import re
 import sys
 import tempfile
-from typing import Optional
+import time
 import uuid
-import re
-import os
-from click.testing import CliRunner
 from contextlib import contextmanager
 from pathlib import Path
-
-import pytest
-
-import moto
-from moto import mock_ec2, mock_iam
-import multiprocessing as mp
-import psutil
-import time
+from typing import Optional
 from unittest.mock import MagicMock, patch
 
+import moto
+import psutil
+import pytest
+from click.testing import CliRunner
+from moto import mock_ec2, mock_iam
 from testfixtures import Replacer
 from testfixtures.popen import MockPopen, PopenBehaviour
 
 import ray
 import ray.autoscaler._private.aws.config as aws_config
 import ray.ray_constants as ray_constants
-from ray.cluster_utils import cluster_not_supported
 import ray.scripts.scripts as scripts
 from ray._private.test_utils import wait_for_condition
+from ray.cluster_utils import cluster_not_supported
 
 boto3_list = [
     {
@@ -138,7 +136,9 @@ def _debug_die(output, assert_msg: str = ""):
     assert False, assert_msg
 
 
-def _fail_if_false(predicate: bool, stdout: Optional[str] = "", assert_msg: Optional[str] = ""):
+def _fail_if_false(
+    predicate: bool, stdout: Optional[str] = "", assert_msg: Optional[str] = ""
+):
     if not predicate:
         _debug_die(stdout, assert_msg)
 
@@ -155,7 +155,7 @@ def _debug_check_line_by_line(result, expected_lines):
         if i >= len(expected_lines):
             i += 1
             print("!!!!!! Expected fewer lines")
-            context = [f"CONTEXT: {line}" for line in output_lines[i - 3: i]]
+            context = [f"CONTEXT: {line}" for line in output_lines[i - 3 : i]]
             print("\n".join(context))
             extra = [f"-- {line}" for line in output_lines[i:]]
             print("\n".join(extra))
@@ -327,14 +327,16 @@ def test_ray_start_hook(configure_lang, monkeypatch, tmp_path):
 
 
 @pytest.mark.skipif(
-    sys.platform == "darwin" and "travis" in os.environ.get(
-        "USER", "") or sys.platform == "win32",
-    reason=("Mac builds don't provide proper locale support. "
-            "Windows signal handling not compatible"),
+    sys.platform == "darwin"
+    and "travis" in os.environ.get("USER", "")
+    or sys.platform == "win32",
+    reason=(
+        "Mac builds don't provide proper locale support. "
+        "Windows signal handling not compatible"
+    ),
 )
 def test_ray_start_head_block_and_signals(configure_lang, monkeypatch, tmp_path):
-    """Test `ray start` with `--block` as heads and workers and signal handles
-    """
+    """Test `ray start` with `--block` as heads and workers and signal handles"""
 
     monkeypatch.setenv("RAY_USAGE_STATS_CONFIG_PATH", str(tmp_path / "config.json"))
     runner = CliRunner()
@@ -342,9 +344,10 @@ def test_ray_start_head_block_and_signals(configure_lang, monkeypatch, tmp_path)
     head_parent_conn, head_child_conn = mp.Pipe()
 
     # Run `ray start --block --head` in another process and blocks
-    head_proc = mp.Process(target=_start_ray_and_block, kwargs={
-        "runner": runner,
-        "child_conn": head_child_conn, "as_head": True})
+    head_proc = mp.Process(
+        target=_start_ray_and_block,
+        kwargs={"runner": runner, "child_conn": head_child_conn, "as_head": True},
+    )
 
     # Run
     head_proc.start()
@@ -367,9 +370,14 @@ def test_ray_start_head_block_and_signals(configure_lang, monkeypatch, tmp_path)
         if not head_proc.is_alive():
             # NOTE(rickyyx): call recv() here is safe since the process
             # is guaranteed to be terminated.
-            _fail_if_false(False, head_parent_conn.recv(),
-                           ("`ray start --head --block` should not exit when subprocess"
-                            " is terminated. It exited with {head_proc.exitcode}."))
+            _fail_if_false(
+                False,
+                head_parent_conn.recv(),
+                (
+                    "`ray start --head --block` should not exit when subprocess"
+                    " is terminated. It exited with {head_proc.exitcode}."
+                ),
+            )
 
     # Kill the GCS last should unblock the CLI
     gcs_proc.kill()
@@ -383,22 +391,27 @@ def test_ray_start_head_block_and_signals(configure_lang, monkeypatch, tmp_path)
     if head_proc.is_alive() or head_proc.exitcode == 0:
         # NOTE(rickyx): call recv() here is safe since the process
         # is guaranteed to be terminated.
-        _fail_if_false(False, head_parent_conn.recv()
-                       if not head_proc.is_alive()
-                       else "still alive",
-                       ("Head process should have exited with errors when one of"
-                       f" subprocesses killed. {head_proc.exitcode}"))
+        _fail_if_false(
+            False,
+            head_parent_conn.recv() if not head_proc.is_alive() else "still alive",
+            (
+                "Head process should have exited with errors when one of"
+                f" subprocesses killed. {head_proc.exitcode}"
+            ),
+        )
 
 
 @pytest.mark.skipif(
-    sys.platform == "darwin" and "travis" in os.environ.get(
-        "USER", "") or sys.platform == "win32",
-    reason=("Mac builds don't provide proper locale support. "
-            "Windows signal handling not compatible"),
+    sys.platform == "darwin"
+    and "travis" in os.environ.get("USER", "")
+    or sys.platform == "win32",
+    reason=(
+        "Mac builds don't provide proper locale support. "
+        "Windows signal handling not compatible"
+    ),
 )
 def test_ray_start_block_and_stop(configure_lang, monkeypatch, tmp_path):
-    """Test `ray start` with `--block` as heads and workers and `ray stop`
-    """
+    """Test `ray start` with `--block` as heads and workers and `ray stop`"""
     monkeypatch.setenv("RAY_USAGE_STATS_CONFIG_PATH", str(tmp_path / "config.json"))
     runner = CliRunner()
 
@@ -406,15 +419,16 @@ def test_ray_start_block_and_stop(configure_lang, monkeypatch, tmp_path):
     worker_parent_conn, worker_child_conn = mp.Pipe()
 
     # Run `ray start --block --head` in another process and blocks
-    head_proc = mp.Process(target=_start_ray_and_block, kwargs={
-        "runner": runner,
-        "child_conn": head_child_conn, "as_head": True})
+    head_proc = mp.Process(
+        target=_start_ray_and_block,
+        kwargs={"runner": runner, "child_conn": head_child_conn, "as_head": True},
+    )
 
     # Run `ray start --block --address=localhost:DEFAULT_PORT`
-    worker_proc = mp.Process(target=_start_ray_and_block, kwargs={
-        "runner": runner,
-        "child_conn": worker_child_conn, "as_head": False
-    })
+    worker_proc = mp.Process(
+        target=_start_ray_and_block,
+        kwargs={"runner": runner, "child_conn": worker_child_conn, "as_head": False},
+    )
 
     # Run
     head_proc.start()
@@ -429,16 +443,26 @@ def test_ray_start_block_and_stop(configure_lang, monkeypatch, tmp_path):
     if not head_proc.is_alive():
         # NOTE(rickyx): call recv() here is safe since the process
         # is guaranteed to be terminated.
-        _fail_if_false(False, head_parent_conn.recv(),
-                       ("`ray start --head --block` should block forever even"
-                        " though Ray subprocesses are stopped normally. But "
-                        f"it exited with {head_proc.exitcode} early."))
+        _fail_if_false(
+            False,
+            head_parent_conn.recv(),
+            (
+                "`ray start --head --block` should block forever even"
+                " though Ray subprocesses are stopped normally. But "
+                f"it exited with {head_proc.exitcode} early."
+            ),
+        )
 
     if not worker_proc.is_alive():
-        _fail_if_false(False, worker_parent_conn.recv(),
-                       ("`ray start --block` should block forever even"
-                        " though Ray subprocesses are stopped normally. But"
-                        f"it exited with {worker_proc.exitcode} already."))
+        _fail_if_false(
+            False,
+            worker_parent_conn.recv(),
+            (
+                "`ray start --block` should block forever even"
+                " though Ray subprocesses are stopped normally. But"
+                f"it exited with {worker_proc.exitcode} already."
+            ),
+        )
 
     # Stop both worker and head with SIGTERM
     head_proc.terminate()
@@ -450,11 +474,17 @@ def test_ray_start_block_and_stop(configure_lang, monkeypatch, tmp_path):
     head_proc.join()
     worker_proc.join()
 
-    _fail_if_false(head_proc.exitcode == 0, head_output,
-                   f"Head process failed unexpectedly({head_proc.exitcode})")
+    _fail_if_false(
+        head_proc.exitcode == 0,
+        head_output,
+        f"Head process failed unexpectedly({head_proc.exitcode})",
+    )
 
-    _fail_if_false(worker_proc.exitcode == 0, worker_output,
-                   f"Worker process failed unexpectedly({worker_proc.exitcode})")
+    _fail_if_false(
+        worker_proc.exitcode == 0,
+        worker_output,
+        f"Worker process failed unexpectedly({worker_proc.exitcode})",
+    )
 
 
 @pytest.mark.skipif(
