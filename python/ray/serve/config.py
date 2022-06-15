@@ -84,7 +84,8 @@ class AutoscalingConfig(BaseModel):
 
 
 def _need_pickle(deployment_language: DeploymentLanguage, is_cross_language: bool):
-    # TODO(yangxiaofeng): If there are three language types of serve, this method will no work
+    # TODO(yangxiaofeng): If there are three language types of serve,
+    #  this method will no work
     if deployment_language == DeploymentLanguage.PYTHON:
         if is_cross_language:
             return False
@@ -191,8 +192,14 @@ class DeploymentConfig(BaseModel):
         )
         if "user_config" in data:
             if data["user_config"] != "":
-                deployment_language = data["deployment_language"] if "deployment_language" in data else DeploymentLanguage.PYTHON
-                is_cross_language = data["is_cross_language"] if "is_cross_language" in data else False
+                deployment_language = (
+                    data["deployment_language"]
+                    if "deployment_language" in data
+                    else DeploymentLanguage.PYTHON
+                )
+                is_cross_language = (
+                    data["is_cross_language"] if "is_cross_language" in data else False
+                )
                 need_pickle = _need_pickle(deployment_language, is_cross_language)
                 if need_pickle:
                     data["user_config"] = cloudpickle.loads(proto.user_config)
