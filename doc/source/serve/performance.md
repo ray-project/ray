@@ -39,7 +39,7 @@ Given the symptom, there are several ways to fix it.
 ### Choosing the right hardware
 
 Make sure you are using the right hardware and resources.
-Are you using GPUs (`actor_init_options={“num_gpus”: 1}`) or 1+ cores (`actor_init_options={“num_cpus”: 2}`, and setting `OMP_NUM_THREADS`)
+Are you using GPUs (`ray_actor_options={“num_gpus”: 1}`) or 1+ cores (`ray_actor_options={“num_cpus”: 2}`, and setting `OMP_NUM_THREADS`)
 to increase the performance of your deep learning framework?
 
 ### Async functions
