@@ -609,6 +609,8 @@ def test_actor_task_fast_fail(ray_start_cluster):
 
 
 if __name__ == "__main__":
+    import os
+
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:
