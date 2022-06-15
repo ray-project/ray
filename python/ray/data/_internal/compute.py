@@ -1,20 +1,20 @@
 import collections
-from typing import TypeVar, Any, Union, Callable, List, Tuple, Optional
+from typing import Any, Callable, List, Optional, Tuple, TypeVar, Union
 
 import ray
-from ray.util.annotations import PublicAPI, DeveloperAPI
+from ray.data._internal.block_list import BlockList
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.progress_bar import ProgressBar
+from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data.block import (
     Block,
     BlockAccessor,
+    BlockExecStats,
     BlockMetadata,
     BlockPartition,
-    BlockExecStats,
 )
-from ray.data.context import DatasetContext, DEFAULT_SCHEDULING_STRATEGY
-from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data._internal.block_list import BlockList
-from ray.data._internal.progress_bar import ProgressBar
-from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, DatasetContext
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 T = TypeVar("T")
 U = TypeVar("U")
@@ -203,73 +203,78 @@ class ActorPoolStrategy(ComputeStrategy):
         block_indices = {}
         ready_workers = set()
 
-        while len(results) < orig_num_blocks:
-            ready, _ = ray.wait(
-                list(tasks.keys()), timeout=0.01, num_returns=1, fetch_local=False
-            )
-            if not ready:
-                if (
-                    len(workers) < self.max_size
-                    and len(ready_workers) / len(workers) > 0.8
-                ):
-                    w = BlockWorker.remote()
-                    workers.append(w)
-                    tasks[w.ready.remote()] = w
+        try:
+            while len(results) < orig_num_blocks:
+                ready, _ = ray.wait(
+                    list(tasks.keys()), timeout=0.01, num_returns=1, fetch_local=False
+                )
+                if not ready:
+                    if (
+                        len(workers) < self.max_size
+                        and len(ready_workers) / len(workers) > 0.8
+                    ):
+                        w = BlockWorker.remote()
+                        workers.append(w)
+                        tasks[w.ready.remote()] = w
+                        map_bar.set_description(
+                            "Map Progress ({} actors {} pending)".format(
+                                len(ready_workers), len(workers) - len(ready_workers)
+                            )
+                        )
+                    continue
+
+                [obj_id] = ready
+                worker = tasks.pop(obj_id)
+
+                # Process task result.
+                if worker in ready_workers:
+                    results.append(obj_id)
+                    tasks_in_flight[worker] -= 1
+                    map_bar.update(1)
+                else:
+                    ready_workers.add(worker)
                     map_bar.set_description(
                         "Map Progress ({} actors {} pending)".format(
                             len(ready_workers), len(workers) - len(ready_workers)
                         )
                     )
-                continue
 
-            [obj_id] = ready
-            worker = tasks.pop(obj_id)
+                # Schedule a new task.
+                while (
+                    blocks_in
+                    and tasks_in_flight[worker] < self.max_tasks_in_flight_per_actor
+                ):
+                    block, meta = blocks_in.pop()
+                    if context.block_splitting_enabled:
+                        ref = worker.map_block_split.remote(block, meta.input_files)
+                    else:
+                        ref, meta_ref = worker.map_block_nosplit.remote(
+                            block, meta.input_files
+                        )
+                        metadata_mapping[ref] = meta_ref
+                    tasks[ref] = worker
+                    block_indices[ref] = len(blocks_in)
+                    tasks_in_flight[worker] += 1
 
-            # Process task result.
-            if worker in ready_workers:
-                results.append(obj_id)
-                tasks_in_flight[worker] -= 1
-                map_bar.update(1)
+            map_bar.close()
+            new_blocks, new_metadata = [], []
+            # Put blocks in input order.
+            results.sort(key=block_indices.get)
+            if context.block_splitting_enabled:
+                for result in ray.get(results):
+                    for block, metadata in result:
+                        new_blocks.append(block)
+                        new_metadata.append(metadata)
             else:
-                ready_workers.add(worker)
-                map_bar.set_description(
-                    "Map Progress ({} actors {} pending)".format(
-                        len(ready_workers), len(workers) - len(ready_workers)
-                    )
-                )
-
-            # Schedule a new task.
-            while (
-                blocks_in
-                and tasks_in_flight[worker] < self.max_tasks_in_flight_per_actor
-            ):
-                block, meta = blocks_in.pop()
-                if context.block_splitting_enabled:
-                    ref = worker.map_block_split.remote(block, meta.input_files)
-                else:
-                    ref, meta_ref = worker.map_block_nosplit.remote(
-                        block, meta.input_files
-                    )
-                    metadata_mapping[ref] = meta_ref
-                tasks[ref] = worker
-                block_indices[ref] = len(blocks_in)
-                tasks_in_flight[worker] += 1
-
-        map_bar.close()
-        new_blocks, new_metadata = [], []
-        # Put blocks in input order.
-        results.sort(key=block_indices.get)
-        if context.block_splitting_enabled:
-            for result in ray.get(results):
-                for block, metadata in result:
+                for block in results:
                     new_blocks.append(block)
-                    new_metadata.append(metadata)
-        else:
-            for block in results:
-                new_blocks.append(block)
-                new_metadata.append(metadata_mapping[block])
-            new_metadata = ray.get(new_metadata)
-        return BlockList(new_blocks, new_metadata)
+                    new_metadata.append(metadata_mapping[block])
+                new_metadata = ray.get(new_metadata)
+            return BlockList(new_blocks, new_metadata)
+
+        finally:
+            for worker in workers:
+                ray.kill(worker)
 
 
 def cache_wrapper(
