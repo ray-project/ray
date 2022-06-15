@@ -102,6 +102,6 @@
 
 ```{eval-rst}
 .. click:: ray.serve.scripts:cli
-   :prog: Serve CLI
+   :prog: serve
    :show-nested:
 ```
