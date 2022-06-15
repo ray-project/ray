@@ -515,7 +515,7 @@ lint_bazel() {
     export PATH="${GOPATH}/bin:${GOROOT}/bin:${PATH}"
 
     # Build buildifier
-    go get github.com/bazelbuild/buildtools/buildifier
+    go install github.com/bazelbuild/buildtools/buildifier@latest
 
     # Now run buildifier
     "${ROOT_DIR}"/lint/bazel-format.sh
