@@ -24,6 +24,7 @@ from typing import Optional
 import uuid
 import re
 import os
+from click.testing import CliRunner
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -31,14 +32,17 @@ import pytest
 
 import moto
 from moto import mock_ec2, mock_iam
+import multiprocessing as mp
+import psutil
+import time
 from unittest.mock import MagicMock, patch
-from click.testing import CliRunner
 
 from testfixtures import Replacer
 from testfixtures.popen import MockPopen, PopenBehaviour
 
 import ray
 import ray.autoscaler._private.aws.config as aws_config
+import ray.ray_constants as ray_constants
 from ray.cluster_utils import cluster_not_supported
 import ray.scripts.scripts as scripts
 from ray._private.test_utils import wait_for_condition
@@ -110,6 +114,21 @@ def _unlink_test_ssh_key():
             os.remove(path)
     except FileNotFoundError:
         pass
+
+
+def _start_ray_and_block(runner, child_conn: mp.connection.Connection, as_head: bool):
+    args = ["--block"]
+    if as_head:
+        args.append("--head")
+    else:
+        args.append(f"--address=localhost:{ray_constants.DEFAULT_PORT}")
+
+    result = runner.invoke(
+        scripts.start,
+        args,
+    )
+    # Should be blocked until stopped by signals (SIGTERM)
+    child_conn.send(result.output)
 
 
 def _debug_die(output, assert_msg: str = ""):
@@ -308,42 +327,92 @@ def test_ray_start_hook(configure_lang, monkeypatch, tmp_path):
 
 
 @pytest.mark.skipif(
-    sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
-    reason=("Mac builds don't provide proper locale support"),
+    sys.platform == "darwin" and "travis" in os.environ.get(
+        "USER", "") or sys.platform == "win32",
+    reason=("Mac builds don't provide proper locale support. "
+            "Windows signal handling not compatible"),
+)
+def test_ray_start_head_block_and_signals(configure_lang, monkeypatch, tmp_path):
+    """Test `ray start` with `--block` as heads and workers and signal handles
+    """
+
+    monkeypatch.setenv("RAY_USAGE_STATS_CONFIG_PATH", str(tmp_path / "config.json"))
+    runner = CliRunner()
+
+    head_parent_conn, head_child_conn = mp.Pipe()
+
+    # Run `ray start --block --head` in another process and blocks
+    head_proc = mp.Process(target=_start_ray_and_block, kwargs={
+        "runner": runner,
+        "child_conn": head_child_conn, "as_head": True})
+
+    # Run
+    head_proc.start()
+
+    # Give it some time to start various subprocesses and `ray stop`
+    time.sleep(2)
+
+    # Terminate some of the children process
+    children = psutil.Process(head_proc.pid).children()
+
+    # Terminate everyone other than GCS
+    gcs_proc = None
+    for child in children:
+        if "gcs_server" in child.name():
+            gcs_proc = child
+            continue
+        child.terminate()
+        child.wait()
+
+        if not head_proc.is_alive():
+            # NOTE(rickyyx): call recv() here is safe since the process
+            # is guaranteed to be terminated.
+            _fail_if_false(False, head_parent_conn.recv(),
+                           ("`ray start --head --block` should not exit when subprocess"
+                            " is terminated. It exited with {head_proc.exitcode}."))
+
+    # Kill the GCS last should unblock the CLI
+    gcs_proc.kill()
+    gcs_proc.wait()
+
+    # NOTE(rickyyx): The wait here is somehow needed for the `head_proc` process to exit
+    time.sleep(3)
+
+    # Process with "--block" should be blocked forever w/o
+    # termination by signals
+    if head_proc.is_alive() or head_proc.exitcode == 0:
+        # NOTE(rickyx): call recv() here is safe since the process
+        # is guaranteed to be terminated.
+        _fail_if_false(False, head_parent_conn.recv()
+                       if not head_proc.is_alive()
+                       else "still alive",
+                       ("Head process should have exited with errors when one of"
+                       f" subprocesses killed. {head_proc.exitcode}"))
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and "travis" in os.environ.get(
+        "USER", "") or sys.platform == "win32",
+    reason=("Mac builds don't provide proper locale support. "
+            "Windows signal handling not compatible"),
 )
 def test_ray_start_block_and_stop(configure_lang, monkeypatch, tmp_path):
     """Test `ray start` with `--block` as heads and workers and `ray stop`
     """
-    import multiprocessing as mp
-    import time
-    import ray.ray_constants as ray_constants
-
     monkeypatch.setenv("RAY_USAGE_STATS_CONFIG_PATH", str(tmp_path / "config.json"))
     runner = CliRunner()
 
     head_parent_conn, head_child_conn = mp.Pipe()
     worker_parent_conn, worker_child_conn = mp.Pipe()
 
-    def start_ray_and_block(child_conn: mp.connection.Connection, as_head: bool):
-        args = ["--block"]
-        if as_head:
-            args.append("--head")
-        else:
-            args.append(f"--address=localhost:{ray_constants.DEFAULT_PORT}")
-
-        result = runner.invoke(
-            scripts.start,
-            args,
-        )
-        # Should be blocked until stopped by signals (SIGTERM)
-        child_conn.send(result.output)
-
     # Run `ray start --block --head` in another process and blocks
-    head_proc = mp.Process(target=start_ray_and_block, kwargs={
+    head_proc = mp.Process(target=_start_ray_and_block, kwargs={
+        "runner": runner,
         "child_conn": head_child_conn, "as_head": True})
 
     # Run `ray start --block --address=localhost:DEFAULT_PORT`
-    worker_proc = mp.Process(target=start_ray_and_block, kwargs={
+    worker_proc = mp.Process(target=_start_ray_and_block, kwargs={
+        "runner": runner,
         "child_conn": worker_child_conn, "as_head": False
     })
 

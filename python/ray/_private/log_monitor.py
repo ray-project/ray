@@ -512,14 +512,13 @@ if __name__ == "__main__":
         args.logs_dir, gcs_pubsub.GcsPublisher(address=args.gcs_address), is_proc_alive
     )
 
-    # Set up handlers for graceful exit on SIGINT and SIGTERM
+    # Set up handlers for graceful exit on SIGTERM
     def graceful_exit(signum: int, _frame):
         logger.info(
             f"Caught signal: {signal.Signals(signum).name}. Exiting gracefully."
         )
         log_monitor.stop()
 
-    signal.signal(signal.SIGINT, graceful_exit)
     signal.signal(signal.SIGTERM, graceful_exit)
 
     try:

@@ -954,7 +954,7 @@ def start(
                 # shutdown_at_exit will handle cleanup.
                 cli_logger.newline()
                 cli_logger.error("Remaining processes will be killed.")
-                sys.exit(1)
+                os._exit(1)
         # not-reachable
 
 
