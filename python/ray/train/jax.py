@@ -6,8 +6,8 @@ import subprocess
 
 import ray
 from ray.train.backend import BackendConfig, Backend
-from ray.train.utils import get_address_and_port
-from ray.train.worker_group import WorkerGroup
+from ray.train._internal.utils import get_address_and_port
+from ray.train._internal.worker_group import WorkerGroup
 from ray.util import PublicAPI
 
 logger = logging.getLogger(__name__)
