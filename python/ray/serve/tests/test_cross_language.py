@@ -22,8 +22,9 @@ def test_controller_starts_java_replica(shutdown_only):  # noqa: F811
     config.deployment_language = JAVA
     config.is_cross_language = True
 
-    replica_config = ReplicaConfig(
-        "io.ray.serve.util.ExampleEchoDeployment", init_args=["my_prefix "]
+    replica_config = ReplicaConfig.create(
+        "io.ray.serve.util.ExampleEchoDeployment",
+        init_args=["my_prefix "],
     )
 
     # Deploy it
@@ -32,9 +33,7 @@ def test_controller_starts_java_replica(shutdown_only):  # noqa: F811
         controller.deploy.remote(
             name=deployment_name,
             deployment_config_proto_bytes=config.to_proto_bytes(),
-            replica_config_proto_bytes=replica_config.to_proto_bytes(
-                config.need_pickle()
-            ),
+            replica_config_proto_bytes=replica_config.to_proto_bytes(),
             route_prefix=None,
             deployer_job_id=ray.get_runtime_context().job_id,
         )

@@ -12,6 +12,7 @@ from ray.util.placement_group import (
     placement_group_table,
     remove_placement_group,
     get_placement_group,
+    get_current_placement_group,
 )
 from ray.util import rpdb as pdb
 from ray.util.serialization import register_serializer, deregister_serializer
@@ -55,6 +56,7 @@ __all__ = [
     "placement_group",
     "placement_group_table",
     "get_placement_group",
+    "get_current_placement_group",
     "get_node_ip_address",
     "remove_placement_group",
     "inspect_serializability",

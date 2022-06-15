@@ -219,13 +219,13 @@ class ModelCatalog:
         """Returns a distribution class and size for the given action space.
 
         Args:
-            action_space (Space): Action space of the target gym env.
+            action_space: Action space of the target gym env.
             config (Optional[dict]): Optional model config.
             dist_type (Optional[Union[str, Type[ActionDistribution]]]):
                 Identifier of the action distribution (str) interpreted as a
                 hint or the actual ActionDistribution class to use.
-            framework (str): One of "tf2", "tf", "tfe", "torch", or "jax".
-            kwargs (dict): Optional kwargs to pass on to the Distribution's
+            framework: One of "tf2", "tf", "tfe", "torch", or "jax".
+            kwargs: Optional kwargs to pass on to the Distribution's
                 constructor.
 
         Returns:
@@ -355,8 +355,8 @@ class ModelCatalog:
         """Returns action tensor dtype and shape for the action space.
 
         Args:
-            action_space (Space): Action space of the target gym env.
-            framework (str): The framework identifier. One of "tf" or "torch".
+            action_space: Action space of the target gym env.
+            framework: The framework identifier. One of "tf" or "torch".
 
         Returns:
             (dtype, shape): Dtype and shape of the actions tensor.
@@ -398,12 +398,12 @@ class ModelCatalog:
         """Returns an action placeholder consistent with the action space
 
         Args:
-            action_space (Space): Action space of the target gym env.
-            name (str): An optional string to name the placeholder by.
+            action_space: Action space of the target gym env.
+            name: An optional string to name the placeholder by.
                 Default: "action".
 
         Returns:
-            action_placeholder (Tensor): A placeholder for the actions
+            action_placeholder: A placeholder for the actions
         """
         dtype, shape = ModelCatalog.get_action_shape(action_space, framework="tf")
 
@@ -425,19 +425,19 @@ class ModelCatalog:
         """Returns a suitable model compatible with given spaces and output.
 
         Args:
-            obs_space (Space): Observation space of the target gym env. This
+            obs_space: Observation space of the target gym env. This
                 may have an `original_space` attribute that specifies how to
                 unflatten the tensor into a ragged tensor.
-            action_space (Space): Action space of the target gym env.
-            num_outputs (int): The size of the output vector of the model.
-            model_config (ModelConfigDict): The "model" sub-config dict
+            action_space: Action space of the target gym env.
+            num_outputs: The size of the output vector of the model.
+            model_config: The "model" sub-config dict
                 within the Trainer's config dict.
-            framework (str): One of "tf2", "tf", "tfe", "torch", or "jax".
-            name (str): Name (scope) for the model.
-            model_interface (cls): Interface required for the model
-            default_model (cls): Override the default class for the model. This
+            framework: One of "tf2", "tf", "tfe", "torch", or "jax".
+            name: Name (scope) for the model.
+            model_interface: Interface required for the model
+            default_model: Override the default class for the model. This
                 only has an effect when not using a custom model
-            model_kwargs (dict): Args to pass to the ModelV2 constructor
+            model_kwargs: Args to pass to the ModelV2 constructor
 
         Returns:
             model (ModelV2): Model to use for the policy.
@@ -781,11 +781,11 @@ class ModelCatalog:
         """Returns a suitable preprocessor for the given observation space.
 
         Args:
-            observation_space (Space): The input observation space.
-            options (dict): Options to pass to the preprocessor.
+            observation_space: The input observation space.
+            options: Options to pass to the preprocessor.
 
         Returns:
-            preprocessor (Preprocessor): Preprocessor for the observations.
+            preprocessor: Preprocessor for the observations.
         """
 
         options = options or MODEL_DEFAULTS
@@ -833,8 +833,8 @@ class ModelCatalog:
         {"custom_preprocessor": preprocesor_name} in the model config.
 
         Args:
-            preprocessor_name (str): Name to register the preprocessor under.
-            preprocessor_class (type): Python class of the preprocessor.
+            preprocessor_name: Name to register the preprocessor under.
+            preprocessor_class: Python class of the preprocessor.
         """
         _global_registry.register(
             RLLIB_PREPROCESSOR, preprocessor_name, preprocessor_class
@@ -849,8 +849,8 @@ class ModelCatalog:
         in the model config.
 
         Args:
-            model_name (str): Name to register the model under.
-            model_class (type): Python class of the model.
+            model_name: Name to register the model under.
+            model_class: Python class of the model.
         """
         if tf is not None:
             if issubclass(model_class, tf.keras.Model):
@@ -868,8 +868,8 @@ class ModelCatalog:
         {"custom_action_dist": action_dist_name} in the model config.
 
         Args:
-            model_name (str): Name to register the action distribution under.
-            model_class (type): Python class of the action distribution.
+            model_name: Name to register the action distribution under.
+            model_class: Python class of the action distribution.
         """
         _global_registry.register(
             RLLIB_ACTION_DIST, action_dist_name, action_dist_class

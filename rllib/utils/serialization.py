@@ -8,6 +8,10 @@ import zlib
 from ray.rllib.utils.annotations import DeveloperAPI
 
 
+# TODO(jungong) : We need to handle RLlib custom space types,
+# FlexDict, Repeated, and Simplex.
+
+
 def _serialize_ndarray(array: np.ndarray) -> str:
     """Pack numpy ndarray into Base64 encoded strings for serialization.
 

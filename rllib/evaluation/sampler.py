@@ -53,7 +53,7 @@ from ray.rllib.utils.typing import (
 
 if TYPE_CHECKING:
     from gym.envs.classic_control.rendering import SimpleImageViewer
-    from ray.rllib.agents.callbacks import DefaultCallbacks
+    from ray.rllib.algorithms.callbacks import DefaultCallbacks
     from ray.rllib.evaluation.observation_function import ObservationFunction
     from ray.rllib.evaluation.rollout_worker import RolloutWorker
 
@@ -1311,7 +1311,7 @@ def _get_or_raise(
         mapping (Dict[PolicyID, Union[Policy, Preprocessor, Filter]]): The
             mapping dict from policy id (str) to actual object (Policy,
             Preprocessor, etc.).
-        policy_id (str): The policy ID to lookup.
+        policy_id: The policy ID to lookup.
 
     Returns:
         Union[Policy, Preprocessor, Filter]: The found object.

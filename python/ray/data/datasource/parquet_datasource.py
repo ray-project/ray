@@ -18,10 +18,10 @@ from ray.data.datasource.file_meta_provider import (
     ParquetMetadataProvider,
     DefaultParquetMetadataProvider,
 )
-from ray.data.impl.output_buffer import BlockOutputBuffer
-from ray.data.impl.progress_bar import ProgressBar
-from ray.data.impl.remote_fn import cached_remote_fn
-from ray.data.impl.util import _check_pyarrow_version
+from ray.data._internal.output_buffer import BlockOutputBuffer
+from ray.data._internal.progress_bar import ProgressBar
+from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data._internal.util import _check_pyarrow_version
 from ray.util.annotations import PublicAPI
 
 

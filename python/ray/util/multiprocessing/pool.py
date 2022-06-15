@@ -173,18 +173,18 @@ class ResultThread(threading.Thread):
             Thread tracks whether they are ready. More ObjectRefs may be added
             with add_object_ref (or _add_object_ref internally) until the object
             count reaches total_object_refs.
-        single_result (bool): Should be True if the thread is managing function
+        single_result: Should be True if the thread is managing function
             with a single result (like apply_async). False if the thread is managing
             a function with a List of results.
-        callback (Callable): called only once at the end of the thread
+        callback: called only once at the end of the thread
             if no results were errors. If single_result=True, and result is
             not an error, callback is invoked with the result as the only
             argument. If single_result=False, callback is invoked with
             a list of all the results as the only argument.
-        error_callback (Callable): called only once on the first result
+        error_callback: called only once on the first result
             that errors. Should take an Exception as the only argument.
             If no result errors, this callback is not called.
-        total_object_refs (int): Number of ObjectRefs that this thread
+        total_object_refs: Number of ObjectRefs that this thread
             expects to be ready. May be more than len(object_refs) since
             more ObjectRefs can be submitted after the thread starts.
             If None, defaults to len(object_refs). If float("inf"), thread runs
@@ -197,11 +197,11 @@ class ResultThread(threading.Thread):
 
     def __init__(
         self,
-        object_refs,
-        single_result=False,
-        callback=None,
-        error_callback=None,
-        total_object_refs=None,
+        object_refs: list,
+        single_result: bool = False,
+        callback: callable = None,
+        error_callback: callable = None,
+        total_object_refs: Optional[int] = None,
     ):
         threading.Thread.__init__(self, daemon=True)
         self._got_error = False

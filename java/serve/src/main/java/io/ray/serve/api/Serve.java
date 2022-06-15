@@ -1,5 +1,6 @@
 package io.ray.serve.api;
 
+import com.google.common.base.Preconditions;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.PyActorHandle;
 import io.ray.api.Ray;
@@ -263,28 +264,20 @@ public class Serve {
       Ray.init();
     }
 
-    String controllerName = null;
+    String controllerName =
+        INTERNAL_REPLICA_CONTEXT != null
+            ? INTERNAL_REPLICA_CONTEXT.getInternalControllerName()
+            : Constants.SERVE_CONTROLLER_NAME;
 
-    // When running inside of a replica, _INTERNAL_REPLICA_CONTEXT is set to ensure that the correct
-    // instance is connected to.
-    if (INTERNAL_REPLICA_CONTEXT == null) {
-      controllerName = Constants.SERVE_CONTROLLER_NAME;
-    } else {
-      controllerName = INTERNAL_REPLICA_CONTEXT.getInternalControllerName();
-    }
+    Optional<BaseActorHandle> optional = Ray.getActor(controllerName, Constants.SERVE_NAMESPACE);
+    Preconditions.checkState(
+        optional.isPresent(),
+        LogUtil.format(
+            "There is no instance running on this Ray cluster. "
+                + "Please call `serve.start(detached=True) to start one."));
 
-    // Try to get serve controller if it exists
-    Optional<BaseActorHandle> controller = Ray.getActor(controllerName, Constants.SERVE_NAMESPACE);
-    if (!controller.isPresent()) {
-      throw new RayServeException(
-          LogUtil.format(
-              "There is no instance running on this Ray cluster. "
-                  + "Please call `Serve.start` to start one."));
-      // TODO change RayServeException to checked exception?
-    }
+    ServeControllerClient client = new ServeControllerClient(optional.get(), controllerName, true);
 
-    ServeControllerClient client =
-        new ServeControllerClient(controller.get(), controllerName, true);
     setGlobalClient(client);
     return client;
   }

@@ -11,9 +11,9 @@ import ray
 from ray.tests.conftest import *  # noqa
 from ray.data.dataset import Dataset
 from ray.data.block import BlockAccessor
-from ray.data.impl.block_list import BlockList
-from ray.data.impl.stats import DatasetStats
-from ray.data.impl.plan import ExecutionPlan
+from ray.data._internal.block_list import BlockList
+from ray.data._internal.stats import DatasetStats
+from ray.data._internal.plan import ExecutionPlan
 from ray.data.tests.conftest import *  # noqa
 
 

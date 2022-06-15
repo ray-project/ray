@@ -1,6 +1,6 @@
 import enum
 import logging
-from typing import Awaitable, List, Optional
+from typing import List, Optional
 from functools import wraps
 import time
 
@@ -211,8 +211,8 @@ class GcsClient:
     @_auto_reconnect
     def internal_kv_get(
         self, key: bytes, namespace: Optional[bytes], timeout: Optional[float] = None
-    ) -> bytes:
-        logger.debug(f"internal_kv_get {key} {namespace}")
+    ) -> Optional[bytes]:
+        logger.debug(f"internal_kv_get {key!r} {namespace!r}")
         req = gcs_service_pb2.InternalKVGetRequest(namespace=namespace, key=key)
         reply = self._kv_stub.InternalKVGet(req, timeout=timeout)
         if reply.status.code == GcsCode.OK:
@@ -221,7 +221,7 @@ class GcsClient:
             return None
         else:
             raise RuntimeError(
-                f"Failed to get value for key {key} "
+                f"Failed to get value for key {key!r} "
                 f"due to error {reply.status.message}"
             )
 
@@ -234,7 +234,7 @@ class GcsClient:
         namespace: Optional[bytes],
         timeout: Optional[float] = None,
     ) -> int:
-        logger.debug(f"internal_kv_put {key} {value} {overwrite} {namespace}")
+        logger.debug(f"internal_kv_put {key!r} {value!r} {overwrite} {namespace!r}")
         req = gcs_service_pb2.InternalKVPutRequest(
             namespace=namespace,
             key=key,
@@ -246,7 +246,7 @@ class GcsClient:
             return reply.added_num
         else:
             raise RuntimeError(
-                f"Failed to put value {value} to key {key} "
+                f"Failed to put value {value!r} to key {key!r} "
                 f"due to error {reply.status.message}"
             )
 
@@ -258,7 +258,7 @@ class GcsClient:
         namespace: Optional[bytes],
         timeout: Optional[float] = None,
     ) -> int:
-        logger.debug(f"internal_kv_del {key} {del_by_prefix} {namespace}")
+        logger.debug(f"internal_kv_del {key!r} {del_by_prefix} {namespace!r}")
         req = gcs_service_pb2.InternalKVDelRequest(
             namespace=namespace, key=key, del_by_prefix=del_by_prefix
         )
@@ -267,21 +267,21 @@ class GcsClient:
             return reply.deleted_num
         else:
             raise RuntimeError(
-                f"Failed to delete key {key} " f"due to error {reply.status.message}"
+                f"Failed to delete key {key!r} " f"due to error {reply.status.message}"
             )
 
     @_auto_reconnect
     def internal_kv_exists(
         self, key: bytes, namespace: Optional[bytes], timeout: Optional[float] = None
     ) -> bool:
-        logger.debug(f"internal_kv_exists {key} {namespace}")
+        logger.debug(f"internal_kv_exists {key!r} {namespace!r}")
         req = gcs_service_pb2.InternalKVExistsRequest(namespace=namespace, key=key)
         reply = self._kv_stub.InternalKVExists(req, timeout=timeout)
         if reply.status.code == GcsCode.OK:
             return reply.exists
         else:
             raise RuntimeError(
-                f"Failed to check existence of key {key} "
+                f"Failed to check existence of key {key!r} "
                 f"due to error {reply.status.message}"
             )
 
@@ -289,14 +289,14 @@ class GcsClient:
     def internal_kv_keys(
         self, prefix: bytes, namespace: Optional[bytes], timeout: Optional[float] = None
     ) -> List[bytes]:
-        logger.debug(f"internal_kv_keys {prefix} {namespace}")
+        logger.debug(f"internal_kv_keys {prefix!r} {namespace!r}")
         req = gcs_service_pb2.InternalKVKeysRequest(namespace=namespace, prefix=prefix)
         reply = self._kv_stub.InternalKVKeys(req, timeout=timeout)
         if reply.status.code == GcsCode.OK:
             return reply.results
         else:
             raise RuntimeError(
-                f"Failed to list prefix {prefix} "
+                f"Failed to list prefix {prefix!r} "
                 f"due to error {reply.status.message}"
             )
 
@@ -341,8 +341,8 @@ class GcsAioClient:
 
     async def internal_kv_get(
         self, key: bytes, namespace: Optional[bytes], timeout: Optional[float] = None
-    ) -> Awaitable[bytes]:
-        logger.debug(f"internal_kv_get {key} {namespace}")
+    ) -> Optional[bytes]:
+        logger.debug(f"internal_kv_get {key!r} {namespace!r}")
         req = gcs_service_pb2.InternalKVGetRequest(namespace=namespace, key=key)
         reply = await self._kv_stub.InternalKVGet(req, timeout=timeout)
         if reply.status.code == GcsCode.OK:
@@ -351,7 +351,7 @@ class GcsAioClient:
             return None
         else:
             raise RuntimeError(
-                f"Failed to get value for key {key} "
+                f"Failed to get value for key {key!r} "
                 f"due to error {reply.status.message}"
             )
 
@@ -362,8 +362,8 @@ class GcsAioClient:
         overwrite: bool,
         namespace: Optional[bytes],
         timeout: Optional[float] = None,
-    ) -> Awaitable[int]:
-        logger.debug(f"internal_kv_put {key} {value} {overwrite} {namespace}")
+    ) -> int:
+        logger.debug(f"internal_kv_put {key!r} {value!r} {overwrite} {namespace!r}")
         req = gcs_service_pb2.InternalKVPutRequest(
             namespace=namespace,
             key=key,
@@ -375,7 +375,7 @@ class GcsAioClient:
             return reply.added_num
         else:
             raise RuntimeError(
-                f"Failed to put value {value} to key {key} "
+                f"Failed to put value {value!r} to key {key!r} "
                 f"due to error {reply.status.message}"
             )
 
@@ -385,8 +385,8 @@ class GcsAioClient:
         del_by_prefix: bool,
         namespace: Optional[bytes],
         timeout: Optional[float] = None,
-    ) -> Awaitable[int]:
-        logger.debug(f"internal_kv_del {key} {del_by_prefix} {namespace}")
+    ) -> int:
+        logger.debug(f"internal_kv_del {key!r} {del_by_prefix} {namespace!r}")
         req = gcs_service_pb2.InternalKVDelRequest(
             namespace=namespace, key=key, del_by_prefix=del_by_prefix
         )
@@ -395,34 +395,34 @@ class GcsAioClient:
             return reply.deleted_num
         else:
             raise RuntimeError(
-                f"Failed to delete key {key} " f"due to error {reply.status.message}"
+                f"Failed to delete key {key!r} " f"due to error {reply.status.message}"
             )
 
     async def internal_kv_exists(
         self, key: bytes, namespace: Optional[bytes], timeout: Optional[float] = None
-    ) -> Awaitable[bool]:
-        logger.debug(f"internal_kv_exists {key} {namespace}")
+    ) -> bool:
+        logger.debug(f"internal_kv_exists {key!r} {namespace!r}")
         req = gcs_service_pb2.InternalKVExistsRequest(namespace=namespace, key=key)
         reply = await self._kv_stub.InternalKVExists(req, timeout=timeout)
         if reply.status.code == GcsCode.OK:
             return reply.exists
         else:
             raise RuntimeError(
-                f"Failed to check existence of key {key} "
+                f"Failed to check existence of key {key!r} "
                 f"due to error {reply.status.message}"
             )
 
     async def internal_kv_keys(
         self, prefix: bytes, namespace: Optional[bytes], timeout: Optional[float] = None
-    ) -> Awaitable[List[bytes]]:
-        logger.debug(f"internal_kv_keys {prefix} {namespace}")
+    ) -> List[bytes]:
+        logger.debug(f"internal_kv_keys {prefix!r} {namespace!r}")
         req = gcs_service_pb2.InternalKVKeysRequest(namespace=namespace, prefix=prefix)
         reply = await self._kv_stub.InternalKVKeys(req, timeout=timeout)
         if reply.status.code == GcsCode.OK:
             return reply.results
         else:
             raise RuntimeError(
-                f"Failed to list prefix {prefix} "
+                f"Failed to list prefix {prefix!r} "
                 f"due to error {reply.status.message}"
             )
 

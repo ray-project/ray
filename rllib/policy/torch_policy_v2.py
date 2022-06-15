@@ -50,7 +50,7 @@ from ray.rllib.utils.typing import (
     ModelWeights,
     TensorType,
     TensorStructType,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
 )
 
 if TYPE_CHECKING:
@@ -70,7 +70,7 @@ class TorchPolicyV2(Policy):
         self,
         observation_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
-        config: TrainerConfigDict,
+        config: AlgorithmConfigDict,
         *,
         max_seq_len: int = 20,
     ):
@@ -416,7 +416,7 @@ class TorchPolicyV2(Policy):
         New columns can be added to sample_batch and existing ones may be altered.
 
         Args:
-            sample_batch (SampleBatch): The SampleBatch to postprocess.
+            sample_batch: The SampleBatch to postprocess.
             other_agent_batches (Optional[Dict[PolicyID, SampleBatch]]): Optional
                 dict of AgentIDs mapping to other agents' trajectory data (from the
                 same episode). NOTE: The other agents use the same policy.
@@ -1012,7 +1012,6 @@ class TorchPolicyV2(Policy):
         if is_overridden(self.action_sampler_fn):
             action_dist = dist_inputs = None
             actions, logp, state_out = self.action_sampler_fn(
-                self,
                 self.model,
                 obs_batch=input_dict,
                 state_batches=state_batches,

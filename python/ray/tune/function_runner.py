@@ -123,15 +123,7 @@ class FuncCheckpointUtil:
 
 
 class _StatusReporter:
-    """Object passed into your function that you can report status through.
-
-    Example:
-        >>> from ray.tune.function_runner import _StatusReporter
-        >>> reporter = _StatusReporter(...) # doctest: +SKIP
-        >>> def trainable_function(config, reporter): # doctest: +SKIP
-        >>>     assert isinstance(reporter, _StatusReporter) # doctest: +SKIP
-        >>>     reporter(timesteps_this_iter=1) # doctest: +SKIP
-    """
+    """Object passed into your function that you can report status through."""
 
     def __init__(
         self,
@@ -169,14 +161,6 @@ class _StatusReporter:
 
         Args:
             kwargs: Latest training result status.
-
-        Example:
-            >>> from ray.tune.function_runner import _StatusReporter
-            >>> reporter = _StatusReporter(...) # doctest: +SKIP
-            >>> reporter(mean_accuracy=1, training_iteration=4) # doctest: +SKIP
-            >>> reporter( # doctest: +SKIP
-            ...     mean_accuracy=1, training_iteration=4, done=True
-            ... )
 
         Raises:
             StopIteration: A StopIteration exception is raised if the trial has

@@ -1,0 +1,43 @@
+pendulum_crr:
+    env: 'Pendulum-v1'
+    run: CRR
+    stop:
+      evaluation/episode_reward_mean: -200
+      training_iteration: 500
+    config:
+        input:
+          - 'tests/data/pendulum/pendulum_replay_v1.1.0.zip'
+        framework: torch
+        gamma: 0.99
+        train_batch_size: 1024
+        critic_hidden_activation: 'relu'
+        critic_hiddens: [256, 256]
+        critic_lr: 0.0003
+        actor_hidden_activation: 'relu'
+        actor_hiddens: [256, 256]
+        actor_lr: 0.0003
+        actions_in_input_normalized: True
+        clip_actions: True
+        # Q function update setting
+        twin_q: True
+        target_update_grad_intervals: 1
+        tau: 0.0001
+        # evaluation
+        evaluation_config:
+            explore: False
+            input: sampler
+        evaluation_duration: 10
+        evaluation_duration_unit: episodes
+        evaluation_interval: 1
+        evaluation_num_workers: 1
+        evaluation_parallel_to_training: True
+        # replay buffer
+        replay_buffer_config:
+          type: ray.rllib.utils.replay_buffers.MultiAgentReplayBuffer
+          learning_starts: 0
+          capacity: 100000
+        # specific to CRR
+        weight_type: exp
+        advantage_type: max
+        max_weight: 20.0
+        n_action_sample: 4

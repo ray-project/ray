@@ -1,7 +1,7 @@
-from ray.rllib.algorithms.maml.maml import MAMLConfig, MAMLTrainer, DEFAULT_CONFIG
+from ray.rllib.algorithms.maml.maml import MAML, MAMLConfig, DEFAULT_CONFIG
 
 __all__ = [
+    "MAML",
     "MAMLConfig",
-    "MAMLTrainer",
     "DEFAULT_CONFIG",
 ]
