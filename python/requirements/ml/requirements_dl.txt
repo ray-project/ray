@@ -14,7 +14,7 @@ torchvision==0.10.0;sys_platform=="darwin"
 torch==1.9.0+cpu;sys_platform!="darwin"
 torchvision==0.10.0+cpu;sys_platform!="darwin"
 
-jaxlib==0.3.10;sys_platform!="darwin"
+jaxlib==0.1.69;sys_platform!="darwin"
 flax==0.4.0;sys_platform!="darwin"
 optax==0.0.9;sys_platform!="darwin"
 einops==0.4.1;sys_platform!="darwin"
