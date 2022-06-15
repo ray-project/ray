@@ -62,7 +62,7 @@ def test_tf_non_distributed(ray_start_4_cpus):
 
 
 # TODO: Refactor as a backend test.
-def test_tensorflow_mnist_fail(ray_start_2_cpus):
+def test_tensorflow_mnist_fail(ray_start_4_cpus):
     """Tests if tensorflow example works even with worker failure."""
     epochs = 3
 
