@@ -276,9 +276,11 @@ class _BrokenLinksQueue(Queue):
 
     def __init__(self, maxsize: int = 0) -> None:
         self._last_line_no = None
+        self.used = False
         super().__init__(maxsize)
 
     def put(self, item: logging.LogRecord, block=True, timeout=None):
+        self.used = True
         message = item.getMessage()
         # line nos are separate records
         if ": line" in message:
@@ -319,6 +321,9 @@ class LinkcheckSummarizer:
 
     def summarize(self, *args, **kwargs):
         """Summarizes broken links."""
+        if not self.log_queue.used:
+            return
+
         self.logger.logger.removeHandler(self.queue_handler)
 
         self.logger.info("\nBROKEN LINKS SUMMARY:\n")
