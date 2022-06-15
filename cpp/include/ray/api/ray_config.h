@@ -48,6 +48,11 @@ class RayConfig {
 
   // Prevents external clients without the password from connecting to Redis if provided.
   boost::optional<std::string> redis_password_;
+
+  // The default actor lifetime type, `detached` or `non_detached`.
+  std::string default_actor_lifetime = "non_detached";
+
+  bool is_worker = false;
 };
 
 }  // namespace ray

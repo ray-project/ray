@@ -10,14 +10,12 @@ import subprocess
 import sys
 import tarfile
 import tempfile
-import zipfile
-
-from itertools import chain
-from enum import Enum
-
 import urllib.error
 import urllib.parse
 import urllib.request
+import zipfile
+from enum import Enum
+from itertools import chain
 
 logger = logging.getLogger(__name__)
 
@@ -158,12 +156,6 @@ if BUILD_JAVA or os.path.exists(os.path.join(ROOT_DIR, "ray/jars/ray_dist.jar"))
 
 if setup_spec.type == SetupType.RAY_CPP:
     setup_spec.files_to_include += ["ray/cpp/default_worker" + exe_suffix]
-    # C++ API library and project template files.
-    setup_spec.files_to_include += [
-        os.path.join(dirpath, filename)
-        for dirpath, dirnames, filenames in os.walk("ray/cpp")
-        for filename in filenames
-    ]
 
 # These are the directories where automatically generated Python protobuf
 # bindings are created.
@@ -545,6 +537,17 @@ def build(build_python, build_java, build_cpp):
         if is_native_windows_or_msys():
             bazel_flags.append("--enable_runfiles=false")
 
+    if build_cpp:
+        bazel_invoke(
+            subprocess.check_call,
+            bazel_precmd_flags
+            + ["build"]
+            + bazel_flags
+            + ["--"]
+            + ["//:ray_api_user_lib"],
+            env=bazel_env,
+        )
+
     bazel_targets = []
     bazel_targets += ["//:ray_pkg"] if build_python else []
     bazel_targets += ["//cpp:ray_cpp_pkg"] if build_cpp else []
@@ -564,10 +567,12 @@ def build(build_python, build_java, build_cpp):
     )
 
 
-def walk_directory(directory):
+def walk_directory(directory, exclude_link_file=False):
     file_list = []
     for (root, dirs, filenames) in os.walk(directory):
         for name in filenames:
+            if exclude_link_file and os.path.islink(os.path.join(root, name)):
+                continue
             file_list.append(os.path.join(root, name))
     return file_list
 
@@ -630,6 +635,11 @@ def pip_run(build_ext):
                     setup_spec.files_to_include.append(
                         os.path.join(directory, filename)
                     )
+
+    if setup_spec.type == SetupType.RAY_CPP:
+        setup_spec.files_to_include += walk_directory(
+            os.path.join(ROOT_DIR, "ray/cpp"), True
+        )
 
     copied_files = 0
     for filename in setup_spec.files_to_include:

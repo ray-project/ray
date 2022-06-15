@@ -2729,3 +2729,19 @@ genrule(
     """,
     local = 1,
 )
+
+cc_library(
+    name = "ray_api_user_lib",
+    srcs = [
+        "//cpp:libray_api.so",
+    ],
+    hdrs = glob([
+        "python/ray/cpp/include/**/*.h",
+        "python/ray/cpp/include/**/*.hpp",
+    ]),
+    data = [
+        "//cpp:ray_cpp_lib_files",
+    ],
+    strip_include_prefix = "python/ray/cpp/include",
+    visibility = ["//visibility:public"],
+)

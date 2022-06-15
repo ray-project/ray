@@ -70,8 +70,24 @@ ABSL_FLAG(int64_t,
           -1,
           "The startup token assigned to this worker process by the raylet.");
 
+ABSL_FLAG(std::string,
+          ray_job_default_actor_lifetime,
+          "",
+          "The default actor lifetime type, `detached` or `non_detached`.");
+
 namespace ray {
 namespace internal {
+
+rpc::JobConfig_ActorLifetime ParseDefaultActorLifetimeType(
+    const std::string &default_actor_lifetime_string) {
+  if (default_actor_lifetime_string.empty() ||
+      default_actor_lifetime_string == "non_detached") {
+    return rpc::JobConfig_ActorLifetime_NON_DETACHED;
+  }
+  RAY_CHECK(default_actor_lifetime_string == "detached")
+      << "The default_actor_lifetime_string config must be `detached` or `non_detached`.";
+  return rpc::JobConfig_ActorLifetime_DETACHED;
+}
 
 void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
   if (!config.address.empty()) {
@@ -86,6 +102,9 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
   }
   if (!config.head_args.empty()) {
     head_args = config.head_args;
+  }
+  if (!config.default_actor_lifetime.empty()) {
+    default_actor_lifetime = ParseDefaultActorLifetimeType(config.default_actor_lifetime);
   }
   if (argc != 0 && argv != nullptr) {
     // Parse config from command line.
@@ -129,7 +148,12 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
       head_args.insert(head_args.end(), args.begin(), args.end());
     }
     startup_token = absl::GetFlag<int64_t>(FLAGS_startup_token);
+    if (!FLAGS_ray_job_default_actor_lifetime.CurrentValue().empty()) {
+      default_actor_lifetime = ParseDefaultActorLifetimeType(
+          FLAGS_ray_job_default_actor_lifetime.CurrentValue());
+    }
   }
+  worker_type = config.is_worker ? WorkerType::WORKER : WorkerType::DRIVER;
   if (worker_type == WorkerType::DRIVER && run_mode == RunMode::CLUSTER) {
     if (bootstrap_ip.empty()) {
       auto ray_address_env = std::getenv("RAY_ADDRESS");

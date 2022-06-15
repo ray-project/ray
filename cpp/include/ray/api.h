@@ -288,4 +288,6 @@ inline bool WasCurrentActorRestarted() {
   return ray::internal::GetRayRuntime()->WasCurrentActorRestarted();
 }
 
+void RunTaskExecutionLoop();
+
 }  // namespace ray

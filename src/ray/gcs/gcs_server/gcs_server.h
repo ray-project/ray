@@ -265,6 +265,5 @@ class GcsServer {
   std::atomic<bool> is_started_;
   std::atomic<bool> is_stopped_;
 };
-
 }  // namespace gcs
 }  // namespace ray

@@ -65,18 +65,17 @@ cc_binary(
     copts = COPTS,
     linkstatic = True,
     deps = [
-        "ray_api",
+        "//:ray_api_user_lib",
     ],
 )
 
 genrule(
-    name = "ray_cpp_pkg",
+    name = "ray_cpp_lib_files",
     srcs = [
-        "default_worker",
         "ray_api",
         "libray_api.so",
     ],
-    outs = ["ray_cpp_pkg.out"],
+    outs = ["ray_cpp_lib_files.out"],
     cmd = """
         WORK_DIR="$$(pwd)" &&
         PY_CPP_DIR="$$WORK_DIR/python/ray/cpp" &&
@@ -84,7 +83,6 @@ genrule(
         BOOST_DIR="$$PY_CPP_DIR/include/boost/" &&
         mkdir -p "$$BOOST_DIR" &&
         mkdir -p "$$PY_CPP_DIR/lib/" &&
-        cp -f $(location default_worker) "$$PY_CPP_DIR/" &&
         cp -f -r $$WORK_DIR/external/msgpack/include/* "$$PY_CPP_DIR/include" &&
         cp -f -r "$$WORK_DIR/external/boost/boost/archive" "$$BOOST_DIR" &&
         cp -f -r "$$WORK_DIR/external/boost/boost/assert" "$$BOOST_DIR" &&
@@ -120,6 +118,21 @@ genrule(
         cp -f -r "$$PY_CPP_DIR/include" $$THIRDPARTY_DIR &&
         cp -f -r "$$PY_CPP_DIR/lib" $$THIRDPARTY_DIR &&
         cp -f -r "$$WORK_DIR/cpp/example" "$$PY_CPP_DIR" &&
+        echo "$$WORK_DIR" > $@
+    """,
+    local = 1,
+    visibility = ["//visibility:public"],
+)
+
+genrule(
+    name = "ray_cpp_pkg",
+    srcs = [
+        "default_worker",
+    ],
+    outs = ["ray_cpp_pkg.out"],
+    cmd = """
+        WORK_DIR="$$(pwd)" &&
+        cp -f $(location default_worker) "$$WORK_DIR/python/ray/cpp" &&
         echo "$$WORK_DIR" > $@
     """,
     local = 1,
@@ -178,7 +191,7 @@ cc_binary(
     linkopts = ["-shared"],
     linkstatic = True,
     deps = [
-        "ray_api",
+        "//:ray_api_user_lib",
     ],
 )
 
@@ -193,7 +206,7 @@ cc_binary(
     linkopts = ["-shared"],
     linkstatic = True,
     deps = [
-        "ray_api",
+        "//:ray_api_user_lib",
     ],
 )
 
@@ -208,7 +221,7 @@ cc_test(
     linkstatic = True,
     tags = ["team:core"],
     deps = [
-        ":ray_api",
+        "//:ray_api_user_lib",
     ],
 )
 
@@ -218,10 +231,13 @@ cc_binary(
     srcs = glob([
         "src/ray/test/examples/*.cc",
     ]),
+    args = [
+        "--ray_code_search_path $(location simple_kv_store.so)",
+    ],
     linkopts = ["-shared"],
     linkstatic = True,
     deps = [
-        ":ray_api",
+        "//:ray_api_user_lib",
     ],
 )
 
@@ -239,6 +255,6 @@ py_test_module_list(
         "team:core",
     ],
     deps = [
-        ":ray_api",
+        "//:ray_api_user_lib",
     ],
 )
