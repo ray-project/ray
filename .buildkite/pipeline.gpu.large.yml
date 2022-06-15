@@ -28,7 +28,7 @@
     # Test all tests in the `algorithms` dir:
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --build_tests_only
-      --jobs 2
+      --jobs 1
       --test_tag_filters=algorithms_dir,-algorithms_dir_generic,-multi_gpu
       --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
       --test_env=RLLIB_NUM_GPUS=1
