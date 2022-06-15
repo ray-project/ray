@@ -173,10 +173,10 @@ def clear_loggers():
             logger.removeHandler(handler)
 
 
-# NOTE: We are clearing loggers because otherwise, the next test's logger will access the capsys
-# buffer that's already closed when this test is terminated. It seems like loggers are shared
-# across drivers although we call ray.shutdown().
-# TODO(sang): Fix it.
+# NOTE: We are clearing loggers because otherwise, the next test's
+# logger will access the capsys buffer that's already closed when this
+# test is terminated. It seems like loggers are shared across drivers
+# although we call ray.shutdown().
 def test_usage_stats_prompt(
     monkeypatch, capsys, tmp_path, reset_lib_usage, shutdown_only, clear_loggers
 ):
