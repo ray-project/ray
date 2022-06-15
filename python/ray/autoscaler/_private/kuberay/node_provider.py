@@ -1,11 +1,12 @@
 import json
 import logging
-import requests
 from typing import Any, Dict, List, Tuple
 
+import requests
+
 from ray.autoscaler._private.constants import (
-    DISABLE_NODE_UPDATERS_KEY,
     DISABLE_LAUNCH_CONFIG_CHECK_KEY,
+    DISABLE_NODE_UPDATERS_KEY,
     FOREGROUND_NODE_LAUNCH_KEY,
 )
 from ray.autoscaler.node_provider import NodeProvider
@@ -198,7 +199,8 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         """Wrapper for REST GET of resource with proper headers."""
         url = url_from_resource(namespace=self.namespace, path=path)
         result = requests.get(url, headers=self.headers, verify=self.verify)
-        assert result.status_code == 200
+        if not result.status_code == 200:
+            result.raise_for_status()
         return result.json()
 
     def _get_non_terminating_pods(
@@ -243,7 +245,8 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
             headers={**self.headers, "Content-type": "application/json-patch+json"},
             verify=self.verify,
         )
-        assert result.status_code == 200
+        if not result.status_code == 200:
+            result.raise_for_status()
         return result.json()
 
     def create_node(

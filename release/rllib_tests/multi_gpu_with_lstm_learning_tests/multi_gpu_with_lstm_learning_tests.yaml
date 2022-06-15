@@ -11,6 +11,9 @@ a2c-stateless-cartpole:
     config:
         num_gpus: 2
         num_workers: 23
+        # Use a large train batch size to make sure mini batches work
+        # after split to 2 GPU towers.
+        train_batch_size: 200
         lr: 0.001
         # Test w/ LSTMs.
         model:

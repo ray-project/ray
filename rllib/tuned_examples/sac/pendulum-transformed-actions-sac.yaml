@@ -32,7 +32,7 @@ transformed-actions-pendulum-sac-dummy-torch:
         rollout_fragment_length: 1
         train_batch_size: 256
         target_network_update_freq: 1
-        min_sample_timesteps_per_reporting: 1000
+        min_sample_timesteps_per_iteration: 1000
         replay_buffer_config:
           type: MultiAgentPrioritizedReplayBuffer
           learning_starts: 256

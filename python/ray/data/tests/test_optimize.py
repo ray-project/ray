@@ -159,6 +159,7 @@ def test_memory_release_lazy(shutdown_only):
     assert "Spilled" not in meminfo, meminfo
 
 
+@pytest.mark.skip(reason="Flaky, see https://github.com/ray-project/ray/issues/24757")
 def test_memory_release_lazy_shuffle(shutdown_only):
     # TODO(ekl) why is this flaky? Due to eviction delay?
     error = None
@@ -355,6 +356,38 @@ def test_optimize_fuse(ray_start_regular_shared):
     )
 
 
+def test_optimize_equivalent_remote_args(ray_start_regular_shared):
+    context = DatasetContext.get_current()
+    context.optimize_fuse_stages = True
+    context.optimize_fuse_read_stages = True
+    context.optimize_fuse_shuffle_stages = True
+
+    equivalent_kwargs = [
+        {},
+        {"resources": {"blah": 0}},
+        {"resources": {"blah": None}},
+        {"num_cpus": None},
+        {"num_cpus": 1},
+        {"num_cpus": 1, "num_gpus": 0},
+        {"num_cpus": 1, "num_gpus": None},
+    ]
+
+    for kwa in equivalent_kwargs:
+        for kwb in equivalent_kwargs:
+            print("CHECKING", kwa, kwb)
+            pipe = ray.data.range(3).repeat(2)
+            pipe = pipe.map_batches(lambda x: x, compute="tasks", **kwa)
+            pipe = pipe.map_batches(lambda x: x, compute="tasks", **kwb)
+            pipe.take()
+            expect_stages(
+                pipe,
+                1,
+                [
+                    "read->map_batches->map_batches",
+                ],
+            )
+
+
 def test_optimize_incompatible_stages(ray_start_regular_shared):
     context = DatasetContext.get_current()
     context.optimize_fuse_stages = True
@@ -362,16 +395,17 @@ def test_optimize_incompatible_stages(ray_start_regular_shared):
     context.optimize_fuse_shuffle_stages = True
 
     pipe = ray.data.range(3).repeat(2)
+    # Should get fused as long as their resource types are compatible.
     pipe = pipe.map_batches(lambda x: x, compute="actors")
+    # Cannot fuse actors->tasks.
     pipe = pipe.map_batches(lambda x: x, compute="tasks")
     pipe = pipe.random_shuffle_each_window()
     pipe.take()
     expect_stages(
         pipe,
-        3,
+        2,
         [
-            "read",
-            "map_batches",
+            "read->map_batches",
             "map_batches->random_shuffle_map",
             "random_shuffle_reduce",
         ],

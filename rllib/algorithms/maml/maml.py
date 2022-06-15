@@ -2,8 +2,8 @@ import logging
 import numpy as np
 from typing import Optional, Type
 
-from ray.rllib.agents.trainer import Trainer
-from ray.rllib.agents.trainer_config import TrainerConfig
+from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.evaluation.metrics import get_learner_stats
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import (
@@ -20,20 +20,20 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated, DEPRECATED_VALUE
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.sgd import standardized
-from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.typing import AlgorithmConfigDict
 from ray.util.iter import from_actors, LocalIterator
 
 logger = logging.getLogger(__name__)
 
 
-class MAMLConfig(TrainerConfig):
-    """Defines a configuration class from which a MAML Trainer can be built.
+class MAMLConfig(AlgorithmConfig):
+    """Defines a configuration class from which a MAML Algorithm can be built.
 
     Example:
         >>> from ray.rllib.algorithms.maml import MAMLConfig
         >>> config = MAMLConfig().training(use_gae=False).resources(num_gpus=1)
         >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> # Build a Algorithm object from the config and run 1 training iteration.
         >>> trainer = config.build(env="CartPole-v1")
         >>> trainer.train()
 
@@ -56,9 +56,9 @@ class MAMLConfig(TrainerConfig):
         ... )
     """
 
-    def __init__(self, trainer_class=None):
+    def __init__(self, algo_class=None):
         """Initializes a PGConfig instance."""
-        super().__init__(trainer_class=trainer_class or MAML)
+        super().__init__(algo_class=algo_class or MAML)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -77,7 +77,7 @@ class MAMLConfig(TrainerConfig):
         self.inner_lr = 0.1
         self.use_meta_env = True
 
-        # Override some of TrainerConfig's default values with MAML-specific values.
+        # Override some of AlgorithmConfig's default values with MAML-specific values.
         self.rollout_fragment_length = 200
         self.create_env_on_local_worker = True
         self.lr = 1e-3
@@ -136,7 +136,7 @@ class MAMLConfig(TrainerConfig):
             use_meta_env: Use Meta Env Template.
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
@@ -252,14 +252,14 @@ def inner_adaptation(workers, samples):
         e.learn_on_batch.remote(samples[i])
 
 
-class MAML(Trainer):
+class MAML(Algorithm):
     @classmethod
-    @override(Trainer)
-    def get_default_config(cls) -> TrainerConfigDict:
+    @override(Algorithm)
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return MAMLConfig().to_dict()
 
-    @override(Trainer)
-    def validate_config(self, config: TrainerConfigDict) -> None:
+    @override(Algorithm)
+    def validate_config(self, config: AlgorithmConfigDict) -> None:
         # Call super's validation method.
         super().validate_config(config)
 
@@ -281,8 +281,8 @@ class MAML(Trainer):
                 "(local) worker! Set `create_env_on_driver` to True."
             )
 
-    @override(Trainer)
-    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
+    @override(Algorithm)
+    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.maml.maml_torch_policy import MAMLTorchPolicy
 
@@ -297,9 +297,9 @@ class MAML(Trainer):
             return MAMLEagerTFPolicy
 
     @staticmethod
-    @override(Trainer)
+    @override(Algorithm)
     def execution_plan(
-        workers: WorkerSet, config: TrainerConfigDict, **kwargs
+        workers: WorkerSet, config: AlgorithmConfigDict, **kwargs
     ) -> LocalIterator[dict]:
         assert (
             len(kwargs) == 0

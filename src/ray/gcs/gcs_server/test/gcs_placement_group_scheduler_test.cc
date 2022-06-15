@@ -764,7 +764,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestStrictSpreadStrategyResourceCheck) {
 }
 
 TEST_F(GcsPlacementGroupSchedulerTest, TestBundleLocationIndex) {
-  gcs::BundleLocationIndex bundle_location_index;
+  BundleLocationIndex bundle_location_index;
   /// Generate data.
   const auto node1 = NodeID::FromRandom();
   const auto node2 = NodeID::FromRandom();

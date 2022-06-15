@@ -5,6 +5,7 @@ import unittest
 
 import ray
 from ray.rllib.algorithms import cql
+from ray.rllib.offline.estimators.importance_sampling import ImportanceSampling
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import (
     check_compute_single_action,
@@ -51,7 +52,7 @@ class TestCQL(unittest.TestCase):
                 # RLlib algorithm (e.g. PPO or SAC).
                 actions_in_input_normalized=False,
                 # Switch on off-policy evaluation.
-                off_policy_estimation_methods=["is"],
+                off_policy_estimation_methods={"is": {"type": ImportanceSampling}},
             )
             .training(
                 clip_actions=False,

@@ -32,11 +32,12 @@ from ray.tune.logger import NoopLogger
 from ray.tune.result import TRIAL_INFO, STDOUT_FILE, STDERR_FILE
 from ray.tune.utils.placement_groups import _PlacementGroupManager, get_tune_pg_prefix
 from ray.tune.utils.trainable import TrainableUtil
-from ray.tune.trial import Trial, _TuneCheckpoint, _Location, _TrialInfo
+from ray.tune.trial import Trial, _Location, _TrialInfo
 from ray.tune.utils import warn_if_slow
 from ray.tune.utils.resource_updater import _ResourceUpdater
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
+from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.util.placement_group import remove_placement_group, PlacementGroup
 
 logger = logging.getLogger(__name__)
@@ -378,7 +379,7 @@ class RayTrialExecutor:
             # We keep these kwargs separate for backwards compatibility
             # with trainables that don't provide these keyword arguments
             kwargs["remote_checkpoint_dir"] = trial.remote_checkpoint_dir
-            kwargs["sync_function_tpl"] = trial.sync_function_tpl
+            kwargs["custom_syncer"] = trial.custom_syncer
 
             # Throw a meaningful error if trainable does not use the
             # new API
@@ -388,7 +389,7 @@ class RayTrialExecutor:
             except Exception as e:
                 raise RuntimeError(
                     "Your trainable class does not accept a "
-                    "`remote_checkpoint_dir` or `sync_function_tpl` argument "
+                    "`remote_checkpoint_dir` or `custom_syncer` argument "
                     "in its constructor, but you've passed a "
                     "`upload_dir` to your SyncConfig. Without accepting "
                     "these parameters and passing them to the base trainable "
@@ -607,7 +608,7 @@ class RayTrialExecutor:
         """
         assert trial.status == Trial.RUNNING, trial.status
         try:
-            self.save(trial, _TuneCheckpoint.MEMORY)
+            self.save(trial, CheckpointStorage.MEMORY)
             self.stop_trial(trial)
             self.set_status(trial, Trial.PAUSED)
         except Exception:
@@ -723,9 +724,9 @@ class RayTrialExecutor:
     def save(
         self,
         trial: Trial,
-        storage: str = _TuneCheckpoint.PERSISTENT,
+        storage: CheckpointStorage = CheckpointStorage.PERSISTENT,
         result: Optional[Dict] = None,
-    ) -> _TuneCheckpoint:
+    ) -> _TrackedCheckpoint:
         """Saves the trial's state to a checkpoint asynchronously.
 
         Args:
@@ -741,13 +742,17 @@ class RayTrialExecutor:
         logger.debug(f"saving trial {trial}")
         result = result or trial.last_result
         with self._change_working_directory(trial):
-            if storage == _TuneCheckpoint.MEMORY:
+            if storage == CheckpointStorage.MEMORY:
                 value = trial.runner.save_to_object.remote()
-                checkpoint = _TuneCheckpoint(storage, value, result)
+                checkpoint = _TrackedCheckpoint(
+                    dir_or_data=value, storage_mode=storage, metrics=result
+                )
                 trial.on_checkpoint(checkpoint)
             else:
                 value = trial.runner.save.remote()
-                checkpoint = _TuneCheckpoint(storage, value, result)
+                checkpoint = _TrackedCheckpoint(
+                    dir_or_data=value, storage_mode=storage, metrics=result
+                )
                 trial.saving_to = checkpoint
                 self._futures[value] = (_ExecutorEventType.SAVING_RESULT, trial)
         return checkpoint
@@ -764,33 +769,37 @@ class RayTrialExecutor:
                 ineligible for restoration, given the Tune input arguments.
         """
         checkpoint = trial.checkpoint
-        if checkpoint.value is None:
+        if checkpoint.dir_or_data is None:
             return
         if trial.runner is None:
             raise RuntimeError(
                 "Trial {}: Unable to restore - no runner found.".format(trial)
             )
-        value = checkpoint.value
+        checkpoint_dir = checkpoint.dir_or_data
         node_ip = checkpoint.node_ip
-        if checkpoint.storage == _TuneCheckpoint.MEMORY:
+        if checkpoint.storage_mode == CheckpointStorage.MEMORY:
             logger.debug("Trial %s: Attempting restore from object", trial)
             # Note that we don't store the remote since in-memory checkpoints
             # don't guarantee fault tolerance and don't need to be waited on.
             with self._change_working_directory(trial):
-                trial.runner.restore_from_object.remote(value)
+                trial.runner.restore_from_object.remote(checkpoint_dir)
         else:
-            logger.debug("Trial %s: Attempting restore from %s", trial, value)
-            if trial.uses_cloud_checkpointing or not trial.sync_on_checkpoint:
+            logger.debug("Trial %s: Attempting restore from %s", trial, checkpoint_dir)
+            if (
+                trial.uses_cloud_checkpointing
+                or not trial.sync_on_checkpoint
+                or not os.path.exists(checkpoint_dir)
+            ):
                 # If using cloud checkpointing, trial will get cp from cloud.
                 # If not syncing to driver, assume it has access to the cp
                 # on the local fs.
                 with self._change_working_directory(trial):
-                    remote = trial.runner.restore.remote(value, node_ip)
+                    remote = trial.runner.restore.remote(checkpoint_dir, node_ip)
             elif trial.sync_on_checkpoint:
                 # This provides FT backwards compatibility in the
                 # case where no cloud checkpoints are provided.
                 logger.debug("Trial %s: Reading checkpoint into memory", trial)
-                obj = TrainableUtil.checkpoint_to_object(value)
+                obj = TrainableUtil.checkpoint_to_object(checkpoint_dir)
                 with self._change_working_directory(trial):
                     remote = trial.runner.restore_from_object.remote(obj)
             else:

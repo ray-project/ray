@@ -1,16 +1,30 @@
 import abc
-from typing import Dict, Type, Union, TYPE_CHECKING
-
-from ray.air.checkpoint import Checkpoint
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from typing import Dict, Type
 
 import numpy as np
 import pandas as pd
 
-if TYPE_CHECKING:
-    import pyarrow
+from ray.air.data_batch_type import DataBatchType
+from ray.air.checkpoint import Checkpoint
+from ray.air.util.data_batch_conversion import (
+    DataType,
+    convert_batch_type_to_pandas,
+    convert_pandas_to_batch_type,
+)
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
-DataBatchType = Union[np.ndarray, pd.DataFrame, "pyarrow.Table", Dict[str, np.ndarray]]
+try:
+    import pyarrow
+    import pyarrow.Table as pa_table
+except ImportError:
+    pa_table = None
+
+TYPE_TO_ENUM: Dict[Type[DataBatchType], DataType] = {
+    np.ndarray: DataType.NUMPY,
+    dict: DataType.NUMPY,
+    pd.DataFrame: DataType.PANDAS,
+    pa_table: DataType.ARROW,
+}
 
 
 @PublicAPI(stability="alpha")
@@ -50,9 +64,11 @@ class Predictor(abc.ABC):
     the base ``Predictor`` and implement the following two methods:
 
         1. ``_predict_pandas``: Given a pandas.DataFrame input, return a
-           pandas.DataFrame containing predictions.
+            pandas.DataFrame containing predictions.
         2. ``from_checkpoint``: Logic for creating a Predictor from an
            :ref:`AIR Checkpoint <air-checkpoint-ref>`.
+        3. Optionally ``_predict_arrow`` for better performance when working with
+           tensor data to avoid extra copies from Pandas conversions.
     """
 
     @classmethod
@@ -82,20 +98,18 @@ class Predictor(abc.ABC):
         Returns:
             DataBatchType: Prediction result.
         """
+        data_df = convert_batch_type_to_pandas(data)
 
-        pass
+        if getattr(self, "preprocessor", None):
+            data_df = self.preprocessor.transform_batch(data_df)
 
-        # TODO(amogkam): Implement below code.
-        # data_df = _convert_batch_type_to_pandas(data)
-        #
-        # if hasattr(self, "preprocessor") and self.preprocessor:
-        #     data_df = self.preprocessor.transform_batch(data_df)
-        #
-        # predictions_df = self._predict_pandas(data_df)
-        # return _convert_pandas_to_batch_type(predictions_df, type=type(data))
+        predictions_df = self._predict_pandas(data_df, **kwargs)
+        return convert_pandas_to_batch_type(
+            predictions_df, type=TYPE_TO_ENUM[type(data)]
+        )
 
     @DeveloperAPI
-    def _predict_pandas(self, data: pd.DataFrame, **kwargs) -> pd.DataFrame:
+    def _predict_pandas(self, data: "pd.DataFrame", **kwargs) -> "pd.DataFrame":
         """Perform inference on a Pandas DataFrame.
 
         All predictors are expected to implement this method.
@@ -110,22 +124,27 @@ class Predictor(abc.ABC):
         """
         raise NotImplementedError
 
+    @DeveloperAPI
+    def _predict_arrow(self, data: "pyarrow.Table", **kwargs) -> "pyarrow.Table":
+        """Perform inference on an Arrow Table.
+
+        Predictors can implement this method instead of ``_predict_pandas``
+        for better performance when the input batch type is a Numpy array, dict of
+        numpy arrays, or an Arrow Table as conversion from these types are zero copy.
+
+        Args:
+            data: An Arrow Table to perform predictions on.
+            kwargs: Arguments specific to the predictor implementation.
+
+        Returns:
+            An Arrow Table containing the prediction result.
+        """
+
+        raise NotImplementedError
+
     def __reduce__(self):
         raise PredictorNotSerializableException(
             "Predictor instances are not serializable. Instead, you may want "
             "to serialize a checkpoint and initialize the Predictor with "
             "Predictor.from_checkpoint."
         )
-
-
-def _convert_batch_type_to_pandas(data: DataBatchType) -> pd.DataFrame:
-    """Convert the provided data to a Pandas DataFrame."""
-    pass
-
-
-def _convert_pandas_to_batch_type(
-    data: pd.DataFrame, type: Type[DataBatchType]
-) -> DataBatchType:
-    """Convert the provided Pandas dataframe to the provided ``type``."""
-
-    pass
