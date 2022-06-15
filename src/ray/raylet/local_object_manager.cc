@@ -159,7 +159,6 @@ void LocalObjectManager::SpillObjectUptoMaxThroughput() {
     }
     {
       absl::MutexLock lock(&mutex_);
-      num_active_workers_ += 1;
       can_spill_more = num_active_workers_ < max_active_workers_;
     }
   }
@@ -295,6 +294,10 @@ void LocalObjectManager::SpillObjectsInternal(
     }
     return;
   }
+  {
+    absl::MutexLock lock(&mutex_);
+    num_active_workers_ += 1;
+  }
   io_worker_pool_.PopSpillWorker(
       [this, objects_to_spill, callback](std::shared_ptr<WorkerInterface> io_worker) {
         rpc::SpillObjectsRequest request;
@@ -317,6 +320,11 @@ void LocalObjectManager::SpillObjectsInternal(
         }
 
         if (request.object_refs_to_spill_size() == 0) {
+          {
+            absl::MutexLock lock(&mutex_);
+            num_active_workers_ -= 1;
+          }
+          io_worker_pool_.PushSpillWorker(io_worker);
           callback(Status::OK());
           return;
         }
@@ -618,7 +626,8 @@ std::string LocalObjectManager::DebugString() const {
   result << "- num bytes pending spill: " << num_bytes_pending_spill_ << "\n";
   result << "- cumulative spill requests: " << spilled_objects_total_ << "\n";
   result << "- cumulative restore requests: " << restored_objects_total_ << "\n";
-  result << "- spilled objects pending delete: " << spilled_object_pending_delete_.size() << "\n";
+  result << "- spilled objects pending delete: " << spilled_object_pending_delete_.size()
+         << "\n";
   return result.str();
 }
 

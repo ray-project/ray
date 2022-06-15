@@ -340,9 +340,7 @@ class LocalObjectManagerTestWithMinSpillingSize {
     RayConfig::instance().initialize(R"({"object_spilling_config": "dummy"})");
   }
 
-  int64_t NumBytesPendingSpill() {
-    return manager.num_bytes_pending_spill_;
-  }
+  int64_t NumBytesPendingSpill() { return manager.num_bytes_pending_spill_; }
 
   void AssertNoLeaks() {
     // TODO(swang): Assert this for all tests.
@@ -353,6 +351,7 @@ class LocalObjectManagerTestWithMinSpillingSize {
     ASSERT_TRUE(manager.url_ref_count_.empty());
     ASSERT_TRUE(manager.local_objects_.empty());
     ASSERT_TRUE(manager.spilled_object_pending_delete_.empty());
+    ASSERT_FALSE(manager.IsSpillingInProgress());
   }
 
   void TearDown() { unevictable_objects_.clear(); }
@@ -1462,6 +1461,7 @@ TEST_F(LocalObjectManagerTest, TestPinBytes) {
 }
 
 TEST_F(LocalObjectManagerTest, TestConcurrentSpillAndDelete1) {
+  // Test when object is deleted while the IO worker is spilling it.
   rpc::Address owner_address;
   owner_address.set_worker_id(WorkerID::FromRandom().Binary());
 
@@ -1498,6 +1498,7 @@ TEST_F(LocalObjectManagerTest, TestConcurrentSpillAndDelete1) {
     spilled = true;
   });
   ASSERT_FALSE(spilled);
+  EXPECT_CALL(worker_pool, PushSpillWorker(_));
   ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
 
   // Delete all objects while they're being spilled.
@@ -1525,6 +1526,8 @@ TEST_F(LocalObjectManagerTest, TestConcurrentSpillAndDelete1) {
 }
 
 TEST_F(LocalObjectManagerTest, TestConcurrentSpillAndDelete2) {
+  // Test when object is deleted while we are allocating an IO worker to spill
+  // it.
   rpc::Address owner_address;
   owner_address.set_worker_id(WorkerID::FromRandom().Binary());
 
@@ -1562,12 +1565,13 @@ TEST_F(LocalObjectManagerTest, TestConcurrentSpillAndDelete2) {
   });
   ASSERT_FALSE(spilled);
 
-  // Delete all objects while they're being spilled.
+  // Delete all objects while allocating an IO worker.
   for (size_t i = 0; i < free_objects_batch_size; i++) {
     EXPECT_CALL(*subscriber_, Unsubscribe(_, _, object_ids[i].Binary()));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
 
+  EXPECT_CALL(worker_pool, PushSpillWorker(_));
   ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
   std::vector<std::string> urls;
   ASSERT_FALSE(worker_pool.io_worker_client->ReplySpillObjects(urls));
