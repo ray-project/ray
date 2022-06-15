@@ -11,6 +11,8 @@ transformations are **composable**. Operations can be further applied on the res
 dataset, forming a chain of transformations to express more complex computations.
 Transformations are the core for expressing business logic in Datasets.
 
+.. _transform_datasets_transformations:
+
 ---------------
 Transformations
 ---------------
@@ -69,6 +71,8 @@ the Iris dataset.
    :start-after: __dataset_transformation_begin__
    :end-before: __dataset_transformation_end__
 
+.. _transform_datasets_writing_udfs:
+
 ------------
 Writing UDFs
 ------------
@@ -80,15 +84,23 @@ express your customized business logic in transformations. Here we will focus on
 :meth:`.map_batches() <ray.data.Dataset.map_batches>` as it's the primary mapping
 API in Datasets.
 
-A batch UDF can be a function or, if using the actor compute strategy, a callable class.
-These UDFs have several batch format options, which control the format of the
-batches that are passed to the provided batch UDF. Depending on the underlying dataset
-format, using a particular batch format may or may not incur a data conversion cost
-(e.g. convertion an Arrow Table to a Pandas DataFrame, or creating an Arrow Table from a
-Pyhton list, both of which would incur a full copy of the data).
+A batch UDF can be a function or, if using the
+:ref:`actor compute strategy <transform_datasets_compute_strategy>`, a
+:ref:`callable class <transform_datasets_callable_classes>`.
+These UDFs have several :ref:`batch format options <transform_datasets_batch_formats>`,
+which control the format of the batches that are passed to the provided batch UDF.
+Depending on the underlying :ref:`dataset format <transform_datasets_dataset_formats>`,
+using a particular batch format may or may not incur a data conversion cost
+(e.g. converting an Arrow Table to a Pandas DataFrame, or creating an Arrow Table from a
+Python list, both of which would incur a full copy of the data).
+
+.. _transform_datasets_dataset_formats:
 
 Dataset Formats
 ===============
+
+A **dataset format** refers to how Datasets represents data under-the-hood as data
+**blocks**.
 
 * **Tabular (Arrow or Pandas) Datasets:** Represented under-the-hood as
   `Arrow Tables <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__
@@ -127,11 +139,16 @@ Dataset Formats
   Simple datasets are mostly used as an escape hatch for data that's not cleanly
   representable in Arrow Tables and Pandas DataFrames.
 
+.. _transform_datasets_batch_formats:
+
 Batch Formats
 =============
 
-Batch UDFs have the following batch format options, which control the format of the data
-batches that are passed to the provided batch UDF.
+The **batch format** is the format of the data that's given to batch UDFs, e.g.
+Pandas DataFrames, Arrow Tables, NumPy ndarrays, or Python lists. The 
+:meth:`.map_batches() <ray.data.Dataset.map_batches>` API has a ``batch_format: str``
+parameter that allows the user to dictate the batch format; we dig into the details of
+each ``batch_format`` option below:
 
 .. tabbed:: "native" (default)
 
@@ -140,7 +157,7 @@ batches that are passed to the provided batch UDF.
 
   * **Tabular (Arrow or Pandas) Datasets:** Each batch will be a
     `pandas.DataFrame <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html>`__.
-    If the dataset is represented as Arrow Tables under-th-ehood, the conversion to the
+    If the dataset is represented as Arrow Tables under-the-hood, the conversion to the
     Pandas DataFrame batch format will incur a conversion cost (i.e., a full copy of
     each batch will be created in order to convert it).
   * **Tensor Datasets:** Each batch will be a
@@ -214,6 +231,46 @@ batches that are passed to the provided batch UDF.
     :start-after: __writing_numpy_udfs_begin__
     :end-before: __writing_numpy_udfs_end__
 
+The following table summarizes the conversion costs from a particular dataset format to
+a particular batch format:
+
+.. list-table:: Batch format conversion costs - is the conversion zero-copy?
+   :header-rows: 1
+   :stub-columns: 1
+   :widths: 40 15 15 15 15
+   :align: center
+
+   * - Dataset Format -> Batch Format
+     - ``"native"``
+     - ``"pandas"``
+     - ``"pyarrow"``
+     - ``"numpy"``
+   * - Tabular - Pandas
+     - Zero-Copy
+     - Zero-Copy
+     - Copy
+     - Zero-Copy
+   * - Tabular - Arrow
+     - Copy
+     - Copy
+     - Zero-Copy
+     - Zero-Copy
+   * - Tensor - Pandas
+     - Zero-Copy
+     - Zero-Copy
+     - Copy
+     - Zero-Copy
+   * - Tensor - Arrow
+     - Zero-Copy
+     - Copy
+     - Zero-Copy
+     - Zero-Copy
+   * - Simple - List
+     - Zero-Copy
+     - Copy
+     - Copy
+     - Copy
+
 You should reference the `pyarrow.Table APIs
 <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__, the
 `pandas.DataFrame APIs <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html>`__,
@@ -227,6 +284,8 @@ when writing batch UDFs.
    example, suppose you want to compute the sum of a column in ``pandas.DataFrame``:
    instead of iterating over each row of a batch and summing up values of that column,
    you should use ``df_batch["col_foo"].sum()``.
+
+.. _transform_datasets_callable_classes:
 
 Callable Class UDFs
 ===================
@@ -244,6 +303,8 @@ per actor worker.
    :language: python
    :start-after: __writing_callable_classes_udfs_begin__
    :end-before: __writing_callable_classes_udfs_end__
+
+.. _transform_datasets_batch_output_types:
 
 Batch UDF Output Types
 ======================
@@ -315,6 +376,8 @@ by Datasets when constructing its internal blocks:
     :language: python
     :start-after: __writing_simple_out_udfs_begin__
     :end-before: __writing_simple_out_udfs_end__
+
+.. _transform_datasets_row_output_types:
 
 Row UDF Output Types
 ====================
@@ -410,6 +473,8 @@ when constructing its internal blocks:
     :language: python
     :start-after: __writing_simple_out_row_udfs_begin__
     :end-before: __writing_simple_out_row_udfs_end__
+
+.. _transform_datasets_compute_strategy:
 
 ----------------
 Compute Strategy
