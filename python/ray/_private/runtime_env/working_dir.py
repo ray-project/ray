@@ -154,11 +154,13 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
         return await loop.run_in_executor(None, _create)
 
     def modify_context(
-        self, uri: Optional[str], runtime_env_dict: Dict, context: RuntimeEnvContext
+        self, uris: List[str], runtime_env_dict: Dict, context: RuntimeEnvContext
     ):
-        if uri is None:
+        if not uris:
             return
 
+        # WorkingDirPlugin uses a single URI.
+        uri = uris[0]
         local_dir = get_local_dir_from_uri(uri, self._resources_dir)
         if not local_dir.exists():
             raise ValueError(
