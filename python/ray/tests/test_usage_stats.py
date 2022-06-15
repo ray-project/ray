@@ -702,7 +702,8 @@ provider:
         assert payload["total_memory_gb"] > 0
         assert payload["total_object_store_memory_gb"] > 0
         if os.environ.get("RAY_MINIMAL") == "1":
-            assert set(payload["library_usages"]) == set()
+            # Since we start a serve actor for mocking a server using runtime env.
+            assert set(payload["library_usages"]) == {"serve"}
         else:
             # Serve is recorded due to our mock server.
             assert set(payload["library_usages"]) == {"rllib", "train", "tune", "serve"}
