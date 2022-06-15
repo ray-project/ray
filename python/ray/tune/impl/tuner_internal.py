@@ -6,7 +6,6 @@ import ray.cloudpickle as pickle
 from ray.air.config import RunConfig
 from ray.train.trainer import BaseTrainer
 from ray.tune import Experiment, TuneError, ExperimentAnalysis
-from ray.tune.impl.utils import execute_dataset
 from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
 from ray.tune.tune import run
@@ -99,7 +98,6 @@ class TunerInternal:
 
         # Not used for restored Tuner.
         self._param_space = param_space or {}
-        self._process_dataset_param()
 
         # This needs to happen before `tune.run()` is kicked in.
         # This is because currently tune does not exit gracefully if
@@ -114,16 +112,6 @@ class TunerInternal:
         trainable_ckpt = os.path.join(self._experiment_checkpoint_dir, _TRAINABLE_PKL)
         with open(trainable_ckpt, "wb") as fp:
             pickle.dump(self._trainable, fp)
-
-    def _process_dataset_param(self) -> None:
-        """Dataset needs to be fully executed before sent over to trainables.
-
-        A valid dataset configuration in param space looks like:
-        "datasets": {
-            "train_dataset": tune.grid_search([ds1, ds2]),
-        },
-        """
-        execute_dataset(self._param_space)
 
     def _setup_create_experiment_checkpoint_dir(
         self, run_config: Optional[RunConfig]
