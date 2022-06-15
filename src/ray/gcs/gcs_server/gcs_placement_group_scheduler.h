@@ -417,6 +417,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   void CommitBundleResources(const std::shared_ptr<BundleLocations> &bundle_locations);
 
   /// Return the bundle resources to the cluster resources.
+  /// It will remove bundle resources AND also add original resources back.
   void ReturnBundleResources(const std::shared_ptr<BundleLocations> &bundle_locations);
 
   /// Create scheduling context.
