@@ -183,23 +183,22 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       self_node_name_(self_node_name),
       io_service_(io_service),
       gcs_client_(gcs_client),
-      worker_pool_(
-          io_service,
-          self_node_id_,
-          config.node_manager_address,
-          config.num_workers_soft_limit,
-          config.num_initial_python_workers_for_first_job,
-          config.maximum_startup_concurrency,
-          config.min_worker_port,
-          config.max_worker_port,
-          config.worker_ports,
-          gcs_client_,
-          config.worker_commands,
-          config.native_library_path,
-          /*starting_worker_timeout_callback=*/
-          [this] { cluster_task_manager_->ScheduleAndDispatchTasks(); },
-          config.ray_debugger_external,
-          /*get_time=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; }),
+      worker_pool_(io_service,
+                   self_node_id_,
+                   config.node_manager_address,
+                   config.num_workers_soft_limit,
+                   config.num_initial_python_workers_for_first_job,
+                   config.maximum_startup_concurrency,
+                   config.min_worker_port,
+                   config.max_worker_port,
+                   config.worker_ports,
+                   gcs_client_,
+                   config.worker_commands,
+                   config.native_library_path,
+                   /*starting_worker_timeout_callback=*/
+                   [this] { cluster_task_manager_->ScheduleAndDispatchTasks(); },
+                   config.ray_debugger_external,
+                   /*get_time=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; }),
       client_call_manager_(io_service),
       worker_rpc_pool_(client_call_manager_),
       core_worker_subscriber_(std::make_unique<pubsub::Subscriber>(
@@ -683,9 +682,12 @@ void NodeManager::HandleReleaseUnusedBundles(
   std::unordered_set<BundleID, pair_hash> in_use_bundles;
   for (int index = 0; index < request.bundles_in_use_size(); ++index) {
     const auto &bundle_id = request.bundles_in_use(index).bundle_id();
-    in_use_bundles.emplace(
-        std::make_pair(PlacementGroupID::FromBinary(bundle_id.placement_group_id()),
-                       bundle_id.bundle_index()));
+    in_use_bundles.emplace(PlacementGroupID::FromBinary(bundle_id.placement_group_id()),
+                           bundle_id.bundle_index());
+    // Add -1 one to the in_use_bundles. It's ok to add it more than one times since it's
+    // a set.
+    in_use_bundles.emplace(PlacementGroupID::FromBinary(bundle_id.placement_group_id()),
+                           -1);
   }
 
   // Kill all workers that are currently associated with the unused bundles.
