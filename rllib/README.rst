@@ -11,7 +11,7 @@ connected simulators, RLlib offers simple solutions for your decision making nee
 
 You **don't need** to be an **RL expert** to use RLlib, nor do you need to learn Ray or any
 other of its libraries! If you either have your problem coded (in python) as an
-`RL environment <https://docs.ray.io/en/master/rllib/rllib-env.html>`_
+`RL environment <rllib-env.html#configuring-environments>`__
 or own lots of pre-recorded, historic behavioral data to learn from, you will be
 up and running in only a few days.
 
@@ -25,7 +25,7 @@ RLlib is already used in production by industry leaders in many different vertic
 `boat design <https://www.youtube.com/watch?v=cLCK13ryTpw>`_,
 and many others.
 
-`You can read about RLlib Key Concepts. <https://docs.ray.io/en/master/rllib/core-concepts.html>`_  
+`You can read about RLlib Key Concepts. <core-concepts.html>`_  
 
 
 Installation and Setup
