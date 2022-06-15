@@ -1,20 +1,21 @@
-from pathlib import Path
-import urllib
-import urllib.request
-import requests
-import mock
-import sys
-from preprocess_github_markdown import preprocess_github_markdown_file
-
-from sphinx.util import logging as sphinx_logging
 import logging
 import logging.handlers
+import sys
+import urllib
+import urllib.request
+from pathlib import Path
 from queue import Queue
-from sphinx.util.console import red  # type: ignore
+
+import requests
+import scipy.linalg  # noqa: F401
 
 # Note: the scipy import has to stay here, it's used implicitly down the line
 import scipy.stats  # noqa: F401
-import scipy.linalg  # noqa: F401
+from preprocess_github_markdown import preprocess_github_markdown_file
+from sphinx.util import logging as sphinx_logging
+from sphinx.util.console import red  # type: ignore
+
+import mock
 
 __all__ = [
     "fix_xgb_lgbm_docs",
