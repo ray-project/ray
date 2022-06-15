@@ -1,22 +1,17 @@
 import asyncio
-import os
-import sys
+import hashlib
 import json
 import logging
-import hashlib
+import os
 import shutil
-
-from typing import Optional, List, Dict, Tuple
+import sys
+from typing import Dict, List, Optional, Tuple
 
 from ray._private.async_compat import asynccontextmanager, create_task, get_running_loop
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import Protocol, parse_uri
-from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.runtime_env.utils import check_output_cmd
-from ray._private.utils import (
-    get_directory_size_bytes,
-    try_to_create_directory,
-)
+from ray._private.utils import get_directory_size_bytes, try_to_create_directory
 
 default_logger = logging.getLogger(__name__)
 
@@ -367,9 +362,7 @@ class PipProcessor:
         return self._run().__await__()
 
 
-class PipPlugin(RuntimeEnvPlugin):
-    name = "pip"
-
+class PipManager:
     def __init__(self, resources_dir: str):
         self._pip_resources_dir = os.path.join(resources_dir, "pip")
         self._creating_task = {}
@@ -387,12 +380,12 @@ class PipPlugin(RuntimeEnvPlugin):
         """
         return os.path.join(self._pip_resources_dir, hash)
 
-    def get_uri(self, runtime_env: "RuntimeEnv") -> Optional[str]:  # noqa: F821
-        """Return the pip URI from the RuntimeEnv if it exists, else None."""
+    def get_uris(self, runtime_env: "RuntimeEnv") -> List[str]:  # noqa: F821
+        """Return the pip URI from the RuntimeEnv if it exists, else return []."""
         pip_uri = runtime_env.pip_uri()
         if pip_uri != "":
-            return pip_uri
-        return None
+            return [pip_uri]
+        return []
 
     def delete_uri(
         self, uri: str, logger: Optional[logging.Logger] = default_logger
@@ -402,7 +395,7 @@ class PipPlugin(RuntimeEnvPlugin):
         protocol, hash = parse_uri(uri)
         if protocol != Protocol.PIP:
             raise ValueError(
-                "PipPlugin can only delete URIs with protocol "
+                "PipManager can only delete URIs with protocol "
                 f"pip. Received protocol {protocol}, URI {uri}"
             )
 
