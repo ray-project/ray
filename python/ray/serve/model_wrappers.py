@@ -1,5 +1,15 @@
 from collections import defaultdict
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Type,
+    Union,
+)
 
 import numpy as np
 
@@ -9,7 +19,14 @@ from ray._private.utils import import_attr
 from ray.air.checkpoint import Checkpoint
 from ray.serve.drivers import HTTPAdapterFn, SimpleSchemaIngress
 from ray.serve.utils import require_packages
-from ray.train.predictor import Predictor
+
+if TYPE_CHECKING:
+    from ray.train.predictor import Predictor
+else:
+    try:
+        from ray.train.predictor import Predictor
+    except ImportError:
+        Predictor = None
 
 try:
     import pandas as pd
@@ -27,11 +44,11 @@ def _load_checkpoint(
 
 
 def _load_predictor_cls(
-    predictor_cls: Union[str, Type[Predictor]],
-) -> Type[Predictor]:
+    predictor_cls: Union[str, Type["Predictor"]],
+) -> Type["Predictor"]:
     if isinstance(predictor_cls, str):
         predictor_cls = import_attr(predictor_cls)
-    if not issubclass(predictor_cls, Predictor):
+    if Predictor is not None and not issubclass(predictor_cls, Predictor):
         raise ValueError(
             f"{predictor_cls} class must be a subclass of ray.air `Predictor`"
         )
@@ -173,7 +190,7 @@ class ModelWrapper(SimpleSchemaIngress):
 
     def __init__(
         self,
-        predictor_cls: Union[str, Type[Predictor]],
+        predictor_cls: Union[str, Type["Predictor"]],
         checkpoint: Union[Checkpoint, str],
         http_adapter: Union[
             str, HTTPAdapterFn
