@@ -1,12 +1,21 @@
-from abc import ABC, abstractstaticmethod
+from abc import ABC
+import logging
+from typing import Optional
+from ray._private.runtime_env.uri_cache import URICache
 
 from ray.util.annotations import DeveloperAPI
 from ray._private.runtime_env.context import RuntimeEnvContext
 
+default_logger = logging.getLogger(__name__)
+
 
 @DeveloperAPI
 class RuntimeEnvPlugin(ABC):
-    @abstractstaticmethod
+    """Abstract base class for runtime environment plugins."""
+
+    name: str
+
+    @staticmethod
     def validate(runtime_env_dict: dict) -> str:
         """Validate user entry and returns a URI uniquely describing resource.
 
@@ -24,8 +33,11 @@ class RuntimeEnvPlugin(ABC):
         """
         raise NotImplementedError()
 
+    def get_uri(self, runtime_env: "RuntimeEnv") -> Optional[str]:  # noqa: F821
+        return None
+
     def create(
-        uri: str, runtime_env: "RuntimeEnv", ctx: RuntimeEnvContext  # noqa: F821
+        self, uri: str, runtime_env: "RuntimeEnv", ctx: RuntimeEnvContext  # noqa: F821
     ) -> float:
         """Create and install the runtime environment.
 
@@ -45,7 +57,11 @@ class RuntimeEnvPlugin(ABC):
         return 0
 
     def modify_context(
-        uri: str, runtime_env: "RuntimeEnv", ctx: RuntimeEnvContext  # noqa: F821
+        self,
+        uri: Optional[str],
+        runtime_env: "RuntimeEnv",  # noqa: F821
+        context: RuntimeEnvContext,
+        logger: logging.Logger,
     ) -> None:
         """Modify context to change worker startup behavior.
 
@@ -59,7 +75,7 @@ class RuntimeEnvPlugin(ABC):
         """
         return
 
-    def delete(uri: str, ctx: RuntimeEnvContext) -> float:
+    def delete_uri(self, uri: str, logger: logging.Logger) -> float:
         """Delete the the runtime environment given uri.
 
         Args:
@@ -70,3 +86,45 @@ class RuntimeEnvPlugin(ABC):
             the amount of space reclaimed by the deletion.
         """
         return 0
+
+
+@DeveloperAPI
+class PluginCacheManager:
+    """Manages a plugin and a cache for its local resources."""
+
+    def __init__(self, plugin: RuntimeEnvPlugin, uri_cache: URICache):
+        self._plugin = plugin
+        self._uri_cache = uri_cache
+
+    async def create_if_needed(
+        self,
+        runtime_env: "RuntimeEnv",  # noqa: F821
+        context: RuntimeEnvContext,
+        logger: logging.Logger = default_logger,
+    ):
+        # TODO(architkulkarni): We should standardize on `get_uris` for all plugins
+        # and remove this conditional logic.
+        multiple_uris = hasattr(self._plugin, "get_uris")
+
+        if multiple_uris:
+            uris = self._plugin.get_uris(runtime_env)
+        else:
+            uri = self._plugin.get_uri(runtime_env)
+            uris = [uri] if uri else None
+
+        if uris is not None:
+            for uri in uris:
+                if uri not in self._uri_cache:
+                    logger.debug(f"Cache miss for URI {uri}.")
+                    size_bytes = await self._plugin.create(
+                        uri, runtime_env, context, logger=logger
+                    )
+                    self._uri_cache.add(uri, size_bytes, logger=logger)
+                else:
+                    logger.debug(f"Cache hit for URI {uri}.")
+                    self._uri_cache.mark_used(uri, logger=logger)
+
+        if multiple_uris:
+            self._plugin.modify_context(uris, runtime_env, context)
+        else:
+            self._plugin.modify_context(uri, runtime_env, context)
