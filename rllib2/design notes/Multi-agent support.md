@@ -36,7 +36,7 @@ for iter in range(NUM_ITER):
     dqn.update_weight('ppo_policy', ppo.get_weight('ppo_policy'))
 ```
 
-###Action Items
+### Action Items
 
 - [x] Algorithm should create a dictionary of UnitTrainers:
 
@@ -52,7 +52,7 @@ them about the mismatch.
 - [x] Inside `algorithm.update()` loop through the unit_trainer_map and only call `.update()`
 on those policies that are included in policies_to_train
 
-###Notes
+### Notes
 
 1. In this scenario agent_k which is based on policy_m can still use data from the
 perspective of other agents to encode its own observation into a latent state.
@@ -123,7 +123,7 @@ def update():
 ```
 
 ### Changes required to the design:
-1. The UnitTrainer should accept an RLModule that conforms to a specific RLModuleInterface (e.g. PPORLModule)
+1. The UnitTrainer should accept only one RLModule that conforms to a specific RLModuleInterface (e.g. PPORLModule)
 2. The entity creating UnitTrainer should also create the rl_module object that it needs.
 
 ## A homogeneous MARL or a single Agent RL 
