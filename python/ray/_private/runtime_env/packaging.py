@@ -1,21 +1,24 @@
-from enum import Enum
-from tempfile import TemporaryDirectory
-from filelock import FileLock
 import hashlib
 import logging
 import os
-from pathlib import Path
 import shutil
+from enum import Enum
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Callable, List, Optional, Tuple
 from urllib.parse import urlparse
 from zipfile import ZipFile
+
+from filelock import FileLock
+
+import ray
+from ray._private.gcs_utils import GcsAioClient
+from ray._private.thirdparty.pathspec import PathSpec
 from ray.experimental.internal_kv import (
-    _internal_kv_put,
-    _internal_kv_get,
     _internal_kv_exists,
+    _internal_kv_put,
     _pin_runtime_env_uri,
 )
-from ray._private.thirdparty.pathspec import PathSpec
 from ray.ray_constants import (
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT,
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR,
@@ -554,7 +557,7 @@ def get_local_dir_from_uri(uri: str, base_directory: str) -> Path:
     return local_dir
 
 
-def download_and_unpack_package(
+async def download_and_unpack_package(
     pkg_uri: str,
     base_directory: str,
     logger: Optional[logging.Logger] = default_logger,
@@ -579,7 +582,12 @@ def download_and_unpack_package(
             protocol, pkg_name = parse_uri(pkg_uri)
             if protocol == Protocol.GCS:
                 # Download package from the GCS.
-                code = _internal_kv_get(pkg_uri)
+                gcs_aio_client = GcsAioClient(
+                    address=ray.get_runtime_context().gcs_address
+                )
+                code = await gcs_aio_client.internal_kv_get(
+                    pkg_uri.encode(), namespace=None, timeout=None
+                )
                 if code is None:
                     raise IOError(f"Failed to fetch URI {pkg_uri} from GCS.")
                 code = code or b""
@@ -601,8 +609,8 @@ def download_and_unpack_package(
 
                 if protocol == Protocol.S3:
                     try:
-                        from smart_open import open as open_file
                         import boto3
+                        from smart_open import open as open_file
                     except ImportError:
                         raise ImportError(
                             "You must `pip install smart_open` and "
@@ -612,8 +620,8 @@ def download_and_unpack_package(
                     tp = {"client": boto3.client("s3")}
                 elif protocol == Protocol.GS:
                     try:
-                        from smart_open import open as open_file
                         from google.cloud import storage  # noqa: F401
+                        from smart_open import open as open_file
                     except ImportError:
                         raise ImportError(
                             "You must `pip install smart_open` and "

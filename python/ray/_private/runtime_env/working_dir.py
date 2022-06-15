@@ -1,28 +1,27 @@
 import logging
 import os
-from typing import Any, Dict, Optional
 from pathlib import Path
-import asyncio
+from typing import Any, Dict, Optional
 
-from ray.experimental.internal_kv import _internal_kv_initialized
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
-    download_and_unpack_package,
+    Protocol,
     delete_package,
+    download_and_unpack_package,
     get_local_dir_from_uri,
     get_uri_for_directory,
     get_uri_for_package,
-    upload_package_to_gcs,
     parse_uri,
-    Protocol,
     upload_package_if_needed,
+    upload_package_to_gcs,
 )
 from ray._private.utils import get_directory_size_bytes, try_to_create_directory
+from ray.experimental.internal_kv import _internal_kv_initialized
 
 default_logger = logging.getLogger(__name__)
 
 
-def upload_working_dir_if_needed(
+async def upload_working_dir_if_needed(
     runtime_env: Dict[str, Any],
     scratch_dir: Optional[str] = os.getcwd(),
     logger: Optional[logging.Logger] = default_logger,
@@ -68,11 +67,11 @@ def upload_working_dir_if_needed(
             )
 
         pkg_uri = get_uri_for_package(package_path)
-        upload_package_to_gcs(pkg_uri, package_path.read_bytes())
+        await upload_package_to_gcs(pkg_uri, package_path.read_bytes())
         runtime_env["working_dir"] = pkg_uri
         return runtime_env
     if upload_fn is None:
-        upload_package_if_needed(
+        await upload_package_if_needed(
             working_dir_uri,
             scratch_dir,
             working_dir,
@@ -136,18 +135,10 @@ class WorkingDirManager:
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ) -> int:
-        # Currently create method is still a sync process, to avoid blocking
-        # the loop, need to run this function in another thread.
-        # TODO(Catch-Bull): Refactor method create into an async process, and
-        # make this method running in current loop.
-        def _create():
-            local_dir = download_and_unpack_package(
-                uri, self._resources_dir, logger=logger
-            )
-            return get_directory_size_bytes(local_dir)
-
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, _create)
+        local_dir = await download_and_unpack_package(
+            uri, self._resources_dir, logger=logger
+        )
+        return get_directory_size_bytes(local_dir)
 
     def modify_context(
         self, uri: Optional[str], runtime_env_dict: Dict, context: RuntimeEnvContext
