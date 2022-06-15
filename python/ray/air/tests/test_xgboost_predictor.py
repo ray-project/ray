@@ -1,6 +1,6 @@
 import os
 from ray.air.predictors.integrations.xgboost import XGBoostPredictor, to_air_checkpoint
-from ray.air.preprocessor import Preprocessor
+from ray.data.preprocessor import Preprocessor
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import MODEL_KEY
 import json

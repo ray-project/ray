@@ -16,6 +16,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/bundle_location_index.h"
 #include "ray/common/id.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
@@ -257,65 +258,6 @@ class LeaseStatusTracker {
 
   /// Location of bundles.
   std::shared_ptr<BundleLocations> bundle_locations_;
-};
-
-/// A data structure that helps fast bundle location lookup.
-class BundleLocationIndex {
- public:
-  BundleLocationIndex() {}
-  ~BundleLocationIndex() = default;
-
-  /// Add bundle locations to index.
-  ///
-  /// \param placement_group_id
-  /// \param bundle_locations Bundle locations that will be associated with the placement
-  /// group id.
-  void AddBundleLocations(const PlacementGroupID &placement_group_id,
-                          std::shared_ptr<BundleLocations> bundle_locations);
-
-  /// Erase bundle locations associated with a given node id.
-  ///
-  /// \param node_id The id of node.
-  /// \return True if succeed. False otherwise.
-  bool Erase(const NodeID &node_id);
-
-  /// Erase bundle locations associated with a given placement group id.
-  ///
-  /// \param placement_group_id Placement group id
-  /// \return True if succeed. False otherwise.
-  bool Erase(const PlacementGroupID &placement_group_id);
-
-  /// Get BundleLocation of placement group id.
-  ///
-  /// \param placement_group_id Placement group id of this bundle locations.
-  /// \return Bundle locations that are associated with a given placement group id.
-  const absl::optional<std::shared_ptr<BundleLocations> const> GetBundleLocations(
-      const PlacementGroupID &placement_group_id);
-
-  /// Get BundleLocation of node id.
-  ///
-  /// \param node_id Node id of this bundle locations.
-  /// \return Bundle locations that are associated with a given node id.
-  const absl::optional<std::shared_ptr<BundleLocations> const> GetBundleLocationsOnNode(
-      const NodeID &node_id);
-
-  /// Update the index to contain new node information. Should be used only when new node
-  /// is added to the cluster.
-  ///
-  /// \param alive_nodes map of alive nodes.
-  void AddNodes(
-      const absl::flat_hash_map<NodeID, std::shared_ptr<ray::rpc::GcsNodeInfo>> &nodes);
-
- private:
-  /// Map from node ID to the set of bundles. This is used to lookup bundles at each node
-  /// when a node is dead.
-  absl::flat_hash_map<NodeID, std::shared_ptr<BundleLocations>> node_to_leased_bundles_;
-
-  /// A map from placement group id to bundle locations.
-  /// It is used to destroy bundles for the placement group.
-  /// NOTE: It is a reverse index of `node_to_leased_bundles`.
-  absl::flat_hash_map<PlacementGroupID, std::shared_ptr<BundleLocations>>
-      placement_group_to_bundle_locations_;
 };
 
 /// GcsPlacementGroupScheduler is responsible for scheduling placement_groups registered
