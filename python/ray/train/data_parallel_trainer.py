@@ -6,10 +6,10 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Un
 
 import ray
 from ray import tune
+from ray.air import session
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
 from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY
-from ray.air.session import get_session
 from ray.train import BackendConfig, TrainingIterator
 from ray.train._internal.backend_executor import BackendExecutor, TrialInfo
 from ray.train._internal.checkpoint import TuneCheckpointManager
@@ -324,12 +324,11 @@ class DataParallelTrainer(BaseTrainer):
             scaling_config_dataclass.additional_resources_per_worker
         )
 
-        session = get_session()
         trial_info = TrialInfo(
-            name=session.trial_name,
-            id=session.trial_id,
-            resources=session.trial_resources,
-            dir=os.getcwd(),
+            name=session.get_trial_name(),
+            id=session.get_trial_id(),
+            resources=session.get_trial_resources(),
+            logdir=os.getcwd(),
         )
 
         backend_executor = BackendExecutor(

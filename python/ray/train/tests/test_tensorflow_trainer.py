@@ -5,13 +5,13 @@ import pytest
 
 import ray
 from ray import train
+from ray.air import session
 from ray.air.checkpoint import Checkpoint
 from ray.air.examples.tf.tensorflow_linear_dataset_example import get_dataset
 from ray.air.examples.tf.tensorflow_linear_dataset_example import (
     train_func as tensorflow_linear_train_func,
 )
 from ray.air.predictors.integrations.tensorflow import TensorflowPredictor
-from ray.air.session import get_session
 from ray.train.constants import MODEL_KEY, TRAIN_DATASET_KEY
 from ray.train.tensorflow import TensorflowTrainer
 
@@ -94,12 +94,11 @@ def test_tensorflow_e2e(ray_start_4_cpus):
 
 def test_report_and_load_using_ml_session(ray_start_4_cpus):
     def train_func():
-        session = get_session()
-        if session.loaded_checkpoint:
-            with session.loaded_checkpoint.as_directory() as loaded_checkpoint_dir:
+        if session.get_checkpoint():
+            with session.get_checkpoint().as_directory() as checkpoint_dir:
                 import tensorflow as tf
 
-                model = tf.keras.models.load_model(loaded_checkpoint_dir)
+                model = tf.keras.models.load_model(checkpoint_dir)
         else:
             model = build_model()
 

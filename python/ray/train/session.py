@@ -1,8 +1,8 @@
 import warnings
 from typing import TYPE_CHECKING, Dict, Optional, Union
 
+from ray.air._internal.session import Session
 from ray.air.checkpoint import Checkpoint
-from ray.air.session import Session
 
 if TYPE_CHECKING:
     # avoid circular import

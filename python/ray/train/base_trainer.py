@@ -8,7 +8,6 @@ from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import RunConfig, ScalingConfig, ScalingConfigDataClass
 from ray.air.result import Result
-from ray.air.session import get_session
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.tune import Trainable
 from ray.tune.error import TuneError
@@ -337,14 +336,12 @@ class BaseTrainer(abc.ABC):
         def train_func(config, checkpoint_dir=None):
             # config already contains merged values.
             # Instantiate new Trainer in Trainable.
-            tune_session = get_session()
             trainer = trainer_cls(**config)
 
             if checkpoint_dir:
                 trainer.resume_from_checkpoint = Checkpoint.from_directory(
                     checkpoint_dir
                 )
-            trainer.logdir = tune_session.logdir
 
             trainer.setup()
             trainer.preprocess_datasets()

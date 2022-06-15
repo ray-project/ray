@@ -6,8 +6,8 @@ from contextlib import contextmanager
 from typing import Dict, Optional, Set
 
 import ray
+from ray.air._internal.session import Session
 from ray.air.checkpoint import Checkpoint
-from ray.air.session import Session
 from ray.tune.error import TuneError
 from ray.tune.function_runner import _StatusReporter
 from ray.util.annotations import DeveloperAPI, PublicAPI

@@ -3,8 +3,8 @@ from typing import Dict, List, Optional, Union
 
 from tensorflow.keras.callbacks import Callback as KerasCallback
 
+from ray.air import session
 from ray.air.checkpoint import Checkpoint
-from ray.air.session import get_session
 
 
 class _Callback(KerasCallback):
@@ -183,4 +183,4 @@ class Callback(_Callback):
                     metric = key
                 report_dict[key] = logs[metric]
 
-        get_session().report(report_dict, checkpoint)
+        session.report(report_dict, checkpoint=checkpoint)
