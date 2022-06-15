@@ -201,10 +201,10 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
     uri = urlparse(pkg_uri)
     try:
         protocol = Protocol(uri.scheme)
-    except ValueError:
+    except ValueError as e:
         raise ValueError(
-            f"Invalid protocol for runtime_env URI: {pkg_uri}. "
-            f"Supported protocols: {Protocol._member_names_}."
+            f"Invalid protocol for runtime_env URI {pkg_uri}. "
+            f"Supported protocols: {Protocol._member_names_}. Original error: {e}"
         )
     if protocol == Protocol.S3 or protocol == Protocol.GS:
         return (protocol, f"{protocol.value}_{uri.netloc}{uri.path.replace('/', '_')}")
