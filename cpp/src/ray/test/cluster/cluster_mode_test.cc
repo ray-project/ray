@@ -261,9 +261,9 @@ TEST(RayClusterModeTest, JavaInvocationTest) {
   EXPECT_EQ(3, *java_actor_ret.Get());
 
   auto java_task_ret =
-    ray::Task(ray::JavaFunction<std::string>{"io.ray.test.CrossLanguageInvocationTest",
-                                              "returnInputString"})
-        .Remote("helloworld");
+      ray::Task(ray::JavaFunction<std::string>{"io.ray.test.CrossLanguageInvocationTest",
+                                               "returnInputString"})
+          .Remote("helloworld");
   EXPECT_EQ("helloworld", *java_task_ret.Get());
 }
 
