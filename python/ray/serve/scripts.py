@@ -116,7 +116,6 @@ def start(
         "Use `serve config` to fetch the current config and `serve status` to "
         "check the status of the deployments after deploying."
     ),
-    hidden=True,
 )
 @click.argument("config_file_name")
 @click.option(
@@ -276,10 +275,7 @@ def run(
         sys.exit()
 
 
-@cli.command(
-    help="Get the current config of the running Serve app.",
-    hidden=True,
-)
+@cli.command(help="Get the current config of the running Serve app.")
 @click.option(
     "--address",
     "-a",
@@ -323,7 +319,6 @@ def status(address: str):
 
 @cli.command(
     help="Deletes the Serve app.",
-    hidden=True,
 )
 @click.option(
     "--address",
@@ -351,13 +346,12 @@ def shutdown(address: str, yes: bool):
 
 
 @cli.command(
-    short_help="Writes a Pipeline's config file.",
+    short_help="Writes a Serve Deployment Graph's config file.",
     help=(
         "Imports the ClassNode or FunctionNode at IMPORT_PATH "
         "and generates a structured config for it that can be used by "
         "`serve deploy` or the REST API. "
     ),
-    hidden=True,
 )
 @click.argument("import_path")
 @click.option(
