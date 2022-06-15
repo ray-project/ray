@@ -1,3 +1,8 @@
+# Skipping entire test module:
+#  - Waiting for MLDataset to be made an optional dependency
+#  - See https://github.com/oap-project/raydp/pull/241
+
+"""
 import pytest
 import ray
 import raydp
@@ -6,6 +11,7 @@ import torch
 
 @pytest.fixture(scope="function")
 def spark(request):
+    
     ray.init(num_cpus=2, include_dashboard=False)
     spark_session = raydp.init_spark("test", 1, 1, "500 M")
 
@@ -17,6 +23,7 @@ def spark(request):
     return spark_session
 
 
+@pytest.mark.skip(reason="Waiting for MLDataset to be made an optional dependency")
 def test_raydp_roundtrip(spark):
     spark_df = spark.createDataFrame([(1, "a"), (2, "b"), (3, "c")], ["one", "two"])
     rows = [(r.one, r.two) for r in spark_df.take(3)]
@@ -54,3 +61,4 @@ if __name__ == "__main__":
     import sys
 
     sys.exit(pytest.main(["-v", __file__]))
+"""
