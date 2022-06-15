@@ -392,9 +392,9 @@ bool IsRayletFailed(const std::string &raylet_pid) {
   return should_shutdown;
 }
 
-void QuickExit() {
+void QuickExit(int exit_code) {
   ray::RayLog::ShutDownRayLog();
-  _Exit(1);
+  _Exit(exit_code);
 }
 
 }  // namespace ray
