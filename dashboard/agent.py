@@ -125,6 +125,8 @@ class DashboardAgent:
         self.http_server = None
 
         # Used by the agent and sub-modules.
+        # TODO(architkulkarni): Remove gcs_client once the agent exclusively uses
+        # gcs_aio_client and not gcs_client.
         self.gcs_client = GcsClient(address=self.gcs_address)
         self.gcs_aio_client = GcsAioClient(address=self.gcs_address)
         self.publisher = GcsAioPublisher(address=self.gcs_address)
