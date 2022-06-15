@@ -107,9 +107,9 @@ public class ServeControllerClient {
                   ((PyActorHandle) controller)
                       .task(PyActorMethod.of(Constants.CONTROLLER_GET_ALL_ENDPOINTS_METHOD))
                       .remote()
-                      .get()); // TODO-0528 endpoint list
+                      .get());
     } else {
-      LOGGER.warn("Client only support Python controller now.");
+      LOGGER.warn("Client currently only supports the Python controller.");
       endpoints =
           ServeProtoUtil.parseEndpointSet(
               ((ActorHandle<? extends ServeController>) controller)
@@ -161,7 +161,7 @@ public class ServeControllerClient {
         && deploymentConfig.getMaxConcurrentQueries()
             < deploymentConfig.getAutoscalingConfig().getTargetNumOngoingRequestsPerReplica()) {
       LOGGER.warn(
-          "Autoscaling will never happen, because 'max_concurrent_queries' is less than 'target_num_ongoing_requests_per_replica' now.");
+          "Autoscaling will never happen, because 'max_concurrent_queries' is less than 'target_num_ongoing_requests_per_replica'.");
     }
 
     boolean updating =
@@ -190,7 +190,7 @@ public class ServeControllerClient {
     }
 
     if (blocking) {
-      waitForDeploymentHealthy(name, -1);
+      waitForDeploymentHealthy(name);
       String urlPart = url != null ? LogUtil.format(" at `{}`", url) : "";
       LOGGER.info(
           "Deployment '{}{}' is ready {}. {}",
@@ -208,11 +208,12 @@ public class ServeControllerClient {
    * doesn't happen before timeoutS.
    *
    * @param name
+   * @param timeoutS
    */
-  private void waitForDeploymentHealthy(String name, long timeoutS) {
+  public void waitForDeploymentHealthy(String name, Long timeoutS) {
     long start = System.currentTimeMillis();
     boolean isTimeout = true;
-    while (System.currentTimeMillis() - start < timeoutS * 1000 || timeoutS < 0) {
+    while (timeoutS == null || System.currentTimeMillis() - start < timeoutS * 1000) {
 
       DeploymentStatusInfo status = getDeploymentStatus(name);
       if (status == null) {
@@ -241,6 +242,10 @@ public class ServeControllerClient {
       throw new RayServeException(
           LogUtil.format("Deployment {} did not become HEALTHY after {}s.", name, timeoutS));
     }
+  }
+
+  public void waitForDeploymentHealthy(String name) {
+    waitForDeploymentHealthy(name, null);
   }
 
   /**

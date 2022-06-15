@@ -37,8 +37,8 @@ public class Constants {
    */
   public static final int CONTROLLER_MAX_CONCURRENCY = 15000;
 
-  /** Max time to wait for proxy in `serve.start()`. Unit: second */
-  public static final int PROXY_TIMEOUT = 60;
+  /** Max time to wait for proxy in `Serve.start`. Unit: second */
+  public static final int PROXY_TIMEOUT_S = 60;
 
   public static final Double DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S = 20.0;
 

@@ -144,10 +144,10 @@ public class Serve {
           proxyActorHandle
               .task(PyActorMethod.of("ready"))
               .remote()
-              .get(Constants.PROXY_TIMEOUT * 1000);
+              .get(Constants.PROXY_TIMEOUT_S * 1000);
         }
       } catch (RayTimeoutException e) {
-        String errMsg = LogUtil.format("Proxies not available after {}s.", Constants.PROXY_TIMEOUT);
+        String errMsg = LogUtil.format("Proxies not available after {}s.", Constants.PROXY_TIMEOUT_S);
         LOGGER.error(errMsg, e);
         throw new RayServeException(errMsg, e);
       }
