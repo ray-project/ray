@@ -4,6 +4,7 @@ import json
 import logging
 from numbers import Number
 import os
+from pathlib import Path
 import platform
 import re
 import shutil
@@ -15,7 +16,7 @@ import ray
 import ray.cloudpickle as cloudpickle
 from ray.exceptions import RayActorError, RayTaskError
 from ray.tune import TuneError
-from ray.tune.checkpoint_manager import _TuneCheckpoint, _CheckpointManager
+from ray.tune.checkpoint_manager import _CheckpointManager
 
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
 # need because there are cyclic imports that may cause specific names to not
@@ -31,6 +32,7 @@ from ray.tune.result import (
     DEBUG_METRICS,
 )
 from ray.tune.resources import Resources
+from ray.tune.syncer import Syncer
 from ray.tune.utils.placement_groups import (
     PlacementGroupFactory,
     resource_dict_to_pg_factory,
@@ -39,7 +41,9 @@ from ray.tune.utils.serialization import TuneFunctionEncoder
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.utils import date_str, flatten_dict
 from ray.util.annotations import DeveloperAPI
+from ray.util.debug import log_once
 from ray._private.utils import binary_to_hex, hex_to_binary
+from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 
 DEBUG_PRINT_INTERVAL = 5
 logger = logging.getLogger(__name__)
@@ -99,7 +103,7 @@ class _CheckpointDeleter:
         self.trial_id = trial_id
         self.runner = runner
 
-    def __call__(self, checkpoint: _TuneCheckpoint):
+    def __call__(self, checkpoint: _TrackedCheckpoint):
         """Requests checkpoint deletion asynchronously.
 
         Args:
@@ -108,8 +112,11 @@ class _CheckpointDeleter:
         if not self.runner:
             return
 
-        if checkpoint.storage == _TuneCheckpoint.PERSISTENT and checkpoint.value:
-            checkpoint_path = checkpoint.value
+        if (
+            checkpoint.storage_mode == CheckpointStorage.PERSISTENT
+            and checkpoint.dir_or_data
+        ):
+            checkpoint_path = checkpoint.dir_or_data
 
             logger.debug(
                 "Trial %s: Deleting checkpoint %s", self.trial_id, checkpoint_path
@@ -160,19 +167,16 @@ class _TrialInfo:
         self._trial_resources = new_resources
 
 
-def create_logdir(dirname, local_dir):
-    local_dir = os.path.expanduser(local_dir)
-    logdir = os.path.join(local_dir, dirname)
-    if os.path.exists(logdir):
-        old_dirname = dirname
-        dirname += "_" + uuid.uuid4().hex[:4]
+def create_unique_logdir_name(root: str, relative_logdir: str) -> str:
+    candidate = Path(root).expanduser().joinpath(relative_logdir)
+    if candidate.exists():
+        relative_logdir_old = relative_logdir
+        relative_logdir += "_" + uuid.uuid4().hex[:4]
         logger.info(
-            f"Creating a new dirname {dirname} because "
-            f"trial dirname '{old_dirname}' already exists."
+            f"Creating a new dirname {relative_logdir} because "
+            f"trial dirname '{relative_logdir_old}' already exists."
         )
-        logdir = os.path.join(local_dir, dirname)
-    os.makedirs(logdir, exist_ok=True)
-    return logdir
+    return relative_logdir
 
 
 def _to_pg_factory(
@@ -209,8 +213,12 @@ class Trial:
         trainable_name: Name of the trainable object to be executed.
         config: Provided configuration dictionary with evaluated params.
         trial_id: Unique identifier for the trial.
-        local_dir: Local_dir as passed to tune.run.
+        local_dir: ``local_dir`` as passed to ``tune.run`` joined
+            with the name of the experiment.
         logdir: Directory where the trial logs are saved.
+        relative_logdir: Same as ``logdir``, but relative to the parent of
+            the ``local_dir`` (equal to ``local_dir`` argument passed
+            to ``tune.run``).
         evaluated_params: Evaluated parameters by search algorithm,
         experiment_tag: Identifying trial name to show in the console
         status: One of PENDING, RUNNING, PAUSED, TERMINATED, ERROR/
@@ -244,7 +252,7 @@ class Trial:
         placement_group_factory: Optional[PlacementGroupFactory] = None,
         stopping_criterion: Optional[Dict[str, float]] = None,
         remote_checkpoint_dir: Optional[str] = None,
-        sync_function_tpl: Optional[str] = None,
+        custom_syncer: Optional[Syncer] = None,
         checkpoint_freq: int = 0,
         checkpoint_at_end: bool = False,
         sync_on_checkpoint: bool = True,
@@ -343,7 +351,7 @@ class Trial:
         self.export_formats = export_formats
         self.status = Trial.PENDING
         self.start_time = None
-        self.logdir = None
+        self.relative_logdir = None
         self.runner = None
         self.last_debug = 0
         self.error_file = None
@@ -360,9 +368,9 @@ class Trial:
         else:
             self.remote_checkpoint_dir_prefix = None
 
-        if sync_function_tpl == "auto" or not isinstance(sync_function_tpl, str):
-            sync_function_tpl = None
-        self.sync_function_tpl = sync_function_tpl
+        if custom_syncer == "auto" or not isinstance(custom_syncer, Syncer):
+            custom_syncer = None
+        self.custom_syncer = custom_syncer
 
         self.checkpoint_freq = checkpoint_freq
         self.checkpoint_at_end = checkpoint_at_end
@@ -372,7 +380,7 @@ class Trial:
         self.checkpoint_manager = _CheckpointManager(
             keep_checkpoints_num,
             checkpoint_score_attr,
-            _CheckpointDeleter(self._trainable_name(), self.runner),
+            delete_fn=_CheckpointDeleter(self._trainable_name(), self.runner),
         )
 
         # Restoration fields
@@ -444,6 +452,28 @@ class Trial:
         self._last_result = val
 
     @property
+    def logdir(self):
+        if not self.relative_logdir:
+            return None
+        return str(Path(self.local_dir).joinpath(self.relative_logdir))
+
+    @logdir.setter
+    def logdir(self, logdir):
+        relative_logdir = Path(logdir).relative_to(self.local_dir)
+        if ".." in str(relative_logdir):
+            raise ValueError(
+                f"The `logdir` points to a directory outside the trial's `local_dir` "
+                f"({self.local_dir}), which is unsupported. Use a logdir within the "
+                f"local directory instead. Got: {logdir}"
+            )
+        if log_once("logdir_setter"):
+            logger.warning(
+                "Deprecated. In future versions only the relative logdir "
+                "will be used and calling logdir will raise an error."
+            )
+        self.relative_logdir = relative_logdir
+
+    @property
     def has_reported_at_least_once(self) -> bool:
         return bool(self._last_result)
 
@@ -462,8 +492,11 @@ class Trial:
             checkpoint = self.checkpoint_manager.newest_persistent_checkpoint
         else:
             checkpoint = self.checkpoint_manager.newest_checkpoint
-        if checkpoint.value is None:
-            checkpoint = _TuneCheckpoint(_TuneCheckpoint.PERSISTENT, self.restore_path)
+        if checkpoint.dir_or_data is None:
+            checkpoint = _TrackedCheckpoint(
+                dir_or_data=self.restore_path,
+                storage_mode=CheckpointStorage.PERSISTENT,
+            )
         return checkpoint
 
     @classmethod
@@ -479,8 +512,7 @@ class Trial:
         assert self.logdir, "Trial {}: logdir not initialized.".format(self)
         if not self.remote_checkpoint_dir_prefix:
             return None
-        logdir_name = os.path.basename(self.logdir)
-        return os.path.join(self.remote_checkpoint_dir_prefix, logdir_name)
+        return os.path.join(self.remote_checkpoint_dir_prefix, self.relative_logdir)
 
     @property
     def uses_cloud_checkpointing(self):
@@ -526,10 +558,13 @@ class Trial:
 
     def init_logdir(self):
         """Init logdir."""
-        if not self.logdir:
-            self.logdir = create_logdir(self._generate_dirname(), self.local_dir)
-        else:
-            os.makedirs(self.logdir, exist_ok=True)
+        if not self.relative_logdir:
+            self.relative_logdir = create_unique_logdir_name(
+                self.local_dir, self._generate_dirname()
+            )
+        assert self.logdir
+        logdir_path = Path(self.logdir)
+        logdir_path.mkdir(parents=True, exist_ok=True)
 
         self.invalidate_json_state()
 
@@ -564,8 +599,8 @@ class Trial:
             self._default_result_or_future = runner.get_auto_filled_metrics.remote(
                 debug_metrics_only=True
             )
-        self.checkpoint_manager.delete = _CheckpointDeleter(
-            self._trainable_name(), runner
+        self.checkpoint_manager.set_delete_fn(
+            _CheckpointDeleter(self._trainable_name(), runner)
         )
         # No need to invalidate state cache: runner is not stored in json
         # self.invalidate_json_state()
@@ -641,14 +676,14 @@ class Trial:
         )
 
     def has_checkpoint(self):
-        return self.checkpoint.value is not None
+        return self.checkpoint.dir_or_data is not None
 
     def clear_checkpoint(self):
-        self.checkpoint.value = None
+        self.checkpoint.dir_or_data = None
         self.restoring_from = None
         self.invalidate_json_state()
 
-    def on_checkpoint(self, checkpoint: _TuneCheckpoint):
+    def on_checkpoint(self, checkpoint: _TrackedCheckpoint):
         """Hook for handling checkpoints taken by the Trainable.
 
         Args:
@@ -660,7 +695,7 @@ class Trial:
     def on_restore(self):
         """Handles restoration completion."""
         assert self.is_restoring
-        self.last_result = self.restoring_from.result
+        self.last_result = self.restoring_from.metrics
         self.restoring_from = None
         self.invalidate_json_state()
 
@@ -816,7 +851,8 @@ class Trial:
         if state["status"] == Trial.RUNNING:
             state["status"] = Trial.PENDING
         for key in self._nonjson_fields:
-            state[key] = cloudpickle.loads(hex_to_binary(state[key]))
+            if key in state:
+                state[key] = cloudpickle.loads(hex_to_binary(state[key]))
 
         # Ensure that stub doesn't get overriden
         stub = state.pop("stub", True)

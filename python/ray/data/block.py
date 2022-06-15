@@ -3,6 +3,7 @@ import time
 from typing import (
     TypeVar,
     List,
+    Dict,
     Generic,
     Iterator,
     Tuple,
@@ -20,14 +21,14 @@ import numpy as np
 if TYPE_CHECKING:
     import pandas
     import pyarrow
-    from ray.data.impl.block_builder import BlockBuilder
+    from ray.data._internal.block_builder import BlockBuilder
     from ray.data.aggregate import AggregateFn
     from ray.data import Dataset
 
 import ray
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI
-from ray.data.impl.util import _check_pyarrow_version
+from ray.data._internal.util import _check_pyarrow_version
 
 T = TypeVar("T")
 U = TypeVar("U")
@@ -83,6 +84,10 @@ def _validate_key_fn(ds: "Dataset", key: KeyFn) -> None:
 # Block data can be accessed in a uniform way via ``BlockAccessors`` such as
 # ``SimpleBlockAccessor`` and ``ArrowBlockAccessor``.
 Block = Union[List[T], "pyarrow.Table", "pandas.DataFrame", bytes]
+
+# User-facing data batch type. This is the data type for data that is supplied to and
+# returned from batch UDFs.
+DataBatch = Union[Block, np.ndarray]
 
 # A list of block references pending computation by a single task. For example,
 # this may be the output of a task reading a file.
@@ -217,11 +222,13 @@ class BlockAccessor(Generic[T]):
         """Convert this block into a Pandas dataframe."""
         raise NotImplementedError
 
-    def to_numpy(self, column: str = None) -> np.ndarray:
-        """Convert this block (or column of block) into a NumPy ndarray.
+    def to_numpy(
+        self, columns: Optional[Union[str, List[str]]] = None
+    ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
+        """Convert this block (or columns of block) into a NumPy ndarray.
 
         Args:
-            column: Name of column to convert, or None.
+            columns: Name of columns to convert, or None if converting all columns.
         """
         raise NotImplementedError
 
@@ -232,6 +239,10 @@ class BlockAccessor(Generic[T]):
     def to_block(self) -> Block:
         """Return the base block that this accessor wraps."""
         raise NotImplementedError
+
+    def to_native(self) -> Block:
+        """Return the native data format for this accessor."""
+        return self.to_block()
 
     def size_bytes(self) -> int:
         """Return the approximate size in bytes of this block."""
@@ -263,6 +274,15 @@ class BlockAccessor(Generic[T]):
         raise NotImplementedError
 
     @staticmethod
+    def batch_to_block(batch: DataBatch) -> Block:
+        """Create a block from user-facing data formats."""
+        if isinstance(batch, np.ndarray):
+            from ray.data._internal.arrow_block import ArrowBlockAccessor
+
+            return ArrowBlockAccessor.numpy_to_block(batch)
+        return batch
+
+    @staticmethod
     def for_block(block: Block) -> "BlockAccessor[T]":
         """Create a block accessor for the given block."""
         _check_pyarrow_version()
@@ -270,19 +290,19 @@ class BlockAccessor(Generic[T]):
         import pandas
 
         if isinstance(block, pyarrow.Table):
-            from ray.data.impl.arrow_block import ArrowBlockAccessor
+            from ray.data._internal.arrow_block import ArrowBlockAccessor
 
             return ArrowBlockAccessor(block)
         elif isinstance(block, pandas.DataFrame):
-            from ray.data.impl.pandas_block import PandasBlockAccessor
+            from ray.data._internal.pandas_block import PandasBlockAccessor
 
             return PandasBlockAccessor(block)
         elif isinstance(block, bytes):
-            from ray.data.impl.arrow_block import ArrowBlockAccessor
+            from ray.data._internal.arrow_block import ArrowBlockAccessor
 
             return ArrowBlockAccessor.from_bytes(block)
         elif isinstance(block, list):
-            from ray.data.impl.simple_block import SimpleBlockAccessor
+            from ray.data._internal.simple_block import SimpleBlockAccessor
 
             return SimpleBlockAccessor(block)
         else:

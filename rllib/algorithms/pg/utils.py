@@ -15,11 +15,11 @@ def post_process_advantages(
     """Adds the "advantages" column to `sample_batch`.
 
     Args:
-        policy (Policy): The Policy object to do post-processing for.
-        sample_batch (SampleBatch): The actual sample batch to post-process.
+        policy: The Policy object to do post-processing for.
+        sample_batch: The actual sample batch to post-process.
         other_agent_batches (Optional[List[SampleBatch]]): Optional list of
             other agents' SampleBatch objects.
-        episode (Episode): The multi-agent episode object, from which
+        episode: The multi-agent episode object, from which
             `sample_batch` was generated.
 
     Returns:

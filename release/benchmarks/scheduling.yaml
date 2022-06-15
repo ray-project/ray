@@ -5,15 +5,18 @@ max_workers: 999
 
 head_node_type:
     name: head_node
-    instance_type: m5.16xlarge
+    instance_type: m5.4xlarge
     resources:
+      # Assume the node has 64 CPU instead of 16.
+      # This should be fine since each task has little
+      # computation in scheduling tests.
       cpu: 64
       custom_resources:
         node: 1
 
 worker_node_types:
     - name: worker_node
-      instance_type: m5.16xlarge
+      instance_type: m5.4xlarge
       min_workers: 31
       max_workers: 31
       use_spot: false

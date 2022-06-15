@@ -1,13 +1,13 @@
 from ray.rllib.algorithms.bandit.bandit import (
-    BanditLinTSTrainer,
-    BanditLinUCBTrainer,
+    BanditLinTS,
+    BanditLinUCB,
     BanditLinTSConfig,
     BanditLinUCBConfig,
 )
 
 __all__ = [
-    "BanditLinTSTrainer",
-    "BanditLinUCBTrainer",
+    "BanditLinTS",
+    "BanditLinUCB",
     "BanditLinTSConfig",
     "BanditLinUCBConfig",
 ]

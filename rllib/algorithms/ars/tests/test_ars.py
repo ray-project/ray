@@ -15,7 +15,7 @@ class TestARS(unittest.TestCase):
         ray.shutdown()
 
     def test_ars_compilation(self):
-        """Test whether an ARSTrainer can be built on all frameworks."""
+        """Test whether an ARSAlgorithm can be built on all frameworks."""
         config = ars.ARSConfig()
 
         # Keep it simple.

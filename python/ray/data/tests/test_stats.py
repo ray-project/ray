@@ -208,6 +208,7 @@ Stage N map: N/N blocks executed in T
 
 == Pipeline Window N ==
 Stage N read->map_batches: [execution cached]
+
 Stage N map: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
@@ -217,6 +218,7 @@ Stage N map: N/N blocks executed in T
 
 == Pipeline Window N ==
 Stage N read->map_batches: [execution cached]
+
 Stage N map: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
@@ -236,6 +238,27 @@ DatasetPipeline iterator time breakdown:
 * Total time: T
 """
     )
+
+
+def test_dataset_pipeline_cache_cases(ray_start_regular_shared):
+    # NOT CACHED (lazy read stage).
+    ds = ray.data.range(10).repeat(2).map_batches(lambda x: x)
+    ds.take(999)
+    stats = ds.stats()
+    assert "[execution cached]" not in stats
+
+    # CACHED (called fully_executed()).
+    ds = ray.data.range(10).fully_executed().repeat(2).map_batches(lambda x: x)
+    ds.take(999)
+    stats = ds.stats()
+    assert "[execution cached]" in stats
+
+    # CACHED (eager map stage).
+    ds = ray.data.range(10).map_batches(lambda x: x).repeat(2)
+    ds.take(999)
+    stats = ds.stats()
+    assert "[execution cached]" in stats
+    assert "read->map_batches" in stats
 
 
 def test_dataset_pipeline_split_stats_basic(ray_start_regular_shared):

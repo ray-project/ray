@@ -5,7 +5,7 @@ from typing import Optional, Type
 from ray.rllib.algorithms.cql.cql_tf_policy import CQLTFPolicy
 from ray.rllib.algorithms.cql.cql_torch_policy import CQLTorchPolicy
 from ray.rllib.algorithms.sac.sac import (
-    SACTrainer,
+    SAC,
     SACConfig,
 )
 from ray.rllib.execution.train_ops import (
@@ -32,7 +32,7 @@ from ray.rllib.utils.metrics import (
     SYNCH_WORKER_WEIGHTS_TIMER,
 )
 from ray.rllib.utils.replay_buffers.utils import update_priorities_in_replay_buffer
-from ray.rllib.utils.typing import ResultDict, TrainerConfigDict
+from ray.rllib.utils.typing import ResultDict, AlgorithmConfigDict
 
 tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()
@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 
 class CQLConfig(SACConfig):
-    """Defines a configuration class from which a CQLTrainer can be built.
+    """Defines a configuration class from which a CQL Trainer can be built.
 
     Example:
         >>> config = CQLConfig().training(gamma=0.9, lr=0.01)\
@@ -52,8 +52,8 @@ class CQLConfig(SACConfig):
         >>> trainer.train()
     """
 
-    def __init__(self, trainer_class=None):
-        super().__init__(trainer_class=trainer_class or CQLTrainer)
+    def __init__(self, algo_class=None):
+        super().__init__(algo_class=algo_class or CQL)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -67,11 +67,11 @@ class CQLConfig(SACConfig):
 
         # Changes to Trainer's/SACConfig's default:
         # .offline_data()
-        self.off_policy_estimation_methods = []
+        self.off_policy_estimation_methods = {}
 
         # .reporting()
-        self.min_sample_timesteps_per_reporting = 0
-        self.min_train_timesteps_per_reporting = 100
+        self.min_sample_timesteps_per_iteration = 0
+        self.min_train_timesteps_per_iteration = 100
         # fmt: on
         # __sphinx_doc_end__
 
@@ -99,7 +99,7 @@ class CQLConfig(SACConfig):
             min_q_weight: in Q weight multiplier.
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
@@ -120,7 +120,7 @@ class CQLConfig(SACConfig):
         return self
 
 
-class CQLTrainer(SACTrainer):
+class CQL(SAC):
     """CQL (derived from SAC)."""
 
     def __init__(self, *args, **kwargs):
@@ -164,22 +164,22 @@ class CQLTrainer(SACTrainer):
             )
 
     @classmethod
-    @override(SACTrainer)
-    def get_default_config(cls) -> TrainerConfigDict:
+    @override(SAC)
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return CQLConfig().to_dict()
 
-    @override(SACTrainer)
-    def validate_config(self, config: TrainerConfigDict) -> None:
+    @override(SAC)
+    def validate_config(self, config: AlgorithmConfigDict) -> None:
         # First check, whether old `timesteps_per_iteration` is used. If so
         # convert right away as for CQL, we must measure in training timesteps,
         # never sampling timesteps (CQL does not sample).
         if config.get("timesteps_per_iteration", DEPRECATED_VALUE) != DEPRECATED_VALUE:
             deprecation_warning(
                 old="timesteps_per_iteration",
-                new="min_train_timesteps_per_reporting",
+                new="min_train_timesteps_per_iteration",
                 error=False,
             )
-            config["min_train_timesteps_per_reporting"] = config[
+            config["min_train_timesteps_per_iteration"] = config[
                 "timesteps_per_iteration"
             ]
             config["timesteps_per_iteration"] = DEPRECATED_VALUE
@@ -205,15 +205,15 @@ class CQLTrainer(SACTrainer):
             )
             try_import_tfp(error=True)
 
-    @override(SACTrainer)
-    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
+    @override(SAC)
+    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             return CQLTorchPolicy
         else:
             return CQLTFPolicy
 
-    @override(SACTrainer)
-    def training_iteration(self) -> ResultDict:
+    @override(SAC)
+    def training_step(self) -> ResultDict:
 
         # Sample training batch from replay buffer.
         train_batch = sample_min_n_steps_from_buffer(
@@ -274,8 +274,8 @@ class _deprecated_default_config(dict):
         super().__init__(CQLConfig().to_dict())
 
     @Deprecated(
-        old="ray.rllib.algorithms.cql.cql.DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.cql.cql.CQLConfig(...)",
+        old="ray.rllib.algorithms.cql.cql::DEFAULT_CONFIG",
+        new="ray.rllib.algorithms.cql.cql::CQLConfig(...)",
         error=False,
     )
     def __getitem__(self, item):
