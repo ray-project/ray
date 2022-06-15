@@ -16,7 +16,8 @@ if [ -d "/tmp/artifacts" ]; then
     if [ "$(ls -A /tmp/artifacts)" ]; then
       echo "Directory not empty, cleaning up..."
       if [[ "${OSTYPE}" = darwin* ]]; then
-        rm -rf /tmp/artifacts/*
+        rm -rf /tmp/artifacts
+        mkdir -p /tmp/artifacts
       else
         # Need to run in docker to avoid permission issues
         docker run --rm -v /tmp/artifacts:/artifact-mount alpine:latest /bin/sh -c 'rm -rf /artifact-mount/*; rm -rf /artifact-mount/.[!.]*' || true
