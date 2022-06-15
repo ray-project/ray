@@ -11,7 +11,6 @@ import sys
 import time
 
 import numpy as np
-import psutil
 import pytest
 import requests
 
@@ -35,6 +34,8 @@ from ray.experimental.state.api import StateApiClient
 from ray.experimental.state.common import ListApiOptions, StateResource
 from ray.experimental.state.exception import ServerUnavailable
 from ray.ray_constants import DEBUG_AUTOSCALING_ERROR, DEBUG_AUTOSCALING_STATUS_LEGACY
+
+import psutil
 
 try:
     import aiohttp.web

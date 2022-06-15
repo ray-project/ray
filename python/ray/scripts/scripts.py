@@ -13,7 +13,6 @@ from distutils.dir_util import copy_tree
 from typing import Optional, Set
 
 import click
-import psutil
 import yaml
 
 import ray
@@ -51,6 +50,8 @@ from ray.experimental.state.state_cli import list as cli_list
 from ray.internal.internal_api import memory_summary
 from ray.internal.storage import _load_class
 from ray.util.annotations import PublicAPI
+
+import psutil
 
 logger = logging.getLogger(__name__)
 
