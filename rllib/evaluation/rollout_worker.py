@@ -478,7 +478,12 @@ class RolloutWorker(ParallelIteratorWorker):
         self.batch_mode: str = batch_mode
         self.compress_observations: bool = compress_observations
         self.preprocessing_enabled: bool = (
-            False if policy_config.get("_disable_preprocessor_api") else True
+            False
+            if (
+                policy_config.get("_disable_preprocessor_api")
+                or policy_config.get("enable_connectors")
+            )
+            else True
         )
         self.observation_filter = observation_filter
         self.last_batch: Optional[SampleBatchType] = None
@@ -592,6 +597,7 @@ class RolloutWorker(ParallelIteratorWorker):
         self.set_is_policy_to_train(self.policies_to_train)
 
         self.policy_map: PolicyMap = None
+        # TODO(jungong) : clean up after non-connector env_runner is fully deprecated.
         self.preprocessors: Dict[PolicyID, Preprocessor] = None
 
         # Check available number of GPUs.
@@ -659,6 +665,7 @@ class RolloutWorker(ParallelIteratorWorker):
                     f"MultiAgentEnv, ActorHandle, or ExternalMultiAgentEnv!"
                 )
 
+        # TODO(jungong) : clean up after non-connector env_runner is fully deprecated.
         self.filters: Dict[PolicyID, Filter] = {}
         for (policy_id, policy) in self.policy_map.items():
             filter_shape = tree.map_structure(

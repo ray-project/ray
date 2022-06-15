@@ -1,4 +1,3 @@
-import gym
 from typing import Any, List
 
 from ray.rllib.connectors.connector import (
@@ -9,15 +8,12 @@ from ray.rllib.connectors.connector import (
     get_connector,
     register_connector,
 )
-from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.typing import (
-    ActionConnectorDataType,
-    AlgorithmConfigDict,
-)
+from ray.rllib.utils.annotations import ExperimentalAPI
+from ray.rllib.utils.typing import ActionConnectorDataType
 
 
-@DeveloperAPI
-class ActionConnectorPipeline(ActionConnector, ConnectorPipeline):
+@ExperimentalAPI
+class ActionConnectorPipeline(ConnectorPipeline, ActionConnector):
     def __init__(self, ctx: ConnectorContext, connectors: List[Connector]):
         super().__init__(ctx)
         self.connectors = connectors
@@ -47,11 +43,3 @@ class ActionConnectorPipeline(ActionConnector, ConnectorPipeline):
 
 
 register_connector(ActionConnectorPipeline.__name__, ActionConnectorPipeline)
-
-
-@DeveloperAPI
-def get_action_connectors_from_algorithm_config(
-    config: AlgorithmConfigDict, action_space: gym.Space
-) -> ActionConnectorPipeline:
-    connectors = []
-    return ActionConnectorPipeline(connectors)

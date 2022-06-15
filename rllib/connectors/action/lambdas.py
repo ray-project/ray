@@ -1,13 +1,12 @@
 from typing import Any, Callable, Dict, List, Type
 
 from ray.rllib.connectors.connector import (
-    ConnectorContext,
     ActionConnector,
+    ConnectorContext,
     register_connector,
 )
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.spaces.space_utils import unbatch
 from ray.rllib.utils.typing import (
     ActionConnectorDataType,
     PolicyOutputType,
@@ -16,7 +15,7 @@ from ray.rllib.utils.typing import (
 )
 
 
-@DeveloperAPI
+@ExperimentalAPI
 def register_lambda_action_connector(
     name: str, fn: Callable[[TensorStructType, StateBatches, Dict], PolicyOutputType]
 ) -> Type[ActionConnector]:
@@ -34,7 +33,9 @@ def register_lambda_action_connector(
     """
 
     class LambdaActionConnector(ActionConnector):
-        def __call__(self, ac_data: ActionConnectorDataType) -> ActionConnectorDataType:
+        def transform(
+            self, ac_data: ActionConnectorDataType
+        ) -> ActionConnectorDataType:
             assert isinstance(
                 ac_data.output, tuple
             ), "Action connector requires PolicyOutputType data."
@@ -69,11 +70,4 @@ ConvertToNumpyConnector = register_lambda_action_connector(
         convert_to_numpy(states),
         fetches,
     ),
-)
-
-
-# Split action-component batches into single action rows.
-UnbatchActionsConnector = register_lambda_action_connector(
-    "UnbatchActionsConnector",
-    lambda actions, states, fetches: (unbatch(actions), states, fetches),
 )
