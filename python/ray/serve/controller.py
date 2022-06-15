@@ -79,8 +79,10 @@ class ServeController:
     async def __init__(
         self,
         controller_name: str,
+        *,
         http_config: HTTPOptions,
         checkpoint_path: str,
+        head_node_id: str,
         detached: bool = False,
     ):
         configure_component_logger(
@@ -108,6 +110,7 @@ class ServeController:
             controller_name,
             detached,
             http_config,
+            head_node_id,
         )
         self.endpoint_state = EndpointState(self.kv_store, self.long_poll_host)
         # Fetch all running actors in current cluster as source of current
