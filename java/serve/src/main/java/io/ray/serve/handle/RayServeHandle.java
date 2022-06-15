@@ -28,13 +28,11 @@ public class RayServeHandle {
       BaseActorHandle controllerHandle,
       String deploymentName,
       HandleOptions handleOptions,
-      Router router,
-      String controllerNamespace) {
+      Router router) {
     this.deploymentName = deploymentName;
     this.handleOptions = handleOptions != null ? handleOptions : new HandleOptions();
     this.handleTag = deploymentName + "#" + RandomStringUtils.randomAlphabetic(6);
-    this.router =
-        router != null ? router : new Router(controllerHandle, deploymentName, controllerNamespace);
+    this.router = router != null ? router : new Router(controllerHandle, deploymentName);
     RayServeMetrics.execute(
         () ->
             this.requestCounter =

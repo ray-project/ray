@@ -82,7 +82,7 @@ public class RouterTest {
       Serve.setInternalReplicaContext(null, null, controllerName, null, null, config);
 
       // Router
-      Router router = new Router(controllerHandle, deploymentName, null);
+      Router router = new Router(controllerHandle, deploymentName);
       ActorNameList.Builder builder = ActorNameList.newBuilder();
       builder.addNames(actorName);
       router.getReplicaSet().updateWorkerReplicas(builder.build());

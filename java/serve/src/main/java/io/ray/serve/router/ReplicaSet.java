@@ -22,7 +22,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.commons.lang3.RandomUtils;
-import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,13 +40,8 @@ public class ReplicaSet {
 
   private String controllerNamespace;
 
-  public ReplicaSet(String deploymentName, String controllerNamespace) {
+  public ReplicaSet(String deploymentName) {
     this.inFlightQueries = new ConcurrentHashMap<>();
-    if (StringUtils.isBlank(controllerNamespace)) {
-      this.controllerNamespace = Ray.getRuntimeContext().getNamespace();
-    } else {
-      this.controllerNamespace = controllerNamespace;
-    }
     RayServeMetrics.execute(
         () ->
             this.numQueuedQueriesGauge =
@@ -60,7 +54,7 @@ public class ReplicaSet {
   }
 
   @SuppressWarnings("unchecked")
-  public synchronized void updateWorkerReplicas(Object actorSet) { // TODO
+  public synchronized void updateWorkerReplicas(Object actorSet) {
     List<String> actorNames = ((ActorNameList) actorSet).getNamesList();
     Set<ActorHandle<RayServeWrappedReplica>> workerReplicas = new HashSet<>();
     if (!CollectionUtil.isEmpty(actorNames)) {
@@ -101,8 +95,7 @@ public class ReplicaSet {
             numQueuedQueriesGauge.update(
                 numQueuedQueries.get(),
                 ImmutableMap.of(new TagKey(RayServeMetrics.TAG_ENDPOINT), endpoint)));
-    ObjectRef<Object> assignedRef =
-        tryAssignReplica(query); // TODO controll concurrency using maxConcurrentQueries
+    ObjectRef<Object> assignedRef = tryAssignReplica(query);
     numQueuedQueries.decrementAndGet();
     RayServeMetrics.execute(
         () ->

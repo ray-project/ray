@@ -83,9 +83,8 @@ public class RayServeHandleTest {
 
       // RayServeHandle
       RayServeHandle rayServeHandle =
-          new RayServeHandle(controllerHandle, deploymentName, null, null, null)
+          new RayServeHandle(controllerHandle, deploymentName, null, null)
               .method("getDeploymentName");
-      ;
       ActorNameList.Builder builder = ActorNameList.newBuilder();
       builder.addNames(actorName);
       rayServeHandle.getRouter().getReplicaSet().updateWorkerReplicas(builder.build());
