@@ -97,3 +97,11 @@
 
         Gets the Serve application's current status, including all the deployment statuses. This config represents the current goal state for the Serve application. Starts a Serve application on the Ray cluster if it's not already running. See Status Schema for the output schema.
 ```
+
+## Serve CLI
+
+```{eval-rst}
+.. click:: ray.serve.scripts.cli
+   :prog: Serve CLI
+   :show-nested:
+```

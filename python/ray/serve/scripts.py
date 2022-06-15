@@ -42,7 +42,7 @@ RAY_DASHBOARD_ADDRESS_HELP_STR = (
 )
 
 
-@click.group(help="[EXPERIMENTAL] CLI for managing Serve instances on a Ray cluster.")
+@click.group(help="CLI for managing Serve instances on a Ray cluster.")
 def cli():
     pass
 
