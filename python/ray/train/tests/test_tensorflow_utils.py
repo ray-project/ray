@@ -2,8 +2,8 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 
+from ray.air._internal.tensorflow_utils import convert_pandas_to_tf_tensor
 from ray.data.extensions import TensorArray
-from ray.train._internal.tensorflow_utils import convert_pandas_to_tf_tensor
 
 
 def test_convert_simple_df_to_tensor():

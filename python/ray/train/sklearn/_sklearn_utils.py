@@ -4,7 +4,7 @@ from sklearn.base import BaseEstimator
 SKLEARN_CPU_PARAM_NAMES = ["n_jobs", "thread_count"]
 
 
-def has_cpu_params(estimator: BaseEstimator) -> bool:
+def _has_cpu_params(estimator: BaseEstimator) -> bool:
     """Returns True if estimator has any CPU-related params."""
     return any(
         any(
@@ -14,7 +14,7 @@ def has_cpu_params(estimator: BaseEstimator) -> bool:
     )
 
 
-def set_cpu_params(estimator: BaseEstimator, num_cpus: int) -> None:
+def _set_cpu_params(estimator: BaseEstimator, num_cpus: int) -> None:
     """Sets all CPU-related params to num_cpus (incl. nested)."""
     cpu_params = {
         param: num_cpus

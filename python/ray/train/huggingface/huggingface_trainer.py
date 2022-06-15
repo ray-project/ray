@@ -20,9 +20,9 @@ from ray.air._internal.checkpointing import (
     load_preprocessor_from_dir,
     save_preprocessor_to_dir,
 )
+from ray.air._internal.torch_utils import load_torch_model
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
-from ray.train._internal.torch_utils import load_torch_model
 from ray.train.constants import (
     EVALUATION_DATASET_KEY,
     PREPROCESSOR_KEY,

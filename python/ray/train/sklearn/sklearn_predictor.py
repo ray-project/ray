@@ -6,8 +6,8 @@ from sklearn.base import BaseEstimator
 
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import TENSOR_COLUMN_NAME
-from ray.train._internal.sklearn_utils import set_cpu_params
 from ray.train.predictor import Predictor
+from ray.train.sklearn._sklearn_utils import _set_cpu_params
 from ray.train.sklearn.sklearn_trainer import load_checkpoint
 from ray.util.joblib import register_ray
 
@@ -115,7 +115,7 @@ class SklearnPredictor(Predictor):
         register_ray()
 
         if num_estimator_cpus:
-            set_cpu_params(self.estimator, num_estimator_cpus)
+            _set_cpu_params(self.estimator, num_estimator_cpus)
 
         if TENSOR_COLUMN_NAME in data:
             data = data[TENSOR_COLUMN_NAME].to_numpy()

@@ -24,8 +24,8 @@ from ray.air._internal.checkpointing import (
 )
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import RunConfig, ScalingConfig
-from ray.train._internal.sklearn_utils import has_cpu_params, set_cpu_params
 from ray.train.constants import MODEL_KEY, TRAIN_DATASET_KEY
+from ray.train.sklearn._sklearn_utils import _has_cpu_params, _set_cpu_params
 from ray.train.trainer import BaseTrainer, GenDataset
 from ray.util import PublicAPI
 from ray.util.joblib import register_ray
@@ -345,7 +345,7 @@ class SklearnTrainer(BaseTrainer):
 
         assert not (has_gpus and self.parallelize_cv)
 
-        estimator_has_parallelism_params = has_cpu_params(self.estimator)
+        estimator_has_parallelism_params = _has_cpu_params(self.estimator)
 
         if self.cv and self.parallelize_cv is True:
             parallelize_cv = True
@@ -395,7 +395,7 @@ class SklearnTrainer(BaseTrainer):
         parallelize_cv = self._get_cv_parallelism(has_gpus)
         if self.set_estimator_cpus:
             num_estimator_cpus = 1 if parallelize_cv else num_cpus
-            set_cpu_params(self.estimator, num_estimator_cpus)
+            _set_cpu_params(self.estimator, num_estimator_cpus)
 
         with parallel_backend("ray", n_jobs=num_cpus):
             start_time = time()

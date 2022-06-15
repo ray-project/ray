@@ -2,9 +2,9 @@ from typing import TYPE_CHECKING, Callable, Dict, Optional, Tuple, Union
 
 import torch
 
+from ray.air._internal.torch_utils import load_torch_model
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
-from ray.train._internal.torch_utils import load_torch_model
 from ray.train.data_parallel_trainer import DataParallelTrainer, _load_checkpoint
 from ray.train.torch.config import TorchConfig
 from ray.train.trainer import GenDataset
