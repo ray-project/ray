@@ -35,11 +35,7 @@ if [[ -z "${BUILDKITE-}" ]]; then
 
     aws s3 cp --recursive /tmp/bazel_event_logs "${DST}"
 else
-    if [[ "${OSTYPE}" = darwin* ]]; then
-        echo "Using Buildkite Artifact Store on macOS"
-    else
-        # Codepath for Buildkite
-        pip install -q docker aws_requests_auth boto3
-        python .buildkite/copy_files.py --destination logs --path /tmp/bazel_event_logs
-    fi
+    # Codepath for Buildkite
+    pip install -q docker aws_requests_auth boto3
+    python .buildkite/copy_files.py --destination logs --path /tmp/bazel_event_logs
 fi
