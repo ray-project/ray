@@ -10,6 +10,7 @@ from dataclasses import fields
 from ray.experimental.state.common import (
     DEFAULT_LIMIT,
     DEFAULT_RPC_TIMEOUT,
+    GetApiOptions,
     GetLogOptions,
     ListApiOptions,
     SupportedFilterType,
@@ -69,48 +70,37 @@ class StateApiClient(SubmissionClient):
         )
         return f"http://{ray.worker.global_worker.node.address_info['webui_url']}"
 
-    def list(
-        self, resource: StateResource, options: ListApiOptions, _explain: bool = False
-    ) -> Union[Dict, List]:
-        """List resources states
-
-        Args:
-            resource_name: Resource names, i.e. 'jobs', 'actors', 'nodes',
-                see `StateResource` for details.
-            options: List options. See `ListApiOptions` for details.
-            _explain: Print the API information such as API
-                latency or failed query information.
-
-        Returns:
-            A list of queried result from `ListApiResponse`,
-
-        Raises:
-            This doesn't catch any exceptions raised when the underlying request
-            call raises exceptions. For example, it could raise `requests.Timeout`
-            when timeout occurs.
-
-        """
-        endpoint = f"/api/v0/{resource.value}"
-
+    @classmethod
+    def _make_param(cls, options: Union[ListApiOptions, GetApiOptions]) -> Dict:
+        options_dict = {}
         # We don't use `asdict` to avoid deepcopy.
         # https://docs.python.org/3/library/dataclasses.html#dataclasses.asdict
-        params = {
-            "limit": options.limit,
-            "timeout": options.timeout,
-            "filter_keys": [],
-            "filter_values": [],
-        }
-        for filter in options.filters:
-            filter_k, filter_val = filter
-            params["filter_keys"].append(filter_k)
-            params["filter_values"].append(filter_val)
+        for field in fields(options):
+            # TODO(rickyyx): We will have to convert filter option
+            # slightly differently for now. But could we do k,v pair rather than this?
+            if field.name == "filters":
+                continue
+            # TODO(rickyyx): We will need to find a way to pass server side timeout
+            option_val = getattr(options, field.name)
+            if option_val:
+                options_dict[field.name] = option_val
 
+        for filter in getattr(options, "filters", []):
+            filter_k, filter_val = filter
+            options_dict["filter_keys"].append(filter_k)
+            options_dict["filter_values"].append(filter_val)
+
+        return options_dict
+
+    def _make_get_request(
+        self, endpoint: str, params: Dict, timeout: float, _explain: bool = False
+    ):
         response = None
         try:
             response = self._do_request(
                 "GET",
                 endpoint,
-                timeout=options.timeout,
+                timeout=timeout,
                 params=params,
             )
 
@@ -145,6 +135,46 @@ class StateApiClient(SubmissionClient):
             warnings.warn(warning_msgs, RuntimeWarning)
 
         return response["data"]["result"]
+
+    def get(
+        self,
+        resource: StateResource,
+        id: str,
+        options: Optional[GetApiOptions],
+        _explain: bool = False,
+    ) -> Dict:
+        endpoint = f"/api/v0/{resource.value}/{id}"
+        params = self._make_param(options)
+        return self._make_get_request(
+            endpoint=endpoint, params=params, timeout=options.timeout, _explain=_explain
+        )
+
+    def list(
+        self, resource: StateResource, options: ListApiOptions, _explain: bool = False
+    ) -> Union[Dict, List]:
+        """List resources states
+
+        Args:
+            resource_name: Resource names, i.e. 'jobs', 'actors', 'nodes',
+                see `StateResource` for details.
+            options: List options. See `ListApiOptions` for details.
+            _explain: Print the API information such as API
+                latency or failed query information.
+
+        Returns:
+            A list of queried result from `ListApiResponse`,
+
+        Raises:
+            This doesn't catch any exceptions raised when the underlying request
+            call raises exceptions. For example, it could raise `requests.Timeout`
+            when timeout occurs.
+
+        """
+        endpoint = f"/api/v0/{resource.value}"
+        params = self._make_param(options)
+        return self._make_get_request(
+            endpoint=endpoint, params=params, timeout=options.timeout, _explain=_explain
+        )
 
 
 """

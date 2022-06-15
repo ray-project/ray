@@ -60,6 +60,12 @@ class ListApiOptions:
             self.filters = []
 
 
+@dataclass(init=True)
+class GetApiOptions:
+    # Timeout for the HTTP request
+    timeout: int = DEFAULT_RPC_TIMEOUT
+
+
 class StateSchema(ABC):
     @classmethod
     def filterable_columns(cls) -> Set[str]:
@@ -255,6 +261,29 @@ class RuntimeEnvState(StateSchema):
             "runtime_env",
             "success",
         }
+
+
+@dataclass()
+class GetApiResponse:
+    # None if no data is returned
+    result: Dict[
+        str,
+        Union[
+            ActorState,
+            PlacementGroupState,
+            NodeState,
+            JobInfo,
+            WorkerState,
+            TaskState,
+            ObjectState,
+        ],
+    ] = None
+    # FIXME(rickyyx): I am reluctant to call it
+    # `partial_failure_warning` as the ListApiResponse
+    # since there is no partial failure here.
+    # Maybe we should start formalizing the error codes
+    # from servers.
+    failure: str = ""
 
 
 @dataclass(init=True)

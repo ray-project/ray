@@ -4,7 +4,7 @@ import json
 import yaml
 
 from enum import Enum, unique
-from typing import Union, List, Tuple
+from typing import Optional, Union, List, Tuple
 
 import ray
 import ray.ray_constants as ray_constants
@@ -14,6 +14,7 @@ from ray.experimental.state.api import StateApiClient
 from ray.experimental.state.common import (
     DEFAULT_LIMIT,
     DEFAULT_RPC_TIMEOUT,
+    GetApiOptions,
     ListApiOptions,
     StateResource,
 )
@@ -96,6 +97,68 @@ def _should_explain(format: AvailableFormat):
     # If the format is json or yaml, it should not print stats because
     # users don't want additional strings.
     return format == AvailableFormat.DEFAULT or format == AvailableFormat.TABLE
+
+
+@click.command()
+@click.argument(
+    "resource",
+    type=click.Choice(_get_available_resources()),
+)
+@click.argument(
+    "id",
+    type=str,
+)
+@click.option(
+    "--address",
+    default=None,
+    help=(
+        "The address of Ray API server. If not provided, it will be configured "
+        "automatically from querying the GCS server."
+    ),
+)
+@click.option(
+    "--timeout",
+    default=DEFAULT_RPC_TIMEOUT,
+    help=f"Timeout in seconds for the API requests. Default is {DEFAULT_RPC_TIMEOUT}",
+)
+def get(
+    resource: str,
+    id: str,
+    address: Optional[str],
+    timeout: float,
+):
+    # All resource names use '_' rather than '-'. But users options have '-'
+    resource = StateResource(resource.replace("-", "_"))
+
+    # Get the state API server address from ray if not provided by user
+    api_server_address = address if address else get_api_server_url()
+
+    # Create the State API server and put it into context
+    logger.debug(f"Create StateApiClient at {api_server_address}...")
+    client = StateApiClient(
+        api_server_address=api_server_address,
+    )
+
+    options = GetApiOptions(
+        limit=DEFAULT_LIMIT,  # TODO(rickyyx): parameters discussion to be finalized
+        timeout=timeout,
+    )
+
+    # If errors occur, exceptions will be thrown. Empty data indicate successful query.
+    data = client.get(
+        resource=resource,
+        id=id,
+        options=options,
+        _explain=_should_explain(AvailableFormat.YAML),
+    )
+
+    # Print data to console.
+    print(
+        get_state_api_output_to_print(
+            state_data=data,
+            format=AvailableFormat.YAML,
+        )
+    )
 
 
 @click.command()
