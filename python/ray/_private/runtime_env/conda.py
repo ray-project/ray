@@ -352,7 +352,7 @@ class CondaPlugin(RuntimeEnvPlugin):
 
     def modify_context(
         self,
-        uri: str,
+        uris: List[str],
         runtime_env: "RuntimeEnv",  # noqa: F821
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,

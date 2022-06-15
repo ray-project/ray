@@ -214,13 +214,11 @@ class PyModulesPlugin(RuntimeEnvPlugin):
 
     def modify_context(
         self,
-        uris: Optional[List[str]],
+        uris: List[str],
         runtime_env_dict: Dict,
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ):
-        if uris is None:
-            return
         module_dirs = []
         for uri in uris:
             module_dir = self._get_local_dir_from_uri(uri)

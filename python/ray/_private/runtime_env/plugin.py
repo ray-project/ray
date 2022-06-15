@@ -58,7 +58,7 @@ class RuntimeEnvPlugin(ABC):
 
     def modify_context(
         self,
-        uri: Optional[str],
+        uris: List[str],
         runtime_env: "RuntimeEnv",  # noqa: F821
         context: RuntimeEnvContext,
         logger: logging.Logger,
@@ -69,7 +69,7 @@ class RuntimeEnvPlugin(ABC):
         startup, or add new environment variables.
 
         Args:
-            uri(str): a URI uniquely describing this resource.
+            uris(List[str]): a URIs used by this resource.
             runtime_env(RuntimeEnv): the runtime env protobuf.
             ctx(RuntimeEnvContext): auxiliary information supplied by Ray.
         """

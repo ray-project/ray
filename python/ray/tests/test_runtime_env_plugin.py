@@ -1,14 +1,16 @@
+import logging
 import os
 import tempfile
 from time import sleep
-import logging
+from typing import List
+
 import pytest
-from ray._private.runtime_env.context import RuntimeEnvContext
-from ray._private.runtime_env.plugin import RuntimeEnvPlugin
-from ray._private.test_utils import wait_for_condition, test_external_redis
-from ray.exceptions import RuntimeEnvSetupError
 
 import ray
+from ray._private.runtime_env.context import RuntimeEnvContext
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray._private.test_utils import test_external_redis, wait_for_condition
+from ray.exceptions import RuntimeEnvSetupError
 
 MY_PLUGIN_CLASS_PATH = "ray.tests.test_runtime_env_plugin.MyPlugin"
 
@@ -25,7 +27,7 @@ class MyPlugin(RuntimeEnvPlugin):
 
     def modify_context(
         self,
-        uri: str,
+        uris: List[str],
         plugin_config_dict: dict,
         ctx: RuntimeEnvContext,
         logger: logging.Logger,
@@ -101,7 +103,7 @@ class MyPluginForHang(RuntimeEnvPlugin):
 
     def modify_context(
         self,
-        uri: str,
+        uris: List[str],
         plugin_config_dict: dict,
         ctx: RuntimeEnvContext,
         logger: logging.Logger,

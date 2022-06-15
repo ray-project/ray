@@ -454,13 +454,15 @@ class PipPlugin(RuntimeEnvPlugin):
 
     def modify_context(
         self,
-        uri: str,
+        uris: List[str],
         runtime_env: "RuntimeEnv",  # noqa: F821
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ):
         if not runtime_env.has_pip():
             return
+        # PipPlugin only uses a single URI.
+        uri = uris[0]
         # Update py_executable.
         protocol, hash = parse_uri(uri)
         target_dir = self._get_path_from_hash(hash)
