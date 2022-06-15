@@ -42,6 +42,7 @@ from ray.data._internal.stats import DatasetStats
 from ray.data._internal.table_block import VALUE_COL_NAME
 from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum
 from ray.data.block import (
+    VALID_BATCH_FORMATS,
     Block,
     BlockAccessor,
     BlockExecStats,
@@ -52,7 +53,6 @@ from ray.data.block import (
     T,
     U,
     _validate_key_fn,
-    VALID_BATCH_FORMATS,
 )
 from ray.data.context import DatasetContext
 from ray.data.datasource import (
