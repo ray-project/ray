@@ -185,8 +185,10 @@ def record_library_usage(library_usage: str):
     # Only report lib usage for driver / workers. Otherwise,
     # it can be reported if the library is imported from
     # e.g., API server.
-    if (ray.worker.global_worker.mode == ray.SCRIPT_MODE
-            or ray.worker.global_worker.mode == ray.WORKER_MODE):
+    if (
+        ray.worker.global_worker.mode == ray.SCRIPT_MODE
+        or ray.worker.global_worker.mode == ray.WORKER_MODE
+    ):
         print("SANG-TODO recorded.")
         _put_library_usage(library_usage)
 

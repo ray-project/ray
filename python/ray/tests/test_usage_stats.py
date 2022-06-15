@@ -20,7 +20,6 @@ from ray._private.test_utils import (
 from ray._private.usage.usage_lib import ClusterConfigToReport, UsageStatsEnabledness
 from ray.autoscaler._private.cli_logger import cli_logger
 
-
 schema = {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
