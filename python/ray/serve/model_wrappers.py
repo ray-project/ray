@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 import numpy as np
 
 from ray._private.utils import import_attr
@@ -145,9 +145,9 @@ class ModelWrapper(SimpleSchemaIngress):
     """Serve any Ray AIR predictor from an AIR checkpoint.
 
     Args:
-        predictor_cls(str, Type[Predictor]): The class or path for predictor class.
+        predictor_cls: The class or path for predictor class.
             The type must be a subclass of :class:`ray.air.predictor.Predictor`.
-        checkpoint(Checkpoint, str): The checkpoint object or a uri to load checkpoint
+        checkpoint: The checkpoint object or a uri to load checkpoint
             from
 
             - The checkpoint object must be an instance of
@@ -155,16 +155,18 @@ class ModelWrapper(SimpleSchemaIngress):
             - The uri string will be called to construct a checkpoint object using
               ``Checkpoint.from_uri("uri_to_load_from")``.
 
-        http_adapter(str, HTTPAdapterFn, None): The FastAPI input conversion
+        http_adapter: The FastAPI input conversion
             function. By default, Serve will use the
             :ref:`NdArray <serve-ndarray-schema>` schema and convert to numpy array.
             You can pass in any FastAPI dependency resolver that returns
             an array. When you pass in a string, Serve will import it.
             Please refer to :ref:`Serve HTTP adatpers <serve-http-adapters>`
             documentation to learn more.
-        batching_params(dict, None, False): override the default parameters to
+        batching_params: override the default parameters to
             :func:`ray.serve.batch`. Pass ``False`` to disable batching.
-        **predictor_kwargs: Additional keyword arguments passed to the
+        predict_kwargs: optional keyword arguments passed to the
+            ``Predictor.predict`` method upon each call.
+        **predictor_from_checkpoint_kwargs: Additional keyword arguments passed to the
             ``Predictor.from_checkpoint()`` call.
     """
 
@@ -176,18 +178,23 @@ class ModelWrapper(SimpleSchemaIngress):
             str, HTTPAdapterFn
         ] = "ray.serve.http_adapters.json_to_ndarray",
         batching_params: Optional[Union[Dict[str, int], bool]] = None,
-        **predictor_kwargs,
+        predict_kwargs: Optional[Dict[str, Any]] = None,
+        **predictor_from_checkpoint_kwargs,
     ):
         predictor_cls = _load_predictor_cls(predictor_cls)
         checkpoint = _load_checkpoint(checkpoint)
 
-        self.model = predictor_cls.from_checkpoint(checkpoint, **predictor_kwargs)
+        self.model = predictor_cls.from_checkpoint(
+            checkpoint, **predictor_from_checkpoint_kwargs
+        )
+
+        predict_kwargs = predict_kwargs or dict()
 
         # Configure Batching
         if batching_params is False:
 
             async def predict_impl(inp: Union[np.ndarray, "pd.DataFrame"]):
-                out = self.model.predict(inp)
+                out = self.model.predict(inp, **predict_kwargs)
                 if isinstance(out, ray.ObjectRef):
                     out = await out
                 return out
@@ -209,7 +216,7 @@ class ModelWrapper(SimpleSchemaIngress):
                     )
 
                 batched, unpack = collate_func(inp)
-                out = self.model.predict(batched)
+                out = self.model.predict(batched, **predict_kwargs)
                 if isinstance(out, ray.ObjectRef):
                     out = await out
                 return unpack(out)
