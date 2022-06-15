@@ -7,11 +7,10 @@ import pyarrow as pa
 import pytest
 
 import ray
-
-from ray.tests.conftest import *  # noqa
+from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
 from ray.data.block import BlockAccessor
 from ray.data.tests.conftest import *  # noqa
-from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
+from ray.tests.conftest import *  # noqa
 
 
 @pytest.mark.parametrize("use_push_based_shuffle", [False, True])

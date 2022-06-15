@@ -1,47 +1,53 @@
 import collections
-import random
 import heapq
+import random
 from typing import (
+    TYPE_CHECKING,
+    Any,
     Callable,
     Dict,
-    List,
-    Tuple,
-    Union,
     Iterator,
-    Any,
-    TypeVar,
+    List,
     Optional,
-    TYPE_CHECKING,
+    Tuple,
+    TypeVar,
+    Union,
 )
 
 import numpy as np
+
+from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
+from ray.data._internal.arrow_ops.transform_pyarrow import (
+    _concatenate_extension_column,
+    _is_column_extension_type,
+)
+from ray.data._internal.table_block import (
+    VALUE_COL_NAME,
+    TableBlockAccessor,
+    TableBlockBuilder,
+)
+from ray.data.aggregate import AggregateFn
+from ray.data.block import (
+    Block,
+    BlockAccessor,
+    BlockExecStats,
+    BlockMetadata,
+    KeyFn,
+    KeyType,
+    U,
+)
+from ray.data.context import DatasetContext
+from ray.data.row import TableRow
 
 try:
     import pyarrow
 except ImportError:
     pyarrow = None
 
-from ray.data.block import (
-    Block,
-    BlockAccessor,
-    BlockMetadata,
-    BlockExecStats,
-    U,
-    KeyFn,
-    KeyType,
-)
-from ray.data.row import TableRow
-from ray.data._internal.table_block import (
-    TableBlockAccessor,
-    TableBlockBuilder,
-    VALUE_COL_NAME,
-)
-from ray.data.aggregate import AggregateFn
-from ray.data.context import DatasetContext
-from ray.data.impl.arrow_ops import transform_polars, transform_pyarrow
 
 if TYPE_CHECKING:
     import pandas
+
     from ray.data._internal.sort import SortKeyT
 
 T = TypeVar("T")
@@ -131,6 +137,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
     @staticmethod
     def numpy_to_block(batch: np.ndarray) -> "pyarrow.Table":
         import pyarrow as pa
+
         from ray.data.extensions.tensor_extension import ArrowTensorArray
 
         return pa.Table.from_pydict(
@@ -543,33 +550,6 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
         ret = builder.build()
         return ret, ArrowBlockAccessor(ret).get_metadata(None, exec_stats=stats.build())
-
-
-def _is_column_extension_type(ca: "pyarrow.ChunkedArray") -> bool:
-    """Whether the provided Arrow Table column is an extension array, using an Arrow
-    extension type.
-    """
-    return isinstance(ca.type, pyarrow.ExtensionType)
-
-
-def _concatenate_extension_column(ca: "pyarrow.ChunkedArray") -> "pyarrow.Array":
-    """Concatenate chunks of an extension column into a contiguous array.
-
-    This concatenation is required for creating copies and for .take() to work on
-    extension arrays.
-    See https://issues.apache.org/jira/browse/ARROW-16503.
-    """
-    if not _is_column_extension_type(ca):
-        raise ValueError("Chunked array isn't an extension array: {ca}")
-
-    if ca.num_chunks == 0:
-        # No-op for no-chunk chunked arrays, since there's nothing to concatenate.
-        return ca
-
-    chunk = ca.chunk(0)
-    return type(chunk).from_storage(
-        chunk.type, pyarrow.concat_arrays([c.storage for c in ca.chunks])
-    )
 
 
 def _copy_table(table: "pyarrow.Table") -> "pyarrow.Table":
