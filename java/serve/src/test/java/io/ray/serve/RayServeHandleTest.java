@@ -21,12 +21,11 @@ import org.apache.commons.lang3.RandomStringUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-public class RayServeHandleTest {
+public class RayServeHandleTest extends BaseTest {
 
   @Test
   public void test() {
-    boolean inited = Ray.isInitialized();
-    Ray.init();
+    init();
 
     try {
       String deploymentName = "RayServeHandleTest";
@@ -80,10 +79,7 @@ public class RayServeHandleTest {
       ObjectRef<Object> resultRef = rayServeHandle.remote(null);
       Assert.assertEquals((String) resultRef.get(), deploymentName);
     } finally {
-      if (!inited) {
-        Ray.shutdown();
-      }
-      Serve.setInternalReplicaContext(null);
+      shutdown();
     }
   }
 }

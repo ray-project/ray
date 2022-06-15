@@ -22,12 +22,11 @@ import org.apache.commons.lang3.RandomStringUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-public class RouterTest {
+public class RouterTest extends BaseTest {
 
   @Test
   public void test() {
-    boolean inited = Ray.isInitialized();
-    Ray.init();
+    init();
 
     try {
       String deploymentName = "RouterTest";
@@ -82,10 +81,7 @@ public class RouterTest {
       ObjectRef<Object> resultRef = router.assignRequest(requestMetadata.build(), null);
       Assert.assertEquals((String) resultRef.get(), deploymentName);
     } finally {
-      if (!inited) {
-        Ray.shutdown();
-      }
-      Serve.setInternalReplicaContext(null);
+      shutdown();
     }
   }
 }
