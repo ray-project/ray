@@ -300,7 +300,7 @@ public class Serve {
 
     // TODO use DeploymentCreator
     return new Deployment(
-        deploymentRoute.getDeploymentInfo().getDeploymentDef(),
+        deploymentRoute.getDeploymentInfo().getReplicaConfig().getDeploymentDef(),
         name,
         deploymentRoute.getDeploymentInfo().getDeploymentConfig(),
         deploymentRoute.getDeploymentInfo().getVersion(),
@@ -327,7 +327,7 @@ public class Serve {
       deployments.put(
           entry.getKey(),
           new Deployment(
-              entry.getValue().getDeploymentInfo().getDeploymentDef(),
+              entry.getValue().getDeploymentInfo().getReplicaConfig().getDeploymentDef(),
               entry.getKey(),
               entry.getValue().getDeploymentInfo().getDeploymentConfig(),
               entry.getValue().getDeploymentInfo().getVersion(),

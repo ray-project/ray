@@ -125,7 +125,8 @@ public class ReplicaConfig {
     io.ray.serve.generated.ReplicaConfig.Builder builder =
         io.ray.serve.generated.ReplicaConfig.newBuilder();
     if (StringUtils.isNotBlank(deploymentDef)) {
-      builder.setSerializedDeploymentDef(ByteString.copyFromUtf8(deploymentDef)); // TODO-xlang
+      builder.setDeploymentDefName(deploymentDef);
+      builder.setDeploymentDef(ByteString.copyFromUtf8(deploymentDef)); // TODO-xlang
     }
     if (initArgs != null && initArgs.length > 0) {
       builder.setInitArgs(
@@ -143,7 +144,7 @@ public class ReplicaConfig {
     }
     ReplicaConfig replicaConfig =
         new ReplicaConfig(
-            proto.getSerializedDeploymentDef().toStringUtf8(), // TODO-xlang
+            proto.getDeploymentDefName(),
             MessagePackSerializer.decode(proto.getInitArgs().toByteArray(), null), // TODO-xlang
             gson.fromJson(proto.getRayActorOptions(), Map.class));
     return replicaConfig;

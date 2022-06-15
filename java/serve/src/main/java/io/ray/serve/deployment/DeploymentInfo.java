@@ -7,8 +7,6 @@ public class DeploymentInfo {
 
   private String name;
 
-  private String deploymentDef;
-
   private DeploymentConfig deploymentConfig;
 
   private ReplicaConfig replicaConfig;
@@ -27,14 +25,6 @@ public class DeploymentInfo {
 
   public void setName(String name) {
     this.name = name;
-  }
-
-  public String getDeploymentDef() {
-    return deploymentDef;
-  }
-
-  public void setDeploymentDef(String deploymentDef) {
-    this.deploymentDef = deploymentDef;
   }
 
   public DeploymentConfig getDeploymentConfig() {
@@ -98,7 +88,6 @@ public class DeploymentInfo {
       deploymentInfo.setStartTimeMs(proto.getStartTimeMs());
     }
     deploymentInfo.setActorName(proto.getActorName());
-    deploymentInfo.setDeploymentDef(proto.getSerializedDeploymentDef().toString()); // TODO-xlang
     deploymentInfo.setVersion(proto.getVersion());
     if (proto.getEndTimeMs() != 0) {
       deploymentInfo.setEndTimeMs(proto.getEndTimeMs());
