@@ -10,6 +10,7 @@ from filelock import FileLock
 from torchvision import datasets, transforms
 
 import ray
+from ray import train
 from ray.train.horovod import HorovodTrainer
 
 
@@ -148,7 +149,7 @@ def train_func(config):
         loss = train_epoch(
             model, optimizer, train_sampler, train_loader, epoch, log_interval, use_cuda
         )
-        results.append(loss)
+        train.report(loss=loss)
     return results
 
 
