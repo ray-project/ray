@@ -26,7 +26,7 @@ run on the Ray cluster even after the script that calls it exits. If you want to
 to update the Serve instance, you can run another script that connects to the same Ray cluster and makes further API calls (e.g., to create, update, or delete a deployment). Note that there can only be one detached Serve instance on each Ray cluster.
 
 :::{note}
-All Serve actors– including the Serve controller, the HTTP proxies, and deployment replicas– run in the `"serve"` namespace, even if the Ray driver namespace is different.
+All Serve actors– including the Serve controller, the HTTP proxies, and the deployment replicas– run in the `"serve"` namespace, even if the Ray driver namespace is different.
 :::
 
 If `serve.start()` is called again in a process in which there is already a running Serve instance, Serve will re-connect to the existing instance (regardless of whether the original instance was detached or not). To reconnect to a Serve instance that exists in the Ray cluster but not in the current process, connect to the cluster and run `serve.start()`.
