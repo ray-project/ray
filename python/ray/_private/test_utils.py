@@ -1379,7 +1379,7 @@ def run_pytest(file_name, server_num=None, port_range=None):
         tx_flags += ["--tx", f"socket=localhost:{port}"]
 
     import pytest
-    working_dir = os.path.dirname(os.path.realpath(file_name))
+    working_dir = os.path.dirname(file_name)
     ret = pytest.main(
         tx_flags
         + [
