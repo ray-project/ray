@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import logging
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 import yaml
 import hashlib
 import subprocess
@@ -250,7 +251,10 @@ def _get_conda_dict_with_ray_inserted(
     return conda_dict
 
 
-class CondaManager:
+class CondaPlugin(RuntimeEnvPlugin):
+
+    name = "conda"
+
     def __init__(self, resources_dir: str):
         self._resources_dir = os.path.join(resources_dir, "conda")
         try_to_create_directory(self._resources_dir)
@@ -290,7 +294,7 @@ class CondaManager:
         protocol, hash = parse_uri(uri)
         if protocol != Protocol.CONDA:
             raise ValueError(
-                "CondaManager can only delete URIs with protocol "
+                "CondaPlugin can only delete URIs with protocol "
                 f"conda.  Received protocol {protocol}, URI {uri}"
             )
 
@@ -310,7 +314,7 @@ class CondaManager:
         uri: Optional[str],
         runtime_env: "RuntimeEnv",  # noqa: F821
         context: RuntimeEnvContext,
-        logger: Optional[logging.Logger] = default_logger,
+        logger: logging.Logger = default_logger,
     ) -> int:
         # Currently create method is still a sync process, to avoid blocking
         # the loop, need to run this function in another thread.
