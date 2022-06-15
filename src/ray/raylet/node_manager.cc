@@ -703,8 +703,9 @@ void NodeManager::HandleReleaseUnusedBundles(
     if (!pg_id.IsNil()) {
       if (auto iter = in_use_bundles.find(pg_id);
           iter == in_use_bundles.end() ||  // cannot find the placement group or
-          (bundle_index != -1 && iter->second.count(bundle_index) ==
-                                     0)  // bundle index is not used (-1 means blah blah)
+          (bundle_index != -1 &&
+           iter->second.count(bundle_index) ==
+               0)  // bundle index is not used (-1 means any bundle is ok)
       ) {
         workers_associated_with_unused_bundles.emplace_back(worker);
       }
