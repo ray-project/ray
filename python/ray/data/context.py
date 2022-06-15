@@ -1,6 +1,6 @@
-from typing import Optional
-import threading
 import os
+import threading
+from typing import Optional
 
 import ray
 from ray.util.annotations import DeveloperAPI
@@ -61,6 +61,7 @@ class DatasetContext:
         optimize_fuse_shuffle_stages: bool,
         actor_prefetcher_enabled: bool,
         use_push_based_shuffle: bool,
+        pipeline_push_based_shuffle_reduce_tasks: bool,
         scheduling_strategy: SchedulingStrategyT,
     ):
         """Private constructor (use get_current() instead)."""
@@ -73,6 +74,9 @@ class DatasetContext:
         self.optimize_fuse_shuffle_stages = optimize_fuse_shuffle_stages
         self.actor_prefetcher_enabled = actor_prefetcher_enabled
         self.use_push_based_shuffle = use_push_based_shuffle
+        self.pipeline_push_based_shuffle_reduce_tasks = (
+            pipeline_push_based_shuffle_reduce_tasks
+        )
         self.scheduling_strategy = scheduling_strategy
 
     @staticmethod
@@ -97,6 +101,10 @@ class DatasetContext:
                     optimize_fuse_shuffle_stages=DEFAULT_OPTIMIZE_FUSE_SHUFFLE_STAGES,
                     actor_prefetcher_enabled=DEFAULT_ACTOR_PREFETCHER_ENABLED,
                     use_push_based_shuffle=DEFAULT_USE_PUSH_BASED_SHUFFLE,
+                    # NOTE(swang): We have to pipeline reduce tasks right now
+                    # because of a scheduling bug at large scale.
+                    # See https://github.com/ray-project/ray/issues/25412.
+                    pipeline_push_based_shuffle_reduce_tasks=True,
                     scheduling_strategy=DEFAULT_SCHEDULING_STRATEGY,
                 )
 

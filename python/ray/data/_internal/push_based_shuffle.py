@@ -8,6 +8,7 @@ from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.shuffle import ShuffleOp
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
+from ray.data.context import DatasetContext
 from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -451,9 +452,19 @@ class PushBasedShufflePlan(ShuffleOp):
             reduce_ray_remote_args,
             self._reduce_args,
         )
+
+        max_reduce_tasks_in_flight = output_num_blocks
+        ctx = DatasetContext.get_current()
+        if ctx.pipeline_push_based_shuffle_reduce_tasks:
+            # If pipelining is enabled, we should still try to utilize all
+            # cores.
+            max_reduce_tasks_in_flight = min(
+                max_reduce_tasks_in_flight, sum(num_cpus_per_node_map.values())
+            )
+
         reduce_stage_executor = _PipelinedStageExecutor(
             reduce_stage_iter,
-            min(output_num_blocks, sum(num_cpus_per_node_map.values())),
+            max_reduce_tasks_in_flight,
             max_concurrent_rounds=2,
             progress_bar=reduce_bar,
         )
@@ -566,7 +577,7 @@ class PushBasedShufflePlan(ShuffleOp):
             # merge tasks, but we can spread the group across multiple distinct
             # nodes.
             leftover_cpus += node_parallelism % num_tasks_per_map_merge_group
-            if leftover_cpus > num_tasks_per_map_merge_group:
+            if leftover_cpus > num_tasks_per_map_merge_group and num_merge_tasks == 0:
                 merge_task_placement.append(node)
                 num_merge_tasks_per_round += 1
                 leftover_cpus -= num_tasks_per_map_merge_group

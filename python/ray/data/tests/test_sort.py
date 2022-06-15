@@ -293,6 +293,125 @@ def test_sort_multinode(ray_start_cluster, use_push_based_shuffle):
         ctx.use_push_based_shuffle = original
 
 
+def patch_ray_remote(condition, callback):
+    original_ray_remote = ray.remote
+
+    def ray_remote_override(*args, **kwargs):
+        def wrapper(fn):
+            remote_fn = original_ray_remote(*args, **kwargs)(fn)
+            if condition(fn):
+                original_remote_options = remote_fn.options
+
+                def options(**task_options):
+                    callback(task_options)
+                    original_options = original_remote_options(**task_options)
+                    return original_options
+
+                remote_fn.options = options
+            return remote_fn
+
+        return wrapper
+
+    ray.remote = ray_remote_override
+    return original_ray_remote
+
+
+def patch_ray_get(callback):
+    original_ray_get = ray.get
+
+    def ray_get_override(object_refs):
+        callback(object_refs)
+        return original_ray_get(object_refs)
+
+    ray.get = ray_get_override
+    return original_ray_get
+
+
+@pytest.mark.parametrize("pipeline", [False, True])
+def test_push_based_shuffle_reduce_stage_scheduling(ray_start_cluster, pipeline):
+    ctx = ray.data.context.DatasetContext.get_current()
+    try:
+        original = ctx.use_push_based_shuffle
+        ctx.use_push_based_shuffle = True
+        ctx.pipeline_push_based_shuffle_reduce_tasks = pipeline
+
+        num_cpus_per_node = 8
+        num_nodes = 3
+        num_output_blocks = 100
+
+        task_context = {
+            "reduce_options_submitted": [],
+            # The total number of CPUs available.
+            "pipelined_parallelism": num_cpus_per_node * num_nodes,
+            # The total number of reduce tasks.
+            "total_parallelism": num_output_blocks,
+            "num_instances_below_parallelism": 0,
+        }
+
+        def reduce_options_patch(task_options):
+            task_context["reduce_options_submitted"].append(task_options)
+
+        def check_pipelined(refs):
+            if task_context["reduce_options_submitted"]:
+                # Check that we have the correct number of tasks in flight.
+                if pipeline:
+                    # When pipelining, we should limit the number of reduce
+                    # tasks in flight based on how many CPUs are in the
+                    # cluster.
+                    if not (
+                        task_context["pipelined_parallelism"]
+                        <= len(task_context["reduce_options_submitted"])
+                        <= 2 * task_context["pipelined_parallelism"]
+                    ):
+                        task_context["num_instances_below_parallelism"] += 1
+                else:
+                    # When not pipelining, we should submit all reduce tasks at
+                    # once.
+                    assert (
+                        len(task_context["reduce_options_submitted"])
+                        == task_context["total_parallelism"]
+                    )
+
+                # Check that tasks are close to evenly spread across the nodes.
+                nodes = defaultdict(int)
+                for options in task_context["reduce_options_submitted"]:
+                    nodes[options["scheduling_strategy"].node_id] += 1
+                assert len(nodes) > 1
+                assert min(nodes.values()) >= max(nodes.values()) // 2
+
+            task_context["reduce_options_submitted"].clear()
+
+        ray_remote = patch_ray_remote(
+            lambda fn: "reduce" in fn.__name__, reduce_options_patch
+        )
+        ray_get = patch_ray_get(check_pipelined)
+
+        cluster = ray_start_cluster
+        for _ in range(num_nodes):
+            cluster.add_node(
+                num_cpus=num_cpus_per_node,
+            )
+
+        ray.init(cluster.address)
+
+        ds = ray.data.range(1000, parallelism=num_output_blocks).random_shuffle()
+        # Only the last round should have fewer tasks in flight.
+        assert task_context["num_instances_below_parallelism"] <= 1
+        task_context["num_instances_below_parallelism"] = 0
+
+        ds = ds.sort()
+        # Only the last round should have fewer tasks in flight.
+        assert task_context["num_instances_below_parallelism"] <= 1
+        task_context["num_instances_below_parallelism"] = 0
+        for i, row in enumerate(ds.iter_rows()):
+            assert row == i
+
+    finally:
+        ctx.use_push_based_shuffle = original
+        ray.remote = ray_remote
+        ray.get = ray_get
+
+
 if __name__ == "__main__":
     import sys
 
