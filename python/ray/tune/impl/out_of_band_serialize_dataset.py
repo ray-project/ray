@@ -2,12 +2,11 @@ import contextlib
 import traceback
 
 import ray
-from ray.tune.impl.dataset_execution_registry import dataset_execution_registry
 
 
 def _deserialize_and_fully_execute_if_needed(serialized_ds: bytes):
     ds = ray.data.Dataset.deserialize_lineage(serialized_ds)
-    return dataset_execution_registry.execute_if_needed(ds)
+    return ds
 
 
 def _reduce(ds: ray.data.Dataset):
