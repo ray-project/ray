@@ -27,6 +27,7 @@ from ray.tune.trial import Trial, _Location, _TrialInfo
 from ray.tune.utils import warn_if_slow
 from ray.tune.utils.placement_groups import _PlacementGroupManager, get_tune_pg_prefix
 from ray.tune.utils.resource_updater import _ResourceUpdater
+from ray.tune.utils.trainable import TrainableUtil
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
 from ray.util.ml_utils.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
@@ -791,7 +792,8 @@ class RayTrialExecutor:
                 # This provides FT backwards compatibility in the
                 # case where no cloud checkpoints are provided.
                 logger.debug("Trial %s: Reading checkpoint into memory", trial)
-                obj = Checkpoint.from_directory(checkpoint_dir).to_bytes()
+                checkpoint_path = TrainableUtil.find_checkpoint_dir(checkpoint_dir)
+                obj = Checkpoint.from_directory(checkpoint_path).to_bytes()
                 with self._change_working_directory(trial):
                     remote = trial.runner.restore_from_object.remote(obj)
             else:
