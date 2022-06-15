@@ -21,7 +21,7 @@ from ray.experimental.internal_kv import _internal_kv_initialized
 default_logger = logging.getLogger(__name__)
 
 
-async def upload_working_dir_if_needed(
+def upload_working_dir_if_needed(
     runtime_env: Dict[str, Any],
     scratch_dir: Optional[str] = os.getcwd(),
     logger: Optional[logging.Logger] = default_logger,
@@ -67,11 +67,11 @@ async def upload_working_dir_if_needed(
             )
 
         pkg_uri = get_uri_for_package(package_path)
-        await upload_package_to_gcs(pkg_uri, package_path.read_bytes())
+        upload_package_to_gcs(pkg_uri, package_path.read_bytes())
         runtime_env["working_dir"] = pkg_uri
         return runtime_env
     if upload_fn is None:
-        await upload_package_if_needed(
+        upload_package_if_needed(
             working_dir_uri,
             scratch_dir,
             working_dir,

@@ -38,7 +38,7 @@ def _check_is_uri(s: str) -> bool:
     return protocol is not None
 
 
-async def upload_py_modules_if_needed(
+def upload_py_modules_if_needed(
     runtime_env: Dict[str, Any],
     scratch_dir: Optional[str] = os.getcwd(),
     logger: Optional[logging.Logger] = default_logger,
@@ -89,7 +89,7 @@ async def upload_py_modules_if_needed(
                 excludes = runtime_env.get("excludes", None)
                 module_uri = get_uri_for_directory(module_path, excludes=excludes)
                 if upload_fn is None:
-                    await upload_package_if_needed(
+                    upload_package_if_needed(
                         module_uri,
                         scratch_dir,
                         module_path,
