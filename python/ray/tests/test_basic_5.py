@@ -4,17 +4,17 @@ import logging
 import os
 import sys
 import time
-import pytest
-import numpy as np
 
-import ray.cluster_utils
-from ray._private.test_utils import (
-    wait_for_pid_to_exit,
-    client_test_enabled,
-    run_string_as_driver,
-)
+import numpy as np
+import pytest
 
 import ray
+import ray.cluster_utils
+from ray._private.test_utils import (
+    client_test_enabled,
+    run_string_as_driver,
+    wait_for_pid_to_exit,
+)
 
 logger = logging.getLogger(__name__)
 

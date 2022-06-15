@@ -1,13 +1,14 @@
-from contextlib import contextmanager
-from typing import List, Optional, Set, Dict, Tuple, Union
-import time
 import collections
+import time
+from contextlib import contextmanager
+from typing import Dict, List, Optional, Set, Tuple, Union
+
 import numpy as np
 
 import ray
+from ray.data._internal.block_list import BlockList
 from ray.data.block import BlockMetadata
 from ray.data.context import DatasetContext
-from ray.data._internal.block_list import BlockList
 
 
 def fmt(seconds: float) -> str:
