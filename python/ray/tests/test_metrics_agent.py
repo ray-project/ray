@@ -1,22 +1,22 @@
 import json
+import os
 import pathlib
 from pprint import pformat
-import os
 from unittest.mock import MagicMock
 
 import pytest
 
 import ray
-from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
-from ray.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
 from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
-from ray.util.metrics import Counter, Histogram, Gauge
 from ray._private.test_utils import (
-    wait_for_condition,
     SignalActor,
     fetch_prometheus,
     get_log_batch,
+    wait_for_condition,
 )
+from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
+from ray.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
+from ray.util.metrics import Counter, Gauge, Histogram
 
 os.environ["RAY_event_stats"] = "1"
 
@@ -488,11 +488,11 @@ def test_metrics_disablement(_setup_cluster_for_test):
 
 
 if __name__ == "__main__":
+    import os
     import sys
 
     # Test suite is timing out. Disable on windows for now.
     from ray._private.test_utils import run_pytest
-    import os
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

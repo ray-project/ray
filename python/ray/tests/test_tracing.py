@@ -2,9 +2,10 @@ import asyncio
 import glob
 import json
 import os
-import pytest
 import shutil
 from unittest.mock import patch
+
+import pytest
 
 import ray
 from ray._private.test_utils import check_call_ray
@@ -223,10 +224,10 @@ def test_deserialization_works_without_opentelemetry(ray_start_regular):
 
 
 if __name__ == "__main__":
+    import os
     import sys
 
     from ray._private.test_utils import run_pytest
-    import os
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

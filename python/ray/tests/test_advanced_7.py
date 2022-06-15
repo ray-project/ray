@@ -1,19 +1,17 @@
-# coding: utf-8
-from concurrent.futures import ThreadPoolExecutor
 import logging
 import random
 import sys
 import threading
 import time
 
+# coding: utf-8
+from concurrent.futures import ThreadPoolExecutor
+
 import numpy as np
 import pytest
 
 import ray.cluster_utils
-
-from ray._private.test_utils import (
-    client_test_enabled,
-)
+from ray._private.test_utils import client_test_enabled
 
 if client_test_enabled():
     from ray.util.client import ray
@@ -266,10 +264,11 @@ def test_task_output_inline_bytes_limit(ray_start_cluster_enabled):
 
 
 if __name__ == "__main__":
+    import os
+
     import pytest
 
     from ray._private.test_utils import run_pytest
-    import os
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

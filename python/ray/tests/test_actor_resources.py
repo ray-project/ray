@@ -1,16 +1,17 @@
 import collections
 import os
+import sys
+import time
+
 import pytest
+
+import ray
+import ray.cluster_utils
 
 try:
     import pytest_timeout
 except ImportError:
     pytest_timeout = None
-import sys
-import time
-
-import ray
-import ray.cluster_utils
 
 
 def test_actor_deletion_with_gpus(shutdown_only):
@@ -635,10 +636,11 @@ def test_creating_more_actors_than_resources(shutdown_only):
 
 
 if __name__ == "__main__":
+    import os
+
     import pytest
 
     from ray._private.test_utils import run_pytest
-    import os
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

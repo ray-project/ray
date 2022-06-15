@@ -1,4 +1,5 @@
 import sys
+
 import pytest
 from pkg_resources import Requirement
 
@@ -103,8 +104,9 @@ def test_runtime_env_cache_with_pip_check(start_cluster):
 
 
 if __name__ == "__main__":
-    from ray._private.test_utils import run_pytest
     import os
+
+    from ray._private.test_utils import run_pytest
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

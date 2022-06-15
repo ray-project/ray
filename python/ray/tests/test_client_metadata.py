@@ -1,9 +1,8 @@
 import pytest
 
-from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray._raylet import NodeID
-
 from ray.runtime_context import RuntimeContext
+from ray.util.client.ray_client_helpers import ray_start_client_server
 
 
 def test_get_ray_metadata(ray_start_regular_shared):
@@ -45,10 +44,10 @@ def test_get_runtime_context(ray_start_regular_shared):
 
 
 if __name__ == "__main__":
+    import os
     import sys
 
     from ray._private.test_utils import run_pytest
-    import os
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

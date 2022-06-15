@@ -1,30 +1,31 @@
-import random
-import pytest
-import numpy as np
+import datetime
 import os
-from ray import cloudpickle as pickle
-from ray import ray_constants
-from ray.actor import ActorClassInheritanceException
-
-try:
-    import pytest_timeout
-except ImportError:
-    pytest_timeout = None
+import random
 import sys
 import tempfile
-import datetime
 
+import numpy as np
+import pytest
+
+# NOTE: We have to import setproctitle after ray because we bundle setproctitle
+# with ray.
+import setproctitle  # noqa
+
+import ray
+from ray import cloudpickle as pickle
+from ray import ray_constants
 from ray._private.test_utils import (
     client_test_enabled,
     wait_for_condition,
     wait_for_pid_to_exit,
 )
+from ray.actor import ActorClassInheritanceException
 from ray.tests.client_test_utils import create_remote_signal_actor
-import ray
 
-# NOTE: We have to import setproctitle after ray because we bundle setproctitle
-# with ray.
-import setproctitle  # noqa
+try:
+    import pytest_timeout
+except ImportError:
+    pytest_timeout = None
 
 
 @pytest.mark.parametrize("set_enable_auto_connect", ["1", "0"], indirect=True)
@@ -1203,8 +1204,9 @@ def test_keep_calling_get_actor(ray_start_regular_shared):
 
 
 if __name__ == "__main__":
-    from ray._private.test_utils import run_pytest
     import os
+
+    from ray._private.test_utils import run_pytest
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

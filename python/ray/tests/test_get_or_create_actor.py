@@ -1,11 +1,10 @@
-import sys
 import os
+import sys
+
 import pytest
 
 import ray
-from ray._private.test_utils import (
-    run_string_as_driver_nonblocking,
-)
+from ray._private.test_utils import run_string_as_driver_nonblocking
 
 
 def test_simple(shutdown_only):
@@ -100,8 +99,9 @@ print("DONE")
 
 
 if __name__ == "__main__":
-    from ray._private.test_utils import run_pytest
     import os
+
+    from ray._private.test_utils import run_pytest
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

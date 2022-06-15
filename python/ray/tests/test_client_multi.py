@@ -1,6 +1,8 @@
 import os
 import sys
+
 import pytest
+
 import ray
 
 
@@ -197,8 +199,9 @@ if __name__ == "__main__":
     # https://github.com/ray-project/ray/issues/20355
     # is fixed.
     os.environ["RAY_ENABLE_AUTO_CONNECT"] = "0"
-    from ray._private.test_utils import run_pytest
     import os
+
+    from ray._private.test_utils import run_pytest
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

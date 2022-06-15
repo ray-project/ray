@@ -1,12 +1,11 @@
+import glob
 import os
 import sys
-import glob
 
 import pytest
+
 import ray
-from ray._private.test_utils import (
-    wait_for_condition,
-)
+from ray._private.test_utils import wait_for_condition
 
 
 def enable_export_loglevel(func):
@@ -58,8 +57,9 @@ if __name__ == "__main__":
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"
     os.environ["LANG"] = "en_US.UTF-8"
-    from ray._private.test_utils import run_pytest
     import os
+
+    from ray._private.test_utils import run_pytest
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

@@ -1,8 +1,10 @@
-from ray.util.client.ray_client_helpers import ray_start_client_server
-from unittest.mock import Mock, patch
-import pytest
 import os
 import time
+from unittest.mock import Mock, patch
+
+import pytest
+
+from ray.util.client.ray_client_helpers import ray_start_client_server
 
 
 def test_dataclient_disconnect_on_request():
@@ -81,10 +83,10 @@ def test_dataclient_disconnect_before_request():
 
 
 if __name__ == "__main__":
+    import os
     import sys
 
     from ray._private.test_utils import run_pytest
-    import os
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

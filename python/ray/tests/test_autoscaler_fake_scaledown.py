@@ -1,7 +1,8 @@
-import pytest
 import platform
-import numpy as np
 import re
+
+import numpy as np
+import pytest
 
 import ray
 from ray._private.test_utils import wait_for_condition
@@ -183,10 +184,10 @@ def test_no_scaledown_with_spilled_objects(shutdown_only):
 
 
 if __name__ == "__main__":
+    import os
     import sys
 
     from ray._private.test_utils import run_pytest
-    import os
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

@@ -1,26 +1,25 @@
-from importlib import import_module
 import os
-from pathlib import Path
+import shutil
 import sys
 import tempfile
-import shutil
+import time
+from importlib import import_module
+from pathlib import Path
+from unittest import mock
 
 import pytest
 
 import ray
-import time
 from ray._private.runtime_env.context import RuntimeEnvContext
-from ray._private.utils import get_directory_size_bytes
-from ray._private.runtime_env.working_dir import (
-    WorkingDirManager,
-    set_pythonpath_in_context,
-)
 from ray._private.runtime_env.packaging import (
     get_uri_for_directory,
     upload_package_if_needed,
 )
-from unittest import mock
-
+from ray._private.runtime_env.working_dir import (
+    WorkingDirManager,
+    set_pythonpath_in_context,
+)
+from ray._private.utils import get_directory_size_bytes
 
 # This test requires you have AWS credentials set up (any AWS credentials will
 # do, this test only accesses a public bucket).
@@ -574,8 +573,9 @@ def test_override_failure(shutdown_only):
 
 
 if __name__ == "__main__":
-    from ray._private.test_utils import run_pytest
     import os
+
+    from ray._private.test_utils import run_pytest
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

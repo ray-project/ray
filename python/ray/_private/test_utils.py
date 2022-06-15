@@ -747,7 +747,7 @@ def format_web_url(url):
 
 
 def client_test_enabled() -> bool:
-    return ray._private.client_mode_hook.is_client_mode_enabled
+    return os.environ.get("RAY_CLIENT_MODE") == "1"
 
 
 def object_memory_usage() -> bool:
@@ -1379,6 +1379,7 @@ def run_pytest(file_name, server_num=None, port_range=None):
         tx_flags += ["--tx", f"socket=localhost:{port}"]
 
     import pytest
+
     working_dir = os.path.dirname(file_name)
     ret = pytest.main(
         tx_flags

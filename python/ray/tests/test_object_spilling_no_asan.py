@@ -1,8 +1,9 @@
-import numpy as np
-import platform
-import pytest
 import os
+import platform
 import sys
+
+import numpy as np
+import pytest
 
 import ray
 
@@ -47,8 +48,9 @@ def test_spill_fusion(fs_only_object_spilling_config, shutdown_only):
 
 
 if __name__ == "__main__":
-    from ray._private.test_utils import run_pytest
     import os
+
+    from ray._private.test_utils import run_pytest
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

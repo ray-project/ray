@@ -1,5 +1,6 @@
-import pytest
 import sys
+
+import pytest
 
 import ray
 import ray.cluster_utils
@@ -26,8 +27,9 @@ def test_cross_language_raise_exception(shutdown_only):
 
 
 if __name__ == "__main__":
-    from ray._private.test_utils import run_pytest
     import os
+
+    from ray._private.test_utils import run_pytest
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

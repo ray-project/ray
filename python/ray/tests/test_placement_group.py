@@ -1,11 +1,10 @@
-import pytest
 import sys
+
+import pytest
 
 import ray
 import ray.cluster_utils
-from ray._private.test_utils import (
-    placement_group_assert_no_leak,
-)
+from ray._private.test_utils import placement_group_assert_no_leak
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
 
 
@@ -449,8 +448,9 @@ def test_placement_group_hang(ray_start_cluster, connect_to_client):
 
 
 if __name__ == "__main__":
-    from ray._private.test_utils import run_pytest
     import os
+
+    from ray._private.test_utils import run_pytest
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

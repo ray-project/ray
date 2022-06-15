@@ -1,11 +1,10 @@
-import time
 import os
+import subprocess
 import sys
 import tempfile
-import subprocess
+import time
 
 import ray
-from ray.job_config import JobConfig
 import ray._private.gcs_utils as gcs_utils
 from ray._private.test_utils import (
     run_string_as_driver,
@@ -13,6 +12,7 @@ from ray._private.test_utils import (
     wait_for_condition,
     wait_for_num_actors,
 )
+from ray.job_config import JobConfig
 
 
 def test_job_isolation(call_ray_start):
@@ -271,8 +271,9 @@ if __name__ == "__main__":
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"
     os.environ["LANG"] = "en_US.UTF-8"
-    from ray._private.test_utils import run_pytest
     import os
+
+    from ray._private.test_utils import run_pytest
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

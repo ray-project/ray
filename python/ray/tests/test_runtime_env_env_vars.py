@@ -301,10 +301,11 @@ def test_environment_variables_env_caching(shutdown_only):
 
 
 if __name__ == "__main__":
+    import os
+
     import pytest
 
     from ray._private.test_utils import run_pytest
-    import os
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

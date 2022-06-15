@@ -1,16 +1,13 @@
-import numpy as np
 import os
 import time
 
+import numpy as np
 import pytest
+
 import ray
+from ray._private.test_utils import Semaphore, wait_for_condition
 from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.internal.internal_api import memory_summary
-from ray._private.test_utils import (
-    wait_for_condition,
-    Semaphore,
-)
-
 
 # RayConfig to enable recording call sites during ObjectRej creations.
 ray_config = {"record_ref_creation_sites": True}
@@ -381,10 +378,10 @@ def test_task_status(ray_start_regular):
 
 
 if __name__ == "__main__":
+    import os
     import sys
 
     from ray._private.test_utils import run_pytest
-    import os
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

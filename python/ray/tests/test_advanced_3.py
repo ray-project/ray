@@ -1,24 +1,20 @@
 # coding: utf-8
 import logging
 import os
-import sys
+import pickle
 import socket
+import sys
 import time
 
 import numpy as np
-import pickle
 import pytest
-
-import ray
-import ray.util.accelerators
-import ray._private.utils
-import ray.cluster_utils
 import setproctitle
 
-from ray._private.test_utils import (
-    check_call_ray,
-    wait_for_num_actors,
-)
+import ray
+import ray._private.utils
+import ray.cluster_utils
+import ray.util.accelerators
+from ray._private.test_utils import check_call_ray, wait_for_num_actors
 
 logger = logging.getLogger(__name__)
 
@@ -350,10 +346,11 @@ def test_decorated_function(ray_start_regular):
 
 
 if __name__ == "__main__":
+    import os
+
     import pytest
 
     from ray._private.test_utils import run_pytest
-    import os
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

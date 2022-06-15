@@ -1,18 +1,19 @@
 import sys
 import threading
 
+import pytest
+
 from ray._private.gcs_pubsub import (
-    GcsPublisher,
-    GcsErrorSubscriber,
-    GcsLogSubscriber,
-    GcsFunctionKeySubscriber,
-    GcsAioPublisher,
     GcsAioErrorSubscriber,
     GcsAioLogSubscriber,
+    GcsAioPublisher,
     GcsAioResourceUsageSubscriber,
+    GcsErrorSubscriber,
+    GcsFunctionKeySubscriber,
+    GcsLogSubscriber,
+    GcsPublisher,
 )
 from ray.core.generated.gcs_pb2 import ErrorTableData
-import pytest
 
 
 def test_publish_and_subscribe_error_info(ray_start_regular):
@@ -203,8 +204,9 @@ def test_two_subscribers(ray_start_regular):
 
 
 if __name__ == "__main__":
-    from ray._private.test_utils import run_pytest
     import os
+
+    from ray._private.test_utils import run_pytest
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

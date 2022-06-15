@@ -1,20 +1,21 @@
-import pytest
 import os
 import sys
 
+import pytest
+
 import ray
 import ray.cluster_utils
-from ray._private.test_utils import (
-    get_other_nodes,
-    wait_for_condition,
-    is_placement_group_removed,
-    placement_group_assert_no_leak,
-)
-from ray._raylet import PlacementGroupID
-from ray.util.placement_group import PlacementGroup
-from ray.util.client.ray_client_helpers import connect_to_client_or_not
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray._private.test_utils import (
+    get_other_nodes,
+    is_placement_group_removed,
+    placement_group_assert_no_leak,
+    wait_for_condition,
+)
+from ray._raylet import PlacementGroupID
+from ray.util.client.ray_client_helpers import connect_to_client_or_not
+from ray.util.placement_group import PlacementGroup
 
 MOCK_WORKER_STARTUP_SLOWLY_PLUGIN_CLASS_PATH = (
     "ray.tests.test_placement_group_4.MockWorkerStartupSlowlyPlugin"  # noqa
@@ -432,8 +433,9 @@ def test_infeasible_pg(ray_start_cluster):
 
 
 if __name__ == "__main__":
-    from ray._private.test_utils import run_pytest
     import os
+
+    from ray._private.test_utils import run_pytest
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

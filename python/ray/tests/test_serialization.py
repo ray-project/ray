@@ -8,8 +8,8 @@ import sys
 import weakref
 
 import numpy as np
-from numpy import log
 import pytest
+from numpy import log
 
 import ray
 import ray.cluster_utils
@@ -333,6 +333,7 @@ def test_numpy_subclass_serialization_pickle(ray_start_regular):
 
 def test_inspect_serialization(enable_pickle_debug):
     import threading
+
     from ray.cloudpickle import dumps_debug
 
     lock = threading.Lock()
@@ -547,7 +548,7 @@ def test_reducer_override_no_reference_cycle(ray_start_shared_local_modes):
     wr = weakref.ref(f)
 
     bio = io.BytesIO()
-    from ray.cloudpickle import CloudPickler, loads, dumps
+    from ray.cloudpickle import CloudPickler, dumps, loads
 
     p = CloudPickler(bio, protocol=5)
     p.dump(f)
@@ -681,10 +682,11 @@ def test_serialization_before_init(shutdown_only):
 
 
 if __name__ == "__main__":
+    import os
+
     import pytest
 
     from ray._private.test_utils import run_pytest
-    import os
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

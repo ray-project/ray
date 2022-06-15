@@ -1,10 +1,11 @@
-import ray
 import os
 import signal
-import time
 import sys
+import time
+
 import pytest
 
+import ray
 from ray._private.test_utils import SignalActor
 
 
@@ -219,10 +220,11 @@ def test_no_auto_init(shutdown_only):
 
 
 if __name__ == "__main__":
+    import os
+
     import pytest
 
     from ray._private.test_utils import run_pytest
-    import os
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

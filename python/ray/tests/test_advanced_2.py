@@ -9,10 +9,7 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray._private.test_utils import (
-    RayTestTimeoutException,
-    wait_for_condition,
-)
+from ray._private.test_utils import RayTestTimeoutException, wait_for_condition
 
 logger = logging.getLogger(__name__)
 
@@ -505,8 +502,9 @@ def test_zero_capacity_deletion_semantics(shutdown_only):
 
 
 if __name__ == "__main__":
-    from ray._private.test_utils import run_pytest
     import os
+
+    from ray._private.test_utils import run_pytest
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

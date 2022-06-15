@@ -1,6 +1,7 @@
-import pytest
-import numpy as np
 import sys
+
+import numpy as np
+import pytest
 
 import ray
 
@@ -95,8 +96,9 @@ def test_generator_returns(ray_start_regular, use_actors):
 
 
 if __name__ == "__main__":
-    from ray._private.test_utils import run_pytest
     import os
+
+    from ray._private.test_utils import run_pytest
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

@@ -1,22 +1,20 @@
+import math
 import os
-import sys
 import platform
-import pytest
+import queue
+import random
+import sys
 import tempfile
 import time
-import random
 from collections import defaultdict
-import queue
-import math
+
+import pytest
+from joblib import Parallel, delayed, parallel_backend
 
 import ray
-from ray._private.test_utils import SignalActor
-from ray.util.multiprocessing import Pool, TimeoutError, JoinableQueue
-
+from ray._private.test_utils import SignalActor, test_external_redis
 from ray.util.joblib import register_ray
-
-from joblib import parallel_backend, Parallel, delayed
-from ray._private.test_utils import test_external_redis
+from ray.util.multiprocessing import JoinableQueue, Pool, TimeoutError
 
 
 def teardown_function(function):
@@ -647,10 +645,11 @@ def test_task_to_actor_assignment(ray_start_4_cpu):
 
 
 if __name__ == "__main__":
+    import os
+
     import pytest
 
     from ray._private.test_utils import run_pytest
-    import os
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

@@ -9,10 +9,10 @@ import pexpect
 import pytest
 
 import ray
-from ray.cluster_utils import Cluster, cluster_not_supported
 from ray import ray_constants
-from ray._private.test_utils import run_string_as_driver, wait_for_condition
 from ray._private import services
+from ray._private.test_utils import run_string_as_driver, wait_for_condition
+from ray.cluster_utils import Cluster, cluster_not_supported
 
 
 def test_ray_debugger_breakpoint(shutdown_only):
@@ -345,8 +345,9 @@ if __name__ == "__main__":
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"
     os.environ["LANG"] = "en_US.UTF-8"
-    from ray._private.test_utils import run_pytest
     import os
+
+    from ray._private.test_utils import run_pytest
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

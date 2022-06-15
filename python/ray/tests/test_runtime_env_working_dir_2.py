@@ -1,17 +1,21 @@
 import os
-from pathlib import Path
 import sys
-import time
 import tempfile
+import time
+from pathlib import Path
 
 import pytest
 from pytest_lazyfixture import lazy_fixture
-from ray._private.test_utils import run_string_as_driver
 
 import ray
-from ray._private.test_utils import wait_for_condition, chdir, check_local_files_gced
 from ray._private.runtime_env import RAY_WORKER_DEV_EXCLUDES
 from ray._private.runtime_env.packaging import GCS_STORAGE_MAX_SIZE
+from ray._private.test_utils import (
+    chdir,
+    check_local_files_gced,
+    run_string_as_driver,
+    wait_for_condition,
+)
 from ray.exceptions import GetTimeoutError
 
 # This test requires you have AWS credentials set up (any AWS credentials will
@@ -417,8 +421,9 @@ def test_task_level_gc(runtime_env_disable_URI_cache, ray_start_cluster, option)
 
 
 if __name__ == "__main__":
-    from ray._private.test_utils import run_pytest
     import os
+
+    from ray._private.test_utils import run_pytest
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

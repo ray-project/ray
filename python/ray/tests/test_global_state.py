@@ -1,20 +1,22 @@
 import os
+import time
+
 import pytest
+
+import ray
+import ray._private.gcs_utils as gcs_utils
+import ray.ray_constants
+from ray._private.test_utils import (
+    convert_actor_state,
+    make_global_state_accessor,
+    wait_for_condition,
+)
 
 try:
     import pytest_timeout
 except ImportError:
     pytest_timeout = None
-import time
 
-import ray
-import ray.ray_constants
-import ray._private.gcs_utils as gcs_utils
-from ray._private.test_utils import (
-    wait_for_condition,
-    convert_actor_state,
-    make_global_state_accessor,
-)
 
 # TODO(rliaw): The proper way to do this is to have the pytest config setup.
 
@@ -401,11 +403,12 @@ def test_next_job_id(ray_start_regular):
 
 
 if __name__ == "__main__":
-    import pytest
+    import os
     import sys
 
+    import pytest
+
     from ray._private.test_utils import run_pytest
-    import os
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

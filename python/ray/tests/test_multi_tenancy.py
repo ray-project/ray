@@ -3,18 +3,17 @@ import os
 import sys
 import time
 
-import pytest
 import numpy as np
+import pytest
 
 import ray
-from ray.core.generated import common_pb2
-from ray.core.generated import node_manager_pb2, node_manager_pb2_grpc
 from ray._private.test_utils import (
-    wait_for_condition,
     run_string_as_driver,
     run_string_as_driver_nonblocking,
+    wait_for_condition,
 )
 from ray._private.utils import init_grpc_channel
+from ray.core.generated import common_pb2, node_manager_pb2, node_manager_pb2_grpc
 
 
 def get_workers():
@@ -323,8 +322,9 @@ def test_kill_idle_workers_that_are_behind_owned_workers(shutdown_only):
 
 
 if __name__ == "__main__":
-    from ray._private.test_utils import run_pytest
     import os
+
+    from ray._private.test_utils import run_pytest
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

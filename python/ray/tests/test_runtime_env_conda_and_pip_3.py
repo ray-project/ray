@@ -1,16 +1,16 @@
 import os
-import pytest
 import sys
 import time
+from unittest import mock
 
+import pytest
+
+import ray
 from ray._private.test_utils import (
-    wait_for_condition,
     check_local_files_gced,
     generate_runtime_env_dict,
+    wait_for_condition,
 )
-import ray
-
-from unittest import mock
 
 if not os.environ.get("CI"):
     # This flags turns on the local development that link against current ray
@@ -227,8 +227,9 @@ class TestSkipLocalGC:
 
 
 if __name__ == "__main__":
-    from ray._private.test_utils import run_pytest
     import os
+
+    from ray._private.test_utils import run_pytest
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

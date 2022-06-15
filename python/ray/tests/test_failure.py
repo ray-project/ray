@@ -7,18 +7,18 @@ import numpy as np
 import pytest
 
 import ray
-import ray._private.utils
 import ray._private.gcs_utils as gcs_utils
+import ray._private.utils
 import ray.ray_constants as ray_constants
-from ray.exceptions import RayTaskError, RayActorError, GetTimeoutError
 from ray._private.gcs_pubsub import GcsPublisher
 from ray._private.test_utils import (
-    wait_for_condition,
     SignalActor,
-    init_error_pubsub,
-    get_error_message,
     convert_actor_state,
+    get_error_message,
+    init_error_pubsub,
+    wait_for_condition,
 )
+from ray.exceptions import GetTimeoutError, RayActorError, RayTaskError
 
 
 def test_unhandled_errors(ray_start_regular):
@@ -645,10 +645,11 @@ def test_actor_failover_with_bad_network(ray_start_cluster_head):
 
 
 if __name__ == "__main__":
+    import os
+
     import pytest
 
     from ray._private.test_utils import run_pytest
-    import os
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

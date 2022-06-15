@@ -6,18 +6,17 @@ import sys
 import time
 
 import numpy as np
-
 import pytest
 
 import ray
-import ray.cluster_utils
 import ray._private.gcs_utils as gcs_utils
+import ray.cluster_utils
 from ray._private.test_utils import (
     SignalActor,
+    convert_actor_state,
     kill_actor_and_wait_for_failure,
     put_object,
     wait_for_condition,
-    convert_actor_state,
 )
 
 logger = logging.getLogger(__name__)
@@ -550,10 +549,10 @@ def test_remove_actor_immediately_after_creation(ray_start_regular):
 
 
 if __name__ == "__main__":
+    import os
     import sys
 
     from ray._private.test_utils import run_pytest
-    import os
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

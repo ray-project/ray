@@ -1,18 +1,19 @@
+import hashlib
 import logging
-import pytest
+from getpass import getuser
 from unittest.mock import patch
 
-from ray.tests.test_autoscaler import MockProvider, MockProcessRunner
-from ray.autoscaler.command_runner import CommandRunnerInterface
+import pytest
+
 from ray.autoscaler._private.command_runner import (
-    SSHCommandRunner,
     DockerCommandRunner,
     KubernetesCommandRunner,
+    SSHCommandRunner,
     _with_environment_variables,
 )
+from ray.autoscaler.command_runner import CommandRunnerInterface
 from ray.autoscaler.sdk import get_docker_host_mount_location
-from getpass import getuser
-import hashlib
+from ray.tests.test_autoscaler import MockProcessRunner, MockProvider
 
 auth_config = {
     "ssh_user": "ray",
@@ -438,10 +439,10 @@ def test_docker_shm_override(run_option_type):
 
 
 if __name__ == "__main__":
+    import os
     import sys
 
     from ray._private.test_utils import run_pytest
-    import os
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

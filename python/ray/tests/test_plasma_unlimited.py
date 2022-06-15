@@ -1,9 +1,10 @@
-import numpy as np
 import json
-import random
 import os
-import shutil
 import platform
+import random
+import shutil
+
+import numpy as np
 import pytest
 
 import ray
@@ -325,10 +326,10 @@ def test_object_store_memory_metrics_reported_correctly(shutdown_only):
 
 
 if __name__ == "__main__":
+    import os
     import sys
 
     from ray._private.test_utils import run_pytest
-    import os
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

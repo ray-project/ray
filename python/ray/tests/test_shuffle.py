@@ -1,7 +1,8 @@
-import ray
-import pytest
 import sys
 
+import pytest
+
+import ray
 from ray.experimental import shuffle
 
 
@@ -49,8 +50,9 @@ def test_shuffle_multi_node_no_streaming(ray_start_cluster):
 
 
 if __name__ == "__main__":
-    from ray._private.test_utils import run_pytest
     import os
+
+    from ray._private.test_utils import run_pytest
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

@@ -7,10 +7,7 @@ import numpy as np
 import pytest
 
 import ray
-from ray._private.test_utils import (
-    wait_for_condition,
-    wait_for_pid_to_exit,
-)
+from ray._private.test_utils import wait_for_condition, wait_for_pid_to_exit
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
@@ -711,10 +708,11 @@ def test_reconstruction_stress_spill(ray_start_cluster):
 
 
 if __name__ == "__main__":
+    import os
+
     import pytest
 
     from ray._private.test_utils import run_pytest
-    import os
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

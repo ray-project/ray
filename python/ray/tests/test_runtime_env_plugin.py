@@ -3,12 +3,12 @@ import tempfile
 from time import sleep
 
 import pytest
-from ray._private.runtime_env.context import RuntimeEnvContext
-from ray._private.runtime_env.plugin import RuntimeEnvPlugin
-from ray._private.test_utils import wait_for_condition, test_external_redis
-from ray.exceptions import RuntimeEnvSetupError
 
 import ray
+from ray._private.runtime_env.context import RuntimeEnvContext
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray._private.test_utils import test_external_redis, wait_for_condition
+from ray.exceptions import RuntimeEnvSetupError
 
 MY_PLUGIN_CLASS_PATH = "ray.tests.test_runtime_env_plugin.MyPlugin"
 
@@ -210,10 +210,10 @@ def test_plugin_timeout(start_cluster):
 
 
 if __name__ == "__main__":
+    import os
     import sys
 
     from ray._private.test_utils import run_pytest
-    import os
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

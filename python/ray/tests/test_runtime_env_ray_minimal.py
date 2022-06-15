@@ -11,6 +11,7 @@ ray[default] but not in ray (e.g., `pip uninstall aiohttp`) and set
 
 import os
 import sys
+
 import pytest
 
 import ray
@@ -96,8 +97,9 @@ def test_ray_client_init(call_ray_start):
 
 
 if __name__ == "__main__":
-    from ray._private.test_utils import run_pytest
     import os
+
+    from ray._private.test_utils import run_pytest
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

@@ -1,5 +1,6 @@
-from ray.autoscaler._private import cli_logger
 import pytest
+
+from ray.autoscaler._private import cli_logger
 
 
 def test_colorful_mock_with_style():
@@ -15,10 +16,10 @@ def test_colorful_mock_random_function():
 
 
 if __name__ == "__main__":
+    import os
     import sys
 
     from ray._private.test_utils import run_pytest
-    import os
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

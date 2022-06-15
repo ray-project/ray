@@ -1,26 +1,24 @@
-import os
-import pytest
-import sys
-import ray
-import pathlib
 import json
+import os
+import pathlib
+import sys
 import time
-
 from dataclasses import asdict
 from pathlib import Path
+
+import pytest
 from jsonschema import validate
 
-import ray._private.usage.usage_lib as ray_usage_lib
+import ray
 import ray._private.usage.usage_constants as usage_constants
-from ray._private.usage.usage_lib import ClusterConfigToReport
-from ray._private.usage.usage_lib import UsageStatsEnabledness
-from ray.autoscaler._private.cli_logger import cli_logger
-
+import ray._private.usage.usage_lib as ray_usage_lib
 from ray._private.test_utils import (
     format_web_url,
     wait_for_condition,
     wait_until_server_available,
 )
+from ray._private.usage.usage_lib import ClusterConfigToReport, UsageStatsEnabledness
+from ray.autoscaler._private.cli_logger import cli_logger
 
 schema = {
     "$schema": "http://json-schema.org/draft-07/schema#",
@@ -594,9 +592,9 @@ provider:
         cluster.add_node(num_cpus=3)
         ray_usage_lib._recorded_library_usages.clear()
         if os.environ.get("RAY_MINIMAL") != "1":
+            from ray import train  # noqa: F401
             from ray import tune  # noqa: F401
             from ray.rllib.algorithms.ppo import PPO  # noqa: F401
-            from ray import train  # noqa: F401
 
         ray.init(address=cluster.address)
 
@@ -803,8 +801,9 @@ def test_usage_file_error_message(monkeypatch, ray_start_cluster):
 
 
 if __name__ == "__main__":
-    from ray._private.test_utils import run_pytest
     import os
+
+    from ray._private.test_utils import run_pytest
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

@@ -1,11 +1,12 @@
 # coding: utf-8
 import logging
-import pytest
 import signal
 import subprocess
 import sys
 import time
+
 import psutil
+import pytest
 
 import ray
 from ray import ray_constants
@@ -67,8 +68,9 @@ def test_healthcheck_ray_client_server():
 
 
 if __name__ == "__main__":
-    from ray._private.test_utils import run_pytest
     import os
+
+    from ray._private.test_utils import run_pytest
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

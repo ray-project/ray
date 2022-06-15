@@ -1,5 +1,6 @@
-import pytest
 import sys
+
+import pytest
 
 from ray.experimental.raysort import main
 
@@ -21,8 +22,9 @@ def test_distributed_sort():
 
 
 if __name__ == "__main__":
-    from ray._private.test_utils import run_pytest
     import os
+
+    from ray._private.test_utils import run_pytest
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

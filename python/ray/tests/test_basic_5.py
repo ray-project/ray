@@ -4,16 +4,16 @@ import logging
 import os
 import sys
 import time
+
 import pytest
 
+import ray
 import ray.cluster_utils
 from ray._private.test_utils import (
-    wait_for_pid_to_exit,
     client_test_enabled,
     run_string_as_driver,
+    wait_for_pid_to_exit,
 )
-
-import ray
 
 logger = logging.getLogger(__name__)
 
@@ -164,8 +164,9 @@ ray.get(ready.remote())
 
 
 if __name__ == "__main__":
-    from ray._private.test_utils import run_pytest
     import os
+
+    from ray._private.test_utils import run_pytest
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

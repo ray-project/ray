@@ -1,10 +1,10 @@
 import os
-import pytest
 import sys
 
-from ray._private.runtime_env.pip import PipProcessor
-import ray
+import pytest
 
+import ray
+from ray._private.runtime_env.pip import PipProcessor
 
 if not os.environ.get("CI"):
     # This flags turns on the local development that link against current ray
@@ -127,8 +127,9 @@ def test_runtime_env_with_pip_config(start_cluster):
 
 
 if __name__ == "__main__":
-    from ray._private.test_utils import run_pytest
     import os
+
+    from ray._private.test_utils import run_pytest
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

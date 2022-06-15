@@ -1,13 +1,14 @@
-from ray.util.client.common import (
-    _id_is_newer,
-    ResponseCache,
-    OrderedResponseCache,
-    INT32_MAX,
-)
 import threading
 import time
 
 import pytest
+
+from ray.util.client.common import (
+    INT32_MAX,
+    OrderedResponseCache,
+    ResponseCache,
+    _id_is_newer,
+)
 
 
 def test_id_is_newer():
@@ -218,10 +219,10 @@ def test_response_cache_invalidate():
 
 
 if __name__ == "__main__":
+    import os
     import sys
 
     from ray._private.test_utils import run_pytest
-    import os
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

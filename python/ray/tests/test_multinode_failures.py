@@ -7,8 +7,8 @@ import pytest
 
 import ray
 import ray.ray_constants as ray_constants
+from ray._private.test_utils import Semaphore, get_other_nodes
 from ray.cluster_utils import Cluster, cluster_not_supported
-from ray._private.test_utils import get_other_nodes, Semaphore
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
@@ -178,10 +178,11 @@ def test_raylet_failed(ray_start_cluster):
 
 
 if __name__ == "__main__":
+    import os
+
     import pytest
 
     from ray._private.test_utils import run_pytest
-    import os
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

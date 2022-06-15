@@ -1,14 +1,15 @@
 import os
+import subprocess
 import urllib
 from pathlib import Path
+
 import pyarrow.fs
 import pytest
-import subprocess
 
 import ray
 import ray.internal.storage as storage
-from ray.tests.conftest import *  # noqa
 from ray._private.test_utils import simulate_storage
+from ray.tests.conftest import *  # noqa
 
 
 def _custom_fs(uri):
@@ -166,10 +167,10 @@ def test_connecting_to_cluster(shutdown_only, storage_type):
 
 
 if __name__ == "__main__":
+    import os
     import sys
 
     from ray._private.test_utils import run_pytest
-    import os
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

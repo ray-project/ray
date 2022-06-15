@@ -1,14 +1,15 @@
 import os
-import random
 import platform
+import random
 import subprocess
 import sys
 
 import numpy as np
 import pytest
+
 import ray
-from ray._private.test_utils import wait_for_condition, run_string_as_driver
-from ray.tests.test_object_spilling import is_dir_empty, assert_no_thrashing
+from ray._private.test_utils import run_string_as_driver, wait_for_condition
+from ray.tests.test_object_spilling import assert_no_thrashing, is_dir_empty
 
 
 def test_delete_objects(object_spilling_config, shutdown_only):
@@ -412,8 +413,9 @@ os.kill(os.getpid(), sig)
 
 
 if __name__ == "__main__":
-    from ray._private.test_utils import run_pytest
     import os
+
+    from ray._private.test_utils import run_pytest
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

@@ -1,11 +1,11 @@
-import pytest
 import sys
 import time
+
+import pytest
 
 import ray
 from ray.exceptions import RuntimeEnvSetupError
 from ray.runtime_env import RuntimeEnv, RuntimeEnvConfig
-
 
 bad_runtime_env_cache_ttl_seconds = 10
 
@@ -125,10 +125,10 @@ def test_runtime_env_config(start_cluster):
 
 
 if __name__ == "__main__":
+    import os
     import sys
 
     from ray._private.test_utils import run_pytest
-    import os
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

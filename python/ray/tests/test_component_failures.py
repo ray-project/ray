@@ -2,12 +2,12 @@ import os
 import signal
 import sys
 import time
-import numpy as np
 
+import numpy as np
 import pytest
 
 import ray
-from ray._private.test_utils import run_string_as_driver_nonblocking, SignalActor
+from ray._private.test_utils import SignalActor, run_string_as_driver_nonblocking
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
@@ -185,8 +185,9 @@ ray.wait([ray.ObjectRef(ray._private.utils.hex_to_binary("{}"))])
 
 
 if __name__ == "__main__":
-    from ray._private.test_utils import run_pytest
     import os
+
+    from ray._private.test_utils import run_pytest
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

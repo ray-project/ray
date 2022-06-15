@@ -1,16 +1,18 @@
-from typing import List, Tuple, Dict, Any, Optional
-from ray.job_config import JobConfig
+import logging
+import os
+import sys
+import threading
+from typing import Any, Dict, List, Optional, Tuple
+
+import grpc
+
+import ray.ray_constants as ray_constants
 from ray._private.client_mode_hook import (
     _explicitly_disable_client_mode,
     _explicitly_enable_client_mode,
 )
-import os
-import sys
-import logging
-import threading
-import grpc
-import ray.ray_constants as ray_constants
 from ray._private.ray_logging import setup_logger
+from ray.job_config import JobConfig
 
 logger = logging.getLogger(__name__)
 
@@ -178,13 +180,18 @@ class _ClientContext:
     def init(self, *args, **kwargs):
         if self._server is not None:
             raise Exception("Trying to start two instances of ray via client")
+        import socket
+
         import ray.util.client.server.server as ray_client_server
 
+        with socket.socket() as s:
+            s.bind(("", 0))
+            port = s.getsockname()[1]
         server_handle, address_info = ray_client_server.init_and_serve(
-            "127.0.0.1:50051", *args, **kwargs
+            f"127.0.0.1:{port}", *args, **kwargs
         )
         self._server = server_handle.grpc_server
-        self.connect("127.0.0.1:50051")
+        self.connect(f"127.0.0.1:{port}")
         self._connected_with_init = True
         return address_info
 

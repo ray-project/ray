@@ -1,18 +1,18 @@
-import platform
 import logging
+import platform
 import time
 
 import pytest
 
 import ray
-from ray.autoscaler._private.fake_multi_node.node_provider import FakeMultiNodeProvider
-from ray.cluster_utils import AutoscalingCluster
 import ray.ray_constants as ray_constants
 from ray._private.test_utils import (
     get_error_message,
     init_error_pubsub,
     wait_for_condition,
 )
+from ray.autoscaler._private.fake_multi_node.node_provider import FakeMultiNodeProvider
+from ray.cluster_utils import AutoscalingCluster
 
 logger = logging.getLogger(__name__)
 
@@ -108,10 +108,10 @@ def test_drain_api(shutdown_only):
 
 
 if __name__ == "__main__":
+    import os
     import sys
 
     from ray._private.test_utils import run_pytest
-    import os
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

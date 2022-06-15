@@ -1,17 +1,16 @@
 import sys
+from time import sleep
+
+import psutil
+import pytest
 
 import ray
 import ray._private.gcs_utils as gcs_utils
-import pytest
-import psutil
-
-from time import sleep
-
 from ray._private.test_utils import (
+    convert_actor_state,
     generate_system_config_map,
     wait_for_condition,
     wait_for_pid_to_exit,
-    convert_actor_state,
 )
 
 
@@ -470,10 +469,11 @@ assert ray.get(a.r.remote(10)) == 10
 
 
 if __name__ == "__main__":
+    import os
+
     import pytest
 
     from ray._private.test_utils import run_pytest
-    import os
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

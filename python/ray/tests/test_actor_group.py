@@ -1,5 +1,6 @@
-import pytest
 import time
+
+import pytest
 
 import ray
 from ray.util.actor_group import ActorGroup
@@ -90,10 +91,10 @@ def test_bad_resources(ray_start_2_cpus):
 
 
 if __name__ == "__main__":
+    import os
     import sys
 
     from ray._private.test_utils import run_pytest
-    import os
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

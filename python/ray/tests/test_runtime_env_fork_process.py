@@ -1,7 +1,8 @@
+import json
+
 # coding: utf-8
 import os
 import sys
-import json
 
 import pytest
 
@@ -94,8 +95,9 @@ def test_fork_process_job_config_from_env_var(ray_start_cluster):
 
 
 if __name__ == "__main__":
-    from ray._private.test_utils import run_pytest
     import os
+
+    from ray._private.test_utils import run_pytest
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

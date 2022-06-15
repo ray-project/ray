@@ -2,12 +2,12 @@ import sys
 import threading
 import time
 
-import pytest
 import numpy as np
-import ray
+import pytest
 
-from ray.state import available_resources
+import ray
 import ray._private.test_utils as test_utils
+from ray.state import available_resources
 
 
 def ensure_cpu_returned(expected_cpus):
@@ -292,8 +292,9 @@ def test_threaded_actor_integration_test_stress(
 
 if __name__ == "__main__":
     # Test suite is timing out. Disable on windows for now.
-    from ray._private.test_utils import run_pytest
     import os
+
+    from ray._private.test_utils import run_pytest
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

@@ -1,10 +1,12 @@
 import os
-from typing import Dict
-import pytest
 import sys
-from ray.exceptions import RuntimeEnvSetupError
-from ray._private.test_utils import generate_runtime_env_dict
+from typing import Dict
+
+import pytest
+
 import ray
+from ray._private.test_utils import generate_runtime_env_dict
+from ray.exceptions import RuntimeEnvSetupError
 
 if not os.environ.get("CI"):
     # This flags turns on the local development that link against current ray
@@ -70,8 +72,9 @@ def test_install_failure_logging(
 
 
 if __name__ == "__main__":
-    from ray._private.test_utils import run_pytest
     import os
+
+    from ray._private.test_utils import run_pytest
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

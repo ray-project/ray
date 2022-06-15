@@ -1,6 +1,6 @@
-from ray.autoscaler._private.monitor import parse_resource_demands
-import ray._private.gcs_utils as gcs_utils
 import ray
+import ray._private.gcs_utils as gcs_utils
+from ray.autoscaler._private.monitor import parse_resource_demands
 
 ray.experimental.internal_kv.redis = False
 
@@ -48,11 +48,12 @@ def test_parse_resource_demands():
 
 
 if __name__ == "__main__":
+    import os
     import sys
+
     import pytest
 
     from ray._private.test_utils import run_pytest
-    import os
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

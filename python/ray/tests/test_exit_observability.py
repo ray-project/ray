@@ -1,13 +1,12 @@
 import os
-import sys
 import signal
-
-import ray
+import sys
 
 import pytest
 
+import ray
+from ray._private.test_utils import run_string_as_driver, wait_for_condition
 from ray.experimental.state.api import list_workers
-from ray._private.test_utils import wait_for_condition, run_string_as_driver
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
@@ -306,10 +305,11 @@ def test_worker_exit_intended_system_exit_and_user_error(ray_start_cluster):
 
 
 if __name__ == "__main__":
+    import os
+
     import pytest
 
     from ray._private.test_utils import run_pytest
-    import os
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

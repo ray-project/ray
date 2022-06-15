@@ -8,19 +8,19 @@ import numpy as np
 import pytest
 
 import ray
-from ray.experimental.internal_kv import _internal_kv_get
-from ray.ray_constants import DEBUG_AUTOSCALING_ERROR
 import ray._private.utils
 import ray.ray_constants as ray_constants
-from ray.cluster_utils import cluster_not_supported
 from ray._private.test_utils import (
-    init_error_pubsub,
+    Semaphore,
     get_error_message,
     get_log_batch,
-    Semaphore,
-    wait_for_condition,
+    init_error_pubsub,
     run_string_as_driver_nonblocking,
+    wait_for_condition,
 )
+from ray.cluster_utils import cluster_not_supported
+from ray.experimental.internal_kv import _internal_kv_get
+from ray.ray_constants import DEBUG_AUTOSCALING_ERROR
 
 
 def test_warning_for_too_many_actors(shutdown_only):
@@ -416,10 +416,11 @@ time.sleep(60)
 
 
 if __name__ == "__main__":
+    import os
+
     import pytest
 
     from ray._private.test_utils import run_pytest
-    import os
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

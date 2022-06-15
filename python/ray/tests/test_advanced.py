@@ -1,20 +1,16 @@
 # coding: utf-8
 import json
 import logging
+import os
 import sys
 import time
 
-import os
 import numpy as np
 import pytest
 
-import ray.cluster_utils
-
 import ray._private.profiling as profiling
-from ray._private.test_utils import (
-    client_test_enabled,
-    RayTestTimeoutException,
-)
+import ray.cluster_utils
+from ray._private.test_utils import RayTestTimeoutException, client_test_enabled
 from ray.exceptions import ReferenceCountingAssertionError
 
 if client_test_enabled():
@@ -388,10 +384,11 @@ def test_illegal_api_calls(ray_start_regular):
 
 
 if __name__ == "__main__":
+    import os
+
     import pytest
 
     from ray._private.test_utils import run_pytest
-    import os
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

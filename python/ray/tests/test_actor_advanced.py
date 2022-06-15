@@ -1,28 +1,29 @@
-import numpy as np
 import os
+import sys
+import time
+
+import numpy as np
 import pytest
+
+import ray
+import ray._private.gcs_utils as gcs_utils
+import ray.cluster_utils
+from ray._private.test_utils import (
+    SignalActor,
+    convert_actor_state,
+    get_non_head_nodes,
+    kill_actor_and_wait_for_failure,
+    make_global_state_accessor,
+    run_string_as_driver,
+    wait_for_condition,
+    wait_for_pid_to_exit,
+)
+from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
 
 try:
     import pytest_timeout
 except ImportError:
     pytest_timeout = None
-import sys
-import time
-
-import ray
-import ray.cluster_utils
-import ray._private.gcs_utils as gcs_utils
-from ray._private.test_utils import (
-    run_string_as_driver,
-    get_non_head_nodes,
-    kill_actor_and_wait_for_failure,
-    make_global_state_accessor,
-    SignalActor,
-    wait_for_condition,
-    wait_for_pid_to_exit,
-    convert_actor_state,
-)
-from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
 
 
 def test_remote_functions_not_scheduled_on_actors(ray_start_regular):
@@ -1378,11 +1379,12 @@ def test_get_actor_in_remote_workers(ray_start_cluster):
 
 
 if __name__ == "__main__":
+    import os
+
     import pytest
 
     # Test suite is timing out. Disable on windows for now.
     from ray._private.test_utils import run_pytest
-    import os
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

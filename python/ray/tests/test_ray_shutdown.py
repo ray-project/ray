@@ -1,13 +1,12 @@
+import platform
 import sys
 import time
-import platform
-
-import pytest
-import ray
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
+import pytest
 
-from ray._private.test_utils import wait_for_condition, run_string_as_driver_nonblocking
+import ray
+from ray._private.test_utils import run_string_as_driver_nonblocking, wait_for_condition
 
 
 def get_all_ray_worker_processes():
@@ -153,8 +152,9 @@ time.sleep(100)
 
 
 if __name__ == "__main__":
-    from ray._private.test_utils import run_pytest
     import os
+
+    from ray._private.test_utils import run_pytest
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

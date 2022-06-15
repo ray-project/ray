@@ -1,18 +1,19 @@
 import os
-import pytest
-import psutil
 import sys
 import time
+
+import psutil
+import pytest
 
 import ray
 from ray import ray_constants
 from ray._private.test_utils import (
     RayTestTimeoutException,
+    get_error_message,
+    init_error_pubsub,
+    object_memory_usage,
     run_string_as_driver,
     run_string_as_driver_nonblocking,
-    init_error_pubsub,
-    get_error_message,
-    object_memory_usage,
     wait_for_condition,
 )
 
@@ -427,8 +428,9 @@ if __name__ == "__main__":
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"
     os.environ["LANG"] = "en_US.UTF-8"
-    from ray._private.test_utils import run_pytest
     import os
+
+    from ray._private.test_utils import run_pytest
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))

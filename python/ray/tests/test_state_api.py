@@ -1,92 +1,88 @@
 import json
 import sys
+from dataclasses import fields
+from typing import List, Tuple
+from unittest.mock import MagicMock
+
 import pytest
 import yaml
+from click.testing import CliRunner
 
-from typing import List, Tuple
-from dataclasses import fields
-
-from unittest.mock import MagicMock
+import ray
+import ray.dashboard.consts as dashboard_consts
+import ray.ray_constants as ray_constants
+from ray._private.test_utils import wait_for_condition
+from ray.cluster_utils import cluster_not_supported
+from ray.core.generated.common_pb2 import (
+    Address,
+    CoreWorkerStats,
+    ObjectRefInfo,
+    TaskInfoEntry,
+    TaskStatus,
+    WorkerType,
+)
+from ray.core.generated.gcs_pb2 import (
+    ActorTableData,
+    GcsNodeInfo,
+    PlacementGroupTableData,
+    WorkerTableData,
+)
+from ray.core.generated.gcs_service_pb2 import (
+    GetAllActorInfoReply,
+    GetAllNodeInfoReply,
+    GetAllPlacementGroupReply,
+    GetAllWorkerInfoReply,
+)
+from ray.core.generated.node_manager_pb2 import GetNodeStatsReply, GetTasksInfoReply
+from ray.core.generated.reporter_pb2 import ListLogsReply, StreamLogReply
+from ray.core.generated.runtime_env_agent_pb2 import GetRuntimeEnvsInfoReply
+from ray.core.generated.runtime_env_common_pb2 import (
+    RuntimeEnvState as RuntimeEnvStateProto,
+)
+from ray.dashboard.state_aggregator import (
+    GCS_QUERY_FAILURE_WARNING,
+    NODE_QUERY_FAILURE_WARNING,
+    StateAPIManager,
+    _convert_filters_type,
+)
+from ray.experimental.state.api import (
+    list_actors,
+    list_jobs,
+    list_nodes,
+    list_objects,
+    list_placement_groups,
+    list_runtime_envs,
+    list_tasks,
+    list_workers,
+)
+from ray.experimental.state.common import (
+    DEFAULT_LIMIT,
+    DEFAULT_RPC_TIMEOUT,
+    ActorState,
+    ListApiOptions,
+    NodeState,
+    ObjectState,
+    PlacementGroupState,
+    RuntimeEnvState,
+    SupportedFilterType,
+    TaskState,
+    WorkerState,
+)
+from ray.experimental.state.exception import DataSourceUnavailable, RayStateApiException
+from ray.experimental.state.state_cli import (
+    AvailableFormat,
+    get_state_api_output_to_print,
+)
+from ray.experimental.state.state_cli import list as cli_list
+from ray.experimental.state.state_manager import IdToIpMap, StateDataSourceClient
+from ray.job_submission import JobSubmissionClient
+from ray.runtime_env import RuntimeEnv
 
 if sys.version_info > (3, 7, 0):
     from unittest.mock import AsyncMock
 else:
     from asyncmock import AsyncMock
 
-import ray
-import ray.ray_constants as ray_constants
-
-from click.testing import CliRunner
-from ray.cluster_utils import cluster_not_supported
-from ray.core.generated.common_pb2 import (
-    Address,
-    WorkerType,
-    TaskStatus,
-    TaskInfoEntry,
-    CoreWorkerStats,
-    ObjectRefInfo,
-)
-from ray.core.generated.node_manager_pb2 import GetTasksInfoReply, GetNodeStatsReply
-from ray.core.generated.gcs_pb2 import (
-    ActorTableData,
-    PlacementGroupTableData,
-    GcsNodeInfo,
-    WorkerTableData,
-)
-from ray.core.generated.gcs_service_pb2 import (
-    GetAllActorInfoReply,
-    GetAllPlacementGroupReply,
-    GetAllNodeInfoReply,
-    GetAllWorkerInfoReply,
-)
-from ray.core.generated.reporter_pb2 import (
-    ListLogsReply,
-    StreamLogReply,
-)
-from ray.core.generated.runtime_env_common_pb2 import (
-    RuntimeEnvState as RuntimeEnvStateProto,
-)
-from ray.core.generated.runtime_env_agent_pb2 import GetRuntimeEnvsInfoReply
-import ray.dashboard.consts as dashboard_consts
-from ray.dashboard.state_aggregator import (
-    StateAPIManager,
-    GCS_QUERY_FAILURE_WARNING,
-    NODE_QUERY_FAILURE_WARNING,
-    _convert_filters_type,
-)
-from ray.experimental.state.api import (
-    list_actors,
-    list_placement_groups,
-    list_nodes,
-    list_jobs,
-    list_workers,
-    list_tasks,
-    list_objects,
-    list_runtime_envs,
-)
-from ray.experimental.state.common import (
-    SupportedFilterType,
-    ActorState,
-    PlacementGroupState,
-    NodeState,
-    WorkerState,
-    TaskState,
-    ObjectState,
-    RuntimeEnvState,
-    ListApiOptions,
-    DEFAULT_RPC_TIMEOUT,
-    DEFAULT_LIMIT,
-)
-from ray.experimental.state.exception import DataSourceUnavailable, RayStateApiException
-from ray.experimental.state.state_manager import StateDataSourceClient, IdToIpMap
-from ray.experimental.state.state_cli import (
-    list as cli_list,
-    get_state_api_output_to_print,
-    AvailableFormat,
-)
-from ray.runtime_env import RuntimeEnv
-from ray._private.test_utils import wait_for_condition
-from ray.job_submission import JobSubmissionClient
 
 """
 Unit tests
@@ -1432,10 +1428,10 @@ def test_filter(shutdown_only):
 
 
 if __name__ == "__main__":
+    import os
     import sys
 
     from ray._private.test_utils import run_pytest
-    import os
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(run_pytest(__file__))
