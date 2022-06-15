@@ -364,7 +364,8 @@ class PipProcessor:
 
 
 class PipPlugin(RuntimeEnvPlugin):
-    name = "pip"    
+    name = "pip"
+
     def __init__(self, resources_dir: str):
         self._pip_resources_dir = os.path.join(resources_dir, "pip")
         self._creating_task = {}
