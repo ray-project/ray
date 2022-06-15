@@ -5,12 +5,13 @@ from typing import Dict, List, Tuple
 
 import ray
 from ray.actor import ActorHandle
-from ray.serve.config import HTTPOptions, DeploymentMode
+from ray.serve.common import EndpointTag, NodeId
+from ray.serve.config import DeploymentMode, HTTPOptions
 from ray.serve.constants import (
     ASYNC_CONCURRENCY,
     SERVE_LOGGER_NAME,
-    SERVE_PROXY_NAME,
     SERVE_NAMESPACE,
+    SERVE_PROXY_NAME,
 )
 from ray.serve.http_proxy import HTTPProxyActor
 from ray.serve.utils import (
@@ -18,7 +19,7 @@ from ray.serve.utils import (
     get_all_node_ids,
     get_current_node_resource_key,
 )
-from ray.serve.common import EndpointTag, NodeId
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -123,7 +124,7 @@ class HTTPState:
                     max_concurrency=ASYNC_CONCURRENCY,
                     max_restarts=-1,
                     max_task_retries=-1,
-                    resources={node_resource: 0.01},
+                    scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False),
                 ).remote(
                     self._config.host,
                     self._config.port,
