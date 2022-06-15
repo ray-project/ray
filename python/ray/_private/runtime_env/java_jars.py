@@ -2,6 +2,7 @@ import logging
 import os
 from typing import Dict, List, Optional
 
+from ray._private.gcs_utils import GcsAioClient
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
     delete_package,
@@ -16,8 +17,9 @@ default_logger = logging.getLogger(__name__)
 
 
 class JavaJarsManager:
-    def __init__(self, resources_dir: str):
+    def __init__(self, resources_dir: str, gcs_aio_client: GcsAioClient):
         self._resources_dir = os.path.join(resources_dir, "java_jars_files")
+        self._gcs_aio_client = gcs_aio_client
         try_to_create_directory(self._resources_dir)
         assert _internal_kv_initialized()
 
@@ -46,7 +48,7 @@ class JavaJarsManager:
     ):
         """Download a jar URI."""
         jar_file = await download_and_unpack_package(
-            uri, self._resources_dir, logger=logger
+            uri, self._resources_dir, self._gcs_aio_client, logger=logger
         )
         module_dir = self._get_local_dir_from_uri(uri)
         logger.debug(f"Succeeded to download jar file {jar_file} .")
@@ -63,7 +65,7 @@ class JavaJarsManager:
             module_dir = await self._download_jars(uri=uri, logger=logger)
         else:
             module_dir = await download_and_unpack_package(
-                uri, self._resources_dir, logger=logger
+                uri, self._resources_dir, self._gcs_aio_client, logger=logger
             )
 
         return get_directory_size_bytes(module_dir)

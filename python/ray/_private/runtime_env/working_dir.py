@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from ray._private.gcs_utils import GcsAioClient
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
     Protocol,
@@ -103,8 +104,9 @@ def set_pythonpath_in_context(python_path: str, context: RuntimeEnvContext):
 
 
 class WorkingDirManager:
-    def __init__(self, resources_dir: str):
+    def __init__(self, resources_dir: str, gcs_aio_client: GcsAioClient):
         self._resources_dir = os.path.join(resources_dir, "working_dir_files")
+        self._gcs_aio_client = gcs_aio_client
         try_to_create_directory(self._resources_dir)
         assert _internal_kv_initialized()
 
@@ -136,7 +138,7 @@ class WorkingDirManager:
         logger: Optional[logging.Logger] = default_logger,
     ) -> int:
         local_dir = await download_and_unpack_package(
-            uri, self._resources_dir, logger=logger
+            uri, self._resources_dir, self._gcs_aio_client, logger=logger
         )
         return get_directory_size_bytes(local_dir)
 

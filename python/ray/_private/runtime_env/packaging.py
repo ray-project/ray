@@ -11,7 +11,6 @@ from zipfile import ZipFile
 
 from filelock import FileLock
 
-import ray
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.thirdparty.pathspec import PathSpec
 from ray.experimental.internal_kv import (
@@ -560,6 +559,7 @@ def get_local_dir_from_uri(uri: str, base_directory: str) -> Path:
 async def download_and_unpack_package(
     pkg_uri: str,
     base_directory: str,
+    gcs_aio_client: GcsAioClient,
     logger: Optional[logging.Logger] = default_logger,
 ) -> str:
     """Download the package corresponding to this URI and unpack it if zipped.
@@ -582,9 +582,6 @@ async def download_and_unpack_package(
             protocol, pkg_name = parse_uri(pkg_uri)
             if protocol == Protocol.GCS:
                 # Download package from the GCS.
-                gcs_aio_client = GcsAioClient(
-                    address=ray.get_runtime_context().gcs_address
-                )
                 code = await gcs_aio_client.internal_kv_get(
                     pkg_uri.encode(), namespace=None, timeout=None
                 )

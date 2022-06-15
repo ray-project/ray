@@ -4,6 +4,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any, Dict, List, Optional
 
+from ray._private.gcs_utils import GcsAioClient
 from ray._private.runtime_env.conda_utils import exec_cmd_stream_to_logger
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
@@ -124,8 +125,9 @@ def upload_py_modules_if_needed(
 
 
 class PyModulesManager:
-    def __init__(self, resources_dir: str):
+    def __init__(self, resources_dir: str, gcs_aio_client: GcsAioClient):
         self._resources_dir = os.path.join(resources_dir, "py_modules_files")
+        self._gcs_aio_client = gcs_aio_client
         try_to_create_directory(self._resources_dir)
         assert _internal_kv_initialized()
 
@@ -154,7 +156,7 @@ class PyModulesManager:
     ):
         """Download and install a wheel URI, and then delete the local wheel file."""
         wheel_file = await download_and_unpack_package(
-            uri, self._resources_dir, logger=logger
+            uri, self._resources_dir, self.gcs_aio_client, logger=logger
         )
         module_dir = self._get_local_dir_from_uri(uri)
 
@@ -196,7 +198,7 @@ class PyModulesManager:
 
         else:
             module_dir = await download_and_unpack_package(
-                uri, self._resources_dir, logger=logger
+                uri, self._resources_dir, self._gcs_aio_client, logger=logger
             )
 
         return get_directory_size_bytes(module_dir)

@@ -15,7 +15,7 @@ import ray.dashboard.utils as dashboard_utils
 import ray.experimental.internal_kv as internal_kv
 import ray.ray_constants as ray_constants
 from ray._private.gcs_pubsub import GcsAioPublisher, GcsPublisher
-from ray._private.gcs_utils import GcsClient
+from ray._private.gcs_utils import GcsAioClient, GcsClient
 from ray._private.ray_logging import setup_component_logger
 from ray.core.generated import agent_manager_pb2, agent_manager_pb2_grpc
 
@@ -126,6 +126,7 @@ class DashboardAgent:
 
         # Used by the agent and sub-modules.
         self.gcs_client = GcsClient(address=self.gcs_address)
+        self.gcs_aio_client = GcsAioClient(address=self.gcs_address)
         self.publisher = GcsAioPublisher(address=self.gcs_address)
 
     async def _configure_http_server(self, modules):
