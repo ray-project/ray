@@ -1,17 +1,15 @@
 """IMPORTANT: this is an experimental interface and not currently stable."""
 
-from contextlib import contextmanager
-from typing import Any, Callable, Dict, Iterator, List, Optional, Union
 import json
 import os
 import tempfile
+from contextlib import contextmanager
+from typing import Any, Callable, Dict, Iterator, List, Optional, Union
 
 from ray.autoscaler._private import commands
-from ray.autoscaler._private.event_system import (  # noqa: F401
-    CreateClusterEvent,  # noqa: F401
-    global_event_system,
-)
 from ray.autoscaler._private.cli_logger import cli_logger
+from ray.autoscaler._private.event_system import CreateClusterEvent  # noqa: F401
+from ray.autoscaler._private.event_system import global_event_system  # noqa: F401
 
 
 def create_or_update_cluster(
