@@ -698,10 +698,14 @@ void NodeManager::HandleReleaseUnusedBundles(
     auto &worker = worker_it.second;
     const auto &bundle_id = worker->GetBundleId();
     // We need to filter out the workers used by placement group.
-    if (!bundle_id.first.IsNil()) {
-      if (auto iter = in_use_bundles.find(bundle_id.first);
-          iter == in_use_bundles.end() ||
-          (bundle_id.second != -1 && iter->second.count(bundle_id.second) == 0)) {
+    const auto &pg_id = bundle_id.first;
+    const auto &bundle_index = bundle_id.second;
+    if (!pg_id.IsNil()) {
+      if (auto iter = in_use_bundles.find(pg_id);
+          iter == in_use_bundles.end() ||  // cannot find the placement group or
+          (bundle_index != -1 && iter->second.count(bundle_index) ==
+                                     0)  // bundle index is not used (-1 means blah blah)
+      ) {
         workers_associated_with_unused_bundles.emplace_back(worker);
       }
     }
