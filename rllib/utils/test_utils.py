@@ -82,6 +82,14 @@ def framework_iterator(
     if "tf2" in frameworks and "tfe" in frameworks:
         frameworks.remove("tfe" if tfv == 2 else "tf2")
 
+    #TEST: no PyTorch for GPU training compilation tests.
+    if isinstance(config, dict):
+        if config["num_gpus"] > 0:
+            frameworks.remove("torch")
+    elif config.num_gpus > 0:
+        frameworks.remove("torch")
+    #END: TEST
+
     for fw in frameworks:
         # Skip non-installed frameworks.
         if fw == "torch" and not torch:
