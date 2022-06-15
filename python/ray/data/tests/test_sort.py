@@ -266,6 +266,33 @@ def test_push_based_shuffle_stats(ray_start_cluster):
         ctx.use_push_based_shuffle = original
 
 
+@pytest.mark.parametrize("use_push_based_shuffle", [False, True])
+def test_sort_multinode(ray_start_cluster, use_push_based_shuffle):
+    ctx = ray.data.context.DatasetContext.get_current()
+    try:
+        original = ctx.use_push_based_shuffle
+        ctx.use_push_based_shuffle = use_push_based_shuffle
+
+        cluster = ray_start_cluster
+        cluster.add_node(
+            resources={"bar:1": 100},
+            num_cpus=10,
+            _system_config={"max_direct_call_object_size": 0},
+        )
+        cluster.add_node(resources={"bar:2": 100}, num_cpus=10)
+        cluster.add_node(resources={"bar:3": 100}, num_cpus=0)
+
+        ray.init(cluster.address)
+
+        parallelism = 100
+        ds = ray.data.range(1000, parallelism=parallelism).random_shuffle().sort()
+        for i, row in enumerate(ds.iter_rows()):
+            assert row == i
+
+    finally:
+        ctx.use_push_based_shuffle = original
+
+
 if __name__ == "__main__":
     import sys
 
