@@ -11,9 +11,11 @@ import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.hc.client5.http.classic.HttpClient;
 import org.apache.hc.client5.http.classic.methods.HttpGet;
+import org.apache.hc.client5.http.classic.methods.HttpPost;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
 import org.apache.hc.client5.http.impl.classic.HttpClientBuilder;
 import org.apache.hc.core5.http.io.entity.EntityUtils;
+import org.apache.hc.core5.http.io.entity.StringEntity;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -50,10 +52,10 @@ public class DeploymentTest extends BaseServeTest {
     DeploymentRoute deploymentInfo = client.getDeploymentInfo(deploymentName);
 
     // Call deployment by handle.
-    Assert.assertEquals(16, Ray.get(deployment.getHandle().method("f").remote(6)));
+    Assert.assertEquals(Ray.get(deployment.getHandle().method("call").remote(6)), 16);
     // TODO Assert.assertEquals(16, Ray.get(deployment.getHandle().method("f",
     // "signature").remote(6)));
-    Assert.assertEquals(26, Ray.get(client.getHandle(deploymentName, false).remote(10)));
+    Assert.assertEquals(Ray.get(client.getHandle(deploymentName, false).remote(10)), 26);
   }
 
   @Test
@@ -71,7 +73,7 @@ public class DeploymentTest extends BaseServeTest {
             .create();
 
     deployment.deploy(true);
-    Assert.assertEquals("echo_6_test", Ray.get(deployment.getHandle().method("call").remote("6")));
+    Assert.assertEquals(Ray.get(deployment.getHandle().method("call").remote("6")), "echo_6_test");
     Assert.assertTrue((boolean) Ray.get(deployment.getHandle().method("checkHealth").remote()));
   }
 
@@ -90,11 +92,19 @@ public class DeploymentTest extends BaseServeTest {
             .create();
     deployment.deploy(true);
     HttpClient httpClient = HttpClientBuilder.create().build();
-    HttpGet httpGet = new HttpGet("http://127.0.0.1:8000/" + deploymentName + "?input=testparam1");
+    HttpGet httpGet = new HttpGet("http://127.0.0.1:8000/" + deploymentName + "?input=testhttpget");
     try (CloseableHttpResponse httpResponse = (CloseableHttpResponse) httpClient.execute(httpGet)) {
       byte[] body = EntityUtils.toByteArray(httpResponse.getEntity());
       String response = new String(body, StandardCharsets.UTF_8);
-      Assert.assertEquals(response, "echo_6_test");
+      Assert.assertEquals(response, "echo_testhttpget_test");
+    }
+    HttpPost httpPost = new HttpPost("http://127.0.0.1:8000/" + deploymentName);
+    httpPost.setEntity(new StringEntity("testhttppost"));
+    try (CloseableHttpResponse httpResponse =
+        (CloseableHttpResponse) httpClient.execute(httpPost)) {
+      byte[] body = EntityUtils.toByteArray(httpResponse.getEntity());
+      String response = new String(body, StandardCharsets.UTF_8);
+      Assert.assertEquals(response, "echo_testhttppost_test");
     }
   }
 
@@ -134,7 +144,7 @@ public class DeploymentTest extends BaseServeTest {
             .setInitArgs(new Object[] {"echo_"})
             .create();
     deployment.deploy(true);
-    Assert.assertEquals("echo_6_test", Ray.get(deployment.getHandle().method("call").remote("6")));
+    Assert.assertEquals(Ray.get(deployment.getHandle().method("call").remote("6")), "echo_6_test");
   }
 
   @Test
@@ -150,6 +160,6 @@ public class DeploymentTest extends BaseServeTest {
             .create();
     deployment.deploy(true);
     deployment.options().setUserConfig("_new").create().deploy(true);
-    Assert.assertEquals("echo_6_new", Ray.get(deployment.getHandle().method("call").remote("6")));
+    Assert.assertEquals(Ray.get(deployment.getHandle().method("call").remote("6")), "echo_6_new");
   }
 }

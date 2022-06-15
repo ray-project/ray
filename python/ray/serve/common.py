@@ -302,3 +302,4 @@ class RunningReplicaInfo:
     replica_tag: ReplicaTag
     actor_handle: ActorHandle
     max_concurrent_queries: int
+    is_cross_language: bool = False

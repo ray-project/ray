@@ -189,6 +189,10 @@ class ActorReplicaWrapper:
         return self._deployment_name
 
     @property
+    def is_cross_language(self) -> bool:
+        return self._is_cross_language
+
+    @property
     def actor_handle(self) -> Optional[ActorHandle]:
         if not self._actor_handle:
             try:
@@ -653,6 +657,7 @@ class DeploymentReplica(VersionedReplica):
             replica_tag=self._replica_tag,
             actor_handle=self._actor.actor_handle,
             max_concurrent_queries=self._actor.max_concurrent_queries,
+            is_cross_language=self._actor.is_cross_language,
         )
 
     @property
