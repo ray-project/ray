@@ -11,7 +11,6 @@ import torch
 
 @pytest.fixture(scope="function")
 def spark(request):
-    
     ray.init(num_cpus=2, include_dashboard=False)
     spark_session = raydp.init_spark("test", 1, 1, "500 M")
 
