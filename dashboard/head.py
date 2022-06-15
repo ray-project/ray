@@ -163,36 +163,34 @@ class DashboardHead:
         logger.info("Loaded %d modules.", len(modules))
         return modules
 
-    async def run(self):
+    async def exit(self, exit_code: int):
+        # Try to clean up some dependencies with timeout, best-effort.
+        # TODO(rickyyx): This is not fully graceful yet since some of the
+        # scheduled modules `run()` will not be cancelled. It is fine for now
+        # since we only do `stop` when SIGTERM caught, the process will exit
+        # with SIGTERM, which should be sufficient to differentiate from a normal
+        # exit.
+        logger.warn("DashboardHead exiting, trying to clean up dependencies...")
         try:
-            await self._run()
-        except asyncio.CancelledError:
-            # Received cancellation, this could be a result of caller canceling
-            # the task explicitly when received SIGTERM/SIGINT.
-            # NOTE(rickyyx): I believe the ordering here doesn't matter. Wrapping
-            # multiple shutdown routines in a timeout to prevent handing from
-            # non-terminating cleanup.
-            logger.warn(
-                "DashboardHead.run() cancelled, trying to clean up dependencies..."
+            tasks = []
+            tasks.append(self.server.stop(grace=None))
+            if self.http_server:
+                tasks.append(self.http_server.cleanup())
+            await asyncio.wait_for(
+                asyncio.gather(*tasks),
+                timeout=dashboard_consts.DEFAULT_CANCEL_WAIT_TIMEOUT_SECONDS,
             )
-            try:
-                tasks = []
-                tasks.append(self.server.stop(grace=None))
-                if self.http_server:
-                    tasks.append(self.http_server.cleanup())
-                await asyncio.wait_for(
-                    asyncio.gather(*tasks),
-                    timeout=dashboard_consts.DEFAULT_CANCEL_WAIT_TIMEOUT_SECONDS,
-                )
-            except asyncio.TimeoutError:
-                logger.warn(
-                    "Failed to clean up HTTP and gRPC servers with"
-                    f" timeout={dashboard_consts.DEFAULT_CANCEL_WAIT_TIMEOUT_SECONDS}."
-                    "Some states might not be handled properly. "
-                    "Proceeding with the shutdown."
-                )
+            os._exit(exit_code)
+        except asyncio.TimeoutError:
+            logger.warn(
+                "Failed to clean up HTTP and gRPC servers with"
+                f" timeout={dashboard_consts.DEFAULT_CANCEL_WAIT_TIMEOUT_SECONDS}."
+                "Some states might not be handled properly. "
+                "Proceeding with the shutdown."
+            )
+            os._exit(1)
 
-    async def _run(self):
+    async def run(self):
         gcs_address = self.gcs_address
 
         # Dashboard will handle connection failure automatically

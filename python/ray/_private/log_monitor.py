@@ -8,6 +8,7 @@ import platform
 import re
 import shutil
 import signal
+import sys
 import time
 import traceback
 from typing import Callable, List, Set
@@ -516,6 +517,7 @@ if __name__ == "__main__":
             f"Caught signal: {signal.Signals(signum).name}. Exiting gracefully."
         )
         log_monitor.stop()
+        sys.exit(signal.SIGTERM)
 
     signal.signal(signal.SIGTERM, graceful_exit)
 

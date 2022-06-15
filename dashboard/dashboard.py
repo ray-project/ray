@@ -62,6 +62,9 @@ class Dashboard:
     async def run(self):
         await self.dashboard_head.run()
 
+    async def exit(self, exit_code: int):
+        await self.dashboard_head.exit(exit_code)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Ray dashboard.")
@@ -177,17 +180,24 @@ if __name__ == "__main__":
             minimal=args.minimal,
         )
         loop = asyncio.get_event_loop()
-        main_task = loop.create_task(dashboard.run())
+
         # add_signal_handler() not available on windows
+
+        def sigterm_handler():
+            loop = asyncio.get_event_loop()
+            # exit() will exit the program after some best-effort clean up
+            logger.warn("Caught SIGTERM, exiting dashboard...")
+            loop.create_task(dashboard.exit(SIGTERM))
+
         if sys.platform != "win32":
             # Cancel the task when SIGTERM caught.
             # This will give the underlying head process the chance
             # to clean up its dependencies gracefully. The clean up
             # tasks should not block, which is achieved by a timeout
             # on the wait of the tasks.
-            loop.add_signal_handler(SIGTERM, main_task.cancel)
+            loop.add_signal_handler(SIGTERM, sigterm_handler)
 
-        loop.run_until_complete(main_task)
+        loop.run_until_complete(dashboard.run())
     except Exception as e:
         traceback_str = ray._private.utils.format_error_message(traceback.format_exc())
         message = (
