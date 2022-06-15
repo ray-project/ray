@@ -312,7 +312,11 @@ class ActorReplicaWrapper:
                 # String deploymentDef
                 deployment_info.replica_config.deployment_def_name,
                 # byte[] initArgsbytes
-                msgpack_serialize(cloudpickle.loads(deployment_info.replica_config.serialized_init_args))
+                msgpack_serialize(
+                    cloudpickle.loads(
+                        deployment_info.replica_config.serialized_init_args
+                    )
+                )
                 if deployment_info.deployment_config.is_cross_language
                 else deployment_info.replica_config.serialized_init_args,
                 # byte[] deploymentConfigBytes,
@@ -321,8 +325,6 @@ class ActorReplicaWrapper:
                 version.to_proto().SerializeToString(),
                 # String controllerName
                 self._controller_name,
-                # String controllerNamespace
-                self._controller_namespace,
             )
 
         self._actor_handle = actor_def.options(

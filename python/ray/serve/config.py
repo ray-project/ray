@@ -404,7 +404,9 @@ class ReplicaConfig:
             if self.need_pickle:
                 self._deployment_def = cloudpickle.loads(self.serialized_deployment_def)
             else:
-                self._deployment_def = self.serialized_deployment_def.decode(encoding="utf-8")
+                self._deployment_def = self.serialized_deployment_def.decode(
+                    encoding="utf-8"
+                )
 
         return self._deployment_def
 
@@ -437,16 +439,14 @@ class ReplicaConfig:
         return self._init_kwargs
 
     @classmethod
-    def from_proto(
-        cls, proto: ReplicaConfigProto, need_pickle: bool = True
-    ):
+    def from_proto(cls, proto: ReplicaConfigProto, need_pickle: bool = True):
         return ReplicaConfig(
             proto.deployment_def_name,
             proto.deployment_def,
             proto.init_args,
             proto.init_kwargs,
             json.loads(proto.ray_actor_options),
-            need_pickle
+            need_pickle,
         )
 
     @classmethod

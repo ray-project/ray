@@ -42,7 +42,10 @@ from ray.serve.generated.serve_pb2 import (
     EndpointSet,
     EndpointInfo as EndpointInfoProto,
 )
-from ray.serve.utils import override_runtime_envs_except_env_vars, get_current_node_resource_key
+from ray.serve.utils import (
+    override_runtime_envs_except_env_vars,
+    get_current_node_resource_key,
+)
 from ray.types import ObjectRef
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -633,9 +636,7 @@ class ServeControllerAvatar:
         dedicated_cpu: bool = False,
     ):
         try:
-            self._controller = ray.get_actor(
-                controller_name, namespace="serve"
-            )
+            self._controller = ray.get_actor(controller_name, namespace="serve")
         except ValueError:
             self._controller = None
         if self._controller is None:
