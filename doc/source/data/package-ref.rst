@@ -12,6 +12,7 @@ Creating Datasets
 .. autofunction:: ray.data.read_csv
 .. autofunction:: ray.data.read_json
 .. autofunction:: ray.data.read_parquet
+.. autofunction:: ray.data.read_parquet_bulk
 .. autofunction:: ray.data.read_numpy
 .. autofunction:: ray.data.read_text
 .. autofunction:: ray.data.read_binary_files
