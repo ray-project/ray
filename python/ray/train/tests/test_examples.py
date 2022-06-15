@@ -61,15 +61,13 @@ def test_tf_non_distributed(ray_start_4_cpus):
     trainer.fit()
 
 
-@pytest.mark.skip("Refactor as a backend test.")
-def test_tensorflow_mnist_fail(ray_start_4_cpus):
+# TODO: Refactor as a backend test.
+def test_tensorflow_mnist_fail(ray_start_2_cpus):
     """Tests if tensorflow example works even with worker failure."""
     epochs = 3
 
+    trainer = Trainer("tensorflow", num_workers=2)
     config = {"lr": 1e-3, "batch_size": 64, "epochs": epochs}
-    trainer = TensorflowTrainer(
-        tensorflow_mnist_train_func, config, scaling_config=dict(num_workers=2)
-    )
     trainer.start()
     kill_callback = KillCallback(fail_on=0, trainer=trainer)
     results = trainer.run(
@@ -106,7 +104,7 @@ def test_torch_linear(ray_start_4_cpus, num_workers):
     assert result[TRAINING_ITERATION] == epochs
 
 
-@pytest.mark.skip("Refactor as a backend test.")
+# TODO: Refactor as a backend test.
 def test_torch_linear_failure(ray_start_4_cpus):
     num_workers = 2
     epochs = 3
@@ -161,7 +159,7 @@ def test_horovod_torch_mnist(ray_start_4_cpus):
     assert result[TRAINING_ITERATION] == num_workers
 
 
-@pytest.mark.skip("Refactor as a backend test.")
+# TODO: Refactor as a backend test.
 def test_horovod_torch_mnist_stateful(ray_start_4_cpus):
     num_workers = 2
     num_epochs = 2

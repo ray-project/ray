@@ -1,18 +1,16 @@
-from typing import List, Dict
-
 import pytest
 
 import ray
 import ray.train as train
-from ray.train import Trainer
-from ray.train.backend import BackendConfig, Backend
-from ray.train.callbacks import TrainingCallback
+from ray.air.checkpoint import Checkpoint
 from ray.train._internal.worker_group import WorkerGroup
+from ray.train.backend import Backend, BackendConfig
+from ray.train.data_parallel_trainer import DataParallelTrainer
 
 
 @pytest.fixture
-def ray_start_2_cpus():
-    address_info = ray.init(num_cpus=2)
+def ray_start_4_cpus():
+    address_info = ray.init(num_cpus=4)
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -32,15 +30,7 @@ class TestBackend(Backend):
         pass
 
 
-class TestCallback(TrainingCallback):
-    def __init__(self):
-        self.result_list = []
-
-    def handle_result(self, results: List[Dict], **info):
-        self.result_list.append(results)
-
-
-def test_run(ray_start_2_cpus):
+def test_run(ray_start_4_cpus):
     """Tests that Train can be run without any specific backends."""
     num_workers = 2
     key = "value"
@@ -53,27 +43,23 @@ def test_run(ray_start_2_cpus):
         train.save_checkpoint(**checkpoint)
         return checkpoint[key]
 
-    checkpoint = {key: value}
-    test_callback = TestCallback()
+    checkpoint = Checkpoint.from_dict(
+        {
+            # this would be set during checkpoint saving
+            "_current_checkpoint_id": 1,
+            key: value,
+        }
+    )
 
-    trainer = Trainer(config, num_workers=num_workers)
-    trainer.start()
-    results = trainer.run(train_func, checkpoint=checkpoint, callbacks=[test_callback])
+    trainer = DataParallelTrainer(
+        train_func,
+        backend_config=config,
+        resume_from_checkpoint=checkpoint,
+        scaling_config=dict(num_workers=num_workers),
+    )
+    results = trainer.fit()
 
-    # Test results.
-    assert len(results) == num_workers
-    assert all(result == 1 for result in results)
-
-    # Test reporting and callbacks.
-    assert len(test_callback.result_list) == value
-    assert len(test_callback.result_list[0]) == num_workers
-    print(test_callback.result_list[0])
-    assert all(result[key] == value for result in test_callback.result_list[0])
-
-    # Test checkpointing.
-    assert trainer.latest_checkpoint[key] == value
-
-    trainer.shutdown()
+    assert results.checkpoint
 
 
 def test_failure():
@@ -89,7 +75,8 @@ def test_failure():
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))
