@@ -520,6 +520,8 @@ lint_bazel() {
     export PATH="${GOPATH}/bin:${GOROOT}/bin:${PATH}"
 
     # Build buildifier
+    go get google.golang.org/protobuf/runtime/protoimpl
+    go get google.golang.org/protobuf/reflect/protoreflect
     go get github.com/bazelbuild/buildtools/buildifier
 
     # Now run buildifier
