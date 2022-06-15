@@ -417,5 +417,4 @@ def test_task_level_gc(runtime_env_disable_URI_cache, ray_start_cluster, option)
 
 
 if __name__ == "__main__":
-    from ray._private.test_utils import run_pytest
-    run_pytest(__file__)
+    sys.exit(pytest.main(["-sv", __file__]))

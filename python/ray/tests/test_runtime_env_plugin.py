@@ -212,5 +212,4 @@ def test_plugin_timeout(start_cluster):
 if __name__ == "__main__":
     import sys
 
-    from ray._private.test_utils import run_pytest
-    run_pytest(__file__)
+    sys.exit(pytest.main(["-sv", __file__]))

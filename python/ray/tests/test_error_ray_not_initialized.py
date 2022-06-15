@@ -46,5 +46,4 @@ def test_errors_before_initializing_ray(set_enable_auto_connect):
 
 
 if __name__ == "__main__":
-    from ray._private.test_utils import run_pytest
-    run_pytest(__file__)
+    sys.exit(pytest.main(["-v", __file__]))

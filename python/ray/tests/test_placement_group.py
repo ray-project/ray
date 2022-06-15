@@ -449,5 +449,4 @@ def test_placement_group_hang(ray_start_cluster, connect_to_client):
 
 
 if __name__ == "__main__":
-    from ray._private.test_utils import run_pytest
-    run_pytest(__file__)
+    sys.exit(pytest.main(["-sv", __file__]))

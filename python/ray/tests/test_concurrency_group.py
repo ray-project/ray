@@ -163,5 +163,4 @@ def test_blocking_group_does_not_block_others(ray_start_regular_shared):
 
 
 if __name__ == "__main__":
-    from ray._private.test_utils import run_pytest
-    run_pytest(__file__)
+    sys.exit(pytest.main(["-v", __file__]))

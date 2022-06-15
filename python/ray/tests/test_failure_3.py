@@ -144,5 +144,4 @@ def test_async_actor_task_retries(ray_start_regular):
 if __name__ == "__main__":
     import pytest
 
-    from ray._private.test_utils import run_pytest
-    run_pytest(__file__)
+    sys.exit(pytest.main(["-v", __file__]))

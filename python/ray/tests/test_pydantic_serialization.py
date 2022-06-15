@@ -184,5 +184,4 @@ def test_serialize_nested_field(start_ray):
 if __name__ == "__main__":
     import sys
 
-    from ray._private.test_utils import run_pytest
-    run_pytest(__file__)
+    sys.exit(pytest.main(["-v", "-s", __file__]))

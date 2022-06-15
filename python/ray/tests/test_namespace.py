@@ -266,5 +266,4 @@ def test_namespace_validation(shutdown_only):
 
 
 if __name__ == "__main__":
-    from ray._private.test_utils import run_pytest
-    run_pytest(__file__)
+    sys.exit(pytest.main(["-v", __file__]))

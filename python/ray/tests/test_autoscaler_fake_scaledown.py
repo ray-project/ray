@@ -185,5 +185,4 @@ def test_no_scaledown_with_spilled_objects(shutdown_only):
 if __name__ == "__main__":
     import sys
 
-    from ray._private.test_utils import run_pytest
-    run_pytest(__file__)
+    sys.exit(pytest.main(["-v", "-s", __file__]))

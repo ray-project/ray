@@ -197,5 +197,4 @@ if __name__ == "__main__":
     # https://github.com/ray-project/ray/issues/20355
     # is fixed.
     os.environ["RAY_ENABLE_AUTO_CONNECT"] = "0"
-    from ray._private.test_utils import run_pytest
-    run_pytest(__file__)
+    sys.exit(pytest.main(["-v", __file__]))

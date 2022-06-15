@@ -245,5 +245,4 @@ def test_distributed_array_methods(ray_start_cluster_2_nodes, reload_modules):
 if __name__ == "__main__":
     import pytest
 
-    from ray._private.test_utils import run_pytest
-    run_pytest(__file__)
+    sys.exit(pytest.main(["-v", __file__]))
