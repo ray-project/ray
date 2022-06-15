@@ -467,8 +467,6 @@ def test_pin_runtime_env_uri(start_cluster, source, expiration_s, monkeypatch):
 
 
 if __name__ == "__main__":
-    import os
-
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:

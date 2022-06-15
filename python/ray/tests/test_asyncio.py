@@ -351,8 +351,6 @@ def test_asyncio_actor_with_large_concurrency(ray_start_regular_shared):
 if __name__ == "__main__":
     import pytest
 
-    import os
-
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:

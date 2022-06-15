@@ -762,8 +762,6 @@ def test_utf8_actor_exception(ray_start_regular):
 if __name__ == "__main__":
     import pytest
 
-    import os
-
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:

@@ -239,8 +239,6 @@ def test_dashboard_agent_metrics_or_http_port_conflict(listen_port, call_ray_sta
 if __name__ == "__main__":
     import pytest
 
-    import os
-
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:

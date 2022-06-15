@@ -417,8 +417,6 @@ def test_task_level_gc(runtime_env_disable_URI_cache, ray_start_cluster, option)
 
 
 if __name__ == "__main__":
-    import os
-
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:

@@ -22,8 +22,6 @@ def test_list_named_actors_restarting_actor(ray_start_regular):
 
 if __name__ == "__main__":
     # Test suite is timing out. Disable on windows for now.
-    import os
-
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:

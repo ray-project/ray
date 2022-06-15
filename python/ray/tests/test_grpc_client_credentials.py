@@ -57,8 +57,6 @@ def test_grpc_client_credentials_are_generated(monkeypatch):
 if __name__ == "__main__":
     import sys
 
-    import os
-
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:

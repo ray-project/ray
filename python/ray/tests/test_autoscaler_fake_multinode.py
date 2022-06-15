@@ -58,8 +58,6 @@ def test_fake_autoscaler_basic_e2e(shutdown_only):
 if __name__ == "__main__":
     import sys
 
-    import os
-
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:

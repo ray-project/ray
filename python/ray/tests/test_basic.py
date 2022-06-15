@@ -961,8 +961,6 @@ def test_failed_task(ray_start_shared_local_modes, error_pubsub):
 
 
 if __name__ == "__main__":
-    import os
-
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:

@@ -65,8 +65,6 @@ def test_gcp_broken_pipe_retry(error_input, expected_error_raised):
 if __name__ == "__main__":
     import sys
 
-    import os
-
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:

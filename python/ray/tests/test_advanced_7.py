@@ -268,8 +268,6 @@ def test_task_output_inline_bytes_limit(ray_start_cluster_enabled):
 if __name__ == "__main__":
     import pytest
 
-    import os
-
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:

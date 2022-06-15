@@ -403,8 +403,6 @@ def test_proxy_manager_internal_kv(shutdown_only, with_specific_server):
 if __name__ == "__main__":
     import sys
 
-    import os
-
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:

@@ -483,8 +483,6 @@ def test_override_max_retries(ray_start_cluster, override_max_retries):
 if __name__ == "__main__":
     import pytest
 
-    import os
-
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:
