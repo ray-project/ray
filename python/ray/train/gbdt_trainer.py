@@ -203,6 +203,11 @@ class GBDTTrainer(BaseTrainer):
         default_ray_params = self._default_ray_params
 
         class GBDTTrainable(trainable_cls):
+            # Workaround for actor name not being logged correctly
+            # if __repr__ is not directly defined in a class.
+            def __repr__(self):
+                return super().__repr__()
+
             def save_checkpoint(self, tmp_checkpoint_dir: str = ""):
                 checkpoint_path = super().save_checkpoint()
                 parent_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
@@ -223,7 +228,5 @@ class GBDTTrainer(BaseTrainer):
                 return _convert_scaling_config_to_ray_params(
                     scaling_config_dataclass, ray_params_cls, default_ray_params
                 ).get_tune_resources()
-
-        GBDTTrainable.__name__ = trainer_cls.__name__
 
         return GBDTTrainable
