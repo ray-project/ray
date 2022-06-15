@@ -124,7 +124,9 @@ class HTTPState:
                     max_concurrency=ASYNC_CONCURRENCY,
                     max_restarts=-1,
                     max_task_retries=-1,
-                    scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False),
+                    scheduling_strategy=NodeAffinitySchedulingStrategy(
+                        node_id, soft=False
+                    ),
                 ).remote(
                     self._config.host,
                     self._config.port,
