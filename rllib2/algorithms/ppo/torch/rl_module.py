@@ -62,7 +62,7 @@ class PPOTorchRLModule(TorchRLModule):
 
         return pi_output
 
-    def forward_train(self, batch: SampleBatch, **kwargs) -> RLModuleOutput:
+    def forward_train(self, batch: SampleBatch, **kwargs) -> PPOModuleOutput:
         """Forward-pass during computing loss function"""
         pi_out_cur: PiOutput = self.pi(batch)
         pi_out_prev = self.pi({'obs': batch[SampleBatch.ACTION_DIST_INPUTS]})
@@ -71,7 +71,7 @@ class PPOTorchRLModule(TorchRLModule):
         if self.vf:
             vf = self.vf(batch)
 
-        return RLModuleOutput(pi_out_cur=pi_out_cur, pi_out_prev=pi_out_prev, vf=vf)
+        return PPOModuleOutput(pi_out_cur=pi_out_cur, pi_out_prev=pi_out_prev, vf=vf)
 
 
 
