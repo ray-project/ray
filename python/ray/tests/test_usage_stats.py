@@ -14,6 +14,7 @@ import ray._private.usage.usage_constants as usage_constants
 import ray._private.usage.usage_lib as ray_usage_lib
 from ray._private.test_utils import (
     format_web_url,
+    run_string_as_driver,
     wait_for_condition,
     wait_until_server_available,
 )
@@ -840,12 +841,22 @@ def test_lib_used_from_driver(monkeypatch, ray_start_cluster, reset_lib_usage):
         m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
         cluster = ray_start_cluster
         cluster.add_node(num_cpus=3)
-        if os.environ.get("RAY_MINIMAL") != "1":
-            from ray import train  # noqa: F401
-            from ray import tune  # noqa: F401
-            from ray.rllib.algorithms.ppo import PPO  # noqa: F401
-
         ray.init(address=cluster.address)
+
+        script = """
+import ray
+import os
+if os.environ.get("RAY_MINIMAL") != "1":
+    from ray import train  # noqa: F401
+    from ray import tune  # noqa: F401
+    from ray.rllib.algorithms.ppo import PPO  # noqa: F401
+
+ray.init(address="{addr}")
+"""
+        # Run a script in a separate process. It is a workaround to
+        # reimport libraries. Without this, `import train`` will become
+        # no-op since we already imported this lib in previous tests.
+        run_string_as_driver(script.format(addr=cluster.address))
 
         """
         Verify the usage_stats.json is updated.

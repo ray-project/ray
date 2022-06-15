@@ -172,9 +172,7 @@ def _put_library_usage(library_usage: str):
 
 def record_library_usage(library_usage: str):
     """Record library usage (e.g. which library is used)"""
-    print("SANG-TODO", library_usage)
     if library_usage in _recorded_library_usages:
-        print("SANG-TODO Not recorded.")
         return
     _recorded_library_usages.add(library_usage)
 
@@ -189,7 +187,6 @@ def record_library_usage(library_usage: str):
         ray.worker.global_worker.mode == ray.SCRIPT_MODE
         or ray.worker.global_worker.mode == ray.WORKER_MODE
     ):
-        print("SANG-TODO recorded.")
         _put_library_usage(library_usage)
 
 
