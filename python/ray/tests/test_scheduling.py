@@ -740,6 +740,7 @@ def test_scheduling_class_depth(ray_start_regular):
 
 
 if __name__ == "__main__":
+    import os
     import pytest
 
     if os.environ.get("PARALLEL_CI"):

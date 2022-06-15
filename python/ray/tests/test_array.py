@@ -243,6 +243,7 @@ def test_distributed_array_methods(ray_start_cluster_2_nodes, reload_modules):
 
 
 if __name__ == "__main__":
+    import os
     import pytest
 
     if os.environ.get("PARALLEL_CI"):

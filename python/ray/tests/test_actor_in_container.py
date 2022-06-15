@@ -70,6 +70,7 @@ def test_actor_in_heterogeneous_image():
 
 
 if __name__ == "__main__":
+    import os
     import pytest
 
     if os.environ.get("PARALLEL_CI"):

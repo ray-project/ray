@@ -449,6 +449,7 @@ def test_placement_group_hang(ray_start_cluster, connect_to_client):
 
 
 if __name__ == "__main__":
+    import os
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:

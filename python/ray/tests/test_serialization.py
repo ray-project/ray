@@ -681,6 +681,7 @@ def test_serialization_before_init(shutdown_only):
 
 
 if __name__ == "__main__":
+    import os
     import pytest
 
     if os.environ.get("PARALLEL_CI"):

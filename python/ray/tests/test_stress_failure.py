@@ -352,6 +352,7 @@ def test_driver_put_errors(ray_start_object_store_memory, error_pubsub):
 #     ray.shutdown()
 
 if __name__ == "__main__":
+    import os
     import pytest
 
     if os.environ.get("PARALLEL_CI"):

@@ -246,6 +246,7 @@ def test_streaming_shuffle(set_kill_interval):
 
 
 if __name__ == "__main__":
+    import os
     import pytest
 
     if os.environ.get("PARALLEL_CI"):

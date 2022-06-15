@@ -230,6 +230,7 @@ def test_max_clients(init_and_serve):
 
 
 if __name__ == "__main__":
+    import os
     import pytest
 
     if os.environ.get("PARALLEL_CI"):

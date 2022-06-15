@@ -20,6 +20,7 @@ def f():
 
 
 if __name__ == "__main__":
+    import os
     # Core worker uses this to check if we are in an interactive
     # console (e.g., Jupyter)
     setattr(sys, "ps1", "dummy")
