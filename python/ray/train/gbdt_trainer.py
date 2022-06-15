@@ -224,4 +224,6 @@ class GBDTTrainer(BaseTrainer):
                     scaling_config_dataclass, ray_params_cls, default_ray_params
                 ).get_tune_resources()
 
+        GBDTTrainable.__name__ = trainer_cls.__name__
+
         return GBDTTrainable
