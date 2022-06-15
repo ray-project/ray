@@ -207,9 +207,9 @@ test_python() {
     bazel test --config=ci \
       --build_tests_only $(./ci/run/bazel_export_options) \
       --test_env=PYTHONPATH="${PYTHONPATH-}${pathsep}${WORKSPACE_DIR}/python/ray/pickle5_files" \
+      --test_env=CI="1" \
+      --test_env=RAY_CI_POST_WHEEL_TESTS="1" \
       --test_env=USERPROFILE="${USERPROFILE}" \
-      --test_env=CI=1 \
-      --test_env=RAY_CI_POST_WHEEL_TESTS=1 \
       --test_output=streamed \
       -- \
       ${test_shard_selection};
@@ -367,6 +367,11 @@ install_ray() {
     cd "${WORKSPACE_DIR}"/python
     build_dashboard_front_end
     keep_alive pip install -v -e .
+  )
+  (
+    # For runtime_env tests, wheels are needed
+    cd "${WORKSPACE_DIR}"
+    keep_alive pip wheel -e python -w .whl
   )
 }
 
