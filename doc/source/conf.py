@@ -1,11 +1,20 @@
+import os
+import sys
+from datetime import datetime
+
 # -*- coding: utf-8 -*-
 from pathlib import Path
-import sys
-import os
+
+from custom_directives import *
+
+import ray
+
+# The version info for the project you're documenting, acts as replacement for
+# |version| and |release|, also used in various other places throughout the
+# built documents.
+from ray import __version__ as version
 
 sys.path.insert(0, os.path.abspath("."))
-from custom_directives import *
-from datetime import datetime
 
 # Mocking modules allows Sphinx to work without installing Ray.
 mock_modules()
@@ -19,7 +28,6 @@ assert (
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 sys.path.insert(0, os.path.abspath("../../python/"))
 
-import ray
 
 # -- General configuration ------------------------------------------------
 
@@ -41,6 +49,7 @@ extensions = [
     "sphinx_external_toc",
     "sphinx_thebe",
     "sphinxcontrib.autodoc_pydantic",
+    "sphinxcontrib-httpdomain",
 ]
 
 myst_enable_extensions = [
@@ -113,10 +122,6 @@ project = "Ray"
 copyright = str(datetime.now().year) + ", The Ray Team"
 author = "The Ray Team"
 
-# The version info for the project you're documenting, acts as replacement for
-# |version| and |release|, also used in various other places throughout the
-# built documents.
-from ray import __version__ as version
 
 # The full version, including alpha/beta/rc tags.
 release = version

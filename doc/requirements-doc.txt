@@ -54,6 +54,7 @@ sphinxcontrib.yt==0.2.2
 sphinx-sitemap==2.2.0
 sphinx-thebe==0.1.1
 autodoc_pydantic==1.6.1
+sphinxcontrib-httpdomain==1.8.0
 
 # MyST
 myst-parser==0.15.2
