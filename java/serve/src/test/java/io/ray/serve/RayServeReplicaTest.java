@@ -8,7 +8,6 @@ import io.ray.serve.api.Serve;
 import io.ray.serve.common.Constants;
 import io.ray.serve.config.DeploymentConfig;
 import io.ray.serve.config.RayServeConfig;
-import io.ray.serve.controller.ControllerInfo;
 import io.ray.serve.deployment.DeploymentVersion;
 import io.ray.serve.deployment.DeploymentWrapper;
 import io.ray.serve.generated.DeploymentLanguage;
@@ -52,11 +51,7 @@ public class RayServeReplicaTest {
               .setDeploymentDef(DummyReplica.class.getName());
 
       ActorHandle<RayServeWrappedReplica> replicHandle =
-          Ray.actor(
-                  RayServeWrappedReplica::new,
-                  deploymentWrapper,
-                  replicaTag,
-                  new ControllerInfo(controllerName, null))
+          Ray.actor(RayServeWrappedReplica::new, deploymentWrapper, replicaTag, controllerName)
               .remote();
 
       // ready

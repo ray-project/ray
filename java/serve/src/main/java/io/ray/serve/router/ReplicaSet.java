@@ -8,6 +8,7 @@ import io.ray.api.Ray;
 import io.ray.runtime.metric.Gauge;
 import io.ray.runtime.metric.Metrics;
 import io.ray.runtime.metric.TagKey;
+import io.ray.serve.common.Constants;
 import io.ray.serve.exception.RayServeException;
 import io.ray.serve.generated.ActorNameList;
 import io.ray.serve.metrics.RayServeMetrics;
@@ -38,8 +39,6 @@ public class ReplicaSet {
 
   private boolean hasPullReplica = false;
 
-  private String controllerNamespace;
-
   public ReplicaSet(String deploymentName) {
     this.inFlightQueries = new ConcurrentHashMap<>();
     RayServeMetrics.execute(
@@ -62,7 +61,7 @@ public class ReplicaSet {
           name ->
               workerReplicas.add(
                   (ActorHandle<RayServeWrappedReplica>)
-                      Ray.getActor(name, controllerNamespace).get()));
+                      Ray.getActor(name, Constants.SERVE_NAMESPACE).get()));
     }
 
     Set<ActorHandle<RayServeWrappedReplica>> added =

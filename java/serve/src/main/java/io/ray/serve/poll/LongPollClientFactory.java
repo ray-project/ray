@@ -1,7 +1,6 @@
 package io.ray.serve.poll;
 
 import com.google.common.base.Preconditions;
-import com.google.protobuf.InvalidProtocolBufferException;
 import io.ray.api.ActorHandle;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.ObjectRef;
@@ -14,11 +13,9 @@ import io.ray.serve.api.Serve;
 import io.ray.serve.common.Constants;
 import io.ray.serve.config.RayServeConfig;
 import io.ray.serve.controller.ServeController;
-import io.ray.serve.exception.RayServeException;
 import io.ray.serve.generated.ActorNameList;
 import io.ray.serve.replica.ReplicaContext;
 import io.ray.serve.util.CollectionUtil;
-import io.ray.serve.util.LogUtil;
 import io.ray.serve.util.ServeProtoUtil;
 import java.util.HashMap;
 import java.util.Map;
@@ -60,14 +57,7 @@ public class LongPollClientFactory {
     DESERIALIZERS.put(LongPollNamespace.ROUTE_TABLE, ServeProtoUtil::parseEndpointSet);
     DESERIALIZERS.put(
         LongPollNamespace.RUNNING_REPLICAS,
-        body -> {
-          try {
-            return ActorNameList.parseFrom(body);
-          } catch (InvalidProtocolBufferException e) {
-            throw new RayServeException(
-                LogUtil.format("Failed to parse ActorSet from protobuf bytes."), e);
-          }
-        });
+        bytes -> ServeProtoUtil.bytesToProto(bytes, ActorNameList::parseFrom));
   }
 
   public static void register(BaseActorHandle hostActor, Map<KeyType, KeyListener> keyListeners) {
@@ -100,9 +90,7 @@ public class LongPollClientFactory {
       }
       if (null == hostActor) {
         hostActor =
-            Ray.getActor(
-                    replicaContext.getInternalControllerName(),
-                    replicaContext.getInternalControllerNamespace())
+            Ray.getActor(replicaContext.getInternalControllerName(), Constants.SERVE_NAMESPACE)
                 .get();
       }
       intervalS =

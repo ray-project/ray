@@ -3,11 +3,9 @@ package io.ray.serve;
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
 import io.ray.runtime.serializer.MessagePackSerializer;
-import io.ray.serve.api.Serve;
 import io.ray.serve.common.Constants;
 import io.ray.serve.config.DeploymentConfig;
 import io.ray.serve.config.RayServeConfig;
-import io.ray.serve.controller.ControllerInfo;
 import io.ray.serve.deployment.DeploymentVersion;
 import io.ray.serve.deployment.DeploymentWrapper;
 import io.ray.serve.generated.ActorNameList;
@@ -31,12 +29,11 @@ import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-public class ProxyActorTest {
+public class ProxyActorTest extends BaseTest {
 
   @Test
   public void test() throws IOException {
-    boolean inited = Ray.isInitialized();
-    Ray.init();
+    init();
 
     try {
       String prefix = "ProxyActorTest";
@@ -70,16 +67,14 @@ public class ProxyActorTest {
               .setDeploymentDef(DummyReplica.class.getName())
               .setConfig(config);
 
-      ControllerInfo controllerInfo = new ControllerInfo(controllerName, null);
-
       ActorHandle<RayServeWrappedReplica> replica =
-          Ray.actor(RayServeWrappedReplica::new, deploymentWrapper, replicaTag, controllerInfo)
+          Ray.actor(RayServeWrappedReplica::new, deploymentWrapper, replicaTag, controllerName)
               .setName(replicaTag)
               .remote();
       Assert.assertTrue(replica.task(RayServeWrappedReplica::checkHealth).remote().get());
 
       // ProxyActor
-      ProxyActor proxyActor = new ProxyActor(controllerInfo, config);
+      ProxyActor proxyActor = new ProxyActor(controllerName, config);
       Assert.assertTrue(proxyActor.ready());
 
       proxyActor.getProxyRouter().updateRoutes(endpointInfos);
@@ -112,11 +107,7 @@ public class ProxyActorTest {
       }
 
     } finally {
-      if (!inited) {
-        Ray.shutdown();
-      }
-      Serve.setInternalReplicaContext(null);
-      Serve.setGlobalClient(null);
+      shutdown();
     }
   }
 }

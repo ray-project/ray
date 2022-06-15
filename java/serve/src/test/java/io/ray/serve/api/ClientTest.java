@@ -35,7 +35,7 @@ public class ClientTest {
           Ray.actor(DummyServeController::new, "", "").setName(controllerName).remote();
 
       // Set ReplicaContext
-      Serve.setInternalReplicaContext(null, null, controllerName, null, null, config);
+      Serve.setInternalReplicaContext(null, null, controllerName, null, config);
 
       // Mock endpoints.
       Map<String, EndpointInfo> endpoints = new HashMap<>();

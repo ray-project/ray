@@ -5,9 +5,9 @@ import io.ray.api.BaseActorHandle;
 import io.ray.api.Ray;
 import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.api.Serve;
+import io.ray.serve.common.Constants;
 import io.ray.serve.config.DeploymentConfig;
 import io.ray.serve.config.RayServeConfig;
-import io.ray.serve.controller.ControllerInfo;
 import io.ray.serve.deployment.DeploymentVersion;
 import io.ray.serve.deployment.DeploymentWrapper;
 import io.ray.serve.exception.RayServeException;
@@ -39,8 +39,7 @@ public class RayServeWrappedReplica implements RayServeReplica {
       byte[] initArgsbytes,
       byte[] deploymentConfigBytes,
       byte[] deploymentVersionBytes,
-      String controllerName,
-      String controllerNamespace) {
+      String controllerName) {
 
     // Parse DeploymentConfig.
     DeploymentConfig deploymentConfig = DeploymentConfig.fromProtoBytes(deploymentConfigBytes);
@@ -69,25 +68,23 @@ public class RayServeWrappedReplica implements RayServeReplica {
     deploymentWrapper.setDeploymentVersion(version);
 
     // Init replica.
-    init(deploymentWrapper, replicaTag, new ControllerInfo(controllerName, controllerNamespace));
+    init(deploymentWrapper, replicaTag, controllerName);
   }
 
   public RayServeWrappedReplica(
-      DeploymentWrapper deploymentWrapper, String replicaTag, ControllerInfo controllerInfo) {
-    init(deploymentWrapper, replicaTag, controllerInfo);
+      DeploymentWrapper deploymentWrapper, String replicaTag, String controllerName) {
+    init(deploymentWrapper, replicaTag, controllerName);
   }
 
   @SuppressWarnings("rawtypes")
-  private void init(
-      DeploymentWrapper deploymentWrapper, String replicaTag, ControllerInfo controllerInfo) {
+  private void init(DeploymentWrapper deploymentWrapper, String replicaTag, String controllerName) {
     try {
       // Set the controller name so that Serve.connect() in the user's code will connect to the
       // instance that this deployment is running in.
       Serve.setInternalReplicaContext(
           deploymentWrapper.getName(),
           replicaTag,
-          controllerInfo.getControllerName(),
-          controllerInfo.getControllerNamespace(),
+          controllerName,
           null,
           deploymentWrapper.getConfig());
 
@@ -100,9 +97,8 @@ public class RayServeWrappedReplica implements RayServeReplica {
 
       // Get the controller by controllerName.
       Preconditions.checkArgument(
-          StringUtils.isNotBlank(controllerInfo.getControllerName()),
-          "Must provide a valid controllerName");
-      Optional<BaseActorHandle> optional = Ray.getActor(controllerInfo.getControllerName());
+          StringUtils.isNotBlank(controllerName), "Must provide a valid controllerName");
+      Optional<BaseActorHandle> optional = Ray.getActor(controllerName, Constants.SERVE_NAMESPACE);
       Preconditions.checkState(optional.isPresent(), "Controller does not exist");
 
       // Enable metrics.

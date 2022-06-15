@@ -5,8 +5,8 @@ import com.google.common.collect.Lists;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.Ray;
 import io.ray.serve.api.Serve;
+import io.ray.serve.common.Constants;
 import io.ray.serve.config.RayServeConfig;
-import io.ray.serve.controller.ControllerInfo;
 import io.ray.serve.exception.RayServeException;
 import io.ray.serve.generated.EndpointInfo;
 import io.ray.serve.generated.EndpointSet;
@@ -45,21 +45,14 @@ public class ProxyActor {
 
   private ProxyRouter proxyRouter = new ProxyRouter();
 
-  public ProxyActor(ControllerInfo controllerInfo, Map<String, String> config) {
+  public ProxyActor(String controllerName, Map<String, String> config) {
     this.config = config;
 
     // Set the controller name so that serve will connect to the controller instance this proxy is
     // running in.
-    Serve.setInternalReplicaContext(
-        null,
-        null,
-        controllerInfo.getControllerName(),
-        controllerInfo.getControllerNamespace(),
-        null,
-        config);
+    Serve.setInternalReplicaContext(null, null, controllerName, null, config);
 
-    Optional<BaseActorHandle> optional =
-        Ray.getActor(controllerInfo.getControllerName(), controllerInfo.getControllerNamespace());
+    Optional<BaseActorHandle> optional = Ray.getActor(controllerName, Constants.SERVE_NAMESPACE);
     Preconditions.checkState(optional.isPresent(), "Controller does not exist");
 
     Map<KeyType, KeyListener> keyListeners = new HashMap<>();

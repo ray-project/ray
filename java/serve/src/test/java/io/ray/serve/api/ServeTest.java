@@ -2,6 +2,7 @@ package io.ray.serve.api;
 
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
+import io.ray.serve.BaseTest;
 import io.ray.serve.DummyServeController;
 import io.ray.serve.common.Constants;
 import io.ray.serve.exception.RayServeException;
@@ -11,7 +12,7 @@ import org.apache.commons.lang3.RandomStringUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-public class ServeTest {
+public class ServeTest extends BaseTest {
 
   @Test
   public void replicaContextTest() {
@@ -23,7 +24,7 @@ public class ServeTest {
       String controllerName = "controllerName";
       Object servableObject = new Object();
       Serve.setInternalReplicaContext(
-          deploymentName, replicaTag, controllerName, null, servableObject, null);
+          deploymentName, replicaTag, controllerName, servableObject, null);
 
       ReplicaContext replicaContext = Serve.getReplicaContext();
       Assert.assertNotNull(replicaContext, "no replica context");
@@ -31,16 +32,14 @@ public class ServeTest {
       Assert.assertEquals(replicaContext.getReplicaTag(), replicaTag);
       Assert.assertEquals(replicaContext.getInternalControllerName(), controllerName);
     } finally {
-      // Recover context.
-      Serve.setInternalReplicaContext(null);
+      clear();
     }
   }
 
   @SuppressWarnings("unused")
   @Test
   public void getGlobalClientTest() {
-    boolean inited = Ray.isInitialized();
-    Ray.init();
+    init();
     try {
       ServeControllerClient client = null;
       try {
@@ -55,15 +54,11 @@ public class ServeTest {
               Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
       ActorHandle<DummyServeController> actorHandle =
           Ray.actor(DummyServeController::new, "", "").setName(controllerName).remote();
-      Serve.setInternalReplicaContext(null, null, controllerName, null, null, null);
+      Serve.setInternalReplicaContext(null, null, controllerName, null, null);
       client = Serve.getGlobalClient();
       Assert.assertNotNull(client);
     } finally {
-      if (!inited) {
-        Ray.shutdown();
-      }
-      Serve.setInternalReplicaContext(null);
-      Serve.setGlobalClient(null);
+      shutdown();
     }
   }
 }

@@ -31,8 +31,7 @@ public class DeploymentRoute {
 
   public static DeploymentRoute fromProtoBytes(byte[] bytes) {
     io.ray.serve.generated.DeploymentRoute proto =
-        ServeProtoUtil.bytesToProto(
-            bytes, input -> io.ray.serve.generated.DeploymentRoute.parseFrom(input));
+        ServeProtoUtil.bytesToProto(bytes, io.ray.serve.generated.DeploymentRoute::parseFrom);
     return fromProto(proto);
   }
 }

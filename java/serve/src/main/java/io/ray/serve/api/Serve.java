@@ -174,7 +174,6 @@ public class Serve {
    * @param deploymentName deployment name
    * @param replicaTag replica tag
    * @param controllerName the controller actor's name
-   * @param controllerNamespace
    * @param servableObject the servable object of the specified replica.
    * @param config
    */
@@ -182,17 +181,10 @@ public class Serve {
       String deploymentName,
       String replicaTag,
       String controllerName,
-      String controllerNamespace,
       Object servableObject,
       Map<String, String> config) {
     INTERNAL_REPLICA_CONTEXT =
-        new ReplicaContext(
-            deploymentName,
-            replicaTag,
-            controllerName,
-            controllerNamespace,
-            servableObject,
-            config);
+        new ReplicaContext(deploymentName, replicaTag, controllerName, servableObject, config);
   }
 
   public static void setInternalReplicaContext(ReplicaContext replicaContext) {
@@ -256,7 +248,7 @@ public class Serve {
    * Connect to an existing Serve instance on this Ray cluster.
    *
    * <p>If calling from the driver program, the Serve instance on this Ray cluster must first have
-   * been initialized using `serve.start(detached=True)`.
+   * been initialized using `Serve.start`.
    *
    * <p>If called from within a replica, this will connect to the same Serve instance that the
    * replica is running in.

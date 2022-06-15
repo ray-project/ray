@@ -333,7 +333,7 @@ public class ServeControllerClient {
                     .task(PyActorMethod.of("list_deployments"))
                     .remote()
                     .get(),
-            bytes -> DeploymentRouteList.parseFrom(bytes));
+            DeploymentRouteList::parseFrom);
 
     if (deploymentRouteList == null || deploymentRouteList.getDeploymentRoutesList() == null) {
       return Collections.emptyMap();
@@ -387,7 +387,7 @@ public class ServeControllerClient {
     return ServeProtoUtil.bytesToProto(
         (byte[])
             ((PyActorHandle) controller).task(PyActorMethod.of("get_serve_status")).remote().get(),
-        bytes -> StatusOverview.parseFrom(bytes));
+        StatusOverview::parseFrom);
   }
 
   private DeploymentStatusInfo getDeploymentStatus(String name) {
