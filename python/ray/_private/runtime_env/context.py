@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import subprocess
 import sys
 from typing import Any, Dict, List, Optional
 
@@ -46,7 +47,7 @@ class RuntimeEnvContext:
         os.environ.update(self.env_vars)
 
         if language == Language.PYTHON and sys.platform == "win32":
-            executable = f'"{self.py_executable}"'  # Path may contain spaces
+            executable = self.py_executable
         elif language == Language.PYTHON:
             executable = f"exec {self.py_executable}"
         elif language == Language.JAVA:
@@ -69,7 +70,7 @@ class RuntimeEnvContext:
         command_str = " && ".join(self.command_prefix + [exec_command])
         logger.debug(f"Exec'ing worker with command: {command_str}")
         if sys.platform == "win32":
-            os.system(command_str)
+            subprocess.run([executable, *passthrough_args])
         else:
             # PyCharm will monkey patch the os.execvp at
             # .pycharm_helpers/pydev/_pydev_bundle/pydev_monkey.py
