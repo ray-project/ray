@@ -41,9 +41,7 @@ public class ServeControllerClient {
 
   private String controllerName;
 
-  private boolean detached;
-
-  private String overrideControllerNamespace;
+  private boolean detached; // TODO if non-detached, shutdown serve when process exits.
 
   private boolean shutdown;
 
@@ -55,14 +53,10 @@ public class ServeControllerClient {
 
   @SuppressWarnings("unchecked")
   public ServeControllerClient(
-      BaseActorHandle controller,
-      String controllerName,
-      boolean detached,
-      String overrideControllerNamespace) {
+      BaseActorHandle controller, String controllerName, boolean detached) {
     this.controller = controller;
     this.controllerName = controllerName;
     this.detached = detached;
-    this.overrideControllerNamespace = overrideControllerNamespace;
     this.rootUrl =
         controller instanceof PyActorHandle
             ? (String)
@@ -87,14 +81,14 @@ public class ServeControllerClient {
   /**
    * Retrieve RayServeHandle for service deployment to invoke it from Java.
    *
-   * @param endpointName A registered service deployment.
-   * @param missingOk If true, then Serve won't check the endpoint is registered.
+   * @param deploymentName A registered service deployment.
+   * @param missingOk If true, then Serve won't check the deployment is registered.
    * @return
    */
   @SuppressWarnings("unchecked")
-  public RayServeHandle getHandle(String endpointName, boolean missingOk) {
+  public RayServeHandle getHandle(String deploymentName, boolean missingOk) {
 
-    String cacheKey = endpointName + "#" + missingOk;
+    String cacheKey = deploymentName + "#" + missingOk;
     if (handleCache.containsKey(cacheKey)) {
       return handleCache.get(cacheKey);
     }
@@ -118,17 +112,11 @@ public class ServeControllerClient {
                   .get());
     }
 
-    if (!missingOk && (endpoints == null || !endpoints.containsKey(endpointName))) {
-      throw new RayServeException(LogUtil.format("Endpoint {} does not exist.", endpointName));
+    if (!missingOk && (endpoints == null || !endpoints.containsKey(deploymentName))) {
+      throw new RayServeException(LogUtil.format("Deployment {} does not exist.", deploymentName));
     }
 
-    RayServeHandle handle =
-        new RayServeHandle(
-            controller,
-            endpointName,
-            null,
-            null,
-            Serve.getControllerNamespace(detached, overrideControllerNamespace));
+    RayServeHandle handle = new RayServeHandle(controller, deploymentName, null, null);
     handleCache.put(cacheKey, handle);
     return handle;
   }
@@ -262,10 +250,8 @@ public class ServeControllerClient {
 
       long started = System.currentTimeMillis();
       while (true) {
-        String controllerNamespace =
-            Serve.getControllerNamespace(detached, overrideControllerNamespace);
         Optional<BaseActorHandle> controllerHandle =
-            Ray.getActor(controllerName, controllerNamespace);
+            Ray.getActor(controllerName, Constants.SERVE_NAMESPACE);
         if (!controllerHandle.isPresent()) {
           // actor name is removed
           break;
@@ -347,7 +333,7 @@ public class ServeControllerClient {
                     .task(PyActorMethod.of("list_deployments"))
                     .remote()
                     .get(),
-            bytes -> DeploymentRouteList.parseFrom(bytes));
+            DeploymentRouteList::parseFrom);
 
     if (deploymentRouteList == null || deploymentRouteList.getDeploymentRoutesList() == null) {
       return Collections.emptyMap();
@@ -401,7 +387,7 @@ public class ServeControllerClient {
     return ServeProtoUtil.bytesToProto(
         (byte[])
             ((PyActorHandle) controller).task(PyActorMethod.of("get_serve_status")).remote().get(),
-        bytes -> StatusOverview.parseFrom(bytes));
+        StatusOverview::parseFrom);
   }
 
   private DeploymentStatusInfo getDeploymentStatus(String name) {

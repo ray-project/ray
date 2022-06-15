@@ -23,7 +23,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
-import java.util.regex.Pattern;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -38,9 +37,6 @@ public class Serve {
 
   private static ServeControllerClient GLOBAL_CLIENT;
 
-  private static Pattern ANONYMOUS_NAMESPACE_PATTERN =
-      Pattern.compile("[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89aAbB][a-f0-9]{3}-[a-f0-9]{12}");
-
   /**
    * Initialize a serve instance.
    *
@@ -53,32 +49,21 @@ public class Serve {
    * @param dedicatedCpu Whether to reserve a CPU core for the internal Serve controller actor.
    *     Defaults to False.
    * @param checkpointPath
-   * @param overrideControllerNamespace
    * @param config Configuration options for Serve.
    * @return
    */
-  @SuppressWarnings("unchecked")
   public static synchronized ServeControllerClient start(
-      boolean detached,
-      boolean dedicatedCpu,
-      String checkpointPath,
-      String overrideControllerNamespace,
-      Map<String, String> config) {
+      boolean detached, boolean dedicatedCpu, String checkpointPath, Map<String, String> config) {
 
     // Initialize ray if needed.
     if (!Ray.isInitialized()) {
-      System.setProperty("ray.job.namespace", "serve");
+      System.setProperty("ray.job.namespace", Constants.SERVE_NAMESPACE);
       Ray.init();
     }
-    // TODO:(yangxiaofeng) Delete this code when Java supports setting the namespace
-    if (StringUtils.isBlank(overrideControllerNamespace)) {
-      overrideControllerNamespace = Ray.getRuntimeContext().getNamespace();
-    }
-    String controllerNamespace = getControllerNamespace(detached, overrideControllerNamespace);
 
     try {
-      ServeControllerClient client = getGlobalClient(overrideControllerNamespace, true);
-      LOGGER.info("Connecting to existing Serve instance in namespace {}", controllerNamespace);
+      ServeControllerClient client = getGlobalClient(true);
+      LOGGER.info("Connecting to existing Serve app in namespace {}", Constants.SERVE_NAMESPACE);
       checkCheckpointPath(client, checkpointPath);
       return client;
     } catch (RayServeException e) {
@@ -94,24 +79,6 @@ public class Serve {
     if (StringUtils.isBlank(checkpointPath)) {
       checkpointPath = Constants.DEFAULT_CHECKPOINT_PATH;
     }
-    // TODO The namespace, max_task_retries and dispatching on head node is not supported in Java
-    // now.
-    // PyActorCreator controllerCreator =
-    //    Ray.actor(
-    //            PyActorClass.of("ray.serve.controller", "ServeController"),
-    //            controllerName,
-    //            null, // http_config TODO change it nullable or define protobuf.
-    //            checkpointPath,
-    //            detached,
-    //            overrideControllerNamespace)
-    //        .setName(controllerName)
-    //        .setLifetime(detached ? ActorLifetime.DETACHED : ActorLifetime.NON_DETACHED)
-    //        .setMaxRestarts(-1)
-    //        .setMaxConcurrency(Constants.CONTROLLER_MAX_CONCURRENCY);
-    // if (dedicatedCpu) {
-    //  controllerCreator.setResource("CPU", 1.0);
-    // }
-
     PyActorHandle controllerAvatar =
         Ray.actor(
                 PyActorClass.of("ray.serve.controller", "ServeControllerAvatar"),
@@ -119,7 +86,6 @@ public class Serve {
                 null,
                 checkpointPath,
                 detached,
-                overrideControllerNamespace,
                 dedicatedCpu)
             .setName(controllerName + "_AVATAR")
             .setLifetime(detached ? ActorLifetime.DETACHED : ActorLifetime.NON_DETACHED)
@@ -130,7 +96,7 @@ public class Serve {
     controllerAvatar.task(PyActorMethod.of("check_alive")).remote().get();
 
     PyActorHandle controller =
-        (PyActorHandle) Ray.getActor(controllerName, controllerNamespace).get();
+        (PyActorHandle) Ray.getActor(controllerName, Constants.SERVE_NAMESPACE).get();
 
     ActorNameList actorNameList =
         ServeProtoUtil.bytesToProto(
@@ -140,7 +106,7 @@ public class Serve {
       try {
         for (String name : actorNameList.getNamesList()) {
           PyActorHandle proxyActorHandle =
-              (PyActorHandle) Ray.getActor(name, controllerNamespace).get();
+              (PyActorHandle) Ray.getActor(name, Constants.SERVE_NAMESPACE).get();
           proxyActorHandle
               .task(PyActorMethod.of("ready"))
               .remote()
@@ -154,14 +120,12 @@ public class Serve {
       }
     }
 
-    ServeControllerClient client =
-        new ServeControllerClient(
-            controller, controllerName, detached, overrideControllerNamespace);
+    ServeControllerClient client = new ServeControllerClient(controller, controllerName, detached);
     setGlobalClient(client);
     LOGGER.info(
         "Started{}Serve instance in namespace {}",
         detached ? " detached " : " ",
-        controllerNamespace);
+        Constants.SERVE_NAMESPACE);
     return client;
   }
 
@@ -173,34 +137,6 @@ public class Serve {
           checkpointPath,
           client.getCheckpointPath());
     }
-  }
-
-  /**
-   * Gets the controller's namespace.
-   *
-   * @param detached Whether serve.start() was called with detached=True
-   * @param overrideControllerNamespace When set, this is the controller's namespace
-   * @return
-   */
-  public static String getControllerNamespace(
-      boolean detached, String overrideControllerNamespace) {
-
-    if (StringUtils.isNotBlank(overrideControllerNamespace)) {
-      return overrideControllerNamespace;
-    }
-
-    String controllerNamespace = Ray.getRuntimeContext().getNamespace();
-
-    if (!detached) {
-      return controllerNamespace;
-    }
-
-    // Start controller in "serve" namespace if detached and currently in anonymous namespace.
-    if (null != controllerNamespace
-        && ANONYMOUS_NAMESPACE_PATTERN.matcher(controllerNamespace).matches()) {
-      controllerNamespace = "serve";
-    }
-    return controllerNamespace;
   }
 
   /**
@@ -238,7 +174,6 @@ public class Serve {
    * @param deploymentName deployment name
    * @param replicaTag replica tag
    * @param controllerName the controller actor's name
-   * @param controllerNamespace
    * @param servableObject the servable object of the specified replica.
    * @param config
    */
@@ -246,17 +181,10 @@ public class Serve {
       String deploymentName,
       String replicaTag,
       String controllerName,
-      String controllerNamespace,
       Object servableObject,
       Map<String, String> config) {
     INTERNAL_REPLICA_CONTEXT =
-        new ReplicaContext(
-            deploymentName,
-            replicaTag,
-            controllerName,
-            controllerNamespace,
-            servableObject,
-            config);
+        new ReplicaContext(deploymentName, replicaTag, controllerName, servableObject, config);
   }
 
   public static void setInternalReplicaContext(ReplicaContext replicaContext) {
@@ -282,14 +210,11 @@ public class Serve {
   /**
    * Gets the global client, which stores the controller's handle.
    *
-   * @param overrideControllerNamespace If None and there's no cached client, searches for the
-   *     controller in this namespace.
    * @param healthCheckController If True, run a health check on the cached controller if it exists.
    *     If the check fails, try reconnecting to the controller.
    * @return
    */
-  public static ServeControllerClient getGlobalClient(
-      String overrideControllerNamespace, boolean healthCheckController) {
+  public static ServeControllerClient getGlobalClient(boolean healthCheckController) {
     try {
       if (GLOBAL_CLIENT != null) {
         if (healthCheckController) {
@@ -307,14 +232,12 @@ public class Serve {
       if (GLOBAL_CLIENT != null) {
         return GLOBAL_CLIENT;
       }
-      return connect(
-          overrideControllerNamespace); // TODO throw RayServeException if there is no Serve
-      // controller actor in the expected namespace.
+      return connect();
     }
   }
 
   public static ServeControllerClient getGlobalClient() {
-    return getGlobalClient(Ray.getRuntimeContext().getNamespace(), false);
+    return getGlobalClient(false);
   }
 
   public static void setGlobalClient(ServeControllerClient client) {
@@ -325,50 +248,43 @@ public class Serve {
    * Connect to an existing Serve instance on this Ray cluster.
    *
    * <p>If calling from the driver program, the Serve instance on this Ray cluster must first have
-   * been initialized using `serve.start(detached=True)`.
+   * been initialized using `Serve.start`.
    *
    * <p>If called from within a replica, this will connect to the same Serve instance that the
    * replica is running in.
    *
-   * @param overrideControllerNamespace The namespace to use when looking for the controller. If
-   *     None, Serve recalculates the controller's namespace using get_controller_namespace().
    * @return
    */
-  public static ServeControllerClient connect(String overrideControllerNamespace) {
+  public static ServeControllerClient connect() {
 
     // Initialize ray if needed.
     if (!Ray.isInitialized()) {
-      System.setProperty("ray.job.namespace", "serve");
+      System.setProperty("ray.job.namespace", Constants.SERVE_NAMESPACE);
       Ray.init();
     }
 
     String controllerName = null;
-    String controllerNamespace = null;
 
     // When running inside of a replica, _INTERNAL_REPLICA_CONTEXT is set to ensure that the correct
     // instance is connected to.
     if (INTERNAL_REPLICA_CONTEXT == null) {
       controllerName = Constants.SERVE_CONTROLLER_NAME;
-      controllerNamespace = getControllerNamespace(true, overrideControllerNamespace);
     } else {
       controllerName = INTERNAL_REPLICA_CONTEXT.getInternalControllerName();
-      controllerNamespace = INTERNAL_REPLICA_CONTEXT.getInternalControllerNamespace();
     }
 
     // Try to get serve controller if it exists
-    Optional<BaseActorHandle> controller = Ray.getActor(controllerName, controllerNamespace);
+    Optional<BaseActorHandle> controller = Ray.getActor(controllerName, Constants.SERVE_NAMESPACE);
     if (!controller.isPresent()) {
       throw new RayServeException(
           LogUtil.format(
               "There is no instance running on this Ray cluster. "
-                  + "Please call `Serve.start(...) to start one.")); // TODO change
-      // RayServeException to checked
-      // exception?
+                  + "Please call `Serve.start` to start one."));
+      // TODO change RayServeException to checked exception?
     }
 
     ServeControllerClient client =
-        new ServeControllerClient(
-            controller.get(), controllerName, true, overrideControllerNamespace);
+        new ServeControllerClient(controller.get(), controllerName, true);
     setGlobalClient(client);
     return client;
   }

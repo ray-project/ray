@@ -545,12 +545,11 @@ class ServeControllerAvatar:
         http_config: HTTPOptions,
         checkpoint_path: str,
         detached: bool = False,
-        _override_controller_namespace: str = None,
         dedicated_cpu: bool = False,
     ):
         try:
             self._controller = ray.get_actor(
-                controller_name, namespace=_override_controller_namespace
+                controller_name, namespace="serve"
             )
         except ValueError:
             self._controller = None
@@ -563,14 +562,13 @@ class ServeControllerAvatar:
                 max_task_retries=-1,
                 # Pin Serve controller on the head node.
                 resources={get_current_node_resource_key(): 0.01},
-                namespace=_override_controller_namespace,
+                namespace="serve",
                 max_concurrency=CONTROLLER_MAX_CONCURRENCY,
             ).remote(
                 controller_name,
                 http_config,
                 checkpoint_path,
                 detached=detached,
-                _override_controller_namespace=_override_controller_namespace,
             )
 
     def check_alive(self) -> None:

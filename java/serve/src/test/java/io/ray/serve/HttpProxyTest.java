@@ -21,12 +21,11 @@ import org.apache.hc.client5.http.impl.classic.HttpClientBuilder;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-public class HttpProxyTest {
+public class HttpProxyTest extends BaseTest {
 
   @Test
   public void test() throws IOException {
-    boolean inited = Ray.isInitialized();
-    Ray.init();
+    init();
 
     try {
       String controllerName =
@@ -47,7 +46,7 @@ public class HttpProxyTest {
           EndpointInfo.newBuilder().setEndpointName(endpointName).setRoute(route).build());
       controllerHandle.task(DummyServeController::setEndpoints, endpointInfos).remote();
 
-      Serve.setInternalReplicaContext(null, null, controllerName, null, null, config);
+      Serve.setInternalReplicaContext(null, null, controllerName, null, config);
 
       // ProxyRouter updates routes.
       ProxyRouter proxyRouter = new ProxyRouter();
@@ -69,11 +68,7 @@ public class HttpProxyTest {
       }
 
     } finally {
-      if (!inited) {
-        Ray.shutdown();
-      }
-      Serve.setInternalReplicaContext(null);
-      Serve.setGlobalClient(null);
+      shutdown();
     }
   }
 }

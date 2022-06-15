@@ -15,13 +15,11 @@ import org.apache.commons.lang3.RandomStringUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-public class ProxyRouterTest {
+public class ProxyRouterTest extends BaseTest {
 
   @Test
   public void test() {
-    boolean inited = Ray.isInitialized();
-    Ray.init();
-
+    init();
     try {
       String prefix = "ProxyRouterTest";
       String controllerName =
@@ -44,7 +42,7 @@ public class ProxyRouterTest {
           endpointName2, EndpointInfo.newBuilder().setEndpointName(endpointName2).build());
       controllerHandle.task(DummyServeController::setEndpoints, endpointInfos).remote();
 
-      Serve.setInternalReplicaContext(null, null, controllerName, null, null, config);
+      Serve.setInternalReplicaContext(null, null, controllerName, null, config);
 
       // ProxyRouter updates routes.
       ProxyRouter proxyRouter = new ProxyRouter();
@@ -63,11 +61,7 @@ public class ProxyRouterTest {
       Assert.assertNotNull(handles.get(endpointName1));
       Assert.assertNotNull(handles.get(endpointName2));
     } finally {
-      if (!inited) {
-        Ray.shutdown();
-      }
-      Serve.setInternalReplicaContext(null);
-      Serve.setGlobalClient(null);
+      shutdown();
     }
   }
 }

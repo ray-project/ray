@@ -5,7 +5,6 @@ import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.serve.api.Serve;
 import io.ray.serve.config.DeploymentConfig;
-import io.ray.serve.controller.ControllerInfo;
 import io.ray.serve.deployment.DeploymentVersion;
 import io.ray.serve.deployment.DeploymentWrapper;
 import io.ray.serve.generated.ActorNameList;
@@ -28,7 +27,7 @@ public class ReplicaSetTest {
 
   @Test
   public void updateWorkerReplicasTest() {
-    ReplicaSet replicaSet = new ReplicaSet(deploymentName, "test");
+    ReplicaSet replicaSet = new ReplicaSet(deploymentName);
     ActorNameList.Builder builder = ActorNameList.newBuilder();
 
     replicaSet.updateWorkerReplicas(builder.build());
@@ -45,7 +44,6 @@ public class ReplicaSetTest {
 
     try {
       String controllerName = deploymentName + "_controller";
-      String controllerNameSpace = "serve";
       String replicaTag = deploymentName + "_replica";
       String actorName = replicaTag;
       String version = "v1";
@@ -59,14 +57,7 @@ public class ReplicaSetTest {
           new DeploymentConfig().setDeploymentLanguage(DeploymentLanguage.JAVA);
 
       Object[] initArgs =
-          new Object[] {
-            deploymentName,
-            replicaTag,
-            controllerName,
-            controllerNameSpace,
-            new Object(),
-            new HashMap<>()
-          };
+          new Object[] {deploymentName, replicaTag, controllerName, new Object(), new HashMap<>()};
 
       DeploymentWrapper deploymentWrapper =
           new DeploymentWrapper()
@@ -77,17 +68,13 @@ public class ReplicaSetTest {
               .setInitArgs(initArgs);
 
       ActorHandle<RayServeWrappedReplica> replicaHandle =
-          Ray.actor(
-                  RayServeWrappedReplica::new,
-                  deploymentWrapper,
-                  replicaTag,
-                  new ControllerInfo(controllerName, null))
+          Ray.actor(RayServeWrappedReplica::new, deploymentWrapper, replicaTag, controllerName)
               .setName(actorName)
               .remote();
       Assert.assertTrue(replicaHandle.task(RayServeWrappedReplica::checkHealth).remote().get());
 
       // ReplicaSet
-      ReplicaSet replicaSet = new ReplicaSet(deploymentName, null);
+      ReplicaSet replicaSet = new ReplicaSet(deploymentName);
       ActorNameList.Builder builder = ActorNameList.newBuilder();
       builder.addNames(actorName);
       replicaSet.updateWorkerReplicas(builder.build());
