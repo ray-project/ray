@@ -22,7 +22,6 @@ def spark(request):
     return spark_session
 
 
-@pytest.mark.skip(reason="Waiting for MLDataset to be made an optional dependency")
 def test_raydp_roundtrip(spark):
     spark_df = spark.createDataFrame([(1, "a"), (2, "b"), (3, "c")], ["one", "two"])
     rows = [(r.one, r.two) for r in spark_df.take(3)]
