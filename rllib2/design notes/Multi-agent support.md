@@ -21,19 +21,22 @@ dqn = DQN(..., multi_agent={policy_map_fn, policies, policies_to_train=['dqn_pol
 
 for iter in range(NUM_ITER):
 
+
+    # update the dqn_policy weights of the ppo trainer with the updated dqn_policy from dqn trainer.
+    ppo.update_weight('dqn_policy', dqn.get_weight('dqn_policy'))
+    
     # runs forward() of both ppo and dqn modules for sample collection,
     # postprocesses according to PPO requirements,
     # and then updates only the ppo_policy according to ppo update rule
     ppo.train()
-
+    
+    # update the ppo_policy weights of the dqn trainer with the updated ppo_policy from ppo trainer.
+    dqn.update_weight('ppo_policy', ppo.get_weight('ppo_policy'))
     # runs forward() of both ppo and dqn modules for sample collection,
     # postprocesses according to DQN requirements,
     # and then updates only the dqn_policy according to dqn update rule
     dqn.train()
 
-    # update the ppo_policy weights of the dqn trainer with the update ppo_policy and vice versa
-    ppo.update_weight('dqn_policy', dqn.get_weight('dqn_policy'))
-    dqn.update_weight('ppo_policy', ppo.get_weight('ppo_policy'))
 ```
 
 ### Action Items
