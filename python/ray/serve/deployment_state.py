@@ -1,6 +1,3 @@
-from copy import copy
-from collections import defaultdict, OrderedDict
-from enum import Enum
 import itertools
 import json
 import logging
@@ -9,23 +6,23 @@ import os
 import random
 import time
 import traceback
+from collections import OrderedDict, defaultdict
+from copy import copy
+from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import ray
-from ray import ObjectRef
+from ray import ObjectRef, cloudpickle
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError, RayError
-from ray.util.placement_group import PlacementGroup
-from ray import cloudpickle
-
 from ray.serve.autoscaling_metrics import InMemoryMetricsStore
 from ray.serve.common import (
     DeploymentInfo,
     DeploymentStatus,
     DeploymentStatusInfo,
     Duration,
-    ReplicaTag,
     ReplicaName,
+    ReplicaTag,
     RunningReplicaInfo,
 )
 from ray.serve.config import DeploymentConfig
@@ -37,8 +34,8 @@ from ray.serve.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve.generated.serve_pb2 import DeploymentLanguage
-from ray.serve.storage.kv_store import KVStoreBase
 from ray.serve.long_poll import LongPollHost, LongPollNamespace
+from ray.serve.storage.kv_store import KVStoreBase
 from ray.serve.utils import (
     JavaActorHandleProxy,
     format_actor_name,
@@ -46,6 +43,7 @@ from ray.serve.utils import (
     msgpack_serialize,
 )
 from ray.serve.version import DeploymentVersion, VersionedReplica
+from ray.util.placement_group import PlacementGroup
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -1046,6 +1044,7 @@ class DeploymentState:
                 deployment_info.version,
                 user_config=deployment_info.deployment_config.user_config,
             )
+            self._deleting = False
 
         else:
             self._target_replicas = 0

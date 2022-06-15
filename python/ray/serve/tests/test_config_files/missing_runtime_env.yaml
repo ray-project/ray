@@ -1,4 +1,1 @@
-deployments:
-
-  - name: one
-    import_path: "test_module.test.one"
+import_path: "basic_dag.DagNode"
