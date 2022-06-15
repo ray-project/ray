@@ -23,7 +23,7 @@ public class DeploymentConfig implements Serializable {
   private Integer numReplicas = 1;
 
   /**
-   * The maximum number of queries that will be sent to a replica of this deployment without
+   * The maximum number of queries that can be sent to a replica of this deployment without
    * receiving a response. Defaults to 100.
    */
   private Integer maxConcurrentQueries = 100;
@@ -57,7 +57,7 @@ public class DeploymentConfig implements Serializable {
   /** This flag is used to let replica know they are deplyed from a different language. */
   private Boolean isCrossLanguage = false;
 
-  /** This flag is used to let controller know which language does the deploymnent use. */
+  /** This property tells the controller the deployment's language. */
   private DeploymentLanguage deploymentLanguage = DeploymentLanguage.JAVA;
 
   private String version;
