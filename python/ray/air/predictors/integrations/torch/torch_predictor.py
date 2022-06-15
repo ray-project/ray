@@ -10,7 +10,7 @@ from ray.train.torch import load_checkpoint
 from ray.air._internal.torch_utils import convert_pandas_to_torch_tensor
 
 if TYPE_CHECKING:
-    from ray.air.preprocessor import Preprocessor
+    from ray.data.preprocessor import Preprocessor
 
 
 class TorchPredictor(Predictor):
