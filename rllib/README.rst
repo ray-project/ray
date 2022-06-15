@@ -11,7 +11,7 @@ connected simulators, RLlib offers simple solutions for your decision making nee
 
 You **don't need** to be an **RL expert** to use RLlib, nor do you need to learn Ray or any
 other of its libraries! If you either have your problem coded (in python) as an
-`RL environment <https://medium.com/distributed-computing-with-ray/anatomy-of-a-custom-environment-for-rllib-327157f269e5>`_
+`RL environment <https://docs.ray.io/en/master/rllib/rllib-env.html>`_
 or own lots of pre-recorded, historic behavioral data to learn from, you will be
 up and running in only a few days.
 
@@ -24,6 +24,8 @@ RLlib is already used in production by industry leaders in many different vertic
 `robotics <https://www.anyscale.com/events/2021/06/23/introducing-amazon-sagemaker-kubeflow-reinforcement-learning-pipelines-for>`_,
 `boat design <https://www.youtube.com/watch?v=cLCK13ryTpw>`_,
 and many others.
+
+`You can read about RLlib Key Concepts. <https://docs.ray.io/en/master/rllib/core-concepts.html>`_  
 
 
 Installation and Setup
