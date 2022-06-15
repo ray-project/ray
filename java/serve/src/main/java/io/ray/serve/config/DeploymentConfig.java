@@ -64,8 +64,6 @@ public class DeploymentConfig implements Serializable {
 
   private String prevVersion;
 
-  private DeploymentLanguage apiLanguage = DeploymentLanguage.JAVA;
-
   public Integer getNumReplicas() {
     return numReplicas;
   }
@@ -190,14 +188,6 @@ public class DeploymentConfig implements Serializable {
     this.prevVersion = prevVersion;
   }
 
-  public DeploymentLanguage getApiLanguage() {
-    return apiLanguage;
-  }
-
-  public void setApiLanguage(DeploymentLanguage apiLanguage) {
-    this.apiLanguage = apiLanguage;
-  }
-
   public byte[] toProtoBytes() {
     io.ray.serve.generated.DeploymentConfig.Builder builder =
         io.ray.serve.generated.DeploymentConfig.newBuilder()
@@ -211,8 +201,7 @@ public class DeploymentConfig implements Serializable {
             .setHealthCheckPeriodS(healthCheckPeriodS)
             .setHealthCheckTimeoutS(healthCheckTimeoutS)
             .setIsCrossLanguage(isCrossLanguage)
-            .setDeploymentLanguage(deploymentLanguage)
-            .setApiLanguage(apiLanguage);
+            .setDeploymentLanguage(deploymentLanguage);
     if (null != autoscalingConfig) {
       builder.setAutoscalingConfig(autoscalingConfig.toProto());
     }
@@ -238,7 +227,6 @@ public class DeploymentConfig implements Serializable {
               Lists.newArrayList(DeploymentLanguage.values())));
     }
     deploymentConfig.setDeploymentLanguage(proto.getDeploymentLanguage());
-    deploymentConfig.setApiLanguage(proto.getApiLanguage());
     if (proto.getUserConfig() != null && proto.getUserConfig().size() != 0) {
       deploymentConfig.setUserConfig(
           MessagePackSerializer.decode(

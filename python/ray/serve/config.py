@@ -83,6 +83,20 @@ class AutoscalingConfig(BaseModel):
     # TODO(architkulkarni): Add reasonable defaults
 
 
+def _need_pickle(deployment_language: DeploymentLanguage, is_cross_language: bool):
+    # TODO(yangxiaofeng): If there are three language types of serve, this method will no work
+    if deployment_language == DeploymentLanguage.PYTHON:
+        if is_cross_language:
+            return False
+        else:
+            return True
+    else:
+        if is_cross_language:
+            return True
+        else:
+            return False
+
+
 class DeploymentConfig(BaseModel):
     """Configuration options for a deployment, to be set by the user.
 
@@ -135,8 +149,6 @@ class DeploymentConfig(BaseModel):
     version: Optional[str] = None
     prev_version: Optional[str] = None
 
-    api_language: Any = DeploymentLanguage.PYTHON
-
     class Config:
         validate_assignment = True
         extra = "forbid"
@@ -153,12 +165,12 @@ class DeploymentConfig(BaseModel):
         return v
 
     def need_pickle(self):
-        return self.api_language == DeploymentLanguage.PYTHON
+        return _need_pickle(self.deployment_language, self.is_cross_language)
 
     def to_proto(self):
         data = self.dict()
         if data.get("user_config"):
-            if self.api_language == DeploymentLanguage.PYTHON:
+            if self.need_pickle():
                 data["user_config"] = cloudpickle.dumps(data["user_config"])
         if data.get("autoscaling_config"):
             data["autoscaling_config"] = AutoscalingConfigProto(
@@ -179,12 +191,10 @@ class DeploymentConfig(BaseModel):
         )
         if "user_config" in data:
             if data["user_config"] != "":
-                api_lang = (
-                    data["api_language"]
-                    if "api_language" in data
-                    else DeploymentLanguage.PYTHON
-                )
-                if api_lang == DeploymentLanguage.PYTHON:
+                deployment_language = data["deployment_language"] if "deployment_language" in data else DeploymentLanguage.PYTHON
+                is_cross_language = data["is_cross_language"] if "is_cross_language" in data else False
+                need_pickle = _need_pickle(deployment_language, is_cross_language)
+                if need_pickle:
                     data["user_config"] = cloudpickle.loads(proto.user_config)
                 else:
                     # after MessageToDict, bytes data has been deal with base64

@@ -90,9 +90,6 @@ message DeploymentConfig {
   string version = 11;
 
   string prev_version = 12;
-
-  // The api client's programming language.
-  DeploymentLanguage api_language = 13;
 }
 
 // Deployment language.
