@@ -156,7 +156,7 @@ class PyModulesManager:
     ):
         """Download and install a wheel URI, and then delete the local wheel file."""
         wheel_file = await download_and_unpack_package(
-            uri, self._resources_dir, self.gcs_aio_client, logger=logger
+            uri, self._resources_dir, self._gcs_aio_client, logger=logger
         )
         module_dir = self._get_local_dir_from_uri(uri)
 
