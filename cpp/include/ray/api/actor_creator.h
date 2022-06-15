@@ -32,7 +32,7 @@ class ActorCreator {
       : runtime_(runtime), remote_function_holder_(std::move(remote_function_holder)) {}
 
   template <typename... Args>
-  ray::ActorHandle<GetActorType<F>, is_python_v<F>> Remote(Args &&...args);
+  ray::ActorHandle<GetActorType<F>, is_x_lang_v<F>> Remote(Args &&...args);
 
   ActorCreator &SetName(std::string name) {
     create_options_.name = std::move(name);
@@ -75,19 +75,19 @@ class ActorCreator {
 // ---------- implementation ----------
 template <typename F>
 template <typename... Args>
-ActorHandle<GetActorType<F>, is_python_v<F>> ActorCreator<F>::Remote(Args &&...args) {
+ActorHandle<GetActorType<F>, is_x_lang_v<F>> ActorCreator<F>::Remote(Args &&...args) {
   CheckTaskOptions(create_options_.resources);
 
-  if constexpr (is_python_v<F>) {
+  if constexpr (is_x_lang_v<F>) {
     using ArgsTuple = std::tuple<Args...>;
-    Arguments::WrapArgs<ArgsTuple>(/*cross_lang=*/true,
+    Arguments::WrapArgs<ArgsTuple>(remote_function_holder_.lang_type,
                                    &args_,
                                    std::make_index_sequence<sizeof...(Args)>{},
                                    std::forward<Args>(args)...);
   } else {
     StaticCheck<F, Args...>();
     using ArgsTuple = RemoveReference_t<boost::callable_traits::args_t<F>>;
-    Arguments::WrapArgs<ArgsTuple>(/*cross_lang=*/false,
+    Arguments::WrapArgs<ArgsTuple>(remote_function_holder_.lang_type,
                                    &args_,
                                    std::make_index_sequence<sizeof...(Args)>{},
                                    std::forward<Args>(args)...);
@@ -95,7 +95,7 @@ ActorHandle<GetActorType<F>, is_python_v<F>> ActorCreator<F>::Remote(Args &&...a
 
   auto returned_actor_id =
       runtime_->CreateActor(remote_function_holder_, args_, create_options_);
-  return ActorHandle<GetActorType<F>, is_python_v<F>>(returned_actor_id);
+  return ActorHandle<GetActorType<F>, is_x_lang_v<F>>(returned_actor_id);
 }
 }  // namespace internal
 }  // namespace ray

@@ -1,18 +1,17 @@
+import tempfile
 from typing import Optional
 
 import gym
 import numpy as np
 import pandas as pd
 import pytest
-import tempfile
 
+from ray.air.checkpoint import Checkpoint
 from ray.air.predictors.integrations.rl.rl_predictor import RLPredictor
 from ray.data.preprocessor import Preprocessor
-from ray.air.checkpoint import Checkpoint
-from ray.train.rl import RLTrainer
-
 from ray.rllib.algorithms import Algorithm
 from ray.rllib.policy import Policy
+from ray.train.rl import RLTrainer
 from ray.tune.utils.trainable import TrainableUtil
 
 
@@ -74,7 +73,7 @@ def create_checkpoint(
     return Checkpoint.from_dict(checkpoint_data)
 
 
-@pytest.mark.parametrize("batch_type", [list, np.array, pd.DataFrame])
+@pytest.mark.parametrize("batch_type", [np.array, pd.DataFrame])
 @pytest.mark.parametrize("batch_size", [1, 20])
 def test_predict_no_preprocessor(batch_type, batch_size):
     checkpoint = create_checkpoint()
@@ -86,10 +85,10 @@ def test_predict_no_preprocessor(batch_type, batch_size):
 
     assert len(actions) == batch_size
     # We add [0., 1.) to 1.0, so actions should be in [1., 2.)
-    assert all(1.0 <= action < 2.0 for action in actions)
+    assert all(1.0 <= action.item() < 2.0 for action in np.array(actions))
 
 
-@pytest.mark.parametrize("batch_type", [list, np.array, pd.DataFrame])
+@pytest.mark.parametrize("batch_type", [np.array, pd.DataFrame])
 @pytest.mark.parametrize("batch_size", [1, 20])
 def test_predict_with_preprocessor(batch_type, batch_size):
     preprocessor = _DummyPreprocessor()
@@ -103,7 +102,7 @@ def test_predict_with_preprocessor(batch_type, batch_size):
     assert len(actions) == batch_size
     # Preprocessor doubles observations to 2.0, then we add [0., 1.),
     # so actions should be in [2., 3.)
-    assert all(2.0 <= action < 3.0 for action in actions)
+    assert all(2.0 <= action.item() < 3.0 for action in np.array(actions))
 
 
 if __name__ == "__main__":
