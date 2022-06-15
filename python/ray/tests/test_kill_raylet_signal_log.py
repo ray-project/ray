@@ -1,12 +1,13 @@
 import signal
 import sys
+
 import pytest
+
 import ray
+from ray._private.test_utils import wait_for_condition
 
 # Import psutil after ray so the packaged version is used.
 import psutil
-
-from ray._private.test_utils import wait_for_condition
 
 
 def get_pid(name):
@@ -49,6 +50,7 @@ def test_kill_raylet_signal_log_win(shutdown_only):
 
 if __name__ == "__main__":
     import os
+
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:

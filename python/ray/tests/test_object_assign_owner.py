@@ -1,7 +1,9 @@
-import pytest
-import ray
 import time
+
 import numpy as np
+import pytest
+
+import ray
 
 
 # https://github.com/ray-project/ray/issues/19659
@@ -154,9 +156,10 @@ def test_multiple_objects(ray_start_cluster):
 
 
 if __name__ == "__main__":
-    import pytest
     import os
     import sys
+
+    import pytest
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

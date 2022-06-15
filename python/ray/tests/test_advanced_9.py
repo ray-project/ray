@@ -1,7 +1,8 @@
-import pytest
-import ray
 import sys
 
+import pytest
+
+import ray
 from ray._private.test_utils import Semaphore, client_test_enabled, wait_for_condition
 from ray.experimental.internal_kv import _internal_kv_list
 
@@ -204,8 +205,9 @@ def test_worker_oom_score(shutdown_only):
 
 
 if __name__ == "__main__":
-    import pytest
     import os
+
+    import pytest
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

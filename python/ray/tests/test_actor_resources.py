@@ -1,16 +1,17 @@
 import collections
 import os
+import sys
+import time
+
 import pytest
+
+import ray
+import ray.cluster_utils
 
 try:
     import pytest_timeout
 except ImportError:
     pytest_timeout = None
-import sys
-import time
-
-import ray
-import ray.cluster_utils
 
 
 def test_actor_deletion_with_gpus(shutdown_only):

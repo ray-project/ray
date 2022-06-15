@@ -1,10 +1,12 @@
 import os
-from typing import Dict
-import pytest
 import sys
-from ray.exceptions import RuntimeEnvSetupError
-from ray._private.test_utils import generate_runtime_env_dict
+from typing import Dict
+
+import pytest
+
 import ray
+from ray._private.test_utils import generate_runtime_env_dict
+from ray.exceptions import RuntimeEnvSetupError
 
 if not os.environ.get("CI"):
     # This flags turns on the local development that link against current ray

@@ -1,19 +1,18 @@
 import os
-import grpc
-import requests
-import time
 import platform
+import time
+
+import grpc
 import pytest
+import requests
 
 import ray
-from ray.core.generated import common_pb2
-from ray.core.generated import node_manager_pb2
-from ray.core.generated import node_manager_pb2_grpc
 from ray._private.test_utils import (
     RayTestTimeoutException,
     wait_until_succeeded_without_exception,
 )
 from ray._private.utils import init_grpc_channel
+from ray.core.generated import common_pb2, node_manager_pb2, node_manager_pb2_grpc
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
 
@@ -168,8 +167,9 @@ def test_multi_node_metrics_export_port_discovery(ray_start_cluster):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

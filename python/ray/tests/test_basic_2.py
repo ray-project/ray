@@ -1,23 +1,22 @@
+import logging
+
 # coding: utf-8
 import os
-import logging
+import subprocess
 import sys
+import tempfile
 import threading
 import time
-import tempfile
-import subprocess
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 
-from unittest.mock import MagicMock, patch
-
-from ray.cluster_utils import Cluster, cluster_not_supported
 from ray._private.test_utils import client_test_enabled
-from ray.tests.client_test_utils import create_remote_signal_actor
-from ray.exceptions import GetTimeoutError
-from ray.exceptions import RayTaskError
+from ray.cluster_utils import Cluster, cluster_not_supported
+from ray.exceptions import GetTimeoutError, RayTaskError
 from ray.ray_constants import KV_NAMESPACE_FUNCTION_TABLE
+from ray.tests.client_test_utils import create_remote_signal_actor
 
 if client_test_enabled():
     from ray.util.client import ray

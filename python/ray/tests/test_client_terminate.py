@@ -1,15 +1,18 @@
-import pytest
 import sys
 import time
 
-from ray.util.client.ray_client_helpers import ray_start_client_server
+import pytest
+
+from ray._private.test_utils import convert_actor_state, wait_for_condition
+from ray.exceptions import (
+    GetTimeoutError,
+    ObjectLostError,
+    RayTaskError,
+    TaskCancelledError,
+    WorkerCrashedError,
+)
 from ray.tests.client_test_utils import create_remote_signal_actor
-from ray._private.test_utils import wait_for_condition, convert_actor_state
-from ray.exceptions import TaskCancelledError
-from ray.exceptions import RayTaskError
-from ray.exceptions import WorkerCrashedError
-from ray.exceptions import ObjectLostError
-from ray.exceptions import GetTimeoutError
+from ray.util.client.ray_client_helpers import ray_start_client_server
 
 
 def valid_exceptions(use_force):
@@ -135,9 +138,10 @@ def test_kill_cancel_metadata(ray_start_regular):
 
 
 if __name__ == "__main__":
-    import pytest
     import os
     import sys
+
+    import pytest
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

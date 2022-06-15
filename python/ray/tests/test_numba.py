@@ -1,7 +1,7 @@
 import unittest
 
-from numba import njit
 import numpy as np
+from numba import njit
 
 import ray
 
@@ -32,9 +32,10 @@ class NumbaTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import os
     import sys
+
+    import pytest
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

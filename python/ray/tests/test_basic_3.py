@@ -6,10 +6,9 @@ import time
 import numpy as np
 import pytest
 
+import ray
 import ray.cluster_utils
 from ray._private.test_utils import dicts_equal
-
-import ray
 
 logger = logging.getLogger(__name__)
 
@@ -135,6 +134,7 @@ def test_many_fractional_resources(shutdown_only):
 
 if __name__ == "__main__":
     import os
+
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:

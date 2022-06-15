@@ -1,28 +1,24 @@
-import joblib
+import os
+import pickle
 import sys
 import time
-import os
-import pytest
 from unittest import mock
 
-import pickle
+import joblib
 import numpy as np
-
+import pytest
 from sklearn.datasets import load_digits, load_iris
-from sklearn.model_selection import RandomizedSearchCV
-from sklearn.ensemble import ExtraTreesClassifier
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.kernel_approximation import Nystroem
-from sklearn.kernel_approximation import RBFSampler
-from sklearn.pipeline import make_pipeline
-from sklearn.svm import LinearSVC, SVC
-from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import ExtraTreesClassifier, RandomForestClassifier
+from sklearn.kernel_approximation import Nystroem, RBFSampler
 from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import RandomizedSearchCV, cross_val_score
 from sklearn.neural_network import MLPClassifier
-from sklearn.model_selection import cross_val_score
+from sklearn.pipeline import make_pipeline
+from sklearn.svm import SVC, LinearSVC
+from sklearn.tree import DecisionTreeClassifier
 
-from ray.util.joblib import register_ray
 import ray
+from ray.util.joblib import register_ray
 
 
 def test_register_ray():

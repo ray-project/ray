@@ -1,5 +1,7 @@
 import os
+
 import pytest
+
 import ray
 
 
@@ -32,8 +34,9 @@ def test_environ_file_on_linux(ray_start_10_cpus):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     os.environ["LC_ALL"] = "en_US.UTF-8"
     os.environ["LANG"] = "en_US.UTF-8"

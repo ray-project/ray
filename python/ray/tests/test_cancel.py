@@ -5,14 +5,14 @@ import time
 import pytest
 
 import ray
-from ray.exceptions import (
-    TaskCancelledError,
-    RayTaskError,
-    GetTimeoutError,
-    WorkerCrashedError,
-    ObjectLostError,
-)
 from ray._private.test_utils import SignalActor
+from ray.exceptions import (
+    GetTimeoutError,
+    ObjectLostError,
+    RayTaskError,
+    TaskCancelledError,
+    WorkerCrashedError,
+)
 
 
 def valid_exceptions(use_force):
@@ -308,6 +308,7 @@ def test_recursive_cancel(shutdown_only, use_force):
 
 if __name__ == "__main__":
     import os
+
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:

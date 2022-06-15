@@ -1,5 +1,6 @@
-import pytest
 import platform
+
+import pytest
 
 import ray
 from ray.cluster_utils import AutoscalingCluster

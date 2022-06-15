@@ -3,9 +3,9 @@ import sys
 import threading
 
 import pytest
-import ray
 
-from ray.exceptions import RayTaskError, RayActorError
+import ray
+from ray.exceptions import RayActorError, RayTaskError
 
 """This module tests stacktrace of Ray.
 
@@ -387,9 +387,10 @@ def test_serialization_error_message(shutdown_only):
 
 
 if __name__ == "__main__":
-    import pytest
     import os
     import sys
+
+    import pytest
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

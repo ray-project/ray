@@ -1,5 +1,5 @@
-from pathlib import Path
 import sys
+from pathlib import Path
 
 import pytest
 from pytest_lazyfixture import lazy_fixture
@@ -139,6 +139,7 @@ def test_runtime_context(start_cluster, working_dir):
 
 if __name__ == "__main__":
     import os
+
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:

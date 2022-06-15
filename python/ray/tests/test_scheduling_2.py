@@ -1,19 +1,20 @@
-import numpy as np
+import os
 import platform
-import pytest
 import sys
 import time
-import os
+
+import numpy as np
+import pytest
 
 import ray
 import ray._private.gcs_utils as gcs_utils
-from ray.util.client.ray_client_helpers import connect_to_client_or_not
 import ray.experimental.internal_kv as internal_kv
+from ray._private.test_utils import make_global_state_accessor, wait_for_condition
+from ray.util.client.ray_client_helpers import connect_to_client_or_not
 from ray.util.scheduling_strategies import (
-    PlacementGroupSchedulingStrategy,
     NodeAffinitySchedulingStrategy,
+    PlacementGroupSchedulingStrategy,
 )
-from ray._private.test_utils import wait_for_condition, make_global_state_accessor
 
 
 @pytest.mark.skipif(

@@ -4,16 +4,14 @@ import subprocess
 import sys
 import time
 
-import psutil
 import pytest
 import requests
-from ray._private.test_utils import (
-    run_string_as_driver,
-    wait_for_condition,
-)
 
 import ray
 from ray import ray_constants
+from ray._private.test_utils import run_string_as_driver, wait_for_condition
+
+import psutil
 
 
 def search_agents(cluster):

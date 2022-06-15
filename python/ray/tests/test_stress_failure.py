@@ -1,12 +1,13 @@
-import numpy as np
-import pytest
 import sys
 import time
 
+import numpy as np
+import pytest
+
 import ray
-from ray.cluster_utils import Cluster, cluster_not_supported
 import ray.ray_constants as ray_constants
 from ray._private.test_utils import get_error_message
+from ray.cluster_utils import Cluster, cluster_not_supported
 
 
 @pytest.mark.xfail(cluster_not_supported, reason="cluster not supported")
@@ -353,6 +354,7 @@ def test_driver_put_errors(ray_start_object_store_memory, error_pubsub):
 
 if __name__ == "__main__":
     import os
+
     import pytest
 
     if os.environ.get("PARALLEL_CI"):

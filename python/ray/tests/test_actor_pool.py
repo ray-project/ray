@@ -1,6 +1,7 @@
 import asyncio
 import sys
 import time
+
 import pytest
 
 import ray
@@ -253,6 +254,7 @@ def test_push(init):
 
 if __name__ == "__main__":
     import os
+
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:

@@ -1,11 +1,10 @@
-import pytest
 import sys
 import threading
+from http.client import HTTPConnection
 from time import sleep
 
-from pytest_docker_tools import container, fetch, network
-from pytest_docker_tools import wrappers
-from http.client import HTTPConnection
+import pytest
+from pytest_docker_tools import container, fetch, network, wrappers
 
 
 class Container(wrappers.Container):

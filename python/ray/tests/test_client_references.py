@@ -1,17 +1,18 @@
 from concurrent.futures import Future
 
 import pytest
+
+import ray as real_ray
+from ray._private.test_utils import object_memory_usage, wait_for_condition
+from ray._raylet import ActorID, ObjectRef
+from ray.core.generated.gcs_pb2 import ActorTableData
 from ray.util.client import _ClientContext
 from ray.util.client.common import ClientActorRef, ClientObjectRef
-from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.util.client.ray_client_helpers import (
+    ray_start_client_server,
     ray_start_client_server_pair,
     ray_start_cluster_client_server_pair,
 )
-from ray._private.test_utils import wait_for_condition, object_memory_usage
-import ray as real_ray
-from ray.core.generated.gcs_pb2 import ActorTableData
-from ray._raylet import ActorID, ObjectRef
 
 
 def test_client_object_ref_basics(ray_start_regular):
@@ -325,6 +326,7 @@ def test_named_actor_refcount(ray_start_regular):
 if __name__ == "__main__":
     import os
     import sys
+
     import pytest
 
     if os.environ.get("PARALLEL_CI"):

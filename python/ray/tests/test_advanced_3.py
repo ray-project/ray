@@ -1,24 +1,21 @@
 # coding: utf-8
 import logging
 import os
-import sys
+import pickle
 import socket
+import sys
 import time
 
 import numpy as np
-import pickle
 import pytest
 
 import ray
-import ray.util.accelerators
 import ray._private.utils
 import ray.cluster_utils
-import setproctitle
+import ray.util.accelerators
+from ray._private.test_utils import check_call_ray, wait_for_num_actors
 
-from ray._private.test_utils import (
-    check_call_ray,
-    wait_for_num_actors,
-)
+import setproctitle
 
 logger = logging.getLogger(__name__)
 

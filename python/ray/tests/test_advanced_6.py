@@ -1,21 +1,22 @@
 # coding: utf-8
 import logging
 import os
+import platform
+import signal
 import sys
 import time
 
-import psutil
-import platform
 import pytest
-import signal
 
 import ray
 import ray.cluster_utils
 from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
-    wait_for_pid_to_exit,
     wait_for_condition,
+    wait_for_pid_to_exit,
 )
+
+import psutil
 
 logger = logging.getLogger(__name__)
 

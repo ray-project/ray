@@ -1,6 +1,7 @@
-import pytest
 import sys
 import time
+
+import pytest
 
 import ray
 from ray import ray_constants
@@ -267,6 +268,7 @@ def test_namespace_validation(shutdown_only):
 
 if __name__ == "__main__":
     import os
+
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:

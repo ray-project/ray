@@ -2,9 +2,11 @@
 import asyncio
 import sys
 import threading
-import pytest
-import ray
 import time
+
+import pytest
+
+import ray
 
 
 # This tests the methods are executed in the correct eventloop.
@@ -164,6 +166,7 @@ def test_blocking_group_does_not_block_others(ray_start_regular_shared):
 
 if __name__ == "__main__":
     import os
+
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:

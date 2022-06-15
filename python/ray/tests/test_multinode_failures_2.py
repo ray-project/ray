@@ -5,8 +5,8 @@ import numpy as np
 import pytest
 
 import ray
-from ray._private.test_utils import get_other_nodes
 import ray.ray_constants as ray_constants
+from ray._private.test_utils import get_other_nodes
 
 
 @pytest.mark.skip(reason="No reconstruction for objects placed in plasma yet")
@@ -126,6 +126,7 @@ def test_actor_creation_node_failure(ray_start_cluster):
 
 if __name__ == "__main__":
     import os
+
     import pytest
 
     if os.environ.get("PARALLEL_CI"):

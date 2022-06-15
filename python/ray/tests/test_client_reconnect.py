@@ -1,24 +1,24 @@
-from concurrent import futures
 import asyncio
 import contextlib
 import os
-import threading
-import sys
-import grpc
-import numpy as np
-
-import time
 import random
-import pytest
+import sys
+import threading
+import time
+from concurrent import futures
 from typing import Any, Callable, Optional
 from unittest.mock import patch
+
+import grpc
+import numpy as np
+import pytest
 
 import ray
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
-from ray.util.client.common import CLIENT_SERVER_MAX_THREADS, GRPC_OPTIONS
 import ray.util.client.server.server as ray_client_server
 from ray._private.client_mode_hook import disable_client_hook
+from ray.util.client.common import CLIENT_SERVER_MAX_THREADS, GRPC_OPTIONS
 
 # At a high level, these tests rely on an extra RPC server sitting
 # between the client and the real Ray server to inject errors, drop responses

@@ -1,11 +1,10 @@
-import sys
 import os
+import sys
+
 import pytest
 
 import ray
-from ray._private.test_utils import (
-    run_string_as_driver_nonblocking,
-)
+from ray._private.test_utils import run_string_as_driver_nonblocking
 
 
 def test_simple(shutdown_only):

@@ -1,9 +1,10 @@
-from collections import defaultdict
 import multiprocessing
-import numpy as np
-import pytest
 import time
 import warnings
+from collections import defaultdict
+
+import numpy as np
+import pytest
 
 import ray
 from ray.cluster_utils import Cluster, cluster_not_supported
@@ -727,9 +728,10 @@ def test_maximize_concurrent_pull_race_condition(ray_start_cluster_head):
 
 
 if __name__ == "__main__":
-    import pytest
-    import sys
     import os
+    import sys
+
+    import pytest
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

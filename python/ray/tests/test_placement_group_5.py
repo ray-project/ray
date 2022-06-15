@@ -1,9 +1,10 @@
-import pytest
 import sys
-import ray
 
-from ray.util.client.ray_client_helpers import connect_to_client_or_not
+import pytest
+
+import ray
 from ray.tests.test_placement_group import are_pairwise_unique
+from ray.util.client.ray_client_helpers import connect_to_client_or_not
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
@@ -77,6 +78,7 @@ def test_placement_group_bin_packing_priority(
 
 if __name__ == "__main__":
     import os
+
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:

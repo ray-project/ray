@@ -7,10 +7,7 @@ import numpy as np
 import pytest
 
 import ray
-from ray._private.test_utils import (
-    wait_for_condition,
-    wait_for_pid_to_exit,
-)
+from ray._private.test_utils import wait_for_condition, wait_for_pid_to_exit
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 

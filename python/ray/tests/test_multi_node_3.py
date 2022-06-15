@@ -1,26 +1,27 @@
+import asyncio
 import os
-import pytest
 import subprocess
 import sys
-import asyncio
-
 from pathlib import Path
 
+import pytest
+
 import ray
-import psutil
 import ray.ray_constants as ray_constants
 from ray._private.services import REDIS_EXECUTABLE, _start_redis_instance
-from ray._private.utils import detect_fate_sharing_support
 from ray._private.test_utils import (
+    Semaphore,
     check_call_ray,
+    check_call_subprocess,
+    kill_process_by_name,
     run_string_as_driver,
     run_string_as_driver_nonblocking,
     wait_for_children_of_pid,
     wait_for_children_of_pid_to_exit,
-    kill_process_by_name,
-    Semaphore,
-    check_call_subprocess,
 )
+from ray._private.utils import detect_fate_sharing_support
+
+import psutil
 
 
 def test_calling_start_ray_head(call_ray_stop_only):

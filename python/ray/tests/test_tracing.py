@@ -2,9 +2,10 @@ import asyncio
 import glob
 import json
 import os
-import pytest
 import shutil
 from unittest.mock import patch
+
+import pytest
 
 import ray
 from ray._private.test_utils import check_call_ray
