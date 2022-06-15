@@ -32,10 +32,6 @@ from ray.core.generated import (
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvState as ProtoRuntimeEnvState,
 )
-from ray.experimental.internal_kv import (
-    _initialize_internal_kv,
-    _internal_kv_initialized,
-)
 from ray.runtime_env import RuntimeEnv, RuntimeEnvConfig
 
 default_logger = logging.getLogger(__name__)
@@ -184,8 +180,6 @@ class RuntimeEnvAgent(
         # to prevent multiple concurrent installs of the same env.
         self._env_locks: Dict[str, asyncio.Lock] = dict()
         self._gcs_aio_client = self._dashboard_agent.gcs_aio_client
-        _initialize_internal_kv(self._dashboard_agent.gcs_client)
-        assert _internal_kv_initialized()
 
         self._pip_plugin = PipPlugin(self._runtime_env_dir)
         self._conda_plugin = CondaPlugin(self._runtime_env_dir)

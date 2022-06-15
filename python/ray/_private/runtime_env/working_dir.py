@@ -18,7 +18,6 @@ from ray._private.runtime_env.packaging import (
 )
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.utils import get_directory_size_bytes, try_to_create_directory
-from ray.experimental.internal_kv import _internal_kv_initialized
 
 default_logger = logging.getLogger(__name__)
 
@@ -112,7 +111,6 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
         self._resources_dir = os.path.join(resources_dir, "working_dir_files")
         self._gcs_aio_client = gcs_aio_client
         try_to_create_directory(self._resources_dir)
-        assert _internal_kv_initialized()
 
     def delete_uri(
         self, uri: str, logger: Optional[logging.Logger] = default_logger
