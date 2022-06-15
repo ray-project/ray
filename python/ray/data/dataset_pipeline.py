@@ -83,6 +83,7 @@ class DatasetPipeline(Generic[T]):
         stages: List[Callable[[Dataset[Any]], Dataset[Any]]] = None,
         length: int = None,
         progress_bars: bool = progress_bar._enabled,
+        base_datasets_can_be_cleared: bool = False,
         _executed: List[bool] = None,
     ):
         """Construct a DatasetPipeline (internal API).
@@ -92,6 +93,7 @@ class DatasetPipeline(Generic[T]):
         ``DatasetPipeline.from_iterable()`` methods to construct a pipeline.
         """
         self._base_iterable = base_iterable
+        self._base_datasets_can_be_cleared = base_datasets_can_be_cleared
         self._stages = stages or []
         self._optimized_stages = None
         self._length = length
@@ -181,11 +183,14 @@ class DatasetPipeline(Generic[T]):
         # isn't empty), there will be output blocks created. In this case, those output
         # blocks are safe to clear right after read, because we know they will never be
         # accessed again, given that DatasetPipeline can be read at most once.
+        clear_block_after_read = (
+            len(self._stages) > 0 or self._base_datasets_can_be_cleared
+        )
         yield from batch_blocks(
             self._iter_blocks(),
             self._stats,
             prefetch_blocks=prefetch_blocks,
-            clear_block_after_read=(len(self._stages) > 0),
+            clear_block_after_read=clear_block_after_read,
             batch_size=batch_size,
             batch_format=batch_format,
             drop_last=drop_last,
@@ -291,6 +296,7 @@ class DatasetPipeline(Generic[T]):
     def _split(
         self, n: int, splitter: Callable[[Dataset], List["Dataset[T]"]]
     ) -> List["DatasetPipeline[T]"]:
+
         resources = {}
         if not ray.util.client.ray.is_connected():
             # Pin the coordinator (and any child actors) to the local node to avoid
@@ -342,11 +348,15 @@ class DatasetPipeline(Generic[T]):
                         self.warn_threshold *= 2
                 return lambda: ds
 
+        clear_block_after_read = (
+            len(self._stages) > 0 or self._base_datasets_can_be_cleared
+        )
         return [
             # Disable progress bars for the split readers since they would
             # overwhelm the console.
             DatasetPipeline(
                 SplitIterator(idx, coordinator),
+                base_datasets_can_be_cleared=clear_block_after_read,
                 length=self._length,
                 progress_bars=False,
             )

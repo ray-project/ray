@@ -131,21 +131,7 @@ class BlockList:
         The length of this iterator is not known until execution.
         """
         self._check_if_cleared()
-        outer = self
-
-        class Iter:
-            def __init__(self):
-                self._base_iter = outer.iter_blocks_with_metadata()
-
-            def __iter__(self):
-                return self
-
-            def __next__(self):
-                ref, meta = next(self._base_iter)
-                assert isinstance(ref, ray.ObjectRef), (ref, meta)
-                return ref
-
-        return Iter()
+        return iter(self._blocks)
 
     def get_blocks_with_metadata(self) -> List[Tuple[ObjectRef[Block], BlockMetadata]]:
         """Bulk version of iter_blocks_with_metadata().
