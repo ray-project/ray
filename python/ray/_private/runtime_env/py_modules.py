@@ -169,9 +169,8 @@ class PyModulesManager:
         logger.info(
             "Running py_modules wheel install command: %s", str(pip_install_cmd)
         )
-        # TODO(architkulkarni): Run this in a thread?
-        # await check_output_cmd(create_venv_cmd, logger=logger, cwd=cwd, env=env)
         try:
+            # TODO(architkulkarni): Use `await check_output_cmd` or similar.
             exit_code, output = exec_cmd_stream_to_logger(pip_install_cmd, logger)
         finally:
             if Path(wheel_file).exists():
