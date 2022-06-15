@@ -272,9 +272,10 @@ class ActorPoolStrategy(ComputeStrategy):
                 new_metadata = ray.get(new_metadata)
             return BlockList(new_blocks, new_metadata)
 
-        finally:
+        except Exception:
             for worker in workers:
                 ray.kill(worker)
+            raise
 
 
 def cache_wrapper(

@@ -1,6 +1,7 @@
 import math
 import os
 import random
+import signal
 import time
 
 import numpy as np
@@ -10,6 +11,8 @@ import pyarrow.parquet as pq
 import pytest
 
 import ray
+import ray.data.tests.util as util
+from ray._private.test_utils import wait_for_condition
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.lazy_block_list import LazyBlockList
@@ -3876,6 +3879,31 @@ def test_polars_lazy_import(shutdown_only):
 
     finally:
         ctx.use_polars = original_use_polars
+
+
+def test_actorpoolstrategy_apply_interrupt():
+    """Test that _apply kills the actor pool if an interrupt is raised."""
+    ray.init(include_dashboard=False, num_cpus=1)
+
+    cpus = ray.available_resources()["CPU"]
+    ds = ray.data.range(5)
+    aps = ray.data.ActorPoolStrategy(max_size=5)
+    blocks = ds._plan.execute()
+
+    # Start some actors, the first one sends a SIGINT, emulating a KeyboardInterrupt
+    def test_func(block):
+        for i, _ in enumerate(BlockAccessor.for_block(block).iter_rows()):
+            if i == 0:
+                os.kill(os.getpid(), signal.SIGINT)
+            else:
+                time.sleep(1000)
+                return block
+
+    with pytest.raises(ray.exceptions.RayTaskError):
+        aps._apply(test_func, {}, blocks, False)
+
+    # Check that all actors have been killed by counting the available CPUs
+    wait_for_condition(lambda: (ray.available_resources().get("CPU", 0) == cpus))
 
 
 if __name__ == "__main__":
