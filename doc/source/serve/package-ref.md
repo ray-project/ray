@@ -101,7 +101,7 @@
 ## Serve CLI
 
 ```{eval-rst}
-.. click:: ray.serve.scripts.cli
+.. click:: ray.serve.scripts:cli
    :prog: Serve CLI
    :show-nested:
 ```
