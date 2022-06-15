@@ -680,13 +680,12 @@ void NodeManager::HandleReleaseUnusedBundles(
     rpc::ReleaseUnusedBundlesReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Releasing unused bundles.";
-  std::unordered_set<BundleID, pair_hash> in_use_bundles_flat;
-  absl::flat_hash_map<PlacementGroupID, absl::flat_hash_set<int64_t>> in_use_bundles;
+  std::unordered_set<BundleID, pair_hash> in_use_bundles;
   for (int index = 0; index < request.bundles_in_use_size(); ++index) {
     const auto &bundle_id = request.bundles_in_use(index).bundle_id();
-    auto pg_id = PlacementGroupID::FromBinary(bundle_id.placement_group_id());
-    in_use_bundles[pg_id].insert(bundle_id.bundle_index());
-    in_use_bundles_flat.emplace(pg_id, bundle_id.bundle_index());
+    in_use_bundles.emplace(
+        std::make_pair(PlacementGroupID::FromBinary(bundle_id.placement_group_id()),
+                       bundle_id.bundle_index()));
   }
 
   // Kill all workers that are currently associated with the unused bundles.
@@ -698,17 +697,8 @@ void NodeManager::HandleReleaseUnusedBundles(
     auto &worker = worker_it.second;
     const auto &bundle_id = worker->GetBundleId();
     // We need to filter out the workers used by placement group.
-    const auto &pg_id = bundle_id.first;
-    const auto &bundle_index = bundle_id.second;
-    if (!pg_id.IsNil()) {
-      if (auto iter = in_use_bundles.find(pg_id);
-          iter == in_use_bundles.end() ||  // cannot find the placement group or
-          (bundle_index != -1 &&
-           iter->second.count(bundle_index) ==
-               0)  // bundle index is not used (-1 means any bundle is ok)
-      ) {
-        workers_associated_with_unused_bundles.emplace_back(worker);
-      }
+    if (!bundle_id.first.IsNil() && 0 == in_use_bundles.count(bundle_id)) {
+      workers_associated_with_unused_bundles.emplace_back(worker);
     }
   }
 
@@ -727,7 +717,7 @@ void NodeManager::HandleReleaseUnusedBundles(
   }
 
   // Return unused bundle resources.
-  placement_group_resource_manager_->ReturnUnusedBundle(in_use_bundles_flat);
+  placement_group_resource_manager_->ReturnUnusedBundle(in_use_bundles);
 
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
