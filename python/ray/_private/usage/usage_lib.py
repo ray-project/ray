@@ -172,12 +172,9 @@ def _put_library_usage(library_usage: str):
 
 def record_library_usage(library_usage: str):
     """Record library usage (e.g. which library is used)"""
-    # SANG-TODO
-    import inspect
-
-    print("SANG-TODO parent: ", inspect.stack()[2][3])
-    print("SANG-TODO called, ", library_usage)
+    print("SANG-TODO", library_usage)
     if library_usage in _recorded_library_usages:
+        print("SANG-TODO Not recorded.")
         return
     _recorded_library_usages.add(library_usage)
 
@@ -185,16 +182,20 @@ def record_library_usage(library_usage: str):
         # This happens if the library is imported before ray.init
         return
 
-    # Only report library usage from driver to reduce
-    # the load to kv store.
-    _put_library_usage(library_usage)
+    # Only report lib usage for driver / workers. Otherwise,
+    # it can be reported if the library is imported from
+    # e.g., API server.
+    if (ray.worker.global_worker.mode == ray.SCRIPT_MODE
+            or ray.worker.global_worker.mode == ray.WORKER_MODE):
+        print("SANG-TODO recorded.")
+        _put_library_usage(library_usage)
 
 
 def _put_pre_init_library_usages():
     assert _internal_kv_initialized()
     # NOTE: When the lib is imported from a worker, ray should
-    # always be initialized, so we need to only handle it
-    # from drivers.
+    # always be initialized, so there's no need to register the
+    # pre init hook.
     if ray.worker.global_worker.mode != ray.SCRIPT_MODE:
         return
     for library_usage in _recorded_library_usages:
