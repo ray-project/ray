@@ -7,11 +7,10 @@ import torch.nn as nn
 import ray
 import ray.train as train
 from ray.data import Dataset
-from ray.data.dataset_pipeline import DatasetPipeline
 from ray.train.torch import TorchTrainer
 
 
-def get_datasets(a=5, b=10, size=1000, split=0.8) -> Dict[str, DatasetPipeline]:
+def get_datasets(a=5, b=10, size=1000, split=0.8) -> Dict[str, Dataset]:
     def get_dataset(a, b, size) -> Dataset:
         items = [i / size for i in range(size)]
         dataset = ray.data.from_items([{"x": x, "y": a * x + b} for x in items])
@@ -23,12 +22,9 @@ def get_datasets(a=5, b=10, size=1000, split=0.8) -> Dict[str, DatasetPipeline]:
         [split]
     )
 
-    train_dataset_pipeline = train_dataset.repeat().random_shuffle_each_window()
-    validation_dataset_pipeline = validation_dataset.repeat()
-
     datasets = {
-        "train": train_dataset_pipeline,
-        "validation": validation_dataset_pipeline,
+        "train": train_dataset,
+        "validation": validation_dataset,
     }
 
     return datasets
