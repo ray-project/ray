@@ -472,4 +472,10 @@ assert ray.get(a.r.remote(10)) == 10
 if __name__ == "__main__":
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__]))
+    from ray._private.test_utils import run_pytest
+    import os
+
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(run_pytest(__file__))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

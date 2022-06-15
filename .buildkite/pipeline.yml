@@ -304,6 +304,11 @@
     - bash ./ci/ci.sh prepare_docker
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --test_tag_filters=client_tests,small_size_python_tests
+      --test_env=DOCKER_HOST=tcp://docker:2376
+      --test_env=DOCKER_TLS_VERIFY=1
+      --test_env=DOCKER_CERT_PATH=/certs/client
+      --test_env=DOCKER_TLS_CERTDIR=/certs
+      --test_env=PARALLEL_CI=1
       -- python/ray/tests/...
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --test_tag_filters=ray_ha
@@ -317,12 +322,18 @@
   parallelism: 3
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - bash ./ci/ci.sh prepare_docker
     - . ./ci/ci.sh test_large
 - label: ":python: (Medium A-J)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./ci/run/bazel_export_options)
+      --test_env=DOCKER_HOST=tcp://docker:2376
+      --test_env=DOCKER_TLS_VERIFY=1
+      --test_env=DOCKER_CERT_PATH=/certs/client
+      --test_env=DOCKER_TLS_CERTDIR=/certs
+      --test_env=PARALLEL_CI=1
       --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j
       python/ray/tests/...
 - label: ":python: (Medium K-Z)"
@@ -330,6 +341,11 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./ci/run/bazel_export_options)
+      --test_env=DOCKER_HOST=tcp://docker:2376
+      --test_env=DOCKER_TLS_VERIFY=1
+      --test_env=DOCKER_CERT_PATH=/certs/client
+      --test_env=DOCKER_TLS_CERTDIR=/certs
+      --test_env=PARALLEL_CI=1
       --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z
       python/ray/tests/...
 - label: ":redis: (External Redis) (Small & Client)"
@@ -337,6 +353,11 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_env=DOCKER_HOST=tcp://docker:2376
+      --test_env=DOCKER_TLS_VERIFY=1
+      --test_env=DOCKER_CERT_PATH=/certs/client
+      --test_env=DOCKER_TLS_CERTDIR=/certs
+      --test_env=PARALLEL_CI=1
       --test_tag_filters=client_tests,small_size_python_tests
       --test_env=TEST_EXTERNAL_REDIS=1
       -- python/ray/tests/...
@@ -351,6 +372,11 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_env=DOCKER_HOST=tcp://docker:2376
+      --test_env=DOCKER_TLS_VERIFY=1
+      --test_env=DOCKER_CERT_PATH=/certs/client
+      --test_env=DOCKER_TLS_CERTDIR=/certs
+      --test_env=PARALLEL_CI=1
       --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j
       --test_env=TEST_EXTERNAL_REDIS=1
       -- //python/ray/tests/...
@@ -359,6 +385,11 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_env=DOCKER_HOST=tcp://docker:2376
+      --test_env=DOCKER_TLS_VERIFY=1
+      --test_env=DOCKER_CERT_PATH=/certs/client
+      --test_env=DOCKER_TLS_CERTDIR=/certs
+      --test_env=PARALLEL_CI=1
       --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z
       --test_env=TEST_EXTERNAL_REDIS=1
       -- //python/ray/tests/...
@@ -392,6 +423,11 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_env=DOCKER_HOST=tcp://docker:2376
+      --test_env=DOCKER_TLS_VERIFY=1
+      --test_env=DOCKER_CERT_PATH=/certs/client
+      --test_env=DOCKER_TLS_CERTDIR=/certs
+      --test_env=PARALLEL_CI=1
       --test_tag_filters=client_tests,small_size_python_tests
       --test_env=RAY_use_ray_syncer=true
       -- python/ray/tests/...
@@ -406,6 +442,11 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_env=DOCKER_HOST=tcp://docker:2376
+      --test_env=DOCKER_TLS_VERIFY=1
+      --test_env=DOCKER_CERT_PATH=/certs/client
+      --test_env=DOCKER_TLS_CERTDIR=/certs
+      --test_env=PARALLEL_CI=1
       --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j
       --test_env=RAY_use_ray_syncer=true --define=RAY_STAGING_TESTS=1
       -- python/ray/tests/... -//python/ray/tests:test_actor_resources
@@ -414,6 +455,11 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_env=DOCKER_HOST=tcp://docker:2376
+      --test_env=DOCKER_TLS_VERIFY=1
+      --test_env=DOCKER_CERT_PATH=/certs/client
+      --test_env=DOCKER_TLS_CERTDIR=/certs
+      --test_env=PARALLEL_CI=1
       --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z
       --test_env=RAY_use_ray_syncer=true --define=RAY_STAGING_TESTS=1
       python/ray/tests/...

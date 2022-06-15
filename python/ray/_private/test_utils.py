@@ -1343,7 +1343,7 @@ def run_pytest(file_name, server_num=None, port_range=None):
     import pytest
 
     if sys.platform != "linux":
-        return sys.exit(pytest.main(["-vs", file_name]))
+        return pytest.main(["-vs", file_name])
     import socket
 
     import psutil
@@ -1395,4 +1395,4 @@ def run_pytest(file_name, server_num=None, port_range=None):
 
     for container in containers:
         container.kill()
-    sys.exit(ret)
+    return ret

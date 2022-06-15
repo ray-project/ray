@@ -184,4 +184,10 @@ def test_exponential_wait(shutdown_only):
 
 if __name__ == "__main__":
     os.environ["RAY_worker_cap_enabled"] = "true"
-    sys.exit(pytest.main(["-v", __file__]))
+    from ray._private.test_utils import run_pytest
+    import os
+
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(run_pytest(__file__))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

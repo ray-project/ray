@@ -219,4 +219,10 @@ def test_global_gc_actors(shutdown_only):
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-v", __file__]))
+    from ray._private.test_utils import run_pytest
+    import os
+
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(run_pytest(__file__))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

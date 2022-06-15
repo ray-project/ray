@@ -271,4 +271,10 @@ if __name__ == "__main__":
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"
     os.environ["LANG"] = "en_US.UTF-8"
-    sys.exit(pytest.main(["-v", __file__]))
+    from ray._private.test_utils import run_pytest
+    import os
+
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(run_pytest(__file__))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

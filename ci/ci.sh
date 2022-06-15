@@ -223,8 +223,16 @@ test_python() {
 test_large() {
   # shellcheck disable=SC2046
   bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE \
-      --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER \
-      --test_env=CI --test_tag_filters="large_size_python_tests_shard_${BUILDKITE_PARALLEL_JOB}"  "$@" \
+        --test_env=CONDA_SHLVL \
+        --test_env=CONDA_PREFIX \
+        --test_env=CONDA_DEFAULT_ENV \
+        --test_env=CONDA_PROMPT_MODIFIER \
+        --test_env=DOCKER_HOST=tcp://docker:2376 \
+        --test_env=DOCKER_TLS_VERIFY=1\
+        --test_env=DOCKER_CERT_PATH=/certs/client \
+        --test_env=DOCKER_TLS_CERTDIR=/certs \
+        --test_env=PARALLEL_CI=1 \
+        --test_env=CI --test_tag_filters="large_size_python_tests_shard_${BUILDKITE_PARALLEL_JOB}"  "$@" \
       -- python/ray/tests/...
 }
 
