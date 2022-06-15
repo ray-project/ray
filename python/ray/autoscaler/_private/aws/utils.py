@@ -3,6 +3,8 @@ from functools import lru_cache
 
 import boto3
 from boto3.exceptions import ResourceNotExistsError
+from boto3.resources.base import ServiceResource
+from botocore.client import BaseClient
 from botocore.config import Config
 
 from ray.autoscaler._private.cli_logger import cf, cli_logger
@@ -141,7 +143,9 @@ def boto_exception_handler(msg, *args, **kwargs):
 
 
 @lru_cache()
-def resource_cache(name, region, max_retries=BOTO_MAX_RETRIES, **kwargs):
+def resource_cache(
+    name, region, max_retries=BOTO_MAX_RETRIES, **kwargs
+) -> ServiceResource:
     cli_logger.verbose(
         "Creating AWS resource `{}` in `{}`", cf.bold(name), cf.bold(region)
     )
@@ -157,7 +161,7 @@ def resource_cache(name, region, max_retries=BOTO_MAX_RETRIES, **kwargs):
 
 
 @lru_cache()
-def client_cache(name, region, max_retries=BOTO_MAX_RETRIES, **kwargs):
+def client_cache(name, region, max_retries=BOTO_MAX_RETRIES, **kwargs) -> BaseClient:
     try:
         # try to re-use a client from the resource cache first
         return resource_cache(name, region, max_retries, **kwargs).meta.client
