@@ -11,7 +11,6 @@ import pyarrow.parquet as pq
 import pytest
 
 import ray
-import ray.data.tests.util as util
 from ray._private.test_utils import wait_for_condition
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.block_builder import BlockBuilder

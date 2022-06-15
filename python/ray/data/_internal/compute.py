@@ -1,4 +1,5 @@
 import collections
+import logging
 from typing import Any, Callable, List, Optional, Tuple, TypeVar, Union
 
 import ray
@@ -15,6 +16,8 @@ from ray.data.block import (
 )
 from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, DatasetContext
 from ray.util.annotations import DeveloperAPI, PublicAPI
+
+logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 U = TypeVar("U")
@@ -272,10 +275,14 @@ class ActorPoolStrategy(ComputeStrategy):
                 new_metadata = ray.get(new_metadata)
             return BlockList(new_blocks, new_metadata)
 
-        except Exception:
-            for worker in workers:
-                ray.kill(worker)
-            raise
+        except Exception as e:
+            try:
+                for worker in workers:
+                    ray.kill(worker)
+            except Exception as err:
+                logger.exception(f"Error killing workers: {err}")
+            finally:
+                raise e
 
 
 def cache_wrapper(
