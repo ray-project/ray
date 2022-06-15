@@ -3,8 +3,6 @@ package io.ray.serve;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
-import io.ray.serve.api.Serve;
-import io.ray.serve.common.Constants;
 import io.ray.serve.config.DeploymentConfig;
 import io.ray.serve.deployment.DeploymentVersion;
 import io.ray.serve.deployment.DeploymentWrapper;
@@ -22,7 +20,7 @@ import org.apache.commons.lang3.RandomStringUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-public class ReplicaSetTest {
+public class ReplicaSetTest extends BaseTest {
 
   private String deploymentName = "ReplicaSetTest";
 
@@ -40,10 +38,7 @@ public class ReplicaSetTest {
   @SuppressWarnings("unused")
   @Test
   public void assignReplicaTest() {
-    boolean inited = Ray.isInitialized();
-    String previous_namespace = System.getProperty("ray.job.namespace");
-    System.setProperty("ray.job.namespace", Constants.SERVE_NAMESPACE);
-    Ray.init();
+    init();
 
     try {
       String controllerName = deploymentName + "_controller";
@@ -92,15 +87,7 @@ public class ReplicaSetTest {
 
       Assert.assertEquals((String) resultRef.get(), deploymentName);
     } finally {
-      if (!inited) {
-        Ray.shutdown();
-      }
-      if (previous_namespace == null) {
-        System.clearProperty("ray.job.namespace");
-      } else {
-        System.setProperty("ray.job.namespace", previous_namespace);
-      }
-      Serve.setInternalReplicaContext(null);
+      shutdown();
     }
   }
 }

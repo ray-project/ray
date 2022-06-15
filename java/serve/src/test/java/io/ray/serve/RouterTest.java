@@ -22,14 +22,11 @@ import org.apache.commons.lang3.RandomStringUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-public class RouterTest {
+public class RouterTest extends BaseTest {
 
   @Test
   public void test() {
-    boolean inited = Ray.isInitialized();
-    String previous_namespace = System.getProperty("ray.job.namespace");
-    System.setProperty("ray.job.namespace", Constants.SERVE_NAMESPACE);
-    Ray.init();
+    init();
 
     try {
       String deploymentName = "RouterTest";
@@ -84,15 +81,7 @@ public class RouterTest {
       ObjectRef<Object> resultRef = router.assignRequest(requestMetadata.build(), null);
       Assert.assertEquals((String) resultRef.get(), deploymentName);
     } finally {
-      if (!inited) {
-        Ray.shutdown();
-      }
-      if (previous_namespace == null) {
-        System.clearProperty("ray.job.namespace");
-      } else {
-        System.setProperty("ray.job.namespace", previous_namespace);
-      }
-      Serve.setInternalReplicaContext(null);
+      shutdown();
     }
   }
 }
