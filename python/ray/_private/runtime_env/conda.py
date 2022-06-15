@@ -281,7 +281,7 @@ class CondaPlugin(RuntimeEnvPlugin):
     def get_uris(self, runtime_env: "RuntimeEnv") -> List[str]:  # noqa: F821
         """Return the conda URI from the RuntimeEnv if it exists, else return []."""
         conda_uri = runtime_env.conda_uri()
-        if conda_uri != "":
+        if conda_uri:
             return [conda_uri]
         return []
 

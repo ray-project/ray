@@ -103,17 +103,15 @@ class PluginCacheManager:
         logger: logging.Logger = default_logger,
     ):
         uris = self._plugin.get_uris(runtime_env)
-
-        if uris is not None:
-            for uri in uris:
-                if uri not in self._uri_cache:
-                    logger.debug(f"Cache miss for URI {uri}.")
-                    size_bytes = await self._plugin.create(
-                        uri, runtime_env, context, logger=logger
-                    )
-                    self._uri_cache.add(uri, size_bytes, logger=logger)
-                else:
-                    logger.debug(f"Cache hit for URI {uri}.")
-                    self._uri_cache.mark_used(uri, logger=logger)
+        for uri in uris:
+            if uri not in self._uri_cache:
+                logger.debug(f"Cache miss for URI {uri}.")
+                size_bytes = await self._plugin.create(
+                    uri, runtime_env, context, logger=logger
+                )
+                self._uri_cache.add(uri, size_bytes, logger=logger)
+            else:
+                logger.debug(f"Cache hit for URI {uri}.")
+                self._uri_cache.mark_used(uri, logger=logger)
 
         self._plugin.modify_context(uris, runtime_env, context)

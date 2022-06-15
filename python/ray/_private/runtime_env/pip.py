@@ -386,7 +386,7 @@ class PipPlugin(RuntimeEnvPlugin):
     def get_uris(self, runtime_env: "RuntimeEnv") -> List[str]:  # noqa: F821
         """Return the pip URI from the RuntimeEnv if it exists, else return []."""
         pip_uri = runtime_env.pip_uri()
-        if pip_uri != "":
+        if pip_uri:
             return [pip_uri]
         return []
 
