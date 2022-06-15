@@ -1,8 +1,7 @@
 from dataclasses import dataclass
-from typing import Optional, Union, Dict, Callable, List, TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Union
 
 from ray.actor import ActorHandle
-
 from ray.air.config import DatasetConfig
 
 if TYPE_CHECKING:
@@ -179,6 +178,7 @@ class DataParallelIngestSpec:
                     ).repeat()
                     # In windowed mode, we re-apply the preprocessor on each iteration.
                     if self.preprocessor:
+                        # TODO: Replace with self.preprocessor.transform when possible.
                         prep = self.preprocessor.transform_batch
                         dataset = dataset.map_batches(prep, batch_format="pandas")
                 else:

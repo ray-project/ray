@@ -149,7 +149,6 @@ class SklearnTrainer(BaseTrainer):
         scaling_config: Configuration for how to scale training.
             Only the ``trainer_resources`` key can be provided,
             as the training is not distributed.
-        dataset_config: Configuration for dataset ingest.
         run_config: Configuration for the execution of the training run.
         preprocessor: A ray.data.Preprocessor to preprocess the
             provided datasets.
