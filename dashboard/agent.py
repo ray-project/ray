@@ -12,7 +12,6 @@ import ray._private.services
 import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
-import ray.experimental.internal_kv as internal_kv
 import ray.ray_constants as ray_constants
 from ray._private.gcs_pubsub import GcsAioPublisher, GcsPublisher
 from ray._private.gcs_utils import GcsAioClient, GcsClient
@@ -250,12 +249,12 @@ class DashboardAgent:
                 )
 
         # Write the dashboard agent port to kv.
-        # TODO: Use async version if performance is an issue
         # -1 should indicate that http server is not started.
         http_port = -1 if not self.http_server else self.http_server.http_port
-        internal_kv._internal_kv_put(
-            f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{self.node_id}",
-            json.dumps([http_port, self.grpc_port]),
+        await self.gcs_aio_client.internal_kv_put(
+            f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{self.node_id}".encode(),
+            json.dumps([http_port, self.grpc_port]).encode(),
+            overwrite=True,
             namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
         )
 
