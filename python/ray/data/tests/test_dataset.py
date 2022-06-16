@@ -165,6 +165,22 @@ def test_callable_classes(shutdown_only):
     with pytest.raises(ValueError):
         ds.map(StatefulFn, compute="tasks").take()
 
+    # Need to specify compute explicitly.
+    with pytest.raises(ValueError):
+        ds.flat_map(StatefulFn).take()
+
+    # Need to specify actor compute strategy.
+    with pytest.raises(ValueError):
+        ds.flat_map(StatefulFn, compute="tasks")
+
+    # Need to specify compute explicitly.
+    with pytest.raises(ValueError):
+        ds.filter(StatefulFn).take()
+
+    # Need to specify actor compute strategy.
+    with pytest.raises(ValueError):
+        ds.filter(StatefulFn, compute="tasks")
+
     # map
     actor_reuse = ds.map(StatefulFn, compute="actors").take()
     assert sorted(actor_reuse) == list(range(10)), actor_reuse
@@ -1766,11 +1782,43 @@ def test_add_column(ray_start_regular_shared):
         ds = ray.data.range(5).add_column("value", 0)
 
 
-def test_map_batch(ray_start_regular_shared, tmp_path):
+def test_map_batches(ray_start_regular_shared, tmp_path):
     # Test input validation
     ds = ray.data.range(5)
     with pytest.raises(ValueError):
         ds.map_batches(lambda x: x + 1, batch_format="pyarrow", batch_size=-1).take()
+
+    class Foo:
+        def __call__(self, df):
+            return df
+
+    with pytest.raises(ValueError):
+        # CallableClass not supported for task compute strategy, which is the default.
+        ds.map_batches(Foo)
+
+    with pytest.raises(ValueError):
+        # CallableClass not supported for task compute strategy.
+        ds.map_batches(Foo, compute="tasks")
+
+    with pytest.raises(ValueError):
+        # fn_constructor_args and fn_constructor_kwargs only supported for actor compute
+        # strategy.
+        ds.map_batches(
+            lambda x: x,
+            compute="tasks",
+            fn_constructor_args=(1,),
+            fn_constructor_kwargs={"a": 1},
+        )
+
+    with pytest.raises(ValueError):
+        # fn_constructor_args and fn_constructor_kwargs only supported for callable
+        # class UDFs.
+        ds.map_batches(
+            lambda x: x,
+            compute="actors",
+            fn_constructor_args=(1,),
+            fn_constructor_kwargs={"a": 1},
+        )
 
     # Test pandas
     df = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
@@ -1889,7 +1937,7 @@ def test_map_batch(ray_start_regular_shared, tmp_path):
     assert values == [5, 7, 9]
 
 
-def test_map_batch_actors_preserves_order(ray_start_regular_shared):
+def test_map_batches_actors_preserves_order(ray_start_regular_shared):
     # Test that actor compute model preserves block order.
     ds = ray.data.range(10, parallelism=5)
     assert ds.map_batches(lambda x: x, compute="actors").take() == list(range(10))
