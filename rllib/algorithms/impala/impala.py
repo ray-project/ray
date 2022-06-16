@@ -797,7 +797,7 @@ class Impala(Algorithm):
 
     def process_trained_results(self) -> ResultDict:
         # Get learner outputs/stats from output queue.
-        learner_infos = []
+        learner_info = copy.deepcopy(self._learner_thread.learner_info)
         num_env_steps_trained = 0
         num_agent_steps_trained = 0
 
@@ -811,10 +811,9 @@ class Impala(Algorithm):
                 num_env_steps_trained += env_steps
                 num_agent_steps_trained += agent_steps
                 if learner_results:
-                    learner_infos.append(learner_results)
+                    learner_info.update(learner_results)
             else:
                 raise RuntimeError("The learner thread died in while training")
-        learner_info = copy.deepcopy(self._learner_thread.learner_info)
 
         # Update the steps trained counters.
         self._counters[STEPS_TRAINED_THIS_ITER_COUNTER] = num_agent_steps_trained
