@@ -278,6 +278,7 @@ def _ray_start_hook(ray_params, head):
     sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"),
 )
+@pytest.mark.exclusive
 def test_ray_start_hook(configure_lang, monkeypatch, tmp_path):
     monkeypatch.setenv("RAY_START_HOOK", "ray.tests.test_cli._ray_start_hook")
     runner = CliRunner()
@@ -393,6 +394,7 @@ def test_ray_up_docker(
 )
 @mock_ec2
 @mock_iam
+@pytest.mark.exclusive
 def test_ray_up_record(
     configure_lang, _unlink_test_ssh_key, configure_aws, monkeypatch, tmp_path
 ):
@@ -606,7 +608,7 @@ def test_ray_status(shutdown_only, monkeypatch):
     runner = CliRunner()
 
     def output_ready():
-        result = runner.invoke(scripts.status)
+        result = runner.invoke(scripts.status, ["--address", address])
         result.stdout
         if not result.exception and "memory" in result.output:
             return True
@@ -688,6 +690,10 @@ def test_ray_cluster_dump(configure_lang, configure_aws, _unlink_test_ssh_key):
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+        ret2 = pytest.main(["-m", "--boxed", "exclusive", "-vs", __file__])
+        ret1 = pytest.main(
+            ["-n", "auto", "--boxed", "-m", "not exclusive", "-vs", __file__]
+        )
+        sys.exit(0 if ret1 + ret2 == 0 else 1)
     else:
         sys.exit(pytest.main(["-sv", __file__]))
