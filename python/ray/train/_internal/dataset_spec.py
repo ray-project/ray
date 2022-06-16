@@ -137,14 +137,14 @@ class DataParallelIngestSpec:
 
             for key, dataset in datasets.items():
                 conf = self._config(key)
+                if conf.randomize_block_order:
+                    dataset = dataset.randomize_block_order()
                 if conf.transform:
                     if conf.use_stream_api and conf.stream_window_size > 0:
                         # In windowed mode, preprocessor is applied in streaming way.
                         new_datasets[key] = dataset
                     else:
                         # Window size of infinity is treated same as bulk mode.
-                        if conf.randomize_block_order:
-                            dataset = dataset.randomize_block_order()
                         new_datasets[key] = prep.transform(dataset)
                 else:
                     new_datasets[key] = dataset
@@ -172,9 +172,6 @@ class DataParallelIngestSpec:
 
         for key, dataset in self.preprocessed_datasets.items():
             config = self._config(key)
-
-            if config.randomize_block_order:
-                dataset = dataset.randomize_block_order()
 
             if config.use_stream_api:
                 if config.stream_window_size > 0:
