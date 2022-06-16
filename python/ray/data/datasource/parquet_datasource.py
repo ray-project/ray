@@ -57,7 +57,8 @@ def _deregister_parquet_file_fragment_serialization():
     ray.util.deregister_serializer(ParquetFileFragment)
 
 
-# easier to test when isolated from retry logic
+# This is the bare bone deserializing function with no retry
+# easier to mock its behavior for testing when isolated from retry logic
 def _deserialize_pieces(
     serialized_pieces: str,
 ) -> List["pyarrow._dataset.ParquetFileFragment"]:
@@ -69,7 +70,7 @@ def _deserialize_pieces(
     return pieces
 
 
-# this retry helps when the upstream datasource is not able to handle
+# This retry helps when the upstream datasource is not able to handle
 # overloaded read request or failed with some retriable failures.
 # For example when reading data from HA hdfs service, hdfs might
 # lose connection for some unknown reason expecially when
@@ -88,11 +89,15 @@ def _deserialize_pieces_with_retry(
             import time
             import random
 
-            retry_timing = "" if i == FILE_READING_RETRY - 1 else (f"Retry after {min_interval} sec. ")
+            retry_timing = (
+                ""
+                if i == FILE_READING_RETRY - 1
+                else (f"Retry after {min_interval} sec. ")
+            )
             log_only_show_in_1st_retry = (
                 ""
                 if i
-                else ( 
+                else (
                     f"If earlier read attempt threw certain Exception"
                     f", it may or may not be an issue depends on these retries "
                     f"succeed or not. serialized_pieces:{serialized_pieces}"
@@ -178,7 +183,7 @@ class ParquetDatasource(ParquetBaseDatasource):
             # Deserialize after loading the filesystem class.
             try:
                 _register_parquet_file_fragment_serialization()
-                pieces = _deserialize_pieces_with_retry(serialized_pieces)
+                pieces: List["pyarrow._dataset.ParquetFileFragment"] = _deserialize_pieces_with_retry(serialized_pieces)
             finally:
                 _deregister_parquet_file_fragment_serialization()
 
@@ -294,7 +299,7 @@ def _fetch_metadata_serialization_wrapper(
     # Deserialize after loading the filesystem class.
     try:
         _register_parquet_file_fragment_serialization()
-        pieces = _deserialize_pieces_with_retry(pieces)
+        pieces: List["pyarrow._dataset.ParquetFileFragment"] = _deserialize_pieces_with_retry(pieces)
     finally:
         _deregister_parquet_file_fragment_serialization()
 
