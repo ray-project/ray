@@ -74,10 +74,14 @@ def train_func(config):
 
     optimizer = torch.optim.SGD(model.parameters(), lr=lr)
 
+    results = []
     for _ in range(epochs):
         train_epoch(train_loader, model, loss_fn, optimizer)
         result = validate_epoch(validation_loader, model, loss_fn)
         train.report(**result)
+        results.append(result)
+    # return required for backwards compatibility with the old API
+    return results
 
 
 def train_linear(num_workers=2, use_gpu=False, epochs=3):
