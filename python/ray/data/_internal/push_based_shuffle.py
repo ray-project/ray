@@ -1,15 +1,15 @@
 import logging
 import math
-from typing import Callable, List, Optional, Dict, Any, Tuple, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
 
 import ray
+from ray.data._internal.block_list import BlockList
+from ray.data._internal.progress_bar import ProgressBar
+from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data._internal.shuffle import ShuffleOp
+from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-from ray.data.block import Block, BlockAccessor, BlockMetadata, BlockExecStats
-from ray.data._internal.shuffle import ShuffleOp
-from ray.data._internal.progress_bar import ProgressBar
-from ray.data._internal.block_list import BlockList
-from ray.data._internal.remote_fn import cached_remote_fn
 
 logger = logging.getLogger(__name__)
 
@@ -40,8 +40,13 @@ class _MergeTaskSchedule:
         if reducer_idx < self.merge_partition_size * self._partitions_with_extra_task:
             merge_idx = reducer_idx // (self.merge_partition_size + 1)
         else:
-            reducer_idx -= (self.merge_partition_size + 1) * self._partitions_with_extra_task
-            merge_idx = self._partitions_with_extra_task + reducer_idx // self.merge_partition_size
+            reducer_idx -= (
+                self.merge_partition_size + 1
+            ) * self._partitions_with_extra_task
+            merge_idx = (
+                self._partitions_with_extra_task
+                + reducer_idx // self.merge_partition_size
+            )
         assert merge_idx < self.num_merge_tasks_per_round
         return merge_idx
 
