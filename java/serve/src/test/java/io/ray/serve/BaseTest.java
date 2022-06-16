@@ -6,19 +6,25 @@ import io.ray.serve.common.Constants;
 
 public class BaseTest {
 
-  private boolean originInited = false;
+  private boolean previousInited = false;
+
+  private String previousNamespace = null;
 
   protected void init() {
-    originInited = Ray.isInitialized();
-    if (!originInited) {
-      System.setProperty("ray.job.namespace", Constants.SERVE_NAMESPACE);
-      Ray.init();
-    }
+    previousInited = Ray.isInitialized();
+    previousNamespace = System.getProperty("ray.job.namespace");
+    System.setProperty("ray.job.namespace", Constants.SERVE_NAMESPACE);
+    Ray.init();
   }
 
   protected void shutdown() {
-    if (!originInited) {
+    if (!previousInited) {
       Ray.shutdown();
+    }
+    if (previousNamespace == null) {
+      System.clearProperty("ray.job.namespace");
+    } else {
+      System.setProperty("ray.job.namespace", previousNamespace);
     }
     clear();
   }
