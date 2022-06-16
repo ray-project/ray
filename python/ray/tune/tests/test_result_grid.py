@@ -1,10 +1,22 @@
 import json
 import os
+
 import pytest
 
+import ray
 from ray import tune
 from ray.air.checkpoint import Checkpoint
 from ray.tune.result_grid import ResultGrid
+from ray.tune.trial import Trial
+from ray.util.ml_utils.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
+
+
+@pytest.fixture
+def ray_start_2_cpus():
+    address_info = ray.init(num_cpus=2)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
 
 
 def test_result_grid():
@@ -35,6 +47,34 @@ def test_result_grid_no_checkpoint():
     result_grid = ResultGrid(analysis)
     result = result_grid[0]
     assert result.checkpoint is None
+
+
+def test_result_grid_future_checkpoint(ray_start_2_cpus):
+    trial = Trial("__fake", stub=True)
+    trial.config = {"some_config": 1}
+    trial.last_result = {"some_result": 2, "config": trial.config}
+
+    checkpoint_data = {"checkpoint": "data"}
+    checkpoint = Checkpoint.from_dict(checkpoint_data)
+
+    trial.on_checkpoint(
+        _TrackedCheckpoint(
+            ray.put(checkpoint.to_bytes()), storage_mode=CheckpointStorage.MEMORY
+        )
+    )
+    trial.pickled_error_file = None
+    trial.error_file = None
+    result_grid = ResultGrid(None)
+
+    # Internal result grid conversion
+    result = result_grid._trial_to_result(trial)
+    assert isinstance(result.checkpoint, Checkpoint)
+    assert isinstance(result.metrics, dict)
+    assert isinstance(result.config, dict)
+    assert result.config == {"some_config": 1}
+    assert result.metrics["config"] == result.config
+
+    assert result.checkpoint.to_dict() == checkpoint_data
 
 
 def test_best_result():
