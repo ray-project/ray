@@ -21,9 +21,7 @@ from ray.rllib.utils.replay_buffers.utils import (
     validate_buffer_config,
     update_priorities_in_replay_buffer,
 )
-from ray.rllib.execution.rollout_ops import (
-    synchronous_parallel_sample,
-)
+from ray.rllib.execution.parallel_requests import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import (
     train_one_step,
     multi_gpu_train_one_step,

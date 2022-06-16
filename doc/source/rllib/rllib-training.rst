@@ -799,7 +799,7 @@ It also simplifies saving the trained agent. For example:
         trial=analysis.get_best_trial("episode_reward_mean"),
         metric="episode_reward_mean")
 
-    # or simply get the last checkpoint (with highest "training_iteration")
+    # or simply get the last checkpoint (with highest "training_step")
     last_checkpoint = analysis.get_last_checkpoint()
     # if there are multiple trials, select a specific trial or automatically
     # choose the best one according to a given metric

@@ -31,7 +31,8 @@ class StorageUnit(Enum):
     timesteps: One buffer slot per timestep.
     sequences: One buffer slot per sequence.
     episodes: One buffer slot per episode.
-    fragemts: One buffer slot per incoming batch.
+    fragments: One buffer slot per incoming batch.
+
     """
 
     TIMESTEPS = "timesteps"
@@ -117,6 +118,7 @@ class ReplayBuffer(ParallelIteratorWorker):
         >>> seq_n = buffer.sample(1) # doctest: +SKIP
         >>> print(seq_n["c"]) # doctest: +SKIP
         >>> # [1]
+
     """
 
     def __init__(
@@ -134,6 +136,7 @@ class ReplayBuffer(ParallelIteratorWorker):
             storage_unit: If not a StorageUnit, either 'timesteps', 'sequences' or
                 'episodes'. Specifies how experiences are stored.
             ``**kwargs``: Forward compatibility kwargs.
+
         """
 
         if storage_unit in ["timesteps", StorageUnit.TIMESTEPS]:
@@ -199,6 +202,7 @@ class ReplayBuffer(ParallelIteratorWorker):
         Args:
             batch: Batch to add.
             ``**kwargs``: Forward compatibility kwargs.
+
         """
         if not batch.count > 0:
             return
@@ -304,6 +308,7 @@ class ReplayBuffer(ParallelIteratorWorker):
 
         Returns:
             Concatenated batch of items.
+
         """
         if len(self) == 0:
             raise ValueError("Trying to sample from an empty buffer.")
@@ -409,6 +414,7 @@ class ReplayBuffer(ParallelIteratorWorker):
 
         Returns:
             Return value of the induced function call
+
         """
         return func(self, *args, **kwargs)
 

@@ -42,6 +42,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             alpha: How much prioritization is used
                 (0.0=no prioritization, 1.0=full prioritization).
             ``**kwargs``: Forward compatibility kwargs.
+
         """
         ReplayBuffer.__init__(self, capacity, storage_unit, **kwargs)
 
@@ -70,6 +71,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         Args:
             item: The item to be added.
             ``**kwargs``: Forward compatibility kwargs.
+
         """
         weight = kwargs.get("weight", None)
 
@@ -122,6 +124,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             Concatenated SampleBatch of items including "weights" and
             "batch_indexes" fields denoting IS of each sampled
             transition and original idxes in buffer of sampled experiences.
+
         """
         assert beta >= 0.0
 
@@ -171,6 +174,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             idxes: List of indices of items
             priorities: List of updated priorities corresponding to items at the
             idxes denoted by variable `idxes`.
+
         """
         # Making sure we don't pass in e.g. a torch tensor.
         assert isinstance(
@@ -199,6 +203,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
         Returns:
             A dictionary of stats about this buffer.
+
         """
         parent = ReplayBuffer.stats(self, debug)
         if debug:
@@ -233,6 +238,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         Args:
             state: The new state to set this buffer. Can be obtained by calling
             `self.get_state()`.
+
         """
         super().set_state(state)
         self._it_sum.set_state(state["sum_segment_tree"])

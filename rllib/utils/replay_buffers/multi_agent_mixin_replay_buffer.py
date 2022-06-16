@@ -34,14 +34,16 @@ logger = logging.getLogger(__name__)
 class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
     """This buffer adds replayed samples to a stream of new experiences.
 
-    - Any newly added batch (`add()`) is immediately returned upon
-    the next `sample` call (close to on-policy) as well as being moved
-    into the buffer.
+    - Any newly added batch ( `add()` ) is immediately returned upon
+      the next `sample` call (close to on-policy) as well as being moved
+      into the buffer.
+
     - Additionally, a certain number of old samples is mixed into the
-    returned sample according to a given "replay ratio".
+      returned sample according to a given "replay ratio".
+
     - If >1 calls to `add()` are made without any `sample()` calls
-    in between, all newly added batches are returned (plus some older samples
-    according to the "replay ratio").
+      in between, all newly added batches are returned (plus some older samples
+      according to the "replay ratio").
 
     Examples:
         # replay ratio 0.66 (2/3 replayed, 1/3 new samples):
@@ -92,7 +94,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
             learning_starts: Number of timesteps after which a call to
                 `replay()` will yield samples (before that, `replay()` will
                 return None).
-            capacity: The capacity of the buffer, measured in `storage_unit`.
+            capacity: The capacity of the buffer, measured in `storage_unit` .
             replay_sequence_length: The sequence length (T) of a single
                 sample. If > 1, we will sample B x T from this buffer.
             replay_burn_in: The burn-in length in case
@@ -119,7 +121,8 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
                 "capacity": 10, "storage_unit": "timesteps",
                 prioritized_replay_alpha: 0.5, prioritized_replay_beta: 0.5,
                 prioritized_replay_eps: 0.5}
-            **kwargs: Forward compatibility kwargs.
+            kwargs: Forward compatibility kwargs.
+
         """
         if not 0 <= replay_ratio <= 1:
             raise ValueError("Replay ratio must be within [0, 1]")
@@ -165,7 +168,8 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
 
         Args:
             batch: The batch to be added.
-            **kwargs: Forward compatibility kwargs.
+            kwargs: Forward compatibility kwargs.
+
         """
         # Make a copy so the replay buffer doesn't pin plasma memory.
         batch = batch.copy()
@@ -233,7 +237,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
         """Samples a batch of size `num_items` from a specified buffer.
 
         Concatenates old samples to new ones according to
-        self.replay_ratio. If not enough new samples are available, mixes in
+        `self.replay_ratio` . If not enough new samples are available, mixes in
         less old samples to retain self.replay_ratio on average. Returns
         an empty batch if there are no items in the buffer.
 
@@ -241,10 +245,11 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
             num_items: Number of items to sample from this buffer.
             policy_id: ID of the policy that produced the experiences to be
             sampled.
-            **kwargs: Forward compatibility kwargs.
+            kwargs: Forward compatibility kwargs.
 
         Returns:
-            Concatenated MultiAgentBatch of items.
+            Concatenated `MultiAgentBatch` of items.
+
         """
         # Merge kwargs, overwriting standard call arguments
         kwargs = merge_dicts_with_warning(self.underlying_buffer_call_args, kwargs)
@@ -344,6 +349,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
 
         Returns:
             The serializable local state.
+
         """
         data = {
             "last_added_batches": self.last_added_batches,
@@ -355,11 +361,12 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
     @DeveloperAPI
     @override(MultiAgentPrioritizedReplayBuffer)
     def set_state(self, state: Dict[str, Any]) -> None:
-        """Restores all local state to the provided `state`.
+        """Restores all local state to the provided `state` .
 
         Args:
             state: The new state to set this buffer. Can be obtained by
-                calling `self.get_state()`.
+                calling `self.get_state()` .
+
         """
         self.last_added_batches = state["last_added_batches"]
         MultiAgentPrioritizedReplayBuffer.set_state(state)
