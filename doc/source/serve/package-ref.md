@@ -80,7 +80,7 @@
         Shuts down the Serve application running on the Ray cluster.
 ```
 
-### Status:
+### Status
 
 #### Schema
 
