@@ -20,7 +20,7 @@ Ray AIR exposes a ``Preprocessor`` class for preprocessing. The ``Preprocessor``
 #. ``transform()``: Apply a transformation to a ``Dataset``.
    If the ``Preprocessor`` is stateful, then ``fit()`` must be called first.
    *This is typically called on the training, validation, test datasets.*
-#. ``transform_batch()``: Apply a transformation to a single :class:`batch <ray.air.predictor.DataBatchType>` of data.
+#. ``transform_batch()``: Apply a transformation to a single :class:`batch <ray.train.predictor.DataBatchType>` of data.
    *This is typically called on online or offline inference data.*
 #. ``fit_transform()``: Syntactic sugar for calling both ``fit()`` and ``transform()`` on a ``Dataset``.
 

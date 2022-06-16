@@ -1,15 +1,14 @@
-import pytest
 import numpy as np
+import pytest
 
 import ray
 from ray import train
-from ray.train.tensorflow import TensorflowTrainer
+from ray.air.examples.tf.tensorflow_linear_dataset_example import get_dataset
 from ray.air.examples.tf.tensorflow_linear_dataset_example import (
     train_func as tensorflow_linear_train_func,
-    get_dataset,
 )
-from ray.air.predictors.integrations.tensorflow import TensorflowPredictor
 from ray.train.constants import MODEL_KEY, TRAIN_DATASET_KEY
+from ray.train.tensorflow import TensorflowPredictor, TensorflowTrainer
 
 
 @pytest.fixture
@@ -85,7 +84,8 @@ def test_tensorflow_e2e(ray_start_4_cpus):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))

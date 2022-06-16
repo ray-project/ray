@@ -1,4 +1,5 @@
 # flake8: noqa
+# isort: skip_file
 
 # __air_tf_preprocess_start__
 import ray
@@ -91,8 +92,8 @@ print(result.metrics)
 # __air_tf_batchpred_start__
 import numpy as np
 
-from ray.air.batch_predictor import BatchPredictor
-from ray.air.predictors.integrations.tensorflow import TensorflowPredictor
+from ray.train.batch_predictor import BatchPredictor
+from ray.train.tensorflow import TensorflowPredictor
 
 
 batch_predictor = BatchPredictor.from_checkpoint(

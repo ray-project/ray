@@ -1,4 +1,5 @@
 # flake8: noqa
+# isort: skip_file
 
 # __air_pytorch_preprocess_start__
 
@@ -130,8 +131,8 @@ print(f"Last result: {result.metrics}")
 
 # # __air_pytorch_batchpred_start__
 # import random
-# from ray.air.batch_predictor import BatchPredictor
-# from ray.air.predictors.integrations.torch import TorchPredictor
+# from ray.train.batch_predictor import BatchPredictor
+# from ray.train.torch import TorchPredictor
 
 # batch_predictor = BatchPredictor.from_checkpoint(result.checkpoint, TorchPredictor)
 

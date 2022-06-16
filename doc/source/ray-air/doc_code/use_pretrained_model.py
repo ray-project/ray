@@ -1,10 +1,11 @@
 # flake8: noqa
+# isort: skip_file
 
 # __use_pretrained_model_start__
 import ray
 import tensorflow as tf
-from ray.air.batch_predictor import BatchPredictor
-from ray.air.predictors.integrations.tensorflow import (
+from ray.train.batch_predictor import BatchPredictor
+from ray.train.tensorflow import (
     to_air_checkpoint,
     TensorflowPredictor,
 )

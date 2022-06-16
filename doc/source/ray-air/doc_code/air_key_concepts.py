@@ -1,4 +1,5 @@
 # flake8: noqa
+# isort: skip_file
 
 # __air_preprocessors_start__
 import ray
@@ -68,8 +69,8 @@ print(best_result)
 # __air_tuner_end__
 
 # __air_batch_predictor_start__
-from ray.air.batch_predictor import BatchPredictor
-from ray.air.predictors.integrations.xgboost import XGBoostPredictor
+from ray.train.batch_predictor import BatchPredictor
+from ray.train.xgboost import XGBoostPredictor
 
 batch_predictor = BatchPredictor.from_checkpoint(result.checkpoint, XGBoostPredictor)
 
