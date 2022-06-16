@@ -147,8 +147,14 @@ MYPY_FILES=(
 
 ISORT_PATHS=(
     # TODO: Expand this list and remove once it is applied to the entire codebase.
-    'python/ray/autoscaler/_private/'
+    'python/ray/autoscaler/'
+    'doc/'
 )
+
+ISORT_GIT_LS_EXCLUDES=(
+  ':(exclude)doc/**/doc_code/*'
+)
+
 
 BLACK_EXCLUDES=(
     '--force-exclude' 'python/ray/cloudpickle/*'
@@ -316,8 +322,8 @@ format_changed() {
     # exist on both branches.
     MERGEBASE="$(git merge-base upstream/master HEAD)"
 
-    if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.py' &>/dev/null; then
-        git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
+    if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.py' "${ISORT_GIT_LS_EXCLUDES[@]}" &>/dev/null; then
+        git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' "${ISORT_GIT_LS_EXCLUDES[@]}" | xargs -P 5 \
             isort
     fi
 
