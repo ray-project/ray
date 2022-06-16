@@ -2,17 +2,16 @@ import numpy as np
 import unittest
 
 import ray
+import ray.rllib.algorithms.dqn as dqn
 import ray.rllib.algorithms.simple_q as simple_q
-from ray.rllib.algorithms.simple_q.simple_q_tf_policy import build_q_losses as loss_tf
-from ray.rllib.algorithms.simple_q.simple_q_torch_policy import (
-    build_q_losses as loss_torch,
-)
+from ray.rllib.algorithms.simple_q.simple_q_tf_policy import SimpleQTF2Policy
+from ray.rllib.algorithms.simple_q.simple_q_torch_policy import SimpleQTorchPolicy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.numpy import fc, one_hot, huber_loss
 from ray.rllib.utils.test_utils import (
     check,
-    check_compute_single_action,
+    check_compute_actions_v2,
     check_train_results,
     framework_iterator,
 )
@@ -48,7 +47,7 @@ class TestSimpleQ(unittest.TestCase):
                 check_train_results(results)
                 print(results)
 
-            check_compute_single_action(trainer)
+            check_compute_actions_v2(trainer)
 
     def test_simple_q_loss_function(self):
         """Tests the Simple-Q loss function results on all frameworks."""
@@ -138,7 +137,7 @@ class TestSimpleQ(unittest.TestCase):
                     feed_dict=policy._get_loss_inputs_dict(input_, shuffle=False),
                 )
             else:
-                out = (loss_torch if fw == "torch" else loss_tf)(
+                out = (SimpleQTorchPolicy if fw == "torch" else SimpleQTF2Policy).loss(
                     policy, policy.model, None, input_
                 )
             check(out, expected_loss, decimals=1)

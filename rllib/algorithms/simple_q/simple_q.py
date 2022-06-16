@@ -12,10 +12,13 @@ See `simple_q_[tf|torch]_policy.py` for the definition of the policy loss.
 import logging
 from typing import List, Optional, Type, Union
 
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.simple_q.simple_q_tf_policy import SimpleQTFPolicy
-from ray.rllib.algorithms.simple_q.simple_q_torch_policy import SimpleQTorchPolicy
 from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.simple_q.simple_q_tf_policy import (
+    SimpleQTF1Policy,
+    SimpleQTF2Policy,
+)
+from ray.rllib.algorithms.simple_q.simple_q_torch_policy import SimpleQTorchPolicy
 from ray.rllib.utils.metrics import SYNCH_WORKER_WEIGHTS_TIMER
 from ray.rllib.utils.replay_buffers.utils import (
     validate_buffer_config,
@@ -307,10 +310,11 @@ class SimpleQ(Algorithm):
     ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             return SimpleQTorchPolicy
+        elif config["framework"] == "tf":
+            return SimpleQTF1Policy
         else:
-            return SimpleQTFPolicy
+            return SimpleQTF2Policy
 
-    @ExperimentalAPI
     @override(Algorithm)
     def training_step(self) -> ResultDict:
         """Simple Q training iteration function.
