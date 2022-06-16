@@ -144,6 +144,11 @@ class AlphaStarConfig(appo.APPOConfig):
         # __sphinx_doc_end__
         # fmt: on
 
+        # TODO: IMPALA and APPO - for now - are back on the exec plan API
+        #  due to some buffer issues (fix in progress). AlphaStar is
+        #  not affected by this (never had an execution_plan implementation).
+        self._disable_execution_plan_api = True
+
     @override(appo.APPOConfig)
     def training(
         self,
