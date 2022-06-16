@@ -427,7 +427,7 @@ def test_output_on_driver_shutdown(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=16)
     # many_ppo.py script.
-    script = """
+    script = f"""
 import ray
 from ray.tune import run_experiments
 from ray.tune.utils.release_test_util import ProgressCallback
@@ -444,27 +444,27 @@ assert (num_nodes * object_store_memory + num_redis_shards * redis_max_memory <
 
 # Simulate a cluster on one machine.
 
-ray.init(address="auto")
+ray.init(address="{cluster.address}")
 
 # Run the workload.
 
 run_experiments(
-    {
-        "PPO": {
+    {{
+        "PPO": {{
             "run": "PPO",
             "env": "CartPole-v0",
             "num_samples": 10,
-            "config": {
+            "config": {{
                 "framework": "torch",
                 "num_workers": 1,
                 "num_gpus": 0,
                 "num_sgd_iter": 1,
-            },
-            "stop": {
+            }},
+            "stop": {{
                 "timesteps_total": 1,
-            },
-        }
-    },
+            }},
+        }}
+    }},
     callbacks=[ProgressCallback()])
     """
 
@@ -546,7 +546,7 @@ class Train:
     def __repr__(self):
         return "{actor_repr}"
 
-ray.init("auto")
+ray.init("{cluster.address}")
 actors = [Train.remote(config=None) for i in range(24)]
 for a in actors:
     ray.get(a.ready.remote())

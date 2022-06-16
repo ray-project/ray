@@ -539,7 +539,9 @@ def test_object_unpin_stress(ray_start_cluster):
 
     wait_for_condition(
         lambda: (
-            (f"Plasma memory usage {total_size} MiB") in memory_summary(stats_only=True)
+            (f"Plasma memory usage {total_size} MiB") in memory_summary(
+                address=cluster.address,
+                stats_only=True)
         )
     )
 

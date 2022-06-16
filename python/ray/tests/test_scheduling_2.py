@@ -519,6 +519,7 @@ def test_spread_scheduling_strategy(ray_start_cluster, connect_to_client):
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="FakeAutoscaler doesn't work on Windows"
 )
+@pytest.mark.exclusive
 def test_demand_report_for_node_affinity_scheduling_strategy(
     monkeypatch, shutdown_only
 ):
@@ -599,6 +600,7 @@ def test_demand_report_for_node_affinity_scheduling_strategy(
     platform.system() == "Windows", reason="FakeAutoscaler doesn't work on Windows"
 )
 @pytest.mark.skipif(os.environ.get("ASAN_OPTIONS") is not None, reason="ASAN is slow")
+@pytest.mark.exclusive
 def test_demand_report_when_scale_up(shutdown_only):
     # https://github.com/ray-project/ray/issues/22122
     from ray.cluster_utils import AutoscalingCluster
@@ -717,6 +719,8 @@ if __name__ == "__main__":
     import pytest
 
     if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+        ret1 = pytest.main(["-n", "auto", "--boxed", "-m", "not exclusive", "-vs", __file__])
+        ret2 = pytest.main(["--boxed", "-m", "exclusive", "-vs", __file__])
+        sys.exit(0 if ret1 + ret2 == 0 else 1)
     else:
         sys.exit(pytest.main(["-sv", __file__]))

@@ -308,7 +308,9 @@ def test_worker_exit_intended_system_exit_and_user_error(ray_start_cluster):
 if __name__ == "__main__":
     import pytest
 
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    # TODO: Fix this
+    # if os.environ.get("PARALLEL_CI"):
+    #     sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    # else:
+    #     sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

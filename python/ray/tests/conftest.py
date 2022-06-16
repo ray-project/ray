@@ -29,6 +29,7 @@ from ray._private.services import (
 from ray._private.test_utils import (
     init_error_pubsub,
     init_log_pubsub,
+    find_free_port,
     setup_tls,
     teardown_tls,
     get_and_run_node_killer,
@@ -65,10 +66,7 @@ def _setup_redis(request):
 
     external_redis_ports = param.get("external_redis_ports")
     if external_redis_ports is None:
-        with socket.socket() as s:
-            s.bind(("", 0))
-            port = s.getsockname()[1]
-        external_redis_ports = [port]
+        external_redis_ports = [find_free_port()]
     else:
         del param["external_redis_ports"]
     processes = []
@@ -363,9 +361,10 @@ def start_cluster(ray_start_cluster_enabled, request):
     cluster = ray_start_cluster_enabled
     cluster.add_node(num_cpus=4)
     if use_ray_client:
-        cluster.head_node._ray_params.ray_client_server_port = "10004"
+        port = find_free_port()
+        cluster.head_node._ray_params.ray_client_server_port = port
         cluster.head_node.start_ray_client_server()
-        address = "ray://localhost:10004"
+        address = f"ray://localhost:{port}"
     else:
         address = cluster.address
 
