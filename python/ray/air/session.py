@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING, Dict, Optional, Union
 
 from ray.air._internal.session import _get_session
 from ray.air.checkpoint import Checkpoint
-from ray.train._internal.session import TrainSession
+from ray.train.session import TrainSession
 
 if TYPE_CHECKING:
     from ray.data import Dataset, DatasetPipeline
