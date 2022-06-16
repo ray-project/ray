@@ -32,6 +32,7 @@ from ray.tune.result import (
     DEBUG_METRICS,
 )
 from ray.tune.resources import Resources
+from ray.tune.syncer import Syncer
 from ray.tune.utils.placement_groups import (
     PlacementGroupFactory,
     resource_dict_to_pg_factory,
@@ -251,7 +252,7 @@ class Trial:
         placement_group_factory: Optional[PlacementGroupFactory] = None,
         stopping_criterion: Optional[Dict[str, float]] = None,
         remote_checkpoint_dir: Optional[str] = None,
-        sync_function_tpl: Optional[str] = None,
+        custom_syncer: Optional[Syncer] = None,
         checkpoint_freq: int = 0,
         checkpoint_at_end: bool = False,
         sync_on_checkpoint: bool = True,
@@ -367,9 +368,9 @@ class Trial:
         else:
             self.remote_checkpoint_dir_prefix = None
 
-        if sync_function_tpl == "auto" or not isinstance(sync_function_tpl, str):
-            sync_function_tpl = None
-        self.sync_function_tpl = sync_function_tpl
+        if custom_syncer == "auto" or not isinstance(custom_syncer, Syncer):
+            custom_syncer = None
+        self.custom_syncer = custom_syncer
 
         self.checkpoint_freq = checkpoint_freq
         self.checkpoint_at_end = checkpoint_at_end

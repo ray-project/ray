@@ -35,7 +35,7 @@ class _GroupbyOp(ShuffleOp):
         meta = BlockAccessor.for_block(block).get_metadata(
             input_files=None, exec_stats=stats.build()
         )
-        return [meta] + parts
+        return parts + [meta]
 
     @staticmethod
     def reduce(

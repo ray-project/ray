@@ -1,14 +1,5 @@
 from dataclasses import dataclass
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    Dict,
-    List,
-    Mapping,
-    Optional,
-    Union,
-)
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Mapping, Optional, Union
 
 from ray.air.constants import WILDCARD_KEY
 from ray.tune.syncer import SyncConfig
@@ -267,6 +258,7 @@ class DatasetConfig:
         return new_config
 
 
+@dataclass
 @PublicAPI(stability="alpha")
 class FailureConfig:
     """Configuration related to failure handling of each run/trial.
