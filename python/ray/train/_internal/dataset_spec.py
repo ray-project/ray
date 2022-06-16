@@ -123,6 +123,12 @@ class DataParallelIngestSpec:
         Returns:
             Dict of transformed datasets.
         """
+
+        for key, dataset in list(datasets.items()):
+            conf = self._config(key)
+            if conf.randomize_block_order:
+                datasets[key] = dataset.randomize_block_order()
+
         if prep:
             ds_to_fit = None
             for k, conf in self.dataset_config.items():
@@ -137,8 +143,6 @@ class DataParallelIngestSpec:
 
             for key, dataset in datasets.items():
                 conf = self._config(key)
-                if conf.randomize_block_order:
-                    dataset = dataset.randomize_block_order()
                 if conf.transform:
                     if conf.use_stream_api and conf.stream_window_size > 0:
                         # In windowed mode, preprocessor is applied in streaming way.
@@ -187,6 +191,11 @@ class DataParallelIngestSpec:
                     # If the window size is infinity, the preprocessor is cached and
                     # we don't need to re-apply it each time.
                     dataset = dataset.repeat()
+                # Always re-randomize each window; this doesn't help with reducing
+                # cluster hot-spots since we already randomized the based blocks, but
+                # can help with improving randomness in combination with local shuffle.
+                if config.randomize_block_order:
+                    dataset = dataset.randomize_block_order_each_window()
 
             if config.global_shuffle:
                 if config.use_stream_api:
