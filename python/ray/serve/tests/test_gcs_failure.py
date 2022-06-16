@@ -44,9 +44,9 @@ def test_ray_internal_kv_timeout(serve_ha):  # noqa: F811
 
 @pytest.mark.parametrize("use_handle", [False, True])
 def test_controller_gcs_failure(serve_ha, use_handle):  # noqa: F811
-    @serve.deployment(version="1")
+    @serve.deployment
     def d(*args):
-        return f"1|{os.getpid()}"
+        return f"{os.getpid()}"
 
     def call():
         if use_handle:
@@ -54,47 +54,41 @@ def test_controller_gcs_failure(serve_ha, use_handle):  # noqa: F811
         else:
             ret = requests.get("http://localhost:8000/d").text
         print("RET=", ret)
-        return ret.split("|")[0], ret.split("|")[1]
+        return ret
 
     d.deploy()
-    val1, pid1 = call()
+    pid = call()
 
-    assert val1 == "1"
     # Kill the GCS
     print("Kill GCS")
     ray.worker._global_node.kill_gcs_server()
 
     # Make sure it's still working even when GCS is killed
-    val1, pid1 = call()
-    assert val1 == "1"
+    assert pid == call()
 
-    # Redeploy should fail
-    with pytest.raises(KVStoreError):
-        d.options(version="2").deploy()
-
-    # Make sure nothing changed
-    val1, pid1 = call()
-    assert val1 == "1"
     print("Start GCS")
-    # Bring GCS back
     ray.worker._global_node.start_gcs_server()
 
     # Make sure nothing changed even when GCS is back
-
     with pytest.raises(Exception):
-        # TODO: We also need to check PID, but there is
-        # a bug in ray core which will restart the actor
-        # when GCS restarts.
-        wait_for_condition(lambda: call()[0] != val1, timeout=4)
-
-    @serve.deployment(version="2")
-    def d(*args):
-        return f"2|{os.getpid()}"
+        wait_for_condition(lambda: call() != pid, timeout=4)
 
     # Redeploying with the same version and new code should do nothing.
     d.deploy()
 
-    assert call()[0] == "2"
+    # Make sure redeploy happens
+    assert pid != call()
+
+    pid = call()
+
+    print("Kill GCS")
+    ray.worker._global_node.kill_gcs_server()
+
+    # Redeploy should fail
+    with pytest.raises(KVStoreError):
+        d.options().deploy()
+
+    # TODO: Check status not change once ray serve cover rollback
 
 
 if __name__ == "__main__":
