@@ -163,9 +163,9 @@ class DatasetConfig:
     # False by default.
     global_shuffle: Optional[bool] = None
 
-    # Whether to randomize the iteration order over blocks. The main use case of this
+    # Whether to randomize the iteration order over blocks. The main purpose of this
     # is to prevent data fetching hotspots in the cluster when running many parallel
-    # workers / trials on the same data.
+    # workers / trials on the same data. We recommend enabling it always.
     # True by default.
     randomize_block_order: Optional[bool] = None
 
