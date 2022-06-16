@@ -73,6 +73,7 @@ class CQLConfig(SACConfig):
         # .reporting()
         self.min_sample_timesteps_per_iteration = 0
         self.min_train_timesteps_per_iteration = 100
+        self.num_workers = 0
         # fmt: on
         # __sphinx_doc_end__
 
