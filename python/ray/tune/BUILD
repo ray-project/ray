@@ -218,7 +218,7 @@ py_test(
 
 py_test(
     name = "test_result_grid",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_result_grid.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "tests_dir_R"],
