@@ -120,7 +120,7 @@ class TestPPO(unittest.TestCase):
         config = add_gpu_if_necessary(config)
         num_iterations = 2
 
-        for fw in framework_iterator(config, with_eager_tracing=True):
+        for fw in framework_iterator(config, frameworks="tf"):#with_eager_tracing=True):
             for env in ["FrozenLake-v1", "MsPacmanNoFrameskip-v4"]:
                 print("Env={}".format(env))
                 for lstm in [True, False]:

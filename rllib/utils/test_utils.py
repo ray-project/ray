@@ -86,7 +86,7 @@ def framework_iterator(
     if isinstance(config, dict):
         if config.get("num_gpus", 0) > 0:
             frameworks.remove("torch")
-    elif config.num_gpus > 0:
+    elif config.num_gpus > 0 and "torch" in frameworks:
         frameworks.remove("torch")
     #END: TEST
 
