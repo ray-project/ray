@@ -21,7 +21,7 @@ def ray_start_2_cpus():
     ray.shutdown()
 
 
-def test_result_grid():
+def test_result_grid(ray_start_2_cpus):
     def f(config):
         # simulating the case that no report is called in train.
         with tune.checkpoint_dir(step=0) as checkpoint_dir:
@@ -40,7 +40,7 @@ def test_result_grid():
     assert result.metrics["config"] == result.config
 
 
-def test_result_grid_no_checkpoint():
+def test_result_grid_no_checkpoint(ray_start_2_cpus):
     def f(config):
         pass
 
@@ -83,7 +83,7 @@ def test_result_grid_future_checkpoint(ray_start_2_cpus):
             assert info["info"] == 4
 
 
-def test_best_result():
+def test_best_result(ray_start_2_cpus):
     def f(config):
         for _ in range(2):
             tune.report(x=config["x"])
@@ -95,7 +95,7 @@ def test_best_result():
     assert best_result.metrics["x"] == 2
 
 
-def test_best_result_no_report():
+def test_best_result_no_report(ray_start_2_cpus):
     def f(config):
         pass
 
@@ -105,7 +105,7 @@ def test_best_result_no_report():
         result_grid.get_best_result(metric="x", mode="max")
 
 
-def test_no_metric_mode():
+def test_no_metric_mode(ray_start_2_cpus):
     def f(config):
         tune.report(x=1)
 
@@ -121,7 +121,7 @@ def test_no_metric_mode():
         result_grid.get_best_result(mode="max")
 
 
-def test_result_grid_df():
+def test_result_grid_df(ray_start_2_cpus):
     def f(config):
         tune.report(metric=config["nested"]["param"] * 1)
         tune.report(metric=config["nested"]["param"] * 4)
