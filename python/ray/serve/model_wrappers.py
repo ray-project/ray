@@ -1,18 +1,7 @@
 from collections import defaultdict
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    Dict,
-    List,
-    Optional,
-    Tuple,
-    Type,
-    Union,
-)
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type, Union
 
 import numpy as np
-
 import ray
 from ray import serve
 from ray._private.utils import import_attr
@@ -55,62 +44,87 @@ def _load_predictor_cls(
     return predictor_cls
 
 
-def collate_array(
-    input_list: List[np.ndarray],
-) -> Tuple[np.ndarray, Callable[[np.ndarray], List[np.ndarray]]]:
-    batch_size = len(input_list)
-    batched = np.stack(input_list)
+class BatchingManager:
+    """A collection of utilities for batching and splitting data."""
 
-    def unpack(output_arr):
-        if isinstance(output_arr, list):
-            return output_arr
-        if not isinstance(output_arr, np.ndarray):
+    @staticmethod
+    def batch_array(input_list: List[np.ndarray]) -> np.ndarray:
+        batched = np.stack(input_list)
+        return batched
+
+    @staticmethod
+    def split_array(output_array: np.ndarray, batch_size: int) -> List[np.ndarray]:
+        if not isinstance(output_array, np.ndarray):
             raise TypeError(
-                f"The output should be np.ndarray but Serve got {type(output_arr)}."
+                f"The output should be np.ndarray but Serve got {type(output_array)}."
             )
-        if len(output_arr) != batch_size:
+        if len(output_array) != batch_size:
             raise ValueError(
                 f"The output array should have shape of ({batch_size}, ...) "
-                f"because the input has {batch_size} entries "
-                f"but Serve got {output_arr.shape}"
+                f"but Serve got {output_array.shape}"
             )
-        return [arr.squeeze(axis=0) for arr in np.split(output_arr, batch_size, axis=0)]
+        return [
+            arr.squeeze(axis=0) for arr in np.split(output_array, batch_size, axis=0)
+        ]
 
-    return batched, unpack
+    @staticmethod
+    @require_packages(["pandas"])
+    def batch_dataframe(input_list: List["pd.DataFrame"]) -> "pd.DataFrame":
+        import pandas as pd
 
+        batched = pd.concat(input_list, axis="index", ignore_index=True, copy=False)
+        return batched
 
-def collate_dict_array(
-    input_list: List[Dict[str, np.ndarray]]
-) -> Tuple[
-    Dict[str, np.ndarray],
-    Callable[[Dict[str, np.ndarray]], List[Dict[str, np.ndarray]]],
-]:
-    batch_size = len(input_list)
+    @staticmethod
+    @require_packages(["pandas"])
+    def split_dataframe(
+        output_df: "pd.DataFrame", batch_size: int
+    ) -> List["pd.DataFrame"]:
+        if not isinstance(output_df, pd.DataFrame):
+            raise TypeError(
+                "The output should be a Pandas DataFrame but Serve got "
+                f"{type(output_df)}"
+            )
+        if len(output_df) % batch_size != 0:
+            raise ValueError(
+                f"The output dataframe should have length divisible by {batch_size}, "
+                f"but Serve got length {len(output_df)}."
+            )
+        return [df.reset_index(drop=True) for df in np.split(output_df, batch_size)]
 
-    # Check all input has the same dict keys.
-    input_keys = [set(item.keys()) for item in input_list]
-    batch_has_same_keys = input_keys.count(input_keys[0]) == batch_size
-    if not batch_has_same_keys:
-        raise ValueError(
-            f"The input batch contains dictionary of different keys: {input_keys}"
-        )
+    @staticmethod
+    def batch_dict_array(
+        input_list: List[Dict[str, np.ndarray]]
+    ) -> Dict[str, np.ndarray]:
+        batch_size = len(input_list)
 
-    # Turn list[dict[str, array]] to dict[str, List[array]]
-    key_to_list = defaultdict(list)
-    for single_dict in input_list:
-        for key, arr in single_dict.items():
-            key_to_list[key].append(arr)
+        # Check that all inputs have the same dict keys.
+        input_keys = [set(item.keys()) for item in input_list]
+        batch_has_same_keys = input_keys.count(input_keys[0]) == batch_size
+        if not batch_has_same_keys:
+            raise ValueError(
+                "The input batch's dictoinary must contain the same keys. "
+                f"Got different keys in some dictionaries: {input_keys}."
+            )
 
-    # Turn dict[str, List[array]] to dict[str, array]
-    batched_dict = {}
-    unpack_dict = {}
-    for key, list_of_arr in key_to_list.items():
-        arr, unpack_func = collate_array(list_of_arr)
-        batched_dict[key] = arr
-        unpack_dict[key] = unpack_func
+        # Turn list[dict[str, array]] to dict[str, List[array]]
+        key_to_list = defaultdict(list)
+        for single_dict in input_list:
+            for key, arr in single_dict.items():
+                key_to_list[key].append(arr)
 
-    def unpack(output_dict: Dict[str, np.ndarray]):
-        # short circuit behavior, assume users already unpacked the output for us.
+        # Turn dict[str, List[array]] to dict[str, array]
+        batched_dict = {}
+        for key, list_of_arr in key_to_list.items():
+            arr = BatchingManager.batch_array(list_of_arr)
+            batched_dict[key] = arr
+
+        return batched_dict
+
+    @staticmethod
+    def split_dict_array(
+        output_dict: Dict[str, np.ndarray], batch_size: int
+    ) -> List[Dict[str, np.ndarray]]:
         if isinstance(output_dict, list):
             return output_dict
 
@@ -120,43 +134,13 @@ def collate_dict_array(
             )
 
         split_list_of_dict = [{} for _ in range(batch_size)]
-        for key, arr_unpack_func in unpack_dict.items():
-            arr_list = arr_unpack_func(output_dict[key])
+        for key, result_arr in output_dict.items():
+            split_arrays = BatchingManager.split_array(result_arr, batch_size)
             # in place update each dictionary with the split array chunk.
-            for item, arr in zip(split_list_of_dict, arr_list):
+            for item, arr in zip(split_list_of_dict, split_arrays):
                 item[key] = arr
 
         return split_list_of_dict
-
-    return batched_dict, unpack
-
-
-@require_packages(["pandas"])
-def collate_dataframe(
-    input_list: List["pd.DataFrame"],
-) -> Tuple["pd.DataFrame", Callable[["pd.DataFrame"], List["pd.DataFrame"]]]:
-    import pandas as pd
-
-    batch_size = len(input_list)
-    batched = pd.concat(input_list, axis="index", ignore_index=True, copy=False)
-
-    def unpack(output_df):
-        if isinstance(output_df, list):
-            return output_df
-        if not isinstance(output_df, pd.DataFrame):
-            raise TypeError(
-                "The output should be a Pandas DataFrame but Serve got "
-                f"{type(output_df)}"
-            )
-        if len(output_df) % batch_size != 0:
-            raise ValueError(
-                f"The output dataframe should have length divisible by {batch_size}, "
-                f"because the input from {batch_size} different requests "
-                f"but Serve got length {len(output_df)}."
-            )
-        return [df.reset_index(drop=True) for df in np.split(output_df, batch_size)]
-
-    return batched, unpack
 
 
 class ModelWrapper(SimpleSchemaIngress):
@@ -222,22 +206,39 @@ class ModelWrapper(SimpleSchemaIngress):
 
             @serve.batch(**batching_params)
             async def predict_impl(inp: Union[List[np.ndarray], List["pd.DataFrame"]]):
-
+                batch_size = len(inp)
                 if isinstance(inp[0], np.ndarray):
-                    collate_func = collate_array
+                    batched = BatchingManager.batch_array(inp)
                 elif pd is not None and isinstance(inp[0], pd.DataFrame):
-                    collate_func = collate_dataframe
+                    batched = BatchingManager.batch_dataframe(inp)
+                elif isinstance(inp[0], dict):
+                    batched = BatchingManager.batch_dict_array(inp)
                 else:
                     raise ValueError(
-                        "ModelWrapper only accepts numpy array or dataframe as input "
+                        "ModelWrapper only accepts numpy array, dataframe, or dict of "
+                        "arrays as input "
                         f"but got types {[type(i) for i in inp]}"
                     )
 
-                batched, unpack = collate_func(inp)
                 out = self.model.predict(batched, **predict_kwargs)
                 if isinstance(out, ray.ObjectRef):
                     out = await out
-                return unpack(out)
+
+                if isinstance(out, np.ndarray):
+                    return BatchingManager.split_array(out, batch_size)
+                elif pd is not None and isinstance(out, pd.DataFrame):
+                    return BatchingManager.split_dataframe(out, batch_size)
+                elif isinstance(out, dict):
+                    return BatchingManager.split_dict_array(out, batch_size)
+                elif isinstance(out, list) and len(out) == batch_size:
+                    return out
+                else:
+                    raise ValueError(
+                        f"ModelWrapper only accepts list of length {batch_size}, numpy "
+                        "array, dataframe, or dict of array as output "
+                        f"but got types {type(out)} with length "
+                        f"{len(out) if hasattr(out, '__len__') else 'unknown'}."
+                    )
 
         self.predict_impl = predict_impl
 
