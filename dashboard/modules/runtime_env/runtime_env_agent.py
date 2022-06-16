@@ -236,7 +236,7 @@ class RuntimeEnvAgent(
 
     def unused_uris_processor(self, unused_uris: List[Tuple[str, UriType]]) -> None:
         for uri, uri_type in unused_uris:
-            self._uri_caches[uri_type.name].mark_unused(uri)
+            self._uri_caches[uri_type.value].mark_unused(uri)
 
     def unused_runtime_env_processor(self, unused_runtime_env: str) -> None:
         def delete_runtime_env():
