@@ -13,8 +13,7 @@ from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import ray
-import ray.cloudpickle as pickle
-from ray.air.checkpoint import Checkpoint
+from ray.air.checkpoint import _DICT_CHECKPOINT_FILE_NAME, Checkpoint
 from ray.tune.cloud import TrialCheckpoint
 from ray.tune.logger import Logger
 from ray.tune.resources import Resources
@@ -55,6 +54,8 @@ from ray.util.annotations import PublicAPI
 logger = logging.getLogger(__name__)
 
 SETUP_TIME_THRESHOLD = 10
+
+_METADATA_KEY = "_metadata"
 
 
 @PublicAPI
@@ -427,26 +428,46 @@ class Trainable:
             checkpoint_dir: Optional dir to place the checkpoint.
 
         Returns:
-            str: path that points to xxx.pkl file.
+            The given or created checkpoint directory.
 
         Note the return path should match up with what is expected of
         `restore()`.
         """
+        # Create checkpoint_xxxxx directory and drop checkpoint marker
         checkpoint_dir = TrainableUtil.make_checkpoint_dir(
             checkpoint_dir or self.logdir, index=self.iteration
         )
+
+        # User saves checkpoint
         checkpoint_dict_or_path = self.save_checkpoint(checkpoint_dir)
-        trainable_state = self.get_state()
-        checkpoint_path = TrainableUtil.process_checkpoint(
-            checkpoint_dict_or_path,
-            parent_dir=checkpoint_dir,
-            trainable_state=trainable_state,
-        )
+
+        # Get trainable metadata
+        metadata = self.get_state()
+
+        if isinstance(checkpoint_dict_or_path, dict):
+            metadata["relative_checkpoint_path"] = ""
+            metadata["saved_as_dict"] = True
+
+            checkpoint_dict_or_path[_METADATA_KEY] = metadata
+
+            Checkpoint.from_dict(checkpoint_dict_or_path).to_directory(checkpoint_dir)
+            # Re-drop marker
+            TrainableUtil.mark_as_checkpoint_dir(checkpoint_dir)
+
+        else:
+            # Get relative path to returned checkpoint
+            relative_checkpoint_path = os.path.relpath(
+                checkpoint_dict_or_path, checkpoint_dir
+            )
+            metadata["relative_checkpoint_path"] = relative_checkpoint_path
+            metadata["saved_as_dict"] = False
+
+        TrainableUtil.write_metadata(checkpoint_dir, metadata)
 
         # Maybe sync to cloud
         self._maybe_save_to_cloud(checkpoint_dir)
 
-        return checkpoint_path
+        return checkpoint_dir
 
     def _maybe_save_to_cloud(self, checkpoint_dir: str) -> bool:
         # Derived classes like the FunctionRunner might call this
@@ -503,11 +524,11 @@ class Trainable:
         Returns:
             Object holding checkpoint data.
         """
-        checkpoint_path = tempfile.mkdtemp("save_to_object", dir=self.logdir)
-        self.save(checkpoint_path)
+        temp_container_dir = tempfile.mkdtemp("save_to_object", dir=self.logdir)
+        checkpoint_dir = self.save(temp_container_dir)
 
-        obj_ref = Checkpoint.from_directory(checkpoint_path).to_bytes()
-        shutil.rmtree(checkpoint_path)
+        obj_ref = Checkpoint.from_directory(checkpoint_dir).to_bytes()
+        shutil.rmtree(temp_container_dir)
         return obj_ref
 
     def restore(self, checkpoint_path: str, checkpoint_node_ip: Optional[str] = None):
@@ -567,31 +588,38 @@ class Trainable:
                 f"Got checkpoint path: {checkpoint_path} and IP {checkpoint_node_ip}"
             )
 
-        if os.path.isdir(checkpoint_path):
-            metadata_file = os.path.join(checkpoint_path, ".tune_metadata")
+        saved_as_dict = os.path.exists(
+            os.path.join(checkpoint_path, _DICT_CHECKPOINT_FILE_NAME)
+        )
+
+        if saved_as_dict:
+            checkpoint_dict = Checkpoint.from_directory(checkpoint_path).to_dict()
+            checkpoint_dict.update(tune_checkpoint_path=checkpoint_path)
+
+            metadata = checkpoint_dict.pop(_METADATA_KEY, {})
+
+            to_load = checkpoint_dict
         else:
-            metadata_file = checkpoint_path + ".tune_metadata"
+            metadata = TrainableUtil.load_metadata(checkpoint_path)
 
-        with open(metadata_file, "rb") as f:
-            metadata = pickle.load(f)
+            relative_checkpoint_path = metadata["relative_checkpoint_path"]
+            to_load = os.path.join(checkpoint_path, relative_checkpoint_path)
 
+        # Set metadata
         self._experiment_id = metadata["experiment_id"]
         self._iteration = metadata["iteration"]
         self._timesteps_total = metadata["timesteps_total"]
         self._time_total = metadata["time_total"]
         self._episodes_total = metadata["episodes_total"]
-        saved_as_dict = metadata["saved_as_dict"]
-        if saved_as_dict:
-            with open(checkpoint_path, "rb") as loaded_state:
-                checkpoint_dict = pickle.load(loaded_state)
-            checkpoint_dict.update(tune_checkpoint_path=checkpoint_path)
-            self.load_checkpoint(checkpoint_dict)
-        else:
-            self.load_checkpoint(checkpoint_path)
+
+        # Actually load checkpoint
+        self.load_checkpoint(to_load)
+
         self._time_since_restore = 0.0
         self._timesteps_since_restore = 0
         self._iterations_since_restore = 0
         self._restored = True
+
         logger.info(
             "Restored on %s from checkpoint: %s", self.get_current_ip(), checkpoint_path
         )

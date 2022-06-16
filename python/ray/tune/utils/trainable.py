@@ -21,6 +21,16 @@ logger = logging.getLogger(__name__)
 @DeveloperAPI
 class TrainableUtil:
     @staticmethod
+    def write_metadata(checkpoint_dir: str, metadata: Dict) -> None:
+        with open(os.path.join(checkpoint_dir, ".tune_metadata"), "wb") as f:
+            pickle.dump(metadata, f)
+
+    @staticmethod
+    def load_metadata(checkpoint_dir: str) -> Dict:
+        with open(os.path.join(checkpoint_dir, ".tune_metadata"), "rb") as f:
+            return pickle.load(f)
+
+    @staticmethod
     def process_checkpoint(
         checkpoint: Union[Dict, str], parent_dir: str, trainable_state: Dict
     ) -> str:
@@ -35,8 +45,8 @@ class TrainableUtil:
         Or,
         - checkpoint_00000
         -- .is_checkpoint
+        -- .tune_metadata
         -- checkpoint (returned path)
-        -- checkpoint.tune_metadata
         """
         saved_as_dict = False
         if isinstance(checkpoint, string_types):
@@ -61,7 +71,7 @@ class TrainableUtil:
                 "Expected str or dict.".format(type(checkpoint))
             )
 
-        with open(checkpoint_path + ".tune_metadata", "wb") as f:
+        with open(os.path.join(parent_dir, ".tune_metadata"), "wb") as f:
             trainable_state["saved_as_dict"] = saved_as_dict
             pickle.dump(trainable_state, f)
         return checkpoint_path
@@ -159,9 +169,15 @@ class TrainableUtil:
         if override and os.path.exists(checkpoint_dir):
             shutil.rmtree(checkpoint_dir)
         os.makedirs(checkpoint_dir, exist_ok=True)
-        # Drop marker in directory to identify it as a checkpoint dir.
-        open(os.path.join(checkpoint_dir, ".is_checkpoint"), "a").close()
+
+        TrainableUtil.mark_as_checkpoint_dir(checkpoint_dir)
+
         return checkpoint_dir
+
+    @staticmethod
+    def mark_as_checkpoint_dir(checkpoint_dir: str):
+        """Drop marker in directory to identify it as a checkpoint dir."""
+        open(os.path.join(checkpoint_dir, ".is_checkpoint"), "a").close()
 
     @staticmethod
     def get_checkpoints_paths(logdir):
