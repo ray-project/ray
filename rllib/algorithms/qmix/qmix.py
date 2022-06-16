@@ -262,12 +262,10 @@ class QMix(SimpleQ):
             return {}
 
         # Learn on the training batch.
-        # Use simple optimizer (only for multi-agent or tf-eager; all other
-        # cases should use the multi-GPU optimizer, even if only using 1 GPU)
-        if self.config.get("simple_optimizer") is True:
-            train_results = train_one_step(self, train_batch)
-        else:
-            train_results = multi_gpu_train_one_step(self, train_batch)
+        # TODO: QMix Policy overrides only `learn_on_batch`, not
+        #  `learn_on_loaded_batch`, so we have to use the simple train_on_step()
+        #  utility here.
+        train_results = train_one_step(self, train_batch)
 
         # TODO: Move training steps counter update outside of `train_one_step()` method.
         # # Update train step counters.
