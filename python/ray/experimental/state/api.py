@@ -1,203 +1,272 @@
-import requests
 import warnings
-import urllib
-
-from typing import List, Tuple, Optional, Dict, Generator
-from dataclasses import fields
+import requests
 
 import ray
+import urllib
+
+from typing import List, Tuple, Optional, Dict, Generator, Union
+from dataclasses import fields
+
 from ray.experimental.state.common import (
-    SupportedFilterType,
-    ListApiOptions,
-    GetLogOptions,
-    DEFAULT_RPC_TIMEOUT,
     DEFAULT_LIMIT,
+    DEFAULT_RPC_TIMEOUT,
+    GetLogOptions,
+    ListApiOptions,
+    SupportedFilterType,
+    StateResource,
 )
-from ray.experimental.state.exception import RayStateApiException
+from ray.experimental.state.exception import RayStateApiException, ServerUnavailable
+from ray.dashboard.modules.dashboard_sdk import SubmissionClient
 
 """
-List APIs
+This file contains API client and methods for querying ray state.
+
+NOTE(rickyyx): This is still a work-in-progress API, and subject to changes.
+
+Usage:
+    1. [Recommended] With StateApiClient:
+    ```
+        client = StateApiClient(api_server_address="localhost:8265")
+        data = client.list(StateResource.NODES)
+        ...
+    ```
+
+    2. With SDK APIs:
+    The API creates a `StateApiClient` for each invocation. So if multiple
+    invocations of listing are used, it is better to reuse the `StateApiClient`
+    as suggested above.
+    ```
+        data = list_nodes(address="localhost:8265")
+    ```
 """
 
 
-# TODO(sang): Replace it with auto-generated methods.
-def _list(
-    resource_name: str,
-    options: ListApiOptions,
-    api_server_url: str = None,
-    _explain: bool = False,
-):
-    """Query the API server in address to list "resource_name" states.
+class StateApiClient(SubmissionClient):
+    """State API Client issues REST GET requests to the server for resource states.
 
     Args:
-        resource_name: The name of the resource. E.g., actor, task.
-        options: The options for the REST API that are translated to query strings.
-        api_server_url: The address of API server. If it is not give, it assumes the ray
-            is already connected and obtains the API server address using
-            Ray API.
-        explain: Print the API information such as API
-            latency or failed query information.
+        api_server_address: The address of API server. If it is not give, it assumes
+        the ray is already connected and obtains the API server address using Ray API.
     """
-    if api_server_url is None:
-        assert ray.is_initialized()
-        api_server_url = (
-            f"http://{ray.worker.global_worker.node.address_info['webui_url']}"
+
+    def __init__(
+        self,
+        api_server_address: str = None,
+    ):
+        super().__init__(
+            self._get_default_api_server_address()
+            if api_server_address is None
+            else api_server_address,
+            create_cluster_if_needed=False,
+            headers={"Content-Type": "application/json"},
         )
 
-    # We don't use `asdict` to avoid deepcopy.
-    # https://docs.python.org/3/library/dataclasses.html#dataclasses.asdict
-    params = {
-        "limit": options.limit,
-        "timeout": options.timeout,
-        "filter_keys": [],
-        "filter_values": [],
-    }
-    for filter in options.filters:
-        filter_k, filter_val = filter
-        params["filter_keys"].append(filter_k)
-        params["filter_values"].append(filter_val)
-    r = requests.request(
-        "GET",
-        f"{api_server_url}/api/v0/{resource_name}",
-        params=params,
-        headers={"Content-Type": "application/json"},
-        json=None,
-        timeout=options.timeout,
-    )
-    r.raise_for_status()
-
-    response = r.json()
-    if response["result"] is False:
-        raise RayStateApiException(
-            "API server internal error. See dashboard.log file for more details. "
-            f"Error: {response['msg']}"
+    @classmethod
+    def _get_default_api_server_address(cls) -> str:
+        assert (
+            ray.is_initialized()
+            and ray.worker.global_worker.node.address_info["webui_url"] is not None
         )
+        return f"http://{ray.worker.global_worker.node.address_info['webui_url']}"
 
-    if _explain:
+    def list(
+        self, resource: StateResource, options: ListApiOptions, _explain: bool = False
+    ) -> Union[Dict, List]:
+        """List resources states
+
+        Args:
+            resource_name: Resource names, i.e. 'jobs', 'actors', 'nodes',
+                see `StateResource` for details.
+            options: List options. See `ListApiOptions` for details.
+            _explain: Print the API information such as API
+                latency or failed query information.
+
+        Returns:
+            A list of queried result from `ListApiResponse`,
+
+        Raises:
+            This doesn't catch any exceptions raised when the underlying request
+            call raises exceptions. For example, it could raise `requests.Timeout`
+            when timeout occurs.
+
+        """
+        endpoint = f"/api/v0/{resource.value}"
+
+        # We don't use `asdict` to avoid deepcopy.
+        # https://docs.python.org/3/library/dataclasses.html#dataclasses.asdict
+        params = {
+            "limit": options.limit,
+            "timeout": options.timeout,
+            "filter_keys": [],
+            "filter_values": [],
+        }
+        for filter in options.filters:
+            filter_k, filter_val = filter
+            params["filter_keys"].append(filter_k)
+            params["filter_values"].append(filter_val)
+
+        response = None
+        try:
+            response = self._do_request(
+                "GET",
+                endpoint,
+                timeout=options.timeout,
+                params=params,
+            )
+
+            response.raise_for_status()
+        except Exception as e:
+            err_str = f"Failed to make request to {endpoint}. "
+
+            # Best-effort to give hints to users on potential reasons of connection
+            # failure.
+            if isinstance(e, requests.exceptions.ConnectionError):
+                err_str += (
+                    "Failed to connect to API server. Please check the API server "
+                    "log for details. Make sure dependencies are installed with "
+                    "`pip install ray[default]`."
+                )
+                raise ServerUnavailable(err_str)
+
+            if response is not None:
+                err_str += f"Response(url={response.url},status={response.status_code})"
+            raise RayStateApiException(err_str) from e
+
+        response = response.json()
+        if response["result"] is False:
+            raise RayStateApiException(
+                "API server internal error. See dashboard.log file for more details. "
+                f"Error: {response['msg']}"
+            )
+
         # Print warnings if anything was given.
-        warning_msg = response["data"].get("partial_failure_warning", None)
-        if warning_msg:
-            warnings.warn(warning_msg, RuntimeWarning)
+        warning_msgs = response["data"].get("partial_failure_warning", None)
+        if warning_msgs and _explain:
+            warnings.warn(warning_msgs, RuntimeWarning)
 
-    return r.json()["data"]["result"]
+        return response["data"]["result"]
+
+
+"""
+Convenient methods for list_<RESOURCE>
+
+Supported arguments to the below methods, see `ListApiOptions`:
+    address: The address of the Ray state server. If None, it assumes a running Ray
+        deployment exists and will query the GCS for auto-configuration.
+    filters: Optional list of filter key-value pair.
+    timeout: Time for the request.
+    limit: Limit of entries in the result
+"""
 
 
 def list_actors(
-    api_server_url: str = None,
-    filters: List[Tuple[str, SupportedFilterType]] = None,
+    address: Optional[str] = None,
+    filters: Optional[List[Tuple[str, SupportedFilterType]]] = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
 ):
-    return _list(
-        "actors",
-        ListApiOptions(limit=limit, timeout=timeout, filters=filters),
-        api_server_url=api_server_url,
+    return StateApiClient(api_server_address=address).list(
+        StateResource.ACTORS,
+        options=ListApiOptions(limit=limit, timeout=timeout, filters=filters),
         _explain=_explain,
     )
 
 
 def list_placement_groups(
-    api_server_url: str = None,
-    filters: List[Tuple[str, SupportedFilterType]] = None,
+    address: Optional[str] = None,
+    filters: Optional[List[Tuple[str, SupportedFilterType]]] = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
 ):
-    return _list(
-        "placement_groups",
-        ListApiOptions(limit=limit, timeout=timeout, filters=filters),
-        api_server_url=api_server_url,
+    return StateApiClient(api_server_address=address).list(
+        StateResource.PLACEMENT_GROUPS,
+        options=ListApiOptions(limit=limit, timeout=timeout, filters=filters),
         _explain=_explain,
     )
 
 
 def list_nodes(
-    api_server_url: str = None,
-    filters: List[Tuple[str, SupportedFilterType]] = None,
+    address: Optional[str] = None,
+    filters: Optional[List[Tuple[str, SupportedFilterType]]] = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
 ):
-    return _list(
-        "nodes",
-        ListApiOptions(limit=limit, timeout=timeout, filters=filters),
-        api_server_url=api_server_url,
+    return StateApiClient(api_server_address=address).list(
+        StateResource.NODES,
+        options=ListApiOptions(limit=limit, timeout=timeout, filters=filters),
         _explain=_explain,
     )
 
 
 def list_jobs(
-    api_server_url: str = None,
-    filters: List[Tuple[str, SupportedFilterType]] = None,
+    address: Optional[str] = None,
+    filters: Optional[List[Tuple[str, SupportedFilterType]]] = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
 ):
-    return _list(
-        "jobs",
-        ListApiOptions(limit=limit, timeout=timeout, filters=filters),
-        api_server_url=api_server_url,
+    return StateApiClient(api_server_address=address).list(
+        StateResource.JOBS,
+        options=ListApiOptions(limit=limit, timeout=timeout, filters=filters),
         _explain=_explain,
     )
 
 
 def list_workers(
-    api_server_url: str = None,
-    filters: List[Tuple[str, SupportedFilterType]] = None,
+    address: Optional[str] = None,
+    filters: Optional[List[Tuple[str, SupportedFilterType]]] = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
 ):
-    return _list(
-        "workers",
-        ListApiOptions(limit=limit, timeout=timeout, filters=filters),
-        api_server_url=api_server_url,
+    return StateApiClient(api_server_address=address).list(
+        StateResource.WORKERS,
+        options=ListApiOptions(limit=limit, timeout=timeout, filters=filters),
         _explain=_explain,
     )
 
 
 def list_tasks(
-    api_server_url: str = None,
-    filters: List[Tuple[str, SupportedFilterType]] = None,
+    address: Optional[str] = None,
+    filters: Optional[List[Tuple[str, SupportedFilterType]]] = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
 ):
-    return _list(
-        "tasks",
-        ListApiOptions(limit=limit, timeout=timeout, filters=filters),
-        api_server_url=api_server_url,
+    return StateApiClient(api_server_address=address).list(
+        StateResource.TASKS,
+        options=ListApiOptions(limit=limit, timeout=timeout, filters=filters),
         _explain=_explain,
     )
 
 
 def list_objects(
-    api_server_url: str = None,
-    filters: List[Tuple[str, SupportedFilterType]] = None,
+    address: Optional[str] = None,
+    filters: Optional[List[Tuple[str, SupportedFilterType]]] = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
 ):
-    return _list(
-        "objects",
-        ListApiOptions(limit=limit, timeout=timeout, filters=filters),
-        api_server_url=api_server_url,
+    return StateApiClient(api_server_address=address).list(
+        StateResource.OBJECTS,
+        options=ListApiOptions(limit=limit, timeout=timeout, filters=filters),
         _explain=_explain,
     )
 
 
 def list_runtime_envs(
-    api_server_url: str = None,
-    filters: List[Tuple[str, SupportedFilterType]] = None,
+    address: Optional[str] = None,
+    filters: Optional[List[Tuple[str, SupportedFilterType]]] = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
 ):
-    return _list(
-        "runtime_envs",
-        ListApiOptions(limit=limit, timeout=timeout, filters=filters),
-        api_server_url=api_server_url,
+    return StateApiClient(api_server_address=address).list(
+        StateResource.RUNTIME_ENVS,
+        options=ListApiOptions(limit=limit, timeout=timeout, filters=filters),
         _explain=_explain,
     )
 

@@ -2,6 +2,7 @@ import logging
 import os
 from typing import Dict, List, Optional
 import asyncio
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 
 from ray.experimental.internal_kv import _internal_kv_initialized
 from ray._private.runtime_env.context import RuntimeEnvContext
@@ -17,7 +18,10 @@ from ray._private.utils import try_to_create_directory
 default_logger = logging.getLogger(__name__)
 
 
-class JavaJarsManager:
+class JavaJarsPlugin(RuntimeEnvPlugin):
+
+    name = "java_jars"
+
     def __init__(self, resources_dir: str):
         self._resources_dir = os.path.join(resources_dir, "java_jars_files")
         try_to_create_directory(self._resources_dir)
