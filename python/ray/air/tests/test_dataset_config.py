@@ -211,6 +211,25 @@ class TestStream(DataParallelTrainer):
         )
 
 
+class TestBatch(DataParallelTrainer):
+    _dataset_config = {
+        "train": DatasetConfig(split=True, required=True, use_stream_api=False),
+    }
+
+    def __init__(self, check_results_fn, **kwargs):
+        def train_loop_per_worker():
+            data_shard = train.get_dataset_shard("train")
+            assert isinstance(data_shard, Dataset), data_shard
+            results = data_shard.take()
+            check_results_fn(data_shard, results)
+
+        super().__init__(
+            train_loop_per_worker=train_loop_per_worker,
+            scaling_config={"num_workers": 1},
+            **kwargs,
+        )
+
+
 def test_stream_inf_window_cache_prep(ray_start_4_cpus):
     def checker(shard, results):
         results = [sorted(r) for r in results]
@@ -291,6 +310,56 @@ def test_global_shuffle(ray_start_4_cpus):
         checker,
         datasets={"train": ds},
         dataset_config={"train": DatasetConfig(global_shuffle=True)},
+    )
+    test.fit()
+
+    def checker(shard, results):
+        assert len(results) == 5, results
+        stats = shard.stats()
+        assert "Stage 1 read->random_shuffle" in stats, stats
+
+    ds = ray.data.range_table(5)
+    test = TestBatch(
+        checker,
+        datasets={"train": ds},
+        dataset_config={"train": DatasetConfig(global_shuffle=True)},
+    )
+    test.fit()
+
+
+def test_randomize_block_order(ray_start_4_cpus):
+    def checker(shard, results):
+        stats = shard.stats()
+        assert "randomize_block_order: 5/5 blocks executed in 0s" in stats, stats
+
+    ds = ray.data.range_table(5)
+    test = TestStream(
+        checker,
+        datasets={"train": ds},
+    )
+    test.fit()
+
+    def checker(shard, results):
+        stats = shard.stats()
+        assert "randomize_block_order" not in stats, stats
+
+    ds = ray.data.range_table(5)
+    test = TestStream(
+        checker,
+        datasets={"train": ds},
+        dataset_config={"train": DatasetConfig(randomize_block_order=False)},
+    )
+    test.fit()
+
+    def checker(shard, results):
+        assert len(results) == 5, results
+        stats = shard.stats()
+        assert "randomize_block_order: 5/5 blocks executed in 0s" in stats, stats
+
+    ds = ray.data.range_table(5)
+    test = TestBatch(
+        checker,
+        datasets={"train": ds},
     )
     test.fit()
 

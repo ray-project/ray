@@ -187,7 +187,16 @@ class DataParallelIngestSpec:
                     dataset = dataset.repeat()
 
             if config.global_shuffle:
-                dataset = dataset.random_shuffle_each_window()
+                if config.use_stream_api:
+                    dataset = dataset.random_shuffle_each_window()
+                else:
+                    dataset = dataset.random_shuffle()
+
+            if config.randomize_block_order:
+                if config.use_stream_api:
+                    dataset = dataset.randomize_block_order_each_window()
+                else:
+                    dataset = dataset.randomize_block_order()
 
             if config.split:
                 dataset_splits = dataset.split(
