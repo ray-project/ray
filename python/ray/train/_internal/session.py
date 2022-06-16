@@ -60,7 +60,7 @@ class _TrainSession:
         local_rank: int,
         world_size: int,
         # TODO(xwjiang): Legacy Ray Train trainer clean up!
-        trial_info: Optional[TrialInfo],
+        trial_info: Optional[TrialInfo] = None,
         dataset_shard: Optional[Union[Dataset, DatasetPipeline]] = None,
         checkpoint: Optional[Union[Dict, Checkpoint]] = None,
         encode_data_fn: Callable = None,

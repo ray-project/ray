@@ -27,8 +27,9 @@ class TrainSession(Session):
     @property
     def loaded_checkpoint(self) -> Optional[Checkpoint]:
         ckpt = self._session.loaded_checkpoint
-        # The new API should only interact with Checkpoint object.
-        assert isinstance(ckpt, Checkpoint)
+        if ckpt:
+            # The new API should only interact with Checkpoint object.
+            assert isinstance(ckpt, Checkpoint)
         return ckpt
 
     @property
