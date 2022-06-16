@@ -6,10 +6,12 @@ from ray.rllib.algorithms.apex_dqn.apex_dqn import ApexDQN
 from ray.rllib.algorithms.ddpg.ddpg import DDPG, DDPGConfig
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import AlgorithmConfigDict
-from ray.rllib.utils.typing import PartialAlgorithmConfigDict
-from ray.rllib.utils.typing import ResultDict
-from ray.rllib.utils.deprecation import Deprecated, DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, Deprecated
+from ray.rllib.utils.typing import (
+    AlgorithmConfigDict,
+    PartialAlgorithmConfigDict,
+    ResultDict,
+)
 from ray.util.iter import LocalIterator
 
 

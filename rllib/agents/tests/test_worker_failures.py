@@ -1,5 +1,6 @@
-import gym
 import unittest
+
+import gym
 
 import ray
 from ray.rllib import _register_all
@@ -189,7 +190,8 @@ class IgnoresWorkerFailure(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

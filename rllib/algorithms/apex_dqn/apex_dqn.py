@@ -11,12 +11,12 @@ distributed prioritization of experience prior to storage in replay buffers.
 Detailed documentation:
 https://docs.ray.io/en/master/rllib-algorithms.html#distributed-prioritized-experience-replay-ape-x
 """  # noqa: E501
-import queue
-from collections import defaultdict
 import copy
 import platform
+import queue
 import random
-from typing import Dict, List, Type, Optional, Callable
+from collections import defaultdict
+from typing import Callable, Dict, List, Optional, Type
 
 import ray
 from ray.actor import ActorHandle
@@ -29,13 +29,11 @@ from ray.rllib.execution.common import (
     STEPS_TRAINED_COUNTER,
     STEPS_TRAINED_THIS_ITER_COUNTER,
 )
-from ray.rllib.execution.parallel_requests import (
-    AsyncRequestsManager,
-)
+from ray.rllib.execution.parallel_requests import AsyncRequestsManager
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.actors import create_colocated_actors
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated, DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, Deprecated
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
     NUM_AGENT_STEPS_SAMPLED,
@@ -49,8 +47,8 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.typing import (
     AlgorithmConfigDict,
-    ResultDict,
     PartialAlgorithmConfigDict,
+    ResultDict,
 )
 from ray.tune.trainable import Trainable
 from ray.tune.utils.placement_groups import PlacementGroupFactory
