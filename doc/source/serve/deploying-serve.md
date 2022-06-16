@@ -20,14 +20,16 @@ Once {mod}`serve.start <ray.serve.start>` has been called, further API calls can
 The Serve instance will be torn down when the script exits.
 
 When running on a long-lived Ray cluster (e.g., one started using `ray start` and connected
-to using `ray.init(address="auto", namespace="serve")`, you can also deploy a Ray Serve instance as a long-running
+to using `ray.init(address="auto")`, you can also deploy a Ray Serve instance as a long-running
 service using `serve.start(detached=True)`. In this case, the Serve instance will continue to
 run on the Ray cluster even after the script that calls it exits. If you want to run another script
 to update the Serve instance, you can run another script that connects to the same Ray cluster and makes further API calls (e.g., to create, update, or delete a deployment). Note that there can only be one detached Serve instance on each Ray cluster.
 
-All non-detached Serve instances will be started in the current namespace that was specified when connecting to the cluster. If a namespace is specified for a detached Serve instance, it will be used. Otherwise if the current namespace is anonymous, the Serve instance will be started in the `serve` namespace.
+:::{note}
+All Serve actors– including the Serve controller, the HTTP proxies, and the deployment replicas– run in the `"serve"` namespace, even if the Ray driver namespace is different.
+:::
 
-If `serve.start()` is called again in a process in which there is already a running Serve instance, Serve will re-connect to the existing instance (regardless of whether the original instance was detached or not). To reconnect to a Serve instance that exists in the Ray cluster but not in the current process, connect to the cluster with the same namespace that was specified when starting the instance and run `serve.start()`.
+If `serve.start()` is called again in a process in which there is already a running Serve instance, Serve will re-connect to the existing instance (regardless of whether the original instance was detached or not). To reconnect to a Serve instance that exists in the Ray cluster but not in the current process, connect to the cluster and run `serve.start()`.
 
 ## Deploying on a Single Node
 
@@ -57,7 +59,7 @@ while True:
     print(serve.list_deployments())
 ```
 
-2. First running `ray start --head` on the machine, then connecting to the running local Ray cluster using `ray.init(address="auto", namespace="serve")` in your Serve script(s) (this is the Ray namespace, not Kubernetes namespace, and you can specify any namespace that you like). You can run multiple scripts to update your deployments over time.
+2. First running `ray start --head` on the machine, then connecting to the running local Ray cluster using `ray.init(address="auto")` in your Serve script(s). You can run multiple scripts to update your deployments over time.
 
 ```bash
 ray start --head # Start local Ray cluster.
@@ -169,7 +171,7 @@ With the cluster now running, we can run a simple script to start Ray Serve and 
 > from ray import serve
 >
 > # Connect to the running Ray cluster.
-> ray.init(address="auto", namespace="serve")
+> ray.init(address="auto")
 > # Bind on 0.0.0.0 to expose the HTTP server on external IPs.
 > serve.start(detached=True, http_options={"host": "0.0.0.0"})
 >
