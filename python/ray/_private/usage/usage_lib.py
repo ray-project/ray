@@ -220,7 +220,6 @@ def _put_library_usage(library_usage: str):
             lib_usage_recorder = LibUsageRecorder(ray._private.utils.get_ray_temp_dir())
             lib_usage_recorder.write(library_usage)
         except Exception as e:
-            print("SANG-TODO", e)
             logger.debug(f"Failed to write a library usage to the home folder, {e}")
 
 
