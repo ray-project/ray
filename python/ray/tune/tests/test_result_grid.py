@@ -1,11 +1,13 @@
 import json
 import os
+import pickle
 
 import pytest
 
 import ray
 from ray import tune
 from ray.air.checkpoint import Checkpoint
+from ray.tune.registry import get_trainable_cls
 from ray.tune.result_grid import ResultGrid
 from ray.tune.trial import Trial
 from ray.util.ml_utils.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
@@ -50,17 +52,17 @@ def test_result_grid_no_checkpoint():
 
 
 def test_result_grid_future_checkpoint(ray_start_2_cpus):
+    trainable_cls = get_trainable_cls("__fake")
     trial = Trial("__fake", stub=True)
     trial.config = {"some_config": 1}
     trial.last_result = {"some_result": 2, "config": trial.config}
 
-    checkpoint_data = {"checkpoint": "data"}
-    checkpoint = Checkpoint.from_dict(checkpoint_data)
+    trainable = ray.remote(trainable_cls).remote()
+    ray.get(trainable.set_info.remote({"info": 4}))
+    checkpoint_data = trainable.save.remote()
 
     trial.on_checkpoint(
-        _TrackedCheckpoint(
-            ray.put(checkpoint.to_bytes()), storage_mode=CheckpointStorage.MEMORY
-        )
+        _TrackedCheckpoint(checkpoint_data, storage_mode=CheckpointStorage.MEMORY)
     )
     trial.pickled_error_file = None
     trial.error_file = None
@@ -74,7 +76,11 @@ def test_result_grid_future_checkpoint(ray_start_2_cpus):
     assert result.config == {"some_config": 1}
     assert result.metrics["config"] == result.config
 
-    assert result.checkpoint.to_dict() == checkpoint_data
+    # Load checkpoint data (see ray.rllib.algorithms.mock.MockTrainer definition)
+    with result.checkpoint.as_directory() as checkpoint_dir:
+        with open(os.path.join(checkpoint_dir, "mock_agent.pkl"), "rb") as f:
+            info = pickle.load(f)
+            assert info["info"] == 4
 
 
 def test_best_result():

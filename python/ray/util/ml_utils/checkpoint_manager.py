@@ -6,6 +6,7 @@ import logging
 import numbers
 import os
 import shutil
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
@@ -131,7 +132,13 @@ class _TrackedCheckpoint:
             checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_data)
             checkpoint = Checkpoint.from_directory(checkpoint_dir)
         elif isinstance(checkpoint_data, bytes):
-            checkpoint = Checkpoint.from_bytes(checkpoint_data)
+            with tempfile.mkdtemp() as tmpdir:
+                TrainableUtil.create_from_pickle(checkpoint_data, tmpdir)
+                # Double wrap in checkpoint so we hold the data in memory and
+                # can remove the temp directory
+                checkpoint = Checkpoint.from_dict(
+                    Checkpoint.from_directory(tmpdir).to_dict()
+                )
         elif isinstance(checkpoint_data, dict):
             checkpoint = Checkpoint.from_dict(checkpoint_data)
         else:
