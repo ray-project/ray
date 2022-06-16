@@ -41,28 +41,24 @@ Note that it is also possible to configure the interval using the environment va
 To see collected/reported data, see `usage_stats.json` inside a temp
 folder (e.g., /tmp/ray/session_[id]/*).
 """
-import os
-import uuid
-import sys
 import json
 import logging
+import os
+import sys
 import time
+import uuid
+from dataclasses import asdict, dataclass
+from enum import Enum, auto
+from pathlib import Path
+from typing import List, Optional
+
+import requests
 import yaml
 
-from dataclasses import dataclass, asdict
-from typing import Optional, List
-from pathlib import Path
-from enum import Enum, auto
-
 import ray
-import requests
-
-import ray.ray_constants as ray_constants
 import ray._private.usage.usage_constants as usage_constant
-from ray.experimental.internal_kv import (
-    _internal_kv_put,
-    _internal_kv_initialized,
-)
+import ray.ray_constants as ray_constants
+from ray.experimental.internal_kv import _internal_kv_initialized, _internal_kv_put
 
 logger = logging.getLogger(__name__)
 
@@ -184,14 +180,21 @@ def record_library_usage(library_usage: str):
         # This happens if the library is imported before ray.init
         return
 
-    # Only report library usage from driver to reduce
-    # the load to kv store.
-    if ray.worker.global_worker.mode == ray.SCRIPT_MODE:
+    # Only report lib usage for driver / workers. Otherwise,
+    # it can be reported if the library is imported from
+    # e.g., API server.
+    if (
+        ray.worker.global_worker.mode == ray.SCRIPT_MODE
+        or ray.worker.global_worker.mode == ray.WORKER_MODE
+    ):
         _put_library_usage(library_usage)
 
 
 def _put_pre_init_library_usages():
     assert _internal_kv_initialized()
+    # NOTE: When the lib is imported from a worker, ray should
+    # always be initialized, so there's no need to register the
+    # pre init hook.
     if ray.worker.global_worker.mode != ray.SCRIPT_MODE:
         return
     for library_usage in _recorded_library_usages:
