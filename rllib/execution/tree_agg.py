@@ -42,7 +42,7 @@ class Aggregator(ParallelIteratorWorker):
 
         def generator():
             it = rollout_group.gather_async(
-                num_async=config["max_sample_requests_in_flight_per_worker"]
+                num_async=config["max_requests_in_flight_per_aggregator_worker"]
             )
 
             # Update the rollout worker with our latest policy weights.

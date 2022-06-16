@@ -76,8 +76,8 @@ class IgnoresWorkerFailure(unittest.TestCase):
 
         for _ in framework_iterator(config, frameworks=("tf2", "torch")):
             a = agent_cls(config=config, env="fault_env")
-            result = a.train()
-            self.assertTrue(result["num_healthy_workers"], 1)
+            a.train()
+            self.assertTrue(len(a.workers.remote_workers()), 1)
             a.stop()
 
     def _do_test_fault_fatal(self, alg, config):
