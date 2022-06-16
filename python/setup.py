@@ -217,7 +217,7 @@ if setup_spec.type == SetupType.RAY:
             "prometheus_client >= 0.7.1, < 0.14.0",
             "smart_open",
         ],
-        "serve": ["uvicorn==0.16.0", "requests", "starlette", "fastapi", "aiorwlock"],
+        "serve": ["uvicorn", "requests", "starlette", "fastapi", "aiorwlock"],
         "tune": ["pandas", "tabulate", "tensorboardX>=1.9", "requests"],
         "k8s": ["kubernetes", "urllib3"],
         "observability": [
@@ -739,6 +739,7 @@ setuptools.setup(
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
     ],
     packages=setup_spec.get_packages(),
     cmdclass={"build_ext": build_ext},
