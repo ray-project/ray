@@ -37,7 +37,6 @@ def _register_all():
         + list(CONTRIBUTED_ALGORITHMS.keys())
         + ["__fake", "__sigmoid_fake_data", "__parameter_tuning"]
     ):
-        logging.warning(key)
         register_trainable(key, get_algorithm_class(key))
 
     def _see_contrib(name):
