@@ -150,7 +150,7 @@ public class Serve {
     ServeControllerClient client = null;
     try {
       client = getGlobalClient();
-    } catch (RayServeException e) {
+    } catch (RayServeException | IllegalStateException e) {
       LOGGER.info(
           "Nothing to shut down. There's no Serve application running on this Ray cluster.");
       return;
