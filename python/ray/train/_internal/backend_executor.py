@@ -63,7 +63,8 @@ class BackendExecutor:
     def __init__(
         self,
         backend_config: BackendConfig,
-        trial_info: TrialInfo,
+        # TODO(xwjiang): Legacy Ray Train trainer clean up!
+        trial_info: Optional[TrialInfo] = None,
         num_workers: int = 1,
         num_cpus_per_worker: float = 1,
         num_gpus_per_worker: float = 0,

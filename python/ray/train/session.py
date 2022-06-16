@@ -26,7 +26,10 @@ class TrainSession(Session):
 
     @property
     def loaded_checkpoint(self) -> Optional[Checkpoint]:
-        return self._session.loaded_checkpoint
+        ckpt = self._session.loaded_checkpoint
+        # The new API should only interact with Checkpoint object.
+        assert isinstance(ckpt, Checkpoint)
+        return ckpt
 
     @property
     def trial_name(self) -> str:

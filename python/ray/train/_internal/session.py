@@ -59,7 +59,8 @@ class _TrainSession:
         world_rank: int,
         local_rank: int,
         world_size: int,
-        trial_info: TrialInfo,
+        # TODO(xwjiang): Legacy Ray Train trainer clean up!
+        trial_info: Optional[TrialInfo],
         dataset_shard: Optional[Union[Dataset, DatasetPipeline]] = None,
         checkpoint: Optional[Union[Dict, Checkpoint]] = None,
         encode_data_fn: Callable = None,
@@ -85,10 +86,12 @@ class _TrainSession:
             encode_data_fn = noop
         self._encode_data_fn = encode_data_fn
 
-        # Change the working directory to `logdir`.
-        logdir = os.path.join(trial_info.logdir, f"rank_{self.world_rank}")
-        os.makedirs(logdir, exist_ok=True)
-        os.chdir(logdir)
+        # TODO(xwjiang): Legacy Ray Train trainer clean up!
+        if trial_info:
+            # Change the working directory to `logdir`.
+            logdir = os.path.join(trial_info.logdir, f"rank_{self.world_rank}")
+            os.makedirs(logdir, exist_ok=True)
+            os.chdir(logdir)
 
         # This lock is used to control the execution of the training thread.
         self.continue_lock = threading.Semaphore(0)
@@ -258,16 +261,6 @@ class _TrainSession:
             checkpoint_dict = checkpoint.to_dict()
             self.checkpoint(**checkpoint_dict)
         self._report_legacy(**metrics)
-
-    def loaded_checkpoint(self) -> Optional[Checkpoint]:
-        if not self.loaded_checkpoint:
-            return None
-        elif isinstance(self.loaded_checkpoint, dict):
-            return Checkpoint.from_dict(self.loaded_checkpoint)
-        elif isinstance(self.loaded_checkpoint, Checkpoint):
-            return self.loaded_checkpoint
-        else:
-            assert None
 
 
 _session: Optional[_TrainSession] = None
