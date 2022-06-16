@@ -79,8 +79,6 @@ def _deserialize_pieces(
 def _deserialize_pieces_with_retry(
     serialized_pieces: str,
 ) -> List["pyarrow._dataset.ParquetFileFragment"]:
-    from ray import cloudpickle
-
     min_interval = 0
     final_exception = None
     for i in range(FILE_READING_RETRY):
