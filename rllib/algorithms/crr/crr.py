@@ -8,6 +8,7 @@ from ray.rllib.execution.train_ops import (
     multi_gpu_train_one_step,
     train_one_step,
 )
+from ray.rllib.offline import DatasetReader
 from ray.rllib.offline.shuffled_input import ShuffledInput
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -181,6 +182,17 @@ class CRR(Algorithm):
                 " replay buffer, which has capacity "
                 f"{self.local_replay_buffer.capacity}."
             )
+        elif isinstance(reader, DatasetReader):
+            ds_size = reader.count
+            for _ in range(ds_size):
+                batch = reader.next()
+                if SampleBatch.NEXT_OBS not in batch:
+                    obs = batch[SampleBatch.OBS]
+                    batch[SampleBatch.NEXT_OBS] = np.concatenate(
+                        [obs[1:], np.zeros_like(obs[0:1])]
+                    )
+                    batch[SampleBatch.DONES][-1] = True
+                self.local_replay_buffer.add(batch)
         else:
             raise ValueError(
                 "Unknown offline input! config['input'] must either be list of"

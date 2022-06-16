@@ -7,6 +7,11 @@ pendulum_crr:
     config:
         input:
           - 'tests/data/pendulum/pendulum_replay_v1.1.0.zip'
+#        input: "dataset"
+#        input_config:
+#            format: "json"
+#            paths:
+#                - 'tests/data/pendulum/pendulum_replay_v1.1.0.zip'
         framework: torch
         gamma: 0.99
         train_batch_size: 1024

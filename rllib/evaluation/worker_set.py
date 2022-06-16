@@ -13,7 +13,6 @@ from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.offline import (
     NoopOutput,
-    JsonReader,
     MixedInput,
     JsonWriter,
     ShuffledInput,
@@ -99,13 +98,14 @@ class WorkerSet:
         }
         self._cls = RolloutWorker.as_remote(**self._remote_args).remote
         self._logdir = logdir
+        self._create_local_worker = local_worker
 
         if _setup:
             # Force a local worker if num_workers == 0 (no remote workers).
             # Otherwise, this WorkerSet would be empty.
             self._local_worker = None
             if num_workers == 0:
-                local_worker = True
+                self._create_local_worker = True
 
             self._local_config = merge_dicts(
                 trainer_config,
@@ -116,7 +116,7 @@ class WorkerSet:
                 # Create the set of dataset readers to be shared by all the
                 # rollout workers.
                 self._ds, self._ds_shards = get_dataset_and_shards(
-                    trainer_config, num_workers, local_worker
+                    trainer_config, num_workers, self._create_local_worker
                 )
             else:
                 self._ds = None
@@ -134,7 +134,7 @@ class WorkerSet:
             # get the observation- and action spaces for each policy from
             # the first remote worker (which does have an env).
             if (
-                local_worker
+                self._create_local_worker
                 and self._remote_workers
                 and not trainer_config.get("create_env_on_driver")
                 and (
@@ -169,7 +169,7 @@ class WorkerSet:
             else:
                 spaces = None
 
-            if local_worker:
+            if self._create_local_worker:
                 self._local_worker = self._make_worker(
                     cls=RolloutWorker,
                     env_creator=env_creator,
@@ -599,8 +599,22 @@ class WorkerSet:
             )
         # JSON file or list of JSON files -> Use JsonReader (shuffled).
         else:
-            input_creator = lambda ioctx: ShuffledInput(
-                JsonReader(config["input"], ioctx), config["shuffle_buffer_size"]
+            _input = config["input"]
+            if isinstance(_input, list) and not all(
+                [isinstance(path, str) for path in _input]
+            ):
+                raise ValueError(
+                    "If offline data input is a list, it must be a list of string "
+                    "paths"
+                )
+            config["input"] = "dataset"
+            config["input_config"] = {"format": "json", "paths": _input}
+
+            self._ds, self._ds_shards = get_dataset_and_shards(
+                config, num_workers, self._create_local_worker
+            )
+            input_creator = lambda ioctx: DatasetReader(
+                ioctx, self._ds_shards[worker_index]
             )
 
         if isinstance(config["output"], FunctionType):
