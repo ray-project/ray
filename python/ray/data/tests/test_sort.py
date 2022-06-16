@@ -199,22 +199,38 @@ def test_push_based_shuffle_schedule():
             next_highest_merge_factor = schedule.num_map_tasks_per_round // (
                 schedule.num_merge_tasks_per_round + 1
             )
-            assert next_highest_merge_factor <= merge_factor <= actual_merge_factor
+            assert next_highest_merge_factor <= merge_factor <= actual_merge_factor, (
+                next_highest_merge_factor,
+                merge_factor,
+                actual_merge_factor,
+            )
         else:
-            assert schedule.num_merge_tasks_per_round == 1
+            assert schedule.num_merge_tasks_per_round == 1, (
+                schedule.num_map_tasks_per_round,
+                merge_factor,
+            )
 
         # Tasks are evenly distributed.
         tasks_per_node = defaultdict(int)
-        for node_id in schedule.merge_task_placement:
+        for i in range(schedule.num_merge_tasks_per_round):
+            task_options = schedule.get_merge_task_options(i)
+            node_id = task_options["scheduling_strategy"].node_id
             tasks_per_node[node_id] += 1
         low = min(tasks_per_node.values())
         high = low + 1
         assert low <= max(tasks_per_node.values()) <= high
 
         # Reducers are evenly distributed across mergers.
-        low = min(schedule.num_reducers_per_merge_idx)
-        high = low + 1
-        assert low <= max(schedule.num_reducers_per_merge_idx) <= high
+        num_reducers_per_merge_idx = [
+            schedule.merge_schedule.get_num_reducers_per_merge_idx(i)
+            for i in range(schedule.num_merge_tasks_per_round)
+        ]
+        high = max(num_reducers_per_merge_idx)
+        num_imbalanced = 0
+        for num_reducers in num_reducers_per_merge_idx:
+            if num_reducers < high:
+                num_imbalanced += 1
+        assert num_imbalanced <= 1
 
     for num_cpus in range(1, 20):
         _test(20, 3, {"node1": num_cpus})

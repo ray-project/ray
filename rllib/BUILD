@@ -1884,6 +1884,13 @@ py_test(
 )
 
 py_test(
+    name = "tests/test_execution",
+    tags = ["team:rllib", "tests_dir", "tests_dir_E"],
+    size = "medium",
+    srcs = ["tests/test_execution.py"]
+)
+
+py_test(
     name = "tests/test_export",
     tags = ["team:rllib", "tests_dir", "tests_dir_E"],
     size = "medium",
@@ -3006,7 +3013,7 @@ py_test(
 
 py_test(
     name = "examples/replay_buffer_api",
-    tags = ["team:rllib", "gpu"],
+    tags = ["team:rllib", "examples"],
     size = "large",
     srcs = ["examples/replay_buffer_api.py"],
     args = ["--as-test", "--stop-reward=70"]
