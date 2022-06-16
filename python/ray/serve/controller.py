@@ -631,16 +631,18 @@ class ServeControllerAvatar:
     def __init__(
         self,
         controller_name: str,
-        http_config: HTTPOptions,
         checkpoint_path: str,
         detached: bool = False,
         dedicated_cpu: bool = False,
+        http_proxy_port: int = 8000,
     ):
         try:
             self._controller = ray.get_actor(controller_name, namespace="serve")
         except ValueError:
             self._controller = None
         if self._controller is None:
+            http_config = HTTPOptions()
+            http_config.port = http_proxy_port
             self._controller = ServeController.options(
                 num_cpus=1 if dedicated_cpu else 0,
                 name=controller_name,

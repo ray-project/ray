@@ -4,6 +4,8 @@ public class RayServeConfig {
 
   public static final String PROXY_CLASS = "ray.serve.proxy.class";
 
+  public static final String PROXY_HTTP_PORT = "ray.serve.proxy.http.port";
+
   public static final String METRICS_ENABLED = "ray.serve.metrics.enabled";
 
   public static final String LONG_POOL_CLIENT_ENABLED = "ray.serve.long.poll.client.enabled";

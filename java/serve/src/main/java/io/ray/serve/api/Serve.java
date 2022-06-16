@@ -10,6 +10,7 @@ import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyActorMethod;
 import io.ray.api.options.ActorLifetime;
 import io.ray.serve.common.Constants;
+import io.ray.serve.config.RayServeConfig;
 import io.ray.serve.deployment.Deployment;
 import io.ray.serve.deployment.DeploymentCreator;
 import io.ray.serve.deployment.DeploymentRoute;
@@ -80,14 +81,19 @@ public class Serve {
     if (StringUtils.isBlank(checkpointPath)) {
       checkpointPath = Constants.DEFAULT_CHECKPOINT_PATH;
     }
+    int httpPort =
+        Optional.ofNullable(config)
+            .map(m -> m.get(RayServeConfig.PROXY_HTTP_PORT))
+            .map(Integer::parseInt)
+            .orElse(8000);
     PyActorHandle controllerAvatar =
         Ray.actor(
                 PyActorClass.of("ray.serve.controller", "ServeControllerAvatar"),
                 controllerName,
-                null,
                 checkpointPath,
                 detached,
-                dedicatedCpu)
+                dedicatedCpu,
+                httpPort)
             .setName(controllerName + "_AVATAR")
             .setLifetime(detached ? ActorLifetime.DETACHED : ActorLifetime.NON_DETACHED)
             .setMaxRestarts(-1)

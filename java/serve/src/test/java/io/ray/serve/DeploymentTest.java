@@ -92,13 +92,13 @@ public class DeploymentTest extends BaseServeTest {
             .create();
     deployment.deploy(true);
     HttpClient httpClient = HttpClientBuilder.create().build();
-    HttpGet httpGet = new HttpGet("http://127.0.0.1:8000/" + deploymentName + "?input=testhttpget");
+    HttpGet httpGet = new HttpGet("http://127.0.0.1:8341/" + deploymentName + "?input=testhttpget");
     try (CloseableHttpResponse httpResponse = (CloseableHttpResponse) httpClient.execute(httpGet)) {
       byte[] body = EntityUtils.toByteArray(httpResponse.getEntity());
       String response = new String(body, StandardCharsets.UTF_8);
       Assert.assertEquals(response, "echo_testhttpget_test");
     }
-    HttpPost httpPost = new HttpPost("http://127.0.0.1:8000/" + deploymentName);
+    HttpPost httpPost = new HttpPost("http://127.0.0.1:8341/" + deploymentName);
     httpPost.setEntity(new StringEntity("testhttppost"));
     try (CloseableHttpResponse httpResponse =
         (CloseableHttpResponse) httpClient.execute(httpPost)) {
