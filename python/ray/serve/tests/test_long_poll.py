@@ -168,11 +168,11 @@ async def test_client_threadsafe(serve_instance):
     await e.wait()
 
 
-def test_listen_for_change_xlang(serve_instance):
+def test_listen_for_change_java(serve_instance):
     host = ray.remote(LongPollHost).remote()
     ray.get(host.notify_changed.remote("key_1", 999))
     request_1 = {"keys_to_snapshot_ids": {"key_1": -1}}
-    object_ref = host.listen_for_change_xlang.remote(
+    object_ref = host.listen_for_change_java.remote(
         LongPollRequest(**request_1).SerializeToString()
     )
     result_1: bytes = ray.get(object_ref)
@@ -184,7 +184,7 @@ def test_listen_for_change_xlang(serve_instance):
     endpoints["deployment_name"] = EndpointInfo(route="/test/xlang/poll")
     endpoints["deployment_name1"] = EndpointInfo(route="/test/xlang/poll1")
     ray.get(host.notify_changed.remote(LongPollNamespace.ROUTE_TABLE, endpoints))
-    object_ref_2 = host.listen_for_change_xlang.remote(
+    object_ref_2 = host.listen_for_change_java.remote(
         LongPollRequest(**request_2).SerializeToString()
     )
     result_2: bytes = ray.get(object_ref_2)
@@ -211,7 +211,7 @@ def test_listen_for_change_xlang(serve_instance):
             (LongPollNamespace.RUNNING_REPLICAS, "deployment_name"), replicas
         )
     )
-    object_ref_3 = host.listen_for_change_xlang.remote(
+    object_ref_3 = host.listen_for_change_java.remote(
         LongPollRequest(**request_3).SerializeToString()
     )
     result_3: bytes = ray.get(object_ref_3)

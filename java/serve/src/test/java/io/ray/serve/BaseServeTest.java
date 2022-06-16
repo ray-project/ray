@@ -24,6 +24,7 @@ public abstract class BaseServeTest {
     Serve.shutdown();
     client.shutdown();
     Ray.shutdown();
+    LongPollClientFactory.stop();
     LongPollClientFactory.clearAllCache();
     Serve.setInternalReplicaContext(null);
     Serve.setGlobalClient(null);
