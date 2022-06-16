@@ -1,9 +1,8 @@
 import copy
 import logging
 import platform
-
 import queue
-from typing import Optional, Type, List, Dict, Union, Callable, Any
+from typing import Any, Callable, Dict, List, Optional, Type, Union
 
 import ray
 from ray.actor import ActorHandle
@@ -11,44 +10,44 @@ from ray.rllib import SampleBatch
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
-from ray.rllib.execution.learner_thread import LearnerThread
-from ray.rllib.execution.multi_gpu_learner_thread import MultiGPULearnerThread
-from ray.rllib.execution.parallel_requests import (
-    AsyncRequestsManager,
-)
-from ray.rllib.execution.tree_agg import gather_experiences_tree_aggregation
 from ray.rllib.execution.common import (
     STEPS_TRAINED_COUNTER,
     STEPS_TRAINED_THIS_ITER_COUNTER,
     _get_global_vars,
     _get_shared_metrics,
 )
-from ray.rllib.execution.replay_ops import MixInReplay
-from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
-from ray.rllib.execution.concurrency_ops import Concurrently, Enqueue, Dequeue
+from ray.rllib.execution.concurrency_ops import Concurrently, Dequeue, Enqueue
+from ray.rllib.execution.learner_thread import LearnerThread
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
+from ray.rllib.execution.multi_gpu_learner_thread import MultiGPULearnerThread
+from ray.rllib.execution.parallel_requests import AsyncRequestsManager
+from ray.rllib.execution.replay_ops import MixInReplay
+from ray.rllib.execution.rollout_ops import ConcatBatches, ParallelRollouts
+from ray.rllib.execution.tree_agg import gather_experiences_tree_aggregation
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.actors import create_colocated_actors
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import (
+    DEPRECATED_VALUE,
+    Deprecated,
+    deprecation_warning,
+)
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_AGENT_STEPS_TRAINED,
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_TRAINED,
 )
+from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import ReplayMode
+from ray.rllib.utils.replay_buffers.replay_buffer import _ALL_POLICIES
 
 # from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 from ray.rllib.utils.typing import (
+    AlgorithmConfigDict,
     PartialAlgorithmConfigDict,
     ResultDict,
-    AlgorithmConfigDict,
     SampleBatchType,
     T,
-)
-from ray.rllib.utils.deprecation import (
-    Deprecated,
-    DEPRECATED_VALUE,
-    deprecation_warning,
 )
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.types import ObjectRef
@@ -470,9 +469,7 @@ class Impala(Algorithm):
                 return A3CTorchPolicy
         elif config["framework"] == "tf":
             if config["vtrace"]:
-                from ray.rllib.algorithms.impala.impala_tf_policy import (
-                    ImpalaTF1Policy,
-                )
+                from ray.rllib.algorithms.impala.impala_tf_policy import ImpalaTF1Policy
 
                 return ImpalaTF1Policy
             else:
@@ -590,6 +587,7 @@ class Impala(Algorithm):
                         else 1
                     ),
                     replay_ratio=self.config["replay_ratio"],
+                    replay_mode=ReplayMode.LOCKSTEP,
                 )
 
             self._sampling_actor_manager = AsyncRequestsManager(
@@ -838,7 +836,7 @@ class Impala(Algorithm):
         for batch in batches:
             batch = batch.decompress_if_needed()
             self.local_mixin_buffer.add_batch(batch)
-            batch = self.local_mixin_buffer.replay()
+            batch = self.local_mixin_buffer.replay(_ALL_POLICIES)
             if batch:
                 processed_batches.append(batch)
         return processed_batches
@@ -924,12 +922,13 @@ class AggregatorWorker:
                 else 1
             ),
             replay_ratio=self.config["replay_ratio"],
+            replay_mode=ReplayMode.LOCKSTEP,
         )
 
     def process_episodes(self, batch: SampleBatchType) -> SampleBatchType:
         batch = batch.decompress_if_needed()
         self._mixin_buffer.add_batch(batch)
-        processed_batches = self._mixin_buffer.replay()
+        processed_batches = self._mixin_buffer.replay(_ALL_POLICIES)
         return processed_batches
 
     def apply(
