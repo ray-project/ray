@@ -19,6 +19,7 @@ import org.apache.hc.core5.http.io.entity.StringEntity;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
+@Test(groups = {"cluster"})
 public class DeploymentTest extends BaseServeTest {
 
   public static class Counter {
