@@ -183,7 +183,9 @@ class ParquetDatasource(ParquetBaseDatasource):
             # Deserialize after loading the filesystem class.
             try:
                 _register_parquet_file_fragment_serialization()
-                pieces: List["pyarrow._dataset.ParquetFileFragment"] = _deserialize_pieces_with_retry(serialized_pieces)
+                pieces: List[
+                    "pyarrow._dataset.ParquetFileFragment"
+                ] = _deserialize_pieces_with_retry(serialized_pieces)
             finally:
                 _deregister_parquet_file_fragment_serialization()
 
@@ -299,7 +301,9 @@ def _fetch_metadata_serialization_wrapper(
     # Deserialize after loading the filesystem class.
     try:
         _register_parquet_file_fragment_serialization()
-        pieces: List["pyarrow._dataset.ParquetFileFragment"] = _deserialize_pieces_with_retry(pieces)
+        pieces: List[
+            "pyarrow._dataset.ParquetFileFragment"
+        ] = _deserialize_pieces_with_retry(pieces)
     finally:
         _deregister_parquet_file_fragment_serialization()
 
