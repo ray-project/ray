@@ -10,7 +10,7 @@ from ray.rllib.models.tf.tf_action_dist import Categorical, TFActionDistribution
 from ray.rllib.policy.dynamic_tf_policy_v2 import DynamicTFPolicyV2
 from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.tf_mixins import compute_gradients, TargetNetworkMixin
+from ray.rllib.policy.tf_mixins import TargetNetworkMixin, compute_gradients
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import huber_loss
@@ -105,12 +105,16 @@ def get_simple_q_tf_policy(
                 action_distribution=distribution, timestep=timestep, explore=explore
             )
             # Return (exploration) actions, state_outs (empty list), and extra outs.
-            return actions, [], {
-                "q_values": q_vals,
-                SampleBatch.ACTION_LOGP: logp,
-                SampleBatch.ACTION_PROB: tf.exp(logp),
-                SampleBatch.ACTION_DIST_INPUTS: q_vals,
-            }
+            return (
+                actions,
+                [],
+                {
+                    "q_values": q_vals,
+                    SampleBatch.ACTION_LOGP: logp,
+                    SampleBatch.ACTION_PROB: tf.exp(logp),
+                    SampleBatch.ACTION_DIST_INPUTS: q_vals,
+                },
+            )
 
         @override(base)
         def loss(
@@ -120,13 +124,12 @@ def get_simple_q_tf_policy(
             train_batch: SampleBatch,
         ) -> Union[TensorType, List[TensorType]]:
             # q network evaluation
-            q_t = self._compute_q_values(
-                self.model, train_batch[SampleBatch.CUR_OBS]
-            )
+            q_t = self._compute_q_values(self.model, train_batch[SampleBatch.CUR_OBS])
 
             # target q network evalution
             q_tp1 = self._compute_q_values(
-                self.target_model, train_batch[SampleBatch.NEXT_OBS],
+                self.target_model,
+                train_batch[SampleBatch.NEXT_OBS],
             )
             if not hasattr(self, "q_func_vars"):
                 self.q_func_vars = model.variables()
@@ -134,8 +137,7 @@ def get_simple_q_tf_policy(
 
             # q scores for actions which we know were selected in the given state.
             one_hot_selection = tf.one_hot(
-                tf.cast(train_batch[SampleBatch.ACTIONS], tf.int32),
-                self.action_space.n
+                tf.cast(train_batch[SampleBatch.ACTIONS], tf.int32), self.action_space.n
             )
             q_t_selected = tf.reduce_sum(q_t * one_hot_selection, 1)
 
@@ -149,8 +151,8 @@ def get_simple_q_tf_policy(
 
             # compute RHS of bellman equation
             q_t_selected_target = (
-                train_batch[SampleBatch.REWARDS] + self.config[
-                "gamma"] * q_tp1_best_masked
+                train_batch[SampleBatch.REWARDS]
+                + self.config["gamma"] * q_tp1_best_masked
             )
 
             # compute the error (potentially clipped)

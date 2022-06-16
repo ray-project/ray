@@ -1,10 +1,11 @@
-import gym
-from gym.spaces import Discrete, MultiDiscrete
-import numpy as np
 import os
-import tree  # pip install dm_tree
-from typing import Dict, List, Optional, TYPE_CHECKING, Union
 import warnings
+from typing import TYPE_CHECKING, Dict, List, Optional, Union
+
+import gym
+import numpy as np
+import tree  # pip install dm_tree
+from gym.spaces import Discrete, MultiDiscrete
 
 import ray
 from ray.rllib.models.repeated_values import RepeatedValues
@@ -14,8 +15,8 @@ from ray.rllib.utils.numpy import SMALL_NUMBER
 from ray.rllib.utils.typing import (
     LocalOptimizer,
     SpaceStruct,
-    TensorType,
     TensorStructType,
+    TensorType,
 )
 
 if TYPE_CHECKING:

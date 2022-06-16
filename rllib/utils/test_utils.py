@@ -1,14 +1,15 @@
-from collections import Counter
 import copy
-from gym.spaces import Box
 import logging
-import numpy as np
 import random
 import re
 import time
+from collections import Counter
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple, Union
+
+import numpy as np
 import tree  # pip install dm_tree
-from typing import Any, Dict, List, Optional, Sequence, Tuple, TYPE_CHECKING, Union
 import yaml
+from gym.spaces import Box
 
 import ray
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
@@ -479,7 +480,7 @@ def check_compute_actions_v2(
         ValueError: If anything unexpected happens.
     """
     # Have to import this here to avoid circular dependency.
-    from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+    from ray.rllib.policy.sample_batch import SampleBatch
 
     # Multi-agent: Pick any learnable policy (or DEFAULT_POLICY if it's the only
     # one).
@@ -518,17 +519,19 @@ def check_compute_actions_v2(
         input_dict_batched = SampleBatch(
             tree.map_structure(lambda s: np.expand_dims(s, 0), input_dict)
         )
-        actions, state_outs, extra_outs = convert_to_numpy(pol.compute_actions(
-            input_dict=input_dict_batched,
-            explore=explore,
-            timestep=timestep,
-            is_training=False,
-            episodes=None,
-        ))
+        actions, state_outs, extra_outs = convert_to_numpy(
+            pol.compute_actions(
+                input_dict=input_dict_batched,
+                explore=explore,
+                timestep=timestep,
+                is_training=False,
+                episodes=None,
+            )
+        )
 
         # Unbatch everything to be able to compare against single
         # action below.
-        action = tree.map_structure(lambda s: s[0], actions)
+        action = tree.map_structure(lambda s: s[0], actions)  # noqa
 
         if state_outs:
             for si, so in zip(state_in, state_outs):
@@ -940,7 +943,7 @@ def check_same_batch(batch1, batch2) -> None:
         batch2: Batch to compare against batch1
     """
     # Avoids circular import
-    from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
+    from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 
     assert type(batch1) == type(
         batch2

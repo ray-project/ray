@@ -17,18 +17,14 @@ from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_mixins import (
     EntropyCoeffSchedule,
-    LearningRateSchedule,
     KLCoeffMixin,
+    LearningRateSchedule,
     ValueNetworkMixin,
 )
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import explained_variance
-from ray.rllib.utils.typing import (
-    TensorType,
-    TFPolicyV2Type,
-    AlgorithmConfigDict,
-)
+from ray.rllib.utils.typing import AlgorithmConfigDict, TensorType, TFPolicyV2Type
 
 tf1, tf, tfv = try_import_tf()
 

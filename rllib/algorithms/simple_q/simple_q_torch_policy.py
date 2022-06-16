@@ -11,8 +11,8 @@ from ray.rllib.models.torch.torch_action_dist import (
     TorchDistributionWrapper,
 )
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.policy.torch_mixins import TargetNetworkMixin
+from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
@@ -83,12 +83,16 @@ class SimpleQTorchPolicy(
             action_distribution=distribution, timestep=timestep, explore=explore
         )
         # Return (exploration) actions, state_outs (empty list), and extra outs.
-        return actions, [], {
-            "q_values": q_vals,
-            SampleBatch.ACTION_LOGP: logp,
-            SampleBatch.ACTION_PROB: torch.exp(logp),
-            SampleBatch.ACTION_DIST_INPUTS: q_vals,
-        }
+        return (
+            actions,
+            [],
+            {
+                "q_values": q_vals,
+                SampleBatch.ACTION_LOGP: logp,
+                SampleBatch.ACTION_PROB: torch.exp(logp),
+                SampleBatch.ACTION_DIST_INPUTS: q_vals,
+            },
+        )
 
     @override(TorchPolicyV2)
     def loss(
@@ -171,7 +175,7 @@ class SimpleQTorchPolicy(
         _is_training = is_training if is_training is not None else False
         input_dict = self._lazy_tensor_dict(
             SampleBatch(obs=obs_batch, _is_training=_is_training)
-)
+        )
         # Make sure, everything is PyTorch tensors.
         model_out, _ = model(input_dict, [], None)
         return model_out

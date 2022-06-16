@@ -3,7 +3,6 @@ import gym
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.error import UnsupportedSpaceException
 
-
 Q_SCOPE = "q_func"
 Q_TARGET_SCOPE = "target_q_func"
 
