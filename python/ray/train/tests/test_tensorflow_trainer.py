@@ -59,9 +59,7 @@ def test_tensorflow_linear(ray_start_4_cpus, num_workers):
         scaling_config=scaling_config,
         datasets={TRAIN_DATASET_KEY: get_dataset()},
     )
-    checkpoint = trainer.fit().checkpoint
-    with checkpoint.as_directory() as ckpt_dir:
-        assert os.path.exists(os.path.join(ckpt_dir, "saved_model.pb"))
+    trainer.fit()
 
 
 def test_tensorflow_e2e(ray_start_4_cpus):
