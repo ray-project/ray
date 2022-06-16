@@ -1,8 +1,14 @@
-from filelock import FileLock
-from pathlib import Path
 import hashlib
 import os
+import sys
 import tempfile
+from pathlib import Path
+
+if sys.platform == "win32":
+    from filelock import WindowsFileLock as FileLock
+else:
+    # Alias to UnixFileLock.
+    from filelock import FileLock as FileLock
 
 RAY_LOCKFILE_DIR = "_ray_lockfiles"
 

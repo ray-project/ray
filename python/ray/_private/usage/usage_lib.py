@@ -41,6 +41,7 @@ Note that it is also possible to configure the interval using the environment va
 To see collected/reported data, see `usage_stats.json` inside a temp
 folder (e.g., /tmp/ray/session_[id]/*).
 """
+import io
 import json
 import logging
 import os
@@ -59,6 +60,7 @@ import ray
 import ray._private.usage.usage_constants as usage_constant
 import ray.ray_constants as ray_constants
 from ray.experimental.internal_kv import _internal_kv_initialized, _internal_kv_put
+from ray.util.ml_utils.filelock import TempFileLock
 
 logger = logging.getLogger(__name__)
 
@@ -158,6 +160,44 @@ class UsageStatsEnabledness(Enum):
 _recorded_library_usages = set()
 
 
+# NOTE: Do not change the write / read protocol. That will cause
+# version incompatibility issues.
+class LibUsageRecorder:
+    def __init__(self, temp_dir_path: str):
+        self.lib_usage_file = Path(temp_dir_path) / "lib_usage.txt"
+
+    def write(self, lib_name: str):
+        # We need a file lock in order to
+        # Set the short timeout to avoid too long delay in import.
+        with TempFileLock(str(self.lib_usage_file), timeout=2):
+            with self.lib_usage_file.open("a+") as f:
+                f.seek(0)
+                libs = self._read_libs(f)
+
+                if lib_name not in libs:
+                    f.seek(0, io.SEEK_END)
+                    self._write(f, lib_name)
+
+    def read(self) -> List[str]:
+        # We need a file lock in order to
+        # Set the short timeout to avoid too long delay in import.
+        with TempFileLock(str(self.lib_usage_file), timeout=2):
+            if not self.lib_usage_file.exists():
+                return []
+
+            with self.lib_usage_file.open("r") as f:
+                return self._read_libs(f)
+
+    def _write(self, f: io.IOBase, lib_name: str):
+        f.write(f"{lib_name}\n")
+
+    def _read_libs(self, f: io.IOBase) -> List[str]:
+        lib_list = []
+        for lib in f.readlines():
+            lib_list.append(lib.strip("\n"))
+        return lib_list
+
+
 def _put_library_usage(library_usage: str):
     assert _internal_kv_initialized()
     try:
@@ -168,6 +208,20 @@ def _put_library_usage(library_usage: str):
         )
     except Exception as e:
         logger.debug(f"Failed to put library usage, {e}")
+
+    # Record the library usage to the temp (e.g., /tmp/ray) folder.
+    # Note that although we always write this file, it is not
+    # reported when the usage stats is disabled.
+    # We are doing this only for the driver since when there are many workers
+    # that are concurrently running, it can have lock contention due to
+    # the file lock.
+    if ray.worker.global_worker.mode == ray.SCRIPT_MODE:
+        try:
+            lib_usage_recorder = LibUsageRecorder(ray._private.utils.get_ray_temp_dir())
+            lib_usage_recorder.write(library_usage)
+        except Exception as e:
+            print("SANG-TODO", e)
+            logger.debug(f"Failed to write a library usage to the home folder, {e}")
 
 
 def record_library_usage(library_usage: str):
@@ -399,6 +453,16 @@ def get_library_usages_to_report(gcs_client, num_retries: int) -> List[str]:
         for library_usage in library_usages:
             library_usage = library_usage.decode("utf-8")
             result.append(library_usage[len(usage_constant.LIBRARY_USAGE_PREFIX) :])
+
+        try:
+            historical_lib_usages = LibUsageRecorder(
+                ray._private.utils.get_ray_temp_dir()
+            ).read()
+            for library_usage in historical_lib_usages:
+                if library_usage not in result:
+                    result.append(library_usage)
+        except Exception as e:
+            logger.info(f"Failed to read historical library usage {e}")
         return result
     except Exception as e:
         logger.info(f"Failed to get library usages to report {e}")
