@@ -5,6 +5,7 @@ import uuid
 import os
 
 from ray import cloudpickle as pickle
+from ray.util.annotations import DeveloperAPI
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray._raylet import PythonFunctionDescriptor
 from ray import cross_language, Language
@@ -161,11 +162,11 @@ class RemoteFunction:
             def remote(self, *args, **kwargs):
                 return func_cls._remote(args=args, kwargs=kwargs, **updated_options)
 
+            @DeveloperAPI
             def bind(self, *args, **kwargs):
                 """
-                **Experimental**
-
-                For ray DAG building. Implementation and interface subject to changes.
+                For Ray DAG building that creates static graph from decorated
+                class or functions.
                 """
                 from ray.experimental.dag.function_node import FunctionNode
 
@@ -334,11 +335,11 @@ class RemoteFunction:
 
         return invocation(args, kwargs)
 
+    @DeveloperAPI
     def bind(self, *args, **kwargs):
         """
-        **Experimental**
-
-        For ray DAG building. Implementation and interface subject to changes.
+        For Ray DAG building that creates static graph from decorated
+        class or functions.
         """
 
         from ray.experimental.dag.function_node import FunctionNode

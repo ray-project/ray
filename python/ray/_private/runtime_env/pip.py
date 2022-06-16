@@ -11,6 +11,7 @@ from typing import Optional, List, Dict, Tuple
 from ray._private.async_compat import asynccontextmanager, create_task, get_running_loop
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import Protocol, parse_uri
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.runtime_env.utils import check_output_cmd
 from ray._private.utils import (
     get_directory_size_bytes,
@@ -366,7 +367,9 @@ class PipProcessor:
         return self._run().__await__()
 
 
-class PipManager:
+class PipPlugin(RuntimeEnvPlugin):
+    name = "pip"
+
     def __init__(self, resources_dir: str):
         self._pip_resources_dir = os.path.join(resources_dir, "pip")
         self._creating_task = {}
@@ -399,7 +402,7 @@ class PipManager:
         protocol, hash = parse_uri(uri)
         if protocol != Protocol.PIP:
             raise ValueError(
-                "PipManager can only delete URIs with protocol "
+                "PipPlugin can only delete URIs with protocol "
                 f"pip. Received protocol {protocol}, URI {uri}"
             )
 
