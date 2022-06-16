@@ -208,11 +208,7 @@ class TuneReporterBase(ProgressReporter):
 
         self._metric = metric
         self._mode = mode
-
-        if metric is None or mode is None:
-            self._sort_by_metric = False
-        else:
-            self._sort_by_metric = sort_by_metric
+        self._sort_by_metric = sort_by_metric
 
     def setup(
         self,
@@ -243,6 +239,9 @@ class TuneReporterBase(ProgressReporter):
         if self._metric is None and self._mode:
             # If only a mode was passed, use anonymous metric
             self._metric = DEFAULT_METRIC
+
+        if metric is None or mode is None:
+            self._sort_by_metric = False
 
         return True
 
