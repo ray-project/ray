@@ -27,7 +27,7 @@ def _get_resource_bundles(config: AlgorithmConfigDict):
     return [{"CPU": math.ceil(parallelism * cpus_per_task)}]
 
 
-def unzip_if_needed(paths: List[str], format: str):
+def _unzip_if_needed(paths: List[str], format: str):
     """If a path in paths is a zip file, unzip it and use path of the unzipped file"""
     ret = []
     for path in paths:
@@ -81,7 +81,7 @@ def get_dataset_and_shards(
         raise ValueError("Paths must be a list of path strings or a path string")
     if isinstance(paths, str):
         paths = [paths]
-    paths = unzip_if_needed(paths, format)
+    paths = _unzip_if_needed(paths, format)
 
     parallelism = input_config.get("parallelism", num_workers or 1)
     cpus_per_task = input_config.get(
