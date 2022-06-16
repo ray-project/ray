@@ -1,18 +1,17 @@
-import sys
 import random
 import string
-
-import ray
-
-import pytest
+import sys
 import time
 
+import pytest
+
+import ray
+from ray._private.test_utils import get_log_message
+from ray.data._internal.progress_bar import ProgressBar
+from ray.exceptions import ObjectLostError, RayTaskError
 from ray.experimental import shuffle
 from ray.tests.conftest import _ray_start_chaos_cluster
-from ray.data._internal.progress_bar import ProgressBar
 from ray.util.placement_group import placement_group
-from ray._private.test_utils import get_log_message
-from ray.exceptions import RayTaskError, ObjectLostError
 
 
 def assert_no_system_failure(p, timeout):
@@ -246,10 +245,11 @@ def test_streaming_shuffle(set_kill_interval):
 
 
 if __name__ == "__main__":
-    import os
+
     import pytest
 
     # TODO: Fix this
+    # import os
     # if os.environ.get("PARALLEL_CI"):
     #     sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     # else:

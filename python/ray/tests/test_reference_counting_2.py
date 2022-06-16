@@ -8,13 +8,12 @@ import sys
 import time
 
 import numpy as np
-
 import pytest
 
 import ray
 import ray.cluster_utils
-from ray.internal.internal_api import memory_summary
 from ray._private.test_utils import SignalActor, put_object, wait_for_condition
+from ray.internal.internal_api import memory_summary
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
@@ -539,9 +538,8 @@ def test_object_unpin_stress(ray_start_cluster):
 
     wait_for_condition(
         lambda: (
-            (f"Plasma memory usage {total_size} MiB") in memory_summary(
-                address=cluster.address,
-                stats_only=True)
+            (f"Plasma memory usage {total_size} MiB")
+            in memory_summary(address=cluster.address, stats_only=True)
         )
     )
 

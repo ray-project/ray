@@ -27,10 +27,10 @@ from ray._private.services import (
     wait_for_redis_to_start,
 )
 from ray._private.test_utils import (
+    find_free_port,
     get_and_run_node_killer,
     init_error_pubsub,
     init_log_pubsub,
-    find_free_port,
     setup_tls,
     teardown_tls,
     test_external_redis,
