@@ -1,14 +1,14 @@
-import pytest
 import random
 from typing import Optional
 
-import ray
-from ray.data import Dataset, DatasetPipeline
-from ray.air.config import DatasetConfig
-from ray import train
+import pytest
 
-from ray.air.train.data_parallel_trainer import DataParallelTrainer
-from ray.air.preprocessors import BatchMapper
+import ray
+from ray import train
+from ray.air.config import DatasetConfig
+from ray.data import Dataset, DatasetPipeline
+from ray.data.preprocessors import BatchMapper
+from ray.train.data_parallel_trainer import DataParallelTrainer
 
 
 @pytest.fixture
@@ -59,7 +59,7 @@ class TestWildcard(TestBasic):
 
 
 def test_basic(ray_start_4_cpus):
-    ds = ray.data.range(10)
+    ds = ray.data.range_table(10)
 
     # Single worker basic case.
     test = TestBasic(
@@ -104,7 +104,7 @@ def test_basic(ray_start_4_cpus):
 
 
 def test_error(ray_start_4_cpus):
-    ds = ray.data.range(10)
+    ds = ray.data.range_table(10)
 
     # Missing required dataset.
     with pytest.raises(ValueError):
@@ -135,7 +135,7 @@ def test_error(ray_start_4_cpus):
 
 
 def test_use_stream_api_config(ray_start_4_cpus):
-    ds = ray.data.range(10)
+    ds = ray.data.range_table(10)
 
     # Single worker basic case.
     test = TestBasic(
@@ -159,7 +159,7 @@ def test_use_stream_api_config(ray_start_4_cpus):
 
 
 def test_fit_transform_config(ray_start_4_cpus):
-    ds = ray.data.range(10)
+    ds = ray.data.range_table(10)
 
     def drop_odd(rows):
         key = list(rows)[0]
@@ -224,7 +224,7 @@ def test_stream_inf_window_cache_prep(ray_start_4_cpus):
         return [random.random() for _ in range(len(x))]
 
     prep = BatchMapper(rand)
-    ds = ray.data.range(5)
+    ds = ray.data.range_table(5)
     test = TestStream(
         checker,
         preprocessor=prep,
@@ -239,7 +239,7 @@ def test_stream_finite_window_nocache_prep(ray_start_4_cpus):
         return [random.random() for _ in range(len(x))]
 
     prep = BatchMapper(rand)
-    ds = ray.data.range(5)
+    ds = ray.data.range_table(5)
 
     # Test the default 1GiB window size.
     def checker(shard, results):
@@ -286,7 +286,7 @@ def test_global_shuffle(ray_start_4_cpus):
         assert str(shard) == "DatasetPipeline(num_windows=inf, num_stages=1)", shard
         assert "Stage 1 read->random_shuffle" in stats, stats
 
-    ds = ray.data.range(5)
+    ds = ray.data.range_table(5)
     test = TestStream(
         checker,
         datasets={"train": ds},
@@ -296,7 +296,8 @@ def test_global_shuffle(ray_start_4_cpus):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))

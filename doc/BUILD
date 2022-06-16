@@ -36,6 +36,16 @@ py_test(
             "--cpus-per-actor-inference 1"]
 )
 
+py_test(
+    name = "highly_parallel",
+    size = "medium",
+    main = "test_myst_doc.py",
+    srcs = ["test_myst_doc.py"],
+    tags = ["exclusive", "team:ml", "py37"],
+    data = ["//doc/source/ray-core/examples:core_examples"],
+    args = ["--path", "doc/source/ray-core/examples/highly_parallel.ipynb"]
+)
+
 ### Ray Data
 py_test(
     name = "quick_start",
@@ -163,7 +173,7 @@ py_test_run_all_subdirectory(
     include = ["source/rllib/doc_code/*.py"],
     exclude = [],
     extra_srcs = [],
-    tags = ["exclusive", "team:ml"],
+    tags = ["exclusive", "team:rllib"],
 )
 
 # --------------------------------------------------------------------

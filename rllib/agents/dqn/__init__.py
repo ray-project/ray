@@ -1,3 +1,5 @@
+import ray.rllib.agents.dqn.apex as apex  # noqa
+import ray.rllib.agents.dqn.simple_q as simple_q  # noqa
 from ray.rllib.algorithms.apex_dqn.apex_dqn import (
     ApexDQNConfig,
     ApexDQN as ApexTrainer,
