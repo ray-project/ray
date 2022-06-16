@@ -240,6 +240,8 @@ class _StatusReporter:
             checkpoint_dir = self.make_checkpoint_dir(step=self._iter)
             self.set_checkpoint(checkpoint_dir)
             checkpoint.to_directory(checkpoint_dir)
+            # TODO(krfricke): Remove this once support is added in Checkpoint.
+            open(os.path.join(checkpoint_dir, ".is_checkpoint"), "a").close()
         self.__call__(**metrics)
         self._iter += 1
 

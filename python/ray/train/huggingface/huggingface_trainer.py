@@ -522,8 +522,10 @@ def _huggingface_train_loop_per_worker(config):
     checkpoint_path = None
     remove_checkpoint_path = False
     if checkpoint:
-        source_ip = checkpoint.to_dict()[NODE_IP_KEY]
-        source_path = checkpoint.to_dict()[CHECKPOINT_PATH_ON_NODE_KEY]
+        assert isinstance(checkpoint, Checkpoint)
+        checkpoint_dict = checkpoint.to_dict()
+        source_ip = checkpoint_dict[NODE_IP_KEY]
+        source_path = checkpoint_dict[CHECKPOINT_PATH_ON_NODE_KEY]
         target_ip = get_node_ip_address()
         if source_ip == target_ip:
             checkpoint_path = source_path

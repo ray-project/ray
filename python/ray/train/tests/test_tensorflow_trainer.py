@@ -115,9 +115,11 @@ def test_report_and_load_using_ml_session(ray_start_4_cpus):
         scaling_config=scaling_config,
         resume_from_checkpoint=result.checkpoint,
     )
-    checkpoint = trainer2.fit().checkpoint
+    result = trainer2.fit()
+    checkpoint = result.checkpoint
     with checkpoint.as_directory() as ckpt_dir:
         assert os.path.exists(os.path.join(ckpt_dir, "saved_model.pb"))
+    assert result.metrics["iter"] == 1
 
 
 if __name__ == "__main__":

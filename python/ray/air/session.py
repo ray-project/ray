@@ -134,18 +134,23 @@ def get_world_size() -> int:
         import time
         from ray.air import session
 
-        def train_func():
+        def train_loop_per_worker(config):
             assert session.get_world_size() == 4
 
-        trainer = Trainer(backend="torch", num_workers=4)
-        trainer.start()
-        trainer.run(train_func)
-        trainer.shutdown()
+        train_dataset = ray.data.from_items(
+            [{"x": x, "y": x + 1} for x in range(32)])
+        trainer = TensorflowTrainer(train_loop_per_worker,
+            scaling_config={"num_workers": 1},
+            datasets={"train": train_dataset})
+        trainer.fit()
     """
     session = _get_session()
-    assert isinstance(
-        session, TrainSession
-    ), "`get_world_size` can only be called for TrainSession!"
+    if not isinstance(session, TrainSession):
+        raise RuntimeError(
+            "`get_world_size` can only be called for TrainSession! "
+            "Make sure you only use that in `train_loop_per_worker` function"
+            "that is passed into `DataParallelTrainer`."
+        )
     return session.world_size
 
 
@@ -157,25 +162,30 @@ def get_world_rank() -> int:
         import time
         from ray.air import session
 
-        def train_func():
+        def train_loop_per_worker():
             for iter in range(100):
                 time.sleep(1)
                 if session.get_world_rank() == 0:
                     print("Worker 0")
 
-        trainer = Trainer(backend="torch")
-        trainer.start()
-        trainer.run(train_func)
-        trainer.shutdown()
+        train_dataset = ray.data.from_items(
+            [{"x": x, "y": x + 1} for x in range(32)])
+        trainer = TensorflowTrainer(train_loop_per_worker,
+            scaling_config={"num_workers": 1},
+            datasets={"train": train_dataset})
+        trainer.fit()
     """
     session = _get_session()
-    assert isinstance(
-        session, TrainSession
-    ), "`get_world_rank` can only be called for TrainSession!"
+    if not isinstance(session, TrainSession):
+        raise RuntimeError(
+            "`get_world_rank` can only be called for TrainSession! "
+            "Make sure you only use that in `train_loop_per_worker` function"
+            "that is passed into `DataParallelTrainer`."
+        )
     return session.world_rank
 
 
-def local_rank() -> int:
+def get_local_rank() -> int:
     """Get the local rank of this worker (rank of the worker on its node).
 
     .. code-block:: python
@@ -183,20 +193,25 @@ def local_rank() -> int:
         import time
         from ray.air import session
 
-        def train_func():
+        def train_loop_per_worker():
             if torch.cuda.is_available():
                 torch.cuda.set_device(session.get_local_rank())
             ...
 
-        trainer = Trainer(backend="torch", use_gpu=True)
-        trainer.start()
-        trainer.run(train_func)
-        trainer.shutdown()
+        train_dataset = ray.data.from_items(
+            [{"x": x, "y": x + 1} for x in range(32)])
+        trainer = TensorflowTrainer(train_loop_per_worker,
+            scaling_config={"num_workers": 1},
+            datasets={"train": train_dataset})
+        trainer.fit()
     """
     session = _get_session()
-    assert isinstance(
-        session, TrainSession
-    ), "`get_local_rank` can only be called for TrainSession!"
+    if not isinstance(session, TrainSession):
+        raise RuntimeError(
+            "`get_local_rank` can only be called for TrainSession! "
+            "Make sure you only use that in `train_loop_per_worker` function"
+            "that is passed into `DataParallelTrainer`."
+        )
     return session.local_rank
 
 
@@ -214,22 +229,20 @@ def get_dataset_shard(
         from ray import train
         from ray.air import session
 
-        def train_func():
+        def train_loop_per_worker():
             model = Net()
             for iter in range(100):
+                # Trainer will automatically handle sharding.
                 data_shard = session.get_dataset_shard().to_torch()
                 model.train(data_shard)
             return model
 
-        dataset = ray.data.read_csv("train.csv")
-        dataset.filter(...).repeat().random_shuffle()
-
-        trainer = Trainer(backend="torch")
-        trainer.start()
-
-        # Trainer will automatically handle sharding.
-        train_model = trainer.run(train_func, dataset=dataset)
-        trainer.shutdown()
+        train_dataset = ray.data.from_items(
+            [{"x": x, "y": x + 1} for x in range(32)])
+        trainer = TorchTrainer(train_loop_per_worker,
+            scaling_config={"num_workers": 2},
+            datasets={"train": train_dataset})
+        trainer.fit()
 
     Args:
         dataset_name: If a Dictionary of Datasets was passed to ``Trainer``, then
@@ -240,7 +253,10 @@ def get_dataset_shard(
         If no dataset is passed into Trainer, then return None.
     """
     session = _get_session()
-    assert isinstance(
-        session, TrainSession
-    ), "`get_dataset_shard` can only be called for TrainSession!"
+    if not isinstance(session, TrainSession):
+        raise RuntimeError(
+            "`get_dataset_shard` can only be called for TrainSession! "
+            "Make sure you only use that in `train_loop_per_worker` function"
+            "that is passed into `DataParallelTrainer`."
+        )
     return session.get_dataset_shard(dataset_name)
