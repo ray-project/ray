@@ -234,7 +234,7 @@ ALGORITHMS = {
 
 
 def get_algorithm_class(alg: str, return_config=False) -> type:
-    """Returns the class of a known Trainer given its name."""
+    """Returns the class of a known Algorithm given its name."""
 
     try:
         return _get_algorithm_class(alg, return_config=return_config)

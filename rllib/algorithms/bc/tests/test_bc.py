@@ -52,10 +52,10 @@ class TestBC(unittest.TestCase):
 
         # Test for all frameworks.
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            trainer = config.build(env="CartPole-v0")
+            algo = config.build(env="CartPole-v0")
             learnt = False
             for i in range(num_iterations):
-                results = trainer.train()
+                results = algo.train()
                 check_train_results(results)
                 print(results)
 
@@ -74,9 +74,9 @@ class TestBC(unittest.TestCase):
                     "data!".format(min_reward)
                 )
 
-            check_compute_single_action(trainer, include_prev_action_reward=True)
+            check_compute_single_action(algo, include_prev_action_reward=True)
 
-            trainer.stop()
+            algo.stop()
 
 
 if __name__ == "__main__":

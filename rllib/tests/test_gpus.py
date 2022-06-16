@@ -64,8 +64,8 @@ class TestGPUs(unittest.TestCase):
                         # expect no error.
                         else:
                             print("direct RLlib")
-                            trainer = A2C(config, env="CartPole-v0")
-                            trainer.stop()
+                            algo = A2C(config, env="CartPole-v0")
+                            algo.stop()
                             # Cannot run through ray.tune.run() w/ fake GPUs
                             # as it would simply wait infinitely for the
                             # resources to become available (even though, we
@@ -97,8 +97,8 @@ class TestGPUs(unittest.TestCase):
                 frameworks = ("tf", "torch") if num_gpus > 1 else ("tf2", "tf", "torch")
                 for _ in framework_iterator(config, frameworks=frameworks):
                     print("direct RLlib")
-                    trainer = A2C(config, env="CartPole-v0")
-                    trainer.stop()
+                    algo = A2C(config, env="CartPole-v0")
+                    algo.stop()
                     print("via ray.tune.run()")
                     tune.run("A2C", config=config, stop={"training_iteration": 0})
 

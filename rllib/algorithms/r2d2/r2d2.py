@@ -170,8 +170,6 @@ class R2D2Config(DQNConfig):
         return self
 
 
-# Build an R2D2 trainer, which uses the framework specific Policy
-# determined in `get_policy_class()` above.
 class R2D2(DQN):
     """Recurrent Experience Replay in Distrib. Reinforcement Learning (R2D2).
 

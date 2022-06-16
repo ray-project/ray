@@ -42,7 +42,7 @@ class AlgorithmConfig:
         ...              .resources(num_gpus=0)
         ...              .rollouts(num_rollout_workers=4)
         ...              .callbacks(MemoryTrackingCallbacks)
-        >>> # A config object can be used to construct the respective Trainer.
+        >>> # A config object can be used to construct the respective Algorithm.
         >>> algo = config.build()
 
     Example:
@@ -52,13 +52,13 @@ class AlgorithmConfig:
         >>> config.training(lr=tune.grid_search([0.01, 0.001]))
         >>> # Use `to_dict()` method to get the legacy plain python config dict
         >>> # for usage with `tune.run()`.
-        >>> tune.run("[registered trainer class]", config=config.to_dict())
+        >>> tune.run("[registered Algorithm class]", config=config.to_dict())
     """
 
     def __init__(self, algo_class=None):
         # Define all settings and their default values.
 
-        # Define the default RLlib Trainer class that this AlgorithmConfig will be
+        # Define the default RLlib Algorithm class that this AlgorithmConfig will be
         # applied to.
         self.algo_class = algo_class
 

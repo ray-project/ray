@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 class PGTorchPolicy(TorchPolicyV2):
-    """PyTorch policy class used with PGTrainer."""
+    """PyTorch policy class used with PG."""
 
     def __init__(self, observation_space, action_space, config):
 

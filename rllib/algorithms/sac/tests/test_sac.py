@@ -436,9 +436,9 @@ class TestSAC(unittest.TestCase):
                     tf_inputs.append(in_)
                     # Set a fake-batch to use
                     # (instead of sampling from replay buffer).
-                    buf = trainer.local_replay_buffer
+                    buf = algo.local_replay_buffer
                     patch_buffer_with_fake_sampling_method(buf, in_)
-                    trainer.train()
+                    algo.train()
                     updated_weights = policy.get_weights()
                     # Net must have changed.
                     if tf_updated_weights:
@@ -455,9 +455,9 @@ class TestSAC(unittest.TestCase):
                     in_ = tf_inputs[update_iteration]
                     # Set a fake-batch to use
                     # (instead of sampling from replay buffer).
-                    buf = trainer.local_replay_buffer
+                    buf = algo.local_replay_buffer
                     patch_buffer_with_fake_sampling_method(buf, in_)
-                    trainer.train()
+                    algo.train()
                     # Compare updated model.
                     for tf_key in sorted(tf_weights.keys()):
                         if re.search("_[23]|alpha", tf_key):

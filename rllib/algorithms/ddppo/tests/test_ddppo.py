@@ -31,18 +31,18 @@ class TestDDPPO(unittest.TestCase):
         num_iterations = 2
 
         for _ in framework_iterator(config, frameworks="torch"):
-            trainer = config.build(env="CartPole-v0")
+            algo = config.build(env="CartPole-v0")
             for i in range(num_iterations):
-                results = trainer.train()
+                results = algo.train()
                 check_train_results(results)
                 print(results)
                 # Make sure, weights on all workers are the same.
-                weights = trainer.workers.foreach_worker(lambda w: w.get_weights())
+                weights = algo.workers.foreach_worker(lambda w: w.get_weights())
                 for w in weights[1:]:
                     check(w, weights[1])
 
-            check_compute_single_action(trainer)
-            trainer.stop()
+            check_compute_single_action(algo)
+            algo.stop()
 
     def test_ddppo_schedule(self):
         """Test whether lr_schedule will anneal lr to 0"""
@@ -53,15 +53,15 @@ class TestDDPPO(unittest.TestCase):
         num_iterations = 10
 
         for _ in framework_iterator(config, "torch"):
-            trainer = config.build(env="CartPole-v0")
+            algo = config.build(env="CartPole-v0")
             lr = -100.0
             for _ in range(num_iterations):
-                result = trainer.train()
+                result = algo.train()
                 if result["info"][LEARNER_INFO]:
                     lr = result["info"][LEARNER_INFO][DEFAULT_POLICY_ID][
                         LEARNER_STATS_KEY
                     ]["cur_lr"]
-            trainer.stop()
+            algo.stop()
             assert lr == 0.0, "lr should anneal to 0.0"
 
     def test_validate_config(self):

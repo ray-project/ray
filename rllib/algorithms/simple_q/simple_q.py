@@ -265,10 +265,10 @@ class SimpleQ(Algorithm):
 
     @override(Algorithm)
     def validate_config(self, config: AlgorithmConfigDict) -> None:
-        """Validates the Trainer's config dict.
+        """Validates the Algorithm's config dict.
 
         Args:
-            config: The Trainer's config to check.
+            config: The Algorithm's config to check.
 
         Raises:
             ValueError: In case something is wrong with the config.

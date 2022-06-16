@@ -383,7 +383,7 @@ class TestPPO(unittest.TestCase):
                 check(policy._mean_policy_loss, np.mean(-pg_loss))
                 check(policy._mean_vf_loss, np.mean(vf_loss), decimals=4)
                 check(policy._total_loss, overall_loss, decimals=4)
-            trainer.stop()
+            algo.stop()
 
     def _ppo_loss_helper(
         self, policy, model, dist_class, train_batch, logits, vf_outs, sess=None
