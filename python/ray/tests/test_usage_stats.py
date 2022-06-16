@@ -95,6 +95,35 @@ def reset_lib_usage():
     ray_usage_lib._recorded_library_usages.clear()
 
 
+def test_parse_extra_usage_tags(monkeypatch):
+    with monkeypatch.context() as m:
+        # Test a normal case.
+        m.setenv("RAY_EXTRA_USAGE_TAGS", "key=val;key2=val2")
+        result = ray_usage_lib._parse_extra_usage_tags()
+        assert result["key"] == "val"
+        assert result["key2"] == "val2"
+
+        m.setenv("RAY_EXTRA_USAGE_TAGS", "key=val;key2=val2;")
+        result = ray_usage_lib._parse_extra_usage_tags()
+        assert result["key"] == "val"
+        assert result["key2"] == "val2"
+
+        # Test that the env var is not given.
+        m.delenv("RAY_EXTRA_USAGE_TAGS")
+        result = ray_usage_lib._parse_extra_usage_tags()
+        assert len(result) == 0
+
+        # Test the parsing failure.
+        m.setenv("RAY_EXTRA_USAGE_TAGS", "key=val,key2=val2")
+        result = ray_usage_lib._parse_extra_usage_tags()
+        assert len(result) == 0
+
+        # Test differnt types of parsing failures.
+        m.setenv("RAY_EXTRA_USAGE_TAGS", "key=v=al,key2=val2")
+        result = ray_usage_lib._parse_extra_usage_tags()
+        assert len(result) == 0
+
+
 def test_usage_stats_enabledness(monkeypatch, tmp_path, reset_lib_usage):
     with monkeypatch.context() as m:
         m.setenv("RAY_USAGE_STATS_ENABLED", "1")
@@ -544,7 +573,7 @@ provider:
             cluster_config_file_path
         )
         d = ray_usage_lib.generate_report_data(
-            cluster_metadata, cluster_config_to_report, 2, 2, 2
+            cluster_metadata, cluster_config_to_report, 2, 2, 2, 2
         )
         validate(instance=asdict(d), schema=schema)
 
@@ -701,6 +730,8 @@ provider:
         assert payload["total_num_gpus"] is None
         assert payload["total_memory_gb"] > 0
         assert payload["total_object_store_memory_gb"] > 0
+        assert payload["extra_usage_tags"] == {}
+        assert payload["total_num_nodes"] == 1
         if os.environ.get("RAY_MINIMAL") == "1":
             # Since we start a serve actor for mocking a server using runtime env.
             assert set(payload["library_usages"]) == {"serve"}
@@ -924,6 +955,38 @@ def test_lib_used_from_workers(monkeypatch, ray_start_cluster, reset_lib_usage):
         def verify():
             lib_usages = read_file(temp_dir, "usage_stats")["library_usages"]
             return set(lib_usages) == {"tune", "rllib", "train"}
+
+        wait_for_condition(verify)
+
+
+def test_usage_stats_tags(monkeypatch, ray_start_cluster, reset_lib_usage):
+    """
+    Test usage tags are correctly reported.
+    """
+    with monkeypatch.context() as m:
+        m.setenv("RAY_USAGE_STATS_ENABLED", "1")
+        m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000/usage")
+        m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
+        m.setenv("RAY_EXTRA_USAGE_TAGS", "key=val;key2=val2")
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=3)
+        cluster.add_node(num_cpus=3)
+
+        ray.init(address=cluster.address)
+
+        """
+        Verify the usage_stats.json contains the lib usage.
+        """
+        global_node = ray.worker._global_node
+        temp_dir = pathlib.Path(global_node.get_session_dir_path())
+        wait_for_condition(lambda: file_exists(temp_dir), timeout=30)
+
+        def verify():
+            tags = read_file(temp_dir, "usage_stats")["extra_usage_tags"]
+            num_nodes = read_file(temp_dir, "usage_stats")["total_num_nodes"]
+            assert tags == {"key": "val", "key2": "val2"}
+            assert num_nodes == 2
+            return True
 
         wait_for_condition(verify)
 
