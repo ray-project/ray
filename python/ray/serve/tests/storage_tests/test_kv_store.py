@@ -1,15 +1,13 @@
 import os
 import tempfile
 from typing import Optional
+
 import pytest
-from ray.serve.constants import DEFAULT_CHECKPOINT_PATH
+
 from ray._private.test_utils import simulate_storage
+from ray.serve.constants import DEFAULT_CHECKPOINT_PATH
 from ray.serve.storage.checkpoint_path import make_kv_store
-from ray.serve.storage.kv_store import (
-    RayInternalKVStore,
-    RayLocalKVStore,
-    RayS3KVStore,
-)
+from ray.serve.storage.kv_store import RayInternalKVStore, RayLocalKVStore, RayS3KVStore
 from ray.serve.storage.kv_store_base import KVStoreBase
 from ray.serve.storage.ray_gcs_kv_store import RayGcsKVStore
 
@@ -86,7 +84,7 @@ def test_external_kv_local_disk():
 
 def test_external_kv_aws_s3():
     with simulate_storage("s3", "serve-test") as uri:
-        from urllib.parse import urlparse, parse_qs
+        from urllib.parse import parse_qs, urlparse
 
         o = urlparse(uri)
         qs = parse_qs(o.query)
