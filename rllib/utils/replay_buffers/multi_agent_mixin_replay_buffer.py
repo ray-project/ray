@@ -1,31 +1,29 @@
 import collections
-import random
-import numpy as np
 import logging
-from typing import Optional, Dict, Any
+import random
+from typing import Any, Dict, Optional
 
+import numpy as np
+
+from ray.rllib.policy.rnn_sequencing import timeslice_along_seq_lens_with_overlap
 from ray.rllib.policy.sample_batch import (
     DEFAULT_POLICY_ID,
-    SampleBatch,
     MultiAgentBatch,
+    SampleBatch,
 )
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.replay_buffers.multi_agent_prioritized_replay_buffer import (
     MultiAgentPrioritizedReplayBuffer,
 )
-from ray.rllib.utils.replay_buffers.replay_buffer import (
-    StorageUnit,
-)
 from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import (
-    merge_dicts_with_warning,
     MultiAgentReplayBuffer,
     ReplayMode,
+    merge_dicts_with_warning,
 )
+from ray.rllib.utils.replay_buffers.replay_buffer import _ALL_POLICIES, StorageUnit
 from ray.rllib.utils.typing import PolicyID, SampleBatchType
-from ray.rllib.utils.replay_buffers.replay_buffer import _ALL_POLICIES
-from ray.util.debug import log_once
 from ray.util.annotations import DeveloperAPI
-from ray.rllib.policy.rnn_sequencing import timeslice_along_seq_lens_with_overlap
+from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
 
@@ -168,19 +166,21 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
 
         kwargs = merge_dicts_with_warning(self.underlying_buffer_call_args, kwargs)
 
+        pids_and_batches = self._maybe_split_into_policy_batches(batch)
+
         # We need to split batches into timesteps, sequences or episodes
         # here already to properly keep track of self.last_added_batches
         # underlying buffers should not split up the batch any further
         with self.add_batch_timer:
             if self.storage_unit == StorageUnit.TIMESTEPS:
-                for policy_id, sample_batch in batch.policy_batches.items():
+                for policy_id, sample_batch in pids_and_batches.items():
                     timeslices = sample_batch.timeslices(1)
                     for time_slice in timeslices:
                         self.replay_buffers[policy_id].add(time_slice, **kwargs)
                         self.last_added_batches[policy_id].append(time_slice)
 
             elif self.storage_unit == StorageUnit.SEQUENCES:
-                for policy_id, sample_batch in batch.policy_batches.items():
+                for policy_id, sample_batch in pids_and_batches.items():
                     if self.replay_sequence_length == 1:
                         timeslices = batch.timeslices(1)
                     else:
@@ -198,7 +198,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
                         self.last_added_batches[policy_id].append(slice)
 
             elif self.storage_unit == StorageUnit.EPISODES:
-                for policy_id, sample_batch in batch.policy_batches.items():
+                for policy_id, sample_batch in pids_and_batches.items():
                     for eps in sample_batch.split_by_episode():
                         # Only add full episodes to the buffer
                         assert eps.get(SampleBatch.T) is not None, (
@@ -224,7 +224,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
                                     "dropped."
                                 )
             elif self.storage_unit == StorageUnit.FRAGMENTS:
-                for policy_id, sample_batch in batch.policy_batches.items():
+                for policy_id, sample_batch in pids_and_batches.items():
                     self.replay_buffers[policy_id].add(sample_batch, **kwargs)
                     self.last_added_batches[policy_id].append(sample_batch)
 

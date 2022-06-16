@@ -1,9 +1,8 @@
 import copy
 import logging
 import platform
-
 import queue
-from typing import Optional, Type, List, Dict, Union, Callable, Any
+from typing import Any, Callable, Dict, List, Optional, Type, Union
 
 import ray
 from ray.actor import ActorHandle
@@ -24,24 +23,26 @@ from ray.rllib.execution.common import (
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.actors import create_colocated_actors
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import (
+    DEPRECATED_VALUE,
+    Deprecated,
+    deprecation_warning,
+)
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_AGENT_STEPS_TRAINED,
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_TRAINED,
 )
+from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import ReplayMode
+from ray.rllib.utils.replay_buffers.replay_buffer import _ALL_POLICIES
 
 from ray.rllib.utils.typing import (
+    AlgorithmConfigDict,
     PartialAlgorithmConfigDict,
     ResultDict,
-    AlgorithmConfigDict,
     SampleBatchType,
     T,
-)
-from ray.rllib.utils.deprecation import (
-    Deprecated,
-    DEPRECATED_VALUE,
-    deprecation_warning,
 )
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.types import ObjectRef
@@ -408,9 +409,7 @@ class Impala(Algorithm):
                 return A3CTorchPolicy
         elif config["framework"] == "tf":
             if config["vtrace"]:
-                from ray.rllib.algorithms.impala.impala_tf_policy import (
-                    ImpalaTF1Policy,
-                )
+                from ray.rllib.algorithms.impala.impala_tf_policy import ImpalaTF1Policy
 
                 return ImpalaTF1Policy
             else:
@@ -530,6 +529,7 @@ class Impala(Algorithm):
                 replay_ratio=self.config["replay_ratio"],
                 storage_unit="fragments",
                 learning_starts=0,
+                replay_mode=ReplayMode.LOCKSTEP,
             )
 
         self._sampling_actor_manager = AsyncRequestsManager(
@@ -661,7 +661,7 @@ class Impala(Algorithm):
 
     def process_trained_results(self) -> ResultDict:
         # Get learner outputs/stats from output queue.
-        learner_infos = []
+        learner_info = copy.deepcopy(self._learner_thread.learner_info)
         num_env_steps_trained = 0
         num_agent_steps_trained = 0
 
@@ -675,10 +675,9 @@ class Impala(Algorithm):
                 num_env_steps_trained += env_steps
                 num_agent_steps_trained += agent_steps
                 if learner_results:
-                    learner_infos.append(learner_results)
+                    learner_info.update(learner_results)
             else:
                 raise RuntimeError("The learner thread died in while training")
-        learner_info = copy.deepcopy(self._learner_thread.learner_info)
 
         # Update the steps trained counters.
         self._counters[STEPS_TRAINED_THIS_ITER_COUNTER] = num_agent_steps_trained
@@ -708,6 +707,7 @@ class Impala(Algorithm):
             self.config["train_batch_size"],
             self._by_agent_steps,
         )
+        # c_ALL_POLICIES
 
         return mixed_batches
 
@@ -794,6 +794,7 @@ class AggregatorWorker:
             replay_ratio=self.config["replay_ratio"],
             storage_unit="fragments",
             learning_starts=0,
+            replay_mode=ReplayMode.LOCKSTEP,
         )
         self.count_by_gent_steps = count_by_gent_steps
 
@@ -805,6 +806,7 @@ class AggregatorWorker:
             self.config["train_batch_size"],
             self.count_by_gent_steps,
         )
+        # Sample by policy
         return processed_batches
 
     def apply(
