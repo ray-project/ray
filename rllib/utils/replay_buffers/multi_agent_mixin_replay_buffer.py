@@ -64,6 +64,15 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
         ... [<D>, <A>, <C>]
         >>> # or: [<D>, <A>, <A>], [<D>, <B>, <A>] or [<D>, <B>, <C>], etc..
         >>> # but always <D> as it is the newest sample
+
+        # replay proportion 0.0 -> replay disabled:
+        >>> buffer = MixInReplay(capacity=100, replay_ratio=0.0)
+        >>> buffer.add(<A>)
+        >>> buffer.sample()
+        ... [<A>]
+        >>> buffer.add(<B>)
+        >>> buffer.sample()
+        ... [<B>]
     """
 
     def __init__(

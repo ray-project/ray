@@ -1,8 +1,7 @@
-from typing import Optional
-
-import re
 import argparse
 import pathlib
+import re
+from typing import Optional
 
 
 def preprocess_github_markdown_file(source_path: str, dest_path: Optional[str] = None):

@@ -135,7 +135,10 @@ class A2C(A3C):
         # Create a microbatch variable for collecting gradients on microbatches'.
         # These gradients will be accumulated on-the-fly and applied at once (once train
         # batch size has been collected) to the model.
-        if self.config["microbatch_size"]:
+        if (
+            self.config["_disable_execution_plan_api"] is True
+            and self.config["microbatch_size"]
+        ):
             self._microbatches_grads = None
             self._microbatches_counts = self._num_microbatches = 0
 
