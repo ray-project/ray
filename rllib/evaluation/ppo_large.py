@@ -4,7 +4,7 @@
 import ray
 from ray.rllib.algorithms.ppo import PPO
 from ray.util.collective.types import Backend
-
+from pprint import pprint
 # ray.init(address="auto")
 
 # ray.init(address="auto", log_to_driver=True)
@@ -81,8 +81,11 @@ print(init_results)
 # )
 # print(f">>>>> results: {results}")
 
-for _ in range(100):
-    print(ray.get(trainer_actor.train.remote()))
+for i in range(100):
+    print(f">>>> Iteration {i}")
+    rst = ray.get(trainer_actor.train.remote())
+    if i == 99:
+        pprint(rst)
 
 # Evaluate the trained Trainer (and render each timestep to the shell's
 # output).

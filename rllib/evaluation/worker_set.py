@@ -245,7 +245,7 @@ class WorkerSet:
         #     tensor_key_list.append(key)
         #     tensor_list.append(tensor)
         # Broadcast to collective group buffers from worker 0
-        print(f"\n >>>> Syncing weights with collective group ... \n")
+        # print(f"\n >>>> Syncing weights with collective group ... \n")
         local_worker_rank = collective.get_rank(group_name="device_mesh")
         # print(f">>>> local_worker_rank from worker_set: {local_worker_rank}")
         self_actor = ray.get_runtime_context().current_actor
@@ -256,7 +256,7 @@ class WorkerSet:
                 w.policy_map_to_buffer_list.remote() for w in all_workers
             ]
         )
-        print(f">>>> \n\n Time spent on policy_map_to_buffer_list: {(time.time() - start)*1000}ms \n\n")
+        # print(f">>>> Time spent on policy_map_to_buffer_list: {(time.time() - start)*1000}ms \n\n")
         start = time.time()
 
         remote_worker_refs = [
@@ -266,14 +266,14 @@ class WorkerSet:
         ray.get(
             [self_actor.broadcast.remote(src_rank=local_worker_rank, group_name="device_mesh")] + remote_worker_refs
         )
-        print(f">>>> \n\n Time spent on broadcasting: {(time.time() - start)*1000}ms \n\n")
+        print(f">>>> Time spent on broadcasting: {(time.time() - start)*1000}ms ")
         start = time.time()
         ray.get(
             [
                 w.buffer_list_to_policy_map.remote() for w in self.remote_workers()
             ]
         )
-        print(f">>>> \n\n Time spent on buffer_list_to_policy_map: {(time.time() - start)*1000}ms \n\n")
+        # print(f">>>> \n\n Time spent on buffer_list_to_policy_map: {(time.time() - start)*1000}ms \n\n")
 
     def sync_weights(
         self,

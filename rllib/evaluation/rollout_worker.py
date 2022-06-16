@@ -413,7 +413,7 @@ class RolloutWorker(ParallelIteratorWorker):
             pid: spec if isinstance(spec, PolicySpec) else PolicySpec(*spec)
             for pid, spec in policy_spec.copy().items()
         }
-        print(f">>>>> 1 - Creating worker index: {worker_index}")
+        # print(f">>>>> 1 - Creating worker index: {worker_index}")
         self._original_kwargs: dict = locals().copy()
         del self._original_kwargs["self"]
 

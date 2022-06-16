@@ -160,18 +160,18 @@ def multi_gpu_train_one_step(algorithm, train_batch) -> Dict:
             num_batches = max(1, int(samples_per_device) // int(per_device_batch_size))
             logger.debug("== sgd epochs for {} ==".format(policy_id))
             for i in range(num_sgd_iter):
-                print(f">>>> sgd_iter: {i}")
+                # print(f">>>> sgd_iter: {i}")
                 permutation = np.random.permutation(num_batches)
                 for batch_index in range(num_batches):
                     # Learn on the pre-loaded data in the buffer.
                     # Note: For minibatch SGD, the data is an offset into
                     # the pre-loaded entire train batch.
-                    print(f">>>> batch_index: {batch_index}")
+                    # print(f">>>> batch_index: {batch_index}")
                     start = time.time()
                     results = policy.learn_on_loaded_batch(
                         permutation[batch_index] * per_device_batch_size, buffer_index=0
                     )
-                    print(f">>>> learn_on_loaded_batch: {(time.time() - start)*1000}ms")
+                    # print(f">>>> learn_on_loaded_batch: {(time.time() - start)*1000}ms")
                     learner_info_builder.add_learn_on_batch_results(results, policy_id)
 
         # Tower reduce and finalize results.
