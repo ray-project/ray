@@ -4,20 +4,16 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 import pytest
+import ray
 import requests
 from fastapi import Depends, FastAPI
-
-import ray
 from ray import serve
 from ray.air.checkpoint import Checkpoint
 from ray.serve.dag import InputNode
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.deployment_graph_build import build
 from ray.serve.http_adapters import json_to_ndarray
-from ray.serve.model_wrappers import (
-    BatchingManager,
-    ModelWrapperDeployment,
-)
+from ray.serve.model_wrappers import BatchingManager, ModelWrapperDeployment
 from ray.train.predictor import DataBatchType, Predictor
 
 
