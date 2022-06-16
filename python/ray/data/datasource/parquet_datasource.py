@@ -33,6 +33,7 @@ PARALLELIZE_META_FETCH_THRESHOLD = 24
 # The number of rows to read per batch. This is sized to generate 10MiB batches
 # for rows about 1KiB in size.
 PARQUET_READER_ROW_BATCH_SIZE = 100000
+FILE_READING_RETRY = 8
 
 
 def _register_parquet_file_fragment_serialization():
@@ -56,24 +57,35 @@ def _deregister_parquet_file_fragment_serialization():
     ray.util.deregister_serializer(ParquetFileFragment)
 
 
-# this retry helps when HA hdfs service not able to handle overloaded read request.
-# even with HA configed, hdfs service might be overloaded with parquet file read
-# request expecially when simutaneously running many hyper parameter tuning jobs
-# with ray.data parallelism setting at high value like the default 200
+# easier to test when isolated from retry logic
 def _deserialize_pieces(
+    serialized_pieces: str,
+) -> List["pyarrow._dataset.ParquetFileFragment"]:
+    from ray import cloudpickle
+
+    pieces: List["pyarrow._dataset.ParquetFileFragment"] = cloudpickle.loads(
+        serialized_pieces
+    )
+    return pieces
+
+
+# this retry helps when the upstream datasource is not able to handle
+# overloaded read request or failed with some retriable failures.
+# For example when reading data from HA hdfs service, hdfs might
+# lose connection for some unknown reason expecially when
+# simutaneously running many hyper parameter tuning jobs
+# with ray.data parallelism setting at high value like the default 200
+# Such connection failure can be restored with some waiting and retry.
+def _deserialize_pieces_with_retry(
     serialized_pieces: str,
 ) -> List["pyarrow._dataset.ParquetFileFragment"]:
     from ray import cloudpickle
 
     min_interval = 0
     final_exception = None
-    # retry at most 8 times
-    for i in range(8):
+    for i in range(FILE_READING_RETRY):
         try:
-            pieces: List["pyarrow._dataset.ParquetFileFragment"] = cloudpickle.loads(
-                serialized_pieces
-            )
-            return pieces
+            return _deserialize_pieces(serialized_pieces)
         except Exception as e:
             import traceback
             import time
@@ -88,7 +100,7 @@ def _deserialize_pieces(
                 ""
                 if i
                 else (
-                    f"If earlier hdfsBuilderConnect threw java.net.UnknownHostException"
+                    f"If earlier read attempt threw certain Exception"
                     f", It may or may not be an issue depends on these retries "
                     f"succeed or not. serialized_pieces:{serialized_pieces}"
                 )
@@ -174,7 +186,8 @@ class ParquetDatasource(ParquetBaseDatasource):
             # Deserialize after loading the filesystem class.
             try:
                 _register_parquet_file_fragment_serialization()
-                pieces = _deserialize_pieces(serialized_pieces)
+                pieces = _deserialize_pieces_with_retry(serialized_pieces)
+                logger.error(f"serialized_pieces:{serialized_pieces}")
             finally:
                 _deregister_parquet_file_fragment_serialization()
 
@@ -290,7 +303,7 @@ def _fetch_metadata_serialization_wrapper(
     # Deserialize after loading the filesystem class.
     try:
         _register_parquet_file_fragment_serialization()
-        pieces = _deserialize_pieces(pieces)
+        pieces = _deserialize_pieces_with_retry(pieces)
     finally:
         _deregister_parquet_file_fragment_serialization()
 
