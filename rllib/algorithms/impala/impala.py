@@ -138,6 +138,10 @@ class ImpalaConfig(AlgorithmConfig):
         # __sphinx_doc_end__
         # fmt: on
 
+        # TODO: IMPALA/APPO had to be rolled-back to old execution-plan API due
+        #  to issues with the MixIn Buffer (in process of being fixed atm).
+        self._disable_execution_plan_api = False
+
         # Deprecated value.
         self.num_data_loader_buffers = DEPRECATED_VALUE
 
@@ -658,7 +662,7 @@ class Impala(Algorithm):
             )
 
         def record_steps_trained(item):
-            count, fetches = item
+            count, fetches, _ = item
             metrics = _get_shared_metrics()
             # Manually update the steps trained counter since the learner
             # thread is executing outside the pipeline.
