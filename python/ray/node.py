@@ -1467,6 +1467,9 @@ class Node:
         if not automatic_spilling_enabled:
             return
 
+        if not object_spilling_config:
+            object_spilling_config = os.environ.get("RAY_object_spilling_config", "")
+
         # If the config is not specified, we fill up the default.
         if not object_spilling_config:
             object_spilling_config = json.dumps(
