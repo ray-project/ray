@@ -1,3 +1,4 @@
+import logging
 import os
 import pytest
 import sys
@@ -569,7 +570,7 @@ class MyPlugin(RuntimeEnvPlugin):
 
     @staticmethod
     def modify_context(
-        uri: str, plugin_config_dict: dict, ctx: RuntimeEnvContext
+        uri: str, runtime_env: dict, ctx: RuntimeEnvContext, logger: logging.Logger
     ) -> None:
         global runtime_env_retry_times
         runtime_env_retry_times += 1
@@ -836,4 +837,7 @@ def test_runtime_env_interface():
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-sv", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))
