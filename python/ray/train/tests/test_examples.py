@@ -116,9 +116,11 @@ def test_torch_linear_failure(ray_start_4_cpus):
     results = trainer.run(linear_train_func, config, callbacks=[kill_callback])
     trainer.shutdown()
 
-    result = results.metrics
+    assert len(results) == num_workers
 
-    assert result[TRAINING_ITERATION] == epochs
+    for result in results:
+        assert len(result) == epochs
+        assert result[-1]["loss"] < result[0]["loss"]
 
 
 def test_torch_fashion_mnist(ray_start_4_cpus):
