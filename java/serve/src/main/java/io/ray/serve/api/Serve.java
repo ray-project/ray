@@ -67,7 +67,7 @@ public class Serve {
       LOGGER.info("Connecting to existing Serve app in namespace {}", Constants.SERVE_NAMESPACE);
       checkCheckpointPath(client, checkpointPath);
       return client;
-    } catch (RayServeException e) {
+    } catch (RayServeException | IllegalStateException e) {
       LOGGER.info("There is no instance running on this Ray cluster. A new one will be started.");
     }
 
