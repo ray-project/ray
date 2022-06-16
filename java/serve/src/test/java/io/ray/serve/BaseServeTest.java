@@ -5,10 +5,8 @@ import io.ray.serve.api.Serve;
 import io.ray.serve.api.ServeControllerClient;
 import io.ray.serve.poll.LongPollClientFactory;
 import java.lang.reflect.Method;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 
