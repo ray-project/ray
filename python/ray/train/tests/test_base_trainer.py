@@ -1,5 +1,6 @@
 import io
 import logging
+import time
 from contextlib import redirect_stderr
 
 import pytest
@@ -196,7 +197,8 @@ def _is_trainable_name_overriden(trainer: BaseTrainer):
         remote_trainable = ray.remote(trainable)
         remote_actor = remote_trainable.remote()
         ray.get(remote_actor.say.remote())
-        assert trainable().__repr__() in output.getvalue()
+        time.sleep(1)  # make sure logging gets caught
+    assert trainable().__repr__() in output.getvalue()
 
 
 def test_trainable_name_is_overriden_data_parallel_trainer(ray_start_4_cpus):
