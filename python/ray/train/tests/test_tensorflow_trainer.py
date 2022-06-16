@@ -1,6 +1,5 @@
-import os
-
 import numpy as np
+import os
 import pytest
 
 import ray
@@ -11,9 +10,8 @@ from ray.air.examples.tf.tensorflow_linear_dataset_example import get_dataset
 from ray.air.examples.tf.tensorflow_linear_dataset_example import (
     train_func as tensorflow_linear_train_func,
 )
-from ray.air.predictors.integrations.tensorflow import TensorflowPredictor
 from ray.train.constants import MODEL_KEY, TRAIN_DATASET_KEY
-from ray.train.tensorflow import TensorflowTrainer
+from ray.train.tensorflow import TensorflowPredictor, TensorflowTrainer
 
 
 @pytest.fixture

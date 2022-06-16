@@ -61,14 +61,14 @@ class BaseTrainer(abc.ABC):
 
     **How do I create a new Trainer?**
 
-    Subclass ``ray.train.BaseTrainer``, and override the ``training_loop``
+    Subclass ``ray.train.trainer.BaseTrainer``, and override the ``training_loop``
     method, and optionally ``setup``.
 
     .. code-block:: python
 
         import torch
 
-        from ray.train import BaseTrainer
+        from ray.train.trainer import BaseTrainer
         from ray import tune
 
 

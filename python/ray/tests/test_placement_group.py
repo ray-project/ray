@@ -121,7 +121,10 @@ def test_placement_group_invalid_resource_request(shutdown_only):
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
-def test_placement_group_pack(ray_start_cluster, connect_to_client):
+@pytest.mark.parametrize("gcs_actor_scheduling_enabled", [False, True])
+def test_placement_group_pack(
+    ray_start_cluster, connect_to_client, gcs_actor_scheduling_enabled
+):
     @ray.remote(num_cpus=2)
     class Actor(object):
         def __init__(self):
@@ -132,8 +135,15 @@ def test_placement_group_pack(ray_start_cluster, connect_to_client):
 
     cluster = ray_start_cluster
     num_nodes = 2
-    for _ in range(num_nodes):
-        cluster.add_node(num_cpus=4)
+    for i in range(num_nodes):
+        cluster.add_node(
+            num_cpus=4,
+            _system_config={
+                "gcs_actor_scheduling_enabled": gcs_actor_scheduling_enabled
+            }
+            if i == 0
+            else {},
+        )
     ray.init(address=cluster.address)
 
     with connect_to_client_or_not(connect_to_client):
@@ -229,7 +239,10 @@ def test_placement_group_strict_pack(ray_start_cluster, connect_to_client):
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
-def test_placement_group_spread(ray_start_cluster, connect_to_client):
+@pytest.mark.parametrize("gcs_actor_scheduling_enabled", [False, True])
+def test_placement_group_spread(
+    ray_start_cluster, connect_to_client, gcs_actor_scheduling_enabled
+):
     @ray.remote
     class Actor(object):
         def __init__(self):
@@ -240,8 +253,15 @@ def test_placement_group_spread(ray_start_cluster, connect_to_client):
 
     cluster = ray_start_cluster
     num_nodes = 2
-    for _ in range(num_nodes):
-        cluster.add_node(num_cpus=4)
+    for i in range(num_nodes):
+        cluster.add_node(
+            num_cpus=4,
+            _system_config={
+                "gcs_actor_scheduling_enabled": gcs_actor_scheduling_enabled
+            }
+            if i == 0
+            else {},
+        )
     ray.init(address=cluster.address)
 
     with connect_to_client_or_not(connect_to_client):
@@ -275,7 +295,10 @@ def test_placement_group_spread(ray_start_cluster, connect_to_client):
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
-def test_placement_group_strict_spread(ray_start_cluster, connect_to_client):
+@pytest.mark.parametrize("gcs_actor_scheduling_enabled", [False, True])
+def test_placement_group_strict_spread(
+    ray_start_cluster, connect_to_client, gcs_actor_scheduling_enabled
+):
     @ray.remote
     class Actor(object):
         def __init__(self):
@@ -286,8 +309,15 @@ def test_placement_group_strict_spread(ray_start_cluster, connect_to_client):
 
     cluster = ray_start_cluster
     num_nodes = 3
-    for _ in range(num_nodes):
-        cluster.add_node(num_cpus=4)
+    for i in range(num_nodes):
+        cluster.add_node(
+            num_cpus=4,
+            _system_config={
+                "gcs_actor_scheduling_enabled": gcs_actor_scheduling_enabled
+            }
+            if i == 0
+            else {},
+        )
     ray.init(address=cluster.address)
 
     with connect_to_client_or_not(connect_to_client):
@@ -301,7 +331,7 @@ def test_placement_group_strict_spread(ray_start_cluster, connect_to_client):
             Actor.options(
                 placement_group=placement_group,
                 placement_group_bundle_index=i,
-                num_cpus=2,
+                num_cpus=1,
             ).remote()
             for i in range(num_nodes)
         ]
@@ -316,6 +346,22 @@ def test_placement_group_strict_spread(ray_start_cluster, connect_to_client):
         assert are_pairwise_unique(
             [info_obj["Address"]["NodeID"] for info_obj in actor_info_objs]
         )
+
+        actors_no_special_bundle = [
+            Actor.options(
+                placement_group=placement_group,
+                num_cpus=1,
+            ).remote()
+            for _ in range(num_nodes)
+        ]
+        [ray.get(actor.value.remote()) for actor in actors_no_special_bundle]
+
+        actor_no_resource = Actor.options(
+            placement_group=placement_group,
+            num_cpus=2,
+        ).remote()
+        with pytest.raises(ray.exceptions.GetTimeoutError):
+            ray.get(actor_no_resource.value.remote(), timeout=1)
 
         placement_group_assert_no_leak([placement_group])
 
@@ -403,4 +449,9 @@ def test_placement_group_hang(ray_start_cluster, connect_to_client):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-sv", __file__]))
+    import os
+
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))
