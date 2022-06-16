@@ -3,6 +3,8 @@
 Inference with trained models
 =============================
 
+.. figure:: images/air-predictor.png
+
 Once you have a trained model, you can use Ray AIR's Predictors and associated utilities to perform scalable offline and
 online prediction.
 
