@@ -65,7 +65,7 @@ class PG(Algorithm):
 
     Only overrides the default config- and policy selectors
     (`get_default_policy` and `get_default_config`). Utilizes
-    the default `training_step()` method of `Trainer`.
+    the default `execution_plan()` of `Trainer`.
     """
 
     @classmethod
