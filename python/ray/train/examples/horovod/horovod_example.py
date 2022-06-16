@@ -144,13 +144,11 @@ def train_func(config):
 
     model, optimizer, train_loader, train_sampler = setup(config)
 
-    results = []
     for epoch in range(num_epochs):
         loss = train_epoch(
             model, optimizer, train_sampler, train_loader, epoch, log_interval, use_cuda
         )
         train.report(loss=loss)
-    return results
 
 
 def main(num_workers, use_gpu, kwargs):

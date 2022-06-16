@@ -87,8 +87,6 @@ def train_func(config):
 
     optimizer = torch.optim.SGD(model.parameters(), lr=lr)
 
-    results = []
-
     train_dataset_iterator = train_dataset_pipeline_shard.iter_epochs()
     validation_dataset_iterator = validation_dataset_pipeline_shard.iter_epochs()
 
@@ -116,9 +114,6 @@ def train_func(config):
         train_epoch(train_torch_dataset, model, loss_fn, optimizer, device)
         result = validate_epoch(validation_torch_dataset, model, loss_fn, device)
         train.report(**result)
-        results.append(result)
-
-    return results
 
 
 def train_linear(num_workers=2, use_gpu=False):

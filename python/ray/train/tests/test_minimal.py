@@ -59,7 +59,7 @@ def test_run(ray_start_4_cpus):
     )
     results = trainer.fit()
 
-    assert results.checkpoint
+    assert results.checkpoint.to_dict()[key] == checkpoint.to_dict()[key]
 
 
 def test_failure():

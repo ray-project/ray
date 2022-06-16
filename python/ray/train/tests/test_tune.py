@@ -7,7 +7,6 @@ import ray.train as train
 from ray import tune
 from ray.air import Checkpoint
 from ray.air.config import FailureConfig, RunConfig
-from ray.train import Trainer
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
@@ -115,16 +114,37 @@ def test_tune_tensorflow_mnist(ray_start_8_cpus):
     tune_tensorflow_mnist(num_workers=2, use_gpu=False, num_samples=2)
 
 
+def test_tune_error(ray_start_4_cpus):
+    def train_func(config):
+        raise RuntimeError("Error in training function!")
+
+    trainer = DataParallelTrainer(
+        train_func, backend_config=TestConfig(), scaling_config=dict(num_workers=1)
+    )
+    tuner = Tuner(
+        trainer,
+    )
+
+    # with pytest.raises(TuneError):
+    tuner.fit()
+    print("a")
+
+
 def test_tune_checkpoint(ray_start_4_cpus):
     def train_func():
         for i in range(10):
             train.report(test=i)
         train.save_checkpoint(hello="world")
 
-    trainer = Trainer(TestConfig(), num_workers=1)
-    TestTrainable = trainer.to_tune_trainable(train_func)
+    trainer = DataParallelTrainer(
+        train_func, backend_config=TestConfig(), scaling_config=dict(num_workers=1)
+    )
+    tuner = Tuner(
+        trainer,
+        param_space={"train_loop_config": {"max_iter": 5}},
+    )
 
-    [trial] = tune.run(TestTrainable).trials
+    [trial] = tuner.fit()._experiment_analysis.trials
     checkpoint_path = trial.checkpoint.dir_or_data
     assert os.path.exists(checkpoint_path)
     checkpoint = Checkpoint.from_directory(checkpoint_path).to_dict()

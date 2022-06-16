@@ -130,6 +130,14 @@ py_test(
 )
 
 py_test(
+    name = "test_callbacks",
+    size = "medium",
+    srcs = ["tests/test_callbacks.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_data_parallel_trainer",
     size = "medium",
     srcs = ["tests/test_data_parallel_trainer.py"],
