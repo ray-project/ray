@@ -1,3 +1,5 @@
+# isort: skip_file
+
 import os
 import sys
 from datetime import datetime
@@ -7,14 +9,6 @@ from pathlib import Path
 
 from custom_directives import *
 
-import ray
-
-# The version info for the project you're documenting, acts as replacement for
-# |version| and |release|, also used in various other places throughout the
-# built documents.
-from ray import __version__ as version
-
-sys.path.insert(0, os.path.abspath("."))
 
 # Mocking modules allows Sphinx to work without installing Ray.
 mock_modules()

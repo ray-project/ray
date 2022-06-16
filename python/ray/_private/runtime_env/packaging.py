@@ -118,11 +118,22 @@ def _hash_directory(
         md5 = hashlib.md5()
         md5.update(str(path.relative_to(relative_path)).encode())
         if not path.is_dir():
-            with path.open("rb") as f:
-                data = f.read(BUF_SIZE)
-                while len(data) != 0:
-                    md5.update(data)
+            try:
+                f = path.open("rb")
+            except Exception as e:
+                logger.debug(
+                    f"Skipping contents of file {path} when calculating package hash "
+                    f"because the file could not be opened: {e}"
+                )
+            else:
+                try:
                     data = f.read(BUF_SIZE)
+                    while len(data) != 0:
+                        md5.update(data)
+                        data = f.read(BUF_SIZE)
+                finally:
+                    f.close()
+
         nonlocal hash_val
         hash_val = _xor_bytes(hash_val, md5.digest())
 
