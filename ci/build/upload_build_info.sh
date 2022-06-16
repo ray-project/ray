@@ -9,6 +9,7 @@ RAY_DIR=$(cd "${ROOT_DIR}/../../"; pwd)
 cd "${RAY_DIR}"
 
 cleanup() {
+  # Cleanup the directory because macOS file system is shared between builds.
   rm -rf /tmp/bazel_event_logs
 }
 trap cleanup EXIT
