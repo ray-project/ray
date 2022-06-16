@@ -10,8 +10,8 @@ from urllib.parse import urlparse
 from zipfile import ZipFile
 
 from filelock import FileLock
-from ray import ray_constants
 
+from ray import ray_constants
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.thirdparty.pathspec import PathSpec
 from ray.experimental.internal_kv import (
@@ -336,7 +336,9 @@ def _store_package_in_gcs(
 
     logger.info(f"Pushing file package '{pkg_uri}' ({size_str}) to Ray cluster...")
     try:
-        _internal_kv_put(pkg_uri, data, namespace=ray_constants.KV_NAMESPACE_RUNTIME_ENV)
+        _internal_kv_put(
+            pkg_uri, data, namespace=ray_constants.KV_NAMESPACE_RUNTIME_ENV
+        )
     except Exception as e:
         raise RuntimeError(
             "Failed to store package in the GCS.\n"
@@ -404,7 +406,9 @@ def package_exists(pkg_uri: str) -> bool:
     """
     protocol, pkg_name = parse_uri(pkg_uri)
     if protocol == Protocol.GCS:
-        return _internal_kv_exists(pkg_uri, namespace=ray_constants.KV_NAMESPACE_RUNTIME_ENV)
+        return _internal_kv_exists(
+            pkg_uri, namespace=ray_constants.KV_NAMESPACE_RUNTIME_ENV
+        )
     else:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
 
@@ -584,7 +588,9 @@ async def download_and_unpack_package(
             if protocol == Protocol.GCS:
                 # Download package from the GCS.
                 code = await gcs_aio_client.internal_kv_get(
-                    pkg_uri.encode(), namespace=ray_constants.KV_NAMESPACE_RUNTIME_ENV, timeout=None
+                    pkg_uri.encode(),
+                    namespace=ray_constants.KV_NAMESPACE_RUNTIME_ENV,
+                    timeout=None,
                 )
                 if code is None:
                     raise IOError(f"Failed to fetch URI {pkg_uri} from GCS.")
