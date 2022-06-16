@@ -73,6 +73,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
         replay_zero_init_states: bool = True,
         replay_ratio: float = 0.66,
         underlying_buffer_config: dict = None,
+        replay_mode=ReplayMode.INDEPENDENT,
         **kwargs
     ):
         """Initializes MultiAgentMixInReplayBuffer instance.
@@ -119,21 +120,12 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
         if not 0 <= replay_ratio <= 1:
             raise ValueError("Replay ratio must be within [0, 1]")
 
-        if "replay_mode" in kwargs and kwargs["replay_mode"] == "lockstep":
-            if log_once("lockstep_mode_not_supported"):
-                logger.error(
-                    "Replay mode `lockstep` is not supported for "
-                    "MultiAgentMixInReplayBuffer."
-                    "This buffer will run in `independent` mode."
-                )
-            del kwargs["replay_mode"]
-
         MultiAgentReplayBuffer.__init__(
             self,
             capacity=capacity,
             storage_unit=storage_unit,
             num_shards=num_shards,
-            replay_mode="independent",
+            replay_mode=replay_mode,
             learning_starts=learning_starts,
             replay_sequence_length=replay_sequence_length,
             replay_burn_in=replay_burn_in,
@@ -327,9 +319,13 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
             samples = []
 
             if self.replay_mode == ReplayMode.LOCKSTEP:
-                assert (
-                    policy_id is None
-                ), "`policy_id` specifier not allowed in `lockstep` mode!"
+                if policy_id != _ALL_POLICIES:
+                    raise ValueError(
+                        "Trying to sample from single policy's buffer in lockstep "
+                        "mode. In lockstep mode, all policies' experiences are "
+                        "sampled from a single replay buffer which is accessed "
+                        "with the policy id `{}`".format(_ALL_POLICIES)
+                    )
                 if check_buffer_is_ready(_ALL_POLICIES):
                     samples.append(mix_batches(_ALL_POLICIES).as_multi_agent())
             elif policy_id is not None:

@@ -8,6 +8,7 @@ from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.replay_buffers import (
     MultiAgentPrioritizedReplayBuffer,
     ReplayBuffer,
@@ -99,7 +100,8 @@ def update_priorities_in_replay_buffer(
 
 @DeveloperAPI
 def sample_min_n_steps_from_buffer(
-    replay_buffer: ReplayBuffer, min_steps: int, count_by_agent_steps: bool
+    replay_buffer: ReplayBuffer, min_steps: int, count_by_agent_steps: bool,
+    policy_id: str = DEFAULT_POLICY_ID
 ) -> Optional[SampleBatchType]:
     """Samples a minimum of n timesteps from a given replay buffer.
 
@@ -112,6 +114,7 @@ def sample_min_n_steps_from_buffer(
         replay_buffer: The replay buffer to sample from
         num_timesteps: The number of timesteps to sample
         count_by_agent_steps: Whether to count agent steps or env steps
+        policy_id: The ID of the policy to sample batches for
 
     Returns:
         A concatenated SampleBatch or MultiAgentBatch with samples from the
@@ -120,7 +123,7 @@ def sample_min_n_steps_from_buffer(
     train_batch_size = 0
     train_batches = []
     while train_batch_size < min_steps:
-        batch = replay_buffer.sample(num_items=1)
+        batch = replay_buffer.sample(num_items=1, policy_id=policy_id)
         batch_len = batch.agent_steps() if count_by_agent_steps else batch.env_steps()
         if batch_len == 0:
             # Replay has not started, so we can't accumulate timesteps here

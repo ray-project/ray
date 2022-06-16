@@ -706,8 +706,8 @@ class Impala(Algorithm):
             self.local_mixin_buffer,
             self.config["train_batch_size"],
             self._by_agent_steps,
+            policy_id=_ALL_POLICIES
         )
-        # c_ALL_POLICIES
 
         return mixed_batches
 
@@ -805,6 +805,7 @@ class AggregatorWorker:
             self._mixin_buffer,
             self.config["train_batch_size"],
             self.count_by_gent_steps,
+            policy_id=_ALL_POLICIES
         )
         # Sample by policy
         return processed_batches
