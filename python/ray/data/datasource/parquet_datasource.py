@@ -85,27 +85,21 @@ def _deserialize_pieces_with_retry(
         try:
             return _deserialize_pieces(serialized_pieces)
         except Exception as e:
-            import traceback
             import time
             import random
 
-            tb_str = traceback.format_exception(
-                etype=type(e), value=e, tb=e.__traceback__
-            )
-            err_msg_str = f"{type(e)}:{str(e)}"
-            retry_timing = "" if i == 7 else (f" Retry after {min_interval} sec. ")
+            retry_timing = "" if i == FILE_READING_RETRY - 1 else (f"Retry after {min_interval} sec. ")
             log_only_show_in_1st_retry = (
                 ""
                 if i
-                else (
+                else ( 
                     f"If earlier read attempt threw certain Exception"
-                    f", It may or may not be an issue depends on these retries "
+                    f", it may or may not be an issue depends on these retries "
                     f"succeed or not. serialized_pieces:{serialized_pieces}"
                 )
             )
-            logger.error(
-                f"{i + 1}th attempt to deserialize ParquetFileFragment failed "
-                f"with:{err_msg_str} traceback:{tb_str}. "
+            logger.exception(
+                f"{i + 1}th attempt to deserialize ParquetFileFragment failed. "
                 f"{retry_timing}"
                 f"{log_only_show_in_1st_retry}"
             )
