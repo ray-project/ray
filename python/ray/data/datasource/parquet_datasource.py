@@ -187,7 +187,6 @@ class ParquetDatasource(ParquetBaseDatasource):
             try:
                 _register_parquet_file_fragment_serialization()
                 pieces = _deserialize_pieces_with_retry(serialized_pieces)
-                logger.error(f"serialized_pieces:{serialized_pieces}")
             finally:
                 _deregister_parquet_file_fragment_serialization()
 

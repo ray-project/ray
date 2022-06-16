@@ -12,7 +12,6 @@ from fsspec.implementations.local import LocalFileSystem
 from pytest_lazyfixture import lazy_fixture
 from io import BytesIO
 from functools import partial
-from unittest.mock import patch
 
 import ray
 
@@ -411,7 +410,6 @@ def test_parquet_read_basic(ray_start_regular_shared, fs, data_path):
     setup_data_path = _unwrap_protocol(data_path)
     path1 = os.path.join(setup_data_path, "test1.parquet")
     pq.write_table(table, path1, filesystem=fs)
-
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     table = pa.Table.from_pandas(df2)
     path2 = os.path.join(setup_data_path, "test2.parquet")
