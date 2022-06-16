@@ -15,6 +15,7 @@ public abstract class BaseServeTest {
   @BeforeMethod(alwaysRun = true)
   public void setUpBase(Method method) {
     Assert.assertFalse(Ray.isInitialized());
+    Ray.init();
     client = Serve.start(true, false, null, null);
   }
 

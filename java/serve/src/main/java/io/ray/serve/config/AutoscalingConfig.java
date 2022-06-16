@@ -3,24 +3,20 @@ package io.ray.serve.config;
 import java.io.Serializable;
 
 public class AutoscalingConfig implements Serializable {
-
   private static final long serialVersionUID = 9135422781025005216L;
-
-  private int minReplicas;
-
-  private int maxReplicas;
-
-  private int targetNumOngoingRequestsPerReplica;
-
-  private double metricsIntervalS;
-
-  private double lookBackPeriodS;
-
-  private double smoothingFactor;
-
-  private double downscaleDelayS;
-
-  private double upscaleDelayS;
+  private int minReplicas = 1;
+  private int maxReplicas = 1;
+  private int targetNumOngoingRequestsPerReplica = 1;
+  /** How often to scrape for metrics */
+  private double metricsIntervalS = 10.0;
+  /** Time window to average over for metrics. */
+  private double lookBackPeriodS = 30.0;
+  /** Multiplicative "gain" factor to limit scaling decisions */
+  private double smoothingFactor = 1.0;
+  /** How long to wait before scaling down replicas */
+  private double downscaleDelayS = 600.0;
+  /** How long to wait before scaling up replicas */
+  private double upscaleDelayS = 30.0;
 
   public int getMinReplicas() {
     return minReplicas;

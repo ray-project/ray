@@ -141,6 +141,7 @@ public class DeploymentTest extends BaseServeTest {
             .setDeploymentDef(ExampleEchoDeployment.class.getName())
             .setAutoscalingConfig(autoscalingConfig)
             .setUserConfig("_test")
+            .setVersion("v1")
             .setInitArgs(new Object[] {"echo_"})
             .create();
     deployment.deploy(true);
