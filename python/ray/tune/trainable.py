@@ -55,7 +55,7 @@ logger = logging.getLogger(__name__)
 
 SETUP_TIME_THRESHOLD = 10
 
-_METADATA_KEY = "_metadata"
+_METADATA_KEY = "_tune_metadata"
 
 
 @PublicAPI
