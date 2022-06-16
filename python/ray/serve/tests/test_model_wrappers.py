@@ -1,25 +1,26 @@
 import tempfile
+from typing import Optional
 
-from fastapi import Depends, FastAPI
-import pandas as pd
 import numpy as np
-import requests
+import pandas as pd
 import pytest
+import requests
+from fastapi import Depends, FastAPI
 
+import ray
+from ray import serve
+from ray.air.checkpoint import Checkpoint
+from ray.serve.dag import InputNode
+from ray.serve.deployment_graph import RayServeDAGHandle
+from ray.serve.deployment_graph_build import build
+from ray.serve.http_adapters import json_to_ndarray
 from ray.serve.model_wrappers import (
     ModelWrapperDeployment,
     collate_array,
     collate_dataframe,
     collate_dict_array,
 )
-from ray.air.checkpoint import Checkpoint
-from ray.air.predictor import DataBatchType, Predictor
-from ray.serve.deployment_graph_build import build
-from ray.serve.dag import InputNode
-from ray.serve.deployment_graph import RayServeDAGHandle
-from ray.serve.http_adapters import json_to_ndarray
-import ray
-from ray import serve
+from ray.train.predictor import DataBatchType, Predictor
 
 
 class TestCollationFunctions:
@@ -73,17 +74,24 @@ class TestCollationFunctions:
 
 
 class AdderPredictor(Predictor):
-    def __init__(self, increment: int) -> None:
+    def __init__(self, increment: int, do_double: bool) -> None:
         self.increment = increment
+        self.do_double = do_double
 
     @classmethod
-    def from_checkpoint(cls, checkpoint: Checkpoint) -> "AdderPredictor":
-        return cls(checkpoint.to_dict()["increment"])
+    def from_checkpoint(
+        cls, checkpoint: Checkpoint, do_double: bool = False
+    ) -> "AdderPredictor":
+        return cls(checkpoint.to_dict()["increment"], do_double)
 
-    def predict(self, data: np.ndarray) -> DataBatchType:
+    def predict(
+        self, data: np.ndarray, override_increment: Optional[int] = None
+    ) -> DataBatchType:
+        increment = override_increment or self.increment
+        multiplier = 2 if self.do_double else 1
         return [
             {"value": val, "batch_size": len(data)}
-            for val in (data + self.increment).tolist()
+            for val in ((data + increment) * multiplier).tolist()
         ]
 
 
@@ -103,6 +111,26 @@ def test_simple_adder(serve_instance):
     )
     resp = ray.get(send_request.remote(json={"array": [40]}))
     assert resp == {"value": [42], "batch_size": 1}
+
+
+def test_predictor_kwargs(serve_instance):
+    ModelWrapperDeployment.options(name="Adder").deploy(
+        predictor_cls=AdderPredictor,
+        checkpoint=Checkpoint.from_dict({"increment": 2}),
+        predict_kwargs={"override_increment": 100},
+    )
+    resp = ray.get(send_request.remote(json={"array": [40]}))
+    assert resp == {"value": [140], "batch_size": 1}
+
+
+def test_predictor_from_checkpoint_kwargs(serve_instance):
+    ModelWrapperDeployment.options(name="Adder").deploy(
+        predictor_cls=AdderPredictor,
+        checkpoint=Checkpoint.from_dict({"increment": 2}),
+        do_double=True,
+    )
+    resp = ray.get(send_request.remote(json={"array": [40]}))
+    assert resp == {"value": [84], "batch_size": 1}
 
 
 def test_batching(serve_instance):
