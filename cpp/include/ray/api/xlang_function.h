@@ -59,6 +59,14 @@ struct JavaActorMethod {
   std::string function_name;
 };
 
+template <typename R>
+struct JavaFunction {
+  bool IsJava() { return true; }
+  R operator()() { return {}; }
+  std::string class_name;
+  std::string function_name;
+};
+
 namespace internal {
 
 enum class LangType {

@@ -97,6 +97,9 @@ ray::internal::TaskCaller<F> Task(F func);
 template <typename R>
 ray::internal::TaskCaller<PyFunction<R>> Task(PyFunction<R> func);
 
+template <typename R>
+ray::internal::TaskCaller<JavaFunction<R>> Task(JavaFunction<R> func);
+
 /// Generic version of creating an actor
 /// It is used for creating an actor, such as: ActorCreator<Counter> creator =
 /// ray::Actor(Counter::FactoryCreate<int>).Remote(1);
@@ -229,6 +232,13 @@ template <typename R>
 inline ray::internal::TaskCaller<PyFunction<R>> Task(PyFunction<R> func) {
   ray::internal::RemoteFunctionHolder remote_func_holder(
       func.module_name, func.function_name, "", ray::internal::LangType::PYTHON);
+  return {ray::internal::GetRayRuntime().get(), std::move(remote_func_holder)};
+}
+
+template <typename R>
+inline ray::internal::TaskCaller<JavaFunction<R>> Task(JavaFunction<R> func) {
+  ray::internal::RemoteFunctionHolder remote_func_holder(
+      "", func.function_name, func.class_name, ray::internal::LangType::JAVA);
   return {ray::internal::GetRayRuntime().get(), std::move(remote_func_holder)};
 }
 

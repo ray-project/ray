@@ -259,6 +259,12 @@ TEST(RayClusterModeTest, JavaInvocationTest) {
   auto java_actor_ret =
       java_actor_handle.Task(ray::JavaActorMethod<int>{"increase"}).Remote(2);
   EXPECT_EQ(3, *java_actor_ret.Get());
+
+  auto java_task_ret =
+      ray::Task(ray::JavaFunction<std::string>{"io.ray.test.CrossLanguageInvocationTest",
+                                               "returnInputString"})
+          .Remote("helloworld");
+  EXPECT_EQ("helloworld", *java_task_ret.Get());
 }
 
 TEST(RayClusterModeTest, MaxConcurrentTest) {
