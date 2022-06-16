@@ -167,7 +167,6 @@ class Trainable:
 
         self.remote_checkpoint_dir = remote_checkpoint_dir
         self.custom_syncer = custom_syncer
-        self.storage_client = None
 
     @property
     def uses_cloud_checkpointing(self):
