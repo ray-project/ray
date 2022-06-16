@@ -9,6 +9,7 @@ import ray.data
 from ray.rllib.offline.input_reader import InputReader
 from ray.rllib.offline.io_context import IOContext
 from ray.rllib.offline.json_reader import from_json_data
+from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.typing import SampleBatchType, AlgorithmConfigDict
 from typing import List
@@ -146,17 +147,21 @@ class DatasetReader(InputReader):
             ds: Ray dataset to sample from.
         """
         self._ioctx = ioctx
+        self._default_policy = self.policy_map = None
         self._dataset = ds
-        self.count = self._dataset.count()
-        self.seed = self._ioctx.worker.policy_config.get("seed")
-        if self.seed and not isinstance(self.seed, int):
+        self.count = None if not self._dataset else self._dataset.count()
+        seed = self._ioctx.worker.policy_config.get("seed")
+        if seed and not isinstance(seed, int):
             raise ValueError(
                 "If a random seed is specified, seed can only be an " "integer type."
             )
-        self._dataset.random_shuffle(seed=self.seed)
         # We allow the creation of a non-functioning None DatasetReader.
         # It's useful for example for a non-rollout local worker.
         if ds:
+            if self._ioctx.worker is not None:
+                self._policy_map = self._ioctx.worker.policy_map
+                self._default_policy = self._policy_map.get(DEFAULT_POLICY_ID)
+            self._dataset.random_shuffle(seed=seed)
             print(
                 "DatasetReader ", ioctx.worker_index, " has ", ds.count(), " samples."
             )
@@ -173,4 +178,20 @@ class DatasetReader(InputReader):
         # Columns like obs are compressed when written by DatasetWriter.
         d = from_json_data(d, self._ioctx.worker)
 
-        return d
+        return self._postprocess_if_needed(d)
+
+    def _postprocess_if_needed(self, batch: SampleBatchType) -> SampleBatchType:
+        if not self._ioctx or not self._ioctx.config.get("postprocess_inputs"):
+            return batch
+
+        if isinstance(batch, SampleBatch):
+            out = []
+            for sub_batch in batch.split_by_episode():
+                out.append(self._default_policy.postprocess_trajectory(sub_batch))
+            return SampleBatch.concat_samples(out)
+        else:
+            # TODO(ekl) this is trickier since the alignments between agent
+            #  trajectories in the episode are not available any more.
+            raise NotImplementedError(
+                "Postprocessing of multi-agent data not implemented yet."
+            )
