@@ -1,9 +1,15 @@
 .. _air-predictors:
 
-Inference with trained models
-=============================
+Inference with Ray AIR
+======================
 
 .. figure:: images/air-predictor.png
+
+Ray AIR Predictors load models from checkpoints to perform inference.
+
+After training a model, using it for inference is a key component of any ML workload.
+
+Ray AIR's predictors and associated utilities allow you to easily
 
 Once you have a trained model, you can use Ray AIR's Predictors and associated utilities to perform scalable offline and
 online prediction.
