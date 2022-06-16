@@ -1496,7 +1496,7 @@ class DeploymentState:
 
             if len(pending_allocation) > 0:
                 required, available = slow_start_replicas[0][0].resource_requirements()
-                logger.warning(
+                message = (
                     f"Deployment '{self._name}' has "
                     f"{len(pending_allocation)} replicas that have taken "
                     f"more than {SLOW_STARTUP_WARNING_S}s to be scheduled. "
@@ -1506,16 +1506,34 @@ class DeploymentState:
                     f"Resources required for each replica: {required}, "
                     f"resources available: {available}."
                 )
+                logger.warning(message)
                 if _SCALING_LOG_ENABLED:
                     print_verbose_scaling_log()
+                # If status is UNHEALTHY, give it higher priority over the stuck 
+                # allocations problem when propagating status back to user
+                if self._curr_status_info.status != DeploymentStatus.UNHEALTHY:
+                    self._curr_status_info = DeploymentStatusInfo(
+                        name=self._name,
+                        status=DeploymentStatus.UPDATING,
+                        message=message,
+                    )
 
             if len(pending_initialization) > 0:
-                logger.warning(
+                message = (
                     f"Deployment '{self._name}' has "
                     f"{len(pending_initialization)} replicas that have taken "
                     f"more than {SLOW_STARTUP_WARNING_S}s to initialize. This "
                     f"may be caused by a slow __init__ or reconfigure method."
                 )
+                logger.warning(message)
+                # If status is UNHEALTHY, give it higher priority over the stuck 
+                # initializations problem when propagating status back to user
+                if self._curr_status_info.status != DeploymentStatus.UNHEALTHY:
+                    self._curr_status_info = DeploymentStatusInfo(
+                        name=self._name,
+                        status=DeploymentStatus.UPDATING,
+                        message=message,
+                    )
 
             self._prev_startup_warning = time.time()
 
