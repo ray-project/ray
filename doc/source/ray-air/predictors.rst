@@ -56,7 +56,7 @@ Link to serving guide
 
 
 Examples
----------------------------------
+--------
 
 Non Deep Learning
 ~~~~~~~~~~~~~~~~~
