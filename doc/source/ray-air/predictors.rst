@@ -1,4 +1,4 @@
-.. _air-preprocessors:
+.. _air-predictors:
 
 Inference with trained models
 =============================
@@ -10,17 +10,41 @@ Creating a Predictor
 --------------------
 Predictors can be created from Checkpoints.
 
-Either as a result of Training (Result, ResultGrid) or pretrained model.
+Either as a result of Training (Result, ResultGrid) or from a :ref:`pretrained model` <use-pretrained-model>.
 
-Link to Checkpoint docs.
+Checkpoints contain the trained model for prediction and the fitted Preprocessor
+
+Link to Checkpoint docs when they exist.
 
 Code snippet showing from_checkpoint.
 
-3 ways to use Predictors
+Using Predictors
 ------------------------
+Predictors load models from checkpoints to perform inference.
+
+Predictors expose a ``predict`` method that accepts an input batch of type
+    ``DataBatchType`` and outputs predictions of the same type as the input batch.
+
+When the ``predict`` method is called the following occurs:
+
+        - The input batch is converted into a pandas DataFrame. Tensor input (like a
+          ``np.ndarray``) will be converted into a single column Pandas Dataframe.
+        - If there is a :ref:`Preprocessor <air-preprocessor-ref>` saved in the provided
+          :ref:`Checkpoint <air-checkpoint-ref>`, the preprocessor will be used to
+          transform the DataFrame.
+        - The transformed DataFrame will be passed to the model for inference (via the
+          ``predictor._predict_pandas`` method).
+        - The predictions will be outputted by ``predict`` in the same type as the
+          original input.
+
+There are three ways to do prediction.
+
+.. _air-predictor-standalone:
 
 1: Standalone for development/debugging
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Show how to pass in a single batch of data.
+Make sure that your Predictor works with your model/checkpoint.
 
 2: Offline Batch Prediction
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -31,9 +55,8 @@ Link to batch prediction guide
 Link to serving guide
 
 
-Predictor Inputs and Data formats
+Examples
 ---------------------------------
-Introduce DataBatchType and supported input types.
 
 Non Deep Learning
 ~~~~~~~~~~~~~~~~~
@@ -61,5 +84,16 @@ Multi-modal
 Link to full batch prediction example
 Link to full online serving example
 
+Developer Guide: Implementing your own Predictor
+------------------------------------------------
+    To implement a new Predictor for your particular framework, you should subclass
+    the base ``Predictor`` and implement the following two methods:
+
+        1. ``_predict_pandas``: Given a pandas.DataFrame input, return a
+            pandas.DataFrame containing predictions.
+        2. ``from_checkpoint``: Logic for creating a Predictor from an
+           :ref:`AIR Checkpoint <air-checkpoint-ref>`.
+        3. Optionally ``_predict_arrow`` for better performance when working with
+           tensor data to avoid extra copies from Pandas conversions.
 
 
