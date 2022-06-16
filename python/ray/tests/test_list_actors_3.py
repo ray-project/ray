@@ -49,5 +49,10 @@ assert "sad" in ray.util.list_named_actors()
 
 
 if __name__ == "__main__":
+    import os
+
     # Test suite is timing out. Disable on windows for now.
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

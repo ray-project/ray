@@ -729,5 +729,9 @@ def test_maximize_concurrent_pull_race_condition(ray_start_cluster_head):
 if __name__ == "__main__":
     import pytest
     import sys
+    import os
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))
