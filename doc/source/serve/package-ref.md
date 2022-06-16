@@ -64,6 +64,20 @@
     :noindex:
 
         Gets latest config that Serve has received. This config represents the current goal state for the Serve application. Starts a Serve application on the Ray cluster if it's not already running. See Config Schema for the output schema.
+    
+    **Example Request**:
+
+    ..source_code:: http
+
+    GET /api/serve/deployments/ HTTP 1.1
+    Host: http://localhost:8265/
+    Accept: application/json
+
+    **Example Response**:
+
+    ..source_code:: http
+
+
 ```
 
 ```{eval-rst}
