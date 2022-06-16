@@ -1,16 +1,16 @@
-import subprocess
-from contextlib import redirect_stdout, redirect_stderr
 import copy
-from datetime import datetime
 import logging
 import os
 import platform
 import shutil
+import subprocess
 import sys
 import tempfile
 import time
-from typing import Any, Dict, Optional, Union, Callable, List
 import uuid
+from contextlib import redirect_stderr, redirect_stdout
+from datetime import datetime
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import ray
 import ray.cloudpickle as pickle
@@ -21,34 +21,34 @@ from ray.tune.resources import Resources
 from ray.tune.result import (
     DEBUG_METRICS,
     DEFAULT_RESULTS_DIR,
+    DONE,
+    EPISODES_THIS_ITER,
+    EPISODES_TOTAL,
     HOSTNAME,
     NODE_IP,
     PID,
+    RESULT_DUPLICATE,
     SHOULD_CHECKPOINT,
+    STDERR_FILE,
+    STDOUT_FILE,
     TIME_THIS_ITER_S,
     TIME_TOTAL_S,
     TIMESTEPS_THIS_ITER,
-    DONE,
     TIMESTEPS_TOTAL,
-    EPISODES_THIS_ITER,
-    EPISODES_TOTAL,
     TRAINING_ITERATION,
-    RESULT_DUPLICATE,
     TRIAL_ID,
     TRIAL_INFO,
-    STDOUT_FILE,
-    STDERR_FILE,
 )
 from ray.tune.syncer import Syncer
 from ray.tune.utils import UtilMonitor
+from ray.tune.utils.log import disable_ipython
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.tune.utils.trainable import TrainableUtil
-from ray.tune.utils.log import disable_ipython
 from ray.tune.utils.util import (
     Tee,
-    retry_fn,
-    get_checkpoint_from_remote_node,
     delete_external_checkpoint,
+    get_checkpoint_from_remote_node,
+    retry_fn,
 )
 from ray.util.annotations import PublicAPI
 
@@ -167,7 +167,6 @@ class Trainable:
 
         self.remote_checkpoint_dir = remote_checkpoint_dir
         self.custom_syncer = custom_syncer
-        self.storage_client = None
 
     @property
     def uses_cloud_checkpointing(self):
@@ -629,10 +628,10 @@ class Trainable:
             return
         else:
             if self.uses_cloud_checkpointing:
-                if self.storage_client:
+                if self.custom_syncer:
                     # Keep for backwards compatibility
-                    self.storage_client.delete(self._storage_path(checkpoint_dir))
-                    self.storage_client.wait_or_retry()
+                    self.custom_syncer.delete(self._storage_path(checkpoint_dir))
+                    self.custom_syncer.wait_or_retry()
                 else:
                     checkpoint_uri = self._storage_path(checkpoint_dir)
                     retry_fn(
