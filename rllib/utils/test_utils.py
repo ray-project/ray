@@ -84,7 +84,7 @@ def framework_iterator(
 
     #TEST: no PyTorch for GPU training compilation tests.
     if isinstance(config, dict):
-        if config["num_gpus"] > 0:
+        if config.get("num_gpus", 0) > 0:
             frameworks.remove("torch")
     elif config.num_gpus > 0:
         frameworks.remove("torch")
