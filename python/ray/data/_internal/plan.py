@@ -1,35 +1,36 @@
 import copy
+import uuid
 from typing import (
+    TYPE_CHECKING,
+    Any,
     Callable,
     Dict,
-    List,
-    Tuple,
-    Optional,
-    Union,
-    Any,
-    Iterator,
     Iterable,
-    TYPE_CHECKING,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    Union,
 )
-import uuid
+
+import ray
+from ray.data._internal.block_list import BlockList
+from ray.data._internal.compute import (
+    UDF,
+    ActorPoolStrategy,
+    BlockTransform,
+    ComputeStrategy,
+    get_compute,
+    is_task_compute,
+)
+from ray.data._internal.lazy_block_list import LazyBlockList
+from ray.data._internal.stats import DatasetStats
+from ray.data.block import Block
+from ray.data.context import DatasetContext
 
 if TYPE_CHECKING:
     import pyarrow
 
-import ray
-from ray.data.context import DatasetContext
-from ray.data.block import Block
-from ray.data._internal.block_list import BlockList
-from ray.data._internal.compute import (
-    get_compute,
-    is_task_compute,
-    ComputeStrategy,
-    ActorPoolStrategy,
-    BlockTransform,
-    UDF,
-)
-from ray.data._internal.stats import DatasetStats
-from ray.data._internal.lazy_block_list import LazyBlockList
 
 # Scheduling strategy can be inherited from prev stage if not specified.
 INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
