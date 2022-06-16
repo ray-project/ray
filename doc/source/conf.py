@@ -7,6 +7,7 @@ from datetime import datetime
 # -*- coding: utf-8 -*-
 from pathlib import Path
 
+sys.path.insert(0, os.path.abspath("."))
 from custom_directives import *
 
 
@@ -22,6 +23,7 @@ assert (
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 sys.path.insert(0, os.path.abspath("../../python/"))
 
+import ray
 
 # -- General configuration ------------------------------------------------
 
@@ -122,6 +124,10 @@ project = "Ray"
 copyright = str(datetime.now().year) + ", The Ray Team"
 author = "The Ray Team"
 
+# The version info for the project you're documenting, acts as replacement for
+# |version| and |release|, also used in various other places throughout the
+# built documents.
+from ray import __version__ as version
 
 # The full version, including alpha/beta/rc tags.
 release = version
