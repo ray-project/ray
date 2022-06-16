@@ -671,12 +671,20 @@ py_test(
 # Tag: algorithms_dir
 # --------------------------------------------------------------------
 
-# Generic (all Trainers)
+# Generic (all Algorithms)
+
+py_test(
+    name = "test_algorithm",
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
+    size = "large",
+    srcs = ["algorithms/tests/test_algorithm.py"]
+)
+
 py_test(
     name = "test_callbacks",
     tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
     size = "medium",
-    srcs = ["agents/tests/test_callbacks.py"]
+    srcs = ["algorithms/tests/test_callbacks.py"]
 )
 
 py_test(
@@ -684,21 +692,14 @@ py_test(
     main = "agents/tests/test_memory_leaks.py",
     tags = ["team:rllib", "algorithms_dir"],
     size = "large",
-    srcs = ["agents/tests/test_memory_leaks.py"]
-)
-
-py_test(
-    name = "test_trainer",
-    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
-    size = "large",
-    srcs = ["agents/tests/test_trainer.py"]
+    srcs = ["algorithms/tests/test_memory_leaks.py"]
 )
 
 py_test(
     name = "tests/test_worker_failures",
     tags = ["team:rllib", "tests_dir", "algorithms_dir_generic"],
     size = "large",
-    srcs = ["agents/tests/test_worker_failures.py"]
+    srcs = ["algorithms/tests/test_worker_failures.py"]
 )
 
 # Specific Algorithms
