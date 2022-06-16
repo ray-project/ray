@@ -1,16 +1,17 @@
-from typing import Callable, Optional, Dict, Tuple, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable, Dict, Optional, Tuple, Union
+
 import torch
 
+from ray.air._internal.torch_utils import load_torch_model
+from ray.air.checkpoint import Checkpoint
+from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
+from ray.train.data_parallel_trainer import DataParallelTrainer, _load_checkpoint
 from ray.train.torch.config import TorchConfig
 from ray.train.trainer import GenDataset
-from ray.train.data_parallel_trainer import DataParallelTrainer, _load_checkpoint
-from ray.air.config import ScalingConfig, RunConfig, DatasetConfig
-from ray.air.checkpoint import Checkpoint
-from ray.air._internal.torch_utils import load_torch_model
 from ray.util import PublicAPI
 
 if TYPE_CHECKING:
-    from ray.air.preprocessor import Preprocessor
+    from ray.data.preprocessor import Preprocessor
 
 
 @PublicAPI(stability="alpha")
@@ -163,7 +164,7 @@ class TorchTrainer(DataParallelTrainer):
             dataset. If a ``preprocessor`` is provided and has not already been fit,
             it will be fit on the training dataset. All datasets will be transformed
             by the ``preprocessor`` if one is provided.
-        preprocessor: A ``ray.air.preprocessor.Preprocessor`` to preprocess the
+        preprocessor: A ``ray.data.Preprocessor`` to preprocess the
             provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
     """
