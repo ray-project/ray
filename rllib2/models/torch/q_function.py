@@ -37,8 +37,21 @@ Example:
 
 @dataclass
 class QFunctionOutput(NNOutput):
-    values: Optional[Sequence[TensorType]] = None
-    q_logits: Optional[Sequence[TensorType]] = None
+    value: Optional[Sequence[TensorType]] = None
+    q_logit: Optional[Sequence[TensorType]] = None
+
+
+@dataclass
+class EnsembleQFunctionOutput(NNOutput):
+    q_outputs: Optional[Sequence[QFunctionOutput]] = None
+
+    @property
+    def values(self):
+        return [q.value for q in self.q_outputs]
+
+    @property
+    def q_logits(self):
+        return [q.q_logit for q in self.q_outputs]
 
     def reduce(self, mode: str = 'min', dim=0):
         if mode == 'min':

@@ -41,7 +41,8 @@ Examples:
 @dataclass
 class RLModuleConfig(NNConfig):
     """dataclass for holding the nested configuration parameters"""
-    pass
+    action_space: Optional[rllib.env.Space] = None
+    obs_space: Optional[rllib.env.Space] = None
 
 @dataclass
 class RLModuleOutput(NNOutput):
