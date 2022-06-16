@@ -317,7 +317,7 @@
   parallelism: 3
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - PARALLEL_CI=1 . ./ci/ci.sh test_large
+    - . ./ci/ci.sh test_large --test_env=PARALLEL_CI=1
 - label: ":python: (Medium A-J)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
@@ -345,7 +345,7 @@
   parallelism: 3
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - PARALLEL_CI=1 TEST_EXTERNAL_REDIS=1 . ./ci/ci.sh test_large
+    - TEST_EXTERNAL_REDIS=1 . ./ci/ci.sh test_large  --test_env=PARALLEL_CI=1
 - label: ":redis: (External Redis) (Medium A-J)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
@@ -400,7 +400,7 @@
   parallelism: 3
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - PARALLEL_CI=1 RAY_use_ray_syncer=true . ./ci/ci.sh test_large --define=RAY_STAGING_TESTS=1
+    - RAY_use_ray_syncer=true . ./ci/ci.sh test_large --define=RAY_STAGING_TESTS=1 --test_env=PARALLEL_CI=1
 - label: ":construction: :python: (syncer) (Medium A-J)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
