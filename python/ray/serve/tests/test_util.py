@@ -1,28 +1,20 @@
 import json
-import tempfile
-import numpy as np
 import os
-import sys
 import subprocess
-import pytest
+import sys
+import tempfile
 
+import numpy as np
+import pytest
 from fastapi.encoders import jsonable_encoder
 
 import ray
 from ray import serve
 from ray.serve.utils import (
-    serve_encoders,
     get_deployment_import_path,
-    node_id_to_ip_addr,
     override_runtime_envs_except_env_vars,
+    serve_encoders,
 )
-
-
-def test_node_id_to_ip_addr():
-    assert node_id_to_ip_addr("node:127.0.0.1-0") == "127.0.0.1"
-    assert node_id_to_ip_addr("127.0.0.1-0") == "127.0.0.1"
-    assert node_id_to_ip_addr("127.0.0.1") == "127.0.0.1"
-    assert node_id_to_ip_addr("node:127.0.0.1") == "127.0.0.1"
 
 
 def test_bytes_encoder():
@@ -266,7 +258,7 @@ class TestOverrideRuntimeEnvsExceptEnvVars:
             runtime_env={
                 "py_modules": [
                     "https://github.com/ray-project/test_dag/archive/"
-                    "cc246509ba3c9371f8450f74fdc18018428630bd.zip"
+                    "76a741f6de31df78411b1f302071cde46f098418.zip"
                 ],
                 "env_vars": {"var1": "hello"},
             }
