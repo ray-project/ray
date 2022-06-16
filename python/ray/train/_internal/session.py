@@ -76,7 +76,7 @@ class _TrainSession:
         self.world_size = world_size
         self.trial_info = trial_info
         # TODO(xwjiang): Legacy Ray Train trainer clean up!
-        self.loaded_checkpoint: Optional[Dict, Checkpoint] = checkpoint
+        self.loaded_checkpoint: Optional[Union[Dict, Checkpoint]] = checkpoint
 
         # Function to encode checkpoint dict before sending to the driver.
         if not encode_data_fn:
