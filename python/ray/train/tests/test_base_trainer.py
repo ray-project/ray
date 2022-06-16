@@ -1,7 +1,9 @@
 import io
 import logging
+import os
 import time
 from contextlib import redirect_stderr
+from unittest.mock import patch
 
 import pytest
 
@@ -185,6 +187,7 @@ def test_fail(ray_start_4_cpus):
         trainer.fit()
 
 
+@patch.dict(os.environ, {"RAY_LOG_TO_STDERR": "1"})
 def _is_trainable_name_overriden(trainer: BaseTrainer):
     trainable = trainer.as_trainable()
     output = io.StringIO()
@@ -198,7 +201,9 @@ def _is_trainable_name_overriden(trainer: BaseTrainer):
         remote_actor = remote_trainable.remote()
         ray.get(remote_actor.say.remote())
         time.sleep(1)  # make sure logging gets caught
-    assert trainable().__repr__() in output.getvalue()
+    output = output.getvalue()
+    print(output)
+    assert trainable().__repr__() in output
 
 
 def test_trainable_name_is_overriden_data_parallel_trainer(ray_start_4_cpus):
