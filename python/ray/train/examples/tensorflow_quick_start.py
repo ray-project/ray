@@ -1,14 +1,11 @@
 # flake8: noqa
 # fmt: off
+# isort: skip_file
 
 # __tf_setup_begin__
 
-import json
-import os
-
 import numpy as np
 import tensorflow as tf
-
 
 def mnist_dataset(batch_size):
     (x_train, y_train), _ = tf.keras.datasets.mnist.load_data()
@@ -50,6 +47,8 @@ def train_func():
 
 # __tf_distributed_begin__
 
+import json
+import os
 
 def train_func_distributed():
     per_worker_batch_size = 64

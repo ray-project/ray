@@ -1,13 +1,10 @@
 # flake8: noqa
 # fmt: off
+# isort: skip_file
 
 # __torch_setup_begin__
 import torch
 import torch.nn as nn
-import torch.optim as optim
-
-import ray.train.torch
-from ray import train
 
 num_samples = 20
 input_size = 10
@@ -32,6 +29,7 @@ labels = torch.randn(num_samples, output_size)
 
 # __torch_single_begin__
 
+import torch.optim as optim
 
 def train_func():
     num_epochs = 3
@@ -51,6 +49,7 @@ def train_func():
 
 # __torch_distributed_begin__
 
+from ray import train
 
 def train_func_distributed():
     num_epochs = 3

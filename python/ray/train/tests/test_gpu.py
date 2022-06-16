@@ -42,7 +42,7 @@ def ray_start_1_cpu_1_gpu():
     ray.shutdown()
 
 
-@pytest.mark.skip("Refactor as a backend test.")
+# TODO: Refactor as a backend test.
 @pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1])
 def test_torch_get_device(ray_start_4_cpus_2_gpus, num_gpus_per_worker):
     def train_fn():
@@ -69,7 +69,7 @@ def test_torch_get_device(ray_start_4_cpus_2_gpus, num_gpus_per_worker):
         )
 
 
-@pytest.mark.skip("Refactor as a backend test.")
+# TODO: Refactor as a backend test.
 def test_torch_prepare_model(ray_start_4_cpus_2_gpus):
     """Tests if ``prepare_model`` correctly wraps in DDP."""
 
@@ -91,7 +91,7 @@ def test_torch_prepare_model(ray_start_4_cpus_2_gpus):
     trainer.shutdown()
 
 
-@pytest.mark.skip("Refactor as a backend test.")
+# TODO: Refactor as a backend test.
 def test_torch_prepare_dataloader(ray_start_4_cpus_2_gpus):
     data_loader = DataLoader(LinearDataset(a=1, b=2, size=10))
 
@@ -115,7 +115,7 @@ def test_torch_prepare_dataloader(ray_start_4_cpus_2_gpus):
     trainer.shutdown()
 
 
-@pytest.mark.skip("Refactor as a backend test.")
+# TODO: Refactor as a backend test.
 @pytest.mark.parametrize("use_gpu", (False, True))
 def test_enable_reproducibility(ray_start_4_cpus_2_gpus, use_gpu):
     # NOTE: Reproducible results aren't guaranteed between seeded executions, even with
@@ -162,7 +162,7 @@ def test_enable_reproducibility(ray_start_4_cpus_2_gpus, use_gpu):
     assert result1 == result2
 
 
-@pytest.mark.skip("Refactor as a backend test.")
+# TODO: Refactor as a backend test.
 def test_torch_amp_performance(ray_start_4_cpus_2_gpus):
     def train_func(config):
         train.torch.accelerate(amp=config["amp"])
@@ -205,7 +205,7 @@ def test_torch_amp_performance(ray_start_4_cpus_2_gpus):
     assert 1.05 * latency(amp=True) < latency(amp=False)
 
 
-@pytest.mark.skip("Refactor as a backend test.")
+# TODO: Refactor as a backend test.
 def test_checkpoint_torch_model_with_amp(ray_start_4_cpus_2_gpus):
     """Test that model with AMP is serializable."""
 
@@ -223,7 +223,7 @@ def test_checkpoint_torch_model_with_amp(ray_start_4_cpus_2_gpus):
     trainer.shutdown()
 
 
-@pytest.mark.skip("Refactor as a backend test.")
+# TODO: Refactor as a backend test.
 def test_torch_auto_gpu_to_cpu(ray_start_4_cpus_2_gpus):
     """Tests if GPU tensors are auto converted to CPU on driver."""
 
@@ -363,7 +363,7 @@ def test_tensorflow_linear_dataset_gpu(ray_start_4_cpus_2_gpus):
     assert train_tensorflow_linear(num_workers=2, use_gpu=True)
 
 
-@pytest.mark.skip("Refactor as a backend test.")
+# TODO: Refactor as a backend test.
 @pytest.mark.parametrize(
     ("device_choice", "auto_transfer"),
     [
