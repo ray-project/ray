@@ -38,10 +38,6 @@ from ray.serve.long_poll import LongPollHost
 from ray.serve.schema import ServeApplicationSchema
 from ray.serve.storage.checkpoint_path import make_kv_store
 from ray.serve.storage.kv_store import RayInternalKVStore
-from ray.serve.generated.serve_pb2 import (
-    EndpointSet,
-    EndpointInfo as EndpointInfoProto,
-)
 from ray.serve.utils import (
     override_runtime_envs_except_env_vars,
     get_current_node_resource_key,
@@ -195,6 +191,11 @@ class ServeController:
 
     def get_all_endpoints_java(self) -> bytes:
         """Returns a dictionary of deployment name to config."""
+        from ray.serve.generated.serve_pb2 import (
+            EndpointSet,
+            EndpointInfo as EndpointInfoProto,
+        )
+
         endpoints = self.get_all_endpoints()
         data = {
             endpoint_tag: EndpointInfoProto(route=endppint_dict["route"])
