@@ -440,9 +440,7 @@ class FunctionRunner(Trainable):
             checkpoint = FuncCheckpointUtil.mk_null_checkpoint_dir(self.logdir)
             parent_dir = checkpoint
         elif isinstance(checkpoint, dict):
-            parent_dir = TrainableUtil.make_checkpoint_dir(
-                self.logdir, index=self.training_iteration
-            )
+            return checkpoint
         elif isinstance(checkpoint, str):
             parent_dir = TrainableUtil.find_checkpoint_dir(checkpoint)
             # When the trainable is restored, a temporary checkpoint
@@ -461,7 +459,6 @@ class FunctionRunner(Trainable):
                 "type (str, dict). Got {}.".format(type(checkpoint))
             )
 
-        TrainableUtil.write_metadata(parent_dir, state)
         return parent_dir
 
     def _create_checkpoint_dir(
