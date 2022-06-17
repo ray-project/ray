@@ -214,17 +214,22 @@ def test_push_based_shuffle_schedule():
             for i in range(schedule.num_merge_tasks_per_round)
         ]
         high = max(num_reducers_per_merge_idx)
-        num_imbalanced = 0
         for num_reducers in num_reducers_per_merge_idx:
-            if num_reducers < high:
-                num_imbalanced += 1
-        assert num_imbalanced <= 1
+            assert num_reducers == high or num_reducers == high - 1
+
+        for merge_idx in range(schedule.num_merge_tasks_per_round):
+            assert isinstance(
+                schedule.merge_schedule.get_num_reducers_per_merge_idx(merge_idx), int
+            )
+            assert schedule.merge_schedule.get_num_reducers_per_merge_idx(merge_idx) > 0
 
     for num_cpus in range(1, 20):
         _test(20, 3, {"node1": num_cpus})
     _test(20, 3, {"node1": 100})
     _test(100, 3, {"node1": 10, "node2": 10, "node3": 10})
     _test(100, 10, {"node1": 10, "node2": 10, "node3": 10})
+    # Regression test for https://github.com/ray-project/ray/issues/25863.
+    _test(1000, 2, {f"node{i}": 16 for i in range(20)})
 
 
 def test_push_based_shuffle_stats(ray_start_cluster):

@@ -195,6 +195,16 @@ py_test(
     args = ["--yaml-dir=tuned_examples/appo"]
 )
 
+py_test(
+    name = "learning_tests_multi_agent_cartpole_appo",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/appo/multi-agent-cartpole-appo.yaml"],
+    args = ["--yaml-dir=tuned_examples/appo"]
+)
+
 # py_test(
 #    name = "learning_tests_frozenlake_appo",
 #    main = "tests/run_regression_tests.py",
@@ -401,6 +411,16 @@ py_test(
 #    data = ["tuned_examples/impala/cartpole-impala.yaml"],
 #    args = ["--yaml-dir=tuned_examples/impala"]
 # )
+
+py_test(
+    name = "learning_tests_multi_agent_cartpole_impala",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/impala/multi-agent-cartpole-impala.yaml"],
+    args = ["--yaml-dir=tuned_examples/impala"]
+)
 
 py_test(
     name = "learning_tests_cartpole_impala_fake_gpus",
@@ -3013,7 +3033,7 @@ py_test(
 
 py_test(
     name = "examples/replay_buffer_api",
-    tags = ["team:rllib", "gpu"],
+    tags = ["team:rllib", "examples"],
     size = "large",
     srcs = ["examples/replay_buffer_api.py"],
     args = ["--as-test", "--stop-reward=70"]
