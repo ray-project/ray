@@ -137,10 +137,12 @@ class _ParquetDatasourceReader(Reader):
         self._schema = schema
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
+        # TODO(ekl) better estimate the in-memory size here.
+        PARQUET_DECOMPRESSION_MULTIPLIER = 5
         total_size = 0
         for meta in self._metadata:
             total_size += meta.serialized_size
-        return total_size
+        return total_size * PARQUET_DECOMPRESSION_MULTIPLIER
 
     def prepare_read(self, parallelism: int) -> List[ReadTask]:
         import pyarrow as pa
