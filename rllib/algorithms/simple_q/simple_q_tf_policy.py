@@ -79,7 +79,19 @@ def get_simple_q_tf_policy(
             return model
 
         @override(base)
-        def compute_actions(
+        def action_distribution_fn(
+            self,
+            model: ModelV2,
+            *,
+            obs_batch: TensorType,
+            state_batches: TensorType,
+            **kwargs,
+        ) -> Tuple[TensorType, type, List[TensorType]]:
+            # Compute the Q-values for each possible action, using our Q-value network.
+            q_vals = self._compute_q_values(self.model, obs_batch, is_training=False)
+            return q_vals, Categorical, state_batches
+
+        def xyz_compute_actions(
             self,
             *,
             input_dict,
@@ -87,7 +99,7 @@ def get_simple_q_tf_policy(
             timestep=None,
             episodes=None,
             is_training=False,
-            **kwargs
+            **kwargs,
         ) -> Tuple[TensorStructType, List[TensorType], Dict[str, TensorStructType]]:
             if timestep is None:
                 timestep = self.global_timestep
