@@ -125,8 +125,8 @@ std::vector<std::string> ParseSpillingPaths(const std::string &spilling_config) 
                      << ", expecting string or array.";
     }
   } catch (json::exception &ex) {
-    RAY_LOG(ERROR) << "Failed to load spilling config: " << ex.what()
-                   << " The config string is: " << spilling_config;
+    RAY_LOG(ERROR) << "Failed to parse spilling config, error message: " << ex.what()
+                   << "The config string is probably invalid json: " << spilling_config;
   }
   return spilling_paths;
 }
