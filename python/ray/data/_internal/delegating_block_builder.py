@@ -1,7 +1,5 @@
 from typing import Any
 
-import numpy as np
-
 from ray.data.block import Block, DataBatch, T, BlockAccessor
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.arrow_block import ArrowBlockBuilder
