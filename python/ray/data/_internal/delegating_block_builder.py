@@ -4,8 +4,7 @@ import numpy as np
 
 from ray.data.block import Block, DataBatch, T, BlockAccessor
 from ray.data._internal.block_builder import BlockBuilder
-from ray.data._internal.simple_block import SimpleBlockBuilder
-from ray.data._internal.arrow_block import ArrowRow, ArrowBlockBuilder
+from ray.data._internal.arrow_block import ArrowBlockBuilder
 from ray.data._internal.pandas_block import PandasRow, PandasBlockBuilder
 
 
@@ -16,23 +15,10 @@ class DelegatingBlockBuilder(BlockBuilder[T]):
 
     def add(self, item: Any) -> None:
         if self._builder is None:
-            # TODO (kfstorm): Maybe we can use Pandas block format for dict.
-            if isinstance(item, dict) or isinstance(item, ArrowRow):
-                import pyarrow
-
-                try:
-                    check = ArrowBlockBuilder()
-                    check.add(item)
-                    check.build()
-                    self._builder = ArrowBlockBuilder()
-                except (TypeError, pyarrow.lib.ArrowInvalid):
-                    self._builder = SimpleBlockBuilder()
-            elif isinstance(item, np.ndarray):
-                self._builder = ArrowBlockBuilder()
-            elif isinstance(item, PandasRow):
+            if isinstance(item, PandasRow):
                 self._builder = PandasBlockBuilder()
             else:
-                self._builder = SimpleBlockBuilder()
+                self._builder = ArrowBlockBuilder()
         self._builder.add(item)
 
     def add_batch(self, batch: DataBatch):

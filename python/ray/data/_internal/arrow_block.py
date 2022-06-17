@@ -102,12 +102,13 @@ class ArrowBlockBuilder(TableBlockBuilder[T]):
 
     def _table_from_pydict(self, columns: Dict[str, List[Any]]) -> Block:
         for col_name, col in columns.items():
-            if col_name == VALUE_COL_NAME or isinstance(
-                next(iter(col), None), np.ndarray
-            ):
-                from ray.data.extensions.tensor_extension import ArrowTensorArray
+            item0 = next(iter(col), None)
+            if col_name == VALUE_COL_NAME or isinstance(item0, np.ndarray):
+                if isinstance(item0, np.ndarray):
+                    from ray.data.extensions.tensor_extension import ArrowTensorArray
 
-                columns[col_name] = ArrowTensorArray.from_numpy(col)
+                    col = ArrowTensorArray.from_numpy(col)
+                columns[col_name] = col
         return pyarrow.Table.from_pydict(columns)
 
     def _concat_tables(self, tables: List[Block]) -> Block:

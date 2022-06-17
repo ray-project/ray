@@ -36,16 +36,11 @@ class TableBlockBuilder(BlockBuilder[T]):
         self._num_compactions = 0
         self._block_type = block_type
 
-    def add(self, item: Union[dict, TableRow, np.ndarray]) -> None:
+    def add(self, item: Union[dict, TableRow, np.ndarray, object]) -> None:
         if isinstance(item, TableRow):
             item = item.as_pydict()
-        elif isinstance(item, np.ndarray):
+        elif not isinstance(item, dict):
             item = {VALUE_COL_NAME: item}
-        if not isinstance(item, dict):
-            raise ValueError(
-                "Returned elements of an TableBlock must be of type `dict`, "
-                "got {} (type {}).".format(item, type(item))
-            )
         for key, value in item.items():
             self._columns[key].append(value)
         self._num_rows += 1
