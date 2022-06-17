@@ -75,7 +75,7 @@ def from_items(items: List[Any], *, parallelism: int = -1) -> Dataset[Any]:
     Returns:
         Dataset holding the items.
     """
-    block_size = max(1, len(items) // parallelism)
+    block_size = max(1, len(items) // _autodetect_parallelism(parallelism))
 
     blocks: List[ObjectRef[Block]] = []
     metadata: List[BlockMetadata] = []
@@ -1056,28 +1056,35 @@ def _prepare_read(
     kwargs = _unwrap_arrow_serialization_workaround(kwargs)
     DatasetContext._set_current(ctx)
     reader = ds.create_reader(**kwargs)
+    parallelism = _autodetect_parallelism(parallelism, reader)
+    return reader.prepare_read(parallelism)
 
+
+def _autodetect_parallelism(parallelism: int, reader=None) -> int:
     # Autodetect parallelism requested. The heuristic here are that we should try
     # to create as many blocks needed to saturate available resources, and also keep
     # block sizes below the target memory size, but no more. Creating too many
     # blocks is inefficient.
     if parallelism < 0:
+        ctx = DatasetContext.get_current()
         if parallelism != -1:
             raise ValueError("`parallelism` must either be -1 or a positive integer.")
         # Start with 2x the number of cores as a baseline, with a min floor.
         avail_cpus = _estimate_avail_cpus()
         parallelism = max(8, avail_cpus * 2)
-        # Increase it to avoid overly-large blocks as needed.
-        mem_size = reader.estimate_inmemory_data_size()
-        if mem_size is not None:
-            parallelism = max(int(mem_size / ctx.target_max_block_size), parallelism)
-        logger.debug(
-            f"Autodetected parallelism={parallelism} based on "
-            f"estimated_available_cpus={avail_cpus} and "
-            f"estimated_data_size={mem_size}."
-        )
-
-    return reader.prepare_read(parallelism)
+        if reader:
+            # Increase it to avoid overly-large blocks as needed.
+            mem_size = reader.estimate_inmemory_data_size()
+            if mem_size is not None:
+                parallelism = max(
+                    int(mem_size / ctx.target_max_block_size), parallelism
+                )
+            logger.debug(
+                f"Autodetected parallelism={parallelism} based on "
+                f"estimated_available_cpus={avail_cpus} and "
+                f"estimated_data_size={mem_size}."
+            )
+    return parallelism
 
 
 def _estimate_avail_cpus() -> int:
