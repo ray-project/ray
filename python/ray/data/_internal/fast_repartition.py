@@ -52,7 +52,6 @@ def fast_repartition(blocks, num_blocks):
     if len(new_blocks) < num_blocks:
         from ray.data._internal.arrow_block import ArrowBlockBuilder
         from ray.data._internal.pandas_block import PandasBlockBuilder
-        from ray.data._internal.simple_block import SimpleBlockBuilder
 
         num_empties = num_blocks - len(new_blocks)
         if dataset_format == "arrow":
@@ -60,7 +59,7 @@ def fast_repartition(blocks, num_blocks):
         elif dataset_format == "pandas":
             builder = PandasBlockBuilder()
         else:
-            builder = SimpleBlockBuilder()
+            assert False, dataset_format
         empty_block = builder.build()
         empty_meta = BlockAccessor.for_block(empty_block).get_metadata(
             input_files=None, exec_stats=None

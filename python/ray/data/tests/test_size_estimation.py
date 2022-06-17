@@ -4,7 +4,6 @@ import uuid
 
 import ray
 from ray.tests.conftest import *  # noqa
-from ray.data._internal.simple_block import SimpleBlockBuilder
 from ray.data._internal.arrow_block import ArrowBlockBuilder
 
 SMALL_VALUE = "a" * 100
