@@ -32,10 +32,6 @@ from ray.core.generated import (
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvState as ProtoRuntimeEnvState,
 )
-from ray.experimental.internal_kv import (
-    _initialize_internal_kv,
-    _internal_kv_initialized,
-)
 from ray.runtime_env import RuntimeEnv, RuntimeEnvConfig
 
 default_logger = logging.getLogger(__name__)
