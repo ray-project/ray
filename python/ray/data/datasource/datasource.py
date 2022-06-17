@@ -33,7 +33,7 @@ class Datasource(Generic[T]):
     See ``RangeDatasource`` and ``DummyOutputDatasource`` for examples
     of how to implement readable and writable datasources.
 
-    Datasource instances must be serializable, since ``prepare_read()`` and
+    Datasource instances must be serializable, since ``create_reader()`` and
     ``do_write()`` are called in remote tasks.
     """
 
@@ -115,7 +115,7 @@ class Reader(Generic[T]):
         """
         raise NotImplementedError
 
-    def read(self, parallelism: int) -> List["ReadTask[T]"]:
+    def prepare_read(self, parallelism: int) -> List["ReadTask[T]"]:
         """Execute the read and return read tasks.
 
         Args:
@@ -139,7 +139,7 @@ class _LegacyDatasourceReader(Generic[T]):
     def estimate_inmemory_data_size(self) -> Optional[int]:
         return None
 
-    def read(self, parallelism: int) -> List["ReadTask[T]"]:
+    def prepare_read(self, parallelism: int) -> List["ReadTask[T]"]:
         return self._datasource.prepare_read(parallelism, **self._read_args)
 
 
@@ -236,7 +236,7 @@ class _RangeDatasourceReader(Reader):
             element_size = 1
         return 8 * self._n * element_size
 
-    def read(
+    def prepare_read(
         self,
         parallelism: int,
     ) -> List[ReadTask]:
@@ -390,7 +390,7 @@ class _RandomIntRowDatasourceReader(Reader):
     def estimate_inmemory_data_size(self) -> Optional[int]:
         return self._n * self._num_columns * 8
 
-    def read(
+    def prepare_read(
         self,
         parallelism: int,
     ) -> List[ReadTask]:

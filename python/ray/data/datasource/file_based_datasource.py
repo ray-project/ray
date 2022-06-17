@@ -303,7 +303,7 @@ class _FileBasedDatasourceReader(Reader):
                 total_size += sz
         return total_size
 
-    def read(self, parallelism: int) -> List[ReadTask]:
+    def prepare_read(self, parallelism: int) -> List[ReadTask]:
         import numpy as np
 
         open_stream_args = self._open_stream_args

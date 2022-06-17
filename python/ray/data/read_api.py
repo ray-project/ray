@@ -1077,7 +1077,7 @@ def _prepare_read(
             f"estimated_data_size={mem_size}."
         )
 
-    return reader.read(parallelism)
+    return reader.prepare_read(parallelism)
 
 
 def _estimate_avail_cpus() -> int:
