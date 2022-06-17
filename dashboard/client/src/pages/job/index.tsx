@@ -91,9 +91,7 @@ const JobList = () => {
                 .map(
                   ({ id = "", driver, type, status, start_time, end_time }) => (
                     <TableRow key={id}>
-                      <TableCell align="center">
-                        <Link to={`/job/${id}`}>{id}</Link>
-                      </TableCell>
+                      <TableCell align="center">{id}</TableCell>
                       <TableCell align="center">
                         {driver ? driver.id : "-"}
                       </TableCell>
