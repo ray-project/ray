@@ -56,8 +56,8 @@ retrying non-idempotent tasks when they have partially executed.
 However, if your tasks are idempotent, then you can enable application-level error
 retries with ``retry_exceptions=True``, or even retry a specific set of
 application-level errors (such as a class of exception types that you know to be
-transient) by providing an exception predicate:
-``retry_exceptions=lambda e: isinstance(e, ConnectionError)``.
+transient) by providing an allowlist of exceptions, or an exception predicate that
+returns ``True`` when an exception should be retried:
 
 .. code-block:: python
 
@@ -95,27 +95,28 @@ transient) by providing an exception predicate:
             print('FAILURE')
 
     # Use an exception predicate to only retry RandomError exceptions.
-    potentially_fail_with_predicate = potentially_fail.options(
-        retry_exceptions=lambda e: isinstance(e, RandomError)
-    )
+    # Provide which exception we want to retry. This can be a single exception, a list
+    # of exceptions, or a function that takes an exception and returns whether we should
+    # retry on that exception.
+    retry_on_exception = potentially_fail.options(retry_exceptions=RandomError)
     try:
         # This will fail since we're passing in -1 for the failure_probability,
-        # which will raise a ValueError in the task and will therefore NOT satisfy
-        # our exception predicate.
-        ray.get(potentially_fail_with_predicate.remote(-1))
+        # which will raise a ValueError in the task and does not match the RandomError
+        # exception that we provided.
+        ray.get(retry_on_exception.remote(-1))
     except ValueError:
         print("FAILED AS EXPECTED")
     else:
         raise RuntimeError("An exception should be raised so this shouldn't be reached.")
 
-    # These will retry on the RandomError exceptions.
+    # These will retry on the RandomError exception.
     for _ in range(3):
         try:
             # If this task crashes, Ray will retry it up to one additional
             # time. If either of the attempts succeeds, the call to ray.get
             # below will return normally. Otherwise, it will raise an
             # exception.
-            ray.get(potentially_fail_with_predicate.remote(0.5))
+            ray.get(retry_on_exception.remote(0.5))
             print('SUCCESS')
         except RandomError:
             print('FAILURE AFTER RETRIES')
@@ -126,8 +127,14 @@ The semantics for each of the potential ``retry_exceptions`` values are as follo
 
 * ``retry_exceptions=True``: All application-level errors are retried.
 
-* ``retry_exceptions=predicate_fn``: All application-level errors for which
-  ``predicate_fn(e)`` returns ``True`` will be retried.
+* ``retry_exceptions=SomeException``: Application-level errors that are instances of
+  ``SomeException`` are retried.
+
+* ``retry_exceptions=[Exc1, Exc2]``: Application-level errors that are instances of
+  either ``Exc1`` or ``Exc2`` are retried.
+
+* ``retry_exceptions=lambda e: isinstance(e, SomeException)``: Application-level errors
+  for which ``predicate_fn(e)`` returns ``True`` are retried.
 
 .. _object-reconstruction:
 

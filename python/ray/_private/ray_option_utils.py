@@ -26,6 +26,7 @@ class Option:
         """Validate the option."""
         if self.type_constraint is not None:
             if inspect.isfunction(self.type_constraint):
+                print(value)
                 satisfies_type_constraint = self.type_constraint(value)
             else:
                 satisfies_type_constraint = isinstance(value, self.type_constraint)
@@ -107,6 +108,14 @@ _common_options = {
 }
 
 
+def issubclass_safe(obj: Any, cls_: type) -> bool:
+    try:
+        return issubclass(obj, cls_)
+    except TypeError:
+        print(obj, cls_)
+        return False
+
+
 _task_only_options = {
     "max_calls": _counting_option("max_calls", False, default_value=0),
     # Normal tasks may be retried on failure this many times.
@@ -123,10 +132,18 @@ _task_only_options = {
         "Setting 'object_store_memory' is not implemented for tasks",
     ),
     "retry_exceptions": Option(
-        lambda x: isinstance(x, bool) or inspect.isfunction(x),
-        lambda x: isinstance(x, bool) or len(inspect.signature(x).parameters) == 1,
-        "retry_exceptions must be either a boolean or a predicate function that takes "
-        "an exception and returns a boolean.",
+        lambda x: (
+            isinstance(x, bool)
+            or issubclass_safe(x, Exception)
+            or (isinstance(x, list) and all(issubclass_safe(x_, Exception) for x_ in x))
+            or inspect.isfunction(x)
+        ),
+        lambda x: (
+            not inspect.isfunction(x) or len(inspect.signature(x).parameters) == 1
+        ),
+        "retry_exceptions must be either a boolean, an exception, a list of "
+        "exceptions, or a predicate function that takes an exception and returns a "
+        "boolean.",
         default_value=False,
     ),
 }
