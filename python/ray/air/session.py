@@ -9,32 +9,27 @@ if TYPE_CHECKING:
 
 
 def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
-    """Report metrics and optionally save checkpoint.
+    """Report metrics and optionally save a checkpoint.
 
     Each invocation of this method will automatically increment the underlying
     iteration number. The physical meaning of this "iteration" is defined by
     user (or more specifically the way they call ``report``).
     It does not necessarily map to one epoch.
 
-    This API is supposed to replace the legacy ``tune.report``,
-    ``with tune.checkpoint_dir``, ``train.report`` and ``train.save_checkpoint``.
-    Please avoid mixing them together.
+    This API is the canonical way to report metrics from Tune and Train, and
+    replaces the legacy ``tune.report``, ``with tune.checkpoint_dir``,
+    ``train.report`` and ``train.save_checkpoint`` calls.
 
-    There is no requirement on what is the underlying representation of the
-    checkpoint.
-
-    All forms are accepted and (will eventually be) handled by AIR in an efficient way.
-
-    Specifically, if you are passing in a directory checkpoint, AIR will move
-    the content of the directory to AIR managed directory. By the return of this
-    method, one may safely interact with the original directory without
-    interfering with AIR checkpointing flow.
+    Note on directory checkpoints: AIR will take ownership of checkpoints passed
+    to ``report()`` by moving them to a new path. The original directory will no
+    longer be accessible to the caller after the report call.
 
     Example:
         .. code-block: python
 
             from ray.air import session
             from ray.air.checkpoint import Checkpoint
+
             ######## Using it in the *per worker* train loop (TrainSession) #######
             def train_func():
                 model = build_model()
@@ -45,6 +40,7 @@ def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
                 )
                 # Air guarantees by this point, you can safely write new stuff to
                 # "my_model" directory.
+
             scaling_config = {"num_workers": 2}
             trainer = TensorflowTrainer(
                 train_loop_per_worker=train_func, scaling_config=scaling_config
@@ -64,7 +60,7 @@ def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
 
 
 def get_checkpoint() -> Optional[Checkpoint]:
-    """Access the session's loaded checkpoint to resume from if applicable.
+    """Access the session's last checkpoint to resume from if applicable.
 
     Returns:
         Checkpoint object if the session is currently being resumed.
