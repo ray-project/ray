@@ -458,6 +458,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] debugger_breakpoint breakpoint to drop into for the debugger after this
   /// task starts executing, or "" if we do not want to drop into the debugger.
   /// should capture parent's placement group implicilty.
+  /// \param[in] serialized_retry_exception_predicate An serialized exception predicate
+  /// function that takes a frontend-language exception/error and returns whether the
+  /// exception should be retried. Default is an empty string, which will be treated as
+  /// a null predicate function in the language worker.
   /// \return ObjectRefs returned by this task.
   std::vector<rpc::ObjectReference> SubmitTask(
       const RayFunction &function,
@@ -466,7 +470,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       int max_retries,
       bool retry_exceptions,
       const rpc::SchedulingStrategy &scheduling_strategy,
-      const std::string &debugger_breakpoint);
+      const std::string &debugger_breakpoint,
+      const std::string &serialized_retry_exception_predicate = "");
 
   /// Create an actor.
   ///
@@ -934,7 +939,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                      const std::shared_ptr<ResourceMappingType> &resource_ids,
                      std::vector<std::shared_ptr<RayObject>> *return_objects,
                      ReferenceCounter::ReferenceTableProto *borrowed_refs,
-                     bool *is_application_level_error);
+                     bool *is_retryable_error);
 
   /// Put an object in the local plasma store.
   Status PutInLocalPlasmaStore(const RayObject &object,

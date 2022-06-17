@@ -1,5 +1,6 @@
 """Manage, parse and validate options for Ray tasks, actors and actor methods."""
 from dataclasses import dataclass
+import inspect
 from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 import ray._private.ray_constants as ray_constants
@@ -13,7 +14,7 @@ from ray.util.scheduling_strategies import (
 @dataclass
 class Option:
     # Type constraint of an option.
-    type_constraint: Optional[Union[type, Tuple[type]]] = None
+    type_constraint: Optional[Union[type, Tuple[type], Callable[[Any], bool]]] = None
     # Value constraint of an option.
     value_constraint: Optional[Callable[[Any], bool]] = None
     # Error message for value constraint.
@@ -24,7 +25,11 @@ class Option:
     def validate(self, keyword: str, value: Any):
         """Validate the option."""
         if self.type_constraint is not None:
-            if not isinstance(value, self.type_constraint):
+            if inspect.isfunction(self.type_constraint):
+                satisfies_type_constraint = self.type_constraint(value)
+            else:
+                satisfies_type_constraint = isinstance(value, self.type_constraint)
+            if not satisfies_type_constraint:
                 raise TypeError(
                     f"The type of keyword '{keyword}' must be {self.type_constraint}, "
                     f"but received type {type(value)}"
@@ -117,7 +122,13 @@ _task_only_options = {
         lambda x: x is None,
         "Setting 'object_store_memory' is not implemented for tasks",
     ),
-    "retry_exceptions": Option(bool, default_value=False),
+    "retry_exceptions": Option(
+        lambda x: isinstance(x, bool) or inspect.isfunction(x),
+        lambda x: isinstance(x, bool) or len(inspect.signature(x).parameters) == 1,
+        "retry_exceptions must be either a boolean or a predicate function that takes "
+        "an exception and returns a boolean.",
+        default_value=False,
+    ),
 }
 
 _actor_only_options = {

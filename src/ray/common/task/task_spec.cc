@@ -324,6 +324,10 @@ bool TaskSpecification::IsSpreadSchedulingStrategy() const {
          rpc::SchedulingStrategy::SchedulingStrategyCase::kSpreadSchedulingStrategy;
 }
 
+const std::string TaskSpecification::GetSerializedRetryExceptionPredicate() const {
+  return message_->serialized_retry_exception_predicate();
+}
+
 // === Below are getter methods specific to actor creation tasks.
 
 ActorID TaskSpecification::ActorCreationId() const {

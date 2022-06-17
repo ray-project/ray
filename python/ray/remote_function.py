@@ -59,6 +59,8 @@ class RemoteFunction:
         _max_retries: The number of times this task may be retried
             on worker failure.
         _retry_exceptions: Whether application-level errors should be retried.
+            This can be a boolean or a predicate function that takes an exception and
+            returns whether that particular exception should be retried.
         _runtime_env: The runtime environment for this task.
         _decorator: An optional decorator that should be applied to the remote
             function invocation (as opposed to the function execution) before
@@ -252,6 +254,11 @@ class RemoteFunction:
         num_returns = task_options["num_returns"]
         max_retries = task_options["max_retries"]
         retry_exceptions = task_options["retry_exceptions"]
+        if inspect.isfunction(retry_exceptions):
+            retry_exception_predicate = retry_exceptions
+            retry_exceptions = True
+        else:
+            retry_exception_predicate = None
 
         resources = ray._private.utils.resources_from_ray_options(task_options)
 
@@ -322,6 +329,7 @@ class RemoteFunction:
                 resources,
                 max_retries,
                 retry_exceptions,
+                retry_exception_predicate,
                 scheduling_strategy,
                 worker.debugger_breakpoint,
                 serialized_runtime_env_info or "{}",
