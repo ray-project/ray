@@ -3,28 +3,21 @@
 from typing import Dict, List, Optional, Tuple
 
 import gym
+
 import ray
-from ray.rllib.algorithms.dqn.dqn_tf_policy import (
-    clip_gradients,
-    compute_q_values,
-    PRIO_WEIGHTS,
-    postprocess_nstep_and_prio,
-)
-from ray.rllib.algorithms.dqn.dqn_tf_policy import build_q_model
+from ray.rllib.algorithms.dqn.dqn_tf_policy import clip_gradients, compute_q_values
+from ray.rllib.algorithms.dqn.utils import make_dqn_models, postprocess_nstep_and_prio
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.tf_mixins import (
-    LearningRateSchedule,
-    TargetNetworkMixin,
-)
+from ray.rllib.policy.tf_mixins import LearningRateSchedule, TargetNetworkMixin
+from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import huber_loss
-from ray.rllib.utils.typing import ModelInputDict, TensorType, AlgorithmConfigDict
+from ray.rllib.utils.typing import AlgorithmConfigDict, ModelInputDict, TensorType
 
 tf1, tf, tfv = try_import_tf()
 
@@ -50,7 +43,7 @@ def build_r2d2_model(
     """
 
     # Create the policy's models.
-    model = build_q_model(policy, obs_space, action_space, config)
+    model = make_dqn_models(policy)
 
     # Assert correct model type by checking the init state to be present.
     # For attention nets: These don't necessarily publish their init state via
@@ -117,7 +110,7 @@ def r2d2_loss(policy: Policy, model, _, train_batch: SampleBatch) -> TensorType:
     actions = tf.cast(train_batch[SampleBatch.ACTIONS], tf.int64)
     dones = tf.cast(train_batch[SampleBatch.DONES], tf.float32)
     rewards = train_batch[SampleBatch.REWARDS]
-    weights = tf.cast(train_batch[PRIO_WEIGHTS], tf.float32)
+    weights = tf.cast(train_batch[SampleBatch.PRIO_WEIGHTS], tf.float32)
 
     B = tf.shape(state_batches[0])[0]
     T = tf.shape(q)[0] // B
@@ -246,7 +239,7 @@ class ComputeTDErrorMixin:
             input_dict[SampleBatch.REWARDS] = rew_t
             input_dict[SampleBatch.NEXT_OBS] = obs_tp1
             input_dict[SampleBatch.DONES] = done_mask
-            input_dict[PRIO_WEIGHTS] = importance_weights
+            input_dict[SampleBatch.PRIO_WEIGHTS] = importance_weights
 
             # Do forward pass on loss to update td error attribute
             r2d2_loss(self, self.model, None, input_dict)

@@ -1,6 +1,7 @@
 import logging
-import gym
 from typing import Dict, Tuple
+
+import gym
 
 import ray
 from ray.rllib.algorithms.ddpg.ddpg_tf_policy import (
@@ -8,10 +9,7 @@ from ray.rllib.algorithms.ddpg.ddpg_tf_policy import (
     get_distribution_inputs_and_class,
     validate_spaces,
 )
-from ray.rllib.algorithms.dqn.dqn_tf_policy import (
-    postprocess_nstep_and_prio,
-    PRIO_WEIGHTS,
-)
+from ray.rllib.algorithms.dqn.utils import postprocess_nstep_and_prio
 from ray.rllib.algorithms.sac.sac_torch_policy import TargetNetworkMixin
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
@@ -29,9 +27,9 @@ from ray.rllib.utils.torch_utils import (
 )
 from ray.rllib.utils.typing import (
     AlgorithmConfigDict,
-    TensorType,
-    LocalOptimizer,
     GradInfoDict,
+    LocalOptimizer,
+    TensorType,
 )
 
 torch, nn = try_import_torch()
@@ -166,7 +164,7 @@ def ddpg_actor_critic_loss(
         else:
             errors = 0.5 * torch.pow(td_error, 2.0)
 
-    critic_loss = torch.mean(train_batch[PRIO_WEIGHTS] * errors)
+    critic_loss = torch.mean(train_batch[SampleBatch.PRIO_WEIGHTS] * errors)
 
     # Add l2-regularization if required.
     if l2_reg is not None:
@@ -267,7 +265,7 @@ class ComputeTDErrorMixin:
                         SampleBatch.REWARDS: rew_t,
                         SampleBatch.NEXT_OBS: obs_tp1,
                         SampleBatch.DONES: done_mask,
-                        PRIO_WEIGHTS: importance_weights,
+                        SampleBatch.PRIO_WEIGHTS: importance_weights,
                     }
                 )
             )

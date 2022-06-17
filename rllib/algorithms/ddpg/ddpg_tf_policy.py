@@ -1,38 +1,36 @@
-from gym.spaces import Box
-from functools import partial
 import logging
-import numpy as np
+from functools import partial
+from typing import Dict, List, Tuple
+
 import gym
-from typing import Dict, Tuple, List
+import numpy as np
+from gym.spaces import Box
 
 import ray
 import ray.experimental.tf_utils
 from ray.rllib.algorithms.ddpg.ddpg_tf_model import DDPGTFModel
 from ray.rllib.algorithms.ddpg.ddpg_torch_model import DDPGTorchModel
 from ray.rllib.algorithms.ddpg.noop_model import NoopModel, TorchNoopModel
-from ray.rllib.algorithms.dqn.dqn_tf_policy import (
-    postprocess_nstep_and_prio,
-    PRIO_WEIGHTS,
-)
-from ray.rllib.models.catalog import ModelCatalog
+from ray.rllib.algorithms.dqn.utils import postprocess_nstep_and_prio
 from ray.rllib.models.action_dist import ActionDistribution
+from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import Deterministic, Dirichlet
 from ray.rllib.models.torch.torch_action_dist import TorchDeterministic, TorchDirichlet
-from ray.rllib.utils.annotations import override
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.tf_policy_template import build_tf_policy
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.framework import get_variable, try_import_tf
 from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.tf_utils import huber_loss, make_tf_callable
 from ray.rllib.utils.typing import (
     AlgorithmConfigDict,
-    TensorType,
     LocalOptimizer,
     ModelGradients,
+    TensorType,
 )
 from ray.util.debug import log_once
 
@@ -226,7 +224,7 @@ def ddpg_actor_critic_loss(
             errors = 0.5 * tf.math.square(td_error)
 
     critic_loss = tf.reduce_mean(
-        tf.cast(train_batch[PRIO_WEIGHTS], tf.float32) * errors
+        tf.cast(train_batch[SampleBatch.PRIO_WEIGHTS], tf.float32) * errors
     )
     actor_loss = -tf.reduce_mean(q_t_det_policy)
 
@@ -412,7 +410,7 @@ class ComputeTDErrorMixin:
                     SampleBatch.REWARDS: tf.convert_to_tensor(rew_t),
                     SampleBatch.NEXT_OBS: tf.convert_to_tensor(obs_tp1),
                     SampleBatch.DONES: tf.convert_to_tensor(done_mask),
-                    PRIO_WEIGHTS: tf.convert_to_tensor(importance_weights),
+                    SampleBatch.PRIO_WEIGHTS: tf.convert_to_tensor(importance_weights),
                 },
             )
             # `self.td_error` is set in loss_fn.

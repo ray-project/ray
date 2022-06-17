@@ -23,6 +23,34 @@ tf1, tf, tfv = try_import_tf()
 
 
 @DeveloperAPI
+class ComputeTDErrorMixin:
+    """Assign the `compute_td_error` method to a TFPolicyV2.
+
+    This allows us to compute TD-errors (buffer priorities) on the worker side.
+    """
+
+    def __init__(self):
+        @make_tf_callable(self.get_session(), dynamic_shape=True)
+        def compute_td_error(
+            obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights
+        ):
+            input_dict = {
+                SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_t),
+                SampleBatch.ACTIONS: tf.convert_to_tensor(act_t),
+                SampleBatch.REWARDS: tf.convert_to_tensor(rew_t),
+                SampleBatch.NEXT_OBS: tf.convert_to_tensor(obs_tp1),
+                SampleBatch.DONES: tf.convert_to_tensor(done_mask),
+                SampleBatch.PRIO_WEIGHTS: tf.convert_to_tensor(importance_weights),
+            }
+            # Do forward pass on loss to update td error attribute
+            self.loss(self.model, None, input_dict)
+
+            return self._td_error
+
+        self.compute_td_error = compute_td_error
+
+
+@DeveloperAPI
 class LearningRateSchedule:
     """Mixin for TFPolicy that adds a learning rate schedule."""
 

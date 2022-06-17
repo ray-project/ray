@@ -6,11 +6,34 @@ from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.schedules import PiecewiseSchedule
-from ray.rllib.utils.typing import (
-    TensorType,
-)
+from ray.rllib.utils.typing import TensorType
 
 torch, nn = try_import_torch()
+
+
+class ComputeTDErrorMixin:
+    """Assign the `compute_td_error` method to a TorchPolicyV2.
+
+    This allows us to compute TD-errors (buffer priorities) on the worker side.
+    """
+
+    def __init__(self):
+        def compute_td_error(
+            obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights
+        ):
+            input_dict = self._lazy_tensor_dict({SampleBatch.CUR_OBS: obs_t})
+            input_dict[SampleBatch.ACTIONS] = act_t
+            input_dict[SampleBatch.REWARDS] = rew_t
+            input_dict[SampleBatch.NEXT_OBS] = obs_tp1
+            input_dict[SampleBatch.DONES] = done_mask
+            input_dict[SampleBatch.PRIO_WEIGHTS] = importance_weights
+
+            # Do forward pass on loss to update td error attribute
+            self.loss(self.model, None, input_dict)
+
+            return self.model.tower_stats["td_error"]
+
+        self.compute_td_error = compute_td_error
 
 
 # TODO: (sven) Unify hyperparam annealing procedures across RLlib (tf/torch)

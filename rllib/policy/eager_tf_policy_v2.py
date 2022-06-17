@@ -750,16 +750,13 @@ class EagerTFPolicyV2(Policy):
                 )
             else:
                 if is_overridden(self.action_distribution_fn):
-
-                    # Try new action_distribution_fn signature, supporting
-                    # state_batches and seq_lens.
                     (
                         dist_inputs,
                         self.dist_class,
                         state_out,
                     ) = self.action_distribution_fn(
                         self.model,
-                        obs_batch=input_dict[SampleBatch.OBS],
+                        input_dict=input_dict,
                         state_batches=state_batches,
                         seq_lens=seq_lens,
                         explore=explore,

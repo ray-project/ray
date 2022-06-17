@@ -1,6 +1,7 @@
-from copy import deepcopy
-import numpy as np
 import unittest
+from copy import deepcopy
+
+import numpy as np
 
 import ray
 import ray.rllib.algorithms.dqn as dqn
@@ -15,7 +16,7 @@ from ray.rllib.utils.test_utils import (
 class TestDQN(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init()
+        ray.init(local_mode=True)  # TODO
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -26,7 +27,9 @@ class TestDQN(unittest.TestCase):
         num_iterations = 1
         config = dqn.dqn.DQNConfig().rollouts(num_rollout_workers=2)
 
-        for _ in framework_iterator(config, with_eager_tracing=True):
+        for _ in framework_iterator(
+            config, frameworks="torch"
+        ):  # with_eager_tracing=True):
             # Double-dueling DQN.
             print("Double-dueling")
             plain_config = deepcopy(config)
@@ -122,7 +125,8 @@ class TestDQN(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

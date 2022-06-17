@@ -1,20 +1,20 @@
-import gym
-import numpy as np
 from typing import List, Optional, Tuple, Type, Union
 
+import gym
+import numpy as np
+
 import ray
-from ray.rllib.algorithms.dqn.dqn_tf_policy import PRIO_WEIGHTS
 from ray.rllib.algorithms.sac import SACTorchPolicy
 from ray.rllib.algorithms.sac.rnnsac_torch_model import RNNSACTorchModel
 from ray.rllib.algorithms.sac.sac_torch_policy import _get_dist_class
-from ray.rllib.models import ModelCatalog, MODEL_DEFAULTS
+from ray.rllib.models import MODEL_DEFAULTS, ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import huber_loss, sequence_mask
-from ray.rllib.utils.typing import ModelInputDict, TensorType, AlgorithmConfigDict
+from ray.rllib.utils.typing import AlgorithmConfigDict, ModelInputDict, TensorType
 
 torch, nn = try_import_torch()
 F = None
@@ -415,11 +415,15 @@ def actor_critic_loss(
         td_error = base_td_error
 
     critic_loss = [
-        reduce_mean_valid(train_batch[PRIO_WEIGHTS] * huber_loss(base_td_error))
+        reduce_mean_valid(
+            train_batch[SampleBatch.PRIO_WEIGHTS] * huber_loss(base_td_error)
+        )
     ]
     if policy.config["twin_q"]:
         critic_loss.append(
-            reduce_mean_valid(train_batch[PRIO_WEIGHTS] * huber_loss(twin_td_error))
+            reduce_mean_valid(
+                train_batch[SampleBatch.PRIO_WEIGHTS] * huber_loss(twin_td_error)
+            )
         )
     td_error = td_error * seq_mask
 

@@ -1,23 +1,24 @@
 import collections
-import numpy as np
-import sys
 import itertools
-import tree  # pip install dm_tree
+import sys
 from typing import Dict, Iterator, List, Optional, Set, Union
 
-from ray.util import log_once
+import numpy as np
+import tree  # pip install dm_tree
+
 from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI, PublicAPI
-from ray.rllib.utils.compression import pack, unpack, is_compressed
+from ray.rllib.utils.compression import is_compressed, pack, unpack
 from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import concat_aligned
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import (
     PolicyID,
-    TensorType,
     SampleBatchType,
+    TensorType,
     ViewRequirementsDict,
 )
+from ray.util import log_once
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -48,6 +49,8 @@ class SampleBatch(dict):
     # This is only computed and used when RE3 exploration strategy is enabled
     OBS_EMBEDS = "obs_embeds"
     T = "t"
+    # Importance sampling weights for prioritized replay.
+    PRIO_WEIGHTS = "weights"
 
     # Extra action fetches keys.
     ACTION_DIST_INPUTS = "action_dist_inputs"
@@ -1280,7 +1283,7 @@ def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
                                               "b": np.array([10, 11, 12])}}
     """
 
-    if any([isinstance(s, MultiAgentBatch) for s in samples]):
+    if any(isinstance(s, MultiAgentBatch) for s in samples):
         return concat_samples_into_ma_batch(samples)
 
     # the output is a SampleBatch type

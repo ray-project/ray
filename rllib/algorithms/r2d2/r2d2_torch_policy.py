@@ -3,35 +3,30 @@
 from typing import Dict, Tuple
 
 import gym
+
 import ray
-from ray.rllib.algorithms.dqn.dqn_tf_policy import (
-    PRIO_WEIGHTS,
-    postprocess_nstep_and_prio,
-)
 from ray.rllib.algorithms.dqn.dqn_torch_policy import (
     adam_optimizer,
     build_q_model_and_distribution,
     compute_q_values,
 )
+from ray.rllib.algorithms.dqn.utils import postprocess_nstep_and_prio
 from ray.rllib.algorithms.r2d2.r2d2_tf_policy import get_distribution_inputs_and_class
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_mixins import (
-    LearningRateSchedule,
-    TargetNetworkMixin,
-)
+from ray.rllib.policy.torch_mixins import LearningRateSchedule, TargetNetworkMixin
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import (
+    FLOAT_MIN,
     apply_grad_clipping,
     concat_multi_gpu_td_errors,
-    FLOAT_MIN,
     huber_loss,
     sequence_mask,
 )
-from ray.rllib.utils.typing import TensorType, AlgorithmConfigDict
+from ray.rllib.utils.typing import AlgorithmConfigDict, TensorType
 
 torch, nn = try_import_torch()
 F = None
@@ -127,7 +122,7 @@ def r2d2_loss(policy: Policy, model, _, train_batch: SampleBatch) -> TensorType:
     actions = train_batch[SampleBatch.ACTIONS].long()
     dones = train_batch[SampleBatch.DONES].float()
     rewards = train_batch[SampleBatch.REWARDS]
-    weights = train_batch[PRIO_WEIGHTS]
+    weights = train_batch[SampleBatch.PRIO_WEIGHTS]
 
     B = state_batches[0].shape[0]
     T = q.shape[0] // B
@@ -257,7 +252,7 @@ class ComputeTDErrorMixin:
             input_dict[SampleBatch.REWARDS] = rew_t
             input_dict[SampleBatch.NEXT_OBS] = obs_tp1
             input_dict[SampleBatch.DONES] = done_mask
-            input_dict[PRIO_WEIGHTS] = importance_weights
+            input_dict[SampleBatch.PRIO_WEIGHTS] = importance_weights
 
             # Do forward pass on loss to update td error attribute
             r2d2_loss(self, self.model, None, input_dict)
