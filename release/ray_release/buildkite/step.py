@@ -12,6 +12,7 @@ from ray_release.config import (
     as_smoke_test,
     parse_python_version,
 )
+from ray_release.env import DEFAULT_ENVIRONMENT, load_environment
 from ray_release.exception import ReleaseTestConfigError
 from ray_release.template import get_test_env_var
 from ray_release.util import python_version_str
@@ -72,7 +73,12 @@ def get_step(
         cmd += f" --ray-wheels {ray_wheels}"
 
     step["command"] = cmd
-    step["env"].update(env)
+
+    env_to_use = test.get("env", DEFAULT_ENVIRONMENT)
+    env_dict = load_environment(env_to_use)
+    env_dict.update(env)
+
+    step["env"].update(env_dict)
 
     if "python" in test:
         python_version = parse_python_version(test["python"])

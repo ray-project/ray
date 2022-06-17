@@ -2,7 +2,7 @@ import os
 
 import pytest
 from ray_release.config import DEFAULT_ANYSCALE_PROJECT
-from ray_release.env import load_environment
+from ray_release.env import load_environment, populate_os_env
 from ray_release.exception import ReleaseTestConfigError
 from ray_release.util import DeferredEnvVar
 
@@ -28,7 +28,8 @@ def test_load_env_invalid():
 def test_load_env_changes():
     old_val = str(DEFAULT_ANYSCALE_PROJECT)
 
-    load_environment("staging")
+    env_dict = load_environment("staging")
+    populate_os_env(env_dict)
 
     new_val = str(DEFAULT_ANYSCALE_PROJECT)
 

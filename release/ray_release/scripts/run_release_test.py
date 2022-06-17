@@ -12,7 +12,7 @@ from ray_release.config import (
     parse_python_version,
     read_and_validate_release_test_collection,
 )
-from ray_release.env import load_environment
+from ray_release.env import load_environment, populate_os_env
 from ray_release.exception import ReleaseTestCLIError, ReleaseTestError
 from ray_release.glue import run_release_test
 from ray_release.logger import logger
@@ -21,7 +21,7 @@ from ray_release.reporter.db import DBReporter
 from ray_release.reporter.legacy_rds import LegacyRDSReporter
 from ray_release.reporter.log import LogReporter
 from ray_release.result import Result
-from ray_release.template import DEFAULT_ENV
+from ray_release.template import DEFAULT_ENVIRONMENT
 from ray_release.wheels import find_and_wait_for_ray_wheels_url
 
 
@@ -111,8 +111,9 @@ def main(
     if smoke_test:
         test = as_smoke_test(test)
 
-    env_to_use = env or test.get("env", DEFAULT_ENV)
-    load_environment(env_to_use)
+    env_to_use = env or test.get("env", DEFAULT_ENVIRONMENT)
+    env_dict = load_environment(env_to_use)
+    populate_os_env(env_dict)
 
     if "python" in test:
         python_version = parse_python_version(test["python"])
@@ -154,12 +155,14 @@ def main(
             cluster_env_id=cluster_env_id,
             no_terminate=no_terminate,
         )
+        return_code = result.return_code
     except ReleaseTestError as e:
         logger.exception(e)
+        return_code = e.exit_code
 
     logger.info(
         f"Release test pipeline for test {test['name']} completed. "
-        f"Returning with exit code = {result.return_code}"
+        f"Returning with exit code = {return_code}"
     )
     sys.exit(result.return_code)
 
