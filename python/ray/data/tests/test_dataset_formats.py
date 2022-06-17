@@ -546,12 +546,12 @@ def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
     pq.write_table(table, path2, filesystem=fs)
 
     # Expect directory path expansion to fail due to default format-based path
-    # filtering.
+    # filtering: The filter will not match any of the files.
     with pytest.raises(ValueError):
         ray.data.read_parquet_bulk(data_path, filesystem=fs)
 
     # Expect directory path expansion to fail with OS error if default format-based path
-    # filtering is turnd off.
+    # filtering is turned off.
     with pytest.raises(OSError):
         ray.data.read_parquet_bulk(data_path, filesystem=fs, partition_filter=None)
 
@@ -593,10 +593,11 @@ def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
         [6, "g"],
     ]
 
-    # Non-Parquet file should be ignored.
+    # Add a file with a non-matching file extension. This file should be ignored.
     txt_path = os.path.join(data_path, "foo.txt")
-    with open(txt_path, "w") as f:
-        f.write("foobar")
+    txt_df = pd.DataFrame({"foobar": [4, 5, 6]})
+    txt_table = pa.Table.from_pandas(txt_df)
+    pq.write_table(txt_table, _unwrap_protocol(txt_path), filesystem=fs)
 
     ds = ray.data.read_parquet_bulk(paths + [txt_path], filesystem=fs)
     assert ds.num_blocks() == 2
