@@ -15,13 +15,16 @@ class DoublyRobust(DirectMethod):
 
     @override(DirectMethod)
     def estimate(
-        self, batch: SampleBatchType,
+        self,
+        batch: SampleBatchType,
     ) -> OffPolicyEstimate:
         self.check_can_estimate_for(batch)
         estimates = []
         # Split data into train and test batches
         for train_episodes, test_episodes in train_test_split(
-            batch, self.train_test_split_val, self.k,
+            batch,
+            self.train_test_split_val,
+            self.k,
         ):
 
             # Train Q-function

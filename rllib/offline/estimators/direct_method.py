@@ -1,5 +1,5 @@
 import logging
-from typing import Tuple, Generator, Union
+from typing import Tuple, Generator
 from ray.rllib.offline.estimators.off_policy_estimator import (
     OffPolicyEstimator,
     OffPolicyEstimate,
@@ -19,6 +19,7 @@ torch, nn = try_import_torch()
 
 logger = logging.getLogger()
 
+
 @ExperimentalAPI
 def train_test_split(
     batch: SampleBatchType,
@@ -32,8 +33,8 @@ def train_test_split(
     Args:
         batch: A SampleBatch of episodes to split
         train_test_split_val: Split the batch into a training batch with
-        `train_test_split_val * n_episodes` episodes and an evaluation batch 
-        with `(1 - train_test_split_val) * n_episodes` episodes. If not 
+        `train_test_split_val * n_episodes` episodes and an evaluation batch
+        with `(1 - train_test_split_val) * n_episodes` episodes. If not
         specified, use `k` for k-fold cross validation instead.
         k: k-fold cross validation for training model and evaluating OPE.
     Returns:
@@ -41,8 +42,7 @@ def train_test_split(
     """
     if not train_test_split_val and not k:
         logger.log(
-            "`train_test_split_val` and `k` are both 0;"
-            "not generating training batch"
+            "`train_test_split_val` and `k` are both 0;" "not generating training batch"
         )
         yield batch, SampleBatch()
         return
@@ -101,8 +101,8 @@ class DirectMethod(OffPolicyEstimator):
                 - `estimate_q(states,actions)`
                 - `estimate_v(states, action_probs)`
             train_test_split_val: Split the batch into a training batch with
-            `train_test_split_val * n_episodes` episodes and an evaluation batch 
-            with `(1 - train_test_split_val) * n_episodes` episodes. If not 
+            `train_test_split_val * n_episodes` episodes and an evaluation batch
+            with `(1 - train_test_split_val) * n_episodes` episodes. If not
             specified, use `k` for k-fold cross validation instead.
             k: k-fold cross validation for training model and evaluating OPE.
             kwargs: Optional arguments for the specified Q model.
@@ -146,14 +146,14 @@ class DirectMethod(OffPolicyEstimator):
         self.losses = []
 
     @override(OffPolicyEstimator)
-    def estimate(
-        self, batch: SampleBatchType
-    ) -> OffPolicyEstimate:
+    def estimate(self, batch: SampleBatchType) -> OffPolicyEstimate:
         self.check_can_estimate_for(batch)
         estimates = []
         # Split data into train and test batches
         for train_episodes, test_episodes in train_test_split(
-            batch, self.train_test_split_val, self.k,
+            batch,
+            self.train_test_split_val,
+            self.k,
         ):
 
             # Train Q-function
