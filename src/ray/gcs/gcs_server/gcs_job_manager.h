@@ -79,8 +79,6 @@ class GcsJobManager : public rpc::JobInfoHandler {
 
   void MarkJobAsFinished(rpc::JobTableData job_table_data,
                          std::function<void(Status)> done_callback);
-
-  FRIEND_TEST(GcsJobManagerTest, TestPreserveDriverInfo);
 };
 
 }  // namespace gcs
