@@ -1,9 +1,8 @@
 import logging
-
 from abc import ABC
 from dataclasses import dataclass, fields
 from enum import Enum, unique
-from typing import List, Dict, Union, Tuple, Set, Optional
+from typing import Dict, List, Optional, Set, Tuple, Union
 
 from ray.dashboard.modules.job.common import JobInfo
 

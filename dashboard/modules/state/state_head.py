@@ -1,29 +1,21 @@
-from email import message
+import dataclasses
 import logging
-from urllib import request
+from typing import Callable
 
 import aiohttp.web
 
-import dataclasses
-
-from typing import Callable
-
-from ray.dashboard.datacenter import DataSource
-from ray.dashboard.utils import Change
-import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
+import ray.dashboard.utils as dashboard_utils
+from ray.dashboard.datacenter import DataSource
+from ray.dashboard.modules.log.log_manager import LogsManager
 from ray.dashboard.optional_utils import rest_response
-from ray.dashboard.modules.log.log_manager import (
-    LogsManager,
-)
 from ray.dashboard.state_aggregator import StateAPIManager
+from ray.dashboard.utils import Change
 from ray.experimental.state.common import (
-    ListApiOptions,
-    GetLogOptions,
-    DEFAULT_RPC_TIMEOUT,
     DEFAULT_LIMIT,
-    GetApiResponse,
-    ListApiResponse,
+    DEFAULT_RPC_TIMEOUT,
+    GetLogOptions,
+    ListApiOptions,
 )
 from ray.experimental.state.exception import DataSourceUnavailable
 from ray.experimental.state.state_manager import StateDataSourceClient
@@ -49,7 +41,11 @@ class StateHead(dashboard_utils.DashboardHeadModule):
 
     def _options_from_req(self, req) -> ListApiOptions:
         """Obtain `ListApiOptions` from the aiohttp request."""
-        limit = int(req.query.get("limit"))
+        limit = int(
+            req.query.get("limit")
+            if req.query.get("limit") is not None
+            else DEFAULT_LIMIT
+        )
         timeout = int(req.query.get("timeout"))
         filter_keys = req.query.getall("filter_keys", [])
         filter_values = req.query.getall("filter_values", [])
@@ -126,37 +122,8 @@ class StateHead(dashboard_utils.DashboardHeadModule):
         except DataSourceUnavailable as e:
             return self._reply(success=False, error_message=str(e), result=None)
 
-    # TODO(rickyyx): Optimize the GET api to not call list with filter on id
-    async def _handle_get_api(
-        self,
-        list_api_fn: Callable[[ListApiOptions], dict],
-        id: str,
-        req: aiohttp.web.Request,
-    ):
-        def make_list_options_with_id(id: str, req: aiohttp.web.Request):
-            list_option = self._options_from_req(req)
-            list_option.filters.append(("id", id))
-            return list_option
-
-        try:
-            list_result = await list_api_fn(
-                option=make_list_options_with_id(id=id, req=req)
-            )
-            return self._reply(
-                success=True,
-                error_message="",
-                result=list_result.result,
-                partial_failure_warning=list_result.partial_error_warning,
-            )
-        except DataSourceUnavailable as e:
-            return self._reply(success=False, error_message=str(e), result=None)
-
-    @routes.get("/api/v0/actors/{id}")
+    @routes.get("/api/v0/actors")
     async def list_actors(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
-        if request.match_info["id"] is not None:
-            return await self._handle_get_api(
-                self._state_api.list_actors, request.match_info["id"], req
-            )
         return await self._handle_list_api(self._state_api.list_actors, req)
 
     @routes.get("/api/v0/jobs")

@@ -1,23 +1,29 @@
+import urllib
 import warnings
+from dataclasses import fields
+from typing import Dict, Generator, List, Optional, Tuple, Union
+
 import requests
 
 import ray
-import urllib
-
-from typing import List, Tuple, Optional, Dict, Generator, Union
-from dataclasses import fields
-
+from ray.dashboard.modules.dashboard_sdk import SubmissionClient
 from ray.experimental.state.common import (
     DEFAULT_LIMIT,
     DEFAULT_RPC_TIMEOUT,
+    ActorState,
     GetApiOptions,
     GetLogOptions,
+    JobState,
     ListApiOptions,
-    SupportedFilterType,
+    NodeState,
+    ObjectState,
+    PlacementGroupState,
     StateResource,
+    SupportedFilterType,
+    TaskState,
+    WorkerState,
 )
 from ray.experimental.state.exception import RayStateApiException, ServerUnavailable
-from ray.dashboard.modules.dashboard_sdk import SubmissionClient
 
 """
 This file contains API client and methods for querying ray state.
@@ -76,23 +82,27 @@ class StateApiClient(SubmissionClient):
         # We don't use `asdict` to avoid deepcopy.
         # https://docs.python.org/3/library/dataclasses.html#dataclasses.asdict
         for field in fields(options):
+            # TODO(rickyyx): We will need to find a way to pass server side timeout
             # TODO(rickyyx): We will have to convert filter option
             # slightly differently for now. But could we do k,v pair rather than this?
+            # I see we are also converting dict to XXXApiOptions later on, we could
+            # probably organize the marshaling a bit better.
             if field.name == "filters":
+                options_dict["filter_keys"] = []
+                options_dict["filter_values"] = []
+                for filter in options.filters:
+                    filter_k, filter_val = filter
+                    options_dict["filter_keys"].append(filter_k)
+                    options_dict["filter_values"].append(filter_val)
                 continue
-            # TODO(rickyyx): We will need to find a way to pass server side timeout
+
             option_val = getattr(options, field.name)
             if option_val:
                 options_dict[field.name] = option_val
 
-        for filter in getattr(options, "filters", []):
-            filter_k, filter_val = filter
-            options_dict["filter_keys"].append(filter_k)
-            options_dict["filter_values"].append(filter_val)
-
         return options_dict
 
-    def _make_get_request(
+    def _make_http_get_request(
         self, endpoint: str, params: Dict, timeout: float, _explain: bool = False
     ):
         response = None
@@ -142,12 +152,48 @@ class StateApiClient(SubmissionClient):
         id: str,
         options: Optional[GetApiOptions],
         _explain: bool = False,
-    ) -> Dict:
-        endpoint = f"/api/v0/{resource.value}/{id}"
+    ) -> Optional[
+        Union[
+            ActorState,
+            PlacementGroupState,
+            NodeState,
+            WorkerState,
+            TaskState,
+            ObjectState,
+        ]
+    ]:
+        # TODO(rickyyx): Make GET not using filters on list operation
         params = self._make_param(options)
-        return self._make_get_request(
+
+        RESOURCE_ID_KEY_NAME = {
+            StateResource.NODES: "node_id",
+            StateResource.ACTORS: "actor_id",
+            StateResource.PLACEMENT_GROUPS: "placement_group_id",
+            StateResource.WORKERS: "worker_id",
+            StateResource.TASKS: "task_id",
+            StateResource.OBJECTS: "object_id",
+        }
+        if resource not in RESOURCE_ID_KEY_NAME:
+            raise ValueError(f"Can't get {resource.name} by id.")
+
+        params["filter_keys"] = [RESOURCE_ID_KEY_NAME[resource]]
+        params["filter_values"] = [id]
+        endpoint = f"/api/v0/{resource.value}"
+
+        result = self._make_http_get_request(
             endpoint=endpoint, params=params, timeout=options.timeout, _explain=_explain
         )
+        if resource == StateResource.OBJECTS:
+            # NOTE(rickyyx):
+            # There might be multiple object entries for a single object id
+            # because a single object could be referenced at different places
+            # e.g. pinned as local variable, used as parameter
+            return [obj_entry for obj_id, obj_entry in result.items() if obj_id == id]
+
+        # For the rest of the resources, there should only be a single entry
+        # for a particular id.
+        assert len(result) >= 1
+        return result.get(id, None)
 
     def list(
         self, resource: StateResource, options: ListApiOptions, _explain: bool = False
@@ -172,9 +218,105 @@ class StateApiClient(SubmissionClient):
         """
         endpoint = f"/api/v0/{resource.value}"
         params = self._make_param(options)
-        return self._make_get_request(
+        return self._make_http_get_request(
             endpoint=endpoint, params=params, timeout=options.timeout, _explain=_explain
         )
+
+
+"""
+Convenient Methods for get_<RESOURCE> by id
+"""
+
+
+def get_actor(
+    id: str,
+    address: Optional[str] = None,
+    timeout: int = DEFAULT_RPC_TIMEOUT,
+    _explain: bool = False,
+) -> Optional[ActorState]:
+    return StateApiClient(api_server_address=address).get(
+        StateResource.ACTORS, id, GetApiOptions(timeout=timeout), _explain=_explain
+    )
+
+
+# TODO(rickyyx:alpha-obs)
+def get_job(
+    id: str,
+    address: Optional[str] = None,
+    timeout: int = DEFAULT_RPC_TIMEOUT,
+    _explain: bool = False,
+) -> Optional[JobState]:
+    raise NotImplementedError("Get Job by id is currently not supported")
+
+
+def get_placement_group(
+    id: str,
+    address: Optional[str] = None,
+    timeout: int = DEFAULT_RPC_TIMEOUT,
+    _explain: bool = False,
+) -> Optional[PlacementGroupState]:
+    return StateApiClient(api_server_address=address).get(
+        StateResource.PLACEMENT_GROUPS,
+        id,
+        GetApiOptions(timeout=timeout),
+        _explain=_explain,
+    )
+
+
+def get_node(
+    id: str,
+    address: Optional[str] = None,
+    timeout: int = DEFAULT_RPC_TIMEOUT,
+    _explain: bool = False,
+) -> Optional[NodeState]:
+    return StateApiClient(api_server_address=address).get(
+        StateResource.NODES,
+        id,
+        GetApiOptions(timeout=timeout),
+        _explain=_explain,
+    )
+
+
+def get_worker(
+    id: str,
+    address: Optional[str] = None,
+    timeout: int = DEFAULT_RPC_TIMEOUT,
+    _explain: bool = False,
+) -> Optional[WorkerState]:
+    return StateApiClient(api_server_address=address).get(
+        StateResource.WORKERS,
+        id,
+        GetApiOptions(timeout=timeout),
+        _explain=_explain,
+    )
+
+
+def get_task(
+    id: str,
+    address: Optional[str] = None,
+    timeout: int = DEFAULT_RPC_TIMEOUT,
+    _explain: bool = False,
+) -> Optional[TaskState]:
+    return StateApiClient(api_server_address=address).get(
+        StateResource.TASKS,
+        id,
+        GetApiOptions(timeout=timeout),
+        _explain=_explain,
+    )
+
+
+def get_objects(
+    id: str,
+    address: Optional[str] = None,
+    timeout: int = DEFAULT_RPC_TIMEOUT,
+    _explain: bool = False,
+) -> List[ObjectState]:
+    return StateApiClient(api_server_address=address).get(
+        StateResource.OBJECTS,
+        id,
+        GetApiOptions(timeout=timeout),
+        _explain=_explain,
+    )
 
 
 """

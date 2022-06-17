@@ -1,15 +1,15 @@
-import click
-import logging
 import json
+import logging
+from enum import Enum, unique
+from typing import List, Optional, Tuple, Union
+
+import click
 import yaml
 
-from enum import Enum, unique
-from typing import Optional, Union, List, Tuple
-
 import ray
-import ray.ray_constants as ray_constants
 import ray._private.services as services
-
+import ray.ray_constants as ray_constants
+from ray._private.gcs_utils import GcsClient
 from ray.experimental.state.api import StateApiClient
 from ray.experimental.state.common import (
     DEFAULT_LIMIT,
@@ -18,7 +18,6 @@ from ray.experimental.state.common import (
     ListApiOptions,
     StateResource,
 )
-from ray._private.gcs_utils import GcsClient
 
 logger = logging.getLogger(__name__)
 
@@ -36,10 +35,20 @@ def _get_available_formats() -> List[str]:
     return [format_enum.value for format_enum in AvailableFormat]
 
 
-def _get_available_resources() -> List[str]:
-    """Return the available resources in a list of string"""
+def _get_available_resources(
+    excluded: Optional[List[StateResource]] = None,
+) -> List[str]:
+    """Return the available resources in a list of string
+
+    Args:
+        excluded: List of resources that should be excluded
+    """
     # All resource names use '_' rather than '-'. But users options have '-'
-    return [e.value.replace("_", "-") for e in StateResource]
+    return [
+        e.value.replace("_", "-")
+        for e in StateResource
+        if excluded is None or e not in excluded
+    ]
 
 
 def get_api_server_url() -> str:
@@ -66,12 +75,7 @@ def get_api_server_url() -> str:
     return api_server_url
 
 
-def get_state_api_output_to_print(
-    state_data: Union[dict, list], *, format: AvailableFormat = AvailableFormat.DEFAULT
-):
-    if len(state_data) == 0:
-        return "No resource in the cluster"
-
+def output_with_format(state_data: Union[dict, list], format: AvailableFormat):
     # Default is yaml.
     if format == AvailableFormat.DEFAULT:
         return yaml.dump(state_data, indent=4, explicit_start=True)
@@ -88,6 +92,25 @@ def get_state_api_output_to_print(
         )
 
 
+def format_get_api_output(
+    state_data: Union[dict, list],
+    id: str,
+    format: AvailableFormat = AvailableFormat.DEFAULT,
+):
+    if len(state_data) == 0:
+        return f"Resource with id={id} not found in the cluster."
+
+    return output_with_format(state_data, format)
+
+
+def format_list_api_output(
+    state_data: Union[dict, list], *, format: AvailableFormat = AvailableFormat.DEFAULT
+):
+    if len(state_data) == 0:
+        return "No resource in the cluster"
+    return output_with_format(state_data, format)
+
+
 """
 List API
 """
@@ -99,10 +122,18 @@ def _should_explain(format: AvailableFormat):
     return format == AvailableFormat.DEFAULT or format == AvailableFormat.TABLE
 
 
+# TODO(rickyyx): Once we have other APIs stablized, we should refactor them to
+# reuse some of the options, e.g. `--address`.
+# list/get/summary could all go under a single command group for options sharing.
 @click.command()
 @click.argument(
     "resource",
-    type=click.Choice(_get_available_resources()),
+    # NOTE(rickyyx): We are not allowing query job with id, and runtime envs
+    type=click.Choice(
+        _get_available_resources(
+            excluded=[StateResource.JOBS, StateResource.RUNTIME_ENVS]
+        )
+    ),
 )
 @click.argument(
     "id",
@@ -140,11 +171,10 @@ def get(
     )
 
     options = GetApiOptions(
-        limit=DEFAULT_LIMIT,  # TODO(rickyyx): parameters discussion to be finalized
         timeout=timeout,
     )
 
-    # If errors occur, exceptions will be thrown. Empty data indicate successful query.
+    # If errors occur, exceptions will be thrown.
     data = client.get(
         resource=resource,
         id=id,
@@ -154,7 +184,7 @@ def get(
 
     # Print data to console.
     print(
-        get_state_api_output_to_print(
+        format_list_api_output(
             state_data=data,
             format=AvailableFormat.YAML,
         )
@@ -232,7 +262,7 @@ def list(
 
     # Print data to console.
     print(
-        get_state_api_output_to_print(
+        format_list_api_output(
             state_data=data,
             format=format,
         )
