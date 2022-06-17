@@ -1,4 +1,4 @@
-from typing import Tuple, List, Generator
+from typing import Tuple, Generator, Union
 from ray.rllib.offline.estimators.off_policy_estimator import (
     OffPolicyEstimator,
     OffPolicyEstimate,
@@ -17,39 +17,49 @@ import numpy as np
 torch, nn = try_import_torch()
 
 
-# TODO (rohan): replace with AIR/parallel workers
-# (And find a better name than `should_train`)
 @ExperimentalAPI
-def k_fold_cv(
-    batch: SampleBatchType, k: int, should_train: bool = True
-) -> Generator[Tuple[List[SampleBatch]], None, None]:
-    """Utility function that returns a k-fold cross validation generator
-    over episodes from the given batch. If the number of episodes in the
-    batch is less than `k` or `should_train` is set to False, yields an empty
-    list for train_episodes and all the episodes in test_episodes.
-
+def train_test_split(
+    batch: SampleBatchType,
+    k: Union[float, int] = 0.0,
+) -> Generator[Tuple[SampleBatch], None, None]:
+    """Utility function that returns either a train/test split or
+    a k-fold cross validation generator over episodes from the given batch.
+    By default, `k` is set to 0.0, which sets eval_batch = batch
+    and train_batch to an empty SampleBatch.
     Args:
         batch: A SampleBatch of episodes to split
-        k: Number of cross-validation splits
-        should_train: True by default. If False, yield [], [episodes].
-
+        k: train/test split parameter; if k < 1, split the batch into a
+        `(1 - k) * n_episodes` eval batch and a `k * n_episodes` train batch;
+        if k > 1 split the batch into `k` folds from cross-validation
     Returns:
-        A tuple with two lists of SampleBatches (train_episodes, test_episodes)
+        A tuple with two SampleBatches (eval_batch, train_batch)
     """
     episodes = batch.split_by_episode()
     n_episodes = len(episodes)
-    if n_episodes < k or not should_train:
-        yield [], episodes
+    assert (
+        isinstance(k, float) and k >= 0 and k < 1 or isinstance(k, int)
+    ), f" k: {k} must be either a float with 0.0 <= k < 1.0 or an int"
+    # Train-test split
+    if k < 1:
+        train_episodes = episodes[: int(n_episodes * k)]
+        eval_episodes = episodes[int(n_episodes * k) :]
+        yield SampleBatch.concat_samples(eval_episodes), SampleBatch.concat_samples(
+            train_episodes
+        )
         return
+    # k-fold cv
+    assert n_episodes >= k, "Not enough eval episodes in batch!"
     n_fold = n_episodes // k
     for i in range(k):
         train_episodes = episodes[: i * n_fold] + episodes[(i + 1) * n_fold :]
         if i != k - 1:
-            test_episodes = episodes[i * n_fold : (i + 1) * n_fold]
+            eval_episodes = episodes[i * n_fold : (i + 1) * n_fold]
         else:
-            # Append remaining episodes onto the last test_episodes
-            test_episodes = episodes[i * n_fold :]
-        yield train_episodes, test_episodes
+            # Append remaining episodes onto the last eval_episodes
+            eval_episodes = episodes[i * n_fold :]
+        yield SampleBatch.concat_samples(eval_episodes), SampleBatch.concat_samples(
+            train_episodes
+        )
     return
 
 
@@ -66,7 +76,7 @@ class DirectMethod(OffPolicyEstimator):
         policy: Policy,
         gamma: float,
         q_model_type: str = "fqe",
-        k: int = 5,
+        k: Union[int, float] = 5,
         **kwargs,
     ):
         """
@@ -127,7 +137,7 @@ class DirectMethod(OffPolicyEstimator):
         self.check_can_estimate_for(batch)
         estimates = []
         # Split data into train and test using k-fold cross validation
-        for train_episodes, test_episodes in k_fold_cv(batch, self.k, should_train):
+        for train_episodes, test_episodes in train_test_split(batch, self.k):
 
             # Train Q-function
             if train_episodes:
