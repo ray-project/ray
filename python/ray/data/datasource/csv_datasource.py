@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator
 
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.file_based_datasource import (
@@ -23,6 +23,8 @@ class CSVDatasource(FileBasedDatasource):
         ...     source, paths="/path/to/dir").take()
         [{"a": 1, "b": "foo"}, ...]
     """
+
+    _file_extension = "csv"
 
     def _read_stream(
         self, f: "pyarrow.NativeFile", path: str, **reader_args
@@ -57,7 +59,3 @@ class CSVDatasource(FileBasedDatasource):
         writer_args = _resolve_kwargs(writer_args_fn, **writer_args)
         write_options = writer_args.pop("write_options", None)
         csv.write_csv(block.to_arrow(), f, write_options, **writer_args)
-
-    @staticmethod
-    def _file_extension() -> Union[str, List[str]]:
-        return "csv"

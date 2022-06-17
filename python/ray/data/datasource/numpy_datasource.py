@@ -1,5 +1,5 @@
 from io import BytesIO
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict
 
 import numpy as np
 
@@ -25,6 +25,8 @@ class NumpyDatasource(FileBasedDatasource):
 
     """
 
+    _file_extension = "npy"
+
     def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args):
         # TODO(ekl) Ideally numpy can read directly from the file, but it
         # seems like it requires the file to be seekable.
@@ -44,7 +46,3 @@ class NumpyDatasource(FileBasedDatasource):
     ):
         value = block.to_numpy(column)
         np.save(f, value)
-
-    @staticmethod
-    def _file_extension() -> Union[str, List[str]]:
-        return "npy"

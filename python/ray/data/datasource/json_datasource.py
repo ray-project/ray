@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict
 
 from ray.data.block import BlockAccessor
 from ray.data.datasource.file_based_datasource import (
@@ -24,6 +24,8 @@ class JSONDatasource(FileBasedDatasource):
         [{"a": 1, "b": "foo"}, ...]
     """
 
+    _file_extension = "json"
+
     # TODO(ekl) The PyArrow JSON reader doesn't support streaming reads.
     def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args):
         from pyarrow import json
@@ -44,7 +46,3 @@ class JSONDatasource(FileBasedDatasource):
         orient = writer_args.pop("orient", "records")
         lines = writer_args.pop("lines", True)
         block.to_pandas().to_json(f, orient=orient, lines=lines, **writer_args)
-
-    @staticmethod
-    def _file_extension() -> Union[str, List[str]]:
-        return "json"
