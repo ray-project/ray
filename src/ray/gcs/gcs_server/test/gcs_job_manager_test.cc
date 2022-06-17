@@ -117,7 +117,6 @@ TEST_F(GcsJobManagerTest, TestPreserveDriverInfo) {
       &empty_reply,
       [](Status, std::function<void()>, std::function<void()>) {});
 
-
   auto job_config = gcs_job_manager.GetJobConfig(job_id);
   ASSERT_EQ("namespace", job_config->ray_namespace());
 }
