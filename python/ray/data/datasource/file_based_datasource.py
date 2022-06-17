@@ -32,7 +32,7 @@ from ray.data.datasource.file_meta_provider import (
 )
 from ray.data.datasource.partitioning import PathPartitionFilter
 from ray.types import ObjectRef
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     import pyarrow
@@ -128,6 +128,7 @@ class DefaultBlockWritePathProvider(BlockWritePathProvider):
         return posixpath.join(base_path, suffix)
 
 
+@PublicAPI(stability="beta")
 class FileExtensionFilter(PathPartitionFilter):
     """A file-extension-based path filter that filters files that don't end
     with the provided extension(s).
