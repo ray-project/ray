@@ -1,4 +1,4 @@
-import os
+import resource
 import time
 from dataclasses import dataclass
 from typing import (
@@ -21,8 +21,6 @@ import ray
 from ray.data._internal.util import _check_pyarrow_version
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI
-
-import psutil
 
 if TYPE_CHECKING:
     import pandas
@@ -152,8 +150,9 @@ class _BlockExecStatsBuilder:
         stats = BlockExecStats()
         stats.wall_time_s = time.perf_counter() - self.start_time
         stats.cpu_time_s = time.process_time() - self.start_cpu
-        process = psutil.Process(os.getpid())
-        stats.max_rss_bytes = int(process.memory_info().rss)
+        stats.max_rss_bytes = int(
+            resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1e3
+        )
         return stats
 
 
