@@ -2744,10 +2744,10 @@ def test_read_text_remote_args(ray_start_cluster, tmp_path):
         f.write("world")
     with open(os.path.join(path, "file2.txt"), "w") as f:
         f.write("goodbye")
+
     ds = ray.data.read_text(
         path, parallelism=2, ray_remote_args={"resources": {"bar": 1}}
     )
-    assert sorted(ds.take()) == ["goodbye", "hello", "world"]
 
     blocks = ds.get_internal_block_refs()
     ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
@@ -2756,6 +2756,7 @@ def test_read_text_remote_args(ray_start_cluster, tmp_path):
     for block in blocks:
         locations.extend(location_data[block]["node_ids"])
     assert set(locations) == {bar_node_id}, locations
+    assert sorted(ds.take()) == ["goodbye", "hello", "world"]
 
 
 if __name__ == "__main__":

@@ -606,7 +606,7 @@ def read_text(
         arrow_open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
-    ).flat_map(to_text)
+    ).flat_map(to_text, **(ray_remote_args or {}))
 
 
 @PublicAPI
