@@ -256,7 +256,7 @@ class ServeController:
     def _recover_config_from_checkpoint(self):
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
         if checkpoint is not None:
-            logger.info(f"Recovering Serve app config from checkpoint.")
+            logger.info("Recovering Serve app config from checkpoint.")
             self.deployment_timestamp, config = pickle.loads(checkpoint)
             self.deploy_app(ServeApplicationSchema.parse_obj(config), update_time=False)
 
