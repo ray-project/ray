@@ -1065,11 +1065,17 @@ def _prepare_read(
         if parallelism != -1:
             raise ValueError("`parallelism` must either be -1 or a positive integer.")
         # Start with 2x the number of cores as a baseline, with a min floor.
-        parallelism = max(8, _estimate_avail_cpus() * 2)
+        avail_cpus = _estimate_avail_cpus()
+        parallelism = max(8, avail_cpus * 2)
         # Increase it to avoid overly-large blocks as needed.
         mem_size = reader.estimate_inmemory_data_size()
         if mem_size is not None:
             parallelism = max(int(mem_size / ctx.target_max_block_size), parallelism)
+        logger.debug(
+            f"Autodetected parallelism={parallelism} based on "
+            f"estimated_available_cpus={avail_cpus} and "
+            f"estimated_data_size={mem_size}."
+        )
 
     return reader.read(parallelism)
 
