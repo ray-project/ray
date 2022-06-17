@@ -1,0 +1,79 @@
+Checkpoints
+===========
+
+Checkpoints are the common format for models that are used across different components of the Ray AI Runtime.
+
+.. image:: images/checkpoint_diagram.png
+
+There are numerous ways of generating a checkpoint.
+
+The first way is to generate it from a pretrained model. Each framework that AIR supports has a ``to_air_checkpoint`` method that can be used to generate an AIR checkpoint:
+
+.. literalinclude:: doc_code/checkpoint-usage.py
+    :language: python
+    :start-after: __checkpoint_quick_start__
+    :end-before: __checkpoint_quick_end__
+
+
+Another way is to retrieve it from the results of a Trainer or a Tuner.
+
+.. literalinclude:: doc_code/checkpoint-usage.py
+    :language: python
+    :start-after: __use_trainer_checkpoint_start__
+    :end-before: __use_trainer_checkpoint_end__
+
+What exactly is a checkpoint?
+-----------------------------
+
+The Checkpoint object is a serializable reference to a model, which itself can be represented in one of three ways:
+
+- a directory located on local (on-disk) storage
+- a directory located on external storage (e.g. cloud storage)
+- in-memory dictionary
+
+The flexibility provided in the Checkpoint model representation is useful in distributed environments, where you may want to recreate the same model on multiple nodes in your Ray cluster for inference.
+
+The Checkpoint object has methods to translate between different checkpoint storage locations:
+
+.. literalinclude:: doc_code/checkpoint-usage.py
+    :language: python
+    :start-after: __basic_checkpoint_start__
+    :end-before: __basic_checkpoint_end__
+
+
+What can I do with a checkpoint?
+--------------------------------
+
+Checkpoints can be consumed by a Predictor, BatchPredictor, or DeploymentWrapper. Upon usage, the model held by the Checkpoint will be instantiated in memory and used for inference.
+
+Using a batch predictor:
+
+
+.. literalinclude:: doc_code/checkpoint-usage.py
+    :language: python
+    :start-after: __batch_pred_start__
+    :end-before: __batch_pred_end__
+
+
+.. literalinclude:: doc_code/checkpoint-usage.py
+    :language: python
+    :start-after: __online_inference_start__
+    :end-before: __online_inference_end__
+
+
+
+
+
+
+Example: Using Checkpoints with MLflow
+--------------------------------------
+
+MLflow has its own checkpoint format, an "MLflow Model". It is a standard format for packaging machine learning models that can be used in a variety of downstream tools.
+
+
+.. literalinclude:: doc_code/checkpoint_mlflow.py
+    :language: python
+    :start-after: __mlflow_checkpoint_start__
+    :end-before: __mlflow_checkpoint_end__
+
+
