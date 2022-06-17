@@ -1,14 +1,13 @@
-import collections
-import time
 from contextlib import contextmanager
-from typing import Dict, List, Optional, Set, Tuple, Union
-
+from typing import List, Optional, Set, Dict, Tuple, Union
+import time
+import collections
 import numpy as np
 
 import ray
-from ray.data._internal.block_list import BlockList
 from ray.data.block import BlockMetadata
 from ray.data.context import DatasetContext
+from ray.data._internal.block_list import BlockList
 
 
 def fmt(seconds: float) -> str:
@@ -314,14 +313,6 @@ class DatasetStats:
                 fmt(max([e.cpu_time_s for e in exec_stats])),
                 fmt(np.mean([e.cpu_time_s for e in exec_stats])),
                 fmt(sum([e.cpu_time_s for e in exec_stats])),
-            )
-
-            out += indent
-            memory_stats = [round(e.max_rss_bytes / 1024 * 1024, 2) for e in exec_stats]
-            out += "* Peak heap memory usage (MiB): {} min, {} max, {} mean\n".format(
-                min(memory_stats),
-                max(memory_stats),
-                int(np.mean(memory_stats)),
             )
 
         output_num_rows = [m.num_rows for m in blocks if m.num_rows is not None]
