@@ -12,37 +12,32 @@ See `simple_q_[tf|torch]_policy.py` for the definition of the policy loss.
 import logging
 from typing import List, Optional, Type, Union
 
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.simple_q.simple_q_tf_policy import SimpleQTFPolicy
-from ray.rllib.algorithms.simple_q.simple_q_torch_policy import SimpleQTorchPolicy
 from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.utils.metrics import SYNCH_WORKER_WEIGHTS_TIMER
-from ray.rllib.utils.replay_buffers.utils import (
-    validate_buffer_config,
-    update_priorities_in_replay_buffer,
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.simple_q.simple_q_tf_policy import (
+    SimpleQTF1Policy,
+    SimpleQTF2Policy,
 )
-from ray.rllib.execution.rollout_ops import (
-    synchronous_parallel_sample,
-)
-from ray.rllib.execution.train_ops import (
-    train_one_step,
-    multi_gpu_train_one_step,
-)
+from ray.rllib.algorithms.simple_q.simple_q_torch_policy import SimpleQTorchPolicy
+from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
+from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils import deep_update
-from ray.rllib.utils.annotations import ExperimentalAPI, override
-from ray.rllib.utils.deprecation import Deprecated, DEPRECATED_VALUE
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, Deprecated
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
     NUM_TARGET_UPDATES,
+    SYNCH_WORKER_WEIGHTS_TIMER,
     TARGET_NET_UPDATE_TIMER,
 )
-from ray.rllib.utils.typing import (
-    ResultDict,
-    AlgorithmConfigDict,
+from ray.rllib.utils.replay_buffers.utils import (
+    update_priorities_in_replay_buffer,
+    validate_buffer_config,
 )
+from ray.rllib.utils.typing import AlgorithmConfigDict, ResultDict
 
 logger = logging.getLogger(__name__)
 
@@ -307,10 +302,11 @@ class SimpleQ(Algorithm):
     ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             return SimpleQTorchPolicy
+        elif config["framework"] == "tf":
+            return SimpleQTF1Policy
         else:
-            return SimpleQTFPolicy
+            return SimpleQTF2Policy
 
-    @ExperimentalAPI
     @override(Algorithm)
     def training_step(self) -> ResultDict:
         """Simple Q training iteration function.
