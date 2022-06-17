@@ -81,23 +81,23 @@
     Content-Type: application/json
 
     {
-      "import_path": "dir.subdir.a.add_and_sub.serve_dag",
-      "runtime_env": {
-          "working_dir": "https://github.com/ray-project/test_dag/archive/41b26242e5a10a8c167fcb952fb11d7f0b33d614.zip"
-      },
-      "deployments": [
-          {
-              "name": "Subtract",
-              "num_replicas": 2,
-              "ray_actor_options": {
-                  "runtime_env": {
-                  "py_modules": [
-                      "https://github.com/ray-project/test_module/archive/aa6f366f7daa78c98408c27d917a983caa9f888b.zip"
-                  ]
-                  }
-              }
-          }
-      ]
+        "import_path": "dir.subdir.a.add_and_sub.serve_dag",
+        "runtime_env": {
+            "working_dir": "https://github.com/ray-project/test_dag/archive/41b26242e5a10a8c167fcb952fb11d7f0b33d614.zip"
+        },
+        "deployments": [
+            {
+                "name": "Subtract",
+                "num_replicas": 2,
+                "ray_actor_options": {
+                    "runtime_env": {
+                        "py_modules": [
+                            "https://github.com/ray-project/test_module/archive/aa6f366f7daa78c98408c27d917a983caa9f888b.zip"
+                        ]
+                    }
+                }
+            }
+        ]
     }
 ```
 
@@ -114,23 +114,23 @@
     Accept: application/json
 
     {
-      "import_path": "dir.subdir.a.add_and_sub.serve_dag",
-      "runtime_env": {
-          "working_dir": "https://github.com/ray-project/test_dag/archive/41b26242e5a10a8c167fcb952fb11d7f0b33d614.zip"
-      },
-      "deployments": [
-          {
-              "name": "Subtract",
-              "num_replicas": 2,
-              "ray_actor_options": {
-                  "runtime_env": {
-                  "py_modules": [
-                      "https://github.com/ray-project/test_module/archive/aa6f366f7daa78c98408c27d917a983caa9f888b.zip"
-                  ]
-                  }
-              }
-          }
-      ]
+        "import_path": "dir.subdir.a.add_and_sub.serve_dag",
+        "runtime_env": {
+            "working_dir": "https://github.com/ray-project/test_dag/archive/41b26242e5a10a8c167fcb952fb11d7f0b33d614.zip"
+        },
+        "deployments": [
+            {
+                "name": "Subtract",
+                "num_replicas": 2,
+                "ray_actor_options": {
+                    "runtime_env": {
+                        "py_modules": [
+                            "https://github.com/ray-project/test_module/archive/aa6f366f7daa78c98408c27d917a983caa9f888b.zip"
+                        ]
+                    }
+                }
+            }
+        ]
     }
 
     **Example Response**
@@ -188,6 +188,36 @@
 
     HTTP/1.1 200 OK
     Content-Type: application/json
+
+    {
+        "app_status": {
+            "status": "RUNNING",
+            "message": "",
+            "deployment_timestamp": 1655490105.9503832
+        },
+        "deployment_statuses": [
+            {
+                "name": "Add",
+                "status": "HEALTHY",
+                "message": ""
+            },
+            {
+                "name": "Subtract",
+                "status": "HEALTHY",
+                "message": ""
+            },
+            {
+                "name": "Router",
+                "status": "HEALTHY",
+                "message": ""
+            },
+            {
+                "name": "DAGDriver",
+                "status": "HEALTHY",
+                "message": ""
+            }
+        ]
+    }
 ```
 
 ## Serve CLI
