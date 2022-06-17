@@ -162,6 +162,36 @@ class StateApiClient(SubmissionClient):
             ObjectState,
         ]
     ]:
+        """Get resources states by id
+
+        Args:
+            resource_name: Resource names, i.e. 'workers', 'actors', 'nodes',
+                'placement_groups', 'tasks', 'objects'.
+                'jobs' and 'runtime-envs' are not supported yet.
+            id: ID for the resource, i.e. 'node_id' for nodes.
+            options: List options. See `GetApiOptions` for details.
+            _explain: Print the API information such as API
+                latency or failed query information.
+
+        Returns:
+            None if not found, and found:
+            - ActorState for actors
+            - PlacementGroupState for placement groups
+            - NodeState for nodes
+            - WorkerState for workers
+            - TaskState for tasks
+
+            Empty list for objects if not found, or list of ObjectState for objects
+
+        Raises:
+            This doesn't catch any exceptions raised when the underlying request
+            call raises exceptions. For example, it could raise `requests.Timeout`
+            when timeout occurs.
+
+            ValueError:
+                if the resource could not be GET by id, i.e. jobs and runtime-envs.
+
+        """
         # TODO(rickyyx): Make GET not using filters on list operation
         params = self._make_param(options)
 
