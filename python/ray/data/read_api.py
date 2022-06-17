@@ -1082,21 +1082,25 @@ def _prepare_read(
 
 def _estimate_avail_cpus() -> int:
     cur_pg = ray.util.get_current_placement_group()
+    cluster_cpus = int(ray.cluster_resources().get("CPU", 1))
 
     # If we're in a placement group, we shouldn't assume the entire cluster's
     # resources are available for us to use. Estimate an upper bound on what's
     # reasonable to assume is available for datasets to use.
     if cur_pg:
-        slots = 0
+        pg_cpus = 0
         for bundle in cur_pg.bundle_specs:
-            # Add up placement group CPUs and GPUs (counts as 8 CPUs as a heuristic).
+            # Add up placement group CPUs and GPUs with multipliers. It's ok to
+            # overestimate the amount of available CPUs. This is preferrable to
+            # underestimating.
+            #
             # Example:
-            #   4 CPU workers -> estimate 4 slots
+            #   4 CPU workers -> estimate 8 slots
             #   4 GPU workers -> estimate 32 slots
-            slots += bundle.get("CPU", 0) + 8 * bundle.get("GPU", 0)
-        return slots
+            pg_cpus += 2 * bundle.get("CPU", 0) + 8 * bundle.get("GPU", 0)
+        return min(cluster_cpus, pg_cpus)
 
-    return int(ray.cluster_resources().get("CPU", 1))
+    return cluster_cpus
 
 
 def _resolve_parquet_args(
