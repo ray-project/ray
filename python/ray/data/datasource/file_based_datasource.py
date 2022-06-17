@@ -270,13 +270,27 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
 
 
 class _FileBasedDatasourceReader(Reader):
-    def __init__(self, delegate, **read_args):
-        self._delegate = delegate
-        self._read_args = read_args
+    def __init__(
+        self,
+        delegate,
+        paths: Union[str, List[str]],
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
+        open_stream_args: Optional[Dict[str, Any]] = None,
+        meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
+        partition_filter: PathPartitionFilter = None,
+        # TODO(ekl) deprecate this once read fusion is available.
+        _block_udf: Optional[Callable[[Block], Block]] = None,
+        **reader_args,
+    ):
         _check_pyarrow_version()
-        paths = read_args["paths"]
-        filesystem = read_args.get("filesystem")
-        meta_provider = read_args["meta_provider"]
+        self._delegate = delegate
+        self._schema = schema
+        self._open_stream_args = open_stream_args
+        self._meta_provider = meta_provider
+        self._partition_filter = partition_filter
+        self._block_udf = _block_udf
+        self._reader_args = reader_args
         paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
         self._paths, self._file_sizes = meta_provider.expand_paths(
             paths, self._filesystem
@@ -290,30 +304,18 @@ class _FileBasedDatasourceReader(Reader):
         return total_size
 
     def read(self, parallelism: int) -> List[ReadTask]:
-        return self._read(parallelism, **self._read_args)
-
-    def _read(
-        self,
-        parallelism: int,
-        paths: Union[str, List[str]],
-        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-        schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
-        open_stream_args: Optional[Dict[str, Any]] = None,
-        meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
-        partition_filter: PathPartitionFilter = None,
-        # TODO(ekl) deprecate this once read fusion is available.
-        _block_udf: Optional[Callable[[Block], Block]] = None,
-        **reader_args,
-    ) -> List[ReadTask]:
         import numpy as np
 
-        paths, file_sizes, filesystem = self._paths, self._file_sizes, self._filesystem
-        if partition_filter is not None:
-            paths = partition_filter(paths)
+        open_stream_args = self._open_stream_args
+        reader_args = self._reader_args
+        _block_udf = self._block_udf
+
+        paths, file_sizes = self._paths, self._file_sizes
+        if self._partition_filter is not None:
+            paths = self._partition_filter(paths)
 
         read_stream = self._delegate._read_stream
-
-        filesystem = _wrap_s3_serialization_workaround(filesystem)
+        filesystem = _wrap_s3_serialization_workaround(self._filesystem)
 
         if open_stream_args is None:
             open_stream_args = {}
@@ -379,9 +381,9 @@ class _FileBasedDatasourceReader(Reader):
             if len(read_paths) <= 0:
                 continue
 
-            meta = meta_provider(
+            meta = self._meta_provider(
                 read_paths,
-                schema,
+                self._schema,
                 rows_per_file=self._delegate._rows_per_file(),
                 file_sizes=file_sizes,
             )
