@@ -157,7 +157,7 @@ def main(
         return_code = result.return_code
     except ReleaseTestError as e:
         logger.exception(e)
-        return_code = e.exit_code
+        return_code = e.exit_code.value
 
     logger.info(
         f"Release test pipeline for test {test['name']} completed. "
