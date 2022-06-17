@@ -8,13 +8,12 @@ RAY_DIR=$(cd "${ROOT_DIR}/../../"; pwd)
 
 cd "${RAY_DIR}"
 
-# Cleanup old entries, this is needed in macOS shared environment.
-if [[ "${OSTYPE}" = darwin* ]]; then
-  if [[ -n "${BUILDKITE-}" ]]; then
-    echo "Cleanup old entries in macOS"
-    rm -rf /tmp/bazel_event_logs
-  fi
-fi
+cleanup() {
+  # Cleanup the directory because macOS file system is shared between builds.
+  rm -rf /tmp/bazel_event_logs
+}
+trap cleanup EXIT
+
 mkdir -p /tmp/bazel_event_logs
 
 ./ci/build/get_build_info.py > /tmp/bazel_event_logs/metadata.json
