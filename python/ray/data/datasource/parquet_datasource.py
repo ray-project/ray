@@ -33,6 +33,7 @@ PARALLELIZE_META_FETCH_THRESHOLD = 24
 # The number of rows to read per batch. This is sized to generate 10MiB batches
 # for rows about 1KiB in size.
 PARQUET_READER_ROW_BATCH_SIZE = 100000
+FILE_READING_RETRY = 8
 
 
 def _register_parquet_file_fragment_serialization():
@@ -54,6 +55,69 @@ def _deregister_parquet_file_fragment_serialization():
     from pyarrow.dataset import ParquetFileFragment
 
     ray.util.deregister_serializer(ParquetFileFragment)
+
+
+# This is the bare bone deserializing function with no retry
+# easier to mock its behavior for testing when isolated from retry logic
+def _deserialize_pieces(
+    serialized_pieces: str,
+) -> List["pyarrow._dataset.ParquetFileFragment"]:
+    from ray import cloudpickle
+
+    pieces: List["pyarrow._dataset.ParquetFileFragment"] = cloudpickle.loads(
+        serialized_pieces
+    )
+    return pieces
+
+
+# This retry helps when the upstream datasource is not able to handle
+# overloaded read request or failed with some retriable failures.
+# For example when reading data from HA hdfs service, hdfs might
+# lose connection for some unknown reason expecially when
+# simutaneously running many hyper parameter tuning jobs
+# with ray.data parallelism setting at high value like the default 200
+# Such connection failure can be restored with some waiting and retry.
+def _deserialize_pieces_with_retry(
+    serialized_pieces: str,
+) -> List["pyarrow._dataset.ParquetFileFragment"]:
+    min_interval = 0
+    final_exception = None
+    for i in range(FILE_READING_RETRY):
+        try:
+            return _deserialize_pieces(serialized_pieces)
+        except Exception as e:
+            import time
+            import random
+
+            retry_timing = (
+                ""
+                if i == FILE_READING_RETRY - 1
+                else (f"Retry after {min_interval} sec. ")
+            )
+            log_only_show_in_1st_retry = (
+                ""
+                if i
+                else (
+                    f"If earlier read attempt threw certain Exception"
+                    f", it may or may not be an issue depends on these retries "
+                    f"succeed or not. serialized_pieces:{serialized_pieces}"
+                )
+            )
+            logger.exception(
+                f"{i + 1}th attempt to deserialize ParquetFileFragment failed. "
+                f"{retry_timing}"
+                f"{log_only_show_in_1st_retry}"
+            )
+            if not min_interval:
+                # to make retries of different process hit hdfs server
+                # at slightly different time
+                min_interval = 1 + random.random()
+            # exponential backoff at
+            # 1, 2, 4, 8, 16, 32, 64
+            time.sleep(min_interval)
+            min_interval = min_interval * 2
+            final_exception = e
+    raise final_exception
 
 
 @PublicAPI
@@ -121,7 +185,7 @@ class ParquetDatasource(ParquetBaseDatasource):
                 _register_parquet_file_fragment_serialization()
                 pieces: List[
                     "pyarrow._dataset.ParquetFileFragment"
-                ] = cloudpickle.loads(serialized_pieces)
+                ] = _deserialize_pieces_with_retry(serialized_pieces)
             finally:
                 _deregister_parquet_file_fragment_serialization()
 
@@ -233,12 +297,13 @@ def _fetch_metadata_serialization_wrapper(
     # Implicitly trigger S3 subsystem initialization by importing
     # pyarrow.fs.
     import pyarrow.fs  # noqa: F401
-    from ray import cloudpickle
 
     # Deserialize after loading the filesystem class.
     try:
         _register_parquet_file_fragment_serialization()
-        pieces: List["pyarrow._dataset.ParquetFileFragment"] = cloudpickle.loads(pieces)
+        pieces: List[
+            "pyarrow._dataset.ParquetFileFragment"
+        ] = _deserialize_pieces_with_retry(pieces)
     finally:
         _deregister_parquet_file_fragment_serialization()
 
