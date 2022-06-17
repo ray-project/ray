@@ -656,7 +656,7 @@ class Impala(Algorithm):
             )
 
         def record_steps_trained(item):
-            count, fetches = item
+            count, fetches, _ = item
             metrics = _get_shared_metrics()
             # Manually update the steps trained counter since the learner
             # thread is executing outside the pipeline.
@@ -895,8 +895,9 @@ class Impala(Algorithm):
             removed_workers: removed worker ids.
             new_workers: ids of newly created workers.
         """
-        self._sampling_actor_manager.remove_workers(removed_workers)
-        self._sampling_actor_manager.add_workers(new_workers)
+        if self.config["_disable_execution_plan_api"]:
+            self._sampling_actor_manager.remove_workers(removed_workers)
+            self._sampling_actor_manager.add_workers(new_workers)
 
     @override(Algorithm)
     def _compile_iteration_results(self, *, step_ctx, iteration_results=None):
