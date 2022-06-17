@@ -12,7 +12,7 @@ from ray_release.config import (
     parse_python_version,
     read_and_validate_release_test_collection,
 )
-from ray_release.env import load_environment, populate_os_env
+from ray_release.env import DEFAULT_ENVIRONMENT, load_environment, populate_os_env
 from ray_release.exception import ReleaseTestCLIError, ReleaseTestError
 from ray_release.glue import run_release_test
 from ray_release.logger import logger
@@ -21,7 +21,6 @@ from ray_release.reporter.db import DBReporter
 from ray_release.reporter.legacy_rds import LegacyRDSReporter
 from ray_release.reporter.log import LogReporter
 from ray_release.result import Result
-from ray_release.template import DEFAULT_ENVIRONMENT
 from ray_release.wheels import find_and_wait_for_ray_wheels_url
 
 
