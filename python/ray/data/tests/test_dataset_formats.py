@@ -1661,7 +1661,7 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     else:
         fs.delete_dir(_unwrap_protocol(dir_path))
 
-    # Directory, two files and non-json file (test default format-based path filtering).
+    # Directory, two files and non-json file (test default extension-based filtering).
     path = os.path.join(data_path, "test_json_dir")
     if fs is None:
         os.mkdir(path)
@@ -1673,9 +1673,16 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     path2 = os.path.join(path, "data1.json")
     df2.to_json(path2, orient="records", lines=True, storage_options=storage_options)
-    with open(os.path.join(path, "foo.txt"), "w") as f:
-        f.write("foobar")
-    # Non-JSON file should be ignored.
+
+    # Add a file with a non-matching file extension. This file should be ignored.
+    df_txt = pd.DataFrame({"foobar": [1, 2, 3]})
+    df_txt.to_json(
+        os.path.join(path, "foo.txt"),
+        orient="records",
+        lines=True,
+        storage_options=storage_options,
+    )
+
     ds = ray.data.read_json(path, filesystem=fs)
     assert ds.num_blocks() == 2
     df = pd.concat([df1, df2], ignore_index=True)
