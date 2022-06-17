@@ -9,17 +9,13 @@ For a simpler example, see also: multiagent_cartpole.py
 """
 
 import argparse
-import gym
 import os
 
+import gym
+
 import ray
-from ray.rllib.algorithms.dqn import DQN, DQNTFPolicy, DQNTorchPolicy
-from ray.rllib.algorithms.ppo import (
-    PPO,
-    PPOTF1Policy,
-    PPOTF2Policy,
-    PPOTorchPolicy,
-)
+from ray.rllib.algorithms.dqn import DQN, DQNTF1Policy, DQNTF2Policy, DQNTorchPolicy
+from ray.rllib.algorithms.ppo import PPO, PPOTF1Policy, PPOTF2Policy, PPOTorchPolicy
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.tune.logger import pretty_print
 from ray.tune.registry import register_env
@@ -72,8 +68,10 @@ if __name__ == "__main__":
         elif algorithm == "DQN":
             if framework == "torch":
                 return DQNTorchPolicy
+            elif framework == "tf":
+                return DQNTF1Policy
             else:
-                return DQNTFPolicy
+                return DQNTF2Policy
         else:
             raise ValueError("Unknown algorithm: ", algorithm)
 

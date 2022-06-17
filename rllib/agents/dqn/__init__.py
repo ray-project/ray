@@ -6,7 +6,7 @@ from ray.rllib.algorithms.apex_dqn.apex_dqn import ApexDQNConfig
 from ray.rllib.algorithms.dqn.dqn import DEFAULT_CONFIG
 from ray.rllib.algorithms.dqn.dqn import DQN as DQNTrainer
 from ray.rllib.algorithms.dqn.dqn import DQNConfig
-from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTFPolicy
+from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTF1Policy, DQNTF2Policy
 from ray.rllib.algorithms.dqn.dqn_torch_policy import DQNTorchPolicy
 from ray.rllib.algorithms.r2d2.r2d2 import R2D2 as R2D2Trainer
 from ray.rllib.algorithms.r2d2.r2d2 import R2D2_DEFAULT_CONFIG, R2D2Config
@@ -28,7 +28,8 @@ __all__ = [
     "ApexDQNConfig",
     "ApexTrainer",
     "DQNConfig",
-    "DQNTFPolicy",
+    "DQNTF1Policy",
+    "DQNTF2Policy",
     "DQNTorchPolicy",
     "DQNTrainer",
     "R2D2Config",
