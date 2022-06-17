@@ -139,6 +139,8 @@ def test_update_num_replicas(shutdown_ray, detached):
 
 
 def test_updating_status_message(shutdown_ray):
+    """Check if status message says if a serve deployment has taken a long time"""
+
     ray.init(num_cpus=2)
     client = serve.start(detached=True)
 
@@ -149,15 +151,15 @@ def test_updating_status_message(shutdown_ray):
     def f(*args):
         pass
 
-    original_slow_startup_warning_period_s = (
+    original_slow_startup_warning_period_s = ray.get(
         client._controller._get_slow_startup_warning_period_s.remote()
     )
-    original_slow_startup_warning_s = (
+    original_slow_startup_warning_s = ray.get(
         client._controller._get_slow_startup_warning_s.remote()
     )
     # Lower slow startup warning threshold to 1 second to reduce test duration
-    client._controller._set_slow_startup_warning_period_s.remote(1)
-    client._controller._set_slow_startup_warning_s.remote(1)
+    ray.get(client._controller._set_slow_startup_warning_period_s.remote(1))
+    ray.get(client._controller._set_slow_startup_warning_s.remote(1))
     f.deploy(_blocking=False)
 
     def updating_message():
@@ -168,13 +170,18 @@ def test_updating_status_message(shutdown_ray):
         )
 
     wait_for_condition(updating_message, timeout=2)
-    # Reset slow startup warning threshold in case bugs that cause different
-    # tests to share state occur
-    client._controller._set_slow_startup_warning_period_s.remote(
-        original_slow_startup_warning_period_s
+
+    # Reset slow startup warning threshold to prevent state sharing across unit
+    # tests
+    ray.get(
+        client._controller._set_slow_startup_warning_period_s.remote(
+            original_slow_startup_warning_period_s
+        )
     )
-    client._controller._set_slow_startup_warning_s.remote(
-        original_slow_startup_warning_s
+    ray.get(
+        client._controller._set_slow_startup_warning_s.remote(
+            original_slow_startup_warning_s
+        )
     )
 
     serve.shutdown()
