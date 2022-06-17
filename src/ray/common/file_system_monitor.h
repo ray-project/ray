@@ -41,7 +41,7 @@ class FileSystemMonitor {
 
   ~FileSystemMonitor();
 
-  /// return the disk usage of a given path.
+  /// Returns the disk usage of a given path.
   ///
   /// \param path path of the file system to query the disk usage.
   /// \return std::filesystem::space_info if query succeeds; or return empty optional
@@ -49,7 +49,7 @@ class FileSystemMonitor {
   /// for struct details.
   std::optional<std::filesystem::space_info> Space(const std::string &path) const;
 
-  /// returns true if ANY path's disk usage is over the capacity threshold.
+  /// Returns true if ANY path's disk usage is over the capacity threshold.
   bool OverCapacity() const;
 
  private:

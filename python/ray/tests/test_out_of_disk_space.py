@@ -1,15 +1,15 @@
-from contextlib import contextmanager
 import os
-import sys
-import shutil
-import time
-import tempfile
-import numpy as np
-
 import platform
-import pytest
-import ray
+import shutil
+import sys
+import tempfile
+import time
+from contextlib import contextmanager
 
+import numpy as np
+import pytest
+
+import ray
 from ray.cluster_utils import Cluster
 
 

@@ -108,6 +108,8 @@ enum class StatusCode : char {
   // This represents all other status codes
   // returned by grpc that are not defined above.
   GrpcUnknown = 27,
+  // Object store is both out of memory and
+  // out of disk.
   OutOfDisk = 28,
 };
 

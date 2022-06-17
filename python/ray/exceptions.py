@@ -1,14 +1,20 @@
 import os
 from traceback import format_exception
+from typing import Optional, Union
 
-from typing import Union, Optional
+import colorama
 
 import ray.cloudpickle as pickle
-from ray.core.generated.common_pb2 import RayException, Language, PYTHON
-from ray.core.generated.common_pb2 import Address, ActorDiedErrorContext
 import ray.ray_constants as ray_constants
-from ray._raylet import WorkerID, ActorID, TaskID
-import colorama
+from ray._raylet import ActorID, TaskID, WorkerID
+from ray.core.generated.common_pb2 import (
+    PYTHON,
+    ActorDiedErrorContext,
+    Address,
+    Language,
+    RayException,
+)
+
 import setproctitle
 
 
@@ -338,13 +344,8 @@ class OutOfDiskError(RayError):
         return super(OutOfDiskError, self).__str__() + (
             "\n"
             "The local object store is full and local disk is also full."
-            "Tip: Run `df` command to check the disk usage; "
-            "Use the `ray memory` command to check the plasma memory usage."
-            "You can adjust plasma memory capacity by calling "
-            "`ray.init(object_store_memory=...)`;"
-            "You can also try to spread out of disk usage across multiple "
-            "physical devices, following"
-            " https://docs.ray.io/en/master/ray-core/objects/object-spilling.html"
+            "Tip: Use `df` on this node to check disk usage and "
+            "`ray memory` to check object store memory usage."
         )
 
 

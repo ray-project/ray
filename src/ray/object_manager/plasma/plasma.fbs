@@ -84,7 +84,7 @@ enum PlasmaError:int {
   UnexpectedError,
   // Trying to abort an object but it's not sealed.
   ObjectSealed,
-  // Trying to create an object but there isn't enough disk in the store.
+  // Trying to create an object but there isn't enough disk space.
   OutOfDisk,
 }
 

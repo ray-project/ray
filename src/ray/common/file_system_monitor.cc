@@ -88,7 +88,8 @@ bool FileSystemMonitor::OverCapacityImpl(
     return false;
   }
   if (space_info->capacity <= 0) {
-    RAY_LOG_EVERY_MS(ERROR, 60 * 1000) << path << " has no capacity.";
+    RAY_LOG_EVERY_MS(ERROR, 60 * 1000)
+        << path << " has no capacity, object creation will fail if spilling is required.";
     return true;
   }
 
@@ -97,9 +98,9 @@ bool FileSystemMonitor::OverCapacityImpl(
   }
 
   RAY_LOG_EVERY_MS(ERROR, 10 * 1000)
-      << path << " is over capacity, available: " << space_info->available
-      << ", capacity: " << space_info->capacity << ", threshold: " << capacity_threshold_;
-  return true;
+      << path << " is over " << capacity_threshold_
+      << "\% full, available space: " << space_info->available
+      << ". Object creation will fail if spilling is required." return true;
 }
 
 std::vector<std::string> ParseSpillingPaths(const std::string &spilling_config) {
@@ -115,11 +116,13 @@ std::vector<std::string> ParseSpillingPaths(const std::string &spilling_config) 
         if (entry.is_string()) {
           spilling_paths.push_back(entry);
         } else {
-          RAY_LOG(ERROR) << "Failed to parse spilling path: " << entry;
+          RAY_LOG(ERROR) << "Failed to parse spilling path: " << entry
+                         << ", expecting a string literal.";
         }
       }
     } else {
-      RAY_LOG(ERROR) << "Failed to parse spilling path: " << directory_path;
+      RAY_LOG(ERROR) << "Failed to parse spilling path: " << directory_path
+                     << ", expecting string or array.";
     }
   } catch (json::exception &ex) {
     RAY_LOG(ERROR) << "Failed to load spilling config: " << ex.what()
