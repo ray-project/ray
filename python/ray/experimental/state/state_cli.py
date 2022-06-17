@@ -158,6 +158,21 @@ def get(
     address: Optional[str],
     timeout: float,
 ):
+    """
+    Get RESOURCE by ID.
+
+    RESOURCE is the name of the possible resources from `StateResource`,
+    i.e. 'workers', 'actors', 'nodes', ...
+
+    NOTE: We currently DO NOT support get by id for jobs and runtime-envs
+
+    Example:
+
+    ```
+    ray get nodes <node-id>
+    ray get workers <worker-id>
+    ```
+    """
     # All resource names use '_' rather than '-'. But users options have '-'
     resource = StateResource(resource.replace("-", "_"))
 
