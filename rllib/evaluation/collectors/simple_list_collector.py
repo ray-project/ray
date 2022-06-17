@@ -30,7 +30,7 @@ _, tf, _ = try_import_tf()
 torch, _ = try_import_torch()
 
 if TYPE_CHECKING:
-    from ray.rllib.agents.callbacks import DefaultCallbacks
+    from ray.rllib.algorithms.callbacks import DefaultCallbacks
 
 logger = logging.getLogger(__name__)
 
@@ -949,8 +949,22 @@ class SimpleListCollector(SampleCollector):
 
         if is_done:
             del self.episode_steps[episode_id]
-            del self.agent_steps[episode_id]
             del self.episodes[episode_id]
+
+            if episode_id in self.agent_steps:
+                del self.agent_steps[episode_id]
+            else:
+                assert (
+                    len(pre_batches) == 0
+                ), "Expected the batch to be empty since the episode_id is missing."
+                # if the key does not exist it means that throughout the episode all
+                # observations were empty (i.e. there was no agent in the env)
+                msg = (
+                    f"Data from episode {episode_id} does not show any agent "
+                    f"interactions. Hint: Make sure for at least one timestep in the "
+                    f"episode, env.step() returns non-empty values."
+                )
+                raise ValueError(msg)
 
             # Make PolicyCollectorGroup available for more agent batches in
             # other episodes. Do not reset count to 0.

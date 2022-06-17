@@ -32,7 +32,7 @@ from ray.rllib.utils.metrics import (
     SYNCH_WORKER_WEIGHTS_TIMER,
 )
 from ray.rllib.utils.replay_buffers.utils import update_priorities_in_replay_buffer
-from ray.rllib.utils.typing import ResultDict, TrainerConfigDict
+from ray.rllib.utils.typing import ResultDict, AlgorithmConfigDict
 
 tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()
@@ -52,8 +52,8 @@ class CQLConfig(SACConfig):
         >>> trainer.train()
     """
 
-    def __init__(self, trainer_class=None):
-        super().__init__(trainer_class=trainer_class or CQL)
+    def __init__(self, algo_class=None):
+        super().__init__(algo_class=algo_class or CQL)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -70,8 +70,8 @@ class CQLConfig(SACConfig):
         self.off_policy_estimation_methods = {}
 
         # .reporting()
-        self.min_sample_timesteps_per_reporting = 0
-        self.min_train_timesteps_per_reporting = 100
+        self.min_sample_timesteps_per_iteration = 0
+        self.min_train_timesteps_per_iteration = 100
         # fmt: on
         # __sphinx_doc_end__
 
@@ -99,7 +99,7 @@ class CQLConfig(SACConfig):
             min_q_weight: in Q weight multiplier.
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
@@ -165,21 +165,21 @@ class CQL(SAC):
 
     @classmethod
     @override(SAC)
-    def get_default_config(cls) -> TrainerConfigDict:
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return CQLConfig().to_dict()
 
     @override(SAC)
-    def validate_config(self, config: TrainerConfigDict) -> None:
+    def validate_config(self, config: AlgorithmConfigDict) -> None:
         # First check, whether old `timesteps_per_iteration` is used. If so
         # convert right away as for CQL, we must measure in training timesteps,
         # never sampling timesteps (CQL does not sample).
         if config.get("timesteps_per_iteration", DEPRECATED_VALUE) != DEPRECATED_VALUE:
             deprecation_warning(
                 old="timesteps_per_iteration",
-                new="min_train_timesteps_per_reporting",
+                new="min_train_timesteps_per_iteration",
                 error=False,
             )
-            config["min_train_timesteps_per_reporting"] = config[
+            config["min_train_timesteps_per_iteration"] = config[
                 "timesteps_per_iteration"
             ]
             config["timesteps_per_iteration"] = DEPRECATED_VALUE
@@ -206,14 +206,14 @@ class CQL(SAC):
             try_import_tfp(error=True)
 
     @override(SAC)
-    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
+    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             return CQLTorchPolicy
         else:
             return CQLTFPolicy
 
     @override(SAC)
-    def training_iteration(self) -> ResultDict:
+    def training_step(self) -> ResultDict:
 
         # Sample training batch from replay buffer.
         train_batch = sample_min_n_steps_from_buffer(

@@ -3,7 +3,7 @@ import os
 import random
 
 import ray
-from ray.rllib.agents.trainer import Trainer
+from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.examples.models.eager_model import EagerModel
 from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -93,7 +93,7 @@ MyTFPolicy = build_tf_policy(
 
 
 # Create a new Trainer using the Policy defined above.
-class MyTrainer(Trainer):
+class MyTrainer(Algorithm):
     def get_default_policy_class(self, config):
         return MyTFPolicy
 

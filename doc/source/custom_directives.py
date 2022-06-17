@@ -1,20 +1,28 @@
-from pathlib import Path
+import logging
+import logging.handlers
+import sys
 import urllib
 import urllib.request
+from pathlib import Path
+from queue import Queue
+
 import requests
-import mock
-import sys
-from preprocess_github_markdown import preprocess_github_markdown_file
+import scipy.linalg  # noqa: F401
 
 # Note: the scipy import has to stay here, it's used implicitly down the line
 import scipy.stats  # noqa: F401
-import scipy.linalg  # noqa: F401
+from preprocess_github_markdown import preprocess_github_markdown_file
+from sphinx.util import logging as sphinx_logging
+from sphinx.util.console import red  # type: ignore
+
+import mock
 
 __all__ = [
     "fix_xgb_lgbm_docs",
     "DownloadAndPreprocessEcosystemDocs",
     "mock_modules",
     "update_context",
+    "LinkcheckSummarizer",
 ]
 
 try:
@@ -261,3 +269,69 @@ class DownloadAndPreprocessEcosystemDocs:
 
     def __call__(self):
         self.write_new_docs()
+
+
+class _BrokenLinksQueue(Queue):
+    """Queue that discards messages about non-broken links."""
+
+    def __init__(self, maxsize: int = 0) -> None:
+        self._last_line_no = None
+        self.used = False
+        super().__init__(maxsize)
+
+    def put(self, item: logging.LogRecord, block=True, timeout=None):
+        self.used = True
+        message = item.getMessage()
+        # line nos are separate records
+        if ": line" in message:
+            self._last_line_no = item
+        # same formatting as in sphinx.builders.linkcheck
+        # to avoid false positives if "broken" is in url
+        if red("broken    ") in message or "broken link:" in message:
+            if self._last_line_no:
+                super().put(self._last_line_no, block=block, timeout=timeout)
+                self._last_line_no = None
+            return super().put(item, block=block, timeout=timeout)
+
+
+class _QueueHandler(logging.handlers.QueueHandler):
+    """QueueHandler without modifying the record."""
+
+    def prepare(self, record: logging.LogRecord) -> logging.LogRecord:
+        return record
+
+
+class LinkcheckSummarizer:
+    """Hook into the logger used by linkcheck to display a summary at the end."""
+
+    def __init__(self) -> None:
+        self.logger = None
+        self.queue_handler = None
+        self.log_queue = _BrokenLinksQueue()
+
+    def add_handler_to_linkcheck(self, *args, **kwargs):
+        """Adds a handler to the linkcheck logger."""
+        self.logger = sphinx_logging.getLogger("sphinx.builders.linkcheck")
+        self.queue_handler = _QueueHandler(self.log_queue)
+        if not self.logger.hasHandlers():
+            # If there are no handlers, add the one that would
+            # be used anyway.
+            self.logger.logger.addHandler(logging.lastResort)
+        self.logger.logger.addHandler(self.queue_handler)
+
+    def summarize(self, *args, **kwargs):
+        """Summarizes broken links."""
+        if not self.log_queue.used:
+            return
+
+        self.logger.logger.removeHandler(self.queue_handler)
+
+        self.logger.info("\nBROKEN LINKS SUMMARY:\n")
+        has_broken_links = False
+        while self.log_queue.qsize() > 0:
+            has_broken_links = True
+            record: logging.LogRecord = self.log_queue.get()
+            self.logger.handle(record)
+
+        if not has_broken_links:
+            self.logger.info("No broken links found!")

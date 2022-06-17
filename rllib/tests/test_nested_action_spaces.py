@@ -83,15 +83,15 @@ class NestedActionSpacesTest(unittest.TestCase):
                     print(f"A={action_space} flatten={flatten}")
                     shutil.rmtree(config["output"])
                     config["_disable_action_flattening"] = not flatten
-                    trainer = PG(config)
-                    trainer.train()
-                    trainer.stop()
+                    pg = PG(config)
+                    pg.train()
+                    pg.stop()
 
                     # Check actions in output file (whether properly flattened
                     # or not).
                     reader = JsonReader(
                         inputs=config["output"],
-                        ioctx=trainer.workers.local_worker().io_context,
+                        ioctx=pg.workers.local_worker().io_context,
                     )
                     sample_batch = reader.next()
                     if flatten:
@@ -100,17 +100,17 @@ class NestedActionSpacesTest(unittest.TestCase):
                         assert sample_batch["actions"].shape[0] == len(sample_batch)
                     else:
                         tree.assert_same_structure(
-                            trainer.get_policy().action_space_struct,
+                            pg.get_policy().action_space_struct,
                             sample_batch["actions"],
                         )
 
-                    # Test, whether offline data can be properly read by a
-                    # BCTrainer, configured accordingly.
+                    # Test, whether offline data can be properly read by
+                    # BC, configured accordingly.
                     config["input"] = config["output"]
                     del config["output"]
-                    bc_trainer = BC(config=config)
-                    bc_trainer.train()
-                    bc_trainer.stop()
+                    bc = BC(config=config)
+                    bc.train()
+                    bc.stop()
                     config["output"] = tmp_dir
                     config["input"] = "sampler"
 

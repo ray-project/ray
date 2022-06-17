@@ -4,7 +4,7 @@ import ray
 from ray import serve
 from transformers import pipeline
 
-ray.init(address="auto", namespace="serve")
+ray.init(address="auto")
 serve.start(detached=True)
 
 
