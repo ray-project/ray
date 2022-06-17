@@ -3023,7 +3023,7 @@ py_test(
 
 py_test(
     name = "examples/replay_buffer_api",
-    tags = ["team:rllib", "gpu"],
+    tags = ["team:rllib", "examples"],
     size = "large",
     srcs = ["examples/replay_buffer_api.py"],
     args = ["--as-test", "--stop-reward=70"]

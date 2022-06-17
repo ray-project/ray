@@ -1,5 +1,5 @@
 import ray
-from ray.experimental.dag.py_obj_scanner import _PyObjScanner
+from ray.dag.py_obj_scanner import _PyObjScanner
 
 from typing import (
     Optional,
