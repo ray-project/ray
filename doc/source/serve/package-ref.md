@@ -48,22 +48,31 @@
 
 ## Serve REST API
 
-### Config
+(serve-rest-api-config-schema)=
 
-#### Schema
+### Config Schema
 
 ```{eval-rst}
 .. autopydantic_model:: ray.serve.schema.ServeApplicationSchema
 
 ```
 
-#### REST API
+(serve-rest-api-status-schema)=
+
+### Status Schema
+
+```{eval-rst}
+.. autopydantic_model:: ray.serve.schema.ServeStatusSchema
+
+```
+
+### REST API
 
 ```{eval-rst}
 .. http:GET:: "/api/serve/deployments/"
     :noindex:
 
-        Gets latest config that Serve has received. This config represents the current goal state for the Serve application. Starts a Serve application on the Ray cluster if it's not already running. See Config Schema for the output schema.
+        Gets latest config that Serve has received. This config represents the current goal state for the Serve application. Starts a Serve application on the Ray cluster if it's not already running. See [config schema](serve-rest-api-config-schema) for the response's JSON schema.
     
     **Example Request**:
 
@@ -105,7 +114,7 @@
 .. http:PUT:: "/api/serve/deployments/"
     :noindex:
 
-        Uploads config for Serve application to deploy. Starts a Serve application on the Ray cluster if it's not already running. See Config Schema for the request schema.
+        Declaratively deploys the Serve application. Starts Serve on the Ray cluster if it's not already running. See [config schema](serve-rest-api-config-schema) for the request's JSON schema.
 
     **Example Request**:
 
@@ -140,41 +149,10 @@
 ```
 
 ```{eval-rst}
-.. http:DELETE:: "/api/serve/deployments/"
-    :noindex:
-
-        Shuts down the Serve application running on the Ray cluster.
-    
-    **Example Request**:
-
-    ..source_code:: http
-
-    DELETE /api/serve/deployments/ HTTP 1.1
-    Host: http://localhost:8265/
-    Accept: application/json
-
-    **Example Response**
-
-    HTTP/1.1 200 OK
-    Content-Type: application/json
-```
-
-### Status
-
-#### Schema
-
-```{eval-rst}
-.. autopydantic_model:: ray.serve.schema.ServeStatusSchema
-
-```
-
-#### REST API
-
-```{eval-rst}
 .. http:GET:: "/api/serve/deployments/status"
     :noindex:
 
-        Gets the Serve application's current status, including all the deployment statuses. This config represents the current goal state for the Serve application. Starts a Serve application on the Ray cluster if it's not already running. See Status Schema for the output schema.
+        Gets the Serve application's current status, including all the deployment statuses. This config represents the current goal state for the Serve application. Starts a Serve application on the Ray cluster if it's not already running. See [status schema](serve-rest-api-status-schema) for the response's JSON schema.
     
     **Example Request**:
 
@@ -218,6 +196,27 @@
             }
         ]
     }
+```
+
+```{eval-rst}
+.. http:DELETE:: "/api/serve/deployments/"
+    :noindex:
+
+        Shuts down the Serve application running on the Ray cluster. Has no
+        effect if Serve is not running on the Ray cluster.
+    
+    **Example Request**:
+
+    ..source_code:: http
+
+    DELETE /api/serve/deployments/ HTTP 1.1
+    Host: http://localhost:8265/
+    Accept: application/json
+
+    **Example Response**
+
+    HTTP/1.1 200 OK
+    Content-Type: application/json
 ```
 
 ## Serve CLI
