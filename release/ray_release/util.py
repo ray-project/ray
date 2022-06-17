@@ -4,12 +4,21 @@ import json
 import os
 import subprocess
 import time
-from typing import Dict, Any, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
-
 from ray_release.logger import logger
+
+
+class DeferredEnvVar:
+    def __init__(self, var: str, default: Optional[str] = None):
+        self._var = var
+        self._default = default
+
+    def __str__(self):
+        return os.environ.get(self._var, self._default)
+
 
 ANYSCALE_HOST = os.environ.get("ANYSCALE_HOST", "https://console.anyscale.com")
 
