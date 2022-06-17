@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING, Dict, Optional, Union
 
 from ray.air._internal.session import _get_session
 from ray.air.checkpoint import Checkpoint
-from ray.train.session import TrainSession
+from ray.train.session import _TrainSessionImpl
 
 if TYPE_CHECKING:
     from ray.data import Dataset, DatasetPipeline
@@ -145,7 +145,7 @@ def get_world_size() -> int:
         trainer.fit()
     """
     session = _get_session()
-    if not isinstance(session, TrainSession):
+    if not isinstance(session, _TrainSessionImpl):
         raise RuntimeError(
             "`get_world_size` can only be called for TrainSession! "
             "Make sure you only use that in `train_loop_per_worker` function"
@@ -176,7 +176,7 @@ def get_world_rank() -> int:
         trainer.fit()
     """
     session = _get_session()
-    if not isinstance(session, TrainSession):
+    if not isinstance(session, _TrainSessionImpl):
         raise RuntimeError(
             "`get_world_rank` can only be called for TrainSession! "
             "Make sure you only use that in `train_loop_per_worker` function"
@@ -206,7 +206,7 @@ def get_local_rank() -> int:
         trainer.fit()
     """
     session = _get_session()
-    if not isinstance(session, TrainSession):
+    if not isinstance(session, _TrainSessionImpl):
         raise RuntimeError(
             "`get_local_rank` can only be called for TrainSession! "
             "Make sure you only use that in `train_loop_per_worker` function"
@@ -253,7 +253,7 @@ def get_dataset_shard(
         If no dataset is passed into Trainer, then return None.
     """
     session = _get_session()
-    if not isinstance(session, TrainSession):
+    if not isinstance(session, _TrainSessionImpl):
         raise RuntimeError(
             "`get_dataset_shard` can only be called for TrainSession! "
             "Make sure you only use that in `train_loop_per_worker` function"

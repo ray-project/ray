@@ -5,6 +5,7 @@ from tensorflow.keras.callbacks import Callback as KerasCallback
 
 from ray.air import session
 from ray.air.checkpoint import Checkpoint
+from ray.util.annotations import PublicAPI
 
 
 class _Callback(KerasCallback):
@@ -110,6 +111,7 @@ class _Callback(KerasCallback):
             self._handle(logs, "predict_end")
 
 
+@PublicAPI(stability="beta")
 class Callback(_Callback):
     def __init__(
         self,

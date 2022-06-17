@@ -232,7 +232,7 @@ class _StatusReporter:
     def _start(self):
         self._last_report_time = time.time()
 
-    def report(self, metrics: Dict, checkpoint: Optional[Checkpoint] = None) -> None:
+    def report(self, metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
         # TODO(xwjiang): Tons of optimizations.
         if not self._iter:
             self._iter = 0

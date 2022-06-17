@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from ray.train._internal.session import _TrainSession
 
 
-class TrainSession(Session):
+class _TrainSessionImpl(Session):
     """Session client that "per worker train loop" can interact with.
 
     Notice that each worker will automatically switch to its working

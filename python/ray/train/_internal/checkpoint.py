@@ -79,11 +79,11 @@ class CheckpointManager(CommonCheckpointManager):
         if self._checkpoint_strategy.checkpoint_score_attribute is None:
             self._checkpoint_strategy.checkpoint_score_attribute = TIMESTAMP
 
+    # TODO(xwjiang): Legacy Ray Train trainer clean up!
     def _load_checkpoint(
         self, checkpoint_to_load: Optional[Union[Dict, str, Path, Checkpoint]]
     ) -> Optional[Union[Dict, Checkpoint]]:
         """Load the checkpoint dictionary from the input dict or path."""
-        # TODO(xwjiang): Legacy Ray Train trainer clean up!
         if checkpoint_to_load is None:
             return None
         if isinstance(checkpoint_to_load, Dict):

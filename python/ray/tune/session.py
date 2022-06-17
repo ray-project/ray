@@ -22,17 +22,17 @@ logger = logging.getLogger(__name__)
 
 _session: Optional[_StatusReporter] = None
 # V2 Session API.
-_session_v2: Optional["TuneSession"] = None
+_session_v2: Optional["_TuneSessionImpl"] = None
 
 
-class TuneSession(Session):
+class _TuneSessionImpl(Session):
     """Session client that function trainable can interact with."""
 
     def __init__(self, status_reporter: _StatusReporter):
         self._status_reporter = status_reporter
 
     def report(self, metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
-        self._status_reporter.report(metrics, checkpoint)
+        self._status_reporter.report(metrics, checkpoint=checkpoint)
 
     @property
     def loaded_checkpoint(self) -> Optional[Checkpoint]:
@@ -115,7 +115,7 @@ def init(reporter, ignore_reinit_error=True):
         remote_function._task_launch_hook = tune_task_and_actor_launch_hook
 
     _session = reporter
-    _session_v2 = TuneSession(status_reporter=reporter)
+    _session_v2 = _TuneSessionImpl(status_reporter=reporter)
 
 
 # Cache of resource dicts that have been checked by the launch hook already.
@@ -216,9 +216,11 @@ def report(_metric=None, **kwargs):
     """
     _session = get_session()
     if _session:
-        assert (
-            not _session._iter
-        ), "Please do not mix `tune.report` with `session.report`."
+        if _session._iter:
+            raise ValueError(
+                "It is not allowed to mix `tune.report` with `session.report`."
+            )
+
         return _session(_metric, **kwargs)
 
 
@@ -278,9 +280,11 @@ def checkpoint_dir(step: int):
         raise ValueError("checkpoint_dir(step) must be provided - got None.")
 
     if _session:
-        assert (
-            not _session._iter
-        ), "Please do not mix `with tune.checkpoint_dir` with `session.report`."
+        if _session._iter:
+            raise ValueError(
+                "It is not allowed to mix `with tune.checkpoint_dir` "
+                "with `session.report`."
+            )
         _checkpoint_dir = _session.make_checkpoint_dir(step=step)
     else:
         _checkpoint_dir = os.path.abspath("./")

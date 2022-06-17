@@ -62,6 +62,7 @@ class _TrainSession:
         # TODO(xwjiang): Legacy Ray Train trainer clean up!
         trial_info: Optional[TrialInfo] = None,
         dataset_shard: Optional[Union[Dataset, DatasetPipeline]] = None,
+        # TODO(xwjiang): Legacy Ray Train trainer clean up!
         checkpoint: Optional[Union[Dict, Checkpoint]] = None,
         encode_data_fn: Callable = None,
         detailed_autofilled_metrics: bool = False,
