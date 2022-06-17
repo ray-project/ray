@@ -16,6 +16,7 @@ from fsspec.implementations.local import LocalFileSystem
 from pytest_lazyfixture import lazy_fixture
 
 import ray
+import ray.data.tests.util as util
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.datasource import (
@@ -33,8 +34,10 @@ from ray.data.datasource import (
     WriteResult,
 )
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
-from ray.data.datasource.parquet_datasource import PARALLELIZE_META_FETCH_THRESHOLD, _deserialize_pieces_with_retry
-import ray.data.tests.util as util
+from ray.data.datasource.parquet_datasource import (
+    PARALLELIZE_META_FETCH_THRESHOLD,
+    _deserialize_pieces_with_retry,
+)
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 from ray.types import ObjectRef
