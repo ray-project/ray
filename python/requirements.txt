@@ -78,7 +78,6 @@ pygments
 pyspark==3.1.2
 pytest==5.4.3
 pytest-asyncio==0.16.0
-pytest-forked
 pytest-rerunfailures
 pytest-sugar
 pytest-lazy-fixture

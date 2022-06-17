@@ -250,6 +250,7 @@
       python/ray/serve/...
       > test_shard.txt
     - cat test_shard.txt
+    - pip install pytest-forked
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --test_tag_filters=-post_wheel_build
       $(cat test_shard.txt)
