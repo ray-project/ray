@@ -1,4 +1,5 @@
 # flake8: noqa
+# isort: skip_file
 
 
 # __check_ingest_1__

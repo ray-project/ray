@@ -1,7 +1,8 @@
+import asyncio
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.runtime_env.context import RuntimeEnvContext
@@ -18,6 +19,7 @@ from ray._private.runtime_env.packaging import (
 )
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.utils import get_directory_size_bytes, try_to_create_directory
+from ray.experimental.internal_kv import _internal_kv_initialized
 
 default_logger = logging.getLogger(__name__)
 
@@ -126,11 +128,11 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
 
         return local_dir_size
 
-    def get_uri(self, runtime_env: "RuntimeEnv") -> Optional[str]:  # noqa: F821
+    def get_uris(self, runtime_env: "RuntimeEnv") -> List[str]:  # noqa: F821
         working_dir_uri = runtime_env.working_dir()
         if working_dir_uri != "":
-            return working_dir_uri
-        return None
+            return [working_dir_uri]
+        return []
 
     async def create(
         self,
@@ -145,11 +147,13 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
         return get_directory_size_bytes(local_dir)
 
     def modify_context(
-        self, uri: Optional[str], runtime_env_dict: Dict, context: RuntimeEnvContext
+        self, uris: List[str], runtime_env_dict: Dict, context: RuntimeEnvContext
     ):
-        if uri is None:
+        if not uris:
             return
 
+        # WorkingDirPlugin uses a single URI.
+        uri = uris[0]
         local_dir = get_local_dir_from_uri(uri, self._resources_dir)
         if not local_dir.exists():
             raise ValueError(

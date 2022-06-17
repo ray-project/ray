@@ -1,15 +1,15 @@
 import logging
 import math
-from typing import Callable, List, Optional, Dict, Any, Tuple, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
 
 import ray
+from ray.data._internal.block_list import BlockList
+from ray.data._internal.progress_bar import ProgressBar
+from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data._internal.shuffle import ShuffleOp
+from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-from ray.data.block import Block, BlockAccessor, BlockMetadata, BlockExecStats
-from ray.data._internal.shuffle import ShuffleOp
-from ray.data._internal.progress_bar import ProgressBar
-from ray.data._internal.block_list import BlockList
-from ray.data._internal.remote_fn import cached_remote_fn
 
 logger = logging.getLogger(__name__)
 
@@ -21,12 +21,8 @@ U = TypeVar("U")
 class _MergeTaskSchedule:
     def __init__(self, output_num_blocks: int, num_merge_tasks_per_round: int):
         self.num_merge_tasks_per_round = num_merge_tasks_per_round
-        self.merge_partition_size = math.ceil(
-            output_num_blocks / num_merge_tasks_per_round
-        )
-        self.last_merge_partition_size = output_num_blocks - (
-            self.merge_partition_size * (self.num_merge_tasks_per_round - 1)
-        )
+        self.merge_partition_size = output_num_blocks // num_merge_tasks_per_round
+        self._partitions_with_extra_task = output_num_blocks % num_merge_tasks_per_round
 
     def get_num_reducers_per_merge_idx(self, merge_idx: int) -> int:
         """
@@ -34,12 +30,25 @@ class _MergeTaskSchedule:
         final reduce tasks. This helper function returns P based on the merge
         task index.
         """
-        if merge_idx == self.num_merge_tasks_per_round - 1:
-            return self.last_merge_partition_size
-        return self.merge_partition_size
+        assert merge_idx < self.num_merge_tasks_per_round
+        partition_size = self.merge_partition_size
+        if merge_idx < self._partitions_with_extra_task:
+            partition_size += 1
+        return partition_size
 
     def get_merge_idx_for_reducer_idx(self, reducer_idx: int) -> int:
-        return reducer_idx // self.merge_partition_size
+        if reducer_idx < self.merge_partition_size * self._partitions_with_extra_task:
+            merge_idx = reducer_idx // (self.merge_partition_size + 1)
+        else:
+            reducer_idx -= (
+                self.merge_partition_size + 1
+            ) * self._partitions_with_extra_task
+            merge_idx = (
+                self._partitions_with_extra_task
+                + reducer_idx // self.merge_partition_size
+            )
+        assert merge_idx < self.num_merge_tasks_per_round
+        return merge_idx
 
 
 class _PushBasedShuffleStage:
@@ -408,7 +417,7 @@ class PushBasedShufflePlan(ShuffleOp):
             # merge tasks, but we can spread the group across multiple distinct
             # nodes.
             leftover_cpus += node_parallelism % num_tasks_per_map_merge_group
-            if leftover_cpus > num_tasks_per_map_merge_group:
+            if num_merge_tasks == 0 and leftover_cpus > num_tasks_per_map_merge_group:
                 merge_task_placement.append(node)
                 num_merge_tasks_per_round += 1
                 leftover_cpus -= num_tasks_per_map_merge_group

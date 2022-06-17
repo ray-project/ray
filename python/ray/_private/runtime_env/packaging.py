@@ -15,9 +15,15 @@ from ray import ray_constants
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.thirdparty.pathspec import PathSpec
 from ray.experimental.internal_kv import (
+    PathSpec,
     _internal_kv_exists,
+    _internal_kv_get,
     _internal_kv_put,
     _pin_runtime_env_uri,
+    from,
+    import,
+    ray._private.thirdparty.pathspec,
+    ray.experimental.internal_kv,
 )
 from ray.ray_constants import (
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT,
@@ -200,7 +206,13 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
             -> ("file", "file__path_to_test_module.zip")
     """
     uri = urlparse(pkg_uri)
-    protocol = Protocol(uri.scheme)
+    try:
+        protocol = Protocol(uri.scheme)
+    except ValueError as e:
+        raise ValueError(
+            f"Invalid protocol for runtime_env URI {pkg_uri}. "
+            f"Supported protocols: {Protocol._member_names_}. Original error: {e}"
+        )
     if protocol == Protocol.S3 or protocol == Protocol.GS:
         return (protocol, f"{protocol.value}_{uri.netloc}{uri.path.replace('/', '_')}")
     elif protocol == Protocol.HTTPS:

@@ -226,7 +226,7 @@ will instead reinterpret those data partitions directly as its blocks.
 .. tabbed:: Spark
 
   Create a ``Dataset`` from a `Spark DataFrame
-  <https://spark.apache.org/docs/latest/api/python/reference/api/pyspark.sql.DataFrame.html>`__.
+  <https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/dataframe.html>`__.
   This constructs a ``Dataset`` backed by the distributed Spark DataFrame partitions
   that underly the Spark DataFrame. When this conversion happens, Spark-on-Ray (RayDP)
   will save the Spark DataFrame partitions to Ray's object store in the Arrow format,

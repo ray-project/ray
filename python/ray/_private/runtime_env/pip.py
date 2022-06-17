@@ -1,22 +1,18 @@
 import asyncio
-import os
-import sys
+import hashlib
 import json
 import logging
-import hashlib
+import os
 import shutil
-
-from typing import Optional, List, Dict, Tuple
+import sys
+from typing import Dict, List, Optional, Tuple
 
 from ray._private.async_compat import asynccontextmanager, create_task, get_running_loop
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import Protocol, parse_uri
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.runtime_env.utils import check_output_cmd
-from ray._private.utils import (
-    get_directory_size_bytes,
-    try_to_create_directory,
-)
+from ray._private.utils import get_directory_size_bytes, try_to_create_directory
 
 default_logger = logging.getLogger(__name__)
 
@@ -387,12 +383,12 @@ class PipPlugin(RuntimeEnvPlugin):
         """
         return os.path.join(self._pip_resources_dir, hash)
 
-    def get_uri(self, runtime_env: "RuntimeEnv") -> Optional[str]:  # noqa: F821
-        """Return the pip URI from the RuntimeEnv if it exists, else None."""
+    def get_uris(self, runtime_env: "RuntimeEnv") -> List[str]:  # noqa: F821
+        """Return the pip URI from the RuntimeEnv if it exists, else return []."""
         pip_uri = runtime_env.pip_uri()
-        if pip_uri != "":
-            return pip_uri
-        return None
+        if pip_uri:
+            return [pip_uri]
+        return []
 
     def delete_uri(
         self, uri: str, logger: Optional[logging.Logger] = default_logger
@@ -458,13 +454,15 @@ class PipPlugin(RuntimeEnvPlugin):
 
     def modify_context(
         self,
-        uri: str,
+        uris: List[str],
         runtime_env: "RuntimeEnv",  # noqa: F821
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ):
         if not runtime_env.has_pip():
             return
+        # PipPlugin only uses a single URI.
+        uri = uris[0]
         # Update py_executable.
         protocol, hash = parse_uri(uri)
         target_dir = self._get_path_from_hash(hash)

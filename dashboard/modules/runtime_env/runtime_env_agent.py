@@ -32,6 +32,10 @@ from ray.core.generated import (
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvState as ProtoRuntimeEnvState,
 )
+from ray.experimental.internal_kv import (
+    _initialize_internal_kv,
+    _internal_kv_initialized,
+)
 from ray.runtime_env import RuntimeEnv, RuntimeEnvConfig
 
 default_logger = logging.getLogger(__name__)
@@ -53,11 +57,11 @@ class CreatedEnvResult:
 
 
 class UriType(Enum):
-    WORKING_DIR = 1
-    PY_MODULES = 2
-    PIP = 3
-    CONDA = 4
-    JAVA_JARS = 5
+    WORKING_DIR = "working_dir"
+    PY_MODULES = "py_modules"
+    PIP = "pip"
+    CONDA = "conda"
+    JAVA_JARS = "java_jars"
 
 
 class ReferenceTable:
@@ -229,35 +233,15 @@ class RuntimeEnvAgent(
 
     def uris_parser(self, runtime_env):
         result = list()
-        uri = self._working_dir_plugin.get_uri(runtime_env)
-        if uri:
-            result.append((uri, UriType.WORKING_DIR))
-        uris = self._py_modules_plugin.get_uris(runtime_env)
-        for uri in uris:
-            result.append((uri, UriType.PY_MODULES))
-        uri = self._pip_plugin.get_uri(runtime_env)
-        if uri:
-            result.append((uri, UriType.PIP))
-        uri = self._conda_plugin.get_uri(runtime_env)
-        if uri:
-            result.append((uri, UriType.CONDA))
-        uris = self._java_jars_plugin.get_uris(runtime_env)
-        for uri in uris:
-            result.append((uri, UriType.JAVA_JARS))
+        for plugin in self._base_plugins:
+            uris = plugin.get_uris(runtime_env)
+            for uri in uris:
+                result.append((uri, UriType(plugin.name)))
         return result
 
     def unused_uris_processor(self, unused_uris: List[Tuple[str, UriType]]) -> None:
         for uri, uri_type in unused_uris:
-            if uri_type == UriType.WORKING_DIR:
-                self._uri_caches["working_dir"].mark_unused(uri)
-            elif uri_type == UriType.PY_MODULES:
-                self._uri_caches["py_modules"].mark_unused(uri)
-            elif uri_type == UriType.JAVA_JARS:
-                self._uri_caches["java_jars"].mark_unused(uri)
-            elif uri_type == UriType.CONDA:
-                self._uri_caches["conda"].mark_unused(uri)
-            elif uri_type == UriType.PIP:
-                self._uri_caches["pip"].mark_unused(uri)
+            self._uri_caches[uri_type.value].mark_unused(uri)
 
     def unused_runtime_env_processor(self, unused_runtime_env: str) -> None:
         def delete_runtime_env():

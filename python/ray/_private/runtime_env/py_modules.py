@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 from pathlib import Path
@@ -23,6 +24,7 @@ from ray._private.runtime_env.packaging import (
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.runtime_env.working_dir import set_pythonpath_in_context
 from ray._private.utils import get_directory_size_bytes, try_to_create_directory
+from ray.experimental.internal_kv import _internal_kv_initialized
 
 default_logger = logging.getLogger(__name__)
 
@@ -150,7 +152,7 @@ class PyModulesPlugin(RuntimeEnvPlugin):
 
         return local_dir_size
 
-    def get_uris(self, runtime_env: dict) -> Optional[List[str]]:
+    def get_uris(self, runtime_env: dict) -> List[str]:
         return runtime_env.py_modules()
 
     async def _download_and_install_wheel(
@@ -206,13 +208,11 @@ class PyModulesPlugin(RuntimeEnvPlugin):
 
     def modify_context(
         self,
-        uris: Optional[List[str]],
+        uris: List[str],
         runtime_env_dict: Dict,
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ):
-        if uris is None:
-            return
         module_dirs = []
         for uri in uris:
             module_dir = self._get_local_dir_from_uri(uri)
