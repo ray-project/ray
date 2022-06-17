@@ -1081,6 +1081,9 @@ class DeploymentState:
             ):
                 return False
 
+        # Reset constructor retry counter.
+        self._replica_constructor_retry_counter = 0
+
         self._set_deployment_goal(deployment_info)
 
         # NOTE(edoakes): we must write a checkpoint before starting new

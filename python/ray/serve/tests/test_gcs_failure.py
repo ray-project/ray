@@ -63,8 +63,9 @@ def test_controller_gcs_failure(serve_ha, use_handle):  # noqa: F811
     print("Kill GCS")
     ray.worker._global_node.kill_gcs_server()
 
-    # Make sure it's still working even when GCS is killed
-    assert pid == call()
+    # Make sure pid doesn't change within 5s
+    with pytest.raises(Exception):
+        wait_for_condition(lambda: pid != call(), timeout=5, retry_interval_ms=1)
 
     print("Start GCS")
     ray.worker._global_node.start_gcs_server()
@@ -73,7 +74,6 @@ def test_controller_gcs_failure(serve_ha, use_handle):  # noqa: F811
     with pytest.raises(Exception):
         wait_for_condition(lambda: call() != pid, timeout=4)
 
-    # Redeploying with the same version and new code should do nothing.
     d.deploy()
 
     # Make sure redeploy happens
