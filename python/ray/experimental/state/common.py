@@ -262,29 +262,6 @@ class RuntimeEnvState(StateSchema):
         }
 
 
-@dataclass()
-class GetApiResponse:
-    # None if no data is returned
-    result: Dict[
-        str,
-        Union[
-            ActorState,
-            PlacementGroupState,
-            NodeState,
-            JobInfo,
-            WorkerState,
-            TaskState,
-            ObjectState,
-        ],
-    ] = None
-    # FIXME(rickyyx): I am reluctant to call it
-    # `partial_failure_warning` as the ListApiResponse
-    # since there is no partial failure here.
-    # Maybe we should start formalizing the error codes
-    # from servers.
-    failure: str = ""
-
-
 @dataclass(init=True)
 class ListApiResponse:
     # Returned data. None if no data is returned.
