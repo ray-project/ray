@@ -557,6 +557,7 @@ def read_text(
     drop_empty_lines: bool = True,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     parallelism: int = 200,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
     partition_filter: PathPartitionFilter = None,
@@ -579,6 +580,8 @@ def read_text(
         filesystem: The filesystem implementation to read from.
         parallelism: The requested parallelism of the read. Parallelism may be
             limited by the number of files of the dataset.
+        ray_remote_args: Kwargs passed to ray.remote in the read tasks and
+            in the subsequent text decoding map task.
         arrow_open_stream_args: kwargs passed to
             pyarrow.fs.FileSystem.open_input_stream
         meta_provider: File metadata provider. Custom metadata providers may
@@ -600,10 +603,11 @@ def read_text(
         paths,
         filesystem=filesystem,
         parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
         arrow_open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
-    ).flat_map(to_text)
+    ).flat_map(to_text, **(ray_remote_args or {}))
 
 
 @PublicAPI

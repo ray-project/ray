@@ -10,11 +10,13 @@ import pyarrow as pa
 import pyarrow.json as pajson
 import pyarrow.parquet as pq
 import pytest
+import requests
 import snappy
 from fsspec.implementations.local import LocalFileSystem
 from pytest_lazyfixture import lazy_fixture
 
 import ray
+import ray.data.tests.util as util
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.datasource import (
@@ -32,8 +34,10 @@ from ray.data.datasource import (
     WriteResult,
 )
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
-from ray.data.datasource.parquet_datasource import PARALLELIZE_META_FETCH_THRESHOLD
-from ray.data.datasource.parquet_datasource import _deserialize_pieces_with_retry
+from ray.data.datasource.parquet_datasource import (
+    PARALLELIZE_META_FETCH_THRESHOLD,
+    _deserialize_pieces_with_retry,
+)
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 from ray.types import ObjectRef
@@ -1258,6 +1262,49 @@ def test_numpy_write_block_path_provider(
     np.testing.assert_equal(ds.take(1), [np.array([0])])
 
 
+def test_read_binary_files(ray_start_regular_shared):
+    with util.gen_bin_files(10) as (_, paths):
+        ds = ray.data.read_binary_files(paths, parallelism=10)
+        for i, item in enumerate(ds.iter_rows()):
+            expected = open(paths[i], "rb").read()
+            assert expected == item
+        # Test metadata ops.
+        assert ds.count() == 10
+        assert "bytes" in str(ds.schema()), ds
+        assert "bytes" in str(ds), ds
+
+
+def test_read_binary_files_with_fs(ray_start_regular_shared):
+    with util.gen_bin_files(10) as (tempdir, paths):
+        # All the paths are absolute, so we want the root file system.
+        fs, _ = pa.fs.FileSystem.from_uri("/")
+        ds = ray.data.read_binary_files(paths, filesystem=fs, parallelism=10)
+        for i, item in enumerate(ds.iter_rows()):
+            expected = open(paths[i], "rb").read()
+            assert expected == item
+
+
+def test_read_binary_files_with_paths(ray_start_regular_shared):
+    with util.gen_bin_files(10) as (_, paths):
+        ds = ray.data.read_binary_files(paths, include_paths=True, parallelism=10)
+        for i, (path, item) in enumerate(ds.iter_rows()):
+            assert path == paths[i]
+            expected = open(paths[i], "rb").read()
+            assert expected == item
+
+
+# TODO(Clark): Hitting S3 in CI is currently broken due to some AWS
+# credentials issue, unskip this test once that's fixed or once ported to moto.
+@pytest.mark.skip(reason="Shouldn't hit S3 in CI")
+def test_read_binary_files_s3(ray_start_regular_shared):
+    ds = ray.data.read_binary_files(["s3://anyscale-data/small-files/0.dat"])
+    item = ds.take(1).pop()
+    expected = requests.get(
+        "https://anyscale-data.s3.us-west-2.amazonaws.com/small-files/0.dat"
+    ).content
+    assert item == expected
+
+
 def test_read_text(ray_start_regular_shared, tmp_path):
     path = os.path.join(tmp_path, "test_text")
     os.mkdir(path)
@@ -2437,7 +2484,10 @@ def test_csv_roundtrip(ray_start_regular_shared, fs, data_path):
     ],
 )
 def test_csv_write_block_path_provider(
-    ray_start_regular_shared,
+    # NOTE: This is shutdown_only because this is the last use of the shared local
+    # cluster; following this, we start a new cluster, so we need to shut this one down.
+    # If the ordering of these tests change, then this needs to change.
+    shutdown_only,
     fs,
     data_path,
     endpoint_url,
@@ -2668,6 +2718,45 @@ def test_write_datasource_ray_remote_args(ray_start_cluster):
 
     node_ids = ray.get(output.data_sink.get_node_ids.remote())
     assert node_ids == {bar_node_id}
+
+
+def test_read_text_remote_args(ray_start_cluster, tmp_path):
+    cluster = ray_start_cluster
+    cluster.add_node(
+        resources={"foo": 100},
+        num_cpus=1,
+        _system_config={"max_direct_call_object_size": 0},
+    )
+    cluster.add_node(resources={"bar": 100}, num_cpus=1)
+
+    ray.init(cluster.address)
+
+    @ray.remote
+    def get_node_id():
+        return ray.get_runtime_context().node_id.hex()
+
+    bar_node_id = ray.get(get_node_id.options(resources={"bar": 1}).remote())
+
+    path = os.path.join(tmp_path, "test_text")
+    os.mkdir(path)
+    with open(os.path.join(path, "file1.txt"), "w") as f:
+        f.write("hello\n")
+        f.write("world")
+    with open(os.path.join(path, "file2.txt"), "w") as f:
+        f.write("goodbye")
+
+    ds = ray.data.read_text(
+        path, parallelism=2, ray_remote_args={"resources": {"bar": 1}}
+    )
+
+    blocks = ds.get_internal_block_refs()
+    ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
+    location_data = ray.experimental.get_object_locations(blocks)
+    locations = []
+    for block in blocks:
+        locations.extend(location_data[block]["node_ids"])
+    assert set(locations) == {bar_node_id}, locations
+    assert sorted(ds.take()) == ["goodbye", "hello", "world"]
 
 
 if __name__ == "__main__":
