@@ -10,6 +10,9 @@ from typing import List
 from unittest import mock
 
 import pytest
+from ray._private.runtime_env.packaging import (
+    RAY_RUNTIME_ENV_FAIL_UPLOAD_FOR_TESTING_ENV_VAR,
+)
 import requests
 
 import ray
@@ -837,6 +840,17 @@ def test_runtime_env_interface():
     )
     runtime_env.pop("container")
     assert runtime_env.to_dict() == {}
+
+
+class TestRuntimeEnvFailure:
+    def test_fail_upload_working_dir(self, tmpdir, monkeypatch, shutdown_only):
+        """Simulate failing to upload the working_dir.
+
+        Test that we raise an exception and don't hang.
+        """
+        monkeypatch.setenv(RAY_RUNTIME_ENV_FAIL_UPLOAD_FOR_TESTING_ENV_VAR, "1")
+        with pytest.raises(Exception):
+            ray.init(runtime_env={"working_dir": str(tmpdir)})
 
 
 if __name__ == "__main__":
