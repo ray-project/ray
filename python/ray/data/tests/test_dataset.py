@@ -8,10 +8,8 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
-import requests
 
 import ray
-import ray.data.tests.util as util
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.lazy_block_list import LazyBlockList
@@ -1355,49 +1353,6 @@ def test_pyarrow(ray_start_regular_shared):
     assert ds.filter(lambda x: x["value"] == 0).flat_map(
         lambda x: [{"b": x["value"] + 2}, {"b": x["value"] + 20}]
     ).take() == [{"b": 2}, {"b": 20}]
-
-
-def test_read_binary_files(ray_start_regular_shared):
-    with util.gen_bin_files(10) as (_, paths):
-        ds = ray.data.read_binary_files(paths, parallelism=10)
-        for i, item in enumerate(ds.iter_rows()):
-            expected = open(paths[i], "rb").read()
-            assert expected == item
-        # Test metadata ops.
-        assert ds.count() == 10
-        assert "bytes" in str(ds.schema()), ds
-        assert "bytes" in str(ds), ds
-
-
-def test_read_binary_files_with_fs(ray_start_regular_shared):
-    with util.gen_bin_files(10) as (tempdir, paths):
-        # All the paths are absolute, so we want the root file system.
-        fs, _ = pa.fs.FileSystem.from_uri("/")
-        ds = ray.data.read_binary_files(paths, filesystem=fs, parallelism=10)
-        for i, item in enumerate(ds.iter_rows()):
-            expected = open(paths[i], "rb").read()
-            assert expected == item
-
-
-def test_read_binary_files_with_paths(ray_start_regular_shared):
-    with util.gen_bin_files(10) as (_, paths):
-        ds = ray.data.read_binary_files(paths, include_paths=True, parallelism=10)
-        for i, (path, item) in enumerate(ds.iter_rows()):
-            assert path == paths[i]
-            expected = open(paths[i], "rb").read()
-            assert expected == item
-
-
-# TODO(Clark): Hitting S3 in CI is currently broken due to some AWS
-# credentials issue, unskip this test once that's fixed or once ported to moto.
-@pytest.mark.skip(reason="Shouldn't hit S3 in CI")
-def test_read_binary_files_s3(ray_start_regular_shared):
-    ds = ray.data.read_binary_files(["s3://anyscale-data/small-files/0.dat"])
-    item = ds.take(1).pop()
-    expected = requests.get(
-        "https://anyscale-data.s3.us-west-2.amazonaws.com/small-files/0.dat"
-    ).content
-    assert item == expected
 
 
 def test_sliding_window():
@@ -3882,6 +3837,45 @@ def test_datasource(ray_start_regular):
     assert len(ray.data.read_datasource(source, n=10, num_columns=2).take()) == 10
     source = ray.data.datasource.RangeDatasource()
     assert ray.data.read_datasource(source, n=10).take() == list(range(10))
+
+
+def test_polars_lazy_import(shutdown_only):
+    import sys
+
+    ctx = ray.data.context.DatasetContext.get_current()
+
+    try:
+        original_use_polars = ctx.use_polars
+        ctx.use_polars = True
+
+        num_items = 100
+        parallelism = 4
+        ray.init(num_cpus=4)
+
+        @ray.remote
+        def f(should_import_polars):
+            # Sleep to spread the tasks.
+            time.sleep(1)
+            polars_imported = "polars" in sys.modules.keys()
+            return polars_imported == should_import_polars
+
+        # We should not use polars for non-Arrow sort.
+        _ = ray.data.range(num_items, parallelism=parallelism).sort()
+        assert all(ray.get([f.remote(False) for _ in range(parallelism)]))
+
+        a = range(100)
+        dfs = []
+        partition_size = num_items // parallelism
+        for i in range(parallelism):
+            dfs.append(
+                pd.DataFrame({"a": a[i * partition_size : (i + 1) * partition_size]})
+            )
+        # At least one worker should have imported polars.
+        _ = ray.data.from_pandas(dfs).sort(key="a")
+        assert any(ray.get([f.remote(True) for _ in range(parallelism)]))
+
+    finally:
+        ctx.use_polars = original_use_polars
 
 
 if __name__ == "__main__":
