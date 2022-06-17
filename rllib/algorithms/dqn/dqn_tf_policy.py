@@ -56,7 +56,7 @@ def get_dqn_tf_policy(base: Type[Union[DynamicTFPolicyV2, EagerTFPolicyV2]]) -> 
             base.enable_eager_execution_if_necessary()
 
             config = dict(
-                ray.rllib.algorithms.simple_q.simple_q.SimpleQConfig().to_dict(),
+                ray.rllib.algorithms.dqn.dqn.DQNConfig().to_dict(),
                 **config,
             )
 
