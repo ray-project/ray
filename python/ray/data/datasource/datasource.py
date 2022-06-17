@@ -381,6 +381,13 @@ class RandomIntRowDatasource(Datasource[ArrowRow]):
         {'c_0': 4983608804013926748, 'c_1': 1160140066899844087}
     """
 
+    def create_reader(
+        self,
+        n: int,
+        num_columns: int,
+    ) -> List[ReadTask]:
+        return _RandomIntRowDatasourceReader(n, num_columns)
+
 
 class _RandomIntRowDatasourceReader(Reader):
     def __init__(self, n: int, num_columns: int):
