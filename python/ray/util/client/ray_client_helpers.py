@@ -1,10 +1,10 @@
-from contextlib import contextmanager
 import time
+from contextlib import contextmanager
 
 import ray as real_ray
 import ray.util.client.server.server as ray_client_server
+from ray._private.client_mode_hook import disable_client_hook, enable_client_mode
 from ray.util.client import ray
-from ray._private.client_mode_hook import enable_client_mode, disable_client_hook
 
 
 @contextmanager
@@ -22,9 +22,9 @@ def ray_start_client_server_pair(metadata=None, ray_connect_handler=None, **kwar
     with disable_client_hook():
         assert not ray.is_initialized()
     server = ray_client_server.serve(
-        "127.0.0.1:50051", ray_connect_handler=ray_connect_handler
+        "127.0.0.1:0", ray_connect_handler=ray_connect_handler
     )
-    ray.connect("127.0.0.1:50051", metadata=metadata, **kwargs)
+    ray.connect(f"127.0.0.1:{server.port}", metadata=metadata, **kwargs)
     try:
         yield ray, server
     finally:

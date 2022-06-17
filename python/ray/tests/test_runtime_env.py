@@ -1,35 +1,36 @@
+import json
 import logging
 import os
-import pytest
-import sys
 import subprocess
+import sys
+import tempfile
 import time
-import requests
 from pathlib import Path
 from unittest import mock
-import json
-import tempfile
+
+import pytest
+import requests
 
 import ray
-from ray.exceptions import RuntimeEnvSetupError
-from ray._private.test_utils import (
-    wait_for_condition,
-    get_error_message,
-    get_log_sources,
-    chdir,
-)
-from ray._private.utils import (
-    get_wheel_filename,
-    get_master_wheel_url,
-    get_release_wheel_url,
-)
+from ray._private.runtime_env.context import RuntimeEnvContext
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray._private.runtime_env.uri_cache import URICache
 from ray._private.runtime_env.utils import (
     SubprocessCalledProcessError,
     check_output_cmd,
 )
-from ray._private.runtime_env.uri_cache import URICache
-from ray._private.runtime_env.context import RuntimeEnvContext
-from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray._private.test_utils import (
+    chdir,
+    get_error_message,
+    get_log_sources,
+    wait_for_condition,
+)
+from ray._private.utils import (
+    get_master_wheel_url,
+    get_release_wheel_url,
+    get_wheel_filename,
+)
+from ray.exceptions import RuntimeEnvSetupError
 from ray.runtime_env import RuntimeEnv
 
 
@@ -158,7 +159,7 @@ def test_no_spurious_worker_startup(shutdown_only, runtime_env_class):
 
     # Causes agent to sleep for 15 seconds to simulate creating a runtime env.
     os.environ["RAY_RUNTIME_ENV_SLEEP_FOR_TESTING_S"] = "15"
-    ray.init(num_cpus=1)
+    ray.init(num_cpus=1, dashboard_port=0)
 
     @ray.remote
     class Counter(object):

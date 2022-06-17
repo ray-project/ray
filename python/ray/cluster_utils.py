@@ -1,16 +1,17 @@
 import copy
-import logging
 import json
-import yaml
+import logging
 import os
 import subprocess
 import tempfile
 import time
 
+import yaml
+
 import ray
 import ray._private.services
-from ray._private.client_mode_hook import disable_client_hook
 from ray import ray_constants
+from ray._private.client_mode_hook import disable_client_hook
 from ray._raylet import GcsClientOptions
 
 logger = logging.getLogger(__name__)
@@ -180,7 +181,7 @@ class Cluster:
             "object_store_memory": 150 * 1024 * 1024,  # 150 MiB
             "min_worker_port": 0,
             "max_worker_port": 0,
-            "dashboard_port": None,
+            "dashboard_port": 0,
         }
         ray_params = ray._private.parameter.RayParams(**node_args)
         ray_params.update_if_absent(**default_kwargs)
