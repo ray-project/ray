@@ -1,13 +1,13 @@
 from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimate
 from ray.rllib.offline.estimators.direct_method import DirectMethod, k_fold_cv
-from ray.rllib.utils.annotations import DeveloperAPI, override
+from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.utils.typing import SampleBatchType
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.numpy import convert_to_numpy
 import numpy as np
 
 
-@DeveloperAPI
+@ExperimentalAPI
 class DoublyRobust(DirectMethod):
     """The Doubly Robust (DR) estimator.
 

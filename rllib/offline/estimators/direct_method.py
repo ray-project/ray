@@ -5,7 +5,7 @@ from ray.rllib.offline.estimators.off_policy_estimator import (
 )
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import DeveloperAPI, override
+from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import SampleBatchType
@@ -19,7 +19,7 @@ torch, nn = try_import_torch()
 
 # TODO (rohan): replace with AIR/parallel workers
 # (And find a better name than `should_train`)
-@DeveloperAPI
+@ExperimentalAPI
 def k_fold_cv(
     batch: SampleBatchType, k: int, should_train: bool = True
 ) -> Generator[Tuple[List[SampleBatch]], None, None]:
@@ -53,7 +53,7 @@ def k_fold_cv(
     return
 
 
-@DeveloperAPI
+@ExperimentalAPI
 class DirectMethod(OffPolicyEstimator):
     """The Direct Method estimator.
 
