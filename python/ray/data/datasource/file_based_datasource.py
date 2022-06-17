@@ -279,7 +279,8 @@ class _FileBasedDatasourceReader(Reader):
         meta_provider = read_args["meta_provider"]
         paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
         self._paths, self._file_sizes = meta_provider.expand_paths(
-            paths, self._filesystem)
+            paths, self._filesystem
+        )
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         return sum(self._file_sizes)
@@ -353,7 +354,9 @@ class _FileBasedDatasourceReader(Reader):
                     # Non-Snappy compression, pass as open_input_stream() arg so Arrow
                     # can take care of streaming decompression for us.
                     open_stream_args["compression"] = compression
-                with self._delegate._open_input_source(fs, read_path, **open_stream_args) as f:
+                with self._delegate._open_input_source(
+                    fs, read_path, **open_stream_args
+                ) as f:
                     for data in read_stream(f, read_path, **reader_args):
                         output_buffer.add_block(data)
                         if output_buffer.has_next():
