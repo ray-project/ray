@@ -92,4 +92,7 @@ def test_controller_gcs_failure(serve_ha, use_handle):  # noqa: F811
 
 
 if __name__ == "__main__":
+    # When GCS is down, right now some core worker members are not cleared
+    # properly in ray.shutdown. Given that this is not hi-pri issue,
+    # using --forked for isolation.
     sys.exit(pytest.main(["-v", "-s", "--forked", __file__]))
