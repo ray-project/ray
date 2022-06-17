@@ -35,7 +35,7 @@ from ray.data.datasource import (
 )
 from ray.data.datasource.file_based_datasource import (
     _unwrap_arrow_serialization_workaround,
-    _wrap_arrow_serialization_workaround,
+    _wrap_and_register_arrow_serialization_workaround,
 )
 from ray.types import ObjectRef
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
@@ -250,7 +250,7 @@ def read_datasource(
                 datasource,
                 ctx,
                 parallelism,
-                _wrap_arrow_serialization_workaround(read_args),
+                _wrap_and_register_arrow_serialization_workaround(read_args),
             )
         )
 
