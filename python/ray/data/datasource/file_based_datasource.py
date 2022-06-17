@@ -160,6 +160,15 @@ class FileExtensionFilter(PathPartitionFilter):
     def __call__(self, paths: List[str]) -> List[str]:
         return [path for path in paths if self._file_has_extension(path)]
 
+    def __str__(self):
+        return (
+            f"{type(self).__name__}(extensions={self.extensions}, "
+            f"allow_if_no_extensions={self.allow_if_no_extension})"
+        )
+
+    def __repr__(self):
+        return str(self)
+
 
 @DeveloperAPI
 class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
