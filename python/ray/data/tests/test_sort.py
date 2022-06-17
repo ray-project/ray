@@ -223,6 +223,11 @@ def test_push_based_shuffle_schedule():
             )
             assert schedule.merge_schedule.get_num_reducers_per_merge_idx(merge_idx) > 0
 
+        reduce_idxs = list(range(schedule.merge_schedule.output_num_blocks))
+        for reduce_idx in schedule.merge_schedule.round_robin_reduce_idx_iterator():
+            reduce_idxs.pop(reduce_idxs.index(reduce_idx))
+        assert len(reduce_idxs) == 0
+
     for num_cpus in range(1, 20):
         _test(20, 3, {"node1": num_cpus})
     _test(20, 3, {"node1": 100})

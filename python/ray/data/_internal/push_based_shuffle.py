@@ -65,10 +65,21 @@ class _MergeTaskSchedule:
         round_idx = 0
         while idx < self.output_num_blocks:
             for merge_idx in range(self.num_merge_tasks_per_round):
-                reduce_idx = merge_idx * self.merge_partition_size + round_idx
-                if reduce_idx >= self.output_num_blocks:
+                if merge_idx < self._partitions_with_extra_task:
+                    reduce_idx = merge_idx * (self.merge_partition_size + 1)
+                    partition_size = self.merge_partition_size + 1
+                else:
+                    reduce_idx = self._partitions_with_extra_task * (
+                        self.merge_partition_size + 1
+                    )
+                    merge_idx -= self._partitions_with_extra_task
+                    reduce_idx += merge_idx * self.merge_partition_size
+                    partition_size = self.merge_partition_size
+
+                if round_idx >= partition_size:
                     continue
 
+                reduce_idx += round_idx
                 yield reduce_idx
                 idx += 1
             round_idx += 1
