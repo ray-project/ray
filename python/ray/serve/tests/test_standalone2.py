@@ -138,6 +138,49 @@ def test_update_num_replicas(shutdown_ray, detached):
         serve.shutdown()
 
 
+def test_updating_status_message(shutdown_ray):
+    ray.init(num_cpus=2)
+    client = serve.start(detached=True)
+
+    @serve.deployment(
+        num_replicas=5,
+        ray_actor_options={"num_cpus": 1},
+    )
+    def f(*args):
+        pass
+
+    original_slow_startup_warning_period_s = (
+        client._controller._get_slow_startup_warning_period_s.remote()
+    )
+    original_slow_startup_warning_s = (
+        client._controller._get_slow_startup_warning_s.remote()
+    )
+    # Lower slow startup warning threshold to 1 second to reduce test duration
+    client._controller._set_slow_startup_warning_period_s.remote(1)
+    client._controller._set_slow_startup_warning_s.remote(1)
+    f.deploy(_blocking=False)
+
+    def updating_message():
+        deployment_status = client.get_serve_status().deployment_statuses[0]
+        message_substring = "more than 1s to be scheduled."
+        return (deployment_status.status == "UPDATING") and (
+            message_substring in deployment_status.message
+        )
+
+    wait_for_condition(updating_message, timeout=2)
+    # Reset slow startup warning threshold in case bugs that cause different
+    # tests to share state occur
+    client._controller._set_slow_startup_warning_period_s.remote(
+        original_slow_startup_warning_period_s
+    )
+    client._controller._set_slow_startup_warning_s.remote(
+        original_slow_startup_warning_s
+    )
+
+    serve.shutdown()
+    ray.shutdown()
+
+
 @pytest.mark.parametrize("detached", [True, False])
 def test_refresh_controller_after_death(shutdown_ray, detached):
     """Check if serve.start() refreshes the controller handle if it's dead."""
