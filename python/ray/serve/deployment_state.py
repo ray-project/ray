@@ -1509,8 +1509,9 @@ class DeploymentState:
                 logger.warning(message)
                 if _SCALING_LOG_ENABLED:
                     print_verbose_scaling_log()
-                # If status is UNHEALTHY, give it higher priority over the stuck
-                # allocations problem when propagating status back to user
+                # If status is UNHEALTHY, leave the status and message as is. 
+                # The issue that caused the deployment to be unhealthy should be 
+                # prioritized over this resource availability issue.
                 if self._curr_status_info.status != DeploymentStatus.UNHEALTHY:
                     self._curr_status_info = DeploymentStatusInfo(
                         name=self._name,
@@ -1526,8 +1527,9 @@ class DeploymentState:
                     f"may be caused by a slow __init__ or reconfigure method."
                 )
                 logger.warning(message)
-                # If status is UNHEALTHY, give it higher priority over the stuck
-                # initializations problem when propagating status back to user
+                # If status is UNHEALTHY, leave the status and message as is. 
+                # The issue that caused the deployment to be unhealthy should be 
+                # prioritized over this resource availability issue.
                 if self._curr_status_info.status != DeploymentStatus.UNHEALTHY:
                     self._curr_status_info = DeploymentStatusInfo(
                         name=self._name,
