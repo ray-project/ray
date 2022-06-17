@@ -1,13 +1,13 @@
 import argparse
 import os
-from collections import OrderedDict
+import subprocess
 import sys
 import time
-import subprocess
+from collections import OrderedDict
 from typing import List
 
-from aws_requests_auth.boto_utils import BotoAWSRequestsAuth
 import requests
+from aws_requests_auth.boto_utils import BotoAWSRequestsAuth
 
 
 def retry(f):
