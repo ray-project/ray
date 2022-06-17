@@ -42,6 +42,7 @@ from ray.data._internal.stats import DatasetStats
 from ray.data._internal.table_block import VALUE_COL_NAME
 from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum
 from ray.data.block import (
+    VALID_BATCH_FORMATS,
     Block,
     BlockAccessor,
     BlockExecStats,
@@ -314,7 +315,9 @@ class Dataset(Generic[T]):
                 tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
             batch_format: Specify "native" to use the native block format (promotes
                 tables to Pandas and tensors to NumPy), "pandas" to select
-                ``pandas.DataFrame``, or "pyarrow" to select `pyarrow.Table``.
+                ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or "numpy"
+                to select ``numpy.ndarray`` for tensor datasets and
+                ``Dict[str, numpy.ndarray]`` for tabular datasets. Default is "native".
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
@@ -323,6 +326,12 @@ class Dataset(Generic[T]):
 
         if batch_size is not None and batch_size < 1:
             raise ValueError("Batch size cannot be negative or 0")
+
+        if batch_format not in VALID_BATCH_FORMATS:
+            raise ValueError(
+                f"The batch format must be one of {VALID_BATCH_FORMATS}, got: "
+                f"{batch_format}"
+            )
 
         fn = cache_wrapper(fn, compute)
         context = DatasetContext.get_current()
@@ -342,31 +351,25 @@ class Dataset(Generic[T]):
                 # Make sure to copy if slicing to avoid the Arrow serialization
                 # bug where we include the entire base view on serialization.
                 view = block.slice(start, end, copy=batch_size is not None)
-                if batch_format == "native":
-                    view = BlockAccessor.for_block(view).to_native()
-                elif batch_format == "pandas":
-                    view = BlockAccessor.for_block(view).to_pandas()
-                elif batch_format == "pyarrow":
-                    view = BlockAccessor.for_block(view).to_arrow()
-                else:
-                    raise ValueError(
-                        "The batch format must be one of 'native', 'pandas', "
-                        "or 'pyarrow', got: {}".format(batch_format)
-                    )
+                # Convert to batch format.
+                view = BlockAccessor.for_block(view).to_batch_format(batch_format)
 
                 applied = fn(view)
                 if not (
                     isinstance(applied, list)
                     or isinstance(applied, pa.Table)
                     or isinstance(applied, np.ndarray)
+                    or (
+                        isinstance(applied, dict)
+                        and all(isinstance(col, np.ndarray) for col in applied.values())
+                    )
                     or isinstance(applied, pd.core.frame.DataFrame)
                 ):
                     raise ValueError(
                         "The map batches UDF returned the value "
                         f"{applied} of type {type(applied)}, "
                         "which is not allowed. "
-                        "The return type must be either list, "
-                        "pandas.DataFrame, or pyarrow.Table"
+                        f"The return type must be one of: {BatchType}"
                     )
                 output_buffer.add_batch(applied)
                 if output_buffer.has_next():
@@ -2297,8 +2300,9 @@ class Dataset(Generic[T]):
             batch_format: The format in which to return each batch.
                 Specify "native" to use the native block format (promoting
                 tables to Pandas and tensors to NumPy), "pandas" to select
-                ``pandas.DataFrame``, or "pyarrow" to select ``pyarrow.Table``. Default
-                is "native".
+                ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or "numpy"
+                to select ``numpy.ndarray`` for tensor datasets and
+                ``Dict[str, numpy.ndarray]`` for tabular datasets. Default is "native".
             drop_last: Whether to drop the last batch if it's incomplete.
 
         Returns:

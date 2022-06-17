@@ -135,14 +135,37 @@ class ArrowBlockAccessor(TableBlockAccessor):
         return cls(reader.read_all())
 
     @staticmethod
-    def numpy_to_block(batch: np.ndarray) -> "pyarrow.Table":
+    def numpy_to_block(
+        batch: Union[np.ndarray, Dict[str, np.ndarray]],
+    ) -> "pyarrow.Table":
         import pyarrow as pa
 
         from ray.data.extensions.tensor_extension import ArrowTensorArray
 
-        return pa.Table.from_pydict(
-            {VALUE_COL_NAME: ArrowTensorArray.from_numpy(batch)}
-        )
+        if isinstance(batch, np.ndarray):
+            batch = {VALUE_COL_NAME: batch}
+        elif not isinstance(batch, dict) or any(
+            not isinstance(col, np.ndarray) for col in batch.values()
+        ):
+            raise ValueError(
+                "Batch must be an ndarray or dictionary of ndarrays when converting "
+                f"a numpy batch to a block, got: {type(batch)}"
+            )
+        new_batch = {}
+        for col_name, col in batch.items():
+            # Use Arrow's native *List types for 1-dimensional ndarrays.
+            if col.ndim > 1:
+                try:
+                    col = ArrowTensorArray.from_numpy(col)
+                except pa.ArrowNotImplementedError as e:
+                    raise ValueError(
+                        "Failed to convert multi-dimensional ndarray of dtype "
+                        f"{col.dtype} to our tensor extension since this dtype is not "
+                        "supported by Arrow. If encountering this due to string data, "
+                        'cast the ndarray to a string dtype, e.g. a.astype("U").'
+                    ) from e
+            new_batch[col_name] = col
+        return pa.Table.from_pydict(new_batch)
 
     @staticmethod
     def _build_tensor_row(row: ArrowRow) -> np.ndarray:

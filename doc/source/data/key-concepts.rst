@@ -87,6 +87,9 @@ files, enabling inspection functions like :meth:`ds.schema() <ray.data.Dataset.s
 and :meth:`ds.show() <ray.data.Dataset.show>` to be used right away. Executing further
 transformations on the Dataset will trigger execution of all read tasks.
 
+See the :ref:`Creating Datasets guide <creating_datasets>` for details on how to read
+data into datasets.
+
 Dataset Transforms
 ==================
 
@@ -101,6 +104,9 @@ Datasets use either Ray tasks or Ray actors to transform datasets (i.e., for
 
 ..
   https://docs.google.com/drawings/d/1MGlGsPyTOgBXswJyLZemqJO1Mf7d-WiEFptIulvcfWE/edit
+
+See the :ref:`Transforming Datasets guide <transforming_datasets>` for an in-depth guide
+on transforming datasets.
 
 Shuffling Data
 ==============
