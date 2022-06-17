@@ -131,6 +131,12 @@ class DefaultBlockWritePathProvider(BlockWritePathProvider):
 class FileExtensionFilter(PathPartitionFilter):
     """A file-extension-based path filter that filters files that don't end
     with the provided extension(s).
+
+    Attributes:
+        file_extensions: File extension(s) of files to be included in reading.
+        allow_if_no_extension: If this is True, files without any extensions
+            will be included in reading.
+
     """
 
     def __init__(
