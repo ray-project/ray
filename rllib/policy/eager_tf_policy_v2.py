@@ -756,7 +756,7 @@ class EagerTFPolicyV2(Policy):
                         state_out,
                     ) = self.action_distribution_fn(
                         self.model,
-                        input_dict=input_dict,
+                        obs_batch=input_dict[SampleBatch.OBS],
                         state_batches=state_batches,
                         seq_lens=seq_lens,
                         explore=explore,

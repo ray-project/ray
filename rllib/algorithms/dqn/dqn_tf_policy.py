@@ -21,7 +21,7 @@ from ray.rllib.utils.tf_utils import (
     minimize_and_clip,
     reduce_mean_ignore_inf,
 )
-from ray.rllib.utils.typing import LocalOptimizer, ModelGradients, TensorType
+from ray.rllib.utils.typing import AlgorithmConfigDict, LocalOptimizer, ModelGradients, TensorType
 
 tf1, tf, tfv = try_import_tf()
 
