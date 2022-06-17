@@ -6,7 +6,7 @@ from python.ray.serve import constants as serve_constants
 import ray
 from ray import serve
 from ray.serve.drivers import DAGDriver
-from ray.experimental.dag.input_node import InputNode
+from ray.dag.input_node import InputNode
 from ray.serve.deployment_state import ReplicaState
 from ray._private.test_utils import SignalActor, wait_for_condition
 

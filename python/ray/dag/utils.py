@@ -1,6 +1,6 @@
 from typing import Dict
 
-from ray.experimental.dag import (
+from ray.dag import (
     DAGNode,
     InputNode,
     InputAttributeNode,

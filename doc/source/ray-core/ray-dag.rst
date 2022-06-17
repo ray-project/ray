@@ -122,8 +122,7 @@ as args of ``dag_node.execute()``
 
         # `ray start --head` has been run to launch a local cluster
         import ray
-        # TODO (jiaodong): Update this once DAG is out of experimental folder.
-        from ray.experimental.dag.input_node import InputNode
+        from ray.dag.input_node import InputNode
 
         @ray.remote
         def a(user_input):

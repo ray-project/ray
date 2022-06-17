@@ -3,10 +3,10 @@ import json
 from typing import TypeVar
 
 import ray
-from ray.experimental.dag.dag_node import DAGNode
-from ray.experimental.dag.input_node import InputNode
+from ray.dag.dag_node import DAGNode
+from ray.dag.input_node import InputNode
 from ray import serve
-from ray.experimental.dag.utils import DAGNodeNameGenerator
+from ray.dag.utils import DAGNodeNameGenerator
 from ray.serve.handle import (
     RayServeSyncHandle,
     serve_handle_to_json_dict,
