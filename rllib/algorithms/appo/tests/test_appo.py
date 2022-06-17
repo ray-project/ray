@@ -106,6 +106,7 @@ class TestAPPO(unittest.TestCase):
                     [500, 0.0001],
                 ],
             )
+            .reporting(min_train_timesteps_per_iteration=20)
         )
 
         config.min_sample_timesteps_per_iteration = 20

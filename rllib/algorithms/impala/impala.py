@@ -1,3 +1,4 @@
+import copy
 import logging
 import platform
 import queue
@@ -808,8 +809,9 @@ class Impala(Algorithm):
                     learner_infos.append(learner_results)
             else:
                 raise RuntimeError("The learner thread died in while training")
-        # learner_info = copy.deepcopy(self._learner_thread.learner_info)
-        if learner_infos:
+        if not learner_infos:
+            final_learner_info = copy.deepcopy(self._learner_thread.learner_info)
+        else:
             builder = LearnerInfoBuilder()
             for info in learner_infos:
                 builder.add_learn_on_batch_results_multi_agent(info)
@@ -867,7 +869,7 @@ class Impala(Algorithm):
 
     def update_workers_if_necessary(self) -> None:
         # Only need to update workers if there are remote workers.
-        global_vars = {"timestep": self._counters[NUM_AGENT_STEPS_SAMPLED]}
+        global_vars = {"timestep": self._counters[NUM_AGENT_STEPS_TRAINED]}
         self._counters["steps_since_broadcast"] += 1
         if (
             self.workers.remote_workers()
