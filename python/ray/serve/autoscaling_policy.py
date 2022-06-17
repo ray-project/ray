@@ -1,14 +1,15 @@
-from abc import ABCMeta, abstractmethod
 import math
+from abc import ABCMeta, abstractmethod
+from typing import List
 
 from ray.serve.config import AutoscalingConfig
 from ray.serve.constants import CONTROL_LOOP_PERIOD_S
 
-from typing import List
-
 
 def calculate_desired_num_replicas(
-    autoscaling_config: AutoscalingConfig, current_num_ongoing_requests: List[float]
+    autoscaling_config: AutoscalingConfig,
+    current_num_ongoing_requests: List[float],
+    current_handle_queued_queries: List[float],
 ) -> int:  # (desired replicas):
     """Returns the number of replicas to scale to based on the given metrics.
 
@@ -18,6 +19,8 @@ def calculate_desired_num_replicas(
         current_num_ongoing_requests (List[float]): A list of the number of
             ongoing requests for each replica.  Assumes each entry has already
             been time-averaged over the desired lookback window.
+        current_handle_queued_queries: A list of the number of queued queries from
+            each handle.
 
     Returns:
         desired_num_replicas: The desired number of replicas to scale to, based
@@ -29,9 +32,9 @@ def calculate_desired_num_replicas(
         raise ValueError("Number of replicas cannot be zero")
 
     # The number of ongoing requests per replica, averaged over all replicas.
-    num_ongoing_requests_per_replica: float = sum(current_num_ongoing_requests) / len(
-        current_num_ongoing_requests
-    )
+    num_ongoing_requests_per_replica: float = (
+        sum(current_num_ongoing_requests) + sum(current_handle_queued_queries)
+    ) / len(current_num_ongoing_requests)
 
     # Example: if error_ratio == 2.0, we have two times too many ongoing
     # requests per replica, so we desire twice as many replicas.
@@ -71,7 +74,7 @@ class AutoscalingPolicy:
         self,
         curr_target_num_replicas: int,
         current_num_ongoing_requests: List[float],
-        current_handle_queued_queries: float,
+        current_handle_queued_queries: List[float],
     ) -> int:
         """Make a decision to scale replicas.
 
@@ -128,19 +131,19 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
         self,
         curr_target_num_replicas: int,
         current_num_ongoing_requests: List[float],
-        current_handle_queued_queries: float,
+        current_handle_queued_queries: List[float],
     ) -> int:
 
         if len(current_num_ongoing_requests) == 0:
             # When 0 replica and queries queued, scale up the replicas
-            if current_handle_queued_queries > 0:
+            if len(current_handle_queued_queries) > 0:
                 return max(1, curr_target_num_replicas)
             return curr_target_num_replicas
 
         decision_num_replicas = curr_target_num_replicas
 
         desired_num_replicas = calculate_desired_num_replicas(
-            self.config, current_num_ongoing_requests
+            self.config, current_num_ongoing_requests, current_handle_queued_queries
         )
         # Scale up.
         if desired_num_replicas > curr_target_num_replicas:

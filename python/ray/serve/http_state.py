@@ -9,16 +9,12 @@ from ray.serve.config import HTTPOptions, DeploymentMode
 from ray.serve.constants import (
     ASYNC_CONCURRENCY,
     SERVE_LOGGER_NAME,
-    SERVE_PROXY_NAME,
     SERVE_NAMESPACE,
+    SERVE_PROXY_NAME,
 )
 from ray.serve.http_proxy import HTTPProxyActor
-from ray.serve.utils import (
-    format_actor_name,
-    get_all_node_ids,
-    get_current_node_resource_key,
-)
-from ray.serve.common import EndpointTag, NodeId
+from ray.serve.utils import format_actor_name, get_all_node_ids
+
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -109,7 +105,7 @@ class HTTPState:
             try:
                 proxy = ray.get_actor(name, namespace=SERVE_NAMESPACE)
             except ValueError:
-                logger.info(
+                print(
                     "Starting HTTP proxy with name '{}' on node '{}' "
                     "listening on '{}:{}'".format(
                         name, node_id, self._config.host, self._config.port

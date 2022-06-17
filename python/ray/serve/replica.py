@@ -1,29 +1,27 @@
-import aiorwlock
 import asyncio
-from importlib import import_module
 import inspect
 import logging
 import os
 import pickle
 import time
-from typing import Any, Callable, Optional, Tuple, Dict
+from importlib import import_module
+from typing import Any, Callable, Dict, Optional, Tuple
 
+import aiorwlock
 import starlette.responses
 
 import ray
 from ray import cloudpickle
+from ray._private.async_compat import sync_to_async
 from ray.actor import ActorClass, ActorHandle
 from ray.remote_function import RemoteFunction
-from ray.util import metrics
-from ray._private.async_compat import sync_to_async
-
-from ray.serve.autoscaling_metrics import start_metrics_pusher
+from ray.serve.autoscaling_metrics import TimeStampedValue, start_metrics_pusher
 from ray.serve.common import HEALTH_CHECK_CONCURRENCY_GROUP, ReplicaTag
 from ray.serve.config import DeploymentConfig
 from ray.serve.constants import (
+    DEFAULT_LATENCY_BUCKET_MS,
     HEALTH_CHECK_METHOD,
     RECONFIGURE_METHOD,
-    DEFAULT_LATENCY_BUCKET_MS,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
 )
@@ -34,6 +32,7 @@ from ray.serve.logging_utils import access_log_msg, configure_component_logger
 from ray.serve.router import Query, RequestMetadata
 from ray.serve.utils import parse_import_path, parse_request_item, wrap_to_ray_error
 from ray.serve.version import DeploymentVersion
+from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -343,7 +342,9 @@ class RayServeReplica:
         if method_stat is not None:
             num_inflight_requests = method_stat["pending"] + method_stat["running"]
 
-        return {self.replica_tag: num_inflight_requests}
+        data = TimeStampedValue(value=num_inflight_requests)
+
+        return (self.replica_tag, data)
 
     def get_runner_method(self, request_item: Query) -> Callable:
         method_name = request_item.metadata.call_method

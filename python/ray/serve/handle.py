@@ -1,27 +1,23 @@
 import asyncio
 import concurrent.futures
-from dataclasses import dataclass
-from typing import Coroutine, Dict, Optional, Union
 import threading
+import uuid
+from dataclasses import dataclass
+from typing import Coroutine, Dict, Optional, Tuple, Union
 
 import ray
-from ray.actor import ActorHandle
-
 from ray import serve
-from ray.serve.common import EndpointTag
+from ray.actor import ActorHandle
+from ray.serve.autoscaling_metrics import TimeStampedValue, start_metrics_pusher
+from ray.serve.common import DeploymentInfo, EndpointTag
 from ray.serve.constants import (
+    HANDLE_METRIC_PUSH_INTERVAL_S,
     SERVE_HANDLE_JSON_KEY,
     ServeHandleType,
 )
-from ray.serve.utils import (
-    get_random_letters,
-    DEFAULT,
-)
-from ray.serve.autoscaling_metrics import start_metrics_pusher
-from ray.serve.common import DeploymentInfo
-from ray.serve.constants import HANDLE_METRIC_PUSH_INTERVAL_S
 from ray.serve.generated.serve_pb2 import DeploymentRoute
-from ray.serve.router import Router, RequestMetadata
+from ray.serve.router import RequestMetadata, Router
+from ray.serve.utils import DEFAULT, get_random_letters
 from ray.util import metrics
 
 _global_async_loop = None
@@ -89,6 +85,8 @@ class RayServeHandle:
         _router: Optional[Router] = None,
         _internal_pickled_http_request: bool = False,
     ):
+        # Assign each handle a unique id for metrics aggregation of queue handle
+        self._handle_id = uuid.uuid4().int
         self.controller_handle = controller_handle
         self.deployment_name = deployment_name
         self.handle_options = handle_options or HandleOptions()
@@ -128,8 +126,14 @@ class RayServeHandle:
                 stop_event=self._stop_event,
             )
 
-    def _collect_handle_queue_metrics(self) -> Dict[str, int]:
-        return {self.deployment_name: self.router.get_num_queued_queries()}
+    def _get_hand_id(self):
+        return self._handle_id
+
+    def _collect_handle_queue_metrics(self) -> Tuple[str, TimeStampedValue]:
+        data = TimeStampedValue(
+            value=self.router.get_num_queued_queries(), tags={"id": self._handle_id}
+        )
+        return (self.deployment_name, data)
 
     def _make_router(self) -> Router:
         return Router(

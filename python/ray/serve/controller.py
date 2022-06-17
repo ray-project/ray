@@ -12,6 +12,7 @@ import ray
 from ray._private.utils import import_attr
 from ray.actor import ActorHandle
 from ray.exceptions import RayTaskError
+from ray.serve.autoscaling_metrics import TimeStampedValue
 from ray.serve.autoscaling_policy import BasicAutoscalingPolicy
 from ray.serve.common import (
     ApplicationStatus,
@@ -146,11 +147,11 @@ class ServeController:
     def get_pid(self) -> int:
         return os.getpid()
 
-    def record_autoscaling_metrics(self, data: Dict[str, float], send_timestamp: float):
-        self.deployment_state_manager.record_autoscaling_metrics(data, send_timestamp)
+    def record_autoscaling_metrics(self, key: str, data: TimeStampedValue):
+        self.deployment_state_manager.record_autoscaling_metrics(key, data)
 
-    def record_handle_metrics(self, data: Dict[str, float], send_timestamp: float):
-        self.deployment_state_manager.record_handle_metrics(data, send_timestamp)
+    def record_handle_metrics(self, key: str, data: TimeStampedValue):
+        self.deployment_state_manager.record_handle_metrics(key, data)
 
     def _dump_autoscaling_metrics_for_testing(self):
         return self.deployment_state_manager.get_autoscaling_metrics()
@@ -199,23 +200,24 @@ class ServeController:
         # NOTE(edoakes): we catch all exceptions here and simply log them,
         # because an unhandled exception would cause the main control loop to
         # halt, which should *never* happen.
+        print("run_control_loop")
         while True:
 
             async with self.write_lock:
                 try:
                     self.http_state.update()
                 except Exception:
-                    logger.exception("Exception updating HTTP state.")
+                    print("Exception updating HTTP state.")
 
                 try:
                     self.deployment_state_manager.update()
                 except Exception:
-                    logger.exception("Exception updating deployment state.")
+                    print("Exception updating deployment state.")
 
             try:
                 self._put_serve_snapshot()
             except Exception:
-                logger.exception("Exception putting serve snapshot.")
+                print("Exception putting serve snapshot.")
             await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
 
     def _put_serve_snapshot(self) -> None:

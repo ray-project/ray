@@ -181,7 +181,7 @@ class ServeControllerClient:
                 # Guard against new unhandled statuses being added.
                 assert status.status == DeploymentStatus.UPDATING
 
-            logger.debug(
+            logger.info(
                 f"Waiting for {name} to be healthy, current status: "
                 f"{status.status}."
             )

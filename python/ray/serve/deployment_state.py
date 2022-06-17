@@ -15,7 +15,7 @@ import ray
 from ray import ObjectRef, cloudpickle
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError, RayError
-from ray.serve.autoscaling_metrics import InMemoryMetricsStore
+from ray.serve.autoscaling_metrics import InMemoryMetricsStore, TimeStampedValue
 from ray.serve.common import (
     DeploymentInfo,
     DeploymentStatus,
@@ -1098,7 +1098,7 @@ class DeploymentState:
     def autoscale(
         self,
         current_num_ongoing_requests: List[float],
-        current_handle_queued_queries: int,
+        current_handle_queued_queries: List[float],
     ):
         """
         Autoscale the deployment based on metrics
@@ -1106,9 +1106,7 @@ class DeploymentState:
         Args:
             current_num_ongoing_requests: a list of number of running requests of all
                 replicas in the deployment
-            current_handle_queued_queries: The number of handle queued queries,
-                if there are multiple handles, the max number of queries at
-                a single handle should be passed in
+            current_handle_queued_queries: A list of number of handle queued queries
         """
         if self._deleting:
             return
@@ -1626,11 +1624,11 @@ class DeploymentStateManager:
         self.autoscaling_metrics_store = InMemoryMetricsStore()
         self.handle_metrics_store = InMemoryMetricsStore()
 
-    def record_autoscaling_metrics(self, data: Dict[str, float], send_timestamp: float):
-        self.autoscaling_metrics_store.add_metrics_point(data, send_timestamp)
+    def record_autoscaling_metrics(self, key: str, data: TimeStampedValue):
+        self.autoscaling_metrics_store.add_metrics_point(key, data)
 
-    def record_handle_metrics(self, data: Dict[str, float], send_timestamp: float):
-        self.handle_metrics_store.add_metrics_point(data, send_timestamp)
+    def record_handle_metrics(self, key: str, data: TimeStampedValue):
+        self.handle_metrics_store.add_metrics_point(key, data)
 
     def get_autoscaling_metrics(self):
         """
@@ -1802,6 +1800,8 @@ class DeploymentStateManager:
         # specified deployment exists on the client.
         if deployment_name in self._deployment_states:
             self._deployment_states[deployment_name].delete()
+            if deployment_name in self.handle_metrics_store.data:
+                del self.handle_metrics_store.data[deployment_name]
 
     def get_replica_ongoing_request_metrics(
         self, deployment_name: str, look_back_period_s
@@ -1843,13 +1843,9 @@ class DeploymentStateManager:
         Returns:
             if multiple handles queue length, return the max number of queue length.
         """
-        current_handle_queued_queries = self.handle_metrics_store.max(
-            deployment_name,
-            time.time() - look_back_period_s,
+        current_handle_queued_queries = self.handle_metrics_store.latest(
+            deployment_name, time.time() - look_back_period_s, tag="id"
         )
-
-        if current_handle_queued_queries is None:
-            current_handle_queued_queries = 0
         return current_handle_queued_queries
 
     def update(self):

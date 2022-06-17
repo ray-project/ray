@@ -1,25 +1,23 @@
 import sys
 import time
-
-import pytest
+from typing import Iterable, List
 from unittest import mock
 
-from typing import List, Iterable
+import pytest
 
+import ray
+from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve.autoscaling_policy import (
     BasicAutoscalingPolicy,
     calculate_desired_num_replicas,
 )
 from ray.serve.common import DeploymentInfo
-from ray.serve.deployment_state import ReplicaState
 from ray.serve.config import AutoscalingConfig
 from ray.serve.constants import CONTROL_LOOP_PERIOD_S
 from ray.serve.controller import ServeController
 from ray.serve.deployment import Deployment
-
-import ray
-from ray import serve
+from ray.serve.deployment_state import ReplicaState
 from ray.serve.generated.serve_pb2 import DeploymentRouteList
 
 
@@ -35,12 +33,16 @@ class TestCalculateDesiredNumReplicas:
         )
 
         desired_num_replicas = calculate_desired_num_replicas(
-            autoscaling_config=config, current_num_ongoing_requests=[150] * num_replicas
+            autoscaling_config=config,
+            current_num_ongoing_requests=[150] * num_replicas,
+            current_handle_queued_queries=[],
         )
         assert desired_num_replicas == max_replicas
 
         desired_num_replicas = calculate_desired_num_replicas(
-            autoscaling_config=config, current_num_ongoing_requests=[50] * num_replicas
+            autoscaling_config=config,
+            current_num_ongoing_requests=[50] * num_replicas,
+            current_handle_queued_queries=[],
         )
         assert desired_num_replicas == min_replicas
 
@@ -48,6 +50,7 @@ class TestCalculateDesiredNumReplicas:
             desired_num_replicas = calculate_desired_num_replicas(
                 autoscaling_config=config,
                 current_num_ongoing_requests=[i] * num_replicas,
+                current_handle_queued_queries=[],
             )
             assert min_replicas <= desired_num_replicas <= max_replicas
 
@@ -58,7 +61,9 @@ class TestCalculateDesiredNumReplicas:
         num_replicas = 10
         num_ongoing_requests = [2.0] * num_replicas
         desired_num_replicas = calculate_desired_num_replicas(
-            autoscaling_config=config, current_num_ongoing_requests=num_ongoing_requests
+            autoscaling_config=config,
+            current_num_ongoing_requests=num_ongoing_requests,
+            current_handle_queued_queries=[],
         )
         assert 19 <= desired_num_replicas <= 21  # 10 * 2 = 20
 
@@ -69,7 +74,9 @@ class TestCalculateDesiredNumReplicas:
         num_replicas = 10
         num_ongoing_requests = [0.5] * num_replicas
         desired_num_replicas = calculate_desired_num_replicas(
-            autoscaling_config=config, current_num_ongoing_requests=num_ongoing_requests
+            autoscaling_config=config,
+            current_num_ongoing_requests=num_ongoing_requests,
+            current_handle_queued_queries=[],
         )
         assert 4 <= desired_num_replicas <= 6  # 10 * 0.5 = 5
 
@@ -84,15 +91,33 @@ class TestCalculateDesiredNumReplicas:
 
         num_ongoing_requests = [4.0] * num_replicas
         desired_num_replicas = calculate_desired_num_replicas(
-            autoscaling_config=config, current_num_ongoing_requests=num_ongoing_requests
+            autoscaling_config=config,
+            current_num_ongoing_requests=num_ongoing_requests,
+            current_handle_queued_queries=[],
         )
         assert 24 <= desired_num_replicas <= 26  # 10 + 0.5 * (40 - 10) = 25
 
         num_ongoing_requests = [0.25] * num_replicas
         desired_num_replicas = calculate_desired_num_replicas(
-            autoscaling_config=config, current_num_ongoing_requests=num_ongoing_requests
+            autoscaling_config=config,
+            current_num_ongoing_requests=num_ongoing_requests,
+            current_handle_queued_queries=[],
         )
         assert 5 <= desired_num_replicas <= 8  # 10 + 0.5 * (2.5 - 10) = 6.25
+
+    def test_scale_up_with_queued_requests(self):
+        config = AutoscalingConfig(
+            min_replicas=0, max_replicas=100, target_num_ongoing_requests_per_replica=1
+        )
+        num_replicas = 10
+        num_ongoing_requests = [2.0] * num_replicas
+        desired_num_replicas = calculate_desired_num_replicas(
+            autoscaling_config=config,
+            current_num_ongoing_requests=num_ongoing_requests,
+            current_handle_queued_queries=[50],
+        )
+
+        assert 69 <= desired_num_replicas <= 71  # 10 * (50 + 20) / 10
 
 
 def get_running_replicas(controller: ServeController, deployment: Deployment) -> List:
@@ -311,7 +336,7 @@ def test_upscale_downscale_delay():
     new_num_replicas = policy.get_decision_num_replicas(
         current_num_ongoing_requests=[],
         curr_target_num_replicas=0,
-        current_handle_queued_queries=1,
+        current_handle_queued_queries=[1],
     )
     assert new_num_replicas == 1
 
@@ -320,14 +345,14 @@ def test_upscale_downscale_delay():
         new_num_replicas = policy.get_decision_num_replicas(
             current_num_ongoing_requests=overload_requests,
             curr_target_num_replicas=1,
-            current_handle_queued_queries=0,
+            current_handle_queued_queries=[0],
         )
         assert new_num_replicas == 1, i
 
     new_num_replicas = policy.get_decision_num_replicas(
         current_num_ongoing_requests=overload_requests,
         curr_target_num_replicas=1,
-        current_handle_queued_queries=0,
+        current_handle_queued_queries=[0],
     )
     assert new_num_replicas == 2
 
@@ -338,14 +363,14 @@ def test_upscale_downscale_delay():
         new_num_replicas = policy.get_decision_num_replicas(
             current_num_ongoing_requests=no_requests,
             curr_target_num_replicas=2,
-            current_handle_queued_queries=0,
+            current_handle_queued_queries=[0],
         )
         assert new_num_replicas == 2, i
 
     new_num_replicas = policy.get_decision_num_replicas(
         current_num_ongoing_requests=no_requests,
         curr_target_num_replicas=2,
-        current_handle_queued_queries=0,
+        current_handle_queued_queries=[0],
     )
     assert new_num_replicas == 0
 
@@ -354,7 +379,7 @@ def test_upscale_downscale_delay():
         new_num_replicas = policy.get_decision_num_replicas(
             current_num_ongoing_requests=overload_requests,
             curr_target_num_replicas=1,
-            current_handle_queued_queries=0,
+            current_handle_queued_queries=[0],
         )
         assert new_num_replicas == 1, i
 
@@ -362,7 +387,7 @@ def test_upscale_downscale_delay():
     policy.get_decision_num_replicas(
         current_num_ongoing_requests=[0],
         curr_target_num_replicas=1,
-        current_handle_queued_queries=0,
+        current_handle_queued_queries=[0],
     )
 
     # The counter should be reset, so it should require `upscale_wait_periods`
@@ -371,14 +396,14 @@ def test_upscale_downscale_delay():
         new_num_replicas = policy.get_decision_num_replicas(
             current_num_ongoing_requests=overload_requests,
             curr_target_num_replicas=1,
-            current_handle_queued_queries=0,
+            current_handle_queued_queries=[0],
         )
         assert new_num_replicas == 1, i
 
     new_num_replicas = policy.get_decision_num_replicas(
         current_num_ongoing_requests=overload_requests,
         curr_target_num_replicas=1,
-        current_handle_queued_queries=0,
+        current_handle_queued_queries=[0],
     )
     assert new_num_replicas == 2
 
@@ -387,7 +412,7 @@ def test_upscale_downscale_delay():
         new_num_replicas = policy.get_decision_num_replicas(
             current_num_ongoing_requests=no_requests,
             curr_target_num_replicas=2,
-            current_handle_queued_queries=0,
+            current_handle_queued_queries=[0],
         )
         assert new_num_replicas == 2, i
 
@@ -395,7 +420,7 @@ def test_upscale_downscale_delay():
     policy.get_decision_num_replicas(
         current_num_ongoing_requests=[100, 100],
         curr_target_num_replicas=2,
-        current_handle_queued_queries=0,
+        current_handle_queued_queries=[0],
     )
 
     # The counter should be reset so it should require `downscale_wait_periods`
@@ -404,14 +429,14 @@ def test_upscale_downscale_delay():
         new_num_replicas = policy.get_decision_num_replicas(
             current_num_ongoing_requests=no_requests,
             curr_target_num_replicas=2,
-            current_handle_queued_queries=0,
+            current_handle_queued_queries=[0],
         )
         assert new_num_replicas == 2, i
 
     new_num_replicas = policy.get_decision_num_replicas(
         current_num_ongoing_requests=no_requests,
         curr_target_num_replicas=2,
-        current_handle_queued_queries=0,
+        current_handle_queued_queries=[0],
     )
     assert new_num_replicas == 0
 
@@ -428,21 +453,21 @@ def test_replicas_delayed_startup():
 
     policy = BasicAutoscalingPolicy(config)
 
-    new_num_replicas = policy.get_decision_num_replicas(1, [100], 0)
+    new_num_replicas = policy.get_decision_num_replicas(1, [100], [0])
     assert new_num_replicas == 100
 
     # New target is 100, but no new replicas finished spinning up during this
     # timestep.
-    new_num_replicas = policy.get_decision_num_replicas(100, [100], 0)
+    new_num_replicas = policy.get_decision_num_replicas(100, [100], [0])
     assert new_num_replicas == 100
 
     # Two new replicas spun up during this timestep.
-    new_num_replicas = policy.get_decision_num_replicas(100, [100, 20, 3], 0)
+    new_num_replicas = policy.get_decision_num_replicas(100, [100, 20, 3], [0])
     assert new_num_replicas == 123
 
     # A lot of queries got drained and a lot of replicas started up, but
     # new_num_replicas should not decrease, because of the downscale delay.
-    new_num_replicas = policy.get_decision_num_replicas(123, [6, 2, 1, 1], 0)
+    new_num_replicas = policy.get_decision_num_replicas(123, [6, 2, 1, 1], [0])
     assert new_num_replicas == 123
 
 
@@ -476,7 +501,7 @@ def test_fluctuating_ongoing_requests(delay_s):
             new_num_replicas = policy.get_decision_num_replicas(
                 current_num_ongoing_requests=overload_requests,
                 curr_target_num_replicas=1,
-                current_handle_queued_queries=0,
+                current_handle_queued_queries=[0],
             )
             if delay_s > 0:
                 assert new_num_replicas == 1, trial
@@ -486,7 +511,7 @@ def test_fluctuating_ongoing_requests(delay_s):
             new_num_replicas = policy.get_decision_num_replicas(
                 current_num_ongoing_requests=underload_requests,
                 curr_target_num_replicas=2,
-                current_handle_queued_queries=0,
+                current_handle_queued_queries=[0],
             )
             if delay_s > 0:
                 assert new_num_replicas == 2, trial
@@ -518,7 +543,7 @@ def test_imbalanced_replicas(ongoing_requests):
         new_num_replicas = policy.get_decision_num_replicas(
             current_num_ongoing_requests=ongoing_requests,
             curr_target_num_replicas=4,
-            current_handle_queued_queries=0,
+            current_handle_queued_queries=[0],
         )
         assert new_num_replicas == 4
 
@@ -531,7 +556,7 @@ def test_imbalanced_replicas(ongoing_requests):
         new_num_replicas = policy.get_decision_num_replicas(
             current_num_ongoing_requests=ongoing_requests,
             curr_target_num_replicas=4,
-            current_handle_queued_queries=0,
+            current_handle_queued_queries=[0],
         )
 
         if (
@@ -551,7 +576,7 @@ def test_imbalanced_replicas(ongoing_requests):
         new_num_replicas = policy.get_decision_num_replicas(
             current_num_ongoing_requests=ongoing_requests,
             curr_target_num_replicas=4,
-            current_handle_queued_queries=0,
+            current_handle_queued_queries=[],
         )
         assert new_num_replicas == 5
 
@@ -575,7 +600,7 @@ def test_single_replica_receives_all_requests(ongoing_requests):
     new_num_replicas = policy.get_decision_num_replicas(
         current_num_ongoing_requests=ongoing_requests,
         curr_target_num_replicas=4,
-        current_handle_queued_queries=0,
+        current_handle_queued_queries=[],
     )
     assert new_num_replicas == sum(ongoing_requests) / target_requests
 
@@ -673,6 +698,9 @@ def test_e2e_intermediate_downscaling(serve_instance):
     handle = A.get_handle()
     [handle.remote() for _ in range(50)]
 
+    print(
+        "test_e2e_intermediate_downscaling: ", get_num_running_replicas(controller, A)
+    )
     wait_for_condition(
         lambda: get_num_running_replicas(controller, A) >= 20, timeout=30
     )
@@ -880,8 +908,44 @@ def test_e2e_raise_min_replicas(serve_instance):
     assert get_deployment_start_time(controller, A) == start_time
 
 
+def test_single_ongoing_request_per_replica(serve_instance):
+
+    # https://github.com/ray-project/ray/issues/24793
+    signal = SignalActor.remote()
+    controller = serve_instance._controller
+
+    @serve.deployment(
+        _autoscaling_config={
+            "metrics_interval_s": 0.1,
+            "min_replicas": 1,
+            "max_replicas": 10,
+            "look_back_period_s": 20,
+            "downscale_delay_s": 0.2,
+            "upscale_delay_s": 0.2,
+            "target_num_ongoing_requests_per_replica": 1,
+        },
+        # We will send over a lot of queries. This will make sure replicas are
+        # killed quickly during cleanup.
+        _graceful_shutdown_timeout_s=1,
+        version="v1",
+        max_concurrent_queries=1,
+    )
+    class A:
+        def __call__(self):
+            ray.get(signal.wait.remote())
+
+    A.deploy()
+    handle = A.get_handle()
+    wait_for_condition(lambda: get_num_running_replicas(controller, A) == 1)
+    [handle.remote() for _ in range(2)]
+    print("Issued two requests.")
+    wait_for_condition(lambda: get_num_running_replicas(controller, A) > 1)
+    signal.send.remote()
+
+
 if __name__ == "__main__":
     import sys
+
     import pytest
 
     sys.exit(pytest.main(["-v", "-s", __file__]))

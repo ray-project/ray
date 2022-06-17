@@ -5,7 +5,7 @@ import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from threading import Event
-from typing import Callable, DefaultDict, Dict, List, Optional, Type
+from typing import Any, Callable, DefaultDict, Dict, List, Optional, Tuple, Type
 
 import ray
 from ray.serve.constants import SERVE_LOGGER_NAME
@@ -13,9 +13,16 @@ from ray.serve.constants import SERVE_LOGGER_NAME
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
+@dataclass(order=True)
+class TimeStampedValue:
+    value: float = field(compare=False)
+    timestamp: float = field(default_factory=time.time)
+    tags: Dict[Any, Any] = field(compare=False, default_factory=dict)
+
+
 def start_metrics_pusher(
     interval_s: float,
-    collection_callback: Callable[[], Dict[str, float]],
+    collection_callback: Callable[[], Tuple[str, TimeStampedValue]],
     metrics_process_func: Callable[[Dict[str, float], float], ray.ObjectRef],
     stop_event: Type[Event] = None,
 ):
@@ -42,10 +49,11 @@ def start_metrics_pusher(
     """
 
     def send_once():
-        data = collection_callback()
+        (key, data) = collection_callback()
 
         # TODO(simon): maybe wait for ack or handle controller failure?
-        return metrics_process_func(data=data, send_timestamp=time.time())
+        data.timestamp = time.time()
+        return metrics_process_func(key=key, data=data)
 
     def send_forever(stop_event):
         last_ref: Optional[ray.ObjectRef] = None
@@ -83,19 +91,13 @@ def start_metrics_pusher(
     return timer
 
 
-@dataclass(order=True)
-class TimeStampedValue:
-    timestamp: float
-    value: float = field(compare=False)
-
-
 class InMemoryMetricsStore:
     """A very simple, in memory time series database"""
 
     def __init__(self):
         self.data: DefaultDict[str, List[TimeStampedValue]] = defaultdict(list)
 
-    def add_metrics_point(self, data_points: Dict[str, float], timestamp: float):
+    def add_metrics_point(self, key: str, data: dict):
         """Push new data points to the store.
 
         Args:
@@ -104,10 +106,10 @@ class InMemoryMetricsStore:
               and to be used to perform aggregation.
             timestamp(float): the unix epoch timestamp the metrics are
               collected at.
+            tags: the data tags used aggregate in different dimension
         """
-        for name, value in data_points.items():
-            # Using in-sort to insert while maintaining sorted ordering.
-            bisect.insort(a=self.data[name], x=TimeStampedValue(timestamp, value))
+        # Using in-sort to insert while maintaining sorted ordering.
+        bisect.insort(a=self.data[key], x=data)
 
     def _get_datapoints(self, key: str, window_start_timestamp_s: float) -> List[float]:
         """Get all data points given key after window_start_timestamp_s"""
@@ -148,8 +150,14 @@ class InMemoryMetricsStore:
             return
         return sum(point.value for point in points_after_idx) / len(points_after_idx)
 
-    def max(self, key: str, window_start_timestamp_s: float, do_compact: bool = True):
-        """Perform a max operation for metric `key`.
+    def latest(
+        self,
+        key: str,
+        window_start_timestamp_s: float,
+        do_compact: bool = True,
+        tag: Any = None,
+    ):
+        """Perform a latest operation for metric `key`. The function will return latest value given the key.
 
         Args:
             key(str): the metric name.
@@ -159,13 +167,26 @@ class InMemoryMetricsStore:
             do_compact(bool): whether or not to delete the datapoints that's
               before `window_start_timestamp_s` to save memory. Default is
               true.
+            tag: if tag provided, the latest of data will be collected by the tag.
         Returns:
-            Max value of the data points for the key on and after time
-            window_start_timestamp_s, or None if there are no such points.
+            Latest value of the data points for the key on and after time
+            window_start_timestamp_s. if tag is provided, the return value will be
+            a list, each elemt of the list represents each tag. (Currently we don't
+            need the tag information. If needed in the future, the function can
+            directly return dict)
         """
         points_after_idx = self._get_datapoints(key, window_start_timestamp_s)
 
         if do_compact:
             self.data[key] = points_after_idx
 
-        return max((point.value for point in points_after_idx), default=None)
+        # tags aggregations
+        if tag:
+            datapoints_per_tags = defaultdict(TimeStampedValue)
+            for point in points_after_idx[::-1]:
+                if tag in point.tags and point.tags[tag] not in datapoints_per_tags:
+                    datapoints_per_tags[point.tags[tag]] = point
+            points_after_idx = list(datapoints_per_tags.values())
+            return [point.value for point in points_after_idx]
+        else:
+            return [points_after_idx[-1].value] if points_after_idx else []
