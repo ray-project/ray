@@ -1881,6 +1881,53 @@ def test_map_batches(ray_start_regular_shared, tmp_path):
         ).take()
 
     # Test extra UDF args.
+    # Test positional.
+    df = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
+    table = pa.Table.from_pandas(df)
+    pq.write_table(table, os.path.join(tmp_path, "test1.parquet"))
+
+    def udf(batch, a):
+        assert a == 1
+        return batch + a
+
+    ds = ray.data.read_parquet(str(tmp_path))
+    ds2 = ds.map_batches(
+        udf,
+        batch_size=1,
+        batch_format="pandas",
+        fn_args=(ray.put(1),),
+    )
+    assert ds2._dataset_format() == "pandas"
+    ds_list = ds2.take()
+    values = [s["one"] for s in ds_list]
+    assert values == [2, 3, 4]
+    values = [s["two"] for s in ds_list]
+    assert values == [3, 4, 5]
+
+    # Test kwargs.
+    df = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
+    table = pa.Table.from_pandas(df)
+    pq.write_table(table, os.path.join(tmp_path, "test1.parquet"))
+
+    def udf(batch, b=None):
+        assert b == 2
+        return b * batch
+
+    ds = ray.data.read_parquet(str(tmp_path))
+    ds2 = ds.map_batches(
+        udf,
+        batch_size=1,
+        batch_format="pandas",
+        fn_kwargs={"b": ray.put(2)},
+    )
+    assert ds2._dataset_format() == "pandas"
+    ds_list = ds2.take()
+    values = [s["one"] for s in ds_list]
+    assert values == [2, 4, 6]
+    values = [s["two"] for s in ds_list]
+    assert values == [4, 6, 8]
+
+    # Test both.
     df = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
     table = pa.Table.from_pandas(df)
     pq.write_table(table, os.path.join(tmp_path, "test1.parquet"))
@@ -1906,6 +1953,63 @@ def test_map_batches(ray_start_regular_shared, tmp_path):
     assert values == [5, 7, 9]
 
     # Test constructor UDF args.
+    # Test positional.
+    df = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
+    table = pa.Table.from_pandas(df)
+    pq.write_table(table, os.path.join(tmp_path, "test1.parquet"))
+
+    class CallableFn:
+        def __init__(self, a):
+            assert a == 1
+            self.a = a
+
+        def __call__(self, x):
+            return x + self.a
+
+    ds = ray.data.read_parquet(str(tmp_path))
+    ds2 = ds.map_batches(
+        CallableFn,
+        batch_size=1,
+        batch_format="pandas",
+        compute="actors",
+        fn_constructor_args=(ray.put(1),),
+    )
+    assert ds2._dataset_format() == "pandas"
+    ds_list = ds2.take()
+    values = [s["one"] for s in ds_list]
+    assert values == [2, 3, 4]
+    values = [s["two"] for s in ds_list]
+    assert values == [3, 4, 5]
+
+    # Test kwarg.
+    df = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
+    table = pa.Table.from_pandas(df)
+    pq.write_table(table, os.path.join(tmp_path, "test1.parquet"))
+
+    class CallableFn:
+        def __init__(self, b=None):
+            assert b == 2
+            self.b = b
+
+        def __call__(self, x):
+            return self.b * x
+
+    ds = ray.data.read_parquet(str(tmp_path))
+    ds2 = ds.map_batches(
+        CallableFn,
+        batch_size=1,
+        batch_format="pandas",
+        compute="actors",
+        fn_constructor_kwargs={"b": ray.put(2)},
+    )
+    assert ds2._dataset_format() == "pandas"
+    ds_list = ds2.take()
+    values = [s["one"] for s in ds_list]
+    assert values == [2, 4, 6]
+    values = [s["two"] for s in ds_list]
+    assert values == [4, 6, 8]
+
+    # Test both.
     df = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
     table = pa.Table.from_pandas(df)
     pq.write_table(table, os.path.join(tmp_path, "test1.parquet"))

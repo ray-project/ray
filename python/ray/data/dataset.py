@@ -234,7 +234,12 @@ class Dataset(Generic[T]):
                 that can be instantiated to create such a callable. Callable classes are
                 only supported for the actor compute strategy.
             compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
+                tasks, or "actors" to use an autoscaling actor pool. If wanting to
+                configure the min or max size of the autoscaling actor pool, you can
+                provide an
+                :class:`ActorPoolStrategy(min, max) <ray.data.ActorPoolStrategy>`
+                instance. If using callable classes for fn, the actor compute strategy
+                must be used.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
@@ -339,7 +344,12 @@ class Dataset(Generic[T]):
             batch_size: Request a specific batch size, or None to use entire
                 blocks as batches. Defaults to a system-chosen batch size.
             compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
+                tasks, or "actors" to use an autoscaling actor pool. If wanting to
+                configure the min or max size of the autoscaling actor pool, you can
+                provide an
+                :class:`ActorPoolStrategy(min, max) <ray.data.ActorPoolStrategy>`
+                instance. If using callable classes for fn, the actor compute strategy
+                must be used.
             batch_format: Specify "native" to use the native block format (promotes
                 tables to Pandas and tensors to NumPy), "pandas" to select
                 ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or "numpy"
@@ -539,7 +549,12 @@ class Dataset(Generic[T]):
                 that can be instantiated to create such a callable. Callable classes are
                 only supported for the actor compute strategy.
             compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
+                tasks, or "actors" to use an autoscaling actor pool. If wanting to
+                configure the min or max size of the autoscaling actor pool, you can
+                provide an
+                :class:`ActorPoolStrategy(min, max) <ray.data.ActorPoolStrategy>`
+                instance. If using callable classes for fn, the actor compute strategy
+                must be used.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
@@ -600,7 +615,12 @@ class Dataset(Generic[T]):
                 that can be instantiated to create such a callable. Callable classes are
                 only supported for the actor compute strategy.
             compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
+                tasks, or "actors" to use an autoscaling actor pool. If wanting to
+                configure the min or max size of the autoscaling actor pool, you can
+                provide an
+                :class:`ActorPoolStrategy(min, max) <ray.data.ActorPoolStrategy>`
+                instance. If using callable classes for fn, the actor compute strategy
+                must be used.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
