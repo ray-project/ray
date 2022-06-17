@@ -263,8 +263,8 @@ class TorchPolicyV2(Policy):
     def action_distribution_fn(
         self,
         model: ModelV2,
+        input_dict: SampleBatch,
         *,
-        input_dict: TensorType,
         state_batches: TensorType,
         **kwargs,
     ) -> Tuple[TensorType, type, List[TensorType]]:

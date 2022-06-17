@@ -292,8 +292,8 @@ class EagerTFPolicyV2(Policy):
     def action_distribution_fn(
         self,
         model: ModelV2,
+        input_dict: SampleBatch,
         *,
-        obs_batch: TensorType,
         state_batches: TensorType,
         **kwargs,
     ) -> Tuple[TensorType, type, List[TensorType]]:

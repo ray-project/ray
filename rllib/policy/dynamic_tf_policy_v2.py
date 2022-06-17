@@ -299,8 +299,8 @@ class DynamicTFPolicyV2(TFPolicy):
     def action_distribution_fn(
         self,
         model: ModelV2,
+        input_dict: SampleBatch,
         *,
-        obs_batch: TensorType,
         state_batches: TensorType,
         **kwargs,
     ) -> Tuple[TensorType, type, List[TensorType]]:
@@ -595,8 +595,6 @@ class DynamicTFPolicyV2(TFPolicy):
             # Distribution generation is customized, e.g., DQN, DDPG.
             else:
                 if is_overridden(self.action_distribution_fn):
-                    # Try new action_distribution_fn signature, supporting
-                    # state_batches and seq_lens.
                     in_dict = self._input_dict
                     (
                         dist_inputs,
@@ -604,7 +602,7 @@ class DynamicTFPolicyV2(TFPolicy):
                         self._state_out,
                     ) = self.action_distribution_fn(
                         self.model,
-                        obs_batch=in_dict[SampleBatch.OBS],
+                        input_dict=in_dict,
                         state_batches=self._state_inputs,
                         seq_lens=self._seq_lens,
                         explore=explore,
