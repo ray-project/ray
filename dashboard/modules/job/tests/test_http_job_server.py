@@ -487,7 +487,7 @@ def test_request_headers(job_sdk_client):
         )
         mock_request.assert_called_with(
             "POST",
-            "http://127.0.0.1:8265/api/jobs/",
+            f"{job_sdk_client._address}/api/jobs/",
             cookies=None,
             data=None,
             json={"entrypoint": "ls"},
