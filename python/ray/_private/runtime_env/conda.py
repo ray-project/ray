@@ -1,35 +1,35 @@
-import os
-import sys
+import asyncio
+import hashlib
 import json
 import logging
-import yaml
-import hashlib
-import subprocess
+import os
 import platform
 import runpy
 import shutil
-import asyncio
-
-from filelock import FileLock
-from typing import Optional, List, Dict, Any
+import subprocess
+import sys
 from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+import yaml
+from filelock import FileLock
 
 import ray
-
 from ray._private.runtime_env.conda_utils import (
-    get_conda_activate_commands,
     create_conda_env_if_needed,
     delete_conda_env,
+    get_conda_activate_commands,
 )
 from ray._private.runtime_env.context import RuntimeEnvContext
+from ray._private.runtime_env.packaging import Protocol, parse_uri
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.utils import (
     get_directory_size_bytes,
-    get_wheel_filename,
     get_master_wheel_url,
     get_release_wheel_url,
+    get_wheel_filename,
     try_to_create_directory,
 )
-from ray._private.runtime_env.packaging import Protocol, parse_uri
 
 default_logger = logging.getLogger(__name__)
 
@@ -71,7 +71,11 @@ def _inject_ray_to_conda_site(
         python_binary = os.path.join(conda_path, "bin/python")
     site_packages_path = (
         subprocess.check_output(
-            [python_binary, "-c", "import site; print(site.getsitepackages()[0])"]
+            [
+                python_binary,
+                "-c",
+                "import sysconfig; print(sysconfig.get_paths()['purelib'])",
+            ]
         )
         .decode()
         .strip()
@@ -79,7 +83,7 @@ def _inject_ray_to_conda_site(
 
     ray_path = _resolve_current_ray_path()
     logger.warning(
-        f"Injecting {ray_path} to environment {conda_path} "
+        f"Injecting {ray_path} to environment site-packages {site_packages_path} "
         "because _inject_current_ray flag is on."
     )
 
@@ -90,7 +94,7 @@ def _inject_ray_to_conda_site(
 
     # See usage of *.pth file at
     # https://docs.python.org/3/library/site.html
-    with open(os.path.join(site_packages_path, "ray.pth"), "w") as f:
+    with open(os.path.join(site_packages_path, "ray_shared.pth"), "w") as f:
         f.write(ray_path)
 
 
@@ -246,7 +250,10 @@ def _get_conda_dict_with_ray_inserted(
     return conda_dict
 
 
-class CondaManager:
+class CondaPlugin(RuntimeEnvPlugin):
+
+    name = "conda"
+
     def __init__(self, resources_dir: str):
         self._resources_dir = os.path.join(resources_dir, "conda")
         try_to_create_directory(self._resources_dir)
@@ -271,12 +278,12 @@ class CondaManager:
         """
         return os.path.join(self._resources_dir, hash)
 
-    def get_uri(self, runtime_env: "RuntimeEnv") -> Optional[str]:  # noqa: F821
-        """Return the conda URI from the RuntimeEnv if it exists, else None."""
+    def get_uris(self, runtime_env: "RuntimeEnv") -> List[str]:  # noqa: F821
+        """Return the conda URI from the RuntimeEnv if it exists, else return []."""
         conda_uri = runtime_env.conda_uri()
-        if conda_uri != "":
-            return conda_uri
-        return None
+        if conda_uri:
+            return [conda_uri]
+        return []
 
     def delete_uri(
         self, uri: str, logger: Optional[logging.Logger] = default_logger
@@ -286,7 +293,7 @@ class CondaManager:
         protocol, hash = parse_uri(uri)
         if protocol != Protocol.CONDA:
             raise ValueError(
-                "CondaManager can only delete URIs with protocol "
+                "CondaPlugin can only delete URIs with protocol "
                 f"conda.  Received protocol {protocol}, URI {uri}"
             )
 
@@ -306,7 +313,7 @@ class CondaManager:
         uri: Optional[str],
         runtime_env: "RuntimeEnv",  # noqa: F821
         context: RuntimeEnvContext,
-        logger: Optional[logging.Logger] = default_logger,
+        logger: logging.Logger = default_logger,
     ) -> int:
         # Currently create method is still a sync process, to avoid blocking
         # the loop, need to run this function in another thread.
@@ -345,7 +352,7 @@ class CondaManager:
 
     def modify_context(
         self,
-        uri: str,
+        uris: List[str],
         runtime_env: "RuntimeEnv",  # noqa: F821
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,

@@ -7,11 +7,10 @@ import pyarrow as pa
 import pytest
 
 import ray
-
-from ray.tests.conftest import *  # noqa
+from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
 from ray.data.block import BlockAccessor
 from ray.data.tests.conftest import *  # noqa
-from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
+from ray.tests.conftest import *  # noqa
 
 
 @pytest.mark.parametrize("use_push_based_shuffle", [False, True])
@@ -76,12 +75,17 @@ def test_sort_partition_same_key_to_same_block(
 
 @pytest.mark.parametrize("num_items,parallelism", [(100, 1), (1000, 4)])
 @pytest.mark.parametrize("use_push_based_shuffle", [False, True])
-def test_sort_arrow(ray_start_regular, num_items, parallelism, use_push_based_shuffle):
+@pytest.mark.parametrize("use_polars", [False, True])
+def test_sort_arrow(
+    ray_start_regular, num_items, parallelism, use_push_based_shuffle, use_polars
+):
     ctx = ray.data.context.DatasetContext.get_current()
 
     try:
-        original = ctx.use_push_based_shuffle
+        original_push_based_shuffle = ctx.use_push_based_shuffle
         ctx.use_push_based_shuffle = use_push_based_shuffle
+        original_use_polars = ctx.use_polars
+        ctx.use_polars = use_polars
 
         a = list(reversed(range(num_items)))
         b = [f"{x:03}" for x in range(num_items)]
@@ -112,16 +116,22 @@ def test_sort_arrow(ray_start_regular, num_items, parallelism, use_push_based_sh
         assert_sorted(ds.sort(key="b"), zip(a, b))
         assert_sorted(ds.sort(key="a", descending=True), zip(a, b))
     finally:
-        ctx.use_push_based_shuffle = original
+        ctx.use_push_based_shuffle = original_push_based_shuffle
+        ctx.use_polars = original_use_polars
 
 
 @pytest.mark.parametrize("use_push_based_shuffle", [False, True])
-def test_sort_arrow_with_empty_blocks(ray_start_regular, use_push_based_shuffle):
+@pytest.mark.parametrize("use_polars", [False, True])
+def test_sort_arrow_with_empty_blocks(
+    ray_start_regular, use_push_based_shuffle, use_polars
+):
     ctx = ray.data.context.DatasetContext.get_current()
 
     try:
-        original = ctx.use_push_based_shuffle
+        original_push_based_shuffle = ctx.use_push_based_shuffle
         ctx.use_push_based_shuffle = use_push_based_shuffle
+        original_use_polars = ctx.use_polars
+        ctx.use_polars = use_polars
 
         assert (
             BlockAccessor.for_block(pa.Table.from_pydict({})).sample(10, "A").num_rows
@@ -162,7 +172,8 @@ def test_sort_arrow_with_empty_blocks(ray_start_regular, use_push_based_shuffle)
         )
         assert ds.sort("value").count() == 0
     finally:
-        ctx.use_push_based_shuffle = original
+        ctx.use_push_based_shuffle = original_push_based_shuffle
+        ctx.use_polars = original_use_polars
 
 
 def test_push_based_shuffle_schedule():
@@ -188,28 +199,49 @@ def test_push_based_shuffle_schedule():
             next_highest_merge_factor = schedule.num_map_tasks_per_round // (
                 schedule.num_merge_tasks_per_round + 1
             )
-            assert next_highest_merge_factor <= merge_factor <= actual_merge_factor
+            assert next_highest_merge_factor <= merge_factor <= actual_merge_factor, (
+                next_highest_merge_factor,
+                merge_factor,
+                actual_merge_factor,
+            )
         else:
-            assert schedule.num_merge_tasks_per_round == 1
+            assert schedule.num_merge_tasks_per_round == 1, (
+                schedule.num_map_tasks_per_round,
+                merge_factor,
+            )
 
         # Tasks are evenly distributed.
         tasks_per_node = defaultdict(int)
-        for node_id in schedule.merge_task_placement:
+        for i in range(schedule.num_merge_tasks_per_round):
+            task_options = schedule.get_merge_task_options(i)
+            node_id = task_options["scheduling_strategy"].node_id
             tasks_per_node[node_id] += 1
         low = min(tasks_per_node.values())
         high = low + 1
         assert low <= max(tasks_per_node.values()) <= high
 
         # Reducers are evenly distributed across mergers.
-        low = min(schedule.num_reducers_per_merge_idx)
-        high = low + 1
-        assert low <= max(schedule.num_reducers_per_merge_idx) <= high
+        num_reducers_per_merge_idx = [
+            schedule.merge_schedule.get_num_reducers_per_merge_idx(i)
+            for i in range(schedule.num_merge_tasks_per_round)
+        ]
+        high = max(num_reducers_per_merge_idx)
+        for num_reducers in num_reducers_per_merge_idx:
+            assert num_reducers == high or num_reducers == high - 1
+
+        for merge_idx in range(schedule.num_merge_tasks_per_round):
+            assert isinstance(
+                schedule.merge_schedule.get_num_reducers_per_merge_idx(merge_idx), int
+            )
+            assert schedule.merge_schedule.get_num_reducers_per_merge_idx(merge_idx) > 0
 
     for num_cpus in range(1, 20):
         _test(20, 3, {"node1": num_cpus})
     _test(20, 3, {"node1": 100})
     _test(100, 3, {"node1": 10, "node2": 10, "node3": 10})
     _test(100, 10, {"node1": 10, "node2": 10, "node3": 10})
+    # Regression test for https://github.com/ray-project/ray/issues/25863.
+    _test(1000, 2, {f"node{i}": 16 for i in range(20)})
 
 
 def test_push_based_shuffle_stats(ray_start_cluster):
