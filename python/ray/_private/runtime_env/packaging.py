@@ -34,6 +34,10 @@ GCS_STORAGE_MAX_SIZE = int(
 )
 RAY_PKG_PREFIX = "_ray_pkg_"
 
+RAY_RUNTIME_ENV_FAIL_UPLOAD_FOR_TESTING_ENV_VAR = (
+    "RAY_RUNTIME_ENV_FAIL_UPLOAD_FOR_TESTING"
+)
+
 
 def _mib_string(num_bytes: float) -> str:
     size_mib = float(num_bytes / 1024 ** 2)
@@ -341,6 +345,10 @@ def _store_package_in_gcs(
 
     logger.info(f"Pushing file package '{pkg_uri}' ({size_str}) to Ray cluster...")
     try:
+        if os.environ.get(RAY_RUNTIME_ENV_FAIL_UPLOAD_FOR_TESTING_ENV_VAR):
+            raise RuntimeError(
+                "Simulating failure to upload package for testing purposes."
+            )
         _internal_kv_put(pkg_uri, data)
     except Exception as e:
         raise RuntimeError(
