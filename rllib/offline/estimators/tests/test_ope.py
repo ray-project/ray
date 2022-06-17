@@ -92,7 +92,7 @@ class TestOPE(unittest.TestCase):
         cls.std_ret["simulation"] = np.std(mc_ret)
 
         # Optional configs for the model-based estimators
-        cls.model_config = {"train_test_split_val": 5, "n_iters": 10}
+        cls.model_config = {"k": 5, "n_iters": 10}
         ray.shutdown()
 
     @classmethod
