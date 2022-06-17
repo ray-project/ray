@@ -1139,16 +1139,18 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     )
     np.testing.assert_equal(ds.take(2), [np.array([0]), np.array([1])])
 
-    # Test default format-based path filtering.
+    # Add a file with a non-matching file extension. This file should be ignored.
     with open(os.path.join(path, "foo.txt"), "w") as f:
         f.write("foobar")
-    # Non-NPY file should be ignored.
+
     ds = ray.data.read_numpy(path)
+    assert ds.num_blocks() == 1
+    assert ds.count() == 10
     assert str(ds) == (
         "Dataset(num_blocks=1, num_rows=10, "
-        "schema={value: <ArrowTensorType: shape=(1,), dtype=int64>})"
+        "schema={__value__: <ArrowTensorType: shape=(1,), dtype=int64>})"
     )
-    assert str(ds.take(2)) == "[{'value': array([0])}, {'value': array([1])}]"
+    assert [v.item() for v in ds.take(2)] == [0, 1]
 
 
 def test_numpy_read_meta_provider(ray_start_regular_shared, tmp_path):
