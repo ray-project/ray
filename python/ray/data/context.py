@@ -1,6 +1,6 @@
-from typing import Optional
-import threading
 import os
+import threading
+from typing import Optional
 
 import ray
 from ray.util.annotations import DeveloperAPI
@@ -41,6 +41,9 @@ DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
 # The default global scheduling strategy.
 DEFAULT_SCHEDULING_STRATEGY = "DEFAULT"
 
+# Whether to use Polars for tabular dataset sorts, groupbys, and aggregations.
+DEFAULT_USE_POLARS = False
+
 
 @DeveloperAPI
 class DatasetContext:
@@ -62,6 +65,7 @@ class DatasetContext:
         actor_prefetcher_enabled: bool,
         use_push_based_shuffle: bool,
         scheduling_strategy: SchedulingStrategyT,
+        use_polars: bool,
     ):
         """Private constructor (use get_current() instead)."""
         self.block_owner = block_owner
@@ -74,6 +78,7 @@ class DatasetContext:
         self.actor_prefetcher_enabled = actor_prefetcher_enabled
         self.use_push_based_shuffle = use_push_based_shuffle
         self.scheduling_strategy = scheduling_strategy
+        self.use_polars = use_polars
 
     @staticmethod
     def get_current() -> "DatasetContext":
@@ -98,6 +103,7 @@ class DatasetContext:
                     actor_prefetcher_enabled=DEFAULT_ACTOR_PREFETCHER_ENABLED,
                     use_push_based_shuffle=DEFAULT_USE_PUSH_BASED_SHUFFLE,
                     scheduling_strategy=DEFAULT_SCHEDULING_STRATEGY,
+                    use_polars=DEFAULT_USE_POLARS,
                 )
 
             if (
