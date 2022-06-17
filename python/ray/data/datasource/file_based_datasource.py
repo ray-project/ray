@@ -376,7 +376,10 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
 
         write_block = cached_remote_fn(write_block).options(**ray_remote_args)
 
-        file_format = self._file_format()
+        file_format = self._file_extension
+        if isinstance(file_format, list):
+            file_format = file_format[0]
+
         write_tasks = []
         if not block_path_provider:
             block_path_provider = DefaultBlockWritePathProvider()
