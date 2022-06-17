@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 # The internal column name used for pure-tensor datasets, represented as
 # single-tensor-column tables.
-VALUE_COL_NAME = "__value__"
+VALUE_COL_NAME = "__item__"
 
 T = TypeVar("T")
 

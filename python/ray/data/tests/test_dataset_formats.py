@@ -1099,7 +1099,7 @@ def test_numpy_roundtrip(ray_start_regular_shared, fs, data_path):
     ds = ray.data.read_numpy(data_path, filesystem=fs)
     assert str(ds) == (
         "Dataset(num_blocks=2, num_rows=None, "
-        "schema={__value__: <ArrowTensorType: shape=(1,), dtype=int64>})"
+        "schema={__item__: <ArrowTensorType: shape=(1,), dtype=int64>})"
     )
     np.testing.assert_equal(ds.take(2), [np.array([0]), np.array([1])])
 
@@ -1111,7 +1111,7 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_numpy(path)
     assert str(ds) == (
         "Dataset(num_blocks=1, num_rows=10, "
-        "schema={__value__: <ArrowTensorType: shape=(1,), dtype=int64>})"
+        "schema={__item__: <ArrowTensorType: shape=(1,), dtype=int64>})"
     )
     np.testing.assert_equal(ds.take(2), [np.array([0]), np.array([1])])
 
@@ -1124,7 +1124,7 @@ def test_numpy_read_meta_provider(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_numpy(path, meta_provider=FastFileMetadataProvider())
     assert str(ds) == (
         "Dataset(num_blocks=1, num_rows=10, "
-        "schema={__value__: <ArrowTensorType: shape=(1,), dtype=int64>})"
+        "schema={__item__: <ArrowTensorType: shape=(1,), dtype=int64>})"
     )
     np.testing.assert_equal(ds.take(2), [np.array([0]), np.array([1])])
 
@@ -1181,7 +1181,7 @@ def test_numpy_read_partitioned_with_filter(
         val_str = "".join(f"array({v}, dtype=int8), " for v in vals)[:-2]
         assert_base_partitioned_ds(
             ds,
-            schema="{__value__: <ArrowTensorType: shape=(2,), dtype=int8>}",
+            schema="{__item__: <ArrowTensorType: shape=(2,), dtype=int8>}",
             sorted_values=f"[[{val_str}]]",
             ds_take_transform_fn=lambda taken: [taken],
             sorted_values_transform_fn=lambda sorted_values: str(sorted_values),

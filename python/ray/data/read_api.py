@@ -175,7 +175,7 @@ def range_tensor(
         Dataset(
             num_blocks=200,
             num_rows=1000,
-            schema={__value__: <ArrowTensorType: shape=(2, 2), dtype=int64>},
+            schema={__item__: <ArrowTensorType: shape=(2, 2), dtype=int64>},
         )
         >>> ds.map_batches(lambda arr: arr * 2).take(2) # doctest: +SKIP
         [array([[0, 0],

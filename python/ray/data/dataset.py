@@ -2150,7 +2150,7 @@ class Dataset(Generic[T]):
             path: The path to the destination root directory, where npy
                 files will be written to.
             column: The name of the table column that contains the tensor to
-                be written. The default is ``"__value__"``, the column name that
+                be written. The default is ``"__item__"``, the column name that
                 Datasets uses for storing tensors in single-column tables.
             filesystem: The filesystem implementation to write to.
             try_create_dir: Try to create all directories in destination path

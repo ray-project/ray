@@ -17,6 +17,7 @@ from ray.data.block import (
 from ray.data.context import DatasetContext
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.table_block import VALUE_COL_NAME
 from ray.data._internal.util import _check_pyarrow_version
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -184,43 +185,38 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
         # Example of a read task. In a real datasource, this would pull data
         # from an external system instead of generating dummy data.
         def make_block(start: int, count: int) -> Block:
-            if block_format == "arrow":
-                import pyarrow as pa
+            import pyarrow as pa
 
-                return pa.Table.from_arrays(
-                    [np.arange(start, start + count)], names=["value"]
-                )
-            elif block_format == "tensor":
-                import pyarrow as pa
-
+            if block_format == "tensor":
                 tensor = np.ones(tensor_shape, dtype=np.int64) * np.expand_dims(
                     np.arange(start, start + count),
                     tuple(range(1, 1 + len(tensor_shape))),
                 )
                 return BlockAccessor.batch_to_block(tensor)
+            elif block_format == "arrow":
+                return pa.Table.from_arrays(
+                    [np.arange(start, start + count)], names=["value"]
+                )
             else:
-                return list(builtins.range(start, start + count))
+                return pa.Table.from_arrays(
+                    [np.arange(start, start + count)], names=[VALUE_COL_NAME]
+                )
 
         i = 0
         while i < n:
+            _check_pyarrow_version()
+            import pyarrow as pa
+
             count = min(block_size, n - i)
-            if block_format == "arrow":
-                _check_pyarrow_version()
-                import pyarrow as pa
-
-                schema = pa.Table.from_pydict({"value": [0]}).schema
-            elif block_format == "tensor":
-                _check_pyarrow_version()
-                import pyarrow as pa
-
+            if block_format == "tensor":
                 tensor = np.ones(tensor_shape, dtype=np.int64) * np.expand_dims(
                     np.arange(0, 10), tuple(range(1, 1 + len(tensor_shape)))
                 )
                 schema = BlockAccessor.batch_to_block(tensor).schema
-            elif block_format == "list":
-                schema = int
+            elif block_format == "arrow":
+                schema = pa.Table.from_pydict({"value": [0]}).schema
             else:
-                raise ValueError("Unsupported block type", block_format)
+                schema = pa.Table.from_pydict({VALUE_COL_NAME: [0]}).schema
             if block_format == "tensor":
                 element_size = np.product(tensor_shape)
             else:

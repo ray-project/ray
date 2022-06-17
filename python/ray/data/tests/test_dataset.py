@@ -54,7 +54,7 @@ class SlowCSVDatasource(CSVDatasource):
 # Tests that we don't block on exponential rampup when doing bulk reads.
 # https://github.com/ray-project/ray/issues/20625
 @pytest.mark.parametrize("block_split", [False, True])
-def test_bulk_lazy_eval_split_mode(shutdown_only, block_split, tmp_path):
+def  test_bulk_lazy_eval_split_mode(shutdown_only, block_split, tmp_path):
     ray.init(num_cpus=8)
     ctx = ray.data.context.DatasetContext.get_current()
 
@@ -586,7 +586,7 @@ def test_tensors_basic(ray_start_regular_shared):
     ds = ray.data.range_tensor(6, shape=tensor_shape)
     assert str(ds) == (
         "Dataset(num_blocks=6, num_rows=6, "
-        "schema={__value__: <ArrowTensorType: shape=(3, 5), dtype=int64>})"
+        "schema={__item__: <ArrowTensorType: shape=(3, 5), dtype=int64>})"
     )
     assert ds.size_bytes() == 5 * 3 * 6 * 8
 
@@ -777,7 +777,7 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
     ds = ray.data.range(10).map(lambda _: np.ones((4, 4)))
     assert str(ds) == (
         "Dataset(num_blocks=10, num_rows=10, "
-        "schema={__value__: <ArrowTensorType: shape=(4, 4), dtype=double>})"
+        "schema={__item__: <ArrowTensorType: shape=(4, 4), dtype=double>})"
     )
 
     # Test map_batches.
@@ -786,14 +786,14 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
     )
     assert str(ds) == (
         "Dataset(num_blocks=4, num_rows=24, "
-        "schema={__value__: <ArrowTensorType: shape=(4, 4), dtype=double>})"
+        "schema={__item__: <ArrowTensorType: shape=(4, 4), dtype=double>})"
     )
 
     # Test flat_map.
     ds = ray.data.range(10).flat_map(lambda _: [np.ones((4, 4)), np.ones((4, 4))])
     assert str(ds) == (
         "Dataset(num_blocks=10, num_rows=20, "
-        "schema={__value__: <ArrowTensorType: shape=(4, 4), dtype=double>})"
+        "schema={__item__: <ArrowTensorType: shape=(4, 4), dtype=double>})"
     )
 
 
