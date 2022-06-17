@@ -440,6 +440,9 @@ class Trainable:
         # User saves checkpoint
         checkpoint_dict_or_path = self.save_checkpoint(checkpoint_dir)
 
+        if checkpoint_dict_or_path is None:
+            checkpoint_dict_or_path = checkpoint_dir
+
         # Get trainable metadata
         metadata = self.get_state()
 
@@ -941,7 +944,7 @@ class Trainable:
         """
         raise NotImplementedError
 
-    def save_checkpoint(self, tmp_checkpoint_dir: str):
+    def save_checkpoint(self, checkpoint_dir: str) -> Optional[Union[str, Dict]]:
         """Subclasses should override this to implement ``save()``.
 
         Warning:
@@ -960,7 +963,7 @@ class Trainable:
         .. versionadded:: 0.8.7
 
         Args:
-            tmp_checkpoint_dir: The directory where the checkpoint
+            checkpoint_dir: The directory where the checkpoint
                 file must be stored. In a Tune run, if the trial is paused,
                 the provided path may be temporary and moved.
 
@@ -973,7 +976,7 @@ class Trainable:
         Example:
             >>> trainable, trainable1, trainable2 = ... # doctest: +SKIP
             >>> print(trainable1.save_checkpoint("/tmp/checkpoint_1")) # doctest: +SKIP
-            "/tmp/checkpoint_1/my_checkpoint_file"
+            "/tmp/checkpoint_1"
             >>> print(trainable2.save_checkpoint("/tmp/checkpoint_2")) # doctest: +SKIP
             {"some": "data"}
             >>> trainable.save_checkpoint("/tmp/bad_example") # doctest: +SKIP
