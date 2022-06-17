@@ -33,6 +33,7 @@ from ray.data.datasource import (
 )
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
 from ray.data.datasource.parquet_datasource import PARALLELIZE_META_FETCH_THRESHOLD
+from ray.data.datasource.parquet_datasource import _deserialize_pieces_with_retry
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 from ray.types import ObjectRef
@@ -327,6 +328,68 @@ def test_read_example_data(ray_start_regular_shared, tmp_path):
             "variety": "Setosa",
         }
     ]
+
+
+@pytest.mark.parametrize(
+    "fs,data_path",
+    [
+        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+    ],
+)
+def test_parquet_deserialize_pieces_with_retry(
+    ray_start_regular_shared, fs, data_path, monkeypatch
+):
+    from ray import cloudpickle
+
+    setup_data_path = _unwrap_protocol(data_path)
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    table = pa.Table.from_pandas(df1)
+    path1 = os.path.join(setup_data_path, "test1.parquet")
+    pq.write_table(table, path1, filesystem=fs)
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    table = pa.Table.from_pandas(df2)
+    path2 = os.path.join(setup_data_path, "test2.parquet")
+    pq.write_table(table, path2, filesystem=fs)
+
+    dataset_kwargs = {}
+    pq_ds = pq.ParquetDataset(
+        data_path, **dataset_kwargs, filesystem=fs, use_legacy_dataset=False
+    )
+    serialized_pieces = cloudpickle.dumps(pq_ds.pieces)
+
+    # test 1st attempt succeed
+    pieces = _deserialize_pieces_with_retry(serialized_pieces)
+    assert "test1.parquet" in pieces[0].path
+    assert "test2.parquet" in pieces[1].path
+
+    # test the 3rd attempt succeed with a mock function constructed
+    # to throw in the first two attempts
+    class MockDeserializer:
+        def __init__(self, planned_exp_or_return):
+            self.planned_exp_or_return = planned_exp_or_return
+            self.cur_index = 0
+
+        def __call__(self, *args: Any, **kwds: Any) -> Any:
+            exp_or_ret = self.planned_exp_or_return[self.cur_index]
+            self.cur_index += 1
+            if type(exp_or_ret) == Exception:
+                raise exp_or_ret
+            else:
+                return exp_or_ret
+
+    mock_deserializer = MockDeserializer(
+        [
+            Exception("1st mock failed attempt"),
+            Exception("2nd mock failed attempt"),
+            pieces,
+        ]
+    )
+    monkeypatch.setattr(
+        ray.data.datasource.parquet_datasource, "_deserialize_pieces", mock_deserializer
+    )
+    retried_pieces = _deserialize_pieces_with_retry(serialized_pieces)
+    assert "test1.parquet" in retried_pieces[0].path
+    assert "test2.parquet" in retried_pieces[1].path
 
 
 @pytest.mark.parametrize(
