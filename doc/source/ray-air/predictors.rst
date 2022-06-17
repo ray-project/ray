@@ -3,16 +3,41 @@
 Inference with trained models
 =============================
 
-.. figure:: images/air-predictor.png
+.. image:: images/air-predictor.png
 
-Once you have a trained model, you can use Ray AIR's Predictors and associated utilities to perform scalable offline and
-online prediction.
+After you train a model, you will often want to use the model to do inference/prediction.
+
+Ray AIR Predictors are a class that loads models from Checkpoints to perform inference. Predictors are used by Batch Predictors and PredictorDeployments to do large-scale scoring and online inference.
+
+Predictors Basics
+-----------------
+
+Let's walk through a basic usage of the Predictor. In the below example, we create Checkpoint object from a model definition. Then, the checkpoint is used to create a framework specific Predictor (the TensorflowPredictor), which then can be used for inference:
+
+.. literalinclude:: doc_code/use_pretrained_model.py
+    :language: python
+    :start-after: __use_predictor_start__
+    :end-before: __use_predictor_end__
+
+
+
+Predictors expose a ``predict`` method that accepts an input batch of type ``DataBatchType`` (which is a typing union of different standard Python ecosystem data types, such as Pandas Dataframe or Numpy Array) and outputs predictions of the same type as the input batch.
+
+**Life of a prediction:** Underneath the hood, when the ``Predictor.predict`` method is called the following occurs:
+
+- The input batch is converted into a pandas DataFrame. Tensor input (like a ``np.ndarray``) will be converted into a single column Pandas Dataframe.
+- If there is a :ref:`Preprocessor <air-preprocessor-ref>` saved in the provided :ref:`Checkpoint <air-checkpoint-ref>`, the preprocessor will be used to transform the DataFrame.
+- The transformed DataFrame will be passed to the model for inference.
+- The predictions will be outputted by ``predict`` in the same type as the original input.
+
+.. TODO: What about GPU inference
+
 
 Creating a Predictor
 --------------------
 Predictors can be created from Checkpoints.
 
-Either as a result of Training (Result, ResultGrid) or from a :ref:`pretrained model` <use-pretrained-model>.
+Either as a result of Training (Result, ResultGrid) or from a :ref:`pretrained model <use-pretrained-model>`.
 
 Checkpoints contain the trained model for prediction and the fitted Preprocessor
 
