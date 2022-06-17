@@ -1459,6 +1459,7 @@ cc_test(
     deps = [
         ":ray_util",
         "@boost//:asio",
+        "@boost//:process",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -2443,6 +2444,19 @@ cc_test(
     deps = [
         ":ray_common",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "bundle_location_index_test",
+    srcs = [
+        "src/ray/common/test/bundle_location_index_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":ray_common",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

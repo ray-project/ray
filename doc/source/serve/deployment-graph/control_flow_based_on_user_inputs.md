@@ -1,6 +1,6 @@
 # Pattern: Control flow based on the user inputs
 
-The example shows how to user inputs to control the graph flow
+The example shows how to use inputs to control the graph flow
 
 ![pic](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/deployment-graph/control_flow_based_on_user_inputs.svg)
 

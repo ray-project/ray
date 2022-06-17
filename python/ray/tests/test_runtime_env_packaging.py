@@ -2,6 +2,8 @@ import os
 from pathlib import Path
 import random
 from shutil import copytree, rmtree, make_archive
+import shutil
+import socket
 import string
 import sys
 from filecmp import dircmp
@@ -55,6 +57,20 @@ def random_dir(tmp_path):
         with p2.open("w") as f2:
             f2.write(random_string(200))
     yield tmp_path
+
+
+@pytest.fixture
+def short_path_dir():
+    """A directory with a short path.
+
+    This directory is used to test the case where a socket file is in the
+    directory.  Socket files have a maximum length of 108 characters, so the
+    path from the built-in pytest fixture tmp_path is too long.
+    """
+    dir = Path("short_path")
+    dir.mkdir()
+    yield dir
+    shutil.rmtree(str(dir))
 
 
 @pytest.fixture
@@ -142,6 +158,29 @@ class TestGetURIForDirectory:
         uri = get_uri_for_directory(random_dir)
         hex_hash = uri.split("_")[-1][: -len(".zip")]
         assert len(hex_hash) == 16
+
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="Unix sockets not available on windows",
+    )
+    def test_unopenable_files_skipped(self, random_dir, short_path_dir):
+        """Test that unopenable files can be present in the working_dir.
+
+        Some files such as `.sock` files are unopenable. This test ensures that
+        we skip those files when generating the content hash. Previously this
+        would raise an exception, see #25411.
+        """
+
+        # Create a socket file.
+        sock = socket.socket(socket.AF_UNIX)
+        sock.bind(str(short_path_dir / "test_socket"))
+
+        # Check that opening the socket raises an exception.
+        with pytest.raises(OSError):
+            (short_path_dir / "test_socket").open()
+
+        # Check that the hash can still be generated without errors.
+        get_uri_for_directory(short_path_dir)
 
 
 class TestUploadPackageIfNeeded:
@@ -435,4 +474,7 @@ def test_get_local_dir_from_uri():
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-sv", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

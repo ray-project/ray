@@ -1,24 +1,15 @@
 import copy
 import functools
-import gym
 import logging
 import math
-import numpy as np
 import os
 import threading
 import time
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Type, Union
+
+import gym
+import numpy as np
 import tree  # pip install dm_tree
-from typing import (
-    Any,
-    Dict,
-    List,
-    Optional,
-    Set,
-    Tuple,
-    Type,
-    Union,
-    TYPE_CHECKING,
-)
 
 import ray
 from ray.rllib.models.catalog import ModelCatalog
@@ -26,16 +17,16 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.torch_policy import _directStepOptimizerSingleton
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils import force_list, NullContextManager
+from ray.rllib.policy.torch_policy import _directStepOptimizerSingleton
+from ray.rllib.utils import NullContextManager, force_list
 from ray.rllib.utils.annotations import (
     DeveloperAPI,
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
-    override,
     is_overridden,
+    override,
 )
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
@@ -45,12 +36,12 @@ from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import (
+    AlgorithmConfigDict,
     GradInfoDict,
     ModelGradients,
     ModelWeights,
-    TensorType,
     TensorStructType,
-    TrainerConfigDict,
+    TensorType,
 )
 
 if TYPE_CHECKING:
@@ -70,7 +61,7 @@ class TorchPolicyV2(Policy):
         self,
         observation_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
-        config: TrainerConfigDict,
+        config: AlgorithmConfigDict,
         *,
         max_seq_len: int = 20,
     ):
@@ -416,7 +407,7 @@ class TorchPolicyV2(Policy):
         New columns can be added to sample_batch and existing ones may be altered.
 
         Args:
-            sample_batch (SampleBatch): The SampleBatch to postprocess.
+            sample_batch: The SampleBatch to postprocess.
             other_agent_batches (Optional[Dict[PolicyID, SampleBatch]]): Optional
                 dict of AgentIDs mapping to other agents' trajectory data (from the
                 same episode). NOTE: The other agents use the same policy.
@@ -588,14 +579,14 @@ class TorchPolicyV2(Policy):
             # Action dist class and inputs are generated via custom function.
             if is_overridden(self.action_distribution_fn):
                 dist_inputs, dist_class, state_out = self.action_distribution_fn(
-                    self,
                     self.model,
-                    input_dict=input_dict,
+                    obs_batch=input_dict,
                     state_batches=state_batches,
                     seq_lens=seq_lens,
                     explore=False,
                     is_training=False,
                 )
+
             # Default action-dist inputs calculation.
             else:
                 dist_class = self.dist_class
@@ -1013,7 +1004,6 @@ class TorchPolicyV2(Policy):
         if is_overridden(self.action_sampler_fn):
             action_dist = dist_inputs = None
             actions, logp, state_out = self.action_sampler_fn(
-                self,
                 self.model,
                 obs_batch=input_dict,
                 state_batches=state_batches,
@@ -1025,9 +1015,8 @@ class TorchPolicyV2(Policy):
             self.exploration.before_compute_actions(explore=explore, timestep=timestep)
             if is_overridden(self.action_distribution_fn):
                 dist_inputs, dist_class, state_out = self.action_distribution_fn(
-                    self,
                     self.model,
-                    input_dict=input_dict,
+                    obs_batch=input_dict,
                     state_batches=state_batches,
                     seq_lens=seq_lens,
                     explore=explore,

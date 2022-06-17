@@ -2,14 +2,13 @@ import os
 from typing import Optional, Union
 
 import pandas as pd
+
+from ray.air.result import Result
 from ray.cloudpickle import cloudpickle
 from ray.exceptions import RayTaskError
-from ray.ml.checkpoint import Checkpoint
-from ray.ml.result import Result
 from ray.tune import ExperimentAnalysis
 from ray.tune.error import TuneError
 from ray.tune.trial import Trial
-from ray.tune.utils.trainable import TrainableUtil
 from ray.util import PublicAPI
 
 
@@ -165,11 +164,7 @@ class ResultGrid:
         return None
 
     def _trial_to_result(self, trial: Trial) -> Result:
-        if trial.checkpoint.value:
-            checkpoint_dir = TrainableUtil.find_checkpoint_dir(trial.checkpoint.value)
-            checkpoint = Checkpoint.from_directory(checkpoint_dir)
-        else:
-            checkpoint = None
+        checkpoint = trial.checkpoint.to_air_checkpoint()
 
         result = Result(
             checkpoint=checkpoint,

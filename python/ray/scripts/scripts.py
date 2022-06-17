@@ -37,12 +37,21 @@ from ray.autoscaler._private.commands import (
 )
 from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
-from ray.autoscaler._private.kuberay.run_autoscaler import run_autoscaler_with_retries
+from ray.autoscaler._private.kuberay.run_autoscaler import run_kuberay_autoscaler
 from ray.internal.internal_api import memory_summary
 from ray.internal.storage import _load_class
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cli_logger, cf
 from ray.dashboard.modules.job.cli import job_cli_group
-from ray.experimental.state.state_cli import list_state_cli_group
+from ray.experimental.state.state_cli import list as cli_list
+from ray.experimental.state.api import (
+    get_log,
+    list_logs,
+)
+from ray.experimental.state.state_cli import (
+    get_api_server_url,
+    get_state_api_output_to_print,
+)
+from ray.experimental.state.common import DEFAULT_LIMIT
 from distutils.dir_util import copy_tree
 
 logger = logging.getLogger(__name__)
@@ -340,8 +349,7 @@ def debug(address):
     required=False,
     type=int,
     default=10001,
-    help="the port number the ray client server will bind on. If not set, "
-    "the ray client server will not be started.",
+    help="the port number the ray client server binds on, default to 10001.",
 )
 @click.option(
     "--memory",
@@ -1938,6 +1946,150 @@ def local_dump(
     )
 
 
+@cli.command(hidden=True)
+@click.argument(
+    "glob_filter",
+    required=False,
+    default="*",
+)
+@click.option(
+    "-ip",
+    "--node-ip",
+    required=False,
+    type=str,
+    default=None,
+    help="Filters the logs by this ip address.",
+)
+@click.option(
+    "--node-id",
+    "-id",
+    required=False,
+    type=str,
+    default=None,
+    help="Filters the logs by this NodeID.",
+)
+@click.option(
+    "--pid",
+    "-pid",
+    required=False,
+    type=str,
+    default=None,
+    help="Retrieves the logs from the process with this pid.",
+)
+@click.option(
+    "--actor-id",
+    "-a",
+    required=False,
+    type=str,
+    default=None,
+    help="Retrieves the logs corresponding to this ActorID.",
+)
+@click.option(
+    "--task-id",
+    "-t",
+    required=False,
+    type=str,
+    default=None,
+    help="Retrieves the logs corresponding to this TaskID.",
+)
+@click.option(
+    "--follow",
+    "-f",
+    required=False,
+    type=bool,
+    is_flag=True,
+    help="Streams the log file as it is updated instead of just tailing.",
+)
+@click.option(
+    "--tail",
+    required=False,
+    type=int,
+    default=None,
+    help="Number of lines to tail from log. -1 indicates fetching the whole file.",
+)
+@click.option(
+    "--interval",
+    required=False,
+    type=float,
+    default=None,
+    help="The interval to print new logs when `--follow` is specified.",
+    hidden=True,
+)
+def logs(
+    glob_filter,
+    node_ip: str,
+    node_id: str,
+    pid: str,
+    actor_id: str,
+    task_id: str,
+    follow: bool,
+    tail: int,
+    interval: float,
+):
+    if task_id is not None:
+        raise NotImplementedError("--task-id is not yet supported")
+
+    api_server_url = get_api_server_url()
+
+    # If both id & ip are not provided, choose a head node as a default.
+    if node_id is None and node_ip is None:
+        address = ray._private.services.canonicalize_bootstrap_address(None)
+        node_ip = address.split(":")[0]
+
+    filename = None
+    match_unique = pid is not None or actor_id is not None  # Worker log  # Actor log
+
+    # If there's no unique match, try listing logs based on the glob filter.
+    if not match_unique:
+        logs = list_logs(
+            api_server_url=api_server_url,
+            node_id=node_id,
+            node_ip=node_ip,
+            glob_filter=glob_filter,
+        )
+        log_files_found = []
+        for _, log_files in logs.items():
+            for log_file in log_files:
+                log_files_found.append(log_file)
+
+        # if there's only 1 file, that means there's a unique match.
+        if len(log_files_found) == 1:
+            filename = log_files_found[0]
+            match_unique = True
+        # Otherwise, print a list of log files.
+        else:
+            if node_id:
+                print(f"Node ID: {node_id}")
+            elif node_ip:
+                print(f"Node IP: {node_ip}")
+            print(get_state_api_output_to_print(logs))
+
+    # If there's an unique match, print the log file.
+    if match_unique:
+        if not tail:
+            tail = 0 if follow else DEFAULT_LIMIT
+
+            if tail > 0:
+                print(
+                    f"--- Log has been truncated to last {tail} lines."
+                    " Use `--tail` flag to toggle. ---\n"
+                )
+
+        for chunk in get_log(
+            api_server_url=api_server_url,
+            node_id=node_id,
+            node_ip=node_ip,
+            filename=filename,
+            actor_id=actor_id,
+            task_id=task_id,
+            pid=pid,
+            tail=tail,
+            follow=follow,
+            _interval=interval,
+        ):
+            print(chunk, end="", flush=True)
+
+
 @cli.command()
 @click.argument("cluster_config_file", required=False, type=str)
 @click.option(
@@ -2096,25 +2248,14 @@ def global_gc(address):
     help="The Kubernetes namespace the Ray Cluster lives in.\n"
     "Should coincide with the `metadata.namespace` of the RayCluster CR.",
 )
-@click.option(
-    "--redis-password",
-    required=False,
-    type=str,
-    default="",
-    help="The password to use for Redis.\n"
-    "Ray versions >= 1.11.0 don't use Redis.\n"
-    "Only set this if you really know what you're doing.",
-)
-def kuberay_autoscaler(
-    cluster_name: str, cluster_namespace: str, redis_password: str
-) -> None:
+def kuberay_autoscaler(cluster_name: str, cluster_namespace: str) -> None:
     """Runs the autoscaler for a Ray cluster managed by the KubeRay operator.
 
     `ray kuberay-autoscaler` is meant to be used as an entry point in
         KubeRay cluster configs.
     `ray kuberay-autoscaler` is NOT a public CLI.
     """
-    run_autoscaler_with_retries(cluster_name, cluster_namespace, redis_password)
+    run_kuberay_autoscaler(cluster_name, cluster_namespace)
 
 
 @cli.command(name="health-check", hidden=True)
@@ -2339,7 +2480,7 @@ cli.add_command(cpp)
 cli.add_command(disable_usage_stats)
 cli.add_command(enable_usage_stats)
 add_command_alias(job_cli_group, name="job", hidden=True)
-add_command_alias(list_state_cli_group, name="list", hidden=True)
+cli.add_command(cli_list)
 
 try:
     from ray.serve.scripts import serve_cli

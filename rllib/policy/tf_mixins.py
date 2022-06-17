@@ -14,7 +14,7 @@ from ray.rllib.utils.typing import (
     LocalOptimizer,
     ModelGradients,
     TensorType,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
 )
 
 logger = logging.getLogger(__name__)
@@ -125,7 +125,7 @@ class EntropyCoeffSchedule:
 class KLCoeffMixin:
     """Assigns the `update_kl()` and other KL-related methods to a TFPolicy.
 
-    This is used in Trainers to update the KL coefficient after each
+    This is used in Algorithms to update the KL coefficient after each
     learning step based on `config.kl_target` and the measured KL value
     (from the train_batch).
     """
@@ -288,7 +288,7 @@ class TargetNetworkMixin:
         self,
         obs_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
-        config: TrainerConfigDict,
+        config: AlgorithmConfigDict,
     ):
         @make_tf_callable(self.get_session())
         def do_update():
@@ -335,14 +335,19 @@ def compute_gradients(
     grads_and_vars = optimizer.compute_gradients(loss, variables)
 
     # Clip by global norm, if necessary.
-    if policy.config["grad_clip"] is not None:
+    if policy.config.get("grad_clip") is not None:
         # Defuse inf gradients (due to super large losses).
         grads = [g for (g, v) in grads_and_vars]
         grads, _ = tf.clip_by_global_norm(grads, policy.config["grad_clip"])
         # If the global_norm is inf -> All grads will be NaN. Stabilize this
         # here by setting them to 0.0. This will simply ignore destructive loss
         # calculations.
-        policy.grads = [tf.where(tf.math.is_nan(g), tf.zeros_like(g), g) for g in grads]
+        policy.grads = []
+        for g in grads:
+            if g is not None:
+                policy.grads.append(tf.where(tf.math.is_nan(g), tf.zeros_like(g), g))
+            else:
+                policy.grads.append(None)
         clipped_grads_and_vars = list(zip(policy.grads, variables))
         return clipped_grads_and_vars
     else:
