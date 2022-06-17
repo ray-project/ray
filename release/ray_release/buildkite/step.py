@@ -2,6 +2,7 @@ import copy
 import os
 from typing import Any, Dict, Optional
 
+from ray_release.aws import RELEASE_AWS_BUCKET
 from ray_release.buildkite.concurrency import CONCURRENY_GROUPS, get_concurrency_group
 from ray_release.config import (
     DEFAULT_ANYSCALE_PROJECT,
@@ -19,9 +20,9 @@ DEFAULT_ARTIFACTS_DIR_HOST = "/tmp/ray_release_test_artifacts"
 
 DEFAULT_STEP_TEMPLATE: Dict[str, Any] = {
     "env": {
-        "ANYSCALE_CLOUD_ID": DEFAULT_CLOUD_ID,
-        "ANYSCALE_PROJECT": DEFAULT_ANYSCALE_PROJECT,
-        "RELEASE_AWS_BUCKET": "ray-release-automation-results",
+        "ANYSCALE_CLOUD_ID": str(DEFAULT_CLOUD_ID),
+        "ANYSCALE_PROJECT": str(DEFAULT_ANYSCALE_PROJECT),
+        "RELEASE_AWS_BUCKET": str(RELEASE_AWS_BUCKET),
         "RELEASE_AWS_LOCATION": "dev",
         "RELEASE_AWS_DB_NAME": "ray_ci",
         "RELEASE_AWS_DB_TABLE": "release_test_result",

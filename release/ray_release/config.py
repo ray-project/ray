@@ -132,5 +132,5 @@ def get_test_cloud_id(test: Test) -> str:
         if not cloud_id:
             raise RuntimeError(f"Couldn't find cloud with name `{cloud_name}`.")
     else:
-        cloud_id = cloud_id or DEFAULT_CLOUD_ID
+        cloud_id = cloud_id or str(DEFAULT_CLOUD_ID)
     return cloud_id

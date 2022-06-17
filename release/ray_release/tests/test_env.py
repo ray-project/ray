@@ -34,6 +34,7 @@ def test_load_env_changes():
 
     assert new_val
     assert old_val != new_val
+    assert "prj_" in new_val
 
 
 if __name__ == "__main__":

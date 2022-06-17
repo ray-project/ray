@@ -2,6 +2,8 @@ import os
 
 from ray_release.exception import ReleaseTestConfigError
 
+DEFAULT_ENV = "prod"
+
 
 def load_environment(environment_name: str):
     this_dir = os.path.dirname(__file__)
@@ -16,5 +18,5 @@ def load_environment(environment_name: str):
         for line in f.readlines():
             if not line:
                 continue
-            key, val = line.split("=", maxsplit=1)
-            os.environ[key] = "val"
+            key, val = line.strip().split("=", maxsplit=1)
+            os.environ[key] = val.strip('"')
