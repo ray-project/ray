@@ -414,6 +414,15 @@ class Trainable:
             "ray_version": ray.__version__,
         }
 
+    def _create_checkpoint_dir(
+        self, checkpoint_dir: Optional[str] = None
+    ) -> Optional[str]:
+        # Create checkpoint_xxxxx directory and drop checkpoint marker
+        checkpoint_dir = TrainableUtil.make_checkpoint_dir(
+            checkpoint_dir or self.logdir, index=self.iteration
+        )
+        return checkpoint_dir
+
     def save(self, checkpoint_dir: Optional[str] = None) -> str:
         """Saves the current model state to a checkpoint.
 
@@ -432,16 +441,15 @@ class Trainable:
         Note the return path should match up with what is expected of
         `restore()`.
         """
-        # Create checkpoint_xxxxx directory and drop checkpoint marker
-        checkpoint_dir = TrainableUtil.make_checkpoint_dir(
-            checkpoint_dir or self.logdir, index=self.iteration
-        )
+        checkpoint_dir = self._create_checkpoint_dir(checkpoint_dir=checkpoint_dir)
 
         # User saves checkpoint
         checkpoint_dict_or_path = self.save_checkpoint(checkpoint_dir)
 
         if checkpoint_dict_or_path is None:
             checkpoint_dict_or_path = checkpoint_dir
+        elif checkpoint_dir is None:
+            checkpoint_dir = checkpoint_dict_or_path
 
         # Get trainable metadata
         metadata = self.get_state()

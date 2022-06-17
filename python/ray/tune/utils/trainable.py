@@ -6,7 +6,6 @@ import shutil
 from typing import Any, Dict, Optional, Union
 
 import pandas as pd
-from six import string_types
 
 import ray
 import ray.cloudpickle as pickle
@@ -29,52 +28,6 @@ class TrainableUtil:
     def load_metadata(checkpoint_dir: str) -> Dict:
         with open(os.path.join(checkpoint_dir, ".tune_metadata"), "rb") as f:
             return pickle.load(f)
-
-    @staticmethod
-    def process_checkpoint(
-        checkpoint: Union[Dict, str], parent_dir: str, trainable_state: Dict
-    ) -> str:
-        """Creates checkpoint file structure and writes metadata
-        under `parent_dir`.
-
-        The file structure could either look like:
-        - checkpoint_00000 (returned path)
-        -- .is_checkpoint
-        -- .tune_metadata
-        -- xxx.pkl (or whatever user specifies in their Trainable)
-        Or,
-        - checkpoint_00000
-        -- .is_checkpoint
-        -- .tune_metadata
-        -- checkpoint (returned path)
-        """
-        saved_as_dict = False
-        if isinstance(checkpoint, string_types):
-            if not checkpoint.startswith(parent_dir):
-                raise ValueError(
-                    "The returned checkpoint path must be within the "
-                    "given checkpoint dir {}: {}".format(parent_dir, checkpoint)
-                )
-            checkpoint_path = checkpoint
-            if os.path.isdir(checkpoint_path):
-                # Add trailing slash to prevent tune metadata from
-                # being written outside the directory.
-                checkpoint_path = os.path.join(checkpoint_path, "")
-        elif isinstance(checkpoint, dict):
-            saved_as_dict = True
-            checkpoint_path = os.path.join(parent_dir, "checkpoint")
-            with open(checkpoint_path, "wb") as f:
-                pickle.dump(checkpoint, f)
-        else:
-            raise ValueError(
-                "Returned unexpected type {}. "
-                "Expected str or dict.".format(type(checkpoint))
-            )
-
-        with open(os.path.join(parent_dir, ".tune_metadata"), "wb") as f:
-            trainable_state["saved_as_dict"] = saved_as_dict
-            pickle.dump(trainable_state, f)
-        return checkpoint_path
 
     @staticmethod
     def load_checkpoint_metadata(checkpoint_path: str) -> Optional[Dict]:

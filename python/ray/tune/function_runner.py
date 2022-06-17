@@ -450,34 +450,24 @@ class FunctionRunner(Trainable):
             # Ideally, there are no save calls upon a temporary
             # checkpoint, but certain schedulers might.
             if FuncCheckpointUtil.is_temp_checkpoint_dir(parent_dir):
-                relative_path = os.path.relpath(checkpoint, parent_dir)
                 parent_dir = FuncCheckpointUtil.create_perm_checkpoint(
                     checkpoint_dir=parent_dir,
                     logdir=self.logdir,
                     step=self.training_iteration,
                 )
-                checkpoint = os.path.abspath(os.path.join(parent_dir, relative_path))
         else:
             raise ValueError(
                 "Provided checkpoint was expected to have "
                 "type (str, dict). Got {}.".format(type(checkpoint))
             )
 
-        checkpoint_path = TrainableUtil.process_checkpoint(
-            checkpoint, parent_dir, state
-        )
-        return checkpoint_path
+        TrainableUtil.write_metadata(parent_dir, state)
+        return parent_dir
 
-    def save(self, checkpoint_path=None) -> str:
-        if checkpoint_path:
-            raise ValueError("Checkpoint path should not be used with function API.")
-
-        checkpoint_path = self.save_checkpoint()
-
-        parent_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
-        self._maybe_save_to_cloud(parent_dir)
-
-        return checkpoint_path
+    def _create_checkpoint_dir(
+        self, checkpoint_dir: Optional[str] = None
+    ) -> Optional[str]:
+        return None
 
     def save_to_object(self):
         checkpoint_path = self.save()
