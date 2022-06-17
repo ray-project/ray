@@ -316,7 +316,8 @@ class Dataset(Generic[T]):
             batch_format: Specify "native" to use the native block format (promotes
                 tables to Pandas and tensors to NumPy), "pandas" to select
                 ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or "numpy"
-                to select ``numpy.ndarray``. Default is "native".
+                to select ``numpy.ndarray`` for tensor datasets and
+                ``Dict[str, numpy.ndarray]`` for tabular datasets. Default is "native".
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
