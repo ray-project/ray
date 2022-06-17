@@ -33,15 +33,6 @@ class MockInMemoryStoreClient : public gcs::InMemoryStoreClient {
  public:
   explicit MockInMemoryStoreClient(instrumented_io_context &main_io_service)
       : gcs::InMemoryStoreClient(main_io_service) {}
-
-  Status AsyncPut(const std::string &table_name,
-                  const std::string &key,
-                  const std::string &data,
-                  bool overwrite,
-                  std::function<void(bool)> callback) override {
-    callback(true);
-    return Status::OK();
-  }
 };
 
 class GcsJobManagerTest : public ::testing::Test {
@@ -102,11 +93,33 @@ TEST_F(GcsJobManagerTest, TestGetJobConfig) {
       *add_job_request2,
       &empty_reply,
       [](Status, std::function<void()>, std::function<void()>) {});
+  io_service_.run();
   auto job_config1 = gcs_job_manager.GetJobConfig(job_id1);
   ASSERT_EQ("namespace_1", job_config1->ray_namespace());
 
   auto job_config2 = gcs_job_manager.GetJobConfig(job_id2);
   ASSERT_EQ("namespace_2", job_config2->ray_namespace());
+}
+
+TEST_F(GcsJobManagerTest, TestPreserveDriverInfo) {
+  gcs::GcsJobManager gcs_job_manager(
+      gcs_table_storage_, gcs_publisher_, runtime_env_manager_, *function_manager_);
+
+  auto job_id = JobID::FromInt(1);
+  gcs::GcsInitData gcs_init_data(gcs_table_storage_);
+  gcs_job_manager.Initialize(/*init_data=*/gcs_init_data);
+  auto add_job_request = Mocker::GenAddJobRequest(job_id, "namespace");
+
+  rpc::AddJobReply empty_reply;
+
+  gcs_job_manager.HandleAddJob(
+      *add_job_request,
+      &empty_reply,
+      [](Status, std::function<void()>, std::function<void()>) {});
+
+
+  auto job_config = gcs_job_manager.GetJobConfig(job_id);
+  ASSERT_EQ("namespace", job_config->ray_namespace());
 }
 
 int main(int argc, char **argv) {

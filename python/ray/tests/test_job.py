@@ -181,7 +181,7 @@ ray.get(_.value.remote())
     assert ray.get(detached_actor.value.remote()) == 1
 
 
-def test_job_timestamps(ray_start_regular):
+def test_job_observability(ray_start_regular):
     driver_template = """
 import ray
 from time import sleep
@@ -235,6 +235,11 @@ ray.shutdown()
     assert running["StartTime"] > 0
     assert running["EndTime"] == 0
 
+    assert len(running["DriverIPAddress"]) > 0
+    assert running["DriverPid"] > 0
+    assert len(finished["DriverIPAddress"]) > 0
+    assert finished["DriverPid"] > 0
+
     p.kill()
     # Give the second job time to clean itself up.
     time.sleep(1)
@@ -252,6 +257,9 @@ ray.shutdown()
     assert 0 < lapsed < 5000, f"Job should've taken ~1s {finished}"
 
     assert prev_running["EndTime"] > prev_running["StartTime"] > 0
+
+    assert len(prev_running["DriverIPAddress"]) > 0
+    assert prev_running["DriverPid"] > 0
 
 
 def test_config_metadata(shutdown_only):
