@@ -1,39 +1,42 @@
 import logging
 import pathlib
 import posixpath
+import urllib.parse
 from typing import (
+    TYPE_CHECKING,
+    Any,
     Callable,
-    Optional,
+    Dict,
+    Iterable,
+    Iterator,
     List,
+    Optional,
     Tuple,
     Union,
-    Any,
-    Dict,
-    Iterator,
-    Iterable,
-    TYPE_CHECKING,
 )
-import urllib.parse
 
-from ray.data.datasource.partitioning import PathPartitionFilter
-
-if TYPE_CHECKING:
-    import pyarrow
-
-from ray.types import ObjectRef
-from ray.data.block import Block, BlockAccessor
-from ray.data.context import DatasetContext
 from ray.data._internal.arrow_block import ArrowRow
+from ray.data._internal.arrow_serialization import (
+    _register_arrow_json_readoptions_serializer,
+)
 from ray.data._internal.block_list import BlockMetadata
 from ray.data._internal.output_buffer import BlockOutputBuffer
+from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data._internal.util import _check_pyarrow_version
+from ray.data.block import Block, BlockAccessor
+from ray.data.context import DatasetContext
 from ray.data.datasource.datasource import Datasource, ReadTask, WriteResult
 from ray.data.datasource.file_meta_provider import (
     BaseFileMetadataProvider,
     DefaultFileMetadataProvider,
 )
+from ray.data.datasource.partitioning import PathPartitionFilter
+from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI
-from ray.data._internal.util import _check_pyarrow_version
-from ray.data._internal.remote_fn import cached_remote_fn
+
+if TYPE_CHECKING:
+    import pyarrow
+
 
 logger = logging.getLogger(__name__)
 
@@ -162,6 +165,12 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         read_stream = self._read_stream
 
         filesystem = _wrap_s3_serialization_workaround(filesystem)
+        read_options = reader_args.get("read_options")
+        if read_options is not None:
+            import pyarrow.json as pajson
+
+            if isinstance(read_options, pajson.ReadOptions):
+                _register_arrow_json_readoptions_serializer()
 
         if open_stream_args is None:
             open_stream_args = {}
@@ -391,8 +400,8 @@ def _resolve_paths_and_filesystem(
     import pyarrow as pa
     from pyarrow.fs import (
         FileSystem,
-        PyFileSystem,
         FSSpecHandler,
+        PyFileSystem,
         _resolve_filesystem_and_path,
     )
 
@@ -560,9 +569,20 @@ class _S3FileSystemWrapper:
         return _S3FileSystemWrapper._reconstruct, self._fs.__reduce__()
 
 
-def _wrap_arrow_serialization_workaround(kwargs: dict) -> dict:
+def _wrap_and_register_arrow_serialization_workaround(kwargs: dict) -> dict:
     if "filesystem" in kwargs:
         kwargs["filesystem"] = _wrap_s3_serialization_workaround(kwargs["filesystem"])
+
+    # TODO(Clark): Remove this serialization workaround once Datasets only supports
+    # pyarrow >= 8.0.0.
+    read_options = kwargs.get("read_options")
+    if read_options is not None:
+        import pyarrow.json as pajson
+
+        if isinstance(read_options, pajson.ReadOptions):
+            # Register a custom serializer instead of wrapping the options, since a
+            # custom reducer will suffice.
+            _register_arrow_json_readoptions_serializer()
 
     return kwargs
 

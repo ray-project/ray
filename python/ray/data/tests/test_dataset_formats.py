@@ -1,41 +1,41 @@
 import os
 import shutil
-from typing import Union, List, Dict, Any
+from functools import partial
+from io import BytesIO
+from typing import Any, Dict, List, Union
 
 import numpy as np
 import pandas as pd
 import pyarrow as pa
+import pyarrow.json as pajson
 import pyarrow.parquet as pq
 import pytest
 import snappy
 from fsspec.implementations.local import LocalFileSystem
 from pytest_lazyfixture import lazy_fixture
-from io import BytesIO
-from functools import partial
 
 import ray
-
-from ray.tests.conftest import *  # noqa
-from ray.types import ObjectRef
+from ray.data._internal.arrow_block import ArrowRow
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.datasource import (
-    Datasource,
-    DummyOutputDatasource,
     BaseFileMetadataProvider,
+    Datasource,
     DefaultFileMetadataProvider,
     DefaultParquetMetadataProvider,
+    DummyOutputDatasource,
     FastFileMetadataProvider,
-    PathPartitionFilter,
-    PathPartitionEncoder,
     PartitionStyle,
+    PathPartitionEncoder,
+    PathPartitionFilter,
     SimpleTensorFlowDatasource,
     SimpleTorchDatasource,
     WriteResult,
 )
-from ray.data._internal.arrow_block import ArrowRow
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
 from ray.data.datasource.parquet_datasource import PARALLELIZE_META_FETCH_THRESHOLD
 from ray.data.tests.conftest import *  # noqa
+from ray.tests.conftest import *  # noqa
+from ray.types import ObjectRef
 
 
 def maybe_pipeline(ds, enabled):
@@ -1625,6 +1625,45 @@ def test_json_read_meta_provider(
             filesystem=fs,
             meta_provider=BaseFileMetadataProvider(),
         )
+
+
+@pytest.mark.parametrize(
+    "fs,data_path,endpoint_url",
+    [
+        (None, lazy_fixture("local_path"), None),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+    ],
+)
+def test_json_read_with_read_options(
+    ray_start_regular_shared,
+    fs,
+    data_path,
+    endpoint_url,
+):
+    # Arrow's JSON ReadOptions isn't serializable in pyarrow < 8.0.0, so this test
+    # covers our custom ReadOptions serializer.
+    # TODO(Clark): Remove this test and our custom serializer once we require
+    # pyarrow >= 8.0.0.
+    if endpoint_url is None:
+        storage_options = {}
+    else:
+        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
+
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    path1 = os.path.join(data_path, "test1.json")
+    df1.to_json(path1, orient="records", lines=True, storage_options=storage_options)
+    ds = ray.data.read_json(
+        path1,
+        filesystem=fs,
+        read_options=pajson.ReadOptions(use_threads=False, block_size=2 ** 30),
+    )
+    dsdf = ds.to_pandas()
+    assert df1.equals(dsdf)
+    # Test metadata ops.
+    assert ds.count() == 3
+    assert ds.input_files() == [_unwrap_protocol(path1)]
+    assert "{one: int64, two: string}" in str(ds), ds
 
 
 @pytest.mark.parametrize(
