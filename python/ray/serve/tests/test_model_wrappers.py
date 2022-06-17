@@ -4,42 +4,36 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 import pytest
+import ray
 import requests
 from fastapi import Depends, FastAPI
-
-import ray
 from ray import serve
 from ray.air.checkpoint import Checkpoint
 from ray.serve.dag import InputNode
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.deployment_graph_build import build
 from ray.serve.http_adapters import json_to_ndarray
-from ray.serve.model_wrappers import (
-    ModelWrapperDeployment,
-    collate_array,
-    collate_dataframe,
-    collate_dict_array,
-)
+from ray.serve.model_wrappers import BatchingManager, ModelWrapperDeployment
 from ray.train.predictor import DataBatchType, Predictor
 
 
-class TestCollationFunctions:
+class TestBatchingFunctionFunctions:
     def test_array(self):
         list_of_arr = [np.array([i]) for i in range(4)]
         batched_arr = np.array([[i] for i in range(4)])
+        batch_size = 4
 
-        batched, unpack = collate_array(list_of_arr)
+        batched = BatchingManager.batch_array(list_of_arr)
         assert np.array_equal(batched, batched_arr)
-        for i, j in zip(unpack(batched), list_of_arr):
+
+        for i, j in zip(BatchingManager.split_array(batched, batch_size), list_of_arr):
             assert np.array_equal(i, j)
 
     def test_array_error(self):
-        list_of_arr = [np.array([i]) for i in range(4)]
-        _, unpack = collate_array(list_of_arr)
         with pytest.raises(ValueError, match="output array should have shape of"):
-            unpack(np.arange(2))
+            BatchingManager.split_array(np.arange(2), 10)
         with pytest.raises(TypeError, match="output should be np.ndarray but"):
-            unpack("string")
+            BatchingManager.split_array("string", 6)
 
     def test_dict_array(self):
         list_of_dicts = [
@@ -47,13 +41,15 @@ class TestCollationFunctions:
             {"a": np.array([3, 4]), "b": np.array(4)},
         ]
         batched_dict = {"a": np.array([[1, 2], [3, 4]]), "b": np.array([3, 4])}
+        batch_size = 2
 
-        batched, unpack = collate_dict_array(list_of_dicts)
+        batched = BatchingManager.batch_dict_array(list_of_dicts)
         assert batched.keys() == batched_dict.keys()
         for key in batched.keys():
             assert np.array_equal(batched[key], batched_dict[key])
 
-        for original, unpacked in zip(list_of_dicts, unpack(batched)):
+        unpacked_list = BatchingManager.split_dict_array(batched, batch_size)
+        for original, unpacked in zip(list_of_dicts, unpacked_list):
             assert original.keys() == unpacked.keys()
             for key in original.keys():
                 assert np.array_equal(original[key], unpacked[key])
@@ -66,10 +62,14 @@ class TestCollationFunctions:
                 "b": sum(([i, i] for i in range(4)), []),
             }
         )
-        batched, unpack = collate_dataframe(list_of_dfs)
+        batch_size = 4
+
+        batched = BatchingManager.batch_dataframe(list_of_dfs)
         assert batched.equals(batched_df)
-        assert len(unpack(batched)) == len(list_of_dfs)
-        for i, j in zip(unpack(batched), list_of_dfs):
+
+        unpacked_list = BatchingManager.split_dataframe(batched, batch_size)
+        assert len(unpacked_list) == len(list_of_dfs)
+        for i, j in zip(unpacked_list, list_of_dfs):
             assert i.equals(j)
 
 
@@ -143,6 +143,32 @@ def test_batching(serve_instance):
     refs = [send_request.remote(json={"array": [40]}) for _ in range(2)]
     for resp in ray.get(refs):
         assert resp == {"value": [42], "batch_size": 2}
+
+
+class TakeArrayReturnDataFramePredictor(Predictor):
+    def __init__(self, increment: int) -> None:
+        self.increment = increment
+
+    @classmethod
+    def from_checkpoint(
+        cls, checkpoint: Checkpoint
+    ) -> "TakeArrayReturnDataFramePredictor":
+        return cls(checkpoint.to_dict()["increment"])
+
+    def predict(self, data: np.ndarray) -> DataBatchType:
+        return pd.DataFrame(data + self.increment, columns=["col_a", "col_b"])
+
+
+def test_mixed_input_output_type_with_batching(serve_instance):
+    ModelWrapperDeployment.options(name="Adder").deploy(
+        predictor_cls=TakeArrayReturnDataFramePredictor,
+        checkpoint=Checkpoint.from_dict({"increment": 2}),
+        batching_params=dict(max_batch_size=2, batch_wait_timeout_s=1000),
+    )
+
+    refs = [send_request.remote(json={"array": [40, 45]}) for _ in range(2)]
+    for resp in ray.get(refs):
+        assert resp == [{"col_a": 42.0, "col_b": 47.0}]
 
 
 app = FastAPI()
