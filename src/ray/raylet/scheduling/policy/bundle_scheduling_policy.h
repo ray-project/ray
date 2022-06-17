@@ -58,7 +58,8 @@ class BundleSchedulingPolicy : public IBundleSchedulingPolicy {
   /// \return Score of all nodes.
   std::pair<scheduling::NodeID, const Node *> GetBestNode(
       const ResourceRequest &required_resources,
-      const absl::flat_hash_map<scheduling::NodeID, const Node *> &candidate_nodes) const;
+      const absl::flat_hash_map<scheduling::NodeID, const Node *> &candidate_nodes,
+      const SchedulingOptions &options) const;
 
  protected:
   /// The cluster resource manager.

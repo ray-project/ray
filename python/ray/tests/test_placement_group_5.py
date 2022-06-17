@@ -76,6 +76,49 @@ def test_placement_group_bin_packing_priority(
         )
 
 
+@pytest.mark.parametrize("multi_bundle", [False, True])
+@pytest.mark.parametrize("even_pack", [False, True])
+@pytest.mark.parametrize("scheduling_strategy", ["SPREAD", "STRICT_PACK", "PACK"])
+def test_placement_group_max_cpu_frac(
+    ray_start_cluster, multi_bundle, even_pack, scheduling_strategy
+):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=4)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    if multi_bundle:
+        bundles = [{"CPU": 1}] * 3
+    else:
+        bundles = [{"CPU": 3}]
+
+    # Input validation - max_cpu_fraction_per_node must be between 0 and 1.
+    with pytest.raises(ValueError):
+        ray.util.placement_group(bundles, max_cpu_fraction_per_node=-1)
+    with pytest.raises(ValueError):
+        ray.util.placement_group(bundles, max_cpu_fraction_per_node=2)
+
+    pg = ray.util.placement_group(
+        bundles, strategy=scheduling_strategy, max_cpu_fraction_per_node=0.5
+    )
+
+    # Placement group will never be scheduled since it would violate the max CPU
+    # fraction reservation.
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get(pg.ready(), timeout=5)
+
+    # Add new node with enough CPU cores to scheduled placement group bundle while
+    # adhering to the max CPU fraction constraint.
+    if even_pack:
+        num_cpus = 6
+    else:
+        num_cpus = 8
+    cluster.add_node(num_cpus=num_cpus)
+    cluster.wait_for_nodes()
+    # The placement group should be schedulable so this shouldn't raise.
+    ray.get(pg.ready(), timeout=5)
+
+
 if __name__ == "__main__":
     import os
 

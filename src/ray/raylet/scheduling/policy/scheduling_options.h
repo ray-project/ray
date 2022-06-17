@@ -135,6 +135,7 @@ struct SchedulingOptions {
   std::shared_ptr<SchedulingContext> scheduling_context;
   std::string node_affinity_node_id;
   bool node_affinity_soft = false;
+  double cpu_frac_slack = 0.;
 
  private:
   SchedulingOptions(SchedulingType type,

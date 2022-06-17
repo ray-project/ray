@@ -114,14 +114,22 @@ BundleSchedulingPolicy::SortRequiredResources(
 
 std::pair<scheduling::NodeID, const Node *> BundleSchedulingPolicy::GetBestNode(
     const ResourceRequest &required_resources,
-    const absl::flat_hash_map<scheduling::NodeID, const Node *> &candidate_nodes) const {
+    const absl::flat_hash_map<scheduling::NodeID, const Node *> &candidate_nodes,
+    const SchedulingOptions &options) const {
   double best_node_score = -1;
   auto best_node_id = scheduling::NodeID::Nil();
   const Node *best_node = nullptr;
 
   // Score the nodes.
+  auto cpu_id = ResourceID::CPU();
+  double cpu_request = required_resources.Get(cpu_id).Double();
   for (const auto &[node_id, node] : candidate_nodes) {
     const auto &node_resources = node->GetLocalView();
+    if (node_resources.available.Get(cpu_id).Double() - cpu_request <
+        options.cpu_frac_slack * node_resources.total.Get(cpu_id).Double()) {
+      // Preserve any requested CPU slack.
+      continue;
+    }
     double node_score = node_scorer_->Score(required_resources, node_resources);
     if (best_node_id.IsNil() || best_node_score < node_score) {
       best_node_id = node_id;
@@ -164,7 +172,7 @@ SchedulingResult BundlePackSchedulingPolicy::Schedule(
   while (!required_resources_list_copy.empty()) {
     const auto &required_resources_index = required_resources_list_copy.front().first;
     const auto &required_resources = required_resources_list_copy.front().second;
-    auto best_node = GetBestNode(*required_resources, candidate_nodes);
+    auto best_node = GetBestNode(*required_resources, candidate_nodes, options);
     if (best_node.first.IsNil()) {
       // There is no node to meet the scheduling requirements.
       break;
@@ -176,9 +184,13 @@ SchedulingResult BundlePackSchedulingPolicy::Schedule(
     required_resources_list_copy.pop_front();
 
     // We try to schedule more resources on one node.
+    auto cpu_id = ResourceID::CPU();
     for (auto iter = required_resources_list_copy.begin();
          iter != required_resources_list_copy.end();) {
-      if (best_node.second->GetLocalView().IsAvailable(*iter->second)) {
+      const auto &node_resources = best_node.second->GetLocalView();
+      if (node_resources.available.Get(cpu_id).Double() -
+              iter->second->Get(cpu_id).Double() >=
+          options.cpu_frac_slack * node_resources.total.Get(cpu_id).Double()) {
         RAY_CHECK(cluster_resource_manager_.SubtractNodeAvailableResources(
             best_node.first, *iter->second));
         result_nodes[iter->first] = best_node.first;
@@ -229,7 +241,7 @@ SchedulingResult BundleSpreadSchedulingPolicy::Schedule(
   absl::flat_hash_map<scheduling::NodeID, const Node *> selected_nodes;
   for (const auto &resource_request : sorted_resource_request_list) {
     // Score and sort nodes.
-    auto best_node = GetBestNode(*resource_request, candidate_nodes);
+    auto best_node = GetBestNode(*resource_request, candidate_nodes, options);
 
     // There are nodes to meet the scheduling requirements.
     if (!best_node.first.IsNil()) {
@@ -240,7 +252,7 @@ SchedulingResult BundleSpreadSchedulingPolicy::Schedule(
       selected_nodes.emplace(best_node);
     } else {
       // Scheduling from selected nodes.
-      auto best_node = GetBestNode(*resource_request, selected_nodes);
+      auto best_node = GetBestNode(*resource_request, selected_nodes, options);
       if (!best_node.first.IsNil()) {
         result_nodes.emplace_back(best_node.first);
         RAY_CHECK(cluster_resource_manager_.SubtractNodeAvailableResources(
@@ -293,8 +305,12 @@ SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
   const auto &right_node_it = std::find_if(
       candidate_nodes.begin(),
       candidate_nodes.end(),
-      [&aggregated_resource_request](const auto &entry) {
-        return entry.second->GetLocalView().IsAvailable(aggregated_resource_request);
+      [&aggregated_resource_request, &options](const auto &entry) {
+        auto cpu_id = ResourceID::CPU();
+        const auto &node_resources = entry.second->GetLocalView();
+        return node_resources.available.Get(cpu_id).Double() -
+                   aggregated_resource_request.Get(cpu_id).Double() <
+               options.cpu_frac_slack * node_resources.total.Get(cpu_id).Double();
       });
 
   if (right_node_it == candidate_nodes.end()) {
@@ -303,7 +319,7 @@ SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
     return SchedulingResult::Infeasible();
   }
 
-  auto best_node = GetBestNode(aggregated_resource_request, candidate_nodes);
+  auto best_node = GetBestNode(aggregated_resource_request, candidate_nodes, options);
 
   // Select the node with the highest score.
   // `StrictPackSchedule` does not need to consider the scheduling context, because it
@@ -349,7 +365,7 @@ SchedulingResult BundleStrictSpreadSchedulingPolicy::Schedule(
   std::vector<scheduling::NodeID> result_nodes;
   for (const auto &resource_request : sorted_resource_request_list) {
     // Score and sort nodes.
-    auto best_node = GetBestNode(*resource_request, candidate_nodes);
+    auto best_node = GetBestNode(*resource_request, candidate_nodes, options);
 
     // There are nodes to meet the scheduling requirements.
     if (!best_node.first.IsNil()) {

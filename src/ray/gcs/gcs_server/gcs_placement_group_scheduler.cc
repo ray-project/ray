@@ -66,6 +66,7 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
 
   auto scheduling_options =
       CreateSchedulingOptions(placement_group->GetPlacementGroupID(), strategy);
+  scheduling_options.cpu_frac_slack = 1.0 - placement_group->GetMaxCpuFractionPerNode();
   auto scheduling_result =
       cluster_resource_scheduler_.Schedule(resource_request_list, scheduling_options);
 
@@ -75,7 +76,7 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   if (!result_status.IsSuccess()) {
     RAY_LOG(DEBUG) << "Failed to schedule placement group " << placement_group->GetName()
                    << ", id: " << placement_group->GetPlacementGroupID()
-                   << ", because current reource can't satisfy the required resource.";
+                   << ", because current resources can't satisfy the required resource.";
     bool infeasible = result_status.IsInfeasible();
     // If the placement group creation has failed,
     // but if it is not infeasible, it is retryable to create.
