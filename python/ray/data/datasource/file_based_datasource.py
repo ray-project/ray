@@ -283,7 +283,11 @@ class _FileBasedDatasourceReader(Reader):
         )
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
-        return sum(self._file_sizes)
+        total_size = 0
+        for sz in self._file_sizes:
+            if sz is not None:
+                total_size += sz
+        return total_size
 
     def read(self, parallelism: int) -> List[ReadTask]:
         return self._read(parallelism, **self._read_args)

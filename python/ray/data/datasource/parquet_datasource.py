@@ -11,7 +11,7 @@ import ray
 from ray.types import ObjectRef
 from ray.data.block import Block
 from ray.data.context import DatasetContext
-from ray.data.datasource.datasource import ReadTask
+from ray.data.datasource.datasource import ReadTask, Reader
 from ray.data.datasource.file_based_datasource import _resolve_paths_and_filesystem
 from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
 from ray.data.datasource.file_meta_provider import (
@@ -74,24 +74,25 @@ class ParquetDatasource(ParquetBaseDatasource):
         [{"a": 1, "b": "foo"}, ...]
     """
 
-    def prepare_read(
-        self,
-        parallelism: int,
-        paths: Union[str, List[str]],
-        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-        columns: Optional[List[str]] = None,
-        schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
-        meta_provider: ParquetMetadataProvider = DefaultParquetMetadataProvider(),
-        _block_udf: Optional[Callable[[Block], Block]] = None,
-        **reader_args,
-    ) -> List[ReadTask]:
-        """Creates and returns read tasks for a Parquet file-based datasource."""
+    def create_reader(self, **kwargs):
+        return _ParquetDatasourceReader(**kwargs)
+
+
+class _ParquetDatasourceReader(Reader):
+    def __init__(
+            self,
+            paths: Union[str, List[str]],
+            filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+            columns: Optional[List[str]] = None,
+            schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
+            meta_provider: ParquetMetadataProvider = DefaultParquetMetadataProvider(),
+            _block_udf: Optional[Callable[[Block], Block]] = None,
+            **reader_args):
         # NOTE: We override the base class FileBasedDatasource.prepare_read
         # method in order to leverage pyarrow's ParquetDataset abstraction,
         # which simplifies partitioning logic. We still use
         # FileBasedDatasource's write side (do_write), however.
         _check_pyarrow_version()
-        from ray import cloudpickle
         import pyarrow as pa
         import pyarrow.parquet as pq
         import numpy as np
@@ -110,6 +111,40 @@ class ParquetDatasource(ParquetBaseDatasource):
             schema = pa.schema(
                 [schema.field(column) for column in columns], schema.metadata
             )
+
+        if _block_udf is not None:
+            # Try to infer dataset schema by passing dummy table through UDF.
+            dummy_table = schema.empty_table()
+            try:
+                inferred_schema = _block_udf(dummy_table).schema
+                inferred_schema = inferred_schema.with_metadata(schema.metadata)
+            except Exception:
+                logger.debug(
+                    "Failed to infer schema of dataset by passing dummy table "
+                    "through UDF due to the following exception:",
+                    exc_info=True,
+                )
+                inferred_schema = schema
+        else:
+            inferred_schema = schema
+        self._metadata = meta_provider.prefetch_file_metadata(pq_ds.pieces) or []
+        self._pq_ds = pq_ds
+        self._meta_provider = meta_provider
+        self._inferred_schema = inferred_schema
+        self._block_udf = _block_udf
+        self._reader_args = reader_args
+        self._columns = columns
+        self._schema = schema
+
+    def estimate_inmemory_data_size(self) -> Optional[int]:
+        total_size = 0
+        for meta in self._metadata:
+            total_size += meta.serialized_size
+        return total_size
+
+    def read(self, parallelism: int) -> List[ReadTask]:
+        import pyarrow as pa
+        from ray import cloudpickle
 
         def read_pieces(serialized_pieces: str) -> Iterator[pa.Table]:
             # Implicitly trigger S3 subsystem initialization by importing
@@ -132,22 +167,22 @@ class ParquetDatasource(ParquetBaseDatasource):
 
             ctx = DatasetContext.get_current()
             output_buffer = BlockOutputBuffer(
-                block_udf=_block_udf, target_max_block_size=ctx.target_max_block_size
+                block_udf=self._block_udf, target_max_block_size=ctx.target_max_block_size
             )
 
             logger.debug(f"Reading {len(pieces)} parquet pieces")
-            use_threads = reader_args.pop("use_threads", False)
+            use_threads = self._reader_args.pop("use_threads", False)
             for piece in pieces:
                 part = _get_partition_keys(piece.partition_expression)
                 batches = piece.to_batches(
                     use_threads=use_threads,
-                    columns=columns,
-                    schema=schema,
+                    columns=self._columns,
+                    schema=self._schema,
                     batch_size=PARQUET_READER_ROW_BATCH_SIZE,
-                    **reader_args,
+                    **self._reader_args,
                 )
                 for batch in batches:
-                    table = pyarrow.Table.from_batches([batch], schema=schema)
+                    table = pyarrow.Table.from_batches([batch], schema=self._schema)
                     if part:
                         for col, value in part.items():
                             table = table.set_column(
@@ -164,36 +199,20 @@ class ParquetDatasource(ParquetBaseDatasource):
             if output_buffer.has_next():
                 yield output_buffer.next()
 
-        if _block_udf is not None:
-            # Try to infer dataset schema by passing dummy table through UDF.
-            dummy_table = schema.empty_table()
-            try:
-                inferred_schema = _block_udf(dummy_table).schema
-                inferred_schema = inferred_schema.with_metadata(schema.metadata)
-            except Exception:
-                logger.debug(
-                    "Failed to infer schema of dataset by passing dummy table "
-                    "through UDF due to the following exception:",
-                    exc_info=True,
-                )
-                inferred_schema = schema
-        else:
-            inferred_schema = schema
         read_tasks = []
-        metadata = meta_provider.prefetch_file_metadata(pq_ds.pieces) or []
         try:
             _register_parquet_file_fragment_serialization()
             for pieces, metadata in zip(
-                np.array_split(pq_ds.pieces, parallelism),
-                np.array_split(metadata, parallelism),
+                np.array_split(self._pq_ds.pieces, parallelism),
+                np.array_split(self._metadata, parallelism),
             ):
                 if len(pieces) <= 0:
                     continue
                 serialized_pieces = cloudpickle.dumps(pieces)
                 input_files = [p.path for p in pieces]
-                meta = meta_provider(
+                meta = self._meta_provider(
                     input_files,
-                    inferred_schema,
+                    self._inferred_schema,
                     pieces=pieces,
                     prefetched_metadata=metadata,
                 )
