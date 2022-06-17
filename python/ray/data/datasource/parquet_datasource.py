@@ -1,28 +1,28 @@
-import logging
 import itertools
-from typing import Callable, Optional, List, Union, Iterator, TYPE_CHECKING
+import logging
+from typing import TYPE_CHECKING, Callable, Iterator, List, Optional, Union
 
 import numpy as np
 
-if TYPE_CHECKING:
-    import pyarrow
-
 import ray
-from ray.types import ObjectRef
-from ray.data.block import Block
-from ray.data.context import DatasetContext
-from ray.data.datasource.datasource import ReadTask, Reader
-from ray.data.datasource.file_based_datasource import _resolve_paths_and_filesystem
-from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
-from ray.data.datasource.file_meta_provider import (
-    ParquetMetadataProvider,
-    DefaultParquetMetadataProvider,
-)
 from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import _check_pyarrow_version
+from ray.data.block import Block
+from ray.data.context import DatasetContext
+from ray.data.datasource.datasource import Reader, ReadTask
+from ray.data.datasource.file_based_datasource import _resolve_paths_and_filesystem
+from ray.data.datasource.file_meta_provider import (
+    DefaultParquetMetadataProvider,
+    ParquetMetadataProvider,
+)
+from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
+from ray.types import ObjectRef
 from ray.util.annotations import PublicAPI
+
+if TYPE_CHECKING:
+    import pyarrow
 
 
 logger = logging.getLogger(__name__)
@@ -80,14 +80,15 @@ class ParquetDatasource(ParquetBaseDatasource):
 
 class _ParquetDatasourceReader(Reader):
     def __init__(
-            self,
-            paths: Union[str, List[str]],
-            filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-            columns: Optional[List[str]] = None,
-            schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
-            meta_provider: ParquetMetadataProvider = DefaultParquetMetadataProvider(),
-            _block_udf: Optional[Callable[[Block], Block]] = None,
-            **reader_args):
+        self,
+        paths: Union[str, List[str]],
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        columns: Optional[List[str]] = None,
+        schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
+        meta_provider: ParquetMetadataProvider = DefaultParquetMetadataProvider(),
+        _block_udf: Optional[Callable[[Block], Block]] = None,
+        **reader_args,
+    ):
         # NOTE: We override the base class FileBasedDatasource.prepare_read
         # method in order to leverage pyarrow's ParquetDataset abstraction,
         # which simplifies partitioning logic. We still use
@@ -95,7 +96,6 @@ class _ParquetDatasourceReader(Reader):
         _check_pyarrow_version()
         import pyarrow as pa
         import pyarrow.parquet as pq
-        import numpy as np
 
         paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
         if len(paths) == 1:
@@ -144,6 +144,7 @@ class _ParquetDatasourceReader(Reader):
 
     def read(self, parallelism: int) -> List[ReadTask]:
         import pyarrow as pa
+
         from ray import cloudpickle
 
         def read_pieces(serialized_pieces: str) -> Iterator[pa.Table]:
@@ -167,7 +168,8 @@ class _ParquetDatasourceReader(Reader):
 
             ctx = DatasetContext.get_current()
             output_buffer = BlockOutputBuffer(
-                block_udf=self._block_udf, target_max_block_size=ctx.target_max_block_size
+                block_udf=self._block_udf,
+                target_max_block_size=ctx.target_max_block_size,
             )
 
             logger.debug(f"Reading {len(pieces)} parquet pieces")
@@ -252,6 +254,7 @@ def _fetch_metadata_serialization_wrapper(
     # Implicitly trigger S3 subsystem initialization by importing
     # pyarrow.fs.
     import pyarrow.fs  # noqa: F401
+
     from ray import cloudpickle
 
     # Deserialize after loading the filesystem class.
