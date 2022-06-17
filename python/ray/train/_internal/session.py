@@ -26,7 +26,7 @@ from ray.train.constants import (
     TRAINING_ITERATION,
 )
 from ray.train.error import SessionMisuseError
-from ray.train.session import TrainSession
+from ray.train.session import _TrainSessionImpl
 
 
 class TrainingResultType(Enum):
@@ -50,6 +50,7 @@ class TrainingResult:
     data: Dict
 
 
+# TODO(xwjiang): This needs a better name.
 class _TrainSession:
     """Holds information for training on each worker."""
 
@@ -267,7 +268,7 @@ class _TrainSession:
 
 _session: Optional[_TrainSession] = None
 # V2 Session API
-_session_v2: Optional[TrainSession] = None
+_session_v2: Optional[_TrainSessionImpl] = None
 
 
 def init_session(*args, **kwargs) -> None:
@@ -279,7 +280,7 @@ def init_session(*args, **kwargs) -> None:
             "`init_session()` manually."
         )
     _session = _TrainSession(*args, **kwargs)
-    _session_v2 = TrainSession(session=_session)
+    _session_v2 = _TrainSessionImpl(session=_session)
 
 
 def get_session() -> Optional[_TrainSession]:
