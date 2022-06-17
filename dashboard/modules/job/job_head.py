@@ -244,9 +244,9 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         submission_job_drivers = {}
         for job_table_entry in reply.job_info_list:
             job_id = job_table_entry.job_id.hex()
+            metadata = dict(job_table_entry.config.metadata)
             job_submission_id = metadata.get(JOB_ID_METADATA_KEY)
             if not job_submission_id:
-                metadata = dict(job_table_entry.config.metadata)
                 driver = DriverInfo(
                     id=job_id,
                     ip_address=job_table_entry.driver_ip_address,
@@ -259,7 +259,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                               metadata=metadata,
                               runtime_env=RuntimeEnv.deserialize(
                                   job_table_entry.config.runtime_env_info.
-                                  serialized_runtime_env),
+                                  serialized_runtime_env).to_dict(),
                               driver=driver)
                 jobs[f"raydriver_{job_id}"] = job
             else:

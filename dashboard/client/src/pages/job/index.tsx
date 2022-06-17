@@ -24,14 +24,7 @@ const useStyles = makeStyles((theme) => ({
   },
 }));
 
-const columns = [
-  "ID",
-  "DriverIpAddress",
-  "DriverPid",
-  "IsDead",
-  "StartTime",
-  "EndTime",
-];
+const columns = ["ID", "Driver ID", "Status", "Logs", "StartTime", "EndTime"];
 
 const JobList = () => {
   const classes = useStyles();
@@ -43,6 +36,7 @@ const JobList = () => {
     changeFilter,
     page,
     setPage,
+    ipLogMap,
   } = useJobList();
 
   return (
@@ -63,12 +57,7 @@ const JobList = () => {
         <TableContainer>
           <SearchInput
             label="ID"
-            onChange={(value) => changeFilter("jobId", value)}
-          />
-          <SearchSelect
-            label="Language"
-            onChange={(value) => changeFilter("language", value)}
-            options={["JAVA", "PYTHON"]}
+            onChange={(value) => changeFilter("id", value)}
           />
           <SearchInput
             label="Page Size"
@@ -100,29 +89,41 @@ const JobList = () => {
                   page.pageNo * page.pageSize,
                 )
                 .map(
-                  ({
-                    jobId = "",
-                    driverIpAddress,
-                    isDead,
-                    driverPid,
-                    startTime,
-                    endTime,
-                  }) => (
-                    <TableRow key={jobId}>
+                  ({ id = "", driver, type, status, start_time, end_time }) => (
+                    <TableRow key={id}>
                       <TableCell align="center">
-                        <Link to={`/job/${jobId}`}>{jobId}</Link>
-                      </TableCell>
-                      <TableCell align="center">{driverIpAddress}</TableCell>
-                      <TableCell align="center">{driverPid}</TableCell>
-                      <TableCell align="center">
-                        {isDead ? "true" : "false"}
+                        <Link to={`/job/${id}`}>{id}</Link>
                       </TableCell>
                       <TableCell align="center">
-                        {dayjs(Number(startTime)).format("YYYY/MM/DD HH:mm:ss")}
+                        {driver ? driver.id : "-"}
+                      </TableCell>
+                      <TableCell align="center">{status}</TableCell>
+                      <TableCell align="center">
+                        {driver && ipLogMap[driver.ip_address] ? (
+                          <Link
+                            to={`/log/${encodeURIComponent(
+                              ipLogMap[driver.ip_address],
+                            )}?fileName=driver-${
+                              type === "driver" ? driver.id : id
+                            }`}
+                            target="_blank"
+                          >
+                            Log
+                          </Link>
+                        ) : (
+                          "-"
+                        )}
                       </TableCell>
                       <TableCell align="center">
-                        {endTime > 0
-                          ? dayjs(Number(endTime)).format("YYYY/MM/DD HH:mm:ss")
+                        {dayjs(Number(start_time)).format(
+                          "YYYY/MM/DD HH:mm:ss",
+                        )}
+                      </TableCell>
+                      <TableCell align="center">
+                        {end_time && end_time > 0
+                          ? dayjs(Number(end_time)).format(
+                              "YYYY/MM/DD HH:mm:ss",
+                            )
                           : "-"}
                       </TableCell>
                     </TableRow>
