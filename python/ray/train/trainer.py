@@ -1,23 +1,14 @@
 import copy
-from datetime import datetime
 import logging
 import os
-from pathlib import Path
-from typing import Union, Callable, List, TypeVar, Optional, Any, Dict, Type
 import warnings
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional, Type, TypeVar, Union
 
 import ray
 from ray.actor import ActorHandle
-from ray.train.backend import (
-    BackendConfig,
-)
-from ray.train.callbacks.callback import TrainingCallback
-from ray.train._internal.dataset_spec import RayDataset, RayDatasetSpec
-from ray.train._internal.session import TrainingResultType
-from ray.train._internal.utils import (
-    construct_train_func,
-    ActorWrapper,
-)
+from ray.air.checkpoint import Checkpoint
 from ray.train._internal.backend_executor import (
     BackendExecutor,
     InactiveWorkerGroupError,
@@ -25,35 +16,37 @@ from ray.train._internal.backend_executor import (
     TrainingWorkerError,
 )
 from ray.train._internal.checkpoint import (
-    TuneCheckpointManager,
     CheckpointManager,
+    TuneCheckpointManager,
     load_checkpoint_from_path,
 )
-from ray.train.constants import (
-    TUNE_INSTALLED,
-    DEFAULT_RESULTS_DIR,
-    ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
-    ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
-    TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
-    TRAIN_ENABLE_WORKER_SPREAD_ENV,
-)
+from ray.train._internal.dataset_spec import RayDataset, RayDatasetSpec
+from ray.train._internal.session import TrainingResultType
 
 # Ray Train should be usable even if Tune is not installed.
-from ray.train._internal.utils import construct_path
+from ray.train._internal.utils import ActorWrapper, construct_path, construct_train_func
 from ray.train._internal.worker_group import WorkerGroup
-from ray.util.annotations import DeveloperAPI, Deprecated
-from ray.util.ml_utils.checkpoint_manager import CheckpointStrategy
-
+from ray.train.backend import BackendConfig
 from ray.train.base_trainer import (  # noqa: F401
     BaseTrainer,
     GenDataset,
     TrainingFailedError,
 )
+from ray.train.callbacks.callback import TrainingCallback
+from ray.train.constants import (
+    DEFAULT_RESULTS_DIR,
+    ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
+    ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
+    TRAIN_ENABLE_WORKER_SPREAD_ENV,
+    TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
+    TUNE_INSTALLED,
+)
+from ray.util.annotations import Deprecated, DeveloperAPI
+from ray.util.ml_utils.checkpoint_manager import CheckpointStrategy
 
 if TUNE_INSTALLED:
     from ray import tune
-    from ray.tune import Trainable
-    from ray.tune import PlacementGroupFactory
+    from ray.tune import PlacementGroupFactory, Trainable
     from ray.tune.function_runner import wrap_function
 else:
     tune = PlacementGroupFactory = Trainable = object
@@ -676,7 +669,7 @@ class TrainingIterator:
         train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
         dataset_spec: RayDatasetSpec,
         checkpoint_manager: CheckpointManager,
-        checkpoint: Optional[Union[Dict, str, Path]],
+        checkpoint: Optional[Union[Dict, str, Path, Checkpoint]],
         checkpoint_strategy: Optional[CheckpointStrategy],
         run_dir: Optional[Path] = None,
     ):
@@ -715,12 +708,12 @@ class TrainingIterator:
             run_dir=run_dir,
             latest_checkpoint_id=latest_checkpoint_id,
         )
-        checkpoint_dict = self._checkpoint_manager._load_checkpoint(checkpoint)
+        checkpoint = self._checkpoint_manager._load_checkpoint(checkpoint)
         self._run_with_error_handling(
             lambda: self._backend_executor.start_training(
                 train_func=train_func,
                 dataset_spec=dataset_spec,
-                checkpoint=checkpoint_dict,
+                checkpoint=checkpoint,
             )
         )
 

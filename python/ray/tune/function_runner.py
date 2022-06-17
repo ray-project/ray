@@ -1,34 +1,34 @@
+import inspect
 import logging
 import os
-import sys
-import time
-import inspect
 import shutil
+import sys
 import threading
+import time
 import uuid
 from functools import partial
 from numbers import Number
+from typing import Any, Callable, Dict, Optional
 
-from typing import Any, Callable, Optional
-
-from ray.util.annotations import DeveloperAPI
 from six.moves import queue
 
-from ray.util.debug import log_once
+from ray.air.checkpoint import Checkpoint
 from ray.tune import TuneError, session
-from ray.tune.trainable import Trainable, TrainableUtil
 from ray.tune.result import (
     DEFAULT_METRIC,
-    TIME_THIS_ITER_S,
     RESULT_DUPLICATE,
     SHOULD_CHECKPOINT,
+    TIME_THIS_ITER_S,
 )
+from ray.tune.trainable import Trainable, TrainableUtil
 from ray.tune.utils import (
     detect_checkpoint_function,
     detect_config_single,
     detect_reporter,
 )
 from ray.tune.utils.trainable import with_parameters  # noqa: F401
+from ray.util.annotations import DeveloperAPI
+from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
 
@@ -123,8 +123,6 @@ class FuncCheckpointUtil:
 
 
 class _StatusReporter:
-    """Object passed into your function that you can report status through."""
-
     def __init__(
         self,
         result_queue,
@@ -145,6 +143,10 @@ class _StatusReporter:
         self._last_checkpoint = None
         self._fresh_checkpoint = False
         self._trial_resources = trial_resources
+        # Also used as a marker of whether new `report()` API is being used,
+        # in which case, `_iter` will be incremented from 0 every time `report`
+        # is called.
+        self._iter = None
 
     def reset(self, trial_name=None, trial_id=None, logdir=None, trial_resources=None):
         self._trial_name = trial_name
@@ -153,6 +155,7 @@ class _StatusReporter:
         self._last_checkpoint = None
         self._fresh_checkpoint = False
         self._trial_resources = trial_resources
+        self._iter = None
 
     def __call__(self, _metric=None, **kwargs):
         """Report updated training status.
@@ -168,7 +171,7 @@ class _StatusReporter:
         """
 
         assert self._last_report_time is not None, (
-            "StatusReporter._start() must be called before the first "
+            "_StatusReporter._start() must be called before the first "
             "report __call__ is made to ensure correct runtime metrics."
         )
 
@@ -228,6 +231,26 @@ class _StatusReporter:
 
     def _start(self):
         self._last_report_time = time.time()
+
+    def report(self, metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
+        # TODO(xwjiang): Tons of optimizations.
+        if not self._iter:
+            self._iter = 0
+        if checkpoint:
+            checkpoint_dir = self.make_checkpoint_dir(step=self._iter)
+            self.set_checkpoint(checkpoint_dir)
+            checkpoint.to_directory(checkpoint_dir)
+            # TODO(krfricke): Remove this once support is added in Checkpoint.
+            open(os.path.join(checkpoint_dir, ".is_checkpoint"), "a").close()
+        self.__call__(**metrics)
+        self._iter += 1
+
+    @property
+    def loaded_checkpoint(self) -> Optional[Checkpoint]:
+        if self._last_checkpoint:
+            assert isinstance(self._last_checkpoint, str)
+            return Checkpoint.from_directory(self._last_checkpoint)
+        return None
 
     @property
     def logdir(self):
@@ -484,7 +507,7 @@ class FunctionRunner(Trainable):
         obj = TrainableUtil.checkpoint_to_object(checkpoint_path)
         return obj
 
-    def load_checkpoint(self, checkpoint):
+    def load_checkpoint(self, checkpoint: str):
         # This should be removed once Trainables are refactored.
         if "tune_checkpoint_path" in checkpoint:
             del checkpoint["tune_checkpoint_path"]
