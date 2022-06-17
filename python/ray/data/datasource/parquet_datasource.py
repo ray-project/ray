@@ -86,8 +86,8 @@ def _deserialize_pieces_with_retry(
         try:
             return _deserialize_pieces(serialized_pieces)
         except Exception as e:
-            import time
             import random
+            import time
 
             retry_timing = (
                 ""
