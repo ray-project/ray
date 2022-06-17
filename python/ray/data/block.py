@@ -1,32 +1,35 @@
-from dataclasses import dataclass
+import resource
 import time
+from dataclasses import dataclass
 from typing import (
-    TypeVar,
-    List,
+    TYPE_CHECKING,
+    Any,
+    Callable,
     Dict,
     Generic,
     Iterator,
-    Tuple,
-    Any,
-    Union,
+    List,
     Optional,
-    Callable,
-    TYPE_CHECKING,
+    Tuple,
+    TypeVar,
+    Union,
 )
 
 import numpy as np
 
+import ray
+from ray.data._internal.util import _check_pyarrow_version
+from ray.types import ObjectRef
+from ray.util.annotations import DeveloperAPI
+
 if TYPE_CHECKING:
     import pandas
     import pyarrow
+
+    from ray.data import Dataset
     from ray.data._internal.block_builder import BlockBuilder
     from ray.data.aggregate import AggregateFn
-    from ray.data import Dataset
 
-import ray
-from ray.types import ObjectRef
-from ray.util.annotations import DeveloperAPI
-from ray.data._internal.util import _check_pyarrow_version
 
 T = TypeVar("T")
 U = TypeVar("U")
@@ -114,6 +117,9 @@ class BlockExecStats:
         self.wall_time_s: Optional[float] = None
         self.cpu_time_s: Optional[float] = None
         self.node_id = ray.runtime_context.get_runtime_context().node_id.hex()
+        # Max memory usage. May be an overestimate since we do not
+        # differentiate from previous tasks on the same worker.
+        self.max_rss_bytes: int = 0
 
     @staticmethod
     def builder() -> "_BlockExecStatsBuilder":
@@ -144,6 +150,9 @@ class _BlockExecStatsBuilder:
         stats = BlockExecStats()
         stats.wall_time_s = time.perf_counter() - self.start_time
         stats.cpu_time_s = time.process_time() - self.start_cpu
+        stats.max_rss_bytes = int(
+            resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1e3
+        )
         return stats
 
 
@@ -279,8 +288,8 @@ class BlockAccessor(Generic[T]):
     def for_block(block: Block) -> "BlockAccessor[T]":
         """Create a block accessor for the given block."""
         _check_pyarrow_version()
-        import pyarrow
         import pandas
+        import pyarrow
 
         if isinstance(block, pyarrow.Table):
             from ray.data._internal.arrow_block import ArrowBlockAccessor
