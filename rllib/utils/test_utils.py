@@ -14,7 +14,6 @@ from gym.spaces import Box
 import ray
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED, NUM_ENV_STEPS_TRAINED
-from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import PartialAlgorithmConfigDict
 from ray.tune import CLIReporter, run_experiments
 
