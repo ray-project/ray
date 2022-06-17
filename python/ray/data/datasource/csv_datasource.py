@@ -24,7 +24,7 @@ class CSVDatasource(FileBasedDatasource):
         [{"a": 1, "b": "foo"}, ...]
     """
 
-    _file_extension = "csv"
+    _FILE_EXTENSION = "csv"
 
     def _read_stream(
         self, f: "pyarrow.NativeFile", path: str, **reader_args

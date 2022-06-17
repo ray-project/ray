@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 class ParquetBaseDatasource(FileBasedDatasource):
     """Minimal Parquet datasource, for reading and writing Parquet files."""
 
-    _file_extension = "parquet"
+    _FILE_EXTENSION = "parquet"
 
     def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args):
         import pyarrow.parquet as pq

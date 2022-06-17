@@ -25,7 +25,7 @@ class NumpyDatasource(FileBasedDatasource):
 
     """
 
-    _file_extension = "npy"
+    _FILE_EXTENSION = "npy"
 
     def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args):
         # TODO(ekl) Ideally numpy can read directly from the file, but it

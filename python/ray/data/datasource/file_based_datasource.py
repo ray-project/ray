@@ -169,14 +169,14 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
     and tailored to particular file formats. Classes deriving from this class
     must implement _read_file().
 
-    If the _file_extension is defined, per default only files with this extension
+    If the _FILE_EXTENSION is defined, per default only files with this extension
     will be read. If None, no default filter is used.
 
     Current subclasses:
         JSONDatasource, CSVDatasource, NumpyDatasource, BinaryDatasource
     """
 
-    _file_extension: Optional[Union[str, List[str]]] = None
+    _FILE_EXTENSION: Optional[Union[str, List[str]]] = None
 
     def prepare_read(
         self,
@@ -377,7 +377,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
 
         write_block = cached_remote_fn(write_block).options(**ray_remote_args)
 
-        file_format = self._file_extension
+        file_format = self._FILE_EXTENSION
         if isinstance(file_format, list):
             file_format = file_format[0]
 
@@ -415,9 +415,9 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
 
     @classmethod
     def file_extension_filter(cls) -> Optional[PathPartitionFilter]:
-        if not cls._file_extension:
+        if cls._FILE_EXTENSION is None:
             return None
-        return FileExtensionFilter(cls._file_extension)
+        return FileExtensionFilter(cls._FILE_EXTENSION)
 
 
 # TODO(Clark): Add unit test coverage of _resolve_paths_and_filesystem and
