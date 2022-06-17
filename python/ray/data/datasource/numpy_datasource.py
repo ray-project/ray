@@ -1,14 +1,14 @@
 from io import BytesIO
-from typing import TYPE_CHECKING, Any, Dict, Callable
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Union
 
 import numpy as np
-
-if TYPE_CHECKING:
-    import pyarrow
 
 from ray.data.block import BlockAccessor
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
 from ray.util.annotations import PublicAPI
+
+if TYPE_CHECKING:
+    import pyarrow
 
 
 @PublicAPI
@@ -46,5 +46,5 @@ class NumpyDatasource(FileBasedDatasource):
         np.save(f, value)
 
     @staticmethod
-    def _file_extension():
+    def _file_extension() -> Union[str, List[str]]:
         return "npy"

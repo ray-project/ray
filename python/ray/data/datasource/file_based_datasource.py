@@ -129,7 +129,7 @@ class DefaultBlockWritePathProvider(BlockWritePathProvider):
 
 
 class FileExtensionFilter(PathPartitionFilter):
-    """A file-extension-based path filter, that filters out all files that don't end
+    """A file-extension-based path filter that filters files that don't end
     with the provided extension(s).
     """
 
@@ -189,9 +189,9 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
             filtered_paths = partition_filter(paths)
             if not filtered_paths:
                 raise ValueError(
-                    f"All provided and expanded paths {paths} have been filtered out "
-                    f"by the path filter {partition_filter}; please change either the "
-                    "provided paths or path partition filter."
+                    "All provided and expanded paths have been filtered out by "
+                    "the path filter; please change the provided paths or the "
+                    f"path filter.\nPaths: {paths}\nFilter: {partition_filter}"
                 )
             paths = filtered_paths
 
@@ -399,7 +399,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         )
 
     @staticmethod
-    def _file_extension() -> str:
+    def _file_extension() -> Union[str, List[str]]:
         """Returns the file extension string, to be used as the file extension
         when writing files.
 

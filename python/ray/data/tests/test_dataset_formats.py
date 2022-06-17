@@ -32,8 +32,10 @@ from ray.data.datasource import (
     WriteResult,
 )
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
-from ray.data.datasource.parquet_datasource import PARALLELIZE_META_FETCH_THRESHOLD
-from ray.data.datasource.parquet_datasource import _deserialize_pieces_with_retry
+from ray.data.datasource.parquet_datasource import (
+    PARALLELIZE_META_FETCH_THRESHOLD,
+    _deserialize_pieces_with_retry,
+)
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 from ray.types import ObjectRef
