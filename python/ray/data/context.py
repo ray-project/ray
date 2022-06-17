@@ -1,6 +1,6 @@
-from typing import Optional
-import threading
 import os
+import threading
+from typing import Optional
 
 import ray
 from ray.util.annotations import DeveloperAPI
