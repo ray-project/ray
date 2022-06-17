@@ -115,7 +115,7 @@ class ClientBuilder:
         """
         Sets the namespace for the session.
         Args:
-            namespace (str): Namespace to use.
+            namespace: Namespace to use.
         """
         self._job_config.set_ray_namespace(namespace)
         return self

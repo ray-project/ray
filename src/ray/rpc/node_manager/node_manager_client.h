@@ -97,6 +97,12 @@ class NodeManagerWorkerClient
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
+  /// Get a resource load
+  VOID_RPC_CLIENT_METHOD(NodeManagerService,
+                         NotifyGCSRestart,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1, )
+
   /// Request a worker lease.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
                          RequestWorkerLease,
@@ -178,12 +184,6 @@ class NodeManagerWorkerClient
   /// Get the system config from Raylet.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
                          GetSystemConfig,
-                         grpc_client_,
-                         /*method_timeout_ms*/ -1, )
-
-  /// Get gcs server address.
-  VOID_RPC_CLIENT_METHOD(NodeManagerService,
-                         GetGcsServerAddress,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 

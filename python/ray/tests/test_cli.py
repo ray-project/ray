@@ -262,7 +262,10 @@ def test_ray_start(configure_lang, monkeypatch, tmp_path):
 
     _die_on_error(runner.invoke(scripts.stop))
 
-    _check_output_via_pattern("test_ray_start.txt", result)
+    if ray.util.get_node_ip_address() == "127.0.0.1":
+        _check_output_via_pattern("test_ray_start_localhost.txt", result)
+    else:
+        _check_output_via_pattern("test_ray_start.txt", result)
 
 
 def _ray_start_hook(ray_params, head):
@@ -684,4 +687,7 @@ def test_ray_cluster_dump(configure_lang, configure_aws, _unlink_test_ssh_key):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

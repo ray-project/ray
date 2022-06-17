@@ -42,80 +42,6 @@ Epochs are defined by the last call to ``.repeat()`` in a pipeline, for example:
 
 Note that while epochs commonly consist of a single window, they can also contain multiple windows if ``.window()`` is used or there are multiple ``.repeat()`` calls.
 
-
-Example: Pipelined Batch Inference
-==================================
-
-In this example, we pipeline the execution of a three-stage Dataset application to minimize GPU idle time. Let's revisit the batch inference example from the previous page:
-
-.. code-block:: python
-
-    def preprocess(image: bytes) -> bytes:
-        return image
-
-    class BatchInferModel:
-        def __init__(self):
-            self.model = ImageNetModel()
-        def __call__(self, batch: pd.DataFrame) -> pd.DataFrame:
-            return self.model(batch)
-
-    # Load data from storage.
-    ds: Dataset = ray.data.read_binary_files("s3://bucket/image-dir")
-
-    # Preprocess the data.
-    ds = ds.map(preprocess)
-
-    # Apply GPU batch inference to the data.
-    ds = ds.map_batches(BatchInferModel, compute="actors", batch_size=256, num_gpus=1)
-
-    # Save the output.
-    ds.write_json("/tmp/results")
-
-Ignoring the output, the above script has three separate stages: loading, preprocessing, and inference. Assuming we have a fixed-sized cluster, and that each stage takes 100 seconds each, the cluster GPUs will be idle for the first 200 seconds of execution:
-
-..
-  https://docs.google.com/drawings/d/1UMRcpbxIsBRwD8G7hR3IW6DPa9rRSkd05isg9pAEx0I/edit
-
-.. image:: images/dataset-pipeline-1.svg
-
-Enabling Pipelining
-===================
-
-We can optimize this by *pipelining* the execution of the dataset with the ``.window()`` call, which returns a DatasetPipeline instead of a Dataset object. The pipeline supports similar transformations to the original Dataset:
-
-.. code-block:: python
-
-    # Convert the Dataset into a DatasetPipeline.
-    pipe: DatasetPipeline = ray.data \
-        .read_binary_files("s3://bucket/image-dir") \
-        .window(blocks_per_window=2)
-
-    # The remainder of the steps do not change.
-    pipe = pipe.map(preprocess)
-    pipe = pipe.map_batches(BatchInferModel, compute="actors", batch_size=256, num_gpus=1)
-    pipe.write_json("/tmp/results")
-
-Here we specified ``blocks_per_window=2``, which means that the Dataset is split into smaller sub-Datasets of two blocks each. Each transformation or *stage* of the pipeline is operating over these two-block Datasets in parallel. This means batch inference processing can start as soon as two blocks are read and preprocessed, greatly reducing the GPU idle time:
-
-.. image:: images/dataset-pipeline-2.svg
-
-Tuning Parallelism
-==================
-
-Tune the throughput vs latency of your pipeline with the ``blocks_per_window`` setting. As a rule of thumb, higher parallelism settings perform better, however ``blocks_per_window == num_blocks`` effectively disables pipelining, since the DatasetPipeline will only contain a single Dataset. The other extreme is setting ``blocks_per_window=1``, which minimizes the latency to initial output but only allows one concurrent transformation task per stage:
-
-.. image:: images/dataset-pipeline-3.svg
-
-You can also specify the size of each window using ``bytes_per_window``. In this mode, Datasets will determine the size of each window based on the target byte size, giving each window at least 1 block but not otherwise exceeding the target bytes per window. This mode can be useful to limit the memory usage of a pipeline. As a rule of thumb, the cluster memory should be at least 2-5x the window size to avoid spilling.
-
-.. code-block:: python
-
-    # Create a DatasetPipeline with up to 10GB of data per window.
-    pipe: DatasetPipeline = ray.data \
-        .read_binary_files("s3://bucket/image-dir") \
-        .window(bytes_per_window=10e9)
-    # -> INFO -- Created DatasetPipeline with 73 windows: 9120MiB min, 9431MiB max, 9287MiB mean
-
 .. _dataset-pipeline-per-epoch-shuffle:
 
 Per-Epoch Shuffle Pipeline
@@ -136,9 +62,17 @@ Readers pulling batches from the pipeline will see the same data blocks repeated
 Pre-repeat vs post-repeat transforms
 ====================================
 
-Transformations made prior to the Dataset prior to the call to ``.repeat()`` are executed once. Transformations made to the DatasetPipeline after the repeat will be executed once for each repetition of the Dataset.
+Transformations prior to the call to ``.repeat()`` will be cached. However, note that the initial read will not be cached unless there is a subsequent transformation or ``.fully_executed()`` call. Transformations made to the DatasetPipeline after the repeat will always be executed once for each repetition of the Dataset.
 
-For example, in the following pipeline, the ``map(func)`` transformation only occurs once. However, the random shuffle is applied to each repetition in the pipeline.
+For example, in the following pipeline, the ``map(func)`` transformation only occurs once. However, the random shuffle is applied to each repetition in the pipeline. However, if we omitted the map transformation, then the pipeline would re-read from the base data on each repetition.
+
+.. note::
+  Global per-epoch shuffling is an expensive operation that will slow down your ML
+  ingest pipeline, prevents you from using a fully-streaming ML ingest pipeline, and
+  can cause large increases in memory utilization and spilling to disk; only use
+  global per-epoch shuffling if your model benefits from it! If your model doesn't
+  benefit from global per-epoch shuffling and/or you run into performance or stability
+  issues, you should try out windowed or local per-epoch shuffling.
 
 **Code**:
 
@@ -167,7 +101,7 @@ For example, in the following pipeline, the ``map(func)`` transformation only oc
 
 .. important::
 
-    Result caching only applies if there are *transformation* stages prior to the pipelining operation. If you ``repeat()`` or ``window()`` a Dataset right after the read call (e.g., ``ray.data.read_parquet(...).repeat()``), then the read will still be re-executed on each repetition. This optimization saves memory, at the cost of repeated reads from the datasource.
+    Result caching only applies if there are *transformation* stages prior to the pipelining operation. If you ``repeat()`` or ``window()`` a Dataset right after the read call (e.g., ``ray.data.read_parquet(...).repeat()``), then the read will still be re-executed on each repetition. This optimization saves memory, at the cost of repeated reads from the datasource. To force result caching in all cases, use ``.fully_executed().repeat()``.
 
 Splitting pipelines for distributed ingest
 ==========================================

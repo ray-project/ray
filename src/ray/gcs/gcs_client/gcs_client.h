@@ -88,6 +88,13 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// Return client information for debug.
   virtual std::string DebugString() const { return ""; }
 
+  /// Resubscribe to GCS to recover from a GCS failure.
+  void AsyncResubscribe() {
+    if (resubscribe_func_ != nullptr) {
+      resubscribe_func_();
+    }
+  }
+
   /// Get the sub-interface for accessing actor information in GCS.
   /// This function is thread safe.
   ActorInfoAccessor &Actors() {
@@ -173,6 +180,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   // Gcs rpc client
   std::shared_ptr<rpc::GcsRpcClient> gcs_rpc_client_;
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
+  std::function<void()> resubscribe_func_;
 };
 
 }  // namespace gcs

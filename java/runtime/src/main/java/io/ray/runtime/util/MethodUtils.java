@@ -1,7 +1,7 @@
 package io.ray.runtime.util;
 
 import io.ray.api.Ray;
-import io.ray.runtime.RayRuntimeInternal;
+import io.ray.runtime.AbstractRayRuntime;
 import java.lang.reflect.Array;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -47,7 +47,7 @@ public final class MethodUtils {
         /// This code path indicates that here might be in another thread of a worker.
         /// So try to load the class from URLClassLoader of this worker.
         ClassLoader cl =
-            ((RayRuntimeInternal) Ray.internal()).getWorkerContext().getCurrentClassLoader();
+            ((AbstractRayRuntime) Ray.internal()).getFunctionManager().getClassLoader();
         actorClz = Class.forName(className, true, cl);
       }
     } catch (Exception e) {

@@ -14,7 +14,7 @@ import gym
 import numpy as np
 import ray
 from ray import tune
-from ray.ml.utils.remote_storage import _ensure_directory
+from ray.air._internal.remote_storage import _ensure_directory
 from ray.rllib import _register_all
 from ray.tune import (
     register_env,
@@ -45,7 +45,12 @@ from ray.tune.result import (
     TRIAL_ID,
     EXPERIMENT_TAG,
 )
-from ray.tune.schedulers import TrialScheduler, FIFOScheduler, AsyncHyperBandScheduler
+from ray.tune.schedulers import (
+    TrialScheduler,
+    FIFOScheduler,
+    AsyncHyperBandScheduler,
+)
+from ray.tune.schedulers.pb2 import PB2
 from ray.tune.stopper import (
     MaximumIterationStopper,
     TrialPlateauStopper,
@@ -56,7 +61,7 @@ from ray.tune.suggest._mock import _MockSuggestionAlgorithm
 from ray.tune.suggest.ax import AxSearch
 from ray.tune.suggest.hyperopt import HyperOptSearch
 from ray.tune.suggest.suggestion import ConcurrencyLimiter
-from ray.tune.sync_client import CommandBasedClient
+from ray.tune.syncer import Syncer
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.utils import flatten_dict
@@ -310,19 +315,19 @@ class TrainableFunctionApiTest(unittest.TestCase):
         os.environ["TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S"] = "0"
 
         with self.assertRaises(RuntimeError), patch.object(
-            ray.tune.trial_executor.logger, "warning"
+            ray.tune.ray_trial_executor.logger, "warning"
         ) as warn_mock:
             self.assertRaises(TuneError, lambda: g(100, 100))
             assert warn_mock.assert_called_once()
 
         with self.assertRaises(RuntimeError), patch.object(
-            ray.tune.trial_executor.logger, "warning"
+            ray.tune.ray_trial_executor.logger, "warning"
         ) as warn_mock:
             self.assertRaises(TuneError, lambda: g(0, 100))
             assert warn_mock.assert_called_once()
 
         with self.assertRaises(RuntimeError), patch.object(
-            ray.tune.trial_executor.logger, "warning"
+            ray.tune.ray_trial_executor.logger, "warning"
         ) as warn_mock:
             self.assertRaises(TuneError, lambda: g(100, 0))
             assert warn_mock.assert_called_once()
@@ -1032,24 +1037,23 @@ class TrainableFunctionApiTest(unittest.TestCase):
     def testDurableTrainableSyncFunction(self):
         """Check custom sync functions in durable trainables"""
 
+        class CustomSyncer(Syncer):
+            def sync_up(
+                self, local_dir: str, remote_dir: str, exclude: list = None
+            ) -> bool:
+                pass  # sync up
+
+            def sync_down(
+                self, remote_dir: str, local_dir: str, exclude: list = None
+            ) -> bool:
+                pass  # sync down
+
+            def delete(self, remote_dir: str) -> bool:
+                pass  # delete
+
         class TestDurable(Trainable):
-            def __init__(self, *args, **kwargs):
-                # Mock distutils.spawn.find_executable
-                # so `aws` command is found
-                import distutils.spawn
-
-                distutils.spawn.find_executable = lambda *_, **__: True
-                super(TestDurable, self).__init__(*args, **kwargs)
-
-            def check(self):
-                return (
-                    bool(self.sync_function_tpl)
-                    and isinstance(self.storage_client, CommandBasedClient)
-                    and "aws" not in self.storage_client.sync_up_template
-                )
-
-        class TestTplDurable(TestDurable):
-            _sync_function_tpl = "echo static sync {source} {target}"
+            def has_custom_syncer(self):
+                return bool(self.custom_syncer)
 
         upload_dir = "s3://test-bucket/path"
 
@@ -1069,21 +1073,17 @@ class TrainableFunctionApiTest(unittest.TestCase):
             cls = trial.get_trainable_cls()
             actor = ray.remote(cls).remote(
                 remote_checkpoint_dir=upload_dir,
-                sync_function_tpl=trial.sync_function_tpl,
+                custom_syncer=trial.custom_syncer,
             )
             return actor
 
         # This actor should create a default aws syncer, so check should fail
         actor1 = _create_remote_actor(TestDurable, None)
-        self.assertFalse(ray.get(actor1.check.remote()))
+        self.assertFalse(ray.get(actor1.has_custom_syncer.remote()))
 
         # This actor should create a custom syncer, so check should pass
-        actor2 = _create_remote_actor(TestDurable, "echo test sync {source} {target}")
-        self.assertTrue(ray.get(actor2.check.remote()))
-
-        # This actor should create a custom syncer, so check should pass
-        actor3 = _create_remote_actor(TestTplDurable, None)
-        self.assertTrue(ray.get(actor3.check.remote()))
+        actor2 = _create_remote_actor(TestDurable, CustomSyncer())
+        self.assertTrue(ray.get(actor2.has_custom_syncer.remote()))
 
     def testCheckpointDict(self):
         class TestTrain(Trainable):
@@ -1464,6 +1464,16 @@ class ShimCreationTest(unittest.TestCase):
         shim_scheduler = tune.create_scheduler(scheduler, **kwargs)
         real_scheduler = AsyncHyperBandScheduler(**kwargs)
         assert type(shim_scheduler) is type(real_scheduler)
+
+    def testCreateLazyImportScheduler(self):
+        kwargs = {
+            "metric": "metric_foo",
+            "mode": "min",
+            "hyperparam_bounds": {"param1": [0, 1]},
+        }
+        shim_scheduler_pb2 = tune.create_scheduler("pb2", **kwargs)
+        real_scheduler_pb2 = PB2(**kwargs)
+        assert type(shim_scheduler_pb2) is type(real_scheduler_pb2)
 
     def testCreateSearcher(self):
         kwargs = {"metric": "metric_foo", "mode": "min"}

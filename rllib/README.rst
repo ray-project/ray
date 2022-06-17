@@ -60,7 +60,8 @@ Offline RL:
 
 - `Behavior Cloning (BC; derived from MARWIL implementation) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#bc>`__ 
 - `Conservative Q-Learning (CQL) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#cql>`__ 
-- `Importance Sampling and Weighted Importance Sampling (OPE) <https://docs.ray.io/en/latest/rllib/rllib-offline.html#is>`__ 
+- `Critic Regularized Regression (CRR) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#crr>`__
+- `Importance Sampling and Weighted Importance Sampling (OPE) <https://docs.ray.io/en/latest/rllib/rllib-offline.html#is>`__
 - `Monotonic Advantage Re-Weighted Imitation Learning (MARWIL) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#marwil>`__ 
 
 Model-free On-policy RL (for Games):
@@ -97,15 +98,15 @@ RL for recommender systems:
 
 Bandits: 
 
-- `Linear Upper Confidence Bound (BanditLinUCBTrainer) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#lin-ucb>`__ 
-- `Linear Thompson Sampling (BanditLinTSTrainer) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#lints>`__ 
+- `Linear Upper Confidence Bound (BanditLinUCB) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#lin-ucb>`__
+- `Linear Thompson Sampling (BanditLinTS) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#lints>`__
 
 Multi-agent:  
 
-- `Single-Player Alpha Zero (contrib/AlphaZero)  <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#alphazero>`__ 
+- `Single-Player Alpha Zero (AlphaZero)  <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#alphazero>`__
 - `Parameter Sharing <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#parameter>`__ 
 - `QMIX Monotonic Value Factorisation (QMIX, VDN, IQN)) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#qmix>`__ 
-- `Multi-Agent Deep Deterministic Policy Gradient (contrib/MADDPG) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#maddpg>`__ 
+- `Multi-Agent Deep Deterministic Policy Gradient (MADDPG) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#maddpg>`__
 - `Shared Critic Methods <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#sc>`__ 
 
 Others:  
@@ -123,7 +124,7 @@ Quick First Experiment
 .. code-block:: python
 
     import gym
-    from ray.rllib.agents.ppo import PPOTrainer
+    from ray.rllib.algorithms.ppo import PPO
 
 
     # Define your problem using python and openAI's gym API:
@@ -174,9 +175,9 @@ Quick First Experiment
             return self.cur_obs, reward, done, {}
 
 
-    # Create an RLlib Trainer instance to learn how to act in the above
+    # Create an RLlib Algorithm instance to learn how to act in the above
     # environment.
-    trainer = PPOTrainer(
+    algo = PPO(
         config={
             # Env class to use (here: our gym.Env sub-class from above).
             "env": ParrotEnv,
@@ -193,7 +194,7 @@ Quick First Experiment
     # (exact match between observation and action value),
     # we can expect to reach an optimal episode reward of 0.0.
     for i in range(5):
-        results = trainer.train()
+        results = algo.train()
         print(f"Iter: {i}; avg. reward={results['episode_reward_mean']}")
 
 
@@ -220,7 +221,7 @@ and `attention nets <https://github.com/ray-project/ray/blob/master/rllib/exampl
     while not done:
         # Compute a single action, given the current observation
         # from the environment.
-        action = trainer.compute_single_action(obs)
+        action = algo.compute_single_action(obs)
         # Apply the computed action in the environment.
         obs, reward, done, info = env.step(action)
         # Sum up rewards for reporting purposes.
@@ -278,7 +279,7 @@ for your particular problem, but tons of historic data recorded by a legacy (may
 non-RL/ML) system? This branch of reinforcement learning is for you!
 RLlib's comes with several `offline RL <https://github.com/ray-project/ray/blob/master/rllib/examples/offline_rl.py>`_
 algorithms (*CQL*, *MARWIL*, and *DQfD*), allowing you to either purely
-`behavior-clone <https://github.com/ray-project/ray/blob/master/rllib/agents/marwil/tests/test_bc.py>`_
+`behavior-clone <https://github.com/ray-project/ray/blob/master/rllib/algorithms/bc/tests/test_bc.py>`_
 your existing system or learn how to further improve over it.
 
 

@@ -19,6 +19,7 @@ import threading
 import time
 import traceback
 import _thread
+import typing
 
 from libc.stdint cimport (
     int32_t,
@@ -521,6 +522,7 @@ cdef execute_task(
         if core_worker.current_actor_is_asyncio():
             error = SystemExit(0)
             error.is_ray_terminate = True
+            error.ray_terminate_msg = "exit_actor() is called."
             raise error
 
     function_descriptor = CFunctionDescriptorToPython(
@@ -698,6 +700,8 @@ cdef execute_task(
                                     exc_info=True)
                     raise e
                 if c_return_ids.size() == 1:
+                    # If there is only one return specified, we should return
+                    # all return values as a single object.
                     outputs = (outputs,)
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
                 # Record actor repr via :actor_name: magic token in the log.
@@ -719,11 +723,14 @@ cdef execute_task(
                 task_exception = True
                 raise TaskCancelledError(
                             core_worker.get_current_task_id())
+
             if (c_return_ids.size() > 0 and
+                    not inspect.isgenerator(outputs) and
                     len(outputs) != int(c_return_ids.size())):
                 raise ValueError(
                     "Task returned {} objects, but num_returns={}.".format(
                         len(outputs), c_return_ids.size()))
+
             # Store the outputs in the object store.
             with core_worker.profile_event(b"task:store_outputs"):
                 core_worker.store_task_outputs(
@@ -770,6 +777,9 @@ cdef execute_task(
         if task_counter == execution_info.max_calls:
             exit = SystemExit(0)
             exit.is_ray_terminate = True
+            exit.ray_terminate_msg = (
+                "max_call has reached, "
+                f"max_calls: {execution_info.max_calls}")
             raise exit
 
 cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
@@ -815,6 +825,9 @@ cdef CRayStatus task_execution_handler(
                     (&creation_task_exception_pb_bytes)[0] = (
                         ray_error_to_memory_buf(e))
                     sys_exit.is_creation_task_error = True
+                    sys_exit.init_error_message = (
+                        "Exception raised from an actor init method. "
+                        f"Traceback: {str(e)}")
                 else:
                     traceback_str = traceback.format_exc() + (
                         "An unexpected internal error "
@@ -825,28 +838,32 @@ cdef CRayStatus task_execution_handler(
                         "worker_crash",
                         traceback_str,
                         job_id=None)
+                    sys_exit.unexpected_error_traceback = traceback_str
                 raise sys_exit
         except SystemExit as e:
             # Tell the core worker to exit as soon as the result objects
             # are processed.
             if hasattr(e, "is_ray_terminate"):
-                return CRayStatus.IntentionalSystemExit()
+                return CRayStatus.IntentionalSystemExit(e.ray_terminate_msg)
             elif hasattr(e, "is_creation_task_error"):
-                return CRayStatus.CreationTaskError()
-            elif e.code and e.code == 0:
+                return CRayStatus.CreationTaskError(e.init_error_message)
+            elif e.code is not None and e.code == 0:
                 # This means the system exit was
                 # normal based on the python convention.
                 # https://docs.python.org/3/library/sys.html#sys.exit
-                return CRayStatus.IntentionalSystemExit()
+                return CRayStatus.IntentionalSystemExit(
+                    f"Worker exits with an exit code {e.code}.")
             else:
-                msg = "SystemExit was raised from the worker."
+                msg = f"Worker exits with an exit code {e.code}."
                 # In K8s, SIGTERM likely means we hit memory limits, so print
                 # a more informative message there.
                 if "KUBERNETES_SERVICE_HOST" in os.environ:
                     msg += (
                         " The worker may have exceeded K8s pod memory limits.")
+                if hasattr(e, "unexpected_error_traceback"):
+                    msg += (f"\n {e.unexpected_error_traceback}")
                 logger.exception(msg)
-                return CRayStatus.UnexpectedSystemExit()
+                return CRayStatus.UnexpectedSystemExit(msg)
 
     return CRayStatus.OK()
 
@@ -1116,7 +1133,6 @@ cdef class CoreWorker:
         options.unhandled_exception_handler = unhandled_exception_handler
         options.get_lang_stack = get_py_stack
         options.is_local_mode = local_mode
-        options.num_workers = 1
         options.kill_main = kill_main_task
         options.terminate_asyncio_thread = terminate_asyncio_thread
         options.serialized_job_config = serialized_job_config
@@ -2019,11 +2035,16 @@ cdef class CoreWorker:
         if return_ids.size() == 0:
             return
 
-        n_returns = len(outputs)
+        n_returns = return_ids.size()
         returns.resize(n_returns)
         task_output_inlined_bytes = 0
-        for i in range(n_returns):
-            return_id, output = return_ids[i], outputs[i]
+        for i, output in enumerate(outputs):
+            if i >= n_returns:
+                raise ValueError(
+                    "Task returned more than num_returns={} objects.".format(
+                        n_returns))
+
+            return_id = return_ids[i]
             context = worker.get_serialization_context()
             serialized_object = context.serialize(output)
             data_size = serialized_object.total_bytes
@@ -2051,6 +2072,12 @@ cdef class CoreWorker:
                         serialized_object, return_id, data_size, metadata,
                         contained_id, &task_output_inlined_bytes,
                         &returns[0][i])
+
+        i += 1
+        if i < n_returns:
+            raise ValueError(
+                    "Task returned {} objects, but num_returns={}.".format(
+                        i, n_returns))
 
     cdef c_function_descriptors_to_python(
             self,

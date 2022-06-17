@@ -1,6 +1,8 @@
 load("//bazel:python.bzl", "py_test_run_all_subdirectory")
 load("//bazel:python.bzl", "py_test_run_all_notebooks")
 
+exports_files(["test_myst_doc.py"])
+
 # --------------------------------------------------------------------
 # Tests from the doc directory.
 # Please keep these sorted alphabetically, but start with the
@@ -32,6 +34,16 @@ py_test(
             "--smoke-test", "--address ''", "--num-actors 4",
             "--cpus-per-actor 1", "--num-actors-inference 4",
             "--cpus-per-actor-inference 1"]
+)
+
+py_test(
+    name = "highly_parallel",
+    size = "medium",
+    main = "test_myst_doc.py",
+    srcs = ["test_myst_doc.py"],
+    tags = ["exclusive", "team:ml", "py37"],
+    data = ["//doc/source/ray-core/examples:core_examples"],
+    args = ["--path", "doc/source/ray-core/examples/highly_parallel.ipynb"]
 )
 
 ### Ray Data
@@ -110,7 +122,6 @@ py_test(
     tags = ["exclusive", "pytorch", "team:ml"]
 )
 
-# Ray Serve
 py_test(
     name = "doc_code_metrics_example",
     size = "small",
@@ -127,25 +138,19 @@ py_test(
     tags = ["exclusive", "post_wheel_build", "team:serve"]
 )
 
-py_test(
-    name = "doc_code_create_deployment_example",
-    size = "small",
-    main = "create_deployment.py",
-    srcs = ["//doc/source/serve/doc_code:serve_doc_code"],
-    tags = ["exclusive", "post_wheel_build", "team:serve"]
-)
-
 # --------------------------------------------------------------------
-# Test all doc/source/tune/examples notebooks.
+# Test all doc/source/serve/doc_code code included in rst/md files.
 # --------------------------------------------------------------------
 
-py_test_run_all_notebooks(
+py_test_run_all_subdirectory(
     size = "medium",
-    include = ["doc/source/tune/examples/*.ipynb"],
+    include = ["source/serve/doc_code/*.py"],
     exclude = [],
-    data = ["//doc/source/tune/examples:tune_examples"],
-    tags = ["exclusive", "team:ml"],
+    extra_srcs = [],
+    tags = ["exclusive", "team:serve"],
 )
+
+
 
 # --------------------------------------------------------------------
 # Test all doc/source/tune/doc_code code included in rst/md files.
@@ -160,15 +165,15 @@ py_test_run_all_subdirectory(
 )
 
 # --------------------------------------------------------------------
-# Test all doc/source/ray-air/examples notebooks.
+# Test all doc/source/rllib/doc_code code included in rst/md files.
 # --------------------------------------------------------------------
 
-py_test_run_all_notebooks(
+py_test_run_all_subdirectory(
     size = "medium",
-    include = ["doc/source/ray-air/examples/*.ipynb"],
+    include = ["source/rllib/doc_code/*.py"],
     exclude = [],
-    data = ["//doc/source/ray-air/examples:air_examples"],
-    tags = ["exclusive", "team:ml"],
+    extra_srcs = [],
+    tags = ["exclusive", "team:rllib"],
 )
 
 # --------------------------------------------------------------------
@@ -183,16 +188,14 @@ py_test_run_all_subdirectory(
     tags = ["exclusive", "team:ml"],
 )
 
-
 # --------------------------------------------------------------------
-# Test all doc/source/ray-overview/doc_code snippets, used on ray.io
+# Test all doc/source/ray-overview/doc_test snippets, used on ray.io
 # --------------------------------------------------------------------
 
 py_test_run_all_subdirectory(
     size = "small",
-    include = ["source/ray-overview/doc_code/*.py"],
-    exclude = ["source/ray-overview/doc_code/ray_data.py"],
+    include = ["source/ray-overview/doc_test/*.py"],
+    exclude = ["source/ray-overview/doc_test/ray_data.py"],
     extra_srcs = [],
     tags = ["exclusive", "team:ml"],
 )
-

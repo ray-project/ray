@@ -8,8 +8,10 @@ from ray.data.datasource.file_based_datasource import (
     FileBasedDatasource,
     _resolve_kwargs,
 )
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI
 class JSONDatasource(FileBasedDatasource):
     """JSON datasource, for reading and writing JSON files.
 

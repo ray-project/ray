@@ -309,7 +309,7 @@ cdef class PythonFunctionDescriptor(FunctionDescriptor):
                 n = inspect.getmodulename(file_path)
                 if n:
                     module_name = n
-            except TypeError:
+            except (TypeError, OSError):
                 pass
         return module_name
 

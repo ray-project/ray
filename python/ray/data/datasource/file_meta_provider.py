@@ -120,6 +120,7 @@ class BaseFileMetadataProvider(FileMetadataProvider):
         raise NotImplementedError
 
 
+@DeveloperAPI
 class DefaultFileMetadataProvider(BaseFileMetadataProvider):
     """Default metadata provider for FileBasedDatasource implementations that
     reuse the base `prepare_read` method.
@@ -180,6 +181,7 @@ class DefaultFileMetadataProvider(BaseFileMetadataProvider):
         return expanded_paths, file_sizes
 
 
+@DeveloperAPI
 class FastFileMetadataProvider(DefaultFileMetadataProvider):
     """Fast Metadata provider for FileBasedDatasource implementations.
 
@@ -267,6 +269,7 @@ class ParquetMetadataProvider(FileMetadataProvider):
         return None
 
 
+@DeveloperAPI
 class DefaultParquetMetadataProvider(ParquetMetadataProvider):
     """The default file metadata provider for ParquetDatasource.
 

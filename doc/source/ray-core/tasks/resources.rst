@@ -4,32 +4,10 @@ Specifying Required Resources
 =============================
 
 Oftentimes, you may want to specify a task's resource requirements (for example
-one task may require a GPU). Ray will automatically
-detect the available GPUs and CPUs on the machine. However, you can override
-this default behavior by passing in specific resources.
+one task may require a GPU).
+Ray will automatically detect the available GPUs and CPUs on the machine (see :ref:`Configuring Ray <configuring-ray>` for more details).
 
-.. tabbed:: Python
-
-    .. code-block:: python
-
-        ray.init(num_cpus=8, num_gpus=4, resources={'Custom': 2})
-
-.. tabbed:: Java
-
-    Set Java system property: ``-Dray.resources=CPU:8,GPU:4,Custom:2``.
-
-
-.. tabbed:: C++
-
-    .. code-block:: c++
-
-        RayConfig config;
-        config.num_cpus = 8;
-        config.num_gpus = 4;
-        config.resources = {{"Custom", 2}};
-        ray::Init(config);
-
-Ray also allows specifying a task's resources requirements (e.g., CPU, GPU, and custom resources).
+Ray allows specifying a task's resources requirements (e.g., CPU, GPU, and custom resources).
 The task will only run on a machine if there are enough resources
 available to execute the task.
 

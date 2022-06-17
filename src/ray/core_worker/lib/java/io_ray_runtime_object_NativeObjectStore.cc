@@ -168,23 +168,21 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeDelete
 
 JNIEXPORT void JNICALL
 Java_io_ray_runtime_object_NativeObjectStore_nativeAddLocalReference(
-    JNIEnv *env, jclass, jbyteArray workerId, jbyteArray objectId) {
-  auto worker_id = JavaByteArrayToId<WorkerID>(env, workerId);
+    JNIEnv *env, jclass, jbyteArray objectId) {
   auto object_id = JavaByteArrayToId<ObjectID>(env, objectId);
-  auto core_worker = CoreWorkerProcess::TryGetWorker(worker_id);
+  auto core_worker = CoreWorkerProcess::TryGetWorker();
   RAY_CHECK(core_worker);
   core_worker->AddLocalReference(object_id);
 }
 
 JNIEXPORT void JNICALL
 Java_io_ray_runtime_object_NativeObjectStore_nativeRemoveLocalReference(
-    JNIEnv *env, jclass, jbyteArray workerId, jbyteArray objectId) {
-  auto worker_id = JavaByteArrayToId<WorkerID>(env, workerId);
+    JNIEnv *env, jclass, jbyteArray objectId) {
   auto object_id = JavaByteArrayToId<ObjectID>(env, objectId);
   // We can't control the timing of Java GC, so it's normal that this method is called but
   // core worker is shutting down (or already shut down). If we can't get a core worker
   // instance here, skip calling the `RemoveLocalReference` method.
-  auto core_worker = CoreWorkerProcess::TryGetWorker(worker_id);
+  auto core_worker = CoreWorkerProcess::TryGetWorker();
   if (core_worker) {
     core_worker->RemoveLocalReference(object_id);
   }

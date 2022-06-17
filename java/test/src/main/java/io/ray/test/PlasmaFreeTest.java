@@ -28,7 +28,7 @@ public class PlasmaFreeTest extends BaseTest {
                     .wait(ImmutableList.of(((ObjectRefImpl<String>) helloId).getId()), 1, 0, true)
                     .get(0),
             50);
-    if (TestUtils.isSingleProcessMode()) {
+    if (TestUtils.isLocalMode()) {
       Assert.assertTrue(result);
     } else {
       // The object will not be deleted under cluster mode.

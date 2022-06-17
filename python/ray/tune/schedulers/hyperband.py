@@ -9,6 +9,7 @@ from ray.tune.result import DEFAULT_METRIC
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.trial import Trial
 from ray.tune.error import TuneError
+from ray.util import PublicAPI
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,7 @@ logger = logging.getLogger(__name__)
 #    `max_attr=81, eta=3` from the blog post. Trials will fill up
 #    from smallest bracket to largest, with largest
 #    having the most rounds of successive halving.
+@PublicAPI
 class HyperBandScheduler(FIFOScheduler):
     """Implements the HyperBand early stopping algorithm.
 
@@ -188,7 +190,7 @@ class HyperBandScheduler(FIFOScheduler):
         self._trial_info[trial] = cur_bracket, self._state["band_idx"]
 
     def _create_bracket(self, s):
-        return Bracket(
+        return _Bracket(
             time_attr=self._time_attr,
             max_trials=self._get_n0(s),
             init_t_attr=self._get_r0(s),
@@ -232,7 +234,7 @@ class HyperBandScheduler(FIFOScheduler):
         return action
 
     def _process_bracket(
-        self, trial_runner: "trial_runner.TrialRunner", bracket: "Bracket"
+        self, trial_runner: "trial_runner.TrialRunner", bracket: "_Bracket"
     ) -> str:
         """This is called whenever a trial makes progress.
 
@@ -353,7 +355,7 @@ class HyperBandScheduler(FIFOScheduler):
         }
 
 
-class Bracket:
+class _Bracket:
     """Logical object for tracking Hyperband bracket progress. Keeps track
     of proper parameters as designated by HyperBand.
 

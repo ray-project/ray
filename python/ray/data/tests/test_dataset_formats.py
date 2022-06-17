@@ -1,41 +1,42 @@
 import os
 import shutil
-from typing import Union, List, Dict, Any
+from functools import partial
+from io import BytesIO
+from typing import Any, Dict, List, Union
 
 import numpy as np
 import pandas as pd
 import pyarrow as pa
+import pyarrow.json as pajson
 import pyarrow.parquet as pq
 import pytest
 import snappy
 from fsspec.implementations.local import LocalFileSystem
 from pytest_lazyfixture import lazy_fixture
-from io import BytesIO
-from functools import partial
 
 import ray
-
-from ray.tests.conftest import *  # noqa
-from ray.types import ObjectRef
+from ray.data._internal.arrow_block import ArrowRow
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.datasource import (
-    Datasource,
-    DummyOutputDatasource,
     BaseFileMetadataProvider,
+    Datasource,
     DefaultFileMetadataProvider,
     DefaultParquetMetadataProvider,
+    DummyOutputDatasource,
     FastFileMetadataProvider,
-    PathPartitionFilter,
-    PathPartitionEncoder,
     PartitionStyle,
+    PathPartitionEncoder,
+    PathPartitionFilter,
     SimpleTensorFlowDatasource,
     SimpleTorchDatasource,
     WriteResult,
 )
-from ray.data.impl.arrow_block import ArrowRow
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
 from ray.data.datasource.parquet_datasource import PARALLELIZE_META_FETCH_THRESHOLD
+from ray.data.datasource.parquet_datasource import _deserialize_pieces_with_retry
 from ray.data.tests.conftest import *  # noqa
+from ray.tests.conftest import *  # noqa
+from ray.types import ObjectRef
 
 
 def maybe_pipeline(ds, enabled):
@@ -77,6 +78,8 @@ def test_from_pandas(ray_start_regular_shared, enable_pandas_block):
         values = [(r["one"], r["two"]) for r in ds.take(6)]
         rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
         assert values == rows
+        # Check that metadata fetch is included in stats.
+        assert "from_pandas_refs" in ds.stats()
 
         # test from single pandas dataframe
         ds = ray.data.from_pandas(df1)
@@ -84,6 +87,8 @@ def test_from_pandas(ray_start_regular_shared, enable_pandas_block):
         values = [(r["one"], r["two"]) for r in ds.take(3)]
         rows = [(r.one, r.two) for _, r in df1.iterrows()]
         assert values == rows
+        # Check that metadata fetch is included in stats.
+        assert "from_pandas_refs" in ds.stats()
     finally:
         ctx.enable_pandas_block = old_enable_pandas_block
 
@@ -101,6 +106,8 @@ def test_from_pandas_refs(ray_start_regular_shared, enable_pandas_block):
         values = [(r["one"], r["two"]) for r in ds.take(6)]
         rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
         assert values == rows
+        # Check that metadata fetch is included in stats.
+        assert "from_pandas_refs" in ds.stats()
 
         # test from single pandas dataframe ref
         ds = ray.data.from_pandas_refs(ray.put(df1))
@@ -108,6 +115,8 @@ def test_from_pandas_refs(ray_start_regular_shared, enable_pandas_block):
         values = [(r["one"], r["two"]) for r in ds.take(3)]
         rows = [(r.one, r.two) for _, r in df1.iterrows()]
         assert values == rows
+        # Check that metadata fetch is included in stats.
+        assert "from_pandas_refs" in ds.stats()
     finally:
         ctx.enable_pandas_block = old_enable_pandas_block
 
@@ -121,16 +130,20 @@ def test_from_numpy(ray_start_regular_shared, from_ref):
         ds = ray.data.from_numpy_refs([ray.put(arr) for arr in arrs])
     else:
         ds = ray.data.from_numpy(arrs)
-    values = np.stack([x["value"] for x in ds.take(8)])
+    values = np.stack(ds.take(8))
     np.testing.assert_array_equal(values, np.concatenate((arr1, arr2)))
+    # Check that conversion task is included in stats.
+    assert "from_numpy_refs" in ds.stats()
 
     # Test from single NumPy ndarray.
     if from_ref:
         ds = ray.data.from_numpy_refs(ray.put(arr1))
     else:
         ds = ray.data.from_numpy(arr1)
-    values = np.stack([x["value"] for x in ds.take(4)])
+    values = np.stack(ds.take(4))
     np.testing.assert_array_equal(values, arr1)
+    # Check that conversion task is included in stats.
+    assert "from_numpy_refs" in ds.stats()
 
 
 def test_from_arrow(ray_start_regular_shared):
@@ -140,12 +153,16 @@ def test_from_arrow(ray_start_regular_shared):
     values = [(r["one"], r["two"]) for r in ds.take(6)]
     rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
     assert values == rows
+    # Check that metadata fetch is included in stats.
+    assert "from_arrow_refs" in ds.stats()
 
     # test from single pyarrow table
     ds = ray.data.from_arrow(pa.Table.from_pandas(df1))
     values = [(r["one"], r["two"]) for r in ds.take(3)]
     rows = [(r.one, r.two) for _, r in df1.iterrows()]
     assert values == rows
+    # Check that metadata fetch is included in stats.
+    assert "from_arrow_refs" in ds.stats()
 
 
 def test_from_arrow_refs(ray_start_regular_shared):
@@ -157,18 +174,22 @@ def test_from_arrow_refs(ray_start_regular_shared):
     values = [(r["one"], r["two"]) for r in ds.take(6)]
     rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
     assert values == rows
+    # Check that metadata fetch is included in stats.
+    assert "from_arrow_refs" in ds.stats()
 
     # test from single pyarrow table ref
     ds = ray.data.from_arrow_refs(ray.put(pa.Table.from_pandas(df1)))
     values = [(r["one"], r["two"]) for r in ds.take(3)]
     rows = [(r.one, r.two) for _, r in df1.iterrows()]
     assert values == rows
+    # Check that metadata fetch is included in stats.
+    assert "from_arrow_refs" in ds.stats()
 
 
 def test_to_pandas(ray_start_regular_shared):
     n = 5
     df = pd.DataFrame({"value": list(range(n))})
-    ds = ray.data.range_arrow(n)
+    ds = ray.data.range_table(n)
     dfds = ds.to_pandas()
     assert df.equals(dfds)
 
@@ -184,7 +205,7 @@ def test_to_pandas(ray_start_regular_shared):
 def test_to_pandas_refs(ray_start_regular_shared):
     n = 5
     df = pd.DataFrame({"value": list(range(n))})
-    ds = ray.data.range_arrow(n)
+    ds = ray.data.range_table(n)
     dfds = pd.concat(ray.get(ds.to_pandas_refs()), ignore_index=True)
     assert df.equals(dfds)
 
@@ -197,13 +218,27 @@ def test_to_numpy_refs(ray_start_regular_shared):
 
     # Tensor Dataset
     ds = ray.data.range_tensor(10, parallelism=2)
-    arr = np.concatenate(ray.get(ds.to_numpy_refs(column="value")))
+    arr = np.concatenate(ray.get(ds.to_numpy_refs()))
     np.testing.assert_equal(arr, np.expand_dims(np.arange(0, 10), 1))
 
     # Table Dataset
-    ds = ray.data.range_arrow(10)
-    arr = np.concatenate(ray.get(ds.to_numpy_refs(column="value")))
+    ds = ray.data.range_table(10)
+    arr = np.concatenate(ray.get(ds.to_numpy_refs()))
     np.testing.assert_equal(arr, np.arange(0, 10))
+
+    # Test multi-column Arrow dataset.
+    ds = ray.data.from_arrow(pa.table({"a": [1, 2, 3], "b": [4, 5, 6]}))
+    arrs = ray.get(ds.to_numpy_refs())
+    np.testing.assert_equal(
+        arrs, [{"a": np.array([1, 2, 3]), "b": np.array([4, 5, 6])}]
+    )
+
+    # Test multi-column Pandas dataset.
+    ds = ray.data.from_pandas(pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]}))
+    arrs = ray.get(ds.to_numpy_refs())
+    np.testing.assert_equal(
+        arrs, [{"a": np.array([1, 2, 3]), "b": np.array([4, 5, 6])}]
+    )
 
 
 def test_to_arrow_refs(ray_start_regular_shared):
@@ -211,7 +246,7 @@ def test_to_arrow_refs(ray_start_regular_shared):
 
     # Zero-copy.
     df = pd.DataFrame({"value": list(range(n))})
-    ds = ray.data.range_arrow(n)
+    ds = ray.data.range_table(n)
     dfds = pd.concat(
         [t.to_pandas() for t in ray.get(ds.to_arrow_refs())], ignore_index=True
     )
@@ -293,6 +328,68 @@ def test_read_example_data(ray_start_regular_shared, tmp_path):
             "variety": "Setosa",
         }
     ]
+
+
+@pytest.mark.parametrize(
+    "fs,data_path",
+    [
+        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+    ],
+)
+def test_parquet_deserialize_pieces_with_retry(
+    ray_start_regular_shared, fs, data_path, monkeypatch
+):
+    from ray import cloudpickle
+
+    setup_data_path = _unwrap_protocol(data_path)
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    table = pa.Table.from_pandas(df1)
+    path1 = os.path.join(setup_data_path, "test1.parquet")
+    pq.write_table(table, path1, filesystem=fs)
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    table = pa.Table.from_pandas(df2)
+    path2 = os.path.join(setup_data_path, "test2.parquet")
+    pq.write_table(table, path2, filesystem=fs)
+
+    dataset_kwargs = {}
+    pq_ds = pq.ParquetDataset(
+        data_path, **dataset_kwargs, filesystem=fs, use_legacy_dataset=False
+    )
+    serialized_pieces = cloudpickle.dumps(pq_ds.pieces)
+
+    # test 1st attempt succeed
+    pieces = _deserialize_pieces_with_retry(serialized_pieces)
+    assert "test1.parquet" in pieces[0].path
+    assert "test2.parquet" in pieces[1].path
+
+    # test the 3rd attempt succeed with a mock function constructed
+    # to throw in the first two attempts
+    class MockDeserializer:
+        def __init__(self, planned_exp_or_return):
+            self.planned_exp_or_return = planned_exp_or_return
+            self.cur_index = 0
+
+        def __call__(self, *args: Any, **kwds: Any) -> Any:
+            exp_or_ret = self.planned_exp_or_return[self.cur_index]
+            self.cur_index += 1
+            if type(exp_or_ret) == Exception:
+                raise exp_or_ret
+            else:
+                return exp_or_ret
+
+    mock_deserializer = MockDeserializer(
+        [
+            Exception("1st mock failed attempt"),
+            Exception("2nd mock failed attempt"),
+            pieces,
+        ]
+    )
+    monkeypatch.setattr(
+        ray.data.datasource.parquet_datasource, "_deserialize_pieces", mock_deserializer
+    )
+    retried_pieces = _deserialize_pieces_with_retry(serialized_pieces)
+    assert "test1.parquet" in retried_pieces[0].path
+    assert "test2.parquet" in retried_pieces[1].path
 
 
 @pytest.mark.parametrize(
@@ -1024,9 +1121,9 @@ def test_numpy_roundtrip(ray_start_regular_shared, fs, data_path):
     ds = ray.data.read_numpy(data_path, filesystem=fs)
     assert str(ds) == (
         "Dataset(num_blocks=2, num_rows=None, "
-        "schema={value: <ArrowTensorType: shape=(1,), dtype=int64>})"
+        "schema={__value__: <ArrowTensorType: shape=(1,), dtype=int64>})"
     )
-    assert str(ds.take(2)) == "[{'value': array([0])}, {'value': array([1])}]"
+    np.testing.assert_equal(ds.take(2), [np.array([0]), np.array([1])])
 
 
 def test_numpy_read(ray_start_regular_shared, tmp_path):
@@ -1036,9 +1133,9 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_numpy(path)
     assert str(ds) == (
         "Dataset(num_blocks=1, num_rows=10, "
-        "schema={value: <ArrowTensorType: shape=(1,), dtype=int64>})"
+        "schema={__value__: <ArrowTensorType: shape=(1,), dtype=int64>})"
     )
-    assert str(ds.take(2)) == "[{'value': array([0])}, {'value': array([1])}]"
+    np.testing.assert_equal(ds.take(2), [np.array([0]), np.array([1])])
 
     # Test default format-based path filtering.
     with open(os.path.join(path, "foo.txt"), "w") as f:
@@ -1060,9 +1157,9 @@ def test_numpy_read_meta_provider(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_numpy(path, meta_provider=FastFileMetadataProvider())
     assert str(ds) == (
         "Dataset(num_blocks=1, num_rows=10, "
-        "schema={value: <ArrowTensorType: shape=(1,), dtype=int64>})"
+        "schema={__value__: <ArrowTensorType: shape=(1,), dtype=int64>})"
     )
-    assert str(ds.take(2)) == "[{'value': array([0])}, {'value': array([1])}]"
+    np.testing.assert_equal(ds.take(2), [np.array([0]), np.array([1])])
 
     with pytest.raises(NotImplementedError):
         ray.data.read_binary_files(
@@ -1114,10 +1211,10 @@ def test_numpy_read_partitioned_with_filter(
         ds = ray.data.read_numpy(base_dir, partition_filter=partition_path_filter)
 
         vals = [[1, 0], [1, 1], [1, 2], [3, 3], [3, 4], [3, 5]]
-        val_str = "".join([f"{{'value': array({v}, dtype=int8)}}, " for v in vals])[:-2]
+        val_str = "".join(f"array({v}, dtype=int8), " for v in vals)[:-2]
         assert_base_partitioned_ds(
             ds,
-            schema="{value: <ArrowTensorType: shape=(2,), dtype=int8>}",
+            schema="{__value__: <ArrowTensorType: shape=(2,), dtype=int8>}",
             sorted_values=f"[[{val_str}]]",
             ds_take_transform_fn=lambda taken: [taken],
             sorted_values_transform_fn=lambda sorted_values: str(sorted_values),
@@ -1156,7 +1253,7 @@ def test_numpy_write(ray_start_regular_shared, fs, data_path, endpoint_url):
     assert len(arr2) == 5
     assert arr1.sum() == 10
     assert arr2.sum() == 35
-    assert str(ds.take(1)) == "[{'value': array([0])}]"
+    np.testing.assert_equal(ds.take(1), [np.array([0])])
 
 
 @pytest.mark.parametrize(
@@ -1195,7 +1292,7 @@ def test_numpy_write_block_path_provider(
     assert len(arr2) == 5
     assert arr1.sum() == 10
     assert arr2.sum() == 35
-    assert str(ds.take(1)) == "[{'value': array([0])}]"
+    np.testing.assert_equal(ds.take(1), [np.array([0])])
 
 
 def test_read_text(ray_start_regular_shared, tmp_path):
@@ -1663,6 +1760,45 @@ def test_json_read_meta_provider(
             filesystem=fs,
             meta_provider=BaseFileMetadataProvider(),
         )
+
+
+@pytest.mark.parametrize(
+    "fs,data_path,endpoint_url",
+    [
+        (None, lazy_fixture("local_path"), None),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+    ],
+)
+def test_json_read_with_read_options(
+    ray_start_regular_shared,
+    fs,
+    data_path,
+    endpoint_url,
+):
+    # Arrow's JSON ReadOptions isn't serializable in pyarrow < 8.0.0, so this test
+    # covers our custom ReadOptions serializer.
+    # TODO(Clark): Remove this test and our custom serializer once we require
+    # pyarrow >= 8.0.0.
+    if endpoint_url is None:
+        storage_options = {}
+    else:
+        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
+
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    path1 = os.path.join(data_path, "test1.json")
+    df1.to_json(path1, orient="records", lines=True, storage_options=storage_options)
+    ds = ray.data.read_json(
+        path1,
+        filesystem=fs,
+        read_options=pajson.ReadOptions(use_threads=False, block_size=2 ** 30),
+    )
+    dsdf = ds.to_pandas()
+    assert df1.equals(dsdf)
+    # Test metadata ops.
+    assert ds.count() == 3
+    assert ds.input_files() == [_unwrap_protocol(path1)]
+    assert "{one: int64, two: string}" in str(ds), ds
 
 
 @pytest.mark.parametrize(

@@ -8,7 +8,10 @@ because the process crashed or because the machine failed, Ray will rerun
 the task until either the task succeeds or the maximum number of retries is
 exceeded. The default number of retries is 3 and can be overridden by
 specifying ``max_retries`` in the ``@ray.remote`` decorator. Specifying -1
-allows infinite retries, and 0 disables retries.
+allows infinite retries, and 0 disables retries. To override the default number
+of retries for all tasks submitted, set the OS environment variable
+``RAY_TASK_MAX_RETRIES``. e.g., by passing this to your driver script or by
+using :ref:`runtime environments<runtime-environments>`.
 
 You can experiment with this behavior by running the following code.
 

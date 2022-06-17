@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import logging
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 import yaml
 import hashlib
 import subprocess
@@ -71,7 +72,11 @@ def _inject_ray_to_conda_site(
         python_binary = os.path.join(conda_path, "bin/python")
     site_packages_path = (
         subprocess.check_output(
-            [python_binary, "-c", "import site; print(site.getsitepackages()[0])"]
+            [
+                python_binary,
+                "-c",
+                "import sysconfig; print(sysconfig.get_paths()['purelib'])",
+            ]
         )
         .decode()
         .strip()
@@ -79,7 +84,7 @@ def _inject_ray_to_conda_site(
 
     ray_path = _resolve_current_ray_path()
     logger.warning(
-        f"Injecting {ray_path} to environment {conda_path} "
+        f"Injecting {ray_path} to environment site-packages {site_packages_path} "
         "because _inject_current_ray flag is on."
     )
 
@@ -90,7 +95,7 @@ def _inject_ray_to_conda_site(
 
     # See usage of *.pth file at
     # https://docs.python.org/3/library/site.html
-    with open(os.path.join(site_packages_path, "ray.pth"), "w") as f:
+    with open(os.path.join(site_packages_path, "ray_shared.pth"), "w") as f:
         f.write(ray_path)
 
 
@@ -156,9 +161,9 @@ def inject_dependencies(
     """Add Ray, Python and (optionally) extra pip dependencies to a conda dict.
 
     Args:
-        conda_dict (dict): A dict representing the JSON-serialized conda
+        conda_dict: A dict representing the JSON-serialized conda
             environment YAML file.  This dict will be modified and returned.
-        py_version (str): A string representing a Python version to inject
+        py_version: A string representing a Python version to inject
             into the conda dependencies, e.g. "3.7.7"
         pip_dependencies (List[str]): A list of pip dependencies that
             will be prepended to the list of pip dependencies in
@@ -246,7 +251,10 @@ def _get_conda_dict_with_ray_inserted(
     return conda_dict
 
 
-class CondaManager:
+class CondaPlugin(RuntimeEnvPlugin):
+
+    name = "conda"
+
     def __init__(self, resources_dir: str):
         self._resources_dir = os.path.join(resources_dir, "conda")
         try_to_create_directory(self._resources_dir)
@@ -286,7 +294,7 @@ class CondaManager:
         protocol, hash = parse_uri(uri)
         if protocol != Protocol.CONDA:
             raise ValueError(
-                "CondaManager can only delete URIs with protocol "
+                "CondaPlugin can only delete URIs with protocol "
                 f"conda.  Received protocol {protocol}, URI {uri}"
             )
 
@@ -306,7 +314,7 @@ class CondaManager:
         uri: Optional[str],
         runtime_env: "RuntimeEnv",  # noqa: F821
         context: RuntimeEnvContext,
-        logger: Optional[logging.Logger] = default_logger,
+        logger: logging.Logger = default_logger,
     ) -> int:
         # Currently create method is still a sync process, to avoid blocking
         # the loop, need to run this function in another thread.

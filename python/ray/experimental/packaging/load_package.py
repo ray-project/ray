@@ -29,7 +29,7 @@ def load_package(config_path: str) -> "_RuntimePackage":
     """Load the code package given its config path.
 
     Args:
-        config_path (str): The path to the configuration YAML that defines
+        config_path: The path to the configuration YAML that defines
             the package. For documentation on the packaging format, see the
             example YAML in ``example_pkg/ray_pkg.yaml``.
 

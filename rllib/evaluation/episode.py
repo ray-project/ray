@@ -30,17 +30,17 @@ class Episode:
     """Tracks the current state of a (possibly multi-agent) episode.
 
     Attributes:
-        new_batch_builder (func): Create a new MultiAgentSampleBatchBuilder.
-        add_extra_batch (func): Return a built MultiAgentBatch to the sampler.
-        batch_builder (obj): Batch builder for the current episode.
-        total_reward (float): Summed reward across all agents in this episode.
-        length (int): Length of this episode.
-        episode_id (int): Unique id identifying this trajectory.
-        agent_rewards (dict): Summed rewards broken down by agent.
-        custom_metrics (dict): Dict where the you can add custom metrics.
-        user_data (dict): Dict that you can use for temporary storage. E.g.
+        new_batch_builder: Create a new MultiAgentSampleBatchBuilder.
+        add_extra_batch: Return a built MultiAgentBatch to the sampler.
+        batch_builder: Batch builder for the current episode.
+        total_reward: Summed reward across all agents in this episode.
+        length: Length of this episode.
+        episode_id: Unique id identifying this trajectory.
+        agent_rewards: Summed rewards broken down by agent.
+        custom_metrics: Dict where the you can add custom metrics.
+        user_data: Dict that you can use for temporary storage. E.g.
             in between two custom callbacks referring to the same episode.
-        hist_data (dict): Dict mapping str keys to List[float] for storage of
+        hist_data: Dict mapping str keys to List[float] for storage of
             per-timestep float data throughout the episode.
 
     Use case 1: Model-based rollouts in multi-agent:

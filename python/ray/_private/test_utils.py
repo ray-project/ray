@@ -1,4 +1,5 @@
 import asyncio
+import functools
 import io
 import fnmatch
 import os
@@ -62,6 +63,12 @@ def make_global_state_accessor(ray_context):
     global_state_accessor = GlobalStateAccessor(gcs_options)
     global_state_accessor.connect()
     return global_state_accessor
+
+
+def test_external_redis():
+    import os
+
+    return os.environ.get("TEST_EXTERNAL_REDIS") == "1"
 
 
 def _pid_alive(pid):
@@ -207,8 +214,8 @@ def run_string_as_driver(driver_script: str, env: Dict = None, encode: str = "ut
     """Run a driver as a separate process.
 
     Args:
-        driver_script (str): A string to run as a Python script.
-        env (dict): The environment variables for the driver.
+        driver_script: A string to run as a Python script.
+        env: The environment variables for the driver.
 
     Returns:
         The script's output.
@@ -389,6 +396,53 @@ async def async_wait_for_condition(
     if last_ex is not None:
         message += f" Last exception: {last_ex}"
     raise RuntimeError(message)
+
+
+def wait_for_stdout(strings_to_match: List[str], timeout_s: int):
+    """Returns a decorator which waits until the stdout emitted
+    by a function contains the provided list of strings.
+    Raises an exception if the stdout doesn't have the expected output in time.
+
+    Args:
+        strings_to_match: Wait until stdout contains all of these string.
+        timeout_s: Max time to wait, in seconds, before raising a RuntimeError.
+    """
+
+    def decorator(func):
+        @functools.wraps(func)
+        def decorated_func(*args, **kwargs):
+            success = False
+            try:
+                # Redirect stdout to an in-memory stream.
+                out_stream = io.StringIO()
+                sys.stdout = out_stream
+                # Execute the func.
+                out = func(*args, **kwargs)
+                # Check out_stream once a second until the timeout.
+                # Raise a RuntimeError if we timeout.
+                wait_for_condition(
+                    # Does redirected stdout contain all of the expected strings?
+                    lambda: all(
+                        string in out_stream.getvalue() for string in strings_to_match
+                    ),
+                    timeout=timeout_s,
+                    retry_interval_ms=1000,
+                )
+                # out_stream has the expected strings
+                success = True
+                return out
+            finally:
+                sys.stdout = sys.__stdout__
+                if success:
+                    print("Confirmed expected function stdout. Stdout follows:")
+                else:
+                    print("Did not confirm expected function stdout. Stdout follows:")
+                print(out_stream.getvalue())
+                out_stream.close()
+
+        return decorated_func
+
+    return decorator
 
 
 def wait_until_succeeded_without_exception(
@@ -860,8 +914,8 @@ def monitor_memory_usage(
     The monitor will run on the same node as this function is called.
 
     Params:
-        interval_s (int): The interval memory usage information is printed
-        warning_threshold (float): The threshold where the
+        interval_s: The interval memory usage information is printed
+        warning_threshold: The threshold where the
             memory usage warning is printed.
 
     Returns:
@@ -881,13 +935,13 @@ def monitor_memory_usage(
             """The actor that monitor the memory usage of the cluster.
 
             Params:
-                print_interval_s (float): The interval where
+                print_interval_s: The interval where
                     memory usage is printed.
-                record_interval_s (float): The interval where
+                record_interval_s: The interval where
                     memory usage is recorded.
-                warning_threshold (float): The threshold where
+                warning_threshold: The threshold where
                     memory warning is printed
-                n (int): When memory usage is printed,
+                n: When memory usage is printed,
                     top n entries are printed.
             """
             # -- Interval the monitor prints the memory usage information. --
@@ -1281,3 +1335,10 @@ def simulate_storage(storage_type, root=None):
             yield url
     else:
         raise ValueError(f"Unknown storage type: {storage_type}")
+
+
+def job_hook(**kwargs):
+    """Function called by reflection by test_cli_integration."""
+    cmd = " ".join(kwargs["entrypoint"])
+    print(f"hook intercepted: {cmd}")
+    sys.exit(0)
