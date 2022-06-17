@@ -26,7 +26,8 @@ up and running in only a few days.
 
 RLlib is already used in production by industry leaders in many different verticals, such as
 `climate control <https://www.anyscale.com/events/2021/06/23/applying-ray-and-rllib-to-real-life-industrial-use-cases>`_,
-`manufacturing and logistics <https://www.anyscale.com/events/2021/06/22/offline-rl-with-rllib>`_,
+`industrial control <https://www.anyscale.com/events/2021/06/22/offline-rl-with-rllib>`_,
+`manufacturing and logistics <https://www.anyscale.com/events/2022/03/29/alphadow-leveraging-rays-ecosystem-to-train-and-deploy-an-rl-industrial>`_,
 `finance <https://www.anyscale.com/events/2021/06/22/a-24x-speedup-for-reinforcement-learning-with-rllib-+-ray>`_,
 `gaming <https://www.anyscale.com/events/2021/06/22/using-reinforcement-learning-to-optimize-iap-offer-recommendations-in-mobile-games>`_,
 `automobile <https://www.anyscale.com/events/2021/06/23/using-rllib-in-an-enterprise-scale-reinforcement-learning-solution>`_,
