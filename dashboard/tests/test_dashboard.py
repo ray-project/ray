@@ -265,7 +265,7 @@ def test_agent_report_unexpected_raylet_death_large_file(shutdown_only):
     [
         {"dashboard_host": "127.0.0.1"},
         {"dashboard_host": "0.0.0.0"},
-        {"dashboard_host": "::"},
+        {"dashboard_host": "::", "dashboard_port": None},
     ],
     indirect=True,
 )
