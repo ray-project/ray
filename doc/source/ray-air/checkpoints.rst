@@ -9,7 +9,7 @@ There are numerous ways of generating a checkpoint.
 
 The first way is to generate it from a pretrained model. Each framework that AIR supports has a ``to_air_checkpoint`` method that can be used to generate an AIR checkpoint:
 
-.. literalinclude:: doc_code/checkpoint-usage.py
+.. literalinclude:: doc_code/checkpoint_usage.py
     :language: python
     :start-after: __checkpoint_quick_start__
     :end-before: __checkpoint_quick_end__
@@ -17,7 +17,7 @@ The first way is to generate it from a pretrained model. Each framework that AIR
 
 Another way is to retrieve it from the results of a Trainer or a Tuner.
 
-.. literalinclude:: doc_code/checkpoint-usage.py
+.. literalinclude:: doc_code/checkpoint_usage.py
     :language: python
     :start-after: __use_trainer_checkpoint_start__
     :end-before: __use_trainer_checkpoint_end__
@@ -35,7 +35,7 @@ The flexibility provided in the Checkpoint model representation is useful in dis
 
 The Checkpoint object has methods to translate between different checkpoint storage locations:
 
-.. literalinclude:: doc_code/checkpoint-usage.py
+.. literalinclude:: doc_code/checkpoint_usage.py
     :language: python
     :start-after: __basic_checkpoint_start__
     :end-before: __basic_checkpoint_end__
@@ -44,32 +44,32 @@ The Checkpoint object has methods to translate between different checkpoint stor
 What can I do with a checkpoint?
 --------------------------------
 
-Checkpoints can be consumed by a Predictor, BatchPredictor, or DeploymentWrapper. Upon usage, the model held by the Checkpoint will be instantiated in memory and used for inference.
+Checkpoints can be consumed by a :class:`Predictor`, :class:`BatchPredictor`, or :class:`ModelWrapperDeployment`. Upon usage, the model held by the Checkpoint will be instantiated in memory and used for inference.
 
-Using a batch predictor:
+Using the :class:`BatchPredictor` for scalable batch inference:
 
 
-.. literalinclude:: doc_code/checkpoint-usage.py
+.. literalinclude:: doc_code/checkpoint_usage.py
     :language: python
     :start-after: __batch_pred_start__
     :end-before: __batch_pred_end__
 
 
-.. literalinclude:: doc_code/checkpoint-usage.py
+Deploying a service for online inference via :class:`ModelWrapperDeployment`:
+
+.. literalinclude:: doc_code/checkpoint_usage.py
     :language: python
     :start-after: __online_inference_start__
     :end-before: __online_inference_end__
 
 
 
-
-
-
 Example: Using Checkpoints with MLflow
 --------------------------------------
 
-MLflow has its own checkpoint format, an "MLflow Model". It is a standard format for packaging machine learning models that can be used in a variety of downstream tools.
+MLflow has its own `checkpoint format <https://www.mlflow.org/docs/latest/models.html>`__ called the "MLflow Model". It is a standard format for packaging machine learning models that can be used in a variety of downstream tools.
 
+Below is an example of using MLflow models as a Ray AIR Checkpoint.
 
 .. literalinclude:: doc_code/checkpoint_mlflow.py
     :language: python
