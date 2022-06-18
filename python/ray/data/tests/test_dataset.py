@@ -2192,15 +2192,24 @@ def test_block_builder_for_block(ray_start_regular_shared):
         BlockBuilder.for_block(str())
 
 
-def test_groupby_arrow(ray_start_regular_shared):
-    # Test empty dataset.
-    agg_ds = (
-        ray.data.range_table(10)
-        .filter(lambda r: r["value"] > 10)
-        .groupby("value")
-        .count()
-    )
-    assert agg_ds.count() == 0
+@pytest.mark.parametrize("use_push_based_shuffle", [False, True])
+def test_groupby_arrow(ray_start_regular_shared, use_push_based_shuffle):
+    ctx = ray.data.context.DatasetContext.get_current()
+
+    try:
+        original = ctx.use_push_based_shuffle
+        ctx.use_push_based_shuffle = use_push_based_shuffle
+
+        # Test empty dataset.
+        agg_ds = (
+            ray.data.range_table(10)
+            .filter(lambda r: r["value"] > 10)
+            .groupby("value")
+            .count()
+        )
+        assert agg_ds.count() == 0
+    finally:
+        ctx.use_push_based_shuffle = original
 
 
 def test_groupby_errors(ray_start_regular_shared):
@@ -2269,31 +2278,42 @@ def test_groupby_agg_name_conflict(ray_start_regular_shared, num_parts):
     ]
 
 
+@pytest.mark.parametrize("use_push_based_shuffle", [False, True])
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
-def test_groupby_tabular_count(ray_start_regular_shared, ds_format, num_parts):
-    # Test built-in count aggregation
-    seed = int(time.time())
-    print(f"Seeding RNG for test_groupby_arrow_count with: {seed}")
-    random.seed(seed)
-    xs = list(range(100))
-    random.shuffle(xs)
+def test_groupby_tabular_count(
+    ray_start_regular_shared, ds_format, num_parts, use_push_based_shuffle
+):
+    ctx = ray.data.context.DatasetContext.get_current()
 
-    def _to_pandas(ds):
-        return ds.map_batches(lambda x: x, batch_size=None, batch_format="pandas")
+    try:
+        original = ctx.use_push_based_shuffle
+        ctx.use_push_based_shuffle = use_push_based_shuffle
 
-    ds = ray.data.from_items([{"A": (x % 3), "B": x} for x in xs]).repartition(
-        num_parts
-    )
-    if ds_format == "pandas":
-        ds = _to_pandas(ds)
-    agg_ds = ds.groupby("A").count()
-    assert agg_ds.count() == 3
-    assert [row.as_pydict() for row in agg_ds.sort("A").iter_rows()] == [
-        {"A": 0, "count()": 34},
-        {"A": 1, "count()": 33},
-        {"A": 2, "count()": 33},
-    ]
+        # Test built-in count aggregation
+        seed = int(time.time())
+        print(f"Seeding RNG for test_groupby_arrow_count with: {seed}")
+        random.seed(seed)
+        xs = list(range(100))
+        random.shuffle(xs)
+
+        def _to_pandas(ds):
+            return ds.map_batches(lambda x: x, batch_size=None, batch_format="pandas")
+
+        ds = ray.data.from_items([{"A": (x % 3), "B": x} for x in xs]).repartition(
+            num_parts
+        )
+        if ds_format == "pandas":
+            ds = _to_pandas(ds)
+        agg_ds = ds.groupby("A").count()
+        assert agg_ds.count() == 3
+        assert [row.as_pydict() for row in agg_ds.sort("A").iter_rows()] == [
+            {"A": 0, "count()": 34},
+            {"A": 1, "count()": 33},
+            {"A": 2, "count()": 33},
+        ]
+    finally:
+        ctx.use_push_based_shuffle = original
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
