@@ -54,17 +54,22 @@ class MultiAgentPrioritizedReplayBuffer(
         """Initializes a MultiAgentReplayBuffer instance.
 
         Args:
-            num_shards: The number of buffer shards that exist in total
-                (including this one).
-            storage_unit: Either 'timesteps', 'sequences' or
-                'episodes'. Specifies how experiences are stored. If they
+            capacity: The capacity of the buffer, measured in `storage_unit`.
+            storage_unit:  storage_unit: Either 'timesteps', 'sequences',
+                'episodes' or 'fragments". Specifies how experiences are stored. If they
                 are stored in episodes, replay_sequence_length is ignored.
                 If they are stored in episodes, replay_sequence_length is
                 ignored.
+            num_shards: The number of buffer shards that exist in total
+                (including this one).
             learning_starts: Number of timesteps after which a call to
                 `replay()` will yield samples (before that, `replay()` will
                 return None).
-            capacity: The capacity of the buffer, measured in `storage_unit`.
+            replay_mode: Either 'independent' or 'lockstep'. Defines whether to split up
+                MultiAgentBatches by 'policy_id' ('independent') or store the whole
+                batch under the special 'policy_id' '_ALL_POLICIES',
+                which will have to be specified when calling sample() on this
+                buffer ('lockstep').
             prioritized_replay_alpha: Alpha parameter for a prioritized
                 replay buffer. Use 0.0 for no prioritization.
             prioritized_replay_beta: Beta parameter for a prioritized
@@ -108,7 +113,7 @@ class MultiAgentPrioritizedReplayBuffer(
 
         if underlying_buffer_config is not None:
             if log_once("underlying_buffer_config_not_supported"):
-                logger.info(
+                logger.warning(
                     "PrioritizedMultiAgentReplayBuffer instantiated "
                     "with underlying_buffer_config. This will "
                     "overwrite the standard behaviour of the "

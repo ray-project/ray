@@ -68,27 +68,31 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
         storage_unit: str = "timesteps",
         num_shards: int = 1,
         learning_starts: int = 1000,
+        replay_mode=ReplayMode.INDEPENDENT,
         replay_sequence_length: int = 1,
         replay_burn_in: int = 0,
         replay_zero_init_states: bool = True,
         replay_ratio: float = 0.66,
         underlying_buffer_config: dict = None,
-        replay_mode=ReplayMode.INDEPENDENT,
         **kwargs
     ):
         """Initializes MultiAgentMixInReplayBuffer instance.
 
         Args:
-            capacity: Number of batches to store in total.
-            storage_unit: Either 'timesteps', 'sequences' or
-                'episodes'. Specifies how experiences are stored. If they
+            capacity: The capacity of the buffer, measured in `storage_unit`.
+            storage_unit: Either 'timesteps', 'sequences',
+                'episodes' or 'fragments". Specifies how experiences are stored. If they
                 are stored in episodes, replay_sequence_length is ignored.
             num_shards: The number of buffer shards that exist in total
                 (including this one).
             learning_starts: Number of timesteps after which a call to
                 `replay()` will yield samples (before that, `replay()` will
                 return None).
-            capacity: The capacity of the buffer, measured in `storage_unit`.
+            replay_mode: Either 'independent' or 'lockstep'. Defines whether to split up
+                MultiAgentBatches by 'policy_id' ('independent') or store the whole
+                batch under the special 'policy_id' '_ALL_POLICIES',
+                which will have to be specified when calling sample() on this
+                buffer ('lockstep').
             replay_sequence_length: The sequence length (T) of a single
                 sample. If > 1, we will sample B x T from this buffer.
             replay_burn_in: The burn-in length in case
@@ -117,9 +121,6 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
                 prioritized_replay_eps: 0.5}
             **kwargs: Forward compatibility kwargs.
         """
-        if not 0 <= replay_ratio <= 1:
-            raise ValueError("Replay ratio must be within [0, 1]")
-
         MultiAgentReplayBuffer.__init__(
             self,
             capacity=capacity,
@@ -134,6 +135,8 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
             **kwargs
         )
 
+        if not 0 <= replay_ratio <= 1:
+            raise ValueError("Replay ratio must be within [0, 1]")
         self.replay_ratio = replay_ratio
 
         self.last_added_batches = collections.defaultdict(list)
