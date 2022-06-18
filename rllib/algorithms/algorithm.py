@@ -354,6 +354,21 @@ class Algorithm(Trainable):
         self.workers: Optional[WorkerSet] = None
         self.train_exec_impl = None
 
+        # Offline RL settings.
+        input_evaluation = config.get("input_evaluation")
+        if input_evaluation is not None and input_evaluation is not DEPRECATED_VALUE:
+            ope_dict = {str(ope): {"type": ope} for ope in input_evaluation}
+            deprecation_warning(
+                old="config.input_evaluation={}".format(input_evaluation),
+                new='config["evaluation_config"]'
+                '["off_policy_estimation_methods"]={}'.format(
+                    ope_dict,
+                ),
+                error=False,
+                help="Running OPE during training is not recommended.",
+            )
+            config["off_policy_estimation_methods"] = ope_dict
+
         # Deprecated way of implementing Trainer sub-classes (or "templates"
         # via the `build_trainer` utility function).
         # Instead, sub-classes should override the Trainable's `setup()`
@@ -1915,21 +1930,6 @@ class Algorithm(Trainable):
                     "`simple_optimizer=False` not supported for "
                     "framework={}!".format(framework)
                 )
-
-        # Offline RL settings.
-        input_evaluation = config.get("input_evaluation")
-        if input_evaluation is not None and input_evaluation is not DEPRECATED_VALUE:
-            ope_dict = {str(ope): {"type": ope} for ope in input_evaluation}
-            deprecation_warning(
-                old="config.input_evaluation={}".format(input_evaluation),
-                new='config["evaluation_config"]'
-                '["off_policy_estimation_methods"]={}'.format(
-                    ope_dict,
-                ),
-                error=False,
-                help="Running OPE during training is not recommended.",
-            )
-            config["off_policy_estimation_methods"] = ope_dict
 
         # Check model config.
         # If no preprocessing, propagate into model's config as well
