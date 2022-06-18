@@ -1,5 +1,5 @@
 import logging
-from typing import Tuple, Generator
+from typing import Tuple, Generator, List
 from ray.rllib.offline.estimators.off_policy_estimator import (
     OffPolicyEstimator,
     OffPolicyEstimate,
@@ -25,7 +25,7 @@ def train_test_split(
     batch: SampleBatchType,
     train_test_split_val: float = 0.0,
     k: int = 0,
-) -> Generator[Tuple[SampleBatch], None, None]:
+) -> Generator[Tuple[List[SampleBatch]], None, None]:
     """Utility function that returns either a train/test split or
     a k-fold cross validation generator over episodes from the given batch.
     By default, `k` is set to 0.0, which sets eval_batch = batch
@@ -44,7 +44,7 @@ def train_test_split(
         logger.log(
             "`train_test_split_val` and `k` are both 0;" "not generating training batch"
         )
-        yield batch, SampleBatch()
+        yield [batch], [SampleBatch()]
         return
     episodes = batch.split_by_episode()
     n_episodes = len(episodes)
@@ -52,9 +52,7 @@ def train_test_split(
     if train_test_split_val:
         train_episodes = episodes[: int(n_episodes * train_test_split_val)]
         eval_episodes = episodes[int(n_episodes * train_test_split_val) :]
-        yield SampleBatch.concat_samples(eval_episodes), SampleBatch.concat_samples(
-            train_episodes
-        )
+        yield eval_episodes, train_episodes
         return
     # k-fold cv
     assert n_episodes >= k, f"Not enough eval episodes in batch for {k}-fold cv!"
@@ -66,9 +64,7 @@ def train_test_split(
         else:
             # Append remaining episodes onto the last eval_episodes
             eval_episodes = episodes[i * n_fold :]
-        yield SampleBatch.concat_samples(eval_episodes), SampleBatch.concat_samples(
-            train_episodes
-        )
+        yield eval_episodes, train_episodes
     return
 
 
