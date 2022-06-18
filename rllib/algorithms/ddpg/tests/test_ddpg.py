@@ -1,3 +1,4 @@
+import copy
 import re
 import unittest
 
@@ -66,11 +67,12 @@ class TestDDPG(unittest.TestCase):
     def test_ddpg_exploration_and_with_random_prerun(self):
         """Tests DDPG's Exploration (w/ random actions for n timesteps)."""
 
-        config = ddpg.DDPGConfig().rollouts(num_rollout_workers=0)
+        core_config = ddpg.DDPGConfig().rollouts(num_rollout_workers=0)
         obs = np.array([0.0, 0.1, -0.1])
 
         # Test against all frameworks.
-        for _ in framework_iterator(config):
+        for _ in framework_iterator(core_config):
+            config = copy.deepcopy(core_config)
             config.seed = 42
             # Default OUNoise setup.
             algo = config.build(env="Pendulum-v1")
