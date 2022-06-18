@@ -1,7 +1,7 @@
 import collections
 import logging
 import numpy as np
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING, Union
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 import ray
 from ray import ObjectRef
