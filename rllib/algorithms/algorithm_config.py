@@ -888,9 +888,7 @@ class AlgorithmConfig:
             else:
                 self.evaluation_config = evaluation_config
         if off_policy_estimation_methods is not None:
-            self.evaluation_config[
-                "off_policy_estimation_methods"
-            ] = off_policy_estimation_methods
+            self.off_policy_estimation_methods = off_policy_estimation_methods
         if evaluation_num_workers is not None:
             self.evaluation_num_workers = evaluation_num_workers
         if custom_evaluation_function is not None:

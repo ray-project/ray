@@ -51,6 +51,14 @@ from ray.rllib.execution.train_ops import (
     multi_gpu_train_one_step,
 )
 from ray.rllib.offline import get_offline_io_resource_bundles
+from ray.rllib.offline.estimators import (
+    OffPolicyEstimate,
+    OffPolicyEstimator,
+    ImportanceSampling,
+    WeightedImportanceSampling,
+    DirectMethod,
+    DoublyRobust,
+)
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils import deep_update, FilterManager, merge_dicts
@@ -518,6 +526,49 @@ class Algorithm(Trainable):
                 logdir=self.logdir,
             )
 
+        self.reward_estimators: List[OffPolicyEstimator] = []
+        ope_types = {
+            "is": ImportanceSampling,
+            "wis": WeightedImportanceSampling,
+            "dm": DirectMethod,
+            "dr": DoublyRobust,
+        }
+        for name, method_config in config["off_policy_estimation_methods"].items():
+            method_type = method_config.pop("type")
+            if method_type in ope_types:
+                deprecation_warning(
+                    old=method_type,
+                    new=str(ope_types[method_type]),
+                    error=False,
+                )
+                method_type = ope_types[method_type]
+            # TODO: Allow for this to be a full classpath string as well,
+            # then construct this with our `from_config` util.
+            elif isinstance(method_type, type) and issubclass(
+                method_type, OffPolicyEstimator
+            ):
+                gamma = self.io_context.worker.policy_config["gamma"]
+                # Grab a reference to the current model
+                keys = list(self.io_context.worker.policy_map.keys())
+                if len(keys) > 1:
+                    raise NotImplementedError(
+                        "Off-policy estimation is not implemented for multi-agent. "
+                    )
+                self.reward_estimators.append(
+                    method_type(
+                        name=name,
+                        policy=self.get_policy(),
+                        gamma=gamma,
+                        **method_config,
+                    )
+                )
+            else:
+                raise ValueError(
+                    f"Unknown off_policy_estimation type: {method_type}! Must be "
+                    "either a class path or a sub-class of ray.rllib."
+                    "offline.estimators.off_policy_estimator::OffPolicyEstimator"
+                )
+
         # Run `on_algorithm_init` callback after initialization is done.
         self.callbacks.on_algorithm_init(algorithm=self)
 
@@ -801,6 +852,7 @@ class Algorithm(Trainable):
             logger.info(f"Evaluating current policy for {duration} {unit}.")
 
             metrics = None
+            total_batch = SampleBatch()
             # No evaluation worker set ->
             # Do evaluation using the local worker. Expect error due to the
             # local worker not having an env.
@@ -814,6 +866,8 @@ class Algorithm(Trainable):
                     batch = self.workers.local_worker().sample()
                     agent_steps_this_iter += batch.agent_steps()
                     env_steps_this_iter += batch.env_steps()
+                    if self.reward_estimators:
+                        total_batch = total_batch.concat(batch)
                 metrics = collect_metrics(
                     self.workers.local_worker(),
                     keep_custom_metrics=self.config["keep_per_episode_custom_metrics"],
@@ -830,6 +884,8 @@ class Algorithm(Trainable):
                     batch = self.evaluation_workers.local_worker().sample()
                     agent_steps_this_iter += batch.agent_steps()
                     env_steps_this_iter += batch.env_steps()
+                    if self.reward_estimators:
+                        total_batch = total_batch.concat(batch)
 
             # Evaluation worker set has n remote workers.
             else:
@@ -864,6 +920,8 @@ class Algorithm(Trainable):
                             if self._by_agent_steps
                             else env_steps_this_iter
                         )
+                    if self.reward_estimators:
+                        total_batch = total_batch.concat_samples(batches)
 
                     logger.info(
                         f"Ran round {round_} of parallel evaluation "
@@ -880,6 +938,8 @@ class Algorithm(Trainable):
             metrics[NUM_ENV_STEPS_SAMPLED_THIS_ITER] = env_steps_this_iter
             # TODO: Revmoe this key atv some point. Here for backward compatibility.
             metrics["timesteps_this_iter"] = env_steps_this_iter
+            for estimator in self.reward_estimators:
+                estimator.process(total_batch)
 
         # Evaluation does not run for every step.
         # Save evaluation metrics on trainer, so it can be attached to
