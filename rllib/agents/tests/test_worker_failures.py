@@ -48,10 +48,10 @@ class FaultInjectEnv(gym.Env):
         return self.env.step(action)
 
 
-class IgnoresWorkerFailure(unittest.TestCase):
+class TestWorkerFailure(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(num_cpus=6, local_mode=True)
+        ray.init(num_cpus=6)
 
     @classmethod
     def tearDownClass(cls) -> None:

@@ -572,8 +572,6 @@ class Algorithm(Trainable):
         # Results dict for training (and if appolicable: evaluation).
         result: ResultDict = {}
 
-        first_step_attempt = True
-
         self._rollout_worker_metrics = []
         local_worker = (
             self.workers.local_worker()
@@ -581,89 +579,31 @@ class Algorithm(Trainable):
             else None
         )
 
-        # Create a step context ...
-        with self._step_context() as step_ctx:
-            #  so we can query it whether we should stop the iteration loop (e.g. when
-            #  we have reached `min_time_s_per_iteration`).
-            while not step_ctx.should_stop(result):
-                # Try to train one step.
-                try:
-                    # No evaluation necessary, just run the next training iteration.
-                    if not evaluate_this_iter:
-                        result = self._exec_plan_or_training_step_fn()
-                    # We have to evaluate in this training iteration.
-                    else:
-                        # No parallelism.
-                        if not self.config["evaluation_parallel_to_training"]:
-                            result = self._exec_plan_or_training_step_fn()
-                        # Kick off evaluation-loop (and parallel train() call,
-                        # if requested).
-                        # Parallel eval + training.
-                        else:
-                            with concurrent.futures.ThreadPoolExecutor() as executor:
-                                train_future = executor.submit(
-                                    lambda: self._exec_plan_or_training_step_fn()
-                                )
-                                # Automatically determine duration of the evaluation
-                                # (as long as training takes).
-                                if self.config["evaluation_duration"] == "auto":
-                                    unit = self.config["evaluation_duration_unit"]
-                                    result.update(
-                                        self.evaluate(
-                                            duration_fn=functools.partial(
-                                                self._auto_duration_fn,
-                                                unit,
-                                                self.config["evaluation_num_workers"],
-                                                self.config["evaluation_config"],
-                                                train_future,
-                                            )
-                                        )
-                                    )
-                                # Run `self.evaluate()` only once per iteration.
-                                elif first_step_attempt:
-                                    first_step_attempt = False
-                                    result.update(self.evaluate())
-                                # Collect the training results from the future.
-                                result.update(train_future.result())
+        # - No evaluation necessary, just run the next training iteration.
+        # - We have to evaluate in this training iteration, but no parallelism ->
+        #   evaluate after the training iteration is entirely done.
+        if not evaluate_this_iter or not self.config["evaluation_parallel_to_training"]:
+            result = self._run_one_training_iteration()
+        # Kick off evaluation-loop (and parallel train() call,
+        # if requested).
+        # Parallel eval + training.
+        elif evaluate_this_iter and self.config["evaluation_parallel_to_training"]:
+            result = self._run_one_training_iteration_and_evaluation_in_parallel()
 
-                        # Sequential: train (already done above), then eval.
-                        if not self.config["evaluation_parallel_to_training"]:
-                            result.update(self.evaluate())
+        # Sequential: train (already done above), then eval.
+        if evaluate_this_iter and not self.config["evaluation_parallel_to_training"]:
+            result.update(self._run_one_evaluation(train_future=None))
 
-                    # Collect rollout worker metrics.
-                    episodes, self._episodes_to_be_collected = collect_episodes(
-                        local_worker,
-                        self._remote_workers_for_metrics,
-                        self._episodes_to_be_collected,
-                        timeout_seconds=self.config[
-                            "metrics_episode_collection_timeout_s"
-                        ],
-                    )
-                    self._rollout_worker_metrics.extend(episodes)
-                # @ray.remote RolloutWorker failure.
-                except RayError as e:
-                    # Try to recover w/o the failed worker.
-                    if (
-                        self.config["ignore_worker_failures"]
-                        or self.config["recreate_failed_workers"]
-                    ):
-                        logger.exception("Error in train call, attempting to recover")
-                        self.try_recover_from_step_attempt()
-                    # Error out.
-                    else:
-                        logger.warning(
-                            "Worker crashed during call to `step_attempt()`. "
-                            "To try to continue training without failed "
-                            "worker(s), set `ignore_worker_failures=True`. "
-                            "To try to recover the failed worker(s), set "
-                            "`recreate_failed_workers=True`."
-                        )
-                        raise e
-                # Any other exception.
-                except Exception as e:
-                    # Allow logs messages to propagate.
-                    time.sleep(0.5)
-                    raise e
+        # Collect rollout worker metrics.
+        episodes, self._episodes_to_be_collected = collect_episodes(
+            local_worker,
+            self._remote_workers_for_metrics,
+            self._episodes_to_be_collected,
+            timeout_seconds=self.config[
+                "metrics_episode_collection_timeout_s"
+            ],
+        )
+        self._rollout_worker_metrics.extend(episodes)
 
         # Attach latest available evaluation results to train results,
         # if necessary.
@@ -706,7 +646,6 @@ class Algorithm(Trainable):
     @PublicAPI
     def evaluate(
         self,
-        episodes_left_fn=None,  # deprecated
         duration_fn: Optional[Callable[[int], int]] = None,
     ) -> dict:
         """Evaluates current policy under `evaluation_config` settings.
@@ -720,14 +659,6 @@ class Algorithm(Trainable):
                 episodes left to run. It's used to find out whether
                 evaluation should continue.
         """
-        if episodes_left_fn is not None:
-            deprecation_warning(
-                old="Trainer.evaluate(episodes_left_fn)",
-                new="Trainer.evaluate(duration_fn)",
-                error=False,
-            )
-            duration_fn = episodes_left_fn
-
         # In case we are evaluating (in a thread) parallel to training,
         # we may have to re-enable eager mode here (gets disabled in the
         # thread).
@@ -2129,7 +2060,7 @@ class Algorithm(Trainable):
         """
         pass
 
-    def try_recover_from_step_attempt(self) -> None:
+    def try_recover_from_step_attempt(self, error, worker_set, ignore, recreate) -> None:
         """Try to identify and remove any unhealthy workers (incl. eval workers).
 
         This method is called after an unexpected remote error is encountered
@@ -2137,34 +2068,47 @@ class Algorithm(Trainable):
         all current workers and removes any that respond with error. If no healthy
         workers remain, an error is raised.
         """
-        # Try to get our "eval" WorkerSet (used for evaluating policies).
-        eval_workers = getattr(self, "evaluation_workers", None)
-        if isinstance(eval_workers, WorkerSet):
-            # Search for failed workers and try to recover (restart) them.
-            if self.config["evaluation_config"].get("recreate_failed_workers") is True:
-                eval_workers.recreate_failed_workers()
-            elif self.config["evaluation_config"].get("ignore_worker_failures") is True:
-                eval_workers.remove_failed_workers()
-
-        # Try to get our "main" WorkerSet (used for training sample collection).
-        workers = getattr(self, "workers", None)
-        if not isinstance(workers, WorkerSet):
-            return
+        # @ray.remote RolloutWorker failure.
+        if isinstance(error, RayError):
+            # Try to recover w/o the failed worker.
+            if ignore or recreate:
+                logger.exception(
+                    "Error in training or evaluation attempt! Trying to recover."
+                )
+            # Error out.
+            else:
+                logger.warning(
+                    "Worker crashed during training or evaluation! "
+                    "To try to continue without failed "
+                    "worker(s), set `ignore_worker_failures=True`. "
+                    "To try to recover the failed worker(s), set "
+                    "`recreate_failed_workers=True`."
+                )
+                raise error
+        # Any other exception.
+        else:
+            # Allow logs messages to propagate.
+            time.sleep(0.5)
+            raise error
 
         removed_workers, new_workers = [], []
         # Search for failed workers and try to recover (restart) them.
-        if self.config["recreate_failed_workers"] is True:
-            removed_workers, new_workers = workers.recreate_failed_workers()
-        elif self.config["ignore_worker_failures"] is True:
-            removed_workers = workers.remove_failed_workers()
+        if recreate:
+            removed_workers, new_workers = worker_set.recreate_failed_workers()
+        elif ignore:
+            removed_workers = worker_set.remove_failed_workers()
         self.on_worker_failures(removed_workers, new_workers)
 
-        if not self.config.get("_disable_execution_plan_api") and callable(
-            self.execution_plan
+        # Recreate execution_plan iterator (only if `worker_set` is the main
+        # training WorkerSet: `self.workers`).
+        if (
+            not self.config.get("_disable_execution_plan_api")
+            and callable(self.execution_plan)
+            and worker_set is getattr(self, "workers", None)
         ):
             logger.warning("Recreating execution plan after failure")
             self.train_exec_impl = self.execution_plan(
-                workers, self.config, **self._kwargs_for_execution_plan()
+                worker_set, self.config, **self._kwargs_for_execution_plan()
             )
 
     def on_worker_failures(
@@ -2303,8 +2247,105 @@ class Algorithm(Trainable):
             kwargs["local_replay_buffer"] = self.local_replay_buffer
         return kwargs
 
+    def _run_one_training_iteration(self):
+        """Runs one training iteration (self.iteration will be +1 after this).
+
+        Calls `self.training_step()` repeatedly until the minimum time (sec),
+        sample- or training steps have been reached.
+
+        Returns:
+            The results dict from the training iteration.
+        """
+        result = {}
+        # Create a step context ...
+        with self._step_context() as step_ctx:
+            # .. so we can query it whether we should stop the iteration loop (e.g.
+            # when we have reached `min_time_s_per_iteration`).
+            while not step_ctx.should_stop(result):
+                # Try to train one step.
+                try:
+                    result = self._exec_plan_or_training_step_fn()
+                # In case of any failures, try to ignore/recover the failed workers.
+                except Exception as e:
+                    self.try_recover_from_step_attempt(
+                        error=e,
+                        worker_set=self.workers,
+                        ignore=self.config["ignore_worker_failures"],
+                        recreate=self.config["recreate_failed_workers"],
+                    )
+        return result
+
+    def _run_one_evaluation(
+        self,
+        train_future: Optional[concurrent.futures.ThreadPoolExecutor] = None,
+    ) -> ResultDict:
+        """Runs evaluation step via `self.evaluate()` and handling worker failures.
+
+        Args:
+            train_future: In case, we are training and avaluating in parallel,
+                this arg carries the currently running ThreadPoolExecutor
+                object that runs the training iteration
+
+        Returns:
+            The results dict from the evaluation call.
+        """
+        try:
+            if self.config["evaluation_duration"] == "auto":
+                assert (
+                    train_future is not None
+                    and self.config["evaluation_parallel_to_training"]
+                )
+                unit = self.config["evaluation_duration_unit"]
+                result = self.evaluate(
+                    duration_fn=functools.partial(
+                        self._automatic_evaluation_duration_fn,
+                        unit,
+                        self.config["evaluation_num_workers"],
+                        self.config["evaluation_config"],
+                        train_future,
+                    )
+                )
+            # Run `self.evaluate()` only once per training iteration.
+            else:
+                result = self.evaluate()
+        # In case of any failures, try to ignore/recover the failed evaluation workers.
+        except Exception as e:
+            self.try_recover_from_step_attempt(
+                error=e,
+                worker_set=self.evaluation_workers,
+                ignore=self.config["evaluation_config"].get("ignore_worker_failures"),
+                recreate=self.config["evaluation_config"].get(
+                    "recreate_failed_workers"),
+            )
+        return result
+
+    def _run_one_training_iteration_and_evaluation_in_parallel(self) -> ResultDict:
+        """Runs one training iteration and one evaluation step in parallel.
+
+        First starts the training iteration (via `self._run_one_training_iteration()`)
+        within a ThreadPoolExecutor, then runs the evaluation step in parallel.
+        In auto-duration mode (config.evaluation_duration=auto), makes sure the
+        evaluation step takes roughly the same time as the training iteration.
+
+        Returns:
+            The accumulated training and evaluation results.
+        """
+        result = {}
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            train_future = executor.submit(
+                lambda: self._run_one_training_iteration()
+            )
+            # Pass the train_future into `self._run_one_evaluation()` to allow it
+            # to run exactly as long as the training iteration takes in case
+            # evaluation_duration=auto.
+            self._run_one_evaluation(train_future)
+            # Collect the training results from the future.
+            result.update(train_future.result())
+
+        return result
+
     @staticmethod
-    def _auto_duration_fn(
+    def _automatic_evaluation_duration_fn(
         unit, num_eval_workers, eval_cfg, train_future, num_units_done
     ):
         # Training is done and we already ran at least one
