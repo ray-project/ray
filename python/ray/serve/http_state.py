@@ -105,7 +105,7 @@ class HTTPState:
             try:
                 proxy = ray.get_actor(name, namespace=SERVE_NAMESPACE)
             except ValueError:
-                print(
+                logger.info((
                     "Starting HTTP proxy with name '{}' on node '{}' "
                     "listening on '{}:{}'".format(
                         name, node_id, self._config.host, self._config.port

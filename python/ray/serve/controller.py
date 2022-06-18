@@ -207,17 +207,17 @@ class ServeController:
                 try:
                     self.http_state.update()
                 except Exception:
-                    print("Exception updating HTTP state.")
+                    logger.exception("Exception updating HTTP state.")
 
                 try:
                     self.deployment_state_manager.update()
                 except Exception:
-                    print("Exception updating deployment state.")
+                    logger.exception("Exception updating deployment state.")
 
             try:
                 self._put_serve_snapshot()
             except Exception:
-                print("Exception putting serve snapshot.")
+                logger.exception("Exception putting serve snapshot.")
             await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
 
     def _put_serve_snapshot(self) -> None:
