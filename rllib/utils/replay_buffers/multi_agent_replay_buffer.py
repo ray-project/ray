@@ -1,22 +1,22 @@
-import logging
 import collections
-from typing import Any, Dict, Optional
+import logging
 from enum import Enum
+from typing import Any, Dict, Optional
 
-from ray.rllib.utils.replay_buffers.replay_buffer import (
-    _ALL_POLICIES,
-)
 from ray.rllib.policy.rnn_sequencing import timeslice_along_seq_lens_with_overlap
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBuffer
+from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.from_config import from_config
+from ray.rllib.utils.replay_buffers.replay_buffer import (
+    _ALL_POLICIES,
+    ReplayBuffer,
+    StorageUnit,
+)
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.typing import PolicyID, SampleBatchType
-from ray.rllib.utils.replay_buffers.replay_buffer import StorageUnit
-from ray.rllib.utils.from_config import from_config
-from ray.util.debug import log_once
-from ray.rllib.utils.deprecation import Deprecated
 from ray.util.annotations import DeveloperAPI
+from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
 
@@ -229,15 +229,10 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         batch = batch.as_multi_agent()
 
         with self.add_batch_timer:
-            if self.replay_mode == ReplayMode.LOCKSTEP:
-                # Lockstep mode: Store under _ALL_POLICIES key (we will always
-                # only sample from all policies at the same time).
-                # This means storing a MultiAgentBatch to the underlying buffer
-                self._add_to_underlying_buffer(_ALL_POLICIES, batch, **kwargs)
-            else:
-                # Store independent SampleBatches
-                for policy_id, sample_batch in batch.policy_batches.items():
-                    self._add_to_underlying_buffer(policy_id, sample_batch, **kwargs)
+            pids_and_batches = self._maybe_split_into_policy_batches(batch)
+            for policy_id, sample_batch in pids_and_batches.items():
+                self._add_to_underlying_buffer(policy_id, sample_batch, **kwargs)
+
         self._num_added += batch.count
 
     @DeveloperAPI
@@ -391,3 +386,17 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         buffer_states = state["replay_buffers"]
         for policy_id in buffer_states.keys():
             self.replay_buffers[policy_id].set_state(buffer_states[policy_id])
+
+    def _maybe_split_into_policy_batches(self, batch: SampleBatchType):
+        """Returns a dict of policy IDs and batches, depending on our replay mode.
+
+        This method helps with splitting up MultiAgentBatches only if the
+        self.replay_mode requires it.
+        """
+        if self.replay_mode == ReplayMode.LOCKSTEP:
+            return {_ALL_POLICIES: batch}
+        else:
+            return {
+                policy_id: sample_batch
+                for policy_id, sample_batch in batch.policy_batches.items()
+            }

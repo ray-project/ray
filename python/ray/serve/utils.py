@@ -11,8 +11,8 @@ from enum import Enum
 from functools import wraps
 from itertools import groupby
 from typing import Dict, Iterable, List, Tuple
+from typing import Dict, Iterable, List, Tuple
 
-import __main__
 import fastapi.encoders
 import numpy as np
 import pydantic
@@ -26,6 +26,8 @@ from ray.exceptions import RayTaskError
 from ray.serve.constants import HTTP_PROXY_TIMEOUT
 from ray.serve.http_util import HTTPRequestWrapper, build_starlette_request
 from ray.util.serialization import StandaloneSerializationContext
+
+import __main__
 
 try:
     import pandas as pd
@@ -430,7 +432,7 @@ def require_packages(packages: List[str]):
                 check_import_once()
                 return await func(*args, **kwargs)
 
-        elif inspect.isfunction(func):
+        elif inspect.isroutine(func):
 
             @wraps(func)
             def wrapped(*args, **kwargs):

@@ -7,8 +7,10 @@ import ray
 from ray._private.ray_constants import env_integer
 from ray.exceptions import RayActorError
 from ray.train._internal.dataset_spec import RayDatasetSpec
+from ray.air.checkpoint import Checkpoint
 from ray.train._internal.session import (
     TrainingResult,
+    TrialInfo,
     get_session,
     init_session,
     shutdown_session,
@@ -61,6 +63,8 @@ class BackendExecutor:
     def __init__(
         self,
         backend_config: BackendConfig,
+        # TODO(xwjiang): Legacy Ray Train trainer clean up!
+        trial_info: Optional[TrialInfo] = None,
         num_workers: int = 1,
         num_cpus_per_worker: float = 1,
         num_gpus_per_worker: float = 0,
@@ -79,6 +83,8 @@ class BackendExecutor:
         self._num_failures = 0
         self._initialization_hook = None
         self._placement_group = None
+
+        self._trial_info = trial_info
 
         self.worker_group = InactiveWorkerGroup()
         self.dataset_shards = None
@@ -269,7 +275,7 @@ class BackendExecutor:
         self,
         train_func: Callable[[], T],
         dataset_spec: RayDatasetSpec,
-        checkpoint: Optional[Dict] = None,
+        checkpoint: Optional[Checkpoint] = None,
     ) -> None:
         """Executes a training function on all workers in a separate thread.
 
@@ -295,6 +301,7 @@ class BackendExecutor:
             world_rank,
             local_rank,
             world_size,
+            trial_info,
             checkpoint,
             dataset_shard,
             encode_data_fn,
@@ -305,6 +312,7 @@ class BackendExecutor:
                     world_rank=world_rank,
                     local_rank=local_rank,
                     world_size=world_size,
+                    trial_info=trial_info,
                     dataset_shard=dataset_shard,
                     checkpoint=checkpoint,
                     encode_data_fn=encode_data_fn,
@@ -333,6 +341,7 @@ class BackendExecutor:
                     world_rank=index,
                     local_rank=local_rank_map[index],
                     world_size=len(self.worker_group),
+                    trial_info=self._trial_info,
                     train_func=train_func,
                     dataset_shard=self.dataset_shards[index],
                     checkpoint=checkpoint,

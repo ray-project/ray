@@ -19,7 +19,13 @@ if TYPE_CHECKING:
 
 
 # An output type of iter_batches() determined by the batch_format parameter.
-BatchType = Union["pandas.DataFrame", "pyarrow.Table", np.ndarray, list]
+BatchType = Union[
+    "pandas.DataFrame",
+    "pyarrow.Table",
+    np.ndarray,
+    Dict[str, np.ndarray],
+    list,
+]
 PREFETCHER_ACTOR_NAMESPACE = "ray.dataset"
 
 

@@ -1,7 +1,6 @@
 import sys
 from time import sleep
 
-import psutil
 import pytest
 
 import ray
@@ -12,6 +11,8 @@ from ray._private.test_utils import (
     wait_for_condition,
     wait_for_pid_to_exit,
 )
+
+import psutil
 
 
 @ray.remote
@@ -468,7 +469,57 @@ assert ray.get(a.r.remote(10)) == 10
     )
 
 
+@pytest.mark.parametrize(
+    "ray_start_regular_with_external_redis",
+    [
+        {
+            **generate_system_config_map(
+                num_heartbeats_timeout=20, gcs_rpc_server_reconnect_timeout_s=3600
+            ),
+            "namespace": "actor",
+        }
+    ],
+    indirect=True,
+)
+def test_pg_actor_workloads(ray_start_regular_with_external_redis):
+    from ray.util.placement_group import placement_group
+
+    bundle1 = {"CPU": 1}
+    pg = placement_group([bundle1], strategy="STRICT_PACK")
+
+    ray.get(pg.ready())
+
+    @ray.remote
+    class Counter:
+        def r(self, v):
+            return v
+
+        def pid(self):
+            import os
+
+            return os.getpid()
+
+    c = Counter.options(placement_group=pg).remote()
+    r = ray.get(c.r.remote(10))
+    assert r == 10
+
+    print("GCS is killed")
+    pid = ray.get(c.pid.remote())
+    ray.worker._global_node.kill_gcs_server()
+
+    assert ray.get(c.r.remote(10)) == 10
+
+    ray.worker._global_node.start_gcs_server()
+
+    for _ in range(100):
+        assert pid == ray.get(c.pid.remote())
+
+
 if __name__ == "__main__":
     import pytest
+    import os
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

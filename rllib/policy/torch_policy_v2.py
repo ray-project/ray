@@ -583,12 +583,13 @@ class TorchPolicyV2(Policy):
             if is_overridden(self.action_distribution_fn):
                 dist_inputs, dist_class, state_out = self.action_distribution_fn(
                     self.model,
-                    input_dict=input_dict,
+                    obs_batch=input_dict,
                     state_batches=state_batches,
                     seq_lens=seq_lens,
                     explore=False,
                     is_training=False,
                 )
+
             # Default action-dist inputs calculation.
             else:
                 dist_class = self.dist_class

@@ -10,8 +10,11 @@ from uvicorn.lifespan.on import LifespanOn
 
 import ray
 from ray import cloudpickle
+from ray.dag import DAGNode
 from ray._private.usage import usage_lib
 from ray.experimental.dag import DAGNode
+from ray.util.annotations import PublicAPI
+
 from ray.serve.application import Application
 from ray.serve.client import ServeControllerClient
 from ray.serve.config import AutoscalingConfig, DeploymentConfig, HTTPOptions

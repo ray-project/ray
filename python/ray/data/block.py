@@ -85,7 +85,7 @@ Block = Union[List[T], "pyarrow.Table", "pandas.DataFrame", bytes]
 
 # User-facing data batch type. This is the data type for data that is supplied to and
 # returned from batch UDFs.
-DataBatch = Union[Block, np.ndarray]
+DataBatch = Union[Block, np.ndarray, Dict[str, np.ndarray]]
 
 # A list of block references pending computation by a single task. For example,
 # this may be the output of a task reading a file.
@@ -98,6 +98,8 @@ BlockPartitionMetadata = "BlockMetadata"
 # TODO(ekl) replace this with just `BlockPartition` once block splitting is on
 # by default. When block splitting is off, the type is a plain block.
 MaybeBlockPartition = Union[Block, BlockPartition]
+
+VALID_BATCH_FORMATS = ["native", "pandas", "pyarrow", "numpy"]
 
 
 @DeveloperAPI
@@ -237,6 +239,29 @@ class BlockAccessor(Generic[T]):
         """Return the native data format for this accessor."""
         return self.to_block()
 
+    def to_batch_format(self, batch_format: str) -> DataBatch:
+        """Convert this block into the provided batch format.
+
+        Args:
+            batch_format: The batch format to convert this block to.
+
+        Returns:
+            This block formatted as the provided batch format.
+        """
+        if batch_format == "native":
+            return self.to_native()
+        elif batch_format == "pandas":
+            return self.to_pandas()
+        elif batch_format == "pyarrow":
+            return self.to_arrow()
+        elif batch_format == "numpy":
+            return self.to_numpy()
+        else:
+            raise ValueError(
+                f"The batch format must be one of {VALID_BATCH_FORMATS}, got: "
+                f"{batch_format}"
+            )
+
     def size_bytes(self) -> int:
         """Return the approximate size in bytes of this block."""
         raise NotImplementedError
@@ -269,7 +294,7 @@ class BlockAccessor(Generic[T]):
     @staticmethod
     def batch_to_block(batch: DataBatch) -> Block:
         """Create a block from user-facing data formats."""
-        if isinstance(batch, np.ndarray):
+        if isinstance(batch, (np.ndarray, dict)):
             from ray.data._internal.arrow_block import ArrowBlockAccessor
 
             return ArrowBlockAccessor.numpy_to_block(batch)

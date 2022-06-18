@@ -7,9 +7,6 @@ import logging.handlers
 import os
 import sys
 
-# Import psutil after ray so the packaged version is used.
-import psutil
-
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services
@@ -21,6 +18,9 @@ from ray._private.gcs_pubsub import GcsAioPublisher, GcsPublisher
 from ray._private.gcs_utils import GcsClient
 from ray._private.ray_logging import setup_component_logger
 from ray.core.generated import agent_manager_pb2, agent_manager_pb2_grpc
+
+# Import psutil after ray so the packaged version is used.
+import psutil
 
 try:
     from grpc import aio as aiogrpc

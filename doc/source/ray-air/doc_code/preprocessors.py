@@ -1,5 +1,5 @@
 # flake8: noqa
-
+# isort: skip_file
 
 # __checkpoint_start__
 import os
@@ -96,6 +96,10 @@ with checkpoint.as_directory() as checkpoint_path:
 # MixMaxScaler(columns=['x'], stats={'min(x)': 0, 'max(x)': 30})
 # __checkpoint_end__
 
+
+# __predictor_start__
+from ray.train.batch_predictor import BatchPredictor
+from ray.train.xgboost import XGBoostPredictor
 
 test_dataset = ray.data.from_items([{"x": x} for x in range(2, 32, 3)])
 

@@ -167,7 +167,6 @@ class Trainable:
 
         self.remote_checkpoint_dir = remote_checkpoint_dir
         self.custom_syncer = custom_syncer
-        self.storage_client = None
 
     @property
     def uses_cloud_checkpointing(self):
@@ -629,10 +628,10 @@ class Trainable:
             return
         else:
             if self.uses_cloud_checkpointing:
-                if self.storage_client:
+                if self.custom_syncer:
                     # Keep for backwards compatibility
-                    self.storage_client.delete(self._storage_path(checkpoint_dir))
-                    self.storage_client.wait_or_retry()
+                    self.custom_syncer.delete(self._storage_path(checkpoint_dir))
+                    self.custom_syncer.wait_or_retry()
                 else:
                     checkpoint_uri = self._storage_path(checkpoint_dir)
                     retry_fn(

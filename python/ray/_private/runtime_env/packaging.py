@@ -199,7 +199,13 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
             -> ("file", "file__path_to_test_module.zip")
     """
     uri = urlparse(pkg_uri)
-    protocol = Protocol(uri.scheme)
+    try:
+        protocol = Protocol(uri.scheme)
+    except ValueError as e:
+        raise ValueError(
+            f"Invalid protocol for runtime_env URI {pkg_uri}. "
+            f"Supported protocols: {Protocol._member_names_}. Original error: {e}"
+        )
     if protocol == Protocol.S3 or protocol == Protocol.GS:
         return (protocol, f"{protocol.value}_{uri.netloc}{uri.path.replace('/', '_')}")
     elif protocol == Protocol.HTTPS:

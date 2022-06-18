@@ -748,6 +748,10 @@ def append_short_test_summary(rep):
 
     test_name = rep.nodeid.replace(os.sep, "::")
 
+    if os.name == "nt":
+        # ":" is not legal in filenames in windows
+        test_name.replace(":", "$")
+
     header_file = os.path.join(summary_dir, "000_header.txt")
     summary_file = os.path.join(summary_dir, test_name + ".txt")
 

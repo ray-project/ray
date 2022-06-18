@@ -575,7 +575,7 @@ class ActorClass:
                 For Ray DAG building that creates static graph from decorated
                 class or functions.
                 """
-                from ray.experimental.dag.class_node import ClassNode
+                from ray.dag.class_node import ClassNode
 
                 return ClassNode(
                     actor_cls.__ray_metadata__.modified_class,
@@ -939,7 +939,7 @@ class ActorClass:
         For Ray DAG building that creates static graph from decorated
         class or functions.
         """
-        from ray.experimental.dag.class_node import ClassNode
+        from ray.dag.class_node import ClassNode
 
         return ClassNode(
             self.__ray_metadata__.modified_class, args, kwargs, self._default_options
