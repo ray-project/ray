@@ -3,7 +3,7 @@
 Inference with trained models
 =============================
 
-.. image:: images/air-predictor.png
+.. image:: images/air-predictors.png
 
 After you train a model, you will often want to use the model to do inference and prediction.
 
@@ -39,21 +39,44 @@ Ray AIR provides a ``BatchPredictor`` utility for large-scale batch inference.
 
 The BatchPredictor takes in a checkpoint and a predictor class and executes large-scale batch prediction on a given dataset in a parallel/distributed fashion when calling ``predict()``.
 
-
 .. literalinclude:: doc_code/use_pretrained_model.py
     :language: python
     :start-after: __batch_prediction_start__
     :end-before: __batch_prediction_end__
 
+There are different things you need in order to do batch prediction on different data types.
+
+Tabular
+
+
+**Image**
+
+.. literalinclude:: doc_code/torch_image_batch_pretrained.py
+    :language: python
+    :start-after: __batch_prediction_start__
+    :end-before: __batch_prediction_end__
+
+
+.. literalinclude:: doc_code/tf_image_batch_pretrained.py
+    :language: python
+    :start-after: __batch_prediction_start__
+    :end-before: __batch_prediction_end__
+
+**Text**
+
+Coming soon!
+
+
+
 
 Configuring Batch Prediction
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-**Resources (enabling GPU Prediction)**
+**Resources (enabling GPU Prediction)**:
 
-**Batch Size**
+**Batch Size**:
 
-**Worker Pool**
+**Worker Pool**: 
 
 
 Lazy/Pipelined Prediction
