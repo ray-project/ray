@@ -19,7 +19,6 @@ from aiohttp.web import Response
 import ray
 import ray.dashboard.consts as dashboard_consts
 from ray._private.ray_constants import env_bool
-from aiohttp.web import Response
 
 # All third-party dependencies that are not included in the minimal Ray
 # installation must be included in this file. This allows us to determine if

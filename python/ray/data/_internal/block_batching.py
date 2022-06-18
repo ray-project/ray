@@ -1,6 +1,6 @@
 import collections
 import itertools
-from typing import TYPE_CHECKING, Iterable, Iterator, Optional, Union
+from typing import TYPE_CHECKING, Iterable, Iterator, Optional, Union, Dict
 
 import numpy as np
 

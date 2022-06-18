@@ -11,7 +11,6 @@ from enum import Enum
 from functools import wraps
 from itertools import groupby
 from typing import Dict, Iterable, List, Tuple
-from typing import Dict, Iterable, List, Tuple
 
 import fastapi.encoders
 import numpy as np
