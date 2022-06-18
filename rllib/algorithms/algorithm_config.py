@@ -987,6 +987,7 @@ class AlgorithmConfig:
                     input_evaluation
                 ),
                 error=True,
+                help="Running OPE during training is not recommended.",
             )
         if postprocess_inputs is not None:
             self.postprocess_inputs = postprocess_inputs

@@ -1922,10 +1922,12 @@ class Algorithm(Trainable):
             ope_dict = {str(ope): {"type": ope} for ope in input_evaluation}
             deprecation_warning(
                 old="config.input_evaluation={}".format(input_evaluation),
-                new="config.off_policy_estimation_methods={}".format(
+                new='config["evaluation_config"]'
+                '["off_policy_estimation_methods"]={}'.format(
                     ope_dict,
                 ),
                 error=False,
+                help="Running OPE during training is not recommended.",
             )
             config["off_policy_estimation_methods"] = ope_dict
 
