@@ -70,7 +70,6 @@ class TestDDPG(unittest.TestCase):
 
         # Test against all frameworks.
         for _ in framework_iterator(config):
-            config = ddpg.DDPGConfig().rollouts(num_rollout_workers=0)
             config.seed = 42
             # Default OUNoise setup.
             algo = config.build(env="Pendulum-v1")
