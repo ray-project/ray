@@ -729,6 +729,14 @@ class RolloutWorker(ParallelIteratorWorker):
                     error=False,
                 )
                 method_type = ope_types[method_type]
+            if method_type == "simulation":
+                deprecation_warning(
+                    help="The `simulation` estimation method has been deprecated."
+                    "If you want to run online evaluation on your data, use"
+                    'config.evaluation_config["input"] = "sampler" instead.',
+                    error=False,
+                )
+                sample_async = True
             # TODO: Allow for this to be a full classpath string as well, then construct
             #  this with our `from_config` util.
             elif isinstance(method_type, type) and issubclass(
@@ -778,6 +786,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 observation_fn=observation_fn,
                 sample_collector_class=policy_config.get("sample_collector"),
                 render=render,
+                blackhole_outputs="simulation" in off_policy_estimation_methods,
             )
             # Start the Sampler thread.
             self.sampler.start()
