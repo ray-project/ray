@@ -6,7 +6,7 @@ import tempfile
 import ray
 from ray import serve
 from ray.dag import DAGNode
-from ray.dag.utils import DAGNodeNameGenerator
+from ray.dag.utils import _DAGNodeNameGenerator
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.deployment_graph import InputNode
 from ray.serve.drivers import DAGDriver
@@ -116,7 +116,7 @@ async def json_resolver(request: starlette.requests.Request):
 
 
 def ray_dag_to_serve_dag(dag: DAGNode):
-    with DAGNodeNameGenerator() as deployment_name_generator:
+    with _DAGNodeNameGenerator() as deployment_name_generator:
         serve_dag = dag.apply_recursive(
             lambda node: transform_ray_dag_to_serve_dag(node, deployment_name_generator)
         )
