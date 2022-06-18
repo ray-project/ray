@@ -8,10 +8,8 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
-import requests
 
 import ray
-import ray.data.tests.util as util
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.lazy_block_list import LazyBlockList
@@ -610,6 +608,14 @@ def test_tensors_basic(ray_start_regular_shared):
     res = ray.data.range_tensor(2, shape=(2, 2)).map(np_mapper).take()
     np.testing.assert_equal(res, [np.ones((2, 2)), 2 * np.ones((2, 2))])
 
+    # Explicit NumPy format.
+    res = (
+        ray.data.range_tensor(2, shape=(2, 2))
+        .map_batches(np_mapper, batch_format="numpy")
+        .take()
+    )
+    np.testing.assert_equal(res, [np.ones((2, 2)), 2 * np.ones((2, 2))])
+
     # Pandas conversion.
     def pd_mapper(df):
         assert isinstance(df, pd.DataFrame)
@@ -617,6 +623,80 @@ def test_tensors_basic(ray_start_regular_shared):
 
     res = ray.data.range_tensor(2).map_batches(pd_mapper, batch_format="pandas").take()
     np.testing.assert_equal(res, [np.array([2]), np.array([3])])
+
+    # Arrow columns in NumPy format.
+    def mapper(col_arrs):
+        assert isinstance(col_arrs, dict)
+        assert list(col_arrs.keys()) == ["a", "b", "c"]
+        assert all(isinstance(col_arr, np.ndarray) for col_arr in col_arrs.values())
+        return {"a": col_arrs["a"] + 1, "b": col_arrs["b"] + 1, "c": col_arrs["c"] + 1}
+
+    t = pa.table(
+        {
+            "a": [1, 2, 3],
+            "b": [4.0, 5.0, 6.0],
+            "c": ArrowTensorArray.from_numpy(np.array([[1, 2], [3, 4], [5, 6]])),
+        }
+    )
+    res = (
+        ray.data.from_arrow(t)
+        .map_batches(mapper, batch_size=2, batch_format="numpy")
+        .take()
+    )
+    np.testing.assert_equal(
+        [r.as_pydict() for r in res],
+        [
+            {"a": 2, "b": 5.0, "c": np.array([2, 3])},
+            {"a": 3, "b": 6.0, "c": np.array([4, 5])},
+            {"a": 4, "b": 7.0, "c": np.array([6, 7])},
+        ],
+    )
+
+    # Pandas columns in NumPy format.
+    def mapper(col_arrs):
+        assert isinstance(col_arrs, dict)
+        assert list(col_arrs.keys()) == ["a", "b", "c"]
+        assert all(isinstance(col_arr, np.ndarray) for col_arr in col_arrs.values())
+        return pd.DataFrame(
+            {
+                "a": col_arrs["a"] + 1,
+                "b": col_arrs["b"] + 1,
+                "c": TensorArray(col_arrs["c"] + 1),
+            }
+        )
+
+    df = pd.DataFrame(
+        {
+            "a": [1, 2, 3],
+            "b": [4.0, 5.0, 6.0],
+            "c": TensorArray(np.array([[1, 2], [3, 4], [5, 6]])),
+        }
+    )
+    res = (
+        ray.data.from_pandas(df)
+        .map_batches(mapper, batch_size=2, batch_format="numpy")
+        .take()
+    )
+    np.testing.assert_equal(
+        [r.as_pydict() for r in res],
+        [
+            {"a": 2, "b": 5.0, "c": np.array([2, 3])},
+            {"a": 3, "b": 6.0, "c": np.array([4, 5])},
+            {"a": 4, "b": 7.0, "c": np.array([6, 7])},
+        ],
+    )
+
+    # Simple dataset in NumPy format.
+    def mapper(arr):
+        arr = np_mapper(arr)
+        return arr.tolist()
+
+    res = (
+        ray.data.range(10, parallelism=2)
+        .map_batches(mapper, batch_format="numpy")
+        .take()
+    )
+    assert res == list(range(1, 11))
 
 
 def test_tensors_shuffle(ray_start_regular_shared):
@@ -1357,49 +1437,6 @@ def test_pyarrow(ray_start_regular_shared):
     ).take() == [{"b": 2}, {"b": 20}]
 
 
-def test_read_binary_files(ray_start_regular_shared):
-    with util.gen_bin_files(10) as (_, paths):
-        ds = ray.data.read_binary_files(paths, parallelism=10)
-        for i, item in enumerate(ds.iter_rows()):
-            expected = open(paths[i], "rb").read()
-            assert expected == item
-        # Test metadata ops.
-        assert ds.count() == 10
-        assert "bytes" in str(ds.schema()), ds
-        assert "bytes" in str(ds), ds
-
-
-def test_read_binary_files_with_fs(ray_start_regular_shared):
-    with util.gen_bin_files(10) as (tempdir, paths):
-        # All the paths are absolute, so we want the root file system.
-        fs, _ = pa.fs.FileSystem.from_uri("/")
-        ds = ray.data.read_binary_files(paths, filesystem=fs, parallelism=10)
-        for i, item in enumerate(ds.iter_rows()):
-            expected = open(paths[i], "rb").read()
-            assert expected == item
-
-
-def test_read_binary_files_with_paths(ray_start_regular_shared):
-    with util.gen_bin_files(10) as (_, paths):
-        ds = ray.data.read_binary_files(paths, include_paths=True, parallelism=10)
-        for i, (path, item) in enumerate(ds.iter_rows()):
-            assert path == paths[i]
-            expected = open(paths[i], "rb").read()
-            assert expected == item
-
-
-# TODO(Clark): Hitting S3 in CI is currently broken due to some AWS
-# credentials issue, unskip this test once that's fixed or once ported to moto.
-@pytest.mark.skip(reason="Shouldn't hit S3 in CI")
-def test_read_binary_files_s3(ray_start_regular_shared):
-    ds = ray.data.read_binary_files(["s3://anyscale-data/small-files/0.dat"])
-    item = ds.take(1).pop()
-    expected = requests.get(
-        "https://anyscale-data.s3.us-west-2.amazonaws.com/small-files/0.dat"
-    ).content
-    assert item == expected
-
-
 def test_sliding_window():
     arr = list(range(10))
 
@@ -1483,7 +1520,22 @@ def test_iter_batches_basic(ray_start_regular_shared):
         assert isinstance(batch, pa.Table)
         assert batch.equals(pa.Table.from_pandas(df))
 
-    # blocks format.
+    # NumPy format.
+    for batch, df in zip(ds.iter_batches(batch_format="numpy"), dfs):
+        assert isinstance(batch, dict)
+        assert list(batch.keys()) == ["one", "two"]
+        assert all(isinstance(col, np.ndarray) for col in batch.values())
+        pd.testing.assert_frame_equal(pd.DataFrame(batch), df)
+
+    # Test NumPy format on Arrow blocks.
+    ds2 = ds.map_batches(lambda b: b, batch_size=None, batch_format="pyarrow")
+    for batch, df in zip(ds2.iter_batches(batch_format="numpy"), dfs):
+        assert isinstance(batch, dict)
+        assert list(batch.keys()) == ["one", "two"]
+        assert all(isinstance(col, np.ndarray) for col in batch.values())
+        pd.testing.assert_frame_equal(pd.DataFrame(batch), df)
+
+    # Native format.
     for batch, df in zip(ds.iter_batches(batch_format="native"), dfs):
         assert BlockAccessor.for_block(batch).to_pandas().equals(df)
 
@@ -3882,6 +3934,45 @@ def test_datasource(ray_start_regular):
     assert len(ray.data.read_datasource(source, n=10, num_columns=2).take()) == 10
     source = ray.data.datasource.RangeDatasource()
     assert ray.data.read_datasource(source, n=10).take() == list(range(10))
+
+
+def test_polars_lazy_import(shutdown_only):
+    import sys
+
+    ctx = ray.data.context.DatasetContext.get_current()
+
+    try:
+        original_use_polars = ctx.use_polars
+        ctx.use_polars = True
+
+        num_items = 100
+        parallelism = 4
+        ray.init(num_cpus=4)
+
+        @ray.remote
+        def f(should_import_polars):
+            # Sleep to spread the tasks.
+            time.sleep(1)
+            polars_imported = "polars" in sys.modules.keys()
+            return polars_imported == should_import_polars
+
+        # We should not use polars for non-Arrow sort.
+        _ = ray.data.range(num_items, parallelism=parallelism).sort()
+        assert all(ray.get([f.remote(False) for _ in range(parallelism)]))
+
+        a = range(100)
+        dfs = []
+        partition_size = num_items // parallelism
+        for i in range(parallelism):
+            dfs.append(
+                pd.DataFrame({"a": a[i * partition_size : (i + 1) * partition_size]})
+            )
+        # At least one worker should have imported polars.
+        _ = ray.data.from_pandas(dfs).sort(key="a")
+        assert any(ray.get([f.remote(True) for _ in range(parallelism)]))
+
+    finally:
+        ctx.use_polars = original_use_polars
 
 
 if __name__ == "__main__":
