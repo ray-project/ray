@@ -21,7 +21,7 @@ def test_auto_parallelism_basic(shutdown_only):
 
 
 def test_auto_parallelism_placement_group(shutdown_only):
-    ray.init(num_cpus=16, num_gpus=16)
+    ray.init(num_cpus=16, num_gpus=8)
     context = DatasetContext.get_current()
     context.min_parallelism = 1
 
@@ -30,10 +30,17 @@ def test_auto_parallelism_placement_group(shutdown_only):
         ds = ray.data.range_tensor(10000, shape=(100,), parallelism=-1)
         return ds.num_blocks()
 
+    # 1/16 * 4 = 8
+    pg = ray.util.placement_group([{"CPU": 1}])
+    num_blocks = ray.get(run.options(placement_group=pg).remote())
+    assert num_blocks == 4, num_blocks
+
+    # 2/16 * 4 = 8
     pg = ray.util.placement_group([{"CPU": 2}])
     num_blocks = ray.get(run.options(placement_group=pg).remote())
     assert num_blocks == 8, num_blocks
 
+    # 1/8 * 4 = 8
     pg = ray.util.placement_group([{"CPU": 1, "GPU": 1}])
     num_blocks = ray.get(run.options(placement_group=pg).remote())
     assert num_blocks == 8, num_blocks
