@@ -100,8 +100,10 @@ def update_priorities_in_replay_buffer(
 
 @DeveloperAPI
 def sample_min_n_steps_from_buffer(
-    replay_buffer: ReplayBuffer, min_steps: int, count_by_agent_steps: bool,
-    policy_id: str = DEFAULT_POLICY_ID
+    replay_buffer: ReplayBuffer,
+    min_steps: int,
+    count_by_agent_steps: bool,
+    policy_id: str = DEFAULT_POLICY_ID,
 ) -> Optional[SampleBatchType]:
     """Samples a minimum of n timesteps from a given replay buffer.
 

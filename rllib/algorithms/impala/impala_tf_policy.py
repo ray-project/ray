@@ -347,7 +347,9 @@ def get_impala_tf_policy(base: TFPolicyV2Type) -> TFPolicyV2Type:
 
             if self.is_recurrent():
                 max_seq_len = tf.reduce_max(train_batch[SampleBatch.SEQ_LENS])
-                mask_orig = tf.sequence_mask(train_batch[SampleBatch.SEQ_LENS], max_seq_len)
+                mask_orig = tf.sequence_mask(
+                    train_batch[SampleBatch.SEQ_LENS], max_seq_len
+                )
                 mask = tf.reshape(mask_orig, [-1])
             else:
                 mask = tf.ones_like(rewards)
