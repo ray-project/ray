@@ -52,7 +52,7 @@
 
 #### `GET "/api/serve/deployments/"`
 
-Gets latest config that Serve has received. This config represents the current goal state for the Serve application. Starts a Serve application on the Ray cluster if it's not already running. See [config schema](serve-rest-api-config-schema) for the response's JSON schema.
+Gets latest config that Serve has received. This config represents the current goal state for the Serve application. Starts a Serve application on the Ray cluster if it's not already running. See the [config schema](serve-rest-api-config-schema) for the response's JSON schema.
 
 **Example Request**:
 
@@ -91,7 +91,7 @@ Content-Type: application/json
 
 #### `PUT "/api/serve/deployments/"`
 
-Declaratively deploys the Serve application. Starts Serve on the Ray cluster if it's not already running. See [config schema](serve-rest-api-config-schema) for the request's JSON schema.
+Declaratively deploys the Serve application. Starts Serve on the Ray cluster if it's not already running. See the [config schema](serve-rest-api-config-schema) for the request's JSON schema.
 
 **Example Request**:
 
@@ -131,7 +131,7 @@ Content-Type: application/json
 
 #### `GET "/api/serve/deployments/status"`
 
-Gets the Serve application's current status, including all the deployment statuses. This config represents the current goal state for the Serve application. Starts a Serve application on the Ray cluster if it's not already running. See [status schema](serve-rest-api-status-schema) for the response's JSON schema.
+Gets the Serve application's current status, including all the deployment statuses. This config represents the current goal state for the Serve application. Starts a Serve application on the Ray cluster if it's not already running. See the [status schema](serve-rest-api-status-schema) for the response's JSON schema.
 
 **Example Request**:
 
