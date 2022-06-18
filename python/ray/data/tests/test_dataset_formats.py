@@ -1315,16 +1315,6 @@ def test_read_text(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_text(path, drop_empty_lines=False)
     assert ds.count() == 5
 
-    # Add a file with a non-matching file extension. This file should be ignored.
-    df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    csv_path = os.path.join(path, "file4.csv")
-    df.to_csv(csv_path, index=False)
-    # Non-txt file should be ignored.
-    ds = ray.data.read_text(path)
-    assert sorted(ds.take()) == ["goodbye", "hello", "ray", "world"]
-    ds = ray.data.read_text(path, drop_empty_lines=False)
-    assert ds.count() == 5
-
 
 def test_read_text_meta_provider(
     ray_start_regular_shared,
