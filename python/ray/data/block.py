@@ -297,6 +297,11 @@ class BlockAccessor(Generic[T]):
             from ray.data._internal.arrow_block import ArrowBlockAccessor
 
             return ArrowBlockAccessor.numpy_to_block(batch)
+        elif isinstance(batch, list):
+            from ray.data._internal.table_block import VALUE_COL_NAME
+            import pyarrow as pa
+
+            return pa.Table.from_pydict({VALUE_COL_NAME: batch})
         return batch
 
     @staticmethod
