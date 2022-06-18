@@ -79,10 +79,8 @@ class ServeController:
     async def __init__(
         self,
         controller_name: str,
-        *,
         http_config: HTTPOptions,
         checkpoint_path: str,
-        head_node_id: str,
         detached: bool = False,
     ):
         configure_component_logger(
@@ -110,7 +108,6 @@ class ServeController:
             controller_name,
             detached,
             http_config,
-            head_node_id,
         )
         self.endpoint_state = EndpointState(self.kv_store, self.long_poll_host)
         # Fetch all running actors in current cluster as source of current
@@ -348,7 +345,6 @@ class ServeController:
         # TODO(architkulkarni): When a deployment is redeployed, even if
         # the only change was num_replicas, the start_time_ms is refreshed.
         # Is this the desired behaviour?
-
         updating = self.deployment_state_manager.deploy(name, deployment_info)
 
         if route_prefix is not None:

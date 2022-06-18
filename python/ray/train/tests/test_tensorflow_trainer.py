@@ -1,8 +1,12 @@
+import os
+
 import numpy as np
 import pytest
 
 import ray
 from ray import train
+from ray.air import session
+from ray.air.checkpoint import Checkpoint
 from ray.air.examples.tf.tensorflow_linear_dataset_example import get_dataset
 from ray.air.examples.tf.tensorflow_linear_dataset_example import (
     train_func as tensorflow_linear_train_func,
@@ -34,6 +38,8 @@ def build_model():
 
 @pytest.mark.parametrize("num_workers", [1, 2])
 def test_tensorflow_linear(ray_start_4_cpus, num_workers):
+    """Also tests air Keras callback."""
+
     def train_func(config):
         result = tensorflow_linear_train_func(config)
         assert len(result) == epochs
@@ -81,6 +87,39 @@ def test_tensorflow_e2e(ray_start_4_cpus):
         TensorflowScorer, batch_format="pandas", compute="actors"
     )
     assert predictions.count() == 3
+
+
+def test_report_and_load_using_ml_session(ray_start_4_cpus):
+    def train_func():
+        if session.get_checkpoint():
+            with session.get_checkpoint().as_directory() as checkpoint_dir:
+                import tensorflow as tf
+
+                model = tf.keras.models.load_model(checkpoint_dir)
+        else:
+            model = build_model()
+
+        model.save("my_model", overwrite=True)
+        session.report(
+            metrics={"iter": 1}, checkpoint=Checkpoint.from_directory("my_model")
+        )
+
+    scaling_config = {"num_workers": 2}
+    trainer = TensorflowTrainer(
+        train_loop_per_worker=train_func, scaling_config=scaling_config
+    )
+    result = trainer.fit()
+
+    trainer2 = TensorflowTrainer(
+        train_loop_per_worker=train_func,
+        scaling_config=scaling_config,
+        resume_from_checkpoint=result.checkpoint,
+    )
+    result = trainer2.fit()
+    checkpoint = result.checkpoint
+    with checkpoint.as_directory() as ckpt_dir:
+        assert os.path.exists(os.path.join(ckpt_dir, "saved_model.pb"))
+    assert result.metrics["iter"] == 1
 
 
 if __name__ == "__main__":
