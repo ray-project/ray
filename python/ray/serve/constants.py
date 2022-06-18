@@ -1,5 +1,4 @@
 import os
-
 from enum import Enum
 
 #: Used for debugging to turn on DEBUG-level logs
