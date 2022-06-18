@@ -1919,26 +1919,15 @@ class Algorithm(Trainable):
         # Offline RL settings.
         input_evaluation = config.get("input_evaluation")
         if input_evaluation is not None and input_evaluation is not DEPRECATED_VALUE:
+            ope_dict = {str(ope): {"type": ope} for ope in input_evaluation}
             deprecation_warning(
-                old="config.input_evaluation: {}".format(input_evaluation),
-                new="config.off_policy_estimation_methods={}".format(input_evaluation),
-                error=False,
-            )
-            config["off_policy_estimation_methods"] = input_evaluation
-        if isinstance(config["off_policy_estimation_methods"], list) or isinstance(
-            config["off_policy_estimation_methods"], tuple
-        ):
-            ope_dict = {
-                str(ope): {"type": ope} for ope in self.off_policy_estimation_methods
-            }
-            deprecation_warning(
-                old="config.off_policy_estimation_methods={}".format(
-                    self.off_policy_estimation_methods
-                ),
-                new="config.off_policy_estimation_methods={}".format(
+                old="config.input_evaluation={}".format(input_evaluation),
+                new='config["evaluation_config"]'
+                '["off_policy_estimation_methods"]={}'.format(
                     ope_dict,
                 ),
                 error=False,
+                help="Running OPE during training is not recommended.",
             )
             config["off_policy_estimation_methods"] = ope_dict
 
