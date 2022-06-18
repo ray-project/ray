@@ -288,9 +288,9 @@ class Dataset(Generic[T]):
         batch_size: Optional[int] = 4096,
         compute: Union[str, ComputeStrategy] = None,
         batch_format: str = "native",
-        fn_args: Optional[List[Any]] = None,
+        fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
-        fn_constructor_args: Optional[List[Any]] = None,
+        fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         **ray_remote_args,
     ) -> "Dataset[Any]":

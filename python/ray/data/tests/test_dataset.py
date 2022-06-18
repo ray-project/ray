@@ -1782,7 +1782,7 @@ def test_add_column(ray_start_regular_shared):
         ds = ray.data.range(5).add_column("value", 0)
 
 
-def test_map_batches(ray_start_regular_shared, tmp_path):
+def test_map_batches_basic(ray_start_regular_shared, tmp_path):
     # Test input validation
     ds = ray.data.range(5)
     with pytest.raises(ValueError):
@@ -1820,10 +1820,12 @@ def test_map_batches(ray_start_regular_shared, tmp_path):
             fn_constructor_kwargs={"a": 1},
         )
 
-    # Test pandas
+    # Set up.
     df = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
     table = pa.Table.from_pandas(df)
     pq.write_table(table, os.path.join(tmp_path, "test1.parquet"))
+
+    # Test pandas
     ds = ray.data.read_parquet(str(tmp_path))
     ds2 = ds.map_batches(lambda df: df + 1, batch_size=1, batch_format="pandas")
     assert ds2._dataset_format() == "pandas"
@@ -1882,10 +1884,6 @@ def test_map_batches(ray_start_regular_shared, tmp_path):
 
     # Test extra UDF args.
     # Test positional.
-    df = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
-    table = pa.Table.from_pandas(df)
-    pq.write_table(table, os.path.join(tmp_path, "test1.parquet"))
-
     def udf(batch, a):
         assert a == 1
         return batch + a
@@ -1905,10 +1903,6 @@ def test_map_batches(ray_start_regular_shared, tmp_path):
     assert values == [3, 4, 5]
 
     # Test kwargs.
-    df = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
-    table = pa.Table.from_pandas(df)
-    pq.write_table(table, os.path.join(tmp_path, "test1.parquet"))
-
     def udf(batch, b=None):
         assert b == 2
         return b * batch
@@ -1928,10 +1922,6 @@ def test_map_batches(ray_start_regular_shared, tmp_path):
     assert values == [4, 6, 8]
 
     # Test both.
-    df = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
-    table = pa.Table.from_pandas(df)
-    pq.write_table(table, os.path.join(tmp_path, "test1.parquet"))
-
     def udf(batch, a, b=None):
         assert a == 1
         assert b == 2
@@ -1954,10 +1944,6 @@ def test_map_batches(ray_start_regular_shared, tmp_path):
 
     # Test constructor UDF args.
     # Test positional.
-    df = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
-    table = pa.Table.from_pandas(df)
-    pq.write_table(table, os.path.join(tmp_path, "test1.parquet"))
-
     class CallableFn:
         def __init__(self, a):
             assert a == 1
@@ -1982,10 +1968,6 @@ def test_map_batches(ray_start_regular_shared, tmp_path):
     assert values == [3, 4, 5]
 
     # Test kwarg.
-    df = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
-    table = pa.Table.from_pandas(df)
-    pq.write_table(table, os.path.join(tmp_path, "test1.parquet"))
-
     class CallableFn:
         def __init__(self, b=None):
             assert b == 2
@@ -2010,10 +1992,6 @@ def test_map_batches(ray_start_regular_shared, tmp_path):
     assert values == [4, 6, 8]
 
     # Test both.
-    df = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
-    table = pa.Table.from_pandas(df)
-    pq.write_table(table, os.path.join(tmp_path, "test1.parquet"))
-
     class CallableFn:
         def __init__(self, a, b=None):
             assert a == 1
@@ -2039,6 +2017,66 @@ def test_map_batches(ray_start_regular_shared, tmp_path):
     assert values == [3, 5, 7]
     values = [s["two"] for s in ds_list]
     assert values == [5, 7, 9]
+
+    # Test callable chain.
+    ds = ray.data.read_parquet(str(tmp_path))
+    fn_constructor_args = (ray.put(1),)
+    fn_constructor_kwargs = {"b": ray.put(2)}
+    ds2 = (
+        ds.experimental_lazy()
+        .map_batches(
+            CallableFn,
+            batch_size=1,
+            batch_format="pandas",
+            compute="actors",
+            fn_constructor_args=fn_constructor_args,
+            fn_constructor_kwargs=fn_constructor_kwargs,
+        )
+        .map_batches(
+            CallableFn,
+            batch_size=1,
+            batch_format="pandas",
+            compute="actors",
+            fn_constructor_args=fn_constructor_args,
+            fn_constructor_kwargs=fn_constructor_kwargs,
+        )
+    )
+    assert ds2._dataset_format() == "pandas"
+    ds_list = ds2.take()
+    values = [s["one"] for s in ds_list]
+    assert values == [7, 11, 15]
+    values = [s["two"] for s in ds_list]
+    assert values == [11, 15, 19]
+
+    # Test function + callable chain.
+    ds = ray.data.read_parquet(str(tmp_path))
+    fn_constructor_args = (ray.put(1),)
+    fn_constructor_kwargs = {"b": ray.put(2)}
+    ds2 = (
+        ds.experimental_lazy()
+        .map_batches(
+            lambda df, a, b=None: b * df + a,
+            batch_size=1,
+            batch_format="pandas",
+            compute="actors",
+            fn_args=(ray.put(1),),
+            fn_kwargs={"b": ray.put(2)},
+        )
+        .map_batches(
+            CallableFn,
+            batch_size=1,
+            batch_format="pandas",
+            compute="actors",
+            fn_constructor_args=fn_constructor_args,
+            fn_constructor_kwargs=fn_constructor_kwargs,
+        )
+    )
+    assert ds2._dataset_format() == "pandas"
+    ds_list = ds2.take()
+    values = [s["one"] for s in ds_list]
+    assert values == [7, 11, 15]
+    values = [s["two"] for s in ds_list]
+    assert values == [11, 15, 19]
 
 
 def test_map_batches_actors_preserves_order(ray_start_regular_shared):

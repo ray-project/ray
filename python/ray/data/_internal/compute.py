@@ -62,9 +62,9 @@ class TaskPoolStrategy(ComputeStrategy):
         clear_input_blocks: bool,
         name: Optional[str] = None,
         fn: Optional[UDF] = None,
-        fn_args: Optional[List[Any]] = None,
+        fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
-        fn_constructor_args: Optional[List[Any]] = None,
+        fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
     ) -> BlockList:
         assert fn_constructor_args is None and fn_constructor_kwargs is None
@@ -193,9 +193,9 @@ class ActorPoolStrategy(ComputeStrategy):
         clear_input_blocks: bool,
         name: Optional[str] = None,
         fn: Optional[UDF] = None,
-        fn_args: Optional[List[Any]] = None,
+        fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
-        fn_constructor_args: Optional[List[Any]] = None,
+        fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
     ) -> BlockList:
         """Note: this is not part of the Dataset public API."""
