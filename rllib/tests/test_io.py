@@ -151,25 +151,27 @@ class AgentIOTest(unittest.TestCase):
             self.assertEqual(result["timesteps_total"], 250)  # read from input
             self.assertTrue(np.isnan(result["episode_reward_mean"]))
 
-    def test_agent_input_eval_sim(self):
-        for fw in framework_iterator():
+    def test_agent_input_eval_sampler(self):
+        for fw in ["torch"]:
             self.write_outputs(self.test_dir, fw)
             agent = PG(
                 env="CartPole-v0",
                 config={
                     "input": self.test_dir + fw,
-                    "off_policy_estimation_methods": {
-                        "simulation": {"type": "simulation"}
-                    },
                     "framework": fw,
+                    "evaluation_interval": 1,
+                    "evaluation_config": {"input": "sampler"},
                 },
             )
             for _ in range(50):
                 result = agent.train()
-                if not np.isnan(result["episode_reward_mean"]):
-                    return  # simulation ok
+                assert not np.isnan(
+                    result["episode_reward_mean"]
+                ), "episode reward should not be computed for offline data"
+                assert not np.isnan(
+                    result["evaluation"]["episode_reward_mean"]
+                ), "Did not see simulation results during evaluation"
                 time.sleep(0.1)
-            assert False, "did not see any simulation results"
 
     def test_agent_input_list(self):
         for fw in framework_iterator(frameworks=("torch", "tf")):

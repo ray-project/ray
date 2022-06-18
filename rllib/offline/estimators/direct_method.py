@@ -81,8 +81,8 @@ class DirectMethod(OffPolicyEstimator):
         policy: Policy,
         gamma: float,
         q_model_type: str = "fqe",
-        train_test_split_val: int = 0,
-        k: float = 0.0,
+        train_test_split_val: float = 0.0,
+        k: int = 0,
         **kwargs,
     ):
         """
