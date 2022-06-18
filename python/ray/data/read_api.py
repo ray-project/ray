@@ -1,4 +1,5 @@
 import logging
+import math
 import os
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, TypeVar, Union
 
@@ -39,6 +40,7 @@ from ray.data.datasource.file_based_datasource import (
 )
 from ray.types import ObjectRef
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
+from ray.util.placement_group import PlacementGroup
 
 if TYPE_CHECKING:
     import dask
@@ -75,7 +77,16 @@ def from_items(items: List[Any], *, parallelism: int = -1) -> Dataset[Any]:
     Returns:
         Dataset holding the items.
     """
-    block_size = max(1, len(items) // _autodetect_parallelism(parallelism))
+
+    block_size = max(
+        1,
+        math.ceil(
+            len(items)
+            / _autodetect_parallelism(
+                parallelism, ray.util.get_current_placement_group()
+            )
+        ),
+    )
 
     blocks: List[ObjectRef[Block]] = []
     metadata: List[BlockMetadata] = []
@@ -229,6 +240,7 @@ def read_datasource(
     ctx = DatasetContext.get_current()
     # TODO(ekl) remove this feature flag.
     force_local = "RAY_DATASET_FORCE_LOCAL_METADATA" in os.environ
+    cur_pg = ray.util.get_current_placement_group()
     pa_ds = _lazy_import_pyarrow_dataset()
     if pa_ds:
         partitioning = read_args.get("dataset_kwargs", {}).get("partitioning", None)
@@ -240,7 +252,7 @@ def read_datasource(
             force_local = True
 
     if force_local:
-        read_tasks = _prepare_read(datasource, ctx, parallelism, read_args)
+        read_tasks = _prepare_read(datasource, ctx, cur_pg, parallelism, read_args)
     else:
         # Prepare read in a remote task so that in Ray client mode, we aren't
         # attempting metadata resolution from the client machine.
@@ -251,6 +263,7 @@ def read_datasource(
             prepare_read.remote(
                 datasource,
                 ctx,
+                cur_pg,
                 parallelism,
                 _wrap_and_register_arrow_serialization_workaround(read_args),
             )
@@ -1055,16 +1068,22 @@ def _get_metadata(table: Union["pyarrow.Table", "pandas.DataFrame"]) -> BlockMet
 
 
 def _prepare_read(
-    ds: Datasource, ctx: DatasetContext, parallelism: int, kwargs: dict
+    ds: Datasource,
+    ctx: DatasetContext,
+    cur_pg: Optional[PlacementGroup],
+    parallelism: int,
+    kwargs: dict,
 ) -> List[ReadTask]:
     kwargs = _unwrap_arrow_serialization_workaround(kwargs)
     DatasetContext._set_current(ctx)
     reader = ds.create_reader(**kwargs)
-    parallelism = _autodetect_parallelism(parallelism, reader)
+    parallelism = _autodetect_parallelism(parallelism, cur_pg, reader)
     return reader.prepare_read(parallelism)
 
 
-def _autodetect_parallelism(parallelism: int, reader=None) -> int:
+def _autodetect_parallelism(
+    parallelism: int, cur_pg: Optional[PlacementGroup], reader=None
+) -> int:
     # Autodetect parallelism requested. The heuristic here are that we should try
     # to create as many blocks needed to saturate available resources, and also keep
     # block sizes below the target memory size, but no more. Creating too many
@@ -1074,8 +1093,8 @@ def _autodetect_parallelism(parallelism: int, reader=None) -> int:
         if parallelism != -1:
             raise ValueError("`parallelism` must either be -1 or a positive integer.")
         # Start with 2x the number of cores as a baseline, with a min floor.
-        avail_cpus = _estimate_avail_cpus()
-        parallelism = max(8, avail_cpus * 2)
+        avail_cpus = _estimate_avail_cpus(cur_pg)
+        parallelism = max(ctx.min_parallelism, avail_cpus * 2)
         if reader:
             # Increase it to avoid overly-large blocks as needed.
             mem_size = reader.estimate_inmemory_data_size()
@@ -1091,8 +1110,7 @@ def _autodetect_parallelism(parallelism: int, reader=None) -> int:
     return parallelism
 
 
-def _estimate_avail_cpus() -> int:
-    cur_pg = ray.util.get_current_placement_group()
+def _estimate_avail_cpus(cur_pg: Optional[PlacementGroup]) -> int:
     cluster_cpus = int(ray.cluster_resources().get("CPU", 1))
     cluster_gpus = int(ray.cluster_resources().get("GPU", 0))
 
@@ -1110,7 +1128,7 @@ def _estimate_avail_cpus() -> int:
             max_fraction = max(cpu_fraction, gpu_fraction)
             # Over-parallelize by up to a factor of 2, but no more than that. It's
             # preferrable to over-estimate than under-estimate.
-            pg_cpus = 2 * int(max_fraction * cluster_cpus)
+            pg_cpus += 2 * int(max_fraction * cluster_cpus)
 
         return min(cluster_cpus, pg_cpus)
 
