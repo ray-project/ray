@@ -761,7 +761,7 @@ class RolloutWorker(ParallelIteratorWorker):
             else:
                 raise ValueError(
                     f"Unknown off_policy_estimation type: {method_type}! Must be "
-                    "either `simulation|is|wis|dm|dr` or a sub-class of ray.rllib."
+                    "either a class path or a sub-class of ray.rllib."
                     "offline.estimators.off_policy_estimator::OffPolicyEstimator"
                 )
 
