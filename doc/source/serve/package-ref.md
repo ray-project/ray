@@ -48,11 +48,9 @@
 
 ## Serve REST API
 
-(serve-rest-api-config-schema)=
-
 ### REST API
 
-#### GET "/api/serve/deployments/"
+#### `GET "/api/serve/deployments/"`
 
 Gets latest config that Serve has received. This config represents the current goal state for the Serve application. Starts a Serve application on the Ray cluster if it's not already running. See [config schema](serve-rest-api-config-schema) for the response's JSON schema.
 
@@ -91,122 +89,116 @@ Content-Type: application/json
 }
 ```
 
-```{eval-rst}
-.. http:PUT:: "/api/serve/deployments/"
-    :noindex:
+#### `PUT "/api/serve/deployments/"`
 
-        Declaratively deploys the Serve application. Starts Serve on the Ray cluster if it's not already running. See [config schema](serve-rest-api-config-schema) for the request's JSON schema.
+Declaratively deploys the Serve application. Starts Serve on the Ray cluster if it's not already running. See [config schema](serve-rest-api-config-schema) for the request's JSON schema.
 
-    **Example Request**:
+**Example Request**:
 
-    .. source_code:: http
+```http
+PUT /api/serve/deployments/ HTTP 1.1
+Host: http://localhost:8265/
+Accept: application/json
 
-        PUT /api/serve/deployments/ HTTP 1.1
-        Host: http://localhost:8265/
-        Accept: application/json
-
+{
+    "import_path": "dir.subdir.a.add_and_sub.serve_dag",
+    "runtime_env": {
+        "working_dir": "https://github.com/ray-project/test_dag/archive/41b26242e5a10a8c167fcb952fb11d7f0b33d614.zip"
+    },
+    "deployments": [
         {
-            "import_path": "dir.subdir.a.add_and_sub.serve_dag",
-            "runtime_env": {
-                "working_dir": "https://github.com/ray-project/test_dag/archive/41b26242e5a10a8c167fcb952fb11d7f0b33d614.zip"
-            },
-            "deployments": [
-                {
-                    "name": "Subtract",
-                    "num_replicas": 2,
-                    "ray_actor_options": {
-                        "runtime_env": {
-                            "py_modules": [
-                                "https://github.com/ray-project/test_module/archive/aa6f366f7daa78c98408c27d917a983caa9f888b.zip"
-                            ]
-                        }
-                    }
+            "name": "Subtract",
+            "num_replicas": 2,
+            "ray_actor_options": {
+                "runtime_env": {
+                    "py_modules": [
+                        "https://github.com/ray-project/test_module/archive/aa6f366f7daa78c98408c27d917a983caa9f888b.zip"
+                    ]
                 }
-            ]
+            }
         }
-
-    **Example Response**
-
-    .. source_code:: http
-
-        HTTP/1.1 200 OK
-        Content-Type: application/json
+    ]
+}
 ```
 
-```{eval-rst}
-.. http:GET:: "/api/serve/deployments/status"
-    :noindex:
+**Example Response**
 
-        Gets the Serve application's current status, including all the deployment statuses. This config represents the current goal state for the Serve application. Starts a Serve application on the Ray cluster if it's not already running. See [status schema](serve-rest-api-status-schema) for the response's JSON schema.
-    
-    **Example Request**:
 
-    .. source_code:: http
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+```
 
-        GET /api/serve/deployments/ HTTP 1.1
-        Host: http://localhost:8265/
-        Accept: application/json
+#### `GET "/api/serve/deployments/status"`
 
-    **Example Response**
+Gets the Serve application's current status, including all the deployment statuses. This config represents the current goal state for the Serve application. Starts a Serve application on the Ray cluster if it's not already running. See [status schema](serve-rest-api-status-schema) for the response's JSON schema.
 
-    .. source_code:: http
+**Example Request**:
 
-        HTTP/1.1 200 OK
-        Content-Type: application/json
+```http
+GET /api/serve/deployments/ HTTP 1.1
+Host: http://localhost:8265/
+Accept: application/json
+```
 
+**Example Response**
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+    "app_status": {
+        "status": "RUNNING",
+        "message": "",
+        "deployment_timestamp": 1655490105.9503832
+    },
+    "deployment_statuses": [
         {
-            "app_status": {
-                "status": "RUNNING",
-                "message": "",
-                "deployment_timestamp": 1655490105.9503832
-            },
-            "deployment_statuses": [
-                {
-                    "name": "Add",
-                    "status": "HEALTHY",
-                    "message": ""
-                },
-                {
-                    "name": "Subtract",
-                    "status": "HEALTHY",
-                    "message": ""
-                },
-                {
-                    "name": "Router",
-                    "status": "HEALTHY",
-                    "message": ""
-                },
-                {
-                    "name": "DAGDriver",
-                    "status": "HEALTHY",
-                    "message": ""
-                }
-            ]
+            "name": "Add",
+            "status": "HEALTHY",
+            "message": ""
+        },
+        {
+            "name": "Subtract",
+            "status": "HEALTHY",
+            "message": ""
+        },
+        {
+            "name": "Router",
+            "status": "HEALTHY",
+            "message": ""
+        },
+        {
+            "name": "DAGDriver",
+            "status": "HEALTHY",
+            "message": ""
         }
+    ]
+}
 ```
 
-```{eval-rst}
-.. http:DELETE:: "/api/serve/deployments/"
-    :noindex:
+#### `DELETE "/api/serve/deployments/"`
 
-        Shuts down the Serve application running on the Ray cluster. Has no
-        effect if Serve is not running on the Ray cluster.
+Shuts down the Serve application running on the Ray cluster. Has no
+effect if Serve is not running on the Ray cluster.
     
-    **Example Request**:
+**Example Request**:
 
-    .. source_code:: http
-
-        DELETE /api/serve/deployments/ HTTP 1.1
-        Host: http://localhost:8265/
-        Accept: application/json
-
-    **Example Response**
-
-    .. source_code:: http
-
-        HTTP/1.1 200 OK
-        Content-Type: application/json
+```http
+DELETE /api/serve/deployments/ HTTP 1.1
+Host: http://localhost:8265/
+Accept: application/json
 ```
+
+**Example Response**
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+```
+
+(serve-rest-api-config-schema)=
 
 ### Config Schema
 
