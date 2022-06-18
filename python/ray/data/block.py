@@ -1,35 +1,32 @@
-import resource
-import time
 from dataclasses import dataclass
+import time
 from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
+    TypeVar,
+    List,
     Dict,
     Generic,
     Iterator,
-    List,
-    Optional,
     Tuple,
-    TypeVar,
+    Any,
     Union,
+    Optional,
+    Callable,
+    TYPE_CHECKING,
 )
 
 import numpy as np
 
-import ray
-from ray.data._internal.util import _check_pyarrow_version
-from ray.types import ObjectRef
-from ray.util.annotations import DeveloperAPI
-
 if TYPE_CHECKING:
     import pandas
     import pyarrow
-
-    from ray.data import Dataset
     from ray.data._internal.block_builder import BlockBuilder
     from ray.data.aggregate import AggregateFn
+    from ray.data import Dataset
 
+import ray
+from ray.types import ObjectRef
+from ray.util.annotations import DeveloperAPI
+from ray.data._internal.util import _check_pyarrow_version
 
 T = TypeVar("T")
 U = TypeVar("U")
@@ -88,7 +85,7 @@ Block = Union[List[T], "pyarrow.Table", "pandas.DataFrame", bytes]
 
 # User-facing data batch type. This is the data type for data that is supplied to and
 # returned from batch UDFs.
-DataBatch = Union[Block, np.ndarray]
+DataBatch = Union[Block, np.ndarray, Dict[str, np.ndarray]]
 
 # A list of block references pending computation by a single task. For example,
 # this may be the output of a task reading a file.
@@ -101,6 +98,8 @@ BlockPartitionMetadata = "BlockMetadata"
 # TODO(ekl) replace this with just `BlockPartition` once block splitting is on
 # by default. When block splitting is off, the type is a plain block.
 MaybeBlockPartition = Union[Block, BlockPartition]
+
+VALID_BATCH_FORMATS = ["native", "pandas", "pyarrow", "numpy"]
 
 
 @DeveloperAPI
@@ -117,9 +116,6 @@ class BlockExecStats:
         self.wall_time_s: Optional[float] = None
         self.cpu_time_s: Optional[float] = None
         self.node_id = ray.runtime_context.get_runtime_context().node_id.hex()
-        # Max memory usage. May be an overestimate since we do not
-        # differentiate from previous tasks on the same worker.
-        self.max_rss_bytes: int = 0
 
     @staticmethod
     def builder() -> "_BlockExecStatsBuilder":
@@ -150,9 +146,6 @@ class _BlockExecStatsBuilder:
         stats = BlockExecStats()
         stats.wall_time_s = time.perf_counter() - self.start_time
         stats.cpu_time_s = time.process_time() - self.start_cpu
-        stats.max_rss_bytes = int(
-            resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1e3
-        )
         return stats
 
 
@@ -246,6 +239,29 @@ class BlockAccessor(Generic[T]):
         """Return the native data format for this accessor."""
         return self.to_block()
 
+    def to_batch_format(self, batch_format: str) -> DataBatch:
+        """Convert this block into the provided batch format.
+
+        Args:
+            batch_format: The batch format to convert this block to.
+
+        Returns:
+            This block formatted as the provided batch format.
+        """
+        if batch_format == "native":
+            return self.to_native()
+        elif batch_format == "pandas":
+            return self.to_pandas()
+        elif batch_format == "pyarrow":
+            return self.to_arrow()
+        elif batch_format == "numpy":
+            return self.to_numpy()
+        else:
+            raise ValueError(
+                f"The batch format must be one of {VALID_BATCH_FORMATS}, got: "
+                f"{batch_format}"
+            )
+
     def size_bytes(self) -> int:
         """Return the approximate size in bytes of this block."""
         raise NotImplementedError
@@ -278,7 +294,7 @@ class BlockAccessor(Generic[T]):
     @staticmethod
     def batch_to_block(batch: DataBatch) -> Block:
         """Create a block from user-facing data formats."""
-        if isinstance(batch, np.ndarray):
+        if isinstance(batch, (np.ndarray, dict)):
             from ray.data._internal.arrow_block import ArrowBlockAccessor
 
             return ArrowBlockAccessor.numpy_to_block(batch)
@@ -288,8 +304,8 @@ class BlockAccessor(Generic[T]):
     def for_block(block: Block) -> "BlockAccessor[T]":
         """Create a block accessor for the given block."""
         _check_pyarrow_version()
-        import pandas
         import pyarrow
+        import pandas
 
         if isinstance(block, pyarrow.Table):
             from ray.data._internal.arrow_block import ArrowBlockAccessor
