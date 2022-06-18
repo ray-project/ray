@@ -275,6 +275,7 @@ def test_object_lost_error(ray_start_cluster, debug_enabled):
     ],
     indirect=True,
 )
+@pytest.mark.exclusive
 def test_raylet_graceful_shutdown_through_rpc(ray_start_cluster_head, error_pubsub):
     """
     Prepare the cluster.
@@ -373,6 +374,7 @@ def test_raylet_graceful_shutdown_through_rpc(ray_start_cluster_head, error_pubs
     ],
     indirect=True,
 )
+@pytest.mark.exclusive
 def test_gcs_drain(ray_start_cluster_head, error_pubsub):
     """
     Prepare the cluster.
@@ -450,6 +452,7 @@ def test_gcs_drain(ray_start_cluster_head, error_pubsub):
     ray.get(a.ready.remote())
 
 
+@pytest.mark.exclusive
 def test_worker_start_timeout(monkeypatch, ray_start_cluster):
     # This test is to make sure
     #   1. when worker failed to register, raylet will print useful log
@@ -512,6 +515,7 @@ def test_task_failure_when_driver_local_raylet_dies(ray_start_cluster):
         ray.get(ret)
 
 
+@pytest.mark.exclusive
 def test_locality_aware_scheduling_for_dead_nodes(shutdown_only):
     """Test that locality-ware scheduling can handle dead nodes."""
     # Create a cluster with 4 nodes.
@@ -613,6 +617,10 @@ if __name__ == "__main__":
     import os
 
     if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+        ret1 = pytest.main(
+            ["-n", "auto", "--boxed", "-m", "not exclusive", "-vs", __file__]
+        )
+        ret2 = pytest.main(["--boxed", "-m", "exclusive", "-vs", __file__])
+        sys.exit(0 if ret1 + ret2 == 0 else 1)
     else:
         sys.exit(pytest.main(["-sv", __file__]))
