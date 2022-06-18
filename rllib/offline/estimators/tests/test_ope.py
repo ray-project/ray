@@ -92,7 +92,7 @@ class TestOPE(unittest.TestCase):
         cls.std_ret["simulation"] = np.std(mc_ret)
 
         # Optional configs for the model-based estimators
-        cls.model_config = {"k": 2, "n_iters": 10}
+        cls.model_config = {"train_test_split_val": 0.0, "k": 2, "n_iters": 10}
         ray.shutdown()
 
     @classmethod
@@ -110,7 +110,6 @@ class TestOPE(unittest.TestCase):
         )
         estimator.process(self.batch)
         estimates = estimator.get_metrics()
-        assert len(estimates) == self.n_episodes
         self.mean_ret[name] = np.mean([e.metrics["v_new"] for e in estimates])
         self.std_ret[name] = np.std([e.metrics["v_new"] for e in estimates])
 
@@ -123,7 +122,6 @@ class TestOPE(unittest.TestCase):
         )
         estimator.process(self.batch)
         estimates = estimator.get_metrics()
-        assert len(estimates) == self.n_episodes
         self.mean_ret[name] = np.mean([e.metrics["v_new"] for e in estimates])
         self.std_ret[name] = np.std([e.metrics["v_new"] for e in estimates])
 
@@ -138,7 +136,6 @@ class TestOPE(unittest.TestCase):
         )
         estimator.process(self.batch)
         estimates = estimator.get_metrics()
-        assert len(estimates) == self.n_episodes
         self.mean_ret[name] = np.mean([e.metrics["v_new"] for e in estimates])
         self.std_ret[name] = np.std([e.metrics["v_new"] for e in estimates])
 
@@ -153,7 +150,6 @@ class TestOPE(unittest.TestCase):
         )
         estimator.process(self.batch)
         estimates = estimator.get_metrics()
-        assert len(estimates) == self.n_episodes
         self.mean_ret[name] = np.mean([e.metrics["v_new"] for e in estimates])
         self.std_ret[name] = np.std([e.metrics["v_new"] for e in estimates])
 
@@ -168,7 +164,6 @@ class TestOPE(unittest.TestCase):
         )
         estimator.process(self.batch)
         estimates = estimator.get_metrics()
-        assert len(estimates) == self.n_episodes
         self.mean_ret[name] = np.mean([e.metrics["v_new"] for e in estimates])
         self.std_ret[name] = np.std([e.metrics["v_new"] for e in estimates])
 
@@ -183,7 +178,6 @@ class TestOPE(unittest.TestCase):
         )
         estimator.process(self.batch)
         estimates = estimator.get_metrics()
-        assert len(estimates) == self.n_episodes
         self.mean_ret[name] = np.mean([e.metrics["v_new"] for e in estimates])
         self.std_ret[name] = np.std([e.metrics["v_new"] for e in estimates])
 
