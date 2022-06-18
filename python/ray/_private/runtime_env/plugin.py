@@ -1,10 +1,10 @@
-from abc import ABC
 import logging
-from typing import Optional
-from ray._private.runtime_env.uri_cache import URICache
+from abc import ABC
+from typing import List
 
-from ray.util.annotations import DeveloperAPI
 from ray._private.runtime_env.context import RuntimeEnvContext
+from ray._private.runtime_env.uri_cache import URICache
+from ray.util.annotations import DeveloperAPI
 
 default_logger = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ class RuntimeEnvPlugin(ABC):
         """
         raise NotImplementedError()
 
-    def get_uri(self, runtime_env: "RuntimeEnv") -> Optional[str]:  # noqa: F821
+    def get_uris(self, runtime_env: "RuntimeEnv") -> List[str]:  # noqa: F821
         return None
 
     def create(
@@ -58,7 +58,7 @@ class RuntimeEnvPlugin(ABC):
 
     def modify_context(
         self,
-        uri: Optional[str],
+        uris: List[str],
         runtime_env: "RuntimeEnv",  # noqa: F821
         context: RuntimeEnvContext,
         logger: logging.Logger,
@@ -69,7 +69,7 @@ class RuntimeEnvPlugin(ABC):
         startup, or add new environment variables.
 
         Args:
-            uri(str): a URI uniquely describing this resource.
+            uris(List[str]): a URIs used by this resource.
             runtime_env(RuntimeEnv): the runtime env protobuf.
             ctx(RuntimeEnvContext): auxiliary information supplied by Ray.
         """
@@ -102,29 +102,16 @@ class PluginCacheManager:
         context: RuntimeEnvContext,
         logger: logging.Logger = default_logger,
     ):
-        # TODO(architkulkarni): We should standardize on `get_uris` for all plugins
-        # and remove this conditional logic.
-        multiple_uris = hasattr(self._plugin, "get_uris")
+        uris = self._plugin.get_uris(runtime_env)
+        for uri in uris:
+            if uri not in self._uri_cache:
+                logger.debug(f"Cache miss for URI {uri}.")
+                size_bytes = await self._plugin.create(
+                    uri, runtime_env, context, logger=logger
+                )
+                self._uri_cache.add(uri, size_bytes, logger=logger)
+            else:
+                logger.debug(f"Cache hit for URI {uri}.")
+                self._uri_cache.mark_used(uri, logger=logger)
 
-        if multiple_uris:
-            uris = self._plugin.get_uris(runtime_env)
-        else:
-            uri = self._plugin.get_uri(runtime_env)
-            uris = [uri] if uri else None
-
-        if uris is not None:
-            for uri in uris:
-                if uri not in self._uri_cache:
-                    logger.debug(f"Cache miss for URI {uri}.")
-                    size_bytes = await self._plugin.create(
-                        uri, runtime_env, context, logger=logger
-                    )
-                    self._uri_cache.add(uri, size_bytes, logger=logger)
-                else:
-                    logger.debug(f"Cache hit for URI {uri}.")
-                    self._uri_cache.mark_used(uri, logger=logger)
-
-        if multiple_uris:
-            self._plugin.modify_context(uris, runtime_env, context)
-        else:
-            self._plugin.modify_context(uri, runtime_env, context)
+        self._plugin.modify_context(uris, runtime_env, context)

@@ -6,6 +6,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from typing import List
 from unittest import mock
 
 import pytest
@@ -571,7 +572,10 @@ class MyPlugin(RuntimeEnvPlugin):
 
     @staticmethod
     def modify_context(
-        uri: str, runtime_env: dict, ctx: RuntimeEnvContext, logger: logging.Logger
+        uris: List[str],
+        runtime_env: dict,
+        ctx: RuntimeEnvContext,
+        logger: logging.Logger,
     ) -> None:
         global runtime_env_retry_times
         runtime_env_retry_times += 1
