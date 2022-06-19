@@ -2286,7 +2286,7 @@ class Algorithm(Trainable):
         Returns:
             The results dict from the evaluation call.
         """
-        eval_results = {}
+        eval_results = {"evaluation": {}}
         try:
             if self.config["evaluation_duration"] == "auto":
                 assert (
@@ -2332,13 +2332,12 @@ class Algorithm(Trainable):
         Returns:
             The accumulated training and evaluation results.
         """
-        results = {}
         with concurrent.futures.ThreadPoolExecutor() as executor:
             train_future = executor.submit(lambda: self._run_one_training_iteration())
             # Pass the train_future into `self._run_one_evaluation()` to allow it
             # to run exactly as long as the training iteration takes in case
             # evaluation_duration=auto.
-            self._run_one_evaluation(train_future)
+            results = self._run_one_evaluation(train_future)
             # Collect the training results from the future.
             train_results, train_iter_ctx = train_future.result()
             results.update(train_results)
