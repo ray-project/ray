@@ -877,10 +877,10 @@ class Policy(metaclass=ABCMeta):
             ),
             SampleBatch.DONES: ViewRequirement(),
             SampleBatch.INFOS: ViewRequirement(),
+            SampleBatch.T: ViewRequirement(),
             SampleBatch.EPS_ID: ViewRequirement(),
             SampleBatch.UNROLL_ID: ViewRequirement(),
             SampleBatch.AGENT_INDEX: ViewRequirement(),
-            "t": ViewRequirement(),
         }
 
     def _initialize_loss_from_dummy_batch(
