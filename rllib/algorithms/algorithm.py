@@ -1434,7 +1434,7 @@ class Algorithm(Trainable):
     def log_result(self, result: ResultDict) -> None:
         # Log after the callback is invoked, so that the user has a chance
         # to mutate the result.
-        # TODO: Remove `trainer` arg at some point to fully deprecate the old term.
+        # TODO: Remove `trainer` arg at some point to fully deprecate the old signature.
         self.callbacks.on_train_result(algorithm=self, result=result, trainer=self)
         # Then log according to Trainable's logging logic.
         Trainable.log_result(self, result)
