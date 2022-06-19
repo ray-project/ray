@@ -38,6 +38,8 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_TRAINED,
 )
+from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import ReplayMode
+from ray.rllib.utils.replay_buffers.replay_buffer import _ALL_POLICIES
 
 # from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 from ray.rllib.utils.typing import (
@@ -585,6 +587,7 @@ class Impala(Algorithm):
                         else 1
                     ),
                     replay_ratio=self.config["replay_ratio"],
+                    replay_mode=ReplayMode.LOCKSTEP,
                 )
 
             self._sampling_actor_manager = AsyncRequestsManager(
@@ -653,7 +656,7 @@ class Impala(Algorithm):
             )
 
         def record_steps_trained(item):
-            count, fetches = item
+            count, fetches, _ = item
             metrics = _get_shared_metrics()
             # Manually update the steps trained counter since the learner
             # thread is executing outside the pipeline.
@@ -792,7 +795,7 @@ class Impala(Algorithm):
 
     def process_trained_results(self) -> ResultDict:
         # Get learner outputs/stats from output queue.
-        learner_infos = []
+        learner_info = copy.deepcopy(self._learner_thread.learner_info)
         num_env_steps_trained = 0
         num_agent_steps_trained = 0
 
@@ -806,10 +809,9 @@ class Impala(Algorithm):
                 num_env_steps_trained += env_steps
                 num_agent_steps_trained += agent_steps
                 if learner_results:
-                    learner_infos.append(learner_results)
+                    learner_info.update(learner_results)
             else:
                 raise RuntimeError("The learner thread died in while training")
-        learner_info = copy.deepcopy(self._learner_thread.learner_info)
 
         # Update the steps trained counters.
         self._counters[STEPS_TRAINED_THIS_ITER_COUNTER] = num_agent_steps_trained
@@ -834,7 +836,7 @@ class Impala(Algorithm):
         for batch in batches:
             batch = batch.decompress_if_needed()
             self.local_mixin_buffer.add_batch(batch)
-            batch = self.local_mixin_buffer.replay()
+            batch = self.local_mixin_buffer.replay(_ALL_POLICIES)
             if batch:
                 processed_batches.append(batch)
         return processed_batches
@@ -893,10 +895,11 @@ class Impala(Algorithm):
             removed_workers: removed worker ids.
             new_workers: ids of newly created workers.
         """
-        self._sampling_actor_manager.remove_workers(
-            removed_workers, remove_in_flight_requests=True
-        )
-        self._sampling_actor_manager.add_workers(new_workers)
+        if self.config["_disable_execution_plan_api"]:
+            self._sampling_actor_manager.remove_workers(
+                removed_workers, remove_in_flight_requests=True
+            )
+            self._sampling_actor_manager.add_workers(new_workers)
 
     @override(Algorithm)
     def _compile_iteration_results(self, *, step_ctx, iteration_results=None):
@@ -922,12 +925,13 @@ class AggregatorWorker:
                 else 1
             ),
             replay_ratio=self.config["replay_ratio"],
+            replay_mode=ReplayMode.LOCKSTEP,
         )
 
     def process_episodes(self, batch: SampleBatchType) -> SampleBatchType:
         batch = batch.decompress_if_needed()
         self._mixin_buffer.add_batch(batch)
-        processed_batches = self._mixin_buffer.replay()
+        processed_batches = self._mixin_buffer.replay(_ALL_POLICIES)
         return processed_batches
 
     def apply(

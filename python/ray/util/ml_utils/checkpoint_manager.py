@@ -132,7 +132,7 @@ class _TrackedCheckpoint:
             checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_data)
             checkpoint = Checkpoint.from_directory(checkpoint_dir)
         elif isinstance(checkpoint_data, bytes):
-            with tempfile.mkdtemp() as tmpdir:
+            with tempfile.TemporaryDirectory() as tmpdir:
                 TrainableUtil.create_from_pickle(checkpoint_data, tmpdir)
                 # Double wrap in checkpoint so we hold the data in memory and
                 # can remove the temp directory
