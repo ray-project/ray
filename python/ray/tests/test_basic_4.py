@@ -6,13 +6,14 @@ import time
 from pathlib import Path
 
 import numpy as np
-import psutil
 import pytest
 
 import ray
 import ray.cluster_utils
 from ray._private.test_utils import wait_for_condition
 from ray.autoscaler._private.constants import RAY_PROCESSES
+
+import psutil
 
 logger = logging.getLogger(__name__)
 
