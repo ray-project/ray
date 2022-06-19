@@ -65,7 +65,6 @@ def test_multiple_directories(tmp_path, shutdown_only):
     min_count = 5
     is_distributed = [n_files >= min_count for n_files in num_files.values()]
     assert all(is_distributed)
-    print(num_files)
 
     print("Check deletion...")
     # Empty object refs.
