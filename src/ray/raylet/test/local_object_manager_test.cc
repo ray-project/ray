@@ -322,6 +322,7 @@ class LocalObjectManagerTestWithMinSpillingSize {
             client_pool,
             /*max_io_workers=*/2,
             /*min_spilling_size=*/min_spilling_size,
+            /*min_spilling_size=*/4 * 1024 * 1024 * 1024,
             /*is_external_storage_type_fs=*/true,
             /*max_fused_object_count*/ max_fused_object_count_,
             /*on_objects_freed=*/

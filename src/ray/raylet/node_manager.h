@@ -106,8 +106,10 @@ struct NodeManagerConfig {
   uint64_t record_metrics_period_ms;
   // The number if max io workers.
   int max_io_workers;
-  // The minimum object size that can be spilled by each spill operation.
+  // The minimum number of bytes to spill per spill operation.
   int64_t min_spilling_size;
+  // The maximum number of bytes to spill per spill operation.
+  int64_t max_spilling_size;
 };
 
 class HeartbeatSender {

@@ -310,6 +310,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
           worker_rpc_pool_,
           /*max_io_workers*/ config.max_io_workers,
           /*min_spilling_size*/ config.min_spilling_size,
+          /*max_spilling_size*/ config.max_spilling_size,
           /*is_external_storage_type_fs*/
           RayConfig::instance().is_external_storage_type_fs(),
           /*max_fused_object_count*/ RayConfig::instance().max_fused_object_count(),

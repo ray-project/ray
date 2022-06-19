@@ -65,6 +65,7 @@ def test_multiple_directories(tmp_path, shutdown_only):
     min_count = 5
     is_distributed = [n_files >= min_count for n_files in num_files.values()]
     assert all(is_distributed)
+    print(num_files)
 
     print("Check deletion...")
     # Empty object refs.
@@ -359,6 +360,45 @@ def test_spill_reconstruction_errors(ray_start_cluster, object_spilling_config):
 
     with pytest.raises(ray.exceptions.ObjectLostError):
         ray.get(ref)
+
+
+@pytest.mark.skipif(platform.system() in ["Windows"], reason="Failing on Windows.")
+def test_max_spilling_size(tmp_path, shutdown_only):
+    temp_folder = tmp_path / "spill"
+    temp_folder.mkdir()
+
+    min_spilling_size = 0
+    max_spilling_size = 10 * 1024 * 1024
+    object_spilling_config = json.dumps(
+        {
+            "type": "filesystem",
+            "params": {"directory_path": str(temp_folder)},
+        }
+    )
+    address = ray.init(
+        object_store_memory=75 * 1024 * 1024,
+        _system_config={
+            "object_store_full_delay_ms": 100,
+            "object_spilling_config": object_spilling_config,
+            "min_spilling_size": min_spilling_size,
+            "max_spilling_size": max_spilling_size,
+        },
+    )
+
+    arr = np.ones(1 * 1024 * 1024, dtype=np.uint8)
+    object_refs = []
+    object_refs.append(ray.put(arr))
+
+    num_objects = 225
+    for _ in range(num_objects):
+        object_refs.append(ray.put(arr))
+
+    # Assert that the spilled files are all smaller than max_spilling_size.
+    spill_folder = temp_folder / ray.ray_constants.DEFAULT_OBJECT_PREFIX
+    for file in spill_folder.iterdir():
+        assert file.stat().st_size <= max_spilling_size, file
+
+    ray.shutdown()
 
 
 if __name__ == "__main__":

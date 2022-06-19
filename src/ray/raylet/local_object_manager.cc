@@ -154,7 +154,7 @@ void LocalObjectManager::SpillObjectUptoMaxThroughput() {
   // Spill as fast as we can using all our spill workers.
   bool can_spill_more = true;
   while (can_spill_more) {
-    if (!SpillObjectsOfSize(min_spilling_size_)) {
+    if (!SpillObjectsOfSize(min_spilling_size_, max_spilling_size_)) {
       break;
     }
     {
@@ -169,29 +169,35 @@ bool LocalObjectManager::IsSpillingInProgress() {
   return num_active_workers_ > 0;
 }
 
-bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {
+bool LocalObjectManager::SpillObjectsOfSize(int64_t min_bytes_to_spill,
+                                            int64_t max_bytes_to_spill) {
   if (RayConfig::instance().object_spilling_config().empty()) {
     return false;
   }
 
-  RAY_LOG(DEBUG) << "Choosing objects to spill of total size " << num_bytes_to_spill;
+  RAY_LOG(DEBUG) << "Choosing objects to spill, min size " << min_bytes_to_spill
+                 << " max size " << max_bytes_to_spill;
   int64_t bytes_to_spill = 0;
   auto it = pinned_objects_.begin();
   std::vector<ObjectID> objects_to_spill;
-  int64_t counts = 0;
-  while (it != pinned_objects_.end() && counts < max_fused_object_count_) {
+  int64_t count = 0;
+  while (it != pinned_objects_.end() && count < max_fused_object_count_) {
     if (is_plasma_object_spillable_(it->first)) {
-      bytes_to_spill += it->second->GetSize();
+      int64_t size = it->second->GetSize();
+      if (bytes_to_spill + size > max_bytes_to_spill) {
+        break;
+      }
+      bytes_to_spill += size;
       objects_to_spill.push_back(it->first);
+      count += 1;
     }
     it++;
-    counts += 1;
   }
   if (objects_to_spill.empty()) {
     return false;
   }
 
-  if (it == pinned_objects_.end() && bytes_to_spill < num_bytes_to_spill &&
+  if (it == pinned_objects_.end() && bytes_to_spill < min_bytes_to_spill &&
       !objects_pending_spill_.empty()) {
     // We have gone through all spillable objects but we have not yet reached
     // the minimum bytes to spill and we are already spilling other objects.

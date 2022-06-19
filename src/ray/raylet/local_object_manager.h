@@ -47,6 +47,7 @@ class LocalObjectManager {
       rpc::CoreWorkerClientPool &owner_client_pool,
       int max_io_workers,
       int64_t min_spilling_size,
+      int64_t max_spilling_size,
       bool is_external_storage_type_fs,
       int64_t max_fused_object_count,
       std::function<void(const std::vector<ObjectID> &)> on_objects_freed,
@@ -63,6 +64,7 @@ class LocalObjectManager {
         on_objects_freed_(on_objects_freed),
         last_free_objects_at_ms_(current_time_ms()),
         min_spilling_size_(min_spilling_size),
+        max_spilling_size_(max_spilling_size),
         num_active_workers_(0),
         max_active_workers_(max_io_workers),
         is_plasma_object_spillable_(is_plasma_object_spillable),
@@ -164,16 +166,16 @@ class LocalObjectManager {
   FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectNotEvictable);
 
   /// Asynchronously spill objects when space is needed. The callback tries to
-  /// spill at least num_bytes_to_spill and returns true if we found objects to
-  /// spill.
-  /// If num_bytes_to_spill many objects cannot be found and there are other
-  /// objects already being spilled, this will return false to give the
-  /// currently spilling objects time to finish.
+  /// spill at least min_bytes_to_spill and no more than max_bytes_to_spill, and returns
+  /// true if we found objects to spill. If min_bytes_to_spill many objects cannot be
+  /// found and there are other objects already being spilled, this will return false to
+  /// give the currently spilling objects time to finish.
   /// NOTE(sang): If 0 is given, this method spills a single object.
   ///
-  /// \param num_bytes_to_spill The total number of bytes to spill.
+  /// \param min_bytes_to_spill The minimum number of bytes to spill.
+  /// \param max_bytes_to_spill The maximum number of bytes to spill.
   /// \return True if it can spill num_bytes_to_spill. False otherwise.
-  bool SpillObjectsOfSize(int64_t num_bytes_to_spill);
+  bool SpillObjectsOfSize(int64_t min_bytes_to_spill, int64_t max_bytes_to_spill);
 
   /// Internal helper method for spilling objects.
   void SpillObjectsInternal(const std::vector<ObjectID> &objects_ids,
@@ -276,6 +278,9 @@ class LocalObjectManager {
 
   /// Minimum bytes to spill to a single IO spill worker.
   int64_t min_spilling_size_;
+
+  /// Maximum bytes to spill to a single IO spill worker.
+  int64_t max_spilling_size_;
 
   /// This class is accessed by both the raylet and plasma store threads. The
   /// mutex protects private members that relate to object spilling.

@@ -463,10 +463,14 @@ RAY_CONFIG(bool, automatic_object_spilling_enabled, true)
 RAY_CONFIG(int, max_io_workers, 4)
 
 /// Ray's object spilling fuses small objects into a single file before flushing them
-/// to optimize the performance.
+/// to optimize I/O performance.
 /// The minimum object size that can be spilled by each spill operation. 100 MB by
 /// default. This value is not recommended to set beyond --object-store-memory.
 RAY_CONFIG(int64_t, min_spilling_size, 100 * 1024 * 1024)
+
+/// Maximum file size for object spilling. 4 GB by default. If Ray spills to multiple
+/// devices, this value should be set lower for better load balancing.
+RAY_CONFIG(int64_t, max_spilling_size, 4L * 1024 * 1024 * 1024)
 
 /// If set to less than 1.0, Ray will start spilling objects when existing objects
 /// take more than this percentage of the available memory.
