@@ -1,5 +1,4 @@
 import logging
-import math
 import os
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, TypeVar, Union
 
@@ -80,12 +79,8 @@ def from_items(items: List[Any], *, parallelism: int = -1) -> Dataset[Any]:
 
     block_size = max(
         1,
-        math.ceil(
-            len(items)
-            / _autodetect_parallelism(
-                parallelism, ray.util.get_current_placement_group()
-            )
-        ),
+        len(items)
+        // _autodetect_parallelism(parallelism, ray.util.get_current_placement_group()),
     )
 
     blocks: List[ObjectRef[Block]] = []
@@ -1102,11 +1097,13 @@ def _autodetect_parallelism(
                 parallelism = max(
                     int(mem_size / ctx.target_max_block_size), parallelism
                 )
-            logger.debug(
-                f"Autodetected parallelism={parallelism} based on "
-                f"estimated_available_cpus={avail_cpus} and "
-                f"estimated_data_size={mem_size}."
-            )
+        else:
+            mem_size = None
+        logger.debug(
+            f"Autodetected parallelism={parallelism} based on "
+            f"estimated_available_cpus={avail_cpus} and "
+            f"estimated_data_size={mem_size}."
+        )
     return parallelism
 
 

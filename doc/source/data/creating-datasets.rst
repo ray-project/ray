@@ -289,8 +289,8 @@ provided will be walked in order to obtain concrete file paths, at which point a
 will be read in parallel.
 
 Datasets automatically selects the read ``parallelism`` according to the following procedure:
-1. The number of available CPUs is estimated. If in a placement group, the number of CPUs in the cluster is scaled by the size of the placement group compared to the cluster size. If not in a placement group, this is the number of CPUs in the cluster. If the estimated CPUs is less than 8, it is set to 8.
-2. The parallelism is set to the estimated number of CPUs multiplied by 2.
+1. The number of available CPUs is estimated. If in a placement group, the number of CPUs in the cluster is scaled by the size of the placement group compared to the cluster size. If not in a placement group, this is the number of CPUs in the cluster.
+2. The parallelism is set to the estimated number of CPUs multiplied by 2. If the parallelism is less than 8, it is set to 8.
 3. The in-memory data size is estimated. If the parallelism would create in-memory blocks that are on average than the target block size (512MiB), the parallelism is increased until the blocks are < 512MiB in size.
 4. The parallelism is truncated to ``min(num_files, parallelism)``.
 

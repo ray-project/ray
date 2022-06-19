@@ -1,4 +1,3 @@
-import math
 import builtins
 from typing import Any, Callable, Dict, Generic, Iterable, List, Optional, Tuple, Union
 
@@ -245,7 +244,7 @@ class _RangeDatasourceReader(Reader):
         n = self._n
         block_format = self._block_format
         tensor_shape = self._tensor_shape
-        block_size = max(1, math.ceil(n / parallelism))
+        block_size = max(1, n // parallelism)
 
         # Example of a read task. In a real datasource, this would pull data
         # from an external system instead of generating dummy data.
