@@ -1,11 +1,11 @@
 import math
-from typing import List, Iterator, Tuple, Optional
+from typing import Iterator, List, Optional, Tuple
 
 import numpy as np
 
 import ray
-from ray.types import ObjectRef
 from ray.data.block import Block, BlockMetadata
+from ray.types import ObjectRef
 
 
 class BlockList:
