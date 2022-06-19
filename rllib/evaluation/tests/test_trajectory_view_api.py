@@ -64,8 +64,11 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             policy = algo.get_policy()
             view_req_model = policy.model.view_requirements
             view_req_policy = policy.view_requirements
+            print(_)
+            print(view_req_policy)
+            print(view_req_model)
             assert len(view_req_model) == 1, view_req_model
-            assert len(view_req_policy) == 10, view_req_policy
+            assert len(view_req_policy) == 11, view_req_policy
             for key in [
                 SampleBatch.OBS,
                 SampleBatch.ACTIONS,
@@ -110,7 +113,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             view_req_policy = policy.view_requirements
             # 7=obs, prev-a + r, 2x state-in, 2x state-out.
             assert len(view_req_model) == 7, view_req_model
-            assert len(view_req_policy) == 20, (len(view_req_policy), view_req_policy)
+            assert len(view_req_policy) == 21, (len(view_req_policy), view_req_policy)
             for key in [
                 SampleBatch.OBS,
                 SampleBatch.ACTIONS,
