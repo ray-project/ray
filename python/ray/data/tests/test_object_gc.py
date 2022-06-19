@@ -118,7 +118,7 @@ def test_iter_batches_no_spilling_upon_shuffle(shutdown_only):
 def test_pipeline_splitting_has_no_spilling(shutdown_only):
     # The object store is about 800MiB.
     ctx = ray.init(num_cpus=1, object_store_memory=800e6)
-    # The size of dataset is 50000*(80*80*4)*8B, about 10GiB, 50GiB/block.
+    # The size of dataset is 50000*(80*80*4)*8B, about 10GiB, 50MiB/block.
     ds = ray.data.range_tensor(50000, shape=(80, 80, 4), parallelism=200)
 
     # 2 blocks/window.
