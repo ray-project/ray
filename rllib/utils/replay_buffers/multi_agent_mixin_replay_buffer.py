@@ -1,7 +1,7 @@
 import collections
 import logging
 import random
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
 import numpy as np
 
@@ -65,10 +65,10 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
     def __init__(
         self,
         capacity: int = 10000,
-        storage_unit: str = "timesteps",
+        storage_unit: Union[StorageUnit, str] = StorageUnit.TIMESTEPS,
         num_shards: int = 1,
         learning_starts: int = 1000,
-        replay_mode=ReplayMode.INDEPENDENT,
+        replay_mode: Union[ReplayMode, str] = ReplayMode.INDEPENDENT,
         replay_sequence_length: int = 1,
         replay_burn_in: int = 0,
         replay_zero_init_states: bool = True,
@@ -322,12 +322,15 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
             samples = []
 
             if self.replay_mode == ReplayMode.LOCKSTEP:
-                if policy_id != _ALL_POLICIES:
+                if policy_id not in (_ALL_POLICIES, DEFAULT_POLICY_ID):
                     raise ValueError(
                         "Trying to sample from single policy's buffer in lockstep "
                         "mode. In lockstep mode, all policies' experiences are "
                         "sampled from a single replay buffer which is accessed "
-                        "with the policy id `{}`".format(_ALL_POLICIES)
+                        "with the policy id '{}'. Please sample from this "
+                        "buffer by not providing the 'policy_id' arg at all or "
+                        "setting it to 'DEFAULT_POLICY_ID' or '_ALL_POLICIES'."
+                        "".format(_ALL_POLICIES)
                     )
                 if check_buffer_is_ready(_ALL_POLICIES):
                     samples.append(mix_batches(_ALL_POLICIES).as_multi_agent())
