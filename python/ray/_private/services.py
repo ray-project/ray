@@ -2185,7 +2185,7 @@ def start_ray_client_server(
     """
     root_ray_dir = Path(__file__).resolve().parents[1]
     setup_worker_path = os.path.join(
-        root_ray_dir, "workers", ray_constants.SETUP_WORKER_FILENAME
+        root_ray_dir, "_private", "workers", ray_constants.SETUP_WORKER_FILENAME
     )
 
     ray_client_server_host = (
