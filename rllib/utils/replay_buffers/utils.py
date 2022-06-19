@@ -239,10 +239,10 @@ def validate_buffer_config(config: dict) -> None:
     if replay_mode != DEPRECATED_VALUE:
         deprecation_warning(
             old="config['multiagent']['replay_mode']",
-            help="config['replay_buffer_config']['replay_mode']",
-            error=False,
+            help="This config key is now specific to setups with replay buffers and "
+            "can thus be found in the replay buffer config.",
+            error=True,
         )
-        config["replay_buffer_config"]["replay_mode"] = replay_mode
 
     # Can't use DEPRECATED_VALUE here because this is also a deliberate
     # value set for some algorithms
@@ -279,23 +279,6 @@ def validate_buffer_config(config: dict) -> None:
     dummy_buffer = from_config(buffer_type, config["replay_buffer_config"])
 
     config["replay_buffer_config"]["type"] = type(dummy_buffer)
-
-    if hasattr(dummy_buffer, "update_priorities"):
-        if config["multiagent"]["replay_mode"] == "lockstep":
-            raise ValueError(
-                "Prioritized replay is not supported when replay_mode=lockstep."
-            )
-        elif config["replay_buffer_config"].get("replay_sequence_length", 0) > 1:
-            raise ValueError(
-                "Prioritized replay is not supported when "
-                "replay_sequence_length > 1."
-            )
-    else:
-        if config["replay_buffer_config"].get("worker_side_prioritization"):
-            raise ValueError(
-                "Worker side prioritization is not supported when "
-                "prioritized_replay=False."
-            )
 
 
 @DeveloperAPI

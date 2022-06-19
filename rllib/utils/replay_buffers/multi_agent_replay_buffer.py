@@ -1,7 +1,7 @@
 import collections
 import logging
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
 from ray.rllib.policy.rnn_sequencing import timeslice_along_seq_lens_with_overlap
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
@@ -13,6 +13,7 @@ from ray.rllib.utils.replay_buffers.replay_buffer import (
     ReplayBuffer,
     StorageUnit,
 )
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.typing import PolicyID, SampleBatchType
 from ray.util.annotations import DeveloperAPI
@@ -64,10 +65,10 @@ class MultiAgentReplayBuffer(ReplayBuffer):
     def __init__(
         self,
         capacity: int = 10000,
-        storage_unit: str = "timesteps",
+        storage_unit: Union[StorageUnit, str] = StorageUnit.TIMESTEPS,
         num_shards: int = 1,
         learning_starts: int = 1000,
-        replay_mode: str = "independent",
+        replay_mode: Union[ReplayMode, str] = ReplayMode.INDEPENDENT,
         replay_sequence_override: bool = True,
         replay_sequence_length: int = 1,
         replay_burn_in: int = 0,
@@ -124,7 +125,6 @@ class MultiAgentReplayBuffer(ReplayBuffer):
             self.underlying_buffer_call_args = {}
         self.replay_sequence_override = replay_sequence_override
         self.replay_starts = learning_starts // num_shards
-        self.replay_mode = replay_mode
         self.replay_sequence_length = replay_sequence_length
         self.replay_burn_in = replay_burn_in
         self.replay_zero_init_states = replay_zero_init_states
@@ -335,12 +335,20 @@ class MultiAgentReplayBuffer(ReplayBuffer):
             # Lockstep mode: Sample from all policies at the same time an
             # equal amount of steps.
             if self.replay_mode == ReplayMode.LOCKSTEP:
-                assert (
-                    policy_id is None
-                ), "`policy_id` specifier not allowed in `lockstep` mode!"
-                # In lockstep mode we sample MultiAgentBatches
+                if policy_id not in (_ALL_POLICIES, DEFAULT_POLICY_ID):
+                    raise ValueError(
+                        "Trying to sample from single policy's buffer in lockstep "
+                        "mode. In lockstep mode, all policies' experiences are "
+                        "sampled from a single replay buffer which is accessed "
+                        "with the policy_id '{}'. Please sample from this "
+                        "buffer by not providing the 'policy_id' arg at all or "
+                        "setting it to 'DEFAULT_POLICY_ID={}' or '_ALL_POLICIES={}'."
+                        "".format(_ALL_POLICIES, DEFAULT_POLICY_ID, _ALL_POLICIES)
+                    )
                 return self.replay_buffers[_ALL_POLICIES].sample(num_items, **kwargs)
             elif policy_id is not None:
+                print(self.replay_mode)
+                print(policy_id)
                 sample = self.replay_buffers[policy_id].sample(num_items, **kwargs)
                 return MultiAgentBatch({policy_id: sample}, sample.count)
             else:

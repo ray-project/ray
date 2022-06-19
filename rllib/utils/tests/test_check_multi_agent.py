@@ -1,6 +1,7 @@
 import unittest
 
 from ray.rllib.algorithms.pg import PG
+from ray.rllib.algorithms.dqn import DQN
 
 
 class TestCheckMultiAgent(unittest.TestCase):
@@ -39,11 +40,11 @@ class TestCheckMultiAgent(unittest.TestCase):
             lambda: PG(config, env="CartPole-v0"),
         )
 
-        config = {"multiagent": {"replay_mode": "invalid_value"}}
+        config = {"replay_buffer_config": {"replay_mode": "invalid_value"}}
         self.assertRaisesRegex(
-            ValueError,
-            "config.multiagent.replay_mode must be",
-            lambda: PG(config, env="CartPole-v0"),
+            DeprecationWarning,
+            "replay_mode",
+            lambda: DQN(config, env="CartPole-v0"),
         )
 
 

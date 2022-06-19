@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, Union
 import logging
 import numpy as np
 
@@ -38,10 +38,10 @@ class MultiAgentPrioritizedReplayBuffer(
     def __init__(
         self,
         capacity: int = 10000,
-        storage_unit: str = "timesteps",
+        storage_unit: Union[StorageUnit, str] = StorageUnit.TIMESTEPS,
         num_shards: int = 1,
         learning_starts: int = 1000,
-        replay_mode: str = "independent",
+        replay_mode: Union[ReplayMode, str] = ReplayMode.INDEPENDENT,
         replay_sequence_length: int = 1,
         replay_burn_in: int = 0,
         replay_zero_init_states: bool = True,

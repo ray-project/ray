@@ -13,12 +13,13 @@ import gym
 import os
 
 import ray
-from ray.rllib.algorithms.dqn import DQN, DQNTFPolicy, DQNTorchPolicy
+from ray.rllib.algorithms.dqn import DQN, DQNTFPolicy, DQNTorchPolicy, DQNConfig
 from ray.rllib.algorithms.ppo import (
     PPO,
     PPOTF1Policy,
     PPOTF2Policy,
     PPOTorchPolicy,
+    PPOConfig,
 )
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.tune.logger import pretty_print
@@ -51,7 +52,7 @@ parser.add_argument(
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    ray.init()
+    ray.init(local_mode=True)
 
     # Simple environment with 4 independent cartpole entities
     register_env(
@@ -100,46 +101,42 @@ if __name__ == "__main__":
         else:
             return "dqn_policy"
 
-    ppo = PPO(
-        env="multi_agent_cartpole",
-        config={
-            "multiagent": {
-                "policies": policies,
-                "policy_mapping_fn": policy_mapping_fn,
-                "policies_to_train": ["ppo_policy"],
-            },
-            "model": {
-                "vf_share_layers": True,
-            },
-            "num_sgd_iter": 6,
-            "vf_loss_coeff": 0.01,
-            # disable filters, otherwise we would need to synchronize those
-            # as well to the DQN agent
-            "observation_filter": "MeanStdFilter",
-            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-            "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-            "framework": args.framework,
-        },
+    ppo_config = (
+        PPOConfig()
+        .environment(env="multi_agent_cartpole")
+        .multi_agent(
+            policies=policies,
+            policy_mapping_fn=policy_mapping_fn,
+            policies_to_train=["ppo_policy"],
+        )
+        .training(model={"vf_share_layers": True}, num_sgd_iter=6, vf_loss_coeff=0.001)
+        .framework(args.framework)
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        .rollouts(observation_filter="MeanStdFilter")
     )
 
-    dqn = DQN(
-        env="multi_agent_cartpole",
-        config={
-            "multiagent": {
-                "policies": policies,
-                "policy_mapping_fn": policy_mapping_fn,
-                "policies_to_train": ["dqn_policy"],
-            },
-            "model": {
-                "vf_share_layers": True,
-            },
-            "gamma": 0.95,
-            "n_step": 3,
-            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-            "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-            "framework": args.framework,
-        },
+    ppo = PPO(config=ppo_config)
+
+    dqn_config = (
+        DQNConfig()
+        .environment(env="multi_agent_cartpole")
+        .multi_agent(
+            policies=policies,
+            policy_mapping_fn=policy_mapping_fn,
+            policies_to_train=["dqn_policy"],
+        )
+        .training(
+            model={"vf_share_layers": True},
+            replay_buffer_config={"replay_mode": "lockstep"},
+            gamma=0.95,
+            n_step=3,
+        )
+        .framework(args.framework)
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        .rollouts(observation_filter="MeanStdFilter")
     )
+
+    dqn = DQN(config=dqn_config)
 
     # You should see both the printed X and Y approach 200 as this trains:
     # info:
