@@ -33,13 +33,13 @@ class TestARS(unittest.TestCase):
         num_iterations = 2
 
         for _ in framework_iterator(config):
-            trainer = config.build(env="CartPole-v0")
+            algo = config.build(env="CartPole-v0")
             for i in range(num_iterations):
-                results = trainer.train()
+                results = algo.train()
                 print(results)
 
-            check_compute_single_action(trainer)
-            trainer.stop()
+            check_compute_single_action(algo)
+            algo.stop()
 
 
 if __name__ == "__main__":
