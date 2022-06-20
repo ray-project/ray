@@ -1,6 +1,5 @@
 import unittest
 import ray
-from ray import tune
 from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.offline.estimators import (
     ImportanceSampling,
@@ -210,7 +209,7 @@ class TestOPE(unittest.TestCase):
         print("\n\n\n")
 
     def test_multiple_inputs(self):
-        # TODO (rohan): Test with multiple input files
+        # TODO (Rohan138): Test with multiple input files
         pass
 
 

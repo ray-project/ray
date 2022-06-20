@@ -102,7 +102,7 @@ class DirectMethod(OffPolicyEstimator):
         """
 
         super().__init__(name, policy, gamma)
-        # TODO (rohan): Add support for continuous action spaces
+        # TODO (Rohan138): Add support for continuous action spaces
         assert isinstance(
             policy.action_space, Discrete
         ), "DM Estimator only supports discrete action spaces!"
@@ -110,7 +110,7 @@ class DirectMethod(OffPolicyEstimator):
             policy.config["batch_mode"] == "complete_episodes"
         ), "DM Estimator only supports `batch_mode`=`complete_episodes`"
 
-        # TODO (rohan): Add support for TF!
+        # TODO (Rohan138): Add support for TF!
         if policy.framework == "torch":
             if q_model_type == "qreg":
                 model_cls = QRegTorchModel
