@@ -15,7 +15,7 @@
 #    actions vs continuous actions.
 # -- "fake_gpus": Tests that run using 2 fake GPUs.
 
-# - Quick agent compilation/tune-train tests, tagged "quick_train".
+# - Quick algo compilation/tune-train tests, tagged "quick_train".
 #   NOTE: These should be obsoleted in favor of "algorithms_dir" tests as
 #         they cover the same functionaliy.
 
@@ -28,7 +28,7 @@
 #   - `policy` directory tests.
 #   - `utils` directory tests.
 
-# - Trainer ("agents") tests, tagged "algorithms_dir".
+# - Algorithm tests, tagged "algorithms_dir".
 
 # - Tests directory (everything in rllib/tests/...), tagged: "tests_dir" and
 #   "tests_dir_[A-Z]"
@@ -65,7 +65,7 @@
 load("//bazel:python.bzl", "py_test_module_list")
 
 # --------------------------------------------------------------------
-# Agents learning regression tests.
+# Algorithms learning regression tests.
 #
 # Tag: learning_tests
 #
@@ -685,7 +685,7 @@ py_test(
 
 
 # --------------------------------------------------------------------
-# Agents (Compilation, Losses, simple agent functionality tests)
+# Algorithms (Compilation, Losses, simple functionality tests)
 # rllib/algorithms/
 #
 # Tag: algorithms_dir
@@ -709,7 +709,7 @@ py_test(
 
 py_test(
     name = "test_memory_leaks_generic",
-    main = "agents/tests/test_memory_leaks.py",
+    main = "algorithms/tests/test_memory_leaks.py",
     tags = ["team:rllib", "algorithms_dir"],
     size = "large",
     srcs = ["algorithms/tests/test_memory_leaks.py"]
@@ -983,7 +983,7 @@ py_test(
 )
 
 # --------------------------------------------------------------------
-# contrib Agents
+# contrib Algorithms
 # --------------------------------------------------------------------
 
 py_test(
@@ -1072,7 +1072,7 @@ py_test(
 )
 
 # --------------------------------------------------------------------
-# Agents (quick training test iterations via `rllib train`)
+# Algorithms (quick training test iterations via `rllib train`)
 #
 # Tag: quick_train
 #
