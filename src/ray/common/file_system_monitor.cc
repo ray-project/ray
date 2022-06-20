@@ -42,7 +42,7 @@ FileSystemMonitor::FileSystemMonitor(std::vector<std::string> paths,
 FileSystemMonitor::FileSystemMonitor()
     : FileSystemMonitor(/*paths*/ {},
                         /*capacity_threshold*/ 1,
-                        /*monitor_interval_ms*/ 365 * 24 * 60 * 60 * 1000) {}
+                        /*monitor_interval_ms*/ 365ULL * 24 * 60 * 60 * 1000) {}
 
 FileSystemMonitor::~FileSystemMonitor() {
   io_context_.stop();
