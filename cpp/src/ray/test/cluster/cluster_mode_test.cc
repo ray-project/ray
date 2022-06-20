@@ -252,15 +252,6 @@ TEST(RayClusterModeTest, PythonInvocationTest) {
   EXPECT_EQ(p.name, py_result.name);
 }
 
-TEST(RayClusterModeTest, JavaInvocationTest) {
-  auto java_actor_handle =
-      ray::Actor(ray::JavaActorClass{"io.ray.test.Counter"}).Remote(1);
-  EXPECT_TRUE(!java_actor_handle.ID().empty());
-  auto java_actor_ret =
-      java_actor_handle.Task(ray::JavaActorMethod<int>{"increase"}).Remote(2);
-  EXPECT_EQ(3, *java_actor_ret.Get());
-}
-
 TEST(RayClusterModeTest, MaxConcurrentTest) {
   auto actor1 =
       ray::Actor(ActorConcurrentCall::FactoryCreate).SetMaxConcurrency(3).Remote();

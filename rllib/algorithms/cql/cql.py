@@ -1,5 +1,4 @@
 import logging
-import numpy as np
 from typing import Optional, Type
 
 from ray.rllib.algorithms.cql.cql_tf_policy import CQLTFPolicy
@@ -8,14 +7,15 @@ from ray.rllib.algorithms.sac.sac import (
     SAC,
     SACConfig,
 )
+from ray.rllib.execution.rollout_ops import (
+    synchronous_parallel_sample,
+)
 from ray.rllib.execution.train_ops import (
     multi_gpu_train_one_step,
     train_one_step,
 )
 from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
-from ray.rllib.offline.shuffled_input import ShuffledInput
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
@@ -25,7 +25,9 @@ from ray.rllib.utils.deprecation import (
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
+    NUM_AGENT_STEPS_SAMPLED,
     NUM_AGENT_STEPS_TRAINED,
+    NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_TRAINED,
     NUM_TARGET_UPDATES,
     TARGET_NET_UPDATE_TIMER,
@@ -123,46 +125,6 @@ class CQLConfig(SACConfig):
 class CQL(SAC):
     """CQL (derived from SAC)."""
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        # Add the entire dataset to Replay Buffer (global variable)
-        reader = self.workers.local_worker().input_reader
-
-        # For d4rl, add the D4RLReaders' dataset to the buffer.
-        if isinstance(self.config["input"], str) and "d4rl" in self.config["input"]:
-            dataset = reader.dataset
-            self.local_replay_buffer.add(dataset)
-        # For a list of files, add each file's entire content to the buffer.
-        elif isinstance(reader, ShuffledInput):
-            num_batches = 0
-            total_timesteps = 0
-            for batch in reader.child.read_all_files():
-                num_batches += 1
-                total_timesteps += len(batch)
-                # Add NEXT_OBS if not available. This is slightly hacked
-                # as for the very last time step, we will use next-obs=zeros
-                # and therefore force-set DONE=True to avoid this missing
-                # next-obs to cause learning problems.
-                if SampleBatch.NEXT_OBS not in batch:
-                    obs = batch[SampleBatch.OBS]
-                    batch[SampleBatch.NEXT_OBS] = np.concatenate(
-                        [obs[1:], np.zeros_like(obs[0:1])]
-                    )
-                    batch[SampleBatch.DONES][-1] = True
-                self.local_replay_buffer.add_batch(batch)
-            logger.info(
-                f"Loaded {num_batches} batches ({total_timesteps} ts) into the"
-                " replay buffer, which has capacity "
-                f"{self.local_replay_buffer.capacity}."
-            )
-        else:
-            raise ValueError(
-                "Unknown offline input! config['input'] must either be list of"
-                " offline files (json) or a D4RL-specific InputReader "
-                "specifier (e.g. 'd4rl.hopper-medium-v0')."
-            )
-
     @classmethod
     @override(SAC)
     def get_default_config(cls) -> AlgorithmConfigDict:
@@ -214,6 +176,13 @@ class CQL(SAC):
 
     @override(SAC)
     def training_step(self) -> ResultDict:
+        # Collect SampleBatches from sample workers.
+        batch = synchronous_parallel_sample(worker_set=self.workers)
+        batch = batch.as_multi_agent()
+        self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
+        self._counters[NUM_ENV_STEPS_SAMPLED] += batch.env_steps()
+        # Add batch to replay buffer.
+        self.local_replay_buffer.add(batch)
 
         # Sample training batch from replay buffer.
         train_batch = sample_min_n_steps_from_buffer(

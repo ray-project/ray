@@ -5,9 +5,7 @@ from ray.actor import ActorHandle
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
-from ray.rllib.execution.parallel_requests import (
-    AsyncRequestsManager,
-)
+from ray.rllib.execution.parallel_requests import AsyncRequestsManager
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
@@ -22,9 +20,9 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 from ray.rllib.utils.typing import (
-    ResultDict,
     AlgorithmConfigDict,
     PartialAlgorithmConfigDict,
+    ResultDict,
 )
 
 logger = logging.getLogger(__name__)
@@ -266,7 +264,9 @@ class A3C(Algorithm):
             removed_workers: removed worker ids.
             new_workers: ids of newly created workers.
         """
-        self._worker_manager.remove_workers(removed_workers)
+        self._worker_manager.remove_workers(
+            removed_workers, remove_in_flight_requests=True
+        )
         self._worker_manager.add_workers(new_workers)
 
 

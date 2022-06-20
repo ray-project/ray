@@ -322,7 +322,7 @@ install_cython_examples() {
 
 install_go() {
   local gimme_url="https://raw.githubusercontent.com/travis-ci/gimme/master/gimme"
-  suppress_xtrace eval "$(curl -f -s -L "${gimme_url}" | GIMME_GO_VERSION=1.14.2 bash)"
+  suppress_xtrace eval "$(curl -f -s -L "${gimme_url}" | GIMME_GO_VERSION=1.18.3 bash)"
 
   if [ -z "${GOPATH-}" ]; then
     GOPATH="${GOPATH:-${HOME}/go_dir}"
@@ -520,7 +520,7 @@ lint_bazel() {
     export PATH="${GOPATH}/bin:${GOROOT}/bin:${PATH}"
 
     # Build buildifier
-    go get github.com/bazelbuild/buildtools/buildifier
+    go install github.com/bazelbuild/buildtools/buildifier@latest
 
     # Now run buildifier
     "${ROOT_DIR}"/lint/bazel-format.sh
