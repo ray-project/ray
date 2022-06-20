@@ -576,21 +576,19 @@ class Algorithm(Trainable):
             else None
         )
 
-        # - No evaluation necessary, just run the next training iteration.
-        # - We have to evaluate in this training iteration, but no parallelism ->
-        #   evaluate after the training iteration is entirely done.
-        if not evaluate_this_iter or not self.config["evaluation_parallel_to_training"]:
-            results, train_iter_ctx = self._run_one_training_iteration()
-        # Kick off evaluation-loop (and parallel train() call,
-        # if requested).
-        # Parallel eval + training.
-        else:
+        # Parallel eval + training: Kick off evaluation-loop and parallel train() call.
+        if evaluate_this_iter and self.config["evaluation_parallel_to_training"]:
             (
                 results,
                 train_iter_ctx,
             ) = self._run_one_training_iteration_and_evaluation_in_parallel()
+        # - No evaluation necessary, just run the next training iteration.
+        # - We have to evaluate in this training iteration, but no parallelism ->
+        #   evaluate after the training iteration is entirely done.
+        else:
+            results, train_iter_ctx = self._run_one_training_iteration()
 
-        # Sequential: train (already done above), then eval.
+        # Sequential: Train (already done above), then evaluate.
         if evaluate_this_iter and not self.config["evaluation_parallel_to_training"]:
             results.update(self._run_one_evaluation(train_future=None))
 
