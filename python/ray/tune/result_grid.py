@@ -52,6 +52,27 @@ class ResultGrid:
         # Used to determine best checkpoint
         self._checkpointing_config = checkpointing_config
 
+    def _resolve_checkpointing_config(
+        self,
+        checkpointing_config: "CheckpointingConfig",
+        metric: Optional[str] = None,
+        mode: Optional[str] = None,
+    ) -> "CheckpointingConfig":
+        # Lazy import to avoid circular dependency
+        from ray.air.config import CheckpointingConfig
+
+        metric = metric or self._experiment_analysis.default_metric
+        mode = mode or self._experiment_analysis.default_mode
+
+        if not isinstance(checkpointing_config, CheckpointingConfig):
+            if checkpointing_config and self._checkpointing_config:
+                checkpointing_config = self._checkpointing_config
+            else:
+                checkpointing_config = CheckpointingConfig(
+                    checkpoint_score_metric=metric, checkpoint_score_mode=mode
+                )
+        return checkpointing_config
+
     def get_best_result(
         self,
         metric: Optional[str] = None,
@@ -101,9 +122,6 @@ class ResultGrid:
                 "`TuneConfig` of your `Tuner`."
             )
 
-        metric = metric or self._experiment_analysis.default_metric
-        mode = mode or self._experiment_analysis.default_mode
-
         best_trial = self._experiment_analysis.get_best_trial(
             metric=metric,
             mode=mode,
@@ -124,16 +142,10 @@ class ResultGrid:
             )
             raise RuntimeError(error_msg)
 
-        # Lazy import to avoid circular dependency
-        from ray.air.config import CheckpointingConfig
+        checkpointing_config = self._resolve_checkpointing_config(
+            checkpointing_config, metric=metric, mode=mode
+        )
 
-        if not isinstance(checkpointing_config, CheckpointingConfig):
-            if checkpointing_config and self._checkpointing_config:
-                checkpointing_config = self._checkpointing_config
-            else:
-                checkpointing_config = CheckpointingConfig(
-                    checkpoint_score_metric=metric, checkpoint_score_mode=mode
-                )
         return self._trial_to_result(
             best_trial, checkpointing_config=checkpointing_config
         )
@@ -181,11 +193,33 @@ class ResultGrid:
     def __len__(self) -> int:
         return len(self._experiment_analysis.trials)
 
-    def __getitem__(self, i) -> Result:
+    def __getitem__(self, i: int) -> Result:
         """Returns the i'th result in the grid."""
+        return self.get(
+            self._experiment_analysis.trials[i],
+        )
+
+    def get(
+        self, i: int, *, checkpointing_config: Union[bool, "CheckpointingConfig"] = True
+    ):
+        """Returns the i'th result in the grid.
+
+        Args:
+            i: index to return.
+            checkpointing_config: If True (default), will use the
+                ``CheckpointingConfig`` object set in Trainer's ``RunConfig``
+                to determine the best checkpoint of the trial.
+                If False, or if the ``CheckpointingConfig`` object was not set, will use
+                ``metric`` and ``mode`` as set here.
+                Can also be a ``CheckpointingConfig`` object, in which case it will
+                 be used directly.
+        """
+
+        checkpointing_config = self._resolve_checkpointing_config(checkpointing_config)
+
         return self._trial_to_result(
             self._experiment_analysis.trials[i],
-            checkpointing_config=self._checkpointing_config,
+            checkpointing_config=checkpointing_config,
         )
 
     @staticmethod
