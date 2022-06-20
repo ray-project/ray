@@ -212,9 +212,6 @@ cc_binary(
 
 cc_binary(
     name = "counter.so",
-    # (WangTaoTheTonic)For java x-lang tests. See //java:all_tests
-    # and `CrossLanguageInvocationTest.java`.
-    visibility = ["//java:__subpackages__"],
     testonly = True,
     srcs = [
         "src/ray/test/cluster/counter.cc",
@@ -223,6 +220,9 @@ cc_binary(
     copts = COPTS,
     linkopts = ["-shared"],
     linkstatic = True,
+    # (WangTaoTheTonic)For java x-lang tests. See //java:all_tests
+    # and `CrossLanguageInvocationTest.java`.
+    visibility = ["//java:__subpackages__"],
     deps = [
         "ray_api",
     ],
