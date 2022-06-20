@@ -344,7 +344,8 @@ class OutOfDiskError(RayError):
         return super(OutOfDiskError, self).__str__() + (
             "\n"
             "The object cannot be created because the local object store"
-            " is full and at least 90% of the local disk is in use."
+            " is full and the local disk's utilization is over capacity"
+            " (95% by default)."
             "Tip: Use `df` on this node to check disk usage and "
             "`ray memory` to check object store memory usage."
         )
