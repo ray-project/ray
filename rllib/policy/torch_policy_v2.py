@@ -580,7 +580,7 @@ class TorchPolicyV2(Policy):
             if is_overridden(self.action_distribution_fn):
                 dist_inputs, dist_class, state_out = self.action_distribution_fn(
                     self.model,
-                    obs_batch=input_dict,
+                    input_dict=input_dict,
                     state_batches=state_batches,
                     seq_lens=seq_lens,
                     explore=False,

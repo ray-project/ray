@@ -602,7 +602,7 @@ class DynamicTFPolicyV2(TFPolicy):
                         self._state_out,
                     ) = self.action_distribution_fn(
                         self.model,
-                        obs_batch=in_dict[SampleBatch.OBS],
+                        input_dict=in_dict,
                         state_batches=self._state_inputs,
                         seq_lens=self._seq_lens,
                         explore=explore,
