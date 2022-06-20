@@ -144,7 +144,7 @@ def test_get_list(ray_start_regular_shared):
         assert ray.get([f.remote()]) == ["OK"]
 
         get_count = 0
-        get_stub = ray._private.worker.server.GetObject
+        get_stub = ray.worker.server.GetObject
 
         # ray.get() uses unary-unary RPC. Mock the server handler to count
         # the number of requests received.
@@ -153,7 +153,7 @@ def test_get_list(ray_start_regular_shared):
             get_count += 1
             return get_stub(req, metadata=metadata)
 
-        ray._private.worker.server.GetObject = get
+        ray.worker.server.GetObject = get
 
         refs = [f.remote() for _ in range(100)]
         assert ray.get(refs) == ["OK" for _ in range(100)]
@@ -440,8 +440,8 @@ def test_basic_log_stream(ray_start_regular_shared):
         def test_log(level, msg):
             log_msgs.append(msg)
 
-        ray._private.worker.log_client.log = test_log
-        ray._private.worker.log_client.set_logstream_level(logging.DEBUG)
+        ray.worker.log_client.log = test_log
+        ray.worker.log_client.set_logstream_level(logging.DEBUG)
         # Allow some time to propogate
         time.sleep(1)
         x = ray.put("Foo")
@@ -460,7 +460,7 @@ def test_stdout_log_stream(ray_start_regular_shared):
         def test_log(level, msg):
             log_msgs.append(msg)
 
-        ray._private.worker.log_client.stdstream = test_log
+        ray.worker.log_client.stdstream = test_log
 
         @ray.remote
         def print_on_stderr_and_stdout(s):

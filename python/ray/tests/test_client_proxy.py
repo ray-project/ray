@@ -152,7 +152,7 @@ def test_correct_num_clients(call_ray_start):
 check_connection = """
 import ray
 ray.client("localhost:25010").connect()
-assert ray.util.client.ray._private.worker.log_client.log_thread.is_alive()
+assert ray.util.client.ray.worker.log_client.log_thread.is_alive()
 """
 
 
