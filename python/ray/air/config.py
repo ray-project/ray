@@ -282,14 +282,47 @@ class CheckpointingConfig:
         keep_checkpoints_num: Number of checkpoints to keep. A value of
             `None` keeps all checkpoints. Defaults to `None`. If set, need
             to provide `checkpoint_score_attr`.
-        checkpoint_score_attr: Specifies by which attribute to rank the
-            best checkpoint. Default is increasing order. If attribute starts
-            with `min-` it will rank attribute in decreasing order, i.e.
-            `min-validation_loss`.
+        checkpoint_score_metric: Specifies by which metric to rank the
+            best checkpoint. Defaults to training iteration.
+        checkpoint_score_mode: Must be one of [min, max]. Determines
+            whether ``checkpoint_score_metric`` should be minimized or maximized.
+            If not set, will be the same as 'max'. Cannot be set if
+            ``checkpoint_score_metric`` is not set.
     """
 
     keep_checkpoints_num: Optional[int] = None
-    checkpoint_score_attr: Optional[str] = None
+    checkpoint_score_metric: Optional[str] = None
+    checkpoint_score_mode: Optional[str] = None
+
+    def __post_init__(self):
+        if self.checkpoint_score_mode not in (None, "min", "max"):
+            raise ValueError(
+                "The `checkpoint_score_mode` parameter can only be "
+                f"either None, 'min' or 'max', got {self.checkpoint_score_mode}."
+            )
+        if (
+            self.checkpoint_score_metric is None
+            and self.checkpoint_score_mode is not None
+        ):
+            raise ValueError(
+                "`checkpoint_score_mode` cannot be set if "
+                "`checkpoint_score_metric` is not set."
+            )
+
+    @property
+    def checkpoint_score_attr(self) -> Optional[str]:
+        """Same as ``checkpoint_score_attr`` in ``tune.run``."""
+        if self.checkpoint_score_metric is None:
+            return self.checkpoint_score_metric
+        prefix = ""
+        if self.checkpoint_score_mode == "min":
+            prefix = "min-"
+        return f"{prefix}{self.checkpoint_score_metric}"
+
+    @property
+    def checkpoint_score_mode_not_none(self) -> str:
+        """``checkpoint_score_mode`` but None -> 'max'"""
+        return self.checkpoint_score_mode or "max"
 
 
 @dataclass

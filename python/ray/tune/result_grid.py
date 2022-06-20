@@ -1,5 +1,5 @@
 import os
-from typing import Optional, Union
+from typing import TYPE_CHECKING, Optional, Union
 
 import pandas as pd
 
@@ -10,6 +10,9 @@ from ray.tune import ExperimentAnalysis
 from ray.tune.error import TuneError
 from ray.tune.trial import Trial
 from ray.util import PublicAPI
+
+if TYPE_CHECKING:
+    from ray.air.config import CheckpointingConfig
 
 
 @PublicAPI(stability="alpha")
@@ -40,8 +43,14 @@ class ResultGrid:
     seen by Tune will be provided.
     """
 
-    def __init__(self, experiment_analysis: ExperimentAnalysis):
+    def __init__(
+        self,
+        experiment_analysis: ExperimentAnalysis,
+        checkpointing_config: Optional["CheckpointingConfig"] = None,
+    ):
         self._experiment_analysis = experiment_analysis
+        # Used to determine best checkpoint
+        self._checkpointing_config = checkpointing_config
 
     def get_best_result(
         self,
@@ -165,8 +174,21 @@ class ResultGrid:
 
     def _trial_to_result(self, trial: Trial) -> Result:
         checkpoint = trial.checkpoint.to_air_checkpoint()
+
+        checkpoint_metric = (
+            self._checkpointing_config.checkpoint_score_metric
+            if self._checkpointing_config
+            else None
+        )
+        checkpoint_mode = (
+            self._checkpointing_config.checkpoint_score_mode_not_none
+            if self._checkpointing_config and checkpoint_metric
+            else None
+        )
         try:
-            best_checkpoint = self._experiment_analysis.best_checkpoint
+            best_checkpoint = self._experiment_analysis.get_best_checkpoint(
+                trial, metric=checkpoint_metric, mode=checkpoint_mode
+            )
         except ValueError:
             best_checkpoint = None
 

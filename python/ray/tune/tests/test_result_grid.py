@@ -50,7 +50,7 @@ def test_result_grid_metric_mode(ray_start_2_cpus):
                     f.write(json.dumps({"step": i}))
             tune.report(step=i)
 
-    analysis = tune.run(f, config={"a": 1}, metric="step", mode="max")
+    analysis = tune.run(f, config={"a": 1}, metric="step", mode="min")
     analysis._legacy_checkpoint = False
     result_grid = ResultGrid(analysis)
     result = result_grid[0]
@@ -61,7 +61,7 @@ def test_result_grid_metric_mode(ray_start_2_cpus):
     assert isinstance(result.dataframe, pd.DataFrame)
     assert os.path.normpath(
         result.checkpoint.get_internal_representation()[1]
-    ) == os.path.normpath(result.best_checkpoint.get_internal_representation()[1])
+    ) != os.path.normpath(result.best_checkpoint.get_internal_representation()[1])
     assert result.config == {"a": 1}
     assert result.metrics["config"] == result.config
     assert len(result.dataframe) == 2
