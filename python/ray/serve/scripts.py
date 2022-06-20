@@ -378,6 +378,12 @@ def shutdown(address: str, yes: bool):
     ),
 )
 def build(import_path: str, app_dir: str, output_path: Optional[str]):
+
+    if output_path is not None and not output_path.endswith(".yaml"):
+        raise ValueError(
+            f'FILE_PATH must end with ".yaml". Got "{output_path}" instead.'
+        )
+
     sys.path.insert(0, app_dir)
 
     node: Union[ClassNode, FunctionNode] = import_attr(import_path)
@@ -397,11 +403,40 @@ def build(import_path: str, app_dir: str, output_path: Optional[str]):
             if property in deployment:
                 del deployment[property]
 
-    if output_path is not None:
-        if not output_path.endswith(".yaml"):
-            raise ValueError("FILE_PATH must end with '.yaml'.")
+    config_str = yaml.dump(
+        config, Dumper=ServeBuildDumper, default_flow_style=False, sort_keys=False
+    )
+    config_str += f"# Built using Ray v{ray.__version__}\n"
 
+    if output_path is not None:
         with open(output_path, "w") as f:
-            yaml.safe_dump(config, stream=f, default_flow_style=False, sort_keys=False)
+            f.write(config_str)
     else:
-        print(yaml.safe_dump(config, default_flow_style=False, sort_keys=False), end="")
+        print(config_str, end="")
+
+
+class ServeBuildDumper(yaml.SafeDumper):
+    """YAML dumper object with custom formatting for `serve build` command.
+
+    Reformat config to follow this spacing:
+    ---------------------------------------
+
+    import_path: example.path
+
+    runtime_env: {}
+
+    deployments:
+
+    - name: val1
+        ...
+
+    - name: val2
+        ...
+    """
+
+    def write_line_break(self, data=None):
+        # https://github.com/yaml/pyyaml/issues/127#issuecomment-525800484
+        super().write_line_break(data)
+
+        if len(self.indents) < 3:
+            super().write_line_break()
