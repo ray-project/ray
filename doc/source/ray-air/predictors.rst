@@ -7,14 +7,18 @@ Inference with trained models
 
 After you train a model, you will often want to use the model to do inference and prediction.
 
-Ray AIR Predictors are a class that loads models from :class:`Checkpoints` to perform inference. Predictors are used by BatchPredictors and PredictorDeployments to do large-scale scoring and online inference.
+Ray AIR Predictors are a class that loads models from :class:`Checkpoints` to perform inference. 
+Predictors are used by `BatchPredictors` and `PredictorDeployments` to do large-scale scoring or online inference.
 
 Predictors Basics
 -----------------
 
-Let's walk through a basic usage of the Predictor. In the below example, we create Checkpoint object from a model definition. Checkpoints can be generated from a variety of different ways -- see the Checkpoints user guide for more details.
+Let's walk through a basic usage of the Predictor. In the below example, we create `Checkpoint` object from a model definition. 
+Checkpoints can be generated from a variety of different ways -- 
+see the Checkpoints user guide for more details.
+.. TODO: link to Checkpoint user guide
 
-The checkpoint then is used to create a framework specific Predictor (in our example, a TensorflowPredictor), which then can be used for inference:
+The checkpoint then is used to create a framework specific Predictor (in our example, a `TensorflowPredictor`), which then can be used for inference:
 
 .. literalinclude:: doc_code/use_pretrained_model.py
     :language: python
@@ -26,7 +30,7 @@ Predictors expose a ``predict`` method that accepts an input batch of type ``Dat
 
 **Life of a prediction:** Underneath the hood, when the ``Predictor.predict`` method is called the following occurs:
 
-- The input batch is converted into a pandas DataFrame. Tensor input (like a ``np.ndarray``) will be converted into a single column Pandas Dataframe.
+- The input batch is converted into a Pandas DataFrame. Tensor input (like a ``np.ndarray``) will be converted into a single column Pandas Dataframe.
 - If there is a :ref:`Preprocessor <air-preprocessor-ref>` saved in the provided :ref:`Checkpoint <air-checkpoint-ref>`, the preprocessor will be used to transform the DataFrame.
 - The transformed DataFrame will be passed to the model for inference.
 - The predictions will be outputted by ``predict`` in the same type as the original input.
@@ -46,21 +50,48 @@ The BatchPredictor takes in a checkpoint and a predictor class and executes larg
 
 There are different things you need in order to do batch prediction on different data types.
 
-Tabular
+**Tabular**
 
+.. tabbed:: XGBoost
+
+    .. literalinclude:: doc_code/xgboost_starter.py
+        :language: python
+        :start-after: __air_xgb_batchpred_start__
+        :end-before: __air_xgb_batchpred_end__
+
+    .. TODO: include py files as orphans so that we can do a versioned link?
+    .. See the full script here: `Code <doc_code/xgboost_starter.py>`_.
+
+.. tabbed:: Pytorch
+
+    .. literalinclude:: doc_code/pytorch_tabular_starter.py
+        :language: python
+        :start-after: __air_pytorch_batchpred_start__
+        :end-before: __air_pytorch_batchpred_end__
+
+    .. TODO: include py files as orphans so that we can do a versioned link?
+
+
+.. tabbed:: Tensorflow
+
+    Coming soon!
+    .. TODO: include py files as orphans so that we can do a versioned link?
 
 **Image**
 
-.. literalinclude:: doc_code/torch_image_batch_pretrained.py
-    :language: python
-    :start-after: __batch_prediction_start__
-    :end-before: __batch_prediction_end__
+.. tabbed:: Torch
 
+    .. literalinclude:: doc_code/torch_image_batch_pretrained.py
+        :language: python
+        :start-after: __batch_prediction_start__
+        :end-before: __batch_prediction_end__
 
-.. literalinclude:: doc_code/tf_image_batch_pretrained.py
-    :language: python
-    :start-after: __batch_prediction_start__
-    :end-before: __batch_prediction_end__
+.. tabbed:: TensorFlow
+
+    .. literalinclude:: doc_code/tf_image_batch_pretrained.py
+        :language: python
+        :start-after: __batch_prediction_start__
+        :end-before: __batch_prediction_end__
 
 **Text**
 

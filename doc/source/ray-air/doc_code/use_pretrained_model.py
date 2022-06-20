@@ -64,10 +64,6 @@ ds = ray.data.range_tensor(1000, parallelism=4)
 print(batch_pred.predict_pipelined(
     ds, blocks_per_window=1))
 # > DatasetPipeline(num_windows=4, num_stages=3)
-
-
-
-
 # __pipelined_prediction_end__
 
 
