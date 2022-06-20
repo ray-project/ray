@@ -3,29 +3,30 @@ import platform
 import queue
 import threading
 import time
-from datetime import datetime
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum, auto
-from typing import Callable
-from typing import Optional, Dict, Type, Union
+from typing import Callable, Dict, Optional, Type, Union
 
 import ray
+from ray.air.checkpoint import Checkpoint
 from ray.data import Dataset, DatasetPipeline
 from ray.train._internal.accelerator import Accelerator
-from ray.train.constants import (
-    DETAILED_AUTOFILLED_KEYS,
-    TIME_THIS_ITER_S,
-    PID,
-    TIMESTAMP,
-    TIME_TOTAL_S,
-    NODE_IP,
-    TRAINING_ITERATION,
-    HOSTNAME,
-    DATE,
-    RESULT_FETCH_TIMEOUT,
-)
 from ray.train._internal.utils import PropagatingThread
+from ray.train.constants import (
+    DATE,
+    DETAILED_AUTOFILLED_KEYS,
+    HOSTNAME,
+    NODE_IP,
+    PID,
+    RESULT_FETCH_TIMEOUT,
+    TIME_THIS_ITER_S,
+    TIME_TOTAL_S,
+    TIMESTAMP,
+    TRAINING_ITERATION,
+)
 from ray.train.error import SessionMisuseError
+from ray.train.session import _TrainSessionImpl
 
 
 class TrainingResultType(Enum):
@@ -34,12 +35,23 @@ class TrainingResultType(Enum):
 
 
 @dataclass
+class TrialInfo:
+    """The trial information to propagate to TrainSession."""
+
+    name: str
+    id: str
+    resources: Dict[str, float]
+    logdir: str
+
+
+@dataclass
 class TrainingResult:
     type: TrainingResultType
     data: Dict
 
 
-class Session:
+# TODO(xwjiang): This needs a better name.
+class _TrainSession:
     """Holds information for training on each worker."""
 
     def __init__(
@@ -48,8 +60,11 @@ class Session:
         world_rank: int,
         local_rank: int,
         world_size: int,
+        # TODO(xwjiang): Legacy Ray Train trainer clean up!
+        trial_info: Optional[TrialInfo] = None,
         dataset_shard: Optional[Union[Dataset, DatasetPipeline]] = None,
-        checkpoint: Optional[Dict] = None,
+        # TODO(xwjiang): Legacy Ray Train trainer clean up!
+        checkpoint: Optional[Union[Dict, Checkpoint]] = None,
         encode_data_fn: Callable = None,
         detailed_autofilled_metrics: bool = False,
     ):
@@ -61,7 +76,9 @@ class Session:
         self.world_rank = world_rank
         self.local_rank = local_rank
         self.world_size = world_size
-        self.loaded_checkpoint = checkpoint
+        self.trial_info = trial_info
+        # TODO(xwjiang): Legacy Ray Train trainer clean up!
+        self.loaded_checkpoint: Optional[Union[Dict, Checkpoint]] = checkpoint
 
         # Function to encode checkpoint dict before sending to the driver.
         if not encode_data_fn:
@@ -71,6 +88,13 @@ class Session:
 
             encode_data_fn = noop
         self._encode_data_fn = encode_data_fn
+
+        # TODO(xwjiang): Legacy Ray Train trainer clean up!
+        if trial_info:
+            # Change the working directory to `logdir`.
+            logdir = os.path.join(trial_info.logdir, f"rank_{self.world_rank}")
+            os.makedirs(logdir, exist_ok=True)
+            os.chdir(logdir)
 
         # This lock is used to control the execution of the training thread.
         self.continue_lock = threading.Semaphore(0)
@@ -184,7 +208,7 @@ class Session:
         result.update(auto_filled_metrics)
         return result
 
-    def report(self, **kwargs):
+    def _report_legacy(self, **kwargs):
         """Adds kwargs to the queue to be consumed by main thread."""
         if self.ignore_report:
             return
@@ -234,22 +258,32 @@ class Session:
         # checkpoint has been processed.
         self.continue_lock.acquire()
 
+    def report(self, metrics: Dict, checkpoint: Optional[Checkpoint] = None) -> None:
+        # TODO(xwjiang): tons of optimizations.
+        if checkpoint:
+            checkpoint_dict = checkpoint.to_dict()
+            self.checkpoint(**checkpoint_dict)
+        self._report_legacy(**metrics)
 
-_session = None
+
+_session: Optional[_TrainSession] = None
+# V2 Session API
+_session_v2: Optional[_TrainSessionImpl] = None
 
 
 def init_session(*args, **kwargs) -> None:
     global _session
+    global _session_v2
     if _session:
         raise ValueError(
             "A Train session is already in use. Do not call "
             "`init_session()` manually."
         )
-    _session = Session(*args, **kwargs)
+    _session = _TrainSession(*args, **kwargs)
+    _session_v2 = _TrainSessionImpl(session=_session)
 
 
-def get_session() -> Optional[Session]:
-    global _session
+def get_session() -> Optional[_TrainSession]:
     return _session
 
 

@@ -1,23 +1,54 @@
-from contextlib import contextmanager
 import inspect
-import os
 import logging
+import os
 import traceback
+from contextlib import contextmanager
 from typing import Dict, Optional, Set
 
 import ray
+from ray.air._internal.session import Session
+from ray.air.checkpoint import Checkpoint
+from ray.tune.error import TuneError
+from ray.tune.function_runner import _StatusReporter
+from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.debug import log_once
-from ray.util.annotations import PublicAPI, DeveloperAPI
 from ray.util.placement_group import _valid_resource_shape
 from ray.util.scheduling_strategies import (
-    SchedulingStrategyT,
     PlacementGroupSchedulingStrategy,
+    SchedulingStrategyT,
 )
-from ray.tune.error import TuneError
 
 logger = logging.getLogger(__name__)
 
-_session = None
+_session: Optional[_StatusReporter] = None
+# V2 Session API.
+_session_v2: Optional["_TuneSessionImpl"] = None
+
+
+class _TuneSessionImpl(Session):
+    """Session client that function trainable can interact with."""
+
+    def __init__(self, status_reporter: _StatusReporter):
+        self._status_reporter = status_reporter
+
+    def report(self, metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
+        self._status_reporter.report(metrics, checkpoint=checkpoint)
+
+    @property
+    def loaded_checkpoint(self) -> Optional[Checkpoint]:
+        return self._status_reporter.loaded_checkpoint
+
+    @property
+    def trial_name(self) -> str:
+        return self._status_reporter.trial_name
+
+    @property
+    def trial_id(self) -> str:
+        return self._status_reporter.trial_id
+
+    @property
+    def trial_resources(self) -> Dict[str, float]:
+        return self._status_reporter.trial_resources.required_resources
 
 
 @PublicAPI
@@ -50,6 +81,7 @@ def get_session():
 def init(reporter, ignore_reinit_error=True):
     """Initializes the global trial context for this process."""
     global _session
+    global _session_v2
 
     if _session is not None:
         # TODO(ng): would be nice to stack crawl at creation time to report
@@ -83,6 +115,7 @@ def init(reporter, ignore_reinit_error=True):
         remote_function._task_launch_hook = tune_task_and_actor_launch_hook
 
     _session = reporter
+    _session_v2 = _TuneSessionImpl(status_reporter=reporter)
 
 
 # Cache of resource dicts that have been checked by the launch hook already.
@@ -183,6 +216,11 @@ def report(_metric=None, **kwargs):
     """
     _session = get_session()
     if _session:
+        if _session._iter:
+            raise ValueError(
+                "It is not allowed to mix `tune.report` with `session.report`."
+            )
+
         return _session(_metric, **kwargs)
 
 
@@ -242,6 +280,11 @@ def checkpoint_dir(step: int):
         raise ValueError("checkpoint_dir(step) must be provided - got None.")
 
     if _session:
+        if _session._iter:
+            raise ValueError(
+                "It is not allowed to mix `with tune.checkpoint_dir` "
+                "with `session.report`."
+            )
         _checkpoint_dir = _session.make_checkpoint_dir(step=step)
     else:
         _checkpoint_dir = os.path.abspath("./")
