@@ -1,9 +1,6 @@
 import logging
-from typing import Tuple, Generator, List
-from ray.rllib.offline.estimators.off_policy_estimator import (
-    OffPolicyEstimator,
-    OffPolicyEstimate,
-)
+from typing import Tuple, Generator, List, Dict
+from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import ExperimentalAPI, override
@@ -139,12 +136,11 @@ class DirectMethod(OffPolicyEstimator):
         )
         self.train_test_split_val = train_test_split_val
         self.k = k
-        self.losses = []
 
     @override(OffPolicyEstimator)
-    def estimate(self, batch: SampleBatchType) -> OffPolicyEstimate:
+    def estimate(self, batch: SampleBatchType) -> Dict[str, List]:
         self.check_can_estimate_for(batch)
-        estimates = []
+        estimates = {"v_old": [], "v_new": [], "v_gain": []}
         # Split data into train and test batches
         for train_episodes, test_episodes in train_test_split(
             batch,
@@ -157,8 +153,7 @@ class DirectMethod(OffPolicyEstimator):
                 # Reinitialize model
                 self.model.reset()
                 train_batch = SampleBatch.concat_samples(train_episodes)
-                losses = self.train(train_batch)
-                self.losses.append(losses)
+                self.model.train_q(train_batch)
 
             # Calculate direct method OPE estimates
             for episode in test_episodes:
@@ -176,18 +171,7 @@ class DirectMethod(OffPolicyEstimator):
                 v_value = self.model.estimate_v(init_obs, action_probs)
                 v_new = convert_to_numpy(v_value).item()
 
-                estimates.append(
-                    OffPolicyEstimate(
-                        self.name,
-                        {
-                            "v_old": v_old,
-                            "v_new": v_new,
-                            "v_gain": v_new / max(1e-8, v_old),
-                        },
-                    )
-                )
+                estimates["v_old"].append(v_old)
+                estimates["v_new"].append(v_new)
+                estimates["v_gain"].append(v_new / max(v_old, 1e-8))
         return estimates
-
-    @override(OffPolicyEstimator)
-    def train(self, batch: SampleBatchType):
-        return self.model.train_q(batch)

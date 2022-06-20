@@ -1,11 +1,9 @@
-from ray.rllib.offline.estimators.off_policy_estimator import (
-    OffPolicyEstimator,
-    OffPolicyEstimate,
-)
+from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
 from ray.rllib.policy import Policy
 from ray.rllib.utils.annotations import override, ExperimentalAPI
 from ray.rllib.utils.typing import SampleBatchType
 import numpy as np
+from typing import Dict, List
 
 
 @ExperimentalAPI
@@ -22,9 +20,9 @@ class WeightedImportanceSampling(OffPolicyEstimator):
         self.filter_counts = []
 
     @override(OffPolicyEstimator)
-    def estimate(self, batch: SampleBatchType) -> OffPolicyEstimate:
+    def estimate(self, batch: SampleBatchType) -> Dict[str, List]:
         self.check_can_estimate_for(batch)
-        estimates = []
+        estimates = {"v_old": [], "v_new": [], "v_gain": []}
         for sub_batch in batch.split_by_episode():
             rewards, old_prob = sub_batch["rewards"], sub_batch["action_prob"]
             new_prob = np.exp(self.action_log_likelihood(sub_batch))
@@ -53,14 +51,7 @@ class WeightedImportanceSampling(OffPolicyEstimator):
                 w_t = self.filter_values[t] / self.filter_counts[t]
                 v_new += p[t] / w_t * rewards[t] * self.gamma ** t
 
-            estimates.append(
-                OffPolicyEstimate(
-                    self.name,
-                    {
-                        "v_old": v_old,
-                        "v_new": v_new,
-                        "v_gain": v_new / max(1e-8, v_old),
-                    },
-                )
-            )
+            estimates["v_old"].append(v_old)
+            estimates["v_new"].append(v_new)
+            estimates["v_gain"].append(v_new / max(v_old, 1e-8))
         return estimates

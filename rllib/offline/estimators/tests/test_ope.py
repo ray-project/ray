@@ -9,6 +9,7 @@ from ray.rllib.offline.estimators import (
     DoublyRobust,
 )
 from ray.rllib.offline.json_reader import JsonReader
+from ray.rllib.policy.sample_batch import concat_samples
 from pathlib import Path
 import os
 import numpy as np
@@ -16,31 +17,28 @@ import gym
 
 
 class TestOPE(unittest.TestCase):
-    def setUp(self):
-        ray.init(num_cpus=4)
-
-    def tearDown(self):
-        ray.shutdown()
-
     @classmethod
     def setUpClass(cls):
-        ray.init(ignore_reinit_error=True)
+        ray.init(num_cpus=8)
         rllib_dir = Path(__file__).parent.parent.parent.parent
         print("rllib dir={}".format(rllib_dir))
-        data_file = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
-        print("data_file={} exists={}".format(data_file, os.path.isfile(data_file)))
+        train_data = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
+        print("train_data={} exists={}".format(train_data, os.path.isfile(train_data)))
+        eval_data = train_data
 
         env_name = "CartPole-v0"
         cls.gamma = 0.99
-        train_steps = 20000
+        train_steps = 200000
         n_batches = 20  # Approx. equal to n_episodes
-        n_eval_episodes = 100
+        n_eval_episodes = 20
+        # Optional configs for the model-based estimators
+        cls.model_config = {"train_test_split_val": 0.0, "k": 2, "n_iters": 10}
 
         config = (
             DQNConfig()
             .environment(env=env_name)
             .training(gamma=cls.gamma)
-            .rollouts(num_rollout_workers=3)
+            .rollouts(num_rollout_workers=3, batch_mode="complete_episodes")
             .exploration(
                 explore=True,
                 exploration_config={
@@ -49,23 +47,58 @@ class TestOPE(unittest.TestCase):
                 },
             )
             .framework("torch")
-            .rollouts(batch_mode="complete_episodes")
+            .offline_data(
+                input_="dataset",
+                input_config={"format": "json", "path": train_data},
+            )
+            .evaluation(
+                evaluation_interval=None,
+                evaluation_duration=n_eval_episodes,
+                evaluation_num_workers=1,
+                evaluation_duration_unit="episodes",
+                evaluation_config={
+                    "input": "dataset",
+                    "input_config": {"format": "json", "path": eval_data},
+                },
+                off_policy_estimation_methods={
+                    "is": {"type": ImportanceSampling},
+                    "wis": {"type": WeightedImportanceSampling},
+                    "dm_qreg": {
+                        "type": DirectMethod,
+                        "q_model_type": "qreg",
+                        **cls.model_config,
+                    },
+                    "dm_fqe": {
+                        "type": DirectMethod,
+                        "q_model_type": "fqe",
+                        **cls.model_config,
+                    },
+                    "dr_qreg": {
+                        "type": DoublyRobust,
+                        "q_model_type": "qreg",
+                        **cls.model_config,
+                    },
+                    "dr_fqe": {
+                        "type": DoublyRobust,
+                        "q_model_type": "fqe",
+                        **cls.model_config,
+                    },
+                },
+            )
         )
         cls.trainer = config.build()
 
         # Train DQN for evaluation policy
-        tune.run(
-            "DQN",
-            config=config.to_dict(),
-            stop={"timesteps_total": train_steps},
-            verbose=0,
-        )
+        timesteps_total = 0
+        while timesteps_total < train_steps:
+            results = cls.trainer.train()
+            timesteps_total = results["timesteps_total"]
 
         # Read n_batches of data
-        reader = JsonReader(data_file)
+        reader = JsonReader(train_data)
         cls.batch = reader.next()
         for _ in range(n_batches - 1):
-            cls.batch = cls.batch.concat(reader.next())
+            cls.batch = concat_samples([cls.batch, reader.next()])
         cls.n_episodes = len(cls.batch.split_by_episode())
         print("Episodes:", cls.n_episodes, "Steps:", cls.batch.count)
 
@@ -91,10 +124,6 @@ class TestOPE(unittest.TestCase):
         cls.mean_ret["simulation"] = np.mean(mc_ret)
         cls.std_ret["simulation"] = np.std(mc_ret)
 
-        # Optional configs for the model-based estimators
-        cls.model_config = {"train_test_split_val": 0.0, "k": 2, "n_iters": 10}
-        ray.shutdown()
-
     @classmethod
     def tearDownClass(cls):
         print("Mean:", cls.mean_ret)
@@ -108,10 +137,9 @@ class TestOPE(unittest.TestCase):
             policy=self.trainer.get_policy(),
             gamma=self.gamma,
         )
-        estimator.process(self.batch)
-        estimates = estimator.get_metrics()
-        self.mean_ret[name] = np.mean([e.metrics["v_new"] for e in estimates])
-        self.std_ret[name] = np.std([e.metrics["v_new"] for e in estimates])
+        estimates = estimator.estimate(self.batch)
+        self.mean_ret[name] = np.mean(estimates["v_new"])
+        self.std_ret[name] = np.std(estimates["v_new"])
 
     def test_wis(self):
         name = "wis"
@@ -120,10 +148,9 @@ class TestOPE(unittest.TestCase):
             policy=self.trainer.get_policy(),
             gamma=self.gamma,
         )
-        estimator.process(self.batch)
-        estimates = estimator.get_metrics()
-        self.mean_ret[name] = np.mean([e.metrics["v_new"] for e in estimates])
-        self.std_ret[name] = np.std([e.metrics["v_new"] for e in estimates])
+        estimates = estimator.estimate(self.batch)
+        self.mean_ret[name] = np.mean(estimates["v_new"])
+        self.std_ret[name] = np.std(estimates["v_new"])
 
     def test_dm_qreg(self):
         name = "dm_qreg"
@@ -134,10 +161,9 @@ class TestOPE(unittest.TestCase):
             q_model_type="qreg",
             **self.model_config,
         )
-        estimator.process(self.batch)
-        estimates = estimator.get_metrics()
-        self.mean_ret[name] = np.mean([e.metrics["v_new"] for e in estimates])
-        self.std_ret[name] = np.std([e.metrics["v_new"] for e in estimates])
+        estimates = estimator.estimate(self.batch)
+        self.mean_ret[name] = np.mean(estimates["v_new"])
+        self.std_ret[name] = np.std(estimates["v_new"])
 
     def test_dm_fqe(self):
         name = "dm_fqe"
@@ -148,10 +174,9 @@ class TestOPE(unittest.TestCase):
             q_model_type="fqe",
             **self.model_config,
         )
-        estimator.process(self.batch)
-        estimates = estimator.get_metrics()
-        self.mean_ret[name] = np.mean([e.metrics["v_new"] for e in estimates])
-        self.std_ret[name] = np.std([e.metrics["v_new"] for e in estimates])
+        estimates = estimator.estimate(self.batch)
+        self.mean_ret[name] = np.mean(estimates["v_new"])
+        self.std_ret[name] = np.std(estimates["v_new"])
 
     def test_dr_qreg(self):
         name = "dr_qreg"
@@ -162,10 +187,9 @@ class TestOPE(unittest.TestCase):
             q_model_type="qreg",
             **self.model_config,
         )
-        estimator.process(self.batch)
-        estimates = estimator.get_metrics()
-        self.mean_ret[name] = np.mean([e.metrics["v_new"] for e in estimates])
-        self.std_ret[name] = np.std([e.metrics["v_new"] for e in estimates])
+        estimates = estimator.estimate(self.batch)
+        self.mean_ret[name] = np.mean(estimates["v_new"])
+        self.std_ret[name] = np.std(estimates["v_new"])
 
     def test_dr_fqe(self):
         name = "dr_fqe"
@@ -176,14 +200,17 @@ class TestOPE(unittest.TestCase):
             q_model_type="fqe",
             **self.model_config,
         )
-        estimator.process(self.batch)
-        estimates = estimator.get_metrics()
-        self.mean_ret[name] = np.mean([e.metrics["v_new"] for e in estimates])
-        self.std_ret[name] = np.std([e.metrics["v_new"] for e in estimates])
+        estimates = estimator.estimate(self.batch)
+        self.mean_ret[name] = np.mean(estimates["v_new"])
+        self.std_ret[name] = np.std(estimates["v_new"])
 
     def test_ope_in_trainer(self):
-        # TODO (rohan): Add performance tests for off_policy_estimation_methods,
-        # with fixed seeds and hyperparameters
+        results = self.trainer.evaluate()
+        print(results["evaluation"]["off_policy_estimator"])
+        print("\n\n\n")
+
+    def test_multiple_inputs(self):
+        # TODO (rohan): Test with multiple input files
         pass
 
 

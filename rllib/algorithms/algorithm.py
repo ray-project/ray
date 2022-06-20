@@ -52,7 +52,6 @@ from ray.rllib.execution.train_ops import (
 )
 from ray.rllib.offline import get_offline_io_resource_bundles
 from ray.rllib.offline.estimators import (
-    OffPolicyEstimate,
     OffPolicyEstimator,
     ImportanceSampling,
     WeightedImportanceSampling,
@@ -60,7 +59,7 @@ from ray.rllib.offline.estimators import (
     DoublyRobust,
 )
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch, concat_samples
 from ray.rllib.utils import deep_update, FilterManager, merge_dicts
 from ray.rllib.utils.annotations import (
     DeveloperAPI,
@@ -882,7 +881,7 @@ class Algorithm(Trainable):
                     agent_steps_this_iter += batch.agent_steps()
                     env_steps_this_iter += batch.env_steps()
                     if self.reward_estimators:
-                        total_batch = total_batch.concat(batch)
+                        total_batch = concat_samples([total_batch, batch])
                 metrics = collect_metrics(
                     self.workers.local_worker(),
                     keep_custom_metrics=self.config["keep_per_episode_custom_metrics"],
@@ -900,7 +899,7 @@ class Algorithm(Trainable):
                     agent_steps_this_iter += batch.agent_steps()
                     env_steps_this_iter += batch.env_steps()
                     if self.reward_estimators:
-                        total_batch = total_batch.concat(batch)
+                        total_batch = concat_samples([total_batch, batch])
 
             # Evaluation worker set has n remote workers.
             else:
@@ -936,7 +935,7 @@ class Algorithm(Trainable):
                             else env_steps_this_iter
                         )
                     if self.reward_estimators:
-                        total_batch = total_batch.concat_samples(batches)
+                        total_batch = concat_samples([total_batch, *batches])
 
                     logger.info(
                         f"Ran round {round_} of parallel evaluation "
@@ -951,10 +950,18 @@ class Algorithm(Trainable):
                 )
             metrics[NUM_AGENT_STEPS_SAMPLED_THIS_ITER] = agent_steps_this_iter
             metrics[NUM_ENV_STEPS_SAMPLED_THIS_ITER] = env_steps_this_iter
-            # TODO: Revmoe this key atv some point. Here for backward compatibility.
+            # TODO: Remove this key at some point. Here for backward compatibility.
             metrics["timesteps_this_iter"] = env_steps_this_iter
+
+            # Compute off-policy estimates
+            metrics["off_policy_estimator"] = {}
             for estimator in self.reward_estimators:
-                estimator.process(total_batch)
+                estimates = estimator.estimate(total_batch)
+                out = {}
+                for k, v in estimates.items():
+                    out[k + "_mean"] = np.mean(v)
+                    out[k + "_std"] = np.std(v)
+                metrics["off_policy_estimator"][estimator.name] = out
 
         # Evaluation does not run for every step.
         # Save evaluation metrics on trainer, so it can be attached to

@@ -1,10 +1,10 @@
-from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimate
 from ray.rllib.offline.estimators.direct_method import DirectMethod, train_test_split
 from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.utils.typing import SampleBatchType
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.numpy import convert_to_numpy
 import numpy as np
+from typing import Dict, List
 
 
 @ExperimentalAPI
@@ -14,12 +14,9 @@ class DoublyRobust(DirectMethod):
     DR estimator described in https://arxiv.org/pdf/1511.03722.pdf"""
 
     @override(DirectMethod)
-    def estimate(
-        self,
-        batch: SampleBatchType,
-    ) -> OffPolicyEstimate:
+    def estimate(self, batch: SampleBatchType) -> Dict[str, List]:
         self.check_can_estimate_for(batch)
-        estimates = []
+        estimates = {"v_old": [], "v_new": [], "v_gain": []}
         # Split data into train and test batches
         for train_episodes, test_episodes in train_test_split(
             batch,
@@ -32,8 +29,7 @@ class DoublyRobust(DirectMethod):
                 # Reinitialize model
                 self.model.reset()
                 train_batch = SampleBatch.concat_samples(train_episodes)
-                losses = self.train(train_batch)
-                self.losses.append(losses)
+                self.model.train_q(train_batch)
 
             # Calculate doubly robust OPE estimates
             for episode in test_episodes:
@@ -63,14 +59,7 @@ class DoublyRobust(DirectMethod):
                     )
                 v_new = v_new.item()
 
-                estimates.append(
-                    OffPolicyEstimate(
-                        self.name,
-                        {
-                            "v_old": v_old,
-                            "v_new": v_new,
-                            "v_gain": v_new / max(1e-8, v_old),
-                        },
-                    )
-                )
+                estimates["v_old"].append(v_old)
+                estimates["v_new"].append(v_new)
+                estimates["v_gain"].append(v_new / max(v_old, 1e-8))
         return estimates
