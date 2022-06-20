@@ -485,10 +485,10 @@ RAY_CONFIG(bool, is_external_storage_type_fs, true)
 
 /// Control the capacity threshold for ray local file system (for object store).
 /// Once we are over the capacity, all subsequent object creation will fail.
-RAY_CONFIG(float, local_fs_capacity_threshold, 0.9);
+RAY_CONFIG(float, local_fs_capacity_threshold, 0.95);
 
 /// Control the frequency of checking the disk usage.
-RAY_CONFIG(uint64_t, local_fs_monitor_interval_ms, 1000);
+RAY_CONFIG(uint64_t, local_fs_monitor_interval_ms, 100);
 
 /* Configuration parameters for locality-aware scheduling. */
 /// Whether to enable locality-aware leasing. If enabled, then Ray will consider task

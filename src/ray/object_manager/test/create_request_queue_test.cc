@@ -484,7 +484,7 @@ TEST_F(CreateRequestQueueTest, TestOOMAndOOD) {
   auto client = std::make_shared<MockClient>();
   auto req_id1 = queue.AddRequest(ObjectID::Nil(), client, oom_request, 1234);
 
-  // Transient OOM should not use up any until grace period is done.
+  // Should fail with out of disk.
   ASSERT_TRUE(queue.ProcessRequests().IsOutOfDisk());
   ASSERT_REQUEST_FINISHED(queue, req_id1, PlasmaError::OutOfDisk);
   AssertNoLeaks();
