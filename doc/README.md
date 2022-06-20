@@ -19,7 +19,7 @@ To compile the documentation and open it locally, run the following command from
 make develop && open _build/html/index.html
 ```
 
-> **_NOTE:_**  The above command is for development, to reproduce build failures from the
+> **_NOTE:_**  The above command is for development. To reproduce build failures from the
 > CI, you should use `make html` which is the same as `make develop` but treats warnings as errors.
 
 ## Building just one sub-project
