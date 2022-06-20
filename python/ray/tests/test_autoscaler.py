@@ -503,7 +503,7 @@ MOCK_DEFAULT_CONFIG = {
     },
     "available_node_types": {
         "ray.head.default": {"resources": {}, "node_config": {"head_default_prop": 4}},
-        "ray._private.worker.default": {
+        "ray.worker.default": {
             "min_workers": 0,
             "max_workers": 2,
             "resources": {},
@@ -830,11 +830,9 @@ class AutoscalingTest(unittest.TestCase):
         config["docker"] = {}
         node_types = config["available_node_types"]
         node_types["ray.head.old"] = node_types.pop("ray.head.default")
-        node_types["ray._private.worker.old"] = node_types.pop(
-            "ray._private.worker.default"
-        )
+        node_types["ray.worker.old"] = node_types.pop("ray.worker.default")
         config["head_node_type"] = "ray.head.old"
-        node_types["ray._private.worker.old"]["min_workers"] = 1
+        node_types["ray.worker.old"]["min_workers"] = 1
 
         # Create head and launch autoscaler
         runner = MockProcessRunner()
@@ -881,16 +879,14 @@ class AutoscalingTest(unittest.TestCase):
         )
         assert (
             self.provider.node_tags(worker).get(TAG_RAY_USER_NODE_TYPE)
-            == "ray._private.worker.old"
+            == "ray.worker.old"
         )
 
         # Rename head and worker types
         new_config = copy.deepcopy(config)
         node_types = new_config["available_node_types"]
         node_types["ray.head.new"] = node_types.pop("ray.head.old")
-        node_types["ray._private.worker.new"] = node_types.pop(
-            "ray._private.worker.old"
-        )
+        node_types["ray.worker.new"] = node_types.pop("ray.worker.old")
         new_config["head_node_type"] = "ray.head.new"
         config_path = self.write_config(new_config)
 
@@ -925,7 +921,7 @@ class AutoscalingTest(unittest.TestCase):
         # Still old worker, as we haven't made an autoscaler update yet.
         assert (
             self.provider.node_tags(worker).get(TAG_RAY_USER_NODE_TYPE)
-            == "ray._private.worker.old"
+            == "ray.worker.old"
         )
 
         fill_in_raylet_ids(self.provider, lm)
@@ -935,10 +931,10 @@ class AutoscalingTest(unittest.TestCase):
         # Just one node (node_id 1) terminated in the last update.
         # Validates that we didn't try to double-terminate node 0.
         assert sorted(events) == [
-            "Adding 1 nodes of type ray._private.worker.new.",
-            "Adding 1 nodes of type ray._private.worker.old.",
-            "Removing 1 nodes of type ray._private.worker.old (not "
-            "in available_node_types: ['ray.head.new', 'ray._private.worker.new']).",
+            "Adding 1 nodes of type ray.worker.new.",
+            "Adding 1 nodes of type ray.worker.old.",
+            "Removing 1 nodes of type ray.worker.old (not "
+            "in available_node_types: ['ray.head.new', 'ray.worker.new']).",
         ]
 
         head_list = self.provider.non_terminated_nodes(
@@ -958,7 +954,7 @@ class AutoscalingTest(unittest.TestCase):
         )
         assert (
             self.provider.node_tags(worker).get(TAG_RAY_USER_NODE_TYPE)
-            == "ray._private.worker.new"
+            == "ray.worker.new"
         )
 
     def testGetOrCreateHeadNodePodman(self):
@@ -3378,13 +3374,11 @@ MemAvailable:   33000000 kB
         but does not try to terminate node 0 again.
         """
         cluster_config = copy.deepcopy(MOCK_DEFAULT_CONFIG)
-        cluster_config["available_node_types"]["ray._private.worker.default"][
-            "min_workers"
-        ] = 2
+        cluster_config["available_node_types"]["ray.worker.default"]["min_workers"] = 2
         cluster_config["worker_start_ray_commands"] = ["ray_start_cmd"]
 
         # Don't need the extra node type or a docker config.
-        cluster_config["head_node_type"] = ["ray._private.worker.default"]
+        cluster_config["head_node_type"] = ["ray.worker.default"]
         del cluster_config["available_node_types"]["ray.head.default"]
         del cluster_config["docker"]
 
@@ -3454,7 +3448,7 @@ MemAvailable:   33000000 kB
         events = autoscaler.event_summarizer.summary()
         assert (
             "Restarting 2 nodes of type "
-            "ray._private.worker.default (lost contact with raylet)." in events
+            "ray.worker.default (lost contact with raylet)." in events
         ), events
         # Node 0 was terminated during the last update.
         # Node 1's updater failed, but node 1 won't be terminated until the
@@ -3483,13 +3477,12 @@ MemAvailable:   33000000 kB
         # Just one node (node_id 1) terminated in the last update.
         # Validates that we didn't try to double-terminate node 0.
         assert (
-            "Removing 1 nodes of type ray._private.worker.default (launch failed)."
-            in events
+            "Removing 1 nodes of type ray.worker.default (launch failed)." in events
         ), events
         # To be more explicit,
         assert (
             "Removing 2 nodes of type "
-            "ray._private.worker.default (launch failed)." not in events
+            "ray.worker.default (launch failed)." not in events
         ), events
 
         # Should get two new nodes after the next update.
