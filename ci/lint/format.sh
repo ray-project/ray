@@ -9,6 +9,7 @@ FLAKE8_VERSION_REQUIRED="3.9.1"
 BLACK_VERSION_REQUIRED="21.12b0"
 SHELLCHECK_VERSION_REQUIRED="0.7.1"
 MYPY_VERSION_REQUIRED="0.782"
+ISORT_VERSION_REQUIRED="5.10.1"
 
 check_python_command_exist() {
     VERSION=""
@@ -21,6 +22,9 @@ check_python_command_exist() {
             ;;
         mypy)
             VERSION=$MYPY_VERSION_REQUIRED
+            ;;
+        isort)
+            VERSION=$ISORT_VERSION_REQUIRED
             ;;
         *)
             echo "$1 is not a required dependency"
@@ -49,6 +53,7 @@ check_docstyle() {
 check_python_command_exist black
 check_python_command_exist flake8
 check_python_command_exist mypy
+check_python_command_exist isort
 
 # this stops git rev-parse from failing if we run this from the .git directory
 builtin cd "$(dirname "${BASH_SOURCE:-$0}")"
@@ -68,6 +73,7 @@ else
 fi
 FLAKE8_VERSION=$(flake8 --version | head -n 1 | awk '{print $1}')
 MYPY_VERSION=$(mypy --version | awk '{print $2}')
+ISORT_VERSION=$(isort --version | grep VERSION | awk '{print $2}')
 GOOGLE_JAVA_FORMAT_JAR=/tmp/google-java-format-1.7-all-deps.jar
 
 # params: tool name, tool version, required version
@@ -80,6 +86,7 @@ tool_version_check() {
 tool_version_check "flake8" "$FLAKE8_VERSION" "$FLAKE8_VERSION_REQUIRED"
 tool_version_check "black" "$BLACK_VERSION" "$BLACK_VERSION_REQUIRED"
 tool_version_check "mypy" "$MYPY_VERSION" "$MYPY_VERSION_REQUIRED"
+tool_version_check "isort" "$ISORT_VERSION" "$ISORT_VERSION_REQUIRED"
 
 if command -v shellcheck >/dev/null; then
     SHELLCHECK_VERSION=$(shellcheck --version | awk '/^version:/ {print $2}')
@@ -138,6 +145,7 @@ MYPY_FILES=(
     '_private/gcs_utils.py'
 )
 
+
 BLACK_EXCLUDES=(
     '--force-exclude' 'python/ray/cloudpickle/*'
     '--force-exclude' 'python/build/*'
@@ -183,6 +191,7 @@ mypy_on_each() {
     popd
 }
 
+
 # Format specified files
 format_files() {
     local shell_files=() python_files=() bazel_files=()
@@ -190,7 +199,7 @@ format_files() {
     local name
     for name in "$@"; do
       local base="${name%.*}"
-      local suffix="${name#${base}}"
+      local suffix="${name#"${base}"}"
 
       local shebang=""
       read -r shebang < "${name}" || true
@@ -215,6 +224,7 @@ format_files() {
     done
 
     if [ 0 -lt "${#python_files[@]}" ]; then
+      isort "${python_files[@]}"
       black "${python_files[@]}"
     fi
 
@@ -236,6 +246,10 @@ format_all_scripts() {
     command -v flake8 &> /dev/null;
     HAS_FLAKE8=$?
 
+    # Run isort before black to fix imports and let black deal with file format.
+    echo "$(date)" "isort...."
+    git ls-files -- '*.py' "${GIT_LS_EXCLUDES[@]}" | xargs -P 10 \
+      isort
     echo "$(date)" "Black...."
     git ls-files -- '*.py' "${GIT_LS_EXCLUDES[@]}" | xargs -P 10 \
       black "${BLACK_EXCLUDES[@]}"
@@ -292,6 +306,11 @@ format_changed() {
     # `diff-filter=ACRM` and $MERGEBASE is to ensure we only format files that
     # exist on both branches.
     MERGEBASE="$(git merge-base upstream/master HEAD)"
+
+    if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.py' &>/dev/null; then
+        git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
+            isort
+    fi
 
     if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.py' &>/dev/null; then
         git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
