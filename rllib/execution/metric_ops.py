@@ -27,7 +27,7 @@ def StandardMetricsReporting(
         train_op: Operator for executing training steps.
             We ignore the output values.
         workers: Rollout workers to collect metrics from.
-        config: Trainer configuration, used to determine the frequency
+        config: Algorithm configuration, used to determine the frequency
             of stats reporting.
         selected_workers: Override the list of remote workers
             to collect metrics from.
