@@ -653,7 +653,7 @@ class Impala(Algorithm):
             try:
                 self._learner_thread.inqueue.put(batch, block=False)
                 self.batches_to_place_on_learner.pop(0)
-                self._counters[NUM_ENV_STEPS_SAMPLED] += batch.count
+                self._counters[NUM_ENV_STEPS_SAMPLED] += batch.env_steps()
                 self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
                 self._counters["num_samples_added_to_queue"] = batch.count
             except queue.Full:
