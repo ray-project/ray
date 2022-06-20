@@ -463,6 +463,33 @@ TEST_F(CreateRequestQueueTest, TestTryRequestImmediately) {
   AssertNoLeaks();
 }
 
+TEST_F(CreateRequestQueueTest, TestOOMAndOOD) {
+  ray::FileSystemMonitor out_of_disk_monitor{{"/"}, /*capacity_threshold*/ 0};
+  bool is_spilling_possible = true;
+  CreateRequestQueue queue(
+      out_of_disk_monitor,
+      /*oom_grace_period_s=*/oom_grace_period_s_,
+      /*spill_object_callback=*/[&]() { return is_spilling_possible; },
+      /*on_global_gc=*/[&]() { num_global_gc_++; },
+      /*get_time=*/[&]() { return current_time_ns_; });
+
+  auto return_status = PlasmaError::OutOfMemory;
+  auto oom_request = [&](bool fallback, PlasmaObject *result, bool *spill_requested) {
+    if (return_status == PlasmaError::OK) {
+      result->data_size = 1234;
+    }
+    return return_status;
+  };
+
+  auto client = std::make_shared<MockClient>();
+  auto req_id1 = queue.AddRequest(ObjectID::Nil(), client, oom_request, 1234);
+
+  // Transient OOM should not use up any until grace period is done.
+  ASSERT_TRUE(queue.ProcessRequests().IsOutOfDisk());
+  ASSERT_REQUEST_FINISHED(queue, req_id1, PlasmaError::OutOfDisk);
+  AssertNoLeaks();
+}
+
 }  // namespace plasma
 
 int main(int argc, char **argv) {

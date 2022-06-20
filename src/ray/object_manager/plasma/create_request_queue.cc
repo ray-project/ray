@@ -98,8 +98,10 @@ Status CreateRequestQueue::ProcessRequests() {
     // we should failed the request with out of disk error
     if ((*request_it)->error == PlasmaError::OutOfMemory && fs_monitor_.OverCapacity()) {
       (*request_it)->error = PlasmaError::OutOfDisk;
+      RAY_LOG(INFO) << "Out-of-disk: Failed to create object " << (*request_it)->object_id
+                    << " of size " << (*request_it)->object_size / 1024 / 1024 << "MB\n";
       FinishRequest(request_it);
-      continue;
+      return Status::OutOfDisk("System running out of disk.");
     }
 
     if (spilling_required) {
@@ -150,6 +152,7 @@ Status CreateRequestQueue::ProcessRequests() {
       }
     }
   }
+
   return Status::OK();
 }
 
