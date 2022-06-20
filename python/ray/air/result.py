@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from ray.air.checkpoint import Checkpoint
 from ray.util.annotations import PublicAPI
 
+import pandas as pd
+
 
 @dataclass
 @PublicAPI(stability="alpha")
@@ -21,12 +23,19 @@ class Result:
     Args:
         metrics: The final metrics as reported by an Trainable.
         checkpoint: The final checkpoint of the Trainable.
+        best_checkpoint: The best checkpoint of the Trainable, as
+            determined by the ``metric`` and ``mode`` arguments set.
+            If either of those has not been set, this will be None.
+            May be the same as ``checkpoint``.
         error: The execution error of the Trainable run, if the trial finishes in error.
+        dataframe: The full result dataframe of the Trainable.
     """
 
     metrics: Optional[Dict[str, Any]]
     checkpoint: Optional[Checkpoint]
+    best_checkpoint: Optional[Checkpoint]
     error: Optional[Exception]
+    dataframe: Optional[pd.DataFrame]
 
     @property
     def config(self) -> Optional[Dict[str, Any]]:

@@ -3,6 +3,7 @@ import os
 import pickle
 
 import pytest
+import pandas as pd
 
 import ray
 from ray import tune
@@ -38,6 +39,55 @@ def test_result_grid(ray_start_2_cpus):
     assert isinstance(result.config, dict)
     assert result.config == {"a": 1}
     assert result.metrics["config"] == result.config
+
+
+def test_result_grid_metric_mode(ray_start_2_cpus):
+    def f(config):
+        for i in range(2):
+            with tune.checkpoint_dir(step=i) as checkpoint_dir:
+                path = os.path.join(checkpoint_dir, "checkpoint")
+                with open(path, "w") as f:
+                    f.write(json.dumps({"step": i}))
+            tune.report(step=i)
+
+    analysis = tune.run(f, config={"a": 1}, metric="step", mode="max")
+    analysis._legacy_checkpoint = False
+    result_grid = ResultGrid(analysis)
+    result = result_grid[0]
+    assert isinstance(result.checkpoint, Checkpoint)
+    assert isinstance(result.best_checkpoint, Checkpoint)
+    assert isinstance(result.metrics, dict)
+    assert isinstance(result.config, dict)
+    assert isinstance(result.dataframe, pd.DataFrame)
+    assert os.path.normpath(
+        result.checkpoint.get_internal_representation()[1]
+    ) == os.path.normpath(result.best_checkpoint.get_internal_representation()[1])
+    assert result.config == {"a": 1}
+    assert result.metrics["config"] == result.config
+    assert len(result.dataframe) == 2
+
+
+def test_result_grid_metric_mode_unset(ray_start_2_cpus):
+    def f(config):
+        for i in range(2):
+            with tune.checkpoint_dir(step=i) as checkpoint_dir:
+                path = os.path.join(checkpoint_dir, "checkpoint")
+                with open(path, "w") as f:
+                    f.write(json.dumps({"step": i}))
+            tune.report(step=i)
+
+    analysis = tune.run(f, config={"a": 1})
+    analysis._legacy_checkpoint = False
+    result_grid = ResultGrid(analysis)
+    result = result_grid[0]
+    assert isinstance(result.checkpoint, Checkpoint)
+    assert result.best_checkpoint is None
+    assert isinstance(result.metrics, dict)
+    assert isinstance(result.config, dict)
+    assert isinstance(result.dataframe, pd.DataFrame)
+    assert result.config == {"a": 1}
+    assert result.metrics["config"] == result.config
+    assert len(result.dataframe) == 2
 
 
 def test_result_grid_no_checkpoint(ray_start_2_cpus):

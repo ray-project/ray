@@ -165,10 +165,16 @@ class ResultGrid:
 
     def _trial_to_result(self, trial: Trial) -> Result:
         checkpoint = trial.checkpoint.to_air_checkpoint()
+        try:
+            best_checkpoint = self._experiment_analysis.best_checkpoint
+        except ValueError:
+            best_checkpoint = None
 
         result = Result(
             checkpoint=checkpoint,
+            best_checkpoint=best_checkpoint,
             metrics=trial.last_result.copy(),
             error=self._populate_exception(trial),
+            dataframe=self._experiment_analysis.trial_dataframes.get(trial.logdir),
         )
         return result
