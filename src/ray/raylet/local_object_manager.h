@@ -174,7 +174,7 @@ class LocalObjectManager {
   ///
   /// \param min_bytes_to_spill The minimum number of bytes to spill.
   /// \param max_bytes_to_spill The maximum number of bytes to spill.
-  /// \return True if it can spill num_bytes_to_spill. False otherwise.
+  /// \return True if it can spill the requested amount. False otherwise.
   bool SpillObjectsOfSize(int64_t min_bytes_to_spill, int64_t max_bytes_to_spill);
 
   /// Internal helper method for spilling objects.

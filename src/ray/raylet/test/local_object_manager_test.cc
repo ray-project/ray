@@ -33,7 +33,7 @@ namespace ray {
 
 namespace raylet {
 
-const uint64_t DEFAULT_MAX_SPILLING_SIZE = 4L * 1024 * 1024 * 1024;
+const uint64_t MAX_SPILLING_SIZE = 4L * 1024 * 1024 * 1024;
 
 using ::testing::_;
 
@@ -324,7 +324,7 @@ class LocalObjectManagerTestWithMinSpillingSize {
             client_pool,
             /*max_io_workers=*/2,
             /*min_spilling_size=*/min_spilling_size,
-            /*min_spilling_size=*/DEFAULT_MAX_SPILLING_SIZE,
+            /*min_spilling_size=*/MAX_SPILLING_SIZE,
             /*is_external_storage_type_fs=*/true,
             /*max_fused_object_count*/ max_fused_object_count_,
             /*on_objects_freed=*/
@@ -605,7 +605,7 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectsOfSizeZero) {
   manager.PinObjectsAndWaitForFree(object_ids, std::move(objects), owner_address);
   // Make sure providing 0 bytes to SpillObjectsOfSize will spill one object.
   // This is important to cover min_spilling_size_== 0.
-  ASSERT_TRUE(manager.SpillObjectsOfSize(0, DEFAULT_MAX_SPILLING_SIZE));
+  ASSERT_TRUE(manager.SpillObjectsOfSize(0, MAX_SPILLING_SIZE));
   ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
   EXPECT_CALL(worker_pool, PushSpillWorker(_));
   const std::string url = BuildURL("url" + std::to_string(object_ids.size()));
@@ -637,7 +637,7 @@ TEST_F(LocalObjectManagerTest, TestSpillUptoMaxFuseCount) {
     objects.push_back(std::move(object));
   }
   manager.PinObjectsAndWaitForFree(object_ids, std::move(objects), owner_address);
-  ASSERT_TRUE(manager.SpillObjectsOfSize(total_size, DEFAULT_MAX_SPILLING_SIZE));
+  ASSERT_TRUE(manager.SpillObjectsOfSize(total_size, MAX_SPILLING_SIZE));
   ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
   for (const auto &id : object_ids) {
     ASSERT_EQ((*unpins)[id], 0);
@@ -680,14 +680,14 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectNotEvictable) {
   objects.push_back(std::move(object));
 
   manager.PinObjectsAndWaitForFree(object_ids, std::move(objects), owner_address);
-  ASSERT_FALSE(manager.SpillObjectsOfSize(1000, DEFAULT_MAX_SPILLING_SIZE));
+  ASSERT_FALSE(manager.SpillObjectsOfSize(1000, MAX_SPILLING_SIZE));
   for (const auto &id : object_ids) {
     ASSERT_EQ((*unpins)[id], 0);
   }
 
   // Now object is evictable. Spill should succeed.
   unevictable_objects_.erase(object_id);
-  ASSERT_TRUE(manager.SpillObjectsOfSize(1000, DEFAULT_MAX_SPILLING_SIZE));
+  ASSERT_TRUE(manager.SpillObjectsOfSize(1000, MAX_SPILLING_SIZE));
   ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
 }
 
