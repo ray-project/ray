@@ -12,7 +12,7 @@ export const useNodeList = () => {
     { key: "hostname" | "ip" | "state"; val: string }[]
   >([]);
   const [page, setPage] = useState({ pageSize: 10, pageNo: 1 });
-  const { sorterFunc, setOrderDesc, setSortKey, sorterKey } = useSorter("cpu");
+  const { sorterFunc, setOrderDesc, setSortKey, sorterKey } = useSorter("");
   const tot = useRef<NodeJS.Timeout>();
   const changeFilter = (key: "hostname" | "ip" | "state", val: string) => {
     const f = filter.find((e) => e.key === key);
