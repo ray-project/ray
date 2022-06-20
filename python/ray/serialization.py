@@ -1,8 +1,8 @@
 import logging
 import threading
 import traceback
-from abc import ABC, abstractmethod
 
+import ray.serialization_new as serialization_new
 import ray.cloudpickle as pickle
 from ray import ray_constants
 import ray._private.utils
@@ -231,16 +231,19 @@ class SerializationContext:
     def _deserialize_object(self, data, metadata, object_ref):
         if metadata:
             metadata_fields = metadata.split(b",")
+
+            # Hock for new serialization infrastructure, will move the original code
+            # to here step by step.
+            if metadata_fields[0] == ray_constants.OBJECT_METADATA_NEW_PROTOCOL:
+                result = RaySerializationResult.from_bytes(data)
+                return serialization_new._deserialize(result)
+
             if metadata_fields[0] in [
                 ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE,
                 ray_constants.OBJECT_METADATA_TYPE_PYTHON,
             ]:
                 return self._deserialize_msgpack_data(data, metadata_fields)
-            # Check if the object should be returned as raw bytes.
-            if metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_RAW:
-                if data is None:
-                    return b""
-                return data.to_pybytes()
+
             elif metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_ACTOR_HANDLE:
                 obj = self._deserialize_msgpack_data(data, metadata_fields)
                 return _actor_handle_deserializer(obj)
@@ -417,64 +420,6 @@ class SerializationContext:
             # If the object is a byte array, skip serializing it and
             # use a special metadata to indicate it's raw binary. So
             # that this object can also be read by Java.
-            return RawSerializedObject(value)
+            return serialization_new._serialize(value)
         else:
             return self._serialize_to_msgpack(value)
-
-
-class RaySerializer(ABC):
-    @abstractmethod
-    def serialize(self, instance) -> RaySerializationResult:
-        pass
-
-    @abstractmethod
-    def deserialize(
-        self, in_band_buffer: bytes, oob_buffers: Map[str, Map[int, memoryview]]
-    ):
-        pass
-
-
-class RaySerializationResult:
-    type_id: str
-    in_band_buffer: bytes
-    # type ID -> buffer ID -> buffer
-    out_of_band_buffers: Optional[Map[str, Map[int, memoryview]]]
-
-
-# python type -> (type ID, serializer)
-_ray_serializer_map: Map[type, Tuple[str, RaySerializer]] = {}
-# type ID -> python type
-_ray_type_id_to_type: Map[str, type] = {}
-
-
-def _register_serializer(type_id: str, class_type: type, serializer: RaySerializer):
-    _ray_serializer_map[class_type] = (serializer_id, serializer)
-    _ray_type_id_to_type[serializer_id] = class_type
-
-
-def _get_serializer(serializer_indicator) -> RaySerializer:
-    try:
-        if type(serializer_indicator) is type:
-            return _ray_serializer_map[serializer_indicator][1]
-        elif type(serializer_indicator) is str:
-            class_type = _ray_type_id_to_type[serializer_indicator]
-            return _ray_serializer_map[class_type][1]
-        else:
-            raise TypeError(
-                f"Can't get serializer by {str(type(str))}, a type or str should be provided!"
-            )
-    except KeyError:
-        logger.exception(f"Can't find a serializer by {serializer_indicator}!")
-
-
-def _serialize(instance) -> RaySerializationResult:
-    class_type = type(instance)
-    return _get_serializer(class_type).serialize(instance)
-
-
-def _deserialize(ray_serialization_result: RaySerializationResult):
-    serializer = _get_serializer(ray_serialization_result.type_id)
-    return serializer.deserialize(
-        ray_serialization_result.in_band_buffer,
-        ray_serialization_result.out_of_band_buffers,
-    )

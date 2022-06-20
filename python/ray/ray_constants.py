@@ -281,6 +281,7 @@ LOG_PREFIX_TASK_NAME = ":task_name:"
 # as an error value. The second part is optional and if present has the
 # form DEBUG:<breakpoint_id>, it is used for implementing the debugger.
 
+OBJECT_METADATA_TYPE_NEW_PROTOCOL = b"NEW_PROTOCOL"
 # A constant used as object metadata to indicate the object is cross language.
 OBJECT_METADATA_TYPE_CROSS_LANGUAGE = b"XLANG"
 # A constant used as object metadata to indicate the object is python specific.
