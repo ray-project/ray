@@ -22,6 +22,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "ray/common/bundle_location_index.h"
 #include "ray/raylet/scheduling/cluster_resource_data.h"
 #include "ray/raylet/scheduling/fixed_point.h"
 #include "ray/raylet/scheduling/local_resource_manager.h"
@@ -33,6 +34,9 @@ namespace raylet {
 class ClusterTaskManagerTest;
 class SchedulingPolicyTest;
 }  // namespace raylet
+namespace gcs {
+class GcsActorSchedulerTest;
+}  // namespace gcs
 
 /// Class manages the resources view of the entire cluster.
 /// This class is not thread safe.
@@ -124,8 +128,11 @@ class ClusterResourceManager {
 
   void DebugString(std::stringstream &buffer) const;
 
+  BundleLocationIndex &GetBundleLocationIndex();
+
  private:
   friend class ClusterResourceScheduler;
+  friend class gcs::GcsActorSchedulerTest;
 
   /// Add a new node or overwrite the resources of an existing node.
   ///
@@ -145,6 +152,8 @@ class ClusterResourceManager {
   /// List of nodes in the clusters and their resources organized as a map.
   /// The key of the map is the node ID.
   absl::flat_hash_map<scheduling::NodeID, Node> nodes_;
+
+  BundleLocationIndex bundle_location_index_;
 
   friend class ClusterResourceSchedulerTest;
   friend struct ClusterResourceManagerTest;
@@ -168,6 +177,7 @@ class ClusterResourceManager {
   FRIEND_TEST(ClusterResourceSchedulerTest, DynamicResourceTest);
   FRIEND_TEST(ClusterTaskManagerTestWithGPUsAtHead, RleaseAndReturnWorkerCpuResources);
   FRIEND_TEST(ClusterResourceSchedulerTest, TestForceSpillback);
+  FRIEND_TEST(ClusterResourceSchedulerTest, AffinityWithBundleScheduleTest);
 
   friend class raylet::SchedulingPolicyTest;
 };

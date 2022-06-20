@@ -1,17 +1,25 @@
-from typing import Any, Union, Generic, Tuple, List, Callable
+from typing import Any, Callable, Generic, List, Tuple, Union
+
+from ray.data._internal import sort
+from ray.data._internal.compute import CallableClass, ComputeStrategy
+from ray.data._internal.plan import AllToAllStage
+from ray.data._internal.shuffle import ShuffleOp, SimpleShufflePlan
+from ray.data.aggregate import AggregateFn, Count, Max, Mean, Min, Std, Sum
+from ray.data.block import (
+    Block,
+    BlockAccessor,
+    BlockExecStats,
+    BlockMetadata,
+    KeyFn,
+    KeyType,
+    T,
+    U,
+)
+from ray.data.dataset import BatchType, Dataset
 from ray.util.annotations import PublicAPI
-from ray.data.dataset import Dataset
-from ray.data.dataset import BatchType
-from ray.data.impl import sort
-from ray.data.aggregate import AggregateFn, Count, Sum, Max, Min, Mean, Std
-from ray.data.block import BlockExecStats, KeyFn
-from ray.data.impl.plan import AllToAllStage
-from ray.data.impl.compute import CallableClass, ComputeStrategy
-from ray.data.impl.shuffle import ShuffleOp
-from ray.data.block import Block, BlockAccessor, BlockMetadata, T, U, KeyType
 
 
-class GroupbyOp(ShuffleOp):
+class _GroupbyOp(ShuffleOp):
     @staticmethod
     def map(
         idx: int,
@@ -35,7 +43,7 @@ class GroupbyOp(ShuffleOp):
         meta = BlockAccessor.for_block(block).get_metadata(
             input_files=None, exec_stats=stats.build()
         )
-        return [meta] + parts
+        return parts + [meta]
 
     @staticmethod
     def reduce(
@@ -45,6 +53,10 @@ class GroupbyOp(ShuffleOp):
         return BlockAccessor.for_block(mapper_outputs[0]).aggregate_combined_blocks(
             list(mapper_outputs), key, aggs
         )
+
+
+class SimpleShuffleGroupbyOp(_GroupbyOp, SimpleShufflePlan):
+    pass
 
 
 @PublicAPI
@@ -118,7 +130,7 @@ class GroupedDataset(Generic[T]):
                     else self._key,
                     num_reducers,
                 )
-            shuffle_op = GroupbyOp(
+            shuffle_op = SimpleShuffleGroupbyOp(
                 map_args=[boundaries, self._key, aggs], reduce_args=[self._key, aggs]
             )
             return shuffle_op.execute(
@@ -304,7 +316,7 @@ class GroupedDataset(Generic[T]):
             ...     for i in range(100)]) \ # doctest: +SKIP
             ...     .groupby(lambda x: x[0] % 3) \ # doctest: +SKIP
             ...     .sum(lambda x: x[2]) # doctest: +SKIP
-            >>> ray.data.range_arrow(100).groupby("value").sum() # doctest: +SKIP
+            >>> ray.data.range_table(100).groupby("value").sum() # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
             ...     for i in range(100)]) \ # doctest: +SKIP
@@ -365,7 +377,7 @@ class GroupedDataset(Generic[T]):
             ...     for i in range(100)]) \ # doctest: +SKIP
             ...     .groupby(lambda x: x[0] % 3) \ # doctest: +SKIP
             ...     .min(lambda x: x[2]) # doctest: +SKIP
-            >>> ray.data.range_arrow(100).groupby("value").min() # doctest: +SKIP
+            >>> ray.data.range_table(100).groupby("value").min() # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
             ...     for i in range(100)]) \ # doctest: +SKIP
@@ -426,7 +438,7 @@ class GroupedDataset(Generic[T]):
             ...     for i in range(100)]) \ # doctest: +SKIP
             ...     .groupby(lambda x: x[0] % 3) \ # doctest: +SKIP
             ...     .max(lambda x: x[2]) # doctest: +SKIP
-            >>> ray.data.range_arrow(100).groupby("value").max() # doctest: +SKIP
+            >>> ray.data.range_table(100).groupby("value").max() # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
             ...     for i in range(100)]) \ # doctest: +SKIP
@@ -487,7 +499,7 @@ class GroupedDataset(Generic[T]):
             ...     for i in range(100)]) \ # doctest: +SKIP
             ...     .groupby(lambda x: x[0] % 3) \ # doctest: +SKIP
             ...     .mean(lambda x: x[2]) # doctest: +SKIP
-            >>> ray.data.range_arrow(100).groupby("value").mean() # doctest: +SKIP
+            >>> ray.data.range_table(100).groupby("value").mean() # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
             ...     for i in range(100)]) \ # doctest: +SKIP
@@ -552,7 +564,7 @@ class GroupedDataset(Generic[T]):
             ...     for i in range(100)]) \ # doctest: +SKIP
             ...     .groupby(lambda x: x[0] % 3) \ # doctest: +SKIP
             ...     .std(lambda x: x[2]) # doctest: +SKIP
-            >>> ray.data.range_arrow(100).groupby("value").std(ddof=0) # doctest: +SKIP
+            >>> ray.data.range_table(100).groupby("value").std(ddof=0) # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
             ...     for i in range(100)]) \ # doctest: +SKIP

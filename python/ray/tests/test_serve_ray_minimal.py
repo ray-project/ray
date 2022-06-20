@@ -5,6 +5,7 @@ it needs not to have dependencies on serve's conftest.py.
 """
 
 import os
+import sys
 
 import pytest
 
@@ -14,11 +15,14 @@ import pytest
     reason="This test is only run in CI with a minimal Ray installation.",
 )
 def test_error_msg():
-    with pytest.raises(ModuleNotFoundError, match="install 'ray\[serve\]'"):
+    with pytest.raises(ModuleNotFoundError, match=r'.*install "ray\[serve\]".*'):
         from ray import serve
 
         serve.start()
 
 
 if __name__ == "__main__":
-    pytest.main(["-v", "-s", __file__])
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

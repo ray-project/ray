@@ -8,8 +8,10 @@ from ray.data.datasource.file_based_datasource import (
     FileBasedDatasource,
     _resolve_kwargs,
 )
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI
 class CSVDatasource(FileBasedDatasource):
     """CSV datasource, for reading and writing CSV files.
 
@@ -48,7 +50,7 @@ class CSVDatasource(FileBasedDatasource):
         f: "pyarrow.NativeFile",
         block: BlockAccessor,
         writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
-        **writer_args
+        **writer_args,
     ):
         from pyarrow import csv
 

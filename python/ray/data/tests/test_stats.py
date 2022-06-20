@@ -1,5 +1,6 @@
-import pytest
 import re
+
+import pytest
 
 import ray
 from ray.data.context import DatasetContext
@@ -13,7 +14,9 @@ def canonicalize(stats: str) -> str:
     s2 = re.sub(" [0]+(\.[0]+)?", " Z", s1)
     # Other numerics.
     s3 = re.sub("[0-9]+(\.[0-9]+)?", "N", s2)
-    return s3
+    # Replace tabs with spaces.
+    s4 = re.sub("\t", "    ", s3)
+    return s4
 
 
 def test_dataset_stats_basic(ray_start_regular_shared):
@@ -30,6 +33,7 @@ def test_dataset_stats_basic(ray_start_regular_shared):
         == """Stage N read->map_batches: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
+* Peak heap memory usage (MiB): N min, N max, N mean
 * Output num rows: N min, N max, N mean, N total
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
@@ -37,6 +41,7 @@ def test_dataset_stats_basic(ray_start_regular_shared):
 Stage N map: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
+* Peak heap memory usage (MiB): N min, N max, N mean
 * Output num rows: N min, N max, N mean, N total
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
@@ -59,33 +64,41 @@ def test_dataset_stats_shuffle(ray_start_regular_shared):
     stats = canonicalize(ds.stats())
     assert (
         stats
-        == """Stage N read->random_shuffle_map: N/N blocks executed in T
-* Remote wall time: T min, T max, T mean, T total
-* Remote cpu time: T min, T max, T mean, T total
-* Output num rows: N min, N max, N mean, N total
-* Output size bytes: N min, N max, N mean, N total
-* Tasks per node: N min, N max, N mean; N nodes used
+        == """Stage N read->random_shuffle: executed in T
 
-Stage N random_shuffle_reduce: N/N blocks executed in T
-* Remote wall time: T min, T max, T mean, T total
-* Remote cpu time: T min, T max, T mean, T total
-* Output num rows: N min, N max, N mean, N total
-* Output size bytes: N min, N max, N mean, N total
-* Tasks per node: N min, N max, N mean; N nodes used
+    Substage Z read->random_shuffle_map: N/N blocks executed
+    * Remote wall time: T min, T max, T mean, T total
+    * Remote cpu time: T min, T max, T mean, T total
+    * Peak heap memory usage (MiB): N min, N max, N mean
+    * Output num rows: N min, N max, N mean, N total
+    * Output size bytes: N min, N max, N mean, N total
+    * Tasks per node: N min, N max, N mean; N nodes used
 
-Stage N repartition_map: N/N blocks executed in T
-* Remote wall time: T min, T max, T mean, T total
-* Remote cpu time: T min, T max, T mean, T total
-* Output num rows: N min, N max, N mean, N total
-* Output size bytes: N min, N max, N mean, N total
-* Tasks per node: N min, N max, N mean; N nodes used
+    Substage N random_shuffle_reduce: N/N blocks executed
+    * Remote wall time: T min, T max, T mean, T total
+    * Remote cpu time: T min, T max, T mean, T total
+    * Peak heap memory usage (MiB): N min, N max, N mean
+    * Output num rows: N min, N max, N mean, N total
+    * Output size bytes: N min, N max, N mean, N total
+    * Tasks per node: N min, N max, N mean; N nodes used
 
-Stage N repartition_reduce: N/N blocks executed in T
-* Remote wall time: T min, T max, T mean, T total
-* Remote cpu time: T min, T max, T mean, T total
-* Output num rows: N min, N max, N mean, N total
-* Output size bytes: N min, N max, N mean, N total
-* Tasks per node: N min, N max, N mean; N nodes used
+Stage N repartition: executed in T
+
+    Substage Z repartition_map: N/N blocks executed
+    * Remote wall time: T min, T max, T mean, T total
+    * Remote cpu time: T min, T max, T mean, T total
+    * Peak heap memory usage (MiB): N min, N max, N mean
+    * Output num rows: N min, N max, N mean, N total
+    * Output size bytes: N min, N max, N mean, N total
+    * Tasks per node: N min, N max, N mean; N nodes used
+
+    Substage N repartition_reduce: N/N blocks executed
+    * Remote wall time: T min, T max, T mean, T total
+    * Remote cpu time: T min, T max, T mean, T total
+    * Peak heap memory usage (MiB): N min, N max, N mean
+    * Output num rows: N min, N max, N mean, N total
+    * Output size bytes: N min, N max, N mean, N total
+    * Tasks per node: N min, N max, N mean; N nodes used
 """
     )
 
@@ -137,11 +150,43 @@ def test_dataset_stats_read_parquet(ray_start_regular_shared, tmp_path):
         == """Stage N read->map: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
+* Peak heap memory usage (MiB): N min, N max, N mean
 * Output num rows: N min, N max, N mean, N total
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
 """
     )
+
+
+def test_dataset_split_stats(ray_start_regular_shared, tmp_path):
+    ds = ray.data.range(100, parallelism=10).map(lambda x: x + 1)
+    dses = ds.split_at_indices([50])
+    dses = [ds.map(lambda x: x + 1) for ds in dses]
+    for ds_ in dses:
+        stats = canonicalize(ds_.stats())
+        assert (
+            stats
+            == """Stage N read->map: N/N blocks executed in T
+* Remote wall time: T min, T max, T mean, T total
+* Remote cpu time: T min, T max, T mean, T total
+* Peak heap memory usage (MiB): N min, N max, N mean
+* Output num rows: N min, N max, N mean, N total
+* Output size bytes: N min, N max, N mean, N total
+* Tasks per node: N min, N max, N mean; N nodes used
+
+Stage N split: N/N blocks split from parent in T
+* Output num rows: N min, N max, N mean, N total
+* Output size bytes: N min, N max, N mean, N total
+
+Stage N map: N/N blocks executed in T
+* Remote wall time: T min, T max, T mean, T total
+* Remote cpu time: T min, T max, T mean, T total
+* Peak heap memory usage (MiB): N min, N max, N mean
+* Output num rows: N min, N max, N mean, N total
+* Output size bytes: N min, N max, N mean, N total
+* Tasks per node: N min, N max, N mean; N nodes used
+"""
+        )
 
 
 def test_dataset_pipeline_stats_basic(ray_start_regular_shared):
@@ -160,6 +205,7 @@ def test_dataset_pipeline_stats_basic(ray_start_regular_shared):
 Stage N read->map_batches: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
+* Peak heap memory usage (MiB): N min, N max, N mean
 * Output num rows: N min, N max, N mean, N total
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
@@ -167,24 +213,29 @@ Stage N read->map_batches: N/N blocks executed in T
 Stage N map: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
-* Output num rows: N min, N max, N mean, N total
-* Output size bytes: N min, N max, N mean, N total
-* Tasks per node: N min, N max, N mean; N nodes used
-
-== Pipeline Window N ==
-Stage N read->map_batches: [execution cached]
-Stage N map: N/N blocks executed in T
-* Remote wall time: T min, T max, T mean, T total
-* Remote cpu time: T min, T max, T mean, T total
+* Peak heap memory usage (MiB): N min, N max, N mean
 * Output num rows: N min, N max, N mean, N total
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
 
 == Pipeline Window N ==
 Stage N read->map_batches: [execution cached]
+
 Stage N map: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
+* Peak heap memory usage (MiB): N min, N max, N mean
+* Output num rows: N min, N max, N mean, N total
+* Output size bytes: N min, N max, N mean, N total
+* Tasks per node: N min, N max, N mean; N nodes used
+
+== Pipeline Window N ==
+Stage N read->map_batches: [execution cached]
+
+Stage N map: N/N blocks executed in T
+* Remote wall time: T min, T max, T mean, T total
+* Remote cpu time: T min, T max, T mean, T total
+* Peak heap memory usage (MiB): N min, N max, N mean
 * Output num rows: N min, N max, N mean, N total
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
@@ -201,6 +252,27 @@ DatasetPipeline iterator time breakdown:
 * Total time: T
 """
     )
+
+
+def test_dataset_pipeline_cache_cases(ray_start_regular_shared):
+    # NOT CACHED (lazy read stage).
+    ds = ray.data.range(10).repeat(2).map_batches(lambda x: x)
+    ds.take(999)
+    stats = ds.stats()
+    assert "[execution cached]" not in stats
+
+    # CACHED (called fully_executed()).
+    ds = ray.data.range(10).fully_executed().repeat(2).map_batches(lambda x: x)
+    ds.take(999)
+    stats = ds.stats()
+    assert "[execution cached]" in stats
+
+    # CACHED (eager map stage).
+    ds = ray.data.range(10).map_batches(lambda x: x).repeat(2)
+    ds.take(999)
+    stats = ds.stats()
+    assert "[execution cached]" in stats
+    assert "read->map_batches" in stats
 
 
 def test_dataset_pipeline_split_stats_basic(ray_start_regular_shared):
@@ -223,6 +295,7 @@ def test_dataset_pipeline_split_stats_basic(ray_start_regular_shared):
 Stage N read: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
+* Peak heap memory usage (MiB): N min, N max, N mean
 * Output num rows: N min, N max, N mean, N total
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
@@ -231,6 +304,7 @@ Stage N read: N/N blocks executed in T
 Stage N read: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
+* Peak heap memory usage (MiB): N min, N max, N mean
 * Output num rows: N min, N max, N mean, N total
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used

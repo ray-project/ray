@@ -13,7 +13,6 @@ from ray.tune.registry import (
     _global_registry,
 )
 from ray.rllib.models.action_dist import ActionDistribution
-from ray.rllib.models.jax.jax_action_dist import JAXCategorical
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.preprocessors import get_preprocessor, Preprocessor
 from ray.rllib.models.tf.tf_action_dist import (
@@ -39,6 +38,7 @@ from ray.rllib.utils.deprecation import (
 )
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.spaces.space_utils import flatten_space
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
@@ -219,13 +219,13 @@ class ModelCatalog:
         """Returns a distribution class and size for the given action space.
 
         Args:
-            action_space (Space): Action space of the target gym env.
+            action_space: Action space of the target gym env.
             config (Optional[dict]): Optional model config.
             dist_type (Optional[Union[str, Type[ActionDistribution]]]):
                 Identifier of the action distribution (str) interpreted as a
                 hint or the actual ActionDistribution class to use.
-            framework (str): One of "tf2", "tf", "tfe", "torch", or "jax".
-            kwargs (dict): Optional kwargs to pass on to the Distribution's
+            framework: One of "tf2", "tf", "tfe", "torch", or "jax".
+            kwargs: Optional kwargs to pass on to the Distribution's
                 constructor.
 
         Returns:
@@ -296,13 +296,14 @@ class ModelCatalog:
                     )
         # Discrete Space -> Categorical.
         elif isinstance(action_space, Discrete):
-            dist_cls = (
-                TorchCategorical
-                if framework == "torch"
-                else JAXCategorical
-                if framework == "jax"
-                else Categorical
-            )
+            if framework == "torch":
+                dist_cls = TorchCategorical
+            elif framework == "jax":
+                from ray.rllib.models.jax.jax_action_dist import JAXCategorical
+
+                dist_cls = JAXCategorical
+            else:
+                dist_cls = Categorical
         # Tuple/Dict Spaces -> MultiAction.
         elif (
             dist_type
@@ -354,8 +355,8 @@ class ModelCatalog:
         """Returns action tensor dtype and shape for the action space.
 
         Args:
-            action_space (Space): Action space of the target gym env.
-            framework (str): The framework identifier. One of "tf" or "torch".
+            action_space: Action space of the target gym env.
+            framework: The framework identifier. One of "tf" or "torch".
 
         Returns:
             (dtype, shape): Dtype and shape of the actions tensor.
@@ -397,12 +398,12 @@ class ModelCatalog:
         """Returns an action placeholder consistent with the action space
 
         Args:
-            action_space (Space): Action space of the target gym env.
-            name (str): An optional string to name the placeholder by.
+            action_space: Action space of the target gym env.
+            name: An optional string to name the placeholder by.
                 Default: "action".
 
         Returns:
-            action_placeholder (Tensor): A placeholder for the actions
+            action_placeholder: A placeholder for the actions
         """
         dtype, shape = ModelCatalog.get_action_shape(action_space, framework="tf")
 
@@ -424,19 +425,19 @@ class ModelCatalog:
         """Returns a suitable model compatible with given spaces and output.
 
         Args:
-            obs_space (Space): Observation space of the target gym env. This
+            obs_space: Observation space of the target gym env. This
                 may have an `original_space` attribute that specifies how to
                 unflatten the tensor into a ragged tensor.
-            action_space (Space): Action space of the target gym env.
-            num_outputs (int): The size of the output vector of the model.
-            model_config (ModelConfigDict): The "model" sub-config dict
+            action_space: Action space of the target gym env.
+            num_outputs: The size of the output vector of the model.
+            model_config: The "model" sub-config dict
                 within the Trainer's config dict.
-            framework (str): One of "tf2", "tf", "tfe", "torch", or "jax".
-            name (str): Name (scope) for the model.
-            model_interface (cls): Interface required for the model
-            default_model (cls): Override the default class for the model. This
+            framework: One of "tf2", "tf", "tfe", "torch", or "jax".
+            name: Name (scope) for the model.
+            model_interface: Interface required for the model
+            default_model: Override the default class for the model. This
                 only has an effect when not using a custom model
-            model_kwargs (dict): args to pass to the ModelV2 constructor
+            model_kwargs: Args to pass to the ModelV2 constructor
 
         Returns:
             model (ModelV2): Model to use for the policy.
@@ -456,6 +457,18 @@ class ModelCatalog:
 
             if isinstance(model_config["custom_model"], type):
                 model_cls = model_config["custom_model"]
+            elif (
+                isinstance(model_config["custom_model"], str)
+                and "." in model_config["custom_model"]
+            ):
+                return from_config(
+                    cls=model_config["custom_model"],
+                    obs_space=obs_space,
+                    action_space=action_space,
+                    num_outputs=num_outputs,
+                    model_config=customized_model_kwargs,
+                    name=name,
+                )
             else:
                 model_cls = _global_registry.get(
                     RLLIB_MODEL, model_config["custom_model"]
@@ -515,7 +528,7 @@ class ModelCatalog:
 
                 def track_var_creation(next_creator, **kw):
                     v = next_creator(**kw)
-                    created.add(v)
+                    created.add(v.ref())
                     return v
 
                 with tf.variable_creator_scope(track_var_creation):
@@ -768,11 +781,11 @@ class ModelCatalog:
         """Returns a suitable preprocessor for the given observation space.
 
         Args:
-            observation_space (Space): The input observation space.
-            options (dict): Options to pass to the preprocessor.
+            observation_space: The input observation space.
+            options: Options to pass to the preprocessor.
 
         Returns:
-            preprocessor (Preprocessor): Preprocessor for the observations.
+            preprocessor: Preprocessor for the observations.
         """
 
         options = options or MODEL_DEFAULTS
@@ -820,8 +833,8 @@ class ModelCatalog:
         {"custom_preprocessor": preprocesor_name} in the model config.
 
         Args:
-            preprocessor_name (str): Name to register the preprocessor under.
-            preprocessor_class (type): Python class of the preprocessor.
+            preprocessor_name: Name to register the preprocessor under.
+            preprocessor_class: Python class of the preprocessor.
         """
         _global_registry.register(
             RLLIB_PREPROCESSOR, preprocessor_name, preprocessor_class
@@ -836,8 +849,8 @@ class ModelCatalog:
         in the model config.
 
         Args:
-            model_name (str): Name to register the model under.
-            model_class (type): Python class of the model.
+            model_name: Name to register the model under.
+            model_class: Python class of the model.
         """
         if tf is not None:
             if issubclass(model_class, tf.keras.Model):
@@ -855,8 +868,8 @@ class ModelCatalog:
         {"custom_action_dist": action_dist_name} in the model config.
 
         Args:
-            model_name (str): Name to register the action distribution under.
-            model_class (type): Python class of the action distribution.
+            model_name: Name to register the action distribution under.
+            model_class: Python class of the action distribution.
         """
         _global_registry.register(
             RLLIB_ACTION_DIST, action_dist_name, action_dist_class

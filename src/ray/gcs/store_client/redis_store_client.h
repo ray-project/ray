@@ -32,7 +32,8 @@ class RedisStoreClient : public StoreClient {
   Status AsyncPut(const std::string &table_name,
                   const std::string &key,
                   const std::string &data,
-                  const StatusCallback &callback) override;
+                  bool overwrite,
+                  std::function<void(bool)> callback) override;
 
   Status AsyncGet(const std::string &table_name,
                   const std::string &key,
@@ -47,13 +48,21 @@ class RedisStoreClient : public StoreClient {
 
   Status AsyncDelete(const std::string &table_name,
                      const std::string &key,
-                     const StatusCallback &callback) override;
+                     std::function<void(bool)> callback) override;
 
   Status AsyncBatchDelete(const std::string &table_name,
                           const std::vector<std::string> &keys,
-                          const StatusCallback &callback) override;
+                          std::function<void(int64_t)> callback) override;
 
   int GetNextJobID() override;
+
+  Status AsyncGetKeys(const std::string &table_name,
+                      const std::string &prefix,
+                      std::function<void(std::vector<std::string>)> callback) override;
+
+  Status AsyncExists(const std::string &table_name,
+                     const std::string &key,
+                     std::function<void(bool)> callback) override;
 
  private:
   /// \class RedisScanner
@@ -100,10 +109,11 @@ class RedisStoreClient : public StoreClient {
 
   Status DoPut(const std::string &key,
                const std::string &data,
-               const StatusCallback &callback);
+               bool overwrite,
+               std::function<void(bool)> callback);
 
   Status DeleteByKeys(const std::vector<std::string> &keys,
-                      const StatusCallback &callback);
+                      std::function<void(int64_t)> callback);
 
   /// The return value is a map, whose key is the shard and the value is a list of batch
   /// operations.
@@ -123,10 +133,13 @@ class RedisStoreClient : public StoreClient {
                                  const std::string &key,
                                  const std::string &index_key);
 
-  static std::string GenRedisMatchPattern(const std::string &table_name);
+  static std::string GenKeyRedisMatchPattern(const std::string &table_name);
 
-  static std::string GenRedisMatchPattern(const std::string &table_name,
-                                          const std::string &index_key);
+  static std::string GenKeyRedisMatchPattern(const std::string &table_name,
+                                             const std::string &key);
+
+  static std::string GenIndexRedisMatchPattern(const std::string &table_name,
+                                               const std::string &index_key);
 
   static std::string GetKeyFromRedisKey(const std::string &redis_key,
                                         const std::string &table_name);

@@ -430,6 +430,34 @@ def test_disconnect_during_large_put():
         assert result.shape == (1024, 1024, 128)
 
 
+def test_disconnect_during_large_schedule():
+    """
+    Disconnect during a remote call with a large (multi-chunk) argument.
+    """
+    i = 0
+    started = False
+
+    def fail_halfway(_):
+        # Inject an error halfway through the object transfer
+        nonlocal i, started
+        if not started:
+            return
+        i += 1
+        if i == 8:
+            raise RuntimeError
+
+    @ray.remote
+    def f(a):
+        return a.shape
+
+    with start_middleman_server(on_data_request=fail_halfway):
+        started = True
+        a = np.random.random((1024, 1024, 128))
+        result = ray.get(f.remote(a))
+        assert i > 8  # Check that the failure was injected
+        assert result == (1024, 1024, 128)
+
+
 def test_valid_actor_state():
     """
     Repeatedly inject errors in the middle of mutating actor calls. Check
@@ -550,4 +578,7 @@ def test_client_reconnect_grace_period():
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

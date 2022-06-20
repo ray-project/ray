@@ -6,8 +6,7 @@ from typing import Dict, Any, List, Optional, Set, Tuple, Union, Callable
 import pickle
 import warnings
 
-from ray.util import log_once
-from ray.util.annotations import PublicAPI, Deprecated
+from ray.util.annotations import PublicAPI
 from ray.tune import trial_runner
 from ray.tune.resources import Resources
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
@@ -583,108 +582,7 @@ _DistributeResourcesDefault = DistributeResources(add_bundles=False)
 _DistributeResourcesDistributedDefault = DistributeResources(add_bundles=True)
 
 
-@Deprecated
-def evenly_distribute_cpus_gpus(
-    trial_runner: "trial_runner.TrialRunner",
-    trial: Trial,
-    result: Dict[str, Any],
-    scheduler: "ResourceChangingScheduler",
-) -> Optional[PlacementGroupFactory]:
-    """This is a basic uniform resource allocating function.
-
-    This function is used by default in ``ResourceChangingScheduler``.
-
-    The function naively balances free resources (CPUs and GPUs) between
-    trials, giving them all equal priority, ensuring that all resources
-    are always being used. All of the resources will be placed in one bundle.
-
-    If for some reason a trial ends up with
-    more resources than there are free ones, it will adjust downwards.
-    It will also ensure that trial as at least as many resources as
-    it started with (``base_trial_resource``).
-
-    This function returns a new ``PlacementGroupFactory`` with updated
-    resource requirements, or None. If the returned
-    ``PlacementGroupFactory`` is equal by value to the one the
-    trial has currently, the scheduler will skip the update process
-    internally (same with None).
-
-    For greater customizability, use ``DistributeResources`` to create
-    this function.
-
-    Args:
-        trial_runner: Trial runner for this Tune run.
-            Can be used to obtain information about other trials.
-        trial: The trial to allocate new resources to.
-        result: The latest results of trial.
-        scheduler: The scheduler calling
-            the function.
-    """
-
-    if log_once("evenly_distribute_cpus_gpus_deprecated"):
-        warnings.warn(
-            "DeprecationWarning: `evenly_distribute_cpus_gpus` "
-            "and `evenly_distribute_cpus_gpus_distributed` are "
-            "being deprecated. Use `DistributeResources()` and "
-            "`DistributeResources(add_bundles=False)` instead "
-            "for equivalent functionality."
-        )
-
-    return _DistributeResourcesDefault(trial_runner, trial, result, scheduler)
-
-
-@Deprecated
-def evenly_distribute_cpus_gpus_distributed(
-    trial_runner: "trial_runner.TrialRunner",
-    trial: Trial,
-    result: Dict[str, Any],
-    scheduler: "ResourceChangingScheduler",
-) -> Optional[PlacementGroupFactory]:
-    """This is a basic uniform resource allocating function.
-
-    The function naively balances free resources (CPUs and GPUs) between
-    trials, giving them all equal priority, ensuring that all resources
-    are always being used. The free resources will be placed in new bundles.
-    This function assumes that all bundles are equal (there is no "head"
-    bundle).
-
-    If for some reason a trial ends up with
-    more resources than there are free ones, it will adjust downwards.
-    It will also ensure that trial as at least as many resources as
-    it started with (``base_trial_resource``).
-
-    This function returns a new ``PlacementGroupFactory`` with updated
-    resource requirements, or None. If the returned
-    ``PlacementGroupFactory`` is equal by value to the one the
-    trial has currently, the scheduler will skip the update process
-    internally (same with None).
-
-    For greater customizability, use ``DistributeResources`` to create
-    this function.
-
-    Args:
-        trial_runner: Trial runner for this Tune run.
-            Can be used to obtain information about other trials.
-        trial: The trial to allocate new resources to.
-        result: The latest results of trial.
-        scheduler: The scheduler calling
-            the function.
-    """
-
-    if log_once("evenly_distribute_cpus_gpus_deprecated"):
-        warnings.warn(
-            "DeprecationWarning: `evenly_distribute_cpus_gpus` "
-            "and `evenly_distribute_cpus_gpus_distributed` are "
-            "being deprecated. Use `DistributeResources()` and "
-            "`DistributeResources(add_bundles=False)` instead "
-            "for equivalent functionality."
-        )
-
-    return _DistributeResourcesDistributedDefault(
-        trial_runner, trial, result, scheduler
-    )
-
-
+@PublicAPI(stability="beta")
 class ResourceChangingScheduler(TrialScheduler):
     """A utility scheduler to dynamically change resources of live trials.
 

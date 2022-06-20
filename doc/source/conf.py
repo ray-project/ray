@@ -1,16 +1,15 @@
 # -*- coding: utf-8 -*-
-import sys
+from pathlib import Path
 import os
+import sys
 
 sys.path.insert(0, os.path.abspath("."))
 from custom_directives import *
 from datetime import datetime
 
+
 # Mocking modules allows Sphinx to work without installing Ray.
 mock_modules()
-
-# Download docs from ecosystem library repos
-download_and_preprocess_ecosystem_docs()
 
 assert (
     "ray" not in sys.modules
@@ -24,6 +23,13 @@ sys.path.insert(0, os.path.abspath("../../python/"))
 import ray
 
 # -- General configuration ------------------------------------------------
+
+# The name of a reST role (builtin or Sphinx extension) to use as the default role, that
+# is, for text marked up `like this`. This can be set to 'py:obj' to make `filter` a
+# cross-reference to the Python function “filter”. The default is None, which doesn’t
+# reassign the default role.
+
+default_role = "py:obj"
 
 extensions = [
     "sphinx_panels",
@@ -70,6 +76,9 @@ jupyter_execute_notebooks = os.getenv("RUN_NOTEBOOKS", "off")
 
 external_toc_exclude_missing = False
 external_toc_path = "_toc.yml"
+
+html_extra_path = ["robots.txt"]
+
 
 # There's a flaky autodoc import for "TensorFlowVariables" that fails depending on the doc structure / order
 # of imports.
@@ -134,7 +143,6 @@ all_toc_libs += [
     "cluster",
     "tune",
     "data",
-    "raysgd",
     "train",
     "rllib",
     "serve",
@@ -260,6 +268,9 @@ texinfo_documents = [
 # Python methods should be presented in source code order
 autodoc_member_order = "bysource"
 
+# Better typehint formatting (see custom.css)
+autodoc_typehints = "signature"
+
 
 # Add a render priority for doctest
 nb_render_priority = {
@@ -296,3 +307,15 @@ def setup(app):
 
     # Custom docstring processor
     app.connect("autodoc-process-docstring", fix_xgb_lgbm_docs)
+
+    base_path = Path(__file__).parent
+    github_docs = DownloadAndPreprocessEcosystemDocs(base_path)
+    # Download docs from ecosystem library repos
+    app.connect("builder-inited", github_docs.write_new_docs)
+    # Restore original file content after build
+    app.connect("build-finished", github_docs.write_original_docs)
+
+    # Hook into the logger used by linkcheck to display a summary at the end.
+    linkcheck_summarizer = LinkcheckSummarizer()
+    app.connect("builder-inited", linkcheck_summarizer.add_handler_to_linkcheck)
+    app.connect("build-finished", linkcheck_summarizer.summarize)

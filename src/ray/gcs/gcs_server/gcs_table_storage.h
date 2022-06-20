@@ -19,6 +19,7 @@
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
+#include "ray/gcs/store_client/observable_store_client.h"
 #include "ray/gcs/store_client/redis_store_client.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -101,6 +102,9 @@ class GcsTable {
 /// specific jobs. This class is not meant to be used directly. All gcs table classes with
 /// job id should derive from this class and override the table_name_ member with a unique
 /// value for that table.
+///
+/// GcsTableWithJobId build index in memory. There is a known race condition
+/// that index could be stale if multiple writer change the same index at the same time.
 template <typename Key, typename Data>
 class GcsTableWithJobId : public GcsTable<Key, Data> {
  public:
@@ -363,7 +367,8 @@ class RedisGcsTableStorage : public GcsTableStorage {
 class InMemoryGcsTableStorage : public GcsTableStorage {
  public:
   explicit InMemoryGcsTableStorage(instrumented_io_context &main_io_service)
-      : GcsTableStorage(std::make_shared<InMemoryStoreClient>(main_io_service)) {}
+      : GcsTableStorage(std::make_shared<ObservableStoreClient>(
+            std::make_unique<InMemoryStoreClient>(main_io_service))) {}
 };
 
 }  // namespace gcs

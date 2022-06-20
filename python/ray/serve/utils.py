@@ -1,30 +1,36 @@
-from functools import wraps
+import copy
 import importlib
 from itertools import groupby
-import json
+import inspect
+import os
 import pickle
 import random
 import string
 import time
-from typing import Iterable, List, Tuple
-import os
 import traceback
 from enum import Enum
-import __main__
-from ray.actor import ActorHandle
+from functools import wraps
+from typing import Dict, Iterable, List, Tuple
 
-import requests
+import fastapi.encoders
 import numpy as np
 import pydantic
-
+import pydantic.json
 import ray
 import ray.serialization_addons
+import requests
+from ray.actor import ActorHandle
 from ray.exceptions import RayTaskError
+from ray.serve.constants import HTTP_PROXY_TIMEOUT
+from ray.serve.http_util import HTTPRequestWrapper, build_starlette_request
 from ray.util.serialization import StandaloneSerializationContext
-from ray.serve.http_util import build_starlette_request, HTTPRequestWrapper
-from ray.serve.constants import (
-    HTTP_PROXY_TIMEOUT,
-)
+
+import __main__
+
+try:
+    import pandas as pd
+except ImportError:
+    pd = None
 
 ACTOR_FAILURE_RETRY_TIMEOUT_S = 60
 
@@ -46,28 +52,54 @@ def parse_request_item(request_item):
     return request_item.args, request_item.kwargs
 
 
-class ServeEncoder(json.JSONEncoder):
-    """Ray.Serve's utility JSON encoder. Adds support for:
-    - bytes
-    - Pydantic types
-    - Exceptions
-    - numpy.ndarray
-    """
+class _ServeCustomEncoders:
+    """Group of custom encoders for common types that's not handled by FastAPI."""
 
-    def default(self, o):  # pylint: disable=E0202
-        if isinstance(o, bytes):
-            return o.decode("utf-8")
-        if isinstance(o, pydantic.BaseModel):
-            return o.dict()
-        if isinstance(o, Exception):
-            return str(o)
-        if isinstance(o, np.ndarray):
-            if o.dtype.kind == "f":  # floats
-                o = o.astype(float)
-            if o.dtype.kind in {"i", "u"}:  # signed and unsigned integers.
-                o = o.astype(int)
-            return o.tolist()
-        return super().default(o)
+    @staticmethod
+    def encode_np_array(obj):
+        assert isinstance(obj, np.ndarray)
+        if obj.dtype.kind == "f":  # floats
+            obj = obj.astype(float)
+        if obj.dtype.kind in {"i", "u"}:  # signed and unsigned integers.
+            obj = obj.astype(int)
+        return obj.tolist()
+
+    @staticmethod
+    def encode_np_scaler(obj):
+        assert isinstance(obj, np.generic)
+        return obj.item()
+
+    @staticmethod
+    def encode_exception(obj):
+        assert isinstance(obj, Exception)
+        return str(obj)
+
+    @staticmethod
+    def encode_pandas_dataframe(obj):
+        assert isinstance(obj, pd.DataFrame)
+        return obj.to_dict(orient="records")
+
+
+serve_encoders = {
+    np.ndarray: _ServeCustomEncoders.encode_np_array,
+    np.generic: _ServeCustomEncoders.encode_np_scaler,
+    Exception: _ServeCustomEncoders.encode_exception,
+}
+
+if pd is not None:
+    serve_encoders[pd.DataFrame] = _ServeCustomEncoders.encode_pandas_dataframe
+
+
+def install_serve_encoders_to_fastapi():
+    """Inject Serve's encoders so FastAPI's jsonable_encoder can pick it up."""
+    # https://stackoverflow.com/questions/62311401/override-default-encoders-for-jsonable-encoder-in-fastapi # noqa
+    pydantic.json.ENCODERS_BY_TYPE.update(serve_encoders)
+    # FastAPI cache these encoders at import time, so we also needs to refresh it.
+    fastapi.encoders.encoders_by_class_tuples = (
+        fastapi.encoders.generate_encoders_by_class_tuples(
+            pydantic.json.ENCODERS_BY_TYPE
+        )
+    )
 
 
 @ray.remote(num_cpus=0)
@@ -294,6 +326,53 @@ def parse_import_path(import_path: str):
     return ".".join(nodes[:-1]), nodes[-1]
 
 
+def override_runtime_envs_except_env_vars(parent_env: Dict, child_env: Dict) -> Dict:
+    """Creates a runtime_env dict by merging a parent and child environment.
+
+    This method is not destructive. It leaves the parent and child envs
+    the same.
+
+    The merge is a shallow update where the child environment inherits the
+    parent environment's settings. If the child environment specifies any
+    env settings, those settings take precdence over the parent.
+        - Note: env_vars are a special case. The child's env_vars are combined
+            with the parent.
+
+    Args:
+        parent_env: The environment to inherit settings from.
+        child_env: The environment with override settings.
+
+    Returns: A new dictionary containing the merged runtime_env settings.
+
+    Raises:
+        TypeError: If a dictionary is not passed in for parent_env or child_env.
+    """
+
+    if not isinstance(parent_env, Dict):
+        raise TypeError(
+            f'Got unexpected type "{type(parent_env)}" for parent_env. '
+            "parent_env must be a dictionary."
+        )
+    if not isinstance(child_env, Dict):
+        raise TypeError(
+            f'Got unexpected type "{type(child_env)}" for child_env. '
+            "child_env must be a dictionary."
+        )
+
+    defaults = copy.deepcopy(parent_env)
+    overrides = copy.deepcopy(child_env)
+
+    default_env_vars = defaults.get("env_vars", {})
+    override_env_vars = overrides.get("env_vars", {})
+
+    defaults.update(overrides)
+    default_env_vars.update(override_env_vars)
+
+    defaults["env_vars"] = default_env_vars
+
+    return defaults
+
+
 class JavaActorHandleProxy:
     """Wraps actor handle and translate snake_case to camelCase."""
 
@@ -325,8 +404,7 @@ def require_packages(packages: List[str]):
     """
 
     def decorator(func):
-        @wraps(func)
-        def wrapped(*args, **kwargs):
+        def check_import_once():
             if not hasattr(func, "_require_packages_checked"):
                 missing_packages = []
                 for package in packages:
@@ -342,7 +420,23 @@ def require_packages(packages: List[str]):
                         "`runtime_env`."
                     )
                 setattr(func, "_require_packages_checked", True)
-            return func(*args, **kwargs)
+
+        if inspect.iscoroutinefunction(func):
+
+            @wraps(func)
+            async def wrapped(*args, **kwargs):
+                check_import_once()
+                return await func(*args, **kwargs)
+
+        elif inspect.isroutine(func):
+
+            @wraps(func)
+            def wrapped(*args, **kwargs):
+                check_import_once()
+                return func(*args, **kwargs)
+
+        else:
+            raise ValueError("Decorator expect callable functions.")
 
         return wrapped
 

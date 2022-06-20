@@ -1,9 +1,10 @@
 from typing import Any, Tuple, Optional
 
+import ray
 from ray import workflow
 
 
-@workflow.step
+@ray.remote
 def flaky_step() -> str:
     import random
 
@@ -13,11 +14,11 @@ def flaky_step() -> str:
     return "ok"
 
 
-@workflow.step
+@ray.remote
 def custom_retry_strategy(func: Any, num_retries: int, delay_s: int) -> str:
     import time
 
-    @workflow.step
+    @ray.remote
     def handle_result(res: Tuple[Optional[str], Optional[Exception]]) -> str:
         result, error = res
         if result:
@@ -27,15 +28,21 @@ def custom_retry_strategy(func: Any, num_retries: int, delay_s: int) -> str:
         else:
             print("Retrying exception after delay", error)
             time.sleep(delay_s)
-            return custom_retry_strategy.step(func, num_retries - 1, delay_s)
+            return workflow.continuation(
+                custom_retry_strategy.bind(func, num_retries - 1, delay_s)
+            )
 
-    res = func.options(catch_exceptions=True).step()
-    return handle_result.step(res)
+    res = func.options(**workflow.options(catch_exceptions=True)).bind()
+    return workflow.continuation(handle_result.bind(res))
 
 
 if __name__ == "__main__":
     workflow.init()
     # Default retry strategy.
-    print(flaky_step.options(max_retries=10).step().run())
+    print(
+        workflow.create(
+            flaky_step.options(**workflow.options(max_retries=10)).bind()
+        ).run()
+    )
     # Custom strategy.
-    print(custom_retry_strategy.step(flaky_step, 10, 1).run())
+    print(workflow.create(custom_retry_strategy.bind(flaky_step, 10, 1)).run())

@@ -280,8 +280,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   ///
   /// \param worker The worker to disconnect. The worker must be registered.
   /// \param disconnect_type Type of a worker exit.
-  /// \return Whether the given worker was in the pool of idle workers.
-  bool DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker,
+  void DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker,
                         rpc::WorkerExitType disconnect_type);
 
   /// Disconnect a registered driver.
@@ -467,17 +466,15 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     std::queue<std::function<void(std::shared_ptr<WorkerInterface>)>> pending_io_tasks;
     /// All I/O workers that have registered and are still connected, including both
     /// idle and executing.
-    std::unordered_set<std::shared_ptr<WorkerInterface>> registered_io_workers;
+    std::unordered_set<std::shared_ptr<WorkerInterface>> started_io_workers;
     /// Number of starting I/O workers.
     int num_starting_io_workers = 0;
   };
 
   /// Some basic information about the worker process.
   struct WorkerProcessInfo {
-    /// The number of workers in the worker process.
-    int num_workers;
-    /// The number of pending registration workers in the worker process.
-    int num_starting_workers;
+    /// Whether this worker is pending registration or is started.
+    bool is_pending_registration = true;
     /// The started workers which is alive.
     std::unordered_set<std::shared_ptr<WorkerInterface>> alive_started_workers;
     /// The type of the worker.
@@ -685,13 +682,16 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env);
 
   void AddWorkerProcess(State &state,
-                        const int workers_to_start,
                         const rpc::WorkerType worker_type,
                         const Process &proc,
                         const std::chrono::high_resolution_clock::time_point &start,
                         const rpc::RuntimeEnvInfo &runtime_env_info);
 
   void RemoveWorkerProcess(State &state, const StartupToken &proc_startup_token);
+
+  /// Increase worker OOM scores to avoid raylet crashes from heap memory
+  /// pressure.
+  void AdjustWorkerOomScore(pid_t pid) const;
 
   /// For Process class for managing subprocesses (e.g. reaping zombies).
   instrumented_io_context *io_service_;

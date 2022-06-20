@@ -1,6 +1,6 @@
 package io.ray.serve;
 
-import io.ray.runtime.exception.RayException;
+import io.ray.api.exception.RayException;
 
 public class RayServeException extends RayException {
 

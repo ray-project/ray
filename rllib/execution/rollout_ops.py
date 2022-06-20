@@ -65,16 +65,16 @@ def synchronous_parallel_sample(
         rollout worker in the given `worker_set`).
 
     Examples:
-        >>> # Define an RLlib trainer.
-        >>> trainer = ... # doctest: +SKIP
+        >>> # Define an RLlib Algorithm.
+        >>> algorithm = ... # doctest: +SKIP
         >>> # 2 remote workers (num_workers=2):
-        >>> batches = synchronous_parallel_sample(trainer.workers) # doctest: +SKIP
+        >>> batches = synchronous_parallel_sample(algorithm.workers) # doctest: +SKIP
         >>> print(len(batches)) # doctest: +SKIP
         2
         >>> print(batches[0]) # doctest: +SKIP
         SampleBatch(16: ['obs', 'actions', 'rewards', 'dones'])
         >>> # 0 remote workers (num_workers=0): Using the local worker.
-        >>> batches = synchronous_parallel_sample(trainer.workers) # doctest: +SKIP
+        >>> batches = synchronous_parallel_sample(algorithm.workers) # doctest: +SKIP
         >>> print(len(batches)) # doctest: +SKIP
         1
     """
@@ -129,15 +129,15 @@ def ParallelRollouts(
     the local worker instance instead.
 
     Args:
-        workers (WorkerSet): set of rollout workers to use.
-        mode (str): One of 'async', 'bulk_sync', 'raw'. In 'async' mode,
+        workers: set of rollout workers to use.
+        mode: One of 'async', 'bulk_sync', 'raw'. In 'async' mode,
             batches are returned as soon as they are computed by rollout
             workers with no order guarantees. In 'bulk_sync' mode, we collect
             one batch from each worker and concatenate them together into a
             large batch to return. In 'raw' mode, the ParallelIterator object
             is returned directly and the caller is responsible for implementing
             gather and updating the timesteps counter.
-        num_async (int): In async mode, the max number of async
+        num_async: In async mode, the max number of async
             requests in flight per actor.
 
     Returns:
@@ -200,7 +200,7 @@ def AsyncGradients(workers: WorkerSet) -> LocalIterator[Tuple[ModelGradients, in
     """Operator to compute gradients in parallel from rollout workers.
 
     Args:
-        workers (WorkerSet): set of rollout workers to use.
+        workers: set of rollout workers to use.
 
     Returns:
         A local iterator over policy gradients computed on rollout workers.
@@ -248,7 +248,7 @@ def AsyncGradients(workers: WorkerSet) -> LocalIterator[Tuple[ModelGradients, in
 class ConcatBatches:
     """Callable used to merge batches into larger batches for training.
 
-    This should be used with the .combine() operator.
+    This should be used with the .combine() operator if using_iterators=True.
 
     Examples:
         >>> from ray.rllib.execution import ParallelRollouts
@@ -259,14 +259,22 @@ class ConcatBatches:
         10000
     """
 
-    def __init__(self, min_batch_size: int, count_steps_by: str = "env_steps"):
+    def __init__(
+        self,
+        min_batch_size: int,
+        count_steps_by: str = "env_steps",
+        using_iterators=True,
+    ):
         self.min_batch_size = min_batch_size
         self.count_steps_by = count_steps_by
         self.buffer = []
         self.count = 0
         self.last_batch_time = time.perf_counter()
+        self.using_iterators = using_iterators
 
     def __call__(self, batch: SampleBatchType) -> List[SampleBatchType]:
+        if not batch:
+            return []
         _check_sample_batch_type(batch)
 
         if self.count_steps_by == "env_steps":
@@ -299,9 +307,10 @@ class ConcatBatches:
             out = SampleBatch.concat_samples(self.buffer)
 
             perf_counter = time.perf_counter()
-            timer = _get_shared_metrics().timers[SAMPLE_TIMER]
-            timer.push(perf_counter - self.last_batch_time)
-            timer.push_units_processed(self.count)
+            if self.using_iterators:
+                timer = _get_shared_metrics().timers[SAMPLE_TIMER]
+                timer.push(perf_counter - self.last_batch_time)
+                timer.push_units_processed(self.count)
 
             self.last_batch_time = perf_counter
             self.buffer = []

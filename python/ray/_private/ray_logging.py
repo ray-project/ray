@@ -24,7 +24,7 @@ def setup_logger(logging_level, logging_format):
         logger.addHandler(_default_handler)
     _default_handler.setFormatter(logging.Formatter(logging_format))
     # Setting this will avoid the message
-    # is propagated to the parent logger.
+    # being propagated to the parent logger.
     logger.propagate = False
 
 
@@ -177,8 +177,9 @@ class StandardFdRedirectionRotatingFileHandler(RotatingFileHandler):
         os.dup2(self.stream.fileno(), self.get_original_stream().fileno())
 
 
-def get_worker_log_file_name(worker_type):
-    job_id = os.environ.get("RAY_JOB_ID")
+def get_worker_log_file_name(worker_type, job_id=None):
+    if job_id is None:
+        job_id = os.environ.get("RAY_JOB_ID")
     if worker_type == "WORKER":
         assert job_id is not None, (
             "RAY_JOB_ID should be set as an env "

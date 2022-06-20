@@ -32,9 +32,6 @@ def _compatibility_script_path(file_name: str) -> str:
 
 
 class TestBackwardsCompatibility:
-    # TODO (architkulkarni): Reenable test after #22368 is merged, and make the
-    # it backwards compatibility script install the commit from #22368.
-    @pytest.mark.skip("#22368 breaks backwards compatibility of the package REST API.")
     def test_cli(self):
         """
         1) Create a new conda environment with ray version X installed

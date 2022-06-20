@@ -4,15 +4,13 @@ from gym.spaces import Box, Discrete
 import numpy as np
 import os
 import random
-import tempfile
 import time
 import unittest
 
 import ray
-from ray.rllib.agents.pg import PGTrainer
-from ray.rllib.agents.a3c import A2CTrainer
+from ray.rllib.algorithms.a2c import A2C
+from ray.rllib.algorithms.pg import PG
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
-from ray.rllib.env.utils import VideoMonitor
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.postprocessing import compute_advantages
@@ -145,7 +143,7 @@ class TestRolloutWorker(unittest.TestCase):
 
     def test_global_vars_update(self):
         for fw in framework_iterator(frameworks=("tf2", "tf")):
-            agent = A2CTrainer(
+            agent = A2C(
                 env="CartPole-v0",
                 config={
                     "num_workers": 1,
@@ -183,12 +181,12 @@ class TestRolloutWorker(unittest.TestCase):
     def test_no_step_on_init(self):
         register_env("fail", lambda _: FailOnStepEnv())
         for fw in framework_iterator():
-            # We expect this to fail already on Trainer init due
+            # We expect this to fail already on Algorithm init due
             # to the env sanity check right after env creation (inside
             # RolloutWorker).
             self.assertRaises(
                 Exception,
-                lambda: PGTrainer(
+                lambda: PG(
                     env="fail",
                     config={
                         "num_workers": 2,
@@ -200,7 +198,7 @@ class TestRolloutWorker(unittest.TestCase):
     def test_callbacks(self):
         for fw in framework_iterator(frameworks=("torch", "tf")):
             counts = Counter()
-            pg = PGTrainer(
+            pg = PG(
                 env="CartPole-v0",
                 config={
                     "num_workers": 0,
@@ -226,7 +224,7 @@ class TestRolloutWorker(unittest.TestCase):
     def test_query_evaluators(self):
         register_env("test", lambda _: gym.make("CartPole-v0"))
         for fw in framework_iterator(frameworks=("torch", "tf")):
-            pg = PGTrainer(
+            pg = PG(
                 env="test",
                 config={
                     "num_workers": 2,
@@ -360,6 +358,53 @@ class TestRolloutWorker(unittest.TestCase):
         self.assertLess(np.min(sample["actions"]), action_space.low[0])
         ev.stop()
 
+    def test_action_immutability(self):
+        from ray.rllib.examples.env.random_env import RandomEnv
+
+        action_space = gym.spaces.Box(0.0001, 0.0002, (5,))
+
+        class ActionMutationEnv(RandomEnv):
+            def init(self, config):
+                self.test_case = config["test_case"]
+                super().__init__(config=config)
+
+            def step(self, action):
+                # Ensure that it is called from inside the sampling process.
+                import inspect
+
+                curframe = inspect.currentframe()
+                called_from_check = any(
+                    frame[3] == "check_gym_environments"
+                    for frame in inspect.getouterframes(curframe, 2)
+                )
+                # Check, whether the action is immutable.
+                if action.flags.writeable and not called_from_check:
+                    self.test_case.assertFalse(
+                        action.flags.writeable, "Action is mutable"
+                    )
+                return super().step(action)
+
+        ev = RolloutWorker(
+            env_creator=lambda _: ActionMutationEnv(
+                config=dict(
+                    test_case=self,
+                    action_space=action_space,
+                    max_episode_len=10,
+                    p_done=0.0,
+                    check_action_bounds=True,
+                )
+            ),
+            policy_spec=RandomPolicy,
+            policy_config=dict(
+                action_space=action_space,
+                ignore_action_bounds=True,
+            ),
+            clip_actions=False,
+            batch_mode="complete_episodes",
+        )
+        ev.sample()
+        ev.stop()
+
     def test_reward_clipping(self):
         # Clipping: True (clip between -1.0 and 1.0).
         ev = RolloutWorker(
@@ -427,7 +472,7 @@ class TestRolloutWorker(unittest.TestCase):
         self.assertEqual(sum(samples["dones"]), 3)
         ev.stop()
 
-        # A gym env's max_episode_steps is smaller than Trainer's horizon.
+        # A gym env's max_episode_steps is smaller than Algorithm's horizon.
         ev = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v0"),
             policy_spec=MockPolicy,
@@ -776,15 +821,12 @@ class TestRolloutWorker(unittest.TestCase):
             policy_config={
                 "in_evaluation": False,
             },
-            record_env=tempfile.gettempdir(),
         )
         # Make sure we can properly sample from the wrapped env.
         ev.sample()
         # Make sure the resulting environment is indeed still an
-        # instance of MultiAgentEnv and VideoMonitor.
         self.assertTrue(isinstance(ev.env.unwrapped, MultiAgentEnv))
         self.assertTrue(isinstance(ev.env, gym.Env))
-        self.assertTrue(isinstance(ev.env, VideoMonitor))
         ev.stop()
 
     def test_no_training(self):

@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /*/latest/
+Allow: /en/latest/   # Fallback for bots that don't understand wildcards
+Allow: /*/master/
+Allow: /en/master/   # Fallback for bots that don't understand wildcards
+Disallow: /

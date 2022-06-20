@@ -982,6 +982,38 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(5 <= config["a"] <= 6)
         self.assertTrue(8 <= config["b"] <= 9)
 
+    def testConvertHyperOptChooseFromListOfList(self):
+        from ray.tune.suggest.hyperopt import HyperOptSearch
+        from hyperopt import hp
+
+        config = {
+            "a": tune.choice([[1, 2], [3, 4]]),
+        }
+        converted_config = HyperOptSearch.convert_search_space(config)
+        hyperopt_config = {
+            "a": hp.choice("a", [[1, 2], [3, 4]]),
+        }
+
+        searcher1 = HyperOptSearch(
+            space=converted_config, random_state_seed=1234, metric="a", mode="max"
+        )
+        searcher2 = HyperOptSearch(
+            space=hyperopt_config, random_state_seed=1234, metric="a", mode="max"
+        )
+
+        config1 = searcher1.suggest("0")
+        config2 = searcher2.suggest("0")
+
+        self.assertEqual(config1, config2)
+
+        # Hyperopt natively converts list to tuple.
+        # Try out the following script:
+        # ```
+        # a = HyperOptSearch.convert_search_space({"a": tune.choice([[1,2], [3,4]])})
+        # print(hyperopt.pyll.stochastic.sample(a))
+        # ```
+        self.assertTrue(config1.get("a") in [(1, 2), (3, 4)])
+
     def testConvertHyperOptNested(self):
         from ray.tune.suggest.hyperopt import HyperOptSearch
 
@@ -1861,6 +1893,21 @@ class SearchSpaceTest(unittest.TestCase):
                 log_warning_mock.call_args[0],
                 ("Pre-set value `2` is not equal to the value of parameter `a`: 1",),
             )
+
+    def testGridSearchGenerator(self):
+        from ray.tune.suggest.basic_variant import BasicVariantGenerator
+
+        searcher = BasicVariantGenerator(constant_grid_search=False)
+        exp = Experiment(
+            run=_mock_objective,
+            name="test",
+            config={"parameter": tune.grid_search(range(10))},
+            num_samples=1,
+        )
+        searcher.add_configurations(exp)
+
+        trials = [searcher.next_trial() for i in range(10)]
+        assert [t.config["parameter"] for t in trials] == list(range(10))
 
     def testConstantGridSearchBasicVariant(self):
         config = {

@@ -78,8 +78,6 @@ class HyperOptSearch(Searcher):
             results. Defaults to None.
         gamma: parameter governing the tree parzen
             estimators suggestion algorithm. Defaults to 0.25.
-        max_concurrent: Deprecated.
-        use_early_stopped_trials: Deprecated.
 
     Tune automatically converts search spaces to HyperOpt's format:
 
@@ -138,8 +136,6 @@ class HyperOptSearch(Searcher):
         n_initial_points: int = 20,
         random_state_seed: Optional[int] = None,
         gamma: float = 0.25,
-        max_concurrent: Optional[int] = None,
-        use_early_stopped_trials: Optional[bool] = None,
     ):
         assert (
             hpo is not None
@@ -149,10 +145,7 @@ class HyperOptSearch(Searcher):
         super(HyperOptSearch, self).__init__(
             metric=metric,
             mode=mode,
-            max_concurrent=max_concurrent,
-            use_early_stopped_trials=use_early_stopped_trials,
         )
-        self.max_concurrent = max_concurrent
         # hyperopt internally minimizes, so "max" => -1
         if mode == "max":
             self.metric_op = -1.0
@@ -479,6 +472,8 @@ class HyperOptSearch(Searcher):
                                 dict(enumerate(category)), prefix=f"{par}/{i}"
                             )
                             if isinstance(category, list)
+                            and len(category) > 0
+                            and isinstance(category[0], Domain)
                             else resolve_value(f"{par}/{i}", category)
                             if isinstance(category, Domain)
                             else category

@@ -3,12 +3,11 @@ from typing import Callable, Generic, Optional, TypeVar, Union, overload, Any
 from types import FunctionType
 
 from ray._raylet import ObjectRef
+from ray.remote_function import RemoteFunction
 from ray.workflow.storage import Storage
-
-from ray.workflow.virtual_actor_class import VirtualActorClass, VirtualActor
 from ray.workflow.common import WorkflowStatus
 
-from ray.experimental.dag import DAGNode
+from ray.dag import DAGNode
 
 T0 = TypeVar("T0")
 T1 = TypeVar("T1")
@@ -87,14 +86,6 @@ def resume(workflow_id: str) -> ObjectRef: ...
 @overload
 def resume(workflow_id: str) -> ObjectRef: ...
 
-class _VirtualActorDecorator:
-    @classmethod
-    def __call__(cls, _cls: type) -> "VirtualActorClass": ...
-    @classmethod
-    def readonly(cls, method: FunctionType) ->  FunctionType: ...
-
-virtual_actor: _VirtualActorDecorator
-
 def get_output(workflow_id: str, name: str) -> ObjectRef: ...
 
 def list_all(status_filter: Optional[Union[WorkflowStatus, Set[WorkflowStatus]]]) -> List[Tuple[str, WorkflowStatus]]: ...
@@ -117,6 +108,8 @@ def cancel(workflow_id: str) -> None: ...
 
 def delete_workflow(worfkflow_id: str) -> None: ...
 
-def get_actor(actor_id: str) -> VirtualActor: ...
-
 def init(storage: Optional[Union[str, Storage]] = None) -> None: ...
+
+def options(**workflow_options: Dict[str, Any]) -> Callable[[RemoteFunction], RemoteFunction]: ...
+
+def _ensure_workflow_initialized() -> None: ...

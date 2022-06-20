@@ -7,7 +7,6 @@ import ray
 from ray.workflow import common
 from ray.workflow.common import WorkflowStaticRef
 from ray.workflow import recovery
-from ray.workflow import storage
 from ray.workflow import workflow_storage
 from ray.util.annotations import PublicAPI
 
@@ -128,19 +127,14 @@ class LatestWorkflowOutput:
 class WorkflowManagementActor:
     """Keep the ownership and manage the workflow output."""
 
-    def __init__(self, store: "storage.Storage"):
-        self._store = store
+    def __init__(self):
         self._workflow_outputs: Dict[str, LatestWorkflowOutput] = {}
         # Cache step output. It is used for step output lookup of
         # "WorkflowRef". The dictionary entry is removed when the status of
         # a step is marked as finished (successful or failed).
         self._step_output_cache: Dict[Tuple[str, str], LatestWorkflowOutput] = {}
-        self._actor_initialized: Dict[str, ray.ObjectRef] = {}
         self._step_status: Dict[str, Dict[str, common.WorkflowStatus]] = {}
-
-    def get_storage_url(self) -> str:
-        """Get hte storage URL."""
-        return self._store.storage_url
+        self._workflow_status: Dict[str, common.WorkflowStatus] = {}
 
     def get_cached_step_output(
         self, workflow_id: str, step_id: "StepID"
@@ -162,11 +156,12 @@ class WorkflowManagementActor:
             return None
 
     def run_or_resume(
-        self, workflow_id: str, ignore_existing: bool = False
+        self, job_id: str, workflow_id: str, ignore_existing: bool = False
     ) -> "WorkflowExecutionResult":
         """Run or resume a workflow.
 
         Args:
+            job_id: The ID of the job that submits the workflow execution.
             workflow_id: The ID of the workflow.
             ignore_existing: Ignore we already have an existing output. When
             set false, raise an exception if there has already been a workflow
@@ -179,7 +174,7 @@ class WorkflowManagementActor:
             raise RuntimeError(
                 f"The output of workflow[id={workflow_id}] already exists."
             )
-        wf_store = workflow_storage.WorkflowStorage(workflow_id, self._store)
+        wf_store = workflow_storage.WorkflowStorage(workflow_id)
         workflow_prerun_metadata = {"start_time": time.time()}
         wf_store.save_workflow_prerun_metadata(workflow_prerun_metadata)
         step_id = wf_store.get_entrypoint_step_id()
@@ -188,20 +183,14 @@ class WorkflowManagementActor:
         except KeyError:
             current_output = None
         result = recovery.resume_workflow_step(
-            workflow_id, step_id, self._store.storage_url, current_output
+            job_id, workflow_id, step_id, current_output
         )
-        latest_output = LatestWorkflowOutput(
-            result.persisted_output, workflow_id, step_id
-        )
+        latest_output = LatestWorkflowOutput(result.output, workflow_id, step_id)
         self._workflow_outputs[workflow_id] = latest_output
-        logger.info(
-            f"run_or_resume: {workflow_id}, {step_id}," f"{result.persisted_output.ref}"
-        )
+        logger.info(f"run_or_resume: {workflow_id}, {step_id}," f"{result.output.ref}")
         self._step_output_cache[(workflow_id, step_id)] = latest_output
 
-        wf_store.save_workflow_meta(
-            common.WorkflowMetaData(common.WorkflowStatus.RUNNING)
-        )
+        self._update_workflow_status(workflow_id, common.WorkflowStatus.RUNNING)
 
         if workflow_id not in self._step_status:
             self._step_status[workflow_id] = {}
@@ -209,12 +198,17 @@ class WorkflowManagementActor:
         return result
 
     def gen_step_id(self, workflow_id: str, step_name: str) -> str:
-        wf_store = workflow_storage.WorkflowStorage(workflow_id, self._store)
+        wf_store = workflow_storage.WorkflowStorage(workflow_id)
         idx = wf_store.gen_step_id(step_name)
         if idx == 0:
             return step_name
         else:
             return f"{step_name}_{idx}"
+
+    def _update_workflow_status(self, workflow_id: str, status: common.WorkflowStatus):
+        wf_store = workflow_storage.WorkflowStorage(workflow_id)
+        wf_store.update_workflow_status(status)
+        self._workflow_status[workflow_id] = status
 
     def update_step_status(
         self,
@@ -238,30 +232,21 @@ class WorkflowManagementActor:
         if status != common.WorkflowStatus.FAILED and remaining != 0:
             return
 
-        wf_store = workflow_storage.WorkflowStorage(workflow_id, self._store)
-
         if status == common.WorkflowStatus.FAILED:
             if workflow_id in self._workflow_outputs:
                 cancel_job(self._workflow_outputs.pop(workflow_id).output)
-            wf_store.save_workflow_meta(
-                common.WorkflowMetaData(common.WorkflowStatus.FAILED)
-            )
+            self._update_workflow_status(workflow_id, common.WorkflowStatus.FAILED)
             self._step_status.pop(workflow_id)
         else:
-            wf_store.save_workflow_meta(
-                common.WorkflowMetaData(common.WorkflowStatus.SUCCESSFUL)
-            )
+            self._update_workflow_status(workflow_id, common.WorkflowStatus.SUCCESSFUL)
             self._step_status.pop(workflow_id)
-        workflow_postrun_metadata = {"end_time": time.time()}
-        wf_store.save_workflow_postrun_metadata(workflow_postrun_metadata)
+        wf_store = workflow_storage.WorkflowStorage(workflow_id)
+        wf_store.save_workflow_postrun_metadata({"end_time": time.time()})
 
     def cancel_workflow(self, workflow_id: str) -> None:
         self._step_status.pop(workflow_id)
         cancel_job(self._workflow_outputs.pop(workflow_id).output)
-        wf_store = workflow_storage.WorkflowStorage(workflow_id, self._store)
-        wf_store.save_workflow_meta(
-            common.WorkflowMetaData(common.WorkflowStatus.CANCELED)
-        )
+        self._update_workflow_status(workflow_id, common.WorkflowStatus.CANCELED)
 
     def is_workflow_running(self, workflow_id: str) -> bool:
         return (
@@ -270,45 +255,6 @@ class WorkflowManagementActor:
 
     def list_running_workflow(self) -> List[str]:
         return list(self._step_status.keys())
-
-    def init_actor(self, actor_id: str, init_marker: List[ray.ObjectRef]) -> None:
-        """Initialize a workflow virtual actor.
-
-        Args:
-            actor_id: The ID of a workflow virtual actor.
-            init_marker: A future object (wrapped in a list) that represents
-                the state of the actor. "ray.get" the object successfully
-                indicates the actor is initialized successfully.
-        """
-        # TODO(suquark): Maybe we should raise an error if the actor_id
-        # already exists?
-        self._actor_initialized[actor_id] = init_marker[0]
-
-    def actor_ready(self, actor_id: str) -> ray.ObjectRef:
-        """Check if a workflow virtual actor is fully initialized.
-
-        Args:
-            actor_id: The ID of a workflow virtual actor.
-
-        Returns:
-            A future object that represents the state of the actor.
-            "ray.get" the object successfully indicates the actor is
-            initialized successfully.
-        """
-        ws = workflow_storage.WorkflowStorage(actor_id, self._store)
-        try:
-            step_id = ws.get_entrypoint_step_id()
-            output_exists = ws.inspect_step(step_id).output_object_valid
-            if output_exists:
-                return ray.put(None)
-        except Exception:
-            pass
-        if actor_id not in self._actor_initialized:
-            raise ValueError(
-                f"Actor '{actor_id}' has not been created, or "
-                "it has failed before initialization."
-            )
-        return self._actor_initialized[actor_id]
 
     def get_output(self, workflow_id: str, name: Optional[str]) -> WorkflowStaticRef:
         """Get the output of a running workflow.
@@ -322,16 +268,16 @@ class WorkflowManagementActor:
         """
         if workflow_id in self._workflow_outputs and name is None:
             return self._workflow_outputs[workflow_id].output
-        wf_store = workflow_storage.WorkflowStorage(workflow_id, self._store)
-        meta = wf_store.load_workflow_meta()
-        if meta is None:
+        wf_store = workflow_storage.WorkflowStorage(workflow_id)
+        status = wf_store.load_workflow_status()
+        if status == common.WorkflowStatus.NONE:
             raise ValueError(f"No such workflow {workflow_id}")
-        if meta == common.WorkflowStatus.CANCELED:
+        if status == common.WorkflowStatus.CANCELED:
             raise ValueError(f"Workflow {workflow_id} is canceled")
         if name is None:
             # For resumable workflow, the workflow result is not ready.
             # It has to be resumed first.
-            if meta == common.WorkflowStatus.RESUMABLE:
+            if status == common.WorkflowStatus.RESUMABLE:
                 raise ValueError(
                     f"Workflow {workflow_id} is in resumable status, "
                     "please resume it"
@@ -390,19 +336,14 @@ class WorkflowManagementActor:
         logger.info(f"Workflow job [id={workflow_id}] succeeded.")
         self._workflow_outputs.pop(workflow_id, None)
 
+    def ready(self) -> None:
+        """A no-op to make sure the actor is ready."""
+
 
 def init_management_actor() -> None:
     """Initialize WorkflowManagementActor"""
-    store = storage.get_global_storage()
     try:
-        workflow_manager = get_management_actor()
-        storage_url = ray.get(workflow_manager.get_storage_url.remote())
-        if storage_url != store.storage_url:
-            raise RuntimeError(
-                "The workflow is using a storage "
-                f"({store.storage_url}) different from the "
-                f"workflow manager({storage_url})."
-            )
+        get_management_actor()
     except ValueError:
         logger.info("Initializing workflow manager...")
         # the actor does not exist
@@ -410,9 +351,9 @@ def init_management_actor() -> None:
             name=common.MANAGEMENT_ACTOR_NAME,
             namespace=common.MANAGEMENT_ACTOR_NAMESPACE,
             lifetime="detached",
-        ).remote(store)
+        ).remote()
         # No-op to ensure the actor is created before the driver exits.
-        ray.get(actor.get_storage_url.remote())
+        ray.get(actor.ready.remote())
 
 
 def get_management_actor() -> "ActorHandle":
@@ -430,17 +371,15 @@ def get_or_create_management_actor() -> "ActorHandle":
     try:
         workflow_manager = get_management_actor()
     except ValueError:
-        store = storage.get_global_storage()
         # the actor does not exist
         logger.warning(
             "Cannot access workflow manager. It could be because "
             "the workflow manager exited unexpectedly. A new "
-            "workflow manager is being created with storage "
-            f"'{store}'."
+            "workflow manager is being created."
         )
         workflow_manager = WorkflowManagementActor.options(
             name=common.MANAGEMENT_ACTOR_NAME,
             namespace=common.MANAGEMENT_ACTOR_NAMESPACE,
             lifetime="detached",
-        ).remote(store)
+        ).remote()
     return workflow_manager

@@ -71,10 +71,6 @@ class GcsPublisher {
                          const rpc::GcsNodeInfo &message,
                          const StatusCallback &done);
 
-  Status PublishNodeResource(const NodeID &id,
-                             const rpc::NodeResourceChange &message,
-                             const StatusCallback &done);
-
   /// Actually rpc::WorkerDeltaData is not a delta message.
   Status PublishWorkerFailure(const WorkerID &id,
                               const rpc::WorkerDeltaData &message,
@@ -124,9 +120,6 @@ class GcsSubscriber {
 
   Status SubscribeAllNodeInfo(const ItemCallback<rpc::GcsNodeInfo> &subscribe,
                               const StatusCallback &done);
-
-  Status SubscribeAllNodeResources(const ItemCallback<rpc::NodeResourceChange> &subscribe,
-                                   const StatusCallback &done);
 
   Status SubscribeAllWorkerFailures(const ItemCallback<rpc::WorkerDeltaData> &subscribe,
                                     const StatusCallback &done);

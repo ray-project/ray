@@ -1,5 +1,4 @@
 export type CoreWorkerStats = {
-  currentTaskFuncDesc: string;
   ipAddress: string;
   port: string;
   actorId: string;

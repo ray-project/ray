@@ -247,7 +247,9 @@ Fault Tolerance
 
 Tune will automatically restart trials in case of trial failures/error (if ``max_failures != 0``), both in the single node and distributed setting.
 
-Tune will restore trials from the latest checkpoint, where available. In the distributed setting, if using the cluster launcher with ``rsync`` enabled, Tune will automatically sync the trial folder with the driver. For example, if a node is lost while a trial (specifically, the corresponding Trainable actor of the trial) is still executing on that node and a checkpoint of the trial exists, Tune will wait until available resources are available to begin executing the trial again.
+Tune will restore trials from the latest checkpoint, where available. In the distributed setting, Tune will automatically sync the trial folder with the driver. For example, if a node is lost while a trial (specifically, the corresponding Trainable actor of the trial) is still executing on that node and a checkpoint of the trial exists, Tune will wait until available resources are available to begin executing the trial again.
+See :ref:`our checkpointing guide <tune-checkpoint-syncing>`.
+
 
 If the trial/actor is placed on a different node, Tune will automatically push the previous checkpoint file to that node and restore the remote trial actor state, allowing the trial to resume from the latest checkpoint even after failure.
 
@@ -261,7 +263,9 @@ Tune automatically persists the progress of your entire experiment (a ``tune.run
 - The default setting of ``resume=False`` creates a new experiment.
 - ``resume="LOCAL"`` and ``resume=True`` restore the experiment from ``local_dir/[experiment_name]``.
 - ``resume="REMOTE"`` syncs the upload dir down to the local dir and then restores the experiment from ``local_dir/experiment_name``.
+- ``resume="ERRORED_ONLY"`` will look for errored trials in ``local_dir/[experiment_name]`` and only run these (and start from scratch).
 - ``resume="PROMPT"`` will cause Tune to prompt you for whether you want to resume. You can always force a new experiment to be created by changing the experiment name.
+- ``resume="AUTO"`` will automatically look for an existing experiment at ``local_dir/[experiment_name]``. If found, it will be continued (as if ``resume=True``), otherwise a new experiment is started.
 
 Note that trials will be restored to their last checkpoint. If trial checkpointing is not enabled, unfinished trials will be restarted from scratch.
 
@@ -270,17 +274,12 @@ E.g.:
 .. code-block:: python
 
     tune.run(
-        my_trainable,
-        checkpoint_freq=10,
+        my_trainable,  # Function trainable that saves checkpoints
         local_dir="~/path/to/results",
         resume=True
     )
 
 Upon a second run, this will restore the entire experiment state from ``~/path/to/results/my_experiment_name``. Importantly, any changes to the experiment specification upon resume will be ignored. For example, if the previous experiment has reached its termination, then resuming it with a new stop criterion will not run. The new experiment will terminate immediately after initialization. If you want to change the configuration, such as training more iterations, you can do so restore the checkpoint by setting ``restore=<path-to-checkpoint>`` - note that this only works for a single trial.
-
-.. warning::
-
-    This feature is still experimental, so any provided Trial Scheduler or Search Algorithm will not be checkpointed and able to resume. Only ``FIFOScheduler`` and ``BasicVariantGenerator`` will be supported.
 
 .. _tune-distributed-common:
 

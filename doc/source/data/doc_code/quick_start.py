@@ -1,8 +1,7 @@
 # flake8: noqa
+
 # fmt: off
-
-# __data_setup_begin__
-
+# __create_from_python_begin__
 import ray
 
 # Create a Dataset of Python objects.
@@ -12,53 +11,146 @@ ds = ray.data.range(10000)
 ds.take(5)
 # -> [0, 1, 2, 3, 4]
 
-ds.count()
-# -> 10000
+ds.schema()
+# <class 'int'>
 
-# Create a Dataset of Arrow records.
-ds = ray.data.from_items([{"col1": i, "col2": str(i)} for i in range(10000)])
-# -> Dataset(num_blocks=200, num_rows=10000, schema={col1: int64, col2: string})
+# Create a Dataset from Python objects, which are held as Arrow records.
+ds = ray.data.from_items([
+        {"sepal.length": 5.1, "sepal.width": 3.5,
+         "petal.length": 1.4, "petal.width": 0.2, "variety": "Setosa"},
+        {"sepal.length": 4.9, "sepal.width": 3.0,
+         "petal.length": 1.4, "petal.width": 0.2, "variety": "Setosa"},
+        {"sepal.length": 4.7, "sepal.width": 3.2,
+         "petal.length": 1.3, "petal.width": 0.2, "variety": "Setosa"},
+     ])
+# Dataset(num_blocks=3, num_rows=3,
+#         schema={sepal.length: float64, sepal.width: float64,
+#                 petal.length: float64, petal.width: float64, variety: object})
 
-ds.show(5)
-# -> {'col1': 0, 'col2': '0'}
-# -> {'col1': 1, 'col2': '1'}
-# -> {'col1': 2, 'col2': '2'}
-# -> {'col1': 3, 'col2': '3'}
-# -> {'col1': 4, 'col2': '4'}
+ds.show()
+# -> {'sepal.length': 5.1, 'sepal.width': 3.5,
+#     'petal.length': 1.4, 'petal.width': 0.2, 'variety': 'Setosa'}
+# -> {'sepal.length': 4.9, 'sepal.width': 3.0,
+#     'petal.length': 1.4, 'petal.width': 0.2, 'variety': 'Setosa'}
+# -> {'sepal.length': 4.7, 'sepal.width': 3.2,
+#     'petal.length': 1.3, 'petal.width': 0.2, 'variety': 'Setosa'}
 
 ds.schema()
-# -> col1: int64
-# -> col2: string
+# -> sepal.length: double
+# -> sepal.width: double
+# -> petal.length: double
+# -> petal.width: double
+# -> variety: string
+# __create_from_python_end__
+# fmt: on 
 
-# __data_setup_end__
+# fmt: off
+# __create_from_files_begin__
+# Create from CSV.
+# Tip: "example://" is a convenient protocol to access the
+# python/ray/data/examples/data directory.
+ds = ray.data.read_csv("example://iris.csv")
+# Dataset(num_blocks=1, num_rows=150,
+#         schema={sepal.length: float64, sepal.width: float64,
+#                 petal.length: float64, petal.width: float64, variety: object})
 
-# __data_load_begin__
-import pandas as pd
-import dask.dataframe as dd
+# Create from Parquet.
+ds = ray.data.read_parquet("example://iris.parquet")
+# Dataset(num_blocks=1, num_rows=150,
+#         schema={sepal.length: float64, sepal.width: float64,
+#                 petal.length: float64, petal.width: float64, variety: object})
 
-# Create a Dataset from a list of Pandas DataFrame objects.
-pdf = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-ds = ray.data.from_pandas([pdf])
+# __create_from_files_end__
+# fmt: on
 
-# Create a Dataset from a Dask-on-Ray DataFrame.
-dask_df = dd.from_pandas(pdf, npartitions=10)
-ds = ray.data.from_dask(dask_df)
-# __data_load_end__
+# fmt: off
+# __save_dataset_begin__
+# Write to Parquet files in /tmp/iris.
+ds.write_parquet("/tmp/iris")
+# -> /tmp/iris/data_000000.parquet
 
+# Use repartition to control the number of output files:
+ds.repartition(2).write_parquet("/tmp/iris2")
+# -> /tmp/iris2/data_000000.parquet
+# -> /tmp/iris2/data_000001.parquet
+# __save_dataset_end__
+# fmt: on
 
+# fmt: off
 # __data_transform_begin__
-ds = ray.data.range(10000)
-ds = ds.map(lambda x: x * 2)
-# -> Map Progress: 100%|████████████████████| 200/200 [00:00<00:00, 1123.54it/s]
-# -> Dataset(num_blocks=200, num_rows=10000, schema=<class 'int'>)
-ds.take(5)
-# -> [0, 2, 4, 6, 8]
+import pandas
 
-ds.filter(lambda x: x > 5).take(5)
-# -> Map Progress: 100%|████████████████████| 200/200 [00:00<00:00, 1859.63it/s]
-# -> [6, 8, 10, 12, 14]
+# Create 10 blocks for parallelism.
+ds = ds.repartition(10)
+# Dataset(num_blocks=10, num_rows=150,
+#         schema={sepal.length: float64, sepal.width: float64,
+#                 petal.length: float64, petal.width: float64, variety: object})
 
-ds.flat_map(lambda x: [x, -x]).take(5)
-# -> Map Progress: 100%|████████████████████| 200/200 [00:00<00:00, 1568.10it/s]
-# -> [0, 0, 2, -2, 4]
+# Find rows with sepal.length < 5.5 and petal.length > 3.5.
+def transform_batch(df: pandas.DataFrame) -> pandas.DataFrame:
+    return df[(df["sepal.length"] < 5.5) & (df["petal.length"] > 3.5)]
+
+transformed_ds = ds.map_batches(transform_batch)
+# Dataset(num_blocks=10, num_rows=3,
+#         schema={sepal.length: float64, sepal.width: float64,
+#                 petal.length: float64, petal.width: float64, variety: object})
+
+transformed_ds.show()
+# -> {'sepal.length': 5.2, 'sepal.width': 2.7,
+#     'petal.length': 3.9, 'petal.width': 1.4, 'variety': 'Versicolor'}
+# -> {'sepal.length': 5.4, 'sepal.width': 3.0,
+#     'petal.length': 4.5, 'petal.width': 1.5, 'variety': 'Versicolor'}
+# -> {'sepal.length': 4.9, 'sepal.width': 2.5,
+#     'petal.length': 4.5, 'petal.width': 1.7, 'variety': 'Virginica'}
 # __data_transform_end__
+# fmt: on
+
+# fmt: off
+# __data_access_begin__
+@ray.remote
+def consume(data) -> int:
+    num_batches = 0
+    for batch in data.iter_batches():
+        num_batches += 1
+    return num_batches
+
+ray.get(consume.remote(ds))
+# -> 10
+# __data_access_end__
+# fmt: on
+
+# fmt: off
+# __dataset_split_begin__
+@ray.remote
+class Worker:
+    def __init__(self, rank: int):
+        pass
+
+    def train(self, shard) -> int:
+        for batch in shard.iter_batches(batch_size=256):
+            pass
+        return shard.count()
+
+workers = [Worker.remote(i) for i in range(4)]
+# -> [Actor(Worker, ...), Actor(Worker, ...), ...]
+
+shards = ds.split(n=4, locality_hints=workers)
+# -> [
+#       Dataset(num_blocks=3, num_rows=45,
+#               schema={sepal.length: double, sepal.width: double,
+#                       petal.length: double, petal.width: double, variety: string}),
+#       Dataset(num_blocks=3, num_rows=45,
+#               schema={sepal.length: double, sepal.width: double,
+#                       petal.length: double, petal.width: double, variety: string}),
+#       Dataset(num_blocks=2, num_rows=30,
+#               schema={sepal.length: double, sepal.width: double,
+#                       petal.length: double, petal.width: double, variety: string}),
+#       Dataset(num_blocks=2, num_rows=30,
+#               schema={sepal.length: double, sepal.width: double,
+#                       petal.length: double, petal.width: double, variety: string}),
+#    ]
+
+ray.get([w.train.remote(s) for w, s in zip(workers, shards)])
+# -> [45, 45, 30, 30]
+# __dataset_split_end__
+# fmt: on

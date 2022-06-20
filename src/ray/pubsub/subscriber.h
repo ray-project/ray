@@ -231,6 +231,7 @@ class SubscriberInterface {
   /// information is received by the subscriber.
   /// \param subscription_failure_callback A callback that is invoked whenever the
   /// connection to publisher is broken (e.g. the publisher fails).
+  /// \return True if inserted, false if the key already exists and this becomes a no-op.
   [[nodiscard]] virtual bool Subscribe(
       std::unique_ptr<rpc::SubMessage> sub_message,
       rpc::ChannelType channel_type,
@@ -249,6 +250,8 @@ class SubscriberInterface {
   /// information is received by the subscriber.
   /// \param subscription_failure_callback A callback that is invoked whenever the
   /// connection to publisher is broken (e.g. the publisher fails).
+  /// \return True if inserted, false if the channel is already subscribed and this
+  /// becomes a no-op.
   [[nodiscard]] virtual bool SubscribeChannel(
       std::unique_ptr<rpc::SubMessage> sub_message,
       rpc::ChannelType channel_type,

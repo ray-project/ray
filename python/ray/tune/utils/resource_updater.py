@@ -17,7 +17,7 @@ def _to_gb(n_bytes):
     return round(n_bytes / (1024 ** 3), 2)
 
 
-class ResourceUpdater:
+class _ResourceUpdater:
     """Periodic Resource updater for Tune.
 
     Initially, all resources are set to 0. The updater will try to update resources
@@ -130,4 +130,4 @@ class ResourceUpdater:
         # Do not need to serialize resources, because we can always
         # update it again. This also prevents keeping outdated resources
         # when deserialized.
-        return ResourceUpdater, (self._refresh_period,)
+        return _ResourceUpdater, (self._refresh_period,)

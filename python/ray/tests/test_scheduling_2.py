@@ -255,7 +255,10 @@ def test_placement_group_scheduling_strategy(ray_start_cluster, connect_to_clien
 
 
 @pytest.mark.parametrize("connect_to_client", [True, False])
-def test_node_affinity_scheduling_strategy(ray_start_cluster, connect_to_client):
+def test_node_affinity_scheduling_strategy(
+    monkeypatch, ray_start_cluster, connect_to_client
+):
+    monkeypatch.setenv("RAY_num_heartbeats_timeout", "4")
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=8, resources={"head": 1})
     ray.init(address=cluster.address)
@@ -377,6 +380,22 @@ def test_node_affinity_scheduling_strategy(ray_start_cluster, connect_to_client)
         ).remote()
         assert head_node_id == ray.get(actor.get_node_id.remote())
 
+        actor = Actor.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(
+                worker_node_id, soft=False
+            ),
+            num_cpus=0,
+        ).remote()
+        assert worker_node_id == ray.get(actor.get_node_id.remote())
+
+        actor = Actor.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(
+                head_node_id, soft=False
+            ),
+            num_cpus=0,
+        ).remote()
+        assert head_node_id == ray.get(actor.get_node_id.remote())
+
         # Wait until the target node becomes available.
         worker_actor = Actor.options(resources={"worker": 1}).remote()
         assert worker_node_id == ray.get(worker_actor.get_node_id.remote())
@@ -443,7 +462,7 @@ def test_spread_scheduling_strategy(ray_start_cluster, connect_to_client):
 
         @ray.remote
         def get_node_id():
-            return ray.worker.global_worker.current_node_id
+            return ray.get_runtime_context().node_id.hex()
 
         worker_node_ids = {
             ray.get(get_node_id.options(resources={f"foo:{i}": 1}).remote())
@@ -457,12 +476,12 @@ def test_spread_scheduling_strategy(ray_start_cluster, connect_to_client):
             internal_kv._internal_kv_put("test_task1", "task1")
             while internal_kv._internal_kv_exists("test_task1"):
                 time.sleep(0.1)
-            return ray.worker.global_worker.current_node_id
+            return ray.get_runtime_context().node_id.hex()
 
         @ray.remote
         def task2():
             internal_kv._internal_kv_put("test_task2", "task2")
-            return ray.worker.global_worker.current_node_id
+            return ray.get_runtime_context().node_id.hex()
 
         locations = []
         locations.append(task1.remote())
@@ -476,6 +495,104 @@ def test_spread_scheduling_strategy(ray_start_cluster, connect_to_client):
         internal_kv._internal_kv_del("test_task1")
         internal_kv._internal_kv_del("test_task2")
         assert set(ray.get(locations)) == worker_node_ids
+
+        # Wait for updating driver raylet's resource view.
+        time.sleep(5)
+
+        # Make sure actors can be spreaded as well.
+        @ray.remote(num_cpus=1)
+        class Actor:
+            def ping(self):
+                return ray.get_runtime_context().node_id.hex()
+
+        actors = []
+        locations = []
+        for i in range(8):
+            actors.append(Actor.options(scheduling_strategy="SPREAD").remote())
+            locations.append(ray.get(actors[-1].ping.remote()))
+        locations.sort()
+        expected_locations = list(worker_node_ids) * 4
+        expected_locations.sort()
+        assert locations == expected_locations
+
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="FakeAutoscaler doesn't work on Windows"
+)
+def test_demand_report_for_node_affinity_scheduling_strategy(
+    monkeypatch, shutdown_only
+):
+    monkeypatch.setenv("RAY_num_heartbeats_timeout", "4")
+    from ray.cluster_utils import AutoscalingCluster
+
+    cluster = AutoscalingCluster(
+        head_resources={"CPU": 0},
+        worker_node_types={
+            "cpu_node": {
+                "resources": {
+                    "CPU": 1,
+                    "object_store_memory": 1024 * 1024 * 1024,
+                },
+                "node_config": {},
+                "min_workers": 1,
+                "max_workers": 1,
+            },
+        },
+    )
+
+    cluster.start()
+    info = ray.init(address="auto")
+
+    @ray.remote(num_cpus=1)
+    def f(sleep_s):
+        time.sleep(sleep_s)
+        return ray.get_runtime_context().node_id
+
+    worker_node_id = ray.get(f.remote(0))
+
+    tasks = []
+    tasks.append(f.remote(10000))
+    # This is not reported since there is feasible node.
+    tasks.append(
+        f.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(
+                worker_node_id, soft=False
+            )
+        ).remote(0)
+    )
+    # This is reported since there is no feasible node and soft is True.
+    tasks.append(
+        f.options(
+            num_gpus=1,
+            scheduling_strategy=NodeAffinitySchedulingStrategy(
+                ray.NodeID.from_random().hex(), soft=True
+            ),
+        ).remote(0)
+    )
+
+    global_state_accessor = make_global_state_accessor(info)
+
+    def check_resource_demand():
+        message = global_state_accessor.get_all_resource_usage()
+        if message is None:
+            return False
+
+        resource_usage = gcs_utils.ResourceUsageBatchData.FromString(message)
+        aggregate_resource_load = resource_usage.resource_load_by_shape.resource_demands
+
+        if len(aggregate_resource_load) != 1:
+            return False
+
+        if aggregate_resource_load[0].num_infeasible_requests_queued != 1:
+            return False
+
+        if aggregate_resource_load[0].shape != {"CPU": 1.0, "GPU": 1.0}:
+            return False
+
+        return True
+
+    wait_for_condition(check_resource_demand, 20)
+    cluster.shutdown()
 
 
 @pytest.mark.skipif(
@@ -552,7 +669,54 @@ def test_demand_report_when_scale_up(shutdown_only):
     cluster.shutdown()
 
 
+def test_data_locality_spilled_objects(
+    ray_start_cluster_enabled, fs_only_object_spilling_config
+):
+    cluster = ray_start_cluster_enabled
+    object_spilling_config, _ = fs_only_object_spilling_config
+    cluster.add_node(
+        num_cpus=1,
+        object_store_memory=100 * 1024 * 1024,
+        _system_config={
+            "min_spilling_size": 1,
+            "object_spilling_config": object_spilling_config,
+        },
+    )
+    ray.init(cluster.address)
+    cluster.add_node(
+        num_cpus=1, object_store_memory=100 * 1024 * 1024, resources={"remote": 1}
+    )
+
+    @ray.remote(resources={"remote": 1})
+    def f():
+        return (
+            np.zeros(50 * 1024 * 1024, dtype=np.uint8),
+            ray.runtime_context.get_runtime_context().node_id,
+        )
+
+    @ray.remote
+    def check_locality(x):
+        _, node_id = x
+        assert node_id == ray.runtime_context.get_runtime_context().node_id
+
+    # Check locality works when dependent task is already submitted by the time
+    # the upstream task finishes.
+    for _ in range(5):
+        ray.get(check_locality.remote(f.remote()))
+
+    # Check locality works when some objects were spilled.
+    xs = [f.remote() for _ in range(5)]
+    ray.wait(xs, num_returns=len(xs), fetch_local=False)
+    for i, x in enumerate(xs):
+        task = check_locality.remote(x)
+        print(i, x, task)
+        ray.get(task)
+
+
 if __name__ == "__main__":
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

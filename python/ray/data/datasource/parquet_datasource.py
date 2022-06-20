@@ -1,29 +1,29 @@
 import logging
 import itertools
-from typing import Any, Callable, Dict, Optional, List, Union, Iterator, TYPE_CHECKING
+from typing import Callable, Optional, List, Union, Iterator, TYPE_CHECKING
 
 import numpy as np
-from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     import pyarrow
 
 import ray
 from ray.types import ObjectRef
-from ray.data.block import Block, BlockAccessor
+from ray.data.block import Block
 from ray.data.context import DatasetContext
 from ray.data.datasource.datasource import ReadTask
-from ray.data.datasource.file_based_datasource import (
-    FileBasedDatasource,
-    _resolve_paths_and_filesystem,
-    _resolve_kwargs,
+from ray.data.datasource.file_based_datasource import _resolve_paths_and_filesystem
+from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
+from ray.data.datasource.file_meta_provider import (
+    ParquetMetadataProvider,
+    DefaultParquetMetadataProvider,
 )
-from ray.data.datasource.file_meta_provider import FileMetadataProvider
-from ray.data.impl.block_list import BlockMetadata
-from ray.data.impl.output_buffer import BlockOutputBuffer
-from ray.data.impl.progress_bar import ProgressBar
-from ray.data.impl.remote_fn import cached_remote_fn
-from ray.data.impl.util import _check_pyarrow_version
+from ray.data._internal.output_buffer import BlockOutputBuffer
+from ray.data._internal.progress_bar import ProgressBar
+from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data._internal.util import _check_pyarrow_version
+from ray.util.annotations import PublicAPI
+
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +33,7 @@ PARALLELIZE_META_FETCH_THRESHOLD = 24
 # The number of rows to read per batch. This is sized to generate 10MiB batches
 # for rows about 1KiB in size.
 PARQUET_READER_ROW_BATCH_SIZE = 100000
+FILE_READING_RETRY = 8
 
 
 def _register_parquet_file_fragment_serialization():
@@ -56,113 +57,77 @@ def _deregister_parquet_file_fragment_serialization():
     ray.util.deregister_serializer(ParquetFileFragment)
 
 
-@DeveloperAPI
-class ParquetMetadataProvider(FileMetadataProvider):
-    """Abstract callable that provides metadata for Arrow Parquet file fragments.
+# This is the bare bone deserializing function with no retry
+# easier to mock its behavior for testing when isolated from retry logic
+def _deserialize_pieces(
+    serialized_pieces: str,
+) -> List["pyarrow._dataset.ParquetFileFragment"]:
+    from ray import cloudpickle
 
-    Supports optional pre-fetching of ordered metadata for all file fragments in
-    a single batch to help optimize metadata resolution.
-
-    Current subclasses:
-        DefaultParquetMetadataProvider
-    """
-
-    def _get_block_metadata(
-        self,
-        paths: List[str],
-        schema: Optional[Union[type, "pyarrow.lib.Schema"]],
-        *,
-        pieces: List["pyarrow.dataset.ParquetFileFragment"],
-        prefetched_metadata: Optional[List[Any]],
-    ) -> BlockMetadata:
-        """Resolves and returns block metadata for the given file paths.
-
-        Args:
-            paths: The file paths to aggregate block metadata across.
-            schema: The user-provided or inferred schema for the given file
-                paths, if any.
-            pieces: The Parquet file fragments derived from the input file paths.
-            prefetched_metadata: Metadata previously returned from
-                `prefetch_file_metadata()` for each file fragment, where
-                `prefetched_metadata[i]` contains the metadata for `pieces[i]`.
-
-        Returns:
-            BlockMetadata aggregated across the given file paths.
-        """
-        raise NotImplementedError
-
-    def prefetch_file_metadata(
-        self,
-        pieces: List["pyarrow.dataset.ParquetFileFragment"],
-    ) -> Optional[List[Any]]:
-        """Pre-fetches file metadata for all Parquet file fragments in a single batch.
-
-        Subsets of the metadata returned will be provided as input to
-        subsequent calls to _get_block_metadata() together with their
-        corresponding Parquet file fragments.
-
-        Implementations that don't support pre-fetching file metadata shouldn't
-        override this method.
-
-        Args:
-            pieces: The Parquet file fragments to fetch metadata for.
-
-        Returns:
-            Metadata resolved for each input file fragment, or `None`. Metadata
-            must be returned in the same order as all input file fragments, such
-            that `metadata[i]` always contains the metadata for `pieces[i]`.
-        """
-        return None
+    pieces: List["pyarrow._dataset.ParquetFileFragment"] = cloudpickle.loads(
+        serialized_pieces
+    )
+    return pieces
 
 
-class DefaultParquetMetadataProvider(ParquetMetadataProvider):
-    """The default file metadata provider for ParquetDatasource.
+# This retry helps when the upstream datasource is not able to handle
+# overloaded read request or failed with some retriable failures.
+# For example when reading data from HA hdfs service, hdfs might
+# lose connection for some unknown reason expecially when
+# simutaneously running many hyper parameter tuning jobs
+# with ray.data parallelism setting at high value like the default 200
+# Such connection failure can be restored with some waiting and retry.
+def _deserialize_pieces_with_retry(
+    serialized_pieces: str,
+) -> List["pyarrow._dataset.ParquetFileFragment"]:
+    min_interval = 0
+    final_exception = None
+    for i in range(FILE_READING_RETRY):
+        try:
+            return _deserialize_pieces(serialized_pieces)
+        except Exception as e:
+            import time
+            import random
 
-    Aggregates total block bytes and number of rows using the Parquet file metadata
-    associated with a list of Arrow Parquet dataset file fragments.
-    """
-
-    def _get_block_metadata(
-        self,
-        paths: List[str],
-        schema: Optional[Union[type, "pyarrow.lib.Schema"]],
-        *,
-        pieces: List["pyarrow.dataset.ParquetFileFragment"],
-        prefetched_metadata: Optional[List["pyarrow.parquet.FileMetaData"]],
-    ) -> BlockMetadata:
-        if prefetched_metadata is not None and len(prefetched_metadata) == len(pieces):
-            # Piece metadata was available, construct a normal
-            # BlockMetadata.
-            block_metadata = BlockMetadata(
-                num_rows=sum(m.num_rows for m in prefetched_metadata),
-                size_bytes=sum(
-                    sum(m.row_group(i).total_byte_size for i in range(m.num_row_groups))
-                    for m in prefetched_metadata
-                ),
-                schema=schema,
-                input_files=paths,
-                exec_stats=None,
-            )  # Exec stats filled in later.
-        else:
-            # Piece metadata was not available, construct an empty
-            # BlockMetadata.
-            block_metadata = BlockMetadata(
-                num_rows=None, size_bytes=None, schema=schema, input_files=paths
+            retry_timing = (
+                ""
+                if i == FILE_READING_RETRY - 1
+                else (f"Retry after {min_interval} sec. ")
             )
-        return block_metadata
+            log_only_show_in_1st_retry = (
+                ""
+                if i
+                else (
+                    f"If earlier read attempt threw certain Exception"
+                    f", it may or may not be an issue depends on these retries "
+                    f"succeed or not. serialized_pieces:{serialized_pieces}"
+                )
+            )
+            logger.exception(
+                f"{i + 1}th attempt to deserialize ParquetFileFragment failed. "
+                f"{retry_timing}"
+                f"{log_only_show_in_1st_retry}"
+            )
+            if not min_interval:
+                # to make retries of different process hit hdfs server
+                # at slightly different time
+                min_interval = 1 + random.random()
+            # exponential backoff at
+            # 1, 2, 4, 8, 16, 32, 64
+            time.sleep(min_interval)
+            min_interval = min_interval * 2
+            final_exception = e
+    raise final_exception
 
-    def prefetch_file_metadata(
-        self,
-        pieces: List["pyarrow.dataset.ParquetFileFragment"],
-    ) -> Optional[List["pyarrow.parquet.FileMetaData"]]:
-        if len(pieces) > PARALLELIZE_META_FETCH_THRESHOLD:
-            return _fetch_metadata_remotely(pieces)
-        else:
-            return _fetch_metadata(pieces)
 
-
-class ParquetDatasource(FileBasedDatasource):
+@PublicAPI
+class ParquetDatasource(ParquetBaseDatasource):
     """Parquet datasource, for reading and writing Parquet files.
+
+    The primary difference from ParquetBaseDatasource is that this uses
+    PyArrow's `ParquetDataset` abstraction for dataset reads, and thus offers
+    automatic Arrow dataset schema inference and row count collection at the
+    cost of some potential performance and/or compatibility penalties.
 
     Examples:
         >>> import ray
@@ -220,7 +185,7 @@ class ParquetDatasource(FileBasedDatasource):
                 _register_parquet_file_fragment_serialization()
                 pieces: List[
                     "pyarrow._dataset.ParquetFileFragment"
-                ] = cloudpickle.loads(serialized_pieces)
+                ] = _deserialize_pieces_with_retry(serialized_pieces)
             finally:
                 _deregister_parquet_file_fragment_serialization()
 
@@ -304,21 +269,6 @@ class ParquetDatasource(FileBasedDatasource):
 
         return read_tasks
 
-    def _write_block(
-        self,
-        f: "pyarrow.NativeFile",
-        block: BlockAccessor,
-        writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
-        **writer_args,
-    ):
-        import pyarrow.parquet as pq
-
-        writer_args = _resolve_kwargs(writer_args_fn, **writer_args)
-        pq.write_table(block.to_arrow(), f, **writer_args)
-
-    def _file_format(self) -> str:
-        return "parquet"
-
 
 def _fetch_metadata_remotely(
     pieces: List["pyarrow._dataset.ParquetFileFragment"],
@@ -347,12 +297,13 @@ def _fetch_metadata_serialization_wrapper(
     # Implicitly trigger S3 subsystem initialization by importing
     # pyarrow.fs.
     import pyarrow.fs  # noqa: F401
-    from ray import cloudpickle
 
     # Deserialize after loading the filesystem class.
     try:
         _register_parquet_file_fragment_serialization()
-        pieces: List["pyarrow._dataset.ParquetFileFragment"] = cloudpickle.loads(pieces)
+        pieces: List[
+            "pyarrow._dataset.ParquetFileFragment"
+        ] = _deserialize_pieces_with_retry(pieces)
     finally:
         _deregister_parquet_file_fragment_serialization()
 

@@ -456,6 +456,13 @@ class GlobalState:
 
         self._check_connected()
 
+        # Add a small delay to account for propagation delay of events to the GCS.
+        # This should be harmless enough but prevents calls to timeline() from
+        # missing recent timeline data.
+        import time
+
+        time.sleep(1)
+
         profile_table = self.profile_table()
         all_events = []
 

@@ -182,10 +182,9 @@ Your ``my_trainable`` is either a:
 1. **Model with an existing Ray integration**
 
   * XGBoost (:ref:`example <xgboost-ray-tuning>`)
-  * Pytorch (:ref:`example <tune-pytorch-lightning-ref>`)
+  * Pytorch (:doc:`example </tune/examples/tune-pytorch-cifar>`)
   * Pytorch Lightning (:ref:`example <pytorch-lightning-tune>`)
-  * Keras (:doc:`example </tune/examples/tune_mnist_keras>`)
-  * Tensorflow (:ref:`example <ray-train-tftrainer-example>`)
+  * Tensorflow/Keras (:doc:`example </tune/examples/tune_mnist_keras>`)
   * LightGBM (:ref:`example <lightgbm-ray-tuning>`)
 
 2. **Custom training function**
@@ -208,7 +207,7 @@ via ``ray.init()``, making your script on your laptop the "driver".
     # configure how checkpoints are sync'd to the scheduler/sampler
     # we recommend cloud storage checkpointing as it survives the cluster when
     # instances are terminated, and has better performance
-    sync_config = tune.syncConfig(
+    sync_config = tune.SyncConfig(
         upload_dir="s3://my-checkpoints-bucket/path/",  # requires AWS credentials
     )
 

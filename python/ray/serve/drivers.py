@@ -1,56 +1,69 @@
 import inspect
 from abc import abstractmethod
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Optional, Type, Union
+from pydantic import BaseModel
+from ray.serve.utils import install_serve_encoders_to_fastapi
 
 import starlette
-from fastapi import Depends, FastAPI
+from fastapi import Body, Depends, FastAPI
 
 from ray._private.utils import import_attr
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.http_util import ASGIHTTPSender
 from ray import serve
 
-DEFAULT_INPUT_SCHEMA = "ray.serve.http_adapters.starlette_request"
-InputSchemaFn = Callable[[Any], Any]
+DEFAULT_HTTP_ADAPTER = "ray.serve.http_adapters.starlette_request"
+HTTPAdapterFn = Callable[[Any], Any]
 
 
-def load_input_schema(
-    input_schema: Optional[Union[str, InputSchemaFn]]
-) -> InputSchemaFn:
-    if input_schema is None:
-        input_schema = DEFAULT_INPUT_SCHEMA
+def load_http_adapter(
+    http_adapter: Optional[Union[str, HTTPAdapterFn, Type[BaseModel]]]
+) -> HTTPAdapterFn:
+    if http_adapter is None:
+        http_adapter = DEFAULT_HTTP_ADAPTER
 
-    if isinstance(input_schema, str):
-        input_schema = import_attr(input_schema)
+    if isinstance(http_adapter, str):
+        http_adapter = import_attr(http_adapter)
 
-    if not inspect.isfunction(input_schema):
-        raise ValueError("input schema must be a callable function.")
+    if inspect.isclass(http_adapter) and issubclass(http_adapter, BaseModel):
+
+        def http_adapter(inp: http_adapter = Body(...)):
+            return inp
+
+    if not inspect.isfunction(http_adapter):
+        raise ValueError(
+            "input schema must be a callable function or pydantic model class."
+        )
 
     if any(
         param.annotation == inspect.Parameter.empty
-        for param in inspect.signature(input_schema).parameters.values()
+        for param in inspect.signature(http_adapter).parameters.values()
     ):
         raise ValueError("input schema function's signature should be type annotated.")
-    return input_schema
+    return http_adapter
 
 
 class SimpleSchemaIngress:
-    def __init__(self, input_schema: Optional[Union[str, InputSchemaFn]] = None):
-        """Create a FastAPI endpoint annotated with input_schema dependency.
+    def __init__(
+        self, http_adapter: Optional[Union[str, HTTPAdapterFn, Type[BaseModel]]] = None
+    ):
+        """Create a FastAPI endpoint annotated with http_adapter dependency.
 
         Args:
-            input_schema(str, InputSchemaFn, None): The FastAPI input conversion
-              function. By default, Serve will directly pass in the request object
+            http_adapter(str, HTTPAdapterFn, None, Type[pydantic.BaseModel]):
+              The FastAPI input conversion function or a pydantic model class.
+              By default, Serve will directly pass in the request object
               starlette.requests.Request. You can pass in any FastAPI dependency
               resolver. When you pass in a string, Serve will import it.
               Please refer to Serve HTTP adatper documentation to learn more.
         """
-        input_schema = load_input_schema(input_schema)
+        install_serve_encoders_to_fastapi()
+        http_adapter = load_http_adapter(http_adapter)
         self.app = FastAPI()
 
         @self.app.get("/")
         @self.app.post("/")
-        async def handle_request(inp=Depends(input_schema)):
+        async def handle_request(inp=Depends(http_adapter)):
             resp = await self.predict(inp)
             return resp
 
@@ -72,11 +85,11 @@ class DAGDriver(SimpleSchemaIngress):
         self,
         dag_handle: RayServeDAGHandle,
         *,
-        input_schema: Optional[Union[str, Callable]] = None,
+        http_adapter: Optional[Union[str, Callable]] = None,
     ):
         self.dag_handle = dag_handle
-        super().__init__(input_schema)
+        super().__init__(http_adapter)
 
-    async def predict(self, inp):
+    async def predict(self, *args, **kwargs):
         """Perform inference directly without HTTP."""
-        return await self.dag_handle.remote(inp)
+        return await self.dag_handle.remote(*args, **kwargs)

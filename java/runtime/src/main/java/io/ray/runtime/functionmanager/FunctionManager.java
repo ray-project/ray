@@ -2,7 +2,6 @@ package io.ray.runtime.functionmanager;
 
 import com.google.common.collect.Lists;
 import io.ray.api.function.RayFunc;
-import io.ray.api.id.JobId;
 import io.ray.runtime.util.LambdaUtils;
 import java.io.File;
 import java.lang.invoke.SerializedLambda;
@@ -34,7 +33,7 @@ import org.objectweb.asm.Type;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/** Manages functions by job id. */
+/** Manages functions in the current worker. */
 public class FunctionManager {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(FunctionManager.class);
@@ -50,8 +49,8 @@ public class FunctionManager {
   private static final ThreadLocal<WeakHashMap<Class<? extends RayFunc>, JavaFunctionDescriptor>>
       RAY_FUNC_CACHE = ThreadLocal.withInitial(WeakHashMap::new);
 
-  /** Mapping from the job id to the functions that belong to this job. */
-  private ConcurrentMap<JobId, JobFunctionTable> jobFunctionTables = new ConcurrentHashMap<>();
+  /** The table that manages functions. */
+  private final JobFunctionTable jobFunctionTable;
 
   /** The resource path which we can load the job's jar resources. */
   private final List<String> codeSearchPath;
@@ -63,16 +62,20 @@ public class FunctionManager {
    */
   public FunctionManager(List<String> codeSearchPath) {
     this.codeSearchPath = codeSearchPath;
+    jobFunctionTable = createJobFunctionTable();
+  }
+
+  public ClassLoader getClassLoader() {
+    return jobFunctionTable.classLoader;
   }
 
   /**
    * Get the RayFunction from a RayFunc instance (a lambda).
    *
-   * @param jobId current job id.
    * @param func The lambda.
    * @return A RayFunction object.
    */
-  public RayFunction getFunction(JobId jobId, RayFunc func) {
+  public RayFunction getFunction(RayFunc func) {
     JavaFunctionDescriptor functionDescriptor = RAY_FUNC_CACHE.get().get(func.getClass());
     if (functionDescriptor == null) {
       // It's OK to not lock here, because it's OK to have multiple JavaFunctionDescriptor instances
@@ -84,31 +87,21 @@ public class FunctionManager {
       functionDescriptor = new JavaFunctionDescriptor(className, methodName, signature);
       RAY_FUNC_CACHE.get().put(func.getClass(), functionDescriptor);
     }
-    return getFunction(jobId, functionDescriptor);
+    return getFunction(functionDescriptor);
   }
 
   /**
    * Get the RayFunction from a function descriptor.
    *
-   * @param jobId Current job id.
    * @param functionDescriptor The function descriptor.
    * @return A RayFunction object.
    */
-  public RayFunction getFunction(JobId jobId, JavaFunctionDescriptor functionDescriptor) {
-    JobFunctionTable jobFunctionTable = jobFunctionTables.get(jobId);
-    if (jobFunctionTable == null) {
-      synchronized (this) {
-        jobFunctionTable = jobFunctionTables.get(jobId);
-        if (jobFunctionTable == null) {
-          jobFunctionTable = createJobFunctionTable(jobId);
-          jobFunctionTables.put(jobId, jobFunctionTable);
-        }
-      }
-    }
+  public RayFunction getFunction(JavaFunctionDescriptor functionDescriptor) {
     return jobFunctionTable.getFunction(functionDescriptor);
   }
 
-  private JobFunctionTable createJobFunctionTable(JobId jobId) {
+  /** A helper that creates function table. */
+  private JobFunctionTable createJobFunctionTable() {
     ClassLoader classLoader;
     if (codeSearchPath == null || codeSearchPath.isEmpty()) {
       classLoader = getClass().getClassLoader();
@@ -145,7 +138,7 @@ public class FunctionManager {
                   })
               .toArray(URL[]::new);
       classLoader = new URLClassLoader(urls);
-      LOGGER.debug("Resource loaded for job {} from path {}.", jobId, urls);
+      LOGGER.debug("Resource loaded from path {}.", urls);
     }
 
     return new JobFunctionTable(classLoader);

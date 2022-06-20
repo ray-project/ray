@@ -2,8 +2,8 @@ package io.ray.test;
 
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
+import io.ray.api.exception.PendingCallsLimitExceededException;
 import io.ray.api.id.ObjectId;
-import io.ray.runtime.exception.PendingCallsLimitExceededException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;

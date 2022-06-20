@@ -14,6 +14,7 @@ from unittest.mock import MagicMock
 import ray
 from ray import tune
 from ray.tune import Trainable
+from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.schedulers import (
     FIFOScheduler,
@@ -25,14 +26,14 @@ from ray.tune.schedulers import (
     HyperBandForBOHB,
 )
 
-from ray.tune.schedulers.pbt import explore, PopulationBasedTrainingReplay
+from ray.tune.schedulers.pbt import _explore, PopulationBasedTrainingReplay
 from ray.tune.suggest._mock import _MockSearcher
 from ray.tune.suggest.suggestion import ConcurrencyLimiter
-from ray.tune.trial import Trial, _TuneCheckpoint
-from ray.tune.trial_executor import TrialExecutor
+from ray.tune.trial import Trial
 from ray.tune.resources import Resources
 
 from ray.rllib import _register_all
+from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 
 _register_all()
 
@@ -235,10 +236,10 @@ class EarlyStoppingSuite(unittest.TestCase):
 
 
 # Only barebone impl for start/stop_trial. No internal state maintained.
-class _MockTrialExecutor(TrialExecutor):
+class _MockTrialExecutor(RayTrialExecutor):
     def start_trial(self, trial, checkpoint_obj=None, train=True):
         trial.logger_running = True
-        trial.restored_checkpoint = checkpoint_obj.value
+        trial.restored_checkpoint = checkpoint_obj.dir_or_data
         trial.status = Trial.RUNNING
         return True
 
@@ -248,8 +249,12 @@ class _MockTrialExecutor(TrialExecutor):
     def restore(self, trial, checkpoint=None, block=False):
         pass
 
-    def save(self, trial, type=_TuneCheckpoint.PERSISTENT, result=None):
-        return _TuneCheckpoint(_TuneCheckpoint.PERSISTENT, trial.trainable_name, result)
+    def save(self, trial, type=CheckpointStorage.PERSISTENT, result=None):
+        return _TrackedCheckpoint(
+            dir_or_data=trial.trainable_name,
+            storage_mode=CheckpointStorage.PERSISTENT,
+            metrics=result,
+        )
 
     def reset_trial(self, trial, new_config, new_experiment_tag):
         return False
@@ -307,7 +312,7 @@ class _MockTrialRunner:
         return {t for t in self.trials if t.status != Trial.TERMINATED}
 
     def _pause_trial(self, trial):
-        self.trial_executor.save(trial, _TuneCheckpoint.MEMORY, None)
+        self.trial_executor.save(trial, CheckpointStorage.MEMORY, None)
         trial.status = Trial.PAUSED
 
     def _launch_trial(self, trial):
@@ -838,11 +843,18 @@ class _MockTrial(Trial):
         self._default_result_or_future = None
 
     def on_checkpoint(self, checkpoint):
-        self.restored_checkpoint = checkpoint.value
+        if checkpoint.storage_mode == CheckpointStorage.MEMORY:
+            self.restored_checkpoint = checkpoint.dir_or_data["data"]
+        else:
+            self.restored_checkpoint = checkpoint.dir_or_data
 
     @property
     def checkpoint(self):
-        return _TuneCheckpoint(_TuneCheckpoint.MEMORY, self.trainable_name, None)
+        return _TrackedCheckpoint(
+            dir_or_data={"data": self.trainable_name},
+            storage_mode=CheckpointStorage.MEMORY,
+            metrics=None,
+        )
 
 
 class PopulationBasedTestingSuite(unittest.TestCase):
@@ -1164,38 +1176,38 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
         # Categorical case
         assertProduces(
-            lambda: explore({"v": 4}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x), {3, 8}
+            lambda: _explore({"v": 4}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x), {3, 8}
         )
         assertProduces(
-            lambda: explore({"v": 3}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x), {3, 4}
+            lambda: _explore({"v": 3}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x), {3, 4}
         )
         assertProduces(
-            lambda: explore({"v": 10}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x), {8, 10}
+            lambda: _explore({"v": 10}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x), {8, 10}
         )
         assertProduces(
-            lambda: explore({"v": 7}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x),
+            lambda: _explore({"v": 7}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x),
             {3, 4, 8, 10},
         )
         assertProduces(
-            lambda: explore({"v": 4}, {"v": [3, 4, 8, 10]}, 1.0, lambda x: x),
+            lambda: _explore({"v": 4}, {"v": [3, 4, 8, 10]}, 1.0, lambda x: x),
             {3, 4, 8, 10},
         )
 
         # Continuous case
         assertProduces(
-            lambda: explore(
+            lambda: _explore(
                 {"v": 100}, {"v": lambda: random.choice([10, 100])}, 0.0, lambda x: x
             ),
             {80, 120},
         )
         assertProduces(
-            lambda: explore(
+            lambda: _explore(
                 {"v": 100.0}, {"v": lambda: random.choice([10, 100])}, 0.0, lambda x: x
             ),
             {80.0, 120.0},
         )
         assertProduces(
-            lambda: explore(
+            lambda: _explore(
                 {"v": 100.0}, {"v": lambda: random.choice([10, 100])}, 1.0, lambda x: x
             ),
             {10.0, 100.0},
@@ -1224,7 +1236,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
         # Nested mutation and spec
         assertNestedProduces(
-            lambda: explore(
+            lambda: _explore(
                 {
                     "a": {"b": 4},
                     "1": {"2": {"3": 100}},
@@ -1246,7 +1258,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
         # Nested mutation and spec
         assertNestedProduces(
-            lambda: explore(
+            lambda: _explore(
                 {
                     "a": {"b": 4},
                     "1": {"2": {"3": 100}},
@@ -2149,6 +2161,57 @@ class AsyncHyperBandSuite(unittest.TestCase):
             scheduler2.on_trial_result(None, new_trial, result(1, 2)),
             TrialScheduler.STOP,
         )
+
+    def testAsyncHBNonStopTrials(self):
+        trials = [Trial("PPO") for i in range(4)]
+        scheduler = AsyncHyperBandScheduler(
+            metric="metric",
+            mode="max",
+            grace_period=1,
+            max_t=3,
+            reduction_factor=2,
+            brackets=1,
+            stop_last_trials=False,
+        )
+        scheduler.on_trial_add(None, trials[0])
+        scheduler.on_trial_add(None, trials[1])
+        scheduler.on_trial_add(None, trials[2])
+        scheduler.on_trial_add(None, trials[3])
+
+        # Report one result
+        action = scheduler.on_trial_result(
+            None, trials[0], {"training_iteration": 2, "metric": 10}
+        )
+        assert action == TrialScheduler.CONTINUE
+        action = scheduler.on_trial_result(
+            None, trials[1], {"training_iteration": 2, "metric": 8}
+        )
+        assert action == TrialScheduler.STOP
+        action = scheduler.on_trial_result(
+            None, trials[2], {"training_iteration": 2, "metric": 6}
+        )
+        assert action == TrialScheduler.STOP
+        action = scheduler.on_trial_result(
+            None, trials[3], {"training_iteration": 2, "metric": 4}
+        )
+        assert action == TrialScheduler.STOP
+
+        # Report more. This will fail if `stop_last_trials=True`
+        action = scheduler.on_trial_result(
+            None, trials[0], {"training_iteration": 4, "metric": 10}
+        )
+        assert action == TrialScheduler.CONTINUE
+
+        action = scheduler.on_trial_result(
+            None, trials[0], {"training_iteration": 8, "metric": 10}
+        )
+        assert action == TrialScheduler.CONTINUE
+
+        # Also continue if we fall below the cutoff eventually
+        action = scheduler.on_trial_result(
+            None, trials[0], {"training_iteration": 14, "metric": 1}
+        )
+        assert action == TrialScheduler.CONTINUE
 
     def testMedianStoppingNanInf(self):
         scheduler = MedianStoppingRule(metric="episode_reward_mean", mode="max")

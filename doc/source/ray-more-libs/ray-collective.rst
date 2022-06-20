@@ -1,5 +1,3 @@
-.. _ray-collective:
-
 ..
   This part of the docs is generated from the ray.util.collective readme using m2r
   To update:
@@ -7,11 +5,12 @@
   - copy the contents of README.rst here
   - Be sure not to delete the API reference section in the bottom of this file.
 
+.. _ray-collective:
 
 Ray Collective Communication Lib
 ================================
 
-The Ray collective communication library (\ ``ray.util.collectve``\ ) offers a set of native collective primitives for 
+The Ray collective communication library (\ ``ray.util.collective``\ ) offers a set of native collective primitives for
 communication between distributed CPUs or GPUs.
 
 Ray collective communication library
@@ -25,16 +24,16 @@ Ray collective communication library
 Collective Primitives Support Matrix
 ------------------------------------
 
-See below the current support matrix for all collective calls with different backends. 
+See below the current support matrix for all collective calls with different backends.
 
 .. list-table::
    :header-rows: 1
 
    * - Backend
      - `gloo <https://github.com/ray-project/pygloo>`_
-     - 
+     -
      - `nccl <https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/index.html>`_
-     - 
+     -
    * - Device
      - CPU
      - GPU
@@ -111,7 +110,7 @@ Usage
 Installation and Importing
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Ray collective library is bundled with the released Ray wheel. Besides Ray, users need to install either `pygloo <https://github.com/ray-project/pygloo>`_ 
+Ray collective library is bundled with the released Ray wheel. Besides Ray, users need to install either `pygloo <https://github.com/ray-project/pygloo>`_
 or `cupy <https://docs.cupy.dev/en/stable/install.html>`_ in order to use collective communication with the GLOO and NCCL backend, respectively.
 
 .. code-block:: python
@@ -128,11 +127,11 @@ To use these APIs, import the collective package in your actor/task or driver co
 Initialization
 ^^^^^^^^^^^^^^
 
-Collective functions operate on collective groups. 
-A collective group contains a number of processes (in Ray, they are usually Ray-managed actors or tasks) that will together enter the collective function calls. 
-Before making collective calls, users need to declare a set of actors/tasks, statically, as a collective group. 
+Collective functions operate on collective groups.
+A collective group contains a number of processes (in Ray, they are usually Ray-managed actors or tasks) that will together enter the collective function calls.
+Before making collective calls, users need to declare a set of actors/tasks, statically, as a collective group.
 
-Below is an example code snippet that uses the two APIs ``init_collective_group()`` and ``declare_collective_group()`` to initialize collective groups among a few 
+Below is an example code snippet that uses the two APIs ``init_collective_group()`` and ``declare_collective_group()`` to initialize collective groups among a few
 remote actors. Refer to `APIs <#api-reference>`_ for the detailed descriptions of the two APIs.
 
 .. code-block:: python
@@ -185,7 +184,7 @@ remote actors. Refer to `APIs <#api-reference>`_ for the detailed descriptions o
    collective.declare_collective_group(workers, **_options)
    results = ray.get([w.compute.remote() for w in workers])
 
-Note that for the same set of actors/task processes, multiple collective groups can be constructed, with ``group_name`` as their unique identifier. 
+Note that for the same set of actors/task processes, multiple collective groups can be constructed, with ``group_name`` as their unique identifier.
 This enables to specify complex communication patterns between different (sub)set of processes.
 
 Collective Communication
@@ -197,7 +196,7 @@ Note that the current set of collective communication API are imperative, and ex
 
 
 * All the collective APIs are synchronous blocking calls
-* Since each API only specifies a part of the collective communication, the API is expected to be called by each participating process of the (pre-declared) collective group. 
+* Since each API only specifies a part of the collective communication, the API is expected to be called by each participating process of the (pre-declared) collective group.
   Upon all the processes have made the call and rendezvous with each other, the collective communication happens and proceeds.
 * The APIs are imperative and the communication happends out-of-band --- they need to be used inside the collective process (actor/task) code.
 
@@ -228,10 +227,10 @@ An example of using ``ray.util.collective.allreduce`` is below:
 Point-to-point Communication
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-``ray.util.collective`` also supports P2P send/recv communication between processes. 
+``ray.util.collective`` also supports P2P send/recv communication between processes.
 
-The send/recv exhibits the same behavior with the collective functions: 
-they are synchronous blocking calls -- a pair of send and recv must be called together on paired processes in order to specify the entire communication, 
+The send/recv exhibits the same behavior with the collective functions:
+they are synchronous blocking calls -- a pair of send and recv must be called together on paired processes in order to specify the entire communication,
 and must successfully rendezvous with each other to proceed. See the code example below:
 
 .. code-block:: python
@@ -272,18 +271,18 @@ and must successfully rendezvous with each other to proceed. See the code exampl
    # let A to send a message to B; a send/recv has to be specified once at each worker
    ray.get([A.do_send.remote(target_rank=1), B.do_recv.remote(src_rank=0)])
 
-   # An anti-pattern: the following code will hang, because it does instantiate the recv side call
+   # An anti-pattern: the following code will hang, because it doesn't instantiate the recv side call
    ray.get([A.do_send.remote(target_rank=1)])
 
 Single-GPU and Multi-GPU Collective Primitives
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-In many cluster setups, a machine usually has more than 1 GPU; 
-effectively leveraging the GPU-GPU bandwidth, such as `NVLINK <https://www.nvidia.com/en-us/design-visualization/nvlink-bridges/>`_\ , 
+In many cluster setups, a machine usually has more than 1 GPU;
+effectively leveraging the GPU-GPU bandwidth, such as `NVLINK <https://www.nvidia.com/en-us/design-visualization/nvlink-bridges/>`_\ ,
 can significantly improve communication performance.
 
-``ray.util.collective`` supports multi-GPU collective calls, in which case, a process (actor/tasks) manages more than 1 GPU (e.g., via ``ray.remote(num_gpus=4)``\ ). 
-Using these multi-GPU collective functions are normally more performance-advantageous than using single-GPU collective API 
+``ray.util.collective`` supports multi-GPU collective calls, in which case, a process (actor/tasks) manages more than 1 GPU (e.g., via ``ray.remote(num_gpus=4)``\ ).
+Using these multi-GPU collective functions are normally more performance-advantageous than using single-GPU collective API
 and spawning the number of processes equal to the number of GPUs.
 See the API references for the signatures of multi-GPU collective APIs.
 
@@ -318,6 +317,7 @@ An example code utilizing the multi-GPU collective APIs is provided below:
               self.recv2 = cp.ones((4, ), dtype=cp.float32) * 2
 
       def setup(self, world_size, rank):
+          self.rank = rank
           collective.init_collective_group(world_size, rank, "nccl", "177")
           return True
 

@@ -6,6 +6,7 @@ import warnings
 from typing import Dict, Optional, List, Union, Any, TYPE_CHECKING
 
 from ray.tune.suggest.util import set_search_properties_backwards_compatible
+from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
@@ -37,6 +38,7 @@ UNDEFINED_METRIC_MODE = str(
 )
 
 
+@DeveloperAPI
 class Searcher:
     """Abstract class for wrapping suggesting algorithms.
 
@@ -89,21 +91,7 @@ class Searcher:
         self,
         metric: Optional[str] = None,
         mode: Optional[str] = None,
-        max_concurrent: Optional[int] = None,
-        use_early_stopped_trials: Optional[bool] = None,
     ):
-        if use_early_stopped_trials is False:
-            raise DeprecationWarning(
-                "Early stopped trials are now always used. If this is a "
-                "problem, file an issue: https://github.com/ray-project/ray."
-            )
-        if max_concurrent is not None:
-            raise DeprecationWarning(
-                "`max_concurrent` is deprecated for this "
-                "search algorithm. Use tune.suggest.ConcurrencyLimiter() "
-                "instead. This will raise an error in future versions of Ray."
-            )
-
         self._metric = metric
         self._mode = mode
 
@@ -437,6 +425,7 @@ class Searcher:
         return self._mode
 
 
+@PublicAPI
 class ConcurrencyLimiter(Searcher):
     """A wrapper algorithm for limiting the number of concurrent trials.
 

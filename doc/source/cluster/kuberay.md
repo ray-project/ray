@@ -24,8 +24,7 @@ Now you can deploy the KubeRay operator using
 
 ```shell
 ./ray/python/ray/autoscaler/kuberay/init-config.sh
-kubectl apply -k "ray/python/ray/autoscaler/kuberay/config/default"
-kubectl apply -f "ray/python/ray/autoscaler/kuberay/kuberay-autoscaler-rbac.yaml"
+kubectl create -k "ray/python/ray/autoscaler/kuberay/config/default"
 ```
 
 You can verify that the operator has been deployed using
@@ -57,6 +56,12 @@ ray.init("auto")
 ray.autoscaler.sdk.request_resources(num_cpus=4)
 ```
 
+> **_NOTE:_**  The example config ray-cluster.complete.yaml specifies rayproject/ray:8c5fe4
+> as the Ray autoscaler image. This image carries the latest improvements to KubeRay autoscaling
+> support. This autoscaler image is confirmed to be compatible with Ray versions >= 1.11.0.
+> Once Ray autoscaler support is stable, the recommended pattern will be to use the same
+> Ray version in the autoscaler and Ray containers.
+
 ## Uninstalling the KubeRay operator
 
 You can uninstall the KubeRay operator using
@@ -83,7 +88,7 @@ Here is one procedure to test development autoscaler code.
 ```dockerfile
 # Use the latest Ray master as base.
 FROM rayproject/ray:nightly
-# Invalidate cache so that fresh code is pulled in the next step.
+# Invalidate the cache so that fresh code is pulled in the next step.
 ARG BUILD_DATE
 # Retrieve your development code.
 RUN git clone -b <my-dev-branch> https://github.com/<my-git-handle>/ray

@@ -330,7 +330,7 @@ def test_caller_actor_restart(ray_start_regular):
     """Test tasks from a restarted actor can be correctly processed
     by the receiving actor."""
 
-    @ray.remote(max_restarts=1)
+    @ray.remote(max_restarts=1, max_task_retries=-1)
     class RestartableActor:
         """An actor that will be restarted at most once."""
 
@@ -762,4 +762,7 @@ def test_utf8_actor_exception(ray_start_regular):
 if __name__ == "__main__":
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

@@ -179,7 +179,7 @@ It offers high scalability and unified APIs for a
 .. code-block:: python
 
     import gym
-    from ray.rllib.agents.ppo import PPOTrainer
+    from ray.rllib.algorithms.ppo import PPO
 
 
     # Define your problem using python and openAI's gym API:
@@ -229,7 +229,7 @@ It offers high scalability and unified APIs for a
 
 
     # Create an RLlib Trainer instance.
-    trainer = PPOTrainer(
+    trainer = PPO(
         config={
             # Env class to use (here: our gym.Env sub-class from above).
             "env": SimpleCorridor,
@@ -338,7 +338,7 @@ This example runs serves a scikit-learn gradient boosting classifier.
             self.label_list = iris_dataset["target_names"].tolist()
 
         async def __call__(self, request):
-            payload = await request.json()["vector"]
+            payload = (await request.json())["vector"]
             print(f"Received flask request with data {payload}")
 
             prediction = self.model.predict([payload])[0]

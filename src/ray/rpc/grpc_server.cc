@@ -99,7 +99,7 @@ void GrpcServer::Run() {
       << "it indicates the server fails to start because the port is already used by "
       << "other processes (such as --node-manager-port, --object-manager-port, "
       << "--gcs-server-port, and ports between --min-worker-port, --max-worker-port). "
-      << "Try running lsof -i :" << specified_port
+      << "Try running sudo lsof -i :" << specified_port
       << " to check if there are other processes listening to the port.";
   RAY_CHECK(port_ > 0);
   RAY_LOG(INFO) << name_ << " server started, listening on port " << port_ << ".";
@@ -107,10 +107,11 @@ void GrpcServer::Run() {
   // Create calls for all the server call factories.
   for (auto &entry : server_call_factories_) {
     for (int i = 0; i < num_threads_; i++) {
-      // Create a buffer of 100 calls for each RPC handler.
-      // TODO(edoakes): a small buffer should be fine and seems to have better
-      // performance, but we don't currently handle backpressure on the client.
-      int buffer_size = 100;
+      // When there is no max active RPC limit, a call will be added to the completetion
+      // queue before RPC processing starts. In this case, the buffer size only
+      // determines the number of tags in the completion queue, instead of the number of
+      // inflight RPCs being processed.
+      int buffer_size = 128;
       if (entry->GetMaxActiveRPCs() != -1) {
         buffer_size = entry->GetMaxActiveRPCs();
       }
@@ -125,6 +126,10 @@ void GrpcServer::Run() {
   }
   // Set the server as running.
   is_closed_ = false;
+}
+
+void GrpcServer::RegisterService(grpc::Service &service) {
+  services_.emplace_back(service);
 }
 
 void GrpcServer::RegisterService(GrpcService &service) {

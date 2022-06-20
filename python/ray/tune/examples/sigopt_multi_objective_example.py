@@ -62,7 +62,6 @@ if __name__ == "__main__":
         space,
         name="SigOpt Example Multi Objective Experiment",
         observation_budget=4 if args.smoke_test else 100,
-        max_concurrent=1,
         metric=["average", "std", "sharpe"],
         mode=["max", "min", "obs"],
     )

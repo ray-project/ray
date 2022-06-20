@@ -1,8 +1,10 @@
 from typing import Dict, List, Optional, Union
 
 from ray.tune.experiment import Experiment
+from ray.util.annotations import DeveloperAPI
 
 
+@DeveloperAPI
 class SearchAlgorithm:
     """Interface of an event handler API for hyperparameter search.
 

@@ -35,9 +35,10 @@ void GcsWorkerManager::HandleReportWorkerFailure(
                    worker_address.ip_address(),
                    ", exit_type = ",
                    rpc::WorkerExitType_Name(request.worker_failure().exit_type()),
-                   request.worker_failure().has_creation_task_exception());
-  if (request.worker_failure().exit_type() == rpc::WorkerExitType::INTENDED_EXIT ||
-      request.worker_failure().exit_type() == rpc::WorkerExitType::IDLE_EXIT) {
+                   ", exit_detail = ",
+                   request.worker_failure().exit_detail());
+  if (request.worker_failure().exit_type() == rpc::WorkerExitType::INTENDED_USER_EXIT ||
+      request.worker_failure().exit_type() == rpc::WorkerExitType::INTENDED_SYSTEM_EXIT) {
     RAY_LOG(DEBUG) << message;
   } else {
     RAY_LOG(WARNING) << message

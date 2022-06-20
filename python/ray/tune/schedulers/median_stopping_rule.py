@@ -8,10 +8,12 @@ from ray.tune import trial_runner
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.trial import Trial
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
+from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
 
 
+@PublicAPI
 class MedianStoppingRule(FIFOScheduler):
     """Implements the median stopping rule as described in the Vizier paper:
 

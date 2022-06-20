@@ -3,6 +3,7 @@ from pathlib import Path
 import os
 import urllib
 import importlib
+import re
 
 from ray._private.client_mode_hook import client_mode_hook
 
@@ -71,6 +72,20 @@ def get_client(prefix: str) -> "KVClient":
     return KVClient(fs, combined_prefix)
 
 
+def _is_os_error_file_not_found(err: OSError) -> bool:
+    """Instead of "FileNotFoundError", pyarrow S3 filesystem raises
+    OSError starts with "Path does not exist" for some of its APIs.
+
+    # TODO(suquark): Delete this function after pyarrow handles missing files
+    in a consistent way.
+    """
+    return (
+        len(err.args) > 0
+        and isinstance(err.args[0], str)
+        and err.args[0].startswith("Path does not exist")
+    )
+
+
 class KVClient:
     """Simple KV API built on the underlying filesystem.
 
@@ -129,6 +144,10 @@ class KVClient:
                 return f.read()
         except FileNotFoundError:
             return None
+        except OSError as e:
+            if _is_os_error_file_not_found(e):
+                return None
+            raise e
 
     def delete(self, path: str) -> bool:
         """Load the blob from persistent storage at the given path, if possible.
@@ -151,6 +170,36 @@ class KVClient:
             return True
         except FileNotFoundError:
             return False
+        except OSError as e:
+            if _is_os_error_file_not_found(e):
+                return False
+            raise e
+
+    def delete_dir(self, path: str) -> bool:
+        """Delete a directory and its contents, recursively.
+
+        Examples:
+            # Deletes dir at <storage_prefix>/my_app/path/
+            >>> client = storage.get_client("my_app")
+            >>> client.delete_dir("path")
+            True
+
+        Args:
+            path: Relative directory of the blob.
+
+        Returns:
+            Whether the dir was deleted.
+        """
+        full_path = self._resolve_path(path)
+        try:
+            self.fs.delete_dir(full_path)
+            return True
+        except FileNotFoundError:
+            return False
+        except OSError as e:
+            if _is_os_error_file_not_found(e):
+                return False
+            raise e
 
     def get_info(self, path: str) -> Optional["pyarrow.fs.FileInfo"]:
         """Get info about the persistent blob at the given path, if possible.
@@ -211,18 +260,62 @@ class KVClient:
             FileNotFoundError if the given path is not found.
             NotADirectoryError if the given path isn't a valid directory.
         """
-        from pyarrow.fs import FileSelector
+        from pyarrow.fs import FileSelector, LocalFileSystem, FileType
 
         full_path = self._resolve_path(path)
         selector = FileSelector(full_path, recursive=False)
-        files = self.fs.get_file_info(selector)
+        try:
+            files = self.fs.get_file_info(selector)
+        except FileNotFoundError as e:
+            raise e
+        except OSError as e:
+            if _is_os_error_file_not_found(e):
+                raise FileNotFoundError(*e.args)
+            raise e
+        if self.fs is not LocalFileSystem and not files:
+            # TODO(suquark): pyarrow does not raise "NotADirectoryError"
+            # for non-local filesystems like S3. Check and raise it here.
+            info = self.fs.get_file_info([full_path])[0]
+            if info.type == FileType.File:
+                raise NotADirectoryError(
+                    f"Cannot list directory '{full_path}'. "
+                    f"Detail: [errno 20] Not a directory"
+                )
         return files
 
     def _resolve_path(self, path: str) -> str:
-        joined = self.root.joinpath(path).resolve()
-        # Raises an error if the path is above the root (e.g., "../data" attack).
-        joined.resolve().relative_to(self.root)
-        return str(joined)
+        from pyarrow.fs import LocalFileSystem
+
+        if isinstance(self.fs, LocalFileSystem):
+            joined = self.root.joinpath(path).resolve()
+            # Raises an error if the path is above the root (e.g., "../data" attack).
+            joined.relative_to(self.root.resolve())
+            return str(joined)
+
+        # In this case, we are not a local file system. However, pathlib would
+        # still add prefix to the path as if it is a local path when resolving
+        # the path, even when the path does not exist at all. If the path exists
+        # locally and is a symlink, then pathlib resolves it to the unwanted
+        # physical path. This could leak to an attack. Third, if the path was
+        # under Windows, "/" becomes "\", which is invalid for non-local stores.
+        # So we decide to resolve it mannually.
+        def _normalize_path(p: str) -> str:
+            # "////bucket//go/./foo///..//.././/bar/./" becomes "bucket/bar"
+            segments = []
+            for s in p.replace("\\", "/").split("/"):
+                if s == "..":
+                    if not segments:
+                        raise ValueError("Path goes beyond root.")
+                    segments.pop()
+                elif s not in (".", ""):
+                    segments.append(s)
+            return "/".join(segments)
+
+        root = _normalize_path(str(self.root))
+        joined = _normalize_path(str(self.root.joinpath(path)))
+        if not joined.startswith(root):
+            raise ValueError(f"{joined!r} does not start with {root!r}")
+        return joined
 
 
 def _init_storage(storage_uri: str, is_head: bool):
@@ -267,14 +360,24 @@ def _init_filesystem(create_valid_file: bool = False, check_valid_file: bool = T
 
     import pyarrow.fs
 
-    parsed_uri = urllib.parse.urlparse(_storage_uri)
+    # TODO(suquark): This is a temporary patch for windows - the backslash
+    # could not be understood by pyarrow. We replace it with slash here.
+    parsed_uri = urllib.parse.urlparse(_storage_uri.replace("\\", "/"))
     if parsed_uri.scheme == "custom":
         fs_creator = _load_class(parsed_uri.netloc)
         _filesystem, _storage_prefix = fs_creator(parsed_uri.path)
     else:
         _filesystem, _storage_prefix = pyarrow.fs.FileSystem.from_uri(_storage_uri)
 
-    valid_file = os.path.join(_storage_prefix, "_valid")
+    if os.name == "nt":
+        # Special care for windows. "//C/windows/system32" is a valid network
+        # name many applications support, but unfortunately not by pyarrow.
+        # This formats "//C/windows/system32" to "C:/windows/system32".
+        if re.match("^//[A-Za-z]/.*", _storage_prefix):
+            _storage_prefix = _storage_prefix[2] + ":" + _storage_prefix[4:]
+
+    # enforce use of "/"
+    valid_file = _storage_prefix + "/_valid"
     if create_valid_file:
         _filesystem.create_dir(_storage_prefix)
         with _filesystem.open_output_stream(valid_file):

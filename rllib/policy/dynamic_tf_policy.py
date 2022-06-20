@@ -3,7 +3,7 @@ import gym
 import logging
 import re
 import tree  # pip install dm_tree
-from typing import Callable, Dict, List, Optional, Tuple, Type
+from typing import Callable, Dict, List, Optional, Tuple, Type, Union
 
 from ray.util.debug import log_once
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
@@ -24,7 +24,7 @@ from ray.rllib.utils.typing import (
     LocalOptimizer,
     ModelGradients,
     TensorType,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
 )
 
 tf1, tf, tfv = try_import_tf()
@@ -49,7 +49,7 @@ class DynamicTFPolicy(TFPolicy):
         self,
         obs_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
-        config: TrainerConfigDict,
+        config: AlgorithmConfigDict,
         loss_fn: Callable[
             [Policy, ModelV2, Type[TFActionDistribution], SampleBatch], TensorType
         ],
@@ -62,16 +62,23 @@ class DynamicTFPolicy(TFPolicy):
         ] = None,
         before_loss_init: Optional[
             Callable[
-                [Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict], None
+                [Policy, gym.spaces.Space, gym.spaces.Space, AlgorithmConfigDict], None
             ]
         ] = None,
         make_model: Optional[
             Callable[
-                [Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict], ModelV2
+                [Policy, gym.spaces.Space, gym.spaces.Space, AlgorithmConfigDict],
+                ModelV2,
             ]
         ] = None,
         action_sampler_fn: Optional[
-            Callable[[TensorType, List[TensorType]], Tuple[TensorType, TensorType]]
+            Callable[
+                [TensorType, List[TensorType]],
+                Union[
+                    Tuple[TensorType, TensorType],
+                    Tuple[TensorType, TensorType, TensorType, List[TensorType]],
+                ],
+            ]
         ] = None,
         action_distribution_fn: Optional[
             Callable[
@@ -105,14 +112,14 @@ class DynamicTFPolicy(TFPolicy):
                 input tensors - returns a dict mapping str to TF ops.
                 These ops are fetched from the graph after loss calculations
                 and the resulting values can be found in the results dict
-                returned by e.g. `Trainer.train()` or in tensorboard (if TB
+                returned by e.g. `Algorithm.train()` or in tensorboard (if TB
                 logging is enabled).
             grad_stats_fn: Optional callable that - given the policy, batch
                 input tensors, and calculated loss gradient tensors - returns
                 a dict mapping str to TF ops. These ops are fetched from the
                 graph after loss and gradient calculations and the resulting
                 values can be found in the results dict returned by e.g.
-                `Trainer.train()` or in tensorboard (if TB logging is
+                `Algorithm.train()` or in tensorboard (if TB logging is
                 enabled).
             before_loss_init: Optional function to run prior to
                 loss init that takes the same arguments as __init__.
@@ -120,9 +127,10 @@ class DynamicTFPolicy(TFPolicy):
                 given policy, obs_space, action_space, and policy config.
                 All policy variables should be created in this function. If not
                 specified, a default model will be created.
-            action_sampler_fn: A callable returning a sampled action and its
-                log-likelihood given Policy, ModelV2, observation inputs,
-                explore, and is_training.
+            action_sampler_fn: A callable returning either a sampled action and
+                its log-likelihood or a sampled action, its log-likelihood,
+                action distribution inputs and updated state given Policy,
+                ModelV2, observation inputs, explore, and is_training.
                 Provide `action_sampler_fn` if you would like to have full
                 control over the action computation step, including the
                 model forward pass, possible sampling from a distribution,
@@ -292,7 +300,7 @@ class DynamicTFPolicy(TFPolicy):
 
             # Fully customized action generation (e.g., custom policy).
             if action_sampler_fn:
-                sampled_action, sampled_action_logp = action_sampler_fn(
+                action_sampler_outputs = action_sampler_fn(
                     self,
                     self.model,
                     obs_batch=self._input_dict[SampleBatch.CUR_OBS],
@@ -303,6 +311,17 @@ class DynamicTFPolicy(TFPolicy):
                     explore=explore,
                     is_training=self._input_dict.is_training,
                 )
+                if len(action_sampler_outputs) == 4:
+                    (
+                        sampled_action,
+                        sampled_action_logp,
+                        dist_inputs,
+                        self._state_out,
+                    ) = action_sampler_outputs
+                else:
+                    dist_inputs = None
+                    self._state_out = []
+                    sampled_action, sampled_action_logp = action_sampler_outputs
             # Distribution generation is customized, e.g., DQN, DDPG.
             else:
                 if action_distribution_fn:
@@ -620,7 +639,7 @@ class DynamicTFPolicy(TFPolicy):
         Input_dict: Str -> tf.placeholders, dummy_batch: str -> np.arrays.
 
         Args:
-            view_requirements (ViewReqs): The view requirements dict.
+            view_requirements: The view requirements dict.
             existing_inputs (Dict[str, tf.placeholder]): A dict of already
                 existing placeholders.
 
@@ -875,6 +894,7 @@ class DynamicTFPolicy(TFPolicy):
         return losses
 
 
+@DeveloperAPI
 class TFMultiGPUTowerStack:
     """Optimizer that runs in parallel across multiple local devices.
 
@@ -910,7 +930,7 @@ class TFMultiGPUTowerStack:
         """Initializes a TFMultiGPUTowerStack instance.
 
         Args:
-            policy (TFPolicy): The TFPolicy object that this tower stack
+            policy: The TFPolicy object that this tower stack
                 belongs to.
         """
         # Obsoleted usage, use only `policy` arg from here on.
@@ -984,7 +1004,7 @@ class TFMultiGPUTowerStack:
         if self.policy.config["_tf_policy_handles_more_than_one_loss"]:
             avgs = []
             for i, optim in enumerate(self.optimizers):
-                avg = average_gradients([t.grads[i] for t in self._towers])
+                avg = _average_gradients([t.grads[i] for t in self._towers])
                 if grad_norm_clipping:
                     clipped = []
                     for grad, _ in avg:
@@ -1013,7 +1033,7 @@ class TFMultiGPUTowerStack:
                     [o.apply_gradients(a) for o, a in zip(self.optimizers, avgs)]
                 )
         else:
-            avg = average_gradients([t.grads for t in self._towers])
+            avg = _average_gradients([t.grads for t in self._towers])
             if grad_norm_clipping:
                 clipped = []
                 for grad, _ in avg:
@@ -1115,7 +1135,7 @@ class TFMultiGPUTowerStack:
 
         if len(smallest_array) < sequences_per_minibatch:
             # Dynamically shrink the batch size if insufficient data
-            sequences_per_minibatch = make_divisible_by(
+            sequences_per_minibatch = _make_divisible_by(
                 len(smallest_array), len(self.devices)
             )
 
@@ -1142,7 +1162,7 @@ class TFMultiGPUTowerStack:
         if len(state_inputs) > 0:
             # First truncate the RNN state arrays to the sequences_per_minib.
             state_inputs = [
-                make_divisible_by(arr, sequences_per_minibatch) for arr in state_inputs
+                _make_divisible_by(arr, sequences_per_minibatch) for arr in state_inputs
             ]
             # Then truncate the data inputs to match
             inputs = [arr[: len(state_inputs[0]) * seq_len] for arr in inputs]
@@ -1158,7 +1178,7 @@ class TFMultiGPUTowerStack:
         else:
             truncated_len = 0
             for ph, arr in zip(self.loss_inputs, inputs):
-                truncated_arr = make_divisible_by(arr, sequences_per_minibatch)
+                truncated_arr = _make_divisible_by(arr, sequences_per_minibatch)
                 feed_dict[ph] = truncated_arr
                 if truncated_len == 0:
                     truncated_len = len(truncated_arr)
@@ -1241,7 +1261,7 @@ class TFMultiGPUTowerStack:
                     device_input_slices.append(current_slice)
                 graph_obj = self.policy_copy(device_input_slices)
                 device_grads = graph_obj.gradients(self.optimizers, graph_obj._losses)
-            return Tower(
+            return _Tower(
                 tf.group(*[batch.initializer for batch in device_input_batches]),
                 device_grads,
                 graph_obj,
@@ -1249,16 +1269,16 @@ class TFMultiGPUTowerStack:
 
 
 # Each tower is a copy of the loss graph pinned to a specific device.
-Tower = namedtuple("Tower", ["init_op", "grads", "loss_graph"])
+_Tower = namedtuple("Tower", ["init_op", "grads", "loss_graph"])
 
 
-def make_divisible_by(a, n):
+def _make_divisible_by(a, n):
     if type(a) is int:
         return a - a % n
     return a[0 : a.shape[0] - a.shape[0] % n]
 
 
-def average_gradients(tower_grads):
+def _average_gradients(tower_grads):
     """Averages gradients across towers.
 
     Calculate the average gradient for each shared variable across all towers.

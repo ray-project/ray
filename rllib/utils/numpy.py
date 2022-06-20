@@ -1,8 +1,11 @@
+from collections import OrderedDict
 from gym.spaces import Discrete, MultiDiscrete
 import numpy as np
 import tree  # pip install dm_tree
+from types import MappingProxyType
 from typing import List, Optional
 
+from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.typing import SpaceStruct, TensorType, TensorStructType, Union
@@ -20,6 +23,7 @@ MIN_LOG_NN_OUTPUT = -5
 MAX_LOG_NN_OUTPUT = 2
 
 
+@PublicAPI
 def aligned_array(size: int, dtype, align: int = 64) -> np.ndarray:
     """Returns an array of a given size that is 64-byte aligned.
 
@@ -49,6 +53,7 @@ def aligned_array(size: int, dtype, align: int = 64) -> np.ndarray:
     return output
 
 
+@PublicAPI
 def concat_aligned(
     items: List[np.ndarray], time_major: Optional[bool] = None
 ) -> np.ndarray:
@@ -103,6 +108,7 @@ def concat_aligned(
         return np.concatenate(items, axis=1 if time_major else 0)
 
 
+@PublicAPI
 def convert_to_numpy(
     x: TensorStructType, reduce_type: bool = True, reduce_floats=DEPRECATED_VALUE
 ):
@@ -151,6 +157,7 @@ def convert_to_numpy(
     return tree.map_structure(mapping, x)
 
 
+@PublicAPI
 def fc(
     x: np.ndarray,
     weights: np.ndarray,
@@ -192,6 +199,7 @@ def fc(
     return np.matmul(x, weights) + (0.0 if biases is None else biases)
 
 
+@PublicAPI
 def flatten_inputs_to_1d_tensor(
     inputs: TensorStructType,
     spaces_struct: Optional[SpaceStruct] = None,
@@ -300,6 +308,44 @@ def flatten_inputs_to_1d_tensor(
     return merged
 
 
+@PublicAPI
+def make_action_immutable(obj):
+    """Flags actions immutable to notify users when trying to change them.
+
+    Can also be used with any tree-like structure containing either
+    dictionaries, numpy arrays or already immutable objects per se.
+    Note, however that `tree.map_structure()` will in general not
+    include the shallow object containing all others and therefore
+    immutability will hold only for all objects contained in it.
+    Use `tree.traverse(fun, action, top_down=False)` to include
+    also the containing object.
+
+    Args:
+        obj: The object to be made immutable.
+
+    Returns:
+        The immutable object.
+
+    Examples:
+        >>> import tree
+        >>> import numpy as np
+        >>> from ray.rllib.utils.numpy import make_action_immutable
+        >>> arr = np.arange(1,10)
+        >>> d = dict(a = 1, b = (arr, arr))
+        >>> tree.traverse(make_action_immutable, d, top_down=False) # doctest: +SKIP
+    """
+    if isinstance(obj, np.ndarray):
+        obj.setflags(write=False)
+        return obj
+    elif isinstance(obj, OrderedDict):
+        return MappingProxyType(dict(obj))
+    elif isinstance(obj, dict):
+        return MappingProxyType(obj)
+    else:
+        return obj
+
+
+@PublicAPI
 def huber_loss(x: np.ndarray, delta: float = 1.0) -> np.ndarray:
     """Reference: https://en.wikipedia.org/wiki/Huber_loss."""
     return np.where(
@@ -307,6 +353,7 @@ def huber_loss(x: np.ndarray, delta: float = 1.0) -> np.ndarray:
     )
 
 
+@PublicAPI
 def l2_loss(x: np.ndarray) -> np.ndarray:
     """Computes half the L2 norm of a tensor (w/o the sqrt): sum(x**2) / 2.
 
@@ -319,6 +366,7 @@ def l2_loss(x: np.ndarray) -> np.ndarray:
     return np.sum(np.square(x)) / 2.0
 
 
+@PublicAPI
 def lstm(
     x,
     weights: np.ndarray,
@@ -388,6 +436,7 @@ def lstm(
     return unrolled_outputs, (c_states, h_states)
 
 
+@PublicAPI
 def one_hot(
     x: Union[TensorType, int],
     depth: int = 0,
@@ -450,6 +499,7 @@ def one_hot(
     return out
 
 
+@PublicAPI
 def relu(x: np.ndarray, alpha: float = 0.0) -> np.ndarray:
     """Implementation of the leaky ReLU function.
 
@@ -465,6 +515,7 @@ def relu(x: np.ndarray, alpha: float = 0.0) -> np.ndarray:
     return np.maximum(x, x * alpha, x)
 
 
+@PublicAPI
 def sigmoid(x: np.ndarray, derivative: bool = False) -> np.ndarray:
     """
     Returns the sigmoid function applied to x.
@@ -484,6 +535,7 @@ def sigmoid(x: np.ndarray, derivative: bool = False) -> np.ndarray:
         return 1 / (1 + np.exp(-x))
 
 
+@PublicAPI
 def softmax(
     x: Union[np.ndarray, list], axis: int = -1, epsilon: Optional[float] = None
 ) -> np.ndarray:

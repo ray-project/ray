@@ -22,6 +22,9 @@ from ray._private.test_utils import (
     wait_until_succeeded_without_exception,
 )
 
+from unittest import mock
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -324,10 +327,32 @@ def test_multi_node_churn(
         time.sleep(2)
 
 
+@pytest.fixture
+def disable_dashboard_log_info(request):
+    if request.param is False:
+        env_var_value = "0"
+    else:
+        env_var_value = "1"
+
+    with mock.patch.dict(
+        os.environ,
+        {
+            "RAY_DISABLE_DASHBOARD_LOG_INFO": env_var_value,
+        },
+    ):
+        yield request.param
+
+
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [{"include_dashboard": True}], indirect=True
 )
-def test_logs(enable_test_module, disable_aiohttp_cache, ray_start_cluster_head):
+@pytest.mark.parametrize("disable_dashboard_log_info", [False, True], indirect=True)
+def test_logs(
+    enable_test_module,
+    disable_aiohttp_cache,
+    disable_dashboard_log_info,
+    ray_start_cluster_head,
+):
     cluster = ray_start_cluster_head
     assert wait_until_server_available(cluster.webui_url) is True
     webui_url = cluster.webui_url
@@ -362,6 +387,11 @@ def test_logs(enable_test_module, disable_aiohttp_cache, ray_start_cluster_head)
         node_logs = node_logs_response.json()
         assert node_logs["result"]
         assert type(node_logs["data"]["logs"]) is dict
+
+        if disable_dashboard_log_info:
+            assert node_logs["data"]["logs"] == {}
+            return
+
         assert all(pid in node_logs["data"]["logs"] for pid in (la_pid, la2_pid))
         assert len(node_logs["data"]["logs"][la2_pid]) == 1
 

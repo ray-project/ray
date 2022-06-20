@@ -222,6 +222,10 @@ install_upgrade_pip() {
 
   if "${python}" -m pip --version || "${python}" -m ensurepip; then  # Configure pip if present
     "${python}" -m pip install --quiet pip==21.3.1
+    # cryptography 37.0.0 breaks ensurepip.
+    # Example build failure:
+    # https://buildkite.com/ray-project/ray-builders-branch/builds/7207#a16e8f76-a993-4d8d-a5f0-09c4f76245dc
+    "${python}" -m pip install cryptography==36.0.2
 
     # If we're in a CI environment, do some configuration
     if [ "${CI-}" = true ]; then
@@ -308,7 +312,7 @@ install_dependencies() {
 
   if [ -n "${PYTHON-}" ] && [ "${MINIMAL_INSTALL-}" != 1 ]; then
     # Remove this entire section once Serve dependencies are fixed.
-    if [ "${DOC_TESTING-}" != 1 ] && [ "${SGD_TESTING-}" != 1 ] && [ "${TRAIN_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ] && [ "${RLLIB_TESTING-}" != 1 ]; then
+    if [ "${DOC_TESTING-}" != 1 ] && [ "${TRAIN_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ] && [ "${RLLIB_TESTING-}" != 1 ]; then
       # We want to install the CPU version only.
       pip install -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_dl.txt
     fi
@@ -346,6 +350,13 @@ install_dependencies() {
     fi
   fi
 
+  # Additional default doc testing dependencies.
+  if [ "${DOC_TESTING-}" = 1 ]; then
+    # For Ray Core and Ray Serve DAG visualization docs test
+    sudo apt-get install -y graphviz
+    pip install -U pydot  # For DAG visualization
+  fi
+
   # Additional RLlib test dependencies.
   if [ "${RLLIB_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
     pip install -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_rllib.txt
@@ -359,8 +370,8 @@ install_dependencies() {
   fi
 
 
-  # Additional Tune/SGD/Doc test dependencies.
-  if [ "${TUNE_TESTING-}" = 1 ] || [ "${SGD_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
+  # Additional Tune/Doc test dependencies.
+  if [ "${TUNE_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
     pip install -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_tune.txt
     download_mnist
   fi
@@ -375,7 +386,7 @@ install_dependencies() {
   # dependencies with Modin.
   if [ "${INSTALL_LUDWIG-}" = 1 ]; then
     # TODO: eventually pin this to master.
-    pip install -U "ludwig[test]">=0.4
+    pip install -U "ludwig[test]">=0.4 jsonschema>=4
   fi
 
   # Data processing test dependencies.
@@ -387,7 +398,7 @@ install_dependencies() {
   fi
 
   # Remove this entire section once Serve dependencies are fixed.
-  if [ "${MINIMAL_INSTALL-}" != 1 ] && [ "${DOC_TESTING-}" != 1 ] && [ "${SGD_TESTING-}" != 1 ] && [ "${TRAIN_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ] && [ "${RLLIB_TESTING-}" != 1 ]; then
+  if [ "${MINIMAL_INSTALL-}" != 1 ] && [ "${DOC_TESTING-}" != 1 ] && [ "${TRAIN_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ] && [ "${RLLIB_TESTING-}" != 1 ]; then
     # If CI has deemed that a different version of Torch
     # should be installed, then upgrade/downgrade to that specific version.
     if [ -n "${TORCH_VERSION-}" ]; then

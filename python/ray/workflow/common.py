@@ -24,6 +24,7 @@ WorkflowOutputType = ObjectRef
 MANAGEMENT_ACTOR_NAMESPACE = "workflow"
 MANAGEMENT_ACTOR_NAME = "WorkflowManagementActor"
 STORAGE_ACTOR_NAME = "StorageManagementActor"
+WORKFLOW_OPTIONS = "workflow.io/options"
 
 
 def asyncio_run(coro):
@@ -41,11 +42,6 @@ def get_module(f):
 
 def get_qualname(f):
     return f.__qualname__ if hasattr(f, "__qualname__") else "__anonymous_func__"
-
-
-def ensure_ray_initialized():
-    if not ray.is_initialized():
-        ray.init()
 
 
 def validate_user_metadata(metadata):
@@ -144,6 +140,8 @@ class WorkflowStaticRef:
 @PublicAPI(stability="beta")
 @unique
 class WorkflowStatus(str, Enum):
+    # No status is set for this workflow.
+    NONE = "NONE"
     # There is at least a remote task running in ray cluster
     RUNNING = "RUNNING"
     # It got canceled and can't be resumed later.
@@ -163,8 +161,6 @@ class StepType(str, Enum):
     """All step types."""
 
     FUNCTION = "FUNCTION"
-    ACTOR_METHOD = "ACTOR_METHOD"
-    READONLY_ACTOR_METHOD = "READONLY_ACTOR_METHOD"
     WAIT = "WAIT"
 
 
@@ -321,9 +317,7 @@ class WorkflowExecutionResult:
     """Dataclass for holding workflow execution result."""
 
     # Part of result to persist in a storage and pass to the next step.
-    persisted_output: "WorkflowStaticRef"
-    # Part of result to return to the user but does not require persistence.
-    volatile_output: "WorkflowStaticRef"
+    output: "WorkflowStaticRef"
 
 
 @dataclass
@@ -559,6 +553,9 @@ class Workflow(Generic[T]):
         """
         # TODO(suquark): avoid cyclic importing
         from ray.workflow.execution import run
+        from ray.workflow.api import _ensure_workflow_initialized
+
+        _ensure_workflow_initialized()
 
         self._step_id = None
         return run(self, workflow_id, metadata)

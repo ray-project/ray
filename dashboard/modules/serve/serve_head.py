@@ -1,9 +1,10 @@
-from aiohttp.web import Request, Response
 import json
 import logging
 
-import ray.dashboard.utils as dashboard_utils
+from aiohttp.web import Request, Response
+
 import ray.dashboard.optional_utils as optional_utils
+import ray.dashboard.utils as dashboard_utils
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -21,26 +22,26 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
     @routes.get("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def get_all_deployments(self, req: Request) -> Response:
-        from ray.serve.api import list_deployments
-        from ray.serve.application import Application
+        from ray.serve.context import get_global_client
 
-        app = Application(list(list_deployments().values()))
+        client = get_global_client()
+
         return Response(
-            text=json.dumps(app.to_dict()),
+            text=json.dumps(client.get_app_config()),
             content_type="application/json",
         )
 
     @routes.get("/api/serve/deployments/status")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def get_all_deployment_statuses(self, req: Request) -> Response:
-        from ray.serve.api import get_deployment_statuses
-        from ray.serve.schema import serve_application_status_to_schema
+        from ray.serve.context import get_global_client
+        from ray.serve.schema import serve_status_to_schema
 
-        serve_application_status_schema = serve_application_status_to_schema(
-            get_deployment_statuses()
-        )
+        client = get_global_client()
+
+        serve_status_schema = serve_status_to_schema(client.get_serve_status())
         return Response(
-            text=serve_application_status_schema.json(),
+            text=serve_status_schema.json(),
             content_type="application/json",
         )
 
@@ -56,20 +57,19 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def put_all_deployments(self, req: Request) -> Response:
         from ray import serve
-        from ray.serve.context import get_global_client
         from ray.serve.application import Application
+        from ray.serve.context import get_global_client
+        from ray.serve.schema import ServeApplicationSchema
 
-        app = Application.from_dict(await req.json())
-        serve.run(app, _blocking=False)
+        config = ServeApplicationSchema.parse_obj(await req.json())
 
-        new_names = set()
-        for deployment in app.deployments.values():
-            new_names.add(deployment.name)
-
-        all_deployments = serve.list_deployments()
-        all_names = set(all_deployments.keys())
-        names_to_delete = all_names.difference(new_names)
-        get_global_client().delete_deployments(names_to_delete)
+        if config.import_path is not None:
+            client = get_global_client()
+            client.deploy_app(config)
+        else:
+            # TODO (shrekris-anyscale): Remove this conditional path
+            app = Application.from_dict(await req.json())
+            serve.run(app, _blocking=False)
 
         return Response()
 

@@ -22,5 +22,4 @@ def end(results: "List[ray.ObjectRef[str]]") -> str:
 
 
 if __name__ == "__main__":
-    workflow.init()
     workflow.create(start.bind()).run()

@@ -2,8 +2,8 @@ import logging
 from types import ModuleType
 from typing import Any, Dict, List, Optional
 
+from ray.autoscaler._private.command_runner import DockerCommandRunner, SSHCommandRunner
 from ray.autoscaler.command_runner import CommandRunnerInterface
-from ray.autoscaler._private.command_runner import SSHCommandRunner, DockerCommandRunner
 
 logger = logging.getLogger(__name__)
 
@@ -84,8 +84,8 @@ class NodeProvider:
         Assumes ip-address is unique per node.
 
         Args:
-            ip_address (str): Address of node.
-            use_internal_ip (bool): Whether the ip address is
+            ip_address: Address of node.
+            use_internal_ip: Whether the ip address is
                 public or private.
 
         Raises:

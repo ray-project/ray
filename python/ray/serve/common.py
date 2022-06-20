@@ -1,6 +1,7 @@
-from dataclasses import dataclass
+import json
 from enum import Enum
-from typing import Any, Dict, Optional
+from dataclasses import dataclass, field, asdict
+from typing import Any, List, Dict, Optional
 
 import ray
 from ray.actor import ActorHandle
@@ -10,6 +11,10 @@ from ray.serve.generated.serve_pb2 import (
     DeploymentInfo as DeploymentInfoProto,
     DeploymentStatusInfo as DeploymentStatusInfoProto,
     DeploymentStatus as DeploymentStatusProto,
+    DeploymentStatusInfoList as DeploymentStatusInfoListProto,
+    ApplicationStatus as ApplicationStatusProto,
+    ApplicationStatusInfo as ApplicationStatusInfoProto,
+    StatusOverview as StatusOverviewProto,
     DeploymentLanguage,
 )
 
@@ -24,26 +29,131 @@ class EndpointInfo:
     route: str
 
 
+class ApplicationStatus(str, Enum):
+    DEPLOYING = "DEPLOYING"
+    RUNNING = "RUNNING"
+    DEPLOY_FAILED = "DEPLOY_FAILED"
+
+
+@dataclass(eq=True)
+class ApplicationStatusInfo:
+    status: ApplicationStatus
+    message: str = ""
+    deployment_timestamp: float = 0
+
+    def debug_string(self):
+        return json.dumps(asdict(self), indent=4)
+
+    def to_proto(self):
+        return ApplicationStatusInfoProto(
+            status=self.status,
+            message=self.message,
+            deployment_timestamp=self.deployment_timestamp,
+        )
+
+    @classmethod
+    def from_proto(cls, proto: ApplicationStatusInfoProto):
+        return cls(
+            status=ApplicationStatus(ApplicationStatusProto.Name(proto.status)),
+            message=proto.message,
+            deployment_timestamp=proto.deployment_timestamp,
+        )
+
+
 class DeploymentStatus(str, Enum):
     UPDATING = "UPDATING"
     HEALTHY = "HEALTHY"
     UNHEALTHY = "UNHEALTHY"
 
 
-@dataclass
+@dataclass(eq=True)
 class DeploymentStatusInfo:
+    name: str
     status: DeploymentStatus
     message: str = ""
 
+    def debug_string(self):
+        return json.dumps(asdict(self), indent=4)
+
     def to_proto(self):
-        return DeploymentStatusInfoProto(status=self.status, message=self.message)
+        return DeploymentStatusInfoProto(
+            name=self.name, status=self.status, message=self.message
+        )
 
     @classmethod
     def from_proto(cls, proto: DeploymentStatusInfoProto):
         return cls(
+            name=proto.name,
             status=DeploymentStatus(DeploymentStatusProto.Name(proto.status)),
             message=proto.message,
         )
+
+
+@dataclass(eq=True)
+class StatusOverview:
+    app_status: ApplicationStatusInfo
+    deployment_statuses: List[DeploymentStatusInfo] = field(default_factory=list)
+
+    def debug_string(self):
+        return json.dumps(asdict(self), indent=4)
+
+    def get_deployment_status(self, name: str) -> Optional[DeploymentStatusInfo]:
+        """Get a deployment's status by name.
+
+        Args:
+            name: Deployment's name.
+
+        Return (Optional[DeploymentStatusInfo]): Status with a name matching
+            the argument, if one exists. Otherwise, returns None.
+        """
+
+        for deployment_status in self.deployment_statuses:
+            if name == deployment_status.name:
+                return deployment_status
+
+        return None
+
+    def to_proto(self):
+
+        # Create a protobuf for the Serve Application info
+        app_status_proto = self.app_status.to_proto()
+
+        # Create protobufs for all individual deployment statuses
+        deployment_status_protos = map(
+            lambda status: status.to_proto(), self.deployment_statuses
+        )
+
+        # Create a protobuf list containing all the deployment status protobufs
+        deployment_status_proto_list = DeploymentStatusInfoListProto()
+        deployment_status_proto_list.deployment_status_infos.extend(
+            deployment_status_protos
+        )
+
+        # Return protobuf encapsulating application and deployment protos
+        return StatusOverviewProto(
+            app_status=app_status_proto,
+            deployment_statuses=deployment_status_proto_list,
+        )
+
+    @classmethod
+    def from_proto(cls, proto: StatusOverviewProto) -> "StatusOverview":
+
+        # Recreate Serve Application info
+        app_status = ApplicationStatusInfo.from_proto(proto.app_status)
+
+        # Recreate deployment statuses
+        deployment_statuses = []
+        for proto in proto.deployment_statuses.deployment_status_infos:
+            deployment_statuses.append(DeploymentStatusInfo.from_proto(proto))
+
+        # Recreate StatusInfo
+        return cls(app_status=app_status, deployment_statuses=deployment_statuses)
+
+
+HEALTH_CHECK_CONCURRENCY_GROUP = "health_check"
+REPLICA_DEFAULT_ACTOR_OPTIONS = {
+    "concurrency_groups": {HEALTH_CHECK_CONCURRENCY_GROUP: 1}
+}
 
 
 class DeploymentInfo:
@@ -54,7 +164,6 @@ class DeploymentInfo:
         start_time_ms: int,
         deployer_job_id: "ray._raylet.JobID",
         actor_name: Optional[str] = None,
-        serialized_deployment_def: Optional[bytes] = None,
         version: Optional[str] = None,
         end_time_ms: Optional[int] = None,
         autoscaling_policy: Optional[AutoscalingPolicy] = None,
@@ -64,7 +173,6 @@ class DeploymentInfo:
         # The time when .deploy() was first called for this deployment.
         self.start_time_ms = start_time_ms
         self.actor_name = actor_name
-        self.serialized_deployment_def = serialized_deployment_def
         self.version = version
         self.deployer_job_id = deployer_job_id
         # The time when this deployment was deleted.
@@ -90,24 +198,10 @@ class DeploymentInfo:
 
         if self._cached_actor_def is None:
             assert self.actor_name is not None
-            assert (
-                self.replica_config.import_path is not None
-                or self.serialized_deployment_def is not None
+
+            self._cached_actor_def = ray.remote(**REPLICA_DEFAULT_ACTOR_OPTIONS)(
+                create_replica_wrapper(self.actor_name)
             )
-            if self.replica_config.import_path is not None:
-                self._cached_actor_def = ray.remote(
-                    create_replica_wrapper(
-                        self.actor_name,
-                        import_path=self.replica_config.import_path,
-                    )
-                )
-            else:
-                self._cached_actor_def = ray.remote(
-                    create_replica_wrapper(
-                        self.actor_name,
-                        serialized_deployment_def=self.serialized_deployment_def,
-                    )
-                )
 
         return self._cached_actor_def
 
@@ -128,9 +222,6 @@ class DeploymentInfo:
             ),
             "start_time_ms": proto.start_time_ms,
             "actor_name": proto.actor_name if proto.actor_name != "" else None,
-            "serialized_deployment_def": proto.serialized_deployment_def
-            if proto.serialized_deployment_def != b""
-            else None,
             "version": proto.version if proto.version != "" else None,
             "end_time_ms": proto.end_time_ms if proto.end_time_ms != 0 else None,
             "deployer_job_id": ray.get_runtime_context().job_id,
@@ -142,7 +233,6 @@ class DeploymentInfo:
         data = {
             "start_time_ms": self.start_time_ms,
             "actor_name": self.actor_name,
-            "serialized_deployment_def": self.serialized_deployment_def,
             "version": self.version,
             "end_time_ms": self.end_time_ms,
         }

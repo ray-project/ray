@@ -123,7 +123,7 @@ setup_commands:
     - (which conda && echo 'eval "$(conda shell.bash hook)"' >> ~/.bashrc) || true
     # - (conda activate py38_pytorch &> /dev/null && echo 'conda activate py38_pytorch' >> ~/.bashrc) || true
     - (conda activate py38_tensorflow &> /dev/null && echo 'conda activate py38_tensorflow' >> ~/.bashrc) || true
-    - which ray || pip install -U "ray[default] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl"
+    - which ray || pip install -U "ray[default] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl"
     # Consider uncommenting these if you also want to run apt-get commands during setup
     # - sudo pkill -9 apt-get || true
     # - sudo pkill -9 dpkg || true

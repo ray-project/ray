@@ -1,30 +1,40 @@
 import argparse
 import asyncio
+import io
+import json
 import logging
 import logging.handlers
 import os
 import sys
-import json
+
+import ray
+import ray._private.services
+import ray._private.utils
+import ray.dashboard.consts as dashboard_consts
+import ray.dashboard.utils as dashboard_utils
+import ray.experimental.internal_kv as internal_kv
+import ray.ray_constants as ray_constants
+from ray._private.gcs_pubsub import GcsAioPublisher, GcsPublisher
+from ray._private.gcs_utils import GcsClient
+from ray._private.ray_logging import setup_component_logger
+from ray.core.generated import agent_manager_pb2, agent_manager_pb2_grpc
+
+# Import psutil after ray so the packaged version is used.
+import psutil
 
 try:
     from grpc import aio as aiogrpc
 except ImportError:
     from grpc.experimental import aio as aiogrpc
 
-import ray
-import ray.experimental.internal_kv as internal_kv
-import ray.dashboard.consts as dashboard_consts
-import ray.dashboard.utils as dashboard_utils
-import ray.ray_constants as ray_constants
-import ray._private.services
-import ray._private.utils
-from ray._private.gcs_utils import GcsClient
-from ray.core.generated import agent_manager_pb2
-from ray.core.generated import agent_manager_pb2_grpc
-from ray._private.ray_logging import setup_component_logger
 
-# Import psutil after ray so the packaged version is used.
-import psutil
+# Publishes at most this number of lines of Raylet logs, when the Raylet dies
+# unexpectedly.
+_RAYLET_LOG_MAX_PUBLISH_LINES = 20
+
+# Reads at most this amount of Raylet logs from the tail, for publishing and
+# checking if the Raylet was terminated gracefully.
+_RAYLET_LOG_MAX_TAIL_SIZE = 1 * 1024 ** 2
 
 try:
     create_task = asyncio.create_task
@@ -36,7 +46,7 @@ logger = logging.getLogger(__name__)
 aiogrpc.init_grpc_aio()
 
 
-class DashboardAgent(object):
+class DashboardAgent:
     def __init__(
         self,
         node_ip_address,
@@ -53,6 +63,7 @@ class DashboardAgent(object):
         object_store_name=None,
         raylet_name=None,
         logging_params=None,
+        disable_metrics_collection: bool = False,
     ):
         """Initialize the DashboardAgent object."""
         # Public attributes are accessible for all agent modules.
@@ -74,6 +85,7 @@ class DashboardAgent(object):
         self.raylet_name = raylet_name
         self.logging_params = logging_params
         self.node_id = os.environ["RAY_NODE_ID"]
+        self.metrics_collection_disabled = disable_metrics_collection
         # TODO(edoakes): RAY_RAYLET_PID isn't properly set on Windows. This is
         # only used for fate-sharing with the raylet and we need a different
         # fate-sharing mechanism for Windows anyways.
@@ -83,7 +95,7 @@ class DashboardAgent(object):
             logger.info("Parent pid is %s", self.ppid)
 
         # Setup raylet channel
-        options = (("grpc.enable_http_proxy", 0),)
+        options = ray_constants.GLOBAL_GRPC_OPTIONS
         self.aiogrpc_raylet_channel = ray._private.utils.init_grpc_channel(
             f"{self.ip}:{self.node_manager_port}", options, asynchronous=True
         )
@@ -111,6 +123,10 @@ class DashboardAgent(object):
         # If the agent is started as non-minimal version, http server should
         # be configured to communicate with the dashboard in a head node.
         self.http_server = None
+
+        # Used by the agent and sub-modules.
+        self.gcs_client = GcsClient(address=self.gcs_address)
+        self.publisher = GcsAioPublisher(address=self.gcs_address)
 
     async def _configure_http_server(self, modules):
         from ray.dashboard.http_server_agent import HttpServerAgent
@@ -147,7 +163,54 @@ class DashboardAgent(object):
                 while True:
                     parent = curr_proc.parent()
                     if parent is None or parent.pid == 1 or self.ppid != parent.pid:
-                        logger.error("Raylet is dead, exiting.")
+                        log_path = os.path.join(self.log_dir, "raylet.out")
+                        error = False
+                        msg = f"Raylet is terminated: ip={self.ip}, id={self.node_id}. "
+                        try:
+                            with open(log_path, "r", encoding="utf-8") as f:
+                                # Seek to _RAYLET_LOG_MAX_TAIL_SIZE from the end if the
+                                # file is larger than that.
+                                f.seek(0, io.SEEK_END)
+                                pos = max(0, f.tell() - _RAYLET_LOG_MAX_TAIL_SIZE)
+                                f.seek(pos, io.SEEK_SET)
+                                # Read remaining logs by lines.
+                                raylet_logs = f.readlines()
+                                # Assume the SIGTERM message must exist within the last
+                                # _RAYLET_LOG_MAX_TAIL_SIZE of the log file.
+                                if any(
+                                    "Raylet received SIGTERM" in line
+                                    for line in raylet_logs
+                                ):
+                                    msg += "Termination is graceful."
+                                    logger.info(msg)
+                                else:
+                                    msg += (
+                                        "Termination is unexpected. Possible reasons "
+                                        "include: (1) SIGKILL by the user or system "
+                                        "OOM killer, (2) Invalid memory access from "
+                                        "Raylet causing SIGSEGV or SIGBUS, "
+                                        "(3) Other termination signals. "
+                                        f"Last {_RAYLET_LOG_MAX_PUBLISH_LINES} lines "
+                                        "of the Raylet logs:\n"
+                                    )
+                                    msg += "    " + "    ".join(
+                                        raylet_logs[-_RAYLET_LOG_MAX_PUBLISH_LINES:]
+                                    )
+                                    error = True
+                        except Exception as e:
+                            msg += f"Failed to read Raylet logs at {log_path}: {e}!"
+                            logger.exception()
+                            error = True
+                        if error:
+                            logger.error(msg)
+                            # TODO: switch to async if necessary.
+                            ray._private.utils.publish_error_to_driver(
+                                ray_constants.RAYLET_DIED_ERROR,
+                                msg,
+                                gcs_publisher=GcsPublisher(address=self.gcs_address),
+                            )
+                        else:
+                            logger.info(msg)
                         sys.exit(0)
                     await asyncio.sleep(
                         dashboard_consts.DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_SECONDS
@@ -163,7 +226,6 @@ class DashboardAgent(object):
         if self.server:
             await self.server.start()
 
-        self.gcs_client = GcsClient(address=self.gcs_address)
         modules = self._load_modules()
 
         # Setup http server if necessary.
@@ -347,6 +409,11 @@ if __name__ == "__main__":
             "by `pip install ray[default]`."
         ),
     )
+    parser.add_argument(
+        "--disable-metrics-collection",
+        action="store_true",
+        help=("If this arg is set, metrics report won't be enabled from the agent."),
+    )
 
     args = parser.parse_args()
     try:
@@ -375,6 +442,7 @@ if __name__ == "__main__":
             object_store_name=args.object_store_name,
             raylet_name=args.raylet_name,
             logging_params=logging_params,
+            disable_metrics_collection=args.disable_metrics_collection,
         )
         if os.environ.get("_RAY_AGENT_FAILING"):
             raise Exception("Failure injection failure.")

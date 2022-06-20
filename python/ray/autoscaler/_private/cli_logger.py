@@ -7,19 +7,25 @@ Supports color, bold text, italics, underlines, etc.
 (depending on TTY features)
 as well as indentation and other structured output.
 """
-from contextlib import contextmanager
-from functools import wraps
 import inspect
 import logging
 import os
 import sys
-from typing import Any, Callable, Dict, Tuple, Optional, List
+import time
+from contextlib import contextmanager
+from functools import wraps
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import click
+import colorama
 
 # Import ray first to use the bundled colorama
 import ray  # noqa: F401
-import colorama
+
+if sys.platform == "win32":
+    import msvcrt
+else:
+    import select
 
 
 class _ColorfulMock:
@@ -399,7 +405,7 @@ class _CliLogger:
         """Proxy for printing messages.
 
         Args:
-            msg (str): Message to print.
+            msg: Message to print.
             linefeed (bool):
                 If `linefeed` is `False` no linefeed is printed at the
                 end of the message.
@@ -491,7 +497,7 @@ class _CliLogger:
         """Displays a key-value pair with special formatting.
 
         Args:
-            key (str): Label that is prepended to the message.
+            key: Label that is prepended to the message.
 
         For other arguments, see `_format_msg`.
         """
@@ -607,7 +613,7 @@ class _CliLogger:
         """Handle assertion without throwing a scary exception.
 
         Args:
-            val (bool): Value to check.
+            val: Value to check.
 
         For other arguments, see `_format_msg`.
         """
@@ -633,6 +639,7 @@ class _CliLogger:
         *args: Any,
         _abort: bool = False,
         _default: bool = False,
+        _timeout_s: Optional[float] = None,
         **kwargs: Any
     ):
         """Display a confirmation dialog.
@@ -640,7 +647,7 @@ class _CliLogger:
         Valid answers are "y/yes/true/1" and "n/no/false/0".
 
         Args:
-            yes (bool): If `yes` is `True` the dialog will default to "yes"
+            yes: If `yes` is `True` the dialog will default to "yes"
                         and continue without waiting for user input.
             _abort (bool):
                 If `_abort` is `True`,
@@ -648,6 +655,9 @@ class _CliLogger:
             _default (bool):
                 The default action to take if the user just presses enter
                 with no input.
+            _timeout_s (float):
+                If user has no input within _timeout_s seconds, the default
+                action is taken. None means no timeout.
         """
         should_abort = _abort
         default = _default
@@ -686,7 +696,41 @@ class _CliLogger:
         no_answers = ["n", "no", "false", "0"]
         try:
             while True:
-                ans = sys.stdin.readline()
+                if _timeout_s is None:
+                    ans = sys.stdin.readline()
+                elif sys.platform == "win32":
+                    # Windows doesn't support select
+                    start_time = time.time()
+                    ans = ""
+                    while True:
+                        if (time.time() - start_time) >= _timeout_s:
+                            self.newline()
+                            ans = "\n"
+                            break
+                        elif msvcrt.kbhit():
+                            ch = msvcrt.getwch()
+                            if ch in ("\n", "\r"):
+                                self.newline()
+                                ans = ans + "\n"
+                                break
+                            elif ch == "\b":
+                                if ans:
+                                    ans = ans[:-1]
+                                    # Emulate backspace erasing
+                                    print("\b \b", end="", flush=True)
+                            else:
+                                ans = ans + ch
+                                print(ch, end="", flush=True)
+                        else:
+                            time.sleep(0.1)
+                else:
+                    ready, _, _ = select.select([sys.stdin], [], [], _timeout_s)
+                    if not ready:
+                        self.newline()
+                        ans = "\n"
+                    else:
+                        ans = sys.stdin.readline()
+
                 ans = ans.lower()
 
                 if ans == "\n":
@@ -728,7 +772,7 @@ class _CliLogger:
         """Prompt the user for some text input.
 
         Args:
-            msg (str): The mesage to display to the user before the prompt.
+            msg: The mesage to display to the user before the prompt.
 
         Returns:
             The string entered by the user.

@@ -6,7 +6,7 @@ Ray Train User Guide
 .. tip:: Get in touch with us if you're using or considering using `Ray Train <https://forms.gle/PXFcJmHwszCwQhqX7>`_!
 
 Ray Train provides solutions for training machine learning models in a distributed manner on Ray.
-As of Ray 1.8, support for Deep Learning is available in ``ray.train`` (formerly :ref:`Ray SGD <sgd-index>`).
+Support for Deep Learning is available in ``ray.train``.
 For other model types, distributed training support is available through other libraries:
 
 * **Reinforcement Learning:** :ref:`rllib-index`
@@ -659,7 +659,7 @@ appropriately in distributed training.
 
             for epoch in range(config["num_epochs"]):
                 model.fit(X, Y, batch_size=20)
-                train.save_checkpoint(epoch=epoch, model_weights=model.get_weights())
+                train.save_checkpoint(epoch=epoch, model=model.get_weights())
 
 
         trainer = Trainer(backend="tensorflow", num_workers=2)
@@ -861,7 +861,7 @@ Checkpoints can be loaded into the training function in 2 steps:
 
             for epoch in range(start_epoch, config["num_epochs"]):
                 model.fit(X, Y, batch_size=20)
-                train.save_checkpoint(epoch=epoch, model_weights=model.get_weights())
+                train.save_checkpoint(epoch=epoch, model=model.get_weights())
 
 
         trainer = Trainer(backend="tensorflow", num_workers=2)
@@ -1305,11 +1305,3 @@ A couple caveats:
     ~~~~~~~~~~~~~~~~~~
 
     TODO
-
-.. _train-backwards-compatibility:
-
-
-Backwards Compatibility with Ray SGD
-------------------------------------
-
-If you are currently using :ref:`RaySGD <sgd-index>`, you can migrate to Ray Train by following: :ref:`sgd-migration`.

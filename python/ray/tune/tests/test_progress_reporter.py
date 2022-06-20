@@ -68,7 +68,7 @@ Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
 END_TO_END_COMMAND = """
 import ray
 from ray import tune
-from ray.tune.trial import Location
+from ray.tune.trial import _Location
 from ray.tune.progress_reporter import _get_trial_location
 from unittest.mock import patch
 
@@ -76,7 +76,7 @@ from unittest.mock import patch
 def mock_get_trial_location(trial, result):
     location = _get_trial_location(trial, result)
     if location.pid:
-        return Location("123.123.123.123", "1")
+        return _Location("123.123.123.123", "1")
     return location
 
 
@@ -262,7 +262,7 @@ VERBOSE_CMD = """from ray import tune
 import random
 import numpy as np
 import time
-from ray.tune.trial import Location
+from ray.tune.trial import _Location
 from ray.tune.progress_reporter import _get_trial_location
 from unittest.mock import patch
 
@@ -270,7 +270,7 @@ from unittest.mock import patch
 def mock_get_trial_location(trial, result):
     location = _get_trial_location(trial, result)
     if location.pid:
-        return Location("123.123.123.123", "1")
+        return _Location("123.123.123.123", "1")
     return location
 
 
@@ -595,6 +595,7 @@ class ProgressReporterTest(unittest.TestCase):
             try:
                 assert EXPECTED_END_TO_END_START in output
                 assert EXPECTED_END_TO_END_END in output
+                assert "(raylet)" not in output, "Unexpected raylet log messages"
             except Exception:
                 print("*** BEGIN OUTPUT ***")
                 print(output)
@@ -693,6 +694,25 @@ class ProgressReporterTest(unittest.TestCase):
                 pass
 
         tune.run(lambda config: 2, num_samples=1, progress_reporter=CustomReporter())
+
+    def testMaxLen(self):
+        trials = []
+        for i in range(5):
+            t = Mock()
+            t.status = "TERMINATED"
+            t.trial_id = "%05d" % i
+            t.local_dir = "/foo"
+            t.location = "here"
+            t.config = {"verylong" * 20: i}
+            t.evaluated_params = {"verylong" * 20: i}
+            t.last_result = {"some_metric": "evenlonger" * 100}
+            t.__str__ = lambda self: self.trial_id
+            trials.append(t)
+
+        progress_str = trial_progress_str(
+            trials, metric_columns=["some_metric"], force_table=True
+        )
+        assert any(len(row) <= 90 for row in progress_str.split("\n"))
 
 
 if __name__ == "__main__":

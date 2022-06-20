@@ -4,6 +4,7 @@ import tree  # pip install dm_tree
 import random
 from typing import Union, Optional
 
+from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.models.torch.torch_action_dist import TorchMultiActionDistribution
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.utils.annotations import override
@@ -18,6 +19,7 @@ tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 
+@PublicAPI
 class EpsilonGreedy(Exploration):
     """Epsilon-greedy Exploration class that produces exploration actions.
 
@@ -167,7 +169,7 @@ class EpsilonGreedy(Exploration):
         """Torch method to produce an epsilon exploration action.
 
         Args:
-            action_distribution (ActionDistribution): The instantiated
+            action_distribution: The instantiated
                 ActionDistribution object to work with when creating
                 exploration actions.
 

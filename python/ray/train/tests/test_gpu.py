@@ -154,7 +154,7 @@ def test_enable_reproducibility(ray_start_4_cpus_2_gpus, use_gpu):
     assert result1 == result2
 
 
-def test_torch_amp(ray_start_4_cpus_2_gpus):
+def test_torch_amp_performance(ray_start_4_cpus_2_gpus):
     def train_func(config):
         train.torch.accelerate(amp=config["amp"])
 
@@ -403,7 +403,7 @@ def test_auto_transfer_data_from_host_to_device(
             torch.matmul(x, x)
 
     def host_to_device_auto_pipeline(device):
-        wrapped_dataloader = ray.train.torch._WrappedDataLoader(
+        wrapped_dataloader = ray.train.torch.train_loop_utils._WrappedDataLoader(
             small_dataloader, device, auto_transfer
         )
         for (x,) in wrapped_dataloader:

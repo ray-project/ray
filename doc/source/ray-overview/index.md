@@ -34,11 +34,52 @@ To use Ray in Java, first add the [ray-api](https://mvnrepository.com/artifact/i
 Want to build Ray from source or with docker? Need more details? 
 Check out our detailed [installation guide](installation.rst).
 
+## Ray AI Runtime Quick Start
 
-## Ray ML Quick Start
+`````{dropdown} Efficiently process your data into features.
+
+Preprocess your data with a ``Preprocessor``.
+
+```{literalinclude} ../ray-air/doc_code/xgboost_starter.py
+    :language: python
+    :start-after: __air_xgb_preprocess_start__
+    :end-before: __air_xgb_preprocess_end__
+```
+`````
+
+`````{dropdown} Scale out model training.
+
+Train a model with an ``XGBoostTrainer``.
+
+```{literalinclude} ../ray-air/doc_code/xgboost_starter.py
+    :language: python
+    :start-after: __air_xgb_train_start__
+    :end-before: __air_xgb_train_end__
+```
+`````
+
+`````{dropdown} Use the trained model for Batch prediction
+
+Use the trained model for batch prediction with a ``BatchPredictor``.
+
+```{literalinclude} ../ray-air/doc_code/xgboost_starter.py
+    :language: python
+    :start-after: __air_xgb_batchpred_start__
+    :end-before: __air_xgb_batchpred_end__
+```
+`````
+
+
+```{link-button} air
+:type: ref
+:text: Learn more about Ray AIR
+:classes: btn-outline-primary btn-block
+```
+
+## Ray Libraries Quick Start
 
 Ray has a rich ecosystem of libraries and frameworks built on top of it. 
-Simply click on the dropdowns below to see examples of our most popular libraries. 
+Simply click on the dropdowns below to see examples of our most popular libraries.
 
 `````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Data: Creating and Transforming Datasets
 :animate: fade-in-slide-down
@@ -60,8 +101,8 @@ Datasets can hold either plain Python objects (schema is a Python type), or Arro
 
 ```{literalinclude} ../data/doc_code/quick_start.py
 :language: python
-:start-after: __data_setup_begin__
-:end-before: __data_setup_end__
+:start-after: __create_from_python_begin__
+:end-before: __create_from_python_end__
 ```
 
 Datasets can be created from files on local disk or remote datasources such as S3. Any filesystem 
@@ -70,8 +111,8 @@ You can also create a ``Dataset`` from existing data in the Ray object store or 
 
 ```{literalinclude} ../data/doc_code/quick_start.py
 :language: python
-:start-after: __data_load_begin__
-:end-before: __data_load_end__
+:start-after: __create_from_files_begin__
+:end-before: __create_from_files_end__
 ```
 Datasets can be transformed in parallel using ``.map()``. 
 Transformations are executed *eagerly* and block until the operation is finished.
@@ -260,7 +301,7 @@ pip install "ray[serve]" scikit-learn
 ````
 This example runs serves a scikit-learn gradient boosting classifier.
 
-```{literalinclude} ../serve/_examples/doc_code/quick_start.py
+```{literalinclude} ../serve/doc_code/sklearn_quickstart.py
 :language: python
 :start-after: __serve_example_begin__
 :end-before: __serve_example_end__

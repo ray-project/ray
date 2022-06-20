@@ -5,7 +5,6 @@ import io.ray.api.runtime.RayRuntimeFactory;
 import io.ray.api.runtimecontext.RuntimeContext;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.Callable;
 
 /** This class contains all public APIs of Ray. */
 public final class Ray extends RayCall {
@@ -203,52 +202,6 @@ public final class Ray extends RayCall {
    */
   public static <T extends BaseActorHandle> Optional<T> getActor(String name, String namespace) {
     return internal().getActor(name, namespace);
-  }
-
-  /**
-   * If users want to use Ray API in their own threads, call this method to get the async context
-   * and then call {@link #setAsyncContext} at the beginning of the new thread.
-   *
-   * @return The async context.
-   */
-  public static Object getAsyncContext() {
-    return internal().getAsyncContext();
-  }
-
-  /**
-   * Set the async context for the current thread.
-   *
-   * @param asyncContext The async context to set.
-   */
-  public static void setAsyncContext(Object asyncContext) {
-    internal().setAsyncContext(asyncContext);
-  }
-
-  // TODO (kfstorm): add the `rollbackAsyncContext` API to allow rollbacking the async context of
-  // the current thread to the one before `setAsyncContext` is called.
-
-  // TODO (kfstorm): unify the `wrap*` methods.
-
-  /**
-   * If users want to use Ray API in their own threads, they should wrap their {@link Runnable}
-   * objects with this method.
-   *
-   * @param runnable The runnable to wrap.
-   * @return The wrapped runnable.
-   */
-  public static Runnable wrapRunnable(Runnable runnable) {
-    return internal().wrapRunnable(runnable);
-  }
-
-  /**
-   * If users want to use Ray API in their own threads, they should wrap their {@link Callable}
-   * objects with this method.
-   *
-   * @param callable The callable to wrap.
-   * @return The wrapped callable.
-   */
-  public static <T> Callable<T> wrapCallable(Callable<T> callable) {
-    return internal().wrapCallable(callable);
   }
 
   /** Get the underlying runtime instance. */

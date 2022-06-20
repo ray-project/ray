@@ -450,7 +450,7 @@ ray.init(address="auto")
 
 run_experiments(
     {
-        "ppo": {
+        "PPO": {
             "run": "PPO",
             "env": "CartPole-v0",
             "num_samples": 10,
@@ -472,6 +472,10 @@ run_experiments(
     # Make sure the script is running before sending a sigterm.
     with pytest.raises(subprocess.TimeoutExpired):
         print(proc.wait(timeout=10))
+        std_str = proc.stdout.read().decode("ascii")
+        err_str = proc.stderr.read().decode("ascii")
+        print(f"STDOUT:\n{std_str}")
+        print(f"STDERR:\n{err_str}")
     print(f"Script is running... pid: {proc.pid}")
     # Send multiple signals to terminate it like real world scenario.
     for _ in range(10):
@@ -586,4 +590,7 @@ if __name__ == "__main__":
         ray.init(num_cpus=1, object_store_memory=(100 * MB))
         ray.shutdown()
     else:
-        sys.exit(pytest.main(["-v", __file__]))
+        if os.environ.get("PARALLEL_CI"):
+            sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+        else:
+            sys.exit(pytest.main(["-sv", __file__]))

@@ -1,47 +1,52 @@
-from datetime import datetime
+import copy
 import logging
 import os
+import warnings
+from datetime import datetime
 from pathlib import Path
-from typing import Union, Callable, List, TypeVar, Optional, Any, Dict, Type
+from typing import Any, Callable, Dict, List, Optional, Type, TypeVar, Union
 
 import ray
 from ray.actor import ActorHandle
-from ray.train.backend import (
-    BackendConfig,
+from ray.air.checkpoint import Checkpoint
+from ray.train._internal.backend_executor import (
     BackendExecutor,
     InactiveWorkerGroupError,
     TrainBackendError,
     TrainingWorkerError,
 )
-from ray.train.callbacks.callback import TrainingCallback
-from ray.train.session import TrainingResultType
-from ray.train.utils import RayDataset, construct_train_func, ActorWrapper
-from ray.train.checkpoint import (
-    CheckpointStrategy,
-    TuneCheckpointManager,
+from ray.train._internal.checkpoint import (
     CheckpointManager,
+    TuneCheckpointManager,
     load_checkpoint_from_path,
 )
-from ray.train.constants import (
-    TUNE_INSTALLED,
-    DEFAULT_RESULTS_DIR,
-    TUNE_CHECKPOINT_FILE_NAME,
-    ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
-    ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
-    TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
-    TRAIN_ENABLE_WORKER_SPREAD_ENV,
-)
+from ray.train._internal.dataset_spec import RayDataset, RayDatasetSpec
+from ray.train._internal.session import TrainingResultType
 
 # Ray Train should be usable even if Tune is not installed.
-from ray.train.utils import construct_path
-from ray.train.worker_group import WorkerGroup
-from ray.util import PublicAPI
-from ray.util.annotations import DeveloperAPI
+from ray.train._internal.utils import ActorWrapper, construct_path, construct_train_func
+from ray.train._internal.worker_group import WorkerGroup
+from ray.train.backend import BackendConfig
+from ray.train.base_trainer import (  # noqa: F401
+    BaseTrainer,
+    GenDataset,
+    TrainingFailedError,
+)
+from ray.train.callbacks.callback import TrainingCallback
+from ray.train.constants import (
+    DEFAULT_RESULTS_DIR,
+    ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
+    ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
+    TRAIN_ENABLE_WORKER_SPREAD_ENV,
+    TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
+    TUNE_INSTALLED,
+)
+from ray.util.annotations import Deprecated, DeveloperAPI
+from ray.util.ml_utils.checkpoint_manager import CheckpointStrategy
 
 if TUNE_INSTALLED:
     from ray import tune
-    from ray.tune import Trainable
-    from ray.tune import PlacementGroupFactory
+    from ray.tune import PlacementGroupFactory, Trainable
     from ray.tune.function_runner import wrap_function
 else:
     tune = PlacementGroupFactory = Trainable = object
@@ -74,7 +79,7 @@ BACKEND_ENV_VARS = {
 
 # Import backend configurations dynamically since not all subdependencies
 # may be installed.
-def get_backend_config_cls(backend_name) -> type:
+def _get_backend_config_cls(backend_name) -> type:
     if backend_name not in BACKEND_NAME_TO_CONFIG_CLS_NAME:
         raise ValueError(
             f"Invalid backend: {backend_name}. "
@@ -90,7 +95,7 @@ def get_backend_config_cls(backend_name) -> type:
     return config_cls
 
 
-@PublicAPI(stability="beta")
+@Deprecated
 class Trainer:
     """A class for enabling seamless distributed deep learning.
 
@@ -107,11 +112,11 @@ class Trainer:
             distributed communication. If configurations are needed,
             a subclass of ``BackendConfig`` can be passed in.
             Supported ``str`` values: {"torch", "tensorflow", "horovod"}.
-        num_workers (int): The number of workers (Ray actors) to launch.
+        num_workers: The number of workers (Ray actors) to launch.
             Each worker will reserve 1 CPU by default. The number of CPUs
             reserved by each worker can be overridden with the
             ``resources_per_worker`` argument.
-        use_gpu (bool): If True, training will be done on GPUs (1 per
+        use_gpu: If True, training will be done on GPUs (1 per
             worker). Defaults to False. The number of GPUs reserved by each
             worker can be overridden with the ``resources_per_worker``
             argument.
@@ -122,7 +127,7 @@ class Trainer:
         logdir (Optional[str]): Path to the file directory where logs
             should be persisted. If this is not specified, one will be
             generated.
-         max_retries (int): Number of retries when Ray actors fail.
+         max_retries: Number of retries when Ray actors fail.
             Defaults to 3. Set to -1 for unlimited retries.
     """
 
@@ -135,6 +140,16 @@ class Trainer:
         logdir: Optional[str] = None,
         max_retries: int = 3,
     ):
+        warnings.warn(
+            "The `ray.train.Trainer` API is deprecated in Ray "
+            "2.0, and is replaced by Ray AI Runtime (Ray AIR). Ray AIR ("
+            "https://docs.ray.io/en/latest/ray-air/getting-started.html) will "
+            "provide greater functionality than `ray.train.Trainer`, "
+            "and with a more flexible and easy-to-use API.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
         if num_workers <= 0:
             raise ValueError("`num_workers` must be a positive integer.")
 
@@ -148,6 +163,10 @@ class Trainer:
                 "GPU training, make sure to set `use_gpu` to True "
                 "when instantiating your Trainer."
             )
+
+        if resources_per_worker is not None:
+            # Copy this parameter to avoid mutating the user input
+            resources_per_worker = copy.deepcopy(resources_per_worker)
 
         self._num_workers = num_workers
         self._use_gpu = use_gpu
@@ -204,11 +223,16 @@ class Trainer:
 
         self._backend_executor = ActorWrapper(backend_executor_actor)
 
+        # Todo (krfricke): Initialize checkpoint manager here with final values
+        # rather than in `on_training_start`
         if self._is_tune_enabled():
-            self.checkpoint_manager = TuneCheckpointManager()
+            self.checkpoint_manager = TuneCheckpointManager(
+                checkpoint_strategy=None, run_dir=None
+            )
         else:
-            self.checkpoint_manager = CheckpointManager()
-        self.checkpoint_manager.on_init()
+            self.checkpoint_manager = CheckpointManager(
+                checkpoint_strategy=None, run_dir=None
+            )
 
     def create_logdir(self, log_dir: Optional[Union[str, Path]]) -> Path:
         """Create logdir for the Trainer."""
@@ -245,7 +269,7 @@ class Trainer:
         if isinstance(backend, BackendConfig):
             return backend
         elif isinstance(backend, str):
-            return get_backend_config_cls(backend)()
+            return _get_backend_config_cls(backend)()
         else:
             raise TypeError(f"Invalid type for backend: {type(backend)}.")
 
@@ -274,7 +298,7 @@ class Trainer:
         """Runs a training function in a distributed manner.
 
         Args:
-            train_func (Callable): The training function to execute.
+            train_func: The training function to execute.
                 This can either take in no arguments or a ``config`` dict.
             config (Optional[Dict]): Configurations to pass into
                 ``train_func``. If None then an empty Dict will be created.
@@ -320,12 +344,14 @@ class Trainer:
 
         train_func = construct_train_func(train_func, config)
 
+        dataset_spec = RayDatasetSpec(dataset_or_dict=dataset)
+
         try:
             iterator = TrainingIterator(
                 backend_executor=self._backend_executor,
                 backend_config=self._backend_config,
                 train_func=train_func,
-                dataset=dataset,
+                dataset_spec=dataset_spec,
                 checkpoint_manager=self.checkpoint_manager,
                 checkpoint=checkpoint,
                 checkpoint_strategy=checkpoint_strategy,
@@ -375,7 +401,7 @@ class Trainer:
             model = iterator.get_fin()[0]
 
         Args:
-            train_func (Callable): The training function to execute.
+            train_func: The training function to execute.
                 This can either take in no arguments or a ``config`` dict.
             config (Optional[Dict]): Configurations to pass into
                 ``train_func``. If None then an empty Dict will be created.
@@ -397,12 +423,14 @@ class Trainer:
 
         train_func = construct_train_func(train_func, config)
 
+        dataset_spec = RayDatasetSpec(dataset_or_dict=dataset)
+
         return TrainingIterator(
             backend_executor=self._backend_executor,
             backend_config=self._backend_config,
             train_func=train_func,
             run_dir=self.latest_run_dir,
-            dataset=dataset,
+            dataset_spec=dataset_spec,
             checkpoint_manager=self.checkpoint_manager,
             checkpoint=checkpoint,
             checkpoint_strategy=checkpoint_strategy,
@@ -497,7 +525,7 @@ class Trainer:
         """Creates a Tune ``Trainable`` from the input training function.
 
         Args:
-            func (Callable): The function that should be executed on each
+            train_func: The function that should be executed on each
                 training worker.
             dataset (Optional[Union[RayDataset, Dict[str, RayDataset]]]):
                 Distributed Ray p:ref:`Dataset <dataset-api>` or
@@ -561,7 +589,7 @@ class Trainer:
             workers.shutdown()
 
         Args:
-            train_cls (Type): The class definition to use for the Ray
+            train_cls: The class definition to use for the Ray
                 actors/workers.
             args, kwargs: Arguments to pass into the ``__init__`` of the
                 provided ``train_cls``.
@@ -579,7 +607,7 @@ class Trainer:
         return TrainWorkerGroup(worker_group)
 
 
-@DeveloperAPI
+@Deprecated
 class TrainWorkerGroup:
     """A container for a group of Ray actors.
 
@@ -607,6 +635,11 @@ class TrainWorkerGroup:
     """
 
     def __init__(self, worker_group: WorkerGroup):
+        warnings.warn(
+            "The `ray.train.trainer.WorkerGroup` API is deprecated in Ray 2.0",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self._worker_group = worker_group
 
     def __getitem__(self, item) -> ActorHandle:
@@ -616,7 +649,7 @@ class TrainWorkerGroup:
         """Shutdown all the workers.
 
         Args:
-            patience_s (float): Attempt a graceful shutdown
+            patience_s: Attempt a graceful shutdown
                 of the workers for this many seconds. Fallback to force kill
                 if graceful shutdown is not complete after this time. If
                 this is less than or equal to 0, immediately force kill all
@@ -634,23 +667,23 @@ class TrainingIterator:
         backend_executor: Union[BackendExecutor, ActorWrapper],
         backend_config: BackendConfig,
         train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
-        dataset: Optional[Union[RayDataset, Dict[str, RayDataset]]],
+        dataset_spec: RayDatasetSpec,
         checkpoint_manager: CheckpointManager,
-        checkpoint: Optional[Union[Dict, str, Path]],
+        checkpoint: Optional[Union[Dict, str, Path, Checkpoint]],
         checkpoint_strategy: Optional[CheckpointStrategy],
         run_dir: Optional[Path] = None,
     ):
         self._backend_executor = backend_executor
         self._backend = backend_config.backend_cls()
         self._train_func = train_func
-        self._dataset = dataset
+        self._dataset_spec = dataset_spec
         self._run_dir = run_dir
         self._checkpoint_manager = checkpoint_manager
         self._checkpoint_strategy = checkpoint_strategy
         self._start_training(
             train_func=train_func,
             run_dir=run_dir,
-            dataset=dataset,
+            dataset_spec=self._dataset_spec,
             checkpoint=checkpoint,
             checkpoint_strategy=checkpoint_strategy,
         )
@@ -665,7 +698,7 @@ class TrainingIterator:
         self,
         train_func,
         run_dir,
-        dataset,
+        dataset_spec,
         checkpoint,
         checkpoint_strategy,
         latest_checkpoint_id=None,
@@ -675,10 +708,12 @@ class TrainingIterator:
             run_dir=run_dir,
             latest_checkpoint_id=latest_checkpoint_id,
         )
-        checkpoint_dict = self._checkpoint_manager._load_checkpoint(checkpoint)
+        checkpoint = self._checkpoint_manager._load_checkpoint(checkpoint)
         self._run_with_error_handling(
             lambda: self._backend_executor.start_training(
-                train_func=train_func, dataset=dataset, checkpoint=checkpoint_dict
+                train_func=train_func,
+                dataset_spec=dataset_spec,
+                checkpoint=checkpoint,
             )
         )
 
@@ -697,7 +732,7 @@ class TrainingIterator:
             self._start_training(
                 self._train_func,
                 self._run_dir,
-                self._dataset,
+                self._dataset_spec,
                 self._checkpoint_manager.latest_checkpoint,
                 self._checkpoint_strategy,
                 latest_checkpoint_id=self._checkpoint_manager.latest_checkpoint_id,
@@ -850,13 +885,8 @@ def _create_tune_trainable(
 
         trainer.start()
 
-        if checkpoint_dir is not None:
-            checkpoint_path = os.path.join(checkpoint_dir, TUNE_CHECKPOINT_FILE_NAME)
-        else:
-            checkpoint_path = None
-
         iterator = trainer.run_iterator(
-            train_func, config, dataset=dataset, checkpoint=checkpoint_path
+            train_func, config, dataset=dataset, checkpoint=checkpoint_dir
         )
 
         for results in iterator:

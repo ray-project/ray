@@ -1,9 +1,7 @@
 from ray.workflow.api import (
     step,
     init,
-    virtual_actor,
     get_output,
-    get_actor,
     get_status,
     get_metadata,
     resume,
@@ -16,6 +14,7 @@ from ray.workflow.api import (
     wait,
     create,
     continuation,
+    options,
 )
 from ray.workflow.workflow_access import WorkflowExecutionError
 from ray.workflow.common import WorkflowStatus
@@ -23,10 +22,8 @@ from ray.workflow.event_listener import EventListener
 
 __all__ = [
     "step",
-    "virtual_actor",
     "resume",
     "get_output",
-    "get_actor",
     "WorkflowExecutionError",
     "resume_all",
     "cancel",
@@ -41,6 +38,7 @@ __all__ = [
     "wait",
     "create",
     "continuation",
+    "options",
 ]
 
 globals().update(WorkflowStatus.__members__)

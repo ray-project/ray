@@ -3,10 +3,9 @@ import os
 from typing import Any, Callable, Dict, Optional, Type, Union
 
 import ray.cloudpickle as pickle
-from ray.ml.config import RunConfig
-from ray.ml.trainer import Trainer
+from ray.air.config import RunConfig
+from ray.train.trainer import BaseTrainer
 from ray.tune import Experiment, TuneError, ExperimentAnalysis
-from ray.tune.impl.utils import execute_dataset
 from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
 from ray.tune.tune import run
@@ -44,7 +43,7 @@ class TunerInternal:
             Refer to ray.tune.tune_config.TuneConfig for more info.
         run_config: Runtime configuration that is specific to individual trials.
             If passed, this will overwrite the run config passed to the Trainer,
-            if applicable. Refer to ray.ml.config.RunConfig for more info.
+            if applicable. Refer to ray.air.config.RunConfig for more info.
     """
 
     def __init__(
@@ -55,7 +54,7 @@ class TunerInternal:
                 str,
                 Callable,
                 Type[Trainable],
-                Trainer,
+                BaseTrainer,
             ]
         ] = None,
         param_space: Optional[Dict[str, Any]] = None,
@@ -85,7 +84,7 @@ class TunerInternal:
 
         # If no run config was passed to Tuner directly, use the one from the Trainer,
         # if available
-        if not run_config and isinstance(trainable, Trainer):
+        if not run_config and isinstance(trainable, BaseTrainer):
             run_config = trainable.run_config
 
         self._is_restored = False
@@ -99,7 +98,6 @@ class TunerInternal:
 
         # Not used for restored Tuner.
         self._param_space = param_space or {}
-        self._process_dataset_param()
 
         # This needs to happen before `tune.run()` is kicked in.
         # This is because currently tune does not exit gracefully if
@@ -114,16 +112,6 @@ class TunerInternal:
         trainable_ckpt = os.path.join(self._experiment_checkpoint_dir, _TRAINABLE_PKL)
         with open(trainable_ckpt, "wb") as fp:
             pickle.dump(self._trainable, fp)
-
-    def _process_dataset_param(self) -> None:
-        """Dataset needs to be fully executed before sent over to trainables.
-
-        A valid dataset configuration in param space looks like:
-        "datasets": {
-            "train_dataset": tune.grid_search([ds1, ds2]),
-        },
-        """
-        execute_dataset(self._param_space)
 
     def _setup_create_experiment_checkpoint_dir(
         self, run_config: Optional[RunConfig]
@@ -144,7 +132,7 @@ class TunerInternal:
 
     @staticmethod
     def _convert_trainable(trainable: Any) -> Type[Trainable]:
-        if isinstance(trainable, Trainer):
+        if isinstance(trainable, BaseTrainer):
             trainable = trainable.as_trainable()
         else:
             trainable = trainable
@@ -180,6 +168,7 @@ class TunerInternal:
             ),
             _experiment_checkpoint_dir=self._experiment_checkpoint_dir,
             raise_on_failed_trial=False,
+            verbose=self._run_config.verbose,
             **self._tuner_kwargs,
         )
         return analysis

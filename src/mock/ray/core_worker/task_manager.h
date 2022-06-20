@@ -59,6 +59,7 @@ class MockTaskFinisherInterface : public TaskFinisherInterface {
               (const, override));
   MOCK_METHOD(bool, RetryTaskIfPossible, (const TaskID &task_id), (override));
   MOCK_METHOD(void, MarkDependenciesResolved, (const TaskID &task_id), (override));
+  MOCK_METHOD(void, MarkTaskWaitingForExecution, (const TaskID &task_id), (override));
 };
 
 }  // namespace core

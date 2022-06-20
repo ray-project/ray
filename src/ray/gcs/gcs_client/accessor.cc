@@ -16,6 +16,7 @@
 
 #include <future>
 
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 
 namespace {
@@ -347,19 +348,6 @@ Status ActorInfoAccessor::AsyncSubscribe(
     absl::MutexLock lock(&mutex_);
     resubscribe_operations_[actor_id] =
         [this, actor_id, subscribe](const StatusCallback &subscribe_done) {
-          // Unregister the previous subscription before subscribing the to new
-          // GCS instance. Otherwise, the existing long poll on the previous GCS
-          // instance could leak or access invalid memory when returned.
-          // In future if long polls can be cancelled, this might become unnecessary.
-          while (true) {
-            Status s = client_impl_->GetGcsSubscriber().UnsubscribeActor(actor_id);
-            if (s.ok()) {
-              break;
-            }
-            RAY_LOG(WARNING) << "Unsubscribing failed for " << actor_id.Hex()
-                             << ", retrying ...";
-            absl::SleepFor(absl::Seconds(1));
-          }
           return client_impl_->GetGcsSubscriber().SubscribeActor(
               actor_id, subscribe, subscribe_done);
         };
@@ -568,7 +556,15 @@ Status NodeInfoAccessor::AsyncReportHeartbeat(
     const StatusCallback &callback) {
   rpc::ReportHeartbeatRequest request;
   request.mutable_heartbeat()->CopyFrom(*data_ptr);
-  client_impl_->GetGcsRpcClient().ReportHeartbeat(
+  static auto *rpc_client = [this]() -> rpc::GcsRpcClient * {
+    auto io_service = new instrumented_io_context;
+    auto client_call_manager = new rpc::ClientCallManager(*io_service);
+    new boost::asio::io_service::work(*io_service);
+    new std::thread([io_service]() { io_service->run(); });
+    const auto addr = client_impl_->GetGcsServerAddress();
+    return new rpc::GcsRpcClient(addr.first, addr.second, *client_call_manager);
+  }();
+  rpc_client->ReportHeartbeat(
       request, [callback](const Status &status, const rpc::ReportHeartbeatReply &reply) {
         if (callback) {
           callback(status);
@@ -707,8 +703,6 @@ Status NodeResourceInfoAccessor::AsyncReportResourceUsage(
   last_resource_usage_ = std::make_shared<NodeResources>(
       ResourceMapToNodeResources(MapFromProtobuf(data_ptr->resources_total()),
                                  MapFromProtobuf(data_ptr->resources_available())));
-  last_resource_usage_->load =
-      ResourceMapToResourceRequest(MapFromProtobuf(data_ptr->resource_load()), false);
   cached_resource_usage_.mutable_resources()->CopyFrom(*data_ptr);
   client_impl_->GetGcsRpcClient().ReportResourceUsage(
       cached_resource_usage_,
@@ -755,15 +749,6 @@ void NodeResourceInfoAccessor::FillResourceUsageRequest(
     (*resources_data->mutable_resource_load())[resource_pair.first] =
         resource_pair.second;
   }
-}
-
-Status NodeResourceInfoAccessor::AsyncSubscribeToResources(
-    const ItemCallback<rpc::NodeResourceChange> &subscribe, const StatusCallback &done) {
-  RAY_CHECK(subscribe != nullptr);
-  subscribe_resource_operation_ = [this, subscribe](const StatusCallback &done) {
-    return client_impl_->GetGcsSubscriber().SubscribeAllNodeResources(subscribe, done);
-  };
-  return subscribe_resource_operation_(done);
 }
 
 void NodeResourceInfoAccessor::AsyncResubscribe() {
@@ -862,6 +847,8 @@ Status WorkerInfoAccessor::AsyncSubscribeToWorkerFailures(
 }
 
 void WorkerInfoAccessor::AsyncResubscribe() {
+  // TODO(iycheng): Fix the case where messages has been pushed to GCS but
+  // resubscribe hasn't been done yet. In this case, we'll lose that message.
   RAY_LOG(DEBUG) << "Reestablishing subscription for worker failures.";
   // The pub-sub server has restarted, we need to resubscribe to the pub-sub server.
   if (subscribe_operation_ != nullptr) {

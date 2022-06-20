@@ -16,6 +16,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdlib>
 #include <memory>
 #include <string>
 #include <unordered_set>
@@ -59,26 +60,20 @@ class StoreClientTestBase : public ::testing::Test {
 
  protected:
   void Put() {
-    auto put_calllback = [this](const Status &status) {
-      RAY_CHECK_OK(status);
-      --pending_count_;
-    };
+    auto put_calllback = [this](auto) { --pending_count_; };
     for (const auto &[key, value] : key_to_value_) {
       ++pending_count_;
       RAY_CHECK_OK(store_client_->AsyncPut(
-          table_name_, key.Binary(), value.SerializeAsString(), put_calllback));
+          table_name_, key.Binary(), value.SerializeAsString(), true, put_calllback));
       // Make sure no-op callback is handled well
       RAY_CHECK_OK(store_client_->AsyncPut(
-          table_name_, key.Binary(), value.SerializeAsString(), nullptr));
+          table_name_, key.Binary(), value.SerializeAsString(), true, nullptr));
     }
     WaitPendingDone();
   }
 
   void Delete() {
-    auto delete_calllback = [this](const Status &status) {
-      RAY_CHECK_OK(status);
-      --pending_count_;
-    };
+    auto delete_calllback = [this](auto) { --pending_count_; };
     for (const auto &[key, _] : key_to_value_) {
       ++pending_count_;
       RAY_CHECK_OK(
@@ -146,11 +141,49 @@ class StoreClientTestBase : public ::testing::Test {
     WaitPendingDone();
   }
 
-  void BatchDelete() {
-    auto delete_calllback = [this](const Status &status) {
-      RAY_CHECK_OK(status);
-      --pending_count_;
+  void GetKeys() {
+    for (int i = 0; i < 100; i++) {
+      auto key = keys_.at(std::rand() % keys_.size()).Binary();
+      auto prefix = key.substr(0, std::rand() % key.size());
+      RAY_LOG(INFO) << "key is: " << key << ", prefix is: " << prefix;
+      std::unordered_set<std::string> result_set;
+      for (const auto &item1 : key_to_value_) {
+        if (item1.first.Binary().find(prefix) == 0) {
+          result_set.insert(item1.first.Binary());
+        }
+      }
+      ASSERT_FALSE(result_set.empty());
+
+      auto get_keys_callback = [this,
+                                &result_set](const std::vector<std::string> result) {
+        std::unordered_set<std::string> received_keys(result.begin(), result.end());
+        ASSERT_EQ(received_keys, result_set);
+        pending_count_ -= result.size();
+      };
+
+      pending_count_ += result_set.size();
+
+      RAY_CHECK_OK(store_client_->AsyncGetKeys(table_name_, prefix, get_keys_callback));
+      WaitPendingDone();
+    }
+  }
+
+  void Exists(bool exists) {
+    auto exists_callback = [this, exists](bool result) {
+      ASSERT_TRUE(result == exists);
+      pending_count_--;
     };
+
+    pending_count_ += key_to_value_.size();
+    for (const auto &item : key_to_value_) {
+      RAY_CHECK_OK(
+          store_client_->AsyncExists(table_name_, item.first.Binary(), exists_callback));
+    }
+    WaitPendingDone();
+  }
+
+  void BatchDelete() {
+    auto delete_calllback = [this](auto) { --pending_count_; };
     ++pending_count_;
     std::vector<std::string> keys;
     for (auto &[key, _] : key_to_value_) {
@@ -176,15 +209,20 @@ class StoreClientTestBase : public ::testing::Test {
   }
 
   void TestAsyncGetAllAndBatchDelete() {
+    Exists(false);
     // AsyncPut
     Put();
 
     // AsyncGetAll
     GetAll();
 
+    GetKeys();
+    Exists(true);
+
     // AsyncBatchDelete
     BatchDelete();
 
+    Exists(false);
     // AsyncGet
     GetEmpty();
   }
@@ -201,6 +239,7 @@ class StoreClientTestBase : public ::testing::Test {
       actor.set_actor_id(actor_id.Binary());
 
       key_to_value_[actor_id] = actor;
+      keys_.push_back(actor_id);
     }
   }
 
@@ -221,6 +260,7 @@ class StoreClientTestBase : public ::testing::Test {
   size_t key_count_{5000};
   size_t index_count_{100};
   absl::flat_hash_map<ActorID, rpc::ActorTableData> key_to_value_;
+  std::vector<ActorID> keys_;
 
   std::atomic<int> pending_count_{0};
   std::chrono::milliseconds wait_pending_timeout_{5000};

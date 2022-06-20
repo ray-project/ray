@@ -15,8 +15,8 @@ from typing import Optional
 import numpy as np
 import psutil
 import ray
-from ray.ml.checkpoint import Checkpoint
-from ray.ml.utils.remote_storage import delete_at_uri
+from ray.air.checkpoint import Checkpoint
+from ray.air._internal.remote_storage import delete_at_uri
 from ray.util.ml_utils.dict import (  # noqa: F401
     merge_dicts,
     deep_update,
@@ -121,20 +121,6 @@ class UtilMonitor(Thread):
         self.stopped = True
 
 
-def pin_in_object_store(obj):
-    """Deprecated, use ray.put(value) instead."""
-
-    obj_ref = ray.put(obj)
-    _pinned_objects.append(obj_ref)
-    return obj_ref
-
-
-def get_pinned_object(pinned_id):
-    """Deprecated."""
-
-    return ray.get(pinned_id)
-
-
 def retry_fn(
     fn: Callable[[], Any],
     exception_type: Type[Exception],
@@ -160,7 +146,9 @@ def _serialize_checkpoint(checkpoint_path) -> bytes:
 def get_checkpoint_from_remote_node(
     checkpoint_path: str, node_ip: str, timeout: float = 300.0
 ) -> Optional[Checkpoint]:
-    if not any(node["NodeManagerAddress"] == node_ip for node in ray.nodes()):
+    if not any(
+        node["NodeManagerAddress"] == node_ip and node["Alive"] for node in ray.nodes()
+    ):
         logger.warning(
             f"Could not fetch checkpoint with path {checkpoint_path} from "
             f"node with IP {node_ip} because the node is not available "
@@ -456,7 +444,6 @@ def wait_for_gpu(
         retry: Number of times to check GPU limit. Sleeps `delay_s`
             seconds between checks.
         delay_s: Seconds to wait before check.
-        gpu_memory_limit: Deprecated.
 
     Returns:
         bool: True if free.
@@ -476,8 +463,7 @@ def wait_for_gpu(
         tune.run(tune_func, resources_per_trial={"GPU": 1}, num_samples=10)
     """
     GPUtil = _import_gputil()
-    if gpu_memory_limit:
-        raise ValueError("'gpu_memory_limit' is deprecated. Use 'target_util' instead.")
+
     if GPUtil is None:
         raise RuntimeError("GPUtil must be installed if calling `wait_for_gpu`.")
 
@@ -700,11 +686,3 @@ def validate_warmstart(
                 + " and points_to_evaluate {}".format(points_to_evaluate)
                 + " do not match."
             )
-
-
-if __name__ == "__main__":
-    ray.init()
-    X = pin_in_object_store("hello")
-    print(X)
-    result = get_pinned_object(X)
-    print(result)

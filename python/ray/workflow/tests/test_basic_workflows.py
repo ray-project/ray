@@ -198,7 +198,7 @@ def test_run_or_resume_during_running(workflow_start_regular_shared):
 def test_step_failure(workflow_start_regular_shared, tmp_path):
     (tmp_path / "test").write_text("0")
 
-    @workflow.step
+    @ray.remote
     def unstable_step():
         v = int((tmp_path / "test").read_text())
         (tmp_path / "test").write_text(f"{v + 1}")
@@ -207,20 +207,33 @@ def test_step_failure(workflow_start_regular_shared, tmp_path):
         return v
 
     with pytest.raises(Exception):
-        unstable_step.options(max_retries=-2).step().run()
+        workflow.create(
+            unstable_step.options(**workflow.options(max_retries=-2).bind())
+        )
 
     with pytest.raises(Exception):
-        unstable_step.options(max_retries=2).step().run()
-    assert 10 == unstable_step.options(max_retries=7).step().run()
-    (tmp_path / "test").write_text("0")
-    (ret, err) = (
-        unstable_step.options(max_retries=2, catch_exceptions=True).step().run()
+        workflow.create(
+            unstable_step.options(**workflow.options(max_retries=2)).bind()
+        ).run()
+    assert (
+        10
+        == workflow.create(
+            unstable_step.options(**workflow.options(max_retries=7)).bind()
+        ).run()
     )
+    (tmp_path / "test").write_text("0")
+    (ret, err) = workflow.create(
+        unstable_step.options(
+            **workflow.options(max_retries=2, catch_exceptions=True)
+        ).bind()
+    ).run()
     assert ret is None
     assert isinstance(err, ValueError)
-    (ret, err) = (
-        unstable_step.options(max_retries=7, catch_exceptions=True).step().run()
-    )
+    (ret, err) = workflow.create(
+        unstable_step.options(
+            **workflow.options(max_retries=7, catch_exceptions=True)
+        ).bind()
+    ).run()
     assert ret == 10
     assert err is None
 
@@ -228,7 +241,8 @@ def test_step_failure(workflow_start_regular_shared, tmp_path):
 def test_step_failure_decorator(workflow_start_regular_shared, tmp_path):
     (tmp_path / "test").write_text("0")
 
-    @workflow.step(max_retries=10)
+    @workflow.options(max_retries=10)
+    @ray.remote
     def unstable_step():
         v = int((tmp_path / "test").read_text())
         (tmp_path / "test").write_text(f"{v + 1}")
@@ -236,11 +250,12 @@ def test_step_failure_decorator(workflow_start_regular_shared, tmp_path):
             raise ValueError("Invalid")
         return v
 
-    assert unstable_step.step().run() == 10
+    assert workflow.create(unstable_step.bind()).run() == 10
 
     (tmp_path / "test").write_text("0")
 
-    @workflow.step(catch_exceptions=True)
+    @workflow.options(catch_exceptions=True)
+    @ray.remote
     def unstable_step_exception():
         v = int((tmp_path / "test").read_text())
         (tmp_path / "test").write_text(f"{v + 1}")
@@ -248,13 +263,14 @@ def test_step_failure_decorator(workflow_start_regular_shared, tmp_path):
             raise ValueError("Invalid")
         return v
 
-    (ret, err) = unstable_step_exception.step().run()
+    (ret, err) = workflow.create(unstable_step_exception.bind()).run()
     assert ret is None
     assert err is not None
 
     (tmp_path / "test").write_text("0")
 
-    @workflow.step(catch_exceptions=True, max_retries=3)
+    @workflow.options(catch_exceptions=True, max_retries=3)
+    @ray.remote
     def unstable_step_exception():
         v = int((tmp_path / "test").read_text())
         (tmp_path / "test").write_text(f"{v + 1}")
@@ -262,7 +278,7 @@ def test_step_failure_decorator(workflow_start_regular_shared, tmp_path):
             raise ValueError("Invalid")
         return v
 
-    (ret, err) = unstable_step_exception.step().run()
+    (ret, err) = workflow.create(unstable_step_exception.bind()).run()
     assert ret is None
     assert err is not None
     assert (tmp_path / "test").read_text() == "4"
@@ -273,22 +289,26 @@ def test_nested_catch_exception(workflow_start_regular_shared, tmp_path):
     def f2():
         return 10
 
-    @workflow.step
+    @ray.remote
     def f1():
         return workflow.continuation(f2.bind())
 
-    assert (10, None) == f1.options(catch_exceptions=True).step().run()
+    assert (10, None) == workflow.create(
+        f1.options(**workflow.options(catch_exceptions=True)).bind()
+    ).run()
 
 
 def test_nested_catch_exception_2(workflow_start_regular_shared, tmp_path):
-    @workflow.step
+    @ray.remote
     def f1(n):
         if n == 0:
             raise ValueError()
         else:
-            return f1.step(n - 1)
+            return workflow.continuation(f1.bind(n - 1))
 
-    ret, err = f1.options(catch_exceptions=True).step(5).run()
+    ret, err = workflow.create(
+        f1.options(**workflow.options(catch_exceptions=True)).bind(5)
+    ).run()
     assert ret is None
     assert isinstance(err, ValueError)
 
@@ -300,16 +320,18 @@ def test_dynamic_output(workflow_start_regular_shared):
             if n < 3:
                 raise Exception("Failed intentionally")
             return workflow.continuation(
-                exponential_fail.options(name=f"step_{n}").bind(k * 2, n - 1)
+                exponential_fail.options(**workflow.options(name=f"step_{n}")).bind(
+                    k * 2, n - 1
+                )
             )
         return k
 
     # When workflow fails, the dynamic output should points to the
     # latest successful step.
     try:
-        workflow.create(exponential_fail.options(name="step_0").bind(3, 10)).run(
-            workflow_id="dynamic_output"
-        )
+        workflow.create(
+            exponential_fail.options(**workflow.options(name="step_0")).bind(3, 10)
+        ).run(workflow_id="dynamic_output")
     except Exception:
         pass
     from ray.workflow.workflow_storage import get_workflow_storage
@@ -321,7 +343,7 @@ def test_dynamic_output(workflow_start_regular_shared):
 
 def test_workflow_error_message():
     storage_url = r"c:\ray"
-    expected_error_msg = "Invalid url: {}.".format(storage_url)
+    expected_error_msg = f"Cannot parse URI: '{storage_url}'"
     if os.name == "nt":
 
         expected_error_msg += (
@@ -329,33 +351,43 @@ def test_workflow_error_message():
                 storage_url, storage_url
             )
         )
+    if ray.is_initialized():
+        ray.shutdown()
     with pytest.raises(ValueError) as e:
-        workflow.init(storage_url)
+        ray.init(storage=storage_url)
     assert str(e.value) == expected_error_msg
 
 
-def test_options_update(workflow_start_regular_shared):
+def test_options_update():
+    from ray.workflow.common import WORKFLOW_OPTIONS
+
     # Options are given in decorator first, then in the first .options()
     # and finally in the second .options()
-    @workflow.step(name="old_name", metadata={"k": "v"}, max_retries=1, num_cpus=2)
+    @workflow.options(name="old_name", metadata={"k": "v"}, max_retries=1)
+    @ray.remote(num_cpus=2)
     def f():
         return
 
-    new_f = f.options(name="new_name", metadata={"extra_k1": "extra_v1"}).options(
-        num_returns=2, metadata={"extra_k2": "extra_v2"}
-    )
-    # name is updated from the old name in the decorator to the new
-    # name in the first .options(), then preserved in the second options.
-    assert new_f._name == "new_name"
+    # name is updated from the old name in the decorator to the new name in the first
+    # .options(), then preserved in the second options.
     # metadata and ray_options are "updated"
-    assert new_f._user_metadata == {
-        "k": "v",
-        "extra_k1": "extra_v1",
-        "extra_k2": "extra_v2",
-    }
-    assert new_f._step_options.ray_options == {"num_cpus": 2, "num_returns": 2}
     # max_retries only defined in the decorator and it got preserved all the way
-    assert new_f._step_options.max_retries == 1
+    new_f = f.options(
+        num_returns=2,
+        **workflow.options(name="new_name", metadata={"extra_k2": "extra_v2"}),
+    )
+    options = new_f.bind().get_options()
+    assert options == {
+        "num_cpus": 2,
+        "num_returns": 2,
+        "_metadata": {
+            WORKFLOW_OPTIONS: {
+                "name": "new_name",
+                "metadata": {"extra_k2": "extra_v2"},
+                "max_retries": 1,
+            }
+        },
+    }
 
 
 if __name__ == "__main__":

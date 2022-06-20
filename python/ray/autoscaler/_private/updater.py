@@ -1,30 +1,31 @@
-import click
 import logging
 import os
 import subprocess
 import time
-
 from threading import Thread
 
-from ray.autoscaler.tags import (
-    TAG_RAY_NODE_STATUS,
-    TAG_RAY_RUNTIME_CONFIG,
-    TAG_RAY_FILE_MOUNTS_CONTENTS,
-    STATUS_UP_TO_DATE,
-    STATUS_UPDATE_FAILED,
-    STATUS_WAITING_FOR_SSH,
-    STATUS_SETTING_UP,
-    STATUS_SYNCING_FILES,
-)
+import click
+
+from ray._private.usage import usage_constants, usage_lib
+from ray.autoscaler._private import subprocess_output_util as cmd_output_util
+from ray.autoscaler._private.cli_logger import cf, cli_logger
 from ray.autoscaler._private.command_runner import (
     AUTOSCALER_NODE_START_WAIT_S,
     ProcessRunnerError,
 )
-from ray.autoscaler._private.log_timer import LogTimer
-from ray.autoscaler._private.cli_logger import cli_logger, cf
-from ray.autoscaler._private import subprocess_output_util as cmd_output_util
 from ray.autoscaler._private.constants import RESOURCES_ENVIRONMENT_VARIABLE
 from ray.autoscaler._private.event_system import CreateClusterEvent, global_event_system
+from ray.autoscaler._private.log_timer import LogTimer
+from ray.autoscaler.tags import (
+    STATUS_SETTING_UP,
+    STATUS_SYNCING_FILES,
+    STATUS_UP_TO_DATE,
+    STATUS_UPDATE_FAILED,
+    STATUS_WAITING_FOR_SSH,
+    TAG_RAY_FILE_MOUNTS_CONTENTS,
+    TAG_RAY_NODE_STATUS,
+    TAG_RAY_RUNTIME_CONFIG,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -434,7 +435,7 @@ class NodeUpdater:
                         _numbered=("[]", 4, NUM_SETUP_STEPS),
                     )
                 with cli_logger.group(
-                    "Initalizing command runner",
+                    "Initializing command runner",
                     # todo: fix command numbering
                     _numbered=("[]", 5, NUM_SETUP_STEPS),
                 ):
@@ -492,14 +493,21 @@ class NodeUpdater:
             with LogTimer(self.log_prefix + "Ray start commands", show_status=True):
                 for cmd in self.ray_start_commands:
 
+                    env_vars = {}
+                    if self.is_head_node:
+                        if usage_lib.usage_stats_enabled():
+                            env_vars[usage_constants.USAGE_STATS_ENABLED_ENV_VAR] = 1
+                        else:
+                            # Disable usage stats collection in the cluster.
+                            env_vars[usage_constants.USAGE_STATS_ENABLED_ENV_VAR] = 0
                     # Add a resource override env variable if needed:
                     if self.provider_type == "local":
                         # Local NodeProvider doesn't need resource override.
-                        env_vars = {}
+                        pass
                     elif self.node_resources:
-                        env_vars = {RESOURCES_ENVIRONMENT_VARIABLE: self.node_resources}
+                        env_vars[RESOURCES_ENVIRONMENT_VARIABLE] = self.node_resources
                     else:
-                        env_vars = {}
+                        pass
 
                     try:
                         old_redirected = cmd_output_util.is_output_redirected()

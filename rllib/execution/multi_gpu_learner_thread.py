@@ -3,7 +3,7 @@ from six.moves import queue
 import threading
 
 from ray.rllib.execution.learner_thread import LearnerThread
-from ray.rllib.execution.buffers.minibatch_buffer import MinibatchBuffer
+from ray.rllib.execution.minibatch_buffer import MinibatchBuffer
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import deprecation_warning
@@ -63,21 +63,21 @@ class MultiGPULearnerThread(LearnerThread):
         """Initializes a MultiGPULearnerThread instance.
 
         Args:
-            local_worker (RolloutWorker): Local RolloutWorker holding
+            local_worker: Local RolloutWorker holding
                 policies this thread will call `load_batch_into_buffer` and
                 `learn_on_loaded_batch` on.
-            num_gpus (int): Number of GPUs to use for data-parallel SGD.
-            train_batch_size (int): Size of batches (minibatches if
+            num_gpus: Number of GPUs to use for data-parallel SGD.
+            train_batch_size: Size of batches (minibatches if
                 `num_sgd_iter` > 1) to learn on.
-            num_multi_gpu_tower_stacks (int): Number of buffers to parallelly
+            num_multi_gpu_tower_stacks: Number of buffers to parallelly
                 load data into on one device. Each buffer is of size of
                 `train_batch_size` and hence increases GPU memory usage
                 accordingly.
-            num_sgd_iter (int): Number of passes to learn on per train batch
+            num_sgd_iter: Number of passes to learn on per train batch
                 (minibatch if `num_sgd_iter` > 1).
-            learner_queue_size (int): Max size of queue of inbound
+            learner_queue_size: Max size of queue of inbound
                 train batches to this thread.
-            num_data_load_threads (int): Number of threads to use to load
+            num_data_load_threads: Number of threads to use to load
                 data into GPU memory in parallel.
         """
         # Deprecated: No need to specify as we don't need the actual
@@ -170,7 +170,14 @@ class MultiGPULearnerThread(LearnerThread):
         if released:
             self.idle_tower_stacks.put(buffer_idx)
 
-        self.outqueue.put((get_num_samples_loaded_into_buffer, self.learner_info))
+        # Put tuple: env-steps, agent-steps, and learner info into the queue.
+        self.outqueue.put(
+            (
+                get_num_samples_loaded_into_buffer,
+                get_num_samples_loaded_into_buffer,
+                self.learner_info,
+            )
+        )
         self.learner_queue_size.push(self.inqueue.qsize())
 
 
@@ -209,12 +216,16 @@ class _MultiGPULoaderThread(threading.Thread):
                 if not s.local_worker.is_policy_to_train(pid, batch):
                     continue
                 policy = policy_map[pid]
-                policy.load_batch_into_buffer(
-                    batch=batch
-                    if isinstance(batch, SampleBatch)
-                    else batch.policy_batches[pid],
-                    buffer_index=buffer_idx,
-                )
+                if isinstance(batch, SampleBatch):
+                    policy.load_batch_into_buffer(
+                        batch=batch,
+                        buffer_index=buffer_idx,
+                    )
+                elif pid in batch.policy_batches:
+                    policy.load_batch_into_buffer(
+                        batch=batch.policy_batches[pid],
+                        buffer_index=buffer_idx,
+                    )
 
         # Tag just-loaded stack as "ready".
         s.ready_tower_stacks.put(buffer_idx)
