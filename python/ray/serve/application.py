@@ -4,14 +4,7 @@ from typing import (
     List,
 )
 
-from ray.serve.deployment import (
-    Deployment,
-    schema_to_deployment,
-    deployment_to_schema,
-)
-from ray.serve.schema import (
-    ServeApplicationSchema,
-)
+from ray.serve.deployment import Deployment
 
 
 class ImmutableDeploymentDict(dict):
@@ -80,35 +73,3 @@ class Application:
                     return None
 
         return ingress
-
-    def to_dict(self) -> Dict:
-        """Returns this Application's deployments as a dictionary.
-
-        This dictionary adheres to the Serve REST API schema. It can be deployed
-        via the Serve REST API.
-
-        Returns:
-            Dict: The Application's deployments formatted in a dictionary.
-        """
-
-        return ServeApplicationSchema(
-            deployments=[deployment_to_schema(d) for d in self._deployments.values()]
-        ).dict()
-
-    @classmethod
-    def from_dict(cls, d: Dict) -> "Application":
-        """Converts a dictionary of deployment data to an application.
-
-        Takes in a dictionary matching the Serve REST API schema and converts
-        it to an application containing those deployments.
-
-        Args:
-            d: A dictionary containing the deployments' data that matches
-                the Serve REST API schema.
-
-        Returns:
-            Application: a new application object containing the deployments.
-        """
-
-        schema = ServeApplicationSchema.parse_obj(d)
-        return cls([schema_to_deployment(s) for s in schema.deployments])
