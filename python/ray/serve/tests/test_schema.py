@@ -206,7 +206,6 @@ class TestDeploymentSchema:
 
         return {
             "name": "deep",
-            "import_path": "my_module.MyClass",
             "num_replicas": None,
             "route_prefix": None,
             "max_concurrent_queries": None,
@@ -232,7 +231,6 @@ class TestDeploymentSchema:
 
         deployment_schema = {
             "name": "shallow",
-            "import_path": "test_env.shallow_import.ShallowClass",
             "num_replicas": 2,
             "route_prefix": "/shallow",
             "max_concurrent_queries": 32,
@@ -265,24 +263,6 @@ class TestDeploymentSchema:
         }
 
         DeploymentSchema.parse_obj(deployment_schema)
-
-    def test_invalid_python_attributes(self):
-        # Test setting invalid attributes for Python to ensure a validation or
-        # value error is raised.
-
-        # Python requires an import path
-        deployment_schema = self.get_minimal_deployment_schema()
-
-        # DeploymentSchema should be generated with valid import_paths
-        for path in get_valid_import_paths():
-            deployment_schema["import_path"] = path
-            DeploymentSchema.parse_obj(deployment_schema)
-
-        # Invalid import_path syntax should raise a ValidationError
-        for path in get_invalid_import_paths():
-            deployment_schema["import_path"] = path
-            with pytest.raises(ValidationError):
-                DeploymentSchema.parse_obj(deployment_schema)
 
     def test_gt_zero_deployment_schema(self):
         # Ensure ValidationError is raised when any fields that must be greater
@@ -391,7 +371,6 @@ class TestServeApplicationSchema:
             "deployments": [
                 {
                     "name": "shallow",
-                    "import_path": "test_env.shallow_import.ShallowClass",
                     "num_replicas": 2,
                     "route_prefix": "/shallow",
                     "max_concurrent_queries": 32,
@@ -424,7 +403,6 @@ class TestServeApplicationSchema:
                 },
                 {
                     "name": "deep",
-                    "import_path": ("test_env.subdir1.subdir2.deep_import.DeepClass"),
                     "num_replicas": None,
                     "route_prefix": None,
                     "max_concurrent_queries": None,
