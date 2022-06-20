@@ -166,6 +166,16 @@ class TunerInternal:
             max_failures=(
                 self._run_config.failure.max_failures if self._run_config.failure else 0
             ),
+            keep_checkpoints_num=(
+                self._run_config.checkpointing.keep_checkpoints_num
+                if self._run_config.checkpointing
+                else None
+            ),
+            checkpoint_score_attr=(
+                self._run_config.checkpointing.checkpoint_score_attr
+                if self._run_config.checkpointing
+                else None
+            ),
             _experiment_checkpoint_dir=self._experiment_checkpoint_dir,
             raise_on_failed_trial=False,
             verbose=self._run_config.verbose,

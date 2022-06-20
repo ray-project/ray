@@ -275,6 +275,25 @@ class FailureConfig:
 
 @dataclass
 @PublicAPI(stability="alpha")
+class CheckpointingConfig:
+    """Configuration related to checkpointing of each run/trial.
+
+    Args:
+        keep_checkpoints_num: Number of checkpoints to keep. A value of
+            `None` keeps all checkpoints. Defaults to `None`. If set, need
+            to provide `checkpoint_score_attr`.
+        checkpoint_score_attr: Specifies by which attribute to rank the
+            best checkpoint. Default is increasing order. If attribute starts
+            with `min-` it will rank attribute in decreasing order, i.e.
+            `min-validation_loss`.
+    """
+
+    keep_checkpoints_num: Optional[int] = None
+    checkpoint_score_attr: Optional[str] = None
+
+
+@dataclass
+@PublicAPI(stability="alpha")
 class RunConfig:
     """Runtime configuration for individual trials that are run.
 
@@ -298,8 +317,9 @@ class RunConfig:
             Currently only stateless callbacks are supported for resumed runs.
             (any state of the callback will not be checkpointed by Tune
             and thus will not take effect in resumed runs).
-        failure: The failure mode configuration.
+        failure: Failure mode configuration.
         sync_config: Configuration object for syncing. See tune.SyncConfig.
+        checkpointing: Checkpointing configuration.
         verbose: 0, 1, 2, or 3. Verbosity mode.
             0 = silent, 1 = only status updates, 2 = status and brief
             results, 3 = status and detailed results. Defaults to 2.
@@ -312,4 +332,5 @@ class RunConfig:
     stop: Optional[Union[Mapping, "Stopper", Callable[[str, Mapping], bool]]] = None
     failure: Optional[FailureConfig] = None
     sync_config: Optional[SyncConfig] = None
+    checkpointing: Optional[CheckpointingConfig] = None
     verbose: Union[int, Verbosity] = Verbosity.V3_TRIAL_DETAILS
