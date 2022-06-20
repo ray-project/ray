@@ -709,9 +709,10 @@ class Algorithm(Trainable):
             eval_cfg = self.config["evaluation_config"]
             rollout = eval_cfg["rollout_fragment_length"]
             num_envs = eval_cfg["num_envs_per_worker"]
+            auto = self.config["evaluation_duration"] == "auto"
             duration = (
                 self.config["evaluation_duration"]
-                if self.config["evaluation_duration"] != "auto"
+                if not auto
                 else (self.config["evaluation_num_workers"] or 1)
                 * (1 if unit == "episodes" else rollout)
             )
@@ -794,7 +795,8 @@ class Algorithm(Trainable):
 
                     logger.info(
                         f"Ran round {round_} of parallel evaluation "
-                        f"({num_units_done}/{duration} {unit} done)"
+                        f"({num_units_done}/{duration if not auto else '?'} "
+                        f"{unit} done)"
                     )
 
             if metrics is None:
