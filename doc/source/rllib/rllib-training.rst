@@ -744,7 +744,7 @@ Here is an example of the basic usage (for a more complete example, see `custom_
     # NOTE: In order for this to work, your (custom) model needs to implement
     # the `import_from_h5` method.
     # See https://github.com/ray-project/ray/blob/master/rllib/tests/test_model_imports.py
-    # for detailed examples for tf- and torch trainers/models.
+    # for detailed examples for tf- and torch policies/models.
 
 .. note::
 
@@ -1274,7 +1274,7 @@ Below are some examples of how the custom evaluation metrics are reported nested
     Sample output for `python custom_eval.py --custom-eval`
     ------------------------------------------------------------------------
 
-    INFO trainer.py:631 -- Running custom eval function <function ...>
+    INFO algorithm.py:631 -- Running custom eval function <function ...>
     Update corridor length to 4
     Update corridor length to 7
     Custom evaluation round 1
