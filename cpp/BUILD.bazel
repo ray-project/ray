@@ -79,13 +79,13 @@ cc_binary(
     ]),
     copts = COPTS,
     linkstatic = True,
+    visibility = ["//visibility:public"],
     deps = [
         "ray_cpp_lib",
         "@boost//:callable_traits",
         "@boost//:optional",
         "@msgpack",
     ],
-    visibility = ["//visibility:public"],
 )
 
 genrule(
