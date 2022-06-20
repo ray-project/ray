@@ -206,7 +206,9 @@ def debug(address):
     ray.init(address=address, log_to_driver=False)
     while True:
         # Used to filter out and clean up entries from dead jobs.
-        live_jobs = {job["JobID"] for job in ray.state.jobs() if not job["IsDead"]}
+        live_jobs = {
+            job["JobID"] for job in ray._private.state.jobs() if not job["IsDead"]
+        }
         continue_debug_session(live_jobs)
 
         active_sessions = ray.experimental.internal_kv._internal_kv_list(
