@@ -33,7 +33,7 @@ JEMALLOC_BUILD_COMMAND = """
   # export LTOFLAGS="-flto=thin" # todo: on next clang toolchain upgrade, check if it's fixed and we can re-enable thinlto on mac
   export LTOFLAGS=""
   export EXTRA_CFLAGS="$${LTOFLAGS}"
-  export EXTRA_CXXFLAGS="-libstdc++ $${EXTRA_CFLAGS}"
+  export EXTRA_CXXFLAGS="$${EXTRA_CFLAGS}"
 
   LDFLAGS="$${LTOFLAGS}"
 
