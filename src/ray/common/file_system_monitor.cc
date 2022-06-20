@@ -39,6 +39,12 @@ FileSystemMonitor::FileSystemMonitor(std::vector<std::string> paths,
                             "FileSystemMonitor.CheckIfAnyPathOverCapacity");
 }
 
+FileSystemMonitor FileSystemMonitor::NoopFileSystemMonitor() {
+  return FileSystemMonitor(/*paths*/ {},
+                           /*capacity_threshold*/ 1,
+                           /*monitor_interval_ms*/ 365 * 24 * 60 * 60 * 1000);
+}
+
 FileSystemMonitor::~FileSystemMonitor() {
   io_context_.stop();
   if (monitor_thread_.joinable()) {

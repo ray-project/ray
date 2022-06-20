@@ -85,6 +85,9 @@ TEST(FileSystemTest, TestFileSystemMonitor) {
     ASSERT_TRUE(result->available > 0);
     ASSERT_TRUE(result->capacity > 0);
   }
+
+  auto noop = ray::FileSystemMonitor::NoopFileSystemMonitor();
+  ASSERT_FALSE(noop.OverCapacity());
 }
 
 TEST(FileSystemTest, TestOverCapacity) {

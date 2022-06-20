@@ -52,6 +52,9 @@ class FileSystemMonitor {
   /// Returns true if ANY path's disk usage is over the capacity threshold.
   bool OverCapacity() const;
 
+  /// Creates a Noop monitor that never reports out of space.
+  static FileSystemMonitor NoopFileSystemMonitor();
+
  private:
   bool CheckIfAnyPathOverCapacity() const;
   // For testing purpose.
