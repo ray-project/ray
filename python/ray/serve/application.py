@@ -1,9 +1,6 @@
-import yaml
 from typing import (
     Dict,
     Optional,
-    TextIO,
-    Union,
     List,
 )
 
@@ -115,54 +112,3 @@ class Application:
 
         schema = ServeApplicationSchema.parse_obj(d)
         return cls([schema_to_deployment(s) for s in schema.deployments])
-
-    def to_yaml(self, f: Optional[TextIO] = None) -> Optional[str]:
-        """Returns this application's deployments as a YAML string.
-
-        Optionally writes the YAML string to a file as well. To write to a
-        file, use this pattern:
-
-        with open("file_name.txt", "w") as f:
-            app.to_yaml(f=f)
-
-        This file is formatted as a Serve YAML config file. It can be deployed
-        via the Serve CLI.
-
-        Args:
-            f (Optional[TextIO]): A pointer to the file where the YAML should
-                be written.
-
-        Returns:
-            Optional[String]: The deployments' YAML string. The output is from
-                yaml.safe_dump(). Returned only if no file pointer is passed in.
-        """
-
-        return yaml.safe_dump(
-            self.to_dict(), stream=f, default_flow_style=False, sort_keys=False
-        )
-
-    @classmethod
-    def from_yaml(cls, str_or_file: Union[str, TextIO]) -> "Application":
-        """Converts YAML data to deployments for an application.
-
-        Takes in a string or a file pointer to a file containing deployment
-        definitions in YAML. These definitions are converted to a new
-        application object containing the deployments.
-
-        To read from a file, use the following pattern:
-
-        with open("file_name.txt", "w") as f:
-            app = app.from_yaml(str_or_file)
-
-        Args:
-            str_or_file (Union[String, TextIO]): Either a string containing
-                YAML deployment definitions or a pointer to a file containing
-                YAML deployment definitions. The YAML format must adhere to the
-                ServeApplicationSchema JSON Schema defined in
-                ray.serve.schema. This function works with
-                Serve YAML config files.
-
-        Returns:
-            Application: a new Application object containing the deployments.
-        """
-        return cls.from_dict(yaml.safe_load(str_or_file))
