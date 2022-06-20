@@ -133,7 +133,7 @@ def test_serve_pipeline_single_func_no_input_plot():
         ray.dag.plot(serve_dag, to_file)
         assert os.path.isfile(to_file)
 
-    graph = ray.dag.vis_utils.dag_to_dot(serve_dag)
+    graph = ray.dag.vis_utils._dag_to_dot(serve_dag)
     to_string = graph.to_string()
     assert "fn_hello -> NoargDriver" in to_string
 
@@ -149,7 +149,7 @@ def test_serve_pipeline_single_func_deployment_dag_plot():
         ray.dag.plot(serve_dag, to_file)
         assert os.path.isfile(to_file)
 
-    graph = ray.dag.vis_utils.dag_to_dot(serve_dag)
+    graph = ray.dag.vis_utils._dag_to_dot(serve_dag)
     to_string = graph.to_string()
     assert "INPUT_NODE -> INPUT_ATTRIBUTE_NODE" in to_string
     assert "INPUT_NODE -> INPUT_ATTRIBUTE_NODE_1" in to_string
@@ -178,7 +178,7 @@ def test_serve_pipeline_chained_function_plot():
         ray.dag.plot(serve_dag, to_file)
         assert os.path.isfile(to_file)
 
-    graph = ray.dag.vis_utils.dag_to_dot(serve_dag)
+    graph = ray.dag.vis_utils._dag_to_dot(serve_dag)
     to_string = graph.to_string()
     assert "INPUT_NODE -> func_1" in to_string
     assert "INPUT_NODE -> func_2" in to_string
@@ -198,7 +198,7 @@ def test_serve_pipeline_class_with_class_method_plot():
         ray.dag.plot(serve_dag, to_file)
         assert os.path.isfile(to_file)
 
-    graph = ray.dag.vis_utils.dag_to_dot(serve_dag)
+    graph = ray.dag.vis_utils._dag_to_dot(serve_dag)
     to_string = graph.to_string()
     assert "Model -> forward" in to_string
     assert "INPUT_NODE -> forward" in to_string
@@ -220,7 +220,7 @@ def test_serve_pipeline_func_class_with_class_method_plot():
         ray.dag.plot(serve_dag, to_file)
         assert os.path.isfile(to_file)
 
-    graph = ray.dag.vis_utils.dag_to_dot(serve_dag)
+    graph = ray.dag.vis_utils._dag_to_dot(serve_dag)
     to_string = graph.to_string()
     assert "INPUT_NODE -> INPUT_ATTRIBUTE_NODE" in to_string
     assert "INPUT_NODE -> INPUT_ATTRIBUTE_NODE_1" in to_string
@@ -249,7 +249,7 @@ def test_serve_pipeline_multi_instantiation_class_deployment_in_init_args_plot()
         ray.dag.plot(serve_dag, to_file)
         assert os.path.isfile(to_file)
 
-    graph = ray.dag.vis_utils.dag_to_dot(serve_dag)
+    graph = ray.dag.vis_utils._dag_to_dot(serve_dag)
     to_string = graph.to_string()
     assert "Model -> Combine" in to_string
     assert "Model_1 -> Combine" in to_string
@@ -271,7 +271,7 @@ def test_serve_pipeline_test_shared_deployment_handle_plot():
         ray.dag.plot(serve_dag, to_file)
         assert os.path.isfile(to_file)
 
-    graph = ray.dag.vis_utils.dag_to_dot(serve_dag)
+    graph = ray.dag.vis_utils._dag_to_dot(serve_dag)
     to_string = graph.to_string()
     assert "Model -> Combine" in to_string
     assert "Combine -> __call__" in to_string
@@ -293,7 +293,7 @@ def test_serve_pipeline_multi_instantiation_class_nested_deployment_arg_dag_plot
         ray.dag.plot(serve_dag, to_file)
         assert os.path.isfile(to_file)
 
-    graph = ray.dag.vis_utils.dag_to_dot(serve_dag)
+    graph = ray.dag.vis_utils._dag_to_dot(serve_dag)
     to_string = graph.to_string()
     assert "Model -> Combine" in to_string
     assert "Model_1 -> Combine" in to_string
@@ -314,7 +314,7 @@ def test_serve_pipeline_class_factory_plot():
         ray.dag.plot(serve_dag, to_file)
         assert os.path.isfile(to_file)
 
-    graph = ray.dag.vis_utils.dag_to_dot(serve_dag)
+    graph = ray.dag.vis_utils._dag_to_dot(serve_dag)
     to_string = graph.to_string()
     assert "MyInlineClass -> get" in to_string
     assert "get -> NoargDriver" in to_string
