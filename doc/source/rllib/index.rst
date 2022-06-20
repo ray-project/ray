@@ -18,8 +18,7 @@ purely from offline (historic) datasets, or using externally
 connected simulators, RLlib offers a simple solution for each of your decision
 making needs.
 
-You **don't need** to be an **RL expert** to use RLlib, nor do you need to learn Ray or any
-other of its libraries! If you either have your problem coded (in python) as an
+If you either have your problem coded (in python) as an
 `RL environment <rllib-env.html#configuring-environments>`_
 or own lots of pre-recorded, historic behavioral data to learn from, you will be
 up and running in only a few days.
@@ -34,9 +33,6 @@ RLlib is already used in production by industry leaders in many different vertic
 `robotics <https://www.anyscale.com/events/2021/06/23/introducing-amazon-sagemaker-kubeflow-reinforcement-learning-pipelines-for>`_,
 `boat design <https://www.youtube.com/watch?v=cLCK13ryTpw>`_,
 and many others.
-
-You can read about `RLlib Key Concepts <core-concepts.html>`_.
-
 
 RLlib in 60 seconds
 -------------------
@@ -83,6 +79,14 @@ for a few training iterations, then perform a single evaluation loop
 
 Feature Overview
 ----------------
+
+You can read about: 
+
+- `RLlib Key Concepts <core-concepts.html>`_
+
+- `RLlib Algorithms <rllib-algorithms.html>`_
+
+- `RLlib Environments <rllib-env.html>`_
 
 The following is a summary of RLlib's most striking features.
 Click on the images below to see an example script for each of the listed features:
@@ -207,5 +211,3 @@ RL (MARL) becomes an easy-to-use low-level primitive for our users.
 .. |pytorch| image:: images/pytorch.png
     :class: inline-figure
     :width: 16
-
-.. include:: /_includes/rllib/announcement_bottom.rst
