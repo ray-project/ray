@@ -100,7 +100,8 @@ bool FileSystemMonitor::OverCapacityImpl(
   RAY_LOG_EVERY_MS(ERROR, 10 * 1000)
       << path << " is over " << capacity_threshold_
       << "\% full, available space: " << space_info->available
-      << ". Object creation will fail if spilling is required." return true;
+      << ". Object creation will fail if spilling is required.";
+  return true;
 }
 
 std::vector<std::string> ParseSpillingPaths(const std::string &spilling_config) {

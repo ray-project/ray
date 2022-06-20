@@ -343,7 +343,8 @@ class OutOfDiskError(RayError):
         # TODO(scv119): expose more disk usage information and link to a doc.
         return super(OutOfDiskError, self).__str__() + (
             "\n"
-            "The local object store is full and local disk is also full."
+            "The object cannot be created because the local object store"
+            " is full and at least 90% of the local disk is in use."
             "Tip: Use `df` on this node to check disk usage and "
             "`ray memory` to check object store memory usage."
         )
