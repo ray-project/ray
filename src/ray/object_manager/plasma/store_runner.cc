@@ -102,9 +102,8 @@ void PlasmaStoreRunner::Start(ray::SpillObjectsCallback spill_objects_callback,
         RayConfig::instance().local_fs_capacity_threshold(),
         RayConfig::instance().local_fs_monitor_interval_ms());
 #else
-    // Skip monitor for Windows.
-    fs_monitor_ = std::make_unique<ray::FileSystemMonitor>(
-        ray::FileSystemMonitor::NoopFileSystemMonitor());
+    // Create noop monitor for Windows.
+    fs_monitor_ = std::make_unique<ray::FileSystemMonitor>();
 #endif
     store_.reset(new PlasmaStore(main_service_,
                                  *allocator_,
