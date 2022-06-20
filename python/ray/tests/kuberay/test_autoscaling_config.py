@@ -31,6 +31,7 @@ def _get_basic_autoscaling_config() -> dict:
         "provider": {
             "disable_launch_config_check": True,
             "disable_node_updaters": True,
+            "foreground_node_launch": True,
             "namespace": "default",
             "type": "kuberay",
         },
@@ -132,6 +133,22 @@ def _get_gpu_complaint() -> str:
     )
 
 
+def _get_ray_cr_with_autoscaler_options() -> dict:
+    cr = _get_basic_ray_cr()
+    cr["spec"]["autoscalerOptions"] = {
+        "upscalingMode": "Aggressive",
+        "idleTimeoutSeconds": 60,
+    }
+    return cr
+
+
+def _get_autoscaling_config_with_options() -> dict:
+    config = _get_basic_autoscaling_config()
+    config["upscaling_speed"] = 1000
+    config["idle_timeout_minutes"] = 1.0
+    return config
+
+
 PARAM_ARGS = ",".join(
     [
         "ray_cr_in",
@@ -178,6 +195,14 @@ TEST_DATA = (
             _get_gpu_complaint(),
             id="gpu-complaint",
         ),
+        pytest.param(
+            _get_ray_cr_with_autoscaler_options(),
+            _get_autoscaling_config_with_options(),
+            None,
+            None,
+            None,
+            id="autoscaler-options",
+        ),
     ]
 )
 
@@ -204,6 +229,30 @@ def test_autoscaling_config(
                 mock_logger.warning.assert_called_with(expected_log_warning)
             else:
                 mock_logger.warning.assert_not_called()
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
+def test_cr_image_consistency():
+    """Verify that the example config uses the same Ray image for all Ray pods."""
+    cr = _get_basic_ray_cr()
+
+    group_specs = [cr["spec"]["headGroupSpec"]] + cr["spec"]["workerGroupSpecs"]
+    assert len(group_specs) == 2
+
+    ray_containers = [
+        group_spec["template"]["spec"]["containers"][0] for group_spec in group_specs
+    ]
+
+    # All Ray containers in the example config have "ray-" in their name.
+    assert all("ray-" in ray_container["name"] for ray_container in ray_containers)
+
+    # All Ray images are from the Ray repo.
+    assert all(
+        "rayproject/ray" in ray_container["image"] for ray_container in ray_containers
+    )
+
+    # All Ray images are the same.
+    assert len({ray_container["image"] for ray_container in ray_containers}) == 1
 
 
 if __name__ == "__main__":

@@ -1,11 +1,8 @@
-import copy
-import datetime
 import json
 import os
 import re
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
-import jinja2
 import jsonschema
 import yaml
 
@@ -28,51 +25,13 @@ DEFAULT_WAIT_FOR_NODES_TIMEOUT = 3000
 
 DEFAULT_CLOUD_ID = "cld_4F7k8814aZzGG8TNUGPKnc"
 
-DEFAULT_ENV = {
-    "DATESTAMP": str(datetime.datetime.now().strftime("%Y%m%d")),
-    "TIMESTAMP": str(int(datetime.datetime.now().timestamp())),
-    "EXPIRATION_1D": str(
-        (datetime.datetime.now() + datetime.timedelta(days=1)).strftime("%Y-%m-%d")
-    ),
-    "EXPIRATION_2D": str(
-        (datetime.datetime.now() + datetime.timedelta(days=2)).strftime("%Y-%m-%d")
-    ),
-    "EXPIRATION_3D": str(
-        (datetime.datetime.now() + datetime.timedelta(days=3)).strftime("%Y-%m-%d")
-    ),
-}
+DEFAULT_PYTHON_VERSION = (3, 7)
 
 RELEASE_PACKAGE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 RELEASE_TEST_SCHEMA_FILE = os.path.join(
     RELEASE_PACKAGE_DIR, "ray_release", "schema.json"
 )
-
-
-class TestEnvironment(dict):
-    pass
-
-
-_test_env = None
-
-
-def get_test_environment():
-    global _test_env
-    if _test_env:
-        return _test_env
-
-    _test_env = TestEnvironment(**DEFAULT_ENV)
-    return _test_env
-
-
-def set_test_env_var(key: str, value: str):
-    test_env = get_test_environment()
-    test_env[key] = value
-
-
-def get_test_env_var(key: str, default: Optional[str] = None):
-    test_env = get_test_environment()
-    return test_env.get(key, default)
 
 
 def read_and_validate_release_test_collection(config_file: str) -> List[Test]:
@@ -145,79 +104,13 @@ def as_smoke_test(test: Test) -> Test:
     return new_test
 
 
-def get_wheels_sanity_check(commit: Optional[str] = None):
-    if not commit:
-        cmd = (
-            "python -c 'import ray; print("
-            '"No commit sanity check available, but this is the '
-            "Ray wheel commit:\", ray.__commit__)'"
-        )
-    else:
-        cmd = (
-            f"python -c 'import ray; "
-            f'assert ray.__commit__ == "{commit}", ray.__commit__\''
-        )
-    return cmd
+def parse_python_version(version: str) -> Tuple[int, int]:
+    """From XY and X.Y to (X, Y)"""
+    match = re.match(r"^([0-9])\.?([0-9]+)$", version)
+    if not match:
+        raise ReleaseTestConfigError(f"Invalid Python version string: {version}")
 
-
-def load_and_render_yaml_template(
-    template_path: str, env: Optional[Dict] = None
-) -> Optional[Dict]:
-    if not template_path:
-        return None
-
-    if not os.path.exists(template_path):
-        raise ReleaseTestConfigError(
-            f"Cannot load yaml template from {template_path}: Path not found."
-        )
-
-    with open(template_path, "rt") as f:
-        content = f.read()
-
-    render_env = copy.deepcopy(os.environ)
-    if env:
-        render_env.update(env)
-
-    try:
-        content = jinja2.Template(content).render(env=render_env)
-        return yaml.safe_load(content)
-    except Exception as e:
-        raise ReleaseTestConfigError(
-            f"Error rendering/loading yaml template: {e}"
-        ) from e
-
-
-def load_test_cluster_env(test: Test, ray_wheels_url: str) -> Optional[Dict]:
-    cluster_env_file = test["cluster"]["cluster_env"]
-    cluster_env_path = os.path.join(
-        RELEASE_PACKAGE_DIR, test.get("working_dir", ""), cluster_env_file
-    )
-    env = get_test_environment()
-
-    commit = env.get("RAY_COMMIT", None)
-
-    if not commit:
-        match = re.search(r"/([a-f0-9]{40})/", ray_wheels_url)
-        if match:
-            commit = match.group(1)
-
-    env["RAY_WHEELS_SANITY_CHECK"] = get_wheels_sanity_check(commit)
-    env["RAY_WHEELS"] = ray_wheels_url
-
-    return load_and_render_yaml_template(cluster_env_path, env=env)
-
-
-def load_test_cluster_compute(test: Test) -> Optional[Dict]:
-    cluster_compute_file = test["cluster"]["cluster_compute"]
-    cluster_compute_path = os.path.join(
-        RELEASE_PACKAGE_DIR, test.get("working_dir", ""), cluster_compute_file
-    )
-    env = get_test_environment()
-
-    cloud_id = get_test_cloud_id(test)
-    env["ANYSCALE_CLOUD_ID"] = cloud_id
-
-    return load_and_render_yaml_template(cluster_compute_path, env=env)
+    return int(match.group(1)), int(match.group(2))
 
 
 def get_test_cloud_id(test: Test) -> str:

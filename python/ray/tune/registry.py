@@ -21,6 +21,7 @@ RLLIB_MODEL = "rllib_model"
 RLLIB_PREPROCESSOR = "rllib_preprocessor"
 RLLIB_ACTION_DIST = "rllib_action_dist"
 RLLIB_INPUT = "rllib_input"
+RLLIB_CONNECTOR = "rllib_connector"
 TEST = "__test__"
 KNOWN_CATEGORIES = [
     TRAINABLE_CLASS,
@@ -29,6 +30,7 @@ KNOWN_CATEGORIES = [
     RLLIB_PREPROCESSOR,
     RLLIB_ACTION_DIST,
     RLLIB_INPUT,
+    RLLIB_CONNECTOR,
     TEST,
 ]
 

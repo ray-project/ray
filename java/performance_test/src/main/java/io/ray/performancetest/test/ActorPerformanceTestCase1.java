@@ -13,7 +13,6 @@ public class ActorPerformanceTestCase1 {
     final int argSize = 0;
     final boolean useDirectByteBuffer = false;
     final boolean ignoreReturn = false;
-    final int numJavaWorkerPerProcess = 1;
     ActorPerformanceTestBase.run(
         args,
         layers,
@@ -21,7 +20,6 @@ public class ActorPerformanceTestCase1 {
         hasReturn,
         ignoreReturn,
         argSize,
-        useDirectByteBuffer,
-        numJavaWorkerPerProcess);
+        useDirectByteBuffer);
   }
 }

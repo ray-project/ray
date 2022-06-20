@@ -1,0 +1,60 @@
+
+# ARS was never tested/tuned on Hopper. Maybe change to ReacherBulletEnv-v0?
+# ars-hopperbulletenv-v0:
+#    env: HopperBulletEnv-v0
+#    run: ARS
+#    # Minimum reward and total ts (in given time_total_s) to pass this test.
+#    pass_criteria:
+#        episode_reward_mean: 100.0
+#        timesteps_total: 2000000
+#    stop:
+#        time_total_s: 2000
+#    config:
+#        noise_stdev: 0.01
+#        num_rollouts: 1
+#        rollouts_used: 1
+#        num_workers: 1
+#        sgd_stepsize: 0.02
+#        noise_size: 250000000
+#        eval_prob: 0.2
+#        offset: 0
+#        observation_filter: NoFilter
+#        report_length: 3
+
+# Basically the same as atari-ppo, but adapted for DDPPO. Note that DDPPO
+# isn't actually any more efficient on Atari, since the network size is
+# relatively small and the env doesn't require a GPU.
+# ddppo-breakoutnoframeskip-v4:
+#    env: BreakoutNoFrameskip-v4
+#    run: DDPPO
+#    # Minimum reward and total ts (in given time_total_s) to pass this test.
+#    pass_criteria:
+#        episode_reward_mean: 50.0
+#        timesteps_total: 10000000
+#    stop:
+#        time_total_s: 3600
+#    config:
+#        # DDPPO only supports PyTorch so far.
+#        frameworks: [ "torch" ]
+#        # Worker config: 10 workers, each of which requires a GPU.
+#        num_workers: 16
+#        # Workers require GPUs, but share 1 GPU amongst 2 workers.
+#        num_gpus_per_worker: 0.25
+#        # Each worker will sample 100 * 5 envs per worker steps = 500 steps
+#        # per optimization round. This is 5000 steps summed across workers.
+#        rollout_fragment_length: 100
+#        num_envs_per_worker: 5
+#        # Each worker will take a minibatch of 50. There are 10 workers total,
+#        # so the effective minibatch size will be 500.
+#        sgd_minibatch_size: 50
+#        num_sgd_iter: 30
+#        # Params from standard PPO Atari config:
+#        lambda: 0.95
+#        kl_coeff: 0.5
+#        clip_rewards: true
+#        clip_param: 0.1
+#        vf_loss_coeff: 0.1
+#        vf_clip_param: 10.0
+#        entropy_coeff: 0.01
+#        batch_mode: truncate_episodes
+#        observation_filter: NoFilter

@@ -11,6 +11,7 @@ import ray.experimental.internal_kv as internal_kv
 import ray._private.services
 import ray._private.utils
 from ray.ray_constants import (
+    GLOBAL_GRPC_OPTIONS,
     DEBUG_AUTOSCALING_STATUS,
     DEBUG_AUTOSCALING_STATUS_LEGACY,
     DEBUG_AUTOSCALING_ERROR,
@@ -48,7 +49,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         if change.new:
             node_id, ports = change.new
             ip = DataSource.node_id_to_ip[node_id]
-            options = (("grpc.enable_http_proxy", 0),)
+            options = GLOBAL_GRPC_OPTIONS
             channel = ray._private.utils.init_grpc_channel(
                 f"{ip}:{ports[1]}", options=options, asynchronous=True
             )
@@ -118,8 +119,8 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         """Returns status information about the cluster.
 
         Currently contains two fields:
-            autoscaling_status (str): a status message from the autoscaler.
-            autoscaling_error (str): an error message from the autoscaler if
+            autoscaling_status (str)-- a status message from the autoscaler.
+            autoscaling_error (str)-- an error message from the autoscaler if
                 anything has gone wrong during autoscaling.
 
         These fields are both read from the GCS, it's expected that the

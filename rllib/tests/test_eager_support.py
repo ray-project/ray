@@ -2,7 +2,7 @@ import unittest
 
 import ray
 from ray import tune
-from ray.rllib.agents.registry import get_trainer_class
+from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.rllib.utils.framework import try_import_tf
 
 tf1, tf, tfv = try_import_tf()
@@ -23,7 +23,7 @@ def check_support(alg, config, test_eager=False, test_trace=True):
         else:
             config["env"] = "CartPole-v0"
 
-        a = get_trainer_class(alg)
+        a = get_algorithm_class(alg)
         if test_eager:
             print("tf-eager: alg={} cont.act={}".format(alg, cont))
             config["eager_tracing"] = False
@@ -42,10 +42,15 @@ class TestEagerSupportPG(unittest.TestCase):
         ray.shutdown()
 
     def test_simple_q(self):
-        check_support("SimpleQ", {"num_workers": 0, "learning_starts": 0})
+        check_support(
+            "SimpleQ",
+            {"num_workers": 0, "replay_buffer_config": {"learning_starts": 0}},
+        )
 
     def test_dqn(self):
-        check_support("DQN", {"num_workers": 0, "learning_starts": 0})
+        check_support(
+            "DQN", {"num_workers": 0, "replay_buffer_config": {"learning_starts": 0}}
+        )
 
     def test_ddpg(self):
         check_support("DDPG", {"num_workers": 0})
@@ -84,10 +89,15 @@ class TestEagerSupportOffPolicy(unittest.TestCase):
         ray.shutdown()
 
     def test_simple_q(self):
-        check_support("SimpleQ", {"num_workers": 0, "learning_starts": 0})
+        check_support(
+            "SimpleQ",
+            {"num_workers": 0, "replay_buffer_config": {"learning_starts": 0}},
+        )
 
     def test_dqn(self):
-        check_support("DQN", {"num_workers": 0, "learning_starts": 0})
+        check_support(
+            "DQN", {"num_workers": 0, "replay_buffer_config": {"learning_starts": 0}}
+        )
 
     def test_ddpg(self):
         check_support("DDPG", {"num_workers": 0})
@@ -103,10 +113,10 @@ class TestEagerSupportOffPolicy(unittest.TestCase):
             "APEX",
             {
                 "num_workers": 2,
-                "learning_starts": 0,
+                "replay_buffer_config": {"learning_starts": 0},
                 "num_gpus": 0,
-                "min_time_s_per_reporting": 1,
-                "min_sample_timesteps_per_reporting": 100,
+                "min_time_s_per_iteration": 1,
+                "min_sample_timesteps_per_iteration": 100,
                 "optimizer": {
                     "num_replay_buffer_shards": 1,
                 },
@@ -114,7 +124,9 @@ class TestEagerSupportOffPolicy(unittest.TestCase):
         )
 
     def test_sac(self):
-        check_support("SAC", {"num_workers": 0, "learning_starts": 0})
+        check_support(
+            "SAC", {"num_workers": 0, "replay_buffer_config": {"learning_starts": 0}}
+        )
 
 
 if __name__ == "__main__":

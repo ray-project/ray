@@ -3,6 +3,7 @@ import numpy as np
 import tree  # pip install dm_tree
 from typing import Union, Optional
 
+from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import override
@@ -17,6 +18,7 @@ tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 
+@PublicAPI
 class Random(Exploration):
     """A random action selector (deterministic/greedy for explore=False).
 

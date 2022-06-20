@@ -76,7 +76,6 @@ struct CoreWorkerOptions {
         get_lang_stack(nullptr),
         kill_main(nullptr),
         is_local_mode(false),
-        num_workers(0),
         terminate_asyncio_thread(nullptr),
         serialized_job_config(""),
         metrics_agent_port(-1),
@@ -148,8 +147,6 @@ struct CoreWorkerOptions {
   std::function<bool()> kill_main;
   /// Is local mode being used.
   bool is_local_mode;
-  /// The number of workers to be started in the current process.
-  int num_workers;
   /// The function to destroy asyncio event and loops.
   std::function<void()> terminate_asyncio_thread;
   /// Serialized representation of JobConfig.

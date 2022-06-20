@@ -1,9 +1,7 @@
 from ray.workflow.api import (
     step,
     init,
-    virtual_actor,
     get_output,
-    get_actor,
     get_status,
     get_metadata,
     resume,
@@ -24,10 +22,8 @@ from ray.workflow.event_listener import EventListener
 
 __all__ = [
     "step",
-    "virtual_actor",
     "resume",
     "get_output",
-    "get_actor",
     "WorkflowExecutionError",
     "resume_all",
     "cancel",

@@ -105,14 +105,12 @@ const Dashboard: React.FC = () => {
   }
 
   const SelectedComponent = tabs[tab].component;
+  const [usageStatsPromptEnabled, setUsageStatsPromptEnabled] = useState(false);
   const [usageStatsEnabled, setUsageStatsEnabled] = useState(false);
   useEffect(() => {
     getUsageStatsEnabled().then((res) => {
-      if (res.enabled) {
-        setUsageStatsEnabled(true);
-      } else {
-        setUsageStatsEnabled(false);
-      }
+      setUsageStatsPromptEnabled(res.usageStatsPromptEnabled);
+      setUsageStatsEnabled(res.usageStatsEnabled);
     });
   }, []);
   return (
@@ -139,26 +137,28 @@ const Dashboard: React.FC = () => {
         ))}
       </Tabs>
       <SelectedComponent />
-      <Alert style={{ marginTop: 30 }} severity="info">
-        {usageStatsEnabled ? (
-          <span>
-            Usage stats collection is enabled. To disable this, add
-            `--disable-usage-stats` to the command that starts the cluster, or
-            run the following command: `ray disable-usage-stats` before starting
-            the cluster. See{" "}
-            <a
-              href="https://github.com/ray-project/ray/issues/20857"
-              target="_blank"
-              rel="noreferrer"
-            >
-              https://github.com/ray-project/ray/issues/20857
-            </a>{" "}
-            for more details.
-          </span>
-        ) : (
-          <span>Usage stats collection is disabled.</span>
-        )}
-      </Alert>
+      {usageStatsPromptEnabled ? (
+        <Alert style={{ marginTop: 30 }} severity="info">
+          {usageStatsEnabled ? (
+            <span>
+              Usage stats collection is enabled. To disable this, add
+              `--disable-usage-stats` to the command that starts the cluster, or
+              run the following command: `ray disable-usage-stats` before
+              starting the cluster. See{" "}
+              <a
+                href="https://docs.ray.io/en/master/cluster/usage-stats.html"
+                target="_blank"
+                rel="noreferrer"
+              >
+                https://docs.ray.io/en/master/cluster/usage-stats.html
+              </a>{" "}
+              for more details.
+            </span>
+          ) : (
+            <span>Usage stats collection is disabled.</span>
+          )}
+        </Alert>
+      ) : null}
       <LastUpdated />
     </div>
   );

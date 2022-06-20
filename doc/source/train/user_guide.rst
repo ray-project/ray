@@ -659,7 +659,7 @@ appropriately in distributed training.
 
             for epoch in range(config["num_epochs"]):
                 model.fit(X, Y, batch_size=20)
-                train.save_checkpoint(epoch=epoch, model_weights=model.get_weights())
+                train.save_checkpoint(epoch=epoch, model=model.get_weights())
 
 
         trainer = Trainer(backend="tensorflow", num_workers=2)
@@ -861,7 +861,7 @@ Checkpoints can be loaded into the training function in 2 steps:
 
             for epoch in range(start_epoch, config["num_epochs"]):
                 model.fit(X, Y, batch_size=20)
-                train.save_checkpoint(epoch=epoch, model_weights=model.get_weights())
+                train.save_checkpoint(epoch=epoch, model=model.get_weights())
 
 
         trainer = Trainer(backend="tensorflow", num_workers=2)

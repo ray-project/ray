@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 aiogrpc.init_grpc_aio()
 GRPC_CHANNEL_OPTIONS = (
-    ("grpc.enable_http_proxy", 0),
+    *ray_constants.GLOBAL_GRPC_OPTIONS,
     ("grpc.max_send_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
     ("grpc.max_receive_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
 )

@@ -75,8 +75,6 @@ public class RayConfig {
 
   public final List<String> headArgs;
 
-  public final int numWorkersPerProcess;
-
   public final String namespace;
 
   public final List<String> jvmOptionsForJavaWorker;
@@ -109,7 +107,7 @@ public class RayConfig {
     boolean isDriver = workerMode == WorkerType.DRIVER;
     // Run mode.
     if (config.hasPath("ray.local-mode")) {
-      runMode = config.getBoolean("ray.local-mode") ? RunMode.SINGLE_PROCESS : RunMode.CLUSTER;
+      runMode = config.getBoolean("ray.local-mode") ? RunMode.LOCAL : RunMode.CLUSTER;
     } else {
       runMode = config.getEnum(RunMode.class, "ray.run-mode");
     }
@@ -190,8 +188,6 @@ public class RayConfig {
     }
     codeSearchPath = Arrays.asList(codeSearchPathString.split(":"));
 
-    numWorkersPerProcess = config.getInt("ray.job.num-java-workers-per-process");
-
     startupToken = config.getInt("ray.raylet.startup-token");
 
     /// Driver needn't this config item.
@@ -200,10 +196,11 @@ public class RayConfig {
     }
 
     {
-      /// Runtime Env
+      /// Runtime Env env-vars
+      Map<String, String> envVars = new HashMap<>();
+      List<String> jarUrls = null;
       final String envVarsPath = "ray.job.runtime-env.env-vars";
       if (config.hasPath(envVarsPath)) {
-        Map<String, String> envVars = new HashMap<>();
         Config envVarsConfig = config.getConfig(envVarsPath);
         envVarsConfig
             .entrySet()
@@ -211,8 +208,14 @@ public class RayConfig {
                 (entry) -> {
                   envVars.put(entry.getKey(), ((String) entry.getValue().unwrapped()));
                 });
-        runtimeEnvImpl = new RuntimeEnvImpl(envVars);
       }
+
+      /// Runtime env jars
+      final String jarsPath = "ray.job.runtime-env.jars";
+      if (config.hasPath(jarsPath)) {
+        jarUrls = config.getStringList(jarsPath);
+      }
+      runtimeEnvImpl = new RuntimeEnvImpl(envVars, jarUrls);
     }
 
     {

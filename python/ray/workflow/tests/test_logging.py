@@ -2,13 +2,11 @@ from ray._private.test_utils import run_string_as_driver_nonblocking
 
 
 def test_basic_workflow_logs(workflow_start_regular):
-    from ray.internal.storage import _storage_uri
-
-    script = f"""
+    script = """
 import ray
 from ray import workflow
 
-ray.init(address='auto', storage="{_storage_uri}")
+ray.init(address='auto')
 
 @workflow.step(name="f")
 def f():
@@ -29,13 +27,11 @@ f.step().run("wid")
 
 
 def test_chained_workflow_logs(workflow_start_regular):
-    from ray.internal.storage import _storage_uri
-
-    script = f"""
+    script = """
 import ray
 from ray import workflow
 
-ray.init(address='auto', storage="{_storage_uri}")
+ray.init(address='auto')
 
 @workflow.step(name="f1")
 def f1():
@@ -62,13 +58,11 @@ f2.step(f1.step()).run("wid1")
 
 
 def test_dynamic_workflow_logs(workflow_start_regular):
-    from ray.internal.storage import _storage_uri
-
-    script = f"""
+    script = """
 import ray
 from ray import workflow
 
-ray.init(address='auto', storage="{_storage_uri}")
+ray.init(address='auto')
 
 @workflow.step(name="f3")
 def f3(x):
@@ -92,37 +86,3 @@ f4.step(10).run("wid2")
     assert "Step status [SUCCESSFUL]\t[wid2@f3" in logs
     assert "Step status [RUNNING]\t[wid2@f4" in logs
     assert "Step status [SUCCESSFUL]\t[wid2@f4" in logs
-
-
-def test_virtual_actor_logs(workflow_start_regular):
-    from ray.internal.storage import _storage_uri
-
-    script = f"""
-import ray
-from ray import workflow
-
-ray.init(address='auto', storage="{_storage_uri}")
-
-@workflow.virtual_actor
-class Counter:
-    def __init__(self, x: int):
-        self.x = x
-
-    def add(self, y):
-        self.x += y
-        return self.x
-
-couter = Counter.get_or_create("vid", 10)
-couter.add.options(name="add").run(1)
-    """
-    proc = run_string_as_driver_nonblocking(script)
-    logs = proc.stdout.read().decode("ascii") + proc.stderr.read().decode("ascii")
-    print(logs)
-    # on driver
-    assert 'Workflow job created. [id="vid"' in logs
-    # # in WorkflowManagementActor's run_or_resume.remote()
-    # assert "run_or_resume: vid" in logs
-    # assert "Workflow job [id=vid] started." in logs
-    # in _workflow_step_executor_remote
-    assert "Step status [RUNNING]\t[vid@add" in logs
-    assert "Step status [SUCCESSFUL]\t[vid@add" in logs

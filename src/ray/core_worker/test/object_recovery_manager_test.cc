@@ -58,23 +58,27 @@ class MockTaskResubmitter : public TaskResubmissionInterface {
 
 class MockRayletClient : public PinObjectsInterface {
  public:
-  void PinObjectID(const rpc::Address &caller_address,
-                   const ObjectID &object_id,
-                   rpc::ClientCallback<rpc::PinObjectIDReply> callback) override {
-    RAY_LOG(INFO) << "PinObjectID " << object_id.Hex();
-    callbacks.push_back(std::move(callback));
+  void PinObjectIDs(
+      const rpc::Address &caller_address,
+      const std::vector<ObjectID> &object_ids,
+      const rpc::ClientCallback<rpc::PinObjectIDsReply> &callback) override {
+    RAY_LOG(INFO) << "PinObjectIDs " << object_ids.size();
+    callbacks.push_back(callback);
   }
 
-  size_t Flush() {
-    size_t flushed = callbacks.size();
-    for (const auto &callback : callbacks) {
-      callback(Status::OK(), rpc::PinObjectIDReply());
+  size_t Flush(bool success = true) {
+    std::list<rpc::ClientCallback<rpc::PinObjectIDsReply>> callbacks_snapshot;
+    std::swap(callbacks_snapshot, callbacks);
+    size_t flushed = callbacks_snapshot.size();
+    for (const auto &callback : callbacks_snapshot) {
+      rpc::PinObjectIDsReply reply;
+      reply.add_successes(success);
+      callback(Status::OK(), reply);
     }
-    callbacks.clear();
     return flushed;
   }
 
-  std::list<rpc::ClientCallback<rpc::PinObjectIDReply>> callbacks = {};
+  std::list<rpc::ClientCallback<rpc::PinObjectIDsReply>> callbacks = {};
 };
 
 class MockObjectDirectory {
@@ -229,12 +233,15 @@ TEST_F(ObjectRecoveryManagerTest, TestPinNewCopy) {
                                0,
                                true,
                                /*add_local_ref=*/true);
-  std::vector<rpc::Address> addresses({rpc::Address()});
+  std::vector<rpc::Address> addresses({rpc::Address(), rpc::Address()});
   object_directory_->SetLocations(object_id, addresses);
 
   ASSERT_TRUE(manager_.RecoverObject(object_id));
   ASSERT_TRUE(object_directory_->Flush() == 1);
-  ASSERT_TRUE(raylet_client_->Flush() == 1);
+  // First copy is evicted so pin fails.
+  ASSERT_TRUE(raylet_client_->Flush(false) == 1);
+  // Second copy is present so pin succeeds.
+  ASSERT_TRUE(raylet_client_->Flush(true) == 1);
   ASSERT_TRUE(failed_reconstructions_.empty());
   ASSERT_EQ(task_resubmitter_->num_tasks_resubmitted, 0);
 }

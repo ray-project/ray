@@ -9,4 +9,5 @@ memory-leak-test-dqn:
         env_config:
             config:
                 static_samples: true
-        buffer_size: 500  # use small buffer to catch memory leaks
+        replay_buffer_config:
+          capacity: 500  # use small buffer to catch memory leaks

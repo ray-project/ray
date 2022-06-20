@@ -11,17 +11,19 @@ import os
 import ray
 from ray import tune
 from ray.rllib.agents import with_common_config
-from ray.rllib.agents.trainer import Trainer
-from ray.rllib.agents.dqn.dqn import DEFAULT_CONFIG as DQN_CONFIG
-from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
-from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
-from ray.rllib.agents.ppo.ppo import DEFAULT_CONFIG as PPO_CONFIG
-from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
-from ray.rllib.agents.ppo.ppo_torch_policy import PPOTorchPolicy
+from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.dqn.dqn import DEFAULT_CONFIG as DQN_CONFIG
+from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTFPolicy
+from ray.rllib.algorithms.dqn.dqn_torch_policy import DQNTorchPolicy
+from ray.rllib.algorithms.ppo.ppo import DEFAULT_CONFIG as PPO_CONFIG
+from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
+from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import train_one_step
-from ray.rllib.execution.buffers.multi_agent_replay_buffer import MultiAgentReplayBuffer
+from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import (
+    MultiAgentReplayBuffer,
+)
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import override
@@ -33,7 +35,7 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.sgd import standardized
 from ray.rllib.utils.test_utils import check_learning_achieved
-from ray.rllib.utils.typing import ResultDict, TrainerConfigDict
+from ray.rllib.utils.typing import ResultDict, AlgorithmConfigDict
 from ray.tune.registry import register_env
 
 parser = argparse.ArgumentParser()
@@ -62,12 +64,12 @@ parser.add_argument(
 )
 
 
-# Define new Trainer with custom execution_plan/workflow.
-class MyTrainer(Trainer):
+# Define new Algorithm with custom execution_plan/workflow.
+class MyAlgo(Algorithm):
     @classmethod
-    @override(Trainer)
-    def get_default_config(cls) -> TrainerConfigDict:
-        # Run this Trainer with new `training_iteration` API and set some PPO-specific
+    @override(Algorithm)
+    def get_default_config(cls) -> AlgorithmConfigDict:
+        # Run this Algorithm with new `training_step` API and set some PPO-specific
         # parameters.
         return with_common_config(
             {
@@ -76,17 +78,17 @@ class MyTrainer(Trainer):
             }
         )
 
-    @override(Trainer)
+    @override(Algorithm)
     def setup(self, config):
         # Call super's `setup` to create rollout workers.
         super().setup(config)
         # Create local replay buffer.
         self.local_replay_buffer = MultiAgentReplayBuffer(
-            num_shards=1, learning_starts=1000, capacity=50000, replay_batch_size=64
+            num_shards=1, learning_starts=1000, capacity=50000
         )
 
-    @override(Trainer)
-    def training_iteration(self) -> ResultDict:
+    @override(Algorithm)
+    def training_step(self) -> ResultDict:
         # Generate common experiences, collect batch for PPO, store every (DQN) batch
         # into replay buffer.
         ppo_batches = []
@@ -103,14 +105,14 @@ class MyTrainer(Trainer):
                 self._counters[NUM_AGENT_STEPS_SAMPLED] += ma_batch.agent_steps()
                 ppo_batch = ma_batch.policy_batches.pop("ppo_policy")
                 # Add collected batches (only for DQN policy) to replay buffer.
-                self.local_replay_buffer.add_batch(ma_batch)
+                self.local_replay_buffer.add(ma_batch)
 
                 ppo_batches.append(ppo_batch)
                 num_env_steps += ppo_batch.count
 
         # DQN sub-flow.
         dqn_train_results = {}
-        dqn_train_batch = self.local_replay_buffer.replay()
+        dqn_train_batch = self.local_replay_buffer.sample(num_items=64)
         if dqn_train_batch is not None:
             dqn_train_results = train_one_step(self, dqn_train_batch, ["dqn_policy"])
             self._counters["agent_steps_trained_DQN"] += dqn_train_batch.agent_steps()
@@ -166,20 +168,27 @@ if __name__ == "__main__":
         "multi_agent_cartpole", lambda _: MultiAgentCartPole({"num_agents": 4})
     )
 
-    # Note that since the trainer below does not include a default policy or
+    # framework can be changed, so removed the hardcoded framework key
+    # from policy configs.
+    ppo_config = PPO_CONFIG
+    del ppo_config["framework"]
+    dqn_config = DQN_CONFIG
+    del dqn_config["framework"]
+
+    # Note that since the algorithm below does not include a default policy or
     # policy configs, we have to explicitly set it in the multiagent config:
     policies = {
         "ppo_policy": (
-            PPOTorchPolicy if args.torch or args.mixed_torch_tf else PPOTFPolicy,
+            PPOTorchPolicy if args.torch or args.mixed_torch_tf else PPOTF1Policy,
             None,
             None,
-            PPO_CONFIG,
+            ppo_config,
         ),
         "dqn_policy": (
             DQNTorchPolicy if args.torch else DQNTFPolicy,
             None,
             None,
-            DQN_CONFIG,
+            dqn_config,
         ),
     }
 
@@ -209,7 +218,7 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run(MyTrainer, config=config, stop=stop)
+    results = tune.run(MyAlgo, config=config, stop=stop)
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

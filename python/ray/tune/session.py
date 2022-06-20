@@ -1,15 +1,54 @@
-from contextlib import contextmanager
 import inspect
-import os
 import logging
+import os
 import traceback
+from contextlib import contextmanager
+from typing import Dict, Optional, Set
 
+import ray
+from ray.air._internal.session import Session
+from ray.air.checkpoint import Checkpoint
+from ray.tune.error import TuneError
+from ray.tune.function_runner import _StatusReporter
+from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.debug import log_once
-from ray.util.annotations import PublicAPI, DeveloperAPI
+from ray.util.placement_group import _valid_resource_shape
+from ray.util.scheduling_strategies import (
+    PlacementGroupSchedulingStrategy,
+    SchedulingStrategyT,
+)
 
 logger = logging.getLogger(__name__)
 
-_session = None
+_session: Optional[_StatusReporter] = None
+# V2 Session API.
+_session_v2: Optional["_TuneSessionImpl"] = None
+
+
+class _TuneSessionImpl(Session):
+    """Session client that function trainable can interact with."""
+
+    def __init__(self, status_reporter: _StatusReporter):
+        self._status_reporter = status_reporter
+
+    def report(self, metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
+        self._status_reporter.report(metrics, checkpoint=checkpoint)
+
+    @property
+    def loaded_checkpoint(self) -> Optional[Checkpoint]:
+        return self._status_reporter.loaded_checkpoint
+
+    @property
+    def trial_name(self) -> str:
+        return self._status_reporter.trial_name
+
+    @property
+    def trial_id(self) -> str:
+        return self._status_reporter.trial_id
+
+    @property
+    def trial_resources(self) -> Dict[str, float]:
+        return self._status_reporter.trial_resources.required_resources
 
 
 @PublicAPI
@@ -42,6 +81,7 @@ def get_session():
 def init(reporter, ignore_reinit_error=True):
     """Initializes the global trial context for this process."""
     global _session
+    global _session_v2
 
     if _session is not None:
         # TODO(ng): would be nice to stack crawl at creation time to report
@@ -67,7 +107,83 @@ def init(reporter, ignore_reinit_error=True):
             "Most session commands will have no effect."
         )
 
+    # Setup hooks for generating placement group resource deadlock warnings.
+    from ray import actor, remote_function
+
+    if "TUNE_DISABLE_RESOURCE_CHECKS" not in os.environ:
+        actor._actor_launch_hook = tune_task_and_actor_launch_hook
+        remote_function._task_launch_hook = tune_task_and_actor_launch_hook
+
     _session = reporter
+    _session_v2 = _TuneSessionImpl(status_reporter=reporter)
+
+
+# Cache of resource dicts that have been checked by the launch hook already.
+_checked_resources: Set[frozenset] = set()
+
+
+def tune_task_and_actor_launch_hook(
+    fn, resources: Dict[str, float], strategy: Optional[SchedulingStrategyT]
+):
+    """Launch hook to catch nested tasks that can't fit in the placement group.
+
+    This gives users a nice warning in case they launch a nested task in a Tune trial
+    without reserving resources in the trial placement group to fit it.
+    """
+
+    # Already checked, skip for performance reasons.
+    key = frozenset({(k, v) for k, v in resources.items() if v > 0})
+    if not key or key in _checked_resources:
+        return
+
+    # No need to check if placement group is None.
+    if (
+        not isinstance(strategy, PlacementGroupSchedulingStrategy)
+        or strategy.placement_group is None
+    ):
+        return
+
+    # Check if the resource request is targeting the current placement group.
+    cur_pg = ray.util.get_current_placement_group()
+    if not cur_pg or strategy.placement_group.id != cur_pg.id:
+        return
+
+    _checked_resources.add(key)
+
+    # Check if the request can be fulfilled by the current placement group.
+    pgf = get_trial_resources()
+
+    if pgf.head_bundle_is_empty:
+        available_bundles = cur_pg.bundle_specs[0:]
+    else:
+        available_bundles = cur_pg.bundle_specs[1:]
+
+    # Check if the request can be fulfilled by the current placement group.
+    if _valid_resource_shape(resources, available_bundles):
+        return
+
+    if fn.class_name:
+        submitted = "actor"
+        name = fn.module_name + "." + fn.class_name + "." + fn.function_name
+    else:
+        submitted = "task"
+        name = fn.module_name + "." + fn.function_name
+
+    # Normalize the resource spec so it looks the same as the placement group bundle.
+    main_resources = cur_pg.bundle_specs[0]
+    resources = {k: float(v) for k, v in resources.items() if v > 0}
+
+    raise TuneError(
+        f"No trial resources are available for launching the {submitted} `{name}`. "
+        "To resolve this, specify the Tune option:\n\n"
+        ">  resources_per_trial=tune.PlacementGroupFactory(\n"
+        f">    [{main_resources}] + [{resources}] * N\n"
+        ">  )\n\n"
+        f"Where `N` is the number of slots to reserve for trial {submitted}s. "
+        "If you are using a Ray training library, there might be a utility function "
+        "to set this automatically for you. For more information, refer to "
+        "https://docs.ray.io/en/latest/tune/tutorials/tune-resources.html"
+    )
 
 
 def shutdown():
@@ -100,6 +216,11 @@ def report(_metric=None, **kwargs):
     """
     _session = get_session()
     if _session:
+        if _session._iter:
+            raise ValueError(
+                "It is not allowed to mix `tune.report` with `session.report`."
+            )
+
         return _session(_metric, **kwargs)
 
 
@@ -159,6 +280,11 @@ def checkpoint_dir(step: int):
         raise ValueError("checkpoint_dir(step) must be provided - got None.")
 
     if _session:
+        if _session._iter:
+            raise ValueError(
+                "It is not allowed to mix `with tune.checkpoint_dir` "
+                "with `session.report`."
+            )
         _checkpoint_dir = _session.make_checkpoint_dir(step=step)
     else:
         _checkpoint_dir = os.path.abspath("./")

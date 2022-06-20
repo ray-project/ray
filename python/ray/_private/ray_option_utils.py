@@ -6,6 +6,7 @@ from ray.util.scheduling_strategies import (
     PlacementGroupSchedulingStrategy,
     NodeAffinitySchedulingStrategy,
 )
+import ray.ray_constants as ray_constants
 
 
 @dataclass
@@ -104,7 +105,9 @@ _task_only_options = {
     "max_calls": _counting_option("max_calls", False, default_value=0),
     # Normal tasks may be retried on failure this many times.
     # TODO(swang): Allow this to be set globally for an application.
-    "max_retries": _counting_option("max_retries", default_value=3),
+    "max_retries": _counting_option(
+        "max_retries", default_value=ray_constants.DEFAULT_TASK_MAX_RETRIES
+    ),
     # override "_common_options"
     "num_cpus": _resource_option("num_cpus", default_value=1),
     "num_returns": _counting_option("num_returns", False, default_value=1),
@@ -160,7 +163,7 @@ def _check_deprecate_placement_group(options: Dict[str, Any]):
     placement_group = options.get("placement_group", "default")
     scheduling_strategy = options.get("scheduling_strategy")
     # TODO(suquark): @ray.remote(placement_group=None) is used in
-    # "python/ray/data/impl/remote_fn.py" and many other places,
+    # "python/ray.data._internal/remote_fn.py" and many other places,
     # while "ray.data.read_api.read_datasource" set "scheduling_strategy=SPREAD".
     # This might be a bug, but it is also ok to allow them co-exist.
     if (placement_group not in ("default", None)) and (scheduling_strategy is not None):

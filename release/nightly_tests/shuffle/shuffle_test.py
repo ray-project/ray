@@ -37,4 +37,16 @@ if __name__ == "__main__":
     delta = time.time() - start
 
     with open(os.environ["TEST_OUTPUT_JSON"], "w") as f:
-        f.write(json.dumps({"shuffle_time": delta, "success": 1}))
+        results = {
+            "shuffle_time": delta,
+            "success": 1,
+        }
+        results["perf_metrics"] = [
+            {
+                "perf_metric_name": "shuffle_time",
+                "perf_metric_value": delta,
+                "perf_metric_type": "LATENCY",
+            }
+        ]
+
+        f.write(json.dumps(results))

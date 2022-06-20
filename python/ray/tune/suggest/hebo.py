@@ -272,7 +272,7 @@ class HEBOSearch(Searcher):
 
         if self._initial_points:
             params = self._initial_points.pop(0)
-            suggestion = pd.DataFrame(params, index=[0])
+            suggestion = pd.DataFrame([params], index=[0])
         else:
             if (
                 self._batch_filled
@@ -283,7 +283,7 @@ class HEBOSearch(Searcher):
                 suggestion = self._opt.suggest(n_suggestions=self._max_concurrent)
                 self._suggestions_cache = suggestion.to_dict("records")
             params = self._suggestions_cache.pop(0)
-            suggestion = pd.DataFrame(params, index=[0])
+            suggestion = pd.DataFrame([params], index=[0])
         self._live_trial_mapping[trial_id] = suggestion
         if len(self._live_trial_mapping) >= self._max_concurrent:
             self._batch_filled = True

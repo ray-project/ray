@@ -40,6 +40,8 @@ except (ImportError, OSError):
     suite = None
 import numpy as np
 
+from ray.rllib.utils.annotations import PublicAPI
+
 
 def _spec_to_box(spec):
     def extract_min_max(s):
@@ -71,6 +73,7 @@ def _flatten_obs(obs):
     return np.concatenate(obs_pieces, axis=0)
 
 
+@PublicAPI
 class DMCEnv(core.Env):
     def __init__(
         self,

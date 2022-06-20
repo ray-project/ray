@@ -26,6 +26,7 @@
 using namespace ::testing;
 
 namespace ray {
+using raylet::NoopLocalTaskManager;
 namespace gcs {
 struct MockCallback {
   MOCK_METHOD(void, Call, ((std::shared_ptr<GcsActor>)));
@@ -60,7 +61,7 @@ class GcsActorSchedulerMockTest : public Test {
         /*announce_infeasible_task=*/
         nullptr,
         /*local_task_manager=*/
-        nullptr);
+        std::make_shared<NoopLocalTaskManager>());
     actor_scheduler = std::make_unique<GcsActorScheduler>(
         io_context,
         *actor_table,

@@ -550,8 +550,12 @@ TEST_P(DirectActorSubmitterTest, TestActorRestartOutOfOrderGcs) {
   // Submit a task.
   task = CreateActorTaskHelper(actor_id, worker_id, 3);
   ASSERT_TRUE(CheckSubmitTask(task));
-  EXPECT_CALL(*task_finisher_, CompletePendingTask(task.TaskId(), _, _)).Times(0);
-  ASSERT_FALSE(worker_client_->ReplyPushTask(Status::OK()));
+  // Tasks submitted when the actor is in RESTARTING state will fail immediately.
+  // This happens in an io_service.post. Search `SendPendingTasks_ForceFail` to locate
+  // the code.
+  EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task.TaskId(), _, _, _, _))
+      .Times(1);
+  ASSERT_EQ(io_context.poll_one(), 1);
 
   // We receive the late messages. Nothing happens.
   addr.set_port(2);
@@ -559,9 +563,7 @@ TEST_P(DirectActorSubmitterTest, TestActorRestartOutOfOrderGcs) {
   submitter_.DisconnectActor(actor_id, 2, /*dead=*/false, death_cause);
   ASSERT_EQ(num_clients_connected_, 2);
 
-  // The actor dies permanently. All tasks are failed.
-  EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task.TaskId(), _, _, _, _))
-      .Times(1);
+  // The actor dies permanently.
   submitter_.DisconnectActor(actor_id, 3, /*dead=*/true, death_cause);
   ASSERT_EQ(num_clients_connected_, 2);
 
@@ -622,6 +624,37 @@ TEST_P(DirectActorSubmitterTest, TestActorRestartFailInflightTasks) {
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK()));
   // Task 3 replied with error.
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::IOError("")));
+}
+
+TEST_P(DirectActorSubmitterTest, TestActorRestartFastFail) {
+  auto execute_out_of_order = GetParam();
+  rpc::Address addr;
+  auto worker_id = WorkerID::FromRandom();
+  addr.set_worker_id(worker_id.Binary());
+  ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
+  submitter_.AddActorQueueIfNotExists(actor_id, -1, execute_out_of_order);
+  addr.set_port(0);
+  submitter_.ConnectActor(actor_id, addr, 0);
+  ASSERT_EQ(worker_client_->callbacks.size(), 0);
+  ASSERT_EQ(num_clients_connected_, 1);
+
+  auto task1 = CreateActorTaskHelper(actor_id, worker_id, 0);
+  // Submit a task.
+  ASSERT_TRUE(CheckSubmitTask(task1));
+  EXPECT_CALL(*task_finisher_, CompletePendingTask(task1.TaskId(), _, _)).Times(1);
+  ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK()));
+
+  // Actor failed and is now restarting.
+  const auto death_cause = CreateMockDeathCause();
+  submitter_.DisconnectActor(actor_id, 1, /*dead=*/false, death_cause);
+
+  // Submit a new task. This task should fail immediately because "max_task_retries" is 0.
+  auto task2 = CreateActorTaskHelper(actor_id, worker_id, 1);
+  ASSERT_TRUE(CheckSubmitTask(task2));
+  EXPECT_CALL(*task_finisher_, CompletePendingTask(task2.TaskId(), _, _)).Times(0);
+  EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task2.TaskId(), _, _, _, _))
+      .Times(1);
+  ASSERT_EQ(io_context.poll_one(), 1);
 }
 
 TEST_P(DirectActorSubmitterTest, TestPendingTasks) {

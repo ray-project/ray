@@ -90,8 +90,8 @@ def create_conda_env_if_needed(
     Given a conda YAML, creates a conda environment containing the required
     dependencies if such a conda environment doesn't already exist.
     Args:
-        conda_yaml_file (str): The path to a conda `environment.yml` file.
-        prefix (str): Directory to install the environment into via
+        conda_yaml_file: The path to a conda `environment.yml` file.
+        prefix: Directory to install the environment into via
             the `--prefix` option to conda create.  This also becomes the name
             of the conda env; i.e. it can be passed into `conda activate` and
             `conda remove`

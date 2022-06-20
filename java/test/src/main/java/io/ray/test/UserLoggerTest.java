@@ -31,7 +31,7 @@ public class UserLoggerTest extends BaseTest {
         "ray.job.jvm-options.1", "-Dray.logging.loggers.0.file-name=test_user_logger-1-%p");
     System.setProperty(
         "ray.job.jvm-options.2",
-        "-Dray.logging.loggers.0.pattern=%d{yyyy-MM-dd HH:mm:ss,SSS} %p %c{1} [%t]: %m%n");
+        "-Dray.logging.loggers.0.pattern=%d{yyyy-MM-dd-HH:mm:ss,SSS}%p,%c{1},[%t]:%m%n");
     System.setProperty("ray.job.jvm-options.3", "-Dray.logging.loggers.1.name=test_user_logger2");
     System.setProperty(
         "ray.job.jvm-options.4", "-Dray.logging.loggers.1.file-name=test_user_logger-2-%p");

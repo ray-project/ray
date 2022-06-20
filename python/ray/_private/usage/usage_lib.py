@@ -41,28 +41,24 @@ Note that it is also possible to configure the interval using the environment va
 To see collected/reported data, see `usage_stats.json` inside a temp
 folder (e.g., /tmp/ray/session_[id]/*).
 """
-import os
-import uuid
-import sys
 import json
 import logging
+import os
+import sys
 import time
+import uuid
+from dataclasses import asdict, dataclass
+from enum import Enum, auto
+from pathlib import Path
+from typing import List, Optional
+
+import requests
 import yaml
 
-from dataclasses import dataclass, asdict
-from typing import Optional, List
-from pathlib import Path
-from enum import Enum, auto
-
 import ray
-import requests
-
-import ray.ray_constants as ray_constants
 import ray._private.usage.usage_constants as usage_constant
-from ray.experimental.internal_kv import (
-    _internal_kv_put,
-    _internal_kv_initialized,
-)
+import ray.ray_constants as ray_constants
+from ray.experimental.internal_kv import _internal_kv_initialized, _internal_kv_put
 
 logger = logging.getLogger(__name__)
 
@@ -92,30 +88,49 @@ class ClusterStatusToReport:
 class UsageStatsToReport:
     """Usage stats to report"""
 
+    #: The Ray version in use.
     ray_version: str
+    #: The Python version in use.
     python_version: str
+    #: The schema version of the report.
     schema_version: str
+    #: The source of the data (i.e. OSS).
     source: str
+    #: A random id of the cluster session.
     session_id: str
+    #: The git commit hash of Ray (i.e. ray.__commit__).
     git_commit: str
+    #: The operating system in use.
     os: str
+    #: When the data is collected and reported.
     collect_timestamp_ms: int
+    #: When the cluster is started.
     session_start_timestamp_ms: int
+    #: The cloud provider found in the cluster.yaml file (e.g., aws).
     cloud_provider: Optional[str]
+    #: The min_workers found in the cluster.yaml file.
     min_workers: Optional[int]
+    #: The max_workers found in the cluster.yaml file.
     max_workers: Optional[int]
+    #: The head node instance type found in the cluster.yaml file (e.g., i3.8xlarge).
     head_node_instance_type: Optional[str]
+    #: The worker node instance types found in the cluster.yaml file (e.g., i3.8xlarge).
     worker_node_instance_types: Optional[List[str]]
+    #: The total num of cpus in the cluster.
     total_num_cpus: Optional[int]
+    #: The total num of gpus in the cluster.
     total_num_gpus: Optional[int]
+    #: The total size of memory in the cluster.
     total_memory_gb: Optional[float]
+    #: The total size of object store memory in the cluster.
     total_object_store_memory_gb: Optional[float]
+    #: The Ray libraries that are used (e.g., rllib).
     library_usages: Optional[List[str]]
-    # The total number of successful reports for the lifetime of the cluster.
+    #: The total number of successful reports for the lifetime of the cluster.
     total_success: int
-    # The total number of failed reports for the lifetime of the cluster.
+    #: The total number of failed reports for the lifetime of the cluster.
     total_failed: int
-    # The sequence number of the report.
+    #: The sequence number of the report.
     seq_number: int
 
 
@@ -165,14 +180,21 @@ def record_library_usage(library_usage: str):
         # This happens if the library is imported before ray.init
         return
 
-    # Only report library usage from driver to reduce
-    # the load to kv store.
-    if ray.worker.global_worker.mode == ray.SCRIPT_MODE:
+    # Only report lib usage for driver / workers. Otherwise,
+    # it can be reported if the library is imported from
+    # e.g., API server.
+    if (
+        ray.worker.global_worker.mode == ray.SCRIPT_MODE
+        or ray.worker.global_worker.mode == ray.WORKER_MODE
+    ):
         _put_library_usage(library_usage)
 
 
 def _put_pre_init_library_usages():
     assert _internal_kv_initialized()
+    # NOTE: When the lib is imported from a worker, ray should
+    # always be initialized, so there's no need to register the
+    # pre init hook.
     if ray.worker.global_worker.mode != ray.SCRIPT_MODE:
         return
     for library_usage in _recorded_library_usages:
@@ -239,7 +261,7 @@ def usage_stats_enabled() -> bool:
     return _usage_stats_enabledness() is not UsageStatsEnabledness.DISABLED_EXPLICITLY
 
 
-def _usage_stats_prompt_enabled():
+def usage_stats_prompt_enabled():
     return int(os.getenv("RAY_USAGE_STATS_PROMPT_ENABLED", "1")) == 1
 
 
@@ -268,7 +290,7 @@ def _generate_cluster_metadata():
 
 
 def show_usage_stats_prompt() -> None:
-    if not _usage_stats_prompt_enabled():
+    if not usage_stats_prompt_enabled():
         return
 
     from ray.autoscaler._private.cli_logger import cli_logger
@@ -342,14 +364,14 @@ def set_usage_stats_enabled_via_env_var(enabled) -> None:
     os.environ[usage_constant.USAGE_STATS_ENABLED_ENV_VAR] = "1" if enabled else "0"
 
 
-def put_cluster_metadata(gcs_client, num_retries) -> None:
+def put_cluster_metadata(gcs_client, num_retries: int) -> None:
     """Generate the cluster metadata and store it to GCS.
 
     It is a blocking API.
 
     Params:
-        gcs_client (GCSClient): The GCS client to perform KV operation PUT.
-        num_retries (int): Max number of times to retry if PUT fails.
+        gcs_client: The GCS client to perform KV operation PUT.
+        num_retries: Max number of times to retry if PUT fails.
 
     Raises:
         gRPC exceptions if PUT fails.
@@ -365,7 +387,7 @@ def put_cluster_metadata(gcs_client, num_retries) -> None:
     return metadata
 
 
-def get_library_usages_to_report(gcs_client, num_retries) -> List[str]:
+def get_library_usages_to_report(gcs_client, num_retries: int) -> List[str]:
     try:
         result = []
         library_usages = ray._private.utils.internal_kv_list_with_retry(
@@ -383,14 +405,14 @@ def get_library_usages_to_report(gcs_client, num_retries) -> List[str]:
         return []
 
 
-def get_cluster_status_to_report(gcs_client, num_retries) -> ClusterStatusToReport:
+def get_cluster_status_to_report(gcs_client, num_retries: int) -> ClusterStatusToReport:
     """Get the current status of this cluster.
 
     It is a blocking API.
 
     Params:
-        gcs_client (GCSClient): The GCS client to perform KV operation GET.
-        num_retries (int): Max number of times to retry if GET fails.
+        gcs_client: The GCS client to perform KV operation GET.
+        num_retries: Max number of times to retry if GET fails.
 
     Returns:
         The current cluster status or empty if it fails to get that information.
@@ -432,11 +454,13 @@ def get_cluster_status_to_report(gcs_client, num_retries) -> ClusterStatusToRepo
         return ClusterStatusToReport()
 
 
-def get_cluster_config_to_report(cluster_config_file_path) -> ClusterConfigToReport:
+def get_cluster_config_to_report(
+    cluster_config_file_path: str,
+) -> ClusterConfigToReport:
     """Get the static cluster (autoscaler) config used to launch this cluster.
 
     Params:
-        cluster_config_file_path (str): The file path to the cluster config file.
+        cluster_config_file_path: The file path to the cluster config file.
 
     Returns:
         The cluster (autoscaler) config or empty if it fails to get that information.
@@ -508,7 +532,7 @@ def get_cluster_config_to_report(cluster_config_file_path) -> ClusterConfigToRep
         return ClusterConfigToReport()
 
 
-def get_cluster_metadata(gcs_client, num_retries) -> dict:
+def get_cluster_metadata(gcs_client, num_retries: int) -> dict:
     """Get the cluster metadata from GCS.
 
     It is a blocking API.
@@ -516,8 +540,8 @@ def get_cluster_metadata(gcs_client, num_retries) -> dict:
     This will return None if `put_cluster_metadata` was never called.
 
     Params:
-        gcs_client (GCSClient): The GCS client to perform KV operation GET.
-        num_retries (int): Max number of times to retry if GET fails.
+        gcs_client: The GCS client to perform KV operation GET.
+        num_retries: Max number of times to retry if GET fails.
 
     Returns:
         The cluster metadata in a dictinoary.
@@ -545,9 +569,9 @@ def generate_report_data(
     """Generate the report data.
 
     Params:
-        cluster_metadata (dict): The cluster metadata of the system generated by
+        cluster_metadata: The cluster metadata of the system generated by
             `_generate_cluster_metadata`.
-        cluster_config_to_report (ClusterConfigToReport): The cluster (autoscaler)
+        cluster_config_to_report: The cluster (autoscaler)
             config generated by `get_cluster_config_to_report`.
         total_success(int): The total number of successful report
             for the lifetime of the cluster.
@@ -601,7 +625,7 @@ def generate_write_data(
     """Generate the report data.
 
     Params:
-        usage_stats (UsageStatsToReport): The usage stats that were reported.
+        usage_stats: The usage stats that were reported.
         error(str): The error message of failed reports.
 
     Returns:
@@ -626,8 +650,8 @@ class UsageReportClient:
         """Write the usage data to the directory.
 
         Params:
-            data (dict): Data to report
-            dir_path (Path): The path to the directory to write usage data.
+            data: Data to report
+            dir_path: The path to the directory to write usage data.
         """
         # Atomically update the file.
         dir_path = Path(dir_path)
@@ -645,8 +669,8 @@ class UsageReportClient:
         """Report the usage data to the usage server.
 
         Params:
-            url (str): The URL to update resource usage.
-            data (dict): Data to report.
+            url: The URL to update resource usage.
+            data: Data to report.
 
         Raises:
             requests.HTTPError if requests fails.

@@ -3,6 +3,7 @@ import urllib
 from pathlib import Path
 import pyarrow.fs
 import pytest
+import subprocess
 
 import ray
 import ray.internal.storage as storage
@@ -150,7 +151,24 @@ def test_get_info_basic(shutdown_only, storage_type):
         assert client.get_info("").base_name == "ns"
 
 
+@pytest.mark.parametrize("storage_type", ["s3", "fs"])
+def test_connecting_to_cluster(shutdown_only, storage_type):
+    with simulate_storage(storage_type) as storage_uri:
+        try:
+            subprocess.check_call(["ray", "start", "--head", "--storage", storage_uri])
+            ray.init(address="auto")
+            from ray.internal.storage import _storage_uri
+
+            # make sure driver is using the same storage when connecting to a cluster
+            assert _storage_uri == storage_uri
+        finally:
+            subprocess.check_call(["ray", "stop"])
+
+
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

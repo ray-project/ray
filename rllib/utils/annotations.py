@@ -1,11 +1,12 @@
 from ray.rllib.utils.deprecation import Deprecated
+from ray.util.annotations import _mark_annotated
 
 
 def override(cls):
     """Decorator for documenting method overrides.
 
     Args:
-        cls (type): The superclass that provides the overridden method. If this
+        cls: The superclass that provides the overridden method. If this
             cls does not actually have the method, an error is raised.
 
     Examples:
@@ -35,21 +36,22 @@ def PublicAPI(obj):
     can expect these APIs to remain stable across RLlib releases.
 
     Subclasses that inherit from a ``@PublicAPI`` base class can be
-    assumed part of the RLlib public API as well (e.g., all trainer classes
-    are in public API because Trainer is ``@PublicAPI``).
+    assumed part of the RLlib public API as well (e.g., all Algorithm classes
+    are in public API because Algorithm is ``@PublicAPI``).
 
-    In addition, you can assume all trainer configurations are part of their
+    In addition, you can assume all algo configurations are part of their
     public API as well.
 
     Examples:
-        >>> # Indicates that the `Trainer` class is exposed to end users
+        >>> # Indicates that the `Algorithm` class is exposed to end users
         >>> # of RLlib and will remain stable across RLlib releases.
         >>> from ray import tune
         >>> @PublicAPI # doctest: +SKIP
-        >>> class Trainer(tune.Trainable): # doctest: +SKIP
+        >>> class Algorithm(tune.Trainable): # doctest: +SKIP
         ...     ... # doctest: +SKIP
     """
 
+    _mark_annotated(obj)
     return obj
 
 
@@ -74,6 +76,7 @@ def DeveloperAPI(obj):
         ...     ... # doctest: +SKIP
     """
 
+    _mark_annotated(obj)
     return obj
 
 
@@ -100,13 +103,14 @@ def ExperimentalAPI(obj):
         ...         ... # doctest: +SKIP
     """
 
+    _mark_annotated(obj)
     return obj
 
 
 def OverrideToImplementCustomLogic(obj):
     """Users should override this in their sub-classes to implement custom logic.
 
-    Used in Trainer and Policy to tag methods that need overriding, e.g.
+    Used in Algorithm and Policy to tag methods that need overriding, e.g.
     `Policy.loss()`.
 
     Examples:
@@ -118,6 +122,7 @@ def OverrideToImplementCustomLogic(obj):
         ...     # ... w/o calling the corresponding `super().loss()` method.
         ...     ... # doctest: +SKIP
     """
+    obj.__is_overriden__ = False
     return obj
 
 
@@ -127,9 +132,9 @@ def OverrideToImplementCustomLogic_CallToSuperRecommended(obj):
     Thereby, it is recommended (but not required) to call the super-class'
     corresponding method.
 
-    Used in Trainer and Policy to tag methods that need overriding, but the
+    Used in Algorithm and Policy to tag methods that need overriding, but the
     super class' method should still be called, e.g.
-    `Trainer.setup()`.
+    `Algorithm.setup()`.
 
     Examples:
         >>> from ray import tune
@@ -140,7 +145,16 @@ def OverrideToImplementCustomLogic_CallToSuperRecommended(obj):
         ...     super().setup(config) # doctest: +SKIP
         ...     # ... or here (after having called super()'s setup method.
     """
+    obj.__is_overriden__ = False
     return obj
+
+
+def is_overridden(obj):
+    """Check whether a function has been overridden.
+    Note, this only works for API calls decorated with OverrideToImplementCustomLogic
+    or OverrideToImplementCustomLogic_CallToSuperRecommended.
+    """
+    return getattr(obj, "__is_overriden__", True)
 
 
 # Backward compatibility.

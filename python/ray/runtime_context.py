@@ -191,6 +191,15 @@ class RuntimeContext(object):
         worker.check_connected()
         return worker.core_worker.get_actor_handle(self.actor_id)
 
+    @property
+    def gcs_address(self):
+        """Get the GCS address of the ray cluster.
+        Returns:
+            The GCS address of the cluster.
+        """
+        self.worker.check_connected()
+        return self.worker.gcs_client.address
+
     def _get_actor_call_stats(self):
         """Get the current worker's task counters.
 
@@ -213,11 +222,13 @@ def get_runtime_context():
     """Get the runtime context of the current driver/worker.
 
     Example:
-    >>> import ray
-    >>> # Get the job id.
-    >>> ray.get_runtime_context().job_id # doctest: +SKIP
-    >>> # Get all the metadata.
-    >>> ray.get_runtime_context().get() # doctest: +SKIP
+
+        >>> import ray
+        >>> # Get the job id.
+        >>> ray.get_runtime_context().job_id # doctest: +SKIP
+        >>> # Get all the metadata.
+        >>> ray.get_runtime_context().get() # doctest: +SKIP
+
     """
     global _runtime_context
     if _runtime_context is None:

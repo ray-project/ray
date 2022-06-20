@@ -104,9 +104,9 @@ class MockNodeManager : public NodeManager {
                rpc::SendReplyCallback send_reply_callback),
               (override));
   MOCK_METHOD(void,
-              HandlePinObjectID,
-              (const rpc::PinObjectIDRequest &request,
-               rpc::PinObjectIDReply *reply,
+              HandlePinObjectIDs,
+              (const rpc::PinObjectIDsRequest &request,
+               rpc::PinObjectIDsReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));
   MOCK_METHOD(void,
@@ -143,6 +143,12 @@ class MockNodeManager : public NodeManager {
               HandleGetSystemConfig,
               (const rpc::GetSystemConfigRequest &request,
                rpc::GetSystemConfigReply *reply,
+               rpc::SendReplyCallback send_reply_callback),
+              (override));
+  MOCK_METHOD(void,
+              HandleNotifyGCSRestart,
+              (const rpc::NotifyGCSRestartRequest &request,
+               rpc::NotifyGCSRestartReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));
   MOCK_METHOD(void,

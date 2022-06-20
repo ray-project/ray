@@ -20,6 +20,7 @@ parser.add_argument(
 
 parser.add_argument("--language", type=str, help="the language type of the worker")
 
+
 if __name__ == "__main__":
     setup_logger(LOGGER_LEVEL, LOGGER_FORMAT)
     args, remaining_args = parser.parse_known_args()

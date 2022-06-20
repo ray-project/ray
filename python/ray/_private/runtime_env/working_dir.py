@@ -1,23 +1,24 @@
+import asyncio
 import logging
 import os
-from typing import Any, Dict, Optional
 from pathlib import Path
-import asyncio
+from typing import Any, Dict, List, Optional
 
-from ray.experimental.internal_kv import _internal_kv_initialized
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
-    download_and_unpack_package,
+    Protocol,
     delete_package,
+    download_and_unpack_package,
     get_local_dir_from_uri,
     get_uri_for_directory,
     get_uri_for_package,
-    upload_package_to_gcs,
     parse_uri,
-    Protocol,
     upload_package_if_needed,
+    upload_package_to_gcs,
 )
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.utils import get_directory_size_bytes, try_to_create_directory
+from ray.experimental.internal_kv import _internal_kv_initialized
 
 default_logger = logging.getLogger(__name__)
 
@@ -103,7 +104,10 @@ def set_pythonpath_in_context(python_path: str, context: RuntimeEnvContext):
     context.env_vars["PYTHONPATH"] = python_path
 
 
-class WorkingDirManager:
+class WorkingDirPlugin(RuntimeEnvPlugin):
+
+    name = "working_dir"
+
     def __init__(self, resources_dir: str):
         self._resources_dir = os.path.join(resources_dir, "working_dir_files")
         try_to_create_directory(self._resources_dir)
@@ -123,11 +127,11 @@ class WorkingDirManager:
 
         return local_dir_size
 
-    def get_uri(self, runtime_env: "RuntimeEnv") -> Optional[str]:  # noqa: F821
+    def get_uris(self, runtime_env: "RuntimeEnv") -> List[str]:  # noqa: F821
         working_dir_uri = runtime_env.working_dir()
         if working_dir_uri != "":
-            return working_dir_uri
-        return None
+            return [working_dir_uri]
+        return []
 
     async def create(
         self,
@@ -150,11 +154,13 @@ class WorkingDirManager:
         return await loop.run_in_executor(None, _create)
 
     def modify_context(
-        self, uri: Optional[str], runtime_env_dict: Dict, context: RuntimeEnvContext
+        self, uris: List[str], runtime_env_dict: Dict, context: RuntimeEnvContext
     ):
-        if uri is None:
+        if not uris:
             return
 
+        # WorkingDirPlugin uses a single URI.
+        uri = uris[0]
         local_dir = get_local_dir_from_uri(uri, self._resources_dir)
         if not local_dir.exists():
             raise ValueError(

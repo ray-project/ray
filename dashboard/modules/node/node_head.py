@@ -78,7 +78,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             address = "{}:{}".format(
                 node_info["nodeManagerAddress"], int(node_info["nodeManagerPort"])
             )
-            options = (("grpc.enable_http_proxy", 0),)
+            options = ray_constants.GLOBAL_GRPC_OPTIONS
             channel = ray._private.utils.init_grpc_channel(
                 address, options, asynchronous=True
             )

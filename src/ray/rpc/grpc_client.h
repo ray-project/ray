@@ -51,12 +51,12 @@ inline std::shared_ptr<grpc::Channel> BuildChannel(
     std::optional<grpc::ChannelArguments> arguments = std::nullopt) {
   if (!arguments.has_value()) {
     arguments = grpc::ChannelArguments();
-    // Disable http proxy since it disrupts local connections. TODO(ekl) we should make
-    // this configurable, or selectively set it for known local connections only.
-    arguments->SetInt(GRPC_ARG_ENABLE_HTTP_PROXY, 0);
-    arguments->SetMaxSendMessageSize(::RayConfig::instance().max_grpc_message_size());
-    arguments->SetMaxReceiveMessageSize(::RayConfig::instance().max_grpc_message_size());
   }
+
+  arguments->SetInt(GRPC_ARG_ENABLE_HTTP_PROXY,
+                    ::RayConfig::instance().grpc_enable_http_proxy() ? 1 : 0);
+  arguments->SetMaxSendMessageSize(::RayConfig::instance().max_grpc_message_size());
+  arguments->SetMaxReceiveMessageSize(::RayConfig::instance().max_grpc_message_size());
 
   std::shared_ptr<grpc::Channel> channel;
   if (::RayConfig::instance().USE_TLS()) {
@@ -89,7 +89,8 @@ class GrpcClient {
              ClientCallManager &call_manager,
              bool use_tls = false)
       : client_call_manager_(call_manager), use_tls_(use_tls) {
-    stub_ = GrpcService::NewStub(std::move(channel));
+    channel_ = std::move(channel);
+    stub_ = GrpcService::NewStub(channel_);
   }
 
   GrpcClient(const std::string &address,
@@ -98,8 +99,8 @@ class GrpcClient {
              bool use_tls = false)
       : client_call_manager_(call_manager), use_tls_(use_tls) {
     std::shared_ptr<grpc::Channel> channel = BuildChannel(address, port);
-
-    stub_ = GrpcService::NewStub(std::move(channel));
+    channel_ = BuildChannel(address, port);
+    stub_ = GrpcService::NewStub(channel_);
   }
 
   GrpcClient(const std::string &address,
@@ -112,13 +113,13 @@ class GrpcClient {
     quota.SetMaxThreads(num_threads);
     grpc::ChannelArguments argument;
     argument.SetResourceQuota(quota);
-    argument.SetInt(GRPC_ARG_ENABLE_HTTP_PROXY, 0);
+    argument.SetInt(GRPC_ARG_ENABLE_HTTP_PROXY,
+                    ::RayConfig::instance().grpc_enable_http_proxy() ? 1 : 0);
     argument.SetMaxSendMessageSize(::RayConfig::instance().max_grpc_message_size());
     argument.SetMaxReceiveMessageSize(::RayConfig::instance().max_grpc_message_size());
 
-    std::shared_ptr<grpc::Channel> channel = BuildChannel(address, port, argument);
-
-    stub_ = GrpcService::NewStub(std::move(channel));
+    channel_ = BuildChannel(address, port, argument);
+    stub_ = GrpcService::NewStub(channel_);
   }
 
   /// Create a new `ClientCall` and send request.
@@ -152,12 +153,16 @@ class GrpcClient {
     RAY_CHECK(call != nullptr);
   }
 
+  std::shared_ptr<grpc::Channel> Channel() const { return channel_; }
+
  private:
   ClientCallManager &client_call_manager_;
   /// The gRPC-generated stub.
   std::unique_ptr<typename GrpcService::Stub> stub_;
   /// Whether to use TLS.
   bool use_tls_;
+  /// The channel of the stub.
+  std::shared_ptr<grpc::Channel> channel_;
 };
 
 }  // namespace rpc

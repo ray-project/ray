@@ -10,6 +10,7 @@ except ImportError:
     from grpc.experimental import aio as aiogrpc
 
 from ray._private.gcs_pubsub import GcsAioActorSubscriber
+import ray.ray_constants as ray_constants
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray.dashboard.optional_utils import rest_response
@@ -88,7 +89,7 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
             address = "{}:{}".format(
                 node_info["nodeManagerAddress"], int(node_info["nodeManagerPort"])
             )
-            options = (("grpc.enable_http_proxy", 0),)
+            options = ray_constants.GLOBAL_GRPC_OPTIONS
             channel = ray._private.utils.init_grpc_channel(
                 address, options, asynchronous=True
             )
@@ -207,7 +208,7 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
         except KeyError:
             return rest_response(success=False, message="Bad Request")
         try:
-            options = (("grpc.enable_http_proxy", 0),)
+            options = ray_constants.GLOBAL_GRPC_OPTIONS
             channel = ray._private.utils.init_grpc_channel(
                 f"{ip_address}:{port}", options=options, asynchronous=True
             )

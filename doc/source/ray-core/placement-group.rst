@@ -180,8 +180,9 @@ Let's see an example of using placement group. Note that this example is done wi
       placement_group_table,
       remove_placement_group
   )
+  from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
-  ray.init(num_gpus=2, resources={"extra_resource": 2})
+  ray.init(num_cpus=4, num_gpus=2, resources={"extra_resource": 2})
 
 Let's create a placement group. Recall that each bundle is a collection of resources, and tasks or actors can be scheduled on each bundle.
 
@@ -197,25 +198,8 @@ Let's create a placement group. Recall that each bundle is a collection of resou
 
   .. tabbed:: Python
 
-      .. code-block:: python
-
-        # Two "CPU"s are available.
-        ray.init(num_cpus=2)
-
-        # Create a placement group.
-        pg = placement_group([{"CPU": 2}])
-        ray.get(pg.ready())
-
-        # Now, 2 CPUs are not available anymore because they are pre-reserved by the placement group.
-        @ray.remote(num_cpus=2)
-        def f():
-            return True
-
-        # Won't be scheduled because there are no 2 cpus.
-        f.remote()
-
-        # Will be scheduled because 2 cpus are reserved by the placement group.
-        f.options(placement_group=pg).remote()
+      .. literalinclude:: doc_code/original_resource_unavailable_example.py
+        :language: python
 
   .. tabbed:: Java
 
@@ -375,10 +359,24 @@ Let's create a placement group. Recall that each bundle is a collection of resou
         assert(is_created);
 
 Now let's define an actor that uses GPU. We'll also define a task that use ``extra_resources``.
+You can schedule actors/tasks on the placement group using
+:ref:`options(scheduling_strategy=PlacementGroupSchedulingStrategy(...)) <scheduling-strategy-ref>`.
 
 .. tabbed:: Python
 
     .. code-block:: python
+
+      gpu_bundle = {"CPU":2, "GPU": 2}
+      extra_resource_bundle = {"CPU": 2, "extra_resource": 2}
+
+      # Reserve bundles with strict pack strategy.
+      # It means Ray will reserve 2 "GPU" and 2 "extra_resource" on the same node (strict pack) within a Ray cluster.
+      # Using this placement group for scheduling actors or tasks will guarantee that they will
+      # be colocated on the same node.
+      pg = placement_group([gpu_bundle, extra_resource_bundle], strategy="STRICT_PACK")
+
+      # Wait until placement group is created.
+      ray.get(pg.ready())
 
       @ray.remote(num_gpus=1)
       class GPUActor:
@@ -392,20 +390,28 @@ Now let's define an actor that uses GPU. We'll also define a task that use ``ext
         time.sleep(10)
 
       # Create GPU actors on a gpu bundle.
-      gpu_actors = [GPUActor.options(
-          placement_group=pg,
-          # This is the index from the original list.
-          # This index is set to -1 by default, which means any available bundle.
-          placement_group_bundle_index=0) # Index of gpu_bundle is 0.
-      .remote() for _ in range(2)]
+      gpu_actors = [
+        GPUActor.options(
+          scheduling_strategy=PlacementGroupSchedulingStrategy(
+            placement_group=pg,
+            # This is the index from the original list.
+            # This index is set to -1 by default, which means any available bundle.
+            placement_group_bundle_index=0 # Index of gpu_bundle is 0.
+          )
+        ).remote() for _ in range(2)
+      ]
 
       # Create extra_resource actors on a extra_resource bundle.
-      extra_resource_actors = [extra_resource_task.options(
-          placement_group=pg,
-          # This is the index from the original list.
-          # This index is set to -1 by default, which means any available bundle.
-          placement_group_bundle_index=1) # Index of extra_resource_bundle is 1.
-      .remote() for _ in range(2)]
+      extra_resource_actors = [
+        extra_resource_task.options(
+          scheduling_strategy=PlacementGroupSchedulingStrategy(
+            placement_group=pg,
+              # This is the index from the original list.
+              # This index is set to -1 by default, which means any available bundle.
+              placement_group_bundle_index=1 # Index of extra_resource_bundle is 1.
+          )
+        ).remote() for _ in range(2)
+      ]
 
 .. tabbed:: Java
 
@@ -487,42 +493,31 @@ because they are scheduled on a placement group with the STRICT_PACK strategy.
 
 .. note::
 
-  In order to fully utilize resources pre-reserved by the placement group,
-  Ray automatically schedules children tasks/actors to the same placement group as its parent.
+  Child actors/tasks don't share the same placement group that the parent uses.
+  If you'd like to automatically schedule child actors/tasks to the same placement group,
+  set ``placement_group_capture_child_tasks`` to True.
 
   .. tabbed:: Python
 
-      .. code-block:: python
-
-        # Create a placement group with the STRICT_SPREAD strategy.
-        pg = placement_group([{"CPU": 2}, {"CPU": 2}], strategy="STRICT_SPREAD")
-        ray.get(pg.ready())
-
-        @ray.remote
-        def child():
-            pass
-
-        @ray.remote
-        def parent():
-            # The child task is scheduled with the same placement group as its parent
-            # although child.options(placement_group=pg).remote() wasn't called.
-            ray.get(child.remote())
-
-        ray.get(parent.options(placement_group=pg).remote())
-
-      To avoid it, you should specify `options(placement_group=None)` in a child task/actor remote call.
-
-      .. code-block:: python
-
-        @ray.remote
-        def parent():
-            # In this case, the child task won't be
-            # scheduled with the parent's placement group.
-            ray.get(child.options(placement_group=None).remote())
+      .. literalinclude:: doc_code/placement_group_capture_child_tasks_example.py
+        :language: python
 
   .. tabbed:: Java
 
       It's not implemented for Java APIs yet.
+
+  When ``placement_group_capture_child_tasks`` is True, and if you'd like to avoid scheduling
+  child tasks/actors, you should specify the below option when you call child tasks/actors.
+
+  .. code-block:: python
+
+    @ray.remote
+    def parent():
+        # In this case, the child task won't be
+        # scheduled with the parent's placement group.
+        ray.get(child.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=None)).remote())
 
 You can remove a placement group at any time to free its allocated resources.
 

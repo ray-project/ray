@@ -1,19 +1,19 @@
+import ray
 from ray import workflow
 
 
-@workflow.step
+@ray.remote
 def hello(msg: str, *deps) -> None:
     print(msg)
 
 
-@workflow.step
+@ray.remote
 def wait_all(*args) -> None:
     pass
 
 
 if __name__ == "__main__":
-    workflow.init()
-    h1 = hello.options(name="hello1").step("hello1")
-    h2a = hello.options(name="hello2a").step("hello2a")
-    h2b = hello.options(name="hello2b").step("hello2b", h2a)
-    wait_all.step(h1, h2b).run()
+    h1 = hello.options(**workflow.options(name="hello1")).bind("hello1")
+    h2a = hello.options(**workflow.options(name="hello2a")).bind("hello2a")
+    h2b = hello.options(**workflow.options(name="hello2b")).bind("hello2b", h2a)
+    workflow.create(wait_all.bind(h1, h2b)).run()

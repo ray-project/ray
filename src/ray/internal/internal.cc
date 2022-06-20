@@ -64,9 +64,5 @@ const ActorID &GetCurrentActorID() {
 
 bool IsInitialized() { return CoreWorkerProcess::IsInitialized(); }
 
-void SetCurrentThreadWorker(const WorkerID &worker_id) {
-  CoreWorkerProcess::SetCurrentThreadWorkerId(worker_id);
-}
-
 }  // namespace internal
 }  // namespace ray
