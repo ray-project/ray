@@ -1,19 +1,18 @@
+import asyncio
 import logging
 import os
 from typing import Dict, List, Optional
-import asyncio
-from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 
-from ray.experimental.internal_kv import _internal_kv_initialized
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
-    download_and_unpack_package,
     delete_package,
+    download_and_unpack_package,
     get_local_dir_from_uri,
     is_jar_uri,
 )
-from ray._private.utils import get_directory_size_bytes
-from ray._private.utils import try_to_create_directory
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray._private.utils import get_directory_size_bytes, try_to_create_directory
+from ray.experimental.internal_kv import _internal_kv_initialized
 
 default_logger = logging.getLogger(__name__)
 
@@ -44,7 +43,7 @@ class JavaJarsPlugin(RuntimeEnvPlugin):
 
         return local_dir_size
 
-    def get_uris(self, runtime_env: dict) -> Optional[List[str]]:
+    def get_uris(self, runtime_env: dict) -> List[str]:
         return runtime_env.java_jars()
 
     def _download_jars(
@@ -78,13 +77,11 @@ class JavaJarsPlugin(RuntimeEnvPlugin):
 
     def modify_context(
         self,
-        uris: Optional[List[str]],
+        uris: List[str],
         runtime_env_dict: Dict,
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ):
-        if uris is None:
-            return
         for uri in uris:
             module_dir = self._get_local_dir_from_uri(uri)
             if not module_dir.exists():
