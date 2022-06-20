@@ -810,7 +810,7 @@ py_test(
 py_test(
     name = "test_cql",
     tags = ["team:rllib", "algorithms_dir"],
-    size = "medium",
+    size = "large",
     srcs = ["algorithms/cql/tests/test_cql.py"]
 )
 
