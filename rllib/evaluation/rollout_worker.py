@@ -731,6 +731,8 @@ class RolloutWorker(ParallelIteratorWorker):
                 method_type = ope_types[method_type]
             if method_type == "simulation":
                 deprecation_warning(
+                    old='off_policy_estimation_methods={"simulation"}',
+                    new='input="sampler"',
                     help="The `simulation` estimation method has been deprecated."
                     "If you want to run online evaluation on your data, use"
                     'config.evaluation_config["input"] = "sampler" instead.',
