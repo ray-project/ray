@@ -91,8 +91,10 @@ def test_task_returns(shutdown_only):
             time.sleep(1)
             return np.random.rand(20 * 1024 * 1024)  # 160 MB data
 
-        with pytest.raises(ray.exceptions.RayTaskError):
+        try:
             ray.get(foo.remote())
+        except ray.exceptions.RayTaskError as e:
+            assert isinstance(e.cause, ray.exceptions.OutOfDiskError)
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Not targeting Windows")
@@ -119,8 +121,10 @@ def test_task_put(shutdown_only):
             ref = ray.put(np.random.rand(20 * 1024 * 1024))  # 160 MB data
             return ref
 
-        with pytest.raises(ray.exceptions.RayTaskError):
+        try:
             ray.get(foo.remote())
+        except ray.exceptions.RayTaskError as e:
+            assert isinstance(e.cause, ray.exceptions.OutOfDiskError)
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Not targeting Windows")
@@ -151,8 +155,10 @@ def test_task_args(shutdown_only):
         print(obj)
 
     ref = foo.options(resources={"sufficient_memory": 1}).remote()
-    with pytest.raises(ray.exceptions.RayTaskError):
+    try:
         ray.get(bar.options(resources={"out_of_memory": 1}).remote(ref))
+    except ray.exceptions.RayTaskError as e:
+        assert isinstance(e.cause, ray.exceptions.OutOfDiskError)
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Not targeting Windows")
@@ -199,12 +205,16 @@ def test_actor(shutdown_only):
 
     a = Actor.options(resources={"out_of_memory": 1}).remote(1)
     ray.get(a.foo.remote())
-    with pytest.raises(ray.exceptions.RayTaskError):
+    try:
         ray.get(a.args_ood.remote(ref))
+    except ray.exceptions.RayTaskError as e:
+        assert isinstance(e.cause, ray.exceptions.OutOfDiskError)
 
     ray.get(a.foo.remote())
-    with pytest.raises(ray.exceptions.RayTaskError):
+    try:
         ray.get(a.return_ood.remote())
+    except ray.exceptions.RayTaskError as e:
+        assert isinstance(e.cause, ray.exceptions.OutOfDiskError)
 
 
 if __name__ == "__main__":
