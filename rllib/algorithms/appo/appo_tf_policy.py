@@ -66,6 +66,18 @@ class TargetNetworkMixin:
 
         self.update_target = do_update
 
+    @property
+    def model_vars(self):
+        if not hasattr(self, "_model_vars"):
+            self._model_vars = self.model.variables()
+        return self._model_vars
+
+    @property
+    def target_model_vars(self):
+        if not hasattr(self, "_target_model_vars"):
+            self._target_model_vars = self.target_model.variables()
+        return self._target_model_vars
+
     def variables(self):
         return self.model_vars + self.target_model_vars
 
@@ -175,9 +187,6 @@ def get_appo_tf_policy(base: type) -> type:
             prev_action_dist = dist_class(behaviour_logits, self.model)
             values = self.model.value_function()
             values_time_major = make_time_major(values)
-
-            self.model_vars = self.model.variables()
-            self.target_model_vars = self.target_model.variables()
 
             if self.is_recurrent():
                 max_seq_len = tf.reduce_max(train_batch[SampleBatch.SEQ_LENS])

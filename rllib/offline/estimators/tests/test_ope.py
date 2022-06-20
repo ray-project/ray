@@ -85,7 +85,7 @@ class TestOPE(unittest.TestCase):
                 },
             )
         )
-        cls.trainer = config.build()
+        cls.algo = config.build()
 
         # Train DQN for evaluation policy
         timesteps_total = 0
@@ -112,7 +112,7 @@ class TestOPE(unittest.TestCase):
             done = False
             rewards = []
             while not done:
-                act = cls.trainer.compute_single_action(obs)
+                act = cls.algo.compute_single_action(obs)
                 obs, reward, done, _ = env.step(act)
                 rewards.append(reward)
             ret = 0
@@ -133,7 +133,7 @@ class TestOPE(unittest.TestCase):
         name = "is"
         estimator = ImportanceSampling(
             name=name,
-            policy=self.trainer.get_policy(),
+            policy=self.algo.get_policy(),
             gamma=self.gamma,
         )
         estimates = estimator.estimate(self.batch)
@@ -144,7 +144,7 @@ class TestOPE(unittest.TestCase):
         name = "wis"
         estimator = WeightedImportanceSampling(
             name=name,
-            policy=self.trainer.get_policy(),
+            policy=self.algo.get_policy(),
             gamma=self.gamma,
         )
         estimates = estimator.estimate(self.batch)
@@ -155,7 +155,7 @@ class TestOPE(unittest.TestCase):
         name = "dm_qreg"
         estimator = DirectMethod(
             name=name,
-            policy=self.trainer.get_policy(),
+            policy=self.algo.get_policy(),
             gamma=self.gamma,
             q_model_type="qreg",
             **self.model_config,
@@ -168,7 +168,7 @@ class TestOPE(unittest.TestCase):
         name = "dm_fqe"
         estimator = DirectMethod(
             name=name,
-            policy=self.trainer.get_policy(),
+            policy=self.algo.get_policy(),
             gamma=self.gamma,
             q_model_type="fqe",
             **self.model_config,
@@ -181,7 +181,7 @@ class TestOPE(unittest.TestCase):
         name = "dr_qreg"
         estimator = DoublyRobust(
             name=name,
-            policy=self.trainer.get_policy(),
+            policy=self.algo.get_policy(),
             gamma=self.gamma,
             q_model_type="qreg",
             **self.model_config,
@@ -194,7 +194,7 @@ class TestOPE(unittest.TestCase):
         name = "dr_fqe"
         estimator = DoublyRobust(
             name=name,
-            policy=self.trainer.get_policy(),
+            policy=self.algo.get_policy(),
             gamma=self.gamma,
             q_model_type="fqe",
             **self.model_config,
