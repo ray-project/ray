@@ -7,8 +7,8 @@ from ray.rllib.evaluation.postprocessing import (
     Postprocessing,
     compute_gae_for_sample_batch,
 )
-from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.action_dist import ActionDistribution
+from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_mixins import (
     EntropyCoeffSchedule,
@@ -43,6 +43,8 @@ class PPOTorchPolicy(
 
     def __init__(self, observation_space, action_space, config):
         config = dict(ray.rllib.algorithms.ppo.ppo.PPOConfig().to_dict(), **config)
+        # TODO: Move into Policy API, if needed at all here. Why not move this into
+        #  `PPOConfig`?.
         validate_config(config)
 
         TorchPolicyV2.__init__(
