@@ -138,14 +138,14 @@ class TrainableUtil:
 
         Note, the assumption here is `logdir` should be the prefix of
         `checkpoint_path`.
-        For example, returns `checkpoint00000/`.
+        For example, returns `checkpoint00000`.
         """
         assert checkpoint_path.startswith(
             logdir
         ), "expecting `logdir` to be a prefix of `checkpoint_path`"
         rel_path = os.path.relpath(checkpoint_path, logdir)
         tokens = rel_path.split(os.sep)
-        return os.path.join(tokens[0], "")
+        return os.path.join(tokens[0])
 
     @staticmethod
     def make_checkpoint_dir(
