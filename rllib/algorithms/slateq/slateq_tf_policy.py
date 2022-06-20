@@ -7,7 +7,6 @@ import numpy as np
 from typing import Dict
 
 import ray
-from ray.rllib.algorithms.dqn.dqn_tf_policy import clip_gradients
 from ray.rllib.algorithms.sac.sac_tf_policy import TargetNetworkMixin
 from ray.rllib.algorithms.slateq.slateq_tf_model import SlateQTFModel
 from ray.rllib.models.modelv2 import ModelV2
@@ -17,7 +16,7 @@ from ray.rllib.policy.tf_mixins import LearningRateSchedule
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.tf_utils import huber_loss
+from ray.rllib.utils.tf_utils import huber_loss, minimize_and_clip
 from ray.rllib.utils.typing import TensorType, AlgorithmConfigDict
 
 tf1, tf, tfv = try_import_tf()
@@ -361,6 +360,18 @@ def rmsprop_optimizer(
             momentum=0.0,
             centered=True,
         )
+
+
+def clip_gradients(policy, optimizer, loss):
+    if not hasattr(policy, "q_func_vars"):
+        policy.q_func_vars = policy.model.variables()
+
+    return minimize_and_clip(
+        optimizer,
+        loss,
+        var_list=policy.q_func_vars,
+        clip_val=policy.config["grad_clip"],
+    )
 
 
 SlateQTFPolicy = build_tf_policy(

@@ -5,15 +5,14 @@ from typing import Dict, Tuple
 import gym
 
 import ray
-from ray.rllib.algorithms.dqn.dqn_torch_policy import (
-    adam_optimizer,
-    build_q_model_and_distribution,
-    compute_q_values,
-)
-from ray.rllib.algorithms.dqn.utils import postprocess_nstep_and_prio
+from ray.rllib.algorithms.dqn.dqn_torch_policy import DQNTorchPolicy
+from ray.rllib.algorithms.dqn.utils import make_dqn_models, postprocess_nstep_and_prio
 from ray.rllib.algorithms.r2d2.r2d2_tf_policy import get_distribution_inputs_and_class
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
+from ray.rllib.models.torch.torch_action_dist import (
+    TorchCategorical,
+    TorchDistributionWrapper,
+)
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -55,9 +54,9 @@ def build_r2d2_model_and_distribution(
     """
 
     # Create the policy's models and action dist class.
-    model, distribution_cls = build_q_model_and_distribution(
-        policy, obs_space, action_space, config
-    )
+    policy.observation_space = obs_space
+    policy.action_space = action_space
+    model = make_dqn_models(policy)
 
     # Assert correct model type by checking the init state to be present.
     # For attention nets: These don't necessarily publish their init state via
@@ -72,7 +71,7 @@ def build_r2d2_model_and_distribution(
         "to auto-wrap your model with an LSTM- or attention net."
     )
 
-    return model, distribution_cls
+    return model, TorchCategorical
 
 
 def r2d2_loss(policy: Policy, model, _, train_batch: SampleBatch) -> TensorType:
@@ -98,7 +97,7 @@ def r2d2_loss(policy: Policy, model, _, train_batch: SampleBatch) -> TensorType:
     assert state_batches
 
     # Q-network evaluation (at t).
-    q, _, _, _ = compute_q_values(
+    q, _, _, _ = DQNTorchPolicy._compute_q_values(
         policy,
         model,
         train_batch,
@@ -109,7 +108,7 @@ def r2d2_loss(policy: Policy, model, _, train_batch: SampleBatch) -> TensorType:
     )
 
     # Target Q-network evaluation (at t+1).
-    q_target, _, _, _ = compute_q_values(
+    q_target, _, _, _ = DQNTorchPolicy._compute_q_values(
         policy,
         target_model,
         train_batch,
@@ -314,7 +313,7 @@ R2D2TorchPolicy = build_policy_class(
     action_distribution_fn=get_distribution_inputs_and_class,
     stats_fn=build_q_stats,
     postprocess_fn=postprocess_nstep_and_prio,
-    optimizer_fn=adam_optimizer,
+    optimizer_fn=DQNTorchPolicy.optimizer,
     extra_grad_process_fn=grad_process_and_td_error_fn,
     extra_learn_fetches_fn=concat_multi_gpu_td_errors,
     extra_action_out_fn=extra_action_out_fn,

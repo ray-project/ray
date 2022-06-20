@@ -5,7 +5,8 @@ from typing import Dict, List, Optional, Tuple
 import gym
 
 import ray
-from ray.rllib.algorithms.dqn.dqn_tf_policy import clip_gradients, compute_q_values
+# TODO: When Inherit
+from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTF2Policy
 from ray.rllib.algorithms.dqn.utils import make_dqn_models, postprocess_nstep_and_prio
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
@@ -16,7 +17,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_mixins import LearningRateSchedule, TargetNetworkMixin
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.tf_utils import huber_loss
+from ray.rllib.utils.tf_utils import huber_loss, minimize_and_clip
 from ray.rllib.utils.typing import AlgorithmConfigDict, ModelInputDict, TensorType
 
 tf1, tf, tfv = try_import_tf()
@@ -83,7 +84,7 @@ def r2d2_loss(policy: Policy, model, _, train_batch: SampleBatch) -> TensorType:
     assert state_batches
 
     # Q-network evaluation (at t).
-    q, _, _, _ = compute_q_values(
+    q, _, _, _ = DQNTF2Policy._compute_q_values(
         policy,
         model,
         train_batch,
@@ -94,7 +95,7 @@ def r2d2_loss(policy: Policy, model, _, train_batch: SampleBatch) -> TensorType:
     )
 
     # Target Q-network evaluation (at t+1).
-    q_target, _, _, _ = compute_q_values(
+    q_target, _, _, _ = DQNTF2Policy._compute_q_values(
         policy,
         policy.target_model,
         train_batch,
@@ -268,7 +269,7 @@ def get_distribution_inputs_and_class(
 
         func = torch_compute_q_values
     else:
-        func = compute_q_values
+        func = DQNTF2Policy._compute_q_values
 
     q_vals, logits, probs_or_logits, state_out = func(
         policy, model, input_dict, state_batches, seq_lens, explore, is_training
@@ -316,6 +317,18 @@ def before_loss_init(
 ) -> None:
     ComputeTDErrorMixin.__init__(policy)
     TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
+
+
+def clip_gradients(policy, optimizer, loss):
+    if not hasattr(policy, "q_func_vars"):
+        policy.q_func_vars = policy.model.variables()
+
+    return minimize_and_clip(
+        optimizer,
+        loss,
+        var_list=policy.q_func_vars,
+        clip_val=policy.config["grad_clip"],
+    )
 
 
 R2D2TFPolicy = build_tf_policy(

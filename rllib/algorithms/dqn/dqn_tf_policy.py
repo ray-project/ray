@@ -42,7 +42,7 @@ def get_dqn_tf_policy(base: Type[Union[DynamicTFPolicyV2, EagerTFPolicyV2]]) -> 
         A TF Policy to be used with MAMLTrainer.
     """
 
-    class SimpleQTFPolicy(
+    class DQNTFPolicy(
         ComputeTDErrorMixin,
         TargetNetworkMixin,
         LearningRateSchedule,
@@ -365,7 +365,7 @@ def get_dqn_tf_policy(base: Type[Union[DynamicTFPolicyV2, EagerTFPolicyV2]]) -> 
 
             return value, logits, dist, state
 
-    return SimpleQTFPolicy
+    return DQNTFPolicy
 
 
 DQNTF1Policy = get_dqn_tf_policy(DynamicTFPolicyV2)
