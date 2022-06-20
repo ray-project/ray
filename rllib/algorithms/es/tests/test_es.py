@@ -29,13 +29,13 @@ class TestES(unittest.TestCase):
 
         for _ in framework_iterator(config):
             for env in ["CartPole-v0", "Pendulum-v1"]:
-                trainer = config.build(env=env)
+                algo = config.build(env=env)
                 for i in range(num_iterations):
-                    results = trainer.train()
+                    results = algo.train()
                     print(results)
 
-                check_compute_single_action(trainer)
-                trainer.stop()
+                check_compute_single_action(algo)
+                algo.stop()
         ray.shutdown()
 
 

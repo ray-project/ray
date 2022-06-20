@@ -38,10 +38,10 @@ class TestAlgorithm(unittest.TestCase):
         algo = pg.PG(env="CartPole-v0", config=standard_config)
 
         # When (we validate config 2 times).
-        # Try deprecated `Trainer._validate_config()` method (static).
+        # Try deprecated `Algorithm._validate_config()` method (static).
         algo._validate_config(standard_config, algo)
         config_v1 = copy.deepcopy(standard_config)
-        # Try new method: `Trainer.validate_config()` (non-static).
+        # Try new method: `Algorithm.validate_config()` (non-static).
         algo.validate_config(standard_config)
         config_v2 = copy.deepcopy(standard_config)
 
@@ -239,7 +239,7 @@ class TestAlgorithm(unittest.TestCase):
             algo_wo_env_on_driver.stop()
 
             # Try again using `create_env_on_driver=True`.
-            # This force-adds the env on the local-worker, so this Trainer
+            # This force-adds the env on the local-worker, so this Algorithm
             # can `evaluate` even though it doesn't have an evaluation-worker
             # set.
             config.create_env_on_local_worker = True

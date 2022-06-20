@@ -30,10 +30,10 @@ class TestMemoryLeaks(unittest.TestCase):
         config["env_config"] = {
             "static_samples": True,
         }
-        trainer = ppo.PPO(config=config)
-        results = check_memory_leaks(trainer, to_check={"env"}, repeats=150)
+        algo = ppo.PPO(config=config)
+        results = check_memory_leaks(algo, to_check={"env"}, repeats=150)
         assert results["env"]
-        trainer.stop()
+        algo.stop()
 
     def test_leaky_policy(self):
         """Tests, whether our diagnostics tools can detect leaks in a policy."""
@@ -45,10 +45,10 @@ class TestMemoryLeaks(unittest.TestCase):
         config["multiagent"]["policies"] = {
             "default_policy": PolicySpec(policy_class=MemoryLeakingPolicy),
         }
-        trainer = dqn.DQN(config=config)
-        results = check_memory_leaks(trainer, to_check={"policy"}, repeats=300)
+        algo = dqn.DQN(config=config)
+        results = check_memory_leaks(algo, to_check={"policy"}, repeats=300)
         assert results["policy"]
-        trainer.stop()
+        algo.stop()
 
 
 if __name__ == "__main__":

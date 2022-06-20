@@ -30,7 +30,7 @@ class MultiAgentEnv(gym.Env):
     """An environment that hosts multiple independent agents.
 
     Agents are identified by (string) agent ids. Note that these "agents" here
-    are not to be confused with RLlib Trainers, which are also sometimes
+    are not to be confused with RLlib Algorithms, which are also sometimes
     referred to as "agents" or "RL agents".
     """
 

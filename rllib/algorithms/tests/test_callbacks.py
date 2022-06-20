@@ -47,13 +47,13 @@ class TestCallbacks(unittest.TestCase):
             config = dict(base_config, callbacks=callbacks)
 
             for _ in framework_iterator(config, frameworks=("tf", "torch")):
-                trainer = dqn.DQN(config=config)
+                algo = dqn.DQN(config=config)
                 # Fake the counter on the local worker (doesn't have an env) and
                 # set it to -1 so the below `foreach_worker()` won't fail.
-                trainer.workers.local_worker().sum_sub_env_vector_indices = -1
+                algo.workers.local_worker().sum_sub_env_vector_indices = -1
 
                 # Get sub-env vector index sums from the 2 remote workers:
-                sum_sub_env_vector_indices = trainer.workers.foreach_worker(
+                sum_sub_env_vector_indices = algo.workers.foreach_worker(
                     lambda w: w.sum_sub_env_vector_indices
                 )
                 # Local worker has no environments -> Expect the -1 special
@@ -63,7 +63,7 @@ class TestCallbacks(unittest.TestCase):
                 # of 6 (sum of vector indices: 0 + 1 + 2 + 3).
                 self.assertTrue(sum_sub_env_vector_indices[1] == 6)
                 self.assertTrue(sum_sub_env_vector_indices[2] == 6)
-                trainer.stop()
+                algo.stop()
 
     def test_on_sub_environment_created_with_remote_envs(self):
         base_config = {
@@ -84,13 +84,13 @@ class TestCallbacks(unittest.TestCase):
             config = dict(base_config, callbacks=callbacks)
 
             for _ in framework_iterator(config, frameworks=("tf", "torch")):
-                trainer = dqn.DQN(config=config)
+                algo = dqn.DQN(config=config)
                 # Fake the counter on the local worker (doesn't have an env) and
                 # set it to -1 so the below `foreach_worker()` won't fail.
-                trainer.workers.local_worker().sum_sub_env_vector_indices = -1
+                algo.workers.local_worker().sum_sub_env_vector_indices = -1
 
                 # Get sub-env vector index sums from the 2 remote workers:
-                sum_sub_env_vector_indices = trainer.workers.foreach_worker(
+                sum_sub_env_vector_indices = algo.workers.foreach_worker(
                     lambda w: w.sum_sub_env_vector_indices
                 )
                 # Local worker has no environments -> Expect the -1 special
@@ -100,7 +100,7 @@ class TestCallbacks(unittest.TestCase):
                 # of 6 (sum of vector indices: 0 + 1 + 2 + 3).
                 self.assertTrue(sum_sub_env_vector_indices[1] == 6)
                 self.assertTrue(sum_sub_env_vector_indices[2] == 6)
-                trainer.stop()
+                algo.stop()
 
 
 if __name__ == "__main__":

@@ -168,16 +168,16 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         config["env_config"] = {"config": {"start_at_t": 1}}  # first obs is [1.0]
 
         for _ in framework_iterator(config, frameworks="tf2"):
-            trainer = ppo.PPO(
+            algo = ppo.PPO(
                 config,
                 env="ray.rllib.examples.env.debug_counter_env.DebugCounterEnv",
             )
-            rw = trainer.workers.local_worker()
+            rw = algo.workers.local_worker()
             sample = rw.sample()
-            assert sample.count == trainer.config["rollout_fragment_length"]
-            results = trainer.train()
+            assert sample.count == algo.config["rollout_fragment_length"]
+            results = algo.train()
             assert results["timesteps_total"] == config["train_batch_size"]
-            trainer.stop()
+            algo.stop()
 
     def test_traj_view_next_action(self):
         action_space = Discrete(2)
@@ -341,10 +341,10 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         config["env_config"] = {"num_agents": num_agents}
 
         num_iterations = 2
-        trainer = ppo.PPO(config=config)
+        algo = ppo.PPO(config=config)
         results = None
         for i in range(num_iterations):
-            results = trainer.train()
+            results = algo.train()
         self.assertEqual(results["agent_timesteps_total"], results["timesteps_total"])
         self.assertEqual(
             results["num_env_steps_trained"] * num_agents,
@@ -358,7 +358,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             results["agent_timesteps_total"],
             (num_iterations + 1) * config["train_batch_size"],
         )
-        trainer.stop()
+        algo.stop()
 
     def test_get_single_step_input_dict_batch_repeat_value_larger_1(self):
         """Test whether a SampleBatch produces the correct 1-step input dict."""

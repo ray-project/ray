@@ -78,7 +78,7 @@ class EntropyCoeffSchedule:
 class KLCoeffMixin:
     """Assigns the `update_kl()` method to a TorchPolicy.
 
-    This is used by Trainers to update the KL coefficient
+    This is used by Algorithms to update the KL coefficient
     after each learning step based on `config.kl_target` and
     the measured KL value (from the train_batch).
     """

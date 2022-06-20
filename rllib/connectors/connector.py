@@ -13,8 +13,8 @@ from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.typing import (
     ActionConnectorDataType,
     AgentConnectorDataType,
+    AlgorithmConfigDict,
     TensorType,
-    TrainerConfigDict,
 )
 
 logger = logging.getLogger(__name__)
@@ -34,7 +34,7 @@ class ConnectorContext:
 
     def __init__(
         self,
-        config: TrainerConfigDict = None,
+        config: AlgorithmConfigDict = None,
         model_initial_states: List[TensorType] = None,
         observation_space: gym.Space = None,
         action_space: gym.Space = None,
