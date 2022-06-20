@@ -5,9 +5,9 @@ RLlib: Industry-Grade Reinforcement Learning with TF and Torch
 production-level, highly distributed RL workloads, while maintaining
 unified and simple APIs for a large variety of industry applications.
 
-Whether you would like to train your agents in multi-agent setups,
-purely from offline (historic) datasets, or using externally
-connected simulators, RLlib offers simple solutions for your decision making needs.
+Whether you would like to train your agents in **multi-agent** setups,
+purely from **offline** (historic) datasets, or using **externally
+connected simulators**, RLlib offers simple solutions for your decision making needs.
 
 If you either have your problem coded (in python) as an 
 `RL environment <https://docs.ray.io/en/master/rllib/rllib-env.html#configuring-environments>`_
