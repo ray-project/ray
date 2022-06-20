@@ -284,25 +284,26 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
             if self.replay_ratio == 0.0:
                 return SampleBatch.concat_samples(output_batches)
             # Only replay desired
-            elif self.replay_ratio == 1.0:
+            if self.replay_ratio == 1.0:
+                self.last_added_batches.clear()
                 return _buffer.sample(num_items, **kwargs)
 
             num_new = len(output_batches)
 
-            if np.isclose(num_new, num_items * (1 - self.replay_ratio)):
-                # The optimal case, we can mix in a round number of old
-                # samples on average
-                num_old = num_items - max_num_new
+            if max_num_new == num_new:
+                # Case where we have enough new samples
+                num_old = num_items - num_new
             else:
                 # We never want to return more elements than num_items
                 num_old = min(
-                    num_items - max_num_new,
+                    num_items - num_new,
                     round_up_or_down(
                         num_new, self.replay_ratio / (1 - self.replay_ratio)
                     ),
                 )
+            if num_old > 0:
+                output_batches.append(_buffer.sample(num_old, **kwargs))
 
-            output_batches.append(_buffer.sample(num_old, **kwargs))
             # Depending on the implementation of underlying buffers, samples
             # might be SampleBatches
             output_batches = [batch.as_multi_agent() for batch in output_batches]

@@ -308,7 +308,10 @@ class MultiAgentReplayBuffer(ReplayBuffer):
     @DeveloperAPI
     @override(ReplayBuffer)
     def sample(
-        self, num_items: int, policy_id: Optional[PolicyID] = DEFAULT_POLICY_ID, **kwargs
+        self,
+        num_items: int,
+        policy_id: Optional[PolicyID] = DEFAULT_POLICY_ID,
+        **kwargs
     ) -> Optional[SampleBatchType]:
         """Samples a MultiAgentBatch of `num_items` per one policy's buffer.
 
