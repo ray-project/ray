@@ -150,6 +150,59 @@ def test_best_result(ray_start_2_cpus):
     assert best_result.metrics["x"] == 2
 
 
+def test_best_result_best_checkpoint(ray_start_2_cpus):
+    from ray.air.config import CheckpointingConfig
+
+    def f(config):
+        for i in range(2):
+            with tune.checkpoint_dir(step=i) as checkpoint_dir:
+                path = os.path.join(checkpoint_dir, "checkpoint")
+                with open(path, "w") as f:
+                    f.write(json.dumps(dict(x=config["x"] * (i + 1), step=i)))
+            tune.report(x=config["x"] * (i + 1), step=i)
+
+    def load_checkpoint(result):
+        with open(
+            os.path.join(result.best_checkpoint.to_directory(), "checkpoint")
+        ) as f:
+            checkpoint_data = json.load(f)
+        return checkpoint_data
+
+    analysis = tune.run(f, config={"x": tune.grid_search([1, 3])})
+
+    # No checkpointing config. Use metric and mode
+    result_grid = ResultGrid(analysis)
+    best_result = result_grid.get_best_result(metric="x", mode="max")
+    assert best_result.metrics["x"] == 6
+    assert best_result.best_checkpoint
+    assert load_checkpoint(best_result)["step"] == 1
+
+    # Checkpointing config. Use by default
+    result_grid = ResultGrid(
+        analysis, checkpointing_config=CheckpointingConfig(checkpoint_score_metric="x")
+    )
+    best_result = result_grid.get_best_result(metric="x", mode="min")
+    assert best_result.metrics["x"] == 2
+    assert best_result.best_checkpoint
+    assert load_checkpoint(best_result)["step"] == 1
+
+    best_result = result_grid.get_best_result(
+        metric="x", mode="min", checkpointing_config=False
+    )
+    assert best_result.metrics["x"] == 2
+    assert best_result.best_checkpoint
+    assert load_checkpoint(best_result)["step"] == 0
+
+    best_result = result_grid.get_best_result(
+        metric="x",
+        mode="min",
+        checkpointing_config=CheckpointingConfig(checkpoint_score_metric="x"),
+    )
+    assert best_result.metrics["x"] == 2
+    assert best_result.best_checkpoint
+    assert load_checkpoint(best_result)["step"] == 1
+
+
 def test_best_result_no_report(ray_start_2_cpus):
     def f(config):
         pass
