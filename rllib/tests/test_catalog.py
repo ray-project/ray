@@ -14,7 +14,6 @@ from ray.rllib.models.tf.tf_action_dist import (
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.test_utils import framework_iterator
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -88,48 +87,90 @@ class TestModelCatalog(unittest.TestCase):
     def test_default_models(self):
         ray.init(object_store_memory=1000 * 1024 * 1024)
 
-        # Build test configs
-        # Output configs
-        num_outputs = 5
-        action_spaces = [Discrete(num_outputs), Box(0, 1, shape=(num_outputs,))]
-        # Input configs
-        # Tuple: obs_space, network_name, skip_fw
-        input_configs = []
-        flat_space = Box(0, 1, shape=(3,), dtype=np.float32)
-        input_configs.append((flat_space, "FullyConnectedNetwork", []))
-        img_space = Box(0, 1, shape=(84, 84, 3), dtype=np.float32)
-        input_configs.append((img_space, "VisionNetwork", ["jax"]))
-        flat_complex_space = Box(0, 1, shape=(9,), dtype=np.float32)
-        flat_complex_space.original_space = Tuple([flat_space, flat_space, Discrete(3)])
-        input_configs.append((flat_complex_space, "FullyConnectedNetwork", ["jax"]))
-        nested_complex_space = Tuple(
-            [flat_space, Discrete(3), Tuple([img_space, img_space])]
-        )
-        input_configs.append((nested_complex_space, "ComplexInputNetwork", ["jax"]))
+        # Build test cases
+        flat_input_case = {
+            "input_space": Box(0, 1, shape=(3,), dtype=np.float32),
+            "output_space": Box(0, 1, shape=(4,)),
+            "num_outputs": 4,
+            "expected_model": "FullyConnectedNetwork",
+        }
+        img_input_case = {
+            "input_space": Box(0, 1, shape=(84, 84, 3), dtype=np.float32),
+            "output_space": Discrete(5),
+            "num_outputs": 5,
+            "expected_model": "VisionNetwork",
+        }
+        flat_complex_input_case = {
+            "input_space": Box(0, 1, shape=(10,), dtype=np.float32),
+            "output_space": Box(0, 1, shape=(5,)),
+            "num_outputs": 5,
+            "expected_model": "FullyConnectedNetwork",
+        }
+        flat_complex_input_case["input_space"].original_space = Tuple([
+            Box(0, 1, shape=(3,), dtype=np.float32),
+            Box(0, 1, shape=(4,), dtype=np.float32),
+            Discrete(3),
+        ])
+        nested_complex_input_case = {
+            "input_space": Tuple([
+                Box(0, 1, shape=(3,), dtype=np.float32),
+                Discrete(3),
+                Tuple([
+                    Box(0, 1, shape=(84, 84, 3), dtype=np.float32),
+                    Box(0, 1, shape=(84, 84, 3), dtype=np.float32),
+                ]),
+            ]),
+            "output_space": Box(0, 1, shape=(7,)),
+            "num_outputs": 7,
+            "expected_model": "ComplexInputNetwork",
+        }
 
-        for obs_space, network_name, skip_fw in input_configs:
-            for action_space in action_spaces:
-                for fw in framework_iterator(frameworks=("jax", "tf", "tf2", "torch")):
-                    if fw not in skip_fw:
-                        model_config = {}
-                        if network_name == "ComplexInputNetwork":
-                            model_config["fcnet_hiddens"] = [256, 256]
-                        m = ModelCatalog.get_model_v2(
-                            obs_space=obs_space,
-                            action_space=action_space,
-                            num_outputs=num_outputs,
-                            model_config=model_config,
-                            framework=fw,
-                        )
-                        self.assertTrue(network_name in type(m).__name__)
-                        if isinstance(obs_space, Box):
-                            # Do a test forward pass.
-                            obs = np.array([obs_space.sample()])
-                            if fw == "torch":
-                                obs = torch.from_numpy(obs)
-                            out, state_outs = m({"obs": obs})
-                            self.assertTrue(out.shape == (1, num_outputs))
-                            self.assertTrue(state_outs == [])
+        # Define which tests to run per framework
+        test_suite = {
+            "tf": [
+                flat_input_case,
+                img_input_case,
+                flat_complex_input_case,
+                nested_complex_input_case,
+            ],
+            "tf2": [
+                flat_input_case,
+                img_input_case,
+                flat_complex_input_case,
+                nested_complex_input_case,
+            ],
+            "torch": [
+                flat_input_case,
+                img_input_case,
+                flat_complex_input_case,
+                nested_complex_input_case,
+            ],
+            "jax": [
+                flat_input_case,
+            ],
+        }
+
+        for fw, test_cases in test_suite.items():
+            for test in test_cases:
+                model_config = {}
+                if test["expected_model"] == "ComplexInputNetwork":
+                    model_config["fcnet_hiddens"] = [256, 256]
+                m = ModelCatalog.get_model_v2(
+                    obs_space=test["input_space"],
+                    action_space=test["output_space"],
+                    num_outputs=test["num_outputs"],
+                    model_config=model_config,
+                    framework=fw,
+                )
+                self.assertTrue(test["expected_model"] in type(m).__name__)
+                if isinstance(test["input_space"], Box):
+                    # Do a test forward pass.
+                    obs = np.array([test["input_space"].sample()])
+                    if fw == "torch":
+                        obs = torch.from_numpy(obs)
+                    out, state_outs = m({"obs": obs})
+                    self.assertTrue(out.shape == (1, test["num_outputs"]))
+                    self.assertTrue(state_outs == [])
 
     def test_custom_model(self):
         ray.init(object_store_memory=1000 * 1024 * 1024)
