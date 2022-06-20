@@ -20,7 +20,7 @@ TEST(JemallocTest, TestAllocation) {
     size_t previous_allocated = 0;
     for (auto i = 0ul; i < 10; ++i) {
         void* ptr = 0;
-        auto ret = posix_memalign(&ptr, 16, 100000);
+        ASSERT_EQ(0, posix_memalign(&ptr, 16, 100000));
         size_t sz, allocated, active, metadata, resident, mapped;
         sz = sizeof(size_t);
         mallctl("thread.tcache.flush", NULL, NULL, NULL, 0);
@@ -35,8 +35,8 @@ TEST(JemallocTest, TestAllocation) {
             }
             previous_allocated = allocated;
             fprintf(stderr,
-                "Current allocated/active/metadata/resident/mapped: %zu/%zu/%zu/%zu/%zu/%d\n",
-                allocated, active, metadata, resident, mapped, ret);
+                "Current allocated/active/metadata/resident/mapped: %zu/%zu/%zu/%zu/%zu\n",
+                allocated, active, metadata, resident, mapped);
         }
     }
 }
