@@ -90,10 +90,11 @@ def print_dashboard_log():
 
 @pytest.fixture
 def reset_lib_usage():
-    # Remove the lib usage so that it will be reset for each test.
-    p = Path(ray._private.utils.get_ray_temp_dir()) / "lib_usage.txt"
-    p.unlink(missing_ok=True)
     yield
+    # Remove the lib usage so that it will be reset for each test.
+    ray_usage_lib.LibUsageRecorder(
+        ray._private.utils.get_ray_temp_dir()
+    ).delete_lib_usages()
     ray.experimental.internal_kv._internal_kv_reset()
     ray_usage_lib._recorded_library_usages.clear()
 
@@ -169,27 +170,30 @@ def test_lib_usage_recorder(tmp_path):
     lib_tune = "tune"
     lib_rllib = "rllib"
 
+    filename = recorder._lib_usage_filename(lib_tune)
+    assert recorder._get_lib_usage_from_filename(filename) == lib_tune
+
     # Write tune.
-    assert recorder.read() == []
-    recorder.write(lib_tune)
-    assert recorder.read() == [lib_tune]
-    recorder.write(lib_tune)
-    assert recorder.read() == [lib_tune]
+    assert recorder.read_lib_usages() == []
+    recorder.put_lib_usage(lib_tune)
+    assert recorder.read_lib_usages() == [lib_tune]
+    recorder.put_lib_usage(lib_tune)
+    assert recorder.read_lib_usages() == [lib_tune]
 
-    # # Test write is idempotent
+    # Test write is idempotent
     for _ in range(5):
-        recorder.write(lib_tune)
-    assert recorder.read() == [lib_tune]
+        recorder.put_lib_usage(lib_tune)
+    assert recorder.read_lib_usages() == [lib_tune]
 
-    # # Write rllib.
-    recorder.write(lib_rllib)
-    assert set(recorder.read()) == {lib_tune, lib_rllib}
+    # Write rllib.
+    recorder.put_lib_usage(lib_rllib)
+    assert set(recorder.read_lib_usages()) == {lib_tune, lib_rllib}
 
-    # # Test idempotency when there is more than 1 lib.
-    recorder.write(lib_rllib)
-    recorder.write(lib_rllib)
-    recorder.write(lib_tune)
-    assert set(recorder.read()) == {lib_tune, lib_rllib}
+    # Test idempotency when there is more than 1 lib.
+    recorder.put_lib_usage(lib_rllib)
+    recorder.put_lib_usage(lib_rllib)
+    recorder.put_lib_usage(lib_tune)
+    assert set(recorder.read_lib_usages()) == {lib_tune, lib_rllib}
 
 
 @pytest.fixture
@@ -390,7 +394,9 @@ def test_library_usages(shutdown_only, reset_lib_usage):
         ray.experimental.internal_kv.internal_kv_get_gcs_client(), num_retries=20
     )
     tmp_path = ray._private.utils.get_ray_temp_dir()
-    lib_usages_from_home_folder = ray_usage_lib.LibUsageRecorder(tmp_path).read()
+    lib_usages_from_home_folder = ray_usage_lib.LibUsageRecorder(
+        tmp_path
+    ).read_lib_usages()
     expected = {
         "pre_init",
         "post_init",
@@ -1005,7 +1011,7 @@ ray.init()
         """
         lib_usages = ray_usage_lib.LibUsageRecorder(
             ray._private.utils.get_ray_temp_dir()
-        ).read()
+        ).read_lib_usages()
         assert set(lib_usages) == {"train", "rllib", "tune"}
 
         """

@@ -41,10 +41,11 @@ Note that it is also possible to configure the interval using the environment va
 To see collected/reported data, see `usage_stats.json` inside a temp
 folder (e.g., /tmp/ray/session_[id]/*).
 """
-import io
+import glob
 import json
 import logging
 import os
+import re
 import sys
 import time
 import uuid
@@ -163,39 +164,57 @@ _recorded_library_usages = set()
 # NOTE: Do not change the write / read protocol. That will cause
 # version incompatibility issues.
 class LibUsageRecorder:
+    """A class to put/get the library usage to the ray tmp folder.
+
+    See https://github.com/ray-project/ray/pull/25842 for more details.
+    """
+
     def __init__(self, temp_dir_path: str):
-        self.lib_usage_file = Path(temp_dir_path) / "lib_usage.txt"
+        self._lib_usage_dir = Path(temp_dir_path)
+        self._lib_usage_prefix = "_ray_lib_usage-"
+        self._lib_usage_filename_match = re.compile(
+            f"{self._lib_usage_prefix}([0-9a-zA-Z_]+).txt"
+        )
 
-    def write(self, lib_name: str):
-        # We need a file lock in order to
-        # Set the short timeout to avoid too long delay in import.
-        with TempFileLock(str(self.lib_usage_file), timeout=2):
-            with self.lib_usage_file.open("a+") as f:
-                f.seek(0)
-                libs = self._read_libs(f)
+    def put_lib_usage(self, lib_name: str):
+        """Put the library usage to the ray tmp folder."""
+        if sys.platform == "win32":
+            # In Linux, exclusive file open is supported.
+            # However, it is not clear if it is supported on Windows,
+            # so we just use a file lock.
+            with TempFileLock(str(self.lib_usage_file), timeout=2):
+                self._put_lib_usage(lib_name)
+        else:
+            self._put_lib_usage(lib_name)
 
-                if lib_name not in libs:
-                    f.seek(0, io.SEEK_END)
-                    self._write(f, lib_name)
+    def read_lib_usages(self) -> List[str]:
+        """Read a list of library usages from the ray tmp folder."""
+        # For checking if the file exists, it is okay to have a minor chance of
+        # having race condition.
+        lib_usages = []
+        file_paths = glob.glob(f"{self._lib_usage_dir}/{self._lib_usage_prefix}*")
+        for file_path in file_paths:
+            file_path = Path(file_path)
+            if file_path.exists():
+                lib_usages.append(self._get_lib_usage_from_filename(file_path.name))
+        return lib_usages
 
-    def read(self) -> List[str]:
-        # We need a file lock in order to
-        # Set the short timeout to avoid too long delay in import.
-        with TempFileLock(str(self.lib_usage_file), timeout=2):
-            if not self.lib_usage_file.exists():
-                return []
+    def delete_lib_usages(self):
+        """Delete all usage files. Test only"""
+        file_paths = glob.glob(f"{self._lib_usage_dir}/{self._lib_usage_prefix}*")
+        for file_path in file_paths:
+            file_path = Path(file_path)
+            file_path.unlink(missing_ok=True)
 
-            with self.lib_usage_file.open("r") as f:
-                return self._read_libs(f)
+    def _put_lib_usage(self, lib_name: str):
+        lib_usage_file = self._lib_usage_dir / self._lib_usage_filename(lib_name)
+        lib_usage_file.touch(exist_ok=True)
 
-    def _write(self, f: io.IOBase, lib_name: str):
-        f.write(f"{lib_name}\n")
+    def _lib_usage_filename(self, lib_name: str) -> str:
+        return f"{self._lib_usage_prefix}{lib_name}.txt"
 
-    def _read_libs(self, f: io.IOBase) -> List[str]:
-        lib_list = []
-        for lib in f.readlines():
-            lib_list.append(lib.strip("\n"))
-        return lib_list
+    def _get_lib_usage_from_filename(self, filename: str) -> str:
+        return self._lib_usage_filename_match.match(filename).group(1)
 
 
 def _put_library_usage(library_usage: str):
@@ -218,7 +237,7 @@ def _put_library_usage(library_usage: str):
     if ray.worker.global_worker.mode == ray.SCRIPT_MODE:
         try:
             lib_usage_recorder = LibUsageRecorder(ray._private.utils.get_ray_temp_dir())
-            lib_usage_recorder.write(library_usage)
+            lib_usage_recorder.put_lib_usage(library_usage)
         except Exception as e:
             logger.debug(f"Failed to write a library usage to the home folder, {e}")
 
@@ -227,6 +246,10 @@ def record_library_usage(library_usage: str):
     """Record library usage (e.g. which library is used)"""
     if library_usage in _recorded_library_usages:
         return
+    if "-" in library_usage:
+        # - is not permitted since it should be used as a separator
+        # of the lib usage file name. See LibUsageRecorder.
+        raise ValueError("The library name contains a char - which is not permitted.")
     _recorded_library_usages.add(library_usage)
 
     if not _internal_kv_initialized():
@@ -456,7 +479,7 @@ def get_library_usages_to_report(gcs_client, num_retries: int) -> List[str]:
         try:
             historical_lib_usages = LibUsageRecorder(
                 ray._private.utils.get_ray_temp_dir()
-            ).read()
+            ).read_lib_usages()
             for library_usage in historical_lib_usages:
                 if library_usage not in result:
                     result.append(library_usage)
