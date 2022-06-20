@@ -37,7 +37,7 @@ from ray._raylet import (
     Pickle5SerializedObject,
     MessagePackSerializer,
     MessagePackSerializedObject,
-    RawSerializedObject,
+    RaySerializationResult,
 )
 from ray import serialization_addons
 

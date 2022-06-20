@@ -399,7 +399,7 @@ cdef class SerializedObject(object):
 
     @property
     def total_bytes(self):
-        raise NotImplementedError("{}.total_bytes not implemented.".format( 
+        raise NotImplementedError("{}.total_bytes not implemented.".format(
                 type(self).__name__))
 
     @property
@@ -555,22 +555,36 @@ class DummyStream:
 
 
 cdef class RaySerializationResult(SerializedObject):
-    type_id: bytes
-    in_band_buffer: bytes
+    _type_id: bytes
+    _in_band_buffer: bytes
     # type ID -> buffer ID -> buffer
-    out_of_band_buffers: Optional[Map[bytes, Map[int, memoryview]]]
+    _out_of_band_buffers: Optional[Map[bytes, Map[int, memoryview]]]
 
     _cached_length = -1
 
-    def __init__(self, type_id, in_band_buffer, out_of_band_buffers):
+    def __init__(self, type_id, in_band_buffer, out_of_band_buffers=None):
         # The metadata field can be removed in the further refactor.
-        super(RaySerializationResult, self).__init__(ray_constants.OBJECT_METADATA_TYPE_NEW_PROTOCOL)
-        self.type_id = type_id
-        self.in_band_buffer = in_band_buffer
-        self.out_of_band_buffers = out_of_band_buffers
+        super(RaySerializationResult,
+              self).__init__(ray_constants.OBJECT_METADATA_TYPE_NEW_PROTOCOL)
+        self._type_id = type_id
+        self._in_band_buffer = in_band_buffer
+        self._out_of_band_buffers = out_of_band_buffers
 
     cdef write_to_stream(self, stream):
-        msgpack.pack((self.type_id, self.in_band_buffer, self.out_of_band_buffers), stream)
+        msgpack.pack(
+            (self._type_id, self._in_band_buffer, self._out_of_band_buffers), stream)
+
+    @property
+    def type_id(self):
+        return self._type_id
+
+    @property
+    def in_band_buffer(self):
+        return self._in_band_buffer
+
+    @property
+    def out_of_band_buffers(self):
+        return self._out_of_band_buffers
 
     @property
     def total_bytes(self):
@@ -602,5 +616,6 @@ cdef class RaySerializationResult(SerializedObject):
     @staticmethod
     def from_bytes(data: bytes):
         result = RaySerializationResult()
-        result.type_id, result.in_band_buffer, result.out_of_band_buffers = msgpack.unpackb(data)
+        result._type_id, result._in_band_buffer, result._out_of_band_buffers\
+            = msgpack.unpackb(data)
         return result
