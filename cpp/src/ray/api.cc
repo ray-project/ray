@@ -15,8 +15,8 @@
 #include <ray/api.h>
 
 #include "config_internal.h"
-#include "runtime/abstract_ray_runtime.h"
 #include "ray/core_worker/core_worker.h"
+#include "runtime/abstract_ray_runtime.h"
 
 namespace ray {
 
@@ -45,8 +45,6 @@ void Shutdown() {
   is_init_ = false;
 }
 
-void RunTaskExecutionLoop() {
-  ::ray::core::CoreWorkerProcess::RunTaskExecutionLoop();
-}
+void RunTaskExecutionLoop() { ::ray::core::CoreWorkerProcess::RunTaskExecutionLoop(); }
 
 }  // namespace ray

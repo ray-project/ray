@@ -45,9 +45,7 @@ class Counter {
     return *val.Get();
   }
 
-  bool Initialized() {
-    return ray::IsInitialized();
-  }
+  bool Initialized() { return ray::IsInitialized(); }
 
  private:
   int count;
