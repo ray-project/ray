@@ -200,7 +200,6 @@ class ServeController:
         # NOTE(edoakes): we catch all exceptions here and simply log them,
         # because an unhandled exception would cause the main control loop to
         # halt, which should *never* happen.
-        print("run_control_loop")
         while True:
 
             async with self.write_lock:

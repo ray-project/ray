@@ -71,6 +71,26 @@ class TestInMemoryMetricsStore:
         assert s.latest("m1", window_start_timestamp_s=0) == [2]
         assert s.latest("m2", window_start_timestamp_s=0) == [-2]
 
+    def test_latest_with_tag(self):
+        s = InMemoryMetricsStore()
+        assert s.latest("m1", window_start_timestamp_s=0, tag="id") == []
+        s.add_metrics_point(
+            "m1", TimeStampedValue(value=1, timestamp=1, tags={"id": 1})
+        )
+        s.add_metrics_point(
+            "m1", TimeStampedValue(value=2, timestamp=3, tags={"id": 1})
+        )
+        s.add_metrics_point(
+            "m1", TimeStampedValue(value=3, timestamp=4, tags={"id": 2})
+        )
+        assert s.latest("m1", window_start_timestamp_s=0, tag="id") == [3, 2]
+        assert s.latest("m1", window_start_timestamp_s=2, tag="id") == [3, 2]
+        assert s.latest("m1", window_start_timestamp_s=3, tag="id") == [3]
+        # return latest one if no tag is provided
+        assert s.latest("m1", window_start_timestamp_s=2) == [3]
+        # old data is compacted out
+        assert s.latest("m1", window_start_timestamp_s=2, tag="id") == [3]
+
 
 def test_e2e(serve_instance):
     @serve.deployment(

@@ -13,8 +13,12 @@ from ray.serve.constants import (
     SERVE_PROXY_NAME,
 )
 from ray.serve.http_proxy import HTTPProxyActor
-from ray.serve.utils import format_actor_name, get_all_node_ids
-
+from ray.serve.common import EndpointTag, NodeId
+from ray.serve.utils import (
+    format_actor_name,
+    get_all_node_ids,
+    get_current_node_resource_key,
+)
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 

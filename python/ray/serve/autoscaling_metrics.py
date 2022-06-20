@@ -97,11 +97,11 @@ class InMemoryMetricsStore:
     def __init__(self):
         self.data: DefaultDict[str, List[TimeStampedValue]] = defaultdict(list)
 
-    def add_metrics_point(self, key: str, data: dict):
+    def add_metrics_point(self, key: str, data: TimeStampedValue):
         """Push new data points to the store.
 
         Args:
-            data_points(dict): dictionary containing the metrics values. The
+            data_points(TimeStampedValue): dictionary containing the metrics values. The
               key should be a string that uniquely identifies this time series
               and to be used to perform aggregation.
             timestamp(float): the unix epoch timestamp the metrics are
@@ -115,6 +115,7 @@ class InMemoryMetricsStore:
         """Get all data points given key after window_start_timestamp_s"""
 
         datapoints = self.data[key]
+        print("get points: ", datapoints)
 
         idx = bisect.bisect(
             a=datapoints,
@@ -157,7 +158,8 @@ class InMemoryMetricsStore:
         do_compact: bool = True,
         tag: Any = None,
     ):
-        """Perform a latest operation for metric `key`. The function will return latest value given the key.
+        """Perform a latest operation for metric `key`. The function will return
+            latest value given the key.
 
         Args:
             key(str): the metric name.
@@ -171,9 +173,9 @@ class InMemoryMetricsStore:
         Returns:
             Latest value of the data points for the key on and after time
             window_start_timestamp_s. if tag is provided, the return value will be
-            a list, each elemt of the list represents each tag. (Currently we don't
-            need the tag information. If needed in the future, the function can
-            directly return dict)
+            a list, each element of the list represents each tag value. (Currently
+            we don't need the tag information. If needed in the future, the function
+            can directly return dict)
         """
         points_after_idx = self._get_datapoints(key, window_start_timestamp_s)
 
@@ -186,7 +188,8 @@ class InMemoryMetricsStore:
             for point in points_after_idx[::-1]:
                 if tag in point.tags and point.tags[tag] not in datapoints_per_tags:
                     datapoints_per_tags[point.tags[tag]] = point
-            points_after_idx = list(datapoints_per_tags.values())
-            return [point.value for point in points_after_idx]
+            datapoints = list(datapoints_per_tags.values())
+            print(self.data[key])
+            return [point.value for point in datapoints]
         else:
             return [points_after_idx[-1].value] if points_after_idx else []
