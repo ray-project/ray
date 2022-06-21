@@ -32,10 +32,6 @@ from ray.core.generated import (
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvState as ProtoRuntimeEnvState,
 )
-from ray.experimental.internal_kv import (
-    _initialize_internal_kv,
-    _internal_kv_initialized,
-)
 from ray.runtime_env import RuntimeEnv, RuntimeEnvConfig
 
 default_logger = logging.getLogger(__name__)
@@ -183,14 +179,19 @@ class RuntimeEnvAgent(
         # Maps a serialized runtime env to a lock that is used
         # to prevent multiple concurrent installs of the same env.
         self._env_locks: Dict[str, asyncio.Lock] = dict()
-        _initialize_internal_kv(self._dashboard_agent.gcs_client)
-        assert _internal_kv_initialized()
+        self._gcs_aio_client = self._dashboard_agent.gcs_aio_client
 
         self._pip_plugin = PipPlugin(self._runtime_env_dir)
         self._conda_plugin = CondaPlugin(self._runtime_env_dir)
-        self._py_modules_plugin = PyModulesPlugin(self._runtime_env_dir)
-        self._java_jars_plugin = JavaJarsPlugin(self._runtime_env_dir)
-        self._working_dir_plugin = WorkingDirPlugin(self._runtime_env_dir)
+        self._py_modules_plugin = PyModulesPlugin(
+            self._runtime_env_dir, self._gcs_aio_client
+        )
+        self._java_jars_plugin = JavaJarsPlugin(
+            self._runtime_env_dir, self._gcs_aio_client
+        )
+        self._working_dir_plugin = WorkingDirPlugin(
+            self._runtime_env_dir, self._gcs_aio_client
+        )
         self._container_manager = ContainerManager(dashboard_agent.temp_dir)
 
         # TODO(architkulkarni): "base plugins" and third-party plugins should all go
