@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     import pandas as pd
     import pyarrow
 
-from ray.air.data_batch_type import DataBatchType
+    from ray.air.data_batch_type import DataBatchType
 
 
 @PublicAPI(stability="alpha")
