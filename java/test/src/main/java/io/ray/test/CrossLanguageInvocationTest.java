@@ -31,7 +31,7 @@ import org.testng.annotations.Test;
 public class CrossLanguageInvocationTest extends BaseTest {
 
   private static final String PYTHON_MODULE = "test_cross_language_invocation";
-  private static final String CPP_LIBRARY = "counter";
+  private static final String CPP_LIBRARY = "cpp/counter";
 
   @BeforeClass
   public void beforeClass() {
@@ -63,7 +63,11 @@ public class CrossLanguageInvocationTest extends BaseTest {
 
     System.setProperty(
         "ray.job.code-search-path",
-        System.getProperty("java.class.path") + File.pathSeparator + tempDir.getAbsolutePath());
+        System.getProperty("java.class.path")
+            + File.pathSeparator
+            + tempDir.getAbsolutePath()
+            + File.pathSeparator
+            + cppFile.getAbsolutePath());
   }
 
   @Test
