@@ -416,10 +416,8 @@ class SerializationContext:
         Args:
             value: The value to serialize.
         """
-        if isinstance(value, bytes):
-            # If the object is a byte array, skip serializing it and
-            # use a special metadata to indicate it's raw binary. So
-            # that this object can also be read by Java.
+        # New serialization infrastructure hock
+        if type(value) in serialization_new._ray_serializer_map:
             return serialization_new._serialize(value)
         else:
             return self._serialize_to_msgpack(value)
