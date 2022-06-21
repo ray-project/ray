@@ -1,8 +1,8 @@
 import logging
-
 from abc import ABC
 from dataclasses import dataclass, fields
-from typing import List, Dict, Union, Tuple, Set, Optional
+from enum import Enum, unique
+from typing import List, Optional, Set, Tuple, Union
 
 from ray.dashboard.modules.job.common import JobInfo
 
@@ -21,14 +21,26 @@ def filter_fields(data: dict, state_dataclass) -> dict:
     return filtered_data
 
 
+@unique
+class StateResource(Enum):
+    ACTORS = "actors"
+    JOBS = "jobs"
+    PLACEMENT_GROUPS = "placement_groups"
+    NODES = "nodes"
+    WORKERS = "workers"
+    TASKS = "tasks"
+    OBJECTS = "objects"
+    RUNTIME_ENVS = "runtime_envs"
+
+
 SupportedFilterType = Union[str, bool, int, float]
 
 
 @dataclass(init=True)
 class ListApiOptions:
-    limit: int
-    timeout: int
-    filters: List[Tuple[str, SupportedFilterType]]
+    limit: int = DEFAULT_LIMIT
+    timeout: int = DEFAULT_RPC_TIMEOUT
+    filters: Optional[List[Tuple[str, SupportedFilterType]]] = None
     # When the request is processed on the server side,
     # we should apply multiplier so that server side can finish
     # processing a request within timeout. Otherwise,
@@ -89,14 +101,17 @@ class GetLogOptions:
             self.interval = float(self.interval)
         self.lines = int(self.lines)
 
+        if self.task_id:
+            raise NotImplementedError("task_id is not supported yet.")
+
         if self.media_type == "file":
             assert self.interval is None
         if self.media_type not in ["file", "stream"]:
             raise ValueError(f"Invalid media type: {self.media_type}")
-        if not (self.node_id or self.node_ip):
+        if not (self.node_id or self.node_ip) and not (self.actor_id or self.task_id):
             raise ValueError(
-                "Both node_id and node_ip is not given. "
-                "At least one of the should be provided."
+                "node_id or node_ip should be provided."
+                "Please provide at least one of them."
             )
         if self.node_id and self.node_ip:
             raise ValueError(
@@ -125,7 +140,7 @@ class ActorState(StateSchema):
 
     @classmethod
     def filterable_columns(cls) -> Set[str]:
-        return {"actor_id", "state", "class_name"}
+        return {"actor_id", "state", "class_name", "name", "pid"}
 
 
 @dataclass(init=True)
@@ -139,19 +154,20 @@ class PlacementGroupState(StateSchema):
 
     @classmethod
     def filterable_columns(cls) -> Set[str]:
-        return {"placement_group_id", "state"}
+        return {"placement_group_id", "state", "name"}
 
 
 @dataclass(init=True)
 class NodeState(StateSchema):
     node_id: str
+    node_ip: str
     state: str
     node_name: str
     resources_total: dict
 
     @classmethod
     def filterable_columns(cls) -> Set[str]:
-        return {"node_id", "state"}
+        return {"node_id", "state", "node_ip", "node_name"}
 
 
 class JobState(JobInfo, StateSchema):
@@ -188,11 +204,7 @@ class TaskState(StateSchema):
 
     @classmethod
     def filterable_columns(cls) -> Set[str]:
-        return {
-            "task_id",
-            "name",
-            "scheduling_state",
-        }
+        return {"task_id", "name", "scheduling_state", "type", "func_or_class_name"}
 
 
 @dataclass(init=True)
@@ -219,6 +231,7 @@ class ObjectState(StateSchema):
             "task_status",
             "type",
             "pid",
+            "call_site",
         }
 
 
@@ -243,20 +256,17 @@ class RuntimeEnvState(StateSchema):
 @dataclass(init=True)
 class ListApiResponse:
     # Returned data. None if no data is returned.
-    result: Union[
-        Dict[
-            str,
-            Union[
-                ActorState,
-                PlacementGroupState,
-                NodeState,
-                JobInfo,
-                WorkerState,
-                TaskState,
-                ObjectState,
-            ],
-        ],
-        List[RuntimeEnvState],
+    result: List[
+        Union[
+            ActorState,
+            PlacementGroupState,
+            NodeState,
+            JobInfo,
+            WorkerState,
+            TaskState,
+            ObjectState,
+            RuntimeEnvState,
+        ]
     ] = None
     # List API can have a partial failure if queries to
     # all sources fail. For example, getting object states

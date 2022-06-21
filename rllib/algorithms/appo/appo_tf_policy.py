@@ -11,6 +11,7 @@ import gym
 from typing import Dict, List, Optional, Type, Union
 
 import ray
+from ray.rllib.algorithms.appo.utils import make_appo_models
 from ray.rllib.algorithms.impala import vtrace_tf as vtrace
 from ray.rllib.algorithms.impala.impala_tf_policy import (
     _make_time_major,
@@ -32,11 +33,9 @@ from ray.rllib.policy.tf_mixins import (
     KLCoeffMixin,
     ValueNetworkMixin,
 )
-from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.utils.annotations import (
-    DeveloperAPI,
     override,
 )
 from ray.rllib.utils.framework import try_import_tf
@@ -45,50 +44,7 @@ from ray.rllib.utils.typing import TensorType
 
 tf1, tf, tfv = try_import_tf()
 
-POLICY_SCOPE = "func"
-TARGET_POLICY_SCOPE = "target_func"
-
 logger = logging.getLogger(__name__)
-
-
-@DeveloperAPI
-def make_appo_model(policy) -> ModelV2:
-    """Builds model and target model for APPO.
-
-    Returns:
-        ModelV2: The Model for the Policy to use.
-            Note: The target model will not be returned, just assigned to
-            `policy.target_model`.
-    """
-    # Get the num_outputs for the following model construction calls.
-    _, logit_dim = ModelCatalog.get_action_dist(
-        policy.action_space, policy.config["model"]
-    )
-
-    # Construct the (main) model.
-    policy.model = ModelCatalog.get_model_v2(
-        policy.observation_space,
-        policy.action_space,
-        logit_dim,
-        policy.config["model"],
-        name=POLICY_SCOPE,
-        framework=policy.framework,
-    )
-    policy.model_variables = policy.model.variables()
-
-    # Construct the target model.
-    policy.target_model = ModelCatalog.get_model_v2(
-        policy.observation_space,
-        policy.action_space,
-        logit_dim,
-        policy.config["model"],
-        name=TARGET_POLICY_SCOPE,
-        framework=policy.framework,
-    )
-    policy.target_model_variables = policy.target_model.variables()
-
-    # Return only the model (not the target model).
-    return policy.model
 
 
 class TargetNetworkMixin:
@@ -109,6 +65,18 @@ class TargetNetworkMixin:
             return tf.group(*assign_ops)
 
         self.update_target = do_update
+
+    @property
+    def model_vars(self):
+        if not hasattr(self, "_model_vars"):
+            self._model_vars = self.model.variables()
+        return self._model_vars
+
+    @property
+    def target_model_vars(self):
+        if not hasattr(self, "_target_model_vars"):
+            self._target_model_vars = self.target_model.variables()
+        return self._target_model_vars
 
     def variables(self):
         return self.model_vars + self.target_model_vars
@@ -182,7 +150,7 @@ def get_appo_tf_policy(base: type) -> type:
 
         @override(base)
         def make_model(self) -> ModelV2:
-            return make_appo_model(self)
+            return make_appo_models(self)
 
         @override(base)
         def loss(
@@ -219,9 +187,6 @@ def get_appo_tf_policy(base: type) -> type:
             prev_action_dist = dist_class(behaviour_logits, self.model)
             values = self.model.value_function()
             values_time_major = make_time_major(values)
-
-            self.model_vars = self.model.variables()
-            self.target_model_vars = self.target_model.variables()
 
             if self.is_recurrent():
                 max_seq_len = tf.reduce_max(train_batch[SampleBatch.SEQ_LENS])

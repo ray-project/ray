@@ -38,7 +38,7 @@ Environments and Adapters
 - `Registering a custom env and model <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__:
    Example of defining and registering a gym env and model for use with RLlib.
 - `Local Unity3D multi-agent environment example <https://github.com/ray-project/ray/tree/master/rllib/examples/unity3d_env_local.py>`__:
-   Example of how to setup an RLlib Trainer against a locally running Unity3D editor instance to
+   Example of how to setup an RLlib Algorithm against a locally running Unity3D editor instance to
    learn any Unity3D game (including support for multi-agent).
    Use this example to try things out and watch the game and the learning progress live in the editor.
    Providing a compiled game, this example could also run in distributed fashion with `num_workers > 0`.
@@ -50,7 +50,7 @@ Environments and Adapters
 - `DMLab Watermaze example <https://github.com/ray-project/ray/blob/master/rllib/examples/dmlab_watermaze.py>`__:
    Example for how to use a DMLab environment (Watermaze).
 - `RecSym environment example (for recommender systems) using the SlateQ algorithm <https://github.com/ray-project/ray/blob/master/rllib/examples/recommender_system_with_recsim_and_slateq.py>`__:
-   Script showing how to train a SlateQTrainer on a RecSym environment.
+   Script showing how to train SlateQ on a RecSym environment.
 - `SUMO (Simulation of Urban MObility) environment example <https://github.com/ray-project/ray/blob/master/rllib/examples/sumo_env_local.py>`__:
    Example demonstrating how to use the SUMO simulator in connection with RLlib.
 - `VizDoom example script using RLlib's auto-attention wrapper <https://github.com/ray-project/ray/blob/master/rllib/examples/vizdoom_with_attention_net.py>`__:
@@ -107,7 +107,7 @@ Training Workflows
 - `Using rollout workers directly for control over the whole training workflow <https://github.com/ray-project/ray/blob/master/rllib/examples/rollout_worker_custom_workflow.py>`__:
    Example of how to use RLlib's lower-level building blocks to implement a fully customized training workflow.
 - `Custom execution plan function handling two different Policies (DQN and PPO) at the same time <https://github.com/ray-project/ray/blob/master/rllib/examples/two_trainer_workflow.py>`__:
-   Example of how to use the exec. plan of a Trainer to trin two different policies in parallel (also using multi-agent API).
+   Example of how to use the exec. plan of an Algorithm to trin two different policies in parallel (also using multi-agent API).
 - `Custom tune experiment <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_experiment.py>`__:
    How to run a custom Ray Tune experiment with RLlib with custom training- and evaluation phases.
 
@@ -164,8 +164,8 @@ Multi-Agent and Hierarchical
    Example of running a custom hand-coded policy alongside trainable policies.
 - `Weight sharing between policies <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_cartpole.py>`__:
    Example of how to define weight-sharing layers between two different policies.
-- `Multiple trainers <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_two_trainers.py>`__:
-   Example of alternating training between two DQN and PPO trainers.
+- `Multiple algorithms <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_two_trainers.py>`__:
+   Example of alternating training between DQN and PPO.
 - `Hierarchical training <https://github.com/ray-project/ray/blob/master/rllib/examples/hierarchical_training.py>`__:
    Example of hierarchical training using the multi-agent API.
 - `Iterated Prisoner's Dilemma environment example <https://github.com/ray-project/ray/blob/master/rllib/examples/iterated_prisoners_dilemma_env.py>`__:

@@ -7,14 +7,14 @@ from ray.rllib.algorithms.r2d2.r2d2_torch_policy import R2D2TorchPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
-from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.typing import AlgorithmConfigDict
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 logger = logging.getLogger(__name__)
 
 
 class R2D2Config(DQNConfig):
-    """Defines a configuration class from which a R2D2 Trainer can be built.
+    """Defines a configuration class from which a R2D2 Algorithm can be built.
 
     Example:
         >>> from ray.rllib.algorithms.r2d2.r2d2 import R2D2Config
@@ -30,9 +30,9 @@ class R2D2Config(DQNConfig):
         >>>       .resources(num_gpus=1)\
         >>>       .rollouts(num_rollout_workers=30)\
         >>>       .environment("CartPole-v1")
-        >>> trainer = R2D2(config=config)
+        >>> algo = R2D2(config=config)
         >>> while True:
-        >>>     trainer.train()
+        >>>     algo.train()
 
     Example:
         >>> from ray.rllib.algorithms.r2d2.r2d2 import R2D2Config
@@ -74,9 +74,9 @@ class R2D2Config(DQNConfig):
         >>>       .exploration(exploration_config=explore_config)
     """
 
-    def __init__(self, trainer_class=None):
+    def __init__(self, algo_class=None):
         """Initializes a ApexConfig instance."""
-        super().__init__(trainer_class=trainer_class or R2D2)
+        super().__init__(algo_class=algo_class or R2D2)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -155,7 +155,7 @@ class R2D2Config(DQNConfig):
                 used if `use_h_function`=True.
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
@@ -170,12 +170,10 @@ class R2D2Config(DQNConfig):
         return self
 
 
-# Build an R2D2 trainer, which uses the framework specific Policy
-# determined in `get_policy_class()` above.
 class R2D2(DQN):
     """Recurrent Experience Replay in Distrib. Reinforcement Learning (R2D2).
 
-    Trainer defining the distributed R2D2 algorithm.
+    Algorithm defining the distributed R2D2 algorithm.
     See `r2d2_[tf|torch]_policy.py` for the definition of the policies.
 
     [1] Recurrent Experience Replay in Distributed Reinforcement Learning -
@@ -189,18 +187,18 @@ class R2D2(DQN):
 
     @classmethod
     @override(DQN)
-    def get_default_config(cls) -> TrainerConfigDict:
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return R2D2Config().to_dict()
 
     @override(DQN)
-    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
+    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             return R2D2TorchPolicy
         else:
             return R2D2TFPolicy
 
     @override(DQN)
-    def validate_config(self, config: TrainerConfigDict) -> None:
+    def validate_config(self, config: AlgorithmConfigDict) -> None:
         """Checks and updates the config based on settings.
 
         Rewrites rollout_fragment_length to take into account burn-in and
@@ -209,7 +207,7 @@ class R2D2(DQN):
         # Call super's validation method.
         super().validate_config(config)
 
-        if config["replay_buffer_config"]["replay_sequence_length"] != -1:
+        if config["replay_buffer_config"].get("replay_sequence_length", -1) != -1:
             raise ValueError(
                 "`replay_sequence_length` is calculated automatically to be "
                 "model->max_seq_len + burn_in!"

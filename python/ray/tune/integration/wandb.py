@@ -43,6 +43,8 @@ def _clean_log(obj: Any):
         return {k: _clean_log(v) for k, v in obj.items()}
     elif isinstance(obj, list):
         return [_clean_log(v) for v in obj]
+    elif isinstance(obj, tuple):
+        return tuple(_clean_log(v) for v in obj)
     elif _is_allowed_type(obj):
         return obj
 
@@ -425,7 +427,7 @@ class WandbLoggerCallback(LoggerCallback):
     def log_trial_save(self, trial: "Trial"):
         if self.save_checkpoints and trial.checkpoint:
             self._trial_queues[trial].put(
-                (_QueueItem.CHECKPOINT, trial.checkpoint.value)
+                (_QueueItem.CHECKPOINT, trial.checkpoint.dir_or_data)
             )
 
     def log_trial_end(self, trial: "Trial", failed: bool = False):

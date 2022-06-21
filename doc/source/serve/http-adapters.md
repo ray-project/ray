@@ -85,7 +85,7 @@ For example, the json request adapters parse JSON in HTTP body:
 ```python
 from ray.serve.drivers import DAGDriver
 from ray.serve.http_adapters import json_request
-from ray.experimental.dag.input_node import InputNode
+from ray.dag.input_node import InputNode
 
 with InputNode() as input_node:
     ...
@@ -141,6 +141,6 @@ Here is a list of adapters and please feel free to [contribute more](https://git
 
 ```{eval-rst}
 .. automodule:: ray.serve.http_adapters
-    :members: json_to_ndarray, image_to_ndarray, starlette_request, json_request, pandas_read_json
+    :members: json_to_ndarray, image_to_ndarray, starlette_request, json_request, pandas_read_json, json_to_multi_ndarray
 
 ```

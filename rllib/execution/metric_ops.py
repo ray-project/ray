@@ -27,7 +27,7 @@ def StandardMetricsReporting(
         train_op: Operator for executing training steps.
             We ignore the output values.
         workers: Rollout workers to collect metrics from.
-        config: Trainer configuration, used to determine the frequency
+        config: Algorithm configuration, used to determine the frequency
             of stats reporting.
         selected_workers: Override the list of remote workers
             to collect metrics from.
@@ -50,13 +50,13 @@ def StandardMetricsReporting(
     output_op = (
         train_op.filter(
             OncePerTimestepsElapsed(
-                config["min_train_timesteps_per_reporting"] or 0
+                config["min_train_timesteps_per_iteration"] or 0
                 if by_steps_trained
-                else config["min_sample_timesteps_per_reporting"] or 0,
+                else config["min_sample_timesteps_per_iteration"] or 0,
                 by_steps_trained=by_steps_trained,
             )
         )
-        .filter(OncePerTimeInterval(config["min_time_s_per_reporting"]))
+        .filter(OncePerTimeInterval(config["min_time_s_per_iteration"]))
         .for_each(
             CollectMetrics(
                 workers,

@@ -16,7 +16,7 @@ import ray
 import ray.cloudpickle as cloudpickle
 from ray.exceptions import RayActorError, RayTaskError
 from ray.tune import TuneError
-from ray.tune.checkpoint_manager import _TuneCheckpoint, _CheckpointManager
+from ray.tune.checkpoint_manager import _CheckpointManager
 
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
 # need because there are cyclic imports that may cause specific names to not
@@ -32,6 +32,7 @@ from ray.tune.result import (
     DEBUG_METRICS,
 )
 from ray.tune.resources import Resources
+from ray.tune.syncer import Syncer
 from ray.tune.utils.placement_groups import (
     PlacementGroupFactory,
     resource_dict_to_pg_factory,
@@ -42,6 +43,7 @@ from ray.tune.utils import date_str, flatten_dict
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
 from ray._private.utils import binary_to_hex, hex_to_binary
+from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 
 DEBUG_PRINT_INTERVAL = 5
 logger = logging.getLogger(__name__)
@@ -101,7 +103,7 @@ class _CheckpointDeleter:
         self.trial_id = trial_id
         self.runner = runner
 
-    def __call__(self, checkpoint: _TuneCheckpoint):
+    def __call__(self, checkpoint: _TrackedCheckpoint):
         """Requests checkpoint deletion asynchronously.
 
         Args:
@@ -110,8 +112,11 @@ class _CheckpointDeleter:
         if not self.runner:
             return
 
-        if checkpoint.storage == _TuneCheckpoint.PERSISTENT and checkpoint.value:
-            checkpoint_path = checkpoint.value
+        if (
+            checkpoint.storage_mode == CheckpointStorage.PERSISTENT
+            and checkpoint.dir_or_data
+        ):
+            checkpoint_path = checkpoint.dir_or_data
 
             logger.debug(
                 "Trial %s: Deleting checkpoint %s", self.trial_id, checkpoint_path
@@ -247,7 +252,7 @@ class Trial:
         placement_group_factory: Optional[PlacementGroupFactory] = None,
         stopping_criterion: Optional[Dict[str, float]] = None,
         remote_checkpoint_dir: Optional[str] = None,
-        sync_function_tpl: Optional[str] = None,
+        custom_syncer: Optional[Syncer] = None,
         checkpoint_freq: int = 0,
         checkpoint_at_end: bool = False,
         sync_on_checkpoint: bool = True,
@@ -363,9 +368,9 @@ class Trial:
         else:
             self.remote_checkpoint_dir_prefix = None
 
-        if sync_function_tpl == "auto" or not isinstance(sync_function_tpl, str):
-            sync_function_tpl = None
-        self.sync_function_tpl = sync_function_tpl
+        if custom_syncer == "auto" or not isinstance(custom_syncer, Syncer):
+            custom_syncer = None
+        self.custom_syncer = custom_syncer
 
         self.checkpoint_freq = checkpoint_freq
         self.checkpoint_at_end = checkpoint_at_end
@@ -375,7 +380,7 @@ class Trial:
         self.checkpoint_manager = _CheckpointManager(
             keep_checkpoints_num,
             checkpoint_score_attr,
-            _CheckpointDeleter(self._trainable_name(), self.runner),
+            delete_fn=_CheckpointDeleter(self._trainable_name(), self.runner),
         )
 
         # Restoration fields
@@ -487,8 +492,11 @@ class Trial:
             checkpoint = self.checkpoint_manager.newest_persistent_checkpoint
         else:
             checkpoint = self.checkpoint_manager.newest_checkpoint
-        if checkpoint.value is None:
-            checkpoint = _TuneCheckpoint(_TuneCheckpoint.PERSISTENT, self.restore_path)
+        if checkpoint.dir_or_data is None:
+            checkpoint = _TrackedCheckpoint(
+                dir_or_data=self.restore_path,
+                storage_mode=CheckpointStorage.PERSISTENT,
+            )
         return checkpoint
 
     @classmethod
@@ -591,8 +599,8 @@ class Trial:
             self._default_result_or_future = runner.get_auto_filled_metrics.remote(
                 debug_metrics_only=True
             )
-        self.checkpoint_manager.delete = _CheckpointDeleter(
-            self._trainable_name(), runner
+        self.checkpoint_manager.set_delete_fn(
+            _CheckpointDeleter(self._trainable_name(), runner)
         )
         # No need to invalidate state cache: runner is not stored in json
         # self.invalidate_json_state()
@@ -668,14 +676,14 @@ class Trial:
         )
 
     def has_checkpoint(self):
-        return self.checkpoint.value is not None
+        return self.checkpoint.dir_or_data is not None
 
     def clear_checkpoint(self):
-        self.checkpoint.value = None
+        self.checkpoint.dir_or_data = None
         self.restoring_from = None
         self.invalidate_json_state()
 
-    def on_checkpoint(self, checkpoint: _TuneCheckpoint):
+    def on_checkpoint(self, checkpoint: _TrackedCheckpoint):
         """Hook for handling checkpoints taken by the Trainable.
 
         Args:
@@ -687,7 +695,7 @@ class Trial:
     def on_restore(self):
         """Handles restoration completion."""
         assert self.is_restoring
-        self.last_result = self.restoring_from.result
+        self.last_result = self.restoring_from.metrics
         self.restoring_from = None
         self.invalidate_json_state()
 

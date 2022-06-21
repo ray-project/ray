@@ -11,7 +11,7 @@ import os
 import ray
 from ray import tune
 from ray.rllib.agents import with_common_config
-from ray.rllib.agents.trainer import Trainer
+from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.dqn.dqn import DEFAULT_CONFIG as DQN_CONFIG
 from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.algorithms.dqn.dqn_torch_policy import DQNTorchPolicy
@@ -35,7 +35,7 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.sgd import standardized
 from ray.rllib.utils.test_utils import check_learning_achieved
-from ray.rllib.utils.typing import ResultDict, TrainerConfigDict
+from ray.rllib.utils.typing import ResultDict, AlgorithmConfigDict
 from ray.tune.registry import register_env
 
 parser = argparse.ArgumentParser()
@@ -64,12 +64,12 @@ parser.add_argument(
 )
 
 
-# Define new Trainer with custom execution_plan/workflow.
-class MyTrainer(Trainer):
+# Define new Algorithm with custom execution_plan/workflow.
+class MyAlgo(Algorithm):
     @classmethod
-    @override(Trainer)
-    def get_default_config(cls) -> TrainerConfigDict:
-        # Run this Trainer with new `training_iteration` API and set some PPO-specific
+    @override(Algorithm)
+    def get_default_config(cls) -> AlgorithmConfigDict:
+        # Run this Algorithm with new `training_step` API and set some PPO-specific
         # parameters.
         return with_common_config(
             {
@@ -78,7 +78,7 @@ class MyTrainer(Trainer):
             }
         )
 
-    @override(Trainer)
+    @override(Algorithm)
     def setup(self, config):
         # Call super's `setup` to create rollout workers.
         super().setup(config)
@@ -87,8 +87,8 @@ class MyTrainer(Trainer):
             num_shards=1, learning_starts=1000, capacity=50000
         )
 
-    @override(Trainer)
-    def training_iteration(self) -> ResultDict:
+    @override(Algorithm)
+    def training_step(self) -> ResultDict:
         # Generate common experiences, collect batch for PPO, store every (DQN) batch
         # into replay buffer.
         ppo_batches = []
@@ -175,7 +175,7 @@ if __name__ == "__main__":
     dqn_config = DQN_CONFIG
     del dqn_config["framework"]
 
-    # Note that since the trainer below does not include a default policy or
+    # Note that since the algorithm below does not include a default policy or
     # policy configs, we have to explicitly set it in the multiagent config:
     policies = {
         "ppo_policy": (
@@ -218,7 +218,7 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run(MyTrainer, config=config, stop=stop)
+    results = tune.run(MyAlgo, config=config, stop=stop)
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

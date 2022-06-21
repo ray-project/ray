@@ -6,14 +6,15 @@ import logging
 import numbers
 import os
 import shutil
-
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Dict, Union, Callable, Tuple, List, Any
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import ray
 from ray.air import Checkpoint
 from ray.tune.result import NODE_IP
+from ray.tune.utils.trainable import TrainableUtil
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
 from ray.util.ml_utils.util import is_nan
@@ -72,8 +73,10 @@ class _TrackedCheckpoint:
         self.metrics = metrics or {}
         self.node_ip = node_ip or self.metrics.get(NODE_IP, None)
 
-        if storage_mode == CheckpointStorage.MEMORY and not isinstance(
-            dir_or_data, (dict, ray.ObjectRef)
+        if (
+            dir_or_data is not None
+            and storage_mode == CheckpointStorage.MEMORY
+            and not isinstance(dir_or_data, (dict, ray.ObjectRef))
         ):
             raise ValueError(
                 f"Memory checkpoints only support Ray object references and dicts "
@@ -116,12 +119,39 @@ class _TrackedCheckpoint:
         except Exception as e:
             logger.warning(f"Checkpoint deletion failed: {e}")
 
+    def to_air_checkpoint(self) -> Optional[Checkpoint]:
+        checkpoint_data = self.dir_or_data
+
+        if not checkpoint_data:
+            return None
+
+        if isinstance(checkpoint_data, ray.ObjectRef):
+            checkpoint_data = ray.get(checkpoint_data)
+
+        if isinstance(checkpoint_data, str):
+            checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_data)
+            checkpoint = Checkpoint.from_directory(checkpoint_dir)
+        elif isinstance(checkpoint_data, bytes):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                TrainableUtil.create_from_pickle(checkpoint_data, tmpdir)
+                # Double wrap in checkpoint so we hold the data in memory and
+                # can remove the temp directory
+                checkpoint = Checkpoint.from_dict(
+                    Checkpoint.from_directory(tmpdir).to_dict()
+                )
+        elif isinstance(checkpoint_data, dict):
+            checkpoint = Checkpoint.from_dict(checkpoint_data)
+        else:
+            raise RuntimeError(f"Unknown checkpoint data type: {type(checkpoint_data)}")
+
+        return checkpoint
+
     def __repr__(self):
         if self.storage_mode == CheckpointStorage.MEMORY:
-            return f"<TrackedCheckpoint storage='MEMORY' result={self.metrics}>"
+            return f"<_TrackedCheckpoint storage='MEMORY' result={self.metrics}>"
 
         return (
-            f"<TrackedCheckpoint storage='PERSISTENT' "
+            f"<_TrackedCheckpoint storage='PERSISTENT' "
             f"dir_or_data={self.dir_or_data}>"
         )
 
@@ -210,7 +240,7 @@ class _CheckpointManager:
     keeps a configured number of checkpoints according to specified metrics.
 
     The manager supports lazy data writing by utilizing the
-    ``TrackedCheckpoint.commit()`` API, which is only invoked if the checkpoint
+    ``_TrackedCheckpoint.commit()`` API, which is only invoked if the checkpoint
     should be persisted to disk.
 
     Args:

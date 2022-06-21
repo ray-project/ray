@@ -7,7 +7,7 @@ import ray.train as train
 from ray.train import Trainer
 from ray.train.backend import BackendConfig, Backend
 from ray.train.callbacks import TrainingCallback
-from ray.train.worker_group import WorkerGroup
+from ray.train._internal.worker_group import WorkerGroup
 
 
 @pytest.fixture
@@ -86,9 +86,6 @@ def test_failure():
 
     with pytest.raises(ModuleNotFoundError):
         import horovod  # noqa: F401
-
-    with pytest.raises(ModuleNotFoundError):
-        from ray import tune  # noqa: F401
 
 
 if __name__ == "__main__":

@@ -97,7 +97,8 @@ Bulk Ingest
 ~~~~~~~~~~~
 
 By default, AIR loads all Dataset blocks into the object store at the start of training. This provides the best performance if the
-cluster has enough aggregate memory to fit all the data blocks in object store memory. Note that data often requires more space
+cluster has enough aggregate memory to fit all the data blocks in object store memory, or if your preprocessing step is expensive
+and you don't want it to be re-run on each epoch. Note that data often requires more space
 when loaded uncompressed in memory than when resident in storage.
 
 If there is insufficient object store memory, blocks may be spilled to disk during reads or preprocessing. Ray will print log messages
@@ -110,13 +111,17 @@ Streaming Ingest
 
 AIR also supports streaming ingest via the DatasetPipeline feature. Streaming ingest is preferable when you are using large datasets
 that don't fit into memory, and prefer to read *windows* of data from storage to minimize the active memory required for data ingest.
+Note that streaming ingest will re-execute preprocessing on each pass over the data. If preprocessing is a bottleneck, consider
+using bulk ingest instead for better performance.
 
 To enable streaming ingest, set ``use_stream_api=True`` in the dataset config. By default, this will configure streaming ingest with a window
 size of 1GiB, which means AIR will load ~1 GiB of data at a time from the datasource.
 Performance can be increased with larger window sizes, which can be adjusted using the ``stream_window_size`` config.
 A reasonable stream window size is something like 20% of available object store memory. Note that the data may be larger
 once deserialized in memory, or if individual files are larger than the window size.
-If the window size is set to -1, then an infinite window size (equivalent to bulk loading) will be used.
+
+If the window size is set to -1, then an infinite window size will be used. This case is equivalent to using bulk loading
+(including the performance advantages of caching preprocessed blocks), but still exposing a DatasetPipeline reader.
 
 .. warning::
 
@@ -160,32 +165,6 @@ Ingest and Ray Tune
 
     Train always uses Tune as the execution backend under the hood, even when running just ``Trainer.fit()`` directly (this is treated as a single-trial experiment). This ensures consistency of execution.
 
-When using ``Ray Tune`` with AIR training jobs, you can choose to either provide an experiment-wide Dataset that is shared among all trials,
-or have per-trial datasets. Trials will always run its preprocessing separately, so Dataset sharing will only deduplicate
-the initial data reads from the external storage. The below figure illustrates. In case (a), initial blocks are shared between trials. In case (b), each trial loads its own data blocks and trials are fully independent:
-
-.. figure:: images/data-sharing.svg
-    :width: 600px
-
-..
-  https://docs.google.com/drawings/d/15F_a61UhRo2fa-UZKiOfNPgSRfNpG06M0GEIhFLMxIM/edit
-
-Let's look at code examples for both cases. Generally, you'd prefer to use "Experiment-Wide Datasets" if possible since this reduces memory usage and can speed up trial starts. However, in some use cases you may want to do a hyperparameter sweep over the datasets themselves, which would require configuring "Per-Trial Datasets".
-
-.. tabbed:: Experiment-Wide Dataset
-
-    .. literalinclude:: doc_code/air_ingest.py
-        :language: python
-        :start-after: __shared_dataset_start__
-        :end-before: __shared_dataset_end__
-
-.. tabbed:: Per-Trial Dataset
-
-    .. literalinclude:: doc_code/air_ingest.py
-        :language: python
-        :start-after: __indep_dataset_start__
-        :end-before: __indep_dataset_end__
-
 Placement Group Behavior
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -196,6 +175,11 @@ Tune typically creates a placement group reserving resource for each of its tria
     If trial placement groups reserve all the CPUs in the cluster, then it may be that no CPUs are left for Datasets to use, and trials can hang. This can easily happen when using CPU-only trainers. For example, if you can change the above ingest example to use ``ray.init(num_cpus=2)``, such a hang will happen.
 
 Refer to the :ref:`Datasets in Tune Example <datasets_tune>` to understand each of these options and how to configure them. We recommend starting with the default of allowing tasks to run using spare cluster resources, and only changing this if you encounter resource contention or want more performance predictability.
+
+Dataset Sharing
+~~~~~~~~~~~~~~~
+
+When you pass Datasets to a Tuner, it is important to understand that the Datasets are executed independently per-trial. This could potentially duplicate data reads in the cluster. To share Dataset blocks between trials, call `ds = ds.fully_executed()` prior to passing the Dataset to the Tuner. This ensures that the initial read operation will not be repeated per trial.
 
 Debugging Ingest with the ``DummyTrainer``
 ------------------------------------------

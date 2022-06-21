@@ -36,7 +36,7 @@ Suspect = DeveloperAPI(
 
 @DeveloperAPI
 def check_memory_leaks(
-    trainer,
+    algorithm,
     to_check: Optional[Set[str]] = None,
     repeats: Optional[int] = None,
     max_num_trials: int = 3,
@@ -49,7 +49,7 @@ def check_memory_leaks(
     un-GC'd items to memory.
 
     Args:
-        trainer: The Trainer instance to test.
+        algorithm: The Algorithm instance to test.
         to_check: Set of strings to indentify components to test. Allowed strings
             are: "env", "policy", "model", "rollout_worker". By default, check all
             of these.
@@ -62,7 +62,7 @@ def check_memory_leaks(
         A defaultdict(list) with keys being the `to_check` strings and values being
         lists of Suspect instances that were found.
     """
-    local_worker = trainer.workers.local_worker()
+    local_worker = algorithm.workers.local_worker()
 
     # Which components should we test?
     to_check = to_check or {"env", "model", "policy", "rollout_worker"}

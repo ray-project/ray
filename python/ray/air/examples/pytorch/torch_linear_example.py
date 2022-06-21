@@ -4,7 +4,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import ray.train as train
-from ray.air.train.integrations.torch import TorchTrainer
+from ray.train.torch import TorchTrainer
 
 
 class LinearDataset(torch.utils.data.Dataset):

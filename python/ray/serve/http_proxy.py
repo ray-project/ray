@@ -25,7 +25,7 @@ from ray.serve.http_util import (
     set_socket_reuse_port,
 )
 from ray.serve.common import EndpointInfo, EndpointTag
-from ray.serve.constants import SERVE_LOGGER_NAME
+from ray.serve.constants import SERVE_LOGGER_NAME, SERVE_NAMESPACE
 from ray.serve.long_poll import LongPollClient, LongPollNamespace
 from ray.serve.logging_utils import access_log_msg, configure_component_logger
 from ray.serve.utils import node_id_to_ip_addr
@@ -191,19 +191,15 @@ class HTTPProxy:
     """This class is meant to be instantiated and run by an ASGI HTTP server.
 
     >>> import uvicorn
-    >>> controller_name, controller_namespace = ... # doctest: +SKIP
-    >>> uvicorn.run(HTTPProxy(controller_name, controller_namespace)) # doctest: +SKIP
+    >>> controller_name = ... # doctest: +SKIP
+    >>> uvicorn.run(HTTPProxy(controller_name)) # doctest: +SKIP
     """
 
-    def __init__(
-        self,
-        controller_name: str,
-        controller_namespace: str,
-    ):
+    def __init__(self, controller_name: str):
         # Set the controller name so that serve will connect to the
         # controller instance this proxy is running in.
         ray.serve.context.set_internal_replica_context(
-            None, None, controller_name, controller_namespace, None
+            None, None, controller_name, None
         )
 
         # Used only for displaying the route table.
@@ -219,7 +215,7 @@ class HTTPProxy:
 
         self.prefix_router = LongestPrefixRouter(get_handle)
         self.long_poll_client = LongPollClient(
-            ray.get_actor(controller_name, namespace=controller_namespace),
+            ray.get_actor(controller_name, namespace=SERVE_NAMESPACE),
             {
                 LongPollNamespace.ROUTE_TABLE: self._update_routes,
             },
@@ -337,7 +333,6 @@ class HTTPProxyActor:
         port: int,
         root_path: str,
         controller_name: str,
-        controller_namespace: str,
         node_id: str,
         http_middlewares: Optional[List["starlette.middleware.Middleware"]] = None,
     ):  # noqa: F821
@@ -354,7 +349,7 @@ class HTTPProxyActor:
 
         self.setup_complete = asyncio.Event()
 
-        self.app = HTTPProxy(controller_name, controller_namespace)
+        self.app = HTTPProxy(controller_name)
 
         self.wrapped_app = self.app
         for middleware in http_middlewares:

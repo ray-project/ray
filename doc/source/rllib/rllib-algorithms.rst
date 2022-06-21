@@ -23,6 +23,7 @@ Algorithm                      Frameworks Discrete Actions              Continuo
 `Bandits`_ (`TS`_ & `LinUCB`_) torch      **Yes** `+parametric`_        No                 **Yes**                                                                   No
 `BC`_                          tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_                                                       torch
 `CQL`_                         tf + torch No                            **Yes**            No                                                                        tf + torch
+`CRR`_                         torch      **Yes** `+parametric`_        **Yes**            **Yes**                                                                   torch
 `DDPG`_                        tf + torch No                            **Yes**            **Yes**                                                                   torch
 `APEX-DDPG`_                   tf + torch No                            **Yes**            **Yes**                                                                   torch
 `ES`_                          tf + torch **Yes**                       **Yes**            No                                                                        No
@@ -207,7 +208,7 @@ Decentralized Distributed Proximal Policy Optimization (DD-PPO)
 |pytorch|
 `[paper] <https://arxiv.org/abs/1911.00357>`__
 `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/ddppo/ddppo.py>`__
-Unlike APPO or PPO, with DD-PPO policy improvement is no longer done centralized in the trainer process. Instead, gradients are computed remotely on each rollout worker and all-reduced at each mini-batch using `torch distributed <https://pytorch.org/docs/stable/distributed.html>`__. This allows each worker's GPU to be used both for sampling and for training.
+Unlike APPO or PPO, with DD-PPO policy improvement is no longer done centralized in the algorithm process. Instead, gradients are computed remotely on each rollout worker and all-reduced at each mini-batch using `torch distributed <https://pytorch.org/docs/stable/distributed.html>`__. This allows each worker's GPU to be used both for sampling and for training.
 
 .. tip::
 
@@ -634,6 +635,28 @@ Tuned examples: `HalfCheetah Random <https://github.com/ray-project/ray/blob/mas
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
 
+
+.. _crr:
+
+Critic Regularized Regression (CRR)
+-----------------------------------
+|pytorch|
+`[paper] <https://arxiv.org/abs/2006.15134>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/crr/crr.py>`__
+
+CRR is another offline RL algorithm based on Q-learning that can learn from an offline experience replay.
+The challenge in applying existing Q-learning algorithms to offline RL lies in the overestimation of the Q-function, as well as, the lack of exploration beyond the observed data.
+The latter becomes increasingly important during bootstrapping in the bellman equation, where the Q-function queried for the next state's Q-value(s) does not have support in the observed data.
+To mitigate these issues, CRR implements a simple and yet powerful idea of "value-filtered regression".
+The key idea is to use a learned critic to filter-out the non-promising transitions from the replay dataset. For more details, please refer to the paper (see link above).
+
+Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/crr/cartpole-v0-crr.yaml>`__, `Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/crr/pendulum-v1-crr.yaml>`__
+
+.. literalinclude:: ../../../rllib/algorithms/crr/crr.py
+   :language: python
+   :start-after: __sphinx_doc_begin__
+   :end-before: __sphinx_doc_end__
+
+
 Derivative-free
 ~~~~~~~~~~~~~~~
 
@@ -895,7 +918,7 @@ Tuned examples:
 
 **Activating Curiosity**
 The curiosity plugin can be easily activated by specifying it as the Exploration class to-be-used
-in the main Trainer config. Most of its parameters usually do not have to be specified
+in the main Algorithm config. Most of its parameters usually do not have to be specified
 as the module uses the values from the paper by default. For example:
 
 .. code-block:: python
@@ -933,7 +956,7 @@ In such environments, agents have to navigate (and change the underlying state o
 For example, the task could be to find a key in some room, pick it up, find a matching door (matching the color of the key), and eventually unlock this door with the key to reach a goal state,
 all the while not seeing any rewards.
 Such problems are impossible to solve with standard RL exploration methods like epsilon-greedy or stochastic sampling.
-The Curiosity module - when configured as the Exploration class to use via the Trainer's config (see above on how to do this) - automatically adds three simple models to the Policy's ``self.model``:
+The Curiosity module - when configured as the Exploration class to use via the Algorithm's config (see above on how to do this) - automatically adds three simple models to the Policy's ``self.model``:
 a) a latent space learning ("feature") model, taking an environment observation and outputting a latent vector, which represents this observation and
 b) a "forward" model, predicting the next latent vector, given the current observation vector and an action to take next.
 c) a so-called "inverse" net, only used to train the "feature" net. The inverse net tries to predict the action taken between two latent vectors (obs and next obs).
@@ -963,7 +986,7 @@ Examples:
 
 **Activating RE3**
 The RE3 plugin can be easily activated by specifying it as the Exploration class to-be-used
-in the main Trainer config and inheriting the `RE3UpdateCallbacks` as shown in this `example <https://github.com/ray-project/ray/blob/c9c3f0745a9291a4de0872bdfa69e4ffdfac3657/rllib/utils/exploration/tests/test_random_encoder.py#L35>`__. Most of its parameters usually do not have to be specified as the module uses the values from the paper by default. For example:
+in the main Algorithm config and inheriting the `RE3UpdateCallbacks` as shown in this `example <https://github.com/ray-project/ray/blob/c9c3f0745a9291a4de0872bdfa69e4ffdfac3657/rllib/utils/exploration/tests/test_random_encoder.py#L35>`__. Most of its parameters usually do not have to be specified as the module uses the values from the paper by default. For example:
 
 .. code-block:: python
 

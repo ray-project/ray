@@ -5,11 +5,11 @@
 # __custom_trainer_begin__
 import torch
 
-from ray.air.trainer import Trainer
+from ray.train.trainer import BaseTrainer
 from ray import tune
 
 
-class MyPytorchTrainer(Trainer):
+class MyPytorchTrainer(BaseTrainer):
     def setup(self):
         self.model = torch.nn.Linear(1, 1)
         self.optimizer = torch.optim.SGD(self.model.parameters(), lr=0.1)

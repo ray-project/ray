@@ -774,7 +774,7 @@
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
 
-  stable: false
+  stable: true
 
   legacy:
     test_name: aws_no_sync_down
@@ -803,7 +803,7 @@
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
 
-  stable: false
+  stable: true
 
   legacy:
     test_name: aws_ssh_sync
@@ -832,7 +832,7 @@
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
 
-  stable: false
+  stable: true
 
   legacy:
     test_name: aws_durable_upload
@@ -922,7 +922,7 @@
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
 
-  stable: false
+  stable: true
 
   legacy:
     test_name: gcp_k8s_no_sync_down
@@ -950,7 +950,7 @@
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
 
-  stable: false
+  stable: true
 
   legacy:
     test_name: gcp_k8s_ssh_sync
@@ -978,7 +978,7 @@
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
 
-  stable: false
+  stable: true
 
   legacy:
     test_name: gcp_k8s_durable_upload
@@ -2104,7 +2104,7 @@
 # RLlib tests
 ########################
 
-- name: rllib_learning_tests
+- name: rllib_learning_tests_a_to_e
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2117,11 +2117,34 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: 8gpus_64cpus.yaml
+    cluster_compute: 12gpus_192cpus.yaml
 
   run:
-    timeout: 14400
-    script: python learning_tests/run.py
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=a-e
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+- name: rllib_learning_tests_f_to_z
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 8gpus_96cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=f-z
     type: sdk_command
     file_manager: job
 

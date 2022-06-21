@@ -1,34 +1,32 @@
 import asyncio
 import logging
-
-from dataclasses import fields
+from dataclasses import asdict, fields
 from itertools import islice
 from typing import List, Tuple
 
-from ray.core.generated.common_pb2 import TaskStatus
-import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.memory_utils as memory_utils
-
+import ray.dashboard.utils as dashboard_utils
+from ray._private.utils import binary_to_hex
+from ray.core.generated.common_pb2 import TaskStatus
 from ray.experimental.state.common import (
-    filter_fields,
-    StateSchema,
-    SupportedFilterType,
     ActorState,
-    PlacementGroupState,
-    NodeState,
-    WorkerState,
-    TaskState,
-    ObjectState,
-    RuntimeEnvState,
     ListApiOptions,
     ListApiResponse,
+    NodeState,
+    ObjectState,
+    PlacementGroupState,
+    RuntimeEnvState,
+    StateSchema,
+    SupportedFilterType,
+    TaskState,
+    WorkerState,
+    filter_fields,
 )
 from ray.experimental.state.state_manager import (
-    StateDataSourceClient,
     DataSourceUnavailable,
+    StateDataSourceClient,
 )
 from ray.runtime_env import RuntimeEnv
-from ray._private.utils import binary_to_hex
 
 logger = logging.getLogger(__name__)
 
@@ -183,9 +181,7 @@ class StateAPIManager:
         result = self._filter(result, option.filters, ActorState)
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["actor_id"])
-        return ListApiResponse(
-            result={d["actor_id"]: d for d in islice(result, option.limit)}
-        )
+        return ListApiResponse(result=list(islice(result, option.limit)))
 
     async def list_placement_groups(self, *, option: ListApiOptions) -> ListApiResponse:
         """List all placement group information from the cluster.
@@ -213,9 +209,7 @@ class StateAPIManager:
         result = self._filter(result, option.filters, PlacementGroupState)
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["placement_group_id"])
-        return ListApiResponse(
-            result={d["placement_group_id"]: d for d in islice(result, option.limit)}
-        )
+        return ListApiResponse(result=list(islice(result, option.limit)))
 
     async def list_nodes(self, *, option: ListApiOptions) -> ListApiResponse:
         """List all node information from the cluster.
@@ -232,14 +226,14 @@ class StateAPIManager:
         result = []
         for message in reply.node_info_list:
             data = self._message_to_dict(message=message, fields_to_decode=["node_id"])
+            data["node_ip"] = data["node_manager_address"]
+            data = filter_fields(data, NodeState)
             result.append(data)
 
         result = self._filter(result, option.filters, NodeState)
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["node_id"])
-        return ListApiResponse(
-            result={d["node_id"]: d for d in islice(result, option.limit)}
-        )
+        return ListApiResponse(result=list(islice(result, option.limit)))
 
     async def list_workers(self, *, option: ListApiOptions) -> ListApiResponse:
         """List all worker information from the cluster.
@@ -264,14 +258,17 @@ class StateAPIManager:
         result = self._filter(result, option.filters, WorkerState)
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["worker_id"])
-        return ListApiResponse(
-            result={d["worker_id"]: d for d in islice(result, option.limit)}
-        )
+        return ListApiResponse(result=list(islice(result, option.limit)))
 
     def list_jobs(self, *, option: ListApiOptions) -> ListApiResponse:
         # TODO(sang): Support limit & timeout & async calls.
         try:
-            result = self._client.get_job_info()
+            result = []
+            job_info = self._client.get_job_info()
+            for job_id, data in job_info.items():
+                data = asdict(data)
+                data["job_id"] = job_id
+                result.append(data)
         except DataSourceUnavailable:
             raise DataSourceUnavailable(GCS_QUERY_FAILURE_WARNING)
         return ListApiResponse(result=result)
@@ -339,7 +336,7 @@ class StateAPIManager:
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["task_id"])
         return ListApiResponse(
-            result={d["task_id"]: d for d in islice(result, option.limit)},
+            result=list(islice(result, option.limit)),
             partial_failure_warning=partial_failure_warning,
         )
 
@@ -410,7 +407,7 @@ class StateAPIManager:
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["object_id"])
         return ListApiResponse(
-            result={d["object_id"]: d for d in islice(result, option.limit)},
+            result=list(islice(result, option.limit)),
             partial_failure_warning=partial_failure_warning,
         )
 
