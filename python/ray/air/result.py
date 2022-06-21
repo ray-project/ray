@@ -23,11 +23,13 @@ class Result:
     Args:
         metrics: The final metrics as reported by an Trainable.
         checkpoint: The final checkpoint of the Trainable.
-        best_checkpoint: The best checkpoint of the Trainable, as
-            determined by the ``checkpointing`` argument of ``RunConfig``,
-            or, if that's unset, by ``metric`` and ``mode`` arguments of
-            ``TuneConfig``.
-            If either of those has not been set, this will be None.
+        best_checkpoint: The best checkpoint of the Trainable.
+            This will be determined by (from highest priority):
+
+            1. ``checkpoint_config`` argument of ``run_config``
+            2. ``metric`` and ``mode`` arguments of ``tune_config`` (if using ``Tuner``)
+
+            If neither of those has not been set, this will be None.
             May be the same object as ``checkpoint``.
         error: The execution error of the Trainable run, if the trial finishes in error.
         dataframe: The full result dataframe of the Trainable.

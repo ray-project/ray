@@ -12,7 +12,7 @@ from ray.tune.trial import Trial
 from ray.util import PublicAPI
 
 if TYPE_CHECKING:
-    from ray.air.config import CheckpointingConfig
+    from ray.air.config import CheckpointConfig
 
 
 @PublicAPI(stability="alpha")
@@ -46,32 +46,32 @@ class ResultGrid:
     def __init__(
         self,
         experiment_analysis: ExperimentAnalysis,
-        checkpointing_config: Optional["CheckpointingConfig"] = None,
+        checkpoint_config: Optional["CheckpointConfig"] = None,
     ):
         self._experiment_analysis = experiment_analysis
         # Used to determine best checkpoint
-        self._checkpointing_config = checkpointing_config
+        self._checkpointing_config = checkpoint_config
 
-    def _resolve_checkpointing_config(
+    def _resolve_checkpoint_config(
         self,
-        checkpointing_config: "CheckpointingConfig",
+        checkpoint_config: "CheckpointConfig",
         metric: Optional[str] = None,
         mode: Optional[str] = None,
-    ) -> "CheckpointingConfig":
+    ) -> "CheckpointConfig":
         # Lazy import to avoid circular dependency
-        from ray.air.config import CheckpointingConfig
+        from ray.air.config import CheckpointConfig
 
         metric = metric or self._experiment_analysis.default_metric
         mode = mode or self._experiment_analysis.default_mode
 
-        if not isinstance(checkpointing_config, CheckpointingConfig):
-            if checkpointing_config and self._checkpointing_config:
-                checkpointing_config = self._checkpointing_config
+        if not isinstance(checkpoint_config, CheckpointConfig):
+            if checkpoint_config and self._checkpointing_config:
+                checkpoint_config = self._checkpointing_config
             else:
-                checkpointing_config = CheckpointingConfig(
+                checkpoint_config = CheckpointConfig(
                     checkpoint_score_metric=metric, checkpoint_score_mode=mode
                 )
-        return checkpointing_config
+        return checkpoint_config
 
     def get_best_result(
         self,
@@ -79,7 +79,7 @@ class ResultGrid:
         mode: Optional[str] = None,
         scope: str = "last",
         filter_nan_and_inf: bool = True,
-        checkpointing_config: Union[bool, "CheckpointingConfig"] = True,
+        checkpoint_config: Union[bool, "CheckpointConfig"] = True,
     ) -> Result:
         """Get the best result from all the trials run.
 
@@ -101,12 +101,12 @@ class ResultGrid:
             filter_nan_and_inf: If True (default), NaN or infinite
                 values are disregarded and these trials are never selected as
                 the best trial.
-            checkpointing_config: If True (default), will use the
-                ``CheckpointingConfig`` object set in Trainer's ``RunConfig``
+            checkpoint_config: If True (default), will use the
+                ``CheckpointConfig`` object set in Trainer's ``run_config``
                 to determine the best checkpoint of the trial.
-                If False, or if the ``CheckpointingConfig`` object was not set, will use
+                If False, or if the ``CheckpointConfig`` object was not set, will use
                 ``metric`` and ``mode`` as set here.
-                Can also be a ``CheckpointingConfig`` object, in which case it will
+                Can also be a ``CheckpointConfig`` object, in which case it will
                 be used directly.
         """
         if not metric and not self._experiment_analysis.default_metric:
@@ -142,13 +142,11 @@ class ResultGrid:
             )
             raise RuntimeError(error_msg)
 
-        checkpointing_config = self._resolve_checkpointing_config(
-            checkpointing_config, metric=metric, mode=mode
+        checkpoint_config = self._resolve_checkpoint_config(
+            checkpoint_config, metric=metric, mode=mode
         )
 
-        return self._trial_to_result(
-            best_trial, checkpointing_config=checkpointing_config
-        )
+        return self._trial_to_result(best_trial, checkpoint_config=checkpoint_config)
 
     def get_dataframe(
         self,
@@ -197,27 +195,25 @@ class ResultGrid:
         """Returns the i'th result in the grid."""
         return self.get(i)
 
-    def get(
-        self, i: int, *, checkpointing_config: Union[bool, "CheckpointingConfig"] = True
-    ):
+    def get(self, i: int, *, checkpoint_config: Union[bool, "CheckpointConfig"] = True):
         """Returns the i'th result in the grid.
 
         Args:
             i: index to return.
-            checkpointing_config: If True (default), will use the
-                ``CheckpointingConfig`` object set in Trainer's ``RunConfig``
+            checkpoint_config: If True (default), will use the
+                ``CheckpointConfig`` object set in Trainer's ``RunConfig``
                 to determine the best checkpoint of the trial.
-                If False, or if the ``CheckpointingConfig`` object was not set, will use
+                If False, or if the ``CheckpointConfig`` object was not set, will use
                 ``metric`` and ``mode`` as set here.
-                Can also be a ``CheckpointingConfig`` object, in which case it will
+                Can also be a ``CheckpointConfig`` object, in which case it will
                 be used directly.
         """
 
-        checkpointing_config = self._resolve_checkpointing_config(checkpointing_config)
+        checkpoint_config = self._resolve_checkpoint_config(checkpoint_config)
 
         return self._trial_to_result(
             self._experiment_analysis.trials[i],
-            checkpointing_config=checkpointing_config,
+            checkpoint_config=checkpoint_config,
         )
 
     @staticmethod
@@ -232,18 +228,16 @@ class ResultGrid:
         return None
 
     def _trial_to_result(
-        self, trial: Trial, checkpointing_config: Optional["CheckpointingConfig"]
+        self, trial: Trial, checkpoint_config: Optional["CheckpointConfig"]
     ) -> Result:
         checkpoint = trial.checkpoint.to_air_checkpoint()
 
         checkpoint_metric = (
-            checkpointing_config.checkpoint_score_metric
-            if checkpointing_config
-            else None
+            checkpoint_config.checkpoint_score_metric if checkpoint_config else None
         )
         checkpoint_mode = (
-            checkpointing_config.checkpoint_score_mode_not_none
-            if checkpointing_config and checkpoint_metric
+            checkpoint_config.checkpoint_score_mode_not_none
+            if checkpoint_config and checkpoint_metric
             else None
         )
         try:

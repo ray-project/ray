@@ -4,7 +4,7 @@ from ray.air.config import (
     RunConfig,
     ScalingConfig,
     FailureConfig,
-    CheckpointingConfig,
+    CheckpointConfig,
 )
 from ray.air.data_batch_type import DataBatchType
 from ray.air.result import Result
@@ -18,6 +18,6 @@ __all__ = [
     "ScalingConfig",
     "DatasetConfig",
     "FailureConfig",
-    "CheckpointingConfig",
+    "CheckpointConfig",
     "train_test_split",
 ]

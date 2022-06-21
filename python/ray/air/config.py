@@ -275,7 +275,7 @@ class FailureConfig:
 
 @dataclass
 @PublicAPI(stability="alpha")
-class CheckpointingConfig:
+class CheckpointConfig:
     """Configuration related to checkpointing of each run/trial.
 
     Args:
@@ -352,7 +352,7 @@ class RunConfig:
             and thus will not take effect in resumed runs).
         failure: Failure mode configuration.
         sync_config: Configuration object for syncing. See tune.SyncConfig.
-        checkpointing: Checkpointing configuration.
+        checkpoint_config: Checkpointing configuration.
         verbose: 0, 1, 2, or 3. Verbosity mode.
             0 = silent, 1 = only status updates, 2 = status and brief
             results, 3 = status and detailed results. Defaults to 2.
@@ -365,5 +365,5 @@ class RunConfig:
     stop: Optional[Union[Mapping, "Stopper", Callable[[str, Mapping], bool]]] = None
     failure: Optional[FailureConfig] = None
     sync_config: Optional[SyncConfig] = None
-    checkpointing: Optional[CheckpointingConfig] = None
+    checkpoint_config: Optional[CheckpointConfig] = None
     verbose: Union[int, Verbosity] = Verbosity.V3_TRIAL_DETAILS

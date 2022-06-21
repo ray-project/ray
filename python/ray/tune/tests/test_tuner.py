@@ -7,7 +7,7 @@ from sklearn.datasets import load_breast_cancer
 from sklearn.utils import shuffle
 
 from ray import tune
-from ray.air.config import CheckpointingConfig, RunConfig
+from ray.air.config import CheckpointConfig, RunConfig
 from ray.air.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
 )
@@ -286,10 +286,10 @@ class TunerTest(unittest.TestCase):
             != results[1].best_checkpoint.get_internal_representation()
         )
 
-        # Case 3: CheckpointingConfig set. Takes priority.
+        # Case 3: CheckpointConfig set. Takes priority.
         trainer = DummyTrainer(
             run_config=RunConfig(
-                checkpointing=CheckpointingConfig(
+                checkpoint_config=CheckpointConfig(
                     checkpoint_score_metric="step", checkpoint_score_mode="min"
                 )
             )

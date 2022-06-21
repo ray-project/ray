@@ -124,7 +124,7 @@ def test_result_grid_future_checkpoint(ray_start_2_cpus, to_object):
     result_grid = ResultGrid(None)
 
     # Internal result grid conversion
-    result = result_grid._trial_to_result(trial, checkpointing_config=None)
+    result = result_grid._trial_to_result(trial, checkpoint_config=None)
     assert isinstance(result.checkpoint, Checkpoint)
     assert isinstance(result.metrics, dict)
     assert isinstance(result.config, dict)
@@ -151,7 +151,7 @@ def test_best_result(ray_start_2_cpus):
 
 
 def test_best_result_best_checkpoint(ray_start_2_cpus):
-    from ray.air.config import CheckpointingConfig
+    from ray.air.config import CheckpointConfig
 
     def f(config):
         for i in range(2):
@@ -179,7 +179,7 @@ def test_best_result_best_checkpoint(ray_start_2_cpus):
 
     # Checkpointing config. Use by default
     result_grid = ResultGrid(
-        analysis, checkpointing_config=CheckpointingConfig(checkpoint_score_metric="x")
+        analysis, checkpoint_config=CheckpointConfig(checkpoint_score_metric="x")
     )
     best_result = result_grid.get_best_result(metric="x", mode="min")
     assert best_result.metrics["x"] == 2
@@ -187,7 +187,7 @@ def test_best_result_best_checkpoint(ray_start_2_cpus):
     assert load_checkpoint(best_result)["step"] == 1
 
     best_result = result_grid.get_best_result(
-        metric="x", mode="min", checkpointing_config=False
+        metric="x", mode="min", checkpoint_config=False
     )
     assert best_result.metrics["x"] == 2
     assert best_result.best_checkpoint
@@ -196,7 +196,7 @@ def test_best_result_best_checkpoint(ray_start_2_cpus):
     best_result = result_grid.get_best_result(
         metric="x",
         mode="min",
-        checkpointing_config=CheckpointingConfig(checkpoint_score_metric="x"),
+        checkpoint_config=CheckpointConfig(checkpoint_score_metric="x"),
     )
     assert best_result.metrics["x"] == 2
     assert best_result.best_checkpoint

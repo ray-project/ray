@@ -147,7 +147,7 @@ class TunerInternal:
         else:
             analysis = self._fit_resume(trainable)
 
-        return ResultGrid(analysis, self._run_config.checkpointing)
+        return ResultGrid(analysis, self._run_config.checkpoint_config)
 
     def _get_tune_run_arguments(self) -> Dict[str, Any]:
         """Get tune.run arguments common for both new and resumed runs."""
@@ -161,13 +161,13 @@ class TunerInternal:
                 self._run_config.failure.max_failures if self._run_config.failure else 0
             ),
             keep_checkpoints_num=(
-                self._run_config.checkpointing.keep_checkpoints_num
-                if self._run_config.checkpointing
+                self._run_config.checkpoint_config.keep_checkpoints_num
+                if self._run_config.checkpoint_config
                 else None
             ),
             checkpoint_score_attr=(
-                self._run_config.checkpointing.checkpoint_score_attr
-                if self._run_config.checkpointing
+                self._run_config.checkpoint_config.checkpoint_score_attr
+                if self._run_config.checkpoint_config
                 else None
             ),
             _experiment_checkpoint_dir=self._experiment_checkpoint_dir,
