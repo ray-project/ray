@@ -42,7 +42,7 @@ from ray.tune.result import (
 from ray.tune.syncer import Syncer
 from ray.tune.utils import UtilMonitor
 from ray.tune.utils.log import disable_ipython
-from ray.tune.utils.placement_groups import PlacementGroupFactory
+from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.utils.util import (
     Tee,

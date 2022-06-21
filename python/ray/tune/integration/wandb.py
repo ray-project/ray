@@ -10,7 +10,7 @@ import urllib
 
 from ray import logger
 from ray.tune import Trainable
-from ray.tune.function_runner import FunctionRunner
+from ray.tune.execution.function_runner import FunctionRunner
 from ray.tune.logger import LoggerCallback
 from ray.tune.utils import flatten_dict
 from ray.tune.trial import Trial

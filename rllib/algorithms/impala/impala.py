@@ -49,7 +49,7 @@ from ray.rllib.utils.typing import (
     SampleBatchType,
     T,
 )
-from ray.tune.utils.placement_groups import PlacementGroupFactory
+from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.types import ObjectRef
 
 logger = logging.getLogger(__name__)

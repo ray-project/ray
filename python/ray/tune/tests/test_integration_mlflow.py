@@ -4,7 +4,7 @@ import unittest
 from collections import namedtuple
 from unittest.mock import patch
 
-from ray.tune.function_runner import wrap_function
+from ray.tune.execution.function_runner import wrap_function
 from ray.tune.integration.mlflow import (
     MLflowLoggerCallback,
     mlflow_mixin,

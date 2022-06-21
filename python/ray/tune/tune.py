@@ -23,7 +23,7 @@ from ray.tune.progress_reporter import (
     detect_reporter,
     ProgressReporter,
 )
-from ray.tune.ray_trial_executor import RayTrialExecutor
+from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.registry import get_trainable_cls, is_function_trainable
 from ray.tune.schedulers import (
     PopulationBasedTraining,
@@ -54,13 +54,13 @@ from ray.tune.syncer import (
 )
 from ray.tune.trainable import Trainable
 from ray.tune.trial import Trial
-from ray.tune.trial_runner import TrialRunner
+from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.utils.callback import create_default_callbacks
 from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
 
 # Must come last to avoid circular imports
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
-from ray.tune.utils.placement_groups import PlacementGroupFactory
+from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 logger = logging.getLogger(__name__)
 

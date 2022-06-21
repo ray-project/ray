@@ -82,7 +82,7 @@ def register_trainable(name: str, trainable: Union[Callable, Type], warn: bool =
     """
 
     from ray.tune.trainable import Trainable
-    from ray.tune.function_runner import wrap_function
+    from ray.tune.execution.function_runner import wrap_function
 
     if isinstance(trainable, type):
         logger.debug("Detected class for trainable.")

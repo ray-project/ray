@@ -9,7 +9,7 @@ import ray
 from ray.air._internal.session import Session
 from ray.air.checkpoint import Checkpoint
 from ray.tune.error import TuneError
-from ray.tune.function_runner import _StatusReporter
+from ray.tune.execution.function_runner import _StatusReporter
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.debug import log_once
 from ray.util.placement_group import _valid_resource_shape
