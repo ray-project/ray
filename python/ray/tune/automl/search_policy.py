@@ -5,7 +5,7 @@ import logging
 from ray.tune.experiment.trial import Trial
 from ray.tune.search import SearchAlgorithm
 from ray.tune.experiment import convert_to_experiment_list
-from ray.tune.search.algorithms._variant_generator import generate_variants
+from ray.tune.search.algorithm._variant_generator import generate_variants
 from ray.tune.experiment._config_parser import make_parser, create_trial_from_spec
 
 logger = logging.getLogger(__name__)

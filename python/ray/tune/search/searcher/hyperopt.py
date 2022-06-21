@@ -22,7 +22,7 @@ from ray.tune.search.searcher.suggestion import (
     UNDEFINED_METRIC_MODE,
     UNDEFINED_SEARCH_SPACE,
 )
-from ray.tune.search.algorithms._variant_generator import assign_value, parse_spec_vars
+from ray.tune.search.algorithm._variant_generator import assign_value, parse_spec_vars
 from ray.tune.utils import flatten_dict
 
 try:

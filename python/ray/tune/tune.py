@@ -47,7 +47,7 @@ from ray.tune.search.scheduler import (
 )
 # fmt: on
 
-from ray.tune.search.algorithms._variant_generator import has_unresolved_values
+from ray.tune.search.algorithm._variant_generator import has_unresolved_values
 from ray.tune.syncer import (
     SyncConfig,
     _validate_upload_dir,

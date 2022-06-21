@@ -1,5 +1,5 @@
 from ray._private.utils import get_function_args
-from ray.tune.search.algorithms.basic_variant import BasicVariantGenerator
+from ray.tune.search.algorithm.basic_variant import BasicVariantGenerator
 
 from ray.tune._structure_refactor import warn_structure_refactor
 

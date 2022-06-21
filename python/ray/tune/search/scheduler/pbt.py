@@ -14,7 +14,7 @@ from ray.tune.search import SearchGenerator
 from ray.tune.utils.util import SafeFallbackEncoder
 from ray.tune.search.sample import Domain, Function
 from ray.tune.search.scheduler import FIFOScheduler, TrialScheduler
-from ray.tune.search.algorithms._variant_generator import format_vars
+from ray.tune.search.algorithm._variant_generator import format_vars
 from ray.tune.experiment.trial import Trial
 from ray.util import PublicAPI
 from ray.util.debug import log_once

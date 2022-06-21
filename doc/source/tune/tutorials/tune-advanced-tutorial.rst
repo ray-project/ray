@@ -135,7 +135,7 @@ thus just use the same ``Trainable`` for the replay run.
     from ray import tune
 
     from ray.tune.examples.pbt_convnet_example import PytorchTrainable
-    from ray.tune.search.schedulers import PopulationBasedTrainingReplay
+    from ray.tune.search.scheduler import PopulationBasedTrainingReplay
 
     replay = PopulationBasedTrainingReplay(
         "~/ray_results/pbt_test/pbt_policy_ba982_00003.txt")

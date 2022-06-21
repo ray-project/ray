@@ -11,7 +11,7 @@ from ray.tune.error import TuneError
 from ray.tune.experiment import Experiment, convert_to_experiment_list
 from ray.tune.experiment._config_parser import make_parser, create_trial_from_spec
 from ray.tune.search.sample import np_random_generator, _BackwardsCompatibleNumpyRng
-from ray.tune.search.algorithms._variant_generator import (
+from ray.tune.search.algorithm._variant_generator import (
     count_variants,
     count_spec_samples,
     generate_variants,
@@ -19,7 +19,7 @@ from ray.tune.search.algorithms._variant_generator import (
     flatten_resolved_vars,
     get_preset_variants,
 )
-from ray.tune.search.algorithms.search_algorithm import SearchAlgorithm
+from ray.tune.search.algorithm.search_algorithm import SearchAlgorithm
 from ray.tune.utils.util import atomic_save, load_newest_checkpoint
 from ray.util import PublicAPI
 
@@ -245,7 +245,7 @@ class BasicVariantGenerator(SearchAlgorithm):
     .. code-block:: python
 
         from ray import tune
-        from ray.tune.search.algorithms.basic_variant import BasicVariantGenerator
+        from ray.tune.search.algorithm.basic_variant import BasicVariantGenerator
 
 
         tune.run(

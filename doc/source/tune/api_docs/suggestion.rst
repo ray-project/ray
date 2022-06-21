@@ -71,14 +71,14 @@ Random search and grid search (tune.suggest.basic_variant.BasicVariantGenerator)
 --------------------------------------------------------------------------------
 
 The default and most basic way to do hyperparameter search is via random and grid search.
-Ray Tune does this through the :class:`BasicVariantGenerator <ray.tune.search.algorithms.basic_variant.BasicVariantGenerator>`
+Ray Tune does this through the :class:`BasicVariantGenerator <ray.tune.search.algorithm.basic_variant.BasicVariantGenerator>`
 class that generates trial variants given a search space definition.
 
-The :class:`BasicVariantGenerator <ray.tune.search.algorithms.basic_variant.BasicVariantGenerator>` is used per
+The :class:`BasicVariantGenerator <ray.tune.search.algorithm.basic_variant.BasicVariantGenerator>` is used per
 default if no search algorithm is passed to
 :func:`tune.run() <ray.tune.run>`.
 
-.. autoclass:: ray.tune.search.algorithms.basic_variant.BasicVariantGenerator
+.. autoclass:: ray.tune.search.algorithm.basic_variant.BasicVariantGenerator
 
 .. _tune-ax:
 

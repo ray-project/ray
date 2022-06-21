@@ -17,7 +17,7 @@ from ray.exceptions import RayTaskError
 from ray.rllib import _register_all
 from ray.tune import TuneError
 from ray.tune.callback import Callback
-from ray.tune.search.algorithms.basic_variant import BasicVariantGenerator
+from ray.tune.search.algorithm.basic_variant import BasicVariantGenerator
 from ray.tune.search import Searcher
 from ray.tune.experiment.trial import Trial
 from ray.tune.execution.trial_runner import TrialRunner

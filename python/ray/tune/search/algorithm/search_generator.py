@@ -5,10 +5,10 @@ from typing import Dict, List, Optional, Union
 from ray.tune.error import TuneError
 from ray.tune.experiment import Experiment, convert_to_experiment_list
 from ray.tune.experiment._config_parser import make_parser, create_trial_from_spec
-from ray.tune.search.algorithms.search_algorithm import SearchAlgorithm
+from ray.tune.search.algorithm.search_algorithm import SearchAlgorithm
 from ray.tune.search.searcher.suggestion import Searcher
 from ray.tune.search.searcher.util import set_search_properties_backwards_compatible
-from ray.tune.search.algorithms._variant_generator import (
+from ray.tune.search.algorithm._variant_generator import (
     format_vars,
     resolve_nested_dict,
 )
