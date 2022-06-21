@@ -293,9 +293,12 @@ class ListApiResponse:
 Summary API schema
 """
 
+class TaskSummaryKey:
+    def __init__(self, required_resources, func_or_class_name):
+
 
 @dataclass(init=True)
-class TaskSummary:
+class TaskSummaryPerKey:
     # State name to the count dict
     state_counts: Dict[str, int]
     type: str
@@ -304,6 +307,30 @@ class TaskSummary:
 
 
 @dataclass(init=True)
+class TaskSummaries:
+    # Group key -> summary
+    task_to_summary: Dict[str, TaskSummaryPerKey]
+
+
+@dataclass(init=True)
+class ActorSummaries:
+    pass
+
+
+@dataclass(init=True)
+class ObjectSummaries:
+    pass
+
+
+class StateSummary:
+    def __init__(self, summaries: List[TaskState, ActorState, ObjectState])
+    # Node ID -> summary per node
+    # If the data is not required to be orgnized per node, it will contain
+    # a single key, "cluster".
+    node_id_to_summary: Dict[str, Union[TaskSummaries, ActorSummaries, ObjectSummaries]]
+
+
+@dataclass(init=True)
 class SummaryApiResponse:
-    result: Dict[str, TaskSummary] = None
+    result: StateSummary = None
     partial_failure_warning: str = ""
