@@ -441,6 +441,8 @@ class FunctionRunner(Trainable):
             new_result = self._last_result.copy()
             new_result.update(result)
             result = new_result
+            # Do not checkpoint again
+            result[SHOULD_CHECKPOINT] = False
 
         self._last_result = result
         if self._status_reporter.has_new_checkpoint():

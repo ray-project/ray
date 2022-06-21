@@ -7,7 +7,7 @@ from sklearn.datasets import load_breast_cancer
 from sklearn.utils import shuffle
 
 from ray import tune
-from ray.air.config import CheckpointConfig, RunConfig
+from ray.air.config import RunConfig
 from ray.air.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
 )
@@ -252,68 +252,6 @@ class TunerTest(unittest.TestCase):
         tuner = Tuner(trainer)
 
         assert tuner._local_tuner._run_config.stop == {"metric": 4}
-
-    def test_tuner_checkpoint_configuration(self):
-        # Case 1: nothing set
-        trainer = DummyTrainer()
-        tuner = Tuner(trainer)
-
-        results = tuner.fit()
-        result = results[0]
-        assert result.checkpoint
-        assert not result.best_checkpoint
-
-        # Case 2: metric and mode set
-        trainer = DummyTrainer()
-        tuner = Tuner(
-            trainer, tune_config=TuneConfig(mode="min", metric="step", num_samples=2)
-        )
-
-        results = tuner.fit()
-        result = results[0]
-        assert result.checkpoint
-        assert result.best_checkpoint
-        assert (
-            os.path.basename(
-                os.path.normpath(
-                    result.best_checkpoint.get_internal_representation()[1]
-                )
-            )
-            == "checkpoint_000000"
-        )
-        assert (
-            result.best_checkpoint.get_internal_representation()
-            != results[1].best_checkpoint.get_internal_representation()
-        )
-
-        # Case 3: CheckpointConfig set. Takes priority.
-        trainer = DummyTrainer(
-            run_config=RunConfig(
-                checkpoint_config=CheckpointConfig(
-                    checkpoint_score_metric="step", checkpoint_score_mode="min"
-                )
-            )
-        )
-        tuner = Tuner(
-            trainer, tune_config=TuneConfig(mode="max", metric="step", num_samples=2)
-        )
-
-        results = tuner.fit()
-        result = results[0]
-        assert result.checkpoint
-        assert result.best_checkpoint
-        assert (
-            os.path.basename(
-                os.path.normpath(
-                    result.best_checkpoint.get_internal_representation()[1]
-                )
-            )
-            == "checkpoint_000000"
-        )
-        assert (
-            result.best_checkpoint.get_internal_representation()
-            != results[1].best_checkpoint.get_internal_representation()
-        )
 
 
 if __name__ == "__main__":
