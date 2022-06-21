@@ -1,13 +1,13 @@
-import ray
-from ray.tests.conftest import *  # noqa
-
 import pytest
+
+import ray
 from ray import workflow
+from ray.tests.conftest import *  # noqa
 
 
 @ray.remote
 def check_and_update(x, worker_id):
-    from ray.worker import global_worker
+    from ray._private.worker import global_worker
 
     _worker_id = global_worker.worker_id
     if worker_id == _worker_id:
@@ -17,7 +17,7 @@ def check_and_update(x, worker_id):
 
 @ray.remote
 def inplace_test():
-    from ray.worker import global_worker
+    from ray._private.worker import global_worker
 
     worker_id = global_worker.worker_id
     x = check_and_update.options(**workflow.options(allow_inplace=True)).bind(
@@ -32,7 +32,7 @@ def inplace_test():
 
 @ray.remote
 def exp_inplace(k, n, worker_id=None):
-    from ray.worker import global_worker
+    from ray._private.worker import global_worker
 
     _worker_id = global_worker.worker_id
     if worker_id is not None:
@@ -51,7 +51,7 @@ def exp_inplace(k, n, worker_id=None):
 
 @ray.remote
 def exp_remote(k, n, worker_id=None):
-    from ray.worker import global_worker
+    from ray._private.worker import global_worker
 
     _worker_id = global_worker.worker_id
     if worker_id is not None:

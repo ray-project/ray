@@ -1,19 +1,20 @@
 import json
-import re
 import platform
-import sys
-import zlib
-import shutil
-import time
-from collections import defaultdict
 import random
+import re
+import shutil
+import sys
+import time
+import zlib
+from collections import defaultdict
 
 import numpy as np
 import pytest
+
 import ray
 from ray._private.test_utils import wait_for_condition
-from ray.tests.test_object_spilling import is_dir_empty, assert_no_thrashing
 from ray.cluster_utils import Cluster, cluster_not_supported
+from ray.tests.test_object_spilling import assert_no_thrashing, is_dir_empty
 
 
 @pytest.mark.skipif(platform.system() in ["Windows"], reason="Failing on Windows.")
@@ -54,7 +55,7 @@ def test_multiple_directories(tmp_path, shutdown_only):
 
     num_files = defaultdict(int)
     for temp_dir in temp_dirs:
-        temp_folder = temp_dir / ray.ray_constants.DEFAULT_OBJECT_PREFIX
+        temp_folder = temp_dir / ray._private.ray_constants.DEFAULT_OBJECT_PREFIX
         for path in temp_folder.iterdir():
             num_files[str(temp_folder)] += 1
 
@@ -85,7 +86,7 @@ def test_multiple_directories(tmp_path, shutdown_only):
 
 def _check_spilled(num_objects_spilled=0):
     def ok():
-        s = ray.internal.internal_api.memory_summary(stats_only=True)
+        s = ray._private.internal_api.memory_summary(stats_only=True)
         if num_objects_spilled == 0:
             return "Spilled " not in s
 

@@ -1,4 +1,3 @@
-from contextlib import contextmanager
 import atexit
 import faulthandler
 import functools
@@ -15,6 +14,7 @@ import traceback
 import warnings
 from abc import ABCMeta, abstractmethod
 from collections.abc import Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import (
     Any,
@@ -31,64 +31,53 @@ from typing import (
     overload,
 )
 
-# Ray modules
-import ray.cloudpickle as pickle
-import ray._private.memory_monitor as memory_monitor
-import ray.internal.storage as storage
-from ray.internal.storage import _load_class
-import ray.node
-import ray.job_config
-import ray._private.parameter
-import ray.ray_constants as ray_constants
-import ray.remote_function
-import ray.serialization as serialization
-import ray._private.gcs_utils as gcs_utils
-import ray._private.services as services
-from ray._private.gcs_pubsub import (
-    GcsPublisher,
-    GcsErrorSubscriber,
-    GcsLogSubscriber,
-    GcsFunctionKeySubscriber,
-)
-from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
-from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
-from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
-import ray._private.import_thread as import_thread
-from ray.util.tracing.tracing_helper import import_from_string
-from ray.util.annotations import PublicAPI, DeveloperAPI, Deprecated
-from ray.util.debug import log_once
-from ray._private import ray_option_utils
-import ray
 import colorama
 import setproctitle
-import ray.state
 
-from ray import (
-    ActorID,
-    JobID,
-    ObjectRef,
-    Language,
-)
+import ray
+import ray._private.gcs_utils as gcs_utils
+import ray._private.import_thread as import_thread
+import ray._private.memory_monitor as memory_monitor
+import ray._private.node
+import ray._private.parameter
 import ray._private.profiling as profiling
+import ray._private.ray_constants as ray_constants
+import ray._private.serialization as serialization
+import ray._private.services as services
+import ray._private.state
+import ray._private.storage as storage
 
-from ray.exceptions import (
-    RaySystemError,
-    RayError,
-    RayTaskError,
-    ObjectStoreFullError,
-)
-from ray._private.function_manager import FunctionActorManager, make_function_table_key
-from ray._private.ray_logging import setup_logger
-from ray._private.ray_logging import global_worker_stdstream_dispatcher
-from ray._private.utils import check_oversized_function
-from ray.util.inspect import is_cython
-from ray.experimental.internal_kv import (
-    _internal_kv_initialized,
-    _initialize_internal_kv,
-    _internal_kv_reset,
-    _internal_kv_get,
-)
+# Ray modules
+import ray.cloudpickle as pickle
+import ray.job_config
+import ray.remote_function
+from ray import ActorID, JobID, Language, ObjectRef
+from ray._private import ray_option_utils
 from ray._private.client_mode_hook import client_mode_hook
+from ray._private.function_manager import FunctionActorManager, make_function_table_key
+from ray._private.gcs_pubsub import (
+    GcsErrorSubscriber,
+    GcsFunctionKeySubscriber,
+    GcsLogSubscriber,
+    GcsPublisher,
+)
+from ray._private.inspect_util import is_cython
+from ray._private.ray_logging import global_worker_stdstream_dispatcher, setup_logger
+from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
+from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
+from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
+from ray._private.storage import _load_class
+from ray._private.utils import check_oversized_function
+from ray.exceptions import ObjectStoreFullError, RayError, RaySystemError, RayTaskError
+from ray.experimental.internal_kv import (
+    _initialize_internal_kv,
+    _internal_kv_get,
+    _internal_kv_initialized,
+    _internal_kv_reset,
+)
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
+from ray.util.debug import log_once
+from ray.util.tracing.tracing_helper import _import_from_string
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -411,7 +400,7 @@ class Worker:
         functions outside of this class are considered exposed.
 
     Attributes:
-        node (ray.node.Node): The node this worker is attached to.
+        node (ray._private.node.Node): The node this worker is attached to.
         mode: The mode of the worker. One of SCRIPT_MODE, LOCAL_MODE, and
             WORKER_MODE.
         cached_functions_to_run: A list of functions to run on all of
@@ -878,7 +867,7 @@ def get_resource_ids():
 
     if _mode() == LOCAL_MODE:
         raise RuntimeError(
-            "ray.worker.get_resource_ids() currently does not work in local_mode."
+            "ray._private.worker.get_resource_ids() does not work in local_mode."
         )
 
     return global_worker.core_worker.resource_ids()
@@ -985,7 +974,7 @@ per worker process.
 """
 
 _global_node = None
-"""ray.node.Node: The global node object that is created by ray.init()."""
+"""ray._private.node.Node: The global node object that is created by ray.init()."""
 
 
 @PublicAPI
@@ -1365,7 +1354,7 @@ def init(
         # shutdown the node in the ray.shutdown call that happens in the atexit
         # handler. We still spawn a reaper process in case the atexit handler
         # isn't called.
-        _global_node = ray.node.Node(
+        _global_node = ray._private.node.Node(
             head=True, shutdown_at_exit=False, spawn_reaper=True, ray_params=ray_params
         )
     else:
@@ -1419,7 +1408,7 @@ def init(
             enable_object_reconstruction=_enable_object_reconstruction,
             metrics_export_port=_metrics_export_port,
         )
-        _global_node = ray.node.Node(
+        _global_node = ray._private.node.Node(
             ray_params,
             head=False,
             shutdown_at_exit=False,
@@ -1502,7 +1491,7 @@ def shutdown(_exiting_interpreter: bool = False):
     # We need to reset function actor manager to clear the context
     global_worker.function_actor_manager = FunctionActorManager(global_worker)
     # Disconnect global state from GCS.
-    ray.state.state.disconnect()
+    ray._private.state.state.disconnect()
 
     # Shut down the Ray processes.
     global _global_node
@@ -1547,8 +1536,8 @@ def custom_excepthook(type, value, tb):
         worker_type = gcs_utils.DRIVER
         worker_info = {"exception": error_message}
 
-        ray.state.state._check_connected()
-        ray.state.state.add_worker(worker_id, worker_type, worker_info)
+        ray._private.state.state._check_connected()
+        ray._private.state.state.add_worker(worker_id, worker_type, worker_info)
     # Call the normal excepthook.
     normal_excepthook(type, value, tb)
 
@@ -1747,7 +1736,7 @@ def is_initialized() -> bool:
     Returns:
         True if ray.init has already been called and false otherwise.
     """
-    return ray.worker.global_worker.connected
+    return ray._private.worker.global_worker.connected
 
 
 def connect(
@@ -1766,7 +1755,7 @@ def connect(
     """Connect this worker to the raylet, to Plasma, and to GCS.
 
     Args:
-        node (ray.node.Node): The node to connect.
+        node (ray._private.node.Node): The node to connect.
         mode: The mode of the worker. One of SCRIPT_MODE, WORKER_MODE, and LOCAL_MODE.
         log_to_driver: If true, then output from all of the worker
             processes on all nodes will be directed to the driver.
@@ -1796,7 +1785,7 @@ def connect(
     worker.gcs_client = node.get_gcs_client()
     assert worker.gcs_client is not None
     _initialize_internal_kv(worker.gcs_client)
-    ray.state.state._initialize_global_state(
+    ray._private.state.state._initialize_global_state(
         ray._raylet.GcsClientOptions.from_gcs_address(node.gcs_address)
     )
     worker.gcs_publisher = GcsPublisher(address=worker.gcs_client.address)
@@ -1814,7 +1803,7 @@ def connect(
     else:
         # This is the code path of driver mode.
         if job_id is None:
-            job_id = ray.state.next_job_id()
+            job_id = ray._private.state.next_job_id()
 
     if mode is not SCRIPT_MODE and mode is not LOCAL_MODE and setproctitle:
         process_name = ray_constants.WORKER_PROCESS_TYPE_IDLE_WORKER
@@ -2006,7 +1995,7 @@ def connect(
     if tracing_hook_val is not None:
         ray.util.tracing.tracing_helper._global_is_tracing_enabled = True
         if not getattr(ray, "__traced__", False):
-            _setup_tracing = import_from_string(tracing_hook_val.decode("utf-8"))
+            _setup_tracing = _import_from_string(tracing_hook_val.decode("utf-8"))
             _setup_tracing()
             ray.__traced__ = True
 
@@ -2045,7 +2034,7 @@ def disconnect(exiting_interpreter=False):
     except AttributeError:
         ray_actor = None  # This can occur during program termination
     if ray_actor is not None:
-        ray_actor.ActorClassMethodMetadata.reset_cache()
+        ray_actor._ActorClassMethodMetadata.reset_cache()
 
 
 @contextmanager
@@ -2189,7 +2178,7 @@ def get(
 
         if debugger_breakpoint != b"":
             frame = sys._getframe().f_back
-            rdb = ray.util.pdb.connect_ray_pdb(
+            rdb = ray.util.pdb._connect_ray_pdb(
                 host=None,
                 port=None,
                 patch_stdstreams=False,
@@ -2230,10 +2219,12 @@ def put(
     if _owner is None:
         serialize_owner_address = None
     elif isinstance(_owner, ray.actor.ActorHandle):
-        # Ensure `ray.state.state.global_state_accessor` is not None
-        ray.state.state._check_connected()
+        # Ensure `ray._private.state.state.global_state_accessor` is not None
+        ray._private.state.state._check_connected()
         owner_address = gcs_utils.ActorTableData.FromString(
-            ray.state.state.global_state_accessor.get_actor_info(_owner._actor_id)
+            ray._private.state.state.global_state_accessor.get_actor_info(
+                _owner._actor_id
+            )
         ).address
         if len(owner_address.worker_id) == 0:
             raise RuntimeError(f"{_owner} is not alive, it's worker_id is empty!")
@@ -2462,7 +2453,7 @@ def cancel(object_ref: "ray.ObjectRef", *, force: bool = False, recursive: bool 
     Raises:
         TypeError: This is also raised for actor tasks.
     """
-    worker = ray.worker.global_worker
+    worker = ray._private.worker.global_worker
     worker.check_connected()
 
     if not isinstance(object_ref, ray.ObjectRef):
@@ -2496,7 +2487,7 @@ def _make_remote(function_or_class, options):
 
     if inspect.isclass(function_or_class):
         ray_option_utils.validate_actor_options(options, in_options=False)
-        return ray.actor.make_actor(function_or_class, options)
+        return ray.actor._make_actor(function_or_class, options)
 
     raise TypeError(
         "The @ray.remote decorator must be applied to either a function or a class."

@@ -6,7 +6,7 @@ import ray
 from ray.dag.dag_node import DAGNode
 from ray.dag.input_node import InputNode
 from ray import serve
-from ray.dag.utils import DAGNodeNameGenerator
+from ray.dag.utils import _DAGNodeNameGenerator
 from ray.serve.handle import (
     RayServeSyncHandle,
     serve_handle_to_json_dict,
@@ -235,7 +235,7 @@ def _test_deployment_json_serde_helper(
         3) Deserialized serve dag can extract correct number and definition of
             serve deployments.
     """
-    with DAGNodeNameGenerator() as node_name_generator:
+    with _DAGNodeNameGenerator() as node_name_generator:
         serve_root_dag = ray_dag.apply_recursive(
             lambda node: transform_ray_dag_to_serve_dag(node, node_name_generator)
         )

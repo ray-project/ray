@@ -14,7 +14,7 @@ import hashlib
 import cython
 import inspect
 import uuid
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 
 
 ctypedef object (*FunctionDescriptor_from_cpp)(const CFunctionDescriptor &)

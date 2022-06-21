@@ -1,6 +1,14 @@
 """Code to wrap some GLOO API calls."""
-import numpy
 import asyncio
+import time
+
+import numpy
+
+import ray
+import ray.experimental.internal_kv as internal_kv
+from ray._private.gcs_utils import GcsClient
+from ray.util.collective.types import ReduceOp, torch_available
+from ray.util.queue import _QueueActor
 
 try:
     import pygloo
@@ -9,14 +17,6 @@ except ImportError:
         "Can not import pygloo. Please run 'pip install pygloo' to install pygloo."
     )
 
-import time
-
-import ray
-from ray.util.collective.types import ReduceOp, torch_available
-from ray.util.queue import _QueueActor
-
-import ray.experimental.internal_kv as internal_kv
-from ray._private.gcs_utils import GcsClient
 
 GLOO_REDUCE_OP_MAP = {
     ReduceOp.SUM: pygloo.ReduceOp.SUM,
@@ -271,7 +271,7 @@ class RayInternalKvStore:
     def __init__(self, group_name: str):
         self._group_name = group_name
         self._job_id = ray.get_runtime_context().job_id
-        gcs_address = ray.worker._global_node.gcs_address
+        gcs_address = ray._private.worker._global_node.gcs_address
         self._gcs_client = GcsClient(address=gcs_address, nums_reconnect_retry=10)
         internal_kv._initialize_internal_kv(self._gcs_client)
 

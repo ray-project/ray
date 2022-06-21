@@ -1,18 +1,17 @@
-from collections import defaultdict
 import json
 import logging
+from collections import defaultdict
+
+from google.protobuf.json_format import MessageToDict
 
 import ray
-
 import ray._private.gcs_utils as gcs_utils
-from ray.util.annotations import DeveloperAPI
-from google.protobuf.json_format import MessageToDict
-from ray.core.generated import gcs_pb2
 from ray._private.client_mode_hook import client_mode_hook
-from ray._private.utils import decode, binary_to_hex, hex_to_binary
 from ray._private.resource_spec import NODE_ID_PREFIX
-
+from ray._private.utils import binary_to_hex, decode, hex_to_binary
 from ray._raylet import GlobalStateAccessor
+from ray.core.generated import gcs_pb2
+from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 

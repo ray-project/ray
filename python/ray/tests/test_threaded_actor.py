@@ -2,12 +2,12 @@ import sys
 import threading
 import time
 
-import pytest
 import numpy as np
-import ray
+import pytest
 
-from ray.state import available_resources
+import ray
 import ray._private.test_utils as test_utils
+from ray._private.state import available_resources
 
 
 def ensure_cpu_returned(expected_cpus):

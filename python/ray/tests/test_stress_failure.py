@@ -1,12 +1,13 @@
-import numpy as np
-import pytest
 import sys
 import time
 
+import numpy as np
+import pytest
+
 import ray
-from ray.cluster_utils import Cluster, cluster_not_supported
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 from ray._private.test_utils import get_error_message
+from ray.cluster_utils import Cluster, cluster_not_supported
 
 
 @pytest.mark.xfail(cluster_not_supported, reason="cluster not supported")

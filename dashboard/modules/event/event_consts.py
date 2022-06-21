@@ -1,4 +1,4 @@
-from ray.ray_constants import env_integer
+from ray._private.ray_constants import env_integer
 from ray.core.generated import event_pb2
 
 LOG_ERROR_EVENT_STRING_LENGTH_LIMIT = 1000

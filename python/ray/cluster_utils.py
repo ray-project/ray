@@ -1,23 +1,26 @@
 import copy
-import logging
 import json
-import yaml
+import logging
 import os
 import subprocess
 import tempfile
 import time
 
+import yaml
+
 import ray
 import ray._private.services
+from ray._private import ray_constants
 from ray._private.client_mode_hook import disable_client_hook
-from ray import ray_constants
 from ray._raylet import GcsClientOptions
+from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
 cluster_not_supported = os.name == "nt"
 
 
+@DeveloperAPI
 class AutoscalingCluster:
     """Create a local autoscaling cluster for testing.
 
@@ -92,6 +95,7 @@ class AutoscalingCluster:
         subprocess.check_call(["ray", "stop", "--force"])
 
 
+@DeveloperAPI
 class Cluster:
     def __init__(
         self,
@@ -124,7 +128,7 @@ class Cluster:
         self.redis_address = None
         self.connected = False
         # Create a new global state accessor for fetching GCS table.
-        self.global_state = ray.state.GlobalState()
+        self.global_state = ray._private.state.GlobalState()
         self._shutdown_at_exit = shutdown_at_exit
         if not initialize_head and connect:
             raise RuntimeError("Cannot connect to uninitialized cluster.")
@@ -186,7 +190,7 @@ class Cluster:
         ray_params.update_if_absent(**default_kwargs)
         with disable_client_hook():
             if self.head_node is None:
-                node = ray.node.Node(
+                node = ray._private.node.Node(
                     ray_params,
                     head=True,
                     shutdown_at_exit=self._shutdown_at_exit,
@@ -209,7 +213,7 @@ class Cluster:
                 # Let grpc pick a port.
                 ray_params.update_if_absent(node_manager_port=0)
 
-                node = ray.node.Node(
+                node = ray._private.node.Node(
                     ray_params,
                     head=False,
                     shutdown_at_exit=self._shutdown_at_exit,
@@ -234,7 +238,7 @@ class Cluster:
             node: Worker node of which all associated processes
                 will be removed.
         """
-        global_node = ray.worker._global_node
+        global_node = ray._private.worker._global_node
         if global_node is not None:
             if node._raylet_socket_name == global_node._raylet_socket_name:
                 ray.shutdown()
@@ -269,7 +273,7 @@ class Cluster:
         """Wait until this node has appeared in the client table.
 
         Args:
-            node (ray.node.Node): The node to wait for.
+            node (ray._private.node.Node): The node to wait for.
             timeout: The amount of time in seconds to wait before raising an
                 exception.
 

@@ -1,22 +1,21 @@
+import urllib
 import warnings
+from dataclasses import fields
+from typing import Dict, Generator, List, Optional, Tuple, Union
+
 import requests
 
 import ray
-import urllib
-
-from typing import List, Tuple, Optional, Dict, Generator, Union
-from dataclasses import fields
-
+from ray.dashboard.modules.dashboard_sdk import SubmissionClient
 from ray.experimental.state.common import (
     DEFAULT_LIMIT,
     DEFAULT_RPC_TIMEOUT,
     GetLogOptions,
     ListApiOptions,
-    SupportedFilterType,
     StateResource,
+    SupportedFilterType,
 )
 from ray.experimental.state.exception import RayStateApiException, ServerUnavailable
-from ray.dashboard.modules.dashboard_sdk import SubmissionClient
 
 """
 This file contains API client and methods for querying ray state.
@@ -65,9 +64,12 @@ class StateApiClient(SubmissionClient):
     def _get_default_api_server_address(cls) -> str:
         assert (
             ray.is_initialized()
-            and ray.worker.global_worker.node.address_info["webui_url"] is not None
+            and ray._private.worker.global_worker.node.address_info["webui_url"]
+            is not None
         )
-        return f"http://{ray.worker.global_worker.node.address_info['webui_url']}"
+        return (
+            f"http://{ray._private.worker.global_worker.node.address_info['webui_url']}"
+        )
 
     def list(
         self, resource: StateResource, options: ListApiOptions, _explain: bool = False
@@ -291,7 +293,7 @@ def get_log(
     if api_server_url is None:
         assert ray.is_initialized()
         api_server_url = (
-            f"http://{ray.worker.global_worker.node.address_info['webui_url']}"
+            f"http://{ray._private.worker.global_worker.node.address_info['webui_url']}"
         )
 
     media_type = "stream" if follow else "file"
@@ -342,7 +344,7 @@ def list_logs(
     if api_server_url is None:
         assert ray.is_initialized()
         api_server_url = (
-            f"http://{ray.worker.global_worker.node.address_info['webui_url']}"
+            f"http://{ray._private.worker.global_worker.node.address_info['webui_url']}"
         )
 
     if not glob_filter:

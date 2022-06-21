@@ -4,7 +4,7 @@ import sqlite3
 from typing import Optional
 
 import ray
-from ray import ray_constants
+from ray._private import ray_constants
 from ray._private.gcs_utils import GcsClient
 from ray.serve.constants import RAY_SERVE_KV_TIMEOUT_S, SERVE_LOGGER_NAME
 from ray.serve.storage.kv_store_base import KVStoreBase

@@ -1,7 +1,7 @@
 import os
+import threading
 from contextlib import contextmanager
 from functools import partial, wraps
-import threading
 
 # Attr set on func defs to mark they have been converted to client mode.
 RAY_CLIENT_MODE_ATTR = "__ray_client_mode_key__"
@@ -93,10 +93,10 @@ def client_mode_hook(func: callable = None, *, auto_init: bool):
     if func is None:
         return partial(client_mode_hook, auto_init=auto_init)
 
-    from ray.util.client import ray
-
     @wraps(func)
     def wrapper(*args, **kwargs):
+        from ray.util.client import ray
+
         if client_mode_should_convert(auto_init=auto_init):
             # Legacy code
             # we only convert init function if RAY_CLIENT_MODE=1
@@ -141,10 +141,11 @@ def client_mode_wrap(func):
     side, this function is wrapped in a task to facilitate interaction with
     the GCS.
     """
-    from ray.util.client import ray
 
     @wraps(func)
     def wrapper(*args, **kwargs):
+        from ray.util.client import ray
+
         # Directly pass this through since `client_mode_wrap` is for
         # Placement Group APIs
         if client_mode_should_convert(auto_init=True):

@@ -1,23 +1,23 @@
-import os
 import importlib
 import inspect
 import json
 import logging
+import os
+import sys
 import warnings
 from dataclasses import dataclass
-import sys
-
 from typing import Any, Dict, Optional, Tuple
 
-from ray.ray_constants import (
+import ray.util.client_connect
+from ray._private.ray_constants import (
     RAY_ADDRESS_ENVIRONMENT_VARIABLE,
     RAY_NAMESPACE_ENVIRONMENT_VARIABLE,
     RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE,
 )
+from ray._private.worker import BaseContext
+from ray._private.worker import init as ray_driver_init
 from ray.job_config import JobConfig
-import ray.util.client_connect
-from ray.worker import init as ray_driver_init, BaseContext
-from ray.util.annotations import Deprecated
+from ray.util.annotations import Deprecated, PublicAPI
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +25,7 @@ CLIENT_DOCS_URL = "https://docs.ray.io/en/latest/cluster/ray-client.html"
 
 
 @dataclass
+@PublicAPI
 class ClientContext(BaseContext):
     """
     Basic context manager for a ClientBuilder connection.
@@ -67,10 +68,10 @@ class ClientContext(BaseContext):
             if ray.util.client.ray.is_default() or force_disconnect:
                 # This is the only client connection
                 ray.util.client_connect.disconnect()
-        elif ray.worker.global_worker.node is None:
+        elif ray._private.worker.global_worker.node is None:
             # Already disconnected.
             return
-        elif ray.worker.global_worker.node.is_head():
+        elif ray._private.worker.global_worker.node.is_head():
             logger.debug(
                 "The current Ray Cluster is scoped to this process. "
                 "Disconnecting is not possible as it will shutdown the "
@@ -81,6 +82,7 @@ class ClientContext(BaseContext):
             ray.shutdown()
 
 
+@Deprecated
 class ClientBuilder:
     """
     Builder for a Ray Client connection. This class can be subclassed by
@@ -163,7 +165,7 @@ class ClientBuilder:
             _credentials=self._credentials,
             ray_init_kwargs=self._remote_init_kwargs,
         )
-        get_dashboard_url = ray.remote(ray.worker.get_dashboard_url)
+        get_dashboard_url = ray.remote(ray._private.worker.get_dashboard_url)
         dashboard_url = ray.get(get_dashboard_url.options(num_cpus=0).remote())
         cxt = ClientContext(
             dashboard_url=dashboard_url,

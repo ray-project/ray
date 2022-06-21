@@ -1,28 +1,28 @@
-import logging
 import datetime
-import time
+import logging
 import os
 import shutil
+import time
+
+import numpy
+import pygloo
 
 import ray
-from ray import ray_constants
-import pygloo
-import numpy
-
+from ray._private import ray_constants
 from ray.util.collective.collective_group import gloo_util
 from ray.util.collective.collective_group.base_collective_group import BaseGroup
+from ray.util.collective.const import get_store_name
 from ray.util.collective.types import (
-    AllReduceOptions,
-    BarrierOptions,
-    Backend,
-    ReduceOptions,
-    BroadcastOptions,
     AllGatherOptions,
+    AllReduceOptions,
+    Backend,
+    BarrierOptions,
+    BroadcastOptions,
+    RecvOptions,
+    ReduceOptions,
     ReduceScatterOptions,
     SendOptions,
-    RecvOptions,
 )
-from ray.util.collective.const import get_store_name
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +43,7 @@ class Rendezvous:
     def __init__(self, group_name, context, store_type, device_type):
         self._group_name = group_name
         self._context = context
-        redis_address = ray.worker._global_node.redis_address
+        redis_address = ray._private.worker._global_node.redis_address
         (self._redis_ip_address, self._redis_port) = (
             redis_address.split(":") if store_type == "redis" else (None, None)
         )
@@ -68,7 +68,7 @@ class Rendezvous:
             redisStore = pygloo.rendezvous.RedisStore(
                 self._redis_ip_address, int(self._redis_port)
             )
-            redis_password = ray.worker._global_node.redis_password
+            redis_password = ray._private.worker._global_node.redis_password
             if redis_password is None or len(redis_password) == 0:
                 redis_password = ray_constants.REDIS_DEFAULT_PASSWORD
             redisStore.authorize(redis_password)

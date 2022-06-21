@@ -12,7 +12,7 @@ import yaml
 
 from ray.autoscaler.tags import TAG_RAY_NODE_KIND, NODE_KIND_HEAD
 from ray.autoscaler.node_provider import NodeProvider
-from ray.ray_constants import DEFAULT_PORT
+from ray._private.ray_constants import DEFAULT_PORT
 from ray.ray_operator.operator_utils import cr_to_config
 from ray.ray_operator.operator_utils import check_redis_password_not_specified
 from ray.ray_operator.operator_utils import get_head_service

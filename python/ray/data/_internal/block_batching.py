@@ -1,6 +1,6 @@
 import collections
 import itertools
-from typing import TYPE_CHECKING, Dict, Iterable, Iterator, Optional, Union
+from typing import TYPE_CHECKING, Iterable, Iterator, Optional, Union, Dict
 
 import numpy as np
 
@@ -155,7 +155,7 @@ def _sliding_window(iterable: Iterable, n: int, clear_block_after_read: bool = F
     for elem in it:
         block_ref = window.popleft()
         if clear_block_after_read:
-            ray.internal.internal_api.free(block_ref, local_only=False)
+            ray._private.internal_api.free(block_ref, local_only=False)
         window.append(elem)
         yield tuple(window)
 

@@ -1,36 +1,33 @@
 import dis
 import hashlib
-import os
 import importlib
 import inspect
 import json
 import logging
+import os
 import sys
-import time
-from typing import Optional
 import threading
+import time
 import traceback
-from collections import (
-    namedtuple,
-    defaultdict,
-)
+from collections import defaultdict, namedtuple
+from typing import Optional
 
 import ray
 import ray._private.profiling as profiling
-from ray import ray_constants
 from ray import cloudpickle as pickle
-from ray._raylet import PythonFunctionDescriptor, JobID
+from ray._private import ray_constants
+from ray._private.inspect_util import (
+    is_class_method,
+    is_function_or_method,
+    is_static_method,
+)
+from ray._private.ray_constants import KV_NAMESPACE_FUNCTION_TABLE
 from ray._private.utils import (
     check_oversized_function,
     ensure_str,
     format_error_message,
 )
-from ray.ray_constants import KV_NAMESPACE_FUNCTION_TABLE
-from ray.util.inspect import (
-    is_function_or_method,
-    is_class_method,
-    is_static_method,
-)
+from ray._raylet import JobID, PythonFunctionDescriptor
 
 FunctionExecutionInfo = namedtuple(
     "FunctionExecutionInfo", ["function", "function_name", "max_calls"]

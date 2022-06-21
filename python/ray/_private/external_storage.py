@@ -1,15 +1,15 @@
 import abc
 import logging
 import os
-import shutil
 import random
+import shutil
 import time
 import urllib
 from collections import namedtuple
-from typing import List, IO, Tuple, Optional
+from typing import IO, List, Optional, Tuple
 
 import ray
-from ray.ray_constants import DEFAULT_OBJECT_PREFIX
+from ray._private.ray_constants import DEFAULT_OBJECT_PREFIX
 from ray._raylet import ObjectRef
 
 ParsedURL = namedtuple("ParsedURL", "base_url, offset, size")
@@ -87,7 +87,7 @@ class ExternalStorage(metaclass=abc.ABCMeta):
     HEADER_LENGTH = 24
 
     def _get_objects_from_store(self, object_refs):
-        worker = ray.worker.global_worker
+        worker = ray._private.worker.global_worker
         # Since the object should always exist in the plasma store before
         # spilling, it can directly get the object from the local plasma
         # store.
@@ -98,7 +98,7 @@ class ExternalStorage(metaclass=abc.ABCMeta):
     def _put_object_to_store(
         self, metadata, data_size, file_like, object_ref, owner_address
     ):
-        worker = ray.worker.global_worker
+        worker = ray._private.worker.global_worker
         worker.core_worker.put_file_like_object(
             metadata, data_size, file_like, object_ref, owner_address
         )
@@ -370,7 +370,7 @@ class ExternalStorageRayStorageImpl(ExternalStorage):
         # Override the storage config for unit tests.
         _force_storage_for_testing: Optional[str] = None,
     ):
-        from ray.internal import storage
+        from ray._private import storage
 
         if _force_storage_for_testing:
             storage._reset()

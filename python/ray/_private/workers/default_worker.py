@@ -1,17 +1,17 @@
 import argparse
 import base64
 import json
-import time
-import sys
 import os
+import sys
+import time
 
 import ray
-import ray.actor
-import ray.node
-import ray.ray_constants as ray_constants
+import ray._private.node
+import ray._private.ray_constants as ray_constants
 import ray._private.utils
+import ray.actor
 from ray._private.parameter import RayParams
-from ray._private.ray_logging import get_worker_log_file_name, configure_log_file
+from ray._private.ray_logging import configure_log_file, get_worker_log_file_name
 
 parser = argparse.ArgumentParser(
     description=("Parse addresses for the worker to connect to.")
@@ -182,7 +182,7 @@ if __name__ == "__main__":
         gcs_address=args.gcs_address,
     )
 
-    node = ray.node.Node(
+    node = ray._private.node.Node(
         ray_params,
         head=False,
         shutdown_at_exit=False,
@@ -194,8 +194,7 @@ if __name__ == "__main__":
     # connect to raylet. Otherwise we may receive requests before the
     # external storage is intialized.
     if mode == ray.RESTORE_WORKER_MODE or mode == ray.SPILL_WORKER_MODE:
-        from ray import external_storage
-        from ray.internal import storage
+        from ray._private import external_storage, storage
 
         storage._init_storage(args.storage, is_head=False)
         if args.object_spilling_config:
@@ -207,8 +206,8 @@ if __name__ == "__main__":
             object_spilling_config, node.session_name
         )
 
-    ray.worker._global_node = node
-    ray.worker.connect(
+    ray._private.worker._global_node = node
+    ray._private.worker.connect(
         node,
         mode=mode,
         runtime_env_hash=args.runtime_env_hash,
@@ -217,7 +216,7 @@ if __name__ == "__main__":
     )
 
     # Add code search path to sys.path, set load_code_from_local.
-    core_worker = ray.worker.global_worker.core_worker
+    core_worker = ray._private.worker.global_worker.core_worker
     code_search_path = core_worker.get_job_config().code_search_path
     load_code_from_local = False
     if code_search_path:
@@ -226,7 +225,7 @@ if __name__ == "__main__":
             if os.path.isfile(p):
                 p = os.path.dirname(p)
             sys.path.insert(0, p)
-    ray.worker.global_worker.set_load_code_from_local(load_code_from_local)
+    ray._private.worker.global_worker.set_load_code_from_local(load_code_from_local)
 
     # Setup log file.
     out_file, err_file = node.get_log_file_handles(
@@ -235,7 +234,7 @@ if __name__ == "__main__":
     configure_log_file(out_file, err_file)
 
     if mode == ray.WORKER_MODE:
-        ray.worker.global_worker.main_loop()
+        ray._private.worker.global_worker.main_loop()
     elif mode in [ray.RESTORE_WORKER_MODE, ray.SPILL_WORKER_MODE]:
         # It is handled by another thread in the C++ core worker.
         # We just need to keep the worker alive.

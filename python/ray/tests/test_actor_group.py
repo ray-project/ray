@@ -1,5 +1,6 @@
-import pytest
 import time
+
+import pytest
 
 import ray
 from ray.util.actor_group import ActorGroup
@@ -38,7 +39,7 @@ def test_actor_shutdown(ray_start_2_cpus):
     ag = ActorGroup(actor_cls=DummyActor, num_actors=2)
     time.sleep(1)
     assert "CPU" not in ray.available_resources()
-    assert len(ray.state.actors()) == 2
+    assert len(ray._private.state.actors()) == 2
     ag.shutdown()
     time.sleep(1)
     assert ray.available_resources()["CPU"] == 2

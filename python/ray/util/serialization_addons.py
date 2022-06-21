@@ -3,7 +3,10 @@ This module is intended for implementing internal serializers for some
 site packages.
 """
 
+from ray.util.annotations import DeveloperAPI
 
+
+@DeveloperAPI
 def register_pydantic_serializer(serialization_context):
     try:
         import pydantic.fields
@@ -32,6 +35,7 @@ def register_pydantic_serializer(serialization_context):
     )
 
 
+@DeveloperAPI
 def register_starlette_serializer(serialization_context):
     try:
         import starlette.datastructures
@@ -47,6 +51,7 @@ def register_starlette_serializer(serialization_context):
     )
 
 
+@DeveloperAPI
 def apply(serialization_context):
     register_pydantic_serializer(serialization_context)
     register_starlette_serializer(serialization_context)

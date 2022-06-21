@@ -1,13 +1,14 @@
-from filelock import FileLock
-import pytest
-import ray
-from ray import workflow
-from ray.workflow import serialization
-from ray.workflow import workflow_storage
-from ray._private.test_utils import run_string_as_driver_nonblocking
-from ray.tests.conftest import *  # noqa
 import subprocess
 import time
+
+import pytest
+from filelock import FileLock
+
+import ray
+from ray import workflow
+from ray._private.test_utils import run_string_as_driver_nonblocking
+from ray.tests.conftest import *  # noqa
+from ray.workflow import serialization, workflow_storage
 
 
 @ray.remote
@@ -173,7 +174,7 @@ def test_embedded_objectrefs(workflow_start_regular):
         def __init__(self, refs):
             self.refs = refs
 
-    from ray.internal.storage import _storage_uri
+    from ray._private.storage import _storage_uri
 
     wrapped = ObjectRefsWrapper([ray.put(1), ray.put(2)])
 

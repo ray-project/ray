@@ -25,7 +25,7 @@ def _reduce(ds: ray.data.Dataset):
 
 @contextlib.contextmanager
 def out_of_band_serialize_dataset():
-    context = ray.worker.global_worker.get_serialization_context()
+    context = ray._private.worker.global_worker.get_serialization_context()
     try:
         context._register_cloudpickle_reducer(ray.data.Dataset, _reduce)
         yield

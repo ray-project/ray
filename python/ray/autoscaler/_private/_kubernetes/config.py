@@ -6,7 +6,7 @@ import re
 from kubernetes import client
 from kubernetes.client.rest import ApiException
 
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 from ray.autoscaler._private._kubernetes import auth_api, core_api, log_prefix
 
 logger = logging.getLogger(__name__)

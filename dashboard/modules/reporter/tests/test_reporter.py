@@ -1,23 +1,24 @@
+import logging
 import os
 import sys
-import logging
-from mock import patch
-import requests
 import time
 
 import pytest
+import requests
+
 import ray
-from ray import ray_constants
+from mock import patch
+from ray._private import ray_constants
+from ray._private.test_utils import (
+    RayTestTimeoutException,
+    fetch_prometheus,
+    format_web_url,
+    wait_for_condition,
+    wait_until_server_available,
+)
+from ray.dashboard.modules.reporter.reporter_agent import ReporterAgent
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.dashboard.utils import Bunch
-from ray.dashboard.modules.reporter.reporter_agent import ReporterAgent
-from ray._private.test_utils import (
-    format_web_url,
-    RayTestTimeoutException,
-    wait_until_server_available,
-    wait_for_condition,
-    fetch_prometheus,
-)
 
 try:
     import prometheus_client
@@ -148,7 +149,7 @@ def test_prometheus_physical_stats_record(enable_test_module, shutdown_only):
 
     def test_case_ip_correct():
         components_dict, metric_names, metric_samples = fetch_prometheus(prom_addresses)
-        raylet_proc = ray.worker._global_node.all_processes[
+        raylet_proc = ray._private.worker._global_node.all_processes[
             ray_constants.PROCESS_TYPE_RAYLET
         ][0]
         raylet_pid = None

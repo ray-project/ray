@@ -44,7 +44,8 @@ _cached_cls = None
 if ray.is_initialized():
     _register_arrow_json_readoptions_serializer()
 else:
-    ray.worker._post_init_hooks.append(_register_arrow_json_readoptions_serializer)
+    pass
+#    ray._internal.worker._post_init_hooks.append(_register_arrow_json_readoptions_serializer)
 
 __all__ = [
     "ActorPoolStrategy",

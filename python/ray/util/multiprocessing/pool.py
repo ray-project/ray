@@ -1,26 +1,27 @@
-from typing import Callable, Iterable, List, Tuple, Optional, Any, Dict, Hashable
-import logging
-from multiprocessing import TimeoutError
-import os
-import time
 import collections
-import threading
-import queue
 import copy
 import gc
-import sys
 import itertools
+import logging
+import os
+import queue
+import sys
+import threading
+import time
+from multiprocessing import TimeoutError
+from typing import Any, Callable, Dict, Hashable, Iterable, List, Optional, Tuple
+
+import ray
+from ray.util import log_once
 
 try:
-    from joblib.parallel import BatchedCalls, parallel_backend
     from joblib._parallel_backends import SafeFunction
+    from joblib.parallel import BatchedCalls, parallel_backend
 except ImportError:
     BatchedCalls = None
     parallel_backend = None
     SafeFunction = None
 
-import ray
-from ray.util import log_once
 
 logger = logging.getLogger(__name__)
 
@@ -617,7 +618,7 @@ class Pool:
                 logger.info("Starting local ray cluster")
                 ray.init(num_cpus=processes)
 
-        ray_cpus = int(ray.state.cluster_resources()["CPU"])
+        ray_cpus = int(ray._private.state.cluster_resources()["CPU"])
         if processes is None:
             processes = ray_cpus
         if processes <= 0:

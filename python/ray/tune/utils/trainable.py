@@ -3,9 +3,11 @@ import inspect
 import io
 import logging
 import os
-import pandas as pd
 import shutil
-from typing import Any, Dict, Union, Optional
+from typing import Any, Dict, Optional, Union
+
+import pandas as pd
+from six import string_types
 
 import ray
 import ray.cloudpickle as pickle
@@ -13,7 +15,6 @@ from ray.tune.registry import _ParameterRegistry
 from ray.tune.utils import detect_checkpoint_function
 from ray.util import placement_group
 from ray.util.annotations import DeveloperAPI
-from six import string_types
 
 logger = logging.getLogger(__name__)
 
@@ -372,7 +373,7 @@ def with_parameters(trainable, **kwargs):
         )
 
     parameter_registry = _ParameterRegistry()
-    ray.worker._post_init_hooks.append(parameter_registry.flush)
+    ray._private.worker._post_init_hooks.append(parameter_registry.flush)
 
     # Objects are moved into the object store
     prefix = f"{str(trainable)}_"

@@ -252,7 +252,7 @@ class Trainable:
 
     def is_actor(self):
         try:
-            actor_id = ray.worker.global_worker.actor_id
+            actor_id = ray._private.worker.global_worker.actor_id
             return actor_id != actor_id.nil()
         except Exception:
             # If global_worker is not instantiated, we're not in an actor

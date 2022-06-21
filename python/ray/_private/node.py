@@ -14,19 +14,19 @@ import tempfile
 import threading
 import time
 import traceback
-
-from typing import Optional, Dict
 from collections import defaultdict
+from typing import Dict, Optional
+
 from filelock import FileLock
 
 import ray
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
-from ray.internal import storage
+from ray._private import storage
 from ray._private.gcs_utils import GcsClient
 from ray._private.resource_spec import ResourceSpec
-from ray._private.utils import try_to_create_directory, try_to_symlink, open_log
+from ray._private.utils import open_log, try_to_create_directory, try_to_symlink
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray configures it by default automatically
@@ -1118,7 +1118,7 @@ class Node:
             gcs_options = ray._raylet.GcsClientOptions.from_gcs_address(
                 self.gcs_address
             )
-            global_state = ray.state.GlobalState()
+            global_state = ray._private.state.GlobalState()
             global_state._initialize_global_state(gcs_options)
             new_config = global_state.get_system_config()
             assert self._config.items() <= new_config.items(), (
@@ -1448,7 +1448,7 @@ class Node:
         object_spilling_config = self._config.get("object_spilling_config", {})
         if object_spilling_config:
             object_spilling_config = json.loads(object_spilling_config)
-            from ray import external_storage
+            from ray._private import external_storage
 
             storage = external_storage.setup_external_storage(
                 object_spilling_config, self.session_name
@@ -1493,7 +1493,7 @@ class Node:
         self._config["is_external_storage_type_fs"] = is_external_storage_type_fs
 
         # Validate external storage usage.
-        from ray import external_storage
+        from ray._private import external_storage
 
         external_storage.setup_external_storage(deserialized_config, self.session_name)
         external_storage.reset_external_storage()

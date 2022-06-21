@@ -6,7 +6,7 @@ from typing import Dict, List
 
 import numpy as np
 
-import ray.ray_constants
+import ray._private.ray_constants
 from ray._private.gcs_utils import PlacementGroupTableData
 from ray.autoscaler._private.constants import (
     AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE,
@@ -282,11 +282,12 @@ class LoadMetrics:
         for key in total_resources:
             if key in ["memory", "object_store_memory"]:
                 total = (
-                    total_resources[key] * ray.ray_constants.MEMORY_RESOURCE_UNIT_BYTES
+                    total_resources[key]
+                    * ray._private.ray_constants.MEMORY_RESOURCE_UNIT_BYTES
                 )
                 available = (
                     available_resources[key]
-                    * ray.ray_constants.MEMORY_RESOURCE_UNIT_BYTES
+                    * ray._private.ray_constants.MEMORY_RESOURCE_UNIT_BYTES
                 )
                 usage_dict[key] = (total - available, total)
             else:

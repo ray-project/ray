@@ -4,10 +4,10 @@ from collections import defaultdict
 from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar
 
 import ray
-from ray.air.checkpoint import Checkpoint
+from ray._private.ray_constants import env_integer
 from ray.exceptions import RayActorError
-from ray.ray_constants import env_integer
 from ray.train._internal.dataset_spec import RayDatasetSpec
+from ray.air.checkpoint import Checkpoint
 from ray.train._internal.session import (
     TrainingResult,
     TrialInfo,
@@ -147,8 +147,9 @@ class BackendExecutor:
         self._placement_group.
         """
         current_placement_group = get_current_placement_group()
+        worker = ray._private.worker.global_worker
         should_capture_child_tasks_in_placement_group = (
-            ray.worker.global_worker.should_capture_child_tasks_in_placement_group
+            worker.should_capture_child_tasks_in_placement_group
         )
         should_create_placement_group = (
             current_placement_group is None

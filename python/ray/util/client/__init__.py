@@ -1,16 +1,19 @@
-from typing import List, Tuple, Dict, Any, Optional
-from ray.job_config import JobConfig
+import logging
+import os
+import sys
+import threading
+from typing import Any, Dict, List, Optional, Tuple
+
+import grpc
+
+import ray._private.ray_constants as ray_constants
 from ray._private.client_mode_hook import (
     _explicitly_disable_client_mode,
     _explicitly_enable_client_mode,
 )
-import os
-import sys
-import logging
-import threading
-import grpc
-import ray.ray_constants as ray_constants
 from ray._private.ray_logging import setup_logger
+from ray.job_config import JobConfig
+from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
@@ -21,9 +24,9 @@ CURRENT_PROTOCOL_VERSION = "2022-05-13"
 
 class _ClientContext:
     def __init__(self):
-        from ray.util.client.api import ClientAPI
+        from ray.util.client.api import _ClientAPI
 
-        self.api = ClientAPI()
+        self.api = _ClientAPI()
         self.client_worker = None
         self._server = None
         self._connected_with_init = False
@@ -106,11 +109,11 @@ class _ClientContext:
         The server side should have already registered the serializers via
         regular worker's serialization_context mechanism.
         """
-        import ray.serialization_addons
+        import ray.util.serialization_addons
         from ray.util.serialization import StandaloneSerializationContext
 
         ctx = StandaloneSerializationContext()
-        ray.serialization_addons.apply(ctx)
+        ray.util.serialization_addons.apply(ctx)
 
     def _check_versions(self, conn_info: Dict[str, Any], ignore_version: bool) -> None:
         local_major_minor = f"{sys.version_info[0]}.{sys.version_info[1]}"
@@ -138,11 +141,11 @@ class _ClientContext:
 
     def disconnect(self):
         """Disconnect the Ray Client."""
-        from ray.util.client.api import ClientAPI
+        from ray.util.client.api import _ClientAPI
 
         if self.client_worker is not None:
             self.client_worker.close()
-        self.api = ClientAPI()
+        self.api = _ClientAPI()
         self.client_worker = None
 
     # remote can be called outside of a connection, which is why it
@@ -207,6 +210,7 @@ _lock = threading.Lock()
 _default_context = _ClientContext()
 
 
+@DeveloperAPI
 class RayAPIStub:
     """This class stands in as the replacement API for the `import ray` module.
 
@@ -294,6 +298,7 @@ class RayAPIStub:
 ray = RayAPIStub()
 
 
+@DeveloperAPI
 def num_connected_contexts():
     """Return the number of client connections active."""
     global _lock, _all_contexts

@@ -9,19 +9,16 @@ import tempfile
 from typing import Callable, Dict, Iterable, List
 
 import numpy as np
-import ray
 
-from ray.experimental.raysort import constants
-from ray.experimental.raysort import logging_utils
-from ray.experimental.raysort import sortlib
-from ray.experimental.raysort import tracing_utils
+import ray
+from ray.experimental.raysort import constants, logging_utils, sortlib, tracing_utils
 from ray.experimental.raysort.types import (
     BlockInfo,
     ByteCount,
-    RecordCount,
     PartId,
     PartInfo,
     Path,
+    RecordCount,
 )
 
 Args = argparse.Namespace
@@ -131,7 +128,7 @@ def _get_mount_points():
 
 
 def _part_info(args: Args, part_id: PartId, kind="input") -> PartInfo:
-    node = ray.worker.global_worker.node_ip_address
+    node = ray._private.worker.global_worker.node_ip_address
     mnt = random.choice(args.mount_points)
     filepath = _get_part_path(mnt, part_id, kind)
     return PartInfo(part_id, node, filepath)
@@ -391,7 +388,7 @@ def sort_main(args: Args):
             writer = csv.writer(fout)
             writer.writerows(reducer_results)
 
-    logging.info(ray.internal.internal_api.memory_summary(stats_only=True))
+    logging.info(ray._private.internal_api.memory_summary(stats_only=True))
 
 
 # ------------------------------------------------------------

@@ -1,11 +1,12 @@
-from contextlib import contextmanager
 import collections
 import random
 import threading
 import time
-from typing import TypeVar, Generic, Iterable, List, Callable, Any
+from contextlib import contextmanager
+from typing import Any, Callable, Generic, Iterable, List, TypeVar
 
 import ray
+from ray.util.annotations import Deprecated
 from ray.util.iter_metrics import MetricsContext, SharedMetrics
 
 # The type of an iterator element.
@@ -13,6 +14,7 @@ T = TypeVar("T")
 U = TypeVar("U")
 
 
+@Deprecated
 def from_items(
     items: List[T], num_shards: int = 2, repeat: bool = False
 ) -> "ParallelIterator[T]":
@@ -37,6 +39,7 @@ def from_items(
     return from_iterators(shards, repeat=repeat, name=name)
 
 
+@Deprecated
 def from_range(
     n: int, num_shards: int = 2, repeat: bool = False
 ) -> "ParallelIterator[int]":
@@ -68,6 +71,7 @@ def from_range(
     )
 
 
+@Deprecated
 def from_iterators(
     generators: List[Iterable[T]], repeat: bool = False, name=None
 ) -> "ParallelIterator[T]":
@@ -106,6 +110,7 @@ def from_iterators(
     return from_actors(actors, name=name)
 
 
+@Deprecated
 def from_actors(
     actors: List["ray.actor.ActorHandle"], name=None
 ) -> "ParallelIterator[T]":
@@ -123,6 +128,7 @@ def from_actors(
     return ParallelIterator([_ActorSet(actors, [])], name, parent_iterators=[])
 
 
+@Deprecated
 class ParallelIterator(Generic[T]):
     """A parallel iterator over a set of remote actors.
 
@@ -695,6 +701,7 @@ class ParallelIterator(Generic[T]):
         return LocalIterator(base_iterator, SharedMetrics(), name=name)
 
 
+@Deprecated
 class LocalIterator(Generic[T]):
     """An iterator over a single shard of data.
 
@@ -1125,6 +1132,7 @@ class LocalIterator(Generic[T]):
         )
 
 
+@Deprecated
 class ParallelIteratorWorker(object):
     """Worker actor for a ParallelIterator.
 

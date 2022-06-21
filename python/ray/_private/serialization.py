@@ -2,43 +2,43 @@ import logging
 import threading
 import traceback
 
-import ray.cloudpickle as pickle
-from ray import ray_constants
 import ray._private.utils
+import ray.cloudpickle as pickle
+from ray._private import ray_constants
 from ray._private.gcs_utils import ErrorType
-from ray.core.generated.common_pb2 import RayErrorInfo
-from ray.exceptions import (
-    RayError,
-    PlasmaObjectNotAvailable,
-    RayTaskError,
-    RayActorError,
-    TaskCancelledError,
-    WorkerCrashedError,
-    ObjectLostError,
-    ObjectFetchTimedOutError,
-    ReferenceCountingAssertionError,
-    OwnerDiedError,
-    ObjectReconstructionFailedError,
-    ObjectReconstructionFailedMaxAttemptsExceededError,
-    ObjectReconstructionFailedLineageEvictedError,
-    RaySystemError,
-    RuntimeEnvSetupError,
-    TaskPlacementGroupRemoved,
-    ActorPlacementGroupRemoved,
-    LocalRayletDiedError,
-    TaskUnschedulableError,
-    ActorUnschedulableError,
-)
 from ray._raylet import (
+    MessagePackSerializedObject,
+    MessagePackSerializer,
+    Pickle5SerializedObject,
+    Pickle5Writer,
+    RawSerializedObject,
     split_buffer,
     unpack_pickle5_buffers,
-    Pickle5Writer,
-    Pickle5SerializedObject,
-    MessagePackSerializer,
-    MessagePackSerializedObject,
-    RawSerializedObject,
 )
-from ray import serialization_addons
+from ray.core.generated.common_pb2 import RayErrorInfo
+from ray.exceptions import (
+    ActorPlacementGroupRemoved,
+    ActorUnschedulableError,
+    LocalRayletDiedError,
+    ObjectFetchTimedOutError,
+    ObjectLostError,
+    ObjectReconstructionFailedError,
+    ObjectReconstructionFailedLineageEvictedError,
+    ObjectReconstructionFailedMaxAttemptsExceededError,
+    OwnerDiedError,
+    PlasmaObjectNotAvailable,
+    RayActorError,
+    RayError,
+    RaySystemError,
+    RayTaskError,
+    ReferenceCountingAssertionError,
+    RuntimeEnvSetupError,
+    TaskCancelledError,
+    TaskPlacementGroupRemoved,
+    TaskUnschedulableError,
+    WorkerCrashedError,
+)
+from ray.util import serialization_addons
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +62,7 @@ def _object_ref_deserializer(binary, call_site, owner_address, object_status):
     # to 'self' here instead, but this function is itself pickled
     # somewhere, which causes an error.
     if owner_address:
-        worker = ray.worker.global_worker
+        worker = ray._private.worker.global_worker
         worker.check_connected()
         context = worker.get_serialization_context()
         outer_id = context.get_outer_object_ref()
@@ -79,7 +79,7 @@ def _object_ref_deserializer(binary, call_site, owner_address, object_status):
 def _actor_handle_deserializer(serialized_obj):
     # If this actor handle was stored in another object, then tell the
     # core worker.
-    context = ray.worker.global_worker.get_serialization_context()
+    context = ray._private.worker.global_worker.get_serialization_context()
     outer_id = context.get_outer_object_ref()
     return ray.actor.ActorHandle._deserialization_helper(serialized_obj, outer_id)
 
@@ -96,7 +96,7 @@ class SerializationContext:
         self._thread_local = threading.local()
 
         def actor_handle_reducer(obj):
-            ray.worker.global_worker.check_connected()
+            ray._private.worker.global_worker.check_connected()
             serialized, actor_handle_id = obj._serialization_helper()
             # Update ref counting for the actor handle
             self.add_contained_object_ref(actor_handle_id)
@@ -105,7 +105,7 @@ class SerializationContext:
         self._register_cloudpickle_reducer(ray.actor.ActorHandle, actor_handle_reducer)
 
         def object_ref_reducer(obj):
-            worker = ray.worker.global_worker
+            worker = ray._private.worker.global_worker
             worker.check_connected()
             self.add_contained_object_ref(obj)
             obj, owner_address, object_status = worker.core_worker.serialize_object_ref(
@@ -171,7 +171,9 @@ class SerializationContext:
             # cloudpickle directly or captured in a remote function/actor),
             # then pin the object for the lifetime of this worker by adding
             # a local reference that won't ever be removed.
-            ray.worker.global_worker.core_worker.add_object_ref_reference(object_ref)
+            ray._private.worker.global_worker.core_worker.add_object_ref_reference(
+                object_ref
+            )
 
     def _deserialize_pickle5_data(self, data):
         try:
