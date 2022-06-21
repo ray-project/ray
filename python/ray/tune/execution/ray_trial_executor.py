@@ -35,7 +35,7 @@ from ray.tune.execution.placement_groups import (
     get_tune_pg_prefix,
 )
 from ray.tune.utils.trainable import TrainableUtil
-from ray.tune.trial import Trial, _Location, _TrialInfo
+from ray.tune.experiment.trial import Trial, _Location, _TrialInfo
 from ray.tune.utils import warn_if_slow
 from ray.tune.utils.resource_updater import _ResourceUpdater
 from ray.util import log_once

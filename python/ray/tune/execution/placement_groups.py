@@ -21,7 +21,7 @@ from ray.util.placement_group import (
 )
 
 if TYPE_CHECKING:
-    from ray.tune.trial import Trial
+    from ray.tune.experiment.trial import Trial
 
 TUNE_PLACEMENT_GROUP_REMOVAL_DELAY = 2.0
 

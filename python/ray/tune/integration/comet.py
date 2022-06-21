@@ -2,7 +2,7 @@ import os
 from typing import Dict, List
 
 from ray.tune.logger import LoggerCallback
-from ray.tune.trial import Trial
+from ray.tune.experiment.trial import Trial
 from ray.tune.utils import flatten_dict
 
 

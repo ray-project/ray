@@ -20,7 +20,7 @@ from ray.tune.result import TRAINING_ITERATION
 from ray.tune.syncer import SyncConfig, SyncerCallback
 
 from ray.tune.callback import warnings
-from ray.tune.trial import Trial
+from ray.tune.experiment.trial import Trial
 from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune import Callback
 from ray.tune.utils.callback import create_default_callbacks

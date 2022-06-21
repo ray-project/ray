@@ -6,7 +6,7 @@ from ray import tune
 from ray.tune import Callback
 from ray.rllib.algorithms.pg import PG, DEFAULT_CONFIG
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
-from ray.tune.trial import Trial
+from ray.tune.experiment.trial import Trial
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 trial_executor = None

@@ -10,7 +10,7 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
-    from ray.tune.trial import Trial
+    from ray.tune.experiment.trial import Trial
     from ray.tune.analysis import ExperimentAnalysis
 
 logger = logging.getLogger(__name__)
@@ -238,7 +238,7 @@ class Searcher:
             raise NotImplementedError
 
         # lazy imports to avoid circular dependencies
-        from ray.tune.trial import Trial
+        from ray.tune.experiment.trial import Trial
         from ray.tune.analysis import ExperimentAnalysis
         from ray.tune.result import DONE
 

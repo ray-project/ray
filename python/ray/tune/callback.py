@@ -6,7 +6,7 @@ from ray.util.annotations import PublicAPI, DeveloperAPI
 from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint
 
 if TYPE_CHECKING:
-    from ray.tune.trial import Trial
+    from ray.tune.experiment.trial import Trial
     from ray.tune.stopper import Stopper
 
 

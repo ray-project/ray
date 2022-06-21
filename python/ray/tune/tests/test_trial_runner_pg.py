@@ -7,7 +7,7 @@ import unittest
 import ray
 from ray import tune
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
-from ray.tune.trial import Trial
+from ray.tune.experiment.trial import Trial
 from ray.tune import Callback
 from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.execution.placement_groups import PlacementGroupFactory

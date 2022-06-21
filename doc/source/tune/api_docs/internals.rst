@@ -21,7 +21,7 @@ TrialRunner
 Trial
 -----
 
-.. autoclass:: ray.tune.trial.Trial
+.. autoclass:: ray.tune.experiment.trial.Trial
 
 .. _tune-callbacks-docs:
 

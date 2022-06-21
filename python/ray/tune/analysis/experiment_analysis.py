@@ -29,7 +29,7 @@ from ray.tune.result import (
     CONFIG_PREFIX,
     TRAINING_ITERATION,
 )
-from ray.tune.trial import Trial
+from ray.tune.experiment.trial import Trial
 from ray.tune.execution.trial_runner import (
     find_newest_experiment_checkpoint,
     load_trial_from_checkpoint,

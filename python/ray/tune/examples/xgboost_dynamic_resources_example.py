@@ -13,7 +13,7 @@ from ray.tune.schedulers import ResourceChangingScheduler, ASHAScheduler
 from ray.tune import Trainable
 from ray.tune.resources import Resources
 from ray.tune.execution.placement_groups import PlacementGroupFactory
-from ray.tune.trial import Trial
+from ray.tune.experiment.trial import Trial
 from ray.tune.execution import trial_runner
 from ray.tune.integration.xgboost import TuneReportCheckpointCallback
 

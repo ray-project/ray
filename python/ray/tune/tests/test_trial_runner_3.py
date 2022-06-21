@@ -16,7 +16,7 @@ from ray.tune.result import TRAINING_ITERATION
 from ray.tune.schedulers import TrialScheduler, FIFOScheduler
 from ray.tune.experiment import Experiment
 from ray.tune.suggest import BasicVariantGenerator
-from ray.tune.trial import Trial
+from ray.tune.experiment.trial import Trial
 from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.resources import Resources, json_to_resources, resources_to_json
 from ray.tune.suggest.repeater import Repeater

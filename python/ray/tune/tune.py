@@ -53,7 +53,7 @@ from ray.tune.syncer import (
     SyncerCallback,
 )
 from ray.tune.trainable import Trainable
-from ray.tune.trial import Trial
+from ray.tune.experiment.trial import Trial
 from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.utils.callback import create_default_callbacks
 from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity

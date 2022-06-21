@@ -1,7 +1,7 @@
 from django.shortcuts import HttpResponse
 
 from ray.tune.automl.board.models.models import JobRecord, TrialRecord
-from ray.tune.trial import Trial
+from ray.tune.experiment.trial import Trial
 
 import json
 

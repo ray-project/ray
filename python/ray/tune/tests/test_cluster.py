@@ -15,7 +15,7 @@ from ray.tune.experiment import Experiment
 from ray.tune.error import TuneError
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.syncer import SyncerCallback
-from ray.tune.trial import Trial
+from ray.tune.experiment.trial import Trial
 from ray.tune.execution.trial_runner import TrialRunner
 
 

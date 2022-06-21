@@ -10,7 +10,7 @@ from ray.util.annotations import PublicAPI
 from ray.tune.execution import trial_runner
 from ray.tune.resources import Resources
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
-from ray.tune.trial import Trial
+from ray.tune.experiment.trial import Trial
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 logger = logging.getLogger(__name__)
