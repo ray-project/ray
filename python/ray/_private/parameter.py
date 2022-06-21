@@ -1,10 +1,10 @@
 import logging
 import os
-from typing import Optional, List, Dict
+from typing import Dict, List, Optional
 
 import numpy as np
 
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +19,7 @@ class RayParams:
             It will also kill these processes when Python exits.
         redis_port: The port that the primary Redis shard should listen
             to. If None, then it will fall back to
-            ray.ray_constants.DEFAULT_PORT, or a random port if the default is
+            ray._private.ray_constants.DEFAULT_PORT, or a random port if the default is
             not available.
         redis_shard_ports: A list of the ports to use for the non-primary Redis
             shards. If None, then it will fall back to the ports right after
