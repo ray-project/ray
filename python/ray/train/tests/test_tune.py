@@ -5,7 +5,6 @@ import pytest
 import ray
 import ray.train as train
 from ray import tune
-from ray.tune import TuneError
 from ray.air import Checkpoint
 from ray.air.config import FailureConfig, RunConfig
 from ray.train._internal.worker_group import WorkerGroup
@@ -126,8 +125,9 @@ def test_tune_error(ray_start_4_cpus):
         trainer,
     )
 
-    with pytest.raises(TuneError):
-        tuner.fit()
+    result_grid = tuner.fit()
+    with pytest.raises(RuntimeError):
+        raise result_grid[0].error
 
 
 def test_tune_checkpoint(ray_start_4_cpus):
