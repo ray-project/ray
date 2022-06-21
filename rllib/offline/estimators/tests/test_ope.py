@@ -51,7 +51,7 @@ class TestOPE(unittest.TestCase):
             .framework("torch")
             .rollouts(batch_mode="complete_episodes")
         )
-        cls.trainer = config.build()
+        cls.algo = config.build()
 
         # Train DQN for evaluation policy
         tune.run(
@@ -80,7 +80,7 @@ class TestOPE(unittest.TestCase):
             done = False
             rewards = []
             while not done:
-                act = cls.trainer.compute_single_action(obs)
+                act = cls.algo.compute_single_action(obs)
                 obs, reward, done, _ = env.step(act)
                 rewards.append(reward)
             ret = 0
@@ -92,7 +92,7 @@ class TestOPE(unittest.TestCase):
         cls.std_ret["simulation"] = np.std(mc_ret)
 
         # Optional configs for the model-based estimators
-        cls.model_config = {"k": 2, "n_iters": 10}
+        cls.model_config = {"train_test_split_val": 0.0, "k": 2, "n_iters": 10}
         ray.shutdown()
 
     @classmethod
@@ -105,12 +105,11 @@ class TestOPE(unittest.TestCase):
         name = "is"
         estimator = ImportanceSampling(
             name=name,
-            policy=self.trainer.get_policy(),
+            policy=self.algo.get_policy(),
             gamma=self.gamma,
         )
         estimator.process(self.batch)
         estimates = estimator.get_metrics()
-        assert len(estimates) == self.n_episodes
         self.mean_ret[name] = np.mean([e.metrics["v_new"] for e in estimates])
         self.std_ret[name] = np.std([e.metrics["v_new"] for e in estimates])
 
@@ -118,12 +117,11 @@ class TestOPE(unittest.TestCase):
         name = "wis"
         estimator = WeightedImportanceSampling(
             name=name,
-            policy=self.trainer.get_policy(),
+            policy=self.algo.get_policy(),
             gamma=self.gamma,
         )
         estimator.process(self.batch)
         estimates = estimator.get_metrics()
-        assert len(estimates) == self.n_episodes
         self.mean_ret[name] = np.mean([e.metrics["v_new"] for e in estimates])
         self.std_ret[name] = np.std([e.metrics["v_new"] for e in estimates])
 
@@ -131,14 +129,13 @@ class TestOPE(unittest.TestCase):
         name = "dm_qreg"
         estimator = DirectMethod(
             name=name,
-            policy=self.trainer.get_policy(),
+            policy=self.algo.get_policy(),
             gamma=self.gamma,
             q_model_type="qreg",
             **self.model_config,
         )
         estimator.process(self.batch)
         estimates = estimator.get_metrics()
-        assert len(estimates) == self.n_episodes
         self.mean_ret[name] = np.mean([e.metrics["v_new"] for e in estimates])
         self.std_ret[name] = np.std([e.metrics["v_new"] for e in estimates])
 
@@ -146,14 +143,13 @@ class TestOPE(unittest.TestCase):
         name = "dm_fqe"
         estimator = DirectMethod(
             name=name,
-            policy=self.trainer.get_policy(),
+            policy=self.algo.get_policy(),
             gamma=self.gamma,
             q_model_type="fqe",
             **self.model_config,
         )
         estimator.process(self.batch)
         estimates = estimator.get_metrics()
-        assert len(estimates) == self.n_episodes
         self.mean_ret[name] = np.mean([e.metrics["v_new"] for e in estimates])
         self.std_ret[name] = np.std([e.metrics["v_new"] for e in estimates])
 
@@ -161,14 +157,13 @@ class TestOPE(unittest.TestCase):
         name = "dr_qreg"
         estimator = DoublyRobust(
             name=name,
-            policy=self.trainer.get_policy(),
+            policy=self.algo.get_policy(),
             gamma=self.gamma,
             q_model_type="qreg",
             **self.model_config,
         )
         estimator.process(self.batch)
         estimates = estimator.get_metrics()
-        assert len(estimates) == self.n_episodes
         self.mean_ret[name] = np.mean([e.metrics["v_new"] for e in estimates])
         self.std_ret[name] = np.std([e.metrics["v_new"] for e in estimates])
 
@@ -176,18 +171,17 @@ class TestOPE(unittest.TestCase):
         name = "dr_fqe"
         estimator = DoublyRobust(
             name=name,
-            policy=self.trainer.get_policy(),
+            policy=self.algo.get_policy(),
             gamma=self.gamma,
             q_model_type="fqe",
             **self.model_config,
         )
         estimator.process(self.batch)
         estimates = estimator.get_metrics()
-        assert len(estimates) == self.n_episodes
         self.mean_ret[name] = np.mean([e.metrics["v_new"] for e in estimates])
         self.std_ret[name] = np.std([e.metrics["v_new"] for e in estimates])
 
-    def test_ope_in_trainer(self):
+    def test_ope_in_algo(self):
         # TODO (rohan): Add performance tests for off_policy_estimation_methods,
         # with fixed seeds and hyperparameters
         pass

@@ -12,10 +12,7 @@ from ray._private.test_utils import run_string_as_driver
 from ray.client_builder import ClientContext
 from ray.cluster_utils import Cluster
 from ray.util.client.common import ClientObjectRef
-from ray.util.client.ray_client_helpers import (
-    ray_start_client_server,
-    ray_start_client_server_pair,
-)
+from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.util.client.worker import Worker
 
 
@@ -311,7 +308,7 @@ def test_ray_init_using_hostname(ray_start_cluster):
 def test_redis_connect_backoff():
     import time
 
-    from ray import ray_constants
+    from ray._private import ray_constants
 
     unreachable_address = "127.0.0.1:65535"
     redis_ip, redis_port = unreachable_address.split(":")

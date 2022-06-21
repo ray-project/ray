@@ -1,92 +1,88 @@
 import json
 import sys
+from dataclasses import fields
+from typing import List, Tuple
+from unittest.mock import MagicMock
+
 import pytest
 import yaml
+from click.testing import CliRunner
 
-from typing import List, Tuple
-from dataclasses import fields
-
-from unittest.mock import MagicMock
+import ray
+import ray.dashboard.consts as dashboard_consts
+import ray._private.ray_constants as ray_constants
+from ray._private.test_utils import wait_for_condition
+from ray.cluster_utils import cluster_not_supported
+from ray.core.generated.common_pb2 import (
+    Address,
+    CoreWorkerStats,
+    ObjectRefInfo,
+    TaskInfoEntry,
+    TaskStatus,
+    WorkerType,
+)
+from ray.core.generated.gcs_pb2 import (
+    ActorTableData,
+    GcsNodeInfo,
+    PlacementGroupTableData,
+    WorkerTableData,
+)
+from ray.core.generated.gcs_service_pb2 import (
+    GetAllActorInfoReply,
+    GetAllNodeInfoReply,
+    GetAllPlacementGroupReply,
+    GetAllWorkerInfoReply,
+)
+from ray.core.generated.node_manager_pb2 import GetNodeStatsReply, GetTasksInfoReply
+from ray.core.generated.reporter_pb2 import ListLogsReply, StreamLogReply
+from ray.core.generated.runtime_env_agent_pb2 import GetRuntimeEnvsInfoReply
+from ray.core.generated.runtime_env_common_pb2 import (
+    RuntimeEnvState as RuntimeEnvStateProto,
+)
+from ray.dashboard.state_aggregator import (
+    GCS_QUERY_FAILURE_WARNING,
+    NODE_QUERY_FAILURE_WARNING,
+    StateAPIManager,
+    _convert_filters_type,
+)
+from ray.experimental.state.api import (
+    list_actors,
+    list_jobs,
+    list_nodes,
+    list_objects,
+    list_placement_groups,
+    list_runtime_envs,
+    list_tasks,
+    list_workers,
+)
+from ray.experimental.state.common import (
+    DEFAULT_LIMIT,
+    DEFAULT_RPC_TIMEOUT,
+    ActorState,
+    ListApiOptions,
+    NodeState,
+    ObjectState,
+    PlacementGroupState,
+    RuntimeEnvState,
+    SupportedFilterType,
+    TaskState,
+    WorkerState,
+)
+from ray.experimental.state.exception import DataSourceUnavailable, RayStateApiException
+from ray.experimental.state.state_cli import (
+    AvailableFormat,
+    get_state_api_output_to_print,
+)
+from ray.experimental.state.state_cli import list as cli_list
+from ray.experimental.state.state_manager import IdToIpMap, StateDataSourceClient
+from ray.job_submission import JobSubmissionClient
+from ray.runtime_env import RuntimeEnv
 
 if sys.version_info > (3, 7, 0):
     from unittest.mock import AsyncMock
 else:
     from asyncmock import AsyncMock
 
-import ray
-import ray.ray_constants as ray_constants
-
-from click.testing import CliRunner
-from ray.cluster_utils import cluster_not_supported
-from ray.core.generated.common_pb2 import (
-    Address,
-    WorkerType,
-    TaskStatus,
-    TaskInfoEntry,
-    CoreWorkerStats,
-    ObjectRefInfo,
-)
-from ray.core.generated.node_manager_pb2 import GetTasksInfoReply, GetNodeStatsReply
-from ray.core.generated.gcs_pb2 import (
-    ActorTableData,
-    PlacementGroupTableData,
-    GcsNodeInfo,
-    WorkerTableData,
-)
-from ray.core.generated.gcs_service_pb2 import (
-    GetAllActorInfoReply,
-    GetAllPlacementGroupReply,
-    GetAllNodeInfoReply,
-    GetAllWorkerInfoReply,
-)
-from ray.core.generated.reporter_pb2 import (
-    ListLogsReply,
-    StreamLogReply,
-)
-from ray.core.generated.runtime_env_common_pb2 import (
-    RuntimeEnvState as RuntimeEnvStateProto,
-)
-from ray.core.generated.runtime_env_agent_pb2 import GetRuntimeEnvsInfoReply
-import ray.dashboard.consts as dashboard_consts
-from ray.dashboard.state_aggregator import (
-    StateAPIManager,
-    GCS_QUERY_FAILURE_WARNING,
-    NODE_QUERY_FAILURE_WARNING,
-    _convert_filters_type,
-)
-from ray.experimental.state.api import (
-    list_actors,
-    list_placement_groups,
-    list_nodes,
-    list_jobs,
-    list_workers,
-    list_tasks,
-    list_objects,
-    list_runtime_envs,
-)
-from ray.experimental.state.common import (
-    SupportedFilterType,
-    ActorState,
-    PlacementGroupState,
-    NodeState,
-    WorkerState,
-    TaskState,
-    ObjectState,
-    RuntimeEnvState,
-    ListApiOptions,
-    DEFAULT_RPC_TIMEOUT,
-    DEFAULT_LIMIT,
-)
-from ray.experimental.state.exception import DataSourceUnavailable, RayStateApiException
-from ray.experimental.state.state_manager import StateDataSourceClient, IdToIpMap
-from ray.experimental.state.state_cli import (
-    list as cli_list,
-    get_state_api_output_to_print,
-    AvailableFormat,
-)
-from ray.runtime_env import RuntimeEnv
-from ray._private.test_utils import wait_for_condition
-from ray.job_submission import JobSubmissionClient
 
 """
 Unit tests
@@ -239,7 +235,7 @@ async def test_api_manager_list_actors(state_api_manager):
     )
     result = await state_api_manager.list_actors(option=create_api_options())
     data = result.result
-    actor_data = list(data.values())[0]
+    actor_data = data[0]
     verify_schema(ActorState, actor_data)
 
     """
@@ -286,7 +282,7 @@ async def test_api_manager_list_pgs(state_api_manager):
     )
     result = await state_api_manager.list_placement_groups(option=create_api_options())
     data = result.result
-    data = list(data.values())[0]
+    data = data[0]
     verify_schema(PlacementGroupState, data)
 
     """
@@ -334,7 +330,7 @@ async def test_api_manager_list_nodes(state_api_manager):
     )
     result = await state_api_manager.list_nodes(option=create_api_options())
     data = result.result
-    data = list(data.values())[0]
+    data = data[0]
     verify_schema(NodeState, data)
 
     """
@@ -379,7 +375,7 @@ async def test_api_manager_list_workers(state_api_manager):
     )
     result = await state_api_manager.list_workers(option=create_api_options())
     data = result.result
-    data = list(data.values())[0]
+    data = data[0]
     verify_schema(WorkerState, data)
 
     """
@@ -441,7 +437,7 @@ async def test_api_manager_list_tasks(state_api_manager):
     data_source_client.get_task_info.assert_any_await("1", timeout=DEFAULT_RPC_TIMEOUT)
     data_source_client.get_task_info.assert_any_await("2", timeout=DEFAULT_RPC_TIMEOUT)
     data = result.result
-    data = list(data.values())
+    data = data
     assert len(data) == 2
     verify_schema(TaskState, data[0])
     verify_schema(TaskState, data[1])
@@ -520,7 +516,7 @@ async def test_api_manager_list_objects(state_api_manager):
     data_source_client.get_object_info.assert_any_await(
         "2", timeout=DEFAULT_RPC_TIMEOUT
     )
-    data = list(data.values())
+    data = data
     assert len(data) == 2
     verify_schema(ObjectState, data[0])
     verify_schema(ObjectState, data[1])
@@ -770,7 +766,7 @@ async def test_state_data_source_client(ray_start_cluster):
     Test job
     """
     job_client = JobSubmissionClient(
-        f"http://{ray.worker.global_worker.node.address_info['webui_url']}"
+        f"http://{ray._private.worker.global_worker.node.address_info['webui_url']}"
     )
     job_id = job_client.submit_job(  # noqa
         # Entrypoint shell command to execute
@@ -907,7 +903,7 @@ def test_cli_apis_sanity_check(ray_start_cluster):
     runner = CliRunner()
 
     client = JobSubmissionClient(
-        f"http://{ray.worker.global_worker.node.address_info['webui_url']}"
+        f"http://{ray._private.worker.global_worker.node.address_info['webui_url']}"
     )
 
     @ray.remote
@@ -967,7 +963,7 @@ def test_list_actors(shutdown_only):
     a = A.remote()  # noqa
 
     def verify():
-        actor_data = list(list_actors().values())[0]
+        actor_data = list_actors()[0]
         correct_state = actor_data["state"] == "ALIVE"
         is_id_hex = is_hex(actor_data["actor_id"])
         correct_id = a._actor_id.hex() == actor_data["actor_id"]
@@ -986,7 +982,7 @@ def test_list_pgs(shutdown_only):
     pg = ray.util.placement_group(bundles=[{"CPU": 1}])  # noqa
 
     def verify():
-        pg_data = list(list_placement_groups().values())[0]
+        pg_data = list_placement_groups()[0]
         correct_state = pg_data["state"] == "CREATED"
         is_id_hex = is_hex(pg_data["placement_group_id"])
         correct_id = pg.id.hex() == pg_data["placement_group_id"]
@@ -1004,7 +1000,7 @@ def test_list_nodes(shutdown_only):
     ray.init()
 
     def verify():
-        node_data = list(list_nodes().values())[0]
+        node_data = list_nodes()[0]
         correct_state = node_data["state"] == "ALIVE"
         is_id_hex = is_hex(node_data["node_id"])
         correct_id = ray.nodes()[0]["NodeID"] == node_data["node_id"]
@@ -1021,7 +1017,7 @@ def test_list_nodes(shutdown_only):
 def test_list_jobs(shutdown_only):
     ray.init()
     client = JobSubmissionClient(
-        f"http://{ray.worker.global_worker.node.address_info['webui_url']}"
+        f"http://{ray._private.worker.global_worker.node.address_info['webui_url']}"
     )
     job_id = client.submit_job(  # noqa
         # Entrypoint shell command to execute
@@ -1029,9 +1025,9 @@ def test_list_jobs(shutdown_only):
     )
 
     def verify():
-        job_data = list(list_jobs().values())[0]
+        job_data = list_jobs()[0]
         print(job_data)
-        job_id_from_api = list(list_jobs().keys())[0]
+        job_id_from_api = job_data["job_id"]
         correct_state = job_data["status"] == "SUCCEEDED"
         correct_id = job_id == job_id_from_api
         return correct_state and correct_id
@@ -1048,7 +1044,7 @@ def test_list_workers(shutdown_only):
     ray.init()
 
     def verify():
-        worker_data = list(list_workers().values())[0]
+        worker_data = list_workers()[0]
         is_id_hex = is_hex(worker_data["worker_id"])
         # +1 to take into account of drivers.
         correct_num_workers = len(list_workers()) == ray.cluster_resources()["CPU"] + 1
@@ -1082,7 +1078,7 @@ def test_list_tasks(shutdown_only):
     im = impossible.remote()  # noqa
 
     def verify():
-        tasks = list(list_tasks().values())
+        tasks = list_tasks()
         correct_num_tasks = len(tasks) == 5
         waiting_for_execution = len(
             list(
@@ -1138,7 +1134,7 @@ def test_list_actor_tasks(shutdown_only):
     calls = [a.call.remote() for _ in range(10)]  # noqa
 
     def verify():
-        tasks = list(list_tasks().values())
+        tasks = list_tasks()
         # Actor.__init__: 1 finished
         # Actor.call: 1 running, 9 waiting for execution (queued).
         correct_num_tasks = len(tasks) == 11
@@ -1196,7 +1192,7 @@ def test_list_objects(shutdown_only):
     ray.get(f.remote(plasma_obj))
 
     def verify():
-        obj = list(list_objects().values())[0]
+        obj = list_objects()[0]
         # For detailed output, the test is covered from `test_memstat.py`
         return obj["object_id"] == plasma_obj.hex()
 
@@ -1275,7 +1271,7 @@ def test_network_failure(shutdown_only):
     wait_for_condition(lambda: len(list_tasks()) == 4)
 
     # Kill raylet so that list_tasks will have network error on querying raylets.
-    ray.worker._global_node.kill_raylet()
+    ray._private.worker._global_node.kill_raylet()
 
     with pytest.raises(RayStateApiException):
         list_tasks(_explain=True)
@@ -1422,8 +1418,8 @@ def test_filter(shutdown_only):
     """
     Test CLI
     """
-    dead_actor_id = list(list_actors(filters=[("state", "DEAD")]))[0]
-    alive_actor_id = list(list_actors(filters=[("state", "ALIVE")]))[0]
+    dead_actor_id = list_actors(filters=[("state", "DEAD")])[0]["actor_id"]
+    alive_actor_id = list_actors(filters=[("state", "ALIVE")])[0]["actor_id"]
     runner = CliRunner()
     result = runner.invoke(cli_list, ["actors", "--filter", "state", "DEAD"])
     assert result.exit_code == 0
@@ -1432,8 +1428,8 @@ def test_filter(shutdown_only):
 
 
 if __name__ == "__main__":
-    import sys
     import os
+    import sys
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

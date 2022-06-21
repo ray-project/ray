@@ -1,7 +1,6 @@
 import atexit
 import json
 import logging
-import random
 import socket
 import sys
 import time
@@ -13,6 +12,9 @@ from threading import Event, Lock, RLock, Thread
 from typing import Callable, Dict, List, Optional, Tuple
 
 import grpc
+
+# Import psutil after ray so the packaged version is used.
+import psutil
 
 import ray
 import ray.core.generated.agent_manager_pb2 as agent_manager_pb2
@@ -37,9 +39,6 @@ from ray.util.client.common import (
     _propagate_error_in_context,
 )
 from ray.util.client.server.dataservicer import _get_reconnecting_from_context
-
-# Import psutil after ray so the packaged version is used.
-import psutil
 
 logger = logging.getLogger(__name__)
 
@@ -142,7 +141,7 @@ class ProxyManager:
         self._check_thread.start()
 
         self.fate_share = bool(detect_fate_sharing_support())
-        self._node: Optional[ray.node.Node] = None
+        self._node: Optional[ray._private.node.Node] = None
         atexit.register(self._cleanup)
 
     def _get_unused_port(self) -> int:
@@ -178,7 +177,7 @@ class ProxyManager:
         return self._address
 
     @property
-    def node(self) -> ray.node.Node:
+    def node(self) -> ray._private.node.Node:
         """Gets a 'ray.Node' object for this node (the head node).
         If it does not already exist, one is created using the bootstrap
         address.
@@ -187,7 +186,7 @@ class ProxyManager:
             return self._node
         ray_params = RayParams(gcs_address=self.address)
 
-        self._node = ray.node.Node(
+        self._node = ray._private.node.Node(
             ray_params,
             head=False,
             shutdown_at_exit=False,

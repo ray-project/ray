@@ -4,12 +4,13 @@ import time
 
 import grpc
 import numpy as np
+import psutil
 import pytest
 from grpc._channel import _InactiveRpcError
 
 import ray
+import ray._private.ray_constants as ray_constants
 import ray.experimental.internal_kv as internal_kv
-import ray.ray_constants as ray_constants
 from ray import NodeID
 from ray._private.test_utils import (
     SignalActor,
@@ -26,8 +27,6 @@ from ray.core.generated import (
     node_manager_pb2_grpc,
 )
 from ray.exceptions import LocalRayletDiedError
-
-import psutil
 
 
 def search_raylet(cluster):
@@ -567,7 +566,7 @@ def test_locality_aware_scheduling_for_dead_nodes(shutdown_only):
     # This function requires obj1 and obj2.
     @ray.remote
     def func(obj1, obj2):
-        return ray.worker.global_worker.node.unique_id
+        return ray._private.worker.global_worker.node.unique_id
 
     # This function should be scheduled to node2. As node2 has both objects.
     assert ray.get(func.remote(obj1, obj2)) == node2.unique_id

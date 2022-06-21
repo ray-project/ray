@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Optional
 
 import grpc
 import numpy as np
+import psutil  # We must import psutil after ray because we bundle it with ray.
 import yaml
 from grpc._channel import _InactiveRpcError
 
@@ -27,14 +28,12 @@ import ray._private.memory_monitor as memory_monitor
 import ray._private.services
 import ray._private.utils
 from ray._private.gcs_pubsub import GcsErrorSubscriber, GcsLogSubscriber
+from ray._private.internal_api import memory_summary
 from ray._private.tls_utils import generate_self_signed_tls_certs
 from ray._raylet import GcsClientOptions, GlobalStateAccessor
 from ray.core.generated import gcs_pb2, node_manager_pb2, node_manager_pb2_grpc
-from ray.internal.internal_api import memory_summary
 from ray.scripts.scripts import main as ray_main
 from ray.util.queue import Empty, Queue, _QueueActor
-
-import psutil  # We must import psutil after ray because we bundle it with ray.
 
 try:
     from prometheus_client.parser import text_string_to_metric_families
@@ -282,7 +281,7 @@ def wait_for_num_actors(num_actors, state=None, timeout=10):
             len(
                 [
                     _
-                    for _ in ray.state.actors().values()
+                    for _ in ray._private.state.actors().values()
                     if state is None or _["State"] == state
                 ]
             )
@@ -328,11 +327,11 @@ def wait_for_num_nodes(num_nodes: int, timeout_s: int):
 
 def kill_actor_and_wait_for_failure(actor, timeout=10, retry_interval_ms=100):
     actor_id = actor._actor_id.hex()
-    current_num_restarts = ray.state.actors(actor_id)["NumRestarts"]
+    current_num_restarts = ray._private.state.actors(actor_id)["NumRestarts"]
     ray.kill(actor)
     start = time.time()
     while time.time() - start <= timeout:
-        actor_status = ray.state.actors(actor_id)
+        actor_status = ray._private.state.actors(actor_id)
         if (
             actor_status["State"] == convert_actor_state(gcs_utils.ActorTableData.DEAD)
             or actor_status["NumRestarts"] > current_num_restarts
@@ -617,7 +616,8 @@ def get_other_nodes(cluster, exclude_head=False):
     return [
         node
         for node in cluster.list_all_nodes()
-        if node._raylet_socket_name != ray.worker._global_node._raylet_socket_name
+        if node._raylet_socket_name
+        != ray._private.worker._global_node._raylet_socket_name
         and (exclude_head is False or node.head is False)
     ]
 
@@ -629,7 +629,7 @@ def get_non_head_nodes(cluster):
 
 def init_error_pubsub():
     """Initialize error info pub/sub"""
-    s = GcsErrorSubscriber(address=ray.worker.global_worker.gcs_client.address)
+    s = GcsErrorSubscriber(address=ray._private.worker.global_worker.gcs_client.address)
     s.subscribe()
     return s
 
@@ -657,7 +657,7 @@ def get_error_message(subscriber, num=1e6, error_type=None, timeout=20):
 
 def init_log_pubsub():
     """Initialize log pub/sub"""
-    s = GcsLogSubscriber(address=ray.worker.global_worker.gcs_client.address)
+    s = GcsLogSubscriber(address=ray._private.worker.global_worker.gcs_client.address)
     s.subscribe()
     return s
 
@@ -1007,7 +1007,7 @@ def monitor_memory_usage(
             """
             return self.peak_memory_usage, self.peak_top_n_memory_usage
 
-    current_node_ip = ray.worker.global_worker.node_ip_address
+    current_node_ip = ray._private.worker.global_worker.node_ip_address
     # Schedule the actor on the current node.
     memory_monitor_actor = MemoryMonitorActor.options(
         resources={f"node:{current_node_ip}": 0.001}
@@ -1160,8 +1160,8 @@ def get_and_run_node_killer(
                     alive_nodes += 1
             return alive_nodes
 
-    head_node_ip = ray.worker.global_worker.node_ip_address
-    head_node_id = ray.worker.global_worker.current_node_id.hex()
+    head_node_ip = ray._private.worker.global_worker.node_ip_address
+    head_node_id = ray._private.worker.global_worker.current_node_id.hex()
     # Schedule the actor on the current node.
     node_killer = NodeKillerActor.options(
         resources={f"node:{head_node_ip}": 0.001},

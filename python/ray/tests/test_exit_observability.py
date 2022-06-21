@@ -11,7 +11,7 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
 def get_worker_by_pid(pid):
-    for w in list_workers().values():
+    for w in list_workers():
         if w["pid"] == pid:
             return w
     assert False
