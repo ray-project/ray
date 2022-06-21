@@ -234,6 +234,11 @@ If you use `Anaconda`_ (`installation instructions`_) and want to use Ray in a d
 
 For a complete list of available ``ray`` libraries, have a look at: https://github.com/conda-forge/ray-packages-feedstock
 
+.. note::
+
+  At this time, Ray is not yet distributed on Conda-forge for macOS.
+  Hence you need to use `pip install ray` in the newly created environment.
+
 .. _`Anaconda`: https://www.anaconda.com/
 .. _`installation instructions`: https://docs.anaconda.com/anaconda/install/index.html
 
