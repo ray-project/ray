@@ -1,36 +1,35 @@
-import os
-import sys
+import asyncio
+import hashlib
 import json
 import logging
-from ray._private.runtime_env.plugin import RuntimeEnvPlugin
-import yaml
-import hashlib
-import subprocess
+import os
 import platform
 import runpy
 import shutil
-import asyncio
-
-from filelock import FileLock
-from typing import Optional, List, Dict, Any
+import subprocess
+import sys
 from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+import yaml
+from filelock import FileLock
 
 import ray
-
 from ray._private.runtime_env.conda_utils import (
-    get_conda_activate_commands,
     create_conda_env_if_needed,
     delete_conda_env,
+    get_conda_activate_commands,
 )
 from ray._private.runtime_env.context import RuntimeEnvContext
+from ray._private.runtime_env.packaging import Protocol, parse_uri
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.utils import (
     get_directory_size_bytes,
-    get_wheel_filename,
     get_master_wheel_url,
     get_release_wheel_url,
+    get_wheel_filename,
     try_to_create_directory,
 )
-from ray._private.runtime_env.packaging import Protocol, parse_uri
 
 default_logger = logging.getLogger(__name__)
 
@@ -279,12 +278,12 @@ class CondaPlugin(RuntimeEnvPlugin):
         """
         return os.path.join(self._resources_dir, hash)
 
-    def get_uri(self, runtime_env: "RuntimeEnv") -> Optional[str]:  # noqa: F821
-        """Return the conda URI from the RuntimeEnv if it exists, else None."""
+    def get_uris(self, runtime_env: "RuntimeEnv") -> List[str]:  # noqa: F821
+        """Return the conda URI from the RuntimeEnv if it exists, else return []."""
         conda_uri = runtime_env.conda_uri()
-        if conda_uri != "":
-            return conda_uri
-        return None
+        if conda_uri:
+            return [conda_uri]
+        return []
 
     def delete_uri(
         self, uri: str, logger: Optional[logging.Logger] = default_logger
@@ -353,7 +352,7 @@ class CondaPlugin(RuntimeEnvPlugin):
 
     def modify_context(
         self,
-        uri: str,
+        uris: List[str],
         runtime_env: "RuntimeEnv",  # noqa: F821
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,

@@ -206,7 +206,6 @@ def list(
 @click.pass_context
 def summary_state_cli_group(ctx):
     api_server_url = _get_api_server_url()
-    assert use_gcs_for_bootstrap()
     ctx.ensure_object(dict)
     ctx.obj["api_server_url"] = f"http://{api_server_url.decode()}"
 

@@ -1,38 +1,40 @@
 import asyncio
 import logging
 
-from collections import defaultdict
-from dataclasses import fields
+from dataclasses import asdict, fields
 from itertools import islice
 from typing import List, Tuple
 
-from ray.core.generated.common_pb2 import TaskStatus
-import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.memory_utils as memory_utils
-
+import ray.dashboard.utils as dashboard_utils
+from ray._private.utils import binary_to_hex
+from ray.core.generated.common_pb2 import TaskStatus
 from ray.experimental.state.common import (
-    filter_fields,
-    StateSchema,
-    SupportedFilterType,
     ActorState,
-    PlacementGroupState,
-    NodeState,
-    WorkerState,
-    TaskState,
-    ObjectState,
-    RuntimeEnvState,
     ListApiOptions,
     ListApiResponse,
+    NodeState,
+    ObjectState,
+    PlacementGroupState,
+    RuntimeEnvState,
     SummaryApiResponse,
     DEFAULT_LIMIT,
     SummaryApiOptions,
+    TaskSummaries,
+    StateSchema,
+    SupportedFilterType,
+    TaskState,
+    WorkerState,
+    filter_fields,
+    StateSummary,
+    ActorSummaries,
+    ObjectSummaries,
 )
 from ray.experimental.state.state_manager import (
-    StateDataSourceClient,
     DataSourceUnavailable,
+    StateDataSourceClient,
 )
 from ray.runtime_env import RuntimeEnv
-from ray._private.utils import binary_to_hex
 
 logger = logging.getLogger(__name__)
 
@@ -187,9 +189,7 @@ class StateAPIManager:
         result = self._filter(result, option.filters, ActorState)
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["actor_id"])
-        return ListApiResponse(
-            result={d["actor_id"]: d for d in islice(result, option.limit)}
-        )
+        return ListApiResponse(result=list(islice(result, option.limit)))
 
     async def list_placement_groups(self, *, option: ListApiOptions) -> ListApiResponse:
         """List all placement group information from the cluster.
@@ -217,9 +217,7 @@ class StateAPIManager:
         result = self._filter(result, option.filters, PlacementGroupState)
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["placement_group_id"])
-        return ListApiResponse(
-            result={d["placement_group_id"]: d for d in islice(result, option.limit)}
-        )
+        return ListApiResponse(result=list(islice(result, option.limit)))
 
     async def list_nodes(self, *, option: ListApiOptions) -> ListApiResponse:
         """List all node information from the cluster.
@@ -243,9 +241,7 @@ class StateAPIManager:
         result = self._filter(result, option.filters, NodeState)
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["node_id"])
-        return ListApiResponse(
-            result={d["node_id"]: d for d in islice(result, option.limit)}
-        )
+        return ListApiResponse(result=list(islice(result, option.limit)))
 
     async def list_workers(self, *, option: ListApiOptions) -> ListApiResponse:
         """List all worker information from the cluster.
@@ -270,14 +266,17 @@ class StateAPIManager:
         result = self._filter(result, option.filters, WorkerState)
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["worker_id"])
-        return ListApiResponse(
-            result={d["worker_id"]: d for d in islice(result, option.limit)}
-        )
+        return ListApiResponse(result=list(islice(result, option.limit)))
 
     def list_jobs(self, *, option: ListApiOptions) -> ListApiResponse:
         # TODO(sang): Support limit & timeout & async calls.
         try:
-            result = self._client.get_job_info()
+            result = []
+            job_info = self._client.get_job_info()
+            for job_id, data in job_info.items():
+                data = asdict(data)
+                data["job_id"] = job_id
+                result.append(data)
         except DataSourceUnavailable:
             raise DataSourceUnavailable(GCS_QUERY_FAILURE_WARNING)
         return ListApiResponse(result=result)
@@ -345,7 +344,7 @@ class StateAPIManager:
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["task_id"])
         return ListApiResponse(
-            result={d["task_id"]: d for d in islice(result, option.limit)},
+            result=list(islice(result, option.limit)),
             partial_failure_warning=partial_failure_warning,
         )
 
@@ -416,7 +415,7 @@ class StateAPIManager:
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["object_id"])
         return ListApiResponse(
-            result={d["object_id"]: d for d in islice(result, option.limit)},
+            result=list(islice(result, option.limit)),
             partial_failure_warning=partial_failure_warning,
         )
 
@@ -498,20 +497,11 @@ class StateAPIManager:
                 timeout=option.timeout, limit=DEFAULT_LIMIT, filters=[]
             )
         )
-
-        summary = {}
-        tasks = result.result
-        for task in tasks.values():
-            if task["func_or_class_name"] not in summary:
-                summary[task["func_or_class_name"]] = {
-                    "state_counts": defaultdict(int),
-                    "type": task["type"],
-                    "func_or_class_name": task["func_or_class_name"],
-                    "required_resources": task["required_resources"],
-                }
-            task_summary = summary[task["func_or_class_name"]]
-            task_summary["state_counts"][task["scheduling_state"]] += 1
-
+        summary = StateSummary(
+            node_id_to_summary={
+                "cluster": TaskSummaries.to_summary(tasks=result.result)
+            }
+        )
         return SummaryApiResponse(
             result=summary, partial_failure_warning=result.partial_failure_warning
         )
@@ -522,18 +512,11 @@ class StateAPIManager:
                 timeout=option.timeout, limit=DEFAULT_LIMIT, filters=[]
             )
         )
-
-        summary = {}
-        actors = result.result
-        for actor in actors.values():
-            if actor["class_name"] not in summary:
-                summary[actor["class_name"]] = {
-                    "state_counts": defaultdict(int),
-                    "resource_mapping": actor["resource_mapping"],
-                }
-            task_summary = summary[actor["class_name"]]
-            task_summary["state_counts"][actor["state"]] += 1
-
+        summary = StateSummary(
+            node_id_to_summary={
+                "cluster": ActorSummaries.to_summary(actors=result.result)
+            }
+        )
         return SummaryApiResponse(
             result=summary, partial_failure_warning=result.partial_failure_warning
         )
@@ -544,37 +527,11 @@ class StateAPIManager:
                 timeout=option.timeout, limit=DEFAULT_LIMIT, filters=[]
             )
         )
-
-        summary = {}
-        objects = result.result
-        logger.info(objects)
-        for object in objects.values():
-            if object["call_site"] not in summary:
-                summary[object["call_site"]] = {
-                    "state_counts": defaultdict(int),
-                    "ref_type_counts": defaultdict(int),
-                    "count": 0,
-                    "size_mb": 0,
-                    "num_workers": set(),
-                    "num_nodes": set(),
-                    "type": object["type"],
-                }
-            object_summary = summary[object["call_site"]]
-            object_summary["state_counts"][object["task_status"]] += 1
-            object_summary["ref_type_counts"][object["reference_type"]] += 1
-            object_summary["count"] += 1
-            # object_size's unit is byte by default. It is -1, if the size is
-            # unknown.
-            if object["object_size"] != -1:
-                object_summary["size_mb"] += object["object_size"] / 1024 ** 2
-            object_summary["num_workers"].add(object["pid"])
-            object_summary["num_nodes"].add(object["node_ip_address"])
-
-        # Convert set of pid & node ips to length.
-        for s in summary.values():
-            s["num_workers"] = len(s["num_workers"])
-            s["num_nodes"] = len(s["num_nodes"])
-
+        summary = StateSummary(
+            node_id_to_summary={
+                "cluster": ObjectSummaries.to_summary(objects=result.result)
+            }
+        )
         return SummaryApiResponse(
             result=summary, partial_failure_warning=result.partial_failure_warning
         )

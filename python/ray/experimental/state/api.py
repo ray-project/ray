@@ -412,7 +412,7 @@ def _summary(
         if warning_msg:
             warnings.warn(warning_msg, RuntimeWarning)
 
-    return response["data"]["result"]
+    return response["data"]["result"]["node_id_to_summary"]
 
 
 def summarize_tasks(

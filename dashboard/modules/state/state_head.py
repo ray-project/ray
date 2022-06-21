@@ -1,20 +1,16 @@
 import logging
+from dataclasses import asdict
+from typing import Callable
 
 import aiohttp.web
 
-import dataclasses
-
-from typing import Callable
-
-from ray.dashboard.datacenter import DataSource
-from ray.dashboard.utils import Change
-import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
+import ray.dashboard.utils as dashboard_utils
+from ray.dashboard.datacenter import DataSource
+from ray.dashboard.modules.log.log_manager import LogsManager
 from ray.dashboard.optional_utils import rest_response
-from ray.dashboard.modules.log.log_manager import (
-    LogsManager,
-)
 from ray.dashboard.state_aggregator import StateAPIManager
+from ray.dashboard.utils import Change
 from ray.experimental.state.common import (
     ListApiOptions,
     GetLogOptions,
@@ -139,10 +135,7 @@ class StateHead(dashboard_utils.DashboardHeadModule):
             return self._reply(
                 success=True,
                 error_message="",
-                result={
-                    job_id: dataclasses.asdict(job_info)
-                    for job_id, job_info in result.result.items()
-                },
+                result=result.result,
                 partial_failure_warning=result.partial_failure_warning,
             )
         except DataSourceUnavailable as e:
@@ -267,7 +260,7 @@ class StateHead(dashboard_utils.DashboardHeadModule):
         return self._reply(
             success=True,
             error_message="",
-            result=result.result,
+            result=asdict(result.result),
             partial_failure_warning=result.partial_failure_warning,
         )
 
