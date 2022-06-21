@@ -54,6 +54,7 @@ class TestTD3(unittest.TestCase):
 
         # Test against all frameworks.
         for _ in framework_iterator(config, with_eager_tracing=True):
+            config.seed = 42
             config.exploration(exploration_config=no_random_init)
             # Default GaussianNoise setup.
             algo = config.build()
