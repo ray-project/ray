@@ -727,7 +727,7 @@ def test_updating_status_message(lower_slow_startup_threshold_and_reset):
             message_substring in deployment_status.message
         )
 
-    wait_for_condition(updating_message, timeout=2)
+    wait_for_condition(updating_message, timeout=20)
 
 
 def test_unhealthy_override_updating_status(lower_slow_startup_threshold_and_reset):
@@ -758,7 +758,7 @@ def test_unhealthy_override_updating_status(lower_slow_startup_threshold_and_res
         wait_for_condition(
             lambda: client.get_serve_status().deployment_statuses[0].status
             == "UPDATING",
-            timeout=5,
+            timeout=20,
         )
 
 
