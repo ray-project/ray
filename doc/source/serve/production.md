@@ -160,7 +160,7 @@ Once we're finished, we can close the Python interpreter by running `quit()` and
 
 ## Creating Your Serve Config File
 
-You can create a Serve config file to manage your deployment graphs' configurations in production. The Serve CLI can "deploy" this file, using the [serve deploy](serve-in-production-deploying) command. This will deploy or update your deployment graphs in production. The file is written in [YAML](https://web.archive.org/web/20220620232101/https://www.cloudbees.com/blog/yaml-tutorial-everything-you-need-get-started) and has the following format:
+You can create a Serve config file to manage your deployment graphs' configurations in production. The Serve CLI can "deploy" this file, using the [serve deploy](serve-in-production-deploying) command. This will deploy or update your deployment graphs in production. The file is written in YAML and has the following format:
 
 ```yaml
 import_path: ...
