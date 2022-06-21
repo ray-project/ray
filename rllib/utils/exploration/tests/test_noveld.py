@@ -2,7 +2,7 @@ import unittest
 
 import ray
 from ray import tune
-from ray.rllib.agents.ppo import ppo
+from ray.rllib.algorithms.ppo import ppo
 from ray.rllib.algorithms.dqn import dqn
 from ray.rllib.utils.test_utils import (
     check_compute_single_action,
@@ -87,8 +87,7 @@ class TestNovelD(unittest.TestCase):
         num_iterations = 2
         configs = [config_ppo, config_dqn]
         for config in configs:
-            for fw in framework_iterator(config, with_eager_tracing=True):
-                print("fw: {}".format(fw))
+            for _ in framework_iterator(config, with_eager_tracing=True):
                 for env in ["FrozenLake-v1", "MsPacmanNoFrameskip-v4"]:
                     trainer = config.build(env=env)
                     for i in range(num_iterations):
@@ -111,8 +110,7 @@ class TestNovelD(unittest.TestCase):
         config = self.create_ppo_test_config(normalize=True)
 
         num_iterations = 2
-        for fw in framework_iterator(config, with_eager_tracing=True):
-            print("fw: {}".format(fw))
+        for _ in framework_iterator(config, with_eager_tracing=True):
             for env in ["FrozenLake-v1", "MsPacmanNoFrameskip-v4"]:
                 trainer = config.build(env=env)
                 for i in range(num_iterations):
@@ -136,10 +134,9 @@ class TestNovelD(unittest.TestCase):
 
         num_iterations = 2
 
-        for fw in framework_iterator(config, with_eager_tracing=True):
-            print("fw: {}".format(fw))
+        for _ in framework_iterator(config, with_eager_tracing=True):
             for env in ["FrozenLake-v1", "MsPacmanNoFrameskip-v4"]:
-                print("fw: {}".format(fw))
+                print("env: {}".format(env))
                 # Run with tune to get `ExperimentAnalysis` object.
                 config.environment(env=env)
                 analysis = tune.run(

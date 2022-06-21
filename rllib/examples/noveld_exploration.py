@@ -15,7 +15,7 @@ that can be found here:
 To install this environment simply run `pip install gym_minigrid`.
 
 Note, NovelD works also with the `PyTorch` framework and it can be
-used with most of RLLib's algorithms (agents). The distillation
+used with most of RLlib's algorithms (agents). The distillation
 network of the NovelD exploration can be configured in the same
 way as the Policy Network (and should use the same input layer).
 """
@@ -24,7 +24,7 @@ import gym
 import gym_minigrid
 import ray
 
-from ray.rllib.agents.ppo.ppo import PPOConfig
+from ray.rllib.algorithms.ppo.ppo import PPOConfig
 from ray import tune
 from ray.tune.registry import register_env
 from ray.rllib.utils.exploration.callbacks import NovelDMetricsCallbacks
