@@ -1,11 +1,12 @@
-from typing import Tuple, List, Generator
+import logging
+from typing import Tuple, Generator, List
 from ray.rllib.offline.estimators.off_policy_estimator import (
     OffPolicyEstimator,
     OffPolicyEstimate,
 )
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import DeveloperAPI, override
+from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import SampleBatchType
@@ -16,44 +17,58 @@ import numpy as np
 
 torch, nn = try_import_torch()
 
+logger = logging.getLogger()
 
-# TODO (rohan): replace with AIR/parallel workers
-# (And find a better name than `should_train`)
-@DeveloperAPI
-def k_fold_cv(
-    batch: SampleBatchType, k: int, should_train: bool = True
+
+@ExperimentalAPI
+def train_test_split(
+    batch: SampleBatchType,
+    train_test_split_val: float = 0.0,
+    k: int = 0,
 ) -> Generator[Tuple[List[SampleBatch]], None, None]:
-    """Utility function that returns a k-fold cross validation generator
-    over episodes from the given batch. If the number of episodes in the
-    batch is less than `k` or `should_train` is set to False, yields an empty
-    list for train_episodes and all the episodes in test_episodes.
-
+    """Utility function that returns either a train/test split or
+    a k-fold cross validation generator over episodes from the given batch.
+    By default, `k` is set to 0.0, which sets eval_batch = batch
+    and train_batch to an empty SampleBatch.
     Args:
         batch: A SampleBatch of episodes to split
-        k: Number of cross-validation splits
-        should_train: True by default. If False, yield [], [episodes].
-
+        train_test_split_val: Split the batch into a training batch with
+        `train_test_split_val * n_episodes` episodes and an evaluation batch
+        with `(1 - train_test_split_val) * n_episodes` episodes. If not
+        specified, use `k` for k-fold cross validation instead.
+        k: k-fold cross validation for training model and evaluating OPE.
     Returns:
-        A tuple with two lists of SampleBatches (train_episodes, test_episodes)
+        A tuple with two SampleBatches (eval_batch, train_batch)
     """
+    if not train_test_split_val and not k:
+        logger.log(
+            "`train_test_split_val` and `k` are both 0;" "not generating training batch"
+        )
+        yield [batch], [SampleBatch()]
+        return
     episodes = batch.split_by_episode()
     n_episodes = len(episodes)
-    if n_episodes < k or not should_train:
-        yield [], episodes
+    # Train-test split
+    if train_test_split_val:
+        train_episodes = episodes[: int(n_episodes * train_test_split_val)]
+        eval_episodes = episodes[int(n_episodes * train_test_split_val) :]
+        yield eval_episodes, train_episodes
         return
+    # k-fold cv
+    assert n_episodes >= k, f"Not enough eval episodes in batch for {k}-fold cv!"
     n_fold = n_episodes // k
     for i in range(k):
         train_episodes = episodes[: i * n_fold] + episodes[(i + 1) * n_fold :]
         if i != k - 1:
-            test_episodes = episodes[i * n_fold : (i + 1) * n_fold]
+            eval_episodes = episodes[i * n_fold : (i + 1) * n_fold]
         else:
-            # Append remaining episodes onto the last test_episodes
-            test_episodes = episodes[i * n_fold :]
-        yield train_episodes, test_episodes
+            # Append remaining episodes onto the last eval_episodes
+            eval_episodes = episodes[i * n_fold :]
+        yield eval_episodes, train_episodes
     return
 
 
-@DeveloperAPI
+@ExperimentalAPI
 class DirectMethod(OffPolicyEstimator):
     """The Direct Method estimator.
 
@@ -66,7 +81,8 @@ class DirectMethod(OffPolicyEstimator):
         policy: Policy,
         gamma: float,
         q_model_type: str = "fqe",
-        k: int = 5,
+        train_test_split_val: float = 0.0,
+        k: int = 0,
         **kwargs,
     ):
         """
@@ -80,8 +96,12 @@ class DirectMethod(OffPolicyEstimator):
                 or "qreg" for Q-Regression, or a custom model that implements:
                 - `estimate_q(states,actions)`
                 - `estimate_v(states, action_probs)`
-            k: k-fold cross validation for training model and evaluating OPE
-            kwargs: Optional arguments for the specified Q model
+            train_test_split_val: Split the batch into a training batch with
+            `train_test_split_val * n_episodes` episodes and an evaluation batch
+            with `(1 - train_test_split_val) * n_episodes` episodes. If not
+            specified, use `k` for k-fold cross validation instead.
+            k: k-fold cross validation for training model and evaluating OPE.
+            kwargs: Optional arguments for the specified Q model.
         """
 
         super().__init__(name, policy, gamma)
@@ -117,17 +137,20 @@ class DirectMethod(OffPolicyEstimator):
             gamma=gamma,
             **kwargs,
         )
+        self.train_test_split_val = train_test_split_val
         self.k = k
         self.losses = []
 
     @override(OffPolicyEstimator)
-    def estimate(
-        self, batch: SampleBatchType, should_train: bool = True
-    ) -> OffPolicyEstimate:
+    def estimate(self, batch: SampleBatchType) -> OffPolicyEstimate:
         self.check_can_estimate_for(batch)
         estimates = []
-        # Split data into train and test using k-fold cross validation
-        for train_episodes, test_episodes in k_fold_cv(batch, self.k, should_train):
+        # Split data into train and test batches
+        for train_episodes, test_episodes in train_test_split(
+            batch,
+            self.train_test_split_val,
+            self.k,
+        ):
 
             # Train Q-function
             if train_episodes:
