@@ -136,7 +136,7 @@ In this section, we demonstrate creating a ``Dataset`` from single-node in-memor
 
   Create a ``Dataset`` from a NumPy ndarray. This constructs a ``Dataset``
   backed by a single-column Arrow table block; the outer dimension of the ndarray
-  will be treated as the row dimension, and the column with have name ``"value"``.
+  will be treated as the row dimension, and the column will have name ``"__value__"``.
 
   .. literalinclude:: ./doc_code/creating_datasets.py
     :language: python
