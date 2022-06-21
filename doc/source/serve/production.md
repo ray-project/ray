@@ -376,7 +376,33 @@ Sent deploy request successfully!
  * Use `serve config` to see the running app's config.
 ```
 
-`ray start --head` starts a long-lived Ray cluster locally. `serve deploy fruit_config.yaml` deploys the `fruit_config.yaml` file to this local cluster.
+`ray start --head` starts a long-lived Ray cluster locally. `serve deploy fruit_config.yaml` deploys the `fruit_config.yaml` file to this local cluster. To stop your Ray cluster, you can run the CLI command `ray stop`.
+
+The message `Sent deploy request successfully!` means:
+* The Ray cluster has received your config file successfully.
+* It will start a new Serve application if one hasn't already started.
+* The Serve application will deploy the deployments from your deployment graph, updated with the configurations from your config file.
+
+It does **not** mean that your Serve application, including your deployments, has already started running successfully. This happens asynchronously as the Ray cluster attempts to update itself to match the settings from your config file. Check out the [next section](serve-in-production-monitoring) to learn more about how to monitor your deployments.
+
+### Adding a Runtime Environment
+
+If you start Ray and deploy your deployment graph from a directory that doesn't contain the graph code, your deployments will fail to run. This happens because your import path is generally location-dependent. For example, the import path `fruit.deployment_graph` assumes the current directory contains the `fruit.py` module, which contains a `deployment_graph` object.
+
+To make your config file location-independent, you can push your deployment graph code to a remote repository and add that repository to your config file's `runtime_env` field. When Serve runs your deployment graph, it will pull the code from the remote repository rather than use a local copy. **This is a best practice** because it lets you deploy your config file from any machine in any directory and share the file with other developers, making it a more standalone artifact.
+
+As an example, we have [pushed a copy of the FruitStand deployment graph to GitHub](https://github.com/ray-project/test_dag/blob/c620251044717ace0a4c19d766d43c5099af8a77/fruit.py). You can use this config file to deploy the `FruitStand` deployment graph to your own Ray cluster even if you don't have the code locally:
+
+```yaml
+import_path: fruit.deployment_graph
+
+runtime_env:
+    working_dir: "https://github.com/ray-project/test_dag/archive/c620251044717ace0a4c19d766d43c5099af8a77.zip"
+```
+
+:::{note}
+As a side note, you could also package your deployment graph into a standalone Python package that can be imported using a [PYTHONPATH](https://docs.python.org/3.10/using/cmdline.html#envvar-PYTHONPATH) to provide location independence on your local machine. However, it's still best practice to use a `runtime_env`, to ensure consistency across all machines in your cluster.
+:::
 
 (serve-in-production-remote-cluster)=
 
@@ -427,6 +453,36 @@ Check for this variable in your environment to make sure you're using your desir
 (serve-in-production-monitoring)=
 
 ## Monitoring Your Serve Application in Production
+
+The Serve CLI offers two commands to help you monitor your Serve application in production: `serve config` and `serve status`.
+
+If you're working with a remote cluster, `serve config` and `serve status` also offer an `--address/-a` argument to access your cluster. Check out [the previous section](serve-in-production-remote-cluster) for more info on this argument.
+
+### `serve config`
+
+`serve config` gets the latest config file the Ray cluster received. This config file represents the Serve application's goal state. The Ray cluster will constantly attempt to reach and maintain this state by deploying deployments, recovering failed replicas, and more.
+
+Using the `fruit_config.yaml` example from [an earlier section](fruit-config-yaml):
+
+```console
+$ ray start --head
+$ serve deploy fruit_config.yaml
+...
+
+$ serve config
+import_path: fruit.deployment_graph
+
+runtime_env: {}
+
+deployments:
+
+- name: MangoStand
+  num_replicas: 2
+  route_prefix: null
+...
+```
+
+### `serve status`
 
 (serve-in-production-updating)=
 
