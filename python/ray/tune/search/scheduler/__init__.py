@@ -10,7 +10,9 @@ from ray.tune.search.scheduler.pbt import (
     PopulationBasedTraining,
     PopulationBasedTrainingReplay,
 )
-from ray.tune.search.scheduler.resource_changing_scheduler import ResourceChangingScheduler
+from ray.tune.search.scheduler.resource_changing_scheduler import (
+    ResourceChangingScheduler,
+)
 
 
 def _pb2_importer():
