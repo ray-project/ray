@@ -10,14 +10,12 @@ import subprocess
 import sys
 import tarfile
 import tempfile
-import zipfile
-
-from itertools import chain
-from enum import Enum
-
 import urllib.error
 import urllib.parse
 import urllib.request
+import zipfile
+from enum import Enum
+from itertools import chain
 
 logger = logging.getLogger(__name__)
 

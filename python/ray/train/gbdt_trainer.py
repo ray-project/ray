@@ -1,18 +1,18 @@
-from typing import TYPE_CHECKING, Dict, Tuple, Type, Any, Optional
 import warnings
+from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Type
 
-from ray.train.trainer import GenDataset
-from ray.air.config import ScalingConfig, RunConfig, ScalingConfigDataClass
 from ray.air._internal.checkpointing import save_preprocessor_to_dir
+from ray.air.checkpoint import Checkpoint
+from ray.air.config import RunConfig, ScalingConfig, ScalingConfigDataClass
+from ray.train.constants import MODEL_KEY, TRAIN_DATASET_KEY
+from ray.train.trainer import BaseTrainer, GenDataset
+from ray.tune import Trainable
 from ray.tune.utils.trainable import TrainableUtil
 from ray.util.annotations import DeveloperAPI
-from ray.train.trainer import BaseTrainer
-from ray.air.checkpoint import Checkpoint
-from ray.tune import Trainable
-from ray.train.constants import MODEL_KEY, TRAIN_DATASET_KEY
 
 if TYPE_CHECKING:
     import xgboost_ray
+
     from ray.data.preprocessor import Preprocessor
 
 
@@ -203,6 +203,11 @@ class GBDTTrainer(BaseTrainer):
         default_ray_params = self._default_ray_params
 
         class GBDTTrainable(trainable_cls):
+            # Workaround for actor name not being logged correctly
+            # if __repr__ is not directly defined in a class.
+            def __repr__(self):
+                return super().__repr__()
+
             def save_checkpoint(self, tmp_checkpoint_dir: str = ""):
                 checkpoint_path = super().save_checkpoint()
                 parent_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
