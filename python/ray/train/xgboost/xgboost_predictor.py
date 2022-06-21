@@ -6,7 +6,7 @@ import xgboost
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.train.predictor import Predictor
-from ray.train.xgboost.xgboost_trainer import load_checkpoint
+from ray.train.xgboost.utils import load_checkpoint
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor

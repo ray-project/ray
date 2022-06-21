@@ -4,7 +4,7 @@ import warnings
 from collections import defaultdict
 from time import time
 from traceback import format_exc
-from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, Optional, Union, Tuple
 
 import numpy as np
 import pandas as pd
@@ -19,10 +19,8 @@ from sklearn.model_selection._validation import _check_multimetric_scoring, _sco
 import ray.cloudpickle as cpickle
 from ray import tune
 from ray.air._internal.checkpointing import (
-    load_preprocessor_from_dir,
     save_preprocessor_to_dir,
 )
-from ray.air.checkpoint import Checkpoint
 from ray.air.config import RunConfig, ScalingConfig
 from ray.train.constants import MODEL_KEY, TRAIN_DATASET_KEY
 from ray.train.sklearn._sklearn_utils import _has_cpu_params, _set_cpu_params
@@ -434,25 +432,3 @@ class SklearnTrainer(BaseTrainer):
             "fit_time": fit_time,
         }
         tune.report(**results)
-
-
-def load_checkpoint(
-    checkpoint: Checkpoint,
-) -> Tuple[BaseEstimator, Optional["Preprocessor"]]:
-    """Load a Checkpoint from ``SklearnTrainer``.
-
-    Args:
-        checkpoint: The checkpoint to load the estimator and
-            preprocessor from. It is expected to be from the result of a
-            ``SklearnTrainer`` run.
-
-    Returns:
-        The estimator and AIR preprocessor contained within.
-    """
-    with checkpoint.as_directory() as checkpoint_path:
-        estimator_path = os.path.join(checkpoint_path, MODEL_KEY)
-        with open(estimator_path, "rb") as f:
-            estimator = cpickle.load(f)
-        preprocessor = load_preprocessor_from_dir(checkpoint_path)
-
-    return estimator, preprocessor
