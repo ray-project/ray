@@ -683,9 +683,12 @@ void NodeManager::HandleReleaseUnusedBundles(
   std::unordered_set<BundleID, pair_hash> in_use_bundles;
   for (int index = 0; index < request.bundles_in_use_size(); ++index) {
     const auto &bundle_id = request.bundles_in_use(index).bundle_id();
-    in_use_bundles.emplace(
-        std::make_pair(PlacementGroupID::FromBinary(bundle_id.placement_group_id()),
-                       bundle_id.bundle_index()));
+    in_use_bundles.emplace(PlacementGroupID::FromBinary(bundle_id.placement_group_id()),
+                           bundle_id.bundle_index());
+    // Add -1 one to the in_use_bundles. It's ok to add it more than one times since it's
+    // a set.
+    in_use_bundles.emplace(PlacementGroupID::FromBinary(bundle_id.placement_group_id()),
+                           -1);
   }
 
   // Kill all workers that are currently associated with the unused bundles.

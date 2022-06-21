@@ -1,18 +1,17 @@
 import os
-import sys
 import signal
-
-import ray
+import sys
 
 import pytest
 
+import ray
+from ray._private.test_utils import run_string_as_driver, wait_for_condition
 from ray.experimental.state.api import list_workers
-from ray._private.test_utils import wait_for_condition, run_string_as_driver
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
 def get_worker_by_pid(pid):
-    for w in list_workers().values():
+    for w in list_workers():
         if w["pid"] == pid:
             return w
     assert False
@@ -308,4 +307,7 @@ def test_worker_exit_intended_system_exit_and_user_error(ray_start_cluster):
 if __name__ == "__main__":
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

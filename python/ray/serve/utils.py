@@ -1,33 +1,31 @@
-from functools import wraps
+import copy
 import importlib
 from itertools import groupby
 import inspect
+import os
 import pickle
 import random
 import string
 import time
-from typing import Iterable, List, Dict, Tuple
-import os
-import copy
 import traceback
 from enum import Enum
-import __main__
-from ray.actor import ActorHandle
+from functools import wraps
+from typing import Dict, Iterable, List, Tuple
 
-import requests
+import fastapi.encoders
 import numpy as np
 import pydantic
 import pydantic.json
-import fastapi.encoders
-
 import ray
 import ray.serialization_addons
+import requests
+from ray.actor import ActorHandle
 from ray.exceptions import RayTaskError
+from ray.serve.constants import HTTP_PROXY_TIMEOUT
+from ray.serve.http_util import HTTPRequestWrapper, build_starlette_request
 from ray.util.serialization import StandaloneSerializationContext
-from ray.serve.http_util import build_starlette_request, HTTPRequestWrapper
-from ray.serve.constants import (
-    HTTP_PROXY_TIMEOUT,
-)
+
+import __main__
 
 try:
     import pandas as pd
@@ -430,7 +428,7 @@ def require_packages(packages: List[str]):
                 check_import_once()
                 return await func(*args, **kwargs)
 
-        elif inspect.isfunction(func):
+        elif inspect.isroutine(func):
 
             @wraps(func)
             def wrapped(*args, **kwargs):

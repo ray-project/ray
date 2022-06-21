@@ -1,35 +1,37 @@
+import json
 import logging
 import os
-import pytest
-import sys
 import subprocess
-import time
-import requests
-from pathlib import Path
-from unittest import mock
-import json
+import sys
 import tempfile
+import time
+from pathlib import Path
+from typing import List
+from unittest import mock
+
+import pytest
+import requests
 
 import ray
-from ray.exceptions import RuntimeEnvSetupError
-from ray._private.test_utils import (
-    wait_for_condition,
-    get_error_message,
-    get_log_sources,
-    chdir,
-)
-from ray._private.utils import (
-    get_wheel_filename,
-    get_master_wheel_url,
-    get_release_wheel_url,
-)
+from ray._private.runtime_env.context import RuntimeEnvContext
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray._private.runtime_env.uri_cache import URICache
 from ray._private.runtime_env.utils import (
     SubprocessCalledProcessError,
     check_output_cmd,
 )
-from ray._private.runtime_env.uri_cache import URICache
-from ray._private.runtime_env.context import RuntimeEnvContext
-from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray._private.test_utils import (
+    chdir,
+    get_error_message,
+    get_log_sources,
+    wait_for_condition,
+)
+from ray._private.utils import (
+    get_master_wheel_url,
+    get_release_wheel_url,
+    get_wheel_filename,
+)
+from ray.exceptions import RuntimeEnvSetupError
 from ray.runtime_env import RuntimeEnv
 
 
@@ -570,7 +572,10 @@ class MyPlugin(RuntimeEnvPlugin):
 
     @staticmethod
     def modify_context(
-        uri: str, runtime_env: dict, ctx: RuntimeEnvContext, logger: logging.Logger
+        uris: List[str],
+        runtime_env: dict,
+        ctx: RuntimeEnvContext,
+        logger: logging.Logger,
     ) -> None:
         global runtime_env_retry_times
         runtime_env_retry_times += 1
@@ -837,4 +842,7 @@ def test_runtime_env_interface():
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-sv", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

@@ -148,12 +148,16 @@ Here are some rules of thumb for scaling training with RLlib.
 
 
 In case you are using lots of workers (``num_workers >> 10``) and you observe worker failures for whatever reasons, which normally interrupt your RLlib training runs, consider using
-the config settings ``ignore_worker_failures=True`` or ``recreate_failed_workers=True``:
+the config settings ``ignore_worker_failures=True``, ``recreate_failed_workers=True``, or ``restart_failed_sub_environments=True``:
 
-``ignore_worker_failures=True`` allows your Algorithm to not crash due to a single worker error, but to continue for as long as there is at least one functional worker remaining.
-``recreate_failed_workers=True`` will have your Algorithm attempt to replace/recreate any failed worker(s) with a new one.
+``ignore_worker_failures``: When set to True, your Algorithm will not crash due to a single worker error but continue for as long as there is at least one functional worker remaining.
+``recreate_failed_workers``: When set to True, your Algorithm will attempt to replace/recreate any failed worker(s) with newly created one(s). This way, your number of workers will never decrease, even if some of them fail from time to time.
+``restart_failed_sub_environments``: When set to True and there is a failure in one of the vectorized sub-environments in one of your workers, the worker will try to recreate only the failed sub-environment and re-integrate the newly created one into your vectorized env stack on that worker.
 
-Both these settings will make your training runs much more stable and more robust against occasional OOM or other similar "once in a while" errors.
+Note that only one of ``ignore_worker_failures`` or ``recreate_failed_workers`` may be set to True (they are mutually exclusive settings). However,
+you can combine each of these with the ``restart_failed_sub_environments=True`` setting.
+Using these options will make your training runs much more stable and more robust against occasional OOM or other similar "once in a while" errors on your workers
+themselves or inside your environments.
 
 
 Common Parameters
@@ -740,7 +744,7 @@ Here is an example of the basic usage (for a more complete example, see `custom_
     # NOTE: In order for this to work, your (custom) model needs to implement
     # the `import_from_h5` method.
     # See https://github.com/ray-project/ray/blob/master/rllib/tests/test_model_imports.py
-    # for detailed examples for tf- and torch trainers/models.
+    # for detailed examples for tf- and torch policies/models.
 
 .. note::
 
@@ -1270,7 +1274,7 @@ Below are some examples of how the custom evaluation metrics are reported nested
     Sample output for `python custom_eval.py --custom-eval`
     ------------------------------------------------------------------------
 
-    INFO trainer.py:631 -- Running custom eval function <function ...>
+    INFO algorithm.py:631 -- Running custom eval function <function ...>
     Update corridor length to 4
     Update corridor length to 7
     Custom evaluation round 1

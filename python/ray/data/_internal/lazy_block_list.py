@@ -148,13 +148,17 @@ class LazyBlockList(BlockList):
         block_partition_meta_refs = np.array_split(
             self._block_partition_meta_refs, num_splits
         )
+        cached_metadata = np.array_split(self._cached_metadata, num_splits)
         output = []
-        for t, b, m in zip(tasks, block_partition_refs, block_partition_meta_refs):
+        for t, b, m, c in zip(
+            tasks, block_partition_refs, block_partition_meta_refs, cached_metadata
+        ):
             output.append(
                 LazyBlockList(
                     t.tolist(),
                     b.tolist(),
                     m.tolist(),
+                    c.tolist(),
                 )
             )
         return output
@@ -162,12 +166,13 @@ class LazyBlockList(BlockList):
     # Note: does not force execution prior to splitting.
     def split_by_bytes(self, bytes_per_split: int) -> List["BlockList"]:
         output = []
-        cur_tasks, cur_blocks, cur_blocks_meta = [], [], []
+        cur_tasks, cur_blocks, cur_blocks_meta, cur_cached_meta = [], [], [], []
         cur_size = 0
-        for t, b, bm in zip(
+        for t, b, bm, c in zip(
             self._tasks,
             self._block_partition_refs,
             self._block_partition_meta_refs,
+            self._cached_metadata,
         ):
             m = t.get_metadata()
             if m.size_bytes is None:
@@ -177,16 +182,24 @@ class LazyBlockList(BlockList):
             size = m.size_bytes
             if cur_blocks and cur_size + size > bytes_per_split:
                 output.append(
-                    LazyBlockList(cur_tasks, cur_blocks, cur_blocks_meta),
+                    LazyBlockList(
+                        cur_tasks,
+                        cur_blocks,
+                        cur_blocks_meta,
+                        cur_cached_meta,
+                    ),
                 )
-                cur_tasks, cur_blocks, cur_blocks_meta = [], [], []
+                cur_tasks, cur_blocks, cur_blocks_meta, cur_cached_meta = [], [], [], []
                 cur_size = 0
             cur_tasks.append(t)
             cur_blocks.append(b)
             cur_blocks_meta.append(bm)
+            cur_cached_meta.append(c)
             cur_size += size
         if cur_blocks:
-            output.append(LazyBlockList(cur_tasks, cur_blocks, cur_blocks_meta))
+            output.append(
+                LazyBlockList(cur_tasks, cur_blocks, cur_blocks_meta, cur_cached_meta)
+            )
         return output
 
     # Note: does not force execution prior to division.
@@ -195,11 +208,13 @@ class LazyBlockList(BlockList):
             self._tasks[:part_idx],
             self._block_partition_refs[:part_idx],
             self._block_partition_meta_refs[:part_idx],
+            self._cached_metadata[:part_idx],
         )
         right = LazyBlockList(
             self._tasks[part_idx:],
             self._block_partition_refs[part_idx:],
             self._block_partition_meta_refs[part_idx:],
+            self._cached_metadata[part_idx:],
         )
         return left, right
 

@@ -15,7 +15,7 @@ from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.typing import (
     ActionConnectorDataType,
     AgentConnectorDataType,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
 )
 
 
@@ -67,7 +67,7 @@ register_connector(AgentConnectorPipeline.__name__, AgentConnectorPipeline)
 # TODO(jungong) : finish this.
 @DeveloperAPI
 def get_agent_connectors_from_config(
-    config: TrainerConfigDict, obs_space: gym.Space
+    config: AlgorithmConfigDict, obs_space: gym.Space
 ) -> AgentConnectorPipeline:
     connectors = [FlattenDataAgentConnector()]
 
