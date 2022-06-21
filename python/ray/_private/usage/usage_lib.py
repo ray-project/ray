@@ -182,7 +182,8 @@ class LibUsageRecorder:
             # In Linux, exclusive file open is supported.
             # However, it is not clear if it is supported on Windows,
             # so we just use a file lock.
-            with TempFileLock(str(self.lib_usage_file), timeout=2):
+            lib_usage_file = self._lib_usage_dir / self._lib_usage_filename(lib_name)
+            with TempFileLock(str(lib_usage_file), timeout=2):
                 self._put_lib_usage(lib_name)
         else:
             self._put_lib_usage(lib_name)
@@ -231,9 +232,6 @@ def _put_library_usage(library_usage: str):
     # Record the library usage to the temp (e.g., /tmp/ray) folder.
     # Note that although we always write this file, it is not
     # reported when the usage stats is disabled.
-    # We are doing this only for the driver since when there are many workers
-    # that are concurrently running, it can have lock contention due to
-    # the file lock.
     if ray.worker.global_worker.mode == ray.SCRIPT_MODE:
         try:
             lib_usage_recorder = LibUsageRecorder(ray._private.utils.get_ray_temp_dir())
