@@ -4,16 +4,16 @@
 
 This section should help you:
 
-- test your Serve deployment graph
-- create a Serve config file
-- deploy, monitor, and update your Serve deployment graph in production
+- develop and test your Serve deployment graph locally
+- understand the Serve config file format
+- deploy, monitor, and update your Serve application in production
 
 ```{contents}
 ```
 
 (serve-in-production-testing)=
 
-## Testing Your Serve Deployment Graph
+## Developing and Testing Your Serve Deployment Graph with `serve run`
 
 You can test your Serve deployment graph using the Serve CLI's `serve run` command. The `serve run` command launches a temporary Ray cluster, deploys the graph to it, and blocks. Then, you can open a new terminal window and issue requests to your graph using the Python interpreter. When your graph receives and processes these requests, it will output `print` and `logging` statements to the terminal. Once you're finished testing your graph, you can type `ctrl-C` to kill the temporary Ray cluster and tear down your graph. You can use this pattern to quickly run, debug, and iterate on your Serve deployment graph.
 
