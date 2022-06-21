@@ -29,7 +29,7 @@ def run_board(args):
     service.run()
 
     # frontend service
-    logger.info("Try to start automlboard on port %s\n" % args.port)
+    logger.info("Try to start board on port %s\n" % args.port)
     command = [
         os.path.join(root_path, "manage.py"),
         "runserver",
@@ -68,10 +68,10 @@ def init_config(args):
     else:
         logger.info(
             "Using sqlite3 as the database backend, "
-            "information will be stored in automlboard.db"
+            "information will be stored in board.db"
         )
 
-    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "ray.tune.automlboard.settings")
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "ray.tune.board.settings")
     django.setup()
     command = [os.path.join(root_path, "manage.py"), "migrate", "--run-syncdb"]
     execute_from_command_line(command)

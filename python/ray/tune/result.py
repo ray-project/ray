@@ -127,11 +127,11 @@ DEFAULT_RESULTS_DIR = (
 )
 
 # Meta file about status under each experiment directory, can be
-# parsed by automlboard if exists.
+# parsed by board if exists.
 JOB_META_FILE = "job_status.json"
 
 # Meta file about status under each trial directory, can be parsed
-# by automlboard if exists.
+# by board if exists.
 EXPR_META_FILE = "trial_status.json"
 
 # File that stores parameters of the trial.
