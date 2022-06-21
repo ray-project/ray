@@ -65,25 +65,38 @@ def _deserialize(ray_serialization_result: RaySerializationResult):
 # ------------------------Build-in serializers-----------------------------
 
 
-class BytesOutOfBandSerializer(RaySerializer):
+class BytesInBandSerializer(RaySerializer):
     TYPE_ID = b"ray_serde_bytes"
 
     def serialize(self, instance: bytes) -> RaySerializationResult:
+        return RaySerializationResult(BytesInBandSerializer.TYPE_ID, instance)
+
+    def deserialize(
+        self, in_band_buffer: bytes, oob_buffers: Mapping[str, Mapping[int, memoryview]]
+    ) -> bytes:
+        return in_band_buffer
+
+
+class MemoryviewOutOfBandSerializer(RaySerializer):
+    TYPE_ID = b"ray_serde_memoryview"
+
+    def serialize(self, instance: memoryview) -> RaySerializationResult:
         random_id = ObjectRef.from_random().binary()
-        oob_buffers = {
-            BytesOutOfBandSerializer.TYPE_ID: {random_id: memoryview(instance)}
-        }
+        oob_buffers = {MemoryviewOutOfBandSerializer.TYPE_ID: {random_id: instance}}
         return RaySerializationResult(
-            BytesOutOfBandSerializer.TYPE_ID, random_id, oob_buffers
+            MemoryviewOutOfBandSerializer.TYPE_ID, random_id, oob_buffers
         )
 
     def deserialize(
         self, in_band_buffer: bytes, oob_buffers: Mapping[str, Mapping[int, memoryview]]
     ) -> bytes:
-        byte_id = in_band_buffer
-        return bytes(oob_buffers[BytesOutOfBandSerializer.TYPE_ID][byte_id])
+        memoryview_id = in_band_buffer
+        return oob_buffers[MemoryviewOutOfBandSerializer.TYPE_ID][memoryview_id]
 
 
+_register_serializer(BytesInBandSerializer.TYPE_ID, type(b""), BytesInBandSerializer())
 _register_serializer(
-    BytesOutOfBandSerializer.TYPE_ID, type(b""), BytesOutOfBandSerializer()
+    MemoryviewOutOfBandSerializer.TYPE_ID,
+    type(memoryview(b"")),
+    MemoryviewOutOfBandSerializer(),
 )

@@ -25,6 +25,19 @@ def test_bytes_task_arg(ray_start_regular):
     assert res == b
 
 
+def test_out_of_band():
+    byte_arr = bytearray(b"1314521")
+    view = memoryview(byte_arr)
+    res = ser_new._serialize(view)
+    deserialized = ser_new._deserialize(res)
+    assert deserialized.obj == byte_arr
+    # change the underlying buffer
+    byte_arr[0] = 9
+    # the deserialized object should also be changed
+    # since the underlying buffer is the same in OOB serialization
+    assert deserialized.obj[0] == 9
+
+
 if __name__ == "__main__":
     import pytest
 
