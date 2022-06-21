@@ -78,12 +78,17 @@ cc_binary(
     ]),
     copts = COPTS,
     linkstatic = True,
-    deps = [
-        "ray_cpp_lib",
-        "@boost//:callable_traits",
-        "@boost//:optional",
-        "@msgpack",
-    ],
+    deps = select({
+        "@bazel_tools//src/conditions:windows": [
+            "ray_api",
+        ],
+        "//conditions:default": [
+            "ray_cpp_lib",
+            "@boost//:callable_traits",
+            "@boost//:optional",
+            "@msgpack",
+        ],
+    }),
 )
 
 genrule(
