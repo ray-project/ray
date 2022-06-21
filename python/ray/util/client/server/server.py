@@ -845,16 +845,6 @@ def main():
     else:
         server = serve(hostport, ray_connect_handler)
 
-    # # Set up handlers for graceful exit on SIGTERM
-    # def graceful_exit(signum: int, _frame):
-    #     logger.info(
-    #         f"Caught signal: {signal.Signals(signum).name}. Exiting gracefully."
-    #     )
-    #     server.stop(0)
-    #     sys.exit(0)
-
-    # signal.signal(signal.SIGTERM, graceful_exit)
-
     try:
         idle_checks_remaining = TIMEOUT_FOR_SPECIFIC_SERVER_S
         while True:
