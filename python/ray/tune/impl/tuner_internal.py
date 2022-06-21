@@ -167,7 +167,7 @@ class TunerInternal:
                 self._run_config.failure.max_failures if self._run_config.failure else 0
             ),
             _experiment_checkpoint_dir=self._experiment_checkpoint_dir,
-            raise_on_failed_trial=False,
+            raise_on_failed_trial=True,
             verbose=self._run_config.verbose,
             **self._tuner_kwargs,
         )
@@ -187,7 +187,7 @@ class TunerInternal:
                 self._run_config.failure.max_failures if self._run_config.failure else 0
             ),
             _experiment_checkpoint_dir=self._experiment_checkpoint_dir,
-            raise_on_failed_trial=False,
+            raise_on_failed_trial=True,
             **self._tuner_kwargs,
         )
         return analysis
