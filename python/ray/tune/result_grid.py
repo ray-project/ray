@@ -210,7 +210,7 @@ class ResultGrid:
                 If False, or if the ``CheckpointingConfig`` object was not set, will use
                 ``metric`` and ``mode`` as set here.
                 Can also be a ``CheckpointingConfig`` object, in which case it will
-                 be used directly.
+                be used directly.
         """
 
         checkpointing_config = self._resolve_checkpointing_config(checkpointing_config)
