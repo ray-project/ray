@@ -9,7 +9,7 @@ import torch.optim as optim
 from ray.tune.examples.mnist_pytorch import train, test, ConvNet, get_data_loaders
 
 from ray import tune
-from ray.tune.search.schedulers import PopulationBasedTraining
+from ray.tune.search.scheduler import PopulationBasedTraining
 from ray.tune.experiment.trial import ExportFormat
 
 # __tutorial_imports_end__

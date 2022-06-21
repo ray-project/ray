@@ -7,7 +7,7 @@ import ray
 from ray import tune, logger
 from ray.tune import Trainable, run_experiments, register_trainable
 from ray.tune.error import TuneError
-from ray.tune.search.schedulers import FIFOScheduler, TrialScheduler
+from ray.tune.search.scheduler import FIFOScheduler, TrialScheduler
 
 
 class FrequentPausesScheduler(FIFOScheduler):

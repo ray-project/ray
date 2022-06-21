@@ -13,7 +13,7 @@ from mxnet.gluon.data.vision import transforms
 from gluoncv.model_zoo import get_model
 from gluoncv.data import transforms as gcv_transforms
 
-from ray.tune.search.schedulers import create_scheduler
+from ray.tune.search.scheduler import create_scheduler
 from ray import tune
 
 # Training settings

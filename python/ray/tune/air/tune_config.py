@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Optional
 
-from ray.tune.search.schedulers import TrialScheduler
+from ray.tune.search.scheduler import TrialScheduler
 from ray.tune.search import Searcher
 from ray.util import PublicAPI
 

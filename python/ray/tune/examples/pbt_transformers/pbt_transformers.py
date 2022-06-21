@@ -11,7 +11,7 @@ from ray.tune.examples.pbt_transformers.utils import (
     download_data,
     build_compute_metrics_fn,
 )
-from ray.tune.search.schedulers import PopulationBasedTraining
+from ray.tune.search.scheduler import PopulationBasedTraining
 from transformers import (
     glue_tasks_num_labels,
     AutoConfig,

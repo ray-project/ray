@@ -6,7 +6,7 @@ class TestSoftImports(unittest.TestCase):
     """Tests whether it's possible to use Ray Tune without soft dependencies"""
 
     def testSoftImports(self):
-        import ray.tune.search.schedulers  # noqa: F401
+        import ray.tune.search.scheduler  # noqa: F401
         from ray.tune.search import SEARCH_ALG_IMPORT
 
         for name, import_func in SEARCH_ALG_IMPORT.items():

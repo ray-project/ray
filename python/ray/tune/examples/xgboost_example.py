@@ -3,7 +3,7 @@ import sklearn.datasets
 import sklearn.metrics
 import os
 import numpy as np
-from ray.tune.search.schedulers import ASHAScheduler
+from ray.tune.search.scheduler import ASHAScheduler
 from sklearn.model_selection import train_test_split
 import xgboost as xgb
 

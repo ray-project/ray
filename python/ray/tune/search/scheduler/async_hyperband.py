@@ -6,7 +6,7 @@ import pickle
 
 from ray.tune.execution import trial_runner
 from ray.tune.constants import DEFAULT_METRIC
-from ray.tune.search.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
+from ray.tune.search.scheduler.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.experiment.trial import Trial
 from ray.util import PublicAPI
 

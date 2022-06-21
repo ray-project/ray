@@ -6,7 +6,7 @@ API.
 import ray
 from ray import tune
 from ray.tune.experiment.trial import ExportFormat
-from ray.tune.search.schedulers import PopulationBasedTraining
+from ray.tune.search.scheduler import PopulationBasedTraining
 
 import argparse
 import os

@@ -13,7 +13,7 @@ import ray.train as train
 from ray import tune
 from ray.train import Trainer
 from ray.tune import CLIReporter
-from ray.tune.search.schedulers import PopulationBasedTraining
+from ray.tune.search.scheduler import PopulationBasedTraining
 from ray.util.ml_utils.resnet import ResNet18
 
 

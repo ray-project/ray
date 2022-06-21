@@ -3,7 +3,7 @@
 It also checks that it is usable with a separate scheduler.
 """
 from ray import tune
-from ray.tune.search.schedulers import AsyncHyperBandScheduler
+from ray.tune.search.scheduler import AsyncHyperBandScheduler
 from ray.tune.automl import GeneticSearch
 from ray.tune.automl import ContinuousSpace, DiscreteSpace, SearchSpace
 

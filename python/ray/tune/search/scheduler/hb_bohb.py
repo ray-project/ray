@@ -2,8 +2,8 @@ import logging
 from typing import Dict, Optional
 
 from ray.tune.execution import trial_runner
-from ray.tune.search.schedulers.trial_scheduler import TrialScheduler
-from ray.tune.search.schedulers.hyperband import HyperBandScheduler
+from ray.tune.search.scheduler.trial_scheduler import TrialScheduler
+from ray.tune.search.scheduler.hyperband import HyperBandScheduler
 from ray.tune.experiment.trial import Trial
 from ray.util import PublicAPI
 
@@ -23,7 +23,7 @@ class HyperBandForBOHB(HyperBandScheduler):
     2. Trials will be paused even if the bracket is not filled. This allows
     BOHB to insert new trials into the training.
 
-    See ray.tune.search.schedulers.HyperBandScheduler for parameter docstring.
+    See ray.tune.search.scheduler.HyperBandScheduler for parameter docstring.
     """
 
     def on_trial_add(self, trial_runner: "trial_runner.TrialRunner", trial: Trial):

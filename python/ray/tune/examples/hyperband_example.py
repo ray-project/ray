@@ -5,7 +5,7 @@ import argparse
 import ray
 from ray import tune
 from ray.tune.utils.mock_trainable import MyTrainableClass
-from ray.tune.search.schedulers import HyperBandScheduler
+from ray.tune.search.scheduler import HyperBandScheduler
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

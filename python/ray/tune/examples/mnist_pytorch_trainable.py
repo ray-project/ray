@@ -9,7 +9,7 @@ import torch.optim as optim
 
 import ray
 from ray import tune
-from ray.tune.search.schedulers import ASHAScheduler
+from ray.tune.search.scheduler import ASHAScheduler
 from ray.tune.examples.mnist_pytorch import train, test, get_data_loaders, ConvNet
 
 # Change these values if you want the training to run quicker or slower.

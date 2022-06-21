@@ -25,7 +25,7 @@ from ray.tune.output.progress_reporter import (
 )
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.registry import get_trainable_cls, is_function_trainable
-from ray.tune.search.schedulers import (
+from ray.tune.search.scheduler import (
     PopulationBasedTraining,
     PopulationBasedTrainingReplay,
     ResourceChangingScheduler,
@@ -41,7 +41,7 @@ from ray.tune.search.searcher.util import (
     set_search_properties_backwards_compatible
     as searcher_set_search_properties_backwards_compatible,
 )
-from ray.tune.search.schedulers import (
+from ray.tune.search.scheduler import (
     set_search_properties_backwards_compatible
     as scheduler_set_search_properties_backwards_compatible,
 )
@@ -60,7 +60,7 @@ from ray.tune.utils.callback import create_default_callbacks
 from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
 
 # Must come last to avoid circular imports
-from ray.tune.search.schedulers import FIFOScheduler, TrialScheduler
+from ray.tune.search.scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 logger = logging.getLogger(__name__)
@@ -438,7 +438,7 @@ def run(
     # Create scheduler here as we need access to some of its properties
     if isinstance(scheduler, str):
         # importing at top level causes a recursive dependency
-        from ray.tune.search.schedulers import create_scheduler
+        from ray.tune.search.scheduler import create_scheduler
 
         scheduler = create_scheduler(scheduler)
     scheduler = scheduler or FIFOScheduler()

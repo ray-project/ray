@@ -14,7 +14,7 @@ import torchvision
 import torchvision.transforms as transforms
 import ray
 from ray import tune
-from ray.tune.search.schedulers import ASHAScheduler
+from ray.tune.search.scheduler import ASHAScheduler
 # __import_end__
 
 

@@ -1,22 +1,22 @@
 import inspect
 
 from ray._private.utils import get_function_args
-from ray.tune.search.schedulers.trial_scheduler import FIFOScheduler
-from ray.tune.search.schedulers.hyperband import HyperBandScheduler
-from ray.tune.search.schedulers.hb_bohb import HyperBandForBOHB
-from ray.tune.search.schedulers.async_hyperband import AsyncHyperBandScheduler
-from ray.tune.search.schedulers.median_stopping_rule import MedianStoppingRule
-from ray.tune.search.schedulers.pbt import (
+from ray.tune.search.scheduler.trial_scheduler import FIFOScheduler
+from ray.tune.search.scheduler.hyperband import HyperBandScheduler
+from ray.tune.search.scheduler.hb_bohb import HyperBandForBOHB
+from ray.tune.search.scheduler.async_hyperband import AsyncHyperBandScheduler
+from ray.tune.search.scheduler.median_stopping_rule import MedianStoppingRule
+from ray.tune.search.scheduler.pbt import (
     PopulationBasedTraining,
     PopulationBasedTrainingReplay,
 )
-from ray.tune.search.schedulers.resource_changing_scheduler import ResourceChangingScheduler
+from ray.tune.search.scheduler.resource_changing_scheduler import ResourceChangingScheduler
 
 
 def _pb2_importer():
     # PB2 introduces a GPy dependency which can be expensive, so we import
     # lazily.
-    from ray.tune.search.schedulers.pb2 import PB2
+    from ray.tune.search.scheduler.pb2 import PB2
 
     return PB2
 

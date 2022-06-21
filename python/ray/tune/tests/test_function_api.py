@@ -18,7 +18,7 @@ from ray.tune.execution.function_runner import (
     FuncCheckpointUtil,
 )
 from ray.tune.constants import DEFAULT_METRIC, TRAINING_ITERATION
-from ray.tune.search.schedulers import ResourceChangingScheduler
+from ray.tune.search.scheduler import ResourceChangingScheduler
 
 
 def creator_generator(logdir):

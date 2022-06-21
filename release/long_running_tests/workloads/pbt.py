@@ -2,7 +2,7 @@
 
 import ray
 from ray.tune import run_experiments
-from ray.tune.search.schedulers import PopulationBasedTraining
+from ray.tune.search.scheduler import PopulationBasedTraining
 from ray.cluster_utils import Cluster
 from ray.tune.utils.release_test_util import ProgressCallback
 

@@ -14,7 +14,7 @@ from ray.tune import Trainable
 from ray.tune.experiment.trial import Trial
 from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
-from ray.tune.search.schedulers import PopulationBasedTraining
+from ray.tune.search.scheduler import PopulationBasedTraining
 from ray._private.test_utils import object_memory_usage
 
 

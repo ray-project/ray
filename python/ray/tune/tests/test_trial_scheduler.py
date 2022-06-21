@@ -16,7 +16,7 @@ from ray import tune
 from ray.tune import Trainable
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.constants import TRAINING_ITERATION
-from ray.tune.search.schedulers import (
+from ray.tune.search.scheduler import (
     FIFOScheduler,
     HyperBandScheduler,
     AsyncHyperBandScheduler,
@@ -26,7 +26,7 @@ from ray.tune.search.schedulers import (
     HyperBandForBOHB,
 )
 
-from ray.tune.search.schedulers import _explore, PopulationBasedTrainingReplay
+from ray.tune.search.scheduler import _explore, PopulationBasedTrainingReplay
 from ray.tune.search.searcher._mock import _MockSearcher
 from ray.tune.search.searcher.concurrency_limiter import ConcurrencyLimiter
 from ray.tune.experiment.trial import Trial
@@ -980,13 +980,13 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         trials = runner.get_trials()
 
         # Should not error if training_iteration not in result dict
-        with self.assertLogs("ray.tune.search.schedulers.pbt", level="WARN"):
+        with self.assertLogs("ray.tune.search.scheduler.pbt", level="WARN"):
             self.on_trial_result(
                 pbt, runner, trials[0], result={"episode_reward_mean": 4}
             )
 
         # Should not error if episode_reward_mean not in result dict.
-        with self.assertLogs("ray.tune.search.schedulers.pbt", level="WARN"):
+        with self.assertLogs("ray.tune.search.scheduler.pbt", level="WARN"):
             self.on_trial_result(
                 pbt,
                 runner,

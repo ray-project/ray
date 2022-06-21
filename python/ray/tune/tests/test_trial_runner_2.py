@@ -9,7 +9,7 @@ import ray
 from ray.rllib import _register_all
 
 from ray.tune import TuneError
-from ray.tune.search.schedulers import FIFOScheduler
+from ray.tune.search.scheduler import FIFOScheduler
 from ray.tune.constants import DONE
 from ray.tune.registry import _global_registry, TRAINABLE_CLASS
 from ray.tune.experiment.trial import Trial

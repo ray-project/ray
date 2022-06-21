@@ -8,7 +8,7 @@ import random
 
 import ray
 from ray import tune
-from ray.tune.search.schedulers import PopulationBasedTraining
+from ray.tune.search.scheduler import PopulationBasedTraining
 
 
 def pbt_function(config, checkpoint_dir=None):

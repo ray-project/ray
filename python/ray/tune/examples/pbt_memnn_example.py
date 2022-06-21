@@ -260,7 +260,7 @@ class MemNNModel(tune.Trainable):
 
 if __name__ == "__main__":
     import ray
-    from ray.tune.search.schedulers import PopulationBasedTraining
+    from ray.tune.search.scheduler import PopulationBasedTraining
 
     parser = argparse.ArgumentParser()
     parser.add_argument(

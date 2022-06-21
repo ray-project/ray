@@ -4,7 +4,7 @@ import sklearn.metrics
 from sklearn.model_selection import train_test_split
 
 from ray import tune
-from ray.tune.search.schedulers import ASHAScheduler
+from ray.tune.search.scheduler import ASHAScheduler
 from ray.tune.integration.lightgbm import (
     TuneReportCheckpointCallback,
     TuneReportCallback,

@@ -6,7 +6,7 @@ import numpy as np
 import ray
 
 from ray import tune
-from ray.tune.search.schedulers import PopulationBasedTraining
+from ray.tune.search.scheduler import PopulationBasedTraining
 from ray.tune.utils.mock import FailureInjectorCallback
 from ray.tune.utils.release_test_util import ProgressCallback
 

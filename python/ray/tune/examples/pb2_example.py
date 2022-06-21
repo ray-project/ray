@@ -4,7 +4,7 @@ import argparse
 
 import ray
 from ray import tune
-from ray.tune.search.schedulers import PB2
+from ray.tune.search.scheduler import PB2
 from ray.tune.examples.pbt_function import pbt_function
 
 if __name__ == "__main__":

@@ -101,7 +101,7 @@ tune.run(
 # __bayes_end__
 
 # __hyperband_start__
-from ray.tune.search.schedulers import HyperBandScheduler
+from ray.tune.search.scheduler import HyperBandScheduler
 
 # Create HyperBand scheduler and minimize the score
 hyperband = HyperBandScheduler(metric="score", mode="max")

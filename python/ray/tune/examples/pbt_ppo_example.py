@@ -12,7 +12,7 @@ computationally demanding example.
 import random
 
 from ray import tune
-from ray.tune.search.schedulers import PopulationBasedTraining
+from ray.tune.search.scheduler import PopulationBasedTraining
 
 if __name__ == "__main__":
 

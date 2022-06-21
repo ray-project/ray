@@ -61,7 +61,7 @@ import torchvision.transforms as transforms
 import ray
 from ray import tune
 from ray.tune import CLIReporter
-from ray.tune.search.schedulers import ASHAScheduler
+from ray.tune.search.scheduler import ASHAScheduler
 
 ######################################################################
 # Most of the imports are needed for building the PyTorch model. Only the last three

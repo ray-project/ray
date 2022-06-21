@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 
 from ray.tune import TuneError
-from ray.tune.search.schedulers import PopulationBasedTraining
+from ray.tune.search.scheduler import PopulationBasedTraining
 
 
 def import_pb2_dependencies():
@@ -23,7 +23,7 @@ def import_pb2_dependencies():
 GPy, has_sklearn = import_pb2_dependencies()
 
 if GPy and has_sklearn:
-    from ray.tune.search.schedulers.pb2_utils import (
+    from ray.tune.search.scheduler.pb2_utils import (
         normalize,
         optimize_acq,
         select_length,

@@ -8,7 +8,7 @@ import numpy as np
 import time
 
 from ray import tune
-from ray.tune.search.schedulers import AsyncHyperBandScheduler
+from ray.tune.search.scheduler import AsyncHyperBandScheduler
 from ray.tune.search.searcher.ax import AxSearch
 
 

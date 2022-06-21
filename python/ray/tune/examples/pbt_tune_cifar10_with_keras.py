@@ -24,7 +24,7 @@ from tensorflow.keras.preprocessing.image import ImageDataGenerator
 
 from ray import tune
 from ray.tune import Trainable
-from ray.tune.search.schedulers import PopulationBasedTraining
+from ray.tune.search.scheduler import PopulationBasedTraining
 
 num_classes = 10
 NUM_SAMPLES = 128

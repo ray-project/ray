@@ -8,7 +8,7 @@ import time
 
 from ray import tune
 from ray.tune.search.searcher.zoopt import ZOOptSearch
-from ray.tune.search.schedulers import AsyncHyperBandScheduler
+from ray.tune.search.scheduler import AsyncHyperBandScheduler
 
 
 def evaluation_fn(step, width, height):

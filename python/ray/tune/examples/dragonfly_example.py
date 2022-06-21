@@ -13,7 +13,7 @@ import time
 
 from ray import tune
 from ray.tune.search import ConcurrencyLimiter
-from ray.tune.search.schedulers import AsyncHyperBandScheduler
+from ray.tune.search.scheduler import AsyncHyperBandScheduler
 from ray.tune.search.searcher.dragonfly import DragonflySearch
 
 

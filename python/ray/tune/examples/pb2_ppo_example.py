@@ -5,8 +5,8 @@ import pandas as pd
 from datetime import datetime
 
 from ray.tune import run, sample_from
-from ray.tune.search.schedulers import PopulationBasedTraining
-from ray.tune.search.schedulers import PB2
+from ray.tune.search.scheduler import PopulationBasedTraining
+from ray.tune.search.scheduler import PB2
 
 
 # Postprocess the perturbed config to ensure it's still valid used if PBT.
