@@ -158,7 +158,7 @@ Once we're finished, we can close the Python interpreter by running `quit()` and
 
 (serve-in-production-config-file)=
 
-## Creating Your Serve Config File
+## Creating Your Serve Config File with `serve build`
 
 You can create a Serve config file to manage your deployment graphs' configurations in production. The Serve CLI can "deploy" this file, using the [serve deploy](serve-in-production-deploying) command. This will deploy or update your deployment graphs in production. The file is written in YAML and has the following format:
 
