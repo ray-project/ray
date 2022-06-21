@@ -15,7 +15,7 @@ import argparse
 import os
 
 from ray.rllib.utils.test_utils import check_learning_achieved
-from ray.tune.logger import Logger, LegacyLoggerCallback
+from ray.tune.output.logger import Logger, LegacyLoggerCallback
 
 parser = argparse.ArgumentParser()
 parser.add_argument(

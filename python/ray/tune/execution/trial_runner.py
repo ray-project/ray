@@ -955,7 +955,7 @@ class TrialRunner:
         self.trial_executor.mark_trial_to_checkpoint(trial)
 
     def debug_string(self, delim="\n"):
-        from ray.tune.progress_reporter import trial_progress_str
+        from ray.tune.output.progress_reporter import trial_progress_str
 
         result_keys = [list(t.last_result) for t in self.get_trials() if t.last_result]
         metrics = set().union(*result_keys)

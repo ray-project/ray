@@ -16,7 +16,7 @@ import ray
 import ray.cloudpickle as pickle
 from ray.air.checkpoint import Checkpoint
 from ray.tune.cloud import TrialCheckpoint
-from ray.tune.logger import Logger
+from ray.tune.output.logger import Logger
 from ray.tune.resources import Resources
 from ray.tune.result import (
     DEBUG_METRICS,
@@ -743,7 +743,7 @@ class Trainable:
             self._result_logger = logger_creator(config)
             self._logdir = self._result_logger.logdir
         else:
-            from ray.tune.logger import UnifiedLogger
+            from ray.tune.output.logger import UnifiedLogger
 
             logdir_prefix = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
             ray._private.utils.try_to_create_directory(DEFAULT_RESULTS_DIR)

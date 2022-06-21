@@ -22,7 +22,7 @@ from ray.rllib.examples.env.recommender_system_envs_with_recsim import (
     LongTermSatisfactionRecSimEnv,
 )
 from ray.rllib.utils.test_utils import check_learning_achieved
-from ray.tune.logger import pretty_print
+from ray.tune.output.logger import pretty_print
 
 parser = argparse.ArgumentParser()
 parser.add_argument(

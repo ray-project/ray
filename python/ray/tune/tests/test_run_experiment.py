@@ -7,7 +7,7 @@ from ray.rllib import _register_all
 from ray.tune.result import TIMESTEPS_TOTAL
 from ray.tune import Trainable, TuneError
 from ray.tune import register_trainable, run_experiments
-from ray.tune.logger import LegacyLoggerCallback, Logger
+from ray.tune.output.logger import LegacyLoggerCallback, Logger
 from ray.tune.experiment import Experiment
 from ray.tune.experiment.trial import Trial, ExportFormat
 

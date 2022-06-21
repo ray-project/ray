@@ -8,7 +8,7 @@ from ray import tune
 from ray._private.test_utils import run_string_as_driver
 from ray.tune.experiment.trial import Trial
 from ray.tune.result import AUTO_RESULT_KEYS
-from ray.tune.progress_reporter import (
+from ray.tune.output.progress_reporter import (
     CLIReporter,
     JupyterNotebookReporter,
     ProgressReporter,

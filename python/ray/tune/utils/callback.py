@@ -4,9 +4,9 @@ import logging
 import os
 
 from ray.tune.callback import Callback
-from ray.tune.progress_reporter import TrialProgressCallback
+from ray.tune.output.progress_reporter import TrialProgressCallback
 from ray.tune.syncer import SyncConfig
-from ray.tune.logger import (
+from ray.tune.output.logger import (
     CSVLoggerCallback,
     CSVLogger,
     JsonLoggerCallback,

@@ -14,7 +14,7 @@ from ray.rllib.algorithms.algorithm import Algorithm as RLlibAlgo
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.typing import PartialAlgorithmConfigDict, EnvType
 from ray.tune import Trainable, PlacementGroupFactory
-from ray.tune.logger import Logger
+from ray.tune.output.logger import Logger
 from ray.tune.registry import get_trainable_cls
 from ray.tune.resources import Resources
 from ray.tune.syncer import Syncer

@@ -9,7 +9,7 @@ import ray
 from ray.rllib import _register_all
 
 from ray import tune
-from ray.tune.logger import NoopLogger
+from ray.tune.output.logger import NoopLogger
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.execution.function_runner import (

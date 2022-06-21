@@ -24,7 +24,7 @@ from ray.rllib.utils.typing import (
     ResultDict,
     AlgorithmConfigDict,
 )
-from ray.tune.logger import Logger
+from ray.tune.output.logger import Logger
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm import Algorithm

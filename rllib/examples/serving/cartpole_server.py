@@ -31,7 +31,7 @@ from ray import tune
 from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.rllib.env.policy_server_input import PolicyServerInput
 from ray.rllib.examples.custom_metrics_and_callbacks import MyCallbacks
-from ray.tune.logger import pretty_print
+from ray.tune.output.logger import pretty_print
 
 SERVER_ADDRESS = "localhost"
 # In this example, the user can run the policy server with

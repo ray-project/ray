@@ -17,7 +17,7 @@ from ray.tune.session import (
     checkpoint_dir,
     is_session_enabled,
 )
-from ray.tune.progress_reporter import (
+from ray.tune.output.progress_reporter import (
     ProgressReporter,
     CLIReporter,
     JupyterNotebookReporter,

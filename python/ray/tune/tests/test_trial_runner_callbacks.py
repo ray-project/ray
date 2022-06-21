@@ -10,7 +10,7 @@ from collections import OrderedDict
 import ray
 from ray import tune
 from ray.rllib import _register_all
-from ray.tune.logger import DEFAULT_LOGGERS, LoggerCallback, LegacyLoggerCallback
+from ray.tune.output.logger import DEFAULT_LOGGERS, LoggerCallback, LegacyLoggerCallback
 from ray.tune.execution.ray_trial_executor import (
     _ExecutorEvent,
     _ExecutorEventType,

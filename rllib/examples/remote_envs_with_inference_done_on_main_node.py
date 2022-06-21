@@ -19,7 +19,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray import tune
 from ray.tune import PlacementGroupFactory
-from ray.tune.logger import pretty_print
+from ray.tune.output.logger import pretty_print
 
 
 def get_cli_args():

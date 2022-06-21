@@ -28,7 +28,7 @@ from ray.tune.error import (
     _TuneStartTrialError,
     _TuneNoNextExecutorEventError,
 )
-from ray.tune.logger import NoopLogger
+from ray.tune.output.logger import NoopLogger
 from ray.tune.result import TRIAL_INFO, STDOUT_FILE, STDERR_FILE
 from ray.tune.execution.placement_groups import (
     _PlacementGroupManager,

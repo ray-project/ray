@@ -94,7 +94,7 @@ from ray.rllib.utils.typing import (
     TensorStructType,
     TensorType,
 )
-from ray.tune.logger import Logger, UnifiedLogger
+from ray.tune.output.logger import Logger, UnifiedLogger
 from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.tune.resources import Resources
 from ray.tune.result import DEFAULT_RESULTS_DIR

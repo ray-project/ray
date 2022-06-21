@@ -52,7 +52,7 @@ from ray.rllib.examples.models.autoregressive_action_dist import (
 )
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.test_utils import check_learning_achieved
-from ray.tune.logger import pretty_print
+from ray.tune.output.logger import pretty_print
 
 
 def get_cli_args():

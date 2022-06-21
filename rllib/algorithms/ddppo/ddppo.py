@@ -46,7 +46,7 @@ from ray.rllib.utils.typing import (
     ResultDict,
     AlgorithmConfigDict,
 )
-from ray.tune.logger import Logger
+from ray.tune.output.logger import Logger
 
 logger = logging.getLogger(__name__)
 

@@ -48,7 +48,7 @@ from ray.rllib.examples.models.action_mask_model import (
     ActionMaskModel,
     TorchActionMaskModel,
 )
-from ray.tune.logger import pretty_print
+from ray.tune.output.logger import pretty_print
 
 
 def get_cli_args():

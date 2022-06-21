@@ -4,7 +4,7 @@ import argparse
 import time
 
 from ray import tune
-from ray.tune.logger import LoggerCallback
+from ray.tune.output.logger import LoggerCallback
 
 
 class TestLoggerCallback(LoggerCallback):

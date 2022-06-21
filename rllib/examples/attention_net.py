@@ -43,7 +43,7 @@ from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune import registry
-from ray.tune.logger import pretty_print
+from ray.tune.output.logger import pretty_print
 
 tf1, tf, tfv = try_import_tf()
 SUPPORTED_ENVS = [

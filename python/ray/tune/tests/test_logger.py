@@ -9,7 +9,7 @@ import shutil
 import numpy as np
 from ray.cloudpickle import cloudpickle
 
-from ray.tune.logger import (
+from ray.tune.output.logger import (
     CSVLoggerCallback,
     JsonLoggerCallback,
     JsonLogger,

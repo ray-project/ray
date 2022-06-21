@@ -28,7 +28,7 @@ from ray.tune import (
 from ray.tune.callback import Callback
 from ray.tune.experiment import Experiment
 from ray.tune.execution.function_runner import wrap_function
-from ray.tune.logger import Logger, LegacyLoggerCallback
+from ray.tune.output.logger import Logger, LegacyLoggerCallback
 from ray.tune.execution.ray_trial_executor import noop_logger_creator
 from ray.tune.resources import Resources
 from ray.tune.result import (

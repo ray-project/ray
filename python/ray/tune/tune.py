@@ -18,7 +18,7 @@ from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
 from ray.tune.experiment import Experiment, convert_to_experiment_list
-from ray.tune.progress_reporter import (
+from ray.tune.output.progress_reporter import (
     RemoteReporterMixin,
     detect_reporter,
     ProgressReporter,
