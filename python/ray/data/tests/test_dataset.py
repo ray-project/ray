@@ -1649,6 +1649,228 @@ def test_iter_batches_basic(ray_start_regular_shared):
         assert batch.equals(df)
 
 
+@pytest.mark.parametrize("pipelined", [False, True])
+@pytest.mark.parametrize("ds_format", ["arrow", "pandas", "simple"])
+def test_iter_batches_local_shuffle(shutdown_only, pipelined, ds_format):
+    # Input validation.
+    # Batch size must be given for local shuffle.
+    with pytest.raises(ValueError):
+        list(ray.data.range(100).iter_batches(shuffle=True))
+
+    # Shuffle buffer capacity must be at least as large as batch size.
+    with pytest.raises(ValueError):
+        list(
+            ray.data.range(100).iter_batches(
+                batch_size=10,
+                shuffle=True,
+                shuffle_buffer_capacity=5,
+            )
+        )
+
+    # Shuffle buffer min size must be at least as large as batch size.
+    with pytest.raises(ValueError):
+        list(
+            ray.data.range(100).iter_batches(
+                batch_size=10,
+                shuffle=True,
+                shuffle_buffer_min_size=5,
+            )
+        )
+
+    def range(n, parallelism=200):
+        if ds_format == "simple":
+            ds = ray.data.range(n, parallelism=parallelism)
+        elif ds_format == "arrow":
+            ds = ray.data.range_table(n, parallelism=parallelism)
+        elif ds_format == "pandas":
+            ds = ray.data.range_table(n, parallelism=parallelism).map_batches(
+                lambda df: df, batch_size=None, batch_format="pandas"
+            )
+        if pipelined:
+            pipe = ds.repeat(2)
+            return pipe
+        else:
+            return ds
+
+    def to_row_dicts(batch):
+        if isinstance(batch, pd.DataFrame):
+            batch = batch.to_dict(orient="records")
+        return batch
+
+    def unbatch(batches):
+        return [r for batch in batches for r in to_row_dicts(batch)]
+
+    def sort(r):
+        if ds_format == "simple":
+            return sorted(r)
+        return sorted(r, key=lambda v: v["value"])
+
+    base = range(100).take_all()
+
+    # Implicit shuffle buffer capacity and minimum size.
+    r1 = unbatch(range(100, parallelism=10).iter_batches(batch_size=3, shuffle=True))
+    r2 = unbatch(range(100, parallelism=10).iter_batches(batch_size=3, shuffle=True))
+    # Check randomness of shuffle.
+    assert r1 != r2, (r1, r2)
+    assert r1 != base
+    assert r2 != base
+    # Check content.
+    assert sort(r1) == sort(base)
+    assert sort(r2) == sort(base)
+
+    # Explicit shuffle buffer capacity and minimum size.
+    r1 = unbatch(
+        range(100, parallelism=10).iter_batches(
+            batch_size=3,
+            shuffle=True,
+            shuffle_buffer_capacity=50,
+            shuffle_buffer_min_size=25,
+        )
+    )
+    r2 = unbatch(
+        range(100, parallelism=10).iter_batches(
+            batch_size=3,
+            shuffle=True,
+            shuffle_buffer_capacity=50,
+            shuffle_buffer_min_size=25,
+        )
+    )
+    # Check randomness of shuffle.
+    assert r1 != r2, (r1, r2)
+    assert r1 != base
+    assert r2 != base
+    # Check content.
+    assert sort(r1) == sort(base)
+    assert sort(r2) == sort(base)
+
+    # Set seed.
+    r1 = unbatch(
+        range(100, parallelism=10).iter_batches(
+            batch_size=3,
+            shuffle=True,
+            shuffle_seed=0,
+        )
+    )
+    r2 = unbatch(
+        range(100, parallelism=10).iter_batches(
+            batch_size=3,
+            shuffle=True,
+            shuffle_seed=0,
+        )
+    )
+    # Check randomness of shuffle.
+    assert r1 == r2, (r1, r2)
+    assert r1 != base
+    # Check content.
+    assert sort(r1) == sort(base)
+
+    # Single block.
+    r1 = unbatch(range(100, parallelism=1).iter_batches(batch_size=3, shuffle=True))
+    r2 = unbatch(range(100, parallelism=1).iter_batches(batch_size=3, shuffle=True))
+    # Check randomness of shuffle.
+    assert r1 != r2, (r1, r2)
+    assert r1 != base
+    assert r2 != base
+    # Check content.
+    assert sort(r1) == sort(base)
+    assert sort(r2) == sort(base)
+
+    # Single-row blocks.
+    r1 = unbatch(range(100, parallelism=100).iter_batches(batch_size=3, shuffle=True))
+    r2 = unbatch(range(100, parallelism=100).iter_batches(batch_size=3, shuffle=True))
+    # Check randomness of shuffle.
+    assert r1 != r2, (r1, r2)
+    assert r1 != base
+    assert r2 != base
+    # Check content.
+    assert sort(r1) == sort(base)
+    assert sort(r2) == sort(base)
+
+    # Buffer larger than dataset.
+    r1 = unbatch(
+        range(100, parallelism=10).iter_batches(
+            batch_size=3,
+            shuffle=True,
+            shuffle_buffer_capacity=1000,
+            shuffle_buffer_min_size=200,
+        )
+    )
+    r2 = unbatch(
+        range(100, parallelism=10).iter_batches(
+            batch_size=3,
+            shuffle=True,
+            shuffle_buffer_capacity=1000,
+            shuffle_buffer_min_size=200,
+        )
+    )
+    # Check randomness of shuffle.
+    assert r1 != r2, (r1, r2)
+    assert r1 != base
+    assert r2 != base
+    # Check content.
+    assert sort(r1) == sort(base)
+    assert sort(r2) == sort(base)
+
+    # Batch size larger than block.
+    r1 = unbatch(range(100, parallelism=20).iter_batches(batch_size=12, shuffle=True))
+    r2 = unbatch(range(100, parallelism=20).iter_batches(batch_size=12, shuffle=True))
+    # Check randomness of shuffle.
+    assert r1 != r2, (r1, r2)
+    assert r1 != base
+    assert r2 != base
+    # Check content.
+    assert sort(r1) == sort(base)
+    assert sort(r2) == sort(base)
+
+    # Batch size larger than dataset.
+    r1 = unbatch(range(100, parallelism=10).iter_batches(batch_size=200, shuffle=True))
+    r2 = unbatch(range(100, parallelism=10).iter_batches(batch_size=200, shuffle=True))
+    # Check randomness of shuffle.
+    assert r1 != r2, (r1, r2)
+    assert r1 != base
+    assert r2 != base
+    # Check content.
+    assert sort(r1) == sort(base)
+    assert sort(r2) == sort(base)
+
+    # Drop partial batches.
+    r1 = unbatch(
+        range(100, parallelism=10).iter_batches(
+            batch_size=7,
+            shuffle=True,
+            drop_last=True,
+        )
+    )
+    r2 = unbatch(
+        range(100, parallelism=10).iter_batches(
+            batch_size=7,
+            shuffle=True,
+            drop_last=True,
+        )
+    )
+    # Check randomness of shuffle.
+    assert r1 != r2, (r1, r2)
+    assert r1 != base
+    assert r2 != base
+    # Check content.
+    # Check that partial batches were dropped.
+    assert len(r1) % 7 == 0
+    assert len(r2) % 7 == 0
+    tmp_base = base
+    if ds_format in ("arrow", "pandas"):
+        r1 = [tuple(r.items()) for r in r1]
+        r2 = [tuple(r.items()) for r in r2]
+        tmp_base = [tuple(r.items()) for r in base]
+    assert set(r1) <= set(tmp_base)
+    assert set(r2) <= set(tmp_base)
+
+    # Test empty dataset.
+    ds = ray.data.from_items([])
+    r1 = unbatch(ds.iter_batches(batch_size=2, shuffle=True))
+    assert len(r1) == 0
+    assert r1 == ds.take()
+
+
 def test_iter_batches_grid(ray_start_regular_shared):
     # Tests slicing, batch combining, and partial batch dropping logic over
     # a grid of dataset, batching, and dropping configurations.

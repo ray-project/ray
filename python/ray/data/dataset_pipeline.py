@@ -162,6 +162,10 @@ class DatasetPipeline(Generic[T]):
         batch_size: int = None,
         batch_format: str = "native",
         drop_last: bool = False,
+        shuffle: bool = False,
+        shuffle_buffer_capacity: Optional[int] = None,
+        shuffle_buffer_min_size: Optional[int] = None,
+        shuffle_seed: Optional[int] = None,
     ) -> Iterator[BatchType]:
         """Return a local batched iterator over the data in the pipeline.
 
@@ -183,6 +187,29 @@ class DatasetPipeline(Generic[T]):
                 select ``pandas.DataFrame`` or "pyarrow" to select
                 ``pyarrow.Table``. Default is "native".
             drop_last: Whether to drop the last batch if it's incomplete.
+            shuffle: Whether to randomly shuffle the data using a local in-memory
+                shuffle buffer. This can only be used if a ``batch_size`` is specified.
+                This is a light-weight alternative to the global `.random_shuffle()`
+                operation; this shuffle will be less random but will be faster and less
+                resource-intensive.
+            shuffle_buffer_capacity: Soft maximum number of rows allowed in the local
+                in-memory shuffle buffer. This must be greater than or equal to
+                ``batch_size``. Note that this is a soft max: if the buffer is currently
+                smaller than this max, we will add a new data block to the buffer, but
+                this new data block may push the buffer over this max; we don't take the
+                size of the new data block into account when doing this capacity check.
+                Default is ``max(2 * shuffle_buffer_min_size, shuffle_buffer_min_size +
+                batch_size)`` if ``shuffle_buffer_min_size`` is given, otherwise the
+                default is ``10 * batch_size``.
+            shuffle_buffer_min_size: Minimum number of rows that must be in the local
+                in-memory shuffle buffer in order to yield a batch. This must be greater
+                than or equal to ``batch_size`` and must be less than
+                ``shuffle_buffer_capacity``. Increasing this will improve the randomness
+                of the shuffle but may increase the latency to the first batch.
+                Default is
+                ``max(min(shuffle_buffer_capacity // 2, shuffle_buffer_capacity -
+                batch_size), batch_size)``.
+            shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
             An iterator over record batches.
@@ -198,6 +225,10 @@ class DatasetPipeline(Generic[T]):
             batch_size=batch_size,
             batch_format=batch_format,
             drop_last=drop_last,
+            shuffle=shuffle,
+            shuffle_buffer_capacity=shuffle_buffer_capacity,
+            shuffle_buffer_min_size=shuffle_buffer_min_size,
+            shuffle_seed=shuffle_seed,
         )
         self._stats.iter_total_s.add(time.perf_counter() - time_start)
 
