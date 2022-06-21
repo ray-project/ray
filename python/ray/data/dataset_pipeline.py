@@ -17,17 +17,18 @@ from typing import (
 import ray
 from ray.data.context import DatasetContext
 from ray.data.dataset import Dataset, T, U
-from ray.data.impl.pipeline_executor import (
+from ray.data._internal.pipeline_executor import (
     PipelineExecutor,
     PipelineSplitExecutorCoordinator,
 )
 from ray.data.block import Block
 from ray.data.row import TableRow
-from ray.data.impl import progress_bar
-from ray.data.impl.block_batching import batch_blocks, BatchType
-from ray.data.impl.block_list import BlockList
-from ray.data.impl.plan import ExecutionPlan
-from ray.data.impl.stats import DatasetPipelineStats, DatasetStats
+from ray.types import ObjectRef
+from ray.data._internal import progress_bar
+from ray.data._internal.block_batching import batch_blocks, BatchType
+from ray.data._internal.block_list import BlockList
+from ray.data._internal.plan import ExecutionPlan
+from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
 from ray.util.annotations import PublicAPI, DeveloperAPI
 
 if TYPE_CHECKING:
@@ -39,7 +40,12 @@ logger = logging.getLogger(__name__)
 _PER_DATASET_OPS = ["map", "map_batches", "add_column", "flat_map", "filter"]
 
 # Operations that apply to each dataset holistically in the pipeline.
-_HOLISTIC_PER_DATASET_OPS = ["repartition", "random_shuffle", "sort"]
+_HOLISTIC_PER_DATASET_OPS = [
+    "repartition",
+    "random_shuffle",
+    "sort",
+    "randomize_block_order",
+]
 
 # Similar to above but we should force evaluation immediately.
 _PER_DATASET_OUTPUT_OPS = [
@@ -168,18 +174,25 @@ class DatasetPipeline(Generic[T]):
         Returns:
             An iterator over record batches.
         """
+        if self._executed[0]:
+            raise RuntimeError("Pipeline cannot be read multiple times.")
         time_start = time.perf_counter()
+        # When the DatasetPipeline actually did transformations (i.e. the self._stages
+        # isn't empty), there will be output blocks created. In this case, those output
+        # blocks are safe to clear right after read, because we know they will never be
+        # accessed again, given that DatasetPipeline can be read at most once.
         yield from batch_blocks(
             self._iter_blocks(),
             self._stats,
             prefetch_blocks=prefetch_blocks,
+            clear_block_after_read=(len(self._stages) > 0),
             batch_size=batch_size,
             batch_format=batch_format,
             drop_last=drop_last,
         )
         self._stats.iter_total_s.add(time.perf_counter() - time_start)
 
-    def _iter_blocks(self) -> Iterator[Block]:
+    def _iter_blocks(self) -> Iterator[ObjectRef[Block]]:
         ds_wait_start = time.perf_counter()
         for ds in self.iter_datasets():
             self._stats.iter_ds_wait_s.add(time.perf_counter() - ds_wait_start)
@@ -275,8 +288,9 @@ class DatasetPipeline(Generic[T]):
 
         return self._split(len(indices) + 1, lambda ds: ds.split_at_indices(indices))
 
-    def _split(self, n: int, splitter: Callable[[Dataset], "DatasetPipeline[T]"]):
-
+    def _split(
+        self, n: int, splitter: Callable[[Dataset], List["Dataset[T]"]]
+    ) -> List["DatasetPipeline[T]"]:
         resources = {}
         if not ray.util.client.ray.is_connected():
             # Pin the coordinator (and any child actors) to the local node to avoid

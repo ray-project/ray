@@ -46,7 +46,7 @@ Dataset Pipelines
 -----------------
 
 
-Datasets execute their transformations synchronously in blocking calls. However, it can be useful to overlap dataset computations with output. This can be done with a `DatasetPipeline <data-pipelines-quick-start>`__.
+Datasets execute their transformations synchronously in blocking calls. However, it can be useful to overlap dataset computations with output. This can be done with a `DatasetPipeline <package-ref.html#datasetpipeline-api>`__.
 
 A DatasetPipeline is an unified iterator over a (potentially infinite) sequence of Ray Datasets, each of which represents a *window* over the original data. Conceptually it is similar to a `Spark DStream <https://spark.apache.org/docs/latest/streaming-programming-guide.html#discretized-streams-dstreams>`__, but manages execution over a bounded amount of source data instead of an unbounded stream. Ray computes each dataset window on-demand and stitches their output together into a single logical data iterator. DatasetPipeline implements most of the same transformation and output methods as Datasets (e.g., map, filter, split, iter_rows, to_torch, etc.).
 
@@ -87,6 +87,9 @@ files, enabling inspection functions like :meth:`ds.schema() <ray.data.Dataset.s
 and :meth:`ds.show() <ray.data.Dataset.show>` to be used right away. Executing further
 transformations on the Dataset will trigger execution of all read tasks.
 
+See the :ref:`Creating Datasets guide <creating_datasets>` for details on how to read
+data into datasets.
+
 Dataset Transforms
 ==================
 
@@ -101,6 +104,9 @@ Datasets use either Ray tasks or Ray actors to transform datasets (i.e., for
 
 ..
   https://docs.google.com/drawings/d/1MGlGsPyTOgBXswJyLZemqJO1Mf7d-WiEFptIulvcfWE/edit
+
+See the :ref:`Transforming Datasets guide <transforming_datasets>` for an in-depth guide
+on transforming datasets.
 
 Shuffling Data
 ==============
@@ -118,6 +124,16 @@ You can also change the partitioning of a Dataset using :meth:`ds.random_shuffle
 
 ..
   https://docs.google.com/drawings/d/132jhE3KXZsf29ho1yUdPrCHB9uheHBWHJhDQMXqIVPA/edit
+  
+Fault tolerance
+===============
+
+Datasets relies on :ref:`task-based fault tolerance <task-fault-tolerance>` in Ray core. Specifically, a ``Dataset`` will be automatically recovered by Ray in case of failures. This works through **lineage reconstruction**: a Dataset is a collection of Ray objects stored in shared memory, and if any of these objects are lost, then Ray will recreate them by re-executing the task(s) that created them.
+
+There are a few cases that are not currently supported:
+1. If the original creator of the ``Dataset`` dies. This is because the creator stores the metadata for the :ref:`objects <object-fault-tolerance>` that comprise the ``Dataset``.
+2. For a :meth:`DatasetPipeline.split() <ray.data.DatasetPipeline.split>`, we do not support recovery for a consumer failure. When there are multiple consumers, they must all read the split pipeline in lockstep. To recover from this case, the pipeline and all consumers must be restarted together.
+3. The ``compute=actors`` option for transformations.
 
 Execution and Memory Management
 ===============================
@@ -145,7 +161,7 @@ scheduling strategy for all Datasets tasks/actors, using the global
 Example: Datasets in Tune
 =========================
 
-.. _dataset_tune:
+.. _datasets_tune:
 
 Here's an example of how you can configure Datasets to run within Tune trials, which
 is the typical case of when you'd encounter placement groups with Datasets. Two

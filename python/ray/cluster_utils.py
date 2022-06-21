@@ -246,13 +246,19 @@ class Cluster:
                 )
 
         if self.head_node == node:
+            # We have to wait to prevent the raylet becomes a zombie which will prevent
+            # worker from exiting
             self.head_node.kill_all_processes(
-                check_alive=False, allow_graceful=allow_graceful
+                check_alive=False, allow_graceful=allow_graceful, wait=True
             )
             self.head_node = None
             # TODO(rliaw): Do we need to kill all worker processes?
         else:
-            node.kill_all_processes(check_alive=False, allow_graceful=allow_graceful)
+            # We have to wait to prevent the raylet becomes a zombie which will prevent
+            # worker from exiting
+            node.kill_all_processes(
+                check_alive=False, allow_graceful=allow_graceful, wait=True
+            )
             self.worker_nodes.remove(node)
 
         assert (

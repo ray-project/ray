@@ -8,7 +8,7 @@ import ray._raylet
 import ray._private.signature as signature
 from ray.utils import get_runtime_env_info, parse_runtime_env
 import ray.worker
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import PublicAPI, DeveloperAPI
 from ray.util.placement_group import configure_placement_group_based_on_context
 from ray.util.scheduling_strategies import (
     PlacementGroupSchedulingStrategy,
@@ -34,7 +34,11 @@ from ray.util.tracing.tracing_helper import (
 )
 from ray._private import ray_option_utils
 
+
 logger = logging.getLogger(__name__)
+
+# Hook to call with (actor, resources, strategy) on each local actor creation.
+_actor_launch_hook = None
 
 
 @PublicAPI
@@ -563,14 +567,13 @@ class ActorClass:
             def remote(self, *args, **kwargs):
                 return actor_cls._remote(args=args, kwargs=kwargs, **updated_options)
 
+            @DeveloperAPI
             def bind(self, *args, **kwargs):
                 """
-                **Experimental**
-
-                For ray DAG building. Implementation and interface subject
-                to changes.
+                For Ray DAG building that creates static graph from decorated
+                class or functions.
                 """
-                from ray.experimental.dag.class_node import ClassNode
+                from ray.dag.class_node import ClassNode
 
                 return ClassNode(
                     actor_cls.__ray_metadata__.modified_class,
@@ -909,6 +912,11 @@ class ActorClass:
             scheduling_strategy=scheduling_strategy,
         )
 
+        if _actor_launch_hook:
+            _actor_launch_hook(
+                meta.actor_creation_function_descriptor, resources, scheduling_strategy
+            )
+
         actor_handle = ActorHandle(
             meta.language,
             actor_id,
@@ -923,14 +931,13 @@ class ActorClass:
 
         return actor_handle
 
+    @DeveloperAPI
     def bind(self, *args, **kwargs):
         """
-        **Experimental**
-
-        For ray DAG building. Implementation and interface subject
-        to changes.
+        For Ray DAG building that creates static graph from decorated
+        class or functions.
         """
-        from ray.experimental.dag.class_node import ClassNode
+        from ray.dag.class_node import ClassNode
 
         return ClassNode(
             self.__ray_metadata__.modified_class, args, kwargs, self._default_options

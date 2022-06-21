@@ -163,7 +163,7 @@ def _check_deprecate_placement_group(options: Dict[str, Any]):
     placement_group = options.get("placement_group", "default")
     scheduling_strategy = options.get("scheduling_strategy")
     # TODO(suquark): @ray.remote(placement_group=None) is used in
-    # "python/ray/data/impl/remote_fn.py" and many other places,
+    # "python/ray.data._internal/remote_fn.py" and many other places,
     # while "ray.data.read_api.read_datasource" set "scheduling_strategy=SPREAD".
     # This might be a bug, but it is also ok to allow them co-exist.
     if (placement_group not in ("default", None)) and (scheduling_strategy is not None):

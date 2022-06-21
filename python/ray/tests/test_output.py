@@ -450,7 +450,7 @@ ray.init(address="auto")
 
 run_experiments(
     {
-        "ppo": {
+        "PPO": {
             "run": "PPO",
             "env": "CartPole-v0",
             "num_samples": 10,
@@ -590,4 +590,7 @@ if __name__ == "__main__":
         ray.init(num_cpus=1, object_store_memory=(100 * MB))
         ray.shutdown()
     else:
-        sys.exit(pytest.main(["-v", __file__]))
+        if os.environ.get("PARALLEL_CI"):
+            sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+        else:
+            sys.exit(pytest.main(["-sv", __file__]))

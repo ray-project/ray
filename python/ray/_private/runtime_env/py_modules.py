@@ -1,29 +1,29 @@
+import asyncio
 import logging
 import os
+from pathlib import Path
 from types import ModuleType
 from typing import Any, Dict, List, Optional
-from pathlib import Path
-import asyncio
 
-from ray.experimental.internal_kv import _internal_kv_initialized
 from ray._private.runtime_env.conda_utils import exec_cmd_stream_to_logger
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
-    download_and_unpack_package,
+    Protocol,
     delete_package,
+    download_and_unpack_package,
     get_local_dir_from_uri,
     get_uri_for_directory,
     get_uri_for_package,
+    is_whl_uri,
     package_exists,
     parse_uri,
-    is_whl_uri,
-    Protocol,
     upload_package_if_needed,
     upload_package_to_gcs,
 )
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.runtime_env.working_dir import set_pythonpath_in_context
-from ray._private.utils import get_directory_size_bytes
-from ray._private.utils import try_to_create_directory
+from ray._private.utils import get_directory_size_bytes, try_to_create_directory
+from ray.experimental.internal_kv import _internal_kv_initialized
 
 default_logger = logging.getLogger(__name__)
 
@@ -125,7 +125,10 @@ def upload_py_modules_if_needed(
     return runtime_env
 
 
-class PyModulesManager:
+class PyModulesPlugin(RuntimeEnvPlugin):
+
+    name = "py_modules"
+
     def __init__(self, resources_dir: str):
         self._resources_dir = os.path.join(resources_dir, "py_modules_files")
         try_to_create_directory(self._resources_dir)
@@ -148,7 +151,7 @@ class PyModulesManager:
 
         return local_dir_size
 
-    def get_uris(self, runtime_env: dict) -> Optional[List[str]]:
+    def get_uris(self, runtime_env: dict) -> List[str]:
         return runtime_env.py_modules()
 
     def _download_and_install_wheel(
@@ -211,13 +214,11 @@ class PyModulesManager:
 
     def modify_context(
         self,
-        uris: Optional[List[str]],
+        uris: List[str],
         runtime_env_dict: Dict,
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ):
-        if uris is None:
-            return
         module_dirs = []
         for uri in uris:
             module_dir = self._get_local_dir_from_uri(uri)

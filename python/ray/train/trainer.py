@@ -1,53 +1,52 @@
 import copy
-from datetime import datetime
 import logging
 import os
-from pathlib import Path
-from typing import Union, Callable, List, TypeVar, Optional, Any, Dict, Type
 import warnings
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional, Type, TypeVar, Union
 
 import ray
 from ray.actor import ActorHandle
-from ray.train.backend import (
-    BackendConfig,
+from ray.air.checkpoint import Checkpoint
+from ray.train._internal.backend_executor import (
     BackendExecutor,
     InactiveWorkerGroupError,
     TrainBackendError,
     TrainingWorkerError,
 )
-from ray.train.callbacks.callback import TrainingCallback
-from ray.train.impl.dataset_spec import RayDataset, _RayDatasetSpec
-from ray.train.session import TrainingResultType
-from ray.train.utils import (
-    construct_train_func,
-    ActorWrapper,
-)
-from ray.train.checkpoint import (
-    CheckpointStrategy,
-    TuneCheckpointManager,
+from ray.train._internal.checkpoint import (
     CheckpointManager,
+    TuneCheckpointManager,
     load_checkpoint_from_path,
 )
-from ray.train.constants import (
-    TUNE_INSTALLED,
-    DEFAULT_RESULTS_DIR,
-    TUNE_CHECKPOINT_FILE_NAME,
-    ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
-    ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
-    TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
-    TRAIN_ENABLE_WORKER_SPREAD_ENV,
-)
+from ray.train._internal.dataset_spec import RayDataset, RayDatasetSpec
+from ray.train._internal.session import TrainingResultType
 
 # Ray Train should be usable even if Tune is not installed.
-from ray.train.utils import construct_path
-from ray.train.worker_group import WorkerGroup
-from ray.util import PublicAPI
-from ray.util.annotations import DeveloperAPI
+from ray.train._internal.utils import ActorWrapper, construct_path, construct_train_func
+from ray.train._internal.worker_group import WorkerGroup
+from ray.train.backend import BackendConfig
+from ray.train.base_trainer import (  # noqa: F401
+    BaseTrainer,
+    GenDataset,
+    TrainingFailedError,
+)
+from ray.train.callbacks.callback import TrainingCallback
+from ray.train.constants import (
+    DEFAULT_RESULTS_DIR,
+    ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
+    ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
+    TRAIN_ENABLE_WORKER_SPREAD_ENV,
+    TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
+    TUNE_INSTALLED,
+)
+from ray.util.annotations import Deprecated, DeveloperAPI
+from ray.util.ml_utils.checkpoint_manager import CheckpointStrategy
 
 if TUNE_INSTALLED:
     from ray import tune
-    from ray.tune import Trainable
-    from ray.tune import PlacementGroupFactory
+    from ray.tune import PlacementGroupFactory, Trainable
     from ray.tune.function_runner import wrap_function
 else:
     tune = PlacementGroupFactory = Trainable = object
@@ -80,7 +79,7 @@ BACKEND_ENV_VARS = {
 
 # Import backend configurations dynamically since not all subdependencies
 # may be installed.
-def get_backend_config_cls(backend_name) -> type:
+def _get_backend_config_cls(backend_name) -> type:
     if backend_name not in BACKEND_NAME_TO_CONFIG_CLS_NAME:
         raise ValueError(
             f"Invalid backend: {backend_name}. "
@@ -96,7 +95,7 @@ def get_backend_config_cls(backend_name) -> type:
     return config_cls
 
 
-@PublicAPI(stability="beta")
+@Deprecated
 class Trainer:
     """A class for enabling seamless distributed deep learning.
 
@@ -142,12 +141,12 @@ class Trainer:
         max_retries: int = 3,
     ):
         warnings.warn(
-            "The `ray.train.Trainer` API will be deprecated in Ray "
-            "2.0, and will be replaced by Ray AI Runtime (Ray AIR). Ray AIR ("
+            "The `ray.train.Trainer` API is deprecated in Ray "
+            "2.0, and is replaced by Ray AI Runtime (Ray AIR). Ray AIR ("
             "https://docs.ray.io/en/latest/ray-air/getting-started.html) will "
             "provide greater functionality than `ray.train.Trainer`, "
             "and with a more flexible and easy-to-use API.",
-            PendingDeprecationWarning,
+            DeprecationWarning,
             stacklevel=2,
         )
 
@@ -224,11 +223,16 @@ class Trainer:
 
         self._backend_executor = ActorWrapper(backend_executor_actor)
 
+        # Todo (krfricke): Initialize checkpoint manager here with final values
+        # rather than in `on_training_start`
         if self._is_tune_enabled():
-            self.checkpoint_manager = TuneCheckpointManager()
+            self.checkpoint_manager = TuneCheckpointManager(
+                checkpoint_strategy=None, run_dir=None
+            )
         else:
-            self.checkpoint_manager = CheckpointManager()
-        self.checkpoint_manager.on_init()
+            self.checkpoint_manager = CheckpointManager(
+                checkpoint_strategy=None, run_dir=None
+            )
 
     def create_logdir(self, log_dir: Optional[Union[str, Path]]) -> Path:
         """Create logdir for the Trainer."""
@@ -265,7 +269,7 @@ class Trainer:
         if isinstance(backend, BackendConfig):
             return backend
         elif isinstance(backend, str):
-            return get_backend_config_cls(backend)()
+            return _get_backend_config_cls(backend)()
         else:
             raise TypeError(f"Invalid type for backend: {type(backend)}.")
 
@@ -340,7 +344,7 @@ class Trainer:
 
         train_func = construct_train_func(train_func, config)
 
-        dataset_spec = _RayDatasetSpec(dataset_or_dict=dataset)
+        dataset_spec = RayDatasetSpec(dataset_or_dict=dataset)
 
         try:
             iterator = TrainingIterator(
@@ -419,7 +423,7 @@ class Trainer:
 
         train_func = construct_train_func(train_func, config)
 
-        dataset_spec = _RayDatasetSpec(dataset_or_dict=dataset)
+        dataset_spec = RayDatasetSpec(dataset_or_dict=dataset)
 
         return TrainingIterator(
             backend_executor=self._backend_executor,
@@ -603,7 +607,7 @@ class Trainer:
         return TrainWorkerGroup(worker_group)
 
 
-@DeveloperAPI
+@Deprecated
 class TrainWorkerGroup:
     """A container for a group of Ray actors.
 
@@ -631,6 +635,11 @@ class TrainWorkerGroup:
     """
 
     def __init__(self, worker_group: WorkerGroup):
+        warnings.warn(
+            "The `ray.train.trainer.WorkerGroup` API is deprecated in Ray 2.0",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self._worker_group = worker_group
 
     def __getitem__(self, item) -> ActorHandle:
@@ -658,9 +667,9 @@ class TrainingIterator:
         backend_executor: Union[BackendExecutor, ActorWrapper],
         backend_config: BackendConfig,
         train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
-        dataset_spec: _RayDatasetSpec,
+        dataset_spec: RayDatasetSpec,
         checkpoint_manager: CheckpointManager,
-        checkpoint: Optional[Union[Dict, str, Path]],
+        checkpoint: Optional[Union[Dict, str, Path, Checkpoint]],
         checkpoint_strategy: Optional[CheckpointStrategy],
         run_dir: Optional[Path] = None,
     ):
@@ -699,12 +708,12 @@ class TrainingIterator:
             run_dir=run_dir,
             latest_checkpoint_id=latest_checkpoint_id,
         )
-        checkpoint_dict = self._checkpoint_manager._load_checkpoint(checkpoint)
+        checkpoint = self._checkpoint_manager._load_checkpoint(checkpoint)
         self._run_with_error_handling(
             lambda: self._backend_executor.start_training(
                 train_func=train_func,
                 dataset_spec=dataset_spec,
-                checkpoint=checkpoint_dict,
+                checkpoint=checkpoint,
             )
         )
 
@@ -876,13 +885,8 @@ def _create_tune_trainable(
 
         trainer.start()
 
-        if checkpoint_dir is not None:
-            checkpoint_path = os.path.join(checkpoint_dir, TUNE_CHECKPOINT_FILE_NAME)
-        else:
-            checkpoint_path = None
-
         iterator = trainer.run_iterator(
-            train_func, config, dataset=dataset, checkpoint=checkpoint_path
+            train_func, config, dataset=dataset, checkpoint=checkpoint_dir
         )
 
         for results in iterator:

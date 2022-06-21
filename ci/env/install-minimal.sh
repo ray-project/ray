@@ -35,3 +35,9 @@ eval "${WORKSPACE_DIR}/ci/ci.sh build"
 python -m pip install -U \
   pytest==5.4.3 \
   numpy
+
+# Train requirements.
+# TODO: make this dynamic
+if [ "${TRAIN_MINIMAL_INSTALL-}" = 1 ]; then
+    python -m pip install -U "ray[tune]"
+fi

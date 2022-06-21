@@ -1,10 +1,11 @@
-import gym
-from gym.spaces import Discrete, MultiDiscrete
-import numpy as np
 import os
-import tree  # pip install dm_tree
-from typing import Dict, List, Optional, TYPE_CHECKING
 import warnings
+from typing import TYPE_CHECKING, Dict, List, Optional, Union
+
+import gym
+import numpy as np
+import tree  # pip install dm_tree
+from gym.spaces import Discrete, MultiDiscrete
 
 import ray
 from ray.rllib.models.repeated_values import RepeatedValues
@@ -14,12 +15,13 @@ from ray.rllib.utils.numpy import SMALL_NUMBER
 from ray.rllib.utils.typing import (
     LocalOptimizer,
     SpaceStruct,
-    TensorType,
     TensorStructType,
+    TensorType,
 )
 
 if TYPE_CHECKING:
     from ray.rllib.policy.torch_policy import TorchPolicy
+    from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 
 torch, nn = try_import_torch()
 
@@ -51,12 +53,15 @@ def apply_grad_clipping(
             # clip_grad_norm_. Would fail otherwise.
             params = list(filter(lambda p: p.grad is not None, param_group["params"]))
             if params:
-                grad_gnorm = nn.utils.clip_grad_norm_(
-                    params, policy.config["grad_clip"]
-                )
-                if isinstance(grad_gnorm, torch.Tensor):
-                    grad_gnorm = grad_gnorm.cpu().numpy()
-                info["grad_gnorm"] = grad_gnorm
+                # PyTorch clips gradients inplace and returns the norm before clipping
+                # We therefore need to compute grad_gnorm further down (fixes #4965)
+                clip_value = policy.config["grad_clip"]
+                global_norm = nn.utils.clip_grad_norm_(params, clip_value)
+
+                if isinstance(global_norm, torch.Tensor):
+                    global_norm = global_norm.cpu().numpy()
+
+                info["grad_gnorm"] = min(global_norm, clip_value)
     return info
 
 
@@ -71,7 +76,9 @@ def atanh(x: TensorType) -> TensorType:
 
 
 @PublicAPI
-def concat_multi_gpu_td_errors(policy: "TorchPolicy") -> Dict[str, TensorType]:
+def concat_multi_gpu_td_errors(
+    policy: Union["TorchPolicy", "TorchPolicyV2"]
+) -> Dict[str, TensorType]:
     """Concatenates multi-GPU (per-tower) TD error tensors given TorchPolicy.
 
     TD-errors are extracted from the TorchPolicy via its tower_stats property.

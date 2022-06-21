@@ -2,7 +2,7 @@ import pytest
 import time
 
 import ray
-from ray.train.worker_group import WorkerGroup
+from ray.train._internal.worker_group import WorkerGroup
 
 
 @pytest.fixture

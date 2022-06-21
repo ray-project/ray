@@ -1,14 +1,16 @@
+import logging
 import os
 import tempfile
 from time import sleep
+from typing import List
 
 import pytest
-from ray._private.runtime_env.context import RuntimeEnvContext
-from ray._private.runtime_env.plugin import RuntimeEnvPlugin
-from ray._private.test_utils import wait_for_condition, test_external_redis
-from ray.exceptions import RuntimeEnvSetupError
 
 import ray
+from ray._private.runtime_env.context import RuntimeEnvContext
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray._private.test_utils import test_external_redis, wait_for_condition
+from ray.exceptions import RuntimeEnvSetupError
 
 MY_PLUGIN_CLASS_PATH = "ray.tests.test_runtime_env_plugin.MyPlugin"
 
@@ -23,9 +25,12 @@ class MyPlugin(RuntimeEnvPlugin):
             raise ValueError("not allowed")
         return value
 
-    @staticmethod
     def modify_context(
-        uri: str, plugin_config_dict: dict, ctx: RuntimeEnvContext
+        self,
+        uris: List[str],
+        plugin_config_dict: dict,
+        ctx: RuntimeEnvContext,
+        logger: logging.Logger,
     ) -> None:
         ctx.env_vars[MyPlugin.env_key] = str(plugin_config_dict["env_value"])
         ctx.command_prefix.append(
@@ -87,8 +92,7 @@ class MyPluginForHang(RuntimeEnvPlugin):
     def validate(runtime_env_dict: dict) -> str:
         return "True"
 
-    @staticmethod
-    def create(uri: str, runtime_env: dict, ctx: RuntimeEnvContext) -> float:
+    def create(self, uri: str, runtime_env: dict, ctx: RuntimeEnvContext) -> float:
         global my_plugin_setup_times
         my_plugin_setup_times += 1
 
@@ -97,9 +101,12 @@ class MyPluginForHang(RuntimeEnvPlugin):
             # sleep forever
             sleep(3600)
 
-    @staticmethod
     def modify_context(
-        uri: str, plugin_config_dict: dict, ctx: RuntimeEnvContext
+        self,
+        uris: List[str],
+        plugin_config_dict: dict,
+        ctx: RuntimeEnvContext,
+        logger: logging.Logger,
     ) -> None:
         global my_plugin_setup_times
         ctx.env_vars[MyPluginForHang.env_key] = str(my_plugin_setup_times)
@@ -152,14 +159,14 @@ class DummyPlugin(RuntimeEnvPlugin):
 
 class HangPlugin(DummyPlugin):
     def create(
-        uri: str, runtime_env: "RuntimeEnv", ctx: RuntimeEnvContext  # noqa: F821
+        self, uri: str, runtime_env: "RuntimeEnv", ctx: RuntimeEnvContext  # noqa: F821
     ) -> float:
         sleep(3600)
 
 
 class DiasbleTimeoutPlugin(DummyPlugin):
     def create(
-        uri: str, runtime_env: "RuntimeEnv", ctx: RuntimeEnvContext  # noqa: F821
+        self, uri: str, runtime_env: "RuntimeEnv", ctx: RuntimeEnvContext  # noqa: F821
     ) -> float:
         sleep(10)
 
@@ -212,4 +219,7 @@ def test_plugin_timeout(start_cluster):
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-sv", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

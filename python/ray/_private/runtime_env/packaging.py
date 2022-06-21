@@ -1,21 +1,23 @@
-from enum import Enum
-from tempfile import TemporaryDirectory
-from filelock import FileLock
 import hashlib
 import logging
 import os
-from pathlib import Path
 import shutil
+from enum import Enum
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Callable, List, Optional, Tuple
 from urllib.parse import urlparse
 from zipfile import ZipFile
+
+from filelock import FileLock
+
+from ray._private.thirdparty.pathspec import PathSpec
 from ray.experimental.internal_kv import (
-    _internal_kv_put,
-    _internal_kv_get,
     _internal_kv_exists,
+    _internal_kv_get,
+    _internal_kv_put,
     _pin_runtime_env_uri,
 )
-from ray._private.thirdparty.pathspec import PathSpec
 from ray.ray_constants import (
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT,
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR,
@@ -118,11 +120,22 @@ def _hash_directory(
         md5 = hashlib.md5()
         md5.update(str(path.relative_to(relative_path)).encode())
         if not path.is_dir():
-            with path.open("rb") as f:
-                data = f.read(BUF_SIZE)
-                while len(data) != 0:
-                    md5.update(data)
+            try:
+                f = path.open("rb")
+            except Exception as e:
+                logger.debug(
+                    f"Skipping contents of file {path} when calculating package hash "
+                    f"because the file could not be opened: {e}"
+                )
+            else:
+                try:
                     data = f.read(BUF_SIZE)
+                    while len(data) != 0:
+                        md5.update(data)
+                        data = f.read(BUF_SIZE)
+                finally:
+                    f.close()
+
         nonlocal hash_val
         hash_val = _xor_bytes(hash_val, md5.digest())
 
@@ -186,7 +199,13 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
             -> ("file", "file__path_to_test_module.zip")
     """
     uri = urlparse(pkg_uri)
-    protocol = Protocol(uri.scheme)
+    try:
+        protocol = Protocol(uri.scheme)
+    except ValueError as e:
+        raise ValueError(
+            f"Invalid protocol for runtime_env URI {pkg_uri}. "
+            f"Supported protocols: {Protocol._member_names_}. Original error: {e}"
+        )
     if protocol == Protocol.S3 or protocol == Protocol.GS:
         return (protocol, f"{protocol.value}_{uri.netloc}{uri.path.replace('/', '_')}")
     elif protocol == Protocol.HTTPS:
@@ -590,8 +609,8 @@ def download_and_unpack_package(
 
                 if protocol == Protocol.S3:
                     try:
-                        from smart_open import open as open_file
                         import boto3
+                        from smart_open import open as open_file
                     except ImportError:
                         raise ImportError(
                             "You must `pip install smart_open` and "
@@ -601,8 +620,8 @@ def download_and_unpack_package(
                     tp = {"client": boto3.client("s3")}
                 elif protocol == Protocol.GS:
                     try:
-                        from smart_open import open as open_file
                         from google.cloud import storage  # noqa: F401
+                        from smart_open import open as open_file
                     except ImportError:
                         raise ImportError(
                             "You must `pip install smart_open` and "

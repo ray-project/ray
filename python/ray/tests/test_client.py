@@ -742,7 +742,7 @@ def test_wrapped_actor_creation(call_ray_start):
 def test_init_requires_no_resources(call_ray_start, use_client):
     import ray
 
-    if not use_client:
+    if use_client:
         address = call_ray_start
         ray.init(address)
     else:
@@ -834,4 +834,7 @@ def test_large_remote_call(ray_start_regular_shared):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

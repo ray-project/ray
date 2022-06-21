@@ -15,6 +15,7 @@
 #pragma once
 
 #include "absl/container/flat_hash_map.h"
+#include "ray/common/bundle_location_index.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/id.h"
 #include "ray/common/placement_group.h"
@@ -35,6 +36,16 @@ struct BundleSchedulingContext : public SchedulingContext {
 
   /// The locations of existing bundles for this placement group.
   absl::optional<std::shared_ptr<BundleLocations>> bundle_locations_;
+};
+
+struct AffinityWithBundleSchedulingContext : public SchedulingContext {
+ public:
+  explicit AffinityWithBundleSchedulingContext(const BundleID &bundle_id)
+      : affinity_bundle_id_(bundle_id) {}
+  const BundleID &GetAffinityBundleID() const { return affinity_bundle_id_; }
+
+ private:
+  BundleID affinity_bundle_id_;
 };
 
 }  // namespace raylet_scheduling_policy

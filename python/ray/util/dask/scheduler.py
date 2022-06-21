@@ -1,6 +1,7 @@
 import atexit
 import threading
 from collections import defaultdict
+from collections import OrderedDict
 from dataclasses import dataclass
 from multiprocessing.pool import ThreadPool
 from typing import Optional
@@ -590,7 +591,10 @@ class MultipleReturnFunc:
     num_returns: int
 
     def __call__(self, *args, **kwargs):
-        return self.func(*args, **kwargs)
+        returns = self.func(*args, **kwargs)
+        if isinstance(returns, dict) or isinstance(returns, OrderedDict):
+            returns = [returns[k] for k in range(len(returns))]
+        return returns
 
 
 def multiple_return_get(multiple_returns, idx):

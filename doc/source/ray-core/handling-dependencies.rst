@@ -314,9 +314,11 @@ The ``runtime_env`` is a Python dictionary or a python class :class:`ray.runtime
   Note: This feature is currently limited to modules that are packages with a single directory containing an ``__init__.py`` file.  For single-file modules, you may use ``working_dir``.
 
 - ``excludes`` (List[str]): When used with ``working_dir`` or ``py_modules``, specifies a list of files or paths to exclude from being uploaded to the cluster.
-  This field also supports the pattern-matching syntax used by ``.gitignore`` files: see `<https://git-scm.com/docs/gitignore>`_ for details.
+  This field uses the pattern-matching syntax used by ``.gitignore`` files: see `<https://git-scm.com/docs/gitignore>`_ for details.
+  Note: In accordance with ``.gitignore`` syntax, if there is a separator (``/``) at the beginning or middle (or both) of the pattern, then the pattern is interpreted relative to the level of the ``working_dir``.
+  In particular, you shouldn't use absolute paths (e.g. `/Users/my_working_dir/subdir/`) with `excludes`; rather, you should use the relative path `/subdir/` (written here with a leading `/` to match only the top-level `subdir` directory, rather than all directories named `subdir` at all levels.)
 
-  - Example: ``["my_file.txt", "path/to/dir", "*.log"]``
+  - Example: ``{"working_dir": "/Users/my_working_dir/", "excludes": ["my_file.txt", "/subdir/, "path/to/dir", "*.log"]}``
 
 - ``pip`` (dict | List[str] | str): Either (1) a list of pip `requirements specifiers <https://pip.pypa.io/en/stable/cli/pip_install/#requirement-specifiers>`_, (2) a string containing the path to a pip
   `“requirements.txt” <https://pip.pypa.io/en/stable/user_guide/#requirements-files>`_ file, or (3) a python dictionary that has three fields: (a) ``packages`` (required, List[str]): a list of pip packages,
@@ -384,47 +386,29 @@ To disable all deletion behavior (for example, for debugging purposes) you may s
 Inheritance
 """""""""""
 
-The runtime environment is inheritable, so it will apply to all tasks/actors within a job and all child tasks/actors of a task or actor once set, unless it is overridden by explicitly specifying a runtime environment for the child task/actor.
+The runtime environment is inheritable, so it will apply to all tasks/actors within a job and all child tasks/actors of a task or actor once set, unless it is overridden.
 
-1. By default, all actors and tasks inherit the current runtime env.
+If an actor or task specifies a new ``runtime_env``, it will override the parent’s ``runtime_env`` (i.e., the parent actor/task's ``runtime_env``, or the job's ``runtime_env`` if there is no parent actor or task) as follows:
 
-.. code-block:: python
+* The ``runtime_env["env_vars"]`` field will be merged with the ``runtime_env["env_vars"]`` field of the parent.
+  This allows for environment variables set in the parent's runtime environment to be automatically propagated to the child, even if new environment variables are set in the child's runtime environment.
+* Every other field in the ``runtime_env`` will be *overridden* by the child, not merged.  For example, if ``runtime_env["py_modules"]`` is specified, it will replace the ``runtime_env["py_modules"]`` field of the parent.
 
-  # Current `runtime_env`
-  ray.init(runtime_env={"pip": ["requests", "chess"]})
-
-  # Create child actor
-  ChildActor.remote()
-
-  # ChildActor's actual `runtime_env` (inherit from current runtime env)
-  {"pip": ["requests", "chess"]}
-
-2. However, if you specify runtime_env for task/actor, it will override current runtime env.
+Example:
 
 .. code-block:: python
 
-  # Current `runtime_env`
-  ray.init(runtime_env={"pip": ["requests", "chess"]})
-
-  # Create child actor
-  ChildActor.options(runtime_env={"env_vars": {"A": "a", "B": "b"}}).remote()
-
-  # ChildActor's actual `runtime_env` (specify runtime_env overrides)
-  {"env_vars": {"A": "a", "B": "b"}}
-
-3. If you'd like to still use current runtime env, you can use the API :ref:`ray.get_runtime_context().runtime_env <runtime-context-apis>` to get the current runtime env and modify it by yourself.
-
-.. code-block:: python
-
-  # Current `runtime_env`
-  ray.init(runtime_env={"pip": ["requests", "chess"]})
-
-  # Child updates `runtime_env`
-  Actor.options(runtime_env=ray.get_runtime_context().runtime_env.update({"env_vars": {"A": "a", "B": "b"}}))
-
-  # Child's actual `runtime_env` (merged with current runtime env)
+  # Parent's `runtime_env`
   {"pip": ["requests", "chess"],
   "env_vars": {"A": "a", "B": "b"}}
+
+  # Child's specified `runtime_env`
+  {"pip": ["torch", "ray[serve]"],
+  "env_vars": {"B": "new", "C", "c"}}
+
+  # Child's actual `runtime_env` (merged with parent's)
+  {"pip": ["torch", "ray[serve]"],
+  "env_vars": {"A": "a", "B": "new", "C", "c"}}
 
 .. _runtime-env-faq:
 

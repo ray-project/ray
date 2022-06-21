@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING, Union
 import ray
 from ray import ObjectRef
 from ray.actor import ActorHandle
-from ray.rllib.offline.off_policy_estimator import OffPolicyEstimate
+from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimate
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
@@ -147,8 +147,8 @@ def summarize_episodes(
     if new_episodes is None:
         new_episodes = episodes
 
-    episodes, estimates = _partition(episodes)
-    new_episodes, _ = _partition(new_episodes)
+    episodes, _ = _partition(episodes)
+    new_episodes, estimates = _partition(new_episodes)
 
     episode_rewards = []
     episode_lengths = []
@@ -223,9 +223,11 @@ def summarize_episodes(
         for k, v in e.metrics.items():
             acc[k].append(v)
     for name, metrics in estimators.items():
+        out = {}
         for k, v_list in metrics.items():
-            metrics[k] = np.mean(v_list)
-        estimators[name] = dict(metrics)
+            out[k + "_mean"] = np.mean(v_list)
+            out[k + "_std"] = np.std(v_list)
+        estimators[name] = out
 
     return dict(
         episode_reward_max=max_reward,
