@@ -137,7 +137,7 @@ class _TrialIterator:
         Uses a fixed point iteration to resolve variants. All trials
         should be able to be generated at once.
 
-        See also: `ray.tune.suggest._variant_generator`.
+        See also: `ray.tune.search.searcher._variant_generator`.
 
         Returns:
             Trial object

@@ -32,7 +32,8 @@ from ray.tune.schedulers import (
 )
 from ray.tune.stopper import Stopper
 from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm, SearchGenerator
-from ray.tune.search.searcher.suggestion import ConcurrencyLimiter, Searcher
+from ray.tune.search.searcher.suggestion import Searcher
+from ray.tune.search.searcher.concurrency_limiter import ConcurrencyLimiter
 
 # Turn off black here, as it will format the lines to be longer than 88 chars
 # fmt: off

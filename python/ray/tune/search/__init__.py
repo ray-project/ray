@@ -124,7 +124,7 @@ def create_searcher(
             These keyword arguments will be passed to the initialization
             function of the chosen class.
     Returns:
-        ray.tune.suggest.Searcher: The search algorithm.
+        ray.tune.search.searcher.Searcher: The search algorithm.
     Example:
         >>> from ray import tune
         >>> search_alg = tune.create_searcher('ax')

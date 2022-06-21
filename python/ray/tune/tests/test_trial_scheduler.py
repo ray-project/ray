@@ -27,8 +27,8 @@ from ray.tune.schedulers import (
 )
 
 from ray.tune.schedulers.pbt import _explore, PopulationBasedTrainingReplay
-from ray.tune.suggest._mock import _MockSearcher
-from ray.tune.search.searcher.suggestion import ConcurrencyLimiter
+from ray.tune.search.searcher._mock import _MockSearcher
+from ray.tune.search.searcher.concurrency_limiter import ConcurrencyLimiter
 from ray.tune.experiment.trial import Trial
 from ray.tune.resources import Resources
 

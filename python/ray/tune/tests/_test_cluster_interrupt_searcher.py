@@ -3,7 +3,7 @@ import argparse
 from ray import tune
 from ray.tune import run
 from ray.tune.utils.mock_trainable import MyTrainableClass
-from ray.tune.search.searcher.suggestion import ConcurrencyLimiter
+from ray.tune.search.searcher.concurrency_limiter import ConcurrencyLimiter
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="PyTorch Example (FOR TEST ONLY)")

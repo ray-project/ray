@@ -20,8 +20,9 @@ from ray.tune.experiment.trial import Trial
 from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.resources import Resources, json_to_resources, resources_to_json
 from ray.tune.search.searcher.repeater import Repeater
-from ray.tune.suggest._mock import _MockSuggestionAlgorithm
-from ray.tune.search.searcher.suggestion import Searcher, ConcurrencyLimiter
+from ray.tune.search.searcher._mock import _MockSuggestionAlgorithm
+from ray.tune.search.searcher.suggestion import Searcher
+from ray.tune.search.searcher.concurrency_limiter import ConcurrencyLimiter
 from ray.tune.search.algorithms.search_generator import SearchGenerator
 from ray.tune.syncer import SyncConfig, Syncer
 from ray.tune.tests.utils_for_test_trial_runner import TrialResultObserver
