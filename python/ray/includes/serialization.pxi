@@ -602,6 +602,10 @@ cdef class RaySerializationResult(SerializedObject):
     @staticmethod
     def from_bytes(data: bytes):
         result = RaySerializationResult()
+        '''
+        TODO: Another copy happens here. Try to find a way to give memoryviews
+        to the upper-level. Maybe we should deserialize by ourselves.
+        '''
         result._type_id, result._in_band_buffer, result._out_of_band_buffers\
             = msgpack.unpackb(data)
         return result
