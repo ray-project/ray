@@ -12,7 +12,7 @@ NUM_AGENT_STEPS_TRAINED_THIS_ITER = "num_agent_steps_trained_this_iter"
 LAST_TARGET_UPDATE_TS = "last_target_update_ts"
 NUM_TARGET_UPDATES = "num_target_updates"
 
-# Performance timers (keys for Trainer._timers or metrics.timers).
+# Performance timers (keys for Algorithm._timers or metrics.timers).
 TRAINING_ITERATION_TIMER = "training_iteration"
 APPLY_GRADS_TIMER = "apply_grad"
 COMPUTE_GRADS_TIMER = "compute_grads"
