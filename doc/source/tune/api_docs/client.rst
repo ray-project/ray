@@ -21,7 +21,7 @@ verify that you have the ``requests`` library installed:
 Then, on the client side, you can use the following class. If on a cluster, you may want to forward this port
 (e.g. ``ssh -L <local_port>:localhost:<remote_port> <address>``) so that you can use the Client on your local machine.
 
-.. autoclass:: ray.tune.web_server.TuneClient
+.. autoclass:: ray.tune.server.web_server.TuneClient
     :members:
 
 For an example notebook for using the Client API, see the

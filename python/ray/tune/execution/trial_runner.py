@@ -44,7 +44,7 @@ from ray.tune.utils import warn_if_slow, flatten_dict
 from ray.tune.utils.log import Verbosity, has_verbosity
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.utils.serialization import TuneFunctionDecoder, TuneFunctionEncoder
-from ray.tune.web_server import TuneServer
+from ray.tune.server.web_server import TuneServer
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
 from ray.util.ml_utils.checkpoint_manager import CheckpointStorage
