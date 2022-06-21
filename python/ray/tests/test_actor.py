@@ -7,10 +7,6 @@ import tempfile
 import numpy as np
 import pytest
 
-# NOTE: We have to import setproctitle after ray because we bundle setproctitle
-# with ray.
-import setproctitle  # noqa
-
 import ray
 from ray import cloudpickle as pickle
 from ray._private import ray_constants
@@ -21,6 +17,10 @@ from ray._private.test_utils import (
 )
 from ray.actor import ActorClassInheritanceException
 from ray.tests.client_test_utils import create_remote_signal_actor
+
+# NOTE: We have to import setproctitle after ray because we bundle setproctitle
+# with ray.
+import setproctitle  # noqa
 
 try:
     import pytest_timeout
