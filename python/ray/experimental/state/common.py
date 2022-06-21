@@ -1,9 +1,8 @@
 import logging
-
 from abc import ABC
 from dataclasses import dataclass, fields
 from enum import Enum, unique
-from typing import List, Dict, Union, Tuple, Set, Optional
+from typing import List, Optional, Set, Tuple, Union
 
 from ray.dashboard.modules.job.common import JobInfo
 
@@ -141,7 +140,7 @@ class ActorState(StateSchema):
 
     @classmethod
     def filterable_columns(cls) -> Set[str]:
-        return {"actor_id", "state", "class_name"}
+        return {"actor_id", "state", "class_name", "name", "pid"}
 
 
 @dataclass(init=True)
@@ -155,7 +154,7 @@ class PlacementGroupState(StateSchema):
 
     @classmethod
     def filterable_columns(cls) -> Set[str]:
-        return {"placement_group_id", "state"}
+        return {"placement_group_id", "state", "name"}
 
 
 @dataclass(init=True)
@@ -168,7 +167,7 @@ class NodeState(StateSchema):
 
     @classmethod
     def filterable_columns(cls) -> Set[str]:
-        return {"node_id", "state"}
+        return {"node_id", "state", "node_ip", "node_name"}
 
 
 class JobState(JobInfo, StateSchema):
@@ -205,11 +204,7 @@ class TaskState(StateSchema):
 
     @classmethod
     def filterable_columns(cls) -> Set[str]:
-        return {
-            "task_id",
-            "name",
-            "scheduling_state",
-        }
+        return {"task_id", "name", "scheduling_state", "type", "func_or_class_name"}
 
 
 @dataclass(init=True)
@@ -236,6 +231,7 @@ class ObjectState(StateSchema):
             "task_status",
             "type",
             "pid",
+            "call_site",
         }
 
 
@@ -260,20 +256,17 @@ class RuntimeEnvState(StateSchema):
 @dataclass(init=True)
 class ListApiResponse:
     # Returned data. None if no data is returned.
-    result: Union[
-        Dict[
-            str,
-            Union[
-                ActorState,
-                PlacementGroupState,
-                NodeState,
-                JobInfo,
-                WorkerState,
-                TaskState,
-                ObjectState,
-            ],
-        ],
-        List[RuntimeEnvState],
+    result: List[
+        Union[
+            ActorState,
+            PlacementGroupState,
+            NodeState,
+            JobInfo,
+            WorkerState,
+            TaskState,
+            ObjectState,
+            RuntimeEnvState,
+        ]
     ] = None
     # List API can have a partial failure if queries to
     # all sources fail. For example, getting object states
