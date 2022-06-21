@@ -1,12 +1,8 @@
-from abc import ABCMeta, abstractmethod
-from collections import namedtuple
-import gym
-from gym.spaces import Box
 import logging
-import numpy as np
 import platform
-import tree  # pip install dm_tree
+from abc import ABCMeta, abstractmethod
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
@@ -14,9 +10,13 @@ from typing import (
     Optional,
     Tuple,
     Type,
-    TYPE_CHECKING,
     Union,
 )
+
+import gym
+import numpy as np
+import tree  # pip install dm_tree
+from gym.spaces import Box
 
 import ray
 from ray.actor import ActorHandle
@@ -25,19 +25,20 @@ from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
-from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.annotations import (
-    PublicAPI,
     DeveloperAPI,
     ExperimentalAPI,
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
+    PublicAPI,
     is_overridden,
 )
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
+from ray.rllib.utils.numpy import convert_to_numpy
+from ray.rllib.utils.serialization import gym_space_from_dict, gym_space_to_dict
 from ray.rllib.utils.spaces.space_utils import (
     get_base_struct_from_space,
     get_dummy_batch_for_space,
@@ -45,14 +46,14 @@ from ray.rllib.utils.spaces.space_utils import (
 )
 from ray.rllib.utils.typing import (
     AgentID,
+    AlgorithmConfigDict,
     ModelGradients,
     ModelWeights,
     PolicyID,
     PolicyState,
     T,
-    TensorType,
     TensorStructType,
-    AlgorithmConfigDict,
+    TensorType,
 )
 
 tf1, tf, tfv = try_import_tf()
@@ -63,6 +64,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
 # A policy spec used in the "config.multiagent.policies" specification dict
 # as values (keys are the policy IDs (str)). E.g.:
 # config:
@@ -71,28 +73,44 @@ logger = logging.getLogger(__name__)
 #       "pol1": PolicySpec(None, Box, Discrete(2), {"lr": 0.0001}),
 #       "pol2": PolicySpec(config={"lr": 0.001}),
 #     }
-PolicySpec = PublicAPI(
-    namedtuple(
-        "PolicySpec",
-        [
-            # If None, use the Algorithm's default policy class stored under
-            # `Algorithm._policy_class`.
-            "policy_class",
-            # If None, use the env's observation space. If None and there is no Env
-            # (e.g. offline RL), an error is thrown.
-            "observation_space",
-            # If None, use the env's action space. If None and there is no Env
-            # (e.g. offline RL), an error is thrown.
-            "action_space",
-            # Overrides defined keys in the main Algorithm config.
-            # If None, use {}.
-            "config",
-        ],
-    )
-)  # defaults=(None, None, None, None)
-# TODO: From 3.7 on, we could pass `defaults` into the above constructor.
-#  We still support py3.6.
-PolicySpec.__new__.__defaults__ = (None, None, None, None)
+@PublicAPI
+class PolicySpec:
+    def __init__(
+        self, policy_class=None, observation_space=None, action_space=None, config=None
+    ):
+        # If None, use the Algorithm's default policy class stored under
+        # `Algorithm._policy_class`.
+        self.policy_class = policy_class
+        # If None, use the env's observation space. If None and there is no Env
+        # (e.g. offline RL), an error is thrown.
+        self.observation_space = observation_space
+        # If None, use the env's action space. If None and there is no Env
+        # (e.g. offline RL), an error is thrown.
+        self.action_space = action_space
+        # Overrides defined keys in the main Algorithm config.
+        # If None, use {}.
+        self.config = config
+
+    def serialize(self) -> Dict:
+        return {
+            # TODO(jungong) : try making the policy_class config durable.
+            # Maybe we should save the full string class path instead.
+            # That will allow us to load a policy checkpoint even if the class
+            # does not exist anymore (e.g., renamed).
+            "policy_class": self.policy_class,
+            "observation_space": gym_space_to_dict(self.observation_space),
+            "action_space": gym_space_to_dict(self.action_space),
+            "config": self.config,
+        }
+
+    @classmethod
+    def deserialize(cls, spec: Dict) -> "PolicySpec":
+        return cls(
+            policy_class=spec["policy_class"],
+            observation_space=gym_space_from_dict(spec["observation_space"]),
+            action_space=gym_space_from_dict(spec["action_space"]),
+            config=spec["config"],
+        )
 
 
 @DeveloperAPI
@@ -816,6 +834,41 @@ class Policy(metaclass=ABCMeta):
             name could not be determined.
         """
         return platform.node()
+
+    def _get_num_gpus_for_policy(self) -> int:
+        """Decide on the number of CPU/GPU nodes this policy should run on.
+
+        Return:
+            0 if policy should run on CPU. >0 if policy should run on 1 or
+            more GPUs.
+        """
+        worker_idx = self.config.get("worker_index", 0)
+        fake_gpus = self.config.get("_fake_gpus", False)
+        if (
+            ray._private.worker._mode() == ray._private.worker.LOCAL_MODE
+            and not fake_gpus
+        ):
+            # If in local debugging mode, and _fake_gpus is not on.
+            num_gpus = 0
+        elif worker_idx == 0:
+            # If head node, take num_gpus.
+            num_gpus = self.config["num_gpus"]
+        else:
+            # If worker node, take num_gpus_per_worker
+            num_gpus = self.config["num_gpus_per_worker"]
+
+        if num_gpus == 0:
+            dev = "CPU"
+        else:
+            dev = "{} {}".format(num_gpus, "fake-GPUs" if fake_gpus else "GPUs")
+
+        logger.info(
+            "Policy (worker={}) running on {}.".format(
+                worker_idx if worker_idx > 0 else "local", dev
+            )
+        )
+
+        return num_gpus
 
     def _create_exploration(self) -> Exploration:
         """Creates the Policy's Exploration object.
