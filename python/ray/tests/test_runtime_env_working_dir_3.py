@@ -381,7 +381,7 @@ class TestGC:
 
                 def local_dir_size_near_4mb():
                     return 3 < get_directory_size_bytes(local_dir) / (1024 ** 2) < 5
-                
+
                 wait_for_condition(local_dir_size_near_4mb)
 
                 print(f"get_directory_size_bytes assertion {idx} passed.")
