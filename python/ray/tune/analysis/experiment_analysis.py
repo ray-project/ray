@@ -366,7 +366,11 @@ class ExperimentAnalysis:
 
     @property
     def trial_dataframes(self) -> Dict[str, DataFrame]:
-        """List of all dataframes of the trials."""
+        """List of all dataframes of the trials.
+
+        Each row of the dataframe corresponds to one iteration of a trial
+        and contains reported metrics.
+        """
         return self._trial_dataframes
 
     def dataframe(
