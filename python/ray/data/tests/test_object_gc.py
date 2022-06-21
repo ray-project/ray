@@ -43,7 +43,6 @@ def test_iter_batches_no_spilling_upon_rewindow(shutdown_only):
         ctx, ds.window(blocks_per_window=20).repeat().rewindow(blocks_per_window=10), 5
     )
 
-
 def test_iter_batches_no_spilling_upon_prior_transformation(shutdown_only):
     # The object store is about 500MB.
     ctx = ray.init(num_cpus=1, object_store_memory=500e6)
@@ -132,8 +131,9 @@ def test_pipeline_splitting_has_no_spilling(shutdown_only):
 
     tasks = [consume.remote(p1), consume.remote(p2)]
     try:
+        # Run it for 20 seconds.
         ray.get(tasks, timeout=20)
-    except:
+    except Exception:
         for t in tasks:
             ray.cancel(t, force=True)
     meminfo = memory_summary(ctx.address_info["address"], stats_only=True)

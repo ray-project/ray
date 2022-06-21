@@ -729,7 +729,7 @@ class DatasetPipeline(Generic[T]):
             self._stages + [fn],
             self._length,
             self._progress_bars,
-            base_datasets_can_be_cleared=self._base_datasets_can_be_cleared,
+            # base_datasets_can_be_cleared=self._base_datasets_can_be_cleared,
             _executed=self._executed,
         )
 
