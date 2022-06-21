@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, Extra, root_validator, validator
-from typing import Union, Tuple, List, Dict
+from typing import Union, List, Dict
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve.common import (
     DeploymentStatusInfo,
@@ -83,29 +83,6 @@ class DeploymentSchema(
 ):
     name: str = Field(
         ..., description=("Globally-unique name identifying this deployment.")
-    )
-    import_path: str = Field(
-        default=None,
-        description=(
-            "The application's full import path. Should be of the "
-            'form "module.submodule_1...submodule_n.'
-            'MyClassOrFunction." This is equivalent to '
-            '"from module.submodule_1...submodule_n import '
-            'MyClassOrFunction". Only works with Python '
-            "applications."
-        ),
-    )
-    init_args: Union[Tuple, List] = Field(
-        default=None,
-        description=(
-            "The application's init_args. Only works with Python applications."
-        ),
-    )
-    init_kwargs: Dict = Field(
-        default=None,
-        description=(
-            "The application's init_args. Only works with Python applications."
-        ),
     )
     num_replicas: int = Field(
         default=None,
@@ -244,35 +221,6 @@ class DeploymentSchema(
                 'contain "{" or "}".'
             )
 
-        return v
-
-    @validator("import_path")
-    def import_path_format_valid(cls, v: str):
-        if ":" in v:
-            if v.count(":") > 1:
-                raise ValueError(
-                    f'Got invalid import path "{v}". An '
-                    "import path may have at most one colon."
-                )
-            if v.rfind(":") == 0 or v.rfind(":") == len(v) - 1:
-                raise ValueError(
-                    f'Got invalid import path "{v}". An '
-                    "import path may not start or end with a colon."
-                )
-            return v
-        else:
-            if v.count(".") == 0:
-                raise ValueError(
-                    f'Got invalid import path "{v}". An '
-                    "import path must contain at least one dot or colon "
-                    "separating the module (and potentially submodules) from "
-                    'the deployment graph. E.g.: "module.deployment_graph".'
-                )
-            if v.rfind(".") == 0 or v.rfind(".") == len(v) - 1:
-                raise ValueError(
-                    f'Got invalid import path "{v}". An '
-                    "import path may not start or end with a dot."
-                )
         return v
 
 
