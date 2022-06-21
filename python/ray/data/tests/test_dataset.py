@@ -313,6 +313,86 @@ def test_tensors(ray_start_regular_shared):
     assert str(res) == "[{'value': array([2])}, {'value': array([3])}]"
 
 
+def test_tensors_shuffle(ray_start_regular_shared):
+    # Test Arrow table representation.
+    tensor_shape = (3, 5)
+    ds = ray.data.range_tensor(6, shape=tensor_shape)
+    shuffled_ds = ds.random_shuffle()
+    shuffled = shuffled_ds.take()
+    base = ds.take()
+    shuffled = np.asarray([r["value"] for r in shuffled_ds.take()], dtype=np.int32)
+    base = np.asarray([r["value"] for r in ds.take()], dtype=np.int32)
+    np.testing.assert_raises(
+        AssertionError,
+        np.testing.assert_equal,
+        shuffled,
+        base,
+    )
+    np.testing.assert_equal(
+        sorted(shuffled, key=lambda arr: arr.min()),
+        sorted(base, key=lambda arr: arr.min()),
+    )
+
+    # Test Pandas table representation.
+    tensor_shape = (3, 5)
+    ds = ray.data.range_tensor(6, shape=tensor_shape)
+    ds = ds.map_batches(lambda df: df, batch_format="pandas")
+    shuffled_ds = ds.random_shuffle()
+    # Prior to Ray 1.13, take() function has to call to_numpy() conversion explicitly.
+    shuffled = np.asarray(
+        [r["value"].to_numpy() for r in shuffled_ds.take()], dtype=np.int32
+    )
+    base = np.asarray([r["value"].to_numpy() for r in ds.take()], dtype=np.int32)
+
+    np.testing.assert_raises(
+        AssertionError,
+        np.testing.assert_equal,
+        shuffled,
+        base,
+    )
+    np.testing.assert_equal(
+        sorted(shuffled, key=lambda arr: arr.min()),
+        sorted(base, key=lambda arr: arr.min()),
+    )
+
+
+def test_tensors_sort(ray_start_regular_shared):
+    # Test Arrow table representation.
+    t = pa.table({"a": TensorArray(np.arange(32).reshape((2, 4, 4))), "b": [1, 2]})
+    ds = ray.data.from_arrow(t)
+    sorted_ds = ds.sort(key="b", descending=True)
+    sorted_arrs = np.asarray([row["a"] for row in sorted_ds.take()], dtype=np.int32)
+    base = np.asarray([row["a"] for row in ds.take()], dtype=np.int32)
+    np.testing.assert_raises(
+        AssertionError,
+        np.testing.assert_equal,
+        sorted_arrs,
+        base,
+    )
+    np.testing.assert_equal(
+        sorted_arrs,
+        sorted(base, key=lambda arr: -arr.min()),
+    )
+
+    # Test Pandas table representation.
+    df = pd.DataFrame({"a": TensorArray(np.arange(32).reshape((2, 4, 4))), "b": [1, 2]})
+    ds = ray.data.from_pandas(df)
+    sorted_ds = ds.sort(key="b", descending=True)
+    # Discrepancy with Ray 1.13, we need to call reshape() on sorted rows.
+    sorted_arrs = [np.asarray(row["a"]).reshape(4, 4) for row in sorted_ds.take()]
+    base = [np.asarray(row["a"]) for row in ds.take()]
+    np.testing.assert_raises(
+        AssertionError,
+        np.testing.assert_equal,
+        sorted_arrs,
+        base,
+    )
+    np.testing.assert_equal(
+        sorted_arrs,
+        sorted(base, key=lambda arr: -arr.min()),
+    )
+
+
 def test_tensor_array_ops(ray_start_regular_shared):
     outer_dim = 3
     inner_shape = (2, 2, 2)
@@ -591,7 +671,8 @@ def test_tensors_in_tables_parquet_roundtrip(ray_start_regular_shared, tmp_path)
     ds = ray.data.from_pandas([df])
     ds.write_parquet(str(tmp_path))
     ds = ray.data.read_parquet(str(tmp_path))
-    values = [[s["one"], s["two"]] for s in ds.take()]
+    # Discrepancy with Ray 1.13, we need to call reshape() on output.
+    values = [[s["one"], np.asarray(s["two"]).reshape(inner_shape)] for s in ds.take()]
     expected = list(zip(list(range(outer_dim)), arr))
     for v, e in zip(sorted(values), expected):
         np.testing.assert_equal(v, e)
@@ -613,7 +694,8 @@ def test_tensors_in_tables_parquet_with_schema(ray_start_regular_shared, tmp_pat
         ]
     )
     ds = ray.data.read_parquet(str(tmp_path), schema=schema)
-    values = [[s["one"], s["two"]] for s in ds.take()]
+    # Discrepancy with Ray 1.13, we need to call reshape() on output.
+    values = [[s["one"], np.asarray(s["two"]).reshape(inner_shape)] for s in ds.take()]
     expected = list(zip(list(range(outer_dim)), arr))
     for v, e in zip(sorted(values), expected):
         np.testing.assert_equal(v, e)
@@ -645,7 +727,10 @@ def test_tensors_in_tables_parquet_pickle_manual_serde(
 
     casted_ds = ds.map_batches(deser_mapper, batch_format="pandas")
 
-    values = [[s["one"], s["two"]] for s in casted_ds.take()]
+    # Discrepancy with Ray 1.13, we need to call reshape() on output.
+    values = [
+        [s["one"], np.asarray(s["two"]).reshape(inner_shape)] for s in casted_ds.take()
+    ]
     expected = list(zip(list(range(outer_dim)), arr))
     for v, e in zip(sorted(values), expected):
         np.testing.assert_equal(v, e)
@@ -700,7 +785,8 @@ def test_tensors_in_tables_parquet_bytes_manual_serde(
 
     ds = ds.map_batches(np_deser_mapper, batch_format="pyarrow")
 
-    values = [[s["one"], s["two"]] for s in ds.take()]
+    # Discrepancy with Ray 1.13, we need to call reshape() on output.
+    values = [[s["one"], np.asarray(s["two"]).reshape(inner_shape)] for s in ds.take()]
     expected = list(zip(list(range(outer_dim)), arr))
     for v, e in zip(sorted(values), expected):
         np.testing.assert_equal(v, e)
@@ -742,7 +828,8 @@ def test_tensors_in_tables_parquet_bytes_manual_serde_udf(
 
     assert isinstance(ds.schema().field_by_name(tensor_col_name).type, ArrowTensorType)
 
-    values = [[s["one"], s["two"]] for s in ds.take()]
+    # Discrepancy with Ray 1.13, we need to call reshape() on output.
+    values = [[s["one"], np.asarray(s["two"]).reshape(inner_shape)] for s in ds.take()]
     expected = list(zip(list(range(outer_dim)), arr))
     for v, e in zip(sorted(values), expected):
         np.testing.assert_equal(v, e)
@@ -776,7 +863,8 @@ def test_tensors_in_tables_parquet_bytes_manual_serde_col_schema(
 
     assert isinstance(ds.schema().field_by_name(tensor_col_name).type, ArrowTensorType)
 
-    values = [[s["one"], s["two"]] for s in ds.take()]
+    # Discrepancy with Ray 1.13, we need to call reshape() on output.
+    values = [[s["one"], np.asarray(s["two"]).reshape(inner_shape)] for s in ds.take()]
     expected = list(zip(list(range(outer_dim)), arr + 1))
     for v, e in zip(sorted(values), expected):
         np.testing.assert_equal(v, e)
@@ -973,7 +1061,8 @@ def test_convert_types(ray_start_regular_shared):
 
     arrow_ds = ray.data.range_arrow(1)
     assert arrow_ds.map(lambda x: "plain_{}".format(x["value"])).take() == ["plain_0"]
-    assert arrow_ds.map(lambda x: {"a": (x["value"],)}).take() == [{"a": (0,)}]
+    # Prior to Ray 1.13, take() function returns a list
+    assert arrow_ds.map(lambda x: {"a": (x["value"],)}).take() == [{"a": [0]}]
 
 
 def test_from_items(ray_start_regular_shared):

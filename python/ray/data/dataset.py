@@ -65,7 +65,7 @@ from ray.data.datasource.file_based_datasource import (
     _unwrap_arrow_serialization_workaround,
 )
 from ray.data.row import TableRow
-from ray.data.aggregate import AggregateFn, Max, Min, Mean, Std
+from ray.data.aggregate import AggregateFn, Max, Min, Mean, Std, Sum
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.batcher import Batcher
 from ray.data.impl.plan import ExecutionPlan, OneToOneStage, AllToAllStage
@@ -1060,17 +1060,63 @@ class Dataset(Generic[T]):
         ret = self.groupby(None).aggregate(*aggs).take(1)
         return ret[0] if len(ret) > 0 else None
 
-    def sum(self) -> int:
-        """Sum up the elements of this dataset.
-        Time complexity: O(dataset size / parallelism)
+    def sum(
+        self, on: Optional[Union[KeyFn, List[KeyFn]]] = None, ignore_nulls: bool = True
+    ) -> U:
+        """Compute sum over entire dataset.
+
+        This is a blocking operation.
+
+        Examples:
+            >>> import ray
+            >>> ray.data.range(100).sum() # doctest: +SKIP
+            >>> ray.data.from_items([ # doctest: +SKIP
+            ...     (i, i**2) # doctest: +SKIP
+            ...     for i in range(100)]).sum(lambda x: x[1]) # doctest: +SKIP
+            >>> ray.data.range_table(100).sum("value") # doctest: +SKIP
+            >>> ray.data.from_items([ # doctest: +SKIP
+            ...     {"A": i, "B": i**2} # doctest: +SKIP
+            ...     for i in range(100)]).sum(["A", "B"]) # doctest: +SKIP
+
+        Args:
+            on: The data subset on which to compute the sum.
+                - For a simple dataset: it can be a callable or a list thereof,
+                  and the default is to return a scalar sum of all rows.
+                - For an Arrow dataset: it can be a column name or a list
+                  thereof, and the default is to return an ``ArrowRow``
+                  containing the column-wise sum of all columns.
+            ignore_nulls: Whether to ignore null values. If ``True``, null
+                values will be ignored when computing the sum; if ``False``,
+                if a null value is encountered, the output will be None.
+                We consider np.nan, None, and pd.NaT to be null values.
+                Default is ``True``.
+
         Returns:
-            The sum of the records in the dataset.
+            The sum result.
+
+            For a simple dataset, the output is:
+
+            - ``on=None``: a scalar representing the sum of all rows,
+            - ``on=callable``: a scalar representing the sum of the outputs of
+              the callable called on each row,
+            - ``on=[callable_1, ..., calalble_n]``: a tuple of
+              ``(sum_1, ..., sum_n)`` representing the sum of the outputs of
+              the corresponding callables called on each row.
+
+            For an Arrow dataset, the output is:
+
+            - ``on=None``: an ArrowRow containing the column-wise sum of all
+              columns,
+            - ``on="col"``: a scalar representing the sum of all items in
+              column ``"col"``,
+            - ``on=["col_1", ..., "col_n"]``: an n-column ``ArrowRow``
+              containing the column-wise sum of the provided columns.
+
+            If the dataset is empty, all values are null, or any value is null
+            AND ``ignore_nulls`` is ``False``, then the output will be None.
         """
-
-        get_sum = cached_remote_fn(_get_sum)
-        blocks = self._plan.execute()
-
-        return sum(ray.get([get_sum.remote(block) for block in blocks.iter_blocks()]))
+        ret = self._aggregate_on(Sum, on, ignore_nulls)
+        return self._aggregate_result(ret)
 
     def min(
         self, on: Optional[Union[KeyFn, List[KeyFn]]] = None, ignore_nulls: bool = True

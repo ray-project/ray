@@ -8,6 +8,7 @@ import pyarrow.parquet as pq
 import pytest
 from fsspec.implementations.local import LocalFileSystem
 from pytest_lazyfixture import lazy_fixture
+from typing import Any
 
 import ray
 
@@ -802,7 +803,8 @@ def test_numpy_roundtrip(ray_start_regular_shared, fs, data_path):
         "Dataset(num_blocks=2, num_rows=None, "
         "schema={value: <ArrowTensorType: shape=(1,), dtype=int64>})"
     )
-    assert str(ds.take(2)) == "[{'value': array([0])}, {'value': array([1])}]"
+    # Prior to Ray 1.13, take() function returns a list
+    assert str(ds.take(2)) == "[{'value': [0]}, {'value': [1]}]"
 
 
 def test_numpy_read(ray_start_regular_shared, tmp_path):
@@ -814,7 +816,8 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
         "Dataset(num_blocks=1, num_rows=None, "
         "schema={value: <ArrowTensorType: shape=(1,), dtype=int64>})"
     )
-    assert str(ds.take(2)) == "[{'value': array([0])}, {'value': array([1])}]"
+    # Prior to Ray 1.13, take() function returns a list
+    assert str(ds.take(2)) == "[{'value': [0]}, {'value': [1]}]"
 
 
 @pytest.mark.parametrize(
@@ -845,7 +848,8 @@ def test_numpy_write(ray_start_regular_shared, fs, data_path, endpoint_url):
     assert len(arr2) == 5
     assert arr1.sum() == 10
     assert arr2.sum() == 35
-    assert str(ds.take(1)) == "[{'value': array([0])}]"
+    # Prior to Ray 1.13, take() function returns a list
+    assert str(ds.take(1)) == "[{'value': [0]}]"
 
 
 @pytest.mark.parametrize(
@@ -884,7 +888,8 @@ def test_numpy_write_block_path_provider(
     assert len(arr2) == 5
     assert arr1.sum() == 10
     assert arr2.sum() == 35
-    assert str(ds.take(1)) == "[{'value': array([0])}]"
+    # Prior to Ray 1.13, take() function returns a list
+    assert str(ds.take(1)) == "[{'value': [0]}]"
 
 
 def test_read_text(ray_start_regular_shared, tmp_path):
