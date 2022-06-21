@@ -195,9 +195,7 @@ class ResultGrid:
 
     def __getitem__(self, i: int) -> Result:
         """Returns the i'th result in the grid."""
-        return self.get(
-            self._experiment_analysis.trials[i],
-        )
+        return self.get(i)
 
     def get(
         self, i: int, *, checkpointing_config: Union[bool, "CheckpointingConfig"] = True
