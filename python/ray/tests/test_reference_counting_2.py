@@ -14,7 +14,6 @@ import ray
 import ray.cluster_utils
 from ray._private.internal_api import memory_summary
 from ray._private.test_utils import SignalActor, put_object, wait_for_condition
-from ray.internal.internal_api import memory_summary
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 

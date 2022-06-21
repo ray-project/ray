@@ -12,7 +12,7 @@ from ray._private.test_utils import run_string_as_driver
 from ray.client_builder import ClientContext
 from ray.cluster_utils import Cluster
 from ray.util.client.common import ClientObjectRef
-from ray.util.client.ray_client_helpers import ray_start_client_server
+from ray.util.client.ray_client_helpers import ray_start_client_server_pair
 from ray.util.client.worker import Worker
 
 
@@ -224,7 +224,7 @@ def test_ray_init_credentials_with_client(monkeypatch):
 
     monkeypatch.setattr(Worker, "__init__", mock_init)
     with pytest.raises(Stop) as stop:
-        with ray_start_client_server(_credentials=Credentials("test")):
+        with ray_start_client_server_pair(_credentials=Credentials("test")):
             pass
 
     assert stop.value.credentials.name == "test"
