@@ -254,6 +254,11 @@ cc_test(
     srcs = glob([
         "src/ray/test/examples/*.cc",
     ]),
+    args = [
+        "--ray_code_search_path=$(location simple_kv_store.so)",
+        "--ray_head_args '--include-dashboard false'",
+    ],
+    copts = COPTS,
     data = [
         "simple_kv_store.so",
     ],
@@ -270,6 +275,7 @@ cc_binary(
     srcs = glob([
         "src/ray/test/examples/*.cc",
     ]),
+    copts = COPTS,
     linkopts = ["-shared"],
     linkstatic = True,
     deps = [
