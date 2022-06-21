@@ -12,7 +12,7 @@ import warnings
 import ray
 from ray.exceptions import RayTaskError
 from ray.tune.error import _TuneStopTrialError
-from ray.tune.impl.out_of_band_serialize_dataset import out_of_band_serialize_dataset
+from ray.tune.air.impl.out_of_band_serialize_dataset import out_of_band_serialize_dataset
 from ray.util import get_node_ip_address
 from ray.tune import TuneError
 from ray.tune.callback import CallbackList, Callback

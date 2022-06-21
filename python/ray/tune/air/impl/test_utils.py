@@ -3,7 +3,7 @@ from sklearn.datasets import load_breast_cancer
 from ray import tune
 from ray.data import read_datasource, Dataset, Datasource, ReadTask
 from ray.data.block import BlockMetadata
-from ray.tune.impl.utils import execute_dataset
+from ray.tune.air.impl import execute_dataset
 
 
 # TODO(xwjiang): Enable this when Clark's out-of-band-serialization is landed.
