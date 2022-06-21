@@ -321,8 +321,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             normalize_actions=False,
             num_envs=1,
         )
-        batch = rollout_worker_w_api.sample()
-        print(batch)
+        batch = rollout_worker_w_api.sample()  # noqa: F841
 
     def test_counting_by_agent_steps(self):
         config = copy.deepcopy(ppo.DEFAULT_CONFIG)

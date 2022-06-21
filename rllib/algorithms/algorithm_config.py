@@ -188,6 +188,7 @@ class AlgorithmConfig:
         # TODO: Set this flag still in the config or - much better - in the
         #  RolloutWorker as a property.
         self.in_evaluation = False
+        self.sync_filters_on_rollout_workers_timeout_s = 60
 
         # `self.reporting()`
         self.keep_per_episode_custom_metrics = False
