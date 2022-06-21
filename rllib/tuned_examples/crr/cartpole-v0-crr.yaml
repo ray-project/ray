@@ -3,7 +3,6 @@ cartpole_crr:
     run: CRR
     stop:
       evaluation/episode_reward_mean: 200
-      training_iteration: 100
     config:
         input:
           - 'tests/data/cartpole/large.json'

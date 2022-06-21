@@ -3,7 +3,6 @@ pendulum_crr:
     run: CRR
     stop:
       evaluation/episode_reward_mean: -200
-      training_iteration: 500
     config:
         input:
           - 'tests/data/pendulum/pendulum_replay_v1.1.0.zip'
