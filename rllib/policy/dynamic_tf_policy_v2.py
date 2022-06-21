@@ -805,6 +805,7 @@ class DynamicTFPolicyV2(TFPolicy):
                         SampleBatch.DONES,
                         SampleBatch.REWARDS,
                         SampleBatch.INFOS,
+                        SampleBatch.T,
                         SampleBatch.OBS_EMBEDS,
                     ]
                 ):
@@ -826,6 +827,7 @@ class DynamicTFPolicyV2(TFPolicy):
                         SampleBatch.DONES,
                         SampleBatch.REWARDS,
                         SampleBatch.INFOS,
+                        SampleBatch.T,
                     ]
                     and key not in self.model.view_requirements
                 ):

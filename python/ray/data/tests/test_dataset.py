@@ -1,6 +1,7 @@
 import math
 import os
 import random
+import signal
 import time
 
 import numpy as np
@@ -10,6 +11,7 @@ import pyarrow.parquet as pq
 import pytest
 
 import ray
+from ray._private.test_utils import wait_for_condition
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.lazy_block_list import LazyBlockList
@@ -608,6 +610,14 @@ def test_tensors_basic(ray_start_regular_shared):
     res = ray.data.range_tensor(2, shape=(2, 2)).map(np_mapper).take()
     np.testing.assert_equal(res, [np.ones((2, 2)), 2 * np.ones((2, 2))])
 
+    # Explicit NumPy format.
+    res = (
+        ray.data.range_tensor(2, shape=(2, 2))
+        .map_batches(np_mapper, batch_format="numpy")
+        .take()
+    )
+    np.testing.assert_equal(res, [np.ones((2, 2)), 2 * np.ones((2, 2))])
+
     # Pandas conversion.
     def pd_mapper(df):
         assert isinstance(df, pd.DataFrame)
@@ -615,6 +625,80 @@ def test_tensors_basic(ray_start_regular_shared):
 
     res = ray.data.range_tensor(2).map_batches(pd_mapper, batch_format="pandas").take()
     np.testing.assert_equal(res, [np.array([2]), np.array([3])])
+
+    # Arrow columns in NumPy format.
+    def mapper(col_arrs):
+        assert isinstance(col_arrs, dict)
+        assert list(col_arrs.keys()) == ["a", "b", "c"]
+        assert all(isinstance(col_arr, np.ndarray) for col_arr in col_arrs.values())
+        return {"a": col_arrs["a"] + 1, "b": col_arrs["b"] + 1, "c": col_arrs["c"] + 1}
+
+    t = pa.table(
+        {
+            "a": [1, 2, 3],
+            "b": [4.0, 5.0, 6.0],
+            "c": ArrowTensorArray.from_numpy(np.array([[1, 2], [3, 4], [5, 6]])),
+        }
+    )
+    res = (
+        ray.data.from_arrow(t)
+        .map_batches(mapper, batch_size=2, batch_format="numpy")
+        .take()
+    )
+    np.testing.assert_equal(
+        [r.as_pydict() for r in res],
+        [
+            {"a": 2, "b": 5.0, "c": np.array([2, 3])},
+            {"a": 3, "b": 6.0, "c": np.array([4, 5])},
+            {"a": 4, "b": 7.0, "c": np.array([6, 7])},
+        ],
+    )
+
+    # Pandas columns in NumPy format.
+    def mapper(col_arrs):
+        assert isinstance(col_arrs, dict)
+        assert list(col_arrs.keys()) == ["a", "b", "c"]
+        assert all(isinstance(col_arr, np.ndarray) for col_arr in col_arrs.values())
+        return pd.DataFrame(
+            {
+                "a": col_arrs["a"] + 1,
+                "b": col_arrs["b"] + 1,
+                "c": TensorArray(col_arrs["c"] + 1),
+            }
+        )
+
+    df = pd.DataFrame(
+        {
+            "a": [1, 2, 3],
+            "b": [4.0, 5.0, 6.0],
+            "c": TensorArray(np.array([[1, 2], [3, 4], [5, 6]])),
+        }
+    )
+    res = (
+        ray.data.from_pandas(df)
+        .map_batches(mapper, batch_size=2, batch_format="numpy")
+        .take()
+    )
+    np.testing.assert_equal(
+        [r.as_pydict() for r in res],
+        [
+            {"a": 2, "b": 5.0, "c": np.array([2, 3])},
+            {"a": 3, "b": 6.0, "c": np.array([4, 5])},
+            {"a": 4, "b": 7.0, "c": np.array([6, 7])},
+        ],
+    )
+
+    # Simple dataset in NumPy format.
+    def mapper(arr):
+        arr = np_mapper(arr)
+        return arr.tolist()
+
+    res = (
+        ray.data.range(10, parallelism=2)
+        .map_batches(mapper, batch_format="numpy")
+        .take()
+    )
+    assert res == list(range(1, 11))
 
 
 def test_tensors_shuffle(ray_start_regular_shared):
@@ -1438,7 +1522,22 @@ def test_iter_batches_basic(ray_start_regular_shared):
         assert isinstance(batch, pa.Table)
         assert batch.equals(pa.Table.from_pandas(df))
 
-    # blocks format.
+    # NumPy format.
+    for batch, df in zip(ds.iter_batches(batch_format="numpy"), dfs):
+        assert isinstance(batch, dict)
+        assert list(batch.keys()) == ["one", "two"]
+        assert all(isinstance(col, np.ndarray) for col in batch.values())
+        pd.testing.assert_frame_equal(pd.DataFrame(batch), df)
+
+    # Test NumPy format on Arrow blocks.
+    ds2 = ds.map_batches(lambda b: b, batch_size=None, batch_format="pyarrow")
+    for batch, df in zip(ds2.iter_batches(batch_format="numpy"), dfs):
+        assert isinstance(batch, dict)
+        assert list(batch.keys()) == ["one", "two"]
+        assert all(isinstance(col, np.ndarray) for col in batch.values())
+        pd.testing.assert_frame_equal(pd.DataFrame(batch), df)
+
+    # Native format.
     for batch, df in zip(ds.iter_batches(batch_format="native"), dfs):
         assert BlockAccessor.for_block(batch).to_pandas().equals(df)
 
@@ -3876,6 +3975,31 @@ def test_polars_lazy_import(shutdown_only):
 
     finally:
         ctx.use_polars = original_use_polars
+
+
+def test_actorpoolstrategy_apply_interrupt():
+    """Test that _apply kills the actor pool if an interrupt is raised."""
+    ray.init(include_dashboard=False, num_cpus=1)
+
+    cpus = ray.available_resources()["CPU"]
+    ds = ray.data.range(5)
+    aps = ray.data.ActorPoolStrategy(max_size=5)
+    blocks = ds._plan.execute()
+
+    # Start some actors, the first one sends a SIGINT, emulating a KeyboardInterrupt
+    def test_func(block):
+        for i, _ in enumerate(BlockAccessor.for_block(block).iter_rows()):
+            if i == 0:
+                os.kill(os.getpid(), signal.SIGINT)
+            else:
+                time.sleep(1000)
+                return block
+
+    with pytest.raises(ray.exceptions.RayTaskError):
+        aps._apply(test_func, {}, blocks, False)
+
+    # Check that all actors have been killed by counting the available CPUs
+    wait_for_condition(lambda: (ray.available_resources().get("CPU", 0) == cpus))
 
 
 if __name__ == "__main__":

@@ -57,10 +57,10 @@ class TestPlacementGroups(unittest.TestCase):
         config["env"] = "CartPole-v0"
         config["framework"] = "tf"
 
-        # Create a trainer with an overridden default_resource_request
+        # Create an Algorithm with an overridden default_resource_request
         # method that returns a PlacementGroupFactory.
 
-        class MyTrainer(PG):
+        class MyAlgo(PG):
             @classmethod
             def default_resource_request(cls, config):
                 head_bundle = {"CPU": 1, "GPU": 0}
@@ -70,7 +70,7 @@ class TestPlacementGroups(unittest.TestCase):
                     strategy=config["placement_strategy"],
                 )
 
-        tune.register_trainable("my_trainable", MyTrainer)
+        tune.register_trainable("my_trainable", MyAlgo)
 
         global trial_executor
         trial_executor = RayTrialExecutor(reuse_actors=False)
