@@ -441,7 +441,7 @@ You can set this variable by running the CLI command:
 $ export RAY_ADDRESS=[YOUR VALUE]
 ```
 
-You can unset this environment variable by running the CLI command:
+You can unset this variable by running the CLI command:
 
 ```console
 $ unset RAY_ADDRESS
