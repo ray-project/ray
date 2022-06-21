@@ -905,6 +905,7 @@ class AlgorithmConfig:
         input_config=None,
         actions_in_input_normalized=None,
         input_evaluation=None,
+        off_policy_estimation_methods=None,
         postprocess_inputs=None,
         shuffle_buffer_size=None,
         output=None,
@@ -978,7 +979,7 @@ class AlgorithmConfig:
             self.input_config = input_config
         if actions_in_input_normalized is not None:
             self.actions_in_input_normalized = actions_in_input_normalized
-        if input_evaluation is not None:
+        if input_evaluation is not None or off_policy_estimation_methods is not None:
             deprecation_warning(
                 old="offline_data(input_evaluation={})".format(input_evaluation),
                 new="evaluation(off_policy_estimation_methods={})".format(

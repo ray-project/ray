@@ -1,5 +1,5 @@
 from ray.rllib.offline.estimators.direct_method import DirectMethod, train_test_split
-from ray.rllib.utils.annotations import ExperimentalAPI, override
+from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.typing import SampleBatchType
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.numpy import convert_to_numpy
@@ -7,7 +7,7 @@ import numpy as np
 from typing import Dict, List
 
 
-@ExperimentalAPI
+@DeveloperAPI
 class DoublyRobust(DirectMethod):
     """The Doubly Robust (DR) estimator.
 

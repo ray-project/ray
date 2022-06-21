@@ -151,7 +151,7 @@ class AgentIOTest(unittest.TestCase):
             self.assertTrue(np.isnan(result["episode_reward_mean"]))
 
     def test_agent_input_eval_sampler(self):
-        for fw in ["torch"]:
+        for fw in framework_iterator(frameworks=["tf", "torch"]):
             self.write_outputs(self.test_dir, fw)
             agent = PG(
                 env="CartPole-v0",
