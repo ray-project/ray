@@ -67,7 +67,6 @@ cc_library(
         "include/ray/**/*.h",
         "include/ray/**/**/*.h",
     ]),
-    linkopts = ["-Wl,-rpath, ./"],
     strip_include_prefix = "include",
     visibility = ["//visibility:public"],
 )
