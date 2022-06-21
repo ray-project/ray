@@ -171,7 +171,7 @@ class ResultGrid:
 
     def _trial_to_result(self, trial: Trial) -> Result:
         checkpoint = trial.checkpoint.to_air_checkpoint()
-        checkpoint_history = [
+        best_checkpoints = [
             (checkpoint.to_air_checkpoint(), checkpoint.metrics)
             for checkpoint in trial.get_trial_checkpoints()
         ]
@@ -183,6 +183,6 @@ class ResultGrid:
             dataframe=self._experiment_analysis.trial_dataframes.get(trial.logdir)
             if self._experiment_analysis
             else None,
-            checkpoint_history=checkpoint_history,
+            best_checkpoints=best_checkpoints,
         )
         return result

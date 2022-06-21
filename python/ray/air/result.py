@@ -27,15 +27,18 @@ class Result:
         dataframe: The full result dataframe of the Trainable. Each row of the
             dataframe corresponds to one iteration and contains reported
             metrics.
-        checkpoint_history: A list of tuples of all checkpoints saved
-            by the Trainable and their associated metrics.
+        best_checkpoints: A list of tuples of the best checkpoints saved
+            by the Trainable and their associated metrics. The number of
+            saved checkpoints is determined by the ``checkpoint_config``
+            argument of ``run_config`` (by default, all checkpoints will
+            be saved).
     """
 
     metrics: Optional[Dict[str, Any]]
     checkpoint: Optional[Checkpoint]
     error: Optional[Exception]
     dataframe: Optional[pd.DataFrame]
-    checkpoint_history: Optional[List[Tuple[Checkpoint, Dict[str, Any]]]]
+    best_checkpoints: Optional[List[Tuple[Checkpoint, Dict[str, Any]]]]
 
     @property
     def config(self) -> Optional[Dict[str, Any]]:

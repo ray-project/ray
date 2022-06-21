@@ -55,14 +55,14 @@ def test_result_grid_metric_mode(ray_start_2_cpus):
     result_grid = ResultGrid(analysis)
     result = result_grid[0]
     assert isinstance(result.checkpoint, Checkpoint)
-    assert isinstance(result.checkpoint_history, list)
+    assert isinstance(result.best_checkpoints, list)
     assert isinstance(result.metrics, dict)
     assert isinstance(result.config, dict)
     assert isinstance(result.dataframe, pd.DataFrame)
     assert os.path.normpath(
         result.checkpoint.get_internal_representation()[1]
     ) != os.path.normpath(
-        min((x for x in result.checkpoint_history), key=lambda x: x[1]["step"])[
+        min((x for x in result.best_checkpoints), key=lambda x: x[1]["step"])[
             0
         ].get_internal_representation()[1]
     )
@@ -169,11 +169,11 @@ def test_best_result_checkpoint_history(ray_start_2_cpus):
     result_grid = ResultGrid(analysis)
     best_result = result_grid.get_best_result(metric="x", mode="max")
     assert best_result.metrics["x"] == 3
-    print(best_result.checkpoint_history)
-    print([x[0].get_internal_representation() for x in best_result.checkpoint_history])
-    assert len(best_result.checkpoint_history) == 2
+    print(best_result.best_checkpoints)
+    print([x[0].get_internal_representation() for x in best_result.best_checkpoints])
+    assert len(best_result.best_checkpoints) == 2
     i = 0
-    for checkpoint, metrics in best_result.checkpoint_history:
+    for checkpoint, metrics in best_result.best_checkpoints:
         assert isinstance(checkpoint, Checkpoint)
         assert metrics["x"] == 3
         assert metrics["step"] == i
