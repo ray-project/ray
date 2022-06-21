@@ -218,7 +218,7 @@ Note how this config specifies the same settings as the `@serve.deployment` deco
 Each individual entry in the `deployments` list is optional. In the example config file above, we could omit the `PearStand`, including its `name` and `user_config`, and the file would still be valid. When we deploy the file, the `PearStand` deployment will still be deployed, using the configurations set in the `@serve.deployment` decorator from the deployment graph's code.
 :::
 
-We can also auto-generate this config file. The `serve build` command takes an import path to your deployment graph, and it creates a config file containing all the deployments and their settings from the graph. This file will also include all the default values set by Serve itself, so you can see exactly what configurations apply to your deployments. You can tweak these settings to manage you deployments in production.
+We can also auto-generate this config file. The `serve build` command takes an import path to your deployment graph, and it creates a config file containing all the deployments and their settings from the graph. You can tweak these settings to manage you deployments in production.
 
 Using the `FruitStand` deployment graph example:
 
@@ -306,8 +306,6 @@ deployments:
   health_check_period_s: 10.0
   health_check_timeout_s: 30.0
   ray_actor_options: null
-
-# Built using Ray v3.0.0.dev0
 
 ```
 
