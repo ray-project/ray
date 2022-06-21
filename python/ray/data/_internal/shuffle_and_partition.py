@@ -1,12 +1,12 @@
 import math
-from typing import List, Optional, Union, Callable, Iterable
+from typing import Callable, Iterable, List, Optional, Union
 
 import numpy as np
 
-from ray.data.block import Block, BlockAccessor, BlockMetadata, BlockExecStats
-from ray.data._internal.shuffle import ShuffleOp, SimpleShufflePlan
-from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
+from ray.data._internal.shuffle import ShuffleOp, SimpleShufflePlan
+from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 
 
 class _ShufflePartitionOp(ShuffleOp):
@@ -67,7 +67,7 @@ class _ShufflePartitionOp(ShuffleOp):
         num_rows = sum(BlockAccessor.for_block(s).num_rows() for s in slices)
         assert num_rows == block.num_rows(), (num_rows, block.num_rows())
         metadata = block.get_metadata(input_files=None, exec_stats=stats.build())
-        return [metadata] + slices
+        return slices + [metadata]
 
     @staticmethod
     def reduce(

@@ -2,48 +2,48 @@ import inspect
 import os
 import shutil
 import tempfile
+import warnings
 from distutils.version import LooseVersion
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Tuple, Type, Union, TYPE_CHECKING
-import warnings
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Union
 
 import torch
 import transformers
 import transformers.modeling_utils
 import transformers.trainer
-from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
-from transformers.trainer import WEIGHTS_NAME, TRAINING_ARGS_NAME
 import transformers.training_args
 from torch.utils.data import Dataset as TorchDataset
+from transformers.trainer import TRAINING_ARGS_NAME, WEIGHTS_NAME
 
 from ray import train
-from ray.util import PublicAPI, get_node_ip_address
-from ray.air.checkpoint import Checkpoint
-from ray.air.config import RunConfig, ScalingConfig, DatasetConfig
-from ray.train.constants import (
-    EVALUATION_DATASET_KEY,
-    TRAIN_DATASET_KEY,
-    PREPROCESSOR_KEY,
-)
-from ray.train.torch import TorchTrainer
-from ray.train.trainer import GenDataset
-from ray.train.data_parallel_trainer import _DataParallelCheckpointManager
-from ray.train.huggingface.huggingface_utils import (
-    CHECKPOINT_PATH_ON_NODE_KEY,
-    NODE_IP_KEY,
-    process_datasets,
-    TrainReportCallback,
-    wrap_transformers_trainer,
-)
+from ray.air import session
 from ray.air._internal.checkpointing import (
     load_preprocessor_from_dir,
     save_preprocessor_to_dir,
 )
 from ray.air._internal.torch_utils import load_torch_model
-from ray.train.constants import TUNE_CHECKPOINT_ID
-from ray.train.torch import TorchConfig
+from ray.air.checkpoint import Checkpoint
+from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
+from ray.train.constants import (
+    EVALUATION_DATASET_KEY,
+    PREPROCESSOR_KEY,
+    TRAIN_DATASET_KEY,
+    TUNE_CHECKPOINT_ID,
+)
+from ray.train.data_parallel_trainer import _DataParallelCheckpointManager
+from ray.train.huggingface.huggingface_utils import (
+    CHECKPOINT_PATH_ON_NODE_KEY,
+    NODE_IP_KEY,
+    TrainReportCallback,
+    process_datasets,
+    wrap_transformers_trainer,
+)
+from ray.train.torch import TorchConfig, TorchTrainer
+from ray.train.trainer import GenDataset
 from ray.tune.trainable import Trainable
 from ray.tune.utils.file_transfer import delete_on_node, sync_dir_between_nodes
+from ray.util import PublicAPI, get_node_ip_address
+from ray.util.ml_utils.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -518,12 +518,14 @@ def _huggingface_train_loop_per_worker(config):
 
     trainer.add_callback(TrainReportCallback)
 
-    checkpoint = train.load_checkpoint()
+    checkpoint = session.get_checkpoint()
     checkpoint_path = None
     remove_checkpoint_path = False
     if checkpoint:
-        source_ip = checkpoint[NODE_IP_KEY]
-        source_path = checkpoint[CHECKPOINT_PATH_ON_NODE_KEY]
+        assert isinstance(checkpoint, Checkpoint)
+        checkpoint_dict = checkpoint.to_dict()
+        source_ip = checkpoint_dict[NODE_IP_KEY]
+        source_path = checkpoint_dict[CHECKPOINT_PATH_ON_NODE_KEY]
         target_ip = get_node_ip_address()
         if source_ip == target_ip:
             checkpoint_path = source_path
