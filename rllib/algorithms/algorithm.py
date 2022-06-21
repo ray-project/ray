@@ -1833,9 +1833,9 @@ class Algorithm(Trainable):
 
                 default_policy_cls = self.get_default_policy_class(config)
                 if any(
-                    (p[0] or default_policy_cls) is None
+                    (p.policy_class or default_policy_cls) is None
                     or not issubclass(
-                        p[0] or default_policy_cls, (DynamicTFPolicy, TorchPolicy)
+                        p.policy_class or default_policy_cls, (DynamicTFPolicy, TorchPolicy)
                     )
                     for p in config["multiagent"]["policies"].values()
                 ):

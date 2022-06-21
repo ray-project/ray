@@ -638,9 +638,7 @@ class WorkerSet:
                 assert isinstance(policy_spec, PolicySpec)
                 # Class is None -> Use `policy_cls`.
                 if policy_spec.policy_class is None:
-                    ma_policies[pid] = ma_policies[pid]._replace(
-                        policy_class=policy_cls
-                    )
+                    ma_policies[pid].policy_class = policy_cls
             policies = ma_policies
 
         # Create a policy_spec (MultiAgentPolicyConfigDict),
