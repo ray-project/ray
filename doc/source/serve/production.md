@@ -233,6 +233,8 @@ fruit.py
 fruit_config.yaml
 ```
 
+(fruit-config-yaml)=
+
 The `fruit_config.yaml` file contains:
 
 ```yaml
@@ -354,6 +356,73 @@ Remember that `ray_actor_options` is an independent setting. The entire `ray_act
 (serve-in-production-deploying)=
 
 ## Deploying Your Serve Application to Production
+
+You can deploy your Serve application to production using the config file and the `serve deploy` CLI command. `serve deploy` takes in a config file path, and it deploys that file to a Ray cluster.
+
+Let's deploy the [fruit_config.yaml](fruit-config-yaml) file from the previous section:
+
+```console
+$ ls
+fruit.py
+fruit_config.yaml
+
+$ ray start --head
+...
+
+$ serve deploy fruit_config.yaml
+2022-06-20 17:26:31,106	SUCC scripts.py:139 -- 
+Sent deploy request successfully!
+ * Use `serve status` to check deployments' statuses.
+ * Use `serve config` to see the running app's config.
+```
+
+`ray start --head` starts a long-lived Ray cluster locally. `serve deploy fruit_config.yaml` deploys the `fruit_config.yaml` file to this local cluster.
+
+(serve-in-production-remote-cluster)=
+
+### Using a Remote Cluster
+
+By default, `serve deploy` deploys to a cluster running locally. However, you should also use `serve deploy` whenever you want to deploy your Serve application to a remote cluster. `serve deploy` takes in an optional `--address/-a` argument where you can specify the dashboard address of your remote Ray cluster. This address should be of the form:
+
+```
+[YOUR_RAY_CLUSTER_URI]:[DASHBOARD PORT]
+```
+
+As an example, the address for the local cluster started by `ray start --head` is `http://127.0.0.1:8265`. We can explicitly deploy to this address using the command
+
+```console
+$ serve deploy config_file.yaml -a http://127.0.0.1:8265
+```
+
+**Note that there is no slash at the end of the address.**
+
+The Ray dashboard's default port is 8265. This port may be different if:
+* You explicitly set it using the `--dashboard-port` argument when running `ray start`.
+* Port 8265 was unavailable when Ray started. In that case, the dashboard port is incremented until an available port is found. E.g. if 8265 is unavailable, the port becomes 8266. If that's unavailable, it becomes 8267, and so on.
+
+:::{tip}
+By default, all the Serve CLI's commands assume that you're working with a local cluster, so if you don't specify an `--address/-a` value, they use the Ray address associated with a local cluster started by `ray start --head`. However, if the `RAY_ADDRESS` environment variable is set, all Serve CLI commands will default to that value instead (unless you also specify an `--address/-a` value).
+
+You can check this variable's value by running:
+
+```console
+$ echo $RAY_ADDRESS
+```
+
+You can set this variable by running the CLI command:
+
+```console
+$ export RAY_ADDRESS=[YOUR VALUE]
+```
+
+You can unset this environment variable by running the CLI command:
+
+```console
+$ unset RAY_ADDRESS
+```
+
+Check for this variable in your environment to make sure you're using your desired Ray address.
+:::
 
 (serve-in-production-monitoring)=
 
