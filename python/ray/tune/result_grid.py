@@ -73,13 +73,6 @@ class ResultGrid:
             filter_nan_and_inf: If True (default), NaN or infinite
                 values are disregarded and these trials are never selected as
                 the best trial.
-            checkpoint_config: If True (default), will use the
-                ``CheckpointConfig`` object set in Trainer's ``run_config``
-                to determine the best checkpoint of the trial.
-                If False, or if the ``CheckpointConfig`` object was not set, will use
-                ``metric`` and ``mode`` as set here.
-                Can also be a ``CheckpointConfig`` object, in which case it will
-                be used directly.
         """
         if not metric and not self._experiment_analysis.default_metric:
             raise ValueError(
