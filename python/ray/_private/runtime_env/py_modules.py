@@ -1,10 +1,10 @@
-import asyncio
 import logging
 import os
 from pathlib import Path
 from types import ModuleType
 from typing import Any, Dict, List, Optional
 
+from ray._private.gcs_utils import GcsAioClient
 from ray._private.runtime_env.conda_utils import exec_cmd_stream_to_logger
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
@@ -23,7 +23,6 @@ from ray._private.runtime_env.packaging import (
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.runtime_env.working_dir import set_pythonpath_in_context
 from ray._private.utils import get_directory_size_bytes, try_to_create_directory
-from ray.experimental.internal_kv import _internal_kv_initialized
 
 default_logger = logging.getLogger(__name__)
 
@@ -129,10 +128,10 @@ class PyModulesPlugin(RuntimeEnvPlugin):
 
     name = "py_modules"
 
-    def __init__(self, resources_dir: str):
+    def __init__(self, resources_dir: str, gcs_aio_client: GcsAioClient):
         self._resources_dir = os.path.join(resources_dir, "py_modules_files")
+        self._gcs_aio_client = gcs_aio_client
         try_to_create_directory(self._resources_dir)
-        assert _internal_kv_initialized()
 
     def _get_local_dir_from_uri(self, uri: str):
         return get_local_dir_from_uri(uri, self._resources_dir)
@@ -154,12 +153,12 @@ class PyModulesPlugin(RuntimeEnvPlugin):
     def get_uris(self, runtime_env: dict) -> List[str]:
         return runtime_env.py_modules()
 
-    def _download_and_install_wheel(
+    async def _download_and_install_wheel(
         self, uri: str, logger: Optional[logging.Logger] = default_logger
     ):
         """Download and install a wheel URI, and then delete the local wheel file."""
-        wheel_file = download_and_unpack_package(
-            uri, self._resources_dir, logger=logger
+        wheel_file = await download_and_unpack_package(
+            uri, self._resources_dir, self._gcs_aio_client, logger=logger
         )
         module_dir = self._get_local_dir_from_uri(uri)
 
@@ -173,6 +172,7 @@ class PyModulesPlugin(RuntimeEnvPlugin):
             "Running py_modules wheel install command: %s", str(pip_install_cmd)
         )
         try:
+            # TODO(architkulkarni): Use `await check_output_cmd` or similar.
             exit_code, output = exec_cmd_stream_to_logger(pip_install_cmd, logger)
         finally:
             if Path(wheel_file).exists():
@@ -194,23 +194,15 @@ class PyModulesPlugin(RuntimeEnvPlugin):
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ) -> int:
-        # Currently create method is still a sync process, to avoid blocking
-        # the loop, need to run this function in another thread.
-        # TODO(Catch-Bull): Refactor method create into an async process, and
-        # make this method running in current loop.
-        def _create():
-            if is_whl_uri(uri):
-                module_dir = self._download_and_install_wheel(uri=uri, logger=logger)
+        if is_whl_uri(uri):
+            module_dir = await self._download_and_install_wheel(uri=uri, logger=logger)
 
-            else:
-                module_dir = download_and_unpack_package(
-                    uri, self._resources_dir, logger=logger
-                )
+        else:
+            module_dir = await download_and_unpack_package(
+                uri, self._resources_dir, self._gcs_aio_client, logger=logger
+            )
 
-            return get_directory_size_bytes(module_dir)
-
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, _create)
+        return get_directory_size_bytes(module_dir)
 
     def modify_context(
         self,

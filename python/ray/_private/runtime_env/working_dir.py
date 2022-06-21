@@ -1,9 +1,9 @@
-import asyncio
 import logging
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from ray._private.gcs_utils import GcsAioClient
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
     Protocol,
@@ -18,7 +18,6 @@ from ray._private.runtime_env.packaging import (
 )
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.utils import get_directory_size_bytes, try_to_create_directory
-from ray.experimental.internal_kv import _internal_kv_initialized
 
 default_logger = logging.getLogger(__name__)
 
@@ -108,10 +107,10 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
 
     name = "working_dir"
 
-    def __init__(self, resources_dir: str):
+    def __init__(self, resources_dir: str, gcs_aio_client: GcsAioClient):
         self._resources_dir = os.path.join(resources_dir, "working_dir_files")
+        self._gcs_aio_client = gcs_aio_client
         try_to_create_directory(self._resources_dir)
-        assert _internal_kv_initialized()
 
     def delete_uri(
         self, uri: str, logger: Optional[logging.Logger] = default_logger
@@ -140,18 +139,10 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ) -> int:
-        # Currently create method is still a sync process, to avoid blocking
-        # the loop, need to run this function in another thread.
-        # TODO(Catch-Bull): Refactor method create into an async process, and
-        # make this method running in current loop.
-        def _create():
-            local_dir = download_and_unpack_package(
-                uri, self._resources_dir, logger=logger
-            )
-            return get_directory_size_bytes(local_dir)
-
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, _create)
+        local_dir = await download_and_unpack_package(
+            uri, self._resources_dir, self._gcs_aio_client, logger=logger
+        )
+        return get_directory_size_bytes(local_dir)
 
     def modify_context(
         self, uris: List[str], runtime_env_dict: Dict, context: RuntimeEnvContext
