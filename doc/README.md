@@ -16,8 +16,11 @@ pip install -r requirements-doc.txt
 To compile the documentation and open it locally, run the following command from this directory.
 
 ```bash
-make html && open _build/html/index.html
+make develop && open _build/html/index.html
 ```
+
+> **_NOTE:_**  The above command is for development. To reproduce build failures from the
+> CI, you should use `make html` which is the same as `make develop` but treats warnings as errors.
 
 ## Building just one sub-project
 
@@ -67,12 +70,12 @@ make doctest
 You can now add [executable notebooks](https://myst-nb.readthedocs.io/en/latest/use/markdown.html) to this project,
 which will get built into the documentation.
 An [example can be found here](./source/serve/tutorials/rllib.md).
-By default, building the docs with `make html` will not run those notebooks.
+By default, building the docs with `make develop` will not run those notebooks.
 If you set the `RUN_NOTEBOOKS` environment variable to `"cache"`, each notebook cell will be run when you build the
 documentation, and outputs will be cached into `_build/.jupyter_cache`.
 
 ```bash
-RUN_NOTEBOOKS="cache" make html
+RUN_NOTEBOOKS="cache" make develop
 ```
 
 To force re-running the notebooks, use `RUN_NOTEBOOKS="force"`.
