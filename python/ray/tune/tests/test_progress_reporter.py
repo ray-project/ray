@@ -69,7 +69,7 @@ END_TO_END_COMMAND = """
 import ray
 from ray import tune
 from ray.tune.experiment.trial import _Location
-from ray.tune.progress_reporter import _get_trial_location
+from ray.tune.output.progress_reporter import _get_trial_location
 from unittest.mock import patch
 
 
@@ -80,7 +80,7 @@ def mock_get_trial_location(trial, result):
     return location
 
 
-with patch("ray.tune.progress_reporter._get_trial_location",
+with patch("ray.tune.output.progress_reporter._get_trial_location",
            mock_get_trial_location):
     reporter = tune.progress_reporter.CLIReporter(metric_columns=["done"])
 
@@ -263,7 +263,7 @@ import random
 import numpy as np
 import time
 from ray.tune.experiment.trial import _Location
-from ray.tune.progress_reporter import _get_trial_location
+from ray.tune.output.progress_reporter import _get_trial_location
 from unittest.mock import patch
 
 
@@ -290,7 +290,7 @@ random.seed(1234)
 np.random.seed(1234)
 
 
-with patch("ray.tune.progress_reporter._get_trial_location",
+with patch("ray.tune.output.progress_reporter._get_trial_location",
            mock_get_trial_location):
     tune.run(
         train,
@@ -680,7 +680,7 @@ class ProgressReporterTest(unittest.TestCase):
         self.assertTrue(isinstance(reporter, CLIReporter))
         self.assertFalse(isinstance(reporter, JupyterNotebookReporter))
 
-        with patch("ray.tune.progress_reporter.IS_NOTEBOOK", True):
+        with patch("ray.tune.output.progress_reporter.IS_NOTEBOOK", True):
             reporter = detect_reporter()
             self.assertFalse(isinstance(reporter, CLIReporter))
             self.assertTrue(isinstance(reporter, JupyterNotebookReporter))

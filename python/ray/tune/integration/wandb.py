@@ -307,7 +307,7 @@ class WandbLoggerCallback(LoggerCallback):
 
     .. code-block:: python
 
-        from ray.tune.logger import DEFAULT_LOGGERS
+        from ray.tune.output.logger import DEFAULT_LOGGERS
         from ray.tune.integration.wandb import WandbLoggerCallback
         tune.run(
             train_fn,

@@ -301,7 +301,7 @@ class TBXLoggerCallback(TrainingCallback):
         flat_result = flatten_dict(result, delimiter="/")
         path = ["ray", "train"]
 
-        # same logic as in ray.tune.logger.TBXLogger
+        # same logic as in ray.tune.output.logger.TBXLogger
         for attr, value in flat_result.items():
             full_attr = "/".join(path + [attr])
             if isinstance(value, self.VALID_SUMMARY_TYPES) and not np.isnan(value):

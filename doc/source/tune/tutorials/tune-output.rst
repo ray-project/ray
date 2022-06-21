@@ -245,7 +245,7 @@ You can create a custom logger by inheriting the LoggerCallback interface (:ref:
     import json
     import os
 
-    from ray.tune.logger import LoggerCallback
+    from ray.tune.output.logger import LoggerCallback
 
 
     class CustomLoggerCallback(LoggerCallback):

@@ -246,7 +246,7 @@ class LoggerSuite(unittest.TestCase):
         logger = TBXLogger(config=config, logdir=self.test_dir, trial=t)
         logger.on_result(result(0, 4))
         logger.on_result(result(2, 4, score=[1, 2, 3], hello={"world": 1}))
-        with self.assertLogs("ray.tune.logger", level="INFO") as cm:
+        with self.assertLogs("ray.tune.output.logger", level="INFO") as cm:
             logger.close()
         assert "INFO" in cm.output[0]
 
@@ -259,7 +259,7 @@ class LoggerSuite(unittest.TestCase):
         logger.on_trial_result(
             2, [], t, result(2, 6, score=[1, 2, 3], hello={"world": 1})
         )
-        with self.assertLogs("ray.tune.logger", level="INFO") as cm:
+        with self.assertLogs("ray.tune.output.logger", level="INFO") as cm:
             logger.on_trial_complete(3, [], t)
         assert "INFO" in cm.output[0]
 

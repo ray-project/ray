@@ -34,17 +34,17 @@ relevant ones (like accuracy, loss, etc.).
 TBXLogger
 ---------
 
-.. autoclass:: ray.tune.logger.TBXLoggerCallback
+.. autoclass:: ray.tune.output.logger.TBXLoggerCallback
 
 JsonLogger
 ----------
 
-.. autoclass:: ray.tune.logger.JsonLoggerCallback
+.. autoclass:: ray.tune.output.logger.JsonLoggerCallback
 
 CSVLogger
 ---------
 
-.. autoclass:: ray.tune.logger.CSVLoggerCallback
+.. autoclass:: ray.tune.output.logger.CSVLoggerCallback
 
 MLFlowLogger
 ------------
@@ -66,5 +66,5 @@ You can see the :doc:`tutorial here </tune/examples/tune-wandb>`
 LoggerCallback
 --------------
 
-.. autoclass:: ray.tune.logger.LoggerCallback
+.. autoclass:: ray.tune.output.logger.LoggerCallback
     :members: log_trial_start, log_trial_restore, log_trial_save, log_trial_result, log_trial_end

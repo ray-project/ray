@@ -88,13 +88,13 @@ if __name__ == "__main__":
         # 1) Disable logging entirely.
         # "logger_config": {
         #     # Use the tune.logger.NoopLogger class for no logging.
-        #     "type": "ray.tune.logger.NoopLogger",
+        #     "type": "ray.tune.output.logger.NoopLogger",
         # },
         # 2) Use tune's JsonLogger only.
         # Alternatively, use `CSVLogger` or `TBXLogger` instead of
         # `JsonLogger` in the "type" key below.
         # "logger_config": {
-        #     "type": "ray.tune.logger.JsonLogger",
+        #     "type": "ray.tune.output.logger.JsonLogger",
         #     # Optional: Custom logdir (do not define this here
         #     # for using ~/ray_results/...).
         #     "logdir": "/tmp",

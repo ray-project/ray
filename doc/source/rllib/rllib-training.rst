@@ -714,7 +714,7 @@ Here is an example of the basic usage (for a more complete example, see `custom_
 
     import ray
     import ray.rllib.algorithms.ppo as ppo
-    from ray.tune.logger import pretty_print
+    from ray.tune.output.logger import pretty_print
 
     ray.init()
     config = ppo.DEFAULT_CONFIG.copy()

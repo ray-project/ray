@@ -27,7 +27,7 @@ if __name__ == "__main__":
             # Disable the logger due to a sort-import attempt of torch
             # inside the tensorboardX.SummaryWriter class.
             "logger_config": {
-                "type": "ray.tune.logger.NoopLogger",
+                "type": "ray.tune.output.logger.NoopLogger",
             },
         },
     )
