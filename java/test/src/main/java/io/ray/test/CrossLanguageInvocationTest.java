@@ -31,7 +31,7 @@ import org.testng.annotations.Test;
 public class CrossLanguageInvocationTest extends BaseTest {
 
   private static final String PYTHON_MODULE = "test_cross_language_invocation";
-  private static final String CPP_LIBRARY = "cpp/counter";
+  private static final String CPP_LIBRARY = "counter";
 
   @BeforeClass
   public void beforeClass() {
