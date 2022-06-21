@@ -177,7 +177,7 @@ def create_trial_from_spec(
     Args:
         spec: A resolved experiment specification. Arguments should
             The args here should correspond to the command line flags
-            in ray.tune.experiment.config_parser.
+            in ray.tune.experiment._config_parser.
         output_path: A specific output path within the local_dir.
             Typically the name of the experiment.
         parser: An argument parser object from

@@ -270,7 +270,7 @@ class Trial:
         """Initialize a new trial.
 
         The args here take the same meaning as the command line flags defined
-        in ray.tune.experiment.config_parser.
+        in ray.tune.experiment._config_parser.
 
         Args:
             _setup_default_resource: Whether to set up default resources.
