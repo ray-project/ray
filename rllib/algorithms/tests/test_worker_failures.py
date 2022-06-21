@@ -1,6 +1,5 @@
-import unittest
-
 import gym
+import unittest
 
 import ray
 from ray.rllib import _register_all
@@ -49,10 +48,10 @@ class FaultInjectEnv(gym.Env):
         return self.env.step(action)
 
 
-class TestWorkerFailure(unittest.TestCase):
+class IgnoresWorkerFailure(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(num_cpus=6)
+        ray.init(num_cpus=6, local_mode=True)
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -65,9 +64,9 @@ class TestWorkerFailure(unittest.TestCase):
         finally:
             _register_all()  # re-register the evicted objects
 
-    def _do_test_fault_ignore(self, algo: str, config: dict):
+    def _do_test_fault_ignore(self, alg: str, config: dict):
         register_env("fault_env", lambda c: FaultInjectEnv(c))
-        algo_cls = get_algorithm_class(algo)
+        agent_cls = get_algorithm_class(alg)
 
         # Test fault handling
         config["num_workers"] = 2
@@ -76,10 +75,10 @@ class TestWorkerFailure(unittest.TestCase):
         config["env_config"] = {"bad_indices": [1]}
 
         for _ in framework_iterator(config, frameworks=("tf2", "torch")):
-            algo = algo_cls(config=config, env="fault_env")
-            result = algo.train()
+            a = agent_cls(config=config, env="fault_env")
+            result = a.train()
             self.assertTrue(result["num_healthy_workers"], 1)
-            algo.stop()
+            a.stop()
 
     def _do_test_fault_fatal(self, alg, config):
         register_env("fault_env", lambda c: FaultInjectEnv(c))
@@ -153,8 +152,8 @@ class TestWorkerFailure(unittest.TestCase):
         self.do_test(
             "APEX",
             {
-                "num_gpus": 0,
                 "min_sample_timesteps_per_iteration": 1000,
+                "num_gpus": 0,
                 "min_time_s_per_iteration": 1,
                 "explore": False,
                 "learning_starts": 1000,
@@ -190,8 +189,7 @@ class TestWorkerFailure(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import sys
-
     import pytest
+    import sys
 
     sys.exit(pytest.main(["-v", __file__]))
