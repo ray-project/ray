@@ -129,6 +129,14 @@ py_test(
 )
 
 py_test(
+    name = "test_import_legacy_structure",
+    size = "small",
+    srcs = ["tests/test_import_legacy_structure.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_I"],
+)
+
+py_test(
     name = "test_integration_comet",
     size = "small",
     srcs = ["tests/test_integration_comet.py"],
