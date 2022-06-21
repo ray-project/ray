@@ -458,6 +458,8 @@ The Serve CLI offers two commands to help you monitor your Serve application in 
 
 If you're working with a remote cluster, `serve config` and `serve status` also offer an `--address/-a` argument to access your cluster. Check out [the previous section](serve-in-production-remote-cluster) for more info on this argument.
 
+(serve-in-production-config-command)=
+
 ### `serve config`
 
 `serve config` gets the latest config file the Ray cluster received. This config file represents the Serve application's goal state. The Ray cluster will constantly attempt to reach and maintain this state by deploying deployments, recovering failed replicas, and more.
@@ -482,7 +484,59 @@ deployments:
 ...
 ```
 
+(serve-in-production-status-command)=
+
 ### `serve status`
+
+`serve status` gets your Serve application's current status. It's divided into two parts: the `app_status` and the `deployment_statuses`.
+
+The `app_status` contains three fields:
+* `status`: a Serve application has three possible statuses:
+    * `"DEPLOYING"`: the application is currently carrying out a `serve deploy` request. It is deploying new deployments or updating existing ones.
+    * `"RUNNING"`: the application is at steady-state. It has finished executing any previous `serve deploy` requests, and it is attempting to maintain the goal state set by the latest `serve deploy` request.
+    * `"DEPLOY_FAILED"`: the latest `serve deploy` request has failed.
+* `message`: provides context on the current status.
+* `deployment_timestamp`: a unix timestamp of when Serve received the last `serve deploy` request. This is calculated using the `ServeController`'s local clock.
+
+The `deployment_statuses` contains a list of dictionaries representing each deployment's status. Each dictionary has three fields:
+* `name`: the deployment's name.
+* `status`: a Serve deployment has three possible statuses:
+    * `"UPDATING"`: the deployment is updating to meet the goal state set by a previous `deploy` request.
+    * `"HEALTHY"`: the deployment is at the latest requests goal state.
+    * `"UNHEALTHY"`: the deployment has either failed to update, or it has updated and has become unhealthy afterwards. This may be due to an error in the deployment's constructor, a crashed replica, or a general system or machine error.
+* `message`: provides context on the current status.
+
+You can use the `serve status` command to monitor your deployments after they are deployed and throughout their lifetime.
+
+Using the `fruit_config.yaml` example from [an earlier section](fruit-config-yaml):
+
+```console
+$ ray start --head
+$ serve deploy fruit_config.yaml
+...
+
+$ serve status
+app_status:
+  status: RUNNING
+  message: ''
+  deployment_timestamp: 1655771534.835145
+deployment_statuses:
+- name: MangoStand
+  status: HEALTHY
+  message: ''
+- name: OrangeStand
+  status: HEALTHY
+  message: ''
+- name: PearStand
+  status: HEALTHY
+  message: ''
+- name: FruitMarket
+  status: HEALTHY
+  message: ''
+- name: DAGDriver
+  status: HEALTHY
+  message: ''
+```
 
 (serve-in-production-updating)=
 
