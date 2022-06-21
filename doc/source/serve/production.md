@@ -427,7 +427,7 @@ The Ray dashboard's default port is 8265. This port may be different if:
 * Port 8265 was unavailable when Ray started. In that case, the dashboard port is incremented until an available port is found. E.g. if 8265 is unavailable, the port becomes 8266. If that's unavailable, it becomes 8267, and so on.
 
 :::{tip}
-By default, all the Serve CLI's commands assume that you're working with a local cluster, so if you don't specify an `--address/-a` value, they use the Ray address associated with a local cluster started by `ray start --head`. However, if the `RAY_ADDRESS` environment variable is set, all Serve CLI commands will default to that value instead (unless you also specify an `--address/-a` value).
+By default, all the Serve CLI commands assume that you're working with a local cluster, so if you don't specify an `--address/-a` value, they use the Ray address associated with a local cluster started by `ray start --head`. However, if the `RAY_ADDRESS` environment variable is set, all Serve CLI commands will default to that value instead (unless you also specify an `--address/-a` value).
 
 You can check this variable's value by running:
 
