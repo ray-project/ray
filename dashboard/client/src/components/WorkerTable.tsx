@@ -274,24 +274,48 @@ const RayletWorkerTable = ({
                           jstat
                         </Button>
                       </div>
-                    ): "N/A"}
+                    ) : (
+                      "N/A"
+                    )}
                   </TableCell>
                   <TableCell align="center">
                     {nodeMapByIp[coreWorkerStats[0]?.ipAddress] ? (
-                      <Link target="_blank" to={`/node/${nodeMapByIp[coreWorkerStats[0]?.ipAddress]}`}>
+                      <Link
+                        target="_blank"
+                        to={`/node/${
+                          nodeMapByIp[coreWorkerStats[0]?.ipAddress]
+                        }`}
+                      >
                         {coreWorkerStats[0]?.ipAddress}
                       </Link>
-                    ): coreWorkerStats[0]?.ipAddress}
+                    ) : (
+                      coreWorkerStats[0]?.ipAddress
+                    )}
                   </TableCell>
                   <TableCell align="center">
-                  <div>Pending tasks: {coreWorkerStats[0]?.numPendingTasks}</div>
-                  <div>Executed tasks: {coreWorkerStats[0]?.numExecutedTasks}</div>
+                    <div>
+                      Pending tasks: {coreWorkerStats[0]?.numPendingTasks}
+                    </div>
+                    <div>
+                      Executed tasks: {coreWorkerStats[0]?.numExecutedTasks}
+                    </div>
                   </TableCell>
                   <TableCell align="center">
-                  <div>ObjectRefs in scope: {coreWorkerStats[0]?.numObjectRefsInScope}</div>
-                  <div>Objects in local memory store: {coreWorkerStats[0]?.numLocalObjects}</div>
-                  <div>Objects in plasma store: {coreWorkerStats[0]?.numInPlasma}</div>
-                  <div>Object store Memory used (MiB): {coreWorkerStats[0]?.usedObjectStoreMemory}</div>
+                    <div>
+                      ObjectRefs in scope:{" "}
+                      {coreWorkerStats[0]?.numObjectRefsInScope}
+                    </div>
+                    <div>
+                      Objects in local memory store:{" "}
+                      {coreWorkerStats[0]?.numLocalObjects}
+                    </div>
+                    <div>
+                      Objects in plasma store: {coreWorkerStats[0]?.numInPlasma}
+                    </div>
+                    <div>
+                      Object store Memory used (MiB):{" "}
+                      {coreWorkerStats[0]?.usedObjectStoreMemory}
+                    </div>
                   </TableCell>
                 </ExpandableTableRow>
               ),
