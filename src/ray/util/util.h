@@ -337,6 +337,6 @@ class ExponentialBackOff {
 bool IsRayletFailed(const std::string &raylet_pid);
 
 /// Teriminate the process without cleaning up the resources.
-void QuickExit(int exit_code = 1);
+void QuickExit();
 
 }  // namespace ray

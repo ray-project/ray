@@ -53,14 +53,12 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
                 event_consts.RETRY_CONNECT_TO_DASHBOARD_INTERVAL_SECONDS
             )
 
-    @async_loop_forever(
-        event_consts.EVENT_AGENT_REPORT_INTERVAL_SECONDS, cancellable=True
-    )
+    @async_loop_forever(event_consts.EVENT_AGENT_REPORT_INTERVAL_SECONDS)
     async def report_events(self):
         """Report events from cached events queue. Reconnect to dashboard if
         report failed. Log error after retry EVENT_AGENT_RETRY_TIMES.
 
-        This method will never returns, except for cancellation upon SIGTERM
+        This method will never returns.
         """
         data = await self._cached_events.get()
         for _ in range(event_consts.EVENT_AGENT_RETRY_TIMES):

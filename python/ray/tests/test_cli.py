@@ -116,10 +116,16 @@ def _unlink_test_ssh_key():
 
 
 def _start_ray_and_block(runner, child_conn: mp.connection.Connection, as_head: bool):
+    """Utility function to start a CLI command with `ray start --block`
+
+    This function is expected to be run in another process, where `child_conn` is used
+    for IPC with the parent.
+    """
     args = ["--block"]
     if as_head:
         args.append("--head")
     else:
+        # Worker node
         args.append(f"--address=localhost:{ray_constants.DEFAULT_PORT}")
 
     result = runner.invoke(
@@ -328,13 +334,11 @@ def test_ray_start_hook(configure_lang, monkeypatch, tmp_path):
 
 
 @pytest.mark.skipif(
-    sys.platform == "darwin"
-    and "travis" in os.environ.get("USER", "")
-    or sys.platform == "win32",
-    reason=(
-        "Mac builds don't provide proper locale support. "
-        "Windows signal handling not compatible"
-    ),
+    sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
+    reason=("Mac builds don't provide proper locale support. "),
+)
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Windows signal handling not compatible"
 )
 def test_ray_start_head_block_and_signals(configure_lang, monkeypatch, tmp_path):
     """Test `ray start` with `--block` as heads and workers and signal handles"""
@@ -354,62 +358,76 @@ def test_ray_start_head_block_and_signals(configure_lang, monkeypatch, tmp_path)
     head_proc.start()
 
     # Give it some time to start various subprocesses and `ray stop`
-    time.sleep(2)
+    # A smaller interval seems to cause occasional failure as the head process
+    # was stopped too early before spawning all the subprocesses.
+    time.sleep(5)
 
-    # Terminate some of the children process
-    children = psutil.Process(head_proc.pid).children()
-
-    # Terminate everyone other than GCS
     gcs_proc = None
-    for child in children:
-        if "gcs_server" in child.name():
-            gcs_proc = child
-            continue
-        child.terminate()
-        child.wait()
 
-        if not head_proc.is_alive():
+    def verify_sigterm_do_not_exit_head():
+        global gcs_proc
+        # Terminate some of the children process
+        children = psutil.Process(head_proc.pid).children()
+
+        # Terminate everyone other than GCS
+        # NOTE(rickyyx): The choice of picking GCS is arbitrary.
+        for child in children:
+            if "gcs_server" in child.name():
+                gcs_proc = child
+                continue
+            child.terminate()
+            child.wait()
+
+            if not head_proc.is_alive():
+                # NOTE(rickyyx): call recv() here is safe since the process
+                # is guaranteed to be terminated.
+                _fail_if_false(
+                    False,
+                    head_parent_conn.recv(),
+                    (
+                        "`ray start --head --block` should not exit"
+                        f"({head_proc.exitcode}) when a subprocess is "
+                        "terminated with SIGTERM."
+                    ),
+                )
+        return True
+
+    wait_for_condition(verify_sigterm_do_not_exit_head)
+
+    def verify_sigkill_exits_head():
+        global gcs_proc
+        # Kill the GCS last should unblock the CLI
+        gcs_proc.kill()
+        gcs_proc.wait()
+
+        # NOTE(rickyyx): The wait here is needed for the `head_proc`
+        # process to exit
+        time.sleep(3)
+
+        # Process with "--block" should be blocked forever w/o
+        # termination by signals
+        if head_proc.is_alive() or head_proc.exitcode == 0:
             # NOTE(rickyyx): call recv() here is safe since the process
-            # is guaranteed to be terminated.
+            # is guaranteed to be terminated thus invocation is non-blocking.
             _fail_if_false(
                 False,
-                head_parent_conn.recv(),
+                head_parent_conn.recv() if not head_proc.is_alive() else "still alive",
                 (
-                    "`ray start --head --block` should not exit when a subprocess"
-                    f" is terminated with SIGTERM. It exited with {head_proc.exitcode}."
+                    "Head process should have exited with errors when one of"
+                    " subprocesses killed."
                 ),
             )
+        return True
 
-    # Kill the GCS last should unblock the CLI
-    gcs_proc.kill()
-    gcs_proc.wait()
-
-    # NOTE(rickyyx): The wait here is somehow needed for the `head_proc` process to exit
-    time.sleep(3)
-
-    # Process with "--block" should be blocked forever w/o
-    # termination by signals
-    if head_proc.is_alive() or head_proc.exitcode == 0:
-        # NOTE(rickyx): call recv() here is safe since the process
-        # is guaranteed to be terminated.
-        _fail_if_false(
-            False,
-            head_parent_conn.recv() if not head_proc.is_alive() else "still alive",
-            (
-                "Head process should have exited with errors when one of"
-                f" subprocesses killed. {head_proc.exitcode}"
-            ),
-        )
+    wait_for_condition(verify_sigkill_exits_head)
 
 
 @pytest.mark.skipif(
-    sys.platform == "darwin"
-    and "travis" in os.environ.get("USER", "")
-    or sys.platform == "win32",
-    reason=(
-        "Mac builds don't provide proper locale support. "
-        "Windows signal handling not compatible"
-    ),
+    sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
+    reason=("Mac builds don't provide proper locale support. "),
+)
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Windows signal handling not compatible"
 )
 def test_ray_start_block_and_stop(configure_lang, monkeypatch, tmp_path):
     """Test `ray start` with `--block` as heads and workers and `ray stop`"""
@@ -435,57 +453,71 @@ def test_ray_start_block_and_stop(configure_lang, monkeypatch, tmp_path):
     head_proc.start()
     worker_proc.start()
 
-    # Give it some time to start various subprocesses and `ray stop`
-    time.sleep(2)
-    _die_on_error(runner.invoke(scripts.stop))
+    def verify_stop_ok():
+        # Give it some time to start various subprocesses and `ray stop`
+        # A smaller interval seems to cause occasional failure as the head process
+        # was stopped too early before spawning all the subprocesses.
+        time.sleep(5)
+        stop_result = runner.invoke(scripts.stop)
+        _die_on_error(stop_result)
 
-    # Process with "--block" should be blocked forever w/o
-    # termination by signals
-    if not head_proc.is_alive():
-        # NOTE(rickyx): call recv() here is safe since the process
-        # is guaranteed to be terminated.
+        # Process with "--block" should be blocked forever w/o
+        # termination by signals
+        if not head_proc.is_alive():
+            # NOTE(rickyyx): call recv() here is safe since the process
+            # is guaranteed to be terminated.
+            _fail_if_false(
+                False,
+                head_parent_conn.recv(),
+                (
+                    "`ray start --head --block` should block forever even"
+                    " though Ray subprocesses are stopped normally. But "
+                    f"it exited with {head_proc.exitcode} early. \n"
+                    f"Stop command: {stop_result.output}"
+                ),
+            )
+
+        if not worker_proc.is_alive():
+            _fail_if_false(
+                False,
+                worker_parent_conn.recv(),
+                (
+                    "`ray start --block` should block forever even"
+                    " though Ray subprocesses are stopped normally. But"
+                    f"it exited with {worker_proc.exitcode} already. \n"
+                    f"Stop command: {stop_result.output}"
+                ),
+            )
+        return True
+
+    wait_for_condition(verify_stop_ok)
+
+    def tear_down_ok():
+        # Stop both worker and head with SIGTERM
+        head_proc.terminate()
+        worker_proc.terminate()
+
+        head_output = head_parent_conn.recv()
+        worker_output = worker_parent_conn.recv()
+
+        head_proc.join()
+        worker_proc.join()
+
         _fail_if_false(
-            False,
-            head_parent_conn.recv(),
-            (
-                "`ray start --head --block` should block forever even"
-                " though Ray subprocesses are stopped normally. But "
-                f"it exited with {head_proc.exitcode} early."
-            ),
+            head_proc.exitcode == 0,
+            head_output,
+            f"Head process failed unexpectedly({head_proc.exitcode})",
         )
 
-    if not worker_proc.is_alive():
         _fail_if_false(
-            False,
-            worker_parent_conn.recv(),
-            (
-                "`ray start --block` should block forever even"
-                " though Ray subprocesses are stopped normally. But"
-                f"it exited with {worker_proc.exitcode} already."
-            ),
+            worker_proc.exitcode == 0,
+            worker_output,
+            f"Worker process failed unexpectedly({worker_proc.exitcode})",
         )
 
-    # Stop both worker and head with SIGTERM
-    head_proc.terminate()
-    worker_proc.terminate()
+        return True
 
-    head_output = head_parent_conn.recv()
-    worker_output = worker_parent_conn.recv()
-
-    head_proc.join()
-    worker_proc.join()
-
-    _fail_if_false(
-        head_proc.exitcode == 0,
-        head_output,
-        f"Head process failed unexpectedly({head_proc.exitcode})",
-    )
-
-    _fail_if_false(
-        worker_proc.exitcode == 0,
-        worker_output,
-        f"Worker process failed unexpectedly({worker_proc.exitcode})",
-    )
+    wait_for_condition(tear_down_ok)
 
 
 @pytest.mark.skipif(

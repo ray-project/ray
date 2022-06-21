@@ -3,9 +3,10 @@ import asyncio
 import logging
 import logging.handlers
 import platform
-import sys
 import traceback
-from signal import SIGTERM
+import signal
+import os
+import sys
 
 import ray._private.services
 import ray._private.utils
@@ -61,9 +62,6 @@ class Dashboard:
 
     async def run(self):
         await self.dashboard_head.run()
-
-    async def exit(self, exit_code: int):
-        await self.dashboard_head.exit(exit_code)
 
 
 if __name__ == "__main__":
@@ -181,21 +179,18 @@ if __name__ == "__main__":
         )
         loop = asyncio.get_event_loop()
 
-        # add_signal_handler() not available on windows
-
         def sigterm_handler():
-            loop = asyncio.get_event_loop()
-            # exit() will exit the program after some best-effort clean up
-            logger.warn("Caught SIGTERM, exiting dashboard...")
-            loop.create_task(dashboard.exit(SIGTERM))
+            logger.warn("Exiting with SIGTERM immediately...")
+            os._exit(signal.SIGTERM)
 
         if sys.platform != "win32":
-            # Cancel the task when SIGTERM caught.
-            # This will give the underlying head process the chance
-            # to clean up its dependencies gracefully. The clean up
-            # tasks should not block, which is achieved by a timeout
-            # on the wait of the tasks.
-            loop.add_signal_handler(SIGTERM, sigterm_handler)
+            # TODO(rickyyx): we currently do not have any logic for actual
+            # graceful termination in the dashboard. Most of the underlying
+            # async tasks run by the dashboard head doesn't handle CancelledError.
+            # So a truly graceful shutdown is not trivial w/o much refactoring.
+            # Re-open the issue: https://github.com/ray-project/ray/issues/25518
+            # if a truly graceful shutdown is required.
+            loop.add_signal_handler(signal.SIGTERM, sigterm_handler)
 
         loop.run_until_complete(dashboard.run())
     except Exception as e:
@@ -218,5 +213,3 @@ if __name__ == "__main__":
             message,
             gcs_publisher=gcs_publisher,
         )
-    finally:
-        loop.close()

@@ -46,7 +46,7 @@ class GCSHealthCheckThread(threading.Thread):
             future.set_result(check_result)
 
     async def check_once(self) -> bool:
-        """Ask the thread to perform a healthcheck."""
+        """Ask the thread to perform a health check."""
         assert (
             threading.current_thread != self
         ), "caller shouldn't be from the same thread as GCSHealthCheckThread."
@@ -162,33 +162,6 @@ class DashboardHead:
             modules.append(c)
         logger.info("Loaded %d modules.", len(modules))
         return modules
-
-    async def exit(self, exit_code: int):
-        # Try to clean up some dependencies with timeout, best-effort.
-        # TODO(rickyyx): This is not fully graceful yet since some of the
-        # scheduled modules `run()` will not be cancelled. It is fine for now
-        # since we only do `stop` when SIGTERM caught, the process will exit
-        # with SIGTERM, which should be sufficient to differentiate from a normal
-        # exit.
-        logger.warn("DashboardHead exiting, trying to clean up dependencies...")
-        try:
-            tasks = []
-            tasks.append(self.server.stop(grace=None))
-            if self.http_server:
-                tasks.append(self.http_server.cleanup())
-            await asyncio.wait_for(
-                asyncio.gather(*tasks),
-                timeout=dashboard_consts.DEFAULT_CANCEL_WAIT_TIMEOUT_SECONDS,
-            )
-            os._exit(exit_code)
-        except asyncio.TimeoutError:
-            logger.warn(
-                "Failed to clean up HTTP and gRPC servers with"
-                f" timeout={dashboard_consts.DEFAULT_CANCEL_WAIT_TIMEOUT_SECONDS}."
-                "Some states might not be handled properly. "
-                "Proceeding with the shutdown."
-            )
-            os._exit(1)
 
     async def run(self):
         gcs_address = self.gcs_address

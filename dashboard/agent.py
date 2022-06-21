@@ -5,7 +5,6 @@ import json
 import logging
 import logging.handlers
 import os
-import signal
 import sys
 
 import ray
@@ -155,36 +154,6 @@ class DashboardAgent:
     def http_session(self):
         assert self.http_server, "Accessing unsupported API in a minimal ray."
         return self.http_server.http_session
-
-    async def exit(self, exit_code: int = 0):
-        # Try to clean up some dependencies with timeout, best-effort.
-        # TODO(rickyyx): This is not fully graceful yet since some of the
-        # scheduled modules `run()` will not be cancelled. It is fine for now
-        # since we only do `stop` when SIGTERM caught, the process will exit
-        # with SIGTERM, which should be sufficient to differentiate from a normal
-        # exit.
-        try:
-            logger.warn("DashboardAgent stopping.")
-            tasks = []
-            tasks.append(self.server.stop(grace=None))
-            if self.http_server:
-                tasks.append(self.http_server.cleanup())
-            await asyncio.wait_for(
-                asyncio.gather(*tasks),
-                timeout=dashboard_consts.DEFAULT_CANCEL_WAIT_TIMEOUT_SECONDS,
-            )
-            logger.warn("Stopped servers (and http_server). Exiting.")
-
-            # We will os_exit() here to go around the asyncio stuff.
-            os._exit(exit_code)
-        except asyncio.TimeoutError:
-            logger.warn(
-                "Failed to clean up HTTP and gRPC servers with"
-                f" timeout={dashboard_consts.DEFAULT_CANCEL_WAIT_TIMEOUT_SECONDS}."
-                "Some states might not be handled properly. "
-                "Proceeding with the shutdown."
-            )
-            os._exit(1)
 
     async def run(self):
         async def _check_parent():
@@ -479,17 +448,6 @@ if __name__ == "__main__":
             raise Exception("Failure injection failure.")
 
         loop = asyncio.get_event_loop()
-
-        # add_signal_handler() not available on windows
-        def sigterm_handler():
-            logger.warn("Caught SIGTERM, trying to clean up...")
-            loop = asyncio.get_event_loop()
-            # Schedule the shutdown task to be run
-            loop.create_task(agent.exit(signal.SIGTERM))
-
-        if sys.platform != "win32":
-            loop.add_signal_handler(signal.SIGTERM, sigterm_handler)
-
         loop.run_until_complete(agent.run())
     except Exception:
         logger.exception("Agent is working abnormally. It will exit immediately.")

@@ -5,7 +5,6 @@ import ipaddress
 import json
 import logging
 import os
-import signal
 import subprocess
 import sys
 import time
@@ -145,47 +144,6 @@ def test_basic(ray_start_with_dashboard):
         key, namespace=ray_constants.KV_NAMESPACE_DASHBOARD
     )
     assert agent_ports is not None
-
-
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="Asyncio signal handlers not present on Windows."
-)
-def test_dashboard_handle_signals():
-    def start_dashboard() -> psutil.Process:
-        ray.init(include_dashboard=True)
-        all_processes = ray.worker._global_node.all_processes
-        assert ray_constants.PROCESS_TYPE_DASHBOARD in all_processes
-        dashboard_proc_info = all_processes[ray_constants.PROCESS_TYPE_DASHBOARD][0]
-        dashboard_proc = psutil.Process(dashboard_proc_info.process.pid)
-        assert dashboard_proc.status() in [
-            psutil.STATUS_RUNNING,
-            psutil.STATUS_SLEEPING,
-            psutil.STATUS_DISK_SLEEP,
-        ]
-        return dashboard_proc
-
-    ####################
-    # Test SIGTERM graceful
-    ####################
-    dashboard_proc = start_dashboard()
-    # Send SIGTERM
-    dashboard_proc.send_signal(signal.SIGTERM)
-    # Expect return code == 0
-    assert dashboard_proc.wait(timeout=5) == signal.SIGTERM
-    # Shut down ray
-    ray.shutdown()
-
-    ####################
-    # Test SIGKILL killed
-    ####################
-    dashboard_proc = start_dashboard()
-    # Send SIGKILL
-    dashboard_proc.send_signal(signal.SIGKILL)
-    # Expect return code == 0
-    assert dashboard_proc.wait(timeout=5) == -1 * signal.SIGKILL
-
-    # Shut down ray
-    ray.shutdown()
 
 
 def test_raylet_and_agent_share_fate(shutdown_only):

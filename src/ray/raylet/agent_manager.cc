@@ -114,8 +114,7 @@ void AgentManager::StartAgent() {
            "The raylet fate shares with the agent. This can happen because the "
            "Ray agent was unexpectedly killed or failed. See "
            "`dashboard_agent.log` for the root cause.";
-    // Forwarding agent's exit code for the raylet process.
-    QuickExit(exit_code);
+    QuickExit();
   });
   monitor_thread.detach();
 }

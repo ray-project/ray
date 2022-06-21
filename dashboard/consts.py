@@ -36,5 +36,3 @@ DEFAULT_JOB_ID = "ffff"
 BAD_RUNTIME_ENV_CACHE_TTL_SECONDS = env_integer(
     "BAD_RUNTIME_ENV_CACHE_TTL_SECONDS", 60 * 10
 )
-# Default timeout for stopping routines/tasks on cancellation
-DEFAULT_CANCEL_WAIT_TIMEOUT_SECONDS = 3
