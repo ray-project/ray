@@ -179,8 +179,6 @@ class CQL(SAC):
         # Collect SampleBatches from sample workers.
         batch = synchronous_parallel_sample(worker_set=self.workers)
         batch = batch.as_multi_agent()
-        self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
-        self._counters[NUM_ENV_STEPS_SAMPLED] += batch.env_steps()
         # Add batch to replay buffer.
         self.local_replay_buffer.add(batch)
 
@@ -190,6 +188,8 @@ class CQL(SAC):
             self.config["train_batch_size"],
             count_by_agent_steps=self._by_agent_steps,
         )
+        self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
+        self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
 
         # Old-style replay buffers return None if learning has not started
         if not train_batch:
