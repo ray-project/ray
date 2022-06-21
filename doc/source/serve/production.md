@@ -418,8 +418,6 @@ As an example, the address for the local cluster started by `ray start --head` i
 $ serve deploy config_file.yaml -a http://127.0.0.1:8265
 ```
 
-**Note that there is no slash at the end of the address.**
-
 The Ray dashboard's default port is 8265. This port may be different if:
 * You explicitly set it using the `--dashboard-port` argument when running `ray start`.
 * Port 8265 was unavailable when Ray started. In that case, the dashboard port is incremented until an available port is found. E.g. if 8265 is unavailable, the port becomes 8266. If that's unavailable, it becomes 8267, and so on.
