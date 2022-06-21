@@ -15,7 +15,7 @@ import ray.tune.search.sample
 from ray import tune
 from ray.tune import Experiment
 from ray.tune.suggest.util import logger
-from ray.tune.suggest.variant_generator import generate_variants
+from ray.tune.search.algorithms.variant_generator import generate_variants
 
 
 def _mock_objective(config):
@@ -208,7 +208,7 @@ class SearchSpaceTest(unittest.TestCase):
     def testReproducibilityBasicVariantGenerator(self):
         config = self.config.copy()
         config.pop("func")
-        from ray.tune.suggest.basic_variant import BasicVariantGenerator
+        from ray.tune.search.algorithms.basic_variant import BasicVariantGenerator
 
         ray.init(num_cpus=1, local_mode=True)
 
@@ -1775,7 +1775,7 @@ class SearchSpaceTest(unittest.TestCase):
             "c": ray.tune.search.sample.Float(1e-4, 1e-1).loguniform(),
         }
 
-        from ray.tune.suggest.basic_variant import BasicVariantGenerator
+        from ray.tune.search.algorithms.basic_variant import BasicVariantGenerator
 
         return self._testPointsToEvaluate(BasicVariantGenerator, config)
 
@@ -1798,7 +1798,7 @@ class SearchSpaceTest(unittest.TestCase):
             {"nested": {"random": 8.0}},
         ]
 
-        from ray.tune.suggest.basic_variant import BasicVariantGenerator
+        from ray.tune.search.algorithms.basic_variant import BasicVariantGenerator
 
         # grid_1 * grid_2 are 3 * 4 = 12 variants per complete grid search
         # However if one grid var is set by preset variables, that run
@@ -1853,8 +1853,8 @@ class SearchSpaceTest(unittest.TestCase):
             "b": tune.randint(0, 3),
         }
 
-        from ray.tune.suggest.basic_variant import BasicVariantGenerator
-        from ray.tune.suggest.variant_generator import logger
+        from ray.tune.search.algorithms.basic_variant import BasicVariantGenerator
+        from ray.tune.search.algorithms.variant_generator import logger
 
         # Test whether the initial points of fixed parameters are correctly
         # verified.
@@ -1900,7 +1900,7 @@ class SearchSpaceTest(unittest.TestCase):
             )
 
     def testGridSearchGenerator(self):
-        from ray.tune.suggest.basic_variant import BasicVariantGenerator
+        from ray.tune.search.algorithms.basic_variant import BasicVariantGenerator
 
         searcher = BasicVariantGenerator(constant_grid_search=False)
         exp = Experiment(
@@ -1924,7 +1924,7 @@ class SearchSpaceTest(unittest.TestCase):
 
         num_samples = 6
 
-        from ray.tune.suggest.basic_variant import BasicVariantGenerator
+        from ray.tune.search.algorithms.basic_variant import BasicVariantGenerator
 
         # First, do not keep random variables constant
         searcher = BasicVariantGenerator(constant_grid_search=False)

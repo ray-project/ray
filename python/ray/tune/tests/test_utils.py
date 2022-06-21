@@ -1,6 +1,6 @@
 import unittest
 
-from ray.tune.suggest.variant_generator import format_vars
+from ray.tune.search.algorithms.variant_generator import format_vars
 
 
 class TuneUtilsTest(unittest.TestCase):

@@ -18,7 +18,7 @@ from ray.tune.suggest.suggestion import (
     UNDEFINED_METRIC_MODE,
     UNDEFINED_SEARCH_SPACE,
 )
-from ray.tune.suggest.variant_generator import parse_spec_vars
+from ray.tune.search.algorithms.variant_generator import parse_spec_vars
 from ray.tune.utils.util import flatten_dict, is_nan_or_inf, unflatten_dict
 
 try:  # Python 3 only -- needed for lint test.
