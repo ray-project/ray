@@ -603,7 +603,11 @@ def download_and_unpack_package(
                 # Download package from the GCS.
                 code = _internal_kv_get(pkg_uri)
                 if code is None:
-                    raise IOError(f"Failed to fetch URI {pkg_uri} from GCS.")
+                    raise IOError(f"Failed to download runtime_env file package {pkg_uri} "
+                                    "from the GCS to the Ray worker node. The package may "
+                                    "have prematurely been deleted from the GCS due to a "
+                                    "problem with Ray. Try re-running the statement or "
+                                    "restarting the Ray cluster.")
                 code = code or b""
                 pkg_file.write_bytes(code)
 
