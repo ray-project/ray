@@ -168,6 +168,7 @@ from ray.cross_language import java_function, java_actor_class  # noqa: E402
 from ray.runtime_context import get_runtime_context  # noqa: E402
 from ray import autoscaler  # noqa:E402
 from ray import data  # noqa: E402,F401
+from ray import internal  # noqa: E402,F401
 from ray import util  # noqa: E402
 from ray import _private  # noqa: E402,F401
 from ray import workflow  # noqa: E402,F401
@@ -196,6 +197,7 @@ class _DeprecationWrapper(object):
 # TODO(ekl) remove this entirely after 3rd party libraries are all migrated.
 worker = _DeprecationWrapper("worker", ray._private.worker)
 ray_constants = _DeprecationWrapper("ray_constants", ray._private.ray_constants)
+serialization = _DeprecationWrapper("serialization", ray._private.serialization)
 
 __all__ = [
     "__version__",
