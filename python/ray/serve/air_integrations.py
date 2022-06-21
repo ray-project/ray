@@ -143,7 +143,7 @@ class BatchingManager:
         return split_list_of_dict
 
 
-class ModelWrapper(SimpleSchemaIngress):
+class Predictor(SimpleSchemaIngress):
     """Serve any Ray AIR predictor from an AIR checkpoint.
 
     Args:
@@ -215,7 +215,7 @@ class ModelWrapper(SimpleSchemaIngress):
                     batched = BatchingManager.batch_dict_array(inp)
                 else:
                     raise ValueError(
-                        "ModelWrapper only accepts numpy array, dataframe, or dict of "
+                        "Predictor only accepts numpy array, dataframe, or dict of "
                         "arrays as input "
                         f"but got types {[type(i) for i in inp]}"
                     )
@@ -234,7 +234,7 @@ class ModelWrapper(SimpleSchemaIngress):
                     return out
                 else:
                     raise ValueError(
-                        f"ModelWrapper only accepts list of length {batch_size}, numpy "
+                        f"Predictor only accepts list of length {batch_size}, numpy "
                         "array, dataframe, or dict of array as output "
                         f"but got types {type(out)} with length "
                         f"{len(out) if hasattr(out, '__len__') else 'unknown'}."
@@ -250,5 +250,5 @@ class ModelWrapper(SimpleSchemaIngress):
 
 
 @serve.deployment
-class ModelWrapperDeployment(ModelWrapper):
-    """Ray Serve Deployment of the ModelWrapper class."""
+class PredictorDeployment(Predictor):
+    """Ray Serve Deployment of the Predictor class."""
