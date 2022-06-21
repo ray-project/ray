@@ -706,7 +706,7 @@ def test_serve_start_different_http_checkpoint_options_warning(caplog):
     ray.shutdown()
 
 
-def test_updating_status_message(shutdown_ray, lower_slow_startup_threshold_and_reset):
+def test_updating_status_message(lower_slow_startup_threshold_and_reset):
     """Check if status message says if a serve deployment has taken a long time"""
 
     client = lower_slow_startup_threshold_and_reset
@@ -730,9 +730,7 @@ def test_updating_status_message(shutdown_ray, lower_slow_startup_threshold_and_
     wait_for_condition(updating_message, timeout=2)
 
 
-def test_unhealthy_override_updating_status(
-    shutdown_ray, lower_slow_startup_threshold_and_reset
-):
+def test_unhealthy_override_updating_status(lower_slow_startup_threshold_and_reset):
     """
     Check that if status is UNHEALTHY and there is a resource availability
     issue, the status should not change. The issue that caused the deployment to
