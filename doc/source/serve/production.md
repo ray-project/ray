@@ -452,7 +452,7 @@ Check for this variable in your environment to make sure you're using your desir
 
 (serve-in-production-monitoring)=
 
-## Monitoring Your Serve Application in Production
+## Monitoring Your Serve Application in Production with `serve config` and `serve status`
 
 The Serve CLI offers two commands to help you monitor your Serve application in production: `serve config` and `serve status`.
 
