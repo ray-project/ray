@@ -12,6 +12,7 @@ from typing import Any, Dict, Optional
 import yaml
 
 import ray
+from ray._private.ray_constants import DEFAULT_PORT
 from ray.autoscaler._private.fake_multi_node.command_runner import (
     FakeDockerCommandRunner,
 )
@@ -26,7 +27,6 @@ from ray.autoscaler.tags import (
     TAG_RAY_NODE_STATUS,
     TAG_RAY_USER_NODE_TYPE,
 )
-from ray.ray_constants import DEFAULT_PORT
 
 logger = logging.getLogger(__name__)
 
@@ -326,7 +326,7 @@ class FakeMultiNodeProvider(NodeProvider):
                     "RAY_OVERRIDE_RESOURCES": json.dumps(resources),
                 },
             )
-            node = ray.node.Node(
+            node = ray._private.node.Node(
                 ray_params, head=False, shutdown_at_exit=False, spawn_reaper=False
             )
             self._nodes[next_id] = {
