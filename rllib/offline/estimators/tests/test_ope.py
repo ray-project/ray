@@ -90,7 +90,7 @@ class TestOPE(unittest.TestCase):
         # Train DQN for evaluation policy
         timesteps_total = 0
         while timesteps_total < train_steps:
-            results = cls.trainer.train()
+            results = cls.algo.train()
             timesteps_total = results["timesteps_total"]
 
         # Read n_batches of data
@@ -203,8 +203,8 @@ class TestOPE(unittest.TestCase):
         self.mean_ret[name] = np.mean(estimates["v_new"])
         self.std_ret[name] = np.std(estimates["v_new"])
 
-    def test_ope_in_trainer(self):
-        results = self.trainer.evaluate()
+    def test_ope_in_algo(self):
+        results = self.algo.evaluate()
         print(results["evaluation"]["off_policy_estimator"])
         print("\n\n\n")
 
