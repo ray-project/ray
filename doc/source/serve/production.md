@@ -355,7 +355,7 @@ Remember that `ray_actor_options` is an independent setting. The entire `ray_act
 
 (serve-in-production-deploying)=
 
-## Deploying Your Serve Application to Production
+## Deploying Your Serve Application to Production with `serve deploy`
 
 You can deploy your Serve application to production using the config file and the `serve deploy` CLI command. `serve deploy` takes in a config file path, and it deploys that file to a Ray cluster.
 
