@@ -877,10 +877,10 @@ class Policy(metaclass=ABCMeta):
             ),
             SampleBatch.DONES: ViewRequirement(),
             SampleBatch.INFOS: ViewRequirement(),
+            SampleBatch.T: ViewRequirement(),
             SampleBatch.EPS_ID: ViewRequirement(),
             SampleBatch.UNROLL_ID: ViewRequirement(),
             SampleBatch.AGENT_INDEX: ViewRequirement(),
-            "t": ViewRequirement(),
         }
 
     def _initialize_loss_from_dummy_batch(
@@ -1016,6 +1016,7 @@ class Policy(metaclass=ABCMeta):
                             SampleBatch.DONES,
                             SampleBatch.REWARDS,
                             SampleBatch.INFOS,
+                            SampleBatch.T,
                         ]
                     ):
                         self.view_requirements[key].used_for_training = False
@@ -1033,6 +1034,7 @@ class Policy(metaclass=ABCMeta):
                             SampleBatch.DONES,
                             SampleBatch.REWARDS,
                             SampleBatch.INFOS,
+                            SampleBatch.T,
                         ]
                         and key not in self.model.view_requirements
                     ):
