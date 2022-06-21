@@ -51,7 +51,7 @@ from ray.tune.schedulers import (
     AsyncHyperBandScheduler,
 )
 from ray.tune.schedulers.pb2 import PB2
-from ray.tune.stopper import (
+from ray.tune.search.stopper.stopper import (
     MaximumIterationStopper,
     TrialPlateauStopper,
     ExperimentPlateauStopper,
@@ -1197,7 +1197,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             self.assertIn("LOG_STDERR", content)
 
     def testTimeout(self):
-        from ray.tune.stopper import TimeoutStopper
+        from ray.tune.search.stopper.stopper import TimeoutStopper
         import datetime
 
         def train(config):

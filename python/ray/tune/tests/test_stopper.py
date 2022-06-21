@@ -2,7 +2,7 @@ import pickle
 
 from freezegun import freeze_time
 
-from ray.tune.stopper import TimeoutStopper
+from ray.tune.search.stopper.stopper import TimeoutStopper
 
 
 def test_timeout_stopper_timeout():

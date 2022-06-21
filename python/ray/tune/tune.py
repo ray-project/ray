@@ -30,7 +30,7 @@ from ray.tune.schedulers import (
     PopulationBasedTrainingReplay,
     ResourceChangingScheduler,
 )
-from ray.tune.stopper import Stopper
+from ray.tune.search.stopper.stopper import Stopper
 from ray.tune.search import BasicVariantGenerator, SearchAlgorithm, SearchGenerator
 from ray.tune.search.searcher.suggestion import Searcher
 from ray.tune.search.searcher.concurrency_limiter import ConcurrencyLimiter

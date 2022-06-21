@@ -3,7 +3,7 @@ from ray.tune.tune import run_experiments, run
 from ray.tune.syncer import SyncConfig
 from ray.tune.experiment import Experiment
 from ray.tune.analysis import ExperimentAnalysis
-from ray.tune.stopper import Stopper
+from ray.tune.search.stopper.stopper import Stopper
 from ray.tune.registry import register_env, register_trainable
 from ray.tune.trainable import Trainable
 from ray.tune.callback import Callback

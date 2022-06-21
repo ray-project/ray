@@ -9,7 +9,7 @@ from ray.util.annotations import PublicAPI
 if TYPE_CHECKING:
     from ray.data import Dataset
     from ray.tune.callback import Callback
-    from ray.tune.stopper import Stopper
+    from ray.tune.search.stopper.stopper import Stopper
     from ray.tune.trainable import PlacementGroupFactory
 
 ScalingConfig = Dict[str, Any]

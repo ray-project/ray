@@ -36,7 +36,7 @@ from ray.tune.constants import (
     SHOULD_CHECKPOINT,
 )
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
-from ray.tune.stopper import NoopStopper, Stopper
+from ray.tune.search.stopper.stopper import NoopStopper, Stopper
 from ray.tune.search import BasicVariantGenerator, SearchAlgorithm
 from ray.tune.syncer import SyncConfig, get_node_to_storage_syncer, Syncer
 from ray.tune.experiment.trial import Trial

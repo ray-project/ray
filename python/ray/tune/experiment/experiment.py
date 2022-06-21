@@ -13,7 +13,12 @@ from ray.tune.error import TuneError
 from ray.tune.registry import register_trainable
 from ray.tune.constants import DEFAULT_RESULTS_DIR
 from ray.tune.search.sample import Domain
-from ray.tune.stopper import CombinedStopper, FunctionStopper, Stopper, TimeoutStopper
+from ray.tune.search.stopper.stopper import (
+    CombinedStopper,
+    FunctionStopper,
+    Stopper,
+    TimeoutStopper,
+)
 from ray.tune.syncer import SyncConfig
 from ray.tune.utils import date_str, detect_checkpoint_function
 

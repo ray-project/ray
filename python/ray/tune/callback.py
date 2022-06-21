@@ -7,7 +7,7 @@ from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint
 
 if TYPE_CHECKING:
     from ray.tune.experiment.trial import Trial
-    from ray.tune.stopper import Stopper
+    from ray.tune.search.stopper.stopper import Stopper
 
 
 class _CallbackMeta(ABCMeta):
