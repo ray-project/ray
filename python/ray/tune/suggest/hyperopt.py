@@ -7,7 +7,7 @@ from functools import partial
 import pickle
 
 from ray.tune.constants import DEFAULT_METRIC
-from ray.tune.sample import (
+from ray.tune.search.sample import (
     Categorical,
     Domain,
     Float,

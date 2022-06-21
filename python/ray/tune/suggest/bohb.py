@@ -10,7 +10,7 @@ from ray import cloudpickle
 from typing import Dict, List, Optional, Union
 
 from ray.tune.constants import DEFAULT_METRIC
-from ray.tune.sample import (
+from ray.tune.search.sample import (
     Categorical,
     Domain,
     Float,

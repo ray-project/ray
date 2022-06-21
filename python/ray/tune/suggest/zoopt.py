@@ -5,7 +5,14 @@ from typing import Dict, List, Optional, Tuple
 import ray
 import ray.cloudpickle as pickle
 from ray.tune.constants import DEFAULT_METRIC
-from ray.tune.sample import Categorical, Domain, Float, Integer, Quantized, Uniform
+from ray.tune.search.sample import (
+    Categorical,
+    Domain,
+    Float,
+    Integer,
+    Quantized,
+    Uniform,
+)
 from ray.tune.suggest.suggestion import (
     UNRESOLVED_SEARCH_SPACE,
     UNDEFINED_METRIC_MODE,

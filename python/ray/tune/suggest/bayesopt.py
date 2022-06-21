@@ -6,7 +6,7 @@ from typing import Dict, List, Optional, Tuple, Any
 
 from ray.tune import ExperimentAnalysis
 from ray.tune.constants import DEFAULT_METRIC
-from ray.tune.sample import Domain, Float, Quantized
+from ray.tune.search.sample import Domain, Float, Quantized
 from ray.tune.suggest.suggestion import (
     UNRESOLVED_SEARCH_SPACE,
     UNDEFINED_METRIC_MODE,

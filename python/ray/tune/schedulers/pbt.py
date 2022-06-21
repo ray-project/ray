@@ -12,7 +12,7 @@ from ray.tune.error import TuneError
 from ray.tune.constants import DEFAULT_METRIC, TRAINING_ITERATION
 from ray.tune.suggest import SearchGenerator
 from ray.tune.utils.util import SafeFallbackEncoder
-from ray.tune.sample import Domain, Function
+from ray.tune.search.sample import Domain, Function
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest.variant_generator import format_vars
 from ray.tune.experiment.trial import Trial
