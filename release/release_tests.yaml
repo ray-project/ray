@@ -3713,6 +3713,6 @@
     prepare: ' python setup_chaos.py --node-kill-interval 900 --max-nodes-to-kill 3'
     script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9
     wait_for_nodes:
-      num_nodes: 20
+      num_nodes: 5
     type: sdk_command
     file_manager: sdk

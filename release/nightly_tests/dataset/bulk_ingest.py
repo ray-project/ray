@@ -6,7 +6,7 @@ import ray
 import time
 
 # Training settings
-parser = argparse.ArgumentParser(description="Dataset ingestion Example")
+parser = argparse.ArgumentParser(description="Dataset bulk ingestion Example")
 parser.add_argument(
     "--batch-size",
     type=int,
@@ -31,13 +31,17 @@ def consume(split, rank=None, batch_size=None):
     # print(split.stats())
     return
 
-def create_dataset(
+def create_dataset_pipeline(
     ds,
     num_workers=1,
     epochs=1,
     parallelism=400,
 ):
     return [ds.repeat(1)]
+
+# Bulk load data from S3 to data nodes.
+def bulk_ingest_files(files):
+    return ray.data.read_parquet(files).fully_executed()
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -53,10 +57,9 @@ if __name__ == "__main__":
     ]
 
     start = time.time()
-    
-    # load data on memory nodes.
-    ds = ray.data.read_parquet(files).map_batches(lambda x:x, num_gpus=0.00, num_cpus=0.01)
 
+    ds = bulk_ingest_files(files)
+    
     print(f"data load time {time.time() - start}")
     start = time.time()
 
@@ -67,7 +70,6 @@ if __name__ == "__main__":
         parallelism=args.parallelism,
     )
 
-    # ingest on cpu nodes.
     tasks = [
         consume.options(num_gpus=1, num_cpus=0).remote(
             split, rank=idx, batch_size=args.batch_size
