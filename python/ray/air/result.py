@@ -25,8 +25,8 @@ class Result:
         checkpoint: The final checkpoint of the Trainable.
         error: The execution error of the Trainable run, if the trial finishes in error.
         log_dir: Directory where the trial logs are saved.
-        dataframe: The full result dataframe of the Trainable. Each row of the
-            dataframe corresponds to one iteration and contains reported
+        dataframe: The full result dataframe of the Trainable.
+            The dataframe is indexed by iterations and contains reported
             metrics.
         best_checkpoints: A list of tuples of the best checkpoints saved
             by the Trainable and their associated metrics. The number of

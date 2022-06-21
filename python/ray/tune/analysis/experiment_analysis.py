@@ -368,8 +368,8 @@ class ExperimentAnalysis:
     def trial_dataframes(self) -> Dict[str, DataFrame]:
         """List of all dataframes of the trials.
 
-        Each row of the dataframe corresponds to one iteration of a trial
-        and contains reported metrics.
+        Each dataframe is indexed by iterations and contains reported
+        metrics.
         """
         return self._trial_dataframes
 

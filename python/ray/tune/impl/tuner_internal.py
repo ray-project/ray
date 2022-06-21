@@ -147,7 +147,7 @@ class TunerInternal:
         else:
             analysis = self._fit_resume(trainable)
 
-        return ResultGrid(analysis, self._run_config.checkpoint_config)
+        return ResultGrid(analysis)
 
     def _get_tune_run_arguments(self) -> Dict[str, Any]:
         """Get tune.run arguments common for both new and resumed runs."""
