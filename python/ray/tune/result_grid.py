@@ -1,5 +1,5 @@
 import os
-from typing import TYPE_CHECKING, Optional, Union
+from typing import Optional, Union
 
 import pandas as pd
 
@@ -10,9 +10,6 @@ from ray.tune import ExperimentAnalysis
 from ray.tune.error import TuneError
 from ray.tune.trial import Trial
 from ray.util import PublicAPI
-
-if TYPE_CHECKING:
-    from ray.air.config import CheckpointConfig
 
 
 @PublicAPI(stability="alpha")
@@ -46,32 +43,8 @@ class ResultGrid:
     def __init__(
         self,
         experiment_analysis: ExperimentAnalysis,
-        checkpoint_config: Optional["CheckpointConfig"] = None,
     ):
         self._experiment_analysis = experiment_analysis
-        # Used to determine best checkpoint
-        self._checkpointing_config = checkpoint_config
-
-    def _resolve_checkpoint_config(
-        self,
-        checkpoint_config: "CheckpointConfig",
-        metric: Optional[str] = None,
-        mode: Optional[str] = None,
-    ) -> "CheckpointConfig":
-        # Lazy import to avoid circular dependency
-        from ray.air.config import CheckpointConfig
-
-        metric = metric or self._experiment_analysis.default_metric
-        mode = mode or self._experiment_analysis.default_mode
-
-        if not isinstance(checkpoint_config, CheckpointConfig):
-            if checkpoint_config and self._checkpointing_config:
-                checkpoint_config = self._checkpointing_config
-            else:
-                checkpoint_config = CheckpointConfig(
-                    checkpoint_score_metric=metric, checkpoint_score_mode=mode
-                )
-        return checkpoint_config
 
     def get_best_result(
         self,
@@ -79,7 +52,6 @@ class ResultGrid:
         mode: Optional[str] = None,
         scope: str = "last",
         filter_nan_and_inf: bool = True,
-        checkpoint_config: Union[bool, "CheckpointConfig"] = True,
     ) -> Result:
         """Get the best result from all the trials run.
 
@@ -142,11 +114,7 @@ class ResultGrid:
             )
             raise RuntimeError(error_msg)
 
-        checkpoint_config = self._resolve_checkpoint_config(
-            checkpoint_config, metric=metric, mode=mode
-        )
-
-        return self._trial_to_result(best_trial, checkpoint_config=checkpoint_config)
+        return self._trial_to_result(best_trial)
 
     def get_dataframe(
         self,
@@ -193,27 +161,8 @@ class ResultGrid:
 
     def __getitem__(self, i: int) -> Result:
         """Returns the i'th result in the grid."""
-        return self.get(i)
-
-    def get(self, i: int, *, checkpoint_config: Union[bool, "CheckpointConfig"] = True):
-        """Returns the i'th result in the grid.
-
-        Args:
-            i: index to return.
-            checkpoint_config: If True (default), will use the
-                ``CheckpointConfig`` object set in Trainer's ``RunConfig``
-                to determine the best checkpoint of the trial.
-                If False, or if the ``CheckpointConfig`` object was not set, will use
-                ``metric`` and ``mode`` as set here.
-                Can also be a ``CheckpointConfig`` object, in which case it will
-                be used directly.
-        """
-
-        checkpoint_config = self._resolve_checkpoint_config(checkpoint_config)
-
         return self._trial_to_result(
             self._experiment_analysis.trials[i],
-            checkpoint_config=checkpoint_config,
         )
 
     @staticmethod
@@ -227,31 +176,20 @@ class ResultGrid:
                 return TuneError(f.read())
         return None
 
-    def _trial_to_result(
-        self, trial: Trial, checkpoint_config: Optional["CheckpointConfig"]
-    ) -> Result:
+    def _trial_to_result(self, trial: Trial) -> Result:
         checkpoint = trial.checkpoint.to_air_checkpoint()
-
-        checkpoint_metric = (
-            checkpoint_config.checkpoint_score_metric if checkpoint_config else None
-        )
-        checkpoint_mode = (
-            checkpoint_config.checkpoint_score_mode_not_none
-            if checkpoint_config and checkpoint_metric
-            else None
-        )
-        try:
-            best_checkpoint = self._experiment_analysis.get_best_checkpoint(
-                trial, metric=checkpoint_metric, mode=checkpoint_mode
-            )
-        except ValueError:
-            best_checkpoint = None
+        checkpoint_history = [
+            (checkpoint.to_air_checkpoint(), checkpoint.metrics)
+            for checkpoint in trial.get_trial_checkpoints()
+        ]
 
         result = Result(
             checkpoint=checkpoint,
-            best_checkpoint=best_checkpoint,
             metrics=trial.last_result.copy(),
             error=self._populate_exception(trial),
-            dataframe=self._experiment_analysis.trial_dataframes.get(trial.logdir),
+            dataframe=self._experiment_analysis.trial_dataframes.get(trial.logdir)
+            if self._experiment_analysis
+            else None,
+            checkpoint_history=checkpoint_history,
         )
         return result

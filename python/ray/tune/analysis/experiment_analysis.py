@@ -436,7 +436,7 @@ class ExperimentAnalysis:
             )
             return path_metric_df[["chkpt_path", metric]].values.tolist()
         elif isinstance(trial, Trial):
-            checkpoints = trial.checkpoint_manager.best_checkpoints()
+            checkpoints = trial.get_trial_checkpoints()
             # Support metrics given as paths, e.g.
             # "info/learner/default_policy/policy_loss".
             return [

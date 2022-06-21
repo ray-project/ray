@@ -767,6 +767,9 @@ class Trial:
     def is_finished(self):
         return self.status in [Trial.ERROR, Trial.TERMINATED]
 
+    def get_trial_checkpoints(self) -> List[_TrackedCheckpoint]:
+        return self.checkpoint_manager.best_checkpoints()
+
     @property
     def is_restoring(self):
         return self.restoring_from is not None
