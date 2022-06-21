@@ -1,7 +1,7 @@
 import os
 import sys
 
-from ray.ray_constants import (  # noqa F401
+from ray._private.ray_constants import (  # noqa F401
     AUTOSCALER_RESOURCE_REQUEST_CHANNEL,
     DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES,
     DEFAULT_OBJECT_STORE_MEMORY_PROPORTION,

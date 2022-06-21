@@ -10,7 +10,7 @@ import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 import ray.experimental.internal_kv as internal_kv
-from ray import ray_constants
+from ray._private import ray_constants
 from ray._private.gcs_pubsub import GcsAioErrorSubscriber, GcsAioLogSubscriber
 from ray._private.gcs_utils import GcsClient, check_health
 from ray.dashboard.datacenter import DataOrganizer

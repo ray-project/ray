@@ -16,17 +16,18 @@ from typing import Any, Callable, Dict, List, Optional, Set, Union
 import grpc
 
 import ray
+import ray._private.state
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
-import ray.state
-from ray import cloudpickle, ray_constants
+from ray import cloudpickle
+from ray._private import ray_constants
 from ray._private.client_mode_hook import disable_client_hook
 from ray._private.gcs_utils import GcsClient
+from ray._private.ray_constants import env_integer
 from ray._private.ray_logging import setup_logger
 from ray._private.services import canonicalize_bootstrap_address
 from ray._private.tls_utils import add_port_to_grpc_server
 from ray.job_config import JobConfig
-from ray.ray_constants import env_integer
 from ray.util.client.common import (
     CLIENT_SERVER_MAX_THREADS,
     GRPC_OPTIONS,
@@ -123,7 +124,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         current_job_config = None
         with disable_client_hook():
             if ray.is_initialized():
-                worker = ray.worker.global_worker
+                worker = ray._private.worker.global_worker
                 current_job_config = worker.core_worker.get_job_config()
             else:
                 extra_kwargs = json.loads(request.ray_init_kwargs or "{}")

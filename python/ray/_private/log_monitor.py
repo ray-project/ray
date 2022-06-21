@@ -12,6 +12,7 @@ import traceback
 from typing import Callable, List, Set
 
 import ray._private.gcs_pubsub as gcs_pubsub
+import ray._private.ray_constants as ray_constants
 import ray._private.services as services
 import ray._private.utils
 import ray.ray_constants as ray_constants

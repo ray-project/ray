@@ -3,11 +3,11 @@ import logging
 import os
 from typing import Union
 
+import ray._private.ray_constants as ray_constants
 import ray._private.utils as utils
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 import ray.experimental.internal_kv as internal_kv
-import ray.ray_constants as ray_constants
 from ray.core.generated import event_pb2, event_pb2_grpc
 from ray.dashboard.modules.event import event_consts
 from ray.dashboard.modules.event.event_utils import monitor_events
