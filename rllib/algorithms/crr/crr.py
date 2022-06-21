@@ -1,14 +1,11 @@
 import logging
+from typing import List, Optional, Type
+
 import numpy as np
-from typing import Type, List, Optional
 import tree
 
 from ray.rllib.algorithms.algorithm import Algorithm, AlgorithmConfig
-from ray.rllib.execution.train_ops import (
-    multi_gpu_train_one_step,
-    train_one_step,
-)
-from ray.rllib.offline import DatasetReader
+from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
 from ray.rllib.offline.shuffled_input import ShuffledInput
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -18,10 +15,11 @@ from ray.rllib.utils.metrics import (
     NUM_TARGET_UPDATES,
     TARGET_NET_UPDATE_TIMER,
 )
+from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer
 from ray.rllib.utils.typing import (
+    AlgorithmConfigDict,
     PartialAlgorithmConfigDict,
     ResultDict,
-    AlgorithmConfigDict,
 )
 
 logger = logging.getLogger(__name__)
@@ -44,7 +42,7 @@ class CRRConfig(AlgorithmConfig):
         # __sphinx_doc_end__
         # fmt: on
         self.replay_buffer_config = {
-            "type": "ReplayBuffer",
+            "type": MultiAgentReplayBuffer,
             "capacity": 50000,
             # How many steps of the model to sample before learning starts.
             "learning_starts": 1000,
@@ -182,17 +180,6 @@ class CRR(Algorithm):
                 " replay buffer, which has capacity "
                 f"{self.local_replay_buffer.capacity}."
             )
-        elif isinstance(reader, DatasetReader):
-            ds_size = reader.count
-            for _ in range(ds_size):
-                batch = reader.next()
-                if SampleBatch.NEXT_OBS not in batch:
-                    obs = batch[SampleBatch.OBS]
-                    batch[SampleBatch.NEXT_OBS] = np.concatenate(
-                        [obs[1:], np.zeros_like(obs[0:1])]
-                    )
-                    batch[SampleBatch.DONES][-1] = True
-                self.local_replay_buffer.add(batch)
         else:
             raise ValueError(
                 "Unknown offline input! config['input'] must either be list of"
