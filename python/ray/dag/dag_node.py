@@ -1,5 +1,6 @@
 import ray
 from ray.dag.py_obj_scanner import _PyObjScanner
+from ray.util.annotations import DeveloperAPI
 
 from typing import (
     Optional,
@@ -16,6 +17,7 @@ import uuid
 T = TypeVar("T")
 
 
+@DeveloperAPI
 class DAGNode:
     """Abstract class for a node in a Ray task graph.
 

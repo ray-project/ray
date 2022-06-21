@@ -1,15 +1,15 @@
-import click
-import logging
 import json
+import logging
+from enum import Enum, unique
+from typing import List, Tuple, Union
+
+import click
 import yaml
 
-from enum import Enum, unique
-from typing import Union, List, Tuple
-
 import ray
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 import ray._private.services as services
-
+from ray._private.gcs_utils import GcsClient
 from ray.experimental.state.api import StateApiClient
 from ray.experimental.state.common import (
     DEFAULT_LIMIT,
@@ -17,7 +17,6 @@ from ray.experimental.state.common import (
     ListApiOptions,
     StateResource,
 )
-from ray._private.gcs_utils import GcsClient
 
 logger = logging.getLogger(__name__)
 

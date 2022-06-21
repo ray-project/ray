@@ -3,9 +3,10 @@ from traceback import format_exception
 from typing import Optional, Union
 
 import colorama
+import setproctitle
 
+import ray._private.ray_constants as ray_constants
 import ray.cloudpickle as pickle
-import ray.ray_constants as ray_constants
 from ray._raylet import ActorID, TaskID, WorkerID
 from ray.core.generated.common_pb2 import (
     PYTHON,
@@ -14,10 +15,10 @@ from ray.core.generated.common_pb2 import (
     Language,
     RayException,
 )
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
-import setproctitle
 
-
+@PublicAPI
 class RayError(Exception):
     """Super class of all ray exception types."""
 
@@ -49,6 +50,7 @@ class RayError(Exception):
             return CrossLanguageError(ray_exception)
 
 
+@PublicAPI
 class CrossLanguageError(RayError):
     """Raised from another language."""
 
@@ -61,6 +63,7 @@ class CrossLanguageError(RayError):
         )
 
 
+@PublicAPI
 class TaskCancelledError(RayError):
     """Raised when this task is cancelled.
 
@@ -78,6 +81,7 @@ class TaskCancelledError(RayError):
         return "Task: " + str(self.task_id) + " was cancelled"
 
 
+@PublicAPI
 class RayTaskError(RayError):
     """Indicates that a task threw an exception during execution.
 
@@ -219,6 +223,7 @@ class RayTaskError(RayError):
         return "\n".join(out)
 
 
+@PublicAPI
 class LocalRayletDiedError(RayError):
     """Indicates that the task's local raylet died."""
 
@@ -226,6 +231,7 @@ class LocalRayletDiedError(RayError):
         return "The task's local raylet died. Check raylet.out for more information."
 
 
+@PublicAPI
 class WorkerCrashedError(RayError):
     """Indicates that the worker died unexpectedly while executing a task."""
 
@@ -236,6 +242,7 @@ class WorkerCrashedError(RayError):
         )
 
 
+@PublicAPI
 class RayActorError(RayError):
     """Indicates that the actor died unexpectedly before finishing a task.
 
@@ -299,6 +306,7 @@ class RayActorError(RayError):
         return RayActorError(task_error)
 
 
+@PublicAPI
 class RaySystemError(RayError):
     """Indicates that Ray encountered a system error.
 
@@ -316,6 +324,7 @@ class RaySystemError(RayError):
         return error_msg
 
 
+@PublicAPI
 class ObjectStoreFullError(RayError):
     """Indicates that the object store is full.
 
@@ -332,6 +341,7 @@ class ObjectStoreFullError(RayError):
         )
 
 
+<<<<<<< HEAD
 class OutOfDiskError(RayError):
     """Indicates that the local disk is full.
 
@@ -351,6 +361,9 @@ class OutOfDiskError(RayError):
         )
 
 
+=======
+@PublicAPI
+>>>>>>> upstream/master
 class ObjectLostError(RayError):
     """Indicates that the object is lost from distributed memory, due to
     node failure or system error.
@@ -391,6 +404,7 @@ class ObjectLostError(RayError):
         )
 
 
+@PublicAPI
 class ObjectFetchTimedOutError(ObjectLostError):
     """Indicates that an object fetch timed out.
 
@@ -410,6 +424,7 @@ class ObjectFetchTimedOutError(ObjectLostError):
         )
 
 
+@DeveloperAPI
 class ReferenceCountingAssertionError(ObjectLostError, AssertionError):
     """Indicates that an object has been deleted while there was still a
     reference to it.
@@ -429,6 +444,7 @@ class ReferenceCountingAssertionError(ObjectLostError, AssertionError):
         )
 
 
+@PublicAPI
 class OwnerDiedError(ObjectLostError):
     """Indicates that the owner of the object has died while there is still a
     reference to the object.
@@ -467,6 +483,7 @@ class OwnerDiedError(ObjectLostError):
         )
 
 
+@PublicAPI
 class ObjectReconstructionFailedError(ObjectLostError):
     """Indicates that the object cannot be reconstructed.
 
@@ -486,6 +503,7 @@ class ObjectReconstructionFailedError(ObjectLostError):
         )
 
 
+@PublicAPI
 class ObjectReconstructionFailedMaxAttemptsExceededError(ObjectLostError):
     """Indicates that the object cannot be reconstructed because the maximum
     number of task retries has been exceeded.
@@ -507,6 +525,7 @@ class ObjectReconstructionFailedMaxAttemptsExceededError(ObjectLostError):
         )
 
 
+@PublicAPI
 class ObjectReconstructionFailedLineageEvictedError(ObjectLostError):
     """Indicates that the object cannot be reconstructed because its lineage
     was evicted due to memory pressure.
@@ -528,24 +547,28 @@ class ObjectReconstructionFailedLineageEvictedError(ObjectLostError):
         )
 
 
+@PublicAPI
 class GetTimeoutError(RayError):
     """Indicates that a call to the worker timed out."""
 
     pass
 
 
+@PublicAPI
 class PlasmaObjectNotAvailable(RayError):
     """Called when an object was not available within the given timeout."""
 
     pass
 
 
+@PublicAPI
 class AsyncioActorExit(RayError):
     """Raised when an asyncio actor intentionally exits via exit_actor()."""
 
     pass
 
 
+@PublicAPI
 class RuntimeEnvSetupError(RayError):
     """Raised when a runtime environment fails to be set up.
 
@@ -564,6 +587,7 @@ class RuntimeEnvSetupError(RayError):
         return "\n".join(msgs)
 
 
+@PublicAPI
 class TaskPlacementGroupRemoved(RayError):
     """Raised when the corresponding placement group was removed."""
 
@@ -571,6 +595,7 @@ class TaskPlacementGroupRemoved(RayError):
         return "The placement group corresponding to this task has been removed."
 
 
+@PublicAPI
 class ActorPlacementGroupRemoved(RayError):
     """Raised when the corresponding placement group was removed."""
 
@@ -578,6 +603,7 @@ class ActorPlacementGroupRemoved(RayError):
         return "The placement group corresponding to this Actor has been removed."
 
 
+@PublicAPI
 class PendingCallsLimitExceeded(RayError):
     """Raised when the pending actor calls exceeds `max_pending_calls` option.
 
@@ -588,6 +614,7 @@ class PendingCallsLimitExceeded(RayError):
     pass
 
 
+@PublicAPI
 class TaskUnschedulableError(RayError):
     """Raised when the task cannot be scheduled.
 
@@ -602,6 +629,7 @@ class TaskUnschedulableError(RayError):
         return f"The task is not schedulable: {self.error_message}"
 
 
+@PublicAPI
 class ActorUnschedulableError(RayError):
     """Raised when the actor cannot be scheduled.
 
