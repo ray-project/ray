@@ -234,8 +234,8 @@ class SerializationContext:
 
             # Hock for new serialization infrastructure, will move the original code
             # to here step by step.
-            if metadata_fields[0] == ray_constants.OBJECT_METADATA_NEW_PROTOCOL:
-                result = RaySerializationResult.from_bytes(data)
+            if metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_NEW_PROTOCOL:
+                result = RaySerializationResult.from_bytes(data.to_pybytes())
                 return serialization_new._deserialize(result)
 
             if metadata_fields[0] in [

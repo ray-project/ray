@@ -539,30 +539,18 @@ cdef class RawSerializedObject(SerializedObject):
                 memcpy(&buffer[0], self.value_ptr, self._total_bytes)
 
 
-class DummyStream:
-    '''
-    A stream that will only sum the length together, and won't
-    copy the data, used to get the serialized byte size of msgpack.
-    '''
-    _length = 0
-
-    def write(self, data):
-        self._length += len(data)
-
-    @property
-    def length(self):
-        return self._length
-
-
 cdef class RaySerializationResult(SerializedObject):
     _type_id: bytes
     _in_band_buffer: bytes
     # type ID -> buffer ID -> buffer
-    _out_of_band_buffers: Optional[Map[bytes, Map[int, memoryview]]]
+    _out_of_band_buffers: Optional[Mapping[bytes, Mapping[int, memoryview]]]
 
-    _cached_length = -1
+    cdef:
+        # A bytes that contains the final serialization result
+        # which is ready to write to another buffer.
+        object _final_data
 
-    def __init__(self, type_id, in_band_buffer, out_of_band_buffers=None):
+    def __init__(self, type_id=None, in_band_buffer=None, out_of_band_buffers=None):
         # The metadata field can be removed in the further refactor.
         super(RaySerializationResult,
               self).__init__(ray_constants.OBJECT_METADATA_TYPE_NEW_PROTOCOL)
@@ -570,9 +558,53 @@ cdef class RaySerializationResult(SerializedObject):
         self._in_band_buffer = in_band_buffer
         self._out_of_band_buffers = out_of_band_buffers
 
-    cdef write_to_stream(self, stream):
-        msgpack.pack(
-            (self._type_id, self._in_band_buffer, self._out_of_band_buffers), stream)
+    cdef gen_final_data(self):
+        if self._final_data is None:
+            self._final_data = msgpack.packb(
+                (self._type_id, self._in_band_buffer, self._out_of_band_buffers))
+        return self._final_data
+
+    @property
+    def total_bytes(self):
+        '''
+        TODO: This is an expensive way which will cause potentional
+        performance issue(but not regression, the current implemention
+        also does something similar in `Pickle5Writer.get_total_bytes`).
+
+        In long term we should find a way to avoid using
+        `SerializedObject.total_bytes()` before `SerializedObject.write_to()`.
+        '''
+        return len(self.gen_final_data())
+
+    @cython.boundscheck(False)
+    @cython.wraparound(False)
+    cdef void write_to(self, uint8_t[:] buffer) nogil:
+        with gil:
+            '''
+            TODO: A copy happens in `gen_final_data`. Try to find a way to
+            directly write to the given `buffer`. Maybe we don't need to use
+            the msgpack and should do the serialization by ourselves.
+            '''
+            final_data = self.gen_final_data()
+            data_ptr = <const uint8_t*> final_data
+            data_len = len(final_data)
+
+        with nogil:
+            if (MEMCOPY_THREADS > 1 and
+                    data_len > kMemcopyDefaultThreshold):
+                parallel_memcopy(&buffer[0],
+                                 data_ptr,
+                                 data_len, kMemcopyDefaultBlocksize,
+                                 MEMCOPY_THREADS)
+            else:
+                memcpy(&buffer[0], data_ptr, data_len)
+
+    @staticmethod
+    def from_bytes(data: bytes):
+        result = RaySerializationResult()
+        result._type_id, result._in_band_buffer, result._out_of_band_buffers\
+            = msgpack.unpackb(data)
+        return result
 
     @property
     def type_id(self):
@@ -585,37 +617,3 @@ cdef class RaySerializationResult(SerializedObject):
     @property
     def out_of_band_buffers(self):
         return self._out_of_band_buffers
-
-    @property
-    def total_bytes(self):
-        if self._cached_length != -1:
-            return self._cached_length
-        '''
-        TODO: This is a very triky way which will cause potentional
-        performance issue(but not regression, the current implemention
-        also does something similar in `Pickle5Writer.get_total_bytes`).
-
-        In long term we should find a way to avoid using
-        `SerializedObject.total_bytes()` before `SerializedObject.write_to()`.
-        '''
-        dummpy_stream = DummyStream()
-        self.write_to_stream(dummpy_stream)
-        self._cached_length = dummpy_stream.length
-        return self._cached_length
-
-    @cython.boundscheck(False)
-    @cython.wraparound(False)
-    cdef void write_to(self, uint8_t[:] buffer) nogil:
-        with gil:
-            '''
-            TODO: find a way to do parallel copying in msgpack or it will
-            cause some performace regression.
-            '''
-            self.write_to_stream(buffer)
-
-    @staticmethod
-    def from_bytes(data: bytes):
-        result = RaySerializationResult()
-        result._type_id, result._in_band_buffer, result._out_of_band_buffers\
-            = msgpack.unpackb(data)
-        return result
