@@ -1,28 +1,28 @@
-import pytest
 import sys
 import time
+
+import pytest
+
+import ray
+import ray._private.gcs_utils as gcs_utils
+import ray.cluster_utils
+from ray._private.test_utils import (
+    convert_actor_state,
+    generate_system_config_map,
+    get_error_message,
+    get_other_nodes,
+    kill_actor_and_wait_for_failure,
+    placement_group_assert_no_leak,
+    run_string_as_driver,
+    wait_for_condition,
+)
+from ray.util.client.ray_client_helpers import connect_to_client_or_not
+from ray.util.placement_group import get_current_placement_group
 
 try:
     import pytest_timeout
 except ImportError:
     pytest_timeout = None
-
-import ray
-import ray.cluster_utils
-import ray._private.gcs_utils as gcs_utils
-
-from ray._private.test_utils import (
-    get_other_nodes,
-    generate_system_config_map,
-    kill_actor_and_wait_for_failure,
-    run_string_as_driver,
-    wait_for_condition,
-    get_error_message,
-    placement_group_assert_no_leak,
-    convert_actor_state,
-)
-from ray.util.placement_group import get_current_placement_group
-from ray.util.client.ray_client_helpers import connect_to_client_or_not
 
 
 @ray.remote
@@ -283,8 +283,8 @@ def test_mini_integration(ray_start_cluster, connect_to_client):
 
         @ray.remote(num_cpus=0, num_gpus=1)
         def random_tasks():
-            import time
             import random
+            import time
 
             sleep_time = random.uniform(0.1, 0.2)
             time.sleep(sleep_time)
@@ -390,7 +390,7 @@ def test_capture_child_actors(ray_start_cluster, connect_to_client):
         # Make sure all the actors are scheduled on the same node.
         # (why? The placement group has STRICT_PACK strategy).
         node_id_set = set()
-        for actor_info in ray.state.actors().values():
+        for actor_info in ray._private.state.actors().values():
             if actor_info["State"] == convert_actor_state(
                 gcs_utils.ActorTableData.ALIVE
             ):
@@ -415,7 +415,7 @@ def test_capture_child_actors(ray_start_cluster, connect_to_client):
         # It is because the child tasks are not scheduled on the same
         # placement group.
         node_id_set = set()
-        for actor_info in ray.state.actors().values():
+        for actor_info in ray._private.state.actors().values():
             if actor_info["State"] == convert_actor_state(
                 gcs_utils.ActorTableData.ALIVE
             ):
@@ -440,7 +440,7 @@ def test_capture_child_actors(ray_start_cluster, connect_to_client):
         # It is because the child tasks are not scheduled on the same
         # placement group.
         node_id_set = set()
-        for actor_info in ray.state.actors().values():
+        for actor_info in ray._private.state.actors().values():
             if actor_info["State"] == convert_actor_state(
                 gcs_utils.ActorTableData.ALIVE
             ):
@@ -534,7 +534,7 @@ def test_ready_warning_suppressed(ray_start_regular, error_pubsub):
         ray.get(pg.ready(), timeout=0.5)
 
     errors = get_error_message(
-        p, 1, ray.ray_constants.INFEASIBLE_TASK_ERROR, timeout=0.1
+        p, 1, ray._private.ray_constants.INFEASIBLE_TASK_ERROR, timeout=0.1
     )
     assert len(errors) == 0
 
@@ -590,7 +590,7 @@ ray.shutdown()
 
     # Wait until the driver is reported as dead by GCS.
     def is_job_done():
-        jobs = ray.state.jobs()
+        jobs = ray._private.state.jobs()
         for job in jobs:
             if job["IsDead"]:
                 return True
@@ -666,7 +666,7 @@ ray.shutdown()
 
     # Wait until the driver is reported as dead by GCS.
     def is_job_done():
-        jobs = ray.state.jobs()
+        jobs = ray._private.state.jobs()
         for job in jobs:
             if job["IsDead"]:
                 return True
@@ -812,4 +812,9 @@ def test_bundle_recreated_when_raylet_fo_after_gcs_server_restart(
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-sv", __file__]))
+    import os
+
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

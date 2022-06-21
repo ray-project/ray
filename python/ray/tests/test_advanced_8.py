@@ -8,21 +8,18 @@ import time
 from unittest import mock
 
 import numpy as np
-import pytest
 import psutil
+import pytest
 
 import ray
-from ray.dashboard import k8s_utils
-import ray.ray_constants as ray_constants
-import ray.util.accelerators
-import ray._private.utils
 import ray._private.gcs_utils as gcs_utils
-import ray.cluster_utils
+import ray._private.ray_constants as ray_constants
 import ray._private.resource_spec as resource_spec
-
-from ray._private.test_utils import (
-    wait_for_condition,
-)
+import ray._private.utils
+import ray.cluster_utils
+import ray.util.accelerators
+from ray._private.test_utils import wait_for_condition
+from ray.dashboard import k8s_utils
 from ray.runtime_env import RuntimeEnv
 
 logger = logging.getLogger(__name__)
@@ -147,7 +144,7 @@ def test_ray_address_environment_variable(ray_start_cluster):
     # RAY_ADDRESS is set to the cluster address.
     os.environ["RAY_ADDRESS"] = address
     ray.init()
-    assert "CPU" not in ray.state.cluster_resources()
+    assert "CPU" not in ray._private.state.cluster_resources()
     ray.shutdown()
     del os.environ["RAY_ADDRESS"]
 
@@ -155,7 +152,7 @@ def test_ray_address_environment_variable(ray_start_cluster):
     # RAY_ADDRESS is set to "auto".
     os.environ["RAY_ADDRESS"] = "auto"
     ray.init()
-    assert "CPU" not in ray.state.cluster_resources()
+    assert "CPU" not in ray._private.state.cluster_resources()
     ray.shutdown()
     del os.environ["RAY_ADDRESS"]
 
@@ -163,13 +160,13 @@ def test_ray_address_environment_variable(ray_start_cluster):
     # when `address` is not `auto`.
     os.environ["RAY_ADDRESS"] = "test"
     ray.init(address=address)
-    assert "CPU" not in ray.state.cluster_resources()
+    assert "CPU" not in ray._private.state.cluster_resources()
     ray.shutdown()
     del os.environ["RAY_ADDRESS"]
 
     # Make sure we start a new cluster if RAY_ADDRESS is not set.
     ray.init()
-    assert "CPU" in ray.state.cluster_resources()
+    assert "CPU" in ray._private.state.cluster_resources()
     ray.shutdown()
 
 
@@ -554,7 +551,7 @@ def test_sync_job_config(shutdown_only):
     )
 
     # Check that the job config is synchronized at the driver side.
-    job_config = ray.worker.global_worker.core_worker.get_job_config()
+    job_config = ray._private.worker.global_worker.core_worker.get_job_config()
     job_runtime_env = RuntimeEnv.deserialize(
         job_config.runtime_env_info.serialized_runtime_env
     )
@@ -562,7 +559,7 @@ def test_sync_job_config(shutdown_only):
 
     @ray.remote
     def get_job_config():
-        job_config = ray.worker.global_worker.core_worker.get_job_config()
+        job_config = ray._private.worker.global_worker.core_worker.get_job_config()
         return job_config.SerializeToString()
 
     # Check that the job config is synchronized at the worker side.
@@ -622,4 +619,7 @@ def test_duplicated_arg(ray_start_cluster):
 if __name__ == "__main__":
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

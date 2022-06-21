@@ -16,18 +16,19 @@ Merging: a merge task would receive a block from every worker that consists
 of items in a certain range. It then merges the sorted blocks into one sorted
 block and becomes part of the new, sorted dataset.
 """
-from typing import List, Any, Callable, TypeVar, Tuple, Union
+from typing import Any, Callable, List, Tuple, TypeVar, Union
 
 import numpy as np
-from ray.types import ObjectRef
-from ray.data.block import Block, BlockMetadata, BlockAccessor, BlockExecStats
-from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+
 from ray.data._internal.block_list import BlockList
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.progress_bar import ProgressBar
+from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.shuffle import ShuffleOp, SimpleShufflePlan
-from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
+from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DatasetContext
+from ray.types import ObjectRef
 
 T = TypeVar("T")
 
@@ -54,7 +55,7 @@ class _SortOp(ShuffleOp):
         meta = BlockAccessor.for_block(block).get_metadata(
             input_files=None, exec_stats=stats.build()
         )
-        return [meta] + out
+        return out + [meta]
 
     @staticmethod
     def reduce(

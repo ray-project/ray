@@ -47,7 +47,9 @@ def configure_component_logger(
         logger.addHandler(stream_handler)
 
     if log_to_file:
-        logs_dir = os.path.join(ray.worker._global_node.get_logs_dir_path(), "serve")
+        logs_dir = os.path.join(
+            ray._private.worker._global_node.get_logs_dir_path(), "serve"
+        )
         os.makedirs(logs_dir, exist_ok=True)
         if component_type is not None:
             component_name = f"{component_type}_{component_name}"

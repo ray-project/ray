@@ -37,8 +37,8 @@ class MARWILConfig(AlgorithmConfig):
         ...             .offline_data(input_=["./rllib/tests/data/cartpole/large.json"])
         >>> print(config.to_dict())
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> trainer = config.build()
-        >>> trainer.train()
+        >>> algo = config.build()
+        >>> algo.train()
 
     Example:
         >>> from ray.rllib.algorithms.marwil import MARWILConfig
