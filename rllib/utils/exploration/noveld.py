@@ -10,7 +10,7 @@ from ray.rllib.models.modelv2 import ModelV2
 
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import NullContextManager
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
@@ -29,6 +29,7 @@ if nn is not None:
     F = nn.functional
 
 
+@DeveloperAPI
 class NovelD(Exploration):
     """Implements NovelD exploration criterion.
 
