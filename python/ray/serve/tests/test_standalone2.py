@@ -176,6 +176,7 @@ def test_updating_status_message(shutdown_ray, lower_slow_startup_threshold_and_
     """Check if status message says if a serve deployment has taken a long time"""
 
     client = lower_slow_startup_threshold_and_reset
+
     @serve.deployment(
         num_replicas=5,
         ray_actor_options={"num_cpus": 1},
@@ -199,12 +200,13 @@ def test_unhealthy_override_updating_status(
     shutdown_ray, lower_slow_startup_threshold_and_reset
 ):
     """
-    Check that if status is UNHEALTHY and there is a resource availability 
+    Check that if status is UNHEALTHY and there is a resource availability
     issue, the status should not change. The issue that caused the deployment to
     be unhealthy should be prioritized over this resource availability issue.
     """
 
     client = lower_slow_startup_threshold_and_reset
+
     @serve.deployment
     class f:
         def __init__(self):
@@ -216,8 +218,7 @@ def test_unhealthy_override_updating_status(
     f.deploy(_blocking=False)
 
     wait_for_condition(
-        lambda: client.get_serve_status().deployment_statuses[0].status
-        == "UNHEALTHY",
+        lambda: client.get_serve_status().deployment_statuses[0].status == "UNHEALTHY",
         timeout=5,
     )
 
