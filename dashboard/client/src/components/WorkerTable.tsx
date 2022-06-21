@@ -117,7 +117,7 @@ const RayletWorkerTable = ({
 }) => {
   const { changeFilter, filterFunc } = useFilter();
   const [key, setKey] = useState("");
-  const { nodeMap, ipLogMap } = useContext(GlobalContext);
+  const { nodeMapByIp, ipLogMap } = useContext(GlobalContext);
   const open = () => setKey(`ON${Math.random()}`);
   const close = () => setKey(`OFF${Math.random()}`);
 
@@ -146,7 +146,9 @@ const RayletWorkerTable = ({
               "Create Time",
               "Log",
               "Ops",
-              "IP/Hostname",
+              "IP",
+              "Tasks",
+              "Objects",
             ].map((col) => (
               <TableCell align="center" key={col}>
                 {col}
@@ -178,8 +180,6 @@ const RayletWorkerTable = ({
                 createTime,
                 coreWorkerStats = [],
                 language,
-                ip,
-                hostname,
               }) => (
                 <ExpandableTableRow
                   expandComponent={
@@ -205,7 +205,7 @@ const RayletWorkerTable = ({
                     <div style={{ maxHeight: 55, overflow: "auto" }}>
                       {Object.entries(cpuTimes || {}).map(([key, val]) => (
                         <div style={{ margin: 4 }}>
-                          {key}:{val}
+                          {key}:{val}%
                         </div>
                       ))}
                     </div>
@@ -227,12 +227,12 @@ const RayletWorkerTable = ({
                   </TableCell>
                   <TableCell align="center">
                     <Grid container spacing={2}>
-                      {ipLogMap[ip] && (
+                      {ipLogMap[coreWorkerStats[0]?.ipAddress] && (
                         <Grid item>
                           <Link
                             target="_blank"
                             to={`/log/${encodeURIComponent(
-                              ipLogMap[ip],
+                              ipLogMap[coreWorkerStats[0]?.ipAddress],
                             )}?fileName=${
                               coreWorkerStats[0].jobId || ""
                             }-${pid}`}
@@ -244,7 +244,7 @@ const RayletWorkerTable = ({
                     </Grid>
                   </TableCell>
                   <TableCell align="center">
-                    {language === "JAVA" && (
+                    {language === "JAVA" ? (
                       <div>
                         <Button
                           onClick={() => {
@@ -274,18 +274,48 @@ const RayletWorkerTable = ({
                           jstat
                         </Button>
                       </div>
+                    ) : (
+                      "N/A"
                     )}
                   </TableCell>
                   <TableCell align="center">
-                    {ip}
-                    <br />
-                    {nodeMap[hostname] ? (
-                      <Link target="_blank" to={`/node/${nodeMap[hostname]}`}>
-                        {hostname}
+                    {nodeMapByIp[coreWorkerStats[0]?.ipAddress] ? (
+                      <Link
+                        target="_blank"
+                        to={`/node/${
+                          nodeMapByIp[coreWorkerStats[0]?.ipAddress]
+                        }`}
+                      >
+                        {coreWorkerStats[0]?.ipAddress}
                       </Link>
                     ) : (
-                      hostname
+                      coreWorkerStats[0]?.ipAddress
                     )}
+                  </TableCell>
+                  <TableCell align="center">
+                    <div>
+                      Pending tasks: {coreWorkerStats[0]?.numPendingTasks}
+                    </div>
+                    <div>
+                      Executed tasks: {coreWorkerStats[0]?.numExecutedTasks}
+                    </div>
+                  </TableCell>
+                  <TableCell align="center">
+                    <div>
+                      ObjectRefs in scope:{" "}
+                      {coreWorkerStats[0]?.numObjectRefsInScope}
+                    </div>
+                    <div>
+                      Objects in local memory store:{" "}
+                      {coreWorkerStats[0]?.numLocalObjects}
+                    </div>
+                    <div>
+                      Objects in plasma store: {coreWorkerStats[0]?.numInPlasma}
+                    </div>
+                    <div>
+                      Object store Memory used (MiB):{" "}
+                      {coreWorkerStats[0]?.usedObjectStoreMemory}
+                    </div>
                   </TableCell>
                 </ExpandableTableRow>
               ),
