@@ -611,7 +611,12 @@ class Algorithm(Trainable):
 
         if hasattr(self, "workers") and isinstance(self.workers, WorkerSet):
             # Sync filters on workers.
-            self._sync_filters_if_needed(self.workers)
+            self._sync_filters_if_needed(
+                self.workers,
+                timeout_seconds=self.config[
+                    "sync_filters_on_rollout_workers_timeout_s"
+                ],
+            )
 
             # Collect worker metrics.
             if self.config["_disable_execution_plan_api"]:
@@ -672,7 +677,10 @@ class Algorithm(Trainable):
             self.evaluation_workers.sync_weights(
                 from_worker=self.workers.local_worker()
             )
-            self._sync_filters_if_needed(self.evaluation_workers)
+            self._sync_filters_if_needed(
+                self.evaluation_workers,
+                timeout=self.config["sync_filters_on_rollout_workers_timeout_s"],
+            )
 
         if self.config["custom_eval_function"]:
             logger.info(
@@ -1594,12 +1602,13 @@ class Algorithm(Trainable):
                 '(e.g., YourEnvCls) or a registered env id (e.g., "your_env").'
             )
 
-    def _sync_filters_if_needed(self, workers: WorkerSet):
+    def _sync_filters_if_needed(self, workers: WorkerSet, timeout_seconds: int = None):
         if self.config.get("observation_filter", "NoFilter") != "NoFilter":
             FilterManager.synchronize(
                 workers.local_worker().filters,
                 workers.remote_workers(),
                 update_remote=self.config["synchronize_filters"],
+                timeout_seconds=timeout_seconds,
             )
             logger.debug(
                 "synchronized filters: {}".format(workers.local_worker().filters)
@@ -2270,6 +2279,7 @@ class Algorithm(Trainable):
                         ignore=self.config["ignore_worker_failures"],
                         recreate=self.config["recreate_failed_workers"],
                     )
+
         return results, train_iter_ctx
 
     def _run_one_evaluation(
