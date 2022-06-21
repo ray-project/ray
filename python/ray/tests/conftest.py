@@ -361,7 +361,8 @@ def start_cluster(ray_start_cluster_enabled, request):
     assert request.param in {"ray_client", "no_ray_client"}
     use_ray_client: bool = request.param == "ray_client"
     cluster = ray_start_cluster_enabled
-    cluster.add_node(num_cpus=4)
+    # Use a hard-coded agent port to prevent failures due to port conflicts.
+    cluster.add_node(num_cpus=4, metrics_agent_port="10031")
     if use_ray_client:
         cluster.head_node._ray_params.ray_client_server_port = "10004"
         cluster.head_node.start_ray_client_server()
