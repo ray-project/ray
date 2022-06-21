@@ -2178,7 +2178,7 @@ def get(
 
         if debugger_breakpoint != b"":
             frame = sys._getframe().f_back
-            rdb = ray.util.pdb.connect_ray_pdb(
+            rdb = ray.util.pdb._connect_ray_pdb(
                 host=None,
                 port=None,
                 patch_stdstreams=False,
