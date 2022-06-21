@@ -25,7 +25,6 @@ pyyaml
 requests
 smart_open
 virtualenv
-Jinja2 >= 3.0.3
 
 ## setup.py extras
 dm_tree
