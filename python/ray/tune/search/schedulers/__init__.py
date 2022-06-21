@@ -1,22 +1,22 @@
 import inspect
 
 from ray._private.utils import get_function_args
-from ray.tune.schedulers.trial_scheduler import TrialScheduler, FIFOScheduler
-from ray.tune.schedulers.hyperband import HyperBandScheduler
-from ray.tune.schedulers.hb_bohb import HyperBandForBOHB
-from ray.tune.schedulers.async_hyperband import AsyncHyperBandScheduler, ASHAScheduler
-from ray.tune.schedulers.median_stopping_rule import MedianStoppingRule
-from ray.tune.schedulers.pbt import (
+from ray.tune.search.schedulers.trial_scheduler import FIFOScheduler
+from ray.tune.search.schedulers.hyperband import HyperBandScheduler
+from ray.tune.search.schedulers.hb_bohb import HyperBandForBOHB
+from ray.tune.search.schedulers.async_hyperband import AsyncHyperBandScheduler
+from ray.tune.search.schedulers.median_stopping_rule import MedianStoppingRule
+from ray.tune.search.schedulers.pbt import (
     PopulationBasedTraining,
     PopulationBasedTrainingReplay,
 )
-from ray.tune.schedulers.resource_changing_scheduler import ResourceChangingScheduler
+from ray.tune.search.schedulers.resource_changing_scheduler import ResourceChangingScheduler
 
 
 def _pb2_importer():
     # PB2 introduces a GPy dependency which can be expensive, so we import
     # lazily.
-    from ray.tune.schedulers.pb2 import PB2
+    from ray.tune.search.schedulers.pb2 import PB2
 
     return PB2
 
@@ -53,7 +53,7 @@ def create_scheduler(
             These keyword arguments will be passed to the initialization
             function of the chosen scheduler.
     Returns:
-        ray.tune.schedulers.trial_scheduler.TrialScheduler: The scheduler.
+        The scheduler.
     Example:
         >>> from ray import tune
         >>> pbt_kwargs = {}

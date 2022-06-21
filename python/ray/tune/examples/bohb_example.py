@@ -16,7 +16,7 @@ import numpy as np
 import ray
 from ray import tune
 from ray.tune import Trainable
-from ray.tune.schedulers.hb_bohb import HyperBandForBOHB
+from ray.tune.search.schedulers import HyperBandForBOHB
 from ray.tune.search.searcher.bohb import TuneBOHB
 
 

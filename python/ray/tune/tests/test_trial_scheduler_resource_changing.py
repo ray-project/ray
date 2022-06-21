@@ -1,9 +1,9 @@
 import unittest
 
 from ray.tune import PlacementGroupFactory
-from ray.tune.schedulers.trial_scheduler import TrialScheduler
+from ray.tune.search.schedulers import TrialScheduler
 from ray.tune.experiment.trial import Trial
-from ray.tune.schedulers.resource_changing_scheduler import (
+from ray.tune.search.schedulers import (
     ResourceChangingScheduler,
     DistributeResources,
     DistributeResourcesToTopJob,

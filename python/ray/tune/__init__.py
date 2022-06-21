@@ -37,7 +37,7 @@ from ray.tune.search.sample import (
     qloguniform,
 )
 from ray.tune.search import create_searcher
-from ray.tune.schedulers import create_scheduler
+from ray.tune.search.schedulers import create_scheduler
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.utils.trainable import with_parameters
 

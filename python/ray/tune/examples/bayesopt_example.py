@@ -7,7 +7,7 @@ Requires the BayesOpt library to be installed (`pip install bayesian-optimizatio
 import time
 
 from ray import tune
-from ray.tune.schedulers import AsyncHyperBandScheduler
+from ray.tune.search.schedulers import AsyncHyperBandScheduler
 from ray.tune.search import ConcurrencyLimiter
 from ray.tune.search.searcher.bayesopt import BayesOptSearch
 

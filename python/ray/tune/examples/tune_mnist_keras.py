@@ -6,7 +6,7 @@ from tensorflow.keras.datasets import mnist
 
 import ray
 from ray import tune
-from ray.tune.schedulers import AsyncHyperBandScheduler
+from ray.tune.search.schedulers import AsyncHyperBandScheduler
 from ray.tune.integration.keras import TuneReportCallback
 
 

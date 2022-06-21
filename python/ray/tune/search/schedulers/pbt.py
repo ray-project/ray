@@ -13,7 +13,7 @@ from ray.tune.constants import DEFAULT_METRIC, TRAINING_ITERATION
 from ray.tune.search import SearchGenerator
 from ray.tune.utils.util import SafeFallbackEncoder
 from ray.tune.search.sample import Domain, Function
-from ray.tune.schedulers import FIFOScheduler, TrialScheduler
+from ray.tune.search.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.search.algorithms._variant_generator import format_vars
 from ray.tune.experiment.trial import Trial
 from ray.util import PublicAPI
@@ -214,7 +214,7 @@ class PopulationBasedTraining(FIFOScheduler):
 
         import random
         from ray import tune
-        from ray.tune.schedulers import PopulationBasedTraining
+        from ray.tune.search.scheduler import PopulationBasedTraining
 
         pbt = PopulationBasedTraining(
             time_attr="training_iteration",
@@ -761,7 +761,7 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
         from ray import tune
 
         from ray.tune.examples.pbt_convnet_example import PytorchTrainable
-        from ray.tune.schedulers import PopulationBasedTrainingReplay
+        from ray.tune.search.schedulers import PopulationBasedTrainingReplay
 
         replay = PopulationBasedTrainingReplay(
             "~/ray_results/pbt_test/pbt_policy_XXXXX_00001.txt")

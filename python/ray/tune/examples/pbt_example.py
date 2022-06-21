@@ -6,7 +6,7 @@ import random
 
 import ray
 from ray import tune
-from ray.tune.schedulers import PopulationBasedTraining
+from ray.tune.search.schedulers import PopulationBasedTraining
 
 
 class PBTBenchmarkExample(tune.Trainable):

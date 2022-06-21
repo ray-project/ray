@@ -7,7 +7,7 @@ import numpy as np
 from ray.tune.execution import trial_runner
 from ray.tune.constants import DEFAULT_METRIC
 from ray.tune.experiment.trial import Trial
-from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
+from ray.tune.search.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)

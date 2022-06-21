@@ -13,7 +13,7 @@ from typing import Dict, Optional, Any
 import ray
 from ray import tune
 from ray.tune.search import ConcurrencyLimiter
-from ray.tune.schedulers import AsyncHyperBandScheduler
+from ray.tune.search.schedulers import AsyncHyperBandScheduler
 from ray.tune.search.searcher.optuna import OptunaSearch
 
 

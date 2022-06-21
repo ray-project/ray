@@ -45,12 +45,12 @@ from ray.tune.constants import (
     TRIAL_ID,
     EXPERIMENT_TAG,
 )
-from ray.tune.schedulers import (
+from ray.tune.search.schedulers import (
     TrialScheduler,
     FIFOScheduler,
     AsyncHyperBandScheduler,
 )
-from ray.tune.schedulers.pb2 import PB2
+from ray.tune.search.schedulers import PB2
 from ray.tune.search.stopper.stopper import (
     MaximumIterationStopper,
     TrialPlateauStopper,

@@ -9,7 +9,7 @@ import warnings
 from ray.util.annotations import PublicAPI
 from ray.tune.execution import trial_runner
 from ray.tune.resources import Resources
-from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
+from ray.tune.search.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.experiment.trial import Trial
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 

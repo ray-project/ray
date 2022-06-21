@@ -13,7 +13,7 @@ import torchvision.transforms as transforms
 import ray
 from ray import tune
 from ray import train
-from ray.tune.schedulers import create_scheduler
+from ray.tune.search.schedulers import create_scheduler
 
 from ray.util.ml_utils.resnet import ResNet18
 

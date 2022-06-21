@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader
 import torch.nn.functional as F
 
 from ray import tune
-from ray.tune.schedulers import ASHAScheduler
+from ray.tune.search.schedulers import ASHAScheduler
 # __tutorial_imports_end__
 # fmt: on
 

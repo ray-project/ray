@@ -8,7 +8,7 @@ import sys
 import time
 
 from ray import tune
-from ray.tune.schedulers import AsyncHyperBandScheduler
+from ray.tune.search.schedulers import AsyncHyperBandScheduler
 from ray.tune.search.searcher.sigopt import SigOptSearch
 
 

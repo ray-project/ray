@@ -9,7 +9,7 @@ import pickle
 
 import ray
 from ray import tune
-from ray.tune.schedulers import ResourceChangingScheduler, ASHAScheduler
+from ray.tune.search.schedulers import ResourceChangingScheduler, ASHAScheduler
 from ray.tune import Trainable
 from ray.tune.resources import Resources
 from ray.tune.execution.placement_groups import PlacementGroupFactory
@@ -215,7 +215,7 @@ def tune_xgboost(use_class_trainable=True):
     # You can either define your own resources_allocation_function, or
     # use the default one - DistributeResources
 
-    # from ray.tune.schedulers.resource_changing_scheduler import \
+    # from ray.tune.search.schedulers.resource_changing_scheduler import \
     #    DistributeResources
 
     scheduler = ResourceChangingScheduler(

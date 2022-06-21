@@ -13,7 +13,7 @@ from ray.rllib import _register_all
 from ray.tune import TuneError
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.constants import TRAINING_ITERATION
-from ray.tune.schedulers import TrialScheduler, FIFOScheduler
+from ray.tune.search.schedulers import TrialScheduler, FIFOScheduler
 from ray.tune.experiment import Experiment
 from ray.tune.search import BasicVariantGenerator
 from ray.tune.experiment.trial import Trial

@@ -27,7 +27,7 @@ from ray.tune.search.searcher.zoopt import ZOOptSearch
 from ray.tune.search.searcher.hebo import HEBOSearch
 from ray.tune.search.searcher.ax import AxSearch
 from ray.tune.search.searcher.bohb import TuneBOHB
-from ray.tune.schedulers.hb_bohb import HyperBandForBOHB
+from ray.tune.search.schedulers import HyperBandForBOHB
 
 
 class AbstractWarmStartTest:

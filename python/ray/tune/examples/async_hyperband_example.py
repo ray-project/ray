@@ -5,7 +5,7 @@ import time
 
 import ray
 from ray import tune
-from ray.tune.schedulers import AsyncHyperBandScheduler
+from ray.tune.search.schedulers import AsyncHyperBandScheduler
 
 
 def evaluation_fn(step, width, height):

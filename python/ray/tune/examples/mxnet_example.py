@@ -2,7 +2,7 @@ import mxnet as mx
 
 from ray import tune, logger
 from ray.tune.integration.mxnet import TuneCheckpointCallback, TuneReportCallback
-from ray.tune.schedulers import ASHAScheduler
+from ray.tune.search.schedulers import ASHAScheduler
 
 
 def train_mnist_mxnet(config, mnist, num_epochs=10):

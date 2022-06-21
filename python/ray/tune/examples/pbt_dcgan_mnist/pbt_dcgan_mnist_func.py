@@ -4,7 +4,7 @@ Example of training DCGAN on MNIST using PBT with Tune's function API.
 """
 import ray
 from ray import tune
-from ray.tune.schedulers import PopulationBasedTraining
+from ray.tune.search.schedulers import PopulationBasedTraining
 
 import argparse
 import os

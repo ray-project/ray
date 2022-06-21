@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Optional
 
-from ray.tune.schedulers import TrialScheduler
+from ray.tune.search.schedulers import TrialScheduler
 from ray.tune.search import Searcher
 from ray.util import PublicAPI
 
@@ -23,7 +23,7 @@ class TuneConfig:
         scheduler: Scheduler for executing the experiment.
             Choose among FIFO (default), MedianStopping,
             AsyncHyperBand, HyperBand and PopulationBasedTraining. Refer to
-            ray.tune.schedulers for more options.
+            ray.tune.search.scheduler for more options.
         num_samples: Number of times to sample from the
             hyperparameter space. Defaults to 1. If `grid_search` is
             provided as an argument, the grid will be repeated

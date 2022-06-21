@@ -2,7 +2,6 @@
 # fmt: off
 
 # __import_begin__
-from functools import partial
 import numpy as np
 import os
 import torch
@@ -15,7 +14,7 @@ import torchvision
 import torchvision.transforms as transforms
 import ray
 from ray import tune
-from ray.tune.schedulers import ASHAScheduler
+from ray.tune.search.schedulers import ASHAScheduler
 # __import_end__
 
 

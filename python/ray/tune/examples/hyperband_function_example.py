@@ -8,7 +8,7 @@ import numpy as np
 
 import ray
 from ray import tune
-from ray.tune.schedulers import HyperBandScheduler
+from ray.tune.search.schedulers import HyperBandScheduler
 
 
 def train(config, checkpoint_dir=None):

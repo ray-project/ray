@@ -9,7 +9,7 @@ from ray import tune
 from ray.tune import TuneError, register_trainable
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.resources import Resources
-from ray.tune.schedulers import TrialScheduler, FIFOScheduler
+from ray.tune.search.schedulers import TrialScheduler, FIFOScheduler
 from ray.tune.search import BasicVariantGenerator
 from ray.tune.experiment.trial import Trial
 from ray.tune.execution.trial_runner import TrialRunner

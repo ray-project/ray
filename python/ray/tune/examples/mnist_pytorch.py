@@ -11,7 +11,7 @@ from torchvision import datasets, transforms
 
 import ray
 from ray import tune
-from ray.tune.schedulers import AsyncHyperBandScheduler
+from ray.tune.search.schedulers import AsyncHyperBandScheduler
 
 # Change these values if you want the training to run quicker or slower.
 EPOCH_SIZE = 512

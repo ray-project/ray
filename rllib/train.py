@@ -10,7 +10,7 @@ from ray.tune.experiment._config_parser import make_parser
 from ray.tune.constants import DEFAULT_RESULTS_DIR
 from ray.tune.resources import resources_to_json
 from ray.tune.tune import run_experiments
-from ray.tune.schedulers import create_scheduler
+from ray.tune.search.schedulers import create_scheduler
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 

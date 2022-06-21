@@ -1,7 +1,7 @@
 .. _tune-schedulers:
 
-Trial Schedulers (tune.schedulers)
-==================================
+Trial Schedulers (tune.search.scheduler)
+========================================
 
 In Tune, some hyperparameter optimization algorithms are written as "scheduling algorithms".
 These Trial Schedulers can early terminate bad trials, pause trials, clone trials,
@@ -17,8 +17,8 @@ Trainable and is maximized or minimized according to ``mode``.
 
 .. _tune-scheduler-hyperband:
 
-ASHA (tune.schedulers.ASHAScheduler)
-------------------------------------
+ASHA (tune.search.scheduler.ASHAScheduler)
+------------------------------------======
 
 The `ASHA <https://openreview.net/forum?id=S1Y7OOlRZ>`__ scheduler can be used by
 setting the ``scheduler`` parameter of ``tune.run``, e.g.
@@ -44,19 +44,19 @@ Even though the original paper mentions a bracket count of 3, discussions with t
 that the value should be left to 1 bracket.
 This is the default used if no value is provided for the ``brackets`` argument.
 
-.. autoclass:: ray.tune.schedulers.AsyncHyperBandScheduler
+.. autoclass:: ray.tune.search.schedulers.AsyncHyperBandScheduler
 
-.. autoclass:: ray.tune.schedulers.ASHAScheduler
+.. autoclass:: ray.tune.search.schedulers.ASHAScheduler
 
 .. _tune-original-hyperband:
 
-HyperBand (tune.schedulers.HyperBandScheduler)
-----------------------------------------------
+HyperBand (tune.search.scheduler.HyperBandScheduler)
+----------------------------------------------------
 
 Tune implements the `standard version of HyperBand <https://arxiv.org/abs/1603.06560>`__.
 **We recommend using the ASHA Scheduler over the standard HyperBand scheduler.**
 
-.. autoclass:: ray.tune.schedulers.HyperBandScheduler
+.. autoclass:: ray.tune.search.schedulers.HyperBandScheduler
 
 
 HyperBand Implementation Details
@@ -95,18 +95,18 @@ and exposes ``max_t``, which is not a parameter in the paper.
 
 .. _tune-scheduler-msr:
 
-Median Stopping Rule (tune.schedulers.MedianStoppingRule)
----------------------------------------------------------
+Median Stopping Rule (tune.search.scheduler.MedianStoppingRule)
+---------------------------------------------------------------
 
 The Median Stopping Rule implements the simple strategy of stopping a trial if its performance falls
 below the median of other trials at similar points in time.
 
-.. autoclass:: ray.tune.schedulers.MedianStoppingRule
+.. autoclass:: ray.tune.search.schedulers.MedianStoppingRule
 
 .. _tune-scheduler-pbt:
 
-Population Based Training (tune.schedulers.PopulationBasedTraining)
--------------------------------------------------------------------
+Population Based Training (tune.search.scheduler.PopulationBasedTraining)
+-------------------------------------------------------------------------
 
 Tune includes a distributed implementation of `Population Based Training (PBT) <https://www.deepmind.com/blog/population-based-training-of-neural-networks>`__.
 This can be enabled by setting the ``scheduler`` parameter of ``tune.run``, e.g.
@@ -139,13 +139,13 @@ the course of a single experiment:
 
 .. image:: ../images/pbt.png
 
-.. autoclass:: ray.tune.schedulers.PopulationBasedTraining
+.. autoclass:: ray.tune.search.schedulers.PopulationBasedTraining
 
 
 .. _tune-scheduler-pbt-replay:
 
-Population Based Training Replay (tune.schedulers.PopulationBasedTrainingReplay)
---------------------------------------------------------------------------------
+Population Based Training Replay (tune.search.scheduler.PopulationBasedTrainingReplay)
+--------------------------------------------------------------------------------------
 
 Tune includes a utility to replay hyperparameter schedules of Population Based Training runs.
 You just specify an existing experiment directory and the ID of the trial you would
@@ -164,13 +164,13 @@ config according to the obtained schedule.
 See :ref:`here for an example <tune-advanced-tutorial-pbt-replay>` on how to use the
 replay utility in practice.
 
-.. autoclass:: ray.tune.schedulers.PopulationBasedTrainingReplay
+.. autoclass:: ray.tune.search.schedulers.PopulationBasedTrainingReplay
 
 
 .. _tune-scheduler-pb2:
 
-Population Based Bandits (PB2) (tune.schedulers.pb2.PB2)
---------------------------------------------------------
+Population Based Bandits (PB2) (tune.search.scheduler.pb2.PB2)
+--------------------------------------------------------------
 
 Tune includes a distributed implementation of `Population Based Bandits (PB2) <https://arxiv.org/abs/2002.02518>`__.
 This algorithm builds upon PBT, with the main difference being that instead of using random perturbations,
@@ -187,7 +187,7 @@ PB2 can be enabled by setting the ``scheduler`` parameter of ``tune.run``, e.g.:
 
 .. code-block:: python
 
-    from ray.tune.schedulers.pb2 import PB2
+    from ray.tune.search.schedulers.pb2 import PB2
 
     pb2_scheduler = PB2(
             time_attr='time_total_s',
@@ -213,13 +213,13 @@ With that in mind, you can run this :doc:`PB2 PPO example </tune/examples/includ
 with a population size of ``4`` (as in the paper).
 The example uses the ``BipedalWalker`` environment so does not require any additional licenses.
 
-.. autoclass:: ray.tune.schedulers.pb2.PB2
+.. autoclass:: ray.tune.search.schedulers.pb2.PB2
 
 
 .. _tune-scheduler-bohb:
 
-BOHB (tune.schedulers.HyperBandForBOHB)
----------------------------------------
+BOHB (tune.search.scheduler.HyperBandForBOHB)
+---------------------------------------------
 
 This class is a variant of HyperBand that enables the `BOHB Algorithm <https://arxiv.org/abs/1807.01774>`_.
 This implementation is true to the original HyperBand implementation and does not implement pipelining nor
@@ -230,7 +230,7 @@ See :ref:`TuneBOHB <suggest-TuneBOHB>` for package requirements, examples, and d
 
 An example of this in use can be found here: :doc:`/tune/examples/includes/bohb_example`.
 
-.. autoclass:: ray.tune.schedulers.HyperBandForBOHB
+.. autoclass:: ray.tune.search.schedulers.HyperBandForBOHB
 
 .. _tune-resource-changing-scheduler:
 
@@ -251,27 +251,27 @@ It wraps around another scheduler and uses its decisions.
 
 An example of this in use can be found here: :doc:`/tune/examples/includes/xgboost_dynamic_resources_example`.
 
-.. autoclass:: ray.tune.schedulers.ResourceChangingScheduler
+.. autoclass:: ray.tune.search.schedulers.ResourceChangingScheduler
 
 DistributeResources
 ~~~~~~~~~~~~~~~~~~~
 
-.. autoclass:: ray.tune.schedulers.resource_changing_scheduler.DistributeResources
+.. autoclass:: ray.tune.search.schedulers.resource_changing_scheduler.DistributeResources
 
 DistributeResourcesToTopJob
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. autoclass:: ray.tune.schedulers.resource_changing_scheduler.DistributeResourcesToTopJob
+.. autoclass:: ray.tune.search.schedulers.resource_changing_scheduler.DistributeResourcesToTopJob
 
 FIFOScheduler
 -------------
 
-.. autoclass:: ray.tune.schedulers.FIFOScheduler
+.. autoclass:: ray.tune.search.schedulers.FIFOScheduler
 
 TrialScheduler
 --------------
 
-.. autoclass:: ray.tune.schedulers.TrialScheduler
+.. autoclass:: ray.tune.search.schedulers.TrialScheduler
     :members:
 
 Shim Instantiation (tune.create_scheduler)
