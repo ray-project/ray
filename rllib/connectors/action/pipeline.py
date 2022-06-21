@@ -12,7 +12,7 @@ from ray.rllib.connectors.connector import (
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.typing import (
     ActionConnectorDataType,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
 )
 
 
@@ -50,8 +50,8 @@ register_connector(ActionConnectorPipeline.__name__, ActionConnectorPipeline)
 
 
 @DeveloperAPI
-def get_action_connectors_from_trainer_config(
-    config: TrainerConfigDict, action_space: gym.Space
+def get_action_connectors_from_algorithm_config(
+    config: AlgorithmConfigDict, action_space: gym.Space
 ) -> ActionConnectorPipeline:
     connectors = []
     return ActionConnectorPipeline(connectors)
