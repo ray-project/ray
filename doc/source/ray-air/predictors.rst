@@ -98,8 +98,6 @@ There are different things you need in order to do batch prediction on different
 Coming soon!
 
 
-
-
 Configuring Batch Prediction
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -120,38 +118,10 @@ Show ``.predict_pipelined()`` method.
     :end-before: __pipelined_prediction_end__
 
 
-
-
-
-
 Examples
 --------
 
-Non Deep Learning
-~~~~~~~~~~~~~~~~~
-Show tabs for xgboost and lightgbm
-
-Link to full batch prediction example
-Link to full online serving example
-
-Deep Learning
-~~~~~~~~~~~~~
-Show tabs for Torch/Tf for each
-
-Single tensor (e.g. Image Data)
-###############################
-Link to full batch prediction example
-Link to full online serving
-
-Tabular
-#######
-Link to full batch prediction example
-Link to full online serving example
-
-Multi-modal
-###########
-Link to full batch prediction example
-Link to full online serving example
+TODO Coming soon!
 
 Developer Guide: Implementing your own Predictor
 ------------------------------------------------
