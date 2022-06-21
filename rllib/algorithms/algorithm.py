@@ -358,7 +358,7 @@ class Algorithm(Trainable):
         self.train_exec_impl = None
 
         # Offline RL settings.
-        input_evaluation = config.get("input_evaluation")
+        input_evaluation = self.config.get("input_evaluation")
         if input_evaluation is not None and input_evaluation is not DEPRECATED_VALUE:
             ope_dict = {str(ope): {"type": ope} for ope in input_evaluation}
             deprecation_warning(
@@ -370,7 +370,7 @@ class Algorithm(Trainable):
                 error=False,
                 help="Running OPE during training is not recommended.",
             )
-            config["off_policy_estimation_methods"] = ope_dict
+            self.config["off_policy_estimation_methods"] = ope_dict
 
         # Deprecated way of implementing Trainer sub-classes (or "templates"
         # via the `build_trainer` utility function).
@@ -543,7 +543,7 @@ class Algorithm(Trainable):
             "dm": DirectMethod,
             "dr": DoublyRobust,
         }
-        for name, method_config in config["off_policy_estimation_methods"].items():
+        for name, method_config in self.config["off_policy_estimation_methods"].items():
             method_type = method_config.pop("type")
             if method_type in ope_types:
                 deprecation_warning(
