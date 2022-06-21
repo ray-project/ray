@@ -29,7 +29,7 @@ try:  # Python 3 only -- needed for lint test.
 except ImportError:
     hebo = None
 
-from ray.tune.suggest import Searcher
+from ray.tune.search import Searcher
 
 logger = logging.getLogger(__name__)
 

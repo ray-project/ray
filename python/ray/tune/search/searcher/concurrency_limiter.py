@@ -29,7 +29,7 @@ class ConcurrencyLimiter(Searcher):
 
     .. code-block:: python
 
-        from ray.tune.suggest import ConcurrencyLimiter
+        from ray.tune.search import ConcurrencyLimiter
         search_alg = HyperOptSearch(metric="accuracy")
         search_alg = ConcurrencyLimiter(search_alg, max_concurrent=2)
         tune.run(trainable, search_alg=search_alg)

@@ -7,7 +7,7 @@ Requires the SkOpt library to be installed (`pip install scikit-optimize`).
 import time
 
 from ray import tune
-from ray.tune.suggest import ConcurrencyLimiter
+from ray.tune.search import ConcurrencyLimiter
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.search.searcher.skopt import SkOptSearch
 

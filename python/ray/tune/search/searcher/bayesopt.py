@@ -20,7 +20,7 @@ try:  # Python 3 only -- needed for lint test.
 except ImportError:
     byo = None
 
-from ray.tune.suggest import Searcher
+from ray.tune.search import Searcher
 from ray.tune.utils import flatten_dict
 
 logger = logging.getLogger(__name__)

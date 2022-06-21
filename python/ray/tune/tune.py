@@ -31,7 +31,7 @@ from ray.tune.schedulers import (
     ResourceChangingScheduler,
 )
 from ray.tune.stopper import Stopper
-from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm, SearchGenerator
+from ray.tune.search import BasicVariantGenerator, SearchAlgorithm, SearchGenerator
 from ray.tune.search.searcher.suggestion import Searcher
 from ray.tune.search.searcher.concurrency_limiter import ConcurrencyLimiter
 
@@ -535,7 +535,7 @@ def run(
 
     if isinstance(search_alg, str):
         # importing at top level causes a recursive dependency
-        from ray.tune.suggest import create_searcher
+        from ray.tune.search import create_searcher
 
         search_alg = create_searcher(search_alg)
 

@@ -32,7 +32,7 @@ except ImportError:
     ConfiguredOptimizer = None
     Parameter = None
 
-from ray.tune.suggest import Searcher
+from ray.tune.search import Searcher
 
 logger = logging.getLogger(__name__)
 

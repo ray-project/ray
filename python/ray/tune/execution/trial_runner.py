@@ -37,7 +37,7 @@ from ray.tune.constants import (
 )
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.stopper import NoopStopper, Stopper
-from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm
+from ray.tune.search import BasicVariantGenerator, SearchAlgorithm
 from ray.tune.syncer import SyncConfig, get_node_to_storage_syncer, Syncer
 from ray.tune.experiment.trial import Trial
 from ray.tune.utils import warn_if_slow, flatten_dict

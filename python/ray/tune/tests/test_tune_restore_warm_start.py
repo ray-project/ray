@@ -14,7 +14,7 @@ from hebo.design_space.design_space import DesignSpace as HEBODesignSpace
 import ray
 from ray import tune
 from ray.rllib import _register_all
-from ray.tune.suggest import ConcurrencyLimiter
+from ray.tune.search import ConcurrencyLimiter
 from ray.tune.search.searcher.hyperopt import HyperOptSearch
 from ray.tune.search.searcher.dragonfly import DragonflySearch
 from ray.tune.search.searcher.bayesopt import BayesOptSearch

@@ -13,7 +13,7 @@ except ImportError:
     Connection = None
 
 from ray.tune.constants import DEFAULT_METRIC
-from ray.tune.suggest import Searcher
+from ray.tune.search import Searcher
 
 logger = logging.getLogger(__name__)
 

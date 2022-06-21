@@ -99,7 +99,7 @@ class Repeater(Searcher):
 
     .. code-block:: python
 
-        from ray.tune.suggest import Repeater
+        from ray.tune.search import Repeater
 
         search_alg = BayesOptSearch(...)
         re_search_alg = Repeater(search_alg, repeat=10)

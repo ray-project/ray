@@ -10,7 +10,7 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 from ray.tune.execution import trial_runner
 from ray.tune.error import TuneError
 from ray.tune.constants import DEFAULT_METRIC, TRAINING_ITERATION
-from ray.tune.suggest import SearchGenerator
+from ray.tune.search import SearchGenerator
 from ray.tune.utils.util import SafeFallbackEncoder
 from ray.tune.search.sample import Domain, Function
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler

@@ -1974,7 +1974,7 @@ class SearchSpaceTest(unittest.TestCase):
 
     @patch.object(logger, "warning")
     def testSetSearchPropertiesBackwardsCompatibility(self, mocked_warning_method):
-        from ray.tune.suggest import Searcher
+        from ray.tune.search import Searcher
 
         class MySearcher(Searcher):
             def __init__(self, metric="a", mode="min", **kwargs):

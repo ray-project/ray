@@ -28,7 +28,7 @@ except ImportError:
     zoopt = None
     Solution = ValueType = None
 
-from ray.tune.suggest import Searcher
+from ray.tune.search import Searcher
 
 logger = logging.getLogger(__name__)
 

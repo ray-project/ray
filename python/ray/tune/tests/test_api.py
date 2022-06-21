@@ -56,7 +56,7 @@ from ray.tune.stopper import (
     TrialPlateauStopper,
     ExperimentPlateauStopper,
 )
-from ray.tune.suggest import BasicVariantGenerator, grid_search
+from ray.tune.search import BasicVariantGenerator, grid_search
 from ray.tune.search.searcher._mock import _MockSuggestionAlgorithm
 from ray.tune.search.searcher.ax import AxSearch
 from ray.tune.search.searcher.hyperopt import HyperOptSearch

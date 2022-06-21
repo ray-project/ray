@@ -8,7 +8,7 @@ import time
 
 from ray import tune
 from ray.tune.schedulers import AsyncHyperBandScheduler
-from ray.tune.suggest import ConcurrencyLimiter
+from ray.tune.search import ConcurrencyLimiter
 from ray.tune.search.searcher.bayesopt import BayesOptSearch
 
 

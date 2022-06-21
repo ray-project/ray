@@ -5,7 +5,7 @@ import pytest
 import ray
 from ray import tune
 from ray.tune.stopper import ExperimentPlateauStopper
-from ray.tune.suggest import ConcurrencyLimiter
+from ray.tune.search import ConcurrencyLimiter
 import unittest
 
 

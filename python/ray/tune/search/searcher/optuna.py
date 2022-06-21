@@ -37,7 +37,7 @@ except ImportError:
     OptunaTrialState = None
     OptunaTrial = None
 
-from ray.tune.suggest import Searcher
+from ray.tune.search import Searcher
 
 logger = logging.getLogger(__name__)
 

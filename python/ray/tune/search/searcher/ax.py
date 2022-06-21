@@ -34,7 +34,7 @@ except ImportError:
 
 import logging
 
-from ray.tune.suggest import Searcher
+from ray.tune.search import Searcher
 
 logger = logging.getLogger(__name__)
 

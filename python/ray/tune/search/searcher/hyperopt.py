@@ -33,7 +33,7 @@ except ImportError:
     hpo = None
 
 from ray.tune.error import TuneError
-from ray.tune.suggest import Searcher
+from ray.tune.search import Searcher
 
 logger = logging.getLogger(__name__)
 

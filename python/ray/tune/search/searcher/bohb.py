@@ -20,7 +20,7 @@ from ray.tune.search.sample import (
     Quantized,
     Uniform,
 )
-from ray.tune.suggest import Searcher
+from ray.tune.search import Searcher
 from ray.tune.search.searcher.suggestion import (
     UNRESOLVED_SEARCH_SPACE,
     UNDEFINED_METRIC_MODE,
