@@ -15,7 +15,7 @@ This section should help you:
 
 ## Developing and Testing Your Serve Deployment Graph with `serve run`
 
-You can test your Serve deployment graph using the Serve CLI's `serve run` command. The `serve run` command launches a temporary Ray cluster, deploys the graph to it, and blocks. Then, you can use whatever tools you like to send HTTP requests to test your application. When your graph receives and processes these requests, it will output `print` and `logging` statements to the terminal. Once you're finished testing your graph, you can type `ctrl-C` to kill the temporary Ray cluster and tear down your graph. You can use this pattern to quickly run, debug, and iterate on your Serve deployment graph.
+You can test your Serve deployment graph using the Serve CLI's `serve run` command. The `serve run` command launches a temporary Ray cluster, deploys the graph to it, and blocks. Then, you can send HTTP requests to test your application. When your graph receives and processes these requests, it will output `print` and `logging` statements to the terminal. Once you're finished testing your graph, you can type `ctrl-C` to kill the temporary Ray cluster and tear down your graph. You can use this pattern to quickly run, debug, and iterate on your Serve deployment graph.
 
 Let's use this graph as an example:
 
