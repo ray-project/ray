@@ -84,12 +84,12 @@ class MultiNodeSyncTest(unittest.TestCase):
             {
                 "provider": {"head_resources": {"CPU": 4, "GPU": 0}},
                 "available_node_types": {
-                    "ray._private.worker.cpu": {
+                    "ray.worker.cpu": {
                         "resources": {"CPU": 4},
                         "min_workers": 0,  # No minimum nodes
                         "max_workers": 2,
                     },
-                    "ray._private.worker.gpu": {
+                    "ray.worker.gpu": {
                         "min_workers": 0,
                         "max_workers": 0,  # No GPU nodes
                     },
@@ -119,12 +119,12 @@ class MultiNodeSyncTest(unittest.TestCase):
             {
                 "provider": {"head_resources": {"CPU": 4, "GPU": 0}},
                 "available_node_types": {
-                    "ray._private.worker.cpu": {
+                    "ray.worker.cpu": {
                         "resources": {"CPU": 4},
                         "min_workers": 0,  # No minimum nodes
                         "max_workers": 2,
                     },
-                    "ray._private.worker.gpu": {
+                    "ray.worker.gpu": {
                         "min_workers": 0,
                         "max_workers": 0,  # No GPU nodes
                     },
@@ -185,12 +185,12 @@ class MultiNodeSyncTest(unittest.TestCase):
                     "env_vars": {"TUNE_GLOBAL_CHECKPOINT_S": "0"},
                 },
                 "available_node_types": {
-                    "ray._private.worker.cpu": {
+                    "ray.worker.cpu": {
                         "resources": {"CPU": 4},
                         "min_workers": 2,
                         "max_workers": 2,
                     },
-                    "ray._private.worker.gpu": {
+                    "ray.worker.gpu": {
                         "min_workers": 0,
                         "max_workers": 0,  # No GPU nodes
                     },

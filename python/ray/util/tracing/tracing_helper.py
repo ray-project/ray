@@ -210,7 +210,7 @@ def _function_hydrate_span_args(func: Callable[..., Any]):
 
     worker_id = getattr(ray._private.worker.global_worker, "worker_id", None)
     if worker_id:
-        span_args["ray._private.worker_id"] = worker_id.hex()
+        span_args["ray.worker_id"] = worker_id.hex()
 
     return span_args
 
@@ -264,7 +264,7 @@ def _actor_hydrate_span_args(class_: _nameable, method: _nameable):
 
     worker_id = getattr(ray._private.worker.global_worker, "worker_id", None)
     if worker_id:
-        span_args["ray._private.worker_id"] = worker_id.hex()
+        span_args["ray.worker_id"] = worker_id.hex()
 
     return span_args
 

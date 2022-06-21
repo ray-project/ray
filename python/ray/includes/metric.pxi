@@ -68,7 +68,7 @@ cdef class Gauge(Metric):
         Example:
 
         >>> gauge = Gauge(
-                "ray._private.worker.metric",
+                "ray.worker.metric",
                 "description",
                 ["tagk1", "tagk2"]).
             value = 5
@@ -102,7 +102,7 @@ cdef class Count(Metric):
         Example:
 
         >>> count = Count(
-                "ray._private.worker.metric",
+                "ray.worker.metric",
                 "description",
                 ["tagk1", "tagk2"]).
             value = 5
@@ -139,7 +139,7 @@ cdef class Sum(Metric):
         Example:
 
         >>> metric_sum = Sum(
-                "ray._private.worker.metric",
+                "ray.worker.metric",
                 "description",
                 ["tagk1", "tagk2"]).
             value = 5
@@ -177,7 +177,7 @@ cdef class Histogram(Metric):
         Example:
 
         >>> histogram = Histogram(
-                "ray._private.worker.histogram1",
+                "ray.worker.histogram1",
                 "description",
                 [1.0, 2.0], # boundaries.
                 ["tagk1"])

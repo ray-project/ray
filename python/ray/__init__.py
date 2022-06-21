@@ -176,8 +176,9 @@ from ray import workflow  # noqa: E402,F401
 from ray.client_builder import client, ClientBuilder  # noqa: E402
 
 
-class _WorkerDeprecationWrapper(object):
-    def __init__(self, real_worker):
+class _DeprecationWrapper(object):
+    def __init__(self, name, real_worker):
+        self._name = name
         self._real_worker = real_worker
         self._warned = set()
 
@@ -186,14 +187,15 @@ class _WorkerDeprecationWrapper(object):
         if attr not in self._warned:
             self._warned.add(attr)
             logger.warning(
-                f"DeprecationWarning: `ray.worker.{attr}` is a private attribute and "
-                "access will be removed in a future Ray version."
+                f"DeprecationWarning: `ray.{self._name}.{attr}` is a private "
+                "attribute and access will be removed in a future Ray version."
             )
         return value
 
 
 # TODO(ekl) remove this entirely after 3rd party libraries are all migrated.
-worker = _WorkerDeprecationWrapper(ray._private.worker)
+worker = _DeprecationWrapper("worker", ray._private.worker)
+ray_constants = _DeprecationWrapper("ray_constants", ray._private.ray_constants)
 
 __all__ = [
     "__version__",

@@ -10,7 +10,6 @@ import sys
 import time
 
 import numpy as np
-import psutil
 import pytest
 import requests
 
@@ -37,6 +36,8 @@ from ray.dashboard.modules.dashboard_sdk import DEFAULT_DASHBOARD_ADDRESS
 from ray.experimental.state.api import StateApiClient
 from ray.experimental.state.common import ListApiOptions, StateResource
 from ray.experimental.state.exception import ServerUnavailable
+
+import psutil
 
 try:
     import aiohttp.web
