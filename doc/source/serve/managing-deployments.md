@@ -185,6 +185,8 @@ For example, if you're using OpenCV, you'll need to manually set the number of t
 You can check the configuration using `cv2.getNumThreads()` and `cv2.getNumberOfCPUs()`.
 :::
 
+(managing-deployments-user-configuration)=
+
 ### User Configuration (Experimental)
 
 Suppose you want to update a parameter in your model without needing to restart

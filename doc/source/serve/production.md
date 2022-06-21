@@ -541,3 +541,98 @@ deployment_statuses:
 (serve-in-production-updating)=
 
 ## Updating Your Serve Application in Production
+
+You can also update your Serve applications once they're in production. You can update the settings in your config file and redeploy it using the `serve deploy` command.
+
+Let's use the `FruitStand` deployment graph [from an earlier section](fruit-config-yaml) as an example. All the individual fruit deployments contain a `reconfigure()` method. [This method allows us to issue lightweight updates](managing-deployments-user-configuration) to our deployments by updating the `user_config`. These updates don't need to tear down the running deployments, meaning there's less downtime as the deployments update.
+
+First let's deploy the graph. Make sure to stop any previous Ray cluster using the CLI command `ray stop` for this example:
+
+```console
+$ ray start --head
+$ serve deploy fruit_config.yaml
+...
+
+$ python
+
+>>> import requests
+>>> requests.post("http://localhost:8000/", json=["MANGO", 2]).json()
+
+6
+```
+
+Now, let's update the price of mangos in our deployment. We can change the `price` attribute in the `MangoStand` deployment to `5` in our config file:
+
+```yaml
+import_path: fruit.deployment_graph
+
+runtime_env: {}
+
+deployments:
+
+- name: MangoStand
+  num_replicas: 2
+  route_prefix: null
+  max_concurrent_queries: 100
+  user_config:
+    # price: 3 (Outdated price)
+    price: 5
+  autoscaling_config: null
+  graceful_shutdown_wait_loop_s: 2.0
+  graceful_shutdown_timeout_s: 20.0
+  health_check_period_s: 10.0
+  health_check_timeout_s: 30.0
+  ray_actor_options: null
+
+...
+```
+
+Without stopping the Ray cluster, we can redeploy our graph using `serve deploy`:
+
+```console
+$ serve deploy fruit_config.yaml
+...
+```
+
+We can monitor our deployments with `serve status`. Once the `app_status`'s `status` returns to `"RUNNING"`, we can try our requests one more time:
+
+```console
+$ serve status
+app_status:
+  status: RUNNING
+  message: ''
+  deployment_timestamp: 1655776483.457707
+deployment_statuses:
+- name: MangoStand
+  status: HEALTHY
+  message: ''
+- name: OrangeStand
+  status: HEALTHY
+  message: ''
+- name: PearStand
+  status: HEALTHY
+  message: ''
+- name: FruitMarket
+  status: HEALTHY
+  message: ''
+- name: DAGDriver
+  status: HEALTHY
+  message: ''
+
+$ python
+
+>>> import requests
+>>> requests.post("http://localhost:8000/", json=["MANGO", 2]).json()
+
+10
+```
+
+The price has updated! The same request now returns `10` instead of `6`, reflecting the new price.
+
+You can update any setting in any deployment in the config file similarly. You can also add new deployment settings or remove old deployment settings from the config. This is because `serve deploy` is **idempotent**. Your Serve application's will match the one specified in the latest config you deployed– regardless of what config files you deployed before that.
+
+:::{warning}
+Although you can update your Serve application by deploying an entirely new deployment graph using a different `import_path` and a different `runtime_env`, this is NOT recommended in production.
+
+The best practice for large-scale code updates is to start a new Ray cluster, deploy the updated code to it using `serve deploy`, and then switch traffic from your old cluster to the new one.
+:::
