@@ -6,9 +6,12 @@ from ray.tune.error import TuneError
 from ray.tune.experiment import Experiment, convert_to_experiment_list
 from ray.tune.experiment._config_parser import make_parser, create_trial_from_spec
 from ray.tune.search.algorithms.search_algorithm import SearchAlgorithm
-from ray.tune.suggest.suggestion import Searcher
-from ray.tune.suggest.util import set_search_properties_backwards_compatible
-from ray.tune.search.algorithms.variant_generator import format_vars, resolve_nested_dict
+from ray.tune.search.searcher.suggestion import Searcher
+from ray.tune.search.searcher.util import set_search_properties_backwards_compatible
+from ray.tune.search.algorithms._variant_generator import (
+    format_vars,
+    resolve_nested_dict,
+)
 from ray.tune.experiment.trial import Trial
 from ray.tune.utils.util import (
     flatten_dict,
@@ -22,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 def _warn_on_repeater(searcher, total_samples):
-    from ray.tune.suggest.repeater import _warn_num_samples
+    from ray.tune.search.searcher.repeater import _warn_num_samples
 
     _warn_num_samples(searcher, total_samples)
 

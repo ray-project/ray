@@ -12,12 +12,12 @@ from ray.tune.search.sample import (
     LogUniform,
     Quantized,
 )
-from ray.tune.suggest.suggestion import (
+from ray.tune.search.searcher.suggestion import (
     UNRESOLVED_SEARCH_SPACE,
     UNDEFINED_METRIC_MODE,
     UNDEFINED_SEARCH_SPACE,
 )
-from ray.tune.search.algorithms.variant_generator import parse_spec_vars
+from ray.tune.search.algorithms._variant_generator import parse_spec_vars
 from ray.tune.utils.util import flatten_dict, unflatten_dict
 
 try:

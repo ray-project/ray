@@ -10,7 +10,7 @@ import ray
 from ray import tune
 from ray.tune.suggest import ConcurrencyLimiter
 from ray.tune.schedulers import AsyncHyperBandScheduler
-from ray.tune.suggest.flaml import BlendSearch
+from ray.tune.search.searcher.flaml import BlendSearch
 
 
 def evaluation_fn(step, width, height):

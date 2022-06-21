@@ -13,7 +13,7 @@ import ray
 from ray import tune
 from ray.tune.suggest import ConcurrencyLimiter
 from ray.tune.schedulers import AsyncHyperBandScheduler
-from ray.tune.suggest.hyperopt import HyperOptSearch
+from ray.tune.search.searcher.hyperopt import HyperOptSearch
 from hyperopt import hp
 
 

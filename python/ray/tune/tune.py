@@ -32,11 +32,11 @@ from ray.tune.schedulers import (
 )
 from ray.tune.stopper import Stopper
 from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm, SearchGenerator
-from ray.tune.suggest.suggestion import ConcurrencyLimiter, Searcher
+from ray.tune.search.searcher.suggestion import ConcurrencyLimiter, Searcher
 
 # Turn off black here, as it will format the lines to be longer than 88 chars
 # fmt: off
-from ray.tune.suggest.util import (
+from ray.tune.search.searcher.util import (
     set_search_properties_backwards_compatible
     as searcher_set_search_properties_backwards_compatible,
 )
@@ -46,7 +46,7 @@ from ray.tune.schedulers.util import (
 )
 # fmt: on
 
-from ray.tune.search.algorithms.variant_generator import has_unresolved_values
+from ray.tune.search.algorithms._variant_generator import has_unresolved_values
 from ray.tune.syncer import (
     SyncConfig,
     _validate_upload_dir,

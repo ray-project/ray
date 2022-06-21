@@ -1,10 +1,8 @@
 from ray._private.utils import get_function_args
 from ray.tune.search.algorithms.search_algorithm import SearchAlgorithm
 from ray.tune.search.algorithms.basic_variant import BasicVariantGenerator
-from ray.tune.suggest.suggestion import Searcher, ConcurrencyLimiter
 from ray.tune.search.algorithms.search_generator import SearchGenerator
-from ray.tune.search.algorithms.variant_generator import grid_search
-from ray.tune.suggest.repeater import Repeater
+from ray.tune.search.algorithms._variant_generator import grid_search
 
 
 def _import_variant_generator():
@@ -12,79 +10,79 @@ def _import_variant_generator():
 
 
 def _import_ax_search():
-    from ray.tune.suggest.ax import AxSearch
+    from ray.tune.search.searcher.ax import AxSearch
 
     return AxSearch
 
 
 def _import_blendsearch_search():
-    from ray.tune.suggest.flaml import BlendSearch
+    from ray.tune.search.searcher.flaml import BlendSearch
 
     return BlendSearch
 
 
 def _import_cfo_search():
-    from ray.tune.suggest.flaml import CFO
+    from ray.tune.search.searcher.flaml import CFO
 
     return CFO
 
 
 def _import_dragonfly_search():
-    from ray.tune.suggest.dragonfly import DragonflySearch
+    from ray.tune.search.searcher.dragonfly import DragonflySearch
 
     return DragonflySearch
 
 
 def _import_skopt_search():
-    from ray.tune.suggest.skopt import SkOptSearch
+    from ray.tune.search.searcher.skopt import SkOptSearch
 
     return SkOptSearch
 
 
 def _import_hyperopt_search():
-    from ray.tune.suggest.hyperopt import HyperOptSearch
+    from ray.tune.search.searcher.hyperopt import HyperOptSearch
 
     return HyperOptSearch
 
 
 def _import_bayesopt_search():
-    from ray.tune.suggest.bayesopt import BayesOptSearch
+    from ray.tune.search.searcher.bayesopt import BayesOptSearch
 
     return BayesOptSearch
 
 
 def _import_bohb_search():
-    from ray.tune.suggest.bohb import TuneBOHB
+    from ray.tune.search.searcher.bohb import TuneBOHB
 
     return TuneBOHB
 
 
 def _import_nevergrad_search():
-    from ray.tune.suggest.nevergrad import NevergradSearch
+    from ray.tune.search.searcher.nevergrad import NevergradSearch
 
     return NevergradSearch
 
 
 def _import_optuna_search():
-    from ray.tune.suggest.optuna import OptunaSearch
+    from ray.tune.search.searcher.optuna import OptunaSearch
 
     return OptunaSearch
 
 
 def _import_zoopt_search():
-    from ray.tune.suggest.zoopt import ZOOptSearch
+    from ray.tune.search.searcher.zoopt import ZOOptSearch
 
     return ZOOptSearch
 
 
 def _import_sigopt_search():
-    from ray.tune.suggest.sigopt import SigOptSearch
+    from ray.tune.search.searcher.sigopt import SigOptSearch
 
     return SigOptSearch
 
 
 def _import_hebo_search():
-    from ray.tune.suggest.hebo import HEBOSearch
+    from ray.tune.search.searcher.hebo import HEBOSearch
 
     return HEBOSearch
 

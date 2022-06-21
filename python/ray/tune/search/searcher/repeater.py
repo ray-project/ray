@@ -4,8 +4,8 @@ from typing import Dict, List, Optional
 
 import numpy as np
 
-from ray.tune.suggest.suggestion import Searcher
-from ray.tune.suggest.util import set_search_properties_backwards_compatible
+from ray.tune.search.searcher.suggestion import Searcher
+from ray.tune.search.searcher.util import set_search_properties_backwards_compatible
 from ray.util import PublicAPI
 
 logger = logging.getLogger(__name__)

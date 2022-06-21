@@ -9,7 +9,7 @@ import time
 
 from ray import tune
 from ray.tune.schedulers import AsyncHyperBandScheduler
-from ray.tune.suggest.ax import AxSearch
+from ray.tune.search.searcher.ax import AxSearch
 
 
 def hartmann6(x):

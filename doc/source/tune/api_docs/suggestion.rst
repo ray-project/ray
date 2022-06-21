@@ -11,7 +11,7 @@ You can utilize these search algorithms as follows:
 
 .. code-block:: python
 
-    from ray.tune.suggest.hyperopt import HyperOptSearch
+    from ray.tune.search.searcher.hyperopt import HyperOptSearch
     tune.run(my_function, search_alg=HyperOptSearch(...))
 
 

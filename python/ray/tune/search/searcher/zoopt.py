@@ -13,12 +13,12 @@ from ray.tune.search.sample import (
     Quantized,
     Uniform,
 )
-from ray.tune.suggest.suggestion import (
+from ray.tune.search.searcher.suggestion import (
     UNRESOLVED_SEARCH_SPACE,
     UNDEFINED_METRIC_MODE,
     UNDEFINED_SEARCH_SPACE,
 )
-from ray.tune.search.algorithms.variant_generator import parse_spec_vars
+from ray.tune.search.algorithms._variant_generator import parse_spec_vars
 from ray.tune.utils.util import unflatten_dict
 
 try:
@@ -48,7 +48,7 @@ class ZOOptSearch(Searcher):
     .. code-block:: python
 
         from ray import tune
-        from ray.tune.suggest.zoopt import ZOOptSearch
+        from ray.tune.search.searcher.zoopt import ZOOptSearch
 
         "config": {
             "iterations": 10,  # evaluation times
@@ -82,7 +82,7 @@ class ZOOptSearch(Searcher):
     .. code-block:: python
 
         from ray import tune
-        from ray.tune.suggest.zoopt import ZOOptSearch
+        from ray.tune.search.searcher.zoopt import ZOOptSearch
         from zoopt import ValueType
 
         dim_dict = {

@@ -9,7 +9,7 @@ import time
 from ray import tune
 from ray.tune.suggest import ConcurrencyLimiter
 from ray.tune.schedulers import AsyncHyperBandScheduler
-from ray.tune.suggest.nevergrad import NevergradSearch
+from ray.tune.search.searcher.nevergrad import NevergradSearch
 
 
 def evaluation_fn(step, width, height):

@@ -9,7 +9,7 @@ import time
 from ray import tune
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.suggest import ConcurrencyLimiter
-from ray.tune.suggest.bayesopt import BayesOptSearch
+from ray.tune.search.searcher.bayesopt import BayesOptSearch
 
 
 def evaluation_fn(step, width, height):

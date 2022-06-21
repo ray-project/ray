@@ -14,8 +14,8 @@ import ray
 import ray.tune.search.sample
 from ray import tune
 from ray.tune import Experiment
-from ray.tune.suggest.util import logger
-from ray.tune.search.algorithms.variant_generator import generate_variants
+from ray.tune.search.searcher.util import logger
+from ray.tune.search.algorithms._variant_generator import generate_variants
 
 
 def _mock_objective(config):
@@ -449,7 +449,7 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertSequenceEqual(choices_1, choices_2)
 
     def testConvertAx(self):
-        from ray.tune.suggest.ax import AxSearch
+        from ray.tune.search.searcher.ax import AxSearch
         from ax.service.ax_client import AxClient
 
         # Grid search not supported, should raise ValueError
@@ -514,7 +514,7 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(8 <= config["b"] <= 9)
 
     def testSampleBoundsAx(self):
-        from ray.tune.suggest.ax import AxSearch
+        from ray.tune.search.searcher.ax import AxSearch
         from ax.service.ax_client import AxClient
         from ax.modelbridge.generation_strategy import (
             GenerationStrategy,
@@ -569,7 +569,7 @@ class SearchSpaceTest(unittest.TestCase):
         self._testTuneSampleAPI(config_generator(), ignore=ignore, check_stats=False)
 
     def testConvertBayesOpt(self):
-        from ray.tune.suggest.bayesopt import BayesOptSearch
+        from ray.tune.search.searcher.bayesopt import BayesOptSearch
 
         # Grid search not supported, should raise ValueError
         with self.assertRaises(ValueError):
@@ -626,7 +626,7 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(8 <= config["b"] <= 9)
 
     def testSampleBoundsBayesOpt(self):
-        from ray.tune.suggest.bayesopt import BayesOptSearch
+        from ray.tune.search.searcher.bayesopt import BayesOptSearch
 
         ignore = [
             "func",
@@ -660,7 +660,7 @@ class SearchSpaceTest(unittest.TestCase):
         self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
     def testConvertBOHB(self):
-        from ray.tune.suggest.bohb import TuneBOHB
+        from ray.tune.search.searcher.bohb import TuneBOHB
         import ConfigSpace
 
         # Grid search not supported, should raise ValueError
@@ -720,7 +720,7 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(8 <= config["b"] <= 9)
 
     def testSampleBoundsBOHB(self):
-        from ray.tune.suggest.bohb import TuneBOHB
+        from ray.tune.search.searcher.bohb import TuneBOHB
 
         ignore = [
             "func",
@@ -740,7 +740,7 @@ class SearchSpaceTest(unittest.TestCase):
         self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
     def testConvertDragonfly(self):
-        from ray.tune.suggest.dragonfly import DragonflySearch
+        from ray.tune.search.searcher.dragonfly import DragonflySearch
 
         # Grid search not supported, should raise ValueError
         with self.assertRaises(ValueError):
@@ -822,7 +822,7 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(8 <= config["b"] <= 9)
 
     def testSampleBoundsDragonfly(self):
-        from ray.tune.suggest.dragonfly import DragonflySearch
+        from ray.tune.search.searcher.dragonfly import DragonflySearch
 
         ignore = [
             "func",
@@ -852,7 +852,7 @@ class SearchSpaceTest(unittest.TestCase):
         self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
     def testConvertHEBO(self):
-        from ray.tune.suggest.hebo import HEBOSearch
+        from ray.tune.search.searcher.hebo import HEBOSearch
         from hebo.design_space.design_space import DesignSpace
         import torch
 
@@ -907,7 +907,7 @@ class SearchSpaceTest(unittest.TestCase):
         # Mixed configs are not supported
 
     def testSampleBoundsHEBO(self):
-        from ray.tune.suggest.hebo import HEBOSearch
+        from ray.tune.search.searcher.hebo import HEBOSearch
 
         ignore = [
             "func",
@@ -932,7 +932,7 @@ class SearchSpaceTest(unittest.TestCase):
         self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
     def testConvertHyperOpt(self):
-        from ray.tune.suggest.hyperopt import HyperOptSearch
+        from ray.tune.search.searcher.hyperopt import HyperOptSearch
         from hyperopt import hp
 
         # Grid search not supported, should raise ValueError
@@ -988,7 +988,7 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(8 <= config["b"] <= 9)
 
     def testConvertHyperOptChooseFromListOfList(self):
-        from ray.tune.suggest.hyperopt import HyperOptSearch
+        from ray.tune.search.searcher.hyperopt import HyperOptSearch
         from hyperopt import hp
 
         config = {
@@ -1020,7 +1020,7 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(config1.get("a") in [(1, 2), (3, 4)])
 
     def testConvertHyperOptNested(self):
-        from ray.tune.suggest.hyperopt import HyperOptSearch
+        from ray.tune.search.searcher.hyperopt import HyperOptSearch
 
         config = {
             "a": 1,
@@ -1072,7 +1072,7 @@ class SearchSpaceTest(unittest.TestCase):
             self.assertIn(config["domain_nested"], ["M", "N", "O", "P"])
 
     def testSampleBoundsHyperopt(self):
-        from ray.tune.suggest.hyperopt import HyperOptSearch
+        from ray.tune.search.searcher.hyperopt import HyperOptSearch
 
         ignore = [
             "func",
@@ -1093,7 +1093,7 @@ class SearchSpaceTest(unittest.TestCase):
         self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
     def testConvertNevergrad(self):
-        from ray.tune.suggest.nevergrad import NevergradSearch
+        from ray.tune.search.searcher.nevergrad import NevergradSearch
         import nevergrad as ng
 
         # Grid search not supported, should raise ValueError
@@ -1165,7 +1165,7 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(8 <= config["b"] <= 9)
 
     def testSampleBoundsNevergrad(self):
-        from ray.tune.suggest.nevergrad import NevergradSearch
+        from ray.tune.search.searcher.nevergrad import NevergradSearch
         import nevergrad as ng
 
         ignore = [
@@ -1195,7 +1195,7 @@ class SearchSpaceTest(unittest.TestCase):
         self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
     def testConvertOptuna(self):
-        from ray.tune.suggest.optuna import OptunaSearch
+        from ray.tune.search.searcher.optuna import OptunaSearch
         import optuna
         from optuna.samplers import RandomSampler
 
@@ -1374,7 +1374,7 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(8 <= config["b"] <= 9)
 
     def testSampleBoundsOptuna(self):
-        from ray.tune.suggest.optuna import OptunaSearch
+        from ray.tune.search.searcher.optuna import OptunaSearch
 
         # Quantization and log does not seem to work with Optuna
         ignore = ["func", "randn", "qrandn", "qloguniform", "qlograndint"]
@@ -1392,7 +1392,7 @@ class SearchSpaceTest(unittest.TestCase):
         self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
     def testConvertSkOpt(self):
-        from ray.tune.suggest.skopt import SkOptSearch
+        from ray.tune.search.searcher.skopt import SkOptSearch
         from skopt.space import Real, Integer, Categorical
 
         # Grid search not supported, should raise ValueError
@@ -1447,7 +1447,7 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(8 <= config["b"] <= 9)
 
     def testSampleBoundsSkOpt(self):
-        from ray.tune.suggest.skopt import SkOptSearch
+        from ray.tune.search.searcher.skopt import SkOptSearch
 
         ignore = [
             "func",
@@ -1474,7 +1474,7 @@ class SearchSpaceTest(unittest.TestCase):
         self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
     def testConvertZOOpt(self):
-        from ray.tune.suggest.zoopt import ZOOptSearch
+        from ray.tune.search.searcher.zoopt import ZOOptSearch
         from zoopt import ValueType
 
         # Grid search not supported, should raise ValueError
@@ -1564,7 +1564,7 @@ class SearchSpaceTest(unittest.TestCase):
             "so skipping sampling test for now."
         )
 
-        from ray.tune.suggest.zoopt import ZOOptSearch
+        from ray.tune.search.searcher.zoopt import ZOOptSearch
 
         ignore = [
             "func",
@@ -1632,7 +1632,7 @@ class SearchSpaceTest(unittest.TestCase):
             "c": ray.tune.search.sample.Float(1e-4, 1e-1).loguniform(),
         }
 
-        from ray.tune.suggest.ax import AxSearch
+        from ray.tune.search.searcher.ax import AxSearch
 
         return self._testPointsToEvaluate(AxSearch, config)
 
@@ -1644,7 +1644,7 @@ class SearchSpaceTest(unittest.TestCase):
             "c": ray.tune.search.sample.Float(1e-4, 1e-1).loguniform(),
         }
 
-        from ray.tune.suggest.bayesopt import BayesOptSearch
+        from ray.tune.search.searcher.bayesopt import BayesOptSearch
 
         return self._testPointsToEvaluate(BayesOptSearch, config)
 
@@ -1656,7 +1656,7 @@ class SearchSpaceTest(unittest.TestCase):
             "c": ray.tune.search.sample.Float(1e-4, 1e-1).loguniform(),
         }
 
-        from ray.tune.suggest.bohb import TuneBOHB
+        from ray.tune.search.searcher.bohb import TuneBOHB
 
         return self._testPointsToEvaluate(TuneBOHB, config)
 
@@ -1668,7 +1668,7 @@ class SearchSpaceTest(unittest.TestCase):
             "c": ray.tune.search.sample.Float(1e-4, 1e-1).loguniform(),
         }
 
-        from ray.tune.suggest.dragonfly import DragonflySearch
+        from ray.tune.search.searcher.dragonfly import DragonflySearch
 
         return self._testPointsToEvaluate(
             DragonflySearch, config, domain="euclidean", optimizer="bandit"
@@ -1682,7 +1682,7 @@ class SearchSpaceTest(unittest.TestCase):
             "c": ray.tune.search.sample.Float(1e-4, 1e-1).loguniform(),
         }
 
-        from ray.tune.suggest.hyperopt import HyperOptSearch
+        from ray.tune.search.searcher.hyperopt import HyperOptSearch
 
         return self._testPointsToEvaluate(HyperOptSearch, config)
 
@@ -1697,7 +1697,7 @@ class SearchSpaceTest(unittest.TestCase):
 
         points_to_evaluate = [{"nested": [2, 4], "nosample": [4, 8]}]
 
-        from ray.tune.suggest.hyperopt import HyperOptSearch
+        from ray.tune.search.searcher.hyperopt import HyperOptSearch
 
         searcher = HyperOptSearch(
             space=space, metric="_", mode="max", points_to_evaluate=points_to_evaluate
@@ -1716,7 +1716,7 @@ class SearchSpaceTest(unittest.TestCase):
             "c": ray.tune.search.sample.Float(1e-4, 1e-1).loguniform(),
         }
 
-        from ray.tune.suggest.nevergrad import NevergradSearch
+        from ray.tune.search.searcher.nevergrad import NevergradSearch
         import nevergrad as ng
 
         return self._testPointsToEvaluate(
@@ -1731,7 +1731,7 @@ class SearchSpaceTest(unittest.TestCase):
             "c": ray.tune.search.sample.Float(1e-4, 1e-1).loguniform(),
         }
 
-        from ray.tune.suggest.optuna import OptunaSearch
+        from ray.tune.search.searcher.optuna import OptunaSearch
 
         return self._testPointsToEvaluate(OptunaSearch, config)
 
@@ -1743,7 +1743,7 @@ class SearchSpaceTest(unittest.TestCase):
             "c": ray.tune.search.sample.Float(1e-4, 1e-1).loguniform(),
         }
 
-        from ray.tune.suggest.skopt import SkOptSearch
+        from ray.tune.search.searcher.skopt import SkOptSearch
 
         return self._testPointsToEvaluate(SkOptSearch, config)
 
@@ -1761,7 +1761,7 @@ class SearchSpaceTest(unittest.TestCase):
             "c": ray.tune.search.sample.Float(1e-4, 1e-1).uniform(),
         }
 
-        from ray.tune.suggest.zoopt import ZOOptSearch
+        from ray.tune.search.searcher.zoopt import ZOOptSearch
 
         return self._testPointsToEvaluate(
             ZOOptSearch, config, budget=10, parallel_num=8
@@ -1854,7 +1854,7 @@ class SearchSpaceTest(unittest.TestCase):
         }
 
         from ray.tune.search.algorithms.basic_variant import BasicVariantGenerator
-        from ray.tune.search.algorithms.variant_generator import logger
+        from ray.tune.search.algorithms._variant_generator import logger
 
         # Test whether the initial points of fixed parameters are correctly
         # verified.

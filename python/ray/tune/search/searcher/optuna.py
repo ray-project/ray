@@ -16,12 +16,12 @@ from ray.tune.search.sample import (
     Quantized,
     Uniform,
 )
-from ray.tune.suggest.suggestion import (
+from ray.tune.search.searcher.suggestion import (
     UNRESOLVED_SEARCH_SPACE,
     UNDEFINED_METRIC_MODE,
     UNDEFINED_SEARCH_SPACE,
 )
-from ray.tune.search.algorithms.variant_generator import parse_spec_vars
+from ray.tune.search.algorithms._variant_generator import parse_spec_vars
 from ray.tune.utils.util import flatten_dict, unflatten_dict, validate_warmstart
 
 try:
@@ -152,7 +152,7 @@ class OptunaSearch(Searcher):
 
     .. code-block:: python
 
-        from ray.tune.suggest.optuna import OptunaSearch
+        from ray.tune.search.searcher.optuna import OptunaSearch
 
         config = {
             "a": tune.uniform(6, 8)
@@ -170,7 +170,7 @@ class OptunaSearch(Searcher):
 
     .. code-block:: python
 
-        from ray.tune.suggest.optuna import OptunaSearch
+        from ray.tune.search.searcher.optuna import OptunaSearch
         import optuna
 
         space = {
@@ -204,7 +204,7 @@ class OptunaSearch(Searcher):
 
     .. code-block:: python
 
-        from ray.tune.suggest.optuna import OptunaSearch
+        from ray.tune.search.searcher.optuna import OptunaSearch
         import optuna
 
         space = {
@@ -230,7 +230,7 @@ class OptunaSearch(Searcher):
 
     .. code-block:: python
 
-        from ray.tune.suggest.optuna import OptunaSearch
+        from ray.tune.search.searcher.optuna import OptunaSearch
         import optuna
 
         space = {
@@ -251,7 +251,7 @@ class OptunaSearch(Searcher):
 
     .. code-block:: python
 
-        from ray.tune.suggest.optuna import OptunaSearch
+        from ray.tune.search.searcher.optuna import OptunaSearch
         import optuna
 
         space = {

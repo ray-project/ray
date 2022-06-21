@@ -13,12 +13,12 @@ from typing import Dict, List, Optional, Union
 
 from ray.tune.constants import DEFAULT_METRIC
 from ray.tune.search.sample import Domain, Float, Quantized
-from ray.tune.suggest.suggestion import (
+from ray.tune.search.searcher.suggestion import (
     UNRESOLVED_SEARCH_SPACE,
     UNDEFINED_METRIC_MODE,
     UNDEFINED_SEARCH_SPACE,
 )
-from ray.tune.search.algorithms.variant_generator import parse_spec_vars
+from ray.tune.search.algorithms._variant_generator import parse_spec_vars
 from ray.tune.utils.util import flatten_dict, is_nan_or_inf, unflatten_dict
 
 try:  # Python 3 only -- needed for lint test.
@@ -28,7 +28,7 @@ except ImportError:
     dragonfly = None
     BlackboxOptimiser = None
 
-from ray.tune.suggest.suggestion import Searcher
+from ray.tune.search.searcher.suggestion import Searcher
 
 logger = logging.getLogger(__name__)
 

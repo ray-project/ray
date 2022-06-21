@@ -84,7 +84,7 @@ config = {
 # __config_end__
 
 # __bayes_start__
-from ray.tune.suggest.bayesopt import BayesOptSearch
+from ray.tune.search.searcher.bayesopt import BayesOptSearch
 
 # Define the search space
 search_space = {"a": tune.uniform(0, 1), "b": tune.uniform(0, 20)}

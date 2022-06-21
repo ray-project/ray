@@ -15,12 +15,12 @@ from ray.tune.search.sample import (
     Quantized,
     Uniform,
 )
-from ray.tune.suggest.suggestion import (
+from ray.tune.search.searcher.suggestion import (
     UNRESOLVED_SEARCH_SPACE,
     UNDEFINED_METRIC_MODE,
     UNDEFINED_SEARCH_SPACE,
 )
-from ray.tune.search.algorithms.variant_generator import parse_spec_vars
+from ray.tune.search.algorithms._variant_generator import parse_spec_vars
 from ray.tune.utils.util import is_nan_or_inf, unflatten_dict, validate_warmstart
 
 try:  # Python 3 only -- needed for lint test.
@@ -94,7 +94,7 @@ class HEBOSearch(Searcher):
     .. code-block:: python
 
         from ray import tune
-        from ray.tune.suggest.hebo import HEBOSearch
+        from ray.tune.search.searcher.hebo import HEBOSearch
 
         config = {
             "width": tune.uniform(0, 20),
@@ -110,7 +110,7 @@ class HEBOSearch(Searcher):
     .. code-block:: python
 
         from ray import tune
-        from ray.tune.suggest.hebo import HEBOSearch
+        from ray.tune.search.searcher.hebo import HEBOSearch
         from hebo.design_space.design_space import DesignSpace
 
         space_config = [

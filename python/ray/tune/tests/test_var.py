@@ -9,7 +9,7 @@ from ray.rllib import _register_all
 from ray import tune
 from ray.tune.constants import DEFAULT_RESULTS_DIR
 from ray.tune.suggest import grid_search, BasicVariantGenerator
-from ray.tune.search.algorithms.variant_generator import (
+from ray.tune.search.algorithms._variant_generator import (
     RecursiveDependencyError,
     resolve_nested_dict,
 )

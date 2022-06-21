@@ -5,7 +5,7 @@ import os
 import warnings
 from typing import Dict, Optional, List, Union, Any, TYPE_CHECKING
 
-from ray.tune.suggest.util import set_search_properties_backwards_compatible
+from ray.tune.search.searcher.util import set_search_properties_backwards_compatible
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.debug import log_once
 

@@ -15,18 +15,18 @@ import ray
 from ray import tune
 from ray.rllib import _register_all
 from ray.tune.suggest import ConcurrencyLimiter
-from ray.tune.suggest.hyperopt import HyperOptSearch
-from ray.tune.suggest.dragonfly import DragonflySearch
-from ray.tune.suggest.bayesopt import BayesOptSearch
-from ray.tune.suggest.flaml import CFO, BlendSearch
-from ray.tune.suggest.skopt import SkOptSearch
-from ray.tune.suggest.nevergrad import NevergradSearch
-from ray.tune.suggest.optuna import OptunaSearch
-from ray.tune.suggest.sigopt import SigOptSearch
-from ray.tune.suggest.zoopt import ZOOptSearch
-from ray.tune.suggest.hebo import HEBOSearch
-from ray.tune.suggest.ax import AxSearch
-from ray.tune.suggest.bohb import TuneBOHB
+from ray.tune.search.searcher.hyperopt import HyperOptSearch
+from ray.tune.search.searcher.dragonfly import DragonflySearch
+from ray.tune.search.searcher.bayesopt import BayesOptSearch
+from ray.tune.search.searcher.flaml import CFO, BlendSearch
+from ray.tune.search.searcher.skopt import SkOptSearch
+from ray.tune.search.searcher.nevergrad import NevergradSearch
+from ray.tune.search.searcher.optuna import OptunaSearch
+from ray.tune.search.searcher.sigopt import SigOptSearch
+from ray.tune.search.searcher.zoopt import ZOOptSearch
+from ray.tune.search.searcher.hebo import HEBOSearch
+from ray.tune.search.searcher.ax import AxSearch
+from ray.tune.search.searcher.bohb import TuneBOHB
 from ray.tune.schedulers.hb_bohb import HyperBandForBOHB
 
 
