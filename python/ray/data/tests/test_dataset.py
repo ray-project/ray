@@ -1788,38 +1788,6 @@ def test_map_batches_basic(ray_start_regular_shared, tmp_path):
     with pytest.raises(ValueError):
         ds.map_batches(lambda x: x + 1, batch_format="pyarrow", batch_size=-1).take()
 
-    class Foo:
-        def __call__(self, df):
-            return df
-
-    with pytest.raises(ValueError):
-        # CallableClass not supported for task compute strategy, which is the default.
-        ds.map_batches(Foo)
-
-    with pytest.raises(ValueError):
-        # CallableClass not supported for task compute strategy.
-        ds.map_batches(Foo, compute="tasks")
-
-    with pytest.raises(ValueError):
-        # fn_constructor_args and fn_constructor_kwargs only supported for actor compute
-        # strategy.
-        ds.map_batches(
-            lambda x: x,
-            compute="tasks",
-            fn_constructor_args=(1,),
-            fn_constructor_kwargs={"a": 1},
-        )
-
-    with pytest.raises(ValueError):
-        # fn_constructor_args and fn_constructor_kwargs only supported for callable
-        # class UDFs.
-        ds.map_batches(
-            lambda x: x,
-            compute="actors",
-            fn_constructor_args=(1,),
-            fn_constructor_kwargs={"a": 1},
-        )
-
     # Set up.
     df = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
     table = pa.Table.from_pandas(df)
@@ -1881,6 +1849,48 @@ def test_map_batches_basic(ray_start_regular_shared, tmp_path):
         ds_list = ds.map_batches(
             lambda df: 1, batch_size=2, batch_format="pyarrow"
         ).take()
+
+
+def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
+    # Test input validation
+    ds = ray.data.range(5)
+
+    class Foo:
+        def __call__(self, df):
+            return df
+
+    with pytest.raises(ValueError):
+        # CallableClass not supported for task compute strategy, which is the default.
+        ds.map_batches(Foo)
+
+    with pytest.raises(ValueError):
+        # CallableClass not supported for task compute strategy.
+        ds.map_batches(Foo, compute="tasks")
+
+    with pytest.raises(ValueError):
+        # fn_constructor_args and fn_constructor_kwargs only supported for actor compute
+        # strategy.
+        ds.map_batches(
+            lambda x: x,
+            compute="tasks",
+            fn_constructor_args=(1,),
+            fn_constructor_kwargs={"a": 1},
+        )
+
+    with pytest.raises(ValueError):
+        # fn_constructor_args and fn_constructor_kwargs only supported for callable
+        # class UDFs.
+        ds.map_batches(
+            lambda x: x,
+            compute="actors",
+            fn_constructor_args=(1,),
+            fn_constructor_kwargs={"a": 1},
+        )
+
+    # Set up.
+    df = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
+    table = pa.Table.from_pandas(df)
+    pq.write_table(table, os.path.join(tmp_path, "test1.parquet"))
 
     # Test extra UDF args.
     # Test positional.
