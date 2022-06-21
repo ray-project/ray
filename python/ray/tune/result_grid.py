@@ -232,7 +232,7 @@ class ResultGrid:
         return None
 
     def _trial_to_result(
-        self, trial: Trial, checkpointing_config: "CheckpointingConfig"
+        self, trial: Trial, checkpointing_config: Optional["CheckpointingConfig"]
     ) -> Result:
         checkpoint = trial.checkpoint.to_air_checkpoint()
 

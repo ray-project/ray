@@ -124,7 +124,7 @@ def test_result_grid_future_checkpoint(ray_start_2_cpus, to_object):
     result_grid = ResultGrid(None)
 
     # Internal result grid conversion
-    result = result_grid._trial_to_result(trial)
+    result = result_grid._trial_to_result(trial, checkpointing_config=None)
     assert isinstance(result.checkpoint, Checkpoint)
     assert isinstance(result.metrics, dict)
     assert isinstance(result.config, dict)
