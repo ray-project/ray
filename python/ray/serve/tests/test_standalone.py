@@ -751,14 +751,14 @@ def test_unhealthy_override_updating_status(lower_slow_startup_threshold_and_res
 
     wait_for_condition(
         lambda: client.get_serve_status().deployment_statuses[0].status == "UNHEALTHY",
-        timeout=5,
+        timeout=20,
     )
 
     with pytest.raises(RuntimeError):
         wait_for_condition(
             lambda: client.get_serve_status().deployment_statuses[0].status
             == "UPDATING",
-            timeout=20,
+            timeout=10,
         )
 
 
